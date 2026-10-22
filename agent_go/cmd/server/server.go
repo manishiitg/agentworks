@@ -7124,6 +7124,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError(fmt.Sprintf("Failed to register laptop setup tool: %v", err), true)
 					return
 				}
+				// Suggestions and decisions waiting on the owner, as in the Suggestions panel.
+				if err := api.registerCrewNeedsYouChatTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, chatWorkingFolder); err != nil {
+					sendError(fmt.Sprintf("Failed to register Needs you tools: %v", err), true)
+					return
+				}
+				// WhatsApp status, routing and unpairing, as in the WhatsApp card (pairing itself stays in the app).
+				if err := api.registerWhatsAppChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly); err != nil {
+					sendError(fmt.Sprintf("Failed to register WhatsApp tool: %v", err), true)
+					return
+				}
 			}
 			// Local folder grants belong to the owner's interactive website turn;
 			// scheduled, connector and unattended/background adapters need separate consent.

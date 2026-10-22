@@ -84,6 +84,13 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 	}
 	places := api.needsYouPlaces(ctx, claims, visible, externalArg(args, "workflow_id"), externalArg(args, "crew_id"))
 	filtered := externalArg(args, "workflow_id") != "" || externalArg(args, "crew_id") != ""
+	api.needsYouRespond(w, r, name, args, claims, places, filtered)
+}
+
+// needsYouRespond lists, answers or dismisses items for the given places. The MCP tools and a Crew's own chat tools share it, so
+// both apply the same visibility and write-access checks; filtered is true when the places were narrowed to one item.
+func (api *StreamingAPI) needsYouRespond(w http.ResponseWriter, r *http.Request, name string, args map[string]any, claims *UserClaims, places []needsYouPlace, filtered bool) {
+	ctx := r.Context()
 	limit := 0
 	if name == "list_needs_you" {
 		limit = homeSectionLimit

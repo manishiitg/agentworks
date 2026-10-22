@@ -18,8 +18,11 @@ CLI prompts, skills and connection metadata belong in the private runtime.
 
 Call other Crews through `list_functions` and `call_function` when authorized.
 Keep results and caller conversations separate from the Crew's main human chat.
-Review reader suggestions with the owner. Accepting a suggestion only records
-the decision; implement the requested change explicitly and verify the result.
+Review reader suggestions with the owner: `list_needs_you` shows what waits on
+them in this Crew (the Suggestions panel's items), `answer_needs_you` records
+their choice or note, and `dismiss_needs_you` closes one with a reason. Accepting
+a suggestion only records the decision; implement the requested change explicitly
+and verify the result.
 
 Save ordinary shared artifacts under `$CREW_OUTPUT_DIR` (`<crew>/outputs/`),
 which has the same location for the owner and other callers. `CREW_RUN_DIR`
