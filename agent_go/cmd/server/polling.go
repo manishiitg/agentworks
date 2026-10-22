@@ -760,7 +760,8 @@ func (api *StreamingAPI) deriveSessionUserInputState(sessionID string) (bool, st
 		return false, "", nil, ""
 	}
 
-	events := api.eventStore.GetAllEventsRaw(sessionID)
+	// Only the newest 300 events are looked at, so only those are copied.
+	events := api.eventStore.LastEventsRaw(sessionID, 300)
 	for i, scanned := len(events)-1, 0; i >= 0 && scanned < 300; i, scanned = i-1, scanned+1 {
 		event := events[i]
 		switch event.Type {

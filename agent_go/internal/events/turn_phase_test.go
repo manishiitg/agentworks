@@ -107,3 +107,29 @@ func TestStartingUsesOnlyThisTurnsServerAgentLabel(t *testing.T) {
 		t.Fatalf("model inference or cached name survived: %q", got)
 	}
 }
+
+// The turn marker is read from the newest events first; a marker older than that window is still found, and the tail read
+// keeps its order.
+func TestTurnMarkerBeyondTheRecentWindowIsStillFound(t *testing.T) {
+	es := NewEventStore(5000)
+	defer es.Stop()
+	const session = "long-turn-session"
+	add(es, session, "user_message", nil)
+	for i := 0; i < 450; i++ {
+		add(es, session, "streaming_chunk", &mcpevents.StreamingChunkEvent{Content: "x", Source: "transcript"})
+	}
+	if !es.PersistedTurnOpen(session) {
+		t.Fatal("a turn opened more than 300 events ago is still open")
+	}
+	add(es, session, "unified_completion", nil)
+	if es.PersistedTurnOpen(session) {
+		t.Fatal("a completed turn is not open")
+	}
+	tail := es.LastEventsRaw(session, 3)
+	if len(tail) != 3 || tail[2].Type != "unified_completion" || tail[1].Type != "streaming_chunk" {
+		t.Fatalf("last events = %+v", tail)
+	}
+	if all := es.LastEventsRaw(session, 100000); len(all) != len(es.GetAllEventsRaw(session)) {
+		t.Fatalf("asking for more than exist returns all of them, got %d", len(all))
+	}
+}

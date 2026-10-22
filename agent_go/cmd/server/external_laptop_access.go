@@ -178,7 +178,7 @@ func (api *StreamingAPI) externalLaptopAccessCall(w http.ResponseWriter, r *http
 			externalError(w, 500, "settings_unavailable", "Laptop settings could not be read.")
 			return
 		}
-		externalJSON(w, map[string]any{"settings": settings, "next": "Use devices, browse and set to choose laptop folders. For the first connection, open Connections → Local laptop in your Crew for the download/sign-in steps. Install once on that computer and keep AgentWorks running (agentworks start for CLI users); no folder is granted automatically. Normal Crew work stays on the server. Read allows file copies; Read & write also allows local commands under your computer's existing permissions."})
+		externalJSON(w, map[string]any{"settings": settings, "next": "Use devices, browse and set to choose laptop folders. For the first connection, open Connections → Local laptop in your Crew for the download/sign-in steps. Install once on that computer and keep AgentWorks running (agentworks start for CLI users); no folder is granted automatically. Normal Crew work stays on the server. Each folder is Read (list and copy files into the Crew) or Read & write (also write files). Terminal commands are a separate switch (commands) and also need a Read & write folder; they run under your computer's existing permissions."})
 	case "browse":
 		ctx, cancel := contextWithLaptopTimeout(r)
 		defer cancel()

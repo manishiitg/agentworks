@@ -944,3 +944,39 @@ func crewHasNoUsableSlackBot(ctx context.Context, profileID, workspacePath strin
 	}
 	return true
 }
+
+// workflowHasNoUsableSlackBot is the Goals counterpart of crewHasNoUsableSlackBot: true only when the workflow's manifest was
+// read and neither its selected Slack bot (its manifest choice, or a connection scoped to it) nor the platform default is
+// enabled. Anything unreadable counts as "can't tell", so the tools stay offered.
+func workflowHasNoUsableSlackBot(ctx context.Context, workspacePath string) bool {
+	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil || !found || manifest == nil {
+		return false
+	}
+	svc, err := ensureSlackService()
+	if err != nil {
+		return false
+	}
+	connections := svc.ListConnections()
+	selected := strings.TrimSpace(manifest.Capabilities.SlackConnectionID)
+	if selected == "" {
+		for _, conn := range connections {
+			if normalizeConversationWorkspace(conn.WorkspacePath) == normalizeConversationWorkspace(workspacePath) {
+				selected = conn.ID
+				break
+			}
+		}
+	}
+	if selected == "" {
+		selected = svc.DefaultConnectionID()
+	}
+	if selected == "" {
+		return true
+	}
+	for _, conn := range connections {
+		if conn.ID == selected {
+			return !conn.Enabled
+		}
+	}
+	return true
+}

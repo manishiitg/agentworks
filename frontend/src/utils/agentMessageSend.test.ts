@@ -7,6 +7,9 @@ describe('agent message send', () => {
     const ok = parseAgentMessageSend('mcp__agentworks__send_message', args, JSON.stringify({ accepted: true, status: 'accepted', message_id: 'm1' }), 'ok')
     expect(ok).toMatchObject({ target: 'claude-reviewer', message: 'Build is ready.', accepted: true, failed: false })
     expect(parseAgentMessageSend('send_message', args, undefined, 'running')).toMatchObject({ accepted: false, failed: false })
+    // A recipient that names itself (a Crew title) is shown by that name, not its raw id.
+    const named = parseAgentMessageSend('send_message', args, JSON.stringify({ result: { accepted: true, to_label: 'Crew · ci/cd' } }))
+    expect(named).toMatchObject({ target: 'claude-reviewer', targetLabel: 'Crew · ci/cd' })
   })
 
   it('shows a refused send as failed with the reason, and ignores other tools', () => {

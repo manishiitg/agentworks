@@ -106,16 +106,28 @@ func (es *EventStore) TurnInProgress(sessionID string) bool {
 // message, not a turn end. It reads the stored events, so it also answers after a restart, when the live turn state is
 // gone.
 func (es *EventStore) PersistedTurnOpen(sessionID string) bool {
-	all := es.GetAllEventsRaw(sessionID)
+	// The newest turn marker is almost always in the last few events; only a session whose recent events hold none of them
+	// is read in full.
+	const recent = 300
+	if open, found := lastTurnMarkerOpen(es.LastEventsRaw(sessionID, recent)); found {
+		return open
+	}
+	open, _ := lastTurnMarkerOpen(es.GetAllEventsRaw(sessionID))
+	return open
+}
+
+// lastTurnMarkerOpen reads the newest turn marker in events: open is true when it is a user message, found is false when
+// there is no marker at all.
+func lastTurnMarkerOpen(all []Event) (open, found bool) {
 	for i := len(all) - 1; i >= 0; i-- {
 		switch all[i].Type {
 		case "unified_completion", "conversation_end", "conversation_error", "context_cancelled", "agent_error":
-			return false
+			return false, true
 		case "user_message":
-			return true
+			return true, true
 		}
 	}
-	return false
+	return false, false
 }
 
 // EnableTurnPhase makes the store announce turn phases (the server calls it once on its own store).

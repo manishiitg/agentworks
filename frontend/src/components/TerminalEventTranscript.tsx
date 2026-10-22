@@ -962,7 +962,7 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
       >
         <Send className={`h-3.5 w-3.5 shrink-0 ${view.failed ? 'text-red-500' : 'text-primary/70'}`} aria-hidden="true" />
         <span className="truncate">
-          Message to <span className="font-medium text-foreground/85">{view.target || 'this conversation'}</span>
+          Message to <span className="font-medium text-foreground/85">{view.targetLabel || view.target || 'this conversation'}</span>
         </span>
         <span className={`shrink-0 ${view.failed ? 'text-red-400' : ''}`}>{state}</span>
         {open ? <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0" />}

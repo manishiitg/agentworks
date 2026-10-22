@@ -1281,6 +1281,25 @@ func (es *EventStore) GetAllEventsRaw(sessionID string) []Event {
 	return out
 }
 
+// LastEventsRaw is GetAllEventsRaw for callers that only look at the end of a session: it copies at most n of the newest
+// events, in order. A busy session holds tens of thousands of events, and the status polls ask about every session every
+// second, so copying all of them each time was most of the cost of a poll.
+func (es *EventStore) LastEventsRaw(sessionID string, n int) []Event {
+	es.hydrateSession(sessionID)
+	es.mu.RLock()
+	defer es.mu.RUnlock()
+	src, ok := es.events[sessionID]
+	if !ok || n <= 0 {
+		return nil
+	}
+	if n > len(src) {
+		n = len(src)
+	}
+	out := make([]Event, n)
+	copy(out, src[len(src)-n:])
+	return out
+}
+
 // InitializeSession creates an empty event list for a session
 func (es *EventStore) InitializeSession(sessionID string, baseIndex int) {
 	es.hydrateSession(sessionID)

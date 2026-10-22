@@ -6157,6 +6157,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				return name == "slack" || name == "send_slack_message"
 			})
 		}
+		if isWorkflowPhase && (resolvedProfile == nil || !isProjectProfileID(resolvedProfile.Definition.ID)) && strings.TrimSpace(req.SelectedFolder) != "" && workflowHasNoUsableSlackBot(r.Context(), req.SelectedFolder) {
+			toolGate.DenyWhere(func(name string) bool {
+				name = strings.TrimSpace(name)
+				return name == "slack" || name == "send_slack_message"
+			})
+		}
 		defer toolGate.logSurface(sessionID)
 		useCodeExecutionMode, platformBridgeTools := externalWorkflowTransport(claims, workflowRun, toolGate)
 		if projectTokenChat {

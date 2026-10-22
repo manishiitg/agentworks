@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -61,6 +62,13 @@ func (s agentMessageStore) receiptFields(m agentMessage, dest agentMessageEndpoi
 	agent, named := s.destAgentOf(dest)
 	state, text := receiptState(m, agent, named)
 	out := map[string]interface{}{"state": state, "state_text": text, "message": text, "sent_at": m.SentAt}
+	// The recipient's own name for itself (a Crew's title, an agent's label), so the sender's chat can say "Message to
+	// <label>" instead of a raw agent id.
+	if label := strings.TrimSpace(dest.Label); label != "" {
+		out["to_label"] = label
+	} else if agent != nil && strings.TrimSpace(agent.Label) != "" && agent.Label != agent.Name {
+		out["to_label"] = strings.TrimSpace(agent.Label)
+	}
 	if named {
 		out["delivery_mode"] = "inbox"
 		if agent != nil {

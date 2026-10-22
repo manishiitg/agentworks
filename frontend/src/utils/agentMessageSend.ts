@@ -7,6 +7,8 @@ import { formatToolCallResult } from './toolCallFormatting'
 export interface AgentMessageSendView {
   /** Who it was addressed to, as the agent wrote it, without the "agent:" prefix; '' for a reply to an inbox. */
   target: string
+  /** The recipient's own name for itself when the server gave one (a Crew title); the row prefers it over the raw id. */
+  targetLabel: string
   message: string
   /** The server accepted it. Delivery to the other agent is reported separately by that agent's own answer. */
   accepted: boolean
@@ -46,5 +48,6 @@ export function parseAgentMessageSend(name: string, args: string | undefined, re
   const formatted = result ? formatToolCallResult(result) : null
   const answer = parseRecord(result)
   const failed = status === 'error' || Boolean(formatted?.isError) || answer?.accepted === false
-  return { target, message, accepted: answer?.accepted === true, failed, error: failed ? (formatted?.text ?? '').trim() : '' }
+  const targetLabel = str((answer?.result as Record<string, unknown> | undefined)?.to_label) || str(answer?.to_label)
+  return { target, targetLabel, message, accepted: answer?.accepted === true, failed, error: failed ? (formatted?.text ?? '').trim() : '' }
 }
