@@ -5,7 +5,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   AlertCircle,
-  ArrowLeft,
   FileJson,
   Link2,
   Loader2,
@@ -19,6 +18,7 @@ import type { PlannerFile } from '../../services/api-types'
 import { describeDatabaseLoadFailure } from './databaseLoadError'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
+import { WorkspacePanelBack } from '../workspace/WorkspacePanelNavigation'
 
 interface DatabaseViewProps {
   workspacePath: string | null
@@ -585,14 +585,7 @@ export default function DatabaseView({ workspacePath, headerAction, hideHeader =
                 </aside>}
 
                 {selectedPath && <section className="min-h-0 flex-1 overflow-y-auto p-4">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPath(null)}
-                      className="sticky top-0 z-20 mb-3 inline-flex items-center gap-2 rounded-md border border-border bg-background/95 px-3 py-2 text-sm font-medium shadow-sm backdrop-blur-sm transition-colors hover:bg-accent"
-                    >
-                      <ArrowLeft className="h-4 w-4" />
-                      Back to all tables
-                    </button>
+                    <WorkspacePanelBack label="Back to all tables" onBack={() => setSelectedPath(null)} />
                     <div className="space-y-4">
                       <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/20 p-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">

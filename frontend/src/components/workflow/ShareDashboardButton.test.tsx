@@ -37,3 +37,63 @@ it('does not expose sharing controls when the server refuses sharing, including 
     await act(async () => root.unmount())
   }
 })
+
+it('keeps people and owner controls separate and preserves owner-management admission', async () => {
+  post.mockReset()
+  post.mockImplementation(async (_url, body) => ({ data: body.action === 'owners'
+    ? { owner: { id: 'owner' }, co_owners: [], can_manage: false }
+    : { mode: 'private', can_share: true } }))
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(async () => root.render(<ShareDashboardButton workspacePath="Crew/one" variant="panel" section="owners" />))
+    expect(host.querySelector('[aria-label="Owners"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Add an owner by email"]')).toBeNull()
+    expect(host.querySelector('input[type="radio"]')).toBeNull()
+    expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Save')).toBe(false)
+    await act(async () => root.render(<ShareDashboardButton workspacePath="Crew/one" variant="panel" section="people" />))
+    expect(host.querySelector('input[type="radio"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Owners"]')).toBeNull()
+    expect(post.mock.calls.every(([, body]) => ['share_status', 'owners'].includes(body.action))).toBe(true)
+  } finally { await act(async () => root.unmount()) }
+})
+
+it('shows owner roles and only permits management granted by the server', async () => {
+  post.mockReset()
+  post.mockImplementation(async (_url, body) => ({ data: body.action === 'share_status' ? { mode: 'private', can_share: true } : { owner: { id: 'main', username: 'Main person' }, co_owners: [{ id: 'second', email: 'second@example.com' }], can_manage: true } }))
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(async () => root.render(<ShareDashboardButton workspacePath="Crew/one" variant="panel" section="owners" />))
+    expect(host.querySelector('[aria-label="Current owners"]')?.textContent).toContain('Main personMain owner')
+    expect(host.querySelector('[aria-label="Current owners"]')?.textContent).toContain('second@example.com')
+    expect(host.querySelector('[aria-label="Owners"]')?.className).not.toContain('border-t')
+    expect(host.textContent).toContain('including earlier messages')
+    const input = host.querySelector<HTMLInputElement>('[aria-label="Add an owner by email"]')!
+    const add = [...host.querySelectorAll('button')].find(button => button.textContent === 'Add owner')!
+    expect(add.disabled).toBe(true)
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => { setter.call(input, 'new@example.com'); input.dispatchEvent(new Event('input', { bubbles: true })) })
+    await act(async () => add.click())
+    expect(post).toHaveBeenCalledWith('/api/dashboards', { workspace: 'Crew/one', action: 'owner_add', emails: ['new@example.com'] })
+    expect(host.querySelector('input[type="radio"]')).toBeNull()
+  } finally { await act(async () => root.unmount()) }
+})
+
+it('replaces a blank owner page with a retry when loading fails', async () => {
+  post.mockReset()
+  let failed = true
+  post.mockImplementation(async (_url, body) => {
+    if (body.action === 'share_status') return { data: { mode: 'private', can_share: true } }
+    if (failed) throw new Error('offline')
+    return { data: { owner: { id: 'main' }, co_owners: [], can_manage: false } }
+  })
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(async () => root.render(<ShareDashboardButton workspacePath="Crew/one" variant="panel" section="owners" />))
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Could not load the owners')
+    failed = false
+    await act(async () => host.querySelector<HTMLButtonElement>('[role="alert"] button')!.click())
+    expect(host.querySelector('[role="alert"]')).toBeNull()
+    expect(host.textContent).toContain('Main owner')
+    expect(host.querySelector('[aria-label="Add an owner by email"]')).toBeNull()
+  } finally { await act(async () => root.unmount()) }
+})

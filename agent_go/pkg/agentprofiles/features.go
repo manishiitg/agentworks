@@ -280,9 +280,19 @@ func ResolveFeatures(profile *Profile) error {
 		if err != nil {
 			return err
 		}
+		skillNames := definition.Skills
+		if id == "coding" {
+			switch review := strings.TrimSpace(binding.Options["review_skill"]); review {
+			case "", "enabled":
+			case "disabled":
+				skillNames = nil
+			default:
+				return fmt.Errorf("feature %q: invalid review_skill %q (want enabled or disabled)", id, review)
+			}
+		}
 		resolved = append(resolved, ResolvedFeature{
 			ID: id, Dependencies: cloneStrings(definition.Dependencies), Tools: tools,
-			Skills:          featureSkillNames(profile.ID, definition.Skills),
+			Skills:          featureSkillNames(profile.ID, skillNames),
 			PromptExtension: RenderFeatureText(profile.ID, profile.Name, featurePromptExtension(id, definition.PromptExtension, binding.Options)),
 			UIPanels:        cloneStrings(definition.UIPanels), Capabilities: cloneCapabilities(definition.Capabilities),
 			Options: cloneStringMap(binding.Options),

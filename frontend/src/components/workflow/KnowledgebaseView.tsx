@@ -5,7 +5,6 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
-  ArrowLeft,
   Database,
   Loader2,
   AlertCircle,
@@ -19,6 +18,7 @@ import { KnowledgebaseSources } from './KnowledgebaseSources'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
+import { WorkspacePanelBack } from '../workspace/WorkspacePanelNavigation'
 
 interface KnowledgebaseViewProps {
   workspacePath: string | null
@@ -345,14 +345,7 @@ function KnowledgebaseContent({ workspacePath, headerAction, hideHeader = false,
           {!loading && !error && hasNotesContent && (
             <div className="space-y-1">
               {focusedTopicId ? (
-                <button
-                  type="button"
-                  onClick={() => setExpandedNotes(new Set())}
-                  className="mb-3 inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Back to all topics
-                </button>
+                <WorkspacePanelBack label="Back to all topics" onBack={() => setExpandedNotes(new Set())} />
               ) : (
                 <div className="relative mb-3">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

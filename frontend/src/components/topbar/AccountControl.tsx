@@ -1,6 +1,6 @@
 import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
-import { useEffect, useRef, useState } from 'react'
-import { HelpCircle, Keyboard, KeyRound, LogOut, LayoutDashboard, Globe } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { HelpCircle, Keyboard, KeyRound, LogOut, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import NotificationsControl from './NotificationsControl'
@@ -9,18 +9,15 @@ import ChangePasswordDialog from './ChangePasswordDialog'
 import BrowserConnectionsDialog from '../BrowserConnectionsDialog'
 import { APP_VERSION } from '../../version'
 
-/**
- * AccountControl - the signed-in user's avatar (their initial) which opens a
- * small account menu for hosted and local installations. Same outside-click /
- * Escape behaviour as IconPopover; not reusing it because the trigger here
- * is the round avatar itself rather than a padded icon button.
- */
+/** Shared account actions, embedded in Account & settings or used by a standalone surface. */
 interface AccountControlProps {
   onOpenWalkthrough?: () => void
   onOpenShortcuts?: () => void
+  menuOnly?: boolean
+  children?: ReactNode
 }
 
-export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: AccountControlProps) {
+export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, menuOnly = false, children }: AccountControlProps) {
   const sidebar = useProductNavigationSidebar()
   const { user, logout, isMultiUserMode, providers } = useAuthStore()
   // A password can be changed only where people sign in with one: a server with single sign-on only (Google) has nothing to change.
@@ -58,7 +55,70 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
   const displayName = isMultiUserMode ? (user.username || user.email || 'User') : 'Local account'
   const initial = displayName.trim().charAt(0).toUpperCase() || '?'
   const itemClass =
-    'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors'
+    'flex min-h-8 w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs text-foreground/85 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
+  const menuContent = <>
+          <div className="px-2 py-1.5 mb-1 border-b border-gray-200 dark:border-slate-700">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{displayName}</p>
+            {isMultiUserMode && user?.email && user.username !== user.email && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
+            )}
+            <p className="text-xs text-gray-500 dark:text-gray-400">{`AgentWorks v${APP_VERSION}`}</p>
+          </div>
+          {children}
+          {menuOnly && <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Preferences &amp; help</p>}
+          <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => { setOpen(false); setBrowserConnections(true) }}><Globe className="h-4 w-4 text-muted-foreground" />Browser connections</button>
+          <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => { setOpen(false); window.dispatchEvent(new Event('open-welcome-home')) }}>
+            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            Getting started
+          </button>
+          {onOpenWalkthrough && <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => {
+            setOpen(false)
+            onOpenWalkthrough()
+          }}>
+            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            Help &amp; walkthrough
+          </button>}
+          {!menuOnly && onOpenShortcuts && <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => {
+            setOpen(false)
+            onOpenShortcuts()
+          }}>
+            <Keyboard className="h-4 w-4 text-muted-foreground" />
+            Keyboard shortcuts
+          </button>}
+          {<NotificationsControl menuItem />}
+          <TipsToggle />
+          {isMultiUserMode && <div role="separator" className="my-1 border-t border-border" />}
+          {isMultiUserMode && passwordSignIn && <button
+            type="button"
+            role="menuitem" data-product-navigation-action
+            className={itemClass}
+            onClick={() => {
+              setOpen(false)
+              setChangingPassword(true)
+            }}
+          >
+            <KeyRound className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            Change password
+          </button>}
+          {isMultiUserMode && <button
+            type="button"
+            role="menuitem" data-product-navigation-action
+            className={`${itemClass} hover:text-red-600 dark:hover:text-red-400`}
+            onClick={() => {
+              setOpen(false)
+              logout()
+            }}
+          >
+            <LogOut className="w-4 h-4" />
+            Sign out
+          </button>}
+  </>
+  const dialogs = <>
+    <BrowserConnectionsDialog open={browserConnections} onClose={() => setBrowserConnections(false)} />
+    <ChangePasswordDialog isOpen={changingPassword} onClose={() => setChangingPassword(false)} />
+  </>
+  if (menuOnly) return <>{menuContent}{dialogs}</>
 
   return (
     <div ref={containerRef} className="relative">
@@ -85,72 +145,11 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
           aria-label="Account"
           className={`absolute ${sidebar ? 'left-[calc(100%+12px)] bottom-0' : 'right-0 top-full mt-2'} w-56 max-w-[calc(100vw-5rem)] max-h-[80vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl z-[60] p-1.5`}
         >
-          <div className="px-2 py-1.5 mb-1 border-b border-gray-200 dark:border-slate-700">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{displayName}</p>
-            {isMultiUserMode && user?.email && user.username !== user.email && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
-            )}
-            <p className="text-xs text-gray-500 dark:text-gray-400">{`AgentWorks v${APP_VERSION}`}</p>
-          </div>
-          <button type="button" role="menuitem" className={itemClass} onClick={() => {
-            setOpen(false)
-            window.location.assign('/dashboards')
-          }}>
-            <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
-            Dashboards
-          </button>
-          <button type="button" role="menuitem" className={itemClass} onClick={() => { setOpen(false); setBrowserConnections(true) }}><Globe className="h-4 w-4 text-muted-foreground" />Browser connections</button>
-          <button type="button" role="menuitem" className={itemClass} onClick={() => { setOpen(false); window.dispatchEvent(new Event('open-welcome-home')) }}>
-            <HelpCircle className="h-4 w-4 text-muted-foreground" />
-            Getting started
-          </button>
-          {onOpenWalkthrough && <button type="button" role="menuitem" className={itemClass} onClick={() => {
-            setOpen(false)
-            onOpenWalkthrough()
-          }}>
-            <HelpCircle className="h-4 w-4 text-muted-foreground" />
-            Help &amp; walkthrough
-          </button>}
-          {onOpenShortcuts && <button type="button" role="menuitem" className={itemClass} onClick={() => {
-            setOpen(false)
-            onOpenShortcuts()
-          }}>
-            <Keyboard className="h-4 w-4 text-muted-foreground" />
-            Keyboard shortcuts
-          </button>}
-          {<NotificationsControl menuItem />}
-          <TipsToggle />
-          <div role="separator" className="my-1 border-t border-border" />
-          {isMultiUserMode && passwordSignIn && <button
-            type="button"
-            role="menuitem"
-            className={itemClass}
-            onClick={() => {
-              setOpen(false)
-              setChangingPassword(true)
-            }}
-          >
-            <KeyRound className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-            Change password
-          </button>}
-          { /* User management: the Users icon in the top bar (admins only), and Access → Users in a workflow. */ }
-          {isMultiUserMode && <button
-            type="button"
-            role="menuitem"
-            className={`${itemClass} hover:text-red-600 dark:hover:text-red-400`}
-            onClick={() => {
-              setOpen(false)
-              logout()
-            }}
-          >
-            <LogOut className="w-4 h-4" />
-            Sign out
-          </button>}
+          {menuContent}
         </div>
       )}
 
-      <BrowserConnectionsDialog open={browserConnections} onClose={() => setBrowserConnections(false)} />
-      <ChangePasswordDialog isOpen={changingPassword} onClose={() => setChangingPassword(false)} />
+      {dialogs}
     </div>
   )
 }

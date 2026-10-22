@@ -77,11 +77,10 @@ describe('Panel walkthroughs', () => {
     }
   })
 
-  it('uses Code wording and scope for project sections', () => {
+  it('uses Crew wording and scope for project sections', () => {
     const code = getWorkspacePanelGuide('Identity · General', 'crew')
     expect(code.surface).toBe('crew')
-    expect(code.purpose).toContain('coding workspace')
-    expect(code.purpose).not.toContain('Crew')
+    expect(code.purpose).toContain('Crew member')
     expect(getWorkspacePanelGuide('Integrations · MCPs', 'crew').howTo).toContain('project')
   })
 
@@ -116,7 +115,7 @@ describe('Panel walkthroughs', () => {
       ))
       await act(async () => (host.querySelector('[aria-label="Walkthrough: Automation"]') as HTMLButtonElement).click())
       const dialog = host.querySelector('[role="dialog"]')!
-      expect(dialog.textContent).toContain('Crew · Main toolbar')
+      expect(dialog.textContent).toContain('Crew · Page guide')
       expect(dialog.textContent).toContain('Crew member')
     } finally {
       await act(async () => root.unmount())
@@ -143,7 +142,7 @@ describe('Panel walkthroughs', () => {
         </WorkspacePanelGuideContext.Provider>,
       ))
       expect(host.querySelector('[role="dialog"]')?.textContent).toContain('saved instruction')
-      expect(host.querySelector('[role="dialog"]')?.textContent).toContain('Crew · Main toolbar')
+      expect(host.querySelector('[role="dialog"]')?.textContent).toContain('Crew · Page guide')
       expect(getWorkspacePanelGuide('Knowledge · Database').group).toBe('Ops')
       expect(getWorkspacePanelGuide('Identity · Secrets', 'crew').group).toBe('Setup')
       expect(getWorkspacePanelGuide('Pulse').group).toBe('Main toolbar')
@@ -178,7 +177,8 @@ describe('Panel walkthroughs', () => {
       await act(async () => (host.querySelector('[aria-label="Walkthrough: Integrations · Skills"]') as HTMLButtonElement).click())
       const steps = host.querySelectorAll('[aria-label="Setup steps"] li')
       expect(steps).toHaveLength(3)
-      expect(steps[0]?.textContent).toContain('selected skills')
+      expect(steps[0]?.textContent).toContain('installed skills')
+      expect(steps[1]?.textContent).toContain('in chat')
     } finally {
       await act(async () => root.unmount())
       host.remove()
@@ -252,13 +252,14 @@ describe('Panel walkthroughs', () => {
     const workflowSkills = renderToStaticMarkup(<IntegrationHowToGuide topic="Skills" scopeNoun="workflow" />)
     expect(projectSkills).toContain('install or create a skill in this project')
     expect(workflowSkills).toContain('install or create a skill in this workflow')
-    expect(workflowSkills).toContain('Builder to attach it to the steps')
+    expect(workflowSkills).toContain('there is no separate selection step')
+    expect(workflowSkills).toContain('Ask the agent in chat to uninstall')
     expect(renderToStaticMarkup(<IntegrationHowToGuide topic="Slack" scopeNoun="project" />)).toContain('this project')
     expect(renderToStaticMarkup(<IntegrationHowToGuide topic="WhatsApp" scopeNoun="workflow" />)).toContain('Workflow routes')
     expect(renderToStaticMarkup(<IntegrationHowToGuide topic="Connect" scopeNoun="workflow" />)).toContain('Remote MCP URL')
   })
 
-  it('places Browser help between Ask AI and Refresh exactly once', () => {
+  it('keeps one Browser walkthrough without a redundant refresh control', () => {
     const html = renderToStaticMarkup(
       <WorkspacePanelGuideContext.Provider value="crew">
         <TooltipProvider>
@@ -281,7 +282,7 @@ describe('Panel walkthroughs', () => {
     const walkthrough = html.indexOf('aria-label="Walkthrough: Browser"')
     const refresh = html.indexOf('aria-label="Refresh view"')
     expect(walkthrough).toBeGreaterThanOrEqual(0)
-    expect(walkthrough).toBeLessThan(refresh)
+    expect(refresh).toBe(-1)
     expect(html.match(/aria-label="Walkthrough: Browser"/g)).toHaveLength(1)
   })
 

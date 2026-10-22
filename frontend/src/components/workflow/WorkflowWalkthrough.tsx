@@ -11,7 +11,7 @@ type WalkthroughStep = {
 }
 
 const PRODUCT_SWITCHER_STEP: WalkthroughStep = {
-  selector: '[aria-label="Switch product"]',
+  selector: '[data-workspace-setup-trigger], [data-product-header-picker], [aria-label^="Switch product"]',
   title: 'Choose a workspace',
   body: 'Switch between the products available to you here.',
 }
@@ -54,7 +54,7 @@ const OVERVIEW_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="global-schedules"]',
     title: 'Schedules',
-    body: 'Review and manage scheduled runs across all your automations.',
+    body: 'Open the project name menu and choose Schedules & triggers to review scheduled runs across your projects.',
   },
   {
     selector: '[data-tour="global-providers"]',
@@ -358,8 +358,8 @@ const visibleTargetForSelector = (selector: string): Element | null => {
   // closed. Keep their guide steps available through the visible launcher.
   const candidates = Array.from(document.querySelectorAll(selector)).flatMap(element => {
     const localLauncher = element.closest('[data-product-settings]')?.querySelector('[data-product-settings-trigger]')
-    const launchers = element.closest('[data-picker-setup]')
-      ? [document.querySelector('[data-workspace-setup-trigger]'), localLauncher]
+    const launchers = element.closest('[data-picker-setup], [data-product-picker-menu]')
+      ? [document.querySelector('[data-workspace-setup-trigger], [data-product-header-picker]'), localLauncher]
       : [localLauncher]
     return [element, ...launchers.filter((launcher): launcher is Element => Boolean(launcher))]
   })
@@ -437,7 +437,8 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
     }
     const target = visibleTargetForSelector(selector)
     if (target) {
-      if (target.matches('[data-product-settings-trigger], [data-workspace-setup-trigger]')) window.dispatchEvent(new Event('open-product-settings'))
+      if (target.matches('[data-workspace-setup-trigger], [data-product-header-picker]')) window.dispatchEvent(new Event('open-workspace-picker'))
+      else if (target.matches('[data-product-settings-trigger]')) window.dispatchEvent(new Event('open-product-settings'))
       const rect = target.getBoundingClientRect()
       setTargetRect(previous => previous &&
         previous.left === rect.left && previous.top === rect.top &&
@@ -502,7 +503,7 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
     return () => {
       const returnTarget = launcher?.isConnected && launcher !== document.body
         ? launcher
-        : document.querySelector<HTMLElement>('[aria-label^="Account:"]')
+        : document.querySelector<HTMLElement>('[aria-label="Account & settings"], [aria-label^="Account:"]')
       returnTarget?.focus({ preventScroll: true })
     }
   }, [isOpen, openToken, surface])

@@ -1,4 +1,5 @@
-import { AlertCircle, ArrowLeft, MessageSquare, Phone } from 'lucide-react'
+import { AlertCircle, MessageSquare, Phone } from 'lucide-react'
+import { WorkspacePanelBack } from '../workspace/WorkspacePanelNavigation'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useWorkflowBots, type BotRouteTarget } from './bots/useWorkflowBots'
 import { SlackSetup } from './bots/SlackSetup'
@@ -42,14 +43,7 @@ export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = '
     return (
       <div className="flex flex-col gap-4">
         <div className="shrink-0 space-y-4">
-          <button
-            type="button"
-            onClick={() => setSetup(null)}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </button>
+          <WorkspacePanelBack label="Back to connections" onBack={() => setSetup(null)} />
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
             {setup === 'slack' ? <MessageSquare className="h-4 w-4" /> : <Phone className="h-4 w-4" />}
             {setup === 'slack' ? 'Slack' : 'WhatsApp'}

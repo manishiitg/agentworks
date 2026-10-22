@@ -1,4 +1,8 @@
 import { inspectionKey } from '../../../utils/stepInspection'
+import { WorkspacePanelAssistant, WorkspacePanelNavigationProvider } from '../../workspace/WorkspacePanelNavigation'
+import { WorkspacePanelHeader } from '../../workspace/WorkspacePanelHeader'
+import { WorkspacePanelGuideContext } from '../WorkspacePanelGuideContext'
+import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
 import { usePulseToggle } from '../hooks/usePulseToggle'
 import React, {
   Suspense,
@@ -274,6 +278,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   // view (Plan or Report). An embedded plan-only canvas (Video Studio) is
   // always the flow body regardless of the shared store.
   const effectiveView: WorkspaceViewId = workflowWorkspaceView ?? lastCanvasView
+  const canWrite = useCanWriteWorkflow(workspacePath)
   const kind: WorkspaceViewKind = embeddedPlanOnly ? 'canvas' : getWorkspaceView(effectiveView).kind
 
   // --- Toolbar data, loaded once for every view ---------------------------
@@ -624,9 +629,15 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
           data-ui-workspace={embeddedPlanOnly ? undefined : workspacePath ?? undefined}
           data-ui-view={effectiveView}
           data-testid="tour-workflow-canvas-pane"
-          className={`${gridToolbar ? 'flex-1 col-start-1 row-start-2 md:col-start-2' : 'flex-1'} ${paneClassName} flex min-h-0 flex-col ${isInspectorKind && effectiveView !== 'context' ? 'overflow-hidden border-l border-border' : ''}`}
+          className={`${gridToolbar ? 'flex-1 col-start-1 row-start-2 md:col-start-2' : 'flex-1'} ${paneClassName} relative flex min-h-0 flex-col ${isInspectorKind && effectiveView !== 'context' ? 'overflow-hidden border-l border-border' : ''}`}
         >
-          <div className={`min-h-0 flex-1 ${effectiveView === 'workshop' ? 'flex overflow-hidden' : ''}`}>{body}</div>
+          <WorkspacePanelNavigationProvider workspacePath={workspacePath} view={effectiveView} chatTarget={workspacePath ? { workspacePath } : undefined}>
+            {workspacePath && effectiveView !== 'context' && <WorkspacePanelAssistant workspacePath={workspacePath} message={getWorkspaceAskAIMessage(effectiveView)} />}
+            {!embeddedPlanOnly && !toolbarOnly && <WorkspacePanelHeader workspacePath={workspacePath} view={effectiveView} title={getWorkspaceView(effectiveView).label} surface={relayMode ? 'relay' : 'agentworks'} contextAllowed={canWrite} onBack={() => useWorkflowStore.getState().openWorkspaceView('context')} />}
+            <WorkspacePanelGuideContext.Provider value={relayMode ? 'relay' : 'agentworks'}>
+            <div className={`min-h-0 flex-1 ${effectiveView === 'workshop' ? 'flex overflow-hidden' : ''}`}>{body}</div>
+            </WorkspacePanelGuideContext.Provider>
+          </WorkspacePanelNavigationProvider>
           {!isInspectorKind && !toolbarOnly && <span hidden data-ui-view-mounted />}
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useCompactProductNavigation, useProductNavigationSidebar } from './workspace/ProductTopBar'
-import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { ChevronDown, LayoutDashboard, MessagesSquare, Network, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
@@ -16,6 +16,8 @@ import { applyRuntimeBranding } from '../runtime-branding'
 import { cn } from '../lib/utils'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 import { ProductSwitchMenu } from './workspace/ProductSwitchMenu'
+import { ProductPickerMenu, useInProductPicker } from './workspace/ProductPickerMenu'
+import { useProductSettingsMenu } from './workspace/productNavigationContexts'
 
 type ProductSurfaceSwitcherProps = {
   className?: string
@@ -23,6 +25,10 @@ type ProductSurfaceSwitcherProps = {
   standalone?: boolean
   menuOnly?: boolean
   onSelect?: () => void
+  variant?: 'default' | 'header' | 'chevron'
+  menuColumns?: 2 | 3
+  menuTitle?: string
+  menuContent?: (close: () => void) => ReactNode
 }
 
 // Product marks can render any element; callers only rely on the common
@@ -51,8 +57,10 @@ const products: Array<{
 /** The product list with labels, descriptions and marks, shared with the welcome page. */
 export const PRODUCT_CARDS = products
 
-export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly = false, onSelect }: ProductSurfaceSwitcherProps) {
+export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly = false, onSelect, variant = 'default', menuColumns = 3, menuTitle, menuContent }: ProductSurfaceSwitcherProps) {
   const sidebar = useProductNavigationSidebar()
+  const inSettings = useProductSettingsMenu()
+  const inPicker = useInProductPicker()
   const compact = useCompactProductNavigation()
   const pageHeader = useProductNavigationToolbarStore(state => state.targetKind === 'page')
   const productSurface = useProductSurfaceStore((state) => state.productSurface)
@@ -111,13 +119,41 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
     }
   }, [open])
 
-  const productMenu = (popup: boolean, className = '') => <ProductSwitchMenu products={menuProducts} current={currentProduct.id} popup={popup} className={className}
+  const closeMenu = () => {
+    setOpen(false)
+    menuRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.focus()
+  }
+  const productGrid = (popup: boolean, className = '') => <ProductSwitchMenu products={menuProducts} current={currentProduct.id} popup={false} nestedMenu={popup || (menuOnly && (inSettings || inPicker))} columns={menuColumns} className={className}
     onSelect={id => {
       if (id === 'dashboards') { setOpen(false); onSelect?.(); window.location.assign('/dashboards'); return }
       const product = visibleProducts.find(item => item.id === id); if (product) activateProduct(product.id)
     }}
-    onEscape={() => { setOpen(false); menuRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.focus() }} />
-  if (menuOnly) return productMenu(false)
+    onEscape={closeMenu} />
+  const productMenu = (popup: boolean, className = '') => popup ? <div role="menu" aria-label={`${menuTitle || currentProduct.label} navigation`}
+    className={`flex max-h-[calc(100dvh-64px)] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl ${className}`}>
+    <ProductPickerMenu title={menuTitle || currentProduct.label} onEscape={closeMenu} products={productGrid(true)}>
+      {menuContent ? menuContent(closeMenu) : <div className="p-1"><button type="button" role="menuitem" onClick={() => { closeMenu(); if (currentProduct.id === 'dashboards') window.location.assign('/dashboards'); else { const product = visibleProducts.find(item => item.id === currentProduct.id); if (product) activateProduct(product.id) } }} className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted"><CurrentIcon className="h-4 w-4" />{currentProduct.label}</button></div>}
+    </ProductPickerMenu>
+  </div> : productGrid(false, className)
+  if (menuOnly) return productMenu(false, className)
+
+  if (variant !== 'default') {
+    const trigger = <button type="button" aria-label={`Switch product: ${currentProduct.label}`} aria-haspopup="menu" aria-expanded={open}
+      onClick={() => setOpen(value => !value)} title="Switch product"
+      onKeyDown={event => {
+        if (event.key !== 'ArrowDown') return
+        event.preventDefault(); setOpen(true)
+        requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus())
+      }}
+      className={`inline-flex h-7 items-center gap-2 rounded-md text-sm font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${variant === 'chevron' ? 'w-6 justify-center text-muted-foreground' : 'text-foreground'}`}>
+      {variant === 'header' && <><CurrentIcon className="h-4 w-4 shrink-0" title="" /><span>{currentProduct.label}</span></>}
+      <ChevronDown aria-hidden="true" className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+    </button>
+    return <div ref={menuRef} className={cn('relative shrink-0', className)}>
+      {variant === 'header' ? <h1>{trigger}</h1> : trigger}
+      {open && <div className="absolute left-0 top-full z-50 pt-2">{productMenu(true, 'w-[420px] max-w-[calc(100vw-24px)]')}</div>}
+    </div>
+  }
 
   if (compact) return (
     <div ref={menuRef} role="group" aria-label="Products"

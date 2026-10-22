@@ -4,7 +4,7 @@ import { Vault } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useAppStore } from '../../stores/useAppStore'
-import { visibleProductSurfaceIDs } from '../../products/productSurfaceConfig'
+import { canNavigateToSharedVault } from '../../products/mcp-gateway/vaultNavigationAccess'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { useLLMStore } from '../../stores/useLLMStore'
 
@@ -25,7 +25,7 @@ export default function VaultsControl() {
           data-product-navigation-action
           onClick={() => {
             useLLMStore.getState().setShowLLMModal(false)
-            if (visibleProductSurfaceIDs(user.allowed_products).includes('mcp-gateway')) {
+            if (canNavigateToSharedVault(user)) {
               try { sessionStorage.setItem('vault.requested-panel', 'my-vaults') } catch { /* Navigation remains available through the event. */ }
               openProductWorkspace('mcp-gateway')
               window.dispatchEvent(new CustomEvent('vault-open-panel', { detail: 'my-vaults' }))

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useWorkspacePanelAssistant, useWorkspacePanelGuide } from '../workspace/WorkspacePanelNavigation'
 import { ArrowDown, Code2, RefreshCw, Settings2, Sparkles } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { RunFolderInfo } from '../../services/api-types'
@@ -66,6 +67,9 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
   onBuild: () => void
 }) {
   const [tab, setTab] = useState<'graph' | 'calls' | 'source'>('graph')
+  const panelTopic = tab === 'graph' ? 'Flow' : tab === 'calls' ? 'Flow runs' : 'Flow code'
+  const hosted = useWorkspacePanelGuide(panelTopic, 'relay')
+  useWorkspacePanelAssistant({ workspacePath, message: `Help me with this Flow's ${tab === 'graph' ? 'steps and graph' : tab === 'calls' ? 'runs and results' : 'code'}. Explain the current view in plain words and ask what I want to do before changing anything.` })
   const viewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   useEffect(() => {
     if (viewTarget?.view === 'flow' && (viewTarget.target === 'graph' || viewTarget.target === 'calls' || viewTarget.target === 'source')) setTab(viewTarget.target)
@@ -211,7 +215,7 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
   return <div className="relative flex h-full min-h-0 flex-col bg-background">
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
       {/* Graph, Runs and Code are separate side-list items (owner, 2026-10-20); the side list picks one. */}
-      <span className="text-xs font-medium text-muted-foreground">{tab === 'graph' ? 'Flow' : tab === 'calls' ? 'Runs' : 'Code'}</span>
+      {!hosted && <span className="text-xs font-medium text-muted-foreground">{tab === 'graph' ? 'Flow' : tab === 'calls' ? 'Runs' : 'Code'}</span>}
       <div className="ml-auto flex items-center gap-1">
         <button type="button" onClick={() => setConfigurationOpen(open => !open)} aria-label="Flow configuration" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><Settings2 className="h-4 w-4" /></button>
         <button type="button" onClick={() => { refresh(); void refreshReleases() }} aria-label="Refresh Flow" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><RefreshCw className="h-4 w-4" /></button>
@@ -219,7 +223,7 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
     </div>
     {tab === 'graph' ? <div id="relay-python-graph" role="tabpanel" className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <div><h2 className="text-sm font-semibold">How it works</h2><p className="mt-1 text-xs text-muted-foreground">{sourceOverview.native ? 'Overview of possible paths · Open Runs to follow an execution.' : 'Draft graph · Describe changes in the builder chat.'}</p></div>
+        <div><h2 className="text-sm font-semibold">How it works</h2><p className="mt-1 text-xs text-muted-foreground">{sourceOverview.native ? 'Repeatable steps, AI tasks and decisions in one process. Open Runs to see what happened.' : 'Connect repeatable steps, AI tasks and decisions. Describe changes in the builder chat.'}</p></div>
         <button type="button" onClick={onBuild} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted"><Sparkles className="h-3.5 w-3.5" />Edit in chat</button>
       </div>
       {loadingSource || sourceOverview.loading ? <p className="p-6 text-sm text-muted-foreground">Loading graph…</p> : sourceError || sourceOverview.error ? <p role="alert" className="p-6 text-sm text-destructive">{sourceError || sourceOverview.error}</p> : <RelaySourceGraph key={workspacePath} source={source ?? ''} graph={sourceOverview.graph} onBuild={onBuild} onCode={() => setTab('source')} />}

@@ -1,4 +1,4 @@
-export type WorkspacePanelSurface = 'agentworks' | 'crew'
+export type WorkspacePanelSurface = 'agentworks' | 'crew' | 'relay'
 export type WorkspacePanelGroup = 'Main toolbar' | 'Ops' | 'Setup'
 
 export type WorkspacePanelGuide = {
@@ -13,6 +13,18 @@ export type WorkspacePanelGuide = {
 type GuideCopy = Pick<WorkspacePanelGuide, 'purpose' | 'howTo' | 'steps'>
 
 const AGENTWORKS_GUIDES: Record<string, GuideCopy> = {
+  Flow: {
+    purpose: 'Combine repeatable steps, AI tasks and decisions in a process that follows the same rules each time.',
+    howTo: 'Describe the work in chat. The builder connects steps that move data, ask agents for help and sort inputs into the right path. Read the graph to follow the process; open Runs for results or Code for its Python implementation.',
+  },
+  'Flow runs': {
+    purpose: 'Follow an earlier Flow run and inspect its results.',
+    howTo: 'Choose a version and run, then open a step to read its output and tool activity. If there are no runs yet, ask the builder to test your Flow with sample input.',
+  },
+  'Flow code': {
+    purpose: 'Read the implementation behind this Flow.',
+    howTo: 'Inspect the code here, or open it in Files. Ask the builder to explain or change it; reading this page does not run the Flow.',
+  },
   Access: {
     purpose: 'Control who can open, run, edit, and share this automation.',
     howTo: 'Review each access tab, then invite people or adjust their roles. A read-only role can inspect and run work without changing its setup.',
@@ -264,11 +276,11 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
   }),
   'Integrations · Skills': surface => ({
     purpose: `Skills are reusable instructions that teach this ${surface === 'crew' ? 'Crew member' : 'workflow'} how to perform a task. They do not connect an app account.`,
-    howTo: `Skills live in this ${surface === 'crew' ? 'project' : 'workflow'}. The list shows their main chat and step attachments; expand a skill to uninstall it here.`,
+    howTo: 'Read the custom skills installed in this workspace. Open a skill to read its instructions. Platform skills are included automatically and are not listed here.',
     steps: [
-      `Review the selected skills for this ${surface === 'crew' ? 'project' : 'workflow'} and remove any it no longer needs.`,
-      'Select a skill for the main chat, or ask the Builder to attach it to the steps that need it.',
-      'Ask AI to install or create a missing skill in this workspace.',
+      'The list shows installed skills; there is no separate selection step.',
+      'Ask in chat to install, create or uninstall a custom skill.',
+      'Connect an app account separately when a skill needs access to that app.',
     ],
   }),
   'Integrations · Slack': surface => ({
@@ -323,7 +335,7 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
   }),
 }
 
-const GROUPS: Record<WorkspacePanelSurface, Record<WorkspacePanelGroup, readonly string[]>> = {
+const GROUPS: Record<Exclude<WorkspacePanelSurface, 'relay'>, Record<WorkspacePanelGroup, readonly string[]>> = {
   agentworks: {
     'Main toolbar': ['Automation', 'Automation Schedules', 'Browser', 'Dashboard', 'Pulse', 'Schedules', 'Webhooks'],
     Ops: ['Backup', 'Plan', 'Cost Analysis', 'Database', 'Execution Logs', 'File', 'Files', 'Knowledge', 'Knowledgebase', 'Notify', 'Publish', 'Workspace'],
@@ -338,7 +350,7 @@ const GROUPS: Record<WorkspacePanelSurface, Record<WorkspacePanelGroup, readonly
 
 function groupFor(surface: WorkspacePanelSurface, topic: string): WorkspacePanelGroup {
   for (const group of ['Main toolbar', 'Ops', 'Setup'] as const) {
-    if (GROUPS[surface][group].includes(topic)) return group
+    if (GROUPS[surface === 'relay' ? 'agentworks' : surface][group].includes(topic)) return group
   }
   return 'Main toolbar'
 }
@@ -356,6 +368,6 @@ export function getWorkspacePanelGuide(topic: string, surface: WorkspacePanelSur
         surface,
         group,
         purpose: `Review ${topic || 'this view'} in the workspace pane.`,
-        howTo: `Use the controls here to inspect its content. Ask ${surface === 'crew' ? 'Crew' : 'AI'} for help with what you see, and refresh for the latest state.`,
+        howTo: 'Use the controls here to inspect its content. Open chat for help with what you see.',
       }
 }

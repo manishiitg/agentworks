@@ -1,0 +1,67 @@
+import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Sparkles, Terminal, UsersRound, type LucideIcon } from 'lucide-react'
+import type { ProductPanel } from '../productPanels'
+import type { WorkWorkspaceView } from './WorkWorkspacePane'
+import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
+import { visibleProductSurfaceIDs } from '../productSurfaceConfig'
+import { isWorkIdentityTabEnabled } from './workViewGating'
+import { PROJECT_MENU_GROUPS } from '../../components/workspace/projectMenuGroups'
+
+export const CREW_MENU_GROUPS = PROJECT_MENU_GROUPS
+export type CrewMenuGroup = typeof CREW_MENU_GROUPS[number]
+export type CrewMenuItem = {
+  id: string; label: string; icon: LucideIcon; group: CrewMenuGroup; subgroup?: string
+  view?: WorkWorkspaceView; target?: string; reportPath?: string; external?: 'bullpen'
+}
+
+/** One inventory for the Crew menu and panel search. All old feature gates apply. */
+export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, incomingEmail = false, canShare = true, projectId = '' }: {
+  panels: ProductPanel<WorkWorkspaceView>[]; allowedProducts?: string[] | null; enabledPanels?: Set<string>
+  incomingEmail?: boolean; canShare?: boolean; projectId?: string
+}): CrewMenuItem[] {
+  const has = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
+  const bots = !enabledPanels || enabledPanels.has('bots')
+  const items: CrewMenuItem[] = []
+  const add = (view: WorkWorkspaceView, group: CrewMenuGroup, label: string, icon: LucideIcon, target?: string, subgroup?: string) => {
+    if (has(view)) items.push({ id: target ? `${view}:${target}` : view, view, group, label, icon, target, subgroup })
+  }
+  add('dashboard', 'Build', 'Project dashboard', LayoutDashboard)
+  if (has('schedules')) for (const item of projectAutomationSections({ incomingEmail, triggers: enabledPanels?.has('triggers') !== false })) {
+    add('schedules', item.id === 'functions' ? 'Build' : 'Use', item.id === 'email' ? 'Email inbox' : item.label, item.icon, item.id, item.id === 'functions' ? undefined : item.id === 'email' ? 'Use from other apps' : 'Run automatically')
+  }
+  if (!enabledPanels || enabledPanels.has('skills')) add('memory', 'Build', 'Skills', Sparkles, 'skills')
+  add('files', 'Build', 'Files', Files)
+  add('database', 'Build', 'Database', Database)
+  add('plan', 'Build', 'Plan', Route)
+  add('browser', 'Use', 'Browser', panels.find(item => item.id === 'browser')?.icon || Laptop)
+  add('history', 'Use', 'Chat history', MessageSquareText)
+  if (has('mcp')) {
+    for (const item of projectChannelSections(bots, bots)) {
+      add('mcp', 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, 'Use from other apps')
+      if (item.id === 'slack') add('mcp', 'Integrations', 'Slack account', item.icon, 'slack-account')
+    }
+    for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
+      add('mcp', 'Integrations', item.id === 'mcp:secrets' ? 'Secrets' : item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4))
+    }
+    if (projectId) add('mcp', 'Integrations', 'Chats from your computer', Laptop, 'agents')
+    if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) items.push({ id: 'product:bullpen', label: 'AgentBridge', group: 'Integrations', icon: Cable, external: 'bullpen' })
+    if (has('dashboard') && canShare) {
+      add('mcp', 'Share', 'People & access', UsersRound, 'share')
+      add('mcp', 'Share', 'Owners & collaborators', UsersRound, 'share-owners')
+    }
+  }
+  add('suggestions', 'Share', 'Suggestions', Hand)
+  add('identity', 'Setup', 'Instructions & identity', Settings, 'general')
+  if (isWorkIdentityTabEnabled('models', enabledPanels)) add('identity', 'Setup', 'Models', Cpu, 'models')
+  if (!enabledPanels || enabledPanels.has('memory')) add('memory', 'Setup', 'Memory', BookOpen, 'memory')
+  add('costs', 'Setup', 'Costs & usage', DollarSign)
+  if (has('mcp')) add('identity', 'Setup', 'Local laptop', Laptop, 'location')
+  add('shell', 'Setup', 'Terminal', Terminal, undefined, 'Advanced')
+  const integrationOrder = ['mcp:connected', 'mcp:secrets', 'mcp:brain', 'mcp:gmail', 'mcp:slack-account', 'mcp:folders', 'mcp:agents', 'product:bullpen']
+  return items.sort((a, b) => CREW_MENU_GROUPS.indexOf(a.group) - CREW_MENU_GROUPS.indexOf(b.group) || (a.group === 'Integrations' ? integrationOrder.indexOf(a.id) - integrationOrder.indexOf(b.id) : 0))
+}
+
+export function crewMenuTarget(view: WorkWorkspaceView) {
+  if (view === 'schedules') return 'workshop' as const
+  if (view === 'memory' || view === 'identity' || view === 'mcp') return view
+  return 'context' as const
+}

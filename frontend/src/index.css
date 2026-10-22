@@ -1656,6 +1656,15 @@
   background-color: rgba(107, 114, 128, 0.7);
 }
 
+/* Menus reserve a gutter so the thumb never sits on status labels. Opt out of
+   Chromium's wider native 'thin' scrollbar and use the scoped 4px treatment. */
+.workspace-menu-scroll[class*="overflow-y-auto"] {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  scrollbar-gutter: stable;
+  padding-right: 6px;
+}
+
 /* ===== WORKFLOW NODE ANIMATIONS ===== */
 /* Highlight pulse animation for plan changes */
 @keyframes highlight-pulse {

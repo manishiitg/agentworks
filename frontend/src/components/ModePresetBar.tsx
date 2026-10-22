@@ -1,5 +1,5 @@
+import { ProductPickerActionsContext } from './workspace/productNavigationContexts'
 import { WorkspaceSetupMenu } from './workspace/WorkspaceSetupMenu'
-import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
@@ -26,9 +26,8 @@ import { GlobalActivityButton } from './topbar/GlobalActivityButton'
 import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
-import { ProductTopBar, ProductTopBarActions, ProductTopBarMain, ProductNavigationLabel } from './workspace/ProductTopBar'
+import { ProductTopBar, ProductTopBarActions, ProductTopBarMain } from './workspace/ProductTopBar'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
-import WorkspaceTopBarControls from './WorkspaceTopBarControls'
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { WorkflowIcon } from './workflow/WorkflowIcon'
 import ConfirmationDialog from './ui/ConfirmationDialog'
@@ -79,8 +78,6 @@ const workflowManifestToPreset = (manifest: WorkflowManifest, workspacePath: str
 interface ModePresetBarProps {
   /** Product-owned control rendered in the same slot as AgentWorks' automation selector. */
   productControl?: React.ReactNode
-  /** Additional product-owned entries in the navigation rail. */
-  productActions?: React.ReactNode
   /** Keep the AgentWorks bar and shared controls while omitting automation-only actions. */
   reduced?: boolean
   /** An open product workspace renders the shared monitor beside its tools. */
@@ -91,7 +88,7 @@ interface ModePresetBarProps {
   walkthroughPaused?: boolean
 }
 
-export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, productActions, reduced = false, activityMonitorInWorkspace = false, walkthroughSurface: productWalkthroughSurface, walkthroughReady = true, walkthroughPaused = false }) => {
+export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, reduced = false, activityMonitorInWorkspace = false, walkthroughSurface: productWalkthroughSurface, walkthroughReady = true, walkthroughPaused = false }) => {
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const isRelaySurface = productSurface === 'relays'
   const hasProductActivity = productSurface === 'agentworks'
@@ -604,11 +601,23 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
     }
   }, [showPresetDropdown, selectedModeCategory, presetsLoading, refreshPresets, getPresetsForMode])
 
-  const workspaceTitleNavigation = useProductNavigationToolbarStore(state => !!state.workspaceTrigger && !!state.target && state.targetKind !== 'page')
-  const hasWorkspacePicker = Boolean(productControl) || selectedModeCategory === 'workflow'
+  const pickerActions = hasProductSchedules ? <button type="button" role="menuitem" data-tour="global-schedules" data-product-navigation-action
+    aria-label={schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}
+    aria-pressed={showSchedulesOverview && !showProviders && !showWorkflowsOverview}
+    title={schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}
+    onClick={() => {
+      window.dispatchEvent(new Event('close-workspace-picker'))
+      useLLMStore.getState().setShowLLMModal(false)
+      setAdminPage(null); setShowWorkflowsOverview(false); setShowSchedulesOverview(true)
+    }}
+    className={`relative mx-1 flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-xs transition-colors ${showSchedulesOverview && !showProviders && !showWorkflowsOverview ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+    <CalendarClock className="h-4 w-4 shrink-0" /><span>Schedules &amp; triggers</span>
+    {schedulerPaused === true && <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-warning ring-1 ring-background" />}
+  </button> : null
 
   return (
     <>
+      <ProductPickerActionsContext.Provider value={pickerActions}>
       <ProductTopBar sidebar>
           {/* Product and current automation */}
           <ProductTopBarMain>
@@ -641,7 +650,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
               {(() => {
                 // For workflow mode only, always show preset selector
                 // Chat mode no longer supports presets
-                if (selectedModeCategory === 'workflow') {
+                if (selectedModeCategory === 'workflow' && (productSurface === 'agentworks' || productSurface === 'relays')) {
                   return (
                     <TopBarEntitySelector
                       label={activePreset?.label}
@@ -777,51 +786,12 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                 useLLMStore.getState().setShowLLMModal(false)
                 setAdminPage(null); setShowSchedulesOverview(false); setActivityWorkflowPath(null); setShowWorkflowsOverview(true)
               }} />}
-              <WorkspaceSetupMenu activity={<>
-                {(hasProductActivity || hasProductSchedules) && <TooltipProvider delayDuration={400}>
-              <div data-product-navigation-section="product-actions" aria-label="Product actions" className="flex flex-col items-stretch gap-1">
-              {hasProductSchedules && <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      useLLMStore.getState().setShowLLMModal(false)
-                      setAdminPage(null)
-                      setShowWorkflowsOverview(false)
-                      setShowSchedulesOverview(true)
-                    }}
-                    role="menuitem"
-                    data-tour="global-schedules"
-                    aria-label={schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}
-                    aria-pressed={showSchedulesOverview && !showProviders && !showWorkflowsOverview}
-                    data-product-navigation-action
-                    className={`relative rounded-md p-1.5 transition-colors ${showSchedulesOverview && !showProviders && !showWorkflowsOverview
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                  >
-                    <CalendarClock className="h-4 w-4 shrink-0" />
-                    <ProductNavigationLabel>Schedules & triggers</ProductNavigationLabel>
-                    {schedulerPaused === true && (
-                      <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-warning ring-1 ring-background" />
-                    )}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}</TooltipContent>
-              </Tooltip>}
-
-              </div>
-            </TooltipProvider>}
-              {productActions && <div data-product-navigation-divider="product-platform">{productActions}</div>}
-
-</>} />
-              <WorkspaceTopBarControls
-                onOpenWalkthrough={isRelaySurface ? undefined : openWorkflowWalkthrough}
-                onOpenShortcuts={() => setShowShortcuts(true)}
-              />
+              <WorkspaceSetupMenu onOpenWalkthrough={isRelaySurface ? undefined : openWorkflowWalkthrough} onOpenShortcuts={() => setShowShortcuts(true)} />
 
             </ProductTopBarActions>
           </TooltipProvider>
       </ProductTopBar>
+      </ProductPickerActionsContext.Provider>
 
       {/* Keyboard Shortcuts & Tips Modal */}
       {showShortcuts && (

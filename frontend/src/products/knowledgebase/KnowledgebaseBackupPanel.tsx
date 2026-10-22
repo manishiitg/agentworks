@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Archive, CheckCircle2, CircleAlert } from 'lucide-react'
 import { knowledgebaseApi, knowledgebaseError, type KnowledgeBootstrap } from '../../services/knowledgebaseApi'
 import { Button } from '../../components/ui/Button'
+import { WorkspacePageContent } from '../../components/workspace/WorkspacePageContent'
 
 export function KnowledgebaseBackupPanel({ bootstrap, onPrepared, onSecrets }: { bootstrap: KnowledgeBootstrap; onPrepared: () => void; onSecrets: () => void }) {
   const [editing, setEditing] = useState(false)
@@ -24,7 +25,7 @@ export function KnowledgebaseBackupPanel({ bootstrap, onPrepared, onSecrets }: {
     } catch (cause) { setError(knowledgebaseError(cause)) }
     finally { setBusy(false) }
   }
-  return <section aria-label="Brain backup" className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
+  return <WorkspacePageContent as="section" width="form" aria-label="Brain backup" className="space-y-5">
     <div className="flex items-start gap-3"><Archive className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" /><div><h2 className="text-lg font-semibold">Protect your knowledge</h2><p className="mt-1 text-sm text-muted-foreground">Keep a recoverable copy of your shared knowledge.</p></div></div>
     <div className="space-y-4 rounded-xl border border-border p-4">
       <p role="status" className={`flex items-center gap-2 text-sm font-medium ${configured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}><StatusIcon className="h-4 w-4" aria-hidden="true" />{configured ? 'Backup configured' : 'Backup not set up'}</p>
@@ -42,5 +43,5 @@ export function KnowledgebaseBackupPanel({ bootstrap, onPrepared, onSecrets }: {
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
     {canConfigure && <details className="text-xs text-muted-foreground"><summary className="w-fit cursor-pointer">Backup credentials</summary><p className="my-2">Existing Brain secrets remain available for backups that refer to a saved secret by name.</p><button type="button" onClick={onSecrets} className="text-primary underline">Manage Brain secrets</button></details>}
-  </section>
+  </WorkspacePageContent>
 }

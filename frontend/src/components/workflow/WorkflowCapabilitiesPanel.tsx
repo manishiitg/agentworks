@@ -2,7 +2,8 @@ import { ProductSlackPanel } from '../integrations/ProductSlackPanel'
 import { selectWorkspacePaneWorkflowTab } from '../../utils/workspacePaneChat'
 import { capabilitiesEqual, mergeRemoteCapabilities } from './workflowCapabilitiesSync'
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { LoaderCircle, Save, Users } from 'lucide-react'
+import { LoaderCircle, Plus, Save, Users } from 'lucide-react'
+import { WorkspacePanelBack } from '../workspace/WorkspacePanelNavigation'
 import SkillsManagerPanel from '../skills/SkillsManagerPanel'
 import PlaybooksPanel from '../playbooks/PlaybooksPanel'
 import { ProjectSecretsPanel } from '../integrations/ProjectSecretsPanel'
@@ -30,7 +31,6 @@ import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
-import { AskAIButton } from './AskAIButton'
 import type { Skill } from '../../types/skills'
 import { getWorkspaceView, type CapabilityViewId } from './workspaceViews'
 import { BrowserWorkspacePanel } from './BrowserWorkspacePanel'
@@ -306,15 +306,18 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   }, [workspacePath])
 
   const save = useCallback(() => persist(capabilities), [capabilities, persist])
+  const skillsView = section === 'mcp' && activeMcpTab === 'apps' && pluginTab === 'skills'
 
   return (
     <section className="flex h-full min-h-0 w-full max-w-none flex-col bg-background">
+      {section === 'mcp' && !sharing && !overview && activeMcpTab === 'apps' && pluginTab === 'available' && <WorkspacePanelBack label="Back to MCPs" onBack={() => selectConnection('connected')} />}
       {section !== 'browser' && (
         <WorkspaceViewHeader
+          hideHeader={skillsView}
           icon={section === 'mcp' && sharing ? Users : SectionIcon}
           title={section === 'mcp' && sharing ? projectChannelLabel(shareChannel) : section === 'mcp' && !overview && pluginTab === 'skills' && activeMcpTab === 'apps' ? 'Skills' : copy.title}
           helpTopic={section === 'mcp'
-            ? sharing ? projectChannelLabel(shareChannel) : overview ? 'Connections' : `${activeMcpTab === 'slack' ? 'Connections' : 'Integrations'} · ${connectionLabel}`
+            ? skillsView ? 'Integrations · Skills' : sharing ? projectChannelLabel(shareChannel) : overview ? 'Connections' : `${activeMcpTab === 'slack' ? 'Connections' : 'Integrations'} · ${connectionLabel}`
             : section === 'identity'
               ? `Identity · ${identityTabs.find(option => option.value === activeIdentityTab)?.label ?? 'General'}`
               : undefined}
@@ -341,10 +344,12 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                   : () => useWorkflowStore.getState().refreshWorkspaceView()}
               refreshing={section === 'mcp' && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available') && refreshingServers}
               refreshLabel={section === 'mcp' ? sharing ? 'Refresh sharing and channels' : mcpRefreshLabel : section === 'identity' ? identityRefreshLabel : `Refresh ${copy.title}`}
-            />
+            >
+              {section === 'mcp' && !sharing && !overview && activeMcpTab === 'apps' && pluginTab === 'connected' && canWriteWorkflow && <button type="button" onClick={() => selectConnection('available')} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-3.5 w-3.5" aria-hidden="true" />Add an MCP</button>}
+            </WorkspaceViewActions>
           )}
           below={section === 'mcp' && !sharing && !overview && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available')
-            ? <button type="button" className="mt-1 rounded text-xs font-medium text-primary hover:underline" onClick={() => selectConnection(pluginTab === 'connected' ? 'available' : 'connected')}>{pluginTab === 'connected' ? '+ Add an MCP' : '← Your MCPs'}</button>
+            ? undefined
             : section === 'mcp' && !sharing && !(activeMcpTab === 'apps' && pluginTab === 'skills') ? <IntegrationNavigation options={navigationOptions} value={activeConnection} onChange={selectConnection} overview={overview} onOverview={() => selectConnection('overview')} canEdit={canWriteWorkflow} /> : undefined}
           tabs={section === 'mcp'
             ? undefined
@@ -383,17 +388,10 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                   skills={<SkillsManagerPanel
                       compact
                       manageOwnScroll={false}
-                      emptySelectionText="No skills are installed in this workflow yet. Ask the agent to add or create one."
-                      headerAction={(
-                        <AskAIButton
-                          workspacePath={canWriteWorkflow ? workspacePath ?? null : null}
-                          iconOnly
-                          label="Install a skill"
-                          message={relayMode
-                            ? 'Help me add a skill to this Flow. Ask which skill I want, install it in this Flow, then attach it to the chat or steps that need it and verify the selection.'
-                            : 'Help me install a specific skill for this workflow. Ask which skill I want, then find it: check skills installed in this workflow first, then search the web. Install it in this workflow, attach it to the chat or steps that need it, verify it works, and confirm briefly.'}
-                        />
-                      )}
+                      customOnly
+                      profileId={relayMode ? 'relays' : 'agentworks'}
+                      selectionScopeLabel={relayMode ? 'Flow' : 'Goal'}
+                      emptySelectionText="No custom skills have been added here yet."
                       workspacePath={workspacePath}
                       selectedSkills={capabilities.selected_skills}
                       onBeforeUninstall={() => saveQueue.current}

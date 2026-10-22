@@ -1,6 +1,7 @@
 import { ProjectSecretsPanel } from '../../components/integrations/ProjectSecretsPanel'
 import { useState } from 'react'
-import { Laptop, Server, Users } from 'lucide-react'
+import { Laptop, Plus, Server, Users } from 'lucide-react'
+import { WorkspacePanelBack } from '../../components/workspace/WorkspacePanelNavigation'
 import { ProductSlackPanel } from '../../components/integrations/ProductSlackPanel'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 import { projectChannelLabel, type ProjectChannel } from '../../components/integrations/projectChannels'
@@ -116,11 +117,16 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
   const [overview, setOverview] = useState(true)
   const [sharing, setSharing] = useState(false)
   const [shareChannel, setShareChannel] = useState<ProjectChannel>('cli')
+  const [shareSection, setShareSection] = useState<'people' | 'owners' | undefined>()
+  const [slackSection, setSlackSection] = useState<'account' | 'bot' | undefined>()
   const pluginTabs = projectPluginTabs(allowedProducts).filter(option => option.value !== 'skills').filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') || integrationProductAvailable('mcp-gateway', allowedProducts) : enabledPanels.has('mcp')))
   const pluginTab = overview && pluginTabs.some(option => option.value === 'connected') ? 'connected' : preferredPluginTab
   const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0]?.value ?? 'connected'
   const navigationOptions = [...integrationNavigationOptions(visibleTabs, pluginTabs), ...(canEdit ? [{ value: 'agents', label: 'Chats from your computer', icon: Laptop }] : [])]
   const selectConnection = (target: string) => {
+    if (target === 'share' || target === 'share-owners') { setSharing(true); setShareChannel('share'); setShareSection(target === 'share-owners' ? 'owners' : 'people'); return }
+    if ((target === 'slack-account' || target === 'slack-bot') && visibleTabs.some(option => option.value === 'slack')) { setSharing(true); setShareChannel('slack'); setSlackSection(target === 'slack-bot' ? 'bot' : 'account'); return }
+    setShareSection(undefined); setSlackSection(undefined)
     if (target === 'agents' && canEdit) { setSharing(false); setOverview(false); setTab('agents'); return }
     if (target === 'share' || target === 'cli' || (target === 'slack' && visibleTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && visibleTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
     if (target === 'overview' || target === 'apps') { setSharing(false); setOverview(true); setTab('apps'); return }
@@ -140,9 +146,10 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
+      {!sharing && !overview && activeTab === 'apps' && activePluginTab === 'available' && <WorkspacePanelBack label="Back to MCPs" onBack={() => selectConnection('connected')} />}
       <WorkspaceViewHeader
         icon={sharing ? Users : Server}
-        title={sharing ? projectChannelLabel(shareChannel) : 'Connections'}
+        title={sharing ? shareChannel === 'share' ? shareSection === 'owners' ? 'Owners & collaborators' : 'People & access' : shareChannel === 'slack' && slackSection ? slackSection === 'bot' ? 'Slack bot' : 'Slack account' : projectChannelLabel(shareChannel) : 'Connections'}
         helpTopic={sharing ? projectChannelLabel(shareChannel) : overview ? 'Connections' : `${activeTab === 'slack' ? 'Connections' : 'Integrations'} · ${connectionLabel}`}
         actions={(
           <WorkspaceViewActions
@@ -151,16 +158,18 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
             onAsk={onAsk}
             onRefresh={() => setTabNonce(nonce => nonce + 1)}
             refreshLabel={sharing ? 'Refresh sharing and channels' : overview ? 'Refresh connections' : `Refresh ${connectionLabel}`}
-          />
+          >
+            {!sharing && !overview && activeTab === 'apps' && activePluginTab === 'connected' && canEdit && <button type="button" onClick={() => selectConnection('available')} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-3.5 w-3.5" aria-hidden="true" />Add an MCP</button>}
+          </WorkspaceViewActions>
         )}
         below={!sharing && !overview && activeTab === 'apps' && (activePluginTab === 'connected' || activePluginTab === 'available')
-          ? <button type="button" className="mt-1 rounded text-xs font-medium text-primary hover:underline" onClick={() => selectConnection(activePluginTab === 'connected' ? 'available' : 'connected')}>{activePluginTab === 'connected' ? '+ Add an MCP' : '← Your MCPs'}</button>
+          ? undefined
           : !sharing ? <IntegrationNavigation options={navigationOptions} value={activeConnection} onChange={selectConnection} overview={overview} onOverview={() => selectConnection('overview')} canEdit={canEdit} /> : undefined}
         /* No Connected/Available tabs: the MCPs page lists yours and offers Add (owner, 2026-10-20). */
       />
-      <div data-ui-view-section={sharing ? shareChannel : activeConnection} key={`${sharing ? shareChannel : activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div data-ui-view-section={sharing ? shareChannel === 'share' && shareSection === 'owners' ? 'share-owners' : shareChannel === 'slack' && slackSection ? `slack-${slackSection}` : shareChannel : activeConnection} key={`${sharing ? shareChannel : activeTab}:${tabNonce}`} className={`min-h-0 flex-1 overflow-y-auto p-4 ${sharing ? 'w-full max-w-3xl' : ''}`}>
         {sharing ? <>
-          {shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun="Crew" /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}</>}
+          {shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" section={shareSection} /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun="Crew" section={slackSection} /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}</>}
         </> : <>
         {overview && canEdit && <button type="button" onClick={() => selectConnection('agents')} className="mb-4 flex w-full items-center gap-2 rounded-md border border-border p-3 text-left text-sm hover:bg-muted/40"><Laptop className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />Chats from your computer</button>}
         {activeTab === 'agents' && canEdit && <CrewPublishedAgents key={`${product.profileId}:${projectId}`} profileId={product.profileId} projectId={projectId} />}

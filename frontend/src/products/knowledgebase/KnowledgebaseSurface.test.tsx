@@ -2,6 +2,10 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+vi.hoisted(() => {
+  const values = new Map<string, string>()
+  vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key), clear: () => values.clear() })
+})
 const mocks = vi.hoisted(() => ({
   backupConfigured: false, isAdmin: true, canWrite: true, submit: vi.fn(),
   chatProps: {} as Record<string, any>,
@@ -9,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   history: vi.fn(), resolve: vi.fn(), startNew: vi.fn(), activate: vi.fn(), hydrate: vi.fn(), prepare: vi.fn(),
 }))
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn() }))
+vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn() }))
 vi.mock('../../hooks/useProductUrlView', () => ({ useProductUrlView: vi.fn() }))
 vi.mock('../../services/api', () => ({ agentApi: { listChatHistorySessions: mocks.history, resolveAgentProfileConversation: mocks.resolve, startNewAgentProfileConversation: mocks.startNew } }))
 vi.mock('../../services/knowledgebaseApi', () => ({ knowledgebaseApi: { bootstrap: async () => ({ chat_workspace: 'Chats/Knowledgebase', backup_configured: mocks.backupConfigured, is_admin: mocks.isAdmin, can_write: mocks.canWrite }), proposals: async () => ({ proposals: [] }), prepareAccess: mocks.prepare }, knowledgebaseError: (error: Error) => error.message }))
@@ -22,10 +27,11 @@ vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: Object.assign((select:
 vi.mock('../../utils/sessionRestore', () => ({ hydrateTabEvents: mocks.hydrate }))
 vi.mock('../../utils/activateTab', () => ({ activateTab: mocks.activate }))
 vi.mock('./KnowledgebaseWorkspacePane', () => ({ KnowledgebaseWorkspacePane: ({ view, modelSettings, onAsk, onRefresh, onOpenAccess, backup, crew }: any) => <div data-testid="workspace">{view === 'models' ? modelSettings : view === 'backup' ? backup : view === 'crew' ? crew : view}{view === 'library' && <><button aria-label="Refresh files" onClick={onRefresh} /><button onClick={onOpenAccess}>Folder access</button></>}{onAsk && <button onClick={() => void onAsk()}>Inspect selected folder</button>}</div> }))
-vi.mock('./KnowledgebaseUseCrew', () => ({ KnowledgebaseUseCrew: ({ onPreviousChat }: any) => <button onClick={onPreviousChat}>Open previous Brain conversation</button> }))
+vi.mock('./KnowledgebaseUseCrew', () => ({ KnowledgebaseUseCrew: () => <p>Brain organization guide</p> }))
 vi.mock('./KnowledgebaseModelSettings', () => ({ KnowledgebaseModelSettings: () => <span>Shared model settings</span> }))
 vi.mock('./KnowledgebaseAccessConfirmation', () => ({ KnowledgebaseAccessConfirmation: () => <div data-testid="existing-approval-flow" /> }))
 import { requestServiceChat, useServiceChatNavigation } from '../../utils/serviceChatNavigation'
+import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { KnowledgebaseSurface } from './KnowledgebaseSurface'
 import { usePanelSwitcherStore } from '../../stores/usePanelSwitcherStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -33,6 +39,7 @@ const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); document.body.innerHTML = ''; window.localStorage?.clear(); vi.clearAllMocks() })
 beforeEach(() => {
   useServiceChatNavigation.setState({ request: null })
+  useProductSurfaceStore.setState({ productSurface: 'knowledgebase' })
   mocks.backupConfigured = false; mocks.isAdmin = true; mocks.canWrite = true; mocks.submit.mockResolvedValue(undefined)
   mocks.prepare.mockResolvedValue({ proposal_id: 'proposal' }); mocks.chatProps = {}; mocks.state.chatTabs = {}
   mocks.history.mockResolvedValue({ sessions: [{ session_id: 'old', title: 'Previous Brain conversation' }] })
@@ -47,18 +54,17 @@ async function mount() {
   return host
 }
 async function click(host: HTMLElement, label: string) {
-  if (label === 'Open previous Brain conversation' && !host.textContent?.includes(label)) await click(host, 'Use in a Crew')
-  await act(async () => {
-    const button = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => (button.getAttribute('aria-label') ?? button.textContent?.trim())?.startsWith(label) && !button.closest('[hidden]'))
-    expect(button, label).toBeDefined(); button!.click()
-  })
+  const find = () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => (button.getAttribute('aria-label') ?? button.textContent?.trim())?.startsWith(label) && !button.closest('[hidden]'))
+  if (!find() && !host.querySelector('[data-product-picker-menu]')) await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Switch product: Brain"]')!.click())
+  await act(async () => { const button = find(); expect(button, label).toBeDefined(); button!.click() })
 }
 describe('Brain library with a secondary access chat', () => {
-  it('opens the library and shared overview without creating or restoring a chat', async () => {
+  it('opens the full-width library with header navigation without creating or restoring a chat', async () => {
     const host = await mount()
     expect(host.querySelector('h1')?.textContent).toBe('Brain')
     expect(host.querySelector('[data-testid="workspace"]')?.textContent).toContain('library')
-    expect(host.querySelector('[aria-label="Workspace context"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Workspace context"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Show workspace"]')).toBeNull()
     expect(host.querySelector('[aria-label="Previous Brain conversation"]')).toBeNull()
     expect(host.querySelector('[data-testid="shared-chat"]')).toBeNull()
     expect(host.querySelector('[aria-label="More workspace tools"]')).toBeNull()
@@ -68,27 +74,8 @@ describe('Brain library with a secondary access chat', () => {
     expect(mocks.resolve).not.toHaveBeenCalled(); expect(mocks.state.createChatTab).not.toHaveBeenCalled()
     expect(mocks.submit).not.toHaveBeenCalled()
     expect(host.querySelector('[data-testid="existing-approval-flow"]')).not.toBeNull()
-    for (const label of ['Folder access', 'Use in a Crew', 'Connect AI tools', 'Backup']) expect(host.textContent).toContain(label)
-  })
-  it('opens the existing chat explicitly without sending and preserves it and its draft when closed', async () => {
-    const host = await mount()
-    await click(host, 'Open previous Brain conversation')
-    expect(mocks.history).toHaveBeenCalledWith(1, 0, 'Chats/Knowledgebase')
-    expect(mocks.resolve).not.toHaveBeenCalled(); expect(mocks.chatProps.hideInput).toBe(true); expect(mocks.chatProps.forcePreviousChats).not.toBe(true)
-    expect(mocks.submit).not.toHaveBeenCalled()
-    expect(mocks.chatProps.compact).toBe(true); expect(mocks.chatProps.showProductSteerAction).toBeUndefined()
-    expect(mocks.chatProps.showProductTerminalControl).toBeUndefined()
-    expect(host.querySelector('[aria-label="Previous Brain conversation"]')).not.toBeNull()
-    const chat = host.querySelector('[data-testid="shared-chat"]')!
-    const draft = host.querySelector<HTMLTextAreaElement>('[aria-label="Chat draft"]')!
-    draft.value = 'Unsent draft'
-    await click(host, 'Back to Brain overview')
-    expect(host.querySelector('[aria-label="Brain overview"]')).not.toBeNull()
-    expect(host.querySelector('[data-testid="shared-chat"]')).toBe(chat)
-    await click(host, 'Open previous Brain conversation')
-    expect(host.querySelector('[aria-label="Chat draft"]')).toBe(draft)
-    expect(draft.value).toBe('Unsent draft')
-    expect(mocks.history).toHaveBeenCalledTimes(1)
+    await click(host, 'Switch product: Brain')
+    for (const label of ['Folder access', 'Use in a Crew', 'Backup']) expect(host.textContent).toContain(label)
   })
   it('keeps access management out of chat and exposes only the simple primary panels', async () => {
     const host = await mount()
@@ -157,36 +144,7 @@ describe('Brain library with a secondary access chat', () => {
     expect(mocks.resolve).not.toHaveBeenCalled()
     expect(mocks.submit).not.toHaveBeenCalled()
   })
-  it('retains lazy chat errors without blocking the library and supports retry and conversation rotation', async () => {
-    mocks.history.mockRejectedValueOnce(new Error('History unavailable'))
-    const host = await mount()
-    await click(host, 'Open previous Brain conversation')
-    expect(host.textContent).toContain('History unavailable')
-    expect(host.querySelector('[data-testid="workspace"]')).not.toBeNull()
-    await click(host, 'Retry history')
-    expect(mocks.chatProps.hideInput).toBe(true); expect(mocks.chatProps.forcePreviousChats).not.toBe(true)
-    expect(mocks.chatProps.onNewChat).toBeUndefined()
-    expect(mocks.startNew).not.toHaveBeenCalled()
-  })
-  it('does not create a replacement when no old conversation exists', async () => {
-    mocks.history.mockResolvedValue({ sessions: [] })
-    const host = await mount(); await click(host, 'Open previous Brain conversation')
-    expect(host.textContent).toContain('No previous Brain conversations')
-    expect(mocks.resolve).not.toHaveBeenCalled(); expect(mocks.startNew).not.toHaveBeenCalled(); expect(mocks.state.createChatTab).not.toHaveBeenCalled()
-  })
-  it('discards a delayed conversation response after write access is revoked', async () => {
-    let resolve!: (value: any) => void
-    mocks.history.mockReturnValueOnce(new Promise(done => { resolve = done }))
-    const host = await mount()
-    await click(host, 'Open previous Brain conversation')
-    await click(host, 'Back to Brain overview')
-    await click(host, 'Library')
-    mocks.canWrite = false
-    await click(host, 'Refresh files')
-    await act(async () => resolve({ sessions: [{ session_id: 'old' }] }))
-    expect(mocks.state.createChatTab).not.toHaveBeenCalled()
-    expect(host.querySelector('[data-testid="shared-chat"]')).toBeNull()
-  })
+
 })
 
 
@@ -207,4 +165,23 @@ it('does not open a requested Brain chat without write permission', async () => 
   expect(mocks.resolve).not.toHaveBeenCalled()
   expect(mocks.hydrate).not.toHaveBeenCalled()
   expect(mocks.state.createChatTab).not.toHaveBeenCalled()
+})
+
+it.each([true, false])('uses the Goals-style header menu with Brain access restrictions (canWrite=%s)', async canWrite => {
+  mocks.canWrite = canWrite
+  const host = await mount()
+  await click(host, 'Switch product: Brain')
+  const menu = host.querySelector('[data-product-picker-menu]')!
+  expect(menu.querySelector('header')?.textContent).toBe('Brain')
+  const pages = menu.querySelector('[aria-label="Product pages"]')!
+  expect(pages.textContent).toContain('Library')
+  expect(pages.textContent?.includes('Folder access')).toBe(canWrite)
+  expect(pages.textContent?.includes('Backup')).toBe(canWrite)
+  expect(menu.lastElementChild?.hasAttribute('data-product-switch-menu')).toBe(true)
+  if (canWrite) {
+    const backup = [...pages.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.startsWith('Backup'))!
+    await act(async () => backup.click())
+    expect(host.querySelector('[data-product-picker-menu]')).toBeNull()
+    expect(host.querySelector('[data-testid="workspace"]')?.textContent).toContain('Protect your knowledge')
+  }
 })

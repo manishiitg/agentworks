@@ -66,7 +66,10 @@ describe('Workflow MCP panel layout', () => {
     // One workspace inventory includes main chat, steps and native installs.
     expect(skillsPanel).not.toContain('selectedOnly')
     expect(skillsPanel).toContain('skillsApi.listSkills(workspacePath)')
-    expect(panel).toContain('Install a skill')
+    expect(panel).toContain("profileId={relayMode ? 'relays' : 'agentworks'}")
+    expect(panel).toContain('customOnly')
+    expect(panel).toContain('hideHeader={skillsView}')
+    expect(panel).not.toContain('Install a skill')
   })
 
 
@@ -82,7 +85,8 @@ describe('Workflow MCP panel layout', () => {
     expect(panel).toContain('<IntegrationNavigation')
     expect(panel).not.toContain('<IntegrationSectionPicker')
     expect(panel).toContain('tabs={section ===')
-    expect(panel).toContain("ariaLabel: 'MCP servers'")
+    expect(panel).toContain('<ProjectPluginsPanel')
+    expect(panel).toContain('connections={view => <ProjectMcpPanel')
     expect(panel).toContain('<ProductSlackPanel')
     expect(panel).toContain("shareChannel === 'slack'")
     expect(panel).toContain("allowBots={!relayMode}")

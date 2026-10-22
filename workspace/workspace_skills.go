@@ -38,6 +38,8 @@ type workspaceSkillDocument struct {
 	// says a file in the folder differs from what was installed.
 	BrainSource string `json:"brain_source,omitempty"`
 	BrainEdited bool   `json:"brain_edited,omitempty"`
+	Source      string `json:"source,omitempty"`
+	SourceType  string `json:"source_type,omitempty"`
 }
 
 func skillWorkspaceDir(docs, workspace string) (string, error) {
@@ -235,6 +237,10 @@ func handleWorkspaceSkillList(c *gin.Context) {
 		return
 	}
 	used := skillUsage(manifest, steps)
+	// Report provenance only when recorded by the installer. Directory names
+	// and the skill's own prose do not establish who installed a file.
+	lock, _ := skillConfig(dir, "skills-lock.json")
+	lockSkills, _ := lock["skills"].(map[string]interface{})
 	names := map[string]bool{}
 	for _, root := range workspaceSkillRoots {
 		base := filepath.Join(dir, filepath.FromSlash(root))
@@ -267,6 +273,10 @@ func handleWorkspaceSkillList(c *gin.Context) {
 		_, markerErr := os.Lstat(filepath.Join(folder, ".agentworks-managed"))
 		doc := workspaceSkillDocument{Name: name, FilePath: filepath.ToSlash(rel), Content: string(content), Managed: markerErr == nil, UsedBy: used[name]}
 		doc.BrainSource, doc.BrainEdited = brainSkillSource(folder)
+		if entry, ok := lockSkills[name].(map[string]interface{}); ok {
+			doc.Source, _ = entry["source"].(string)
+			doc.SourceType, _ = entry["sourceType"].(string)
+		}
 		documents = append(documents, doc)
 	}
 	sort.Slice(documents, func(i, j int) bool { return documents[i].Name < documents[j].Name })

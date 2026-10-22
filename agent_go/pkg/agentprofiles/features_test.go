@@ -248,3 +248,23 @@ func TestMCPFeatureScope(t *testing.T) {
 		t.Fatal("an unknown scope was accepted")
 	}
 }
+
+func TestCodingReviewSkillCanBeDisabledWithoutChangingTools(t *testing.T) {
+	normal := Profile{Features: []FeatureBinding{{ID: "coding"}}}
+	crew := Profile{Features: []FeatureBinding{{ID: "coding", Options: map[string]string{"review_skill": "disabled"}}}}
+	for _, profile := range []*Profile{&normal, &crew} {
+		if err := ResolveFeatures(profile); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !containsString(normal.Skills, "code-reviewer") || containsString(crew.Skills, "code-reviewer") || len(crew.ResolvedFeatures[0].Skills) != 0 {
+		t.Fatalf("review opt-out was not reflected in resolved skills: normal=%v crew=%v", normal.Skills, crew.Skills)
+	}
+	if strings.Join(normal.ToolPolicy.Enabled, ",") != strings.Join(crew.ToolPolicy.Enabled, ",") {
+		t.Fatal("removing review guidance changed coding tools")
+	}
+	invalid := Profile{Features: []FeatureBinding{{ID: "coding", Options: map[string]string{"review_skill": "typo"}}}}
+	if ResolveFeatures(&invalid) == nil {
+		t.Fatal("invalid review option was silently accepted")
+	}
+}

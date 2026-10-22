@@ -2,16 +2,16 @@ import type { ReactNode } from 'react'
 import { ChevronRight, Search, type LucideIcon } from 'lucide-react'
 export function WorkspaceContextCard({ children, title, summary, subtle = false }: { children: ReactNode; title?: string; summary?: string; subtle?: boolean }) {
   return (
-    <div className="max-h-full min-h-0 p-3 sm:p-4">
+    <div className="flex h-full min-h-0 flex-col p-3 sm:p-4">
       <aside
         aria-label="Workspace context"
-        className={`flex max-h-[calc(100dvh-6rem)] min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border p-4 shadow-sm ${subtle ? 'bg-muted/30 dark:bg-zinc-900/70' : 'bg-muted/70 dark:bg-zinc-800/80'}`}
+        className={`flex max-h-full min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border p-4 shadow-sm ${subtle ? 'bg-muted/30 dark:bg-zinc-900/70' : 'bg-muted/70 dark:bg-zinc-800/80'}`}
       >
         {(title || summary) && <header className="shrink-0 border-b border-border pb-3">
           {title && <h2 className="text-sm font-semibold text-foreground">{title}</h2>}
           {summary && <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{summary}</p>}
         </header>}
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
+        <div className="workspace-menu-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
         <button
           type="button"
           aria-label="All views"
@@ -51,9 +51,9 @@ export function WorkspaceContextSection({
 }
 
 /** Secondary destinations remain reachable without crowding everyday work. */
-export function WorkspaceContextGroup({ title, collapsed = false, children }: { title: string; collapsed?: boolean; children: ReactNode }) {
+export function WorkspaceContextGroup({ title, collapsed = false, defaultOpen = false, children }: { title: string; collapsed?: boolean; defaultOpen?: boolean; children: ReactNode }) {
   if (!collapsed) return <WorkspaceContextSection title={title}>{children}</WorkspaceContextSection>
-  return <details className="group/ops border-t border-border pt-2">
+  return <details open={defaultOpen || undefined} className="group/ops border-t border-border pt-2">
     <summary className="flex cursor-pointer list-none items-center gap-1.5 py-1 text-[11px] font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
       <ChevronRight aria-hidden="true" className="h-3 w-3 transition-transform group-open/ops:rotate-90" />{title}
     </summary>

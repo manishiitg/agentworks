@@ -1,47 +1,96 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn() }))
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
+const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn(), share: true, user: { id: 'alice', allowed_products: null as string[] | null }, server: 'local', documents: [] as { path: string; name?: string }[] }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ setWorkspaceViewTarget: mocks.target }))
-vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { listReportHumanInputs: async () => ({ success: true, inputs: [] }) } }))
-vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => select({ user: { allowed_products: ['work'] } }) }))
+vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: { can_share: mocks.share } }) }, getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { listReportHumanInputs: async () => ({ success: true, inputs: [] }) } }))
+vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: any) => select({ user: mocks.user }), { getState: () => ({ user: mocks.user }) }) }))
+vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedStorageKey: (key: string) => key, useWorkspaceConnectionStore: Object.assign((select: any) => select({ activeWorkspaceId: mocks.server }), { getState: () => ({ activeWorkspaceId: mocks.server }) }) }))
+vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn() }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
-vi.mock('../../components/workflow/ShareDashboardButton', () => ({ ShareDashboardButton: () => <button>Share</button> }))
+vi.mock('../../components/integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled: () => true }))
 vi.mock('../../components/workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Browser</button> }))
 vi.mock('../../components/workspace/useProjectStatus', () => ({ useProjectStatus: () => ({}) }))
-vi.mock('../../components/workspace/WorkspaceAgentBridgeRows', () => ({ WorkspaceAgentBridgeRows: () => null }))
-vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments: () => ({ documents: [], defaultPath: 'db/reports/index.html' }), selectReportDocument: vi.fn() }))
+vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments: () => ({ documents: mocks.documents, defaultPath: 'db/reports/index.html' }), selectReportDocument: vi.fn() }))
 import { WorkContextPanel } from './WorkContextPanel'
 import { workWorkspacePanels } from './workWorkspacePanels'
+import { useProjectMenuHistoryStore, projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-
-it('shows one grouped menu, keeps Ops collapsed and routes moved destinations', async () => {
-  const host = document.createElement('div'), root = createRoot(host)
-  const inventory = workWorkspacePanels()
-  try {
-    await act(async () => root.render(<WorkContextPanel workspacePath="Crew/example" projectId="example" panels={[...inventory.views, ...inventory.ops, ...inventory.setup]} onOpen={mocks.open} />))
-    expect([...host.querySelectorAll('h2,summary')].map(node => node.textContent)).toEqual(['Your work', 'Share', 'Connections', 'Setup'])
-    expect(host.querySelector('details')?.open).toBe(false)
-    const buttons = [...host.querySelectorAll('button')]
-    for (const label of ['Project dashboard', 'Share', 'Schedules', 'Watchers', 'Webhooks', 'Functions', 'Slack as me', 'Slack bot', 'Memory', 'Skills', 'Chat history', 'Settings']) expect(buttons.filter(button => button.textContent === label)).toHaveLength(1)
-    expect([...host.querySelectorAll('details')].every(item => !item.open)).toBe(true)
-    expect(host.textContent).not.toContain('Edit shortcuts')
-    await act(async () => buttons.find(button => button.textContent === 'Webhooks')!.click())
+beforeEach(() => {
+  mocks.share = true; mocks.user = { id: 'alice', allowed_products: null }; mocks.server = 'local'; mocks.documents = []
+  useProjectMenuHistoryStore.setState({ recent: {} })
+  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://vault' }
+})
+afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
+const inventory = (enabledPanels?: Set<string>) => { const value = workWorkspacePanels({ enabledPanels, showShell: true }); return [...value.views, ...value.ops, ...value.setup] }
+const scope = (project = 'example') => projectMenuHistoryScope(mocks.server, mocks.user.id, 'work', project)
+async function render(check: (host: HTMLDivElement, update: (project?: string, features?: Set<string>) => Promise<void>) => Promise<void>) {
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+  const update = async (project = 'example', features?: Set<string>) => { await act(async () => root.render(<WorkContextPanel workspacePath={'Crew/' + project} projectId={project} panels={inventory(features)} onOpen={mocks.open} enabledPanels={features} />)) }
+  try { await update(); await check(host, update) } finally { await act(async () => root.unmount()); host.remove() }
+}
+function button(host: HTMLElement, label: string) { return [...host.querySelectorAll('button')].find(node => node.textContent === label)! }
+it('uses the five category groups, opens Build for a new Crew and preserves every destination', async () => {
+  await render(async host => {
+    expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build', 'Use', 'Share', 'Integrations', 'Setup'])
+    expect([...host.querySelectorAll('details')].map(node => node.open)).toEqual([true, false, false, false, false])
+    for (const label of ['Project dashboard', 'Functions', 'Skills', 'Files', 'Database', 'Plan', 'Schedules', 'Watchers', 'Webhooks', 'Browser', 'Chat history', 'Slack bot', 'Slack account', 'People & access', 'Owners & collaborators', 'Memory', 'Models', 'Instructions & identity', 'Terminal']) {
+      expect([...host.querySelectorAll('button')].filter(node => node.textContent === label), label).toHaveLength(1)
+    }
+    await act(async () => button(host, 'Webhooks').click())
     expect(mocks.target).toHaveBeenLastCalledWith('workshop', 'triggers')
     expect(mocks.open).toHaveBeenLastCalledWith('schedules')
-    await act(async () => buttons.find(button => button.textContent === 'Chat history')!.click())
-    expect(mocks.open).toHaveBeenLastCalledWith('history')
-  } finally { await act(async () => root.unmount()) }
+  })
 })
-
-it('honors server feature inventory after moving Skills and history', () => {
-  const features = new Set(['skills', 'schedules'])
-  const inventory = workWorkspacePanels({ enabledPanels: features })
-  const ids = [...inventory.views, ...inventory.ops, ...inventory.setup].map(item => item.id)
-  expect(ids).toContain('memory')
-  expect(ids).toContain('history')
-  expect(ids).not.toContain('dashboard')
-  expect(ids).not.toContain('shell')
+it('moves recent destinations out of their categories, promotes them uniquely and keeps only ten', async () => {
+  await render(async host => {
+    const labels = ['Project dashboard', 'Files', 'Skills', 'Plan', 'Database', 'Functions', 'Schedules', 'Watchers', 'Webhooks', 'Chat history', 'Memory']
+    for (const label of labels) await act(async () => button(host, label).click())
+    const recent = host.querySelector('section')!
+    expect(recent.querySelector('h2')?.textContent).toBe('Recent')
+    expect(recent.querySelectorAll('button')).toHaveLength(10)
+    expect(recent.querySelector('button')?.textContent).toBe('Memory')
+    expect([...recent.querySelectorAll('button')].some(node => node.textContent === 'Project dashboard')).toBe(false)
+    expect(button(host, 'Project dashboard').closest('details')?.querySelector('summary')?.textContent).toBe('Build')
+    for (const label of labels) expect([...host.querySelectorAll('button')].filter(node => node.textContent === label)).toHaveLength(1)
+    await act(async () => button(host, 'Functions').click())
+    expect(recent.querySelector('button')?.textContent).toBe('Functions')
+    expect(useProjectMenuHistoryStore.getState().recent[scope()]).toHaveLength(10)
+  })
+})
+it('filters inaccessible recent destinations and keeps histories separate per user, server and Crew', async () => {
+  await render(async (host, update) => {
+    await act(async () => button(host, 'Project dashboard').click())
+    await update('other')
+    expect(host.querySelector('h2')?.textContent).not.toBe('Recent')
+    await update()
+    expect(host.querySelector('h2')?.textContent).toBe('Recent')
+    mocks.user = { ...mocks.user, id: 'bob' }; await update()
+    expect(host.querySelector('h2')?.textContent).not.toBe('Recent')
+    mocks.user = { ...mocks.user, id: 'alice' }; mocks.server = 'remote'; await update()
+    expect(host.querySelector('h2')?.textContent).not.toBe('Recent')
+    mocks.server = 'local'; await update('example', new Set(['skills', 'schedules']))
+    expect(button(host, 'Project dashboard')).toBeUndefined()
+    expect(host.querySelector('h2')?.textContent).not.toBe('Recent')
+    const skills = button(host, 'Skills')
+    mocks.user = { ...mocks.user, id: 'bob' }
+    await act(async () => skills.click())
+    expect(mocks.open).toHaveBeenCalledTimes(1)
+  })
+})
+it('applies server sharing admission to both normal and recent entries', async () => {
+  mocks.share = false
+  useProjectMenuHistoryStore.getState().visit(scope(), 'mcp:share')
+  await render(async host => {
+    expect(button(host, 'People & access')).toBeUndefined()
+    expect(button(host, 'Owners & collaborators')).toBeUndefined()
+    expect(host.querySelector('h2')?.textContent).not.toBe('Recent')
+  })
+})
+it('honors server feature inventory and keeps Run accounts limited to dashboard', () => {
+  const ids = inventory(new Set(['skills', 'schedules'])).map(item => item.id)
+  expect(ids).toContain('memory'); expect(ids).toContain('history'); expect(ids).not.toContain('dashboard')
   expect(workWorkspacePanels({ readOnly: true }).views.map(item => item.id)).toEqual(['dashboard'])
 })

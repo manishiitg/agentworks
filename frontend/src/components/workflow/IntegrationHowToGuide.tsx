@@ -35,10 +35,10 @@ function questionsFor(topic: Exclude<IntegrationHowToTopic, 'Gmail'>, scopeNoun:
       },
     ]
     case 'Skills': return [
-      { title: 'How do I add a skill?', answer: <>Ask the agent to find, install or create a skill in this {scopeNoun}. Skills belong to this workspace. Select an installed skill for the main chat, or ask the Builder to attach it to the steps that need it.</> },
-      { title: 'Where is a skill used?', answer: <>The list shows each skill’s folder and its main chat or step attachments. Steps use their own attachments; selecting a skill for the main chat does not attach it to steps.</> },
-      { title: 'How do I uninstall a skill?', answer: <>Expand the skill and click <b>Uninstall</b>. Confirm to remove its files and chat/step attachments from this workspace. Platform-managed skills cannot be uninstalled.</> },
-      { title: 'Why is a skill unavailable?', answer: <>An attachment whose files are missing stays visible. Refresh the list, ask the agent to reinstall it in this workspace, or remove the attachment.</> },
+      { title: 'How do I add a skill?', answer: <>Ask the agent to find, install or create a skill in this {scopeNoun}. Installed skills appear here automatically; there is no separate selection step.</> },
+      { title: 'Where is a skill used?', answer: <>Skills give the agent reusable instructions for a task. Open a skill to read them, or ask in chat how this {scopeNoun} uses it.</> },
+      { title: 'How do I uninstall a skill?', answer: <>Ask the agent in chat to uninstall the custom skill from this workspace. This page is for reading the installed skills.</> },
+      { title: 'Why is a skill missing?', answer: <>This page shows custom skills installed in this workspace. Platform skills are included automatically and are not listed. Ask in chat to check or install a missing custom skill.</> },
     ]
     case 'Slack': return [
       {

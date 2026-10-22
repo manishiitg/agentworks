@@ -6,6 +6,7 @@ import { AskAIButton } from './AskAIButton'
 import { WORKFLOW_KNOWLEDGE_SOURCES_REFRESH_EVENT } from './workflowEvents'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { integrationProductAvailable } from '../integrations/integrationSections'
+import { useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
 
 // The project's Brain access: Off, Read or Read & write. It never grants permission: the owner's and the output
 // audience's folder roles apply. There are no folder bindings (PLAT-628); steps say in their descriptions which
@@ -13,6 +14,8 @@ import { integrationProductAvailable } from '../integrations/integrationSections
 export function ProjectKnowledgebasePanel({ workspacePath, disabled = false, onAsk }: { workspacePath: string; disabled?: boolean; onAsk?: (message: string) => void | Promise<void> }) {
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const brainAvailable = integrationProductAvailable('knowledgebase', allowedProducts)
+  const aboutMessage = 'Explain how Brain can help this project, what shared knowledge its agents can use, and how to add notes or reuse skills. Check the current access before suggesting setup. Do not change project settings or folder permissions.'
+  const assistantInHeader = useWorkspacePanelAssistant(brainAvailable ? { workspacePath, message: aboutMessage } : undefined)
   const [project, setProject] = useState<KnowledgeProject | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -68,7 +71,7 @@ export function ProjectKnowledgebasePanel({ workspacePath, disabled = false, onA
     <section aria-label="About Brain" className="space-y-3 rounded-lg border border-border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-sm font-semibold"><Brain className="h-4 w-4 text-primary"/>About Brain</h3>
-        <AskAIButton workspacePath={disabled ? null : workspacePath} onAsk={disabled ? undefined : onAsk} label="Ask AI about Brain" message="Explain how Brain can help this project, what shared knowledge its agents can use, and how to add notes or reuse skills. Check the current access before suggesting setup. Do not change project settings or folder permissions."/>
+        {!assistantInHeader && <AskAIButton workspacePath={disabled ? null : workspacePath} onAsk={disabled ? undefined : onAsk} label="Ask AI about Brain" message={aboutMessage}/>}
       </div>
       <p className="text-muted-foreground">Brain is shared knowledge your agents can reuse across chats, projects and workflows. Keep team guides, project facts, reference files and reusable skills here so you do not have to repeat them in every conversation.</p>
       <div className="space-y-2">

@@ -36,6 +36,7 @@ vi.mock('../utils/workflowSessionRestore', () => ({ openWorkflowPresetPage: vi.f
 vi.mock('../utils/workflowPermissions', () => ({ hasWorkflowCreateAccess: () => mocks.state.canCreate, hasProductCreateAccess: () => mocks.state.canCreate, isWorkflowReadOnly: () => false }))
 vi.mock('../hooks/useGlobalSchedulerPaused', () => ({ useGlobalSchedulerPaused: () => false }))
 vi.mock('./PresetModal', () => ({ default: ({ isOpen, editingPreset, fixedWorkflowKind }: any) => isOpen ? <div data-testid="preset-modal">{editingPreset ? 'edit' : 'create'}:{fixedWorkflowKind}</div> : null }))
+vi.mock('./workspace/WorkspaceChatsSidebar', () => ({ default: () => null }))
 vi.mock('./GlobalActivityMonitor', () => ({ GlobalActivityMonitor: () => null }))
 vi.mock('./ProductSurfaceSwitcher', () => ({ ProductSurfaceSwitcher: ({ menuOnly }: { menuOnly?: boolean }) => menuOnly ? <span data-testid="combined-picker-products">Products</span> : <button aria-label="Standalone product picker" /> }))
 vi.mock('./WorkspaceTopBarControls', () => ({ default: () => null }))
@@ -51,6 +52,7 @@ vi.mock('./workflow/WorkflowWalkthrough', () => ({ default: ({ isOpen, surface, 
   return <button data-testid="tour" onClick={onClose}>{surface}</button>
 } }))
 
+import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { ModePresetBar } from './ModePresetBar'
 import { TooltipProvider } from './ui/tooltip'
 import { dismissWorkflowWalkthrough, markLLMDiscoveryOnboardingCleared, markLLMDiscoveryOnboardingOpen } from '../utils/onboarding'
@@ -165,3 +167,14 @@ it.each(['agentworks', 'relays'])('opens the existing %s creation form for a pen
   expect(mocks.state.productCreateSurface).toBeNull()
 })
 
+
+it.each(['agentworks', 'work'] as const)('keeps global schedules in the %s header picker after removing Account navigation', async productSurface => {
+  const showSchedules = vi.fn()
+  Object.assign(mocks.state, { productSurface, setShowLLMModal: vi.fn(), setAdminPage: vi.fn(), setShowWorkflowsOverview: vi.fn(), setShowSchedulesOverview: showSchedules })
+  await render(productSurface === 'work' ? { productControl: <TopBarEntitySelector placeholder="Choose a Crew" open={false} onToggle={() => {}} onClose={() => {}}><span>Existing Crews</span></TopBarEntitySelector> } : {})
+  const schedule = host.querySelector<HTMLButtonElement>('[data-product-picker-menu] [data-tour="global-schedules"]')!
+  expect(schedule).not.toBeNull()
+  expect(host.querySelector('[data-product-settings] [data-product-picker-menu]')).not.toBeNull()
+  await act(async () => schedule.click())
+  expect(showSchedules).toHaveBeenCalledWith(true)
+})

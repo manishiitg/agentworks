@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '../../stores/useChatStore'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
+import { useQuestionInPanelHeader } from '../workspace/WorkspacePanelNavigation'
 
 // Two-click confirm: the first click arms, the second sends. A single click
 // used to send straight to chat, so a misclick (this button sits next to
@@ -56,6 +57,7 @@ export function AskAIButton({
   /** Renders just the icon (for a tight icon-toolbar spot) instead of icon+label. */
   iconOnly?: boolean
 }) {
+  const inPanelHeader = useQuestionInPanelHeader(message)
   const [armed, setArmed] = useState(false)
   const [sent, setSent] = useState(false)
   // Icon-only buttons expand on hover/focus to reveal the label, and a click
@@ -133,6 +135,7 @@ export function AskAIButton({
       : ''
   const stateLabel = sent ? 'Sent!' : armed ? 'Sure?' : label
 
+  if (inPanelHeader && label === 'Ask AI') return null
   return (
     // A native `title` attribute is unreliable here: this button is disabled
     // when there's no workspacePath, and several browsers suppress the title

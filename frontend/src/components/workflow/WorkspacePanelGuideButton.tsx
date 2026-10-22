@@ -1,22 +1,29 @@
 import { lazy, Suspense, useContext, useEffect, useId, useRef, useState } from 'react'
 import { CircleHelp, X } from 'lucide-react'
+import { useWorkspacePanelAssistant, useWorkspacePanelGuide } from '../workspace/WorkspacePanelNavigation'
 import { AskAIButton } from './AskAIButton'
-import { getWorkspacePanelGuide } from './workspacePanelGuides'
+import { getWorkspacePanelGuide, type WorkspacePanelSurface } from './workspacePanelGuides'
 import { WorkspacePanelGuideContext } from './WorkspacePanelGuideContext'
 import { integrationHowToTopic } from './integrationHowToTopics'
 import type { PanelGuideAsk } from './workspacePanelGuideAsk'
 
 const IntegrationHowToGuide = lazy(() => import('./IntegrationHowToGuide').then(module => ({ default: module.IntegrationHowToGuide })))
 
-/** Help inside a panel opens only when the user selects its help button. */
+/** Contextual help opens on demand, in the workspace toolbar when hosted. */
 export function WorkspacePanelGuideButton({ topic, ask }: { topic: string; ask?: PanelGuideAsk }) {
   const surface = useContext(WorkspacePanelGuideContext)
+  const hosted = useWorkspacePanelGuide(topic, surface)
+  useWorkspacePanelAssistant(ask ? { workspacePath: ask.workspacePath, message: ask.message } : undefined)
   const guide = getWorkspacePanelGuide(topic, surface)
   const howToTopic = integrationHowToTopic(topic)
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const dialogId = useId()
+
+  useEffect(() => {
+    if (hosted) setOpen(false)
+  }, [hosted, topic])
 
   useEffect(() => {
     if (!open) return
@@ -41,7 +48,7 @@ export function WorkspacePanelGuideButton({ topic, ask }: { topic: string; ask?:
     buttonRef.current?.focus()
   }
 
-  return (
+  const content = (
     <div ref={containerRef} className="relative shrink-0">
       <button
         ref={buttonRef}
@@ -64,22 +71,7 @@ export function WorkspacePanelGuideButton({ topic, ask }: { topic: string; ask?:
           aria-label={`${guide.title} walkthrough`}
           className={`absolute right-0 top-full z-50 mt-2 overflow-y-auto rounded-xl border border-border bg-popover text-popover-foreground shadow-xl ${howToTopic ? 'max-h-[min(42rem,calc(100vh-5rem))] w-[min(40rem,calc(100vw-1.5rem))] p-5' : 'max-h-[min(32rem,calc(100vh-5rem))] w-[min(20rem,calc(100vw-1.5rem))] p-4'}`}
         >
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-primary">{guide.surface === 'crew' ? 'Crew' : 'Goals'} · {guide.group}</p>
-          <div className="flex items-start justify-between gap-3">
-            <h3 className="text-sm font-semibold">About {guide.title}</h3>
-            <button type="button" onClick={close} aria-label="Close panel walkthrough" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
-          </div>
-          <p className="mt-2 text-sm leading-5 text-muted-foreground">{guide.purpose}</p>
-          <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-foreground">How to use it</p>
-          <p className="mt-1 text-sm leading-5 text-muted-foreground">{guide.howTo}</p>
-          {howToTopic && <Suspense fallback={<p className="mt-4 text-sm text-muted-foreground">Loading help…</p>}>
-            <IntegrationHowToGuide topic={howToTopic} scopeNoun={surface !== 'agentworks' ? 'project' : 'workflow'} />
-          </Suspense>}
-          {guide.steps && (
-            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-5 text-muted-foreground" aria-label="Setup steps">
-              {guide.steps.map(step => <li key={step} className="pl-0.5">{step}</li>)}
-            </ol>
-          )}
+          <WorkspacePanelGuideContent topic={topic} surface={surface} onClose={close} />
           {ask ? (
             <div className="mt-4 flex items-center gap-2">
               <button type="button" onClick={close} className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90">Got it</button>
@@ -92,4 +84,29 @@ export function WorkspacePanelGuideButton({ topic, ask }: { topic: string; ask?:
       )}
     </div>
   )
+  return hosted ? null : content
+}
+
+/** Shared guide body, used by both the panel Help menu and standalone views. */
+export function WorkspacePanelGuideContent({ topic, surface, onClose }: { topic: string; surface: WorkspacePanelSurface; onClose?: () => void }) {
+  const guide = getWorkspacePanelGuide(topic, surface)
+  const howToTopic = integrationHowToTopic(topic)
+  return <>
+    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-primary">{guide.surface === 'crew' ? 'Crew' : guide.surface === 'relay' ? 'Flows' : 'Goals'} · Page guide</p>
+    <div className="flex items-start justify-between gap-3">
+      <h3 className="text-sm font-semibold">About {guide.title}</h3>
+      {onClose && <button type="button" onClick={onClose} aria-label="Close panel walkthrough" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>}
+    </div>
+    <p className="mt-2 text-sm leading-5 text-muted-foreground">{guide.purpose}</p>
+    <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-foreground">How to use it</p>
+    <p className="mt-1 text-sm leading-5 text-muted-foreground">{guide.howTo}</p>
+    {howToTopic && <Suspense fallback={<p className="mt-4 text-sm text-muted-foreground">Loading help…</p>}>
+      <IntegrationHowToGuide topic={howToTopic} scopeNoun={surface === 'crew' ? 'project' : 'workflow'} />
+    </Suspense>}
+    {guide.steps && (
+      <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-5 text-muted-foreground" aria-label="Setup steps">
+        {guide.steps.map(step => <li key={step} className="pl-0.5">{step}</li>)}
+      </ol>
+    )}
+  </>
 }

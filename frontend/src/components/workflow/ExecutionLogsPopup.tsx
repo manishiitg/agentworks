@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, AlertCircle, FileText, Route as RouteIcon, ArrowLeft, Braces } from 'lucide-react'
+import { Loader2, AlertCircle, FileText, Route as RouteIcon, Braces } from 'lucide-react'
+import { WorkspacePanelBack } from '../workspace/WorkspacePanelNavigation'
 import type { RunFolderInfo, StepExecutionLogs } from '../../services/api-types'
 import { agentApi } from '../../services/api'
 import InspectorShell from './InspectorShell'
@@ -64,7 +65,6 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
     fileContents,
     loadingFiles,
     focusedStepId,
-    stepDetailScrolled,
     handleStepDetailScroll,
     loadLogs,
     toggleStep,
@@ -238,22 +238,7 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
               {webhookPayloadPanel}
 
               {focusedStepId && (
-                <div
-                  className={`sticky top-0 z-20 -mx-1 flex items-center border-b border-border/80 bg-background/95 px-1 backdrop-blur-sm transition-[padding] duration-150 ${
-                    stepDetailScrolled ? 'py-1' : 'pb-3 pt-1'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleStep(focusedStepId)}
-                    className={`inline-flex items-center gap-2 rounded-md border border-border bg-card font-medium text-foreground shadow-sm transition-all duration-150 hover:bg-accent ${
-                      stepDetailScrolled ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'
-                    }`}
-                  >
-                    <ArrowLeft className={stepDetailScrolled ? 'h-3 w-3' : 'h-4 w-4'} />
-                    Back to all steps
-                  </button>
-                </div>
+                <WorkspacePanelBack label="Back to all steps" onBack={() => toggleStep(focusedStepId)} />
               )}
 
               {/* Message when no step logs found */}

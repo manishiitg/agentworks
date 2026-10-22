@@ -27,10 +27,13 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 	if manifest.Profile.Scope != agentprofiles.ProfileScopeProject {
 		t.Fatalf("work must declare scope: project, got %q", manifest.Profile.Scope)
 	}
-	for _, want := range []string{"agent-browser", "code-reviewer", "work-integrations", "work-workflow-files", "work-skills", "work-schedules-and-bots", "work-dashboard", "work-ui-control", "background-work"} {
+	for _, want := range []string{"agent-browser", "work-integrations", "work-workflow-files", "work-skills", "work-schedules-and-bots", "work-dashboard", "work-ui-control", "background-work"} {
 		if !contains(manifest.Profile.Skills, want) {
 			t.Fatalf("work feature bundles omitted skill %q: %v", want, manifest.Profile.Skills)
 		}
+	}
+	if contains(manifest.Profile.Skills, "code-reviewer") {
+		t.Fatal("Crew must not automatically attach code-reviewer")
 	}
 	if len(manifest.Profile.ResolvedFeatures) == 0 {
 		t.Fatal("Crew must expose resolved feature bundles to the shared product UI")
@@ -78,8 +81,8 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 	if manifest.Profile.Runtime.Transport != "auto" {
 		t.Fatalf("work must use the shared runtime transport policy, got transport=%q", manifest.Profile.Runtime.Transport)
 	}
-	if manifest.Profile.Runtime.Workspace.ProjectsRoot != "Chats/Work/projects" {
-		t.Fatalf("work projects root = %q, want Chats/Work/projects", manifest.Profile.Runtime.Workspace.ProjectsRoot)
+	if manifest.Profile.Runtime.Workspace.ProjectsRoot != ProjectsRoot {
+		t.Fatalf("work projects root = %q, want %q", manifest.Profile.Runtime.Workspace.ProjectsRoot, ProjectsRoot)
 	}
 	if manifest.Profile.Runtime.Workspace.Mode != agentprofiles.WorkspaceModeProject || manifest.Profile.Runtime.Conversation.Mode != agentprofiles.ConversationModeKeyed {
 		t.Fatalf("work must use keyed session conversations: workspace=%+v conversation=%+v", manifest.Profile.Runtime.Workspace, manifest.Profile.Runtime.Conversation)
@@ -160,13 +163,14 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"manage_slack_account":              false,
 		"get_agent_inbox":                   false,
 		"manage_agent_email":                false,
-		"setup_gmail_inbound":               false,
+		"configure_agent_inbox":             false,
 		"update_gmail_connection_grants":    false,
 		"query_workflow_db":                 false,
 		"mutate_workflow_db":                false,
 		"apply_workflow_db_migration":       false,
 		"create_workflow_database_snapshot": false,
 		"validate_report_html":              false,
+		"get_dashboard_catalog":             false,
 		"list_dashboards":                   false, "get_dashboard": false, "create_dashboard": false, "update_dashboard": false, "validate_dashboard": false, "preview_dashboard": false, "export_dashboard_motion": false, "publish_dashboard": false, "restore_dashboard": false, "get_dashboard_link": false,
 		"preview_report":       false,
 		"run_in_background":    false,

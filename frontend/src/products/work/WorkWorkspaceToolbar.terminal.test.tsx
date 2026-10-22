@@ -48,8 +48,10 @@ it('shows Run people only the dashboard inventory', () => {
 it('groups search like the menu and does not advertise the retired Bots tab', () => {
   render(CREW_PRODUCT, {})
   const entries = usePanelSwitcherStore.getState().entries.work!.panels
-  expect(entries.find(item => item.id === 'schedules:triggers')).toMatchObject({ label: 'Webhooks', group: 'Use & share' })
-  expect(entries.find(item => item.id === 'mcp:slack')).toMatchObject({ label: 'Slack', group: 'Use & share' })
-  expect(entries.find(item => item.id === 'history')).toMatchObject({ label: 'Chat history', group: 'Ops' })
+  expect(entries.find(item => item.id === 'schedules:triggers')).toMatchObject({ label: 'Webhooks', group: 'Use' })
+  expect(entries.find(item => item.id === 'mcp:slack-bot')).toMatchObject({ label: 'Slack bot', group: 'Use' })
+  expect(entries.find(item => item.id === 'mcp:slack-account')).toMatchObject({ label: 'Slack account', group: 'Integrations' })
+  expect(entries.find(item => item.id === 'history')).toMatchObject({ label: 'Chat history', group: 'Use' })
+  expect(entries.find(item => item.id === 'schedules:functions')).toMatchObject({ label: 'Functions', group: 'Build' })
   expect(entries.flatMap(item => item.sections ?? []).some(item => item.id === 'bots')).toBe(false)
 })

@@ -3,6 +3,8 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 const post = vi.hoisted(() => vi.fn())
+// Product switching has its own permission and navigation coverage.
+vi.mock('./ProductSurfaceSwitcher', () => ({ ProductSurfaceSwitcher: () => <h1>Dashboards</h1> }))
 vi.mock('../services/api', () => ({ default: { post } }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: 'person' } }) }))
 vi.mock('../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (state: unknown) => unknown) => select({ activeWorkspaceId: 'server' }) }))

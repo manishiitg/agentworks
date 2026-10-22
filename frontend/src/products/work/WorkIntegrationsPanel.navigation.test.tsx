@@ -10,8 +10,8 @@ vi.mock('../../components/workflow/WorkspaceViewHeader', () => ({ WorkspaceViewH
 vi.mock('../../components/workflow/WorkspaceViewActions', () => ({ WorkspaceViewActions: () => null }))
 vi.mock('../../components/integrations/ConnectedProjectAccounts', () => ({ ConnectedProjectAccounts: () => null }))
 vi.mock('../../components/integrations/SlackAccountsPanel', () => ({ default: () => <div data-content="slack-account">Existing Slack account permissions</div> }))
-vi.mock('../../components/integrations/ProductSlackPanel', () => ({ ProductSlackPanel: () => <div data-content="slack">Act in Slack · Talk to this Crew</div> }))
-vi.mock('../../components/workflow/ShareDashboardButton', () => ({ ShareDashboardButton: () => <div data-content="sharing">Existing server-gated sharing</div> }))
+vi.mock('../../components/integrations/ProductSlackPanel', () => ({ ProductSlackPanel: ({ section }: any) => <div data-content="slack" data-section={section}>Act in Slack · Talk to this Crew</div> }))
+vi.mock('../../components/workflow/ShareDashboardButton', () => ({ ShareDashboardButton: ({ section }: any) => <div data-content="sharing" data-section={section}>Existing server-gated sharing</div> }))
 vi.mock('../../components/integrations/ProjectMcpPanel', () => ({ ProjectMcpPanel: ({ view }: any) => <div data-content="mcp">{view} MCP content</div> }))
 vi.mock('../../components/integrations/ProjectSecretsPanel', () => ({ ProjectSecretsPanel: () => <div data-content="secrets">Existing secrets</div> }))
 vi.mock('../../components/skills/SkillsManagerPanel', () => ({ default: () => <div data-content="skills">Existing skills</div> }))
@@ -93,10 +93,20 @@ it('does not expose disabled bot channels through Use & share or direct targets'
   const host = await mount(CREW_PRODUCT, new Set(['secrets']))
   expect(host.textContent).not.toContain('Slack')
   expect(host.textContent).not.toContain('WhatsApp')
-  for (const target of ['slack', 'whatsapp']) await act(async () => state.target(target))
+  for (const target of ['slack', 'slack-account', 'slack-bot', 'whatsapp']) await act(async () => state.target(target))
   expect(host.querySelector('[data-content="slack"]')).toBeNull()
   expect(host.querySelector('[data-content="whatsapp"]')).toBeNull()
   expect(host.querySelector('[data-content="secrets"]')).not.toBeNull()
+})
+
+it('opens the new menu destinations without changing sharing or account permissions', async () => {
+  const host = await mount()
+  for (const [target, content, section] of [['slack-account', 'slack', 'account'], ['slack-bot', 'slack', 'bot'], ['share', 'sharing', 'people'], ['share-owners', 'sharing', 'owners']]) {
+    await act(async () => state.target(target))
+    expect(host.querySelector(`[data-content="${content}"]`)?.getAttribute('data-section')).toBe(section)
+    expect(host.querySelectorAll('[data-content]')).toHaveLength(1)
+  }
+  expect(state.ask).not.toHaveBeenCalled(); expect(state.save).not.toHaveBeenCalled()
 })
 
 

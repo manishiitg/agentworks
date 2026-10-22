@@ -42,6 +42,40 @@ func TestPrepareRefusesUnsafeStorage(t *testing.T) {
 	}
 }
 
+func TestExistingRuntimeDoesNotCreateOrAdoptAnotherSession(t *testing.T) {
+	root := t.TempDir()
+	workspace, state := filepath.Join(root, "workspace"), filepath.Join(root, "state")
+	project := filepath.Join(workspace, "Crew", "demo")
+	if err := os.MkdirAll(project, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExistingLinkedProject(state, workspace, "alice", project, "", "current", "codex-cli", "builder"); !os.IsNotExist(err) {
+		t.Fatal("missing runtime was not reported", err)
+	}
+	if _, err := os.Stat(state); !os.IsNotExist(err) {
+		t.Fatal("inventory created runtime storage")
+	}
+	dir, err := PrepareLinkedProject(state, workspace, "alice", project, "current", "codex-cli", "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if existing, err := ExistingLinkedProject(state, workspace, "alice", project, "", "current", "codex-cli", "builder"); err != nil || existing != dir {
+		t.Fatal(existing, err)
+	}
+	if _, err := ExistingLinkedProject(state, workspace, "alice", project, "", "old", "codex-cli", "builder"); !os.IsNotExist(err) {
+		t.Fatal("adopted another session", err)
+	}
+	if err := os.Remove(filepath.Join(dir, ProjectLink)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(root, filepath.Join(dir, ProjectLink)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExistingLinkedProject(state, workspace, "alice", project, "", "current", "codex-cli", "builder"); err == nil {
+		t.Fatal("changed project link accepted")
+	}
+}
+
 func TestPrivateRuntimeIdentityAndAliasResume(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")

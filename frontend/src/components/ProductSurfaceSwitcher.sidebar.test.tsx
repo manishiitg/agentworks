@@ -33,7 +33,7 @@ describe('collapsible product navigation', () => {
     expect(trigger.getAttribute('aria-label')).toBe(`Switch product: ${label}`)
     expect(trigger.querySelector('span.sr-only')?.textContent).toBe(label)
     await act(async () => trigger.click())
-    expect([...host.querySelectorAll('[role="menuitem"]')].map(button => button.getAttribute('aria-label'))).toEqual(['Goals', label, 'Dashboards'])
+    expect([...host.querySelectorAll('[data-product-option]')].map(button => button.getAttribute('aria-label'))).toEqual(['Goals', label, 'Dashboards'])
   })
   it.each(['workspace', 'service', 'standard'])('uses the same permitted product grid in a %s picker', async placement => {
     auth.allowed = ['agentworks', 'work', 'code']
@@ -70,7 +70,7 @@ describe('collapsible product navigation', () => {
     expect(trigger.getAttribute('aria-label')).toBe('Switch product: Crew')
     const group = host.querySelector('[role="group"]')!
     await act(async () => group.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
-    expect(Array.from(host.querySelectorAll('[role="menuitem"]')).map(b => b.getAttribute('aria-label'))).toEqual(['Goals', 'Crew', 'Vault', 'Dashboards'])
+    expect(Array.from(host.querySelectorAll('[data-product-option]')).map(b => b.getAttribute('aria-label'))).toEqual(['Goals', 'Crew', 'Vault', 'Dashboards'])
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Crew"]')!.click())
     expect(useProductSurfaceStore.getState().productSurface).toBe('work')
     expect(host.querySelector('[role="menu"]')).toBeNull()
@@ -107,4 +107,30 @@ describe('collapsible product navigation', () => {
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label^="Switch product:"]')!.click())
     expect(host.querySelector('button[aria-label="Vault"]')).toBeNull()
   })
+})
+
+it.each(['header', 'chevron'] as const)('keeps the permitted products in the %s header switcher', async variant => {
+  auth.allowed = ['work']
+  await act(async () => root.render(<ProductSurfaceSwitcher variant={variant} />))
+  const trigger = host.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
+  expect(trigger.getAttribute('aria-label')).toBe('Switch product: Crew')
+  expect(trigger.textContent).toBe(variant === 'header' ? 'Crew' : '')
+  await act(async () => trigger.click())
+  expect([...host.querySelectorAll('[data-product-option]')].map(button => button.getAttribute('aria-label'))).toEqual(['Crew', 'Dashboards'])
+  const crew = host.querySelector<HTMLButtonElement>('[data-product-option]')!
+  crew.focus()
+  await act(async () => crew.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+  expect(host.querySelector('[role="menu"]')).toBeNull()
+  expect(document.activeElement).toBe(trigger)
+})
+
+it('uses Dashboards as the current heading on the dashboard page', async () => {
+  const previous = window.location.href
+  window.history.replaceState({}, '', '/dashboards')
+  try {
+    await act(async () => root.render(<ProductSurfaceSwitcher variant="header" />))
+    expect(host.querySelector('h1')?.textContent).toBe('Dashboards')
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!.click())
+    expect(host.querySelector('[aria-current="page"]')?.getAttribute('aria-label')).toBe('Dashboards')
+  } finally { window.history.replaceState({}, '', previous) }
 })

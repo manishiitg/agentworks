@@ -8,7 +8,7 @@ import { markFeatureUsed } from '../../utils/featureUsage'
 import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { CalendarClock, UsersRound, Sparkles, Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, CalendarClock, UsersRound, Sparkles, Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, Trash2, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
@@ -600,6 +600,9 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   const activeTab = tabs.find(tab => tab.tabId === activeTabId)
   const visibleTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [reordering, setReordering] = useState(false)
+  const canReorderInMenu = tabs.length > 5
+  useEffect(() => { if (!moreOpen || !canReorderInMenu) setReordering(false) }, [moreOpen, canReorderInMenu])
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const moreRef = useRef<HTMLDivElement>(null)
@@ -863,7 +866,6 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         onTabClick={selectTab}
         onCloseTab={closeProjectTab}
         closeStopsSession={!!key}
-        onUnpin={key ? () => { void pinSideChat(key, false) } : undefined}
       /></div>
       })}
       </div>
@@ -882,21 +884,28 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
           {moreOpen && (
-            <div className="absolute right-0 top-8 z-50 max-h-80 min-w-64 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md" role="dialog" aria-label="Agents">
+            <div className="absolute right-0 top-8 z-50 flex max-h-[min(26rem,70dvh)] w-80 max-w-[calc(100vw-2rem)] flex-col rounded-xl border border-border bg-popover p-1.5 shadow-lg" role="dialog" aria-label="Agents">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-2 pb-2 pt-1">
+                <h2 className="text-xs font-semibold">Agents & activity</h2>
+                {canReorderInMenu && <button type="button" aria-pressed={reordering} onClick={() => setReordering(value => !value)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{reordering ? 'Done' : 'Reorder'}</button>}
+              </div>
+              {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">Drag agents or use the arrows to change their order.</p>}
+              <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
               {tabs.map(tab => {
                 const key = tab.tabId === canonicalTabId ? undefined : sideChatKey(tab)
                 const label = tab.tabId === canonicalTabId ? projectName : key ? sideChatName(tab) : tab.name
+                const position = (listed || []).findIndex(chat => chat.conversation_key === key)
                 return <div
                   key={tab.tabId}
                   data-chat-list-id={tab.tabId}
-                  draggable={!!key}
-                  onDragStart={key ? event => startDrag(event, key, tab.tabId) : undefined}
+                  draggable={reordering && !!key}
+                  onDragStart={reordering && key ? event => startDrag(event, key, tab.tabId) : undefined}
                   onDragOver={event => overTab(event, key || listed?.[0]?.conversation_key)}
                   onDrop={event => dropTab(event, key || listed?.[0]?.conversation_key)}
                   onDragEnd={endDrag}
-                  className="group flex items-center rounded hover:bg-muted"
+                  className={`group flex min-h-10 items-center gap-1 rounded-lg px-1 ${tab.tabId === activeTabId ? 'bg-muted/70' : 'hover:bg-muted/50'} ${dropKey === key && draggingKey !== key ? 'ring-1 ring-inset ring-primary' : ''}`}
                 >
-                  {key && <GripVertical aria-hidden="true" className="ml-1 h-3 w-3 shrink-0 cursor-grab text-muted-foreground/60" />}
+                  {reordering && key ? <GripVertical aria-hidden="true" className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" /> : <span className="flex w-4 shrink-0 justify-center">{tab.tabId === activeTabId && <Check aria-hidden="true" className="h-3.5 w-3.5 text-primary" />}</span>}
                   {renaming === tab.tabId ? <input
                     autoFocus
                     aria-label={`New name for ${label}`}
@@ -911,25 +920,32 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
                   /> : <button
                     type="button"
                     onClick={() => { setMoreOpen(false); selectTab(tab.tabId) }}
-                    className={`min-w-0 flex-1 truncate px-2 py-1.5 text-left text-xs ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-muted-foreground'}`}
+                    title={label}
+                    className={`min-w-0 flex-1 rounded py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-foreground/85'}`}
                   >
-                    {tab.tabId === activeTabId && <Check aria-hidden="true" className="mr-1 inline h-3 w-3" />}{label}{!isAgentTab(tab) && <span className="ml-2 text-[10px] text-muted-foreground">Activity</span>}
+                    <span className="block truncate">{label}</span>{!isAgentTab(tab) && <span className="block text-[10px] font-normal text-muted-foreground">Activity</span>}
                   </button>}
-                  {key && renaming !== tab.tabId && <button type="button" aria-label={`Rename ${label}`} title="Rename" className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-foreground" onClick={() => { setRenameDraft(sideChatName(tab)); setRenaming(tab.tabId) }}><Pencil className="h-3.5 w-3.5" /></button>}
-                  {key && <button type="button" aria-pressed={sideChatPinned(tab)} aria-label={sideChatPinned(tab) ? `Unpin ${label}` : `Pin ${label} to the tab bar`} title={sideChatPinned(tab) ? 'Pinned to the tab bar. Click to unpin' : 'Pin to the tab bar'} className={`rounded p-1 hover:bg-muted ${sideChatPinned(tab) ? 'text-foreground' : 'text-muted-foreground/60'}`} onClick={() => { void pinSideChat(key, !sideChatPinned(tab)) }}>{sideChatPinned(tab) ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}</button>}
+                  {reordering && key ? <div className="flex shrink-0 items-center">
+                    <button type="button" aria-label={`Move ${label} earlier`} disabled={position <= 0} onClick={() => { const target = listed?.[position - 1]; if (target) void moveSideChat(key, target.conversation_key) }} className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
+                    <button type="button" aria-label={`Move ${label} later`} disabled={position < 0 || position === (listed?.length || 0) - 1} onClick={() => { const target = listed?.[position + 1]; if (target) void moveSideChat(key, target.conversation_key) }} className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
+                  </div> : <>
+                  {key && renaming !== tab.tabId && <button type="button" aria-label={`Rename ${label}`} title="Rename" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setRenameDraft(sideChatName(tab)); setRenaming(tab.tabId) }}><Pencil className="h-3.5 w-3.5" /></button>}
+                  {key && <button type="button" aria-pressed={sideChatPinned(tab)} aria-label={sideChatPinned(tab) ? `Unpin ${label}` : `Pin ${label} to the tab bar`} title={sideChatPinned(tab) ? 'Pinned to the tab bar. Click to unpin' : 'Pin to the tab bar'} className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring ${sideChatPinned(tab) ? 'text-foreground' : 'text-muted-foreground'}`} onClick={() => { void pinSideChat(key, !sideChatPinned(tab)) }}>{sideChatPinned(tab) ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}</button>}
                   {tab.tabId !== canonicalTabId && (
                     <button
                       type="button"
                       onClick={() => { setMoreOpen(false); closeProjectTab(tab.tabId) }}
-                      className="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 opacity-70 hover:bg-gray-200 hover:text-gray-700 focus:opacity-100 group-hover:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                       aria-label={`Close ${label}`}
                       title={isAgentTab(tab) ? "Close agent" : "Close activity view"}
                     >
                       <X className="h-3 w-3" />
                     </button>
                   )}
+                  </>}
                 </div>
               })}
+              </div>
             </div>
           )}
         </div>
@@ -1422,16 +1438,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     },
   )
 
-  // Enter dashboards with room to read. Reopening chat is an explicit choice and
-  // resizing remains untouched; do not fight either while the dashboard is open.
-  const previousDashboardLocation = useRef<string | null>(null)
+  // Every panel starts beside chat. Manual expansion lasts until the next page.
+  const previousPanelLocation = useRef<string | null>(null)
   useEffect(() => {
     const location = `${selected?.id ?? ''}:${workspaceView}`
-    if (previousDashboardLocation.current === location) return
-    const wasDashboard = previousDashboardLocation.current?.endsWith(':dashboard')
-    previousDashboardLocation.current = location
-    if (workspaceView === 'dashboard') setChatOpen(false)
-    else if (wasDashboard) setChatOpen(true)
+    if (previousPanelLocation.current === location) return
+    previousPanelLocation.current = location
+    setChatOpen(true)
   }, [selected?.id, workspaceView])
 
   const landingProjectId = selected?.id
@@ -1494,7 +1507,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (window.innerWidth < 768) return
     const rect = splitLayoutRef.current?.getBoundingClientRect()
     if (!rect?.width) return
-    if (reportPreviewPreference === 'mobile') {
+    if (workspaceView === 'dashboard' && reportPreviewPreference === 'mobile') {
       // Mobile preview keeps a phone-width column, but the rail still drags: the column's width follows the pointer.
       startSplitDrag(event, {
         onMove: clientX => {
@@ -1510,7 +1523,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       onMove: clientX => setSplitRatio((clientX - rect.left) / rect.width),
       onEnd: () => writeWorkSplitRatio(selected?.id, splitRatioRef.current),
     })
-  }, [reportPreviewPreference, selected?.id, setSplitRatio, startSplitDrag])
+  }, [reportPreviewPreference, workspaceView, selected?.id, setSplitRatio, startSplitDrag])
 
   const createProject = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection, mode?: ProductMode) => {
     if (creating) return
@@ -1679,10 +1692,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               toolbarWhenPanelClosed={!isWorkSessionRun(selected)}
               chatOpen={!isShared && chatOpen} panelOpen={isShared || panelOpen} splitRatio={splitRatio}
               showChatReopenControl={!isShared}
-              mobilePreview={reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
+              mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
               tabs={!isShared && tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats /> : <div className="min-w-0 flex-1" />}
-              toolbar={<><WorkWorkspaceToolbar sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />{!isShared && workspaceView === 'dashboard' && !chatOpen && <button type="button" onClick={() => setChatOpen(true)} className="min-h-8 shrink-0 rounded-md border border-border px-3 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Ask about this dashboard</button>}</>}
+              toolbar={<><WorkWorkspaceToolbar projectId={selected.id} sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} /></>}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>
@@ -1733,13 +1746,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                     ratio={splitRatio}
                     onPointerDown={handleSplitPointerDown}
                     onStep={delta => {
-                      if (reportPreviewPreference !== 'mobile') { setSplitRatio(splitRatioRef.current + delta, true); return }
+                      if (workspaceView !== 'dashboard' || reportPreviewPreference !== 'mobile') { setSplitRatio(splitRatioRef.current + delta, true); return }
                       const width = Math.max(MOBILE_PANE_MIN, (mobilePaneWidthRef.current ?? 494) - Math.round(delta * 600))
                       mobilePaneWidthRef.current = width; setMobilePaneWidthState(width); writeMobilePaneWidth(selected?.id, width)
                     }}
                     className="max-md:hidden md:row-start-2"
                     previewDevice={reportPreviewPreference}
-                    onPreviewDeviceChange={device => writeReportPreviewPreference(selected.workspacePath, device)}
+                    onPreviewDeviceChange={workspaceView === 'dashboard' ? device => writeReportPreviewPreference(selected.workspacePath, device) : undefined}
                     onCollapseChat={() => setChatOpen(false)}
                     onCollapseWorkspace={() => setPanelOpen(false)}
                   />
@@ -1756,6 +1769,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         projectTemplates={selected.templates}
                         onInstallTemplate={installSelectedTemplate}
                         tabId={tabId ?? ''}
+                        onOpenChat={() => setChatOpen(true)}
                         view={workspaceView}
                         onViewChange={selectWorkspaceView}
                         enabledPanels={workspacePanels}

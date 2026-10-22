@@ -7,7 +7,7 @@ import { WorkspaceContextRow as Row } from './WorkspaceContextCard'
 const BRIDGE_PROVIDERS: Record<string, string> = { codex: 'Codex', claude: 'Claude Code', cursor: 'Cursor', muse: 'Muse', pi: 'Pi', opencode: 'OpenCode', agy: 'agy' }
 
 /** AgentBridge, with the agents of yours that are connected right now (Claude Code, Codex and the like on your computer). */
-export function WorkspaceAgentBridgeRows() {
+export function WorkspaceAgentBridgeRows({ onOpen }: { onOpen?: () => void } = {}) {
   const [agents, setAgents] = useState<BullpenAgent[] | null>(null)
   useEffect(() => {
     let alive = true
@@ -17,7 +17,7 @@ export function WorkspaceAgentBridgeRows() {
     return () => { alive = false; window.clearInterval(timer) }
   }, [])
   if (!agents) return null
-  const open = () => openProductWorkspace('bullpen')
+  const open = onOpen ?? (() => openProductWorkspace('bullpen'))
   return <>
     <Row icon={Cable} detail={agents.length ? `${agents.length} online` : 'None online'} onClick={open}>AgentBridge</Row>
     {agents.slice(0, 5).map(agent => <Row key={agent.agent_id} icon={Terminal} hint={`${agent.agent_name} · ${agent.presence || 'Delivery unknown'}${agent.last_seen_at ? ` · Last seen ${new Date(agent.last_seen_at).toLocaleString()}` : ''}${agent.purpose ? ` · ${agent.purpose}` : ''}`} detail={BRIDGE_PROVIDERS[agent.provider || ''] || agent.provider || 'CLI agent'} onClick={open}>{agent.label || agent.agent_name}</Row>)}

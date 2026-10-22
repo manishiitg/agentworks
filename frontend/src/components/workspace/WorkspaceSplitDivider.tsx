@@ -88,7 +88,7 @@ export function WorkspaceSplitCollapseControls({
 type WorkspaceSplitRailProps = Omit<WorkspaceSplitDividerProps, 'children'> & {
   previewDevice?: ReportPreviewDevice
   onPreviewDeviceChange?: (device: ReportPreviewDevice) => void
-  onCollapseChat: () => void
+  onCollapseChat?: () => void
   onCollapseWorkspace: () => void
 }
 

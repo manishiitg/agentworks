@@ -6,6 +6,7 @@ vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: (
 const auth = vi.hoisted(() => ({ user: { id: 'alice', is_admin: false, can_create: true, allowed_products: null } as any }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => select(auth) }))
 import { ProductSettingsMenu } from './ProductSettingsMenu'
+import { ProductBreadcrumb } from './ProductBreadcrumb'
 import { WorkspaceToolsMenu } from './WorkspaceToolsMenu'
 import { WorkspaceTopToolbar } from './WorkspaceTopToolbar'
 import { ProductTopBar } from './ProductTopBar'
@@ -81,7 +82,7 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
     expect(tools.querySelector('[data-product-navigation-action]')).toBeNull()
     const picker = host.querySelector<HTMLElement>('.preset-dropdown')!
     const setup = picker.querySelector<HTMLElement>('[data-picker-setup]')!
-    expect(picker.querySelector('[aria-label="Products"]')).toBeNull()
+    expect(picker.querySelector('[aria-label="Products"]')).not.toBeNull()
     expect(setup).not.toBeNull()
     const mcp = setup.querySelector<HTMLButtonElement>('[aria-label="Connect AI tools"]')!
     expect(setup.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
@@ -168,4 +169,29 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
     await act(async () => root.unmount()); host.remove(); destination.remove()
     useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: null })
   }
+})
+
+it.each(['agentworks', 'relays'] as const)('opens the existing project picker from the %s landing title', async surface => {
+  useProductSurfaceStore.setState({ productSurface: surface })
+  useAppStore.setState({ adminPage: null, showSchedulesOverview: false, showWorkflowsOverview: false })
+  useProductNavigationToolbarStore.setState({ target: null, targetKind: null, workspaceTrigger: null, pickerOpen: false })
+  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays', 'work'] }
+  function Navigation() {
+    const [open, setOpen] = useState(false)
+    return <><ProductTopBar><TopBarEntitySelector placeholder={surface === 'relays' ? 'Select Flow' : 'Select Automation'} open={open} onToggle={() => setOpen(value => !value)} onClose={() => setOpen(false)}><button>Existing project</button></TopBarEntitySelector></ProductTopBar><WorkspaceTopToolbar navigationKind="page"><ProductBreadcrumb surface={surface} onHome={() => {}} /></WorkspaceTopToolbar></>
+  }
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+  try {
+    await act(async () => root.render(<TooltipProvider><Navigation /></TooltipProvider>))
+    const trigger = host.querySelector<HTMLButtonElement>('[data-product-header-picker]')!
+    const panel = host.querySelector<HTMLElement>('.preset-dropdown')!
+    expect(panel.hidden).toBe(true)
+    await act(async () => trigger.click())
+    expect(panel.hidden).toBe(false)
+    expect(panel.querySelector('header')?.textContent).toBe(surface === 'relays' ? 'Flows' : 'Automations')
+    expect(panel.querySelector('[data-product-picker-menu]')?.textContent).toContain('Existing project')
+    expect(panel.querySelector('[data-product-switch-menu]')).not.toBeNull()
+    await act(async () => trigger.click())
+    expect(panel.hidden).toBe(true)
+  } finally { await act(async () => root.unmount()); host.remove(); useProductNavigationToolbarStore.setState({ target: null, targetKind: null, workspaceTrigger: null }) }
 })

@@ -2,9 +2,14 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+vi.hoisted(() => {
+  const values = new Map<string, string>()
+  vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) })
+})
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: vi.fn() }))
 import { useAuthStore } from '../../stores/useAuthStore'
 import { TooltipProvider } from '../ui/tooltip'
+import { useAppStore } from '../../stores/useAppStore'
 import VaultsControl from './VaultsControl'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -29,4 +34,10 @@ describe('My vaults entry', () => {
     document.body.innerHTML = ''
     expect((await render({ id: 'c', can_create: false, allowed_products: ['code', 'mcp-gateway'] })).querySelector('[aria-label="My vaults"]')).toBeNull()
   })
+})
+
+it('opens personal vaults directly when the account has no shared Vault role', async () => {
+  const host = await render({ id: 'personal', can_create: true, allowed_products: ['mcp-gateway'] })
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="My vaults"]')!.click())
+  expect(useAppStore.getState().adminPage).toBe('vaults')
 })

@@ -47,6 +47,7 @@ func TestWorkspaceSkillsLifecycle(t *testing.T) {
 	write("skills/report/assets/chart.bin", asset)
 	write("skills/unused/SKILL.md", skill("unused"))
 	write("Workflow/mine/.agents/skills/native/SKILL.md", skill("native"))
+	write("Workflow/mine/skills-lock.json", []byte(`{"skills":{"native":{"source":"example/recorded-repo","sourceType":"github"}}}`))
 	write("Workflow/mine/.claude/skills/report/SKILL.md", skill("report"))
 	write("Workflow/mine/.claude/skills/report/.agentworks-managed", []byte("managed"))
 	gin.SetMode(gin.TestMode)
@@ -80,6 +81,14 @@ func TestWorkspaceSkillsLifecycle(t *testing.T) {
 	}
 	if len(inventory.Documents) != 2 || len(inventory.Usage["report"]) != 2 || inventory.Usage["native"][0] != "Step: Publish" {
 		t.Fatalf("inventory: %s", list)
+	}
+	for _, doc := range inventory.Documents {
+		if doc.Name == "native" && (doc.Source != "example/recorded-repo" || doc.SourceType != "github") {
+			t.Fatalf("recorded provenance lost: %+v", doc)
+		}
+		if doc.Name == "report" && doc.Source != "" {
+			t.Fatal("invented a source for a file with no installation record")
+		}
 	}
 	filesPayload := call("/files", `{"workspace_path":"Workflow/mine","name":"report"}`, 200)
 	var bundle struct {

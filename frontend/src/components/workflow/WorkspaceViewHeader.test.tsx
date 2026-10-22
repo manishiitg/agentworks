@@ -44,7 +44,7 @@ describe('WorkspaceViewHeader', () => {
     expect(render('skills')).not.toContain('data-testid="tab-action"')
   })
 
-  it('moves the shared Ask AI action into the walkthrough popup, keeping Refresh rightmost', () => {
+  it('moves standalone Ask AI into the walkthrough popup and omits automatic Refresh', () => {
     const html = renderToStaticMarkup(
       <TooltipProvider>
         <WorkspaceViewHeader title="Memory" actions={<WorkspaceViewActions workspacePath="Crew/example" message="Explain memory" onRefresh={() => {}} />} />
@@ -54,7 +54,7 @@ describe('WorkspaceViewHeader', () => {
     const walkthrough = html.indexOf('aria-label="Walkthrough: Memory"')
     const refresh = html.indexOf('aria-label="Refresh view"')
     expect(walkthrough).toBeGreaterThanOrEqual(0)
-    expect(walkthrough).toBeLessThan(refresh)
+    expect(refresh).toBe(-1)
   })
 
   it('moves an icon-only Ask AI fragment child into the popup but keeps labeled ones inline', () => {
@@ -75,7 +75,7 @@ describe('WorkspaceViewHeader', () => {
     const walkthrough = html.indexOf('aria-label="Walkthrough: Notifications"')
     const refresh = html.indexOf('aria-label="Refresh notifications"')
     expect(walkthrough).toBeGreaterThanOrEqual(0)
-    expect(walkthrough).toBeLessThan(refresh)
+    expect(refresh).toBe(-1)
   })
 
   it('keeps the title for screen readers only and draws no icon tile', () => {

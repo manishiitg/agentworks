@@ -84,6 +84,7 @@ vi.mock('../../products/productSurfaceConfig', () => ({
 }))
 vi.mock('../ProductSurfaceIcon', () => ({ ProductSurfaceIcon: () => null }))
 import WorkspaceChatsSidebar from './WorkspaceChatsSidebar'
+import { SharedToolShortcuts } from './SharedToolShortcuts'
 import { useSidebarHistoryStore } from '../../stores/useSidebarHistoryStore'
 import { useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -101,14 +102,14 @@ afterEach(() => {
   mocks.app = { showWorkflowsOverview: false, showSchedulesOverview: false, adminPage: null }
   useSidebarHistoryStore.setState({ request: null, generation: 0 })
 })
-async function render(check: (host: HTMLDivElement, rerender: () => Promise<void>) => Promise<void>) {
+async function render(check: (host: HTMLDivElement, rerender: () => Promise<void>) => Promise<void>, content = () => <WorkspaceChatsSidebar />) {
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
   try {
-    await act(async () => root.render(<WorkspaceChatsSidebar />))
+    await act(async () => root.render(content()))
     await check(host, async () => {
-      await act(async () => root.render(<WorkspaceChatsSidebar />))
+      await act(async () => root.render(content()))
     })
   } finally {
     await act(async () => root.unmount())
@@ -392,4 +393,23 @@ it('opens AgentBridge directly with current product permission checks', async ()
     expect(host.querySelector('[aria-label="AgentBridge"]')).toBeNull()
     expect(host.querySelector('[data-testid="connected-agent-list"]')).toBeNull()
   })
+})
+
+it('names collapsed shortcuts on keyboard focus and rechecks access before navigation', async () => {
+  mocks.enabled = ['knowledgebase', 'mcp-gateway', 'bullpen']
+  await render(async host => {
+    const brain = host.querySelector<HTMLButtonElement>('[aria-label="Brain"]')!
+    const vault = host.querySelector<HTMLButtonElement>('[aria-label="Vault"]')!
+    expect(brain.textContent).toBe('')
+    expect(host.querySelector('a[aria-label="Dashboards"]')?.getAttribute('href')).toBe('/dashboards')
+    await act(async () => brain.focus())
+    expect(host.querySelector('[role="tooltip"]')?.textContent).toBe('Brain')
+    await act(async () => brain.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    expect(host.querySelector('[role="tooltip"]')).toBeNull()
+    mocks.user.allowed_products = ['knowledgebase']
+    await act(async () => vault.click())
+    expect(mocks.openProduct).not.toHaveBeenCalled()
+    await act(async () => brain.click())
+    expect(mocks.openProduct).toHaveBeenCalledWith('knowledgebase')
+  }, () => <SharedToolShortcuts compact />)
 })

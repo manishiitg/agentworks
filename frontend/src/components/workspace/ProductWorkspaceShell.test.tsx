@@ -48,3 +48,25 @@ describe('shared product workspace visibility', () => {
     expect(mounted).toHaveBeenCalledOnce()
   })
 })
+
+it('expands management when its secondary assistant closes and retains the existing draft', async () => {
+  const mounted = vi.fn()
+  function Assistant() { useEffect(() => { mounted() }, []); return <textarea aria-label="Assistant draft" /> }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host)
+  const render = (open: boolean, retain = true) => act(async () => root?.render(<ProductWorkspaceShell chatOpen panelOpen={open} retainWorkspace={retain} toolbarWhenPanelClosed splitRatio={.6}
+    onOpenChat={() => {}} onOpenWorkspace={() => {}} tabs="Vault" toolbar={null} chat="Management" workspace={<Assistant />} divider="Resize" />))
+  await render(false, false)
+  expect(host.querySelector('aside')).toBeNull()
+  expect(mounted).not.toHaveBeenCalled()
+  await render(true)
+  const draft = host.querySelector<HTMLTextAreaElement>('textarea')!
+  draft.value = 'Keep this unsent'
+  await render(false)
+  expect(host.querySelector('aside')?.hidden).toBe(true)
+  expect(host.querySelector('[aria-label="Show workspace"]')).toBeNull()
+  expect(host.textContent).not.toContain('Resize')
+  await render(true)
+  expect(host.querySelector('textarea')).toBe(draft)
+  expect(draft.value).toBe('Keep this unsent')
+  expect(mounted).toHaveBeenCalledOnce()
+})

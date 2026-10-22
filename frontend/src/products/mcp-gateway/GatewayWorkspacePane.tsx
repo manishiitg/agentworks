@@ -8,6 +8,7 @@ import { GatewayGroupsPanel } from './GatewayGroupsPanel'
 import { GatewayUsersPanel } from './GatewayUsersPanel'
 import { useVaultReadOnly } from './vaultReadOnly'
 import { GatewayFeedbackBoundary } from './gatewayConsoleShared'
+import { WorkspacePageContent } from '../../components/workspace/WorkspacePageContent'
 
 // The list lives in products/productPanels.ts with every other product's panels.
 export const gatewayPanels = VAULT_PANELS
@@ -28,7 +29,7 @@ export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSett
         value: peopleTab, onChange: value => setPeopleTab(value === 'groups' ? 'groups' : 'users'),
         options: [{ value: 'users', label: 'Users', icon: UserRound }, { value: 'groups', label: 'Groups', icon: UsersRound }], ariaLabel: 'People tabs',
       } : undefined} />
-    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+    <WorkspacePageContent className="min-h-0 flex-1 space-y-4 overflow-y-auto">
       <SettingsCardLayout unboxed={hideHeader}>
       <GatewayFeedbackBoundary>
       {(panel === 'servers' || panel === 'available-mcps') && servers}
@@ -39,7 +40,7 @@ export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSett
       {panel === 'models' && (readOnly ? <ReaderNote>The Vault chat's model is set by Vault managers.</ReaderNote> : modelSettings)}
       </GatewayFeedbackBoundary>
       </SettingsCardLayout>
-    </div>
+    </WorkspacePageContent>
   </div>
 }
 

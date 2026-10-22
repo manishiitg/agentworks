@@ -6,6 +6,7 @@ import { visibleProductSurfaceIDs, isLocalProductInstallation } from '../product
 import { McpAppsSection } from '../products/work/McpAppsSection'
 import PersonalAccountsPanel from './integrations/PersonalAccountsPanel'
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
+import { WorkspacePageContent } from './workspace/WorkspacePageContent'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Check, KeyRound, Loader2, Plug, Plus, RefreshCw, Trash2, Users, Vault } from 'lucide-react'
 import { Button } from './ui/Button'
@@ -474,7 +475,7 @@ export default function MyVaultsPage({ embedded = false }: { embedded?: boolean 
     <section aria-label="My vaults" className="flex h-full min-h-0 flex-col bg-background">
       {!embedded && <WorkspacePageHeader page="vaults" title="My vaults" icon={Vault} />}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl space-y-4 p-4 text-xs sm:p-6">
+        <WorkspacePageContent width="form" className="w-full space-y-4 text-xs">
           <div><h2 className="text-lg font-semibold">My vaults</h2><p className="mt-1 text-sm text-muted-foreground">Your connected accounts, secrets and vaults shared with you.</p></div>
           <PersonalAccountsPanel />
           <VaultSlackBots />
@@ -504,7 +505,7 @@ export default function MyVaultsPage({ embedded = false }: { embedded?: boolean 
           {vaults?.map(vault => <VaultCard key={vault.group.ID} vault={vault} onChanged={() => void refresh()} />)}
           {vaults !== null && <p className="text-muted-foreground">You own {owned} of {maxOwned} vaults.</p>}
           </>}
-        </div>
+        </WorkspacePageContent>
       </div>
     </section>
   )

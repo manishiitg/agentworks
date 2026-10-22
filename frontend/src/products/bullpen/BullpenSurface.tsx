@@ -4,8 +4,8 @@ import { AgentUsage, BullpenUsageOverview } from './BullpenUsage'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Terminal, UsersRound, ShieldCheck } from 'lucide-react'
 import { ModePresetBar } from '../../components/ModePresetBar'
-import { WorkspaceContextCard, WorkspaceContextRow } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspacePageHeader } from '../../components/workspace/WorkspacePageHeader'
+import { WorkspacePageContent } from '../../components/workspace/WorkspacePageContent'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { AgentMessagingSetupPanel } from './AgentMessagingSetupPanel'
 import { AdminPanel } from './AdminPanel'
@@ -118,19 +118,16 @@ export function BullpenSurface() {
     <ModePresetBar reduced walkthroughPaused />
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="flex h-full min-h-0 w-full flex-col">
-        <WorkspacePageHeader title="AgentBridge" icon={MessagesSquare} showBack={false} onProductHome={() => setView('agents')} />
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
-          <div className="min-w-0 flex-1 p-4 sm:p-6 lg:overflow-y-auto">
+        <WorkspacePageHeader title="AgentBridge" icon={MessagesSquare} showBack={false} onProductHome={() => setView('agents')} productMenuItems={[
+          ...views.map(item => ({ ...item, active: view === item.id, onSelect: () => setView(item.id) })),
+          ...(user?.role === 'admin' ? [{ id: 'admin', label: 'Administration', icon: ShieldCheck, active: view === 'admin', onSelect: () => setView('admin') }] : []),
+          { id: 'help', label: 'AgentBridge help', icon: BookOpen, href: 'https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md', external: true },
+        ]} />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <WorkspacePageContent>
             {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : view === 'admin' && user?.role === 'admin' ? <AdminPanel /> : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
-          </div>
-          <div className="shrink-0 lg:w-72" role="navigation" aria-label="AgentBridge views">
-            <WorkspaceContextCard title="AgentBridge" summary="Connect your AI agents so they can message each other." subtle>
-              <WorkspaceContextRow icon={UsersRound} active={view === 'agents'} onClick={() => setView('agents')}>Agents</WorkspaceContextRow>
-              <WorkspaceContextRow icon={MessagesSquare} active={view === 'setup'} onClick={() => setView('setup')}>Connect an agent</WorkspaceContextRow>
-              {user?.role === 'admin' && <WorkspaceContextRow icon={ShieldCheck} active={view === 'admin'} onClick={() => setView('admin')}>Administration</WorkspaceContextRow>}
-              <a href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noopener noreferrer" className="flex min-h-8 items-center gap-2.5 rounded-md px-1 py-1.5 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><BookOpen className="h-3.5 w-3.5" aria-hidden="true" />AgentBridge help<span className="sr-only"> (opens in a new tab)</span></a>
-            </WorkspaceContextCard>
-          </div>
+          </WorkspacePageContent>
+
         </div>
       </div>}
     </main>

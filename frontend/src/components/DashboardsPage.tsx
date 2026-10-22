@@ -5,6 +5,8 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { sharedReportLink } from '../utils/sharedLinks'
 import { WorkspaceTopToolbar } from './workspace/WorkspaceTopToolbar'
+import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
+import { WorkspacePageContent } from './workspace/WorkspacePageContent'
 
 type Dashboard = {
   dashboard_id: string
@@ -69,10 +71,14 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
 
   return <main className="flex h-full min-h-0 flex-col bg-background text-foreground">
     <WorkspaceTopToolbar navigationKind="page" navigationActive={navigationActive}>
-      <div className="flex items-center gap-3"><LayoutDashboard className="h-5 w-5 text-muted-foreground" /><h1 className="text-lg font-semibold">Dashboards</h1></div>
+      <ProductSurfaceSwitcher variant="header" menuTitle="Dashboards" menuContent={close => <div role="group" aria-label="Published dashboards" className="p-1">
+        <button type="button" role="menuitem" aria-current="page" onClick={close} className="flex min-h-8 w-full items-center gap-2 rounded-md bg-muted/60 px-2 py-1.5 text-left text-xs"><LayoutDashboard className="h-4 w-4" />All dashboards</button>
+        {rows?.map(row => <a key={`${row.workspace}/${row.dashboard_id}`} role="menuitem" onClick={close} href={row.short_path || sharedReportLink(window.location.origin, row.workspace, row.document_path)} className="flex min-h-8 items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Globe2 className="h-4 w-4 shrink-0" /><span className="truncate">{dashboardTitle(row)}</span></a>)}
+        {rows === null && <p role="status" className="px-2 py-2 text-xs text-muted-foreground">{failed ? 'Dashboards could not be loaded.' : 'Loading dashboards…'}</p>}
+      </div>} />
     </WorkspaceTopToolbar>
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-6xl px-5 py-7 sm:px-8 sm:py-9">
+      <WorkspacePageContent width="wide">
         <div className="mb-7 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight">Your dashboards</h2>
@@ -126,7 +132,7 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
             </ul>}
           </section>
         })}</div>}
-      </div>
+      </WorkspacePageContent>
     </div>
   </main>
 }

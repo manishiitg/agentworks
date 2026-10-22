@@ -1181,8 +1181,8 @@ export const agentApi = {
   // The product's declaration (product.yaml as served): commands, tools with
   // their presentation kinds, ui_panels. Surfaces read it to know what the
   // product offers rather than hardcoding it.
-  getAgentProfile: async (profileId: string): Promise<Record<string, unknown>> => {
-    const response = await api.get(`/api/agent-profiles/${encodeURIComponent(profileId)}`)
+  getAgentProfile: async (profileId: string, version?: number, includeSkillCatalog = false): Promise<Record<string, unknown>> => {
+    const response = await api.get(`/api/agent-profiles/${encodeURIComponent(profileId)}`, version || includeSkillCatalog ? { params: { ...(version ? { version } : {}), ...(includeSkillCatalog ? { include_skill_catalog: true } : {}) } } : undefined)
     return response.data
   },
 

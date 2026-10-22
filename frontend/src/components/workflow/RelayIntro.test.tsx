@@ -21,6 +21,10 @@ it.each([true, false])('only requests the shared creation dialog when allowed (%
   auth.user.can_create = allowed
   await act(async () => root.render(<RelayIntro />))
   const button = host.querySelector('button')!
+  expect(host.textContent).toContain('repeatable steps, AI tasks and decisions')
+  expect(host.textContent).toContain('Python')
+  expect(host.textContent).toContain('Sort a request by its topic or urgency')
+  expect(host.textContent).not.toContain('DAG')
   expect(button.disabled).toBe(!allowed)
   await act(async () => button.click())
   expect(useCommandDialogStore.getState().showPresetCreate).toBe(allowed)

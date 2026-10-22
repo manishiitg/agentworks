@@ -64,6 +64,8 @@ func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventor
 			UsedBy      []string `json:"used_by"`
 			BrainSource string   `json:"brain_source"`
 			BrainEdited bool     `json:"brain_edited"`
+			Source      string   `json:"source"`
+			SourceType  string   `json:"source_type"`
 		} `json:"documents"`
 		Usage map[string][]string `json:"usage"`
 	}
@@ -81,11 +83,15 @@ func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventor
 		}
 		parsed, err := ParseSkillFromContent(doc.Document, doc.Name, doc.FilePath)
 		if err != nil {
-			continue
+			// A malformed installed file is still part of the inventory. Show
+			// the failure rather than silently losing it from the Skills panel.
+			parsed = &Skill{Frontmatter: SkillFrontmatter{Name: doc.Name}, FolderName: doc.Name, FilePath: doc.FilePath, Content: doc.Document, ValidationError: err.Error()}
 		}
 		parsed.Managed = doc.Managed || IsBuiltinSkill(doc.Name)
+		parsed.FileManaged, parsed.Builtin = doc.Managed, IsBuiltinSkill(doc.Name)
 		parsed.UsedBy = doc.UsedBy
 		parsed.BrainSource, parsed.BrainEdited = doc.BrainSource, doc.BrainEdited
+		parsed.Source, parsed.SourceType = doc.Source, doc.SourceType
 		result.Skills = append(result.Skills, *parsed)
 	}
 	for name, usedBy := range raw.Usage {
@@ -105,7 +111,7 @@ func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventor
 			}
 		}
 		if !found {
-			result.Skills = append(result.Skills, Skill{Frontmatter: SkillFrontmatter{Name: builtin.Name, Description: builtin.Description}, FolderName: name, Content: builtin.Content, FilePath: "Platform", Managed: true, UsedBy: usedBy})
+			result.Skills = append(result.Skills, Skill{Frontmatter: SkillFrontmatter{Name: builtin.Name, Description: builtin.Description}, FolderName: name, Content: builtin.Content, FilePath: "Platform", Managed: true, Builtin: true, UsedBy: usedBy})
 		}
 	}
 

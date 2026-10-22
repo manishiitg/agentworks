@@ -1,7 +1,7 @@
 import { requestServiceChat } from '../../utils/serviceChatNavigation'
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { CalendarClock, ChevronDown, LayoutDashboard, Loader2, MessageCircle, MessageSquare, Search, Slack, Webhook, X } from 'lucide-react'
+import { CalendarClock, ChevronDown, Loader2, MessageCircle, MessageSquare, Search, Slack, Webhook, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
@@ -41,6 +41,7 @@ import { NewProjectMenu } from './NewProjectMenu'
 import SidebarStepInspections from './SidebarStepInspections'
 import { inspectionKey } from '../../utils/stepInspection'
 import { workflowTriggerLabel } from '../../utils/workflowSessionKinds'
+import { SharedToolShortcuts } from './SharedToolShortcuts'
 
 // Stored chats only resolve each workflow's Builder and run chats; there is no Recent list.
 const HISTORY_LIMIT = 30
@@ -84,7 +85,6 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const expanded = useSidebarExpansionStore(state => state.expanded)
   const toggleExpanded = useSidebarExpansionStore(state => state.toggle)
   const allowed = intersectAllowedProductSurfaces(enabledProductSurfaces(), user?.allowed_products)
-  const resourceSurfaces = (['knowledgebase', 'mcp-gateway', 'bullpen'] as const).filter(surface => allowed.includes(surface))
   useLiveRefetch(
     () => {
       setTick((value) => value + 1)
@@ -571,30 +571,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           <p className="px-2 py-3 text-xs text-muted-foreground">No chats yet.</p>
         )}
       </div>
-      <div className="flex shrink-0 gap-1 border-t border-border/60 p-2" data-testid="shared-tool-shortcuts">
-        <nav aria-label="Dashboards" className="min-w-0 flex-1">
-          <a href="/dashboards" title="Dashboards" aria-current={window.location.pathname === '/dashboards' ? 'page' : undefined}
-            className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${window.location.pathname === '/dashboards' ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}>
-            <LayoutDashboard className="h-5 w-5 shrink-0" aria-hidden="true" /><span>Dashboards</span>
-          </a>
-        </nav>
-        {resourceSurfaces.length > 0 && <nav aria-label="Shared tools" className="flex min-w-0 gap-1" style={{ flex: resourceSurfaces.length }}>
-          {resourceSurfaces.map(surface => {
-            const title = PRODUCT_SURFACE_LABELS[surface]
-            const selected = window.location.pathname !== '/dashboards' && product === surface && !globalPageOpen && !providersOpen
-            return <button key={surface} type="button" aria-label={title} title={title} aria-current={selected ? 'page' : undefined}
-              onClick={() => {
-                if (!intersectAllowedProductSurfaces(enabledProductSurfaces(), useAuthStore.getState().user?.allowed_products).includes(surface)) return
-                useSidebarHistoryStore.setState(state => ({ request: null, generation: state.generation + 1 }))
-                openProductWorkspace(surface)
-              }}
-              className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-[10px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75'}`}>
-              <ProductSurfaceIcon surface={surface} className="h-5 w-5 shrink-0" />
-              <span className="max-w-full truncate">{surface === 'bullpen' ? 'Bridge' : title}</span>
-            </button>
-          })}
-        </nav>}
-      </div>
+      <SharedToolShortcuts />
       {footer && <div className="shrink-0 border-t border-border/60 bg-background/60 p-2">{footer}</div>}
     </aside>
   )

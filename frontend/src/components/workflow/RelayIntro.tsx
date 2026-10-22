@@ -1,4 +1,4 @@
-import { CheckCircle2, MessageSquareText, Repeat2, Workflow } from 'lucide-react'
+import { Bot, GitBranch, Repeat2, Workflow } from 'lucide-react'
 import { ProductIntro } from '../ProductIntro'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useCommandDialogStore } from '../../stores/useCommandDialogStore'
@@ -12,13 +12,13 @@ export function RelayIntro() {
       product="Flows"
       icon={<Workflow className="h-9 w-9 text-gray-600 dark:text-gray-200" />}
       title="Run the same steps every time"
-      description="Describe the work once. Your website or CRM can start it whenever it is needed."
+      description="Combine repeatable steps, AI tasks and decisions in one process. Describe what you need; the builder connects the steps for you."
       features={[
-        { icon: MessageSquareText, title: 'Describe the work', description: 'Tell the builder what starts the work and what should happen.' },
-        { icon: CheckCircle2, title: 'Try an example', description: 'Check the result before you put it to work.' },
-        { icon: Repeat2, title: 'Use it again', description: 'Connect your app to the published Flow.' },
+        { icon: Repeat2, title: 'Repeatable steps', description: 'Move data, check details and call your apps in a dependable order.' },
+        { icon: Bot, title: 'AI where you need it', description: 'Let an agent read a document, extract information or prepare a response.' },
+        { icon: GitBranch, title: 'Choose the next step', description: 'Sort a request by its topic or urgency, then send it down the right path.' },
       ]}
-      footer="Example: a support request arrives → identify the issue → send it to the right team."
+      footer="Example: a request arrives → AI understands it → checks choose the right team → your app receives the result. Developers can also build the steps in Python."
       createTour="relay-create"
       createLabel="Create your first Flow"
       canCreate={canCreate}

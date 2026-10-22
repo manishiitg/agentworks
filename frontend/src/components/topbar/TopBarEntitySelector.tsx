@@ -1,6 +1,8 @@
 import { useCompactProductNavigation, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { LayoutGrid, Plus } from 'lucide-react'
+import { ProductPickerMenu } from '../workspace/ProductPickerMenu'
+import { ProductSurfaceSwitcher } from '../ProductSurfaceSwitcher'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 
@@ -54,7 +56,7 @@ export function TopBarEntitySelector({
   const toolbar = useProductNavigationToolbarStore(state => state.target)
   const toolbarKind = useProductNavigationToolbarStore(state => state.targetKind)
   const sidebarSettings = useProductNavigationToolbarStore(state => state.sidebarSettingsTarget)
-  const titleNavigation = compact && !!trigger && !!toolbar && toolbarKind !== 'page'
+  const titleNavigation = compact && !!trigger && !!toolbar && (toolbarKind !== 'page' || trigger.hasAttribute('data-product-header-picker'))
   const rootRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const [panelPosition, setPanelPosition] = useState({ left: 68, top: 12 })
@@ -98,7 +100,10 @@ export function TopBarEntitySelector({
 
   useEffect(() => {
     if (!titleNavigation) return
-    const show = () => { if (!open) onToggle() }
+    const show = (event: Event) => {
+      if (!open) onToggle()
+      if ((event as CustomEvent).detail?.focusFirst) requestAnimationFrame(() => panelRef.current?.querySelector<HTMLElement>('button:not(:disabled), a[href]')?.focus())
+    }
     window.addEventListener('open-workspace-picker', show)
     useProductNavigationToolbarStore.setState({ pickerOpen: open })
     return () => {
@@ -114,7 +119,7 @@ export function TopBarEntitySelector({
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { onClose(); trigger?.focus() }
-      if (!(event.target instanceof Element) || !rootRef.current?.contains(event.target) || !event.target.closest('[data-picker-setup]')) return
+      if (event.defaultPrevented || !(event.target instanceof Element) || !rootRef.current?.contains(event.target) || !event.target.closest('[data-picker-setup]')) return
       if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
       event.preventDefault()
       const items = Array.from(rootRef.current.querySelectorAll<HTMLButtonElement>('[data-picker-setup] [role="menuitem"]:not(:disabled)'))
@@ -178,14 +183,11 @@ export function TopBarEntitySelector({
       </div>
       {(open || compact) && (
         <div ref={panelRef} hidden={!open} style={sidebar || titleNavigation ? panelPosition : undefined} className={`preset-dropdown ${sidebar || titleNavigation ? 'fixed w-[420px] max-h-[calc(100dvh-64px)] overflow-hidden' : compact ? 'absolute right-0 top-full mt-1 w-[420px] max-h-[calc(100dvh-64px)] overflow-hidden' : 'absolute left-0 top-full mt-1 w-64'} ${compact ? (open ? 'flex flex-col' : 'hidden') : ''} z-50 max-w-[calc(100vw-24px)] rounded-lg border border-border bg-popover text-popover-foreground shadow-xl`}>
-          {compact && <header className="shrink-0 border-b border-border bg-popover px-3 py-2 text-xs font-semibold">{placeholder === 'Select Automation' ? 'Automations' : 'Workspaces'}</header>}
-          {compact ? <div data-picker-workspaces className="min-h-0 max-h-[min(260px,35dvh)] overflow-y-auto [&>div]:max-h-none [&>div]:space-y-0 [&>div]:p-1 [&_button]:py-1.5 [&_button]:text-xs">{children}</div> : children}
-          {compact && <>
-
-            {!sidebarSettings && <section data-picker-setup className="shrink-0 border-t border-border p-1.5">
-              <div ref={registerSetup} data-picker-setup-slot />
-            </section>}
-          </>}
+          {compact ? <ProductPickerMenu title={placeholder === 'Select Automation' ? 'Automations' : placeholder === 'Select Flow' ? 'Flows' : 'Workspaces'}
+            products={<ProductSurfaceSwitcher menuOnly onSelect={onClose} />}
+            footer={!sidebarSettings && <section data-picker-setup className="shrink-0 border-t border-border p-1.5"><div ref={registerSetup} data-picker-setup-slot /></section>}>
+            {children}
+          </ProductPickerMenu> : children}
         </div>
       )}
     </div>

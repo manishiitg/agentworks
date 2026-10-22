@@ -16,14 +16,19 @@ type SkillFrontmatter struct {
 
 // Skill represents a complete skill with parsed content
 type Skill struct {
-	Managed     bool             `json:"managed,omitempty"`
-	UsedBy      []string         `json:"used_by,omitempty"`
-	Frontmatter SkillFrontmatter `json:"frontmatter"`
-	Content     string           `json:"content"`              // Markdown content after frontmatter
-	FolderName  string           `json:"folder_name"`          // Skill folder name
-	FilePath    string           `json:"file_path"`            // Relative path in workspace
-	SourceURL   string           `json:"source_url,omitempty"` // Source URL (populated from lock file)
-	LockInfo    *CLILockEntry    `json:"lock_info,omitempty"`  // Version tracking from skills-lock.json
+	Managed         bool             `json:"managed,omitempty"`
+	FileManaged     bool             `json:"file_managed"`
+	Builtin         bool             `json:"builtin"`
+	UsedBy          []string         `json:"used_by,omitempty"`
+	Frontmatter     SkillFrontmatter `json:"frontmatter"`
+	Content         string           `json:"content"`              // Markdown content after frontmatter
+	FolderName      string           `json:"folder_name"`          // Skill folder name
+	FilePath        string           `json:"file_path"`            // Relative path in workspace
+	SourceURL       string           `json:"source_url,omitempty"` // Source URL (populated from lock file)
+	LockInfo        *CLILockEntry    `json:"lock_info,omitempty"`  // Version tracking from skills-lock.json
+	Source          string           `json:"source,omitempty"`
+	SourceType      string           `json:"source_type,omitempty"`
+	ValidationError string           `json:"validation_error,omitempty"`
 	// BrainSource is the record written when the skill was installed from Brain; BrainEdited says the installed files
 	// have changed since.
 	BrainSource string `json:"brain_source,omitempty"`

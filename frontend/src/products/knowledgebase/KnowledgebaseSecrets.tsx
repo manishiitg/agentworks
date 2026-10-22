@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { KeyRound, Trash2 } from 'lucide-react'
 import api from '../../services/api'
 import { Button } from '../../components/ui/Button'
+import { WorkspacePageContent } from '../../components/workspace/WorkspacePageContent'
 
 // Brain's own secrets (PLAT-633), not Vault's platform secrets: names only, managed by people who own the whole Brain.
 export function KnowledgebaseSecrets() {
@@ -35,7 +36,7 @@ export function KnowledgebaseSecrets() {
       setNames(response.data.secrets ?? [])
     } catch (failure) { failed(failure, 'The secret was not removed.') } finally { setBusy(false) }
   }
-  return <div className="space-y-4 p-4 text-sm" data-testid="knowledgebase-secrets">
+  return <WorkspacePageContent className="space-y-4 text-sm" data-testid="knowledgebase-secrets">
     <div>
       <h3 className="font-semibold">Brain secrets</h3>
       <p className="mt-1 text-xs text-muted-foreground">Private keys used by Brain, such as your backup token. Shared platform secrets are managed in Vault. Values are never shown.</p>
@@ -54,5 +55,5 @@ export function KnowledgebaseSecrets() {
       <input aria-label="Secret value" type="password" autoComplete="off" value={value} onChange={event => setValue(event.target.value)} placeholder="Value" className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs" />
       <div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={() => { setAdding(false); setName(''); setValue('') }}>Cancel</Button><Button size="sm" type="submit" disabled={busy || !name.trim() || !value}>Save</Button></div>
     </form>}
-  </div>
+  </WorkspacePageContent>
 }

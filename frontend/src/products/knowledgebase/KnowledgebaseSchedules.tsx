@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { WorkspacePageContent } from '../../components/workspace/WorkspacePageContent'
 import { CalendarClock, Play } from 'lucide-react'
 import api from '../../services/api'
 import { knowledgebaseError } from '../../services/knowledgebaseApi'
@@ -59,7 +60,7 @@ export function KnowledgebaseSchedules() {
   }
   if (!job) return <div className="p-4 text-sm text-muted-foreground">{error ? <p role="alert" className="text-destructive">{String(error)}</p> : 'Loading schedules…'}</div>
   const cadence = job.cadence_hours ?? 168
-  return <div className="space-y-4 p-4 text-sm" data-testid="knowledgebase-schedules">
+  return <WorkspacePageContent className="space-y-4 text-sm" data-testid="knowledgebase-schedules">
     <section className="space-y-3 rounded-lg border border-border p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -99,5 +100,5 @@ export function KnowledgebaseSchedules() {
       </div>
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </section>
-  </div>
+  </WorkspacePageContent>
 }

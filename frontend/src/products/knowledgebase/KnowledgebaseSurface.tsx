@@ -4,7 +4,7 @@ import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
 import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
-import { ArrowLeft, MessageCircle, SlidersHorizontal } from 'lucide-react'
+import { MessageCircle, SlidersHorizontal, X } from 'lucide-react'
 import ChatArea from '../../components/ChatArea'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import { ProductBreadcrumb } from '../../components/workspace/ProductBreadcrumb'
@@ -23,7 +23,6 @@ import { clampWorkSplitRatio } from '../work/workSurfaceLayoutResolver'
 import { KnowledgebaseWorkspacePane, type KnowledgebaseView } from './KnowledgebaseWorkspacePane'
 import { KnowledgebaseAccessConfirmation } from './KnowledgebaseAccessConfirmation'
 import { KnowledgebaseModelSettings } from './KnowledgebaseModelSettings'
-import { KnowledgebaseContextPanel } from './KnowledgebaseContextPanel'
 import { KnowledgebaseBackupPanel } from './KnowledgebaseBackupPanel'
 import { useKnowledgebaseChat } from './useKnowledgebaseChat'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
@@ -71,11 +70,7 @@ export function KnowledgebaseSurface() {
     setView(next); setMobilePane('chat')
   }
   useRegisterPanelSwitcher('knowledgebase', views.filter(item => ['library', 'access', 'backup', 'crew'].includes(item.id)), id => { const next = normalizeBrainView(id); if (next) openView(next) })
-  const openChat = () => {
-    if (!canManage) return
-    chat.request(); setOpenScope(scope); setMobilePane('workspace')
-  }
-  const closeChat = () => { setOpenScope(null); setMobilePane('workspace') }
+  const closeChat = () => { setOpenScope(null); setMobilePane('chat') }
   useEffect(() => {
     const home = (event: Event) => { if ((event as CustomEvent).detail === 'knowledgebase') { setView('library'); setFolder(''); setOpenScope(null); setMobilePane('chat') } }
     window.addEventListener('open-product-home', home)
@@ -154,27 +149,25 @@ export function KnowledgebaseSurface() {
       <div className={globalPage ? 'hidden' : 'flex h-full min-h-0 flex-col'}>
         {canManage && <KnowledgebaseAccessConfirmation proposals={proposals} error={approvalError} busy={approving} onConfirm={confirmAccess} />}
         {!bootstrap ? <div className="grid h-full place-items-center p-6"><div className="max-w-md text-center">{error ? <><p role="alert" className="text-sm text-destructive">{error}</p><button type="button" onClick={() => setAttempt(value => value + 1)} className="mt-4 rounded-md border border-border px-4 py-2 text-sm">Retry</button></> : <p className="text-sm text-muted-foreground">Opening Brain…</p>}</div></div> : <div className="min-h-0 flex-1" data-testid={!canManage ? 'knowledgebase-reader' : undefined}><ProductWorkspaceShell
-          splitRef={containerRef} chatOpen panelOpen splitRatio={ratio} compactContext={!chatOpen} mobilePane={mobilePane} navigationActive={!globalPage}
+          splitRef={containerRef} chatOpen panelOpen={chatOpen} retainWorkspace={canManage && Boolean(chat.tabId)} toolbarWhenPanelClosed splitRatio={ratio} mobilePane={mobilePane} navigationActive={!globalPage}
           onOpenChat={() => setMobilePane('chat')} onOpenWorkspace={() => setMobilePane('workspace')}
-          chatProps={{ 'aria-label': 'Brain library and management' }} workspaceProps={{ 'aria-label': chatOpen ? 'Previous Brain conversation' : 'Brain overview' }}
-          tabs={<div className="flex min-w-0 flex-1 items-center gap-2"><ProductBreadcrumb surface="knowledgebase" section={effectiveView === 'library' ? undefined : title} onHome={() => { openView('library'); setFolder(''); closeChat() }} />{folder && <span className="truncate text-xs text-muted-foreground" title={folder}>{folder}</span>}</div>}
+          chatProps={{ 'aria-label': 'Brain library and management' }} workspaceProps={{ 'aria-label': 'Previous Brain conversation' }}
+          tabs={<div className="flex min-w-0 flex-1 items-center gap-2"><ProductBreadcrumb surface="knowledgebase" menuItems={[
+            ...views.filter(item => ['library', 'access', 'crew', 'backup'].includes(item.id)).map(item => ({ ...item, active: effectiveView === item.id, detail: item.id === 'backup' ? bootstrap.backup_configured ? 'Configured' : 'Not set up' : undefined, attention: item.id === 'backup' && !bootstrap.backup_configured && bootstrap.is_admin, onSelect: () => openView(item.id) })),
+          ]} section={effectiveView === 'library' ? undefined : title} onHome={() => { openView('library'); setFolder(''); closeChat() }} />{folder && <span className="truncate text-xs text-muted-foreground" title={folder}>{folder}</span>}</div>}
           toolbar={<div className="ml-auto flex shrink-0 items-center gap-1">
-            <button type="button" onClick={() => setMobilePane(value => value === 'chat' ? 'workspace' : 'chat')} aria-label="Brain options" className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted md:hidden"><SlidersHorizontal className="h-4 w-4" /></button>
+            {chatOpen && <button type="button" onClick={() => setMobilePane(value => value === 'chat' ? 'workspace' : 'chat')} aria-label={mobilePane === 'chat' ? 'Show previous Brain conversation' : 'Show Brain library'} className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted md:hidden"><SlidersHorizontal className="h-4 w-4" /></button>}
           </div>}
           chat={<div className="flex min-h-0 flex-1 flex-col">
             {error && <p role="status" className="px-4 py-2 text-xs text-destructive">{error}</p>}
-            <div className="min-h-0 flex-1"><KnowledgebaseWorkspacePane view={effectiveView} folder={folder} onFolder={setFolder} onRefresh={() => setRevision(value => value + 1)} onAsk={undefined} onGitAsk={undefined} onConnect={canManage ? connect : undefined} revision={revision} onOpenAccess={canManage ? () => openView('access') : undefined} onUseCrew={canManage ? () => openView('crew') : undefined} onPrepared={() => setRevision(value => value + 1)} isAdmin={bootstrap.is_admin} crew={<Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading Crews…</p>}><KnowledgebaseUseCrew key={scope} onPreviousChat={openChat} /></Suspense>} backup={<KnowledgebaseBackupPanel bootstrap={bootstrap} onPrepared={() => setRevision(value => value + 1)} onSecrets={() => openView('secrets')} />} modelSettings={chat.tabId ? <KnowledgebaseModelSettings tabId={chat.tabId} /> : <div className="p-4 text-sm text-muted-foreground">{chat.error ? <><p role="alert">{chat.error}</p><button type="button" onClick={chat.retry} className="mt-2 underline">Retry assistant settings</button></> : 'Opening model settings…'}</div>} /></div>
+            <div className="min-h-0 flex-1"><KnowledgebaseWorkspacePane view={effectiveView} folder={folder} onFolder={setFolder} onRefresh={() => setRevision(value => value + 1)} onAsk={undefined} onGitAsk={undefined} onConnect={canManage ? connect : undefined} revision={revision} onOpenAccess={canManage ? () => openView('access') : undefined} onUseCrew={canManage ? () => openView('crew') : undefined} onPrepared={() => setRevision(value => value + 1)} isAdmin={bootstrap.is_admin} crew={<Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading Crews…</p>}><KnowledgebaseUseCrew key={scope} /></Suspense>} backup={<KnowledgebaseBackupPanel bootstrap={bootstrap} onPrepared={() => setRevision(value => value + 1)} onSecrets={() => openView('secrets')} />} modelSettings={chat.tabId ? <KnowledgebaseModelSettings tabId={chat.tabId} /> : <div className="p-4 text-sm text-muted-foreground">{chat.error ? <><p role="alert">{chat.error}</p><button type="button" onClick={chat.retry} className="mt-2 underline">Retry assistant settings</button></> : 'Opening model settings…'}</div>} /></div>
           </div>}
           divider={<WorkspaceSplitDivider ratio={ratio} onPointerDown={startResize} onStep={delta => changeRatio(ratio + delta)} className="md:row-start-2" />}
           workspace={<div className="h-full min-h-0 overflow-y-auto">
-            <div hidden={chatOpen}>
-              <button type="button" onClick={() => setMobilePane('chat')} className="mx-4 mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground md:hidden"><ArrowLeft className="h-3.5 w-3.5" />Back to library</button>
-              <KnowledgebaseContextPanel bootstrap={bootstrap} folder={folder} view={effectiveView} onOpen={openView} onConnect={connect} />
-            </div>
             {canManage && <div hidden={!chatOpen} className="h-full min-h-0 flex-col" style={{ display: chatOpen ? 'flex' : 'none' }}>
-              <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2"><WorkspaceViewIconButton label="Back to Brain overview" icon={ArrowLeft} onClick={closeChat} /><MessageCircle className="h-4 w-4 text-muted-foreground" /><h2 className="text-sm font-medium">Previous Brain conversation</h2></div>
+              <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2"><WorkspaceViewIconButton label="Close previous Brain conversation" icon={X} onClick={closeChat} /><MessageCircle className="h-4 w-4 text-muted-foreground" /><h2 className="text-sm font-medium">Previous Brain conversation</h2></div>
               <div className="min-h-0 flex-1">{chat.error ? <div className="p-4 text-sm"><p role="alert" className="text-destructive">{chat.error}</p><button type="button" onClick={chat.retry} className="mt-2 underline">Retry history</button></div> : chat.tabId ? <ChatArea ref={chat.chatRef} tabId={chat.tabId} compact hideInput previousChatsWorkspacePath={bootstrap.chat_workspace} knowledgebaseFolderPath={folder}
-                landingContent={<ProductChatLandingCard icon={MessageCircle} title="Previous Brain conversation" examples={[]} description="This history is read-only. Use a Crew for new knowledge work." />} /> : chatOpen ? <p className="p-5 text-xs text-muted-foreground">Opening previous conversation…</p> : null}</div>
+                landingContent={<ProductChatLandingCard icon={MessageCircle} title="Previous Brain conversation" examples={[]} description="Revisit previous conversations here. Use a Crew for new knowledge work." />} /> : chatOpen ? <p className="p-5 text-xs text-muted-foreground">Opening previous conversation…</p> : null}</div>
             </div>}
           </div>}
         /></div>}

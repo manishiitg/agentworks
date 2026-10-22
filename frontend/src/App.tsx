@@ -12,7 +12,6 @@ import { resetSessionId } from "./services/api";
 import { AuthWrapper } from "./components/AuthWrapper";
 import { Loader2 } from "lucide-react";
 import { ProductTopBar, ProductTopBarMain } from './components/workspace/ProductTopBar'
-import WorkspaceTopBarControls from './components/WorkspaceTopBarControls'
 import { WorkspaceSetupMenu } from './components/workspace/WorkspaceSetupMenu'
 import { ModePresetBar } from "./components/ModePresetBar";
 import { TerminalFocusLayout } from './components/TerminalFocusLayout'
@@ -796,7 +795,7 @@ function AppWorkspace() {
         )}
         {dashboardsOpen ? (
           <div className="flex h-screen min-h-0 bg-background">
-            <ProductTopBar sidebar><WorkspaceSetupMenu /><WorkspaceTopBarControls /></ProductTopBar>
+            <ProductTopBar sidebar><WorkspaceSetupMenu /></ProductTopBar>
             <div className="min-h-0 min-w-0 flex-1">
               {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<FileSurfaceFallback />}><AdminPages /></Suspense> : null}
               <div hidden={showProviders || Boolean(adminPage)} className="h-full">

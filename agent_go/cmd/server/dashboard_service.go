@@ -110,8 +110,8 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 		if manifest.ID != "" {
 			id = manifest.ID
 		}
-		if manifest.Title != "" {
-			title = manifest.Title
+		if displayTitle := manifest.displayTitle(); displayTitle != "" {
+			title = displayTitle
 		}
 		if claims.AccessToken != nil && (!workspaceDashboardTokenAllows(claims, product.ProfileID, id)) {
 			return target, dashboardFailure(404, "project unavailable")

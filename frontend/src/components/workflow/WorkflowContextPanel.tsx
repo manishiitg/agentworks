@@ -1,77 +1,96 @@
-import { ArrowUpCircle, CalendarClock, BookOpen, Code2, Database, History, Cloud, Cpu, DollarSign, Files, FileText, Globe, Hand, LayoutDashboard, MessageSquareText, Route, Settings, BellRing, ShieldCheck, Sparkles } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { LayoutDashboard } from 'lucide-react'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { projectMenuHistoryScope, useProjectMenuHistoryStore } from '../../stores/useProjectMenuHistoryStore'
+import api from '../../services/api'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../workspace/WorkspaceContextCard'
 import { WorkspaceAgentBridgeRows } from '../workspace/WorkspaceAgentBridgeRows'
-import { WorkspaceAutomationRows, WorkspaceChannelRows, WorkspaceConnectionRows } from '../workspace/WorkspaceProjectNavigation'
 import { useProjectStatus } from '../workspace/useProjectStatus'
 import { WorkspaceBrowserRow } from '../workspace/WorkspaceBrowserRow'
+import { PROJECT_MENU_GROUPS } from '../workspace/projectMenuGroups'
+import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { ShareDashboardButton } from './ShareDashboardButton'
 import { selectReportDocument, useReportDocuments } from './reportDocuments'
 import { reportDocumentLabel } from './reportDocumentLabels'
 import { usePendingDecisionState } from './hooks/usePendingDecisionCount'
-import { PulseIcon } from './pulseIcon'
+import { workflowProjectMenuItems, type WorkflowMenuItem } from './workflowProjectMenu'
 
-/** Navigation projects the existing server access, manifest and real destinations. */
+const EMPTY_RECENT: string[] = []
+
+/** Current product admission controls the inventory; recents are presentation only. */
 export function WorkflowContextPanel({ workspacePath, relayMode = false }: { workspacePath: string | null; relayMode?: boolean }) {
-  const open = useWorkflowStore(state => state.openWorkspaceView)
+  const openView = useWorkflowStore(state => state.openWorkspaceView)
   const canWrite = useCanWriteWorkflow(workspacePath)
   const multiUser = useAuthStore(state => state.isMultiUserMode)
+  const user = useAuthStore(state => state.user)
+  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const manifest = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest)
+  const product = relayMode ? 'relays' : 'agentworks'
+  const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', product, manifest?.id ?? workspacePath ?? '')
+  const storedRecent = useProjectMenuHistoryStore(state => state.recent[scope] || EMPTY_RECENT)
+  const incomingEmail = false
   const { documents, defaultPath } = useReportDocuments(workspacePath || '')
   const decisions = usePendingDecisionState(relayMode ? null : workspacePath)
-  const manifest = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest)
-  const status = useProjectStatus({ kind: 'goal', workspacePath: workspacePath || '', profileId: relayMode ? 'relays' : 'agentworks', projectId: manifest?.id ?? workspacePath ?? '', enabled: canWrite })
+  const status = useProjectStatus({ kind: 'goal', workspacePath: workspacePath || '', profileId: product, projectId: manifest?.id ?? workspacePath ?? '', enabled: canWrite })
+  const [sharing, setSharing] = useState<{ scope: string; allowed: boolean } | null>(null)
+  useEffect(() => {
+    if (!workspacePath || !canWrite) return
+    const controller = new AbortController()
+    void api.post<{ can_share: boolean }>('/api/dashboards', { workspace: workspacePath, action: 'share_status' }, { signal: controller.signal })
+      .then(({ data }) => { if (!controller.signal.aborted) setSharing({ scope, allowed: data.can_share === true }) })
+      .catch(() => { if (!controller.signal.aborted) setSharing({ scope, allowed: false }) })
+    return () => controller.abort()
+  }, [scope, workspacePath, canWrite])
+  const menuOptions = { relayMode, isMultiUser: multiUser, pulseEnabled: manifest?.pulse?.enabled === true, incomingEmail, canShare: sharing?.scope === scope && sharing.allowed }
+  const inventory = workflowProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
+  const items: WorkflowMenuItem[] = [
+    ...inventory.map(item => item.id === 'report' ? { ...item, reportPath: defaultPath } : item),
+    ...documents.filter(document => document.path !== defaultPath).map(document => ({ id: 'report:document:' + document.path, view: 'report' as const, group: 'Build' as const, label: reportDocumentLabel(document, documents), icon: LayoutDashboard, reportPath: document.path })),
+  ]
+  const byId = new Map(items.map(item => [item.id, item]))
+  const recent = [...new Set(storedRecent)].flatMap(id => byId.get(id) || []).slice(0, 10)
+  const recentIDs = new Set(recent.map(item => item.id))
   if (!workspacePath || !canWrite) return null
-  const openConnection = (section: string) => open('mcp', section)
-  const pulseOn = manifest?.pulse?.enabled === true
-  const decisionsRow = (<Row icon={Hand} attention={decisions.loaded && decisions.count > 0} detail={decisions.loaded && decisions.count ? `${decisions.count} waiting` : undefined} onClick={() => open('human-actions')}>Decisions</Row>)
+  const open = (item: WorkflowMenuItem) => {
+    const current = useAuthStore.getState().user
+    if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
+    const admitted = workflowProjectMenuItems({ ...menuOptions, allowedProducts: current?.allowed_products })
+    if (!admitted.some(candidate => candidate.id === item.id) && !(item.reportPath && byId.has(item.id))) return
+    useProjectMenuHistoryStore.getState().visit(scope, item.id)
+    if (item.external) { openProductWorkspace(item.external); return }
+    if (!item.view) return
+    if (item.reportPath) selectReportDocument(workspacePath, item.reportPath)
+    openView(item.view, item.target)
+  }
+  const renderItem = (item: WorkflowMenuItem) => {
+    if (item.external) return <WorkspaceAgentBridgeRows key={item.id} onOpen={() => open(item)} />
+    if (item.id === 'mcp:share') return <ShareDashboardButton key={item.id} workspacePath={workspacePath} label={item.label} variant="row" onOpen={() => open(item)} />
+    if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId="workflow" onClick={() => open(item)} />
+    const automation = item.view === 'workshop' ? item.target : undefined
+    const total = automation === 'schedules' ? status.schedules : automation === 'conditions' ? status.conditions : automation === 'triggers' ? status.triggers : automation === 'functions' ? status.functions : item.id === 'mcp:connected' ? status.mcps : undefined
+    const detail = item.id === 'human-actions' ? decisions.loaded && decisions.count ? `${decisions.count} waiting` : undefined
+      : item.id === 'mcp:slack' ? status.slackAccount : item.id === 'mcp:slack-bot' ? status.slackBot : item.id === 'mcp:whatsapp' ? status.whatsapp : automation === 'email' ? status.email : total === undefined ? undefined : total ? String(total) : 'None'
+    return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} attention={item.id === 'human-actions' && decisions.loaded && decisions.count > 0} onClick={() => open(item)}>{item.label}</Row>
+  }
   return <WorkspaceContextCard>
-    {!relayMode && pulseOn && <>
-      <Row icon={PulseIcon} onClick={() => open('pulse')}>Pulse</Row>
-      {decisionsRow}
-    </>}
-    <Group title="Your work">
-      <Row icon={LayoutDashboard} onClick={() => { selectReportDocument(workspacePath, defaultPath); open('report') }}>Project dashboard</Row>
-      <Row icon={Route} onClick={() => open('flow', relayMode ? 'graph' : undefined)}>{relayMode ? 'Flow' : 'Plan & progress'}</Row>
-      {relayMode && <Row icon={History} onClick={() => open('flow', 'calls')}>Runs</Row>}
-      <Row icon={Files} onClick={() => open('files')}>Files</Row>
-      {!relayMode && <Row icon={CalendarClock} detail={status.schedules ? String(status.schedules) : undefined} onClick={() => open('workshop', 'schedules')}>Schedules</Row>}
-      {!relayMode && !pulseOn && decisionsRow}
-    </Group>
-    <Group title="Share" collapsed>
-      {documents.filter(document => document.path !== defaultPath).map(document => <Row key={document.path} icon={LayoutDashboard} hint={document.path} onClick={() => { selectReportDocument(workspacePath, document.path); open('report') }}>{reportDocumentLabel(document, documents)}</Row>)}
-      <ShareDashboardButton workspacePath={workspacePath} variant="row" onOpen={() => openConnection('share')} />
-      {!relayMode && <WorkspaceBrowserRow workspacePath={workspacePath} profileId="workflow" onClick={() => open('browser')} />}
-      <WorkspaceAutomationRows relay={relayMode} onOpen={section => open('workshop', section)} counts={status} excludeSchedules />
-      <WorkspaceChannelRows onOpen={openConnection} slack={true} whatsapp={!relayMode} slackBot={!relayMode} slackAccountStatus={status.slackAccount} slackBotStatus={status.slackBot} whatsappStatus={status.whatsapp} emailStatus={status.email} onOpenEmail={() => open('workshop', 'email')} />
-    </Group>
-    <Group title="Connections" collapsed>
-      <WorkspaceConnectionRows onOpen={openConnection} relayMode={relayMode} details={{ 'mcp:connected': status.mcps === undefined ? undefined : status.mcps ? String(status.mcps) : 'None' }} />
-      <WorkspaceAgentBridgeRows />
-    </Group>
-    <Group title="Setup" collapsed>
-      {!relayMode && !pulseOn && <Row icon={PulseIcon} onClick={() => open('pulse')}>Turn Pulse on</Row>}
-      {relayMode && <Row icon={Code2} onClick={() => open('flow', 'source')}>Code</Row>}
-      {!relayMode && <>
-        <Row icon={BookOpen} onClick={() => open('knowledge', 'knowledgebase')}>Knowledge base</Row>
-        <Row icon={Database} onClick={() => open('knowledge', 'database')}>Database</Row>
-      </>}
-      <Row icon={Sparkles} onClick={() => open('mcp', 'skills')}>Skills</Row>
-      <Row icon={MessageSquareText} onClick={() => open('workshop', 'chats')}>Chat history</Row>
-      <Row icon={DollarSign} onClick={() => open('costs')}>Costs and usage</Row>
-      <Row icon={FileText} onClick={() => open('execution-logs')}>Run logs</Row>
-      <Row icon={Cpu} onClick={() => open('identity', 'llm')}>Models</Row>
-      {!relayMode && <Row icon={ArrowUpCircle} onClick={() => open('identity', 'upgrades')}>Upgrades</Row>}
-      <Row icon={Settings} onClick={() => open('identity', 'general')}>Settings</Row>
-      {multiUser && <Row icon={ShieldCheck} onClick={() => open('access', 'workflow')}>Team</Row>}
-      {!relayMode && <>
-        <Row icon={BookOpen} onClick={() => open('playbooks')}>Workflow playbooks</Row>
-        <Row icon={Cloud} onClick={() => open('backup')}>Backup</Row>
-        <Row icon={Globe} onClick={() => open('publish')}>Publish</Row>
-        <Row icon={BellRing} onClick={() => open('notify')}>Notify</Row>
-      </>}
-    </Group>
+    {recent.length > 0 && <Group title="Recent">{recent.map(renderItem)}</Group>}
+    {PROJECT_MENU_GROUPS.map(group => {
+      const remaining = items.filter(item => item.group === group && !recentIDs.has(item.id))
+      if (!remaining.length) return null
+      const plain = remaining.filter(item => !item.subgroup)
+      const subgroups = [...new Set(remaining.flatMap(item => item.subgroup ? [item.subgroup] : []))]
+      return <Group key={scope + group} title={group} collapsed defaultOpen={!recent.length && group === 'Build'}>
+        {group !== 'Use' && plain.map(renderItem)}
+        {subgroups.map(subgroup => <div key={subgroup} role="group" aria-label={subgroup} className="space-y-1">
+          <h3 className="px-1 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">{subgroup}</h3>
+          {remaining.filter(item => item.subgroup === subgroup).map(renderItem)}
+        </div>)}
+        {group === 'Use' && plain.map(renderItem)}
+      </Group>
+    })}
   </WorkspaceContextCard>
 }

@@ -7,6 +7,7 @@ import type {
   ValidateSkillRequest,
   ValidateSkillResponse,
   ListSkillsResponse,
+  RuntimeSkillsResponse,
 } from '../types/skills';
 
 const API_BASE_URL = getApiBaseUrl();
@@ -20,6 +21,7 @@ const api = axios.create({
 
 // Add auth token interceptor
 api.interceptors.request.use((config) => {
+  config.baseURL = getApiBaseUrl()
   const authToken = getAuthToken()
   if (authToken && config.headers) {
     config.headers['Authorization'] = `Bearer ${authToken}`
@@ -28,6 +30,15 @@ api.interceptors.request.use((config) => {
 })
 
 export const skillsApi = {
+  runtimeSkills: async (workspacePath: string, sessionId?: string | null): Promise<RuntimeSkillsResponse> => {
+    const response = await api.get('/api/skills/runtime', { params: { workspace_path: workspacePath, session_id: sessionId || undefined } });
+    return response.data;
+  },
+
+  runtimeSkillFile: async (workspacePath: string, sessionId: string, file: string): Promise<{ path: string; content: string; session_id: string }> => {
+    const response = await api.get('/api/skills/runtime', { params: { workspace_path: workspacePath, session_id: sessionId, file } });
+    return response.data;
+  },
   // List all skills
   listSkills: async (workspacePath?: string | null): Promise<ListSkillsResponse> => {
     if (!workspacePath) return { skills: [], total: 0, usage: {} };

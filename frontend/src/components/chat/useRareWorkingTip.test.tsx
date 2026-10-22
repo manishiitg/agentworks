@@ -8,6 +8,7 @@ vi.mock('../../services/api', () => ({ default: { get: state.get } }))
 vi.mock('../../stores/useProductSurfaceStore', () => ({ useProductSurfaceStore: (select: (value: { productSurface: string }) => unknown) => select({ productSurface: 'code' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ activeTabId: null, chatTabs: {} }) } }))
 import { useRareWorkingTip } from './useRareWorkingTip'
+import { PRODUCT_TIPS_PREFERENCE_CHANGED } from '../../utils/productTipsPreference'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -40,4 +41,43 @@ it('asks the server once, after ten seconds of work, and shows only what the ser
     vi.useRealTimers()
     state.get.mockReset()
   }
+})
+
+it('hides a visible tip immediately when disabled and checks the server again when enabled', async () => {
+  vi.useFakeTimers()
+  state.get.mockResolvedValue({ data: { tip: { id: 'schedule', text: 'Schedule a report' } } })
+  function View() { return <div>{useRareWorkingTip(true, 'active-turn')}</div> }
+  const host = document.createElement('div'), root = createRoot(host)
+  const preference = (enabled: boolean) => act(async () => { window.dispatchEvent(new CustomEvent(PRODUCT_TIPS_PREFERENCE_CHANGED, { detail: { enabled } })) })
+  try {
+    await act(async () => root.render(<View />))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    expect(host.textContent).toBe('Schedule a report')
+    await preference(false)
+    expect(host.textContent).toBe('')
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(state.get).toHaveBeenCalledTimes(1)
+    state.get.mockResolvedValue({ data: { tip: null } })
+    await preference(true)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    expect(state.get).toHaveBeenCalledTimes(2)
+    expect(host.textContent).toBe('')
+  } finally { act(() => root.unmount()); vi.useRealTimers(); state.get.mockReset() }
+})
+
+it('does not restore a late tip response after the preference is disabled', async () => {
+  vi.useFakeTimers()
+  let resolve!: (value: unknown) => void
+  state.get.mockReturnValue(new Promise(done => { resolve = done }))
+  function View() { return <div>{useRareWorkingTip(true, 'active-turn')}</div> }
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(async () => root.render(<View />))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    const signal = state.get.mock.calls[0][1].signal
+    await act(async () => { window.dispatchEvent(new CustomEvent(PRODUCT_TIPS_PREFERENCE_CHANGED, { detail: { enabled: false } })) })
+    expect(signal.aborted).toBe(true)
+    await act(async () => resolve({ data: { tip: { id: 'late', text: 'Late hint' } } }))
+    expect(host.textContent).toBe('')
+  } finally { act(() => root.unmount()); vi.useRealTimers(); state.get.mockReset() }
 })

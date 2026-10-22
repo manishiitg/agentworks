@@ -6,6 +6,7 @@ import { transcriptIsFollowing, transcriptReadingKey } from '../components/useTr
 import { activateTab } from './activateTab'
 import { requestChatScrollToBottom } from './chatScrollRequest'
 import { selectWorkflowPreset } from './workflowNavigation'
+import { assertChatIdentityCurrent, captureChatIdentity } from './chatIdentity'
 
 /** Asks the active chat composer to take focus with the caret at the end. */
 export const CHAT_FOCUS_COMPOSER_EVENT = 'chat-focus-composer'
@@ -110,6 +111,7 @@ type WorkspacePaneChatRequest = {
  * resolve their destination here and then use the same durable chat queue.
  */
 export async function resolveWorkspacePaneChatTab(request: WorkspacePaneChatRequest, options?: { activate?: boolean }): Promise<{ tabId: string; targetTab: ChatTab; reused: boolean }> {
+  const identity = captureChatIdentity()
   const workspacePath = 'workspacePath' in request ? request.workspacePath : undefined
   const requestedTabId = 'tabId' in request ? request.tabId : undefined
   const profileId = 'profileId' in request ? request.profileId : undefined
@@ -132,6 +134,7 @@ export async function resolveWorkspacePaneChatTab(request: WorkspacePaneChatRequ
   } else {
     if (!workspacePath) throw new Error('An automation path or project conversation is required.')
     const preset = await findWorkflowPreset(workspacePath)
+    assertChatIdentityCurrent(identity)
     if (!preset) throw new Error(`Could not find the automation for ${workspacePath}.`)
     if (options?.activate !== false && !selectWorkflowPreset(preset)) throw new Error('Failed to open the automation.')
 
@@ -147,6 +150,7 @@ export async function resolveWorkspacePaneChatTab(request: WorkspacePaneChatRequ
         phaseName: 'Automation Builder',
         presetQueryId: preset.id,
       }, undefined, options)
+      assertChatIdentityCurrent(identity)
       targetTab = useChatStore.getState().getTab(tabId)
     }
     if (!targetTab) throw new Error('Failed to open a chat for this message.')
@@ -202,9 +206,11 @@ export async function sendWorkspacePaneMessageToChat(request: WorkspacePaneChatR
  * below the new text.
  */
 export async function openWorkspacePaneChatWithDraft(request: WorkspacePaneChatRequest): Promise<{ tabId: string }> {
+  const identity = captureChatIdentity()
   const draft = request.message.trim()
   if (!draft) throw new Error('Nothing to put in the chat.')
   const { tabId, targetTab } = await resolveWorkspacePaneChatTab(request)
+  assertChatIdentityCurrent(identity)
   const chatStore = useChatStore.getState()
   const existing = (chatStore.getTabConfig(tabId)?.inputText || '').trim()
   chatStore.setTabConfig(tabId, { inputText: existing ? `${request.message}\n\n${existing}` : request.message })

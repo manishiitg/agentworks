@@ -15,10 +15,13 @@ import (
 	"sync"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/presentations"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -994,8 +997,74 @@ func getAgentProfileHandler(registry *agentprofiles.Registry) http.HandlerFunc {
 			writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 			return
 		}
-		writeAgentProfileJSON(w, http.StatusOK, limitProfileModelsToAccount(r.Context(), GetUserIDFromContext(r.Context()), profileWithAvailableProviders(profile.ForProducts(builderProductSelection(GetUserFromContext(r.Context()))))))
+		profile = limitProfileModelsToAccount(r.Context(), GetUserIDFromContext(r.Context()), profileWithAvailableProviders(profile.ForProducts(builderProductSelection(GetUserFromContext(r.Context())))))
+		if r.URL.Query().Get("include_skill_catalog") != "true" {
+			writeAgentProfileJSON(w, http.StatusOK, profile)
+			return
+		}
+		defaults, err := agentProfileSkillDefaults(profile)
+		if err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "product skill defaults unavailable")
+			return
+		}
+		selection := builderProductSelection(GetUserFromContext(r.Context()))
+		for mode, names := range defaults {
+			allowed := []string{}
+			for _, name := range names {
+				if selection.AllowsSkill(name) {
+					allowed = append(allowed, name)
+				}
+			}
+			defaults[mode] = allowed
+		}
+		definitions, err := agentProfileSkillDefinitions(profile, defaults, selection)
+		if err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "product skill definitions unavailable")
+			return
+		}
+		// Read-only presentation metadata, after the same profile/product admission.
+		// The panel must not infer mode defaults from installed filenames.
+		writeAgentProfileJSON(w, http.StatusOK, struct {
+			agentprofiles.Profile
+			SkillDefaultsByMode    map[string][]string       `json:"skill_defaults_by_mode"`
+			SkillDefinitionsByMode map[string][]skills.Skill `json:"skill_definitions_by_mode"`
+		}{profile, defaults, definitions})
 	}
+}
+
+// These are declared product defaults, not a claim about a running session or
+// its selected domain skills. Use the same manifests as each chat runtime.
+func agentProfileSkillDefaults(profile agentprofiles.Profile) (map[string][]string, error) {
+	defaults := map[string][]string{"profile": appendUniqueStrings(nil, profile.Skills...)}
+	if !profile.BuiltIn {
+		return defaults, nil
+	}
+	switch profile.ID {
+	case workproduct.ProfileID:
+		manifest, err := workproduct.WorkManifest()
+		if err != nil {
+			return nil, err
+		}
+		defaults = map[string][]string{
+			"builder": appendUniqueStrings(append([]string(nil), profile.Skills...), manifest.Chat["builder"].Skills...),
+			"run":     appendUniqueStrings(nil, manifest.Chat["run"].Skills...),
+		}
+	case "agentworks":
+		defaults = map[string][]string{}
+		for _, mode := range []string{"builder", "run"} {
+			defaults[mode] = appendUniqueStrings(append([]string(nil), profile.Skills...), agentworksproduct.ChatSkills(mode)...)
+		}
+	case "relays":
+		manifest, err := relayproduct.Manifest()
+		if err != nil {
+			return nil, err
+		}
+		defaults = map[string][]string{}
+		for _, mode := range []string{"builder", "run"} {
+			defaults[mode] = appendUniqueStrings(append([]string(nil), profile.Skills...), manifest.Chat[mode].Skills...)
+		}
+	}
+	return defaults, nil
 }
 
 // Product provider options remain visible; runtime/auth readiness is reported

@@ -1,19 +1,22 @@
 import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPanel'
-import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
+import { crewMenuTarget, crewProjectMenuItems } from './crewProjectMenu'
+import { projectMenuHistoryScope, useProjectMenuHistoryStore } from '../../stores/useProjectMenuHistoryStore'
+import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { workWorkspacePanels } from './workWorkspacePanels'
 import { WorkContextPanel } from './WorkContextPanel'
-import { WorkspaceContextButton } from '../../components/workspace/WorkspaceContextButton'
+import { WorkspacePanelHeader } from '../../components/workspace/WorkspacePanelHeader'
+import { WorkspacePanelAssistant, WorkspacePanelNavigationProvider } from '../../components/workspace/WorkspacePanelNavigation'
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { DollarSign, Laptop, Settings } from 'lucide-react'
 import { DashboardCreateDraftButton } from '../../components/workflow/DashboardEmptyState'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
+import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspacePanelGuideContext'
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
-import { workPanelSections } from '../productPanels'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
@@ -60,7 +63,7 @@ function sendWorkProjectPaneMessage(projectId: string, message: string, profileI
 
 // Panel lists live in products/productPanels.ts with every other product's panels.
 
-export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ sessionId = '', workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { sessionId?: string; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
+export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ sessionId = '', projectId = '', workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { sessionId?: string; projectId?: string; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
   // Both legacy origins use the merged Crew suggestion feature.
   const product = useProjectProduct()
   const representedSessionIds = useChatStore(useShallow(state => Object.values(state.chatTabs)
@@ -69,37 +72,30 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const projectMode = useProjectMode(sessionId)
   const isCowork = projectMode === 'cowork'
   const incomingEmail = useAgentInboxEnabled()
-  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
+  const user = useAuthStore(state => state.user)
+  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const inventory = workWorkspacePanels({ profileId: product.profileId, cowork: isCowork, readOnly: Boolean(readOnly), showShell, enabledPanels })
   const admitted = [...inventory.views, ...inventory.ops, ...inventory.setup]
-  const has = (id: string) => admitted.some(item => item.id === id)
-  const canConnect = has('mcp')
-  const bots = !enabledPanels || enabledPanels.has('bots')
+  const menuItems = crewProjectMenuItems({ panels: admitted, allowedProducts: user?.allowed_products, enabledPanels, incomingEmail, projectId })
   useRegisterPanelSwitcher('work', [
     ...(!readOnly ? [{ id: 'context', label: 'Project menu' }] : []),
-    ...admitted.filter(item => ['dashboard', 'browser'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Use & share' })),
-    ...(has('dashboard') && !readOnly ? [{ id: 'mcp:share', label: 'Share', group: 'Use & share' }] : []),
-    ...(has('schedules') ? projectAutomationSections({ incomingEmail, triggers: enabledPanels?.has('triggers') !== false }).map(item => ({ id: `schedules:${item.id}`, label: item.label, group: 'Use & share' })) : []),
-    ...(canConnect ? projectChannelSections(bots, bots).map(item => ({ id: `mcp:${item.id}`, label: item.label, group: 'Use & share' })) : []),
-    ...(canConnect ? projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} }).map(item => ({ id: item.id, label: item.label, group: 'Connections' })) : []),
-    ...(canConnect ? [{ id: 'mcp:agents', label: 'Chats from your computer', group: 'Connections' }] : []),
-    ...(canConnect && has('identity') ? [{ id: 'identity:location', label: 'Local laptop', group: 'Connections' }] : []),
-    ...admitted.filter(item => !['dashboard', 'browser', 'schedules', 'mcp'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Ops', sections: workPanelSections(item.id, false).filter(section => (item.id !== 'identity' || section.id !== 'location') && (item.id !== 'memory' || !enabledPanels || enabledPanels.has(section.id))) })),
+    ...menuItems.map(item => ({ id: item.id, label: item.label, group: item.group })),
   ], (key, section) => {
-    const [id, destination] = key.split(':')
-    const target = destination ?? section
-    if (id === 'context' && target) setWorkspaceViewTarget('context', target)
-    else if (id === 'mcp') setWorkspaceViewTarget('mcp', target ?? 'overview')
-    else if (target && id === 'schedules') setWorkspaceViewTarget('workshop', target)
-    else if (target && id === 'memory') setWorkspaceViewTarget('memory', target)
-    else if (target && id === 'identity') setWorkspaceViewTarget('identity', target)
-    onViewChange(id as WorkWorkspaceView)
+    if (key === 'context') { onViewChange('context'); return }
+    const legacy = key === 'mcp:slack' ? 'mcp:slack-bot' : section ? key + ':' + section : key
+    const current = useAuthStore.getState().user
+    const item = crewProjectMenuItems({ panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === legacy)
+    if (!item || current?.id !== user?.id) return
+    useProjectMenuHistoryStore.getState().visit(projectMenuHistoryScope(server || 'local', user?.id || 'pending', product.profileId, projectId || workspacePath), item.id)
+    if (item.external) { openProductWorkspace(item.external); return }
+    if (!item.view) return
+    if (item.target) setWorkspaceViewTarget(crewMenuTarget(item.view), item.target)
+    onViewChange(item.view)
   })
 
-  return <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
+  return <div data-tour="work-tools" className="order-last ml-auto flex shrink-0 items-center gap-1">
     <TooltipProvider delayDuration={150}>
       {showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds} />}
-      {!readOnly && <WorkspaceContextButton inContext={view === 'context'} onClick={() => onViewChange('context')} />}
     </TooltipProvider>
   </div>
 })
@@ -207,7 +203,7 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
   )
 }
 
-export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, showShell = false }: { showShell?: boolean; workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; projectTemplates: Array<{ id: string; version: number }>; onInstallTemplate: (id: CrewTemplateId) => Promise<void>; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
+export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, onOpenChat, showShell = false }: { showShell?: boolean; workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; projectTemplates: Array<{ id: string; version: number }>; onInstallTemplate: (id: CrewTemplateId) => Promise<void>; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; onOpenChat?: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
   const readOnly = Boolean(shared)
   const accountKey = useAuthStore(state => `${state.user?.id || ''}:${state.user?.can_edit}`)
   const serverKey = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
@@ -308,8 +304,12 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   }
 
   return (
+    <WorkspacePanelNavigationProvider workspacePath={workspacePath} view={view} chatTarget={{ tabId }} onOpenChat={onOpenChat}>
+    {view === 'dashboard' && <WorkspacePanelAssistant workspacePath={workspacePath} message={`Help me with this ${noun} project's results page. Explain what it shows in plain words and ask what I want to change.`} />}
+    {view === 'shell' && <WorkspacePanelAssistant workspacePath={workspacePath} message={`Help me understand this ${noun}'s terminal and what I can do here. Explain commands before running anything.`} />}
     <WorkspacePanelGuideContext.Provider value={'crew'}>
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="relative flex h-full min-h-0 flex-col bg-background">
+      <WorkspacePanelHeader workspacePath={workspacePath} view={view} surface="crew" title={view === 'context' ? 'Project menu' : [...contextPanels.views, ...contextPanels.ops, ...contextPanels.setup].find(panel => panel.id === view)?.label ?? view} contextAllowed={!readOnly} onBack={() => onViewChange('context')} />
       <div className="min-h-0 flex-1 overflow-hidden">
         {view==='context' && <WorkContextPanel workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels}/>}
         {view === 'files' && (readOnly ? <SharedCrewFilesPanel
@@ -381,7 +381,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           readOnly={readOnly}
           memoryEnabled={!enabledPanels || enabledPanels.has('memory')}
           skillsEnabled={!enabledPanels || enabledPanels.has('skills')}
-          skillsManager={<WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} onSelectedSkillsChange={onSelectedSkillsChange} />}
+          skillsManager={skills => <WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} projectSkills={skills} onOpenFile={filePath => { void openProjectFile(filePath) }} onSelectedSkillsChange={onSelectedSkillsChange} />}
         />}
         <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>
           {view === 'dashboard' && <ReportView
@@ -404,16 +404,17 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             iconOnly
           />} />}
           {view === 'suggestions' && <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-              <p className="text-xs text-muted-foreground">Changes other people using this {noun} asked for. Accepting records your decision; make the change in chat.</p>
-              <AskAIButton
+            <WorkspaceViewHeader title="Suggestions" actions={<AskAIButton
                 workspacePath={workspacePath}
                 message={`Look at the accepted suggestions in this ${noun}'s Suggestions view and help me make those changes to the ${noun}.`}
                 onAsk={async message => { await ask(message) }}
                 iconOnly
-              />
+              />} />
+            <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+              <h3 className="text-base font-semibold">Suggestions</h3>
+              <p className="text-sm leading-6 text-muted-foreground">Changes other people using this {noun} asked for. Accepting records your decision; make the change in chat.</p>
+              <ReportHumanInputPanel workspacePath={workspacePath} chatTarget={{ profileId: product.profileId, conversationKey: projectId }} source="user_suggestion" showEmptyState />
             </div>
-            <ReportHumanInputPanel workspacePath={workspacePath} chatTarget={{ profileId: product.profileId, conversationKey: projectId }} source="user_suggestion" showEmptyState className="min-h-0 flex-1 overflow-auto p-3" />
           </div>}
           {view === 'browser' && <WorkBrowserPanel tabId={tabId} projectId={projectId} workspacePath={workspacePath} />}
           {view === 'costs' && <CostsPopup projectMode workspacePath={workspacePath} runFolders={[]} selectedRunFolder={null} emptyHint="Send a message to see this project's usage here." headerAction={<AskAIButton
@@ -458,5 +459,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
       </div>
     </div>
     </WorkspacePanelGuideContext.Provider>
+    </WorkspacePanelNavigationProvider>
   )
 })

@@ -8,7 +8,7 @@ import { WorkspaceTopToolbar } from './WorkspaceTopToolbar'
 export function ProductWorkspaceShell({
   chatOpen, panelOpen, splitRatio, mobilePreview = false, mobilePaneWidth, mobilePane, splitRef,
   onOpenChat, onOpenWorkspace, tabs, toolbar, chat, workspace, divider,
-  chatProps, workspaceProps, testId, compactContext = false, toolbarWhenPanelClosed = false, navigationActive = true, retainChat = false, showChatReopenControl = true,
+  chatProps, workspaceProps, testId, compactContext = false, toolbarWhenPanelClosed = false, navigationActive = true, retainChat = false, retainWorkspace = false, showChatReopenControl = true,
 }: {
   chatOpen: boolean; panelOpen: boolean; splitRatio: number; mobilePreview?: boolean; mobilePaneWidth?: number | null
   /** Products with a phone pane switch keep both panes mounted while hiding the inactive one. */
@@ -23,6 +23,8 @@ export function ProductWorkspaceShell({
   testId?: string
   /** Secondary assistants keep an unsent draft when closed. */
   retainChat?: boolean
+  /** Secondary panels keep their draft and mounted content while closed. */
+  retainWorkspace?: boolean
   /** Products with an explicit Assistant action do not need the edge tab. */
   showChatReopenControl?: boolean
 }) {
@@ -46,7 +48,7 @@ export function ProductWorkspaceShell({
       </WorkspaceTopToolbar>
       {(layout.showChat || retainChat) && <main {...chatProps} hidden={!layout.showChat} style={{ ...chatProps?.style, ...(!layout.showChat ? { display: 'none' } : {}) }} className={chatClassName}>{chat}</main>}
       {layout.showDivider && divider}
-      {layout.showPanel && <aside {...workspaceProps} className={workspaceClassName}>{workspace}</aside>}
+      {(layout.showPanel || retainWorkspace) && <aside {...workspaceProps} hidden={!layout.showPanel} style={{ ...workspaceProps?.style, ...(!layout.showPanel ? { display: 'none' } : {}) }} className={workspaceClassName}>{workspace}</aside>}
     </div>
   </div>
 }

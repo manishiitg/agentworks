@@ -24,6 +24,28 @@ func Prepare(stateRoot, workspaceRoot, user, workflow, session, provider, mode s
 // the workflow's in the v1 digest, so a project that moved keeps the runtime folder, and with it the native CLI
 // session, it always had (PLAT-442 step 4).
 func prepare(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode string) (string, error) {
+	return runtimeDirectory(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode, true)
+}
+
+// ExistingLinkedProject locates this exact session's existing projection without
+// creating directories, refreshing skills, or adopting another session's files.
+func ExistingLinkedProject(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode string) (string, error) {
+	dir, err := runtimeDirectory(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode, false)
+	if err != nil {
+		return "", err
+	}
+	target, err := filepath.EvalSymlinks(workflow)
+	if err != nil {
+		return "", err
+	}
+	saved, err := os.Readlink(filepath.Join(dir, ProjectLink))
+	if err != nil || saved != target {
+		return "", fmt.Errorf("CLI runtime project link does not match its authorized project")
+	}
+	return dir, nil
+}
+
+func runtimeDirectory(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode string, create bool) (string, error) {
 	if !filepath.IsAbs(stateRoot) || !filepath.IsAbs(workspaceRoot) || !filepath.IsAbs(workflow) {
 		return "", fmt.Errorf("CLI isolation requires absolute state, workspace and workflow paths")
 	}
@@ -33,8 +55,10 @@ func prepare(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session,
 		}
 	}
 	// Resolve trusted roots before checking containment (macOS /var is a symlink).
-	if err := os.MkdirAll(stateRoot, 0700); err != nil {
-		return "", err
+	if create {
+		if err := os.MkdirAll(stateRoot, 0700); err != nil {
+			return "", err
+		}
 	}
 	stateRoot, err := filepath.EvalSymlinks(stateRoot)
 	if err != nil {
@@ -79,8 +103,10 @@ func prepare(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session,
 	dir := base
 	for _, component := range []string{"", "v1", digest} {
 		dir = filepath.Join(dir, component)
-		if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
-			return "", err
+		if create {
+			if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
+				return "", err
+			}
 		}
 		info, err := os.Lstat(dir)
 		if err != nil {

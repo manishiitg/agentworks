@@ -83,7 +83,7 @@ export default function NotificationsControl({ menuItem = false }: { menuItem?: 
         role="menuitemcheckbox"
         aria-checked={notificationsEnabled && osPermission !== 'denied'}
         onClick={handleNotificationClick}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
       >
         {osPermission === 'denied' || !notificationsEnabled
           ? <BellOff className="h-4 w-4 text-muted-foreground" />

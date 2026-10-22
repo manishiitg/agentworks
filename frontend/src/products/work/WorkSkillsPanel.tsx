@@ -2,16 +2,21 @@ import { useRef } from 'react'
 import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import { useChatStore } from '../../stores/useChatStore'
 import { useProjectProduct } from './projectProduct'
+import type { CrewSkill } from './WorkMemoryPanel'
 
-/** The existing project skill selection and uninstall path, now under Ops. */
-export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSkillsChange }: {
+const EMPTY_SKILLS: string[] = []
+
+/** User-installed project skills; automatic platform guidance stays in the runtime. */
+export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSkillsChange, projectSkills = [], onOpenFile }: {
   workspacePath: string
   projectId: string
   tabId: string
   onSelectedSkillsChange: (skills: string[]) => Promise<unknown>
+  projectSkills?: CrewSkill[]
+  onOpenFile?: (path: string) => void
 }) {
   const product = useProjectProduct()
-  const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
+  const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || EMPTY_SKILLS)
   const pendingSkillSaves = useRef<Promise<void>>(Promise.resolve())
   const toggleSkill = async (folderName: string) => {
     const next = selectedSkills.includes(folderName)
@@ -36,6 +41,11 @@ export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSki
   return <SkillsManagerPanel
           compact
           manageOwnScroll={false}
+          customOnly
+          profileId={product.profileId}
+          profileVersion={product.profileVersion}
+          additionalSkills={projectSkills.map(skill => ({ folder_name: skill.name, file_path: skill.filePath, frontmatter: { name: skill.name, description: skill.description }, content: '' }))}
+          onOpenFile={onOpenFile ? path => onOpenFile(path.startsWith(`${workspacePath}/`) ? path : `${workspacePath}/${path}`) : undefined}
           workspacePath={workspacePath}
           selectedSkills={selectedSkills}
           onBeforeUninstall={() => pendingSkillSaves.current}
@@ -50,7 +60,7 @@ export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSki
             }
           }}
           onToggleSkill={folderName => { void toggleSkill(folderName) }}
-          selectionScopeLabel="main chat"
-          emptySelectionText={`No skills are installed in this ${product.noun} yet. Ask the agent to add or create one.`}
+          selectionScopeLabel="Crew"
+          emptySelectionText={`No custom skills have been added to this ${product.noun} yet.`}
         />
 }

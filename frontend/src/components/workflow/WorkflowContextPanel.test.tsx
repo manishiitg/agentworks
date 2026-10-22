@@ -1,44 +1,91 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
-import { createRoot } from 'react-dom/client'
-import { expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ enabled: true, canWrite: true, open: vi.fn() }))
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
+const state = vi.hoisted(() => ({ enabled: true, canWrite: true, canShare: true, multiUser: false, user: { id: 'alice', allowed_products: ['agentworks', 'relays'] as string[] | null }, server: 'local', open: vi.fn() }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => state.canWrite }))
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: (select: any) => select({ openWorkspaceView: state.open }) }))
-vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: (select: any) => select({ workflows: [{ workspace_path: 'Workflow/example', manifest: { pulse: { enabled: state.enabled } } }] }) }))
-vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => select({ isMultiUserMode: false, user: { allowed_products: ['agentworks', 'relays'] } }) }))
+vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: (select: any) => select({ workflows: [{ workspace_path: 'Workflow/example', manifest: { id: 'example', pulse: { enabled: state.enabled } } }] }) }))
+vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: any) => select({ isMultiUserMode: state.multiUser, user: state.user }), { getState: () => ({ user: state.user }) }) }))
+vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedStorageKey: (key: string) => key, useWorkspaceConnectionStore: Object.assign((select: any) => select({ activeWorkspaceId: state.server }), { getState: () => ({ activeWorkspaceId: state.server }) }) }))
+vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: { can_share: state.canShare } }) }, getApiBaseUrl: () => '', getAuthToken: () => null }))
+vi.mock('../integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled: () => true }))
 vi.mock('./hooks/usePendingDecisionCount', () => ({ usePendingDecisionState: () => ({ loaded: true, count: 2 }) }))
-vi.mock('./ShareDashboardButton', () => ({ ShareDashboardButton: () => <button>Share</button> }))
-vi.mock('../workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Browser</button> }))
+vi.mock('./ShareDashboardButton', () => ({ ShareDashboardButton: ({ label, onOpen }: any) => <button onClick={onOpen}>{label}</button> }))
+vi.mock('../workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: any) => <button onClick={onClick}>Browser</button> }))
 vi.mock('../workspace/useProjectStatus', () => ({ useProjectStatus: () => ({}) }))
 vi.mock('../workspace/WorkspaceAgentBridgeRows', () => ({ WorkspaceAgentBridgeRows: () => null }))
 vi.mock('./reportDocuments', () => ({ useReportDocuments: () => ({ documents: [], defaultPath: 'db/reports/index.html' }), selectReportDocument: vi.fn() }))
 import { WorkflowContextPanel } from './WorkflowContextPanel'
 import { RelayContextPanel } from './RelayContextPanel'
+import { useProjectMenuHistoryStore, projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+let host: HTMLDivElement, root: Root
+beforeEach(() => {
+  Object.assign(state, { enabled: true, canWrite: true, canShare: true, multiUser: false, server: 'local', user: { id: 'alice', allowed_products: ['agentworks', 'relays'] } })
+  useProjectMenuHistoryStore.setState({ recent: {} }); host = document.createElement('div'); document.body.append(host); root = createRoot(host)
+})
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.clearAllMocks() })
+const render = (relay = false, path = 'Workflow/example') => act(async () => root.render(relay ? <RelayContextPanel workspacePath={path} /> : <WorkflowContextPanel workspacePath={path} />))
+const button = (label: string) => [...host.querySelectorAll('button')].find(node => node.textContent === label)!
+const scope = (relay = false, project = 'example') => projectMenuHistoryScope(state.server, state.user.id, relay ? 'relays' : 'agentworks', project)
 
-it('places enabled Pulse above the groups; Off hides it and Relay has none', async () => {
-  const host = document.createElement('div'), root = createRoot(host)
-  state.canWrite = true; state.enabled = true
-  try {
-    await act(async () => root.render(<WorkflowContextPanel workspacePath="Workflow/example" />))
-    expect([...host.querySelectorAll('h2,summary')].map(node => node.textContent)).toEqual(['Your work', 'Share', 'Connections', 'Setup'])
-    expect(host.querySelector('button')?.textContent).toBe('Pulse')
-    const ops = [...host.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent === 'Setup')!
-    expect(ops.open).toBe(false)
-    expect(ops.textContent).toContain('Publish')
-    expect(ops.textContent).toContain('Notify')
-    state.enabled = false
-    await act(async () => root.render(<WorkflowContextPanel workspacePath="Workflow/example" />))
-    expect([...host.querySelectorAll('button')].filter(button => button.textContent === 'Pulse')).toHaveLength(0)
-    expect([...host.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent === 'Setup')?.textContent).toContain('Turn Pulse on')
-    await act(async () => root.render(<RelayContextPanel workspacePath="Workflow/example" />))
-    for (const label of ['Pulse', 'Publish', 'Notify', 'Schedules', 'Functions']) expect(host.textContent).not.toContain(label)
-    const webhooks = [...host.querySelectorAll('button')].find(button => button.textContent === 'Webhooks')!
-    await act(async () => webhooks.click())
-    expect(state.open).toHaveBeenLastCalledWith('workshop', 'triggers')
-    state.canWrite = false
-    await act(async () => root.render(<RelayContextPanel workspacePath="Workflow/example" />))
-    expect(host.textContent).toBe('')
-  } finally { state.canWrite = true; await act(async () => root.unmount()) }
+it.each([false, true])('uses Crew category order and keeps every product destination (%s)', async relay => {
+  await render(relay)
+  expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build', 'Use', 'Share', 'Integrations', 'Setup'])
+  expect([...host.querySelectorAll('details')].map(node => node.open)).toEqual([true, false, false, false, false])
+  for (const label of ['Project dashboard', 'Files', 'Skills', 'Chat history', 'People & access', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
+  if (relay) {
+    for (const label of ['Flow', 'Runs', 'Code']) expect(button(label)).toBeDefined()
+    for (const label of ['Pulse', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database']) expect(button(label)).toBeUndefined()
+  } else {
+    for (const label of ['Pulse', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database', 'Knowledge base']) expect(button(label)).toBeDefined()
+    expect(button('Pulse').closest('details')?.querySelector('summary')?.textContent).toBe('Use')
+  }
+  await act(async () => button('Webhooks').click())
+  expect(state.open).toHaveBeenLastCalledWith('workshop', 'triggers')
+})
+
+it.each([false, true])('shows up to ten recent items once and keeps their correct destination (%s)', async relay => {
+  await render(relay)
+  await act(async () => button('Skills').click())
+  expect(state.open).toHaveBeenLastCalledWith('mcp', 'skills')
+  expect(useProjectMenuHistoryStore.getState().recent[scope(relay)]).toEqual(['mcp:skills'])
+  expect([...host.querySelectorAll('h2')].some(node => node.textContent === 'Recent')).toBe(true)
+  expect([...host.querySelectorAll('button')].filter(node => node.textContent === 'Skills')).toHaveLength(1)
+  expect(button('Skills').closest('details')).toBeNull()
+  await act(async () => useProjectMenuHistoryStore.getState().visit(scope(relay), 'mcp:skills'))
+  expect(useProjectMenuHistoryStore.getState().recent[scope(relay)]).toEqual(['mcp:skills'])
+  const destinations = ['report', 'files', 'mcp:skills', 'workshop:chats', 'costs', 'execution-logs', 'identity:general', 'identity:llm', 'mcp:cli', 'workshop:triggers', 'workshop:conditions']
+  await act(async () => destinations.forEach(id => useProjectMenuHistoryStore.getState().visit(scope(relay), id)))
+  expect(useProjectMenuHistoryStore.getState().recent[scope(relay)]).toHaveLength(10)
+  const recent = [...host.querySelectorAll('section')].find(node => node.querySelector('h2')?.textContent === 'Recent')!
+  expect(recent.querySelectorAll('button')).toHaveLength(10)
+  for (const row of recent.querySelectorAll('button')) expect([...host.querySelectorAll('button')].filter(node => node.textContent === row.textContent)).toHaveLength(1)
+})
+
+it('isolates history by workspace, product, account and server and ignores stale destinations', async () => {
+  await render(); await act(async () => button('Skills').click())
+  for (const update of [() => render(true), () => render(false, 'Workflow/another'), async () => { state.user = { ...state.user, id: 'bob' }; await render() }, async () => { state.server = 'other'; await render() }]) {
+    await update(); expect([...host.querySelectorAll('h2')].some(node => node.textContent === 'Recent')).toBe(false)
+  }
+  await act(async () => useProjectMenuHistoryStore.getState().visit(scope(), 'removed-panel'))
+  expect(host.textContent).not.toContain('removed-panel')
+})
+
+it('keeps role and sharing gates for current and recent items', async () => {
+  await render(); await act(async () => button('People & access').click())
+  state.canShare = false; state.user = { ...state.user, id: 'no-sharing' }; await render()
+  await act(async () => useProjectMenuHistoryStore.getState().visit(scope(), 'mcp:share'))
+  expect(button('People & access')).toBeUndefined()
+  expect(button('Team')).toBeUndefined()
+  state.canWrite = false; await render(); expect(host.textContent).toBe('')
+})
+
+it('retains separate Relay graph, runs and code targets', async () => {
+  await render(true)
+  for (const [label, target] of [['Flow', 'graph'], ['Runs', 'calls'], ['Code', 'source']]) {
+    await act(async () => button(label).click()); expect(state.open).toHaveBeenLastCalledWith('flow', target)
+  }
 })

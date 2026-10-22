@@ -129,7 +129,6 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, proje
   return (
     <div className="space-y-4">
       {error && <StatusBanner tone="error">{error}</StatusBanner>}
-      <CrewTemplatePicker projectTemplates={projectTemplates} onInstallTemplate={onInstallTemplate} onError={setError} />
       <SettingsCard
         icon={<Tag aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Name and icon"
@@ -189,6 +188,8 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, proje
           </Button>
         </div>
       </SettingsCard>
+
+      <CrewTemplatePicker projectTemplates={projectTemplates} onInstallTemplate={onInstallTemplate} onError={setError} />
 
       <SettingsCard
         icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}

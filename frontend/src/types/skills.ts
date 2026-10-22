@@ -15,7 +15,14 @@ export interface Skill {
   file_path: string;
   source_url?: string;
   managed?: boolean;
+  file_managed?: boolean;
+  builtin?: boolean;
   used_by?: string[];
+  source?: string;
+  source_type?: string;
+  brain_source?: string;
+  brain_edited?: boolean;
+  validation_error?: string;
 }
 
 export interface ImportSkillRequest {
@@ -46,4 +53,20 @@ export interface ListSkillsResponse {
   skills: Skill[];
   total: number;
   usage?: Record<string, string[]>;
+}
+
+export interface RuntimeSkill extends Skill {
+  files: { path: string; size: number; modified_at: string; error?: string }[];
+}
+
+export interface RuntimeSkillsResponse {
+  skills: RuntimeSkill[];
+  folders: string[];
+  warnings: string[];
+  session_id: string;
+  provider?: string;
+  directory?: string;
+  prepared: boolean;
+  message?: string;
+  read_at: string;
 }

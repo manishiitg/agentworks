@@ -12,14 +12,14 @@ export interface WorkspaceViewActionsProps {
   walkthrough?: ReactNode
   /** The panel refreshes itself, so the header shows no Refresh icon (owner, 2026-10-20). */
   hideRefresh?: boolean
+  children?: ReactNode
 }
 
 /**
  * The standard actions shown in a right-side workspace view header. Order is
- * a product rule: walkthrough always left, refresh always right. The header
- * reads the Ask AI config (workspacePath, message, onAsk) off this element's
- * props and carries it into the walkthrough popup — Ask AI never renders in
- * the row itself.
+ * a product rule: page operations, walkthrough, then any explicit refresh.
+ * The shared header reads the question from these props and publishes it to
+ * the outer toolbar. Standalone views retain assistance in the walkthrough.
  */
 export function WorkspaceViewActions({
   onRefresh,
@@ -27,9 +27,11 @@ export function WorkspaceViewActions({
   refreshLabel = 'Refresh view',
   walkthrough,
   hideRefresh = false,
+  children,
 }: WorkspaceViewActionsProps) {
   return (
     <div className="flex shrink-0 items-center gap-2">
+      {children}
       {walkthrough}
       {!hideRefresh && <WorkspaceViewIconButton label={refreshLabel} onClick={onRefresh} disabled={refreshing} spinning={refreshing} />}
     </div>

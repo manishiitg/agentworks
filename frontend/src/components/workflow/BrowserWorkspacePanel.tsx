@@ -9,6 +9,7 @@ import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './WorkspaceViewActions'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
+import { useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
 
 interface BrowserWorkspacePanelProps {
   workspacePath: string | null
@@ -54,6 +55,8 @@ export function BrowserWorkspacePanel({
 }: BrowserWorkspacePanelProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [extensionSetup, setExtensionSetup] = useState(false)
+  const assistant = isValidElement<WorkspaceViewActionsProps>(assistantControl) && assistantControl.type === WorkspaceViewActions ? assistantControl : undefined
+  const assistantInHeader = useWorkspacePanelAssistant(assistant ? { workspacePath: assistant.props.workspacePath, message: assistant.props.message } : undefined)
   const extensionProfile = profileId || (workspacePath?.startsWith('Workflow/') ? 'workflow' : undefined)
   const extensionAvailable = ['code', 'work', 'workflow'].includes(extensionProfile || '') && !!workspacePath && !readOnly
   const connection = useChromeExtensionConnection(workspacePath, extensionProfile, !extensionAvailable)
@@ -110,13 +113,14 @@ export function BrowserWorkspacePanel({
     </div>}
   </div> : undefined
   const walkthrough = <WorkspacePanelGuideButton topic="Browser" />
-  const guidedAssistantControl = isValidElement<WorkspaceViewActionsProps>(assistantControl) && assistantControl.type === WorkspaceViewActions
-    ? cloneElement(assistantControl, {
-      walkthrough: cloneElement(walkthrough, {
+  const guidedAssistantControl = assistant
+    ? cloneElement(assistant, {
+      hideRefresh: true,
+      walkthrough: assistantInHeader ? walkthrough : cloneElement(walkthrough, {
         ask: {
-          workspacePath: assistantControl.props.workspacePath,
-          message: assistantControl.props.message,
-          onAsk: assistantControl.props.onAsk,
+          workspacePath: assistant.props.workspacePath,
+          message: assistant.props.message,
+          onAsk: assistant.props.onAsk,
         },
       }),
     })

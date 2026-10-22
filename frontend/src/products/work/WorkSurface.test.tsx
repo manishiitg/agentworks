@@ -325,6 +325,7 @@ describe('Crew native tab dragging', () => {
       const strip = host.querySelector('[data-testid="work-chat-tab-strip"]')!
       expect(strip.querySelector('.lucide-grip-vertical')).toBeNull()
       expect(strip.querySelector('[aria-label="Close a"]')).toBeNull()
+      expect(strip.querySelector('[aria-label="Unpin a"]')).toBeNull()
       expect(strip.querySelector('[title="Make this the main chat"]')).toBeNull()
       const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' }
       const gesture = (kind: string, node: Element) => { const event = new Event(kind, { bubbles: true, cancelable: true }); Object.defineProperty(event, 'dataTransfer', { value: dataTransfer }); node.dispatchEvent(event) }
@@ -340,7 +341,37 @@ describe('Crew native tab dragging', () => {
       expect(host.querySelector('[aria-label="Agents"]')?.textContent).toContain('a')
       expect(host.querySelector('[aria-label="Unpin a"]')).not.toBeNull()
       expect(host.querySelector('[aria-label="Move a earlier"]')).toBeNull()
+      expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Reorder')).toBe(false)
       expect(host.querySelector('[aria-label="Close a"]')).not.toBeNull()
+    } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore(); order.mockRestore() }
+  })
+
+  it.each([5, 6])('offers menu reordering only above five tabs (%s tabs)', async count => {
+    const make = (id: string) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: 1, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew' : `crew:chat:${id}` } } as ChatTab)
+    const ids = ['main', ...Array.from({ length: count - 1 }, (_, index) => `agent-${index}`)]
+    const listed = ids.slice(1).map((id, index) => ({ conversation_key: `crew:chat:${id}`, session_id: `session-${id}`, name: id, position: index + 1 }))
+    useChatStore.setState({ chatTabs: Object.fromEntries(ids.map(id => [id, make(id)])), activeTabId: 'main' })
+    const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue(listed)
+    const order = vi.spyOn(agentApi, 'orderAgentProfileSideChats').mockImplementation(async (_profile, _project, keys) => keys.map(key => listed.find(chat => chat.conversation_key === key)!))
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
+      await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
+      const reorder = [...host.querySelectorAll('button')].find(button => button.textContent === 'Reorder')
+      expect(Boolean(reorder)).toBe(count > 5)
+      expect(host.querySelector('[aria-label="Agents"] .lucide-grip-vertical')).toBeNull()
+      if (reorder) {
+        await act(async () => reorder.click())
+        const earlier = host.querySelector<HTMLButtonElement>('[aria-label="Move agent-1 earlier"]')!
+        expect(earlier).not.toBeNull()
+        expect(host.querySelector<HTMLButtonElement>('[aria-label="Move agent-0 earlier"]')!.disabled).toBe(true)
+        await act(async () => earlier.click())
+        expect(order).toHaveBeenCalledWith('work', 'crew', ['crew:chat:agent-1', 'crew:chat:agent-0', ...listed.slice(2).map(chat => chat.conversation_key)])
+        await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Done')!.click())
+        expect(host.querySelector('[aria-label="Rename agent-0"]')).not.toBeNull()
+        expect(host.querySelector('[aria-label="Move agent-0 earlier"]')).toBeNull()
+      }
     } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore(); order.mockRestore() }
   })
 })

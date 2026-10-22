@@ -4,10 +4,11 @@ import { Brain, Loader2, Sparkles } from 'lucide-react'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
+import { useWorkspacePanelAssistant } from '../../components/workspace/WorkspacePanelNavigation'
 import { flattenFiles, responseFiles } from '../../utils/plannerFiles'
 import { proxyCrewFileClient, type CrewFileClient } from './sharedCrewFiles'
 
-type CrewSkill = {
+export type CrewSkill = {
   name: string
   description: string
   filePath: string
@@ -74,10 +75,13 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
   readOnly?: boolean
   memoryEnabled?: boolean
   skillsEnabled?: boolean
-  skillsManager?: ReactNode
+  skillsManager?: (skills: CrewSkill[]) => ReactNode
 }) {
   const [tab, setTab] = useState('memory')
   const activeTab = tab === 'memory' && memoryEnabled ? 'memory' : skillsEnabled ? 'skills' : 'memory'
+  useWorkspacePanelAssistant(activeTab === 'skills' ? { workspacePath, message: readOnly
+    ? 'Explain the custom skills installed in this Crew. This project is read-only for me, so do not offer to change anything.'
+    : 'Help me understand the custom skills installed in this Crew. Explain what each one does. Install, create or uninstall a skill through chat only when I ask.' } : undefined)
   useWorkspaceViewTarget('memory', target => { if ((target === 'memory' && memoryEnabled) || (target === 'skills' && skillsEnabled)) setTab(target) })
   const [content, setContent] = useState('')
   const [skills, setSkills] = useState<CrewSkill[]>([])
@@ -125,9 +129,11 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={Brain}
-        title="Memory & skills"
+        title={activeTab === 'skills' ? 'Skills' : 'Memory'}
+        helpTopic={activeTab === 'skills' ? 'Integrations · Skills' : undefined}
+        hideHeader={activeTab === 'skills'}
         /* Memory and Skills are separate side-list items (owner, 2026-10-20: every tab independent). */
-        actions={<WorkspaceViewActions
+        actions={activeTab !== 'skills' && <WorkspaceViewActions
           workspacePath={workspacePath}
           message={readOnly
             ? "Review this Crew project's MEMORY.md and its project-local skills. Explain what the Crew remembers and how it uses each skill. This Crew is read-only for me, so do not offer to change anything."
@@ -146,8 +152,7 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
         ) : (
           <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
             {activeTab === 'skills' && <>
-            {skillsManager}
-            <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+            {skillsManager ? skillsManager(skills) : <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
@@ -179,7 +184,8 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
                 ))}
               </div>
               {skillsError && <p className="mt-3 text-xs text-destructive">{skillsError}</p>}
-            </section>
+            </section>}
+            {skillsManager && skillsError && <p role="alert" className="text-xs text-destructive">{skillsError} <button type="button" onClick={refresh} className="underline">Try again</button></p>}
             </>}
 
             {activeTab === 'memory' && <section className="min-w-0 rounded-lg border border-border bg-card p-5 shadow-sm">

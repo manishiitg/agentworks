@@ -54,10 +54,13 @@ it('closes only chats, keeps top controls accessible, and restores the preferenc
   expect(saved.get('product_navigation_mode')).toBe('auto-hide')
   expect(toggle.getAttribute('aria-label')).toBe('Open sidebar')
   expect(host.querySelector('[aria-label="Chat navigation"]')?.className).toContain('hidden')
+  expect(host.querySelector('[aria-label="Product shortcuts"] [data-compact="true"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Product shortcuts"] [aria-label="Open sidebar"]')).not.toBeNull()
   const launcher = host.querySelector('[data-product-navigation-leading-slot] [data-navigation-toggle]')!
   expect(launcher.textContent).toBe('')
   expect(launcher.getAttribute('title')).toBe('Open your work list')
   expect(launcher.getAttribute('aria-label')).toBe('Open sidebar')
+  expect(launcher.parentElement?.className).toContain('md:hidden')
   expect(host.querySelector('[data-product-navigation-slot]')!.textContent).toContain('Account')
   expect(host.querySelector('[data-product-navigation-slot] [data-navigation-toggle]')).toBeNull()
   const toolbar = host.querySelector('[data-terminal-focus-chrome="toolbar"]')!
@@ -69,6 +72,7 @@ it('closes only chats, keeps top controls accessible, and restores the preferenc
   await act(async () => restored.querySelector<HTMLButtonElement>('[data-navigation-toggle]')!.click())
   expect(saved.get('product_navigation_mode')).toBe('fixed')
   expect(restored.querySelector('[aria-label="Chat navigation"]')?.className).not.toContain('hidden')
+  expect(restored.querySelector('[aria-label="Product shortcuts"]')).toBeNull()
 })
 it('does not remount live product controls when the chat sidebar opens or closes', async () => {
   const mounted = vi.fn(), stopped = vi.fn()

@@ -3,6 +3,7 @@ import { knowledgebaseApi, knowledgebaseError, type KnowledgeAccess } from '../.
 import { FileWorkspacePane } from '../../components/FileWorkspacePane'
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { SettingsCardLayout } from '../../components/ui/SettingsCard'
+import { WorkspacePageContent } from '../../components/workspace/WorkspacePageContent'
 import { KnowledgebaseAccessPanel } from './KnowledgebaseAccessPanel'
 import { KnowledgebaseSecrets } from './KnowledgebaseSecrets'
 import { KnowledgebaseFolderTree } from './KnowledgebaseFolderTree'
@@ -50,7 +51,7 @@ export function KnowledgebaseWorkspacePane({ view, folder, onFolder, onAsk, revi
     {view === 'backup' && <div className="min-h-0 flex-1 overflow-y-auto">{backup}</div>}
     {view === 'secrets' && <div className="min-h-0 flex-1 overflow-y-auto"><KnowledgebaseSecrets /></div>}
     {view === 'schedules' && <div className="min-h-0 flex-1 overflow-y-auto"><KnowledgebaseSchedules /></div>}
-    {view === 'models' && <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"><SettingsCardLayout unboxed>{modelSettings}</SettingsCardLayout></div>}
+    {view === 'models' && <WorkspacePageContent className="min-h-0 flex-1 space-y-4 overflow-y-auto"><SettingsCardLayout unboxed>{modelSettings}</SettingsCardLayout></WorkspacePageContent>}
     {view === 'access' && <div className="flex min-h-0 flex-1"><aside className="w-48 shrink-0 overflow-y-auto border-r border-border"><KnowledgebaseFolderTree selected={folder} onSelect={onFolder} revision={revision} /></aside><div className="min-w-0 flex-1 overflow-y-auto">{error && <p role="alert" className="p-4 text-sm text-destructive">{error}</p>}{access ? <KnowledgebaseAccessPanel key={access.folder_path} access={access} onPrepared={onPrepared} isAdmin={isAdmin} onFolder={onFolder} /> : !error ? <p className="p-4 text-sm text-muted-foreground">Loading access…</p> : null}</div></div>}
   </div>
 }

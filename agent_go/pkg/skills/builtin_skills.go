@@ -81,6 +81,12 @@ func builtinAttachableSkill(folderName string) *llmtypes.Skill {
 	return cloneSkillDefinition(skill)
 }
 
+// BuiltinDefinition returns a defensive read-only copy for authorized catalog
+// presentation. Reading a definition does not attach it or grant its tools.
+func BuiltinDefinition(folderName string) *llmtypes.Skill {
+	return builtinAttachableSkill(folderName)
+}
+
 func cloneSkillDefinition(skill *llmtypes.Skill) *llmtypes.Skill {
 	if skill == nil {
 		return nil

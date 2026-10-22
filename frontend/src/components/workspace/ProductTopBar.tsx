@@ -10,6 +10,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { visibleProductSurfaceIDs } from '../../products/productSurfaceConfig'
+import { SharedToolShortcuts } from './SharedToolShortcuts'
 
 const WorkspaceChatsSidebar = lazy(() => import('./WorkspaceChatsSidebar'))
 const DEFAULT_SIDEBAR_WIDTH = 260
@@ -63,7 +64,7 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
     {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />}
   </button>
   // Branding stays in the open sidebar; the collapsed toolbar needs only its toggle.
-  const leading = <div className="flex shrink-0 items-center gap-2">{toggle}</div>
+  const leading = <div className="flex shrink-0 items-center gap-2 md:hidden">{toggle}</div>
   const controls = <nav aria-label="Product navigation" data-product-navigation="topbar" data-terminal-focus-chrome="header" data-tour-products={visibleProductSurfaceIDs(allowedProducts).join(' ')}
     className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">
     {children}
@@ -72,10 +73,14 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
     <CompactProductNavigationContext.Provider value={sidebar}>
       {sidebar && <div data-terminal-focus-chrome="header" data-product-navigation-mode={navigationMode}
         style={{ '--chat-sidebar-width': `${width}px` } as CSSProperties}
-        className={`relative z-40 shrink-0 ${open ? 'w-0 md:w-[var(--chat-sidebar-width)]' : 'w-0'}`}>
+        className={`relative z-40 shrink-0 ${open ? 'w-0 md:w-[var(--chat-sidebar-width)]' : 'w-0 md:w-12'}`}>
         <aside aria-label="Chat navigation" className={`${open ? 'flex' : 'hidden'} absolute inset-y-0 left-0 w-[var(--chat-sidebar-width)] bg-background md:relative md:h-full`}>
           <Suspense fallback={<div className="w-full border-r border-border">{toggle}</div>}><WorkspaceChatsSidebar toggle={toggle} footer={<div ref={registerSidebarSettings} data-sidebar-setup-slot />} /></Suspense>
         </aside>
+        {!open && <aside aria-label="Product shortcuts" className="absolute inset-y-0 left-0 hidden w-12 flex-col border-r border-border/70 bg-muted/20 md:flex">
+          <div className="flex h-[50px] shrink-0 items-center justify-center">{toggle}</div>
+          <div className="mt-auto pb-14"><SharedToolShortcuts compact /></div>
+        </aside>}
         {open && <div role="separator" aria-label="Resize your work list" aria-orientation="vertical" aria-valuemin={220} aria-valuemax={360} aria-valuenow={width} tabIndex={0}
           onDoubleClick={() => resize(DEFAULT_SIDEBAR_WIDTH)}
           onPointerDown={event => {

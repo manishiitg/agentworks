@@ -3,6 +3,7 @@ import api from '../../services/api'
 import { usedFeatures } from '../../utils/featureUsage'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useChatStore } from '../../stores/useChatStore'
+import { PRODUCT_TIPS_PREFERENCE_CHANGED } from '../../utils/productTipsPreference'
 
 // Only after the agent has been working this long: never on quick turns.
 export const WORKING_TIP_DELAY_MS = 10_000
@@ -28,11 +29,22 @@ function activeCodeProjectTabs(): number {
 export function useRareWorkingTip(working: boolean, turnKey?: string | number): string | null {
   const surface = useProductSurfaceStore(state => state.productSurface)
   const [tip, setTip] = useState<string | null>(null)
+  const [enabled, setEnabled] = useState(true)
+  useEffect(() => {
+    const changed = (event: Event) => {
+      const next = (event as CustomEvent<{ enabled: boolean }>).detail?.enabled
+      if (typeof next !== 'boolean') return
+      setEnabled(next)
+      if (!next) setTip(null)
+    }
+    window.addEventListener(PRODUCT_TIPS_PREFERENCE_CHANGED, changed)
+    return () => window.removeEventListener(PRODUCT_TIPS_PREFERENCE_CHANGED, changed)
+  }, [])
   const fallbackTurn = useRef(`mount-${Math.random().toString(36).slice(2)}`)
   const turn = String(turnKey ?? fallbackTurn.current)
   useEffect(() => {
     setTip(null)
-    if (!working) return
+    if (!working || !enabled) return
     let stopped = false
     const controller = new AbortController()
     const timer = window.setTimeout(async () => {
@@ -45,6 +57,6 @@ export function useRareWorkingTip(working: boolean, turnKey?: string | number): 
       } catch { /* a tip is never worth an error on screen */ }
     }, WORKING_TIP_DELAY_MS)
     return () => { stopped = true; window.clearTimeout(timer); controller.abort() }
-  }, [working, surface, turn])
-  return working ? tip : null
+  }, [working, surface, turn, enabled])
+  return working && enabled ? tip : null
 }

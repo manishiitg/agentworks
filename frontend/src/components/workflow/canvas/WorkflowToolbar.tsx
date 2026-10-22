@@ -1,11 +1,12 @@
-import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../workspace/WorkspaceProjectNavigation'
+import { workflowProjectMenuItems } from '../workflowProjectMenu'
+import { projectMenuHistoryScope, useProjectMenuHistoryStore } from '../../../stores/useProjectMenuHistoryStore'
+import { useWorkspaceConnectionStore } from '../../../stores/useWorkspaceConnectionStore'
+import { openProductWorkspace } from '../../../utils/productWorkspaceNavigation'
 import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
-import { WorkspaceContextButton } from '../../workspace/WorkspaceContextButton'
 import React, { useEffect, useRef, useMemo, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useWorkflowStore, type RunFolder } from '../../../stores/useWorkflowStore'
-import { type WorkspaceViewId } from '../workspaceViews'
 import { useChatStore } from '../../../stores/useChatStore'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import type { VariablesManifest } from '../../../services/api-types'
@@ -17,7 +18,6 @@ import { GlobalActivityMonitor } from '../../GlobalActivityMonitor'
 import { useModeStore } from '../../../stores/useModeStore'
 import { WorkspaceTopToolbar } from '../../workspace/WorkspaceTopToolbar'
 import { useRegisterPanelSwitcher, type PanelSwitcherPanel } from '../../../stores/usePanelSwitcherStore'
-import { WORKFLOW_IDENTITY_SECTIONS } from '../../../products/productPanels'
 
 import { useAppStore } from '../../../stores/useAppStore'
 import { useLLMStore } from '../../../stores/useLLMStore'
@@ -83,47 +83,33 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
     restoreSelectionFromLocalStorage: state.restoreSelectionFromLocalStorage,
   })))
 
-  const workflowWorkspaceView = useWorkflowStore(state => state.workflowWorkspaceView)
-  const lastCanvasView = useWorkflowStore(state => state.lastCanvasView)
   const openWorkspaceView = useWorkflowStore(state => state.openWorkspaceView)
-
-  // No explicit view means the pane is on whichever canvas view was last open.
-  const activeWorkspaceView: WorkspaceViewId = workflowWorkspaceView ?? lastCanvasView
   const isMultiUser = useAuthStore(state => state.isMultiUserMode)
   const incomingEmail = false
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const canWrite = useCanWriteWorkflow(workspacePath)
   const pulseEnabled = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest?.pulse?.enabled === true)
-  const panelSwitcherPanels: PanelSwitcherPanel[] = canWrite ? [
-    { id: 'context', label: 'Project menu' },
-    ...(!relayMode && pulseEnabled ? [{ id: 'pulse', label: 'Pulse' }] : []),
-    { id: 'report', label: 'Dashboard', group: 'Use & share' },
-    { id: 'mcp:share', label: 'Share', group: 'Use & share' },
-    ...(!relayMode ? [{ id: 'browser', label: 'Browser', group: 'Use & share' }] : []),
-    ...projectAutomationSections({ relay: relayMode, incomingEmail }).map(item => ({ id: `workshop:${item.id}`, label: item.label, group: 'Use & share' })),
-    ...projectChannelSections(true, !relayMode).map(item => ({ id: `mcp:${item.id}`, label: item.label, group: 'Use & share' })),
-    ...projectConnectionSections({ allowedProducts, relayMode, onOpen: () => {} }).map(item => ({ id: item.id, label: item.label, group: 'Connections' })),
-    ...(!relayMode && !pulseEnabled ? [{ id: 'pulse', label: 'Turn Pulse on', group: 'Ops' }] : []),
-    { id: 'flow', label: relayMode ? 'Flow & runs' : 'Plan', group: 'Ops' },
-    { id: 'files', label: 'Files', group: 'Ops' },
-    ...(!relayMode ? [{ id: 'knowledge', label: 'Knowledge base', group: 'Ops' }] : []),
-    { id: 'mcp:skills', label: 'Skills', group: 'Ops' },
-    { id: 'workshop:chats', label: 'Chat history', group: 'Ops' },
-    ...(!relayMode ? [{ id: 'human-actions', label: 'Decisions', group: 'Ops' }] : []),
-    { id: 'costs', label: 'Costs and usage', group: 'Ops' },
-    { id: 'execution-logs', label: 'Run logs', group: 'Ops' },
-    { id: 'identity', label: 'Settings', group: 'Ops', sections: WORKFLOW_IDENTITY_SECTIONS.filter(section => !relayMode || section.id !== 'upgrades') },
-    ...(isMultiUser ? [{ id: 'access', label: 'Team', group: 'Ops' }] : []),
-    ...(!relayMode ? [
-      { id: 'playbooks', label: 'Workflow playbooks', group: 'Ops' },
-      { id: 'backup', label: 'Backup', group: 'Ops' },
-      { id: 'publish', label: 'Publish', group: 'Ops' },
-      { id: 'notify', label: 'Notify', group: 'Ops' },
-    ] : []),
-  ] : [{ id: 'report', label: 'Dashboard', group: 'Use & share' }]
+  const user = useAuthStore(state => state.user)
+  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const projectID = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest.id)
+  const menuOptions = { relayMode, isMultiUser, pulseEnabled, incomingEmail, allowedProducts }
+  const menuItems = workflowProjectMenuItems(menuOptions)
+  const panelSwitcherPanels: PanelSwitcherPanel[] = canWrite
+    ? [{ id: 'context', label: 'Project menu' }, ...menuItems.map(item => ({ id: item.id, label: item.label, group: item.group }))]
+    : [{ id: 'report', label: 'Dashboard', group: 'Build' }]
   useRegisterPanelSwitcher(workspacePath ? (relayMode ? 'relays' : 'agentworks') : null, panelSwitcherPanels, (key, section) => {
-    const [id, target] = key.split(':')
-    openWorkspaceView(id as WorkspaceViewId, target ?? section)
+    const current = useAuthStore.getState().user
+    if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
+    if (key === 'context' && canWrite) { openWorkspaceView('context'); return }
+    if (!canWrite) { if (key === 'report') openWorkspaceView('report'); return }
+    const id = section ? `${key}:${section}` : key
+    const admitted = workflowProjectMenuItems({ ...menuOptions, allowedProducts: current?.allowed_products })
+    const item = admitted.find(candidate => candidate.id === id)
+      ?? admitted.find(candidate => candidate.view === key && !section)
+    if (!item) return
+    useProjectMenuHistoryStore.getState().visit(projectMenuHistoryScope(server || 'local', user?.id || 'pending', relayMode ? 'relays' : 'agentworks', projectID || workspacePath || ''), item.id)
+    if (item.external) { openProductWorkspace(item.external); return }
+    if (item.view) openWorkspaceView(item.view, item.target)
   })
   // Main workflow execution phase for the canvas toolbar
   const targetExecutionPhaseId = EXECUTION_PHASE_ID
@@ -264,14 +250,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
       {/* Right side - View controls */}
       <div data-tour="workflow-tools" data-testid="tour-workflow-tools" className="ml-auto flex shrink-0 items-center gap-1">
         <TooltipProvider delayDuration={150}>
-          {activeWorkspaceView === 'report' && showChatArea === false && onToggleChatArea && canWrite && <button type="button" onClick={onToggleChatArea} className="min-h-8 rounded-md border border-border px-3 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Ask about this dashboard</button>}
           {workflowMode && !globalPageOpen && !providersOpen && <GlobalActivityMonitor />}
-          {workspacePath && canWrite && <>
-            <WorkspaceContextButton
-              inContext={activeWorkspaceView === 'context'}
-              onClick={() => useWorkflowStore.getState().openWorkspaceView('context')}
-            />
-          </>}
 
         </TooltipProvider>
       </div>

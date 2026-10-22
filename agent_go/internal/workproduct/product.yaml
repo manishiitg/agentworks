@@ -29,7 +29,8 @@ profile:
   # the compatibility fields returned by the profile API are derived from it.
   features:
     - live-chat
-    - coding
+    - id: coding
+      options: {review_skill: disabled}
     - files
     - browser
     - secrets

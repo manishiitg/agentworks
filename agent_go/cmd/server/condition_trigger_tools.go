@@ -108,7 +108,13 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		}
 		result := map[string]interface{}{"triggers": out}
 		if base.Profile.ID == crewProfileID {
-			binding, err := resolveProductConversationBinding(ctx, owner, base.Profile, base.ProjectID)
+			// A watcher caller has a minimal identity, not a runtime profile.
+			// Resolve the Crew's actual conversation policy before listing chats.
+			profile, err := c.s.registry.Resolve(crewProfileID, 0, owner)
+			if err != nil {
+				return nil, err
+			}
+			binding, err := resolveProductConversationBinding(ctx, owner, profile, base.ProjectID)
 			if err != nil {
 				return nil, err
 			}
