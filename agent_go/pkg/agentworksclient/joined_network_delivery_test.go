@@ -27,6 +27,8 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 	var primaryReads, partnerReads atomic.Int32
 	var primarySends, partnerSends atomic.Int32
 	var duplicateName, refusePartner, failPrimaryDirectory atomic.Bool
+	var invalidPrimaryDirectory atomic.Int32
+	incompleteDirectories := []string{`{}`, `null`, `{"agents":null}`}
 	remote := func(network string, reads *atomic.Int32) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			id := "message-" + network
@@ -46,6 +48,10 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 			}
 			switch args["action"] {
 			case "list_agents":
+				if mode := invalidPrimaryDirectory.Load(); network == "primary" && mode > 0 {
+					fmt.Fprint(w, incompleteDirectories[mode-1])
+					return
+				}
 				if network == "primary" && failPrimaryDirectory.Load() {
 					w.WriteHeader(http.StatusServiceUnavailable)
 					return
@@ -207,6 +213,14 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 	if unknown := send("agent:reviewer", "not-joined", "unknown-network"); !unknown.IsError {
 		t.Fatal("an unjoined network was accepted")
 	}
+	for i, body := range incompleteDirectories {
+		invalidPrimaryDirectory.Store(int32(i + 1))
+		invalid := send("agent:reviewer", "", fmt.Sprintf("invalid-directory-%d", i))
+		if !invalid.IsError || !strings.Contains(invalid.Content[0].(mcp.TextContent).Text, "Invalid agent directory") || primarySends.Load() != 1 || partnerSends.Load() != 4 {
+			t.Fatalf("incomplete directory %s allowed a send", body)
+		}
+	}
+	invalidPrimaryDirectory.Store(0)
 	failPrimaryDirectory.Store(true)
 	if unavailable := send("agent:reviewer", "", "incomplete-directories"); !unavailable.IsError || !strings.Contains(unavailable.Content[0].(mcp.TextContent).Text, "no message was sent") {
 		t.Fatal("an incomplete lookup guessed a destination")

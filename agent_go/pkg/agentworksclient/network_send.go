@@ -42,15 +42,15 @@ func (b *localBridge) sendAcrossNetworks(ctx context.Context, networks []*localS
 			return LocalBridgeReply{Error: fmt.Sprintf("Cannot locate agent %q on network %s: %v. Choose network explicitly; no message was sent.", name, sendNetworkName(network), err)}
 		}
 		var directory struct {
-			Agents []struct {
+			Agents *[]struct {
 				ID        string `json:"id"`
 				AgentName string `json:"agent_name"`
 			}
 		}
-		if json.Unmarshal(raw, &directory) != nil {
+		if json.Unmarshal(raw, &directory) != nil || directory.Agents == nil {
 			return LocalBridgeReply{Error: "Invalid agent directory from network " + sendNetworkName(network) + "; no message was sent."}
 		}
-		for _, agent := range directory.Agents {
+		for _, agent := range *directory.Agents {
 			if strings.EqualFold(agent.ID, "agent:"+name) || agent.AgentName != "" && strings.EqualFold(agent.AgentName, name) {
 				matches = append(matches, network)
 				break
