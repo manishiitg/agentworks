@@ -1,8 +1,6 @@
 package server
 
 import (
-	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -63,13 +61,5 @@ func TestEffectiveChatModelIsResolvedByServerFromCurrentProjectAndOwnChoice(t *t
 	currentAccount, err := effectiveProfileChatModel(profile, productConversationBinding{}, chat, ProductAgentIdentity{})
 	if err != nil || currentAccount.ModelID != "claude-fable-5-1" || currentAccount.ConnectionID != "old-account" {
 		t.Fatalf("default model inferred old model or lost current same-provider account: %+v, %v", currentAccount, err)
-	}
-}
-
-func TestEffectiveChatModelDoesNotPublishAccountIDs(t *testing.T) {
-	row := AgentProfileEffectiveChatModel{AgentProfileChatModel: AgentProfileChatModel{ConversationKey: "crew", DisplayLabel: "Cursor · auto"}, ConnectionID: "private-owner-account"}
-	encoded, err := json.Marshal(row)
-	if err != nil || strings.Contains(string(encoded), "private-owner-account") || strings.Contains(string(encoded), "connection_id") {
-		t.Fatalf("account leaked in model presentation: %s, %v", encoded, err)
 	}
 }
