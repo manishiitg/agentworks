@@ -68,7 +68,7 @@ type LocalBridgeRequest struct {
 	// SaveDir is used only by the caller that saves a received file; it never reaches the bridge.
 	SaveDir string `json:"-"`
 	// Also adds this chat to another network (the saved login in ConfigPath) next to
-	// its own; Network picks one of those extra networks (detach --from, read).
+	// its own; Network selects an already joined connection (send/read/detach).
 	Also    bool   `json:"also,omitempty"`
 	Network string `json:"network,omitempty"`
 }
@@ -1521,7 +1521,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if via == nil {
 			return LocalBridgeReply{Error: "This chat has not joined network " + in.Network + ". Add it with /agentworks attach --also " + in.Network + "."}
 		}
-		if via.Offline || via.client == nil {
+		autoSend := in.Action == "send" && in.Network == "" && !strings.Contains(in.Target, "@") && len(b.extrasOf(key)) > 0 && namedSendTarget(in.Target) != ""
+		if !autoSend && (via.Offline || via.client == nil) {
+			if in.Action == "send" {
+				return LocalBridgeReply{Error: "AgentWorks network " + sendNetworkName(via) + " is offline; no message was sent. Check this chat's existing connection and retry."}
+			}
 			return LocalBridgeReply{Error: "This chat's connection to network " + via.Network + " is offline. Type /agentworks attach --also " + via.Network + " to reconnect it."}
 		}
 		if via.Also && in.Action == "send" {
@@ -1538,9 +1542,24 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		network := via.Network
 		crossNetwork := via.Also
 		snap := &localSession{Attachment: via.Attachment, client: via.client}
+		var sendNetworks []*localSession
+		if autoSend {
+			for _, candidate := range append([]*localSession{s}, b.extrasOf(key)...) {
+				sendNetworks = append(sendNetworks, &localSession{Attachment: candidate.Attachment, client: candidate.client, Network: candidate.Network, Offline: candidate.Offline})
+			}
+		}
 		var reply LocalBridgeReply
 		b.unlocked(func() {
-			reply = b.mailboxCall(callCtx, snap, in, out)
+			if in.Action == "send" {
+				if autoSend {
+					reply = b.sendAcrossNetworks(callCtx, sendNetworks, in, out)
+				} else {
+					snap.Network = network
+					reply = sendNetworkResult(b.mailboxCall(callCtx, snap, in, out), snap)
+				}
+			} else {
+				reply = b.mailboxCall(callCtx, snap, in, out)
+			}
 			if in.Action == "peers" && crossNetwork {
 				reply.Result = directoryWithoutProjectContext(reply.Result)
 			}
@@ -2970,12 +2989,15 @@ func (b *localBridge) extrasPending(primary string) bool {
 
 // networkFor picks the attachment a mailbox action uses: an explicit network,
 // a target written NAME@NETWORK, or an inbox that came from a joined network.
-// A bare name always stays on the chat's own network.
+// An unqualified send is resolved across joined directories by sendAcrossNetworks.
 func (b *localBridge) networkFor(primary string, s *localSession, in LocalBridgeRequest) *localSession {
 	if s.Also {
 		return s
 	}
 	pick := func(network string) *localSession {
+		if s.client != nil && network == s.client.baseURL {
+			return s
+		}
 		for _, x := range b.extrasOf(primary) {
 			if x.Network == network {
 				return x

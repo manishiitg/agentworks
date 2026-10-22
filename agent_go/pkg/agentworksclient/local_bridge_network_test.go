@@ -2,10 +2,9 @@ package agentworksclient
 
 import "testing"
 
-// A chat joined to a second network (--also) sends there only when the person or
-// agent names it (NAME@LOGIN) or answers a message that came from there; a bare
-// name never leaves the chat's own network (owner decision, 2026-10-15).
-func TestJoinedNetworkIsUsedOnlyWhenNamed(t *testing.T) {
+// Explicit selectors and replies keep their network. Unqualified first sends
+// are resolved separately against joined directories before any write.
+func TestJoinedNetworkSelectorsAndReplyRouting(t *testing.T) {
 	primary := localBridgeKey("claude", "11111111-2222-4333-8444-555555555555")
 	own := &localSession{Attachment: AgentAttachment{AgentName: "worker"}, Offers: map[string]localOffer{}}
 	other := &localSession{Also: true, Network: "partner", ParentConfigPath: "/logins/partner.json", Attachment: AgentAttachment{AgentName: "worker"},

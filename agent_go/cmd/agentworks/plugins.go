@@ -991,7 +991,7 @@ func bridgeCommand(o *options) *cobra.Command {
 	call.Flags().StringVar(&purpose, "purpose", "", "Describe what this attached agent works on")
 	call.Flags().IntVar(&cursor, "after", 0, "Explicit mailbox recovery cursor")
 	call.Flags().StringVar(&inbox, "inbox", "", "Conversation address")
-	call.Flags().StringVar(&network, "network", "", "Saved network this chat already joined (read)")
+	call.Flags().StringVar(&network, "network", "", "Joined network name or own server URL (send/read); send otherwise resolves a unique named agent across joined networks")
 	call.AddCommand(museWatchCommand(o))
 	cmd.AddCommand(call)
 

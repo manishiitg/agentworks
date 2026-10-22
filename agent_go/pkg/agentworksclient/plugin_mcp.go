@@ -105,12 +105,13 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 	AddPluginAction(s, mcp.NewTool("agent_message_peers", mcp.WithDescription("Discover authorized named agents for this attached identity.")), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return call(ctx, LocalBridgeRequest{Action: "peers"}, req)
 	})
-	AddPluginAction(s, mcp.NewTool("agent_message_send", mcp.WithDescription("Explicitly send from this attached identity to an authorized named agent."), mcp.WithString("target", mcp.Required()), mcp.WithString("message", mcp.Required()), mcp.WithString("submission_id", mcp.Required()), mcp.WithString("file_path", mcp.Description("Optional: path of one file on this computer (up to 5 MB) to send with the message."))), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	AddPluginAction(s, mcp.NewTool("agent_message_send", mcp.WithDescription("Send once to an authorized named agent across this chat's joined networks. A unique name selects its network; choose network when the same name exists on more than one."), mcp.WithString("target", mcp.Required()), mcp.WithString("message", mcp.Required()), mcp.WithString("submission_id", mcp.Required()), mcp.WithString("network", mcp.Description("Optional joined network name, or this chat's own server URL. For send, omitted resolves a unique agent across joined networks; for read, omitted uses the primary network.")), mcp.WithString("file_path", mcp.Description("Optional: path of one file on this computer (up to 5 MB) to send with the message."))), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		a := req.GetArguments()
 		target, _ := a["target"].(string)
 		text, _ := a["message"].(string)
 		submission, _ := a["submission_id"].(string)
-		in := LocalBridgeRequest{Action: "send", Target: target, Message: text, SubmissionID: submission}
+		network, _ := a["network"].(string)
+		in := LocalBridgeRequest{Action: "send", Target: target, Message: text, SubmissionID: submission, Network: network}
 		if path, _ := a["file_path"].(string); path != "" {
 			var err error
 			if in.FileName, in.FileBase64, err = ReadMessageFile(path); err != nil {
@@ -119,7 +120,7 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		}
 		return call(ctx, in, req)
 	})
-	AddPluginAction(s, mcp.NewTool("agent_message_read", mcp.WithDescription("Explicit bounded mailbox recovery for this attached identity; never start a watch/polling loop."), mcp.WithString("inbox_id"), mcp.WithNumber("after"), mcp.WithString("network", mcp.Description("Optional saved network name for a connection this chat already joined; omitted reads its primary network."))), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	AddPluginAction(s, mcp.NewTool("agent_message_read", mcp.WithDescription("Explicit bounded mailbox recovery for this attached identity; never start a watch/polling loop."), mcp.WithString("inbox_id"), mcp.WithNumber("after"), mcp.WithString("network", mcp.Description("Optional joined network name, or this chat's own server URL. For send, omitted resolves a unique agent across joined networks; for read, omitted uses the primary network."))), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		a := req.GetArguments()
 		inbox, _ := a["inbox_id"].(string)
 		cursor, _ := a["after"].(float64)

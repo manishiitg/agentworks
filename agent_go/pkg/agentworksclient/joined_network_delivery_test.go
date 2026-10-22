@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,6 +25,8 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var primaryReads, partnerReads atomic.Int32
+	var primarySends, partnerSends atomic.Int32
+	var duplicateName, refusePartner, failPrimaryDirectory atomic.Bool
 	remote := func(network string, reads *atomic.Int32) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			id := "message-" + network
@@ -42,6 +45,32 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 				args = in
 			}
 			switch args["action"] {
+			case "list_agents":
+				if network == "primary" && failPrimaryDirectory.Load() {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				agents := []map[string]any{}
+				if network == "partner" || duplicateName.Load() {
+					agents = append(agents, map[string]any{"id": "agent:reviewer", "agent_name": "reviewer"})
+				}
+				json.NewEncoder(w).Encode(map[string]any{"agents": agents})
+			case "send":
+				if args["target"] != "agent:reviewer" {
+					t.Error("send used the wrong target", args["target"])
+				}
+				if network == "partner" {
+					partnerSends.Add(1)
+					if refusePartner.Load() {
+						w.Header().Set("X-Request-ID", "refused-partner-request")
+						w.WriteHeader(http.StatusNotFound)
+						fmt.Fprint(w, `{"error":{"code":"not_found","message":"named agent unavailable or access denied"}}`)
+						return
+					}
+				} else {
+					primarySends.Add(1)
+				}
+				json.NewEncoder(w).Encode(map[string]any{"message_id": "new-message-" + network, "accepted": true})
 			case "validate":
 				json.NewEncoder(w).Encode(map[string]any{"message_ids": []string{id}})
 			case "read":
@@ -132,5 +161,57 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 	}
 	if json.Unmarshal(reply.Result, &result) != nil || result.Network != "partner" {
 		t.Fatal("read response did not identify its network")
+	}
+	// New conversations must reach the same joined directory that lists the
+	// agent, including the network argument of the single exposed MCP tool.
+	send := func(target, network, submission string) *mcp.CallToolResult {
+		t.Helper()
+		result, err := plugin.GetTool(PluginToolName).Handler(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "send", "target": target, "network": network, "message": "review request", "submission_id": submission}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	checkNetwork := func(result *mcp.CallToolResult, network string) {
+		t.Helper()
+		if result.IsError {
+			t.Fatalf("send failed: %+v", result)
+		}
+		var reply LocalBridgeReply
+		if json.Unmarshal([]byte(result.Content[0].(mcp.TextContent).Text), &reply) != nil {
+			t.Fatal("invalid bridge reply")
+		}
+		var sent struct {
+			Network string `json:"network"`
+		}
+		if json.Unmarshal(reply.Result, &sent) != nil || sent.Network != network {
+			t.Fatalf("send did not identify selected network: %s", reply.Result)
+		}
+	}
+	checkNetwork(send("agent:reviewer", "", "unique-name"), "partner")
+	checkNetwork(send("agent:reviewer", "partner", "explicit-network"), "partner")
+	if primarySends.Load() != 0 || partnerSends.Load() != 2 {
+		t.Fatal("a joined first send went to the primary network")
+	}
+	duplicateName.Store(true)
+	if ambiguous := send("agent:reviewer", "", "ambiguous-name"); !ambiguous.IsError || !strings.Contains(ambiguous.Content[0].(mcp.TextContent).Text, "more than one network") {
+		t.Fatal("ambiguous agent was sent to without selecting its network")
+	}
+	checkNetwork(send("agent:reviewer", primary.URL, "explicit-primary"), primary.URL)
+	checkNetwork(send("agent:reviewer@partner", "", "qualified-network"), "partner")
+	refusePartner.Store(true)
+	refused := send("agent:reviewer", "partner", "refused-no-retry")
+	if !refused.IsError || !strings.Contains(refused.Content[0].(mcp.TextContent).Text, "network partner refused") || !strings.Contains(refused.Content[0].(mcp.TextContent).Text, "refused-partner-request") {
+		t.Fatal("refusal lost its network or request correlation")
+	}
+	if unknown := send("agent:reviewer", "not-joined", "unknown-network"); !unknown.IsError {
+		t.Fatal("an unjoined network was accepted")
+	}
+	failPrimaryDirectory.Store(true)
+	if unavailable := send("agent:reviewer", "", "incomplete-directories"); !unavailable.IsError || !strings.Contains(unavailable.Content[0].(mcp.TextContent).Text, "no message was sent") {
+		t.Fatal("an incomplete lookup guessed a destination")
+	}
+	if primarySends.Load() != 1 || partnerSends.Load() != 4 {
+		t.Fatalf("an ambiguous/refused send was replayed on another network: primary=%d partner=%d", primarySends.Load(), partnerSends.Load())
 	}
 }
