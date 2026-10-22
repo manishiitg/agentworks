@@ -354,7 +354,7 @@ func autoUpdateInstall(o *options, server string, release cliRelease) (failure, 
 		}
 	}
 	base := strings.TrimRight(server, "/") + "/api/downloads/cli"
-	backup, err := installUpdate(base, asset, target, release, true)
+	backup, err := installUpdate(base, asset, target, release, true, nil)
 	if err != nil {
 		return err.Error(), ""
 	}

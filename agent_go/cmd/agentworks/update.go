@@ -186,6 +186,11 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 		return err
 	}
 	base := strings.TrimRight(server, "/") + "/api/downloads/cli"
+	var progress io.Writer
+	if !check {
+		progress = o.stderr
+	}
+	updateStep(progress, "Checking for an AgentWorks update...")
 	raw, err := updateFetch(base + "/version.json")
 	if err != nil {
 		return fmt.Errorf("server does not publish CLI updates: %w", err)
@@ -200,6 +205,7 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 		return o.output(map[string]any{"current": current, "latest": release.Version, "update_available": !upToDate})
 	}
 	if upToDate {
+		updateStep(progress, "AgentWorks is already up to date.")
 		return o.output(map[string]any{"current": current, "latest": release.Version, "updated": false})
 	}
 	target := updateTargetOverride
@@ -208,27 +214,32 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 			return fmt.Errorf("locate current executable: %w", err)
 		}
 	}
-	if _, err = installUpdate(base, asset, target, release, false); err != nil {
+	updateStep(progress, "Downloading AgentWorks...")
+	if _, err = installUpdate(base, asset, target, release, false, progress); err != nil {
 		return err
 	}
+	updateStep(progress, "Reconnecting AgentWorks...")
 	if err = stopAgentBridge(context.Background()); err != nil {
 		return err
 	}
 	if err = restoreAgentBridge(context.Background(), o, target); err != nil {
 		return err
 	}
+	updateStep(progress, "Updating installed plugins...")
 	updateInstalledPlugins(context.Background(), o, switchSource)
+	updateStep(progress, "AgentWorks update complete.")
 	return o.output(map[string]any{"previous": current, "current": release.Version, "path": target, "updated": true})
 }
 
 // installUpdate downloads the asset, checks its checksum, swaps it in for the executable and runs the new one's
 // `version` as a self-test (restoring the old one if that fails). With keepBackup the previous executable stays at
 // the returned path so a caller can roll back.
-func installUpdate(base, asset, target string, release cliRelease, keepBackup bool) (string, error) {
-	binary, err := updateFetch(base + "/" + asset)
+func installUpdate(base, asset, target string, release cliRelease, keepBackup bool, progress io.Writer) (string, error) {
+	binary, err := downloadUpdate(base+"/"+asset, progress, time.Minute)
 	if err != nil {
 		return "", err
 	}
+	updateStep(progress, "Verifying the download...")
 	sidecar, err := updateFetch(base + "/" + asset + ".sha256")
 	if err != nil {
 		return "", err
@@ -242,6 +253,7 @@ func installUpdate(base, asset, target string, release cliRelease, keepBackup bo
 	if hex.EncodeToString(sum[:]) != want {
 		return "", fmt.Errorf("checksum mismatch for %s; refusing to install", asset)
 	}
+	updateStep(progress, "Installing AgentWorks...")
 	dir := filepath.Dir(target)
 	staged, err := os.CreateTemp(dir, "agentworks-update-*")
 	if err != nil {

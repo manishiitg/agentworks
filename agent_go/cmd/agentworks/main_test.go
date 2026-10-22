@@ -494,7 +494,21 @@ func TestUpdateCommand(t *testing.T) {
 		defer func() { updateTargetOverride, cliVersion = oldTarget, oldVersion }()
 		var out bytes.Buffer
 		args := append([]string{"--server", server.URL, "update"}, extra...)
-		code := run(context.Background(), args, strings.NewReader(""), &out, io.Discard, func(string) string { return "" })
+		var progress bytes.Buffer
+		code := run(context.Background(), args, strings.NewReader(""), &out, &progress, func(string) string { return "" })
+		if len(extra) == 1 && extra[0] == "--check" && progress.Len() != 0 {
+			t.Fatalf("check printed progress: %q", progress.String())
+		}
+		if code == 0 && version != newSHA && len(extra) == 0 {
+			for _, step := range []string{"Checking", "Downloading", "Verifying", "Installing", "Reconnecting", "Updating installed plugins", "update complete"} {
+				if !strings.Contains(progress.String(), step) {
+					t.Fatalf("missing progress step %q: %q", step, progress.String())
+				}
+			}
+			if !json.Valid(out.Bytes()) {
+				t.Fatalf("progress polluted JSON output: %q", out.String())
+			}
+		}
 		return code, out.String()
 	}
 
