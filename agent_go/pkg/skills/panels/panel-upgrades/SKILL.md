@@ -1,6 +1,14 @@
 ---
 name: panel-upgrades
-description: "Upgrades panel in Goals and Crews. Inspect and perform the Goal\u2019s current contract migrations."
+description: Upgrades panel in Goals and Crews. Inspect and perform the Goal’s current contract migrations.
+metadata:
+  panel-tools:
+    agentworks:
+    - get_contract_upgrades
+    - set_workflow_contract_version
+    - migrate_agent_steps
+    - migrate_goal_agents
+    - migrate_workflow_skills
 ---
 
 # Upgrades

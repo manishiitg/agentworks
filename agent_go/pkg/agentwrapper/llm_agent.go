@@ -961,6 +961,10 @@ func (w *LLMAgentWrapper) FinalizeDefinition(ctx context.Context) error {
 		return errors.New("underlying agent is nil")
 	}
 
+	for i := range w.definition.Tools.Direct {
+		tool := &w.definition.Tools.Direct[i]
+		tool.Description = skills.WorkspacePanelToolGuidance(tool.Name, tool.Description, w.definition.Skills)
+	}
 	runtime := w.runtime
 	runtime.ResumeHandle = w.lastResult.Handle
 	runtime.Observability.Observers = append([]mcpagent.AgentEventListener(nil), w.observers...)

@@ -80,7 +80,7 @@ func TestAgentProfileSkillDefaultsReportModesWithoutChangingSelections(t *testin
 
 func TestProductDefaultSkillsHaveReadableModeSpecificDefinitions(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "")
-	for _, profile := range []agentprofiles.Profile{agentworksproduct.BuiltinAgentProfile(), workproduct.BuiltinAgentProfile()} {
+	for _, profile := range append([]agentprofiles.Profile{agentworksproduct.BuiltinAgentProfile(), workproduct.BuiltinAgentProfile()}, mustRelayProfilesForPanelTest(t)...) {
 		profile.BuiltIn = true
 		if profile.ID == "work" {
 			if err := workproduct.RegisterProductSkills(); err != nil {
@@ -136,4 +136,13 @@ func TestProductDefaultSkillsHaveReadableModeSpecificDefinitions(t *testing.T) {
 			}
 		}
 	}
+}
+
+func mustRelayProfilesForPanelTest(t *testing.T) []agentprofiles.Profile {
+	t.Helper()
+	profiles, err := relayproduct.BuiltinAgentProfiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return profiles
 }

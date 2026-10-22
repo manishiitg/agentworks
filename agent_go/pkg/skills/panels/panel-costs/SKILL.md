@@ -1,6 +1,15 @@
 ---
 name: panel-costs
-description: "Costs and usage panel in Goals and Crews. Inspect spend, tokens and model usage for this project."
+description: Costs and usage panel in Goals and Crews. Inspect spend, tokens and model usage for this project.
+metadata:
+  panel-tools:
+    work:
+    - get_crew_costs
+    agentworks:
+    - get_cost_summary
+    - query_workflow_costs
+    relays:
+    - get_cost_summary
 ---
 
 # Costs and usage

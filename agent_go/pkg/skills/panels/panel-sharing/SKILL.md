@@ -1,6 +1,19 @@
 ---
 name: panel-sharing
-description: "People and access panel in Goals and Crews. Inspect or change who may use this project."
+description: People and access panel in Goals and Crews. Inspect or change who may use this project.
+metadata:
+  panel-tools:
+    work:
+    - get_dashboard_share
+    - share_dashboard
+    agentworks:
+    - get_dashboard_share
+    - share_dashboard
+    - manage_project
+    relays:
+    - get_dashboard_share
+    - share_dashboard
+    - manage_project
 ---
 
 # People and access

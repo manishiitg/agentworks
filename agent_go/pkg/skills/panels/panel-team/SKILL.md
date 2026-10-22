@@ -1,6 +1,11 @@
 ---
 name: panel-team
-description: "Team panel in Goals and Crews. Inspect or change the Goal\u2019s team, Leader or route assignments."
+description: Team panel in Goals and Crews. Inspect or change the Goal’s team, Leader or route assignments.
+metadata:
+  panel-tools:
+    agentworks:
+    - workflow_team
+    - get_workflow_team
 ---
 
 # Team

@@ -1,6 +1,11 @@
 ---
 name: panel-terminal
-description: "Terminal panel in Goals and Crews. Run a requested project command or show the live agent terminal."
+description: Terminal panel in Goals and Crews. Run a requested project command or show the live agent terminal.
+metadata:
+  panel-tools:
+    work:
+    - execute_shell_command
+    - perform_ui_action
 ---
 
 # Terminal

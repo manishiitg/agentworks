@@ -1,6 +1,13 @@
 ---
 name: panel-run-logs
-description: "Run logs panel in Goals and Crews. Read a Goal\u2019s executions, step progress and failure evidence."
+description: Run logs panel in Goals and Crews. Read a Goal’s executions, step progress and failure evidence.
+metadata:
+  panel-tools:
+    agentworks:
+    - list_executions
+    - query_step
+    - get_schedule_runs
+    - execute_shell_command
 ---
 
 # Run logs

@@ -1,6 +1,20 @@
 ---
 name: panel-chat-history
-description: "Chat history panel in Goals and Crews. Find, read or open earlier conversations in this project."
+description: Chat history panel in Goals and Crews. Find, read or open earlier conversations in this project.
+metadata:
+  panel-tools:
+    work:
+    - execute_shell_command
+    - get_ui_state
+    - perform_ui_action
+    agentworks:
+    - execute_shell_command
+    - get_ui_state
+    - perform_ui_action
+    relays:
+    - execute_shell_command
+    - get_ui_state
+    - perform_ui_action
 ---
 
 # Chat history

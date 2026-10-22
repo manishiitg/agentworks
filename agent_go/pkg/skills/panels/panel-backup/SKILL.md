@@ -1,6 +1,11 @@
 ---
 name: panel-backup
-description: "Backup panel in Goals and Crews. Configure, run, inspect or restore a Goal backup."
+description: Backup panel in Goals and Crews. Configure, run, inspect or restore a Goal backup.
+metadata:
+  panel-tools:
+    agentworks:
+    - execute_shell_command
+    - create_workflow_database_snapshot
 ---
 
 # Backup

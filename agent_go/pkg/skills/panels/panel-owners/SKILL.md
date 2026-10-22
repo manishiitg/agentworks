@@ -1,6 +1,11 @@
 ---
 name: panel-owners
-description: "Owners and collaborators panel in Goals and Crews. Inspect or change the project owner where the current product supports it."
+description: Owners and collaborators panel in Goals and Crews. Inspect or change the project owner where the current
+  product supports it.
+metadata:
+  panel-tools:
+    work:
+    - crew_owners
 ---
 
 # Owners and collaborators

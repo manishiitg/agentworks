@@ -1,6 +1,11 @@
 ---
 name: panel-publish
-description: "Publish panel in Goals and Crews. Configure, perform or inspect Goal publishing."
+description: Publish panel in Goals and Crews. Configure, perform or inspect Goal publishing.
+metadata:
+  panel-tools:
+    agentworks:
+    - execute_shell_command
+    - get_report_link
 ---
 
 # Publish

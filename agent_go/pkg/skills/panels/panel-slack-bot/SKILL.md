@@ -1,6 +1,26 @@
 ---
 name: panel-slack-bot
-description: "Slack bot panel in Goals and Crews. Select or configure a Slack bot and its channels for this project."
+description: Slack bot panel in Goals and Crews. Select or configure a Slack bot and its channels for this project.
+metadata:
+  panel-tools:
+    work:
+    - get_slack_bot_settings
+    - manage_slack_bot
+    - configure_slack_bot
+    - test_slack_bot_connection
+    - create_slack_bot_route
+    - update_slack_bot_route_permission
+    - remove_slack_bot_route
+    - manage_messaging
+    agentworks:
+    - get_slack_bot_settings
+    - manage_slack_bot
+    - configure_slack_bot
+    - test_slack_bot_connection
+    - create_slack_bot_route
+    - update_slack_bot_route_permission
+    - remove_slack_bot_route
+    - manage_messaging
 ---
 
 # Slack bot

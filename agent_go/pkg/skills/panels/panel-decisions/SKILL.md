@@ -1,6 +1,13 @@
 ---
 name: panel-decisions
-description: "Decisions panel in Goals and Crews. Inspect, answer or withdraw a Goal\u2019s pending human decision."
+description: Decisions panel in Goals and Crews. Inspect, answer or withdraw a Goal’s pending human decision.
+metadata:
+  panel-tools:
+    agentworks:
+    - get_human_input_request
+    - answer_human_input_request
+    - create_human_input_request
+    - withdraw_human_input_request
 ---
 
 # Decisions

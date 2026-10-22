@@ -1,6 +1,27 @@
 ---
 name: panel-brain
-description: "Brain connection panel in Goals and Crews. Select or inspect the shared Brain folders used by this project."
+description: Brain connection panel in Goals and Crews. Select or inspect the shared Brain folders used by this
+  project.
+metadata:
+  panel-tools:
+    work:
+    - brain_browse
+    - brain_read
+    - brain_update
+    - brain_skills
+    - brain_access
+    agentworks:
+    - brain_browse
+    - brain_read
+    - brain_update
+    - brain_skills
+    - brain_access
+    relays:
+    - brain_browse
+    - brain_read
+    - brain_update
+    - brain_skills
+    - brain_access
 ---
 
 # Brain connection

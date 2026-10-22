@@ -1,6 +1,10 @@
 ---
 name: panel-playbooks
-description: "Workflow playbooks panel in Goals and Crews. Find or apply an existing Goal playbook."
+description: Workflow playbooks panel in Goals and Crews. Find or apply an existing Goal playbook.
+metadata:
+  panel-tools:
+    agentworks:
+    - search_playbooks
 ---
 
 # Workflow playbooks

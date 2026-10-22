@@ -1,6 +1,21 @@
 ---
 name: panel-agentbridge
-description: "AgentBridge and computer chats panel in Goals and Crews. Find or message connected agents, or show how to connect the person\u2019s own chat."
+description: AgentBridge and computer chats panel in Goals and Crews. Find or message connected agents, or show
+  how to connect the person’s own chat.
+metadata:
+  panel-tools:
+    work:
+    - list_agents
+    - send_message
+    - read_agent_messages
+    agentworks:
+    - list_agents
+    - send_message
+    - read_agent_messages
+    relays:
+    - list_agents
+    - send_message
+    - read_agent_messages
 ---
 
 # AgentBridge and computer chats

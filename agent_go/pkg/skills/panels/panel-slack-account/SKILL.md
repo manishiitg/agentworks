@@ -1,6 +1,14 @@
 ---
 name: panel-slack-account
-description: "Slack account panel in Goals and Crews. Connect, select, remove or inspect a saved personal Slack account."
+description: Slack account panel in Goals and Crews. Connect, select, remove or inspect a saved personal Slack account.
+metadata:
+  panel-tools:
+    work:
+    - manage_slack_account
+    agentworks:
+    - manage_slack_account
+    relays:
+    - manage_slack_account
 ---
 
 # Slack account

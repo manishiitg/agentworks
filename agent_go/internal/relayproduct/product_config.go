@@ -9,6 +9,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
+	platformskills "github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -57,6 +58,13 @@ func loadProduct() error {
 					return
 				}
 				skillSeen[name] = true
+				if platformskills.IsWorkspacePanelSkill(name) {
+					if mode != "builder" {
+						loadErr = fmt.Errorf("panel setup skill %s is Builder-only", name)
+						return
+					}
+					continue
+				}
 				var raw []byte
 				raw, loadErr = files.ReadFile("skills/" + name + "/SKILL.md")
 				if loadErr != nil {
@@ -122,6 +130,10 @@ func ChatSkills(mode string) ([]*llmtypes.Skill, error) {
 	}
 	out := make([]*llmtypes.Skill, 0, len(def.Skills))
 	for _, name := range def.Skills {
+		if platformskills.IsWorkspacePanelSkill(name) {
+			out = append(out, platformskills.BuiltinDefinition(name))
+			continue
+		}
 		out = append(out, &llmtypes.Skill{
 			Name: name, Description: "Instructions for Flow " + mode + " chat.",
 			Content: skills[name], Source: llmtypes.SkillSource{Origin: "builtin"},

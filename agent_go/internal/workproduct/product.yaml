@@ -15,7 +15,7 @@ chat:
   builder:
     external_tools: [get_file_link, manage_crew_commands, crew_files, crew_skills, crew_mcp, crew_folders, crew_references, crew_diagnostics, crew_execution, crew_integrations, crew_owners]
     prompt: {file: prompts/system-prompt.md}
-    skills: [crew-builder, crew-agents, crew-laptop, panel-dashboard, panel-functions, panel-skills, panel-files, panel-database, panel-plan, panel-browser, panel-chat-history, panel-schedules, panel-watchers, panel-webhooks, panel-inbox, panel-slack-bot, panel-slack-account, panel-whatsapp, panel-mcp-access, panel-mcp-connections, panel-secrets, panel-brain, panel-linked-folders, panel-google-apps, panel-agentbridge, panel-sharing, panel-owners, panel-suggestions, panel-settings, panel-models, panel-memory, panel-costs, panel-local-laptop, panel-terminal]
+    skills: [crew-builder, crew-agents, crew-laptop, panel-dashboard, panel-functions, panel-skills, panel-files, panel-database, panel-crew-plan, panel-browser, panel-chat-history, panel-schedules, panel-watchers, panel-webhooks, panel-inbox, panel-slack-bot, panel-slack-account, panel-whatsapp, panel-mcp-access, panel-mcp-connections, panel-secrets, panel-brain, panel-linked-folders, panel-google-apps, panel-agentbridge, panel-sharing, panel-owners, panel-suggestions, panel-settings, panel-models, panel-memory, panel-costs, panel-local-laptop, panel-terminal]
   run:
     prompt: {file: prompts/run.md}
     skills: [crew-run]

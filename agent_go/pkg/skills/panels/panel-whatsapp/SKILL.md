@@ -1,6 +1,14 @@
 ---
 name: panel-whatsapp
-description: "WhatsApp panel in Goals and Crews. Check or change the project\u2019s WhatsApp connection and explain how to chat."
+description: WhatsApp panel in Goals and Crews. Check or change the project’s WhatsApp connection and explain how
+  to chat.
+metadata:
+  panel-tools:
+    work:
+    - manage_whatsapp
+    - manage_messaging
+    agentworks:
+    - manage_messaging
 ---
 
 # WhatsApp

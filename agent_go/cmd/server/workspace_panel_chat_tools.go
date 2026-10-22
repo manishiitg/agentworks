@@ -17,6 +17,9 @@ import (
 // handlers. The active project is supplied by the server, never by the model.
 func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegistrar, gate *productToolGate, user, session, root, product string) error {
 	names := []string{"settings", "workflow_team", "manage_project", "browser_connections", "manage_messaging", "manage_pulse"}
+	if product == "relays" {
+		names = []string{"settings", "manage_project", "browser_connections", "manage_messaging", "list_relay_runs"}
+	}
 	if product == "work" {
 		// Browser and model chat tools already exist for Crews.
 		names = []string{"settings", "crew_owners", "manage_messaging"}
@@ -83,6 +86,9 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 				}
 			}
 			if product == "work" {
+				if status, message := externalCrewAuthorGate(claims); status != 0 {
+					return "", errors.New(message)
+				}
 				ref, found := resolveCrewPath(ctx, user, root)
 				if !found || crewAccessFor(claims, ref) != crewAccessOwner {
 					return "", errors.New("Only this Crew's Builder can change its settings.")
@@ -94,8 +100,13 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 				clean["crew_id"] = manifest.ID
 			} else {
 				access, manifest := workflowAccessForWorkspacePath(ctx, claims, root)
-				if manifest == nil || manifest.Kind == "relay" || access != WorkflowAccessOwner && access != WorkflowAccessWrite || !userAllowedProduct(claims, "agentworks") {
-					return "", errors.New("Only this Goal's Builder can change its settings.")
+				if manifest == nil || (manifest.Kind == "relay") != (product == "relays") || access != WorkflowAccessOwner && access != WorkflowAccessWrite || !userAllowedProduct(claims, product) {
+					return "", errors.New("Only this project's Builder can change its settings.")
+				}
+				if claims.AccessToken != nil {
+					if _, err := validateBuilderGrant(ctx, claims, manifest.ID, root); err != nil {
+						return "", err
+					}
 				}
 				clean["workflow_id"] = manifest.ID
 			}

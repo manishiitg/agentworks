@@ -1,6 +1,38 @@
 ---
 name: panel-mcp-connections
-description: "MCP connections panel in Goals and Crews. Select, connect, inspect or remove external tools used by the project."
+description: MCP connections panel in Goals and Crews. Select, connect, inspect or remove external tools used by
+  the project.
+metadata:
+  panel-tools:
+    work:
+    - list_mcp_servers
+    - search_mcp_catalog
+    - install_mcp_server
+    - add_mcp_server
+    - remove_mcp_server
+    - get_mcp_server_logs
+    - trigger_mcp_discovery
+    - update_project_mcp_server_selection
+    - settings
+    agentworks:
+    - list_mcp_servers
+    - search_mcp_catalog
+    - install_mcp_server
+    - add_mcp_server
+    - edit_mcp_server
+    - remove_mcp_server
+    - get_mcp_server_logs
+    - trigger_mcp_discovery
+    - settings
+    relays:
+    - list_mcp_servers
+    - search_mcp_catalog
+    - install_mcp_server
+    - add_mcp_server
+    - edit_mcp_server
+    - remove_mcp_server
+    - trigger_mcp_discovery
+    - settings
 ---
 
 # MCP connections

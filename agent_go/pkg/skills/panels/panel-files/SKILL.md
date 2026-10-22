@@ -1,6 +1,19 @@
 ---
 name: panel-files
-description: "Files panel in Goals and Crews. Read, create, edit, move or link a project file from chat."
+description: Files panel in Goals and Crews. Read, create, edit, move or link a project file from chat.
+metadata:
+  panel-tools:
+    work:
+    - execute_shell_command
+    - diff_patch_workspace_file
+    agentworks:
+    - execute_shell_command
+    - diff_patch_workspace_file
+    - get_file_link
+    relays:
+    - execute_shell_command
+    - diff_patch_workspace_file
+    - get_file_link
 ---
 
 # Files

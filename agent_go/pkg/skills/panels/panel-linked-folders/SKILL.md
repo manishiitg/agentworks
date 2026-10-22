@@ -1,6 +1,22 @@
 ---
 name: panel-linked-folders
-description: "Linked projects and folders panel in Goals and Crews. Attach, inspect or remove a project reference or an authorized folder."
+description: Linked projects and folders panel in Goals and Crews. Attach, inspect or remove a project reference
+  or an authorized folder.
+metadata:
+  panel-tools:
+    work:
+    - list_work_folders
+    - attach_work_folder
+    - detach_work_folder
+    - list_accessible_workflows
+    - list_attached_workflows
+    - attach_workflow_reference
+    - detach_workflow_reference
+    agentworks:
+    - list_accessible_workflows
+    - request_workflow_folder_access
+    relays:
+    - request_workflow_folder_access
 ---
 
 # Linked projects and folders

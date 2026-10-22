@@ -1,6 +1,20 @@
 ---
 name: panel-schedules
-description: "Schedules panel in Goals and Crews. Create, change, pause, resume, run or inspect a scheduled caller."
+description: Schedules panel in Goals and Crews. Create, change, pause, resume, run or inspect a scheduled caller.
+metadata:
+  panel-tools:
+    work:
+    - list_project_schedules
+    - create_project_schedule
+    - update_project_schedule
+    - delete_project_schedule
+    agentworks:
+    - list_schedules
+    - create_schedule
+    - update_schedule
+    - delete_schedule
+    - trigger_schedule
+    - get_schedule_runs
 ---
 
 # Schedules

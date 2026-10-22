@@ -1,6 +1,30 @@
 ---
 name: panel-skills
-description: "Skills panel in Goals and Crews. Inspect sources, add, select, create or remove a project skill."
+description: Skills panel in Goals and Crews. Inspect sources, add, select, create or remove a project skill.
+metadata:
+  panel-tools:
+    work:
+    - list_skills
+    - search_skills
+    - import_skill
+    - install_skill
+    - uninstall_skill
+    - update_project_skill_selection
+    - settings
+    agentworks:
+    - list_skills
+    - search_skills
+    - import_skill
+    - install_skill
+    - uninstall_skill
+    - settings
+    relays:
+    - list_skills
+    - search_skills
+    - import_skill
+    - install_skill
+    - uninstall_skill
+    - settings
 ---
 
 # Skills

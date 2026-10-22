@@ -1,6 +1,11 @@
 ---
 name: panel-local-laptop
-description: "Local laptop panel in Goals and Crews. Connect a computer or change its allowed folders and command access."
+description: Local laptop panel in Goals and Crews. Connect a computer or change its allowed folders and command
+  access.
+metadata:
+  panel-tools:
+    work:
+    - manage_laptop_access
 ---
 
 # Local laptop

@@ -209,3 +209,7 @@ transcript.txt
 
 # MCP Gateway local state (sqlite oauth store)
 /mcp-gateway/var/
+
+# Panel secret-management guidance contains procedures only, never credential values.
+!agent_go/pkg/skills/panels/panel-secrets/
+!agent_go/pkg/skills/panels/panel-secrets/SKILL.md

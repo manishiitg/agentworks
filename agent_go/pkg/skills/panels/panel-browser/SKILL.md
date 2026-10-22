@@ -1,6 +1,20 @@
 ---
 name: panel-browser
-description: "Browser panel in Goals and Crews. Connect a browser, change browser mode, or work in the browser."
+description: Browser panel in Goals and Crews. Connect a browser, change browser mode, or work in the browser.
+metadata:
+  panel-tools:
+    work:
+    - browser_connections
+    - agent_browser
+    - settings
+    agentworks:
+    - browser_connections
+    - agent_browser
+    - settings
+    relays:
+    - browser_connections
+    - agent_browser
+    - settings
 ---
 
 # Browser

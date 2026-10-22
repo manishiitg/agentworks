@@ -1,6 +1,12 @@
 ---
 name: panel-suggestions
-description: "Suggestions panel in Goals and Crews. Read, answer or dismiss pending suggestions for the project."
+description: Suggestions panel in Goals and Crews. Read, answer or dismiss pending suggestions for the project.
+metadata:
+  panel-tools:
+    work:
+    - list_needs_you
+    - answer_needs_you
+    - dismiss_needs_you
 ---
 
 # Suggestions

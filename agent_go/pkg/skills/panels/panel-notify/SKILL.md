@@ -1,6 +1,13 @@
 ---
 name: panel-notify
-description: "Notify panel in Goals and Crews. Change Goal notification channels/instructions or inspect delivery."
+description: Notify panel in Goals and Crews. Change Goal notification channels/instructions or inspect delivery.
+metadata:
+  panel-tools:
+    agentworks:
+    - get_workflow_config
+    - update_workflow_config
+    - get_notification_history
+    - settings
 ---
 
 # Notify

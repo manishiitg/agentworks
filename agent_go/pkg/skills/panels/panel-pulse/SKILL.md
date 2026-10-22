@@ -1,6 +1,13 @@
 ---
 name: panel-pulse
-description: "Pulse panel in Goals and Crews. Inspect Pulse, change whether it runs or start a requested check."
+description: Pulse panel in Goals and Crews. Inspect Pulse, change whether it runs or start a requested check.
+metadata:
+  panel-tools:
+    agentworks:
+    - manage_pulse
+    - ask_pulse
+    - update_workflow_config
+    - settings
 ---
 
 # Pulse

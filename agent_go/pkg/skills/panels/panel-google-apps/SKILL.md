@@ -1,6 +1,20 @@
 ---
 name: panel-google-apps
-description: "Google apps panel in Goals and Crews. Connect, select, change access to or remove a saved Google account."
+description: Google apps panel in Goals and Crews. Connect, select, change access to or remove a saved Google account.
+metadata:
+  panel-tools:
+    work:
+    - manage_google_account
+    - list_gmail_connections
+    - update_gmail_connection_grants
+    agentworks:
+    - manage_google_account
+    - list_gmail_connections
+    - update_gmail_connection_grants
+    relays:
+    - manage_google_account
+    - list_gmail_connections
+    - update_gmail_connection_grants
 ---
 
 # Google apps

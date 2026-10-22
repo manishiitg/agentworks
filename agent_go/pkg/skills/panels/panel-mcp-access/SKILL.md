@@ -1,6 +1,22 @@
 ---
 name: panel-mcp-access
-description: "MCP access panel in Goals and Crews. Help the person connect an external agent to this project."
+description: MCP access panel in Goals and Crews. Help the person connect an external agent to this project.
+metadata:
+  panel-tools:
+    work:
+    - manage_my_vaults
+    - settings
+    - get_ui_state
+    - perform_ui_action
+    agentworks:
+    - manage_my_vaults
+    - settings
+    - get_ui_state
+    - perform_ui_action
+    relays:
+    - settings
+    - get_ui_state
+    - perform_ui_action
 ---
 
 # MCP access

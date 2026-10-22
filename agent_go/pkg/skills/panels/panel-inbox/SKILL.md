@@ -1,6 +1,19 @@
 ---
 name: panel-inbox
-description: "Email inbox panel in Goals and Crews. Inspect Crew-addressed mail or configure receiving and its Gmail account."
+description: Email inbox panel in Goals and Crews. Inspect Crew-addressed mail or configure receiving and its Gmail
+  account.
+metadata:
+  panel-tools:
+    work:
+    - get_agent_inbox
+    - configure_agent_inbox
+    - manage_google_account
+    - manage_condition_triggers
+    agentworks:
+    - get_agent_inbox
+    - configure_agent_inbox
+    - manage_google_account
+    - manage_condition_triggers
 ---
 
 # Email inbox

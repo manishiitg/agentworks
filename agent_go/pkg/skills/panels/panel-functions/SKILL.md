@@ -1,6 +1,23 @@
 ---
 name: panel-functions
-description: "Functions panel in Goals and Crews. Publish or change the actions other people and agents can call."
+description: Functions panel in Goals and Crews. Publish or change the actions other people and agents can call.
+metadata:
+  panel-tools:
+    work:
+    - list_functions
+    - define_function
+    - delete_function
+    - call_function
+    - get_function_call
+    agentworks:
+    - list_functions
+    - define_function
+    - delete_function
+    - manage_workflow_webhook
+    - call_function
+    - get_function_call
+    relays:
+    - manage_workflow_webhook
 ---
 
 # Functions

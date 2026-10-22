@@ -1,6 +1,18 @@
 ---
 name: panel-database
-description: "Database panel in Goals and Crews. Inspect tables, query or update the project database."
+description: Database panel in Goals and Crews. Inspect tables, query or update the project database.
+metadata:
+  panel-tools:
+    work:
+    - query_workflow_db
+    - mutate_workflow_db
+    - apply_workflow_db_migration
+    - create_workflow_database_snapshot
+    agentworks:
+    - query_workflow_db
+    - mutate_workflow_db
+    - apply_workflow_db_migration
+    - create_workflow_database_snapshot
 ---
 
 # Database

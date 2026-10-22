@@ -1,6 +1,11 @@
 ---
 name: panel-memory
-description: "Memory panel in Goals and Crews. Read or update durable project facts, decisions and preferences."
+description: Memory panel in Goals and Crews. Read or update durable project facts, decisions and preferences.
+metadata:
+  panel-tools:
+    work:
+    - execute_shell_command
+    - diff_patch_workspace_file
 ---
 
 # Memory

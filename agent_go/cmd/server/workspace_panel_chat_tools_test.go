@@ -50,12 +50,22 @@ func TestWorkspacePanelChatToolsBindCurrentBuilder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("native team update: %s %v", out, err)
 	}
-	for _, claims := range []*UserClaims{
-		{UserID: "reader", Username: "reader"},
-		{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{ID: "run-only", Scopes: []string{"runs:execute"}, AllWorkflows: true}},
-	} {
-		if _, err := reg.tools["settings"].exec(context.WithValue(ctx, UserContextKey, claims), map[string]any{"action": "update", "browser_mode": "headless", "expected_version": "unused"}); err == nil {
-			t.Fatal("foreign caller or Run token changed settings")
+	reads := map[string]map[string]any{
+		"settings": {"action": "get"}, "workflow_team": {"action": "get"},
+		"manage_project": {"action": "get_access"}, "browser_connections": {"action": "list"},
+		"manage_messaging": {"action": "status"}, "manage_pulse": {"action": "status"},
+	}
+	for name, args := range reads {
+		if out, err := reg.tools[name].exec(ctx, args); err != nil {
+			t.Fatalf("website Builder %s: %s %v", name, out, err)
+		}
+		for _, claims := range []*UserClaims{
+			{UserID: "reader", Username: "reader"},
+			{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{ID: "run-only", Scopes: []string{"runs:execute"}, AllWorkflows: true}},
+		} {
+			if _, err := reg.tools[name].exec(context.WithValue(ctx, UserContextKey, claims), args); err == nil {
+				t.Fatalf("%s accepted a foreign user or Run token", name)
+			}
 		}
 	}
 	f.api.lastQueryRequests[session] = QueryRequest{userID: "reader", SelectedFolder: root}
