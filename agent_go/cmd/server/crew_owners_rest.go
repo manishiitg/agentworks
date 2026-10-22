@@ -8,7 +8,7 @@ import (
 )
 
 // The Share popup's Owners section talks to the dashboards endpoint, like Share itself: owners lists a Crew's owners,
-// owner_add and owner_remove (the main owner only, checked in changeCrewOwners) change them. The MCP tool crew_owners
+// owner_add and owner_remove (any current owner, checked in changeCrewOwners) change them. The MCP tool crew_owners
 // reaches the same code.
 func dashboardOwnersAction(action string) bool {
 	return action == "owners" || dashboardOwnersWrite(action)

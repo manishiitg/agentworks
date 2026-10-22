@@ -16,130 +16,146 @@ import (
 // name differs from its project ID. Tool arguments cannot select another
 // project or person, and changing a model cannot select another chat.
 func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
-	f, _ := newExternalCrewCommandFixture(t)
-	claims := &UserClaims{UserID: "owner", Username: "owner"}
-	ctx := context.WithValue(context.Background(), UserContextKey, claims)
-	profile, err := f.api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	binding, canBuild, err := resolveConversationBindingForUser(ctx, claims.UserID, profile, "team")
-	if err != nil || !canBuild {
-		t.Fatalf("binding: %v %t", err, canBuild)
-	}
-	store := defaultProductConversationRegistryStore()
-	chat, err := store.resolveOrCreate(ctx, claims.UserID, profile, binding, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	side := binding
-	side.ConversationKey = "team" + codeChatSideMarker + "other"
-	if _, err := store.resolveOrCreate(ctx, claims.UserID, profile, side, ""); err != nil {
-		t.Fatal(err)
-	}
-	for _, key := range []string{binding.ConversationKey, side.ConversationKey} {
-		if _, err := store.setAgentModel(ctx, claims.UserID, profile.ID, key, "codex-cli", "gpt-6-astra", "", claims.UserID); err != nil {
-			t.Fatal(err)
-		}
-	}
-	resolved := &resolvedAgentProfile{Definition: profile}
-	reg := &recordingRegistrar{}
-	if err := f.api.registerCrewSettingsChatTools(reg, newProductToolGate(resolved), resolved, claims, false, chat.SessionID, externalCommandCrewRoot, "https://example.com"); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"browser_connections", "get_crew_costs", "manage_crew_model"} {
-		tool, ok := reg.tools[name]
-		if !ok {
-			t.Fatalf("missing %s", name)
-		}
-		props := tool.params["properties"].(map[string]any)
-		for _, selector := range []string{"crew_id", "workflow_id", "project_id", "workspace", "workspace_id", "chat_id", "conversation_key"} {
-			if props[selector] != nil {
-				t.Fatalf("%s exposes %s", name, selector)
+	for _, person := range []string{"owner", "other"} {
+		t.Run(person, func(t *testing.T) {
+			f, _ := newExternalCrewCommandFixture(t)
+			if _, err := defaultProjectOwners().AddCoOwner("work", "test-team", "other"); err != nil {
+				t.Fatal(err)
 			}
-		}
-		foreign := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other"})
-		if _, err := tool.exec(foreign, map[string]any{"action": "list"}); err == nil {
-			t.Fatalf("%s accepted another caller", name)
-		}
-	}
-	// Forged selectors are ignored even if the transport skips schema checks.
-	out, err := reg.tools["browser_connections"].exec(ctx, map[string]any{"action": "list", "crew_id": "another", "workspace": "Crew/another"})
-	if err != nil || !strings.Contains(out, "https://example.com/?browser_connections=1") {
-		t.Fatalf("saved-browser list: %s %v", out, err)
-	}
-	// The live native bridge validates this schema before the callback. An
-	// empty engine is the existing reset operation and must survive admission.
-	encodedSchema, err := json.Marshal(reg.tools["manage_crew_model"].params)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var wireSchema any
-	if err := json.Unmarshal(encodedSchema, &wireSchema); err != nil {
-		t.Fatal(err)
-	}
-	compiler := jsonschema.NewCompiler()
-	if err := compiler.AddResource("https://example.com/crew-model.json", wireSchema); err != nil {
-		t.Fatal(err)
-	}
-	schema, err := compiler.Compile("https://example.com/crew-model.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := schema.Validate(map[string]any{"action": "set", "engine": ""}); err != nil {
-		t.Fatalf("native schema rejects the documented model reset: %v", err)
-	}
-	if _, err := reg.tools["manage_crew_model"].exec(ctx, map[string]any{"action": "set", "engine": "", "conversation_key": side.ConversationKey, "chat_id": "other"}); err != nil {
-		t.Fatal(err)
-	}
-	identities, err := store.agentIdentities(ctx, claims.UserID, profile.ID, "team")
-	if err != nil || identities[binding.ConversationKey].Engine != "" || identities[side.ConversationKey].Engine != "codex-cli" {
-		t.Fatalf("model changed a different chat: %+v %v", identities, err)
-	}
-	limited := &recordingRegistrar{}
-	readClaims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
-	if err := f.api.registerCrewSettingsChatTools(limited, nil, resolved, readClaims, false, chat.SessionID, externalCommandCrewRoot, "https://example.com"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := limited.tools["manage_crew_model"].exec(context.Background(), map[string]any{"action": "set", "engine": ""}); err == nil {
-		t.Fatal("model setter bypassed the existing chat tool's MCP consent")
-	}
-	if _, err := limited.tools["manage_crew_model"].exec(ctx, map[string]any{"action": "set", "engine": ""}); err == nil {
-		t.Fatal("same-user unscoped context widened model consent")
-	}
-	if _, err := limited.tools["browser_connections"].exec(ctx, map[string]any{"action": "select", "browser_id": "test-browser"}); err == nil || !strings.Contains(err.Error(), "Builder connection") {
-		t.Fatalf("same-user unscoped context widened browser consent: %v", err)
-	}
-	for _, scope := range []string{"crews:run", "crews:write"} {
-		bounded := &recordingRegistrar{}
-		tokenClaims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{scope}, AllCrews: true}}
-		if err := f.api.registerCrewSettingsChatTools(bounded, nil, resolved, tokenClaims, false, chat.SessionID, externalCommandCrewRoot, "https://example.com"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := bounded.tools["get_crew_costs"].exec(ctx, nil); err == nil || !strings.Contains(err.Error(), "This connection does not allow") {
-			t.Fatalf("%s bypassed public costs read consent: %v", scope, err)
-		}
-		if scope == "crews:run" {
-			for _, action := range []string{"list", "setup"} {
-				if _, err := bounded.tools["browser_connections"].exec(ctx, map[string]any{"action": action}); err == nil || !strings.Contains(err.Error(), "This connection does not allow") {
-					t.Fatalf("run-only bypassed public browser %s consent: %v", action, err)
+			for _, group := range []string{"crew_execution", "crew_integrations"} {
+				owner := crewCapabilityHTTP(t, f, crewWriter("owner"), group, map[string]any{"action": "list"}, 200)
+				coOwner := crewCapabilityHTTP(t, f, crewWriter("other"), group, map[string]any{"action": "list"}, 200)
+				if owner != coOwner {
+					t.Fatalf("%s exposes different owner/co-owner native tools", group)
 				}
 			}
-		}
-	}
-	run := &recordingRegistrar{}
-	if err := f.api.registerCrewSettingsChatTools(run, nil, resolved, claims, true, chat.SessionID, externalCommandCrewRoot, "https://example.com"); err != nil || len(run.tools) != 0 {
-		t.Fatalf("Run acquired settings tools: %+v %v", run.tools, err)
-	}
-	// The feature declaration and actual registrar admit the same sharing tools.
-	if !agentprofiles.HasFeature(profile, "dashboard") {
-		t.Fatal("fixture has no dashboard feature")
-	}
-	gate := newProductToolGate(resolved)
-	for _, name := range []string{"get_dashboard_share", "share_dashboard"} {
-		if !gate.Admit(name) {
-			t.Fatalf("feature filters %s", name)
-		}
+
+			claims := &UserClaims{UserID: person, Username: person}
+			ctx := context.WithValue(context.Background(), UserContextKey, claims)
+			profile, err := f.api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			binding, canBuild, err := resolveConversationBindingForUser(ctx, claims.UserID, profile, "team")
+			if err != nil || !canBuild {
+				t.Fatalf("binding: %v %t", err, canBuild)
+			}
+			store := defaultProductConversationRegistryStore()
+			chat, err := store.resolveOrCreate(ctx, claims.UserID, profile, binding, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			side := binding
+			side.ConversationKey = "team" + codeChatSideMarker + "other"
+			if _, err := store.resolveOrCreate(ctx, claims.UserID, profile, side, ""); err != nil {
+				t.Fatal(err)
+			}
+			for _, key := range []string{binding.ConversationKey, side.ConversationKey} {
+				if _, err := store.setAgentModel(ctx, claims.UserID, profile.ID, key, "codex-cli", "gpt-6-astra", "", claims.UserID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			resolved := &resolvedAgentProfile{Definition: profile}
+			reg := &recordingRegistrar{}
+			if err := f.api.registerCrewSettingsChatTools(reg, newProductToolGate(resolved), resolved, claims, false, chat.SessionID, externalCommandCrewRoot, "https://example.com"); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"browser_connections", "get_crew_costs", "manage_crew_model"} {
+				tool, ok := reg.tools[name]
+				if !ok {
+					t.Fatalf("missing %s", name)
+				}
+				props := tool.params["properties"].(map[string]any)
+				for _, selector := range []string{"crew_id", "workflow_id", "project_id", "workspace", "workspace_id", "chat_id", "conversation_key"} {
+					if props[selector] != nil {
+						t.Fatalf("%s exposes %s", name, selector)
+					}
+				}
+				foreign := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "unrelated"})
+				if _, err := tool.exec(foreign, map[string]any{"action": "list"}); err == nil {
+					t.Fatalf("%s accepted another caller", name)
+				}
+			}
+			// Forged selectors are ignored even if the transport skips schema checks.
+			out, err := reg.tools["browser_connections"].exec(ctx, map[string]any{"action": "list", "crew_id": "another", "workspace": "Crew/another"})
+			if err != nil || !strings.Contains(out, "https://example.com/?browser_connections=1") {
+				t.Fatalf("saved-browser list: %s %v", out, err)
+			}
+			// The live native bridge validates this schema before the callback. An
+			// empty engine is the existing reset operation and must survive admission.
+			encodedSchema, err := json.Marshal(reg.tools["manage_crew_model"].params)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var wireSchema any
+			if err := json.Unmarshal(encodedSchema, &wireSchema); err != nil {
+				t.Fatal(err)
+			}
+			compiler := jsonschema.NewCompiler()
+			if err := compiler.AddResource("https://example.com/crew-model.json", wireSchema); err != nil {
+				t.Fatal(err)
+			}
+			schema, err := compiler.Compile("https://example.com/crew-model.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := schema.Validate(map[string]any{"action": "set", "engine": ""}); err != nil {
+				t.Fatalf("native schema rejects the documented model reset: %v", err)
+			}
+			if _, err := reg.tools["manage_crew_model"].exec(ctx, map[string]any{"action": "set", "engine": "", "conversation_key": side.ConversationKey, "chat_id": "other"}); err != nil {
+				t.Fatal(err)
+			}
+			identities, err := store.agentIdentities(ctx, claims.UserID, profile.ID, "team")
+			if err != nil || identities[binding.ConversationKey].Engine != "" || identities[side.ConversationKey].Engine != "codex-cli" {
+				t.Fatalf("model changed a different chat: %+v %v", identities, err)
+			}
+			limited := &recordingRegistrar{}
+			readClaims := &UserClaims{UserID: person, AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
+			if err := f.api.registerCrewSettingsChatTools(limited, nil, resolved, readClaims, false, chat.SessionID, externalCommandCrewRoot, "https://example.com"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := limited.tools["manage_crew_model"].exec(context.Background(), map[string]any{"action": "set", "engine": ""}); err == nil {
+				t.Fatal("model setter bypassed the existing chat tool's MCP consent")
+			}
+			if _, err := limited.tools["manage_crew_model"].exec(ctx, map[string]any{"action": "set", "engine": ""}); err == nil {
+				t.Fatal("same-user unscoped context widened model consent")
+			}
+			if _, err := limited.tools["browser_connections"].exec(ctx, map[string]any{"action": "select", "browser_id": "test-browser"}); err == nil || !strings.Contains(err.Error(), "Builder connection") {
+				t.Fatalf("same-user unscoped context widened browser consent: %v", err)
+			}
+			for _, scope := range []string{"crews:run", "crews:write"} {
+				bounded := &recordingRegistrar{}
+				tokenClaims := &UserClaims{UserID: person, AccessToken: &accesstokens.Token{Scopes: []string{scope}, AllCrews: true}}
+				if err := f.api.registerCrewSettingsChatTools(bounded, nil, resolved, tokenClaims, false, chat.SessionID, externalCommandCrewRoot, "https://example.com"); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := bounded.tools["get_crew_costs"].exec(ctx, nil); err == nil || !strings.Contains(err.Error(), "This connection does not allow") {
+					t.Fatalf("%s bypassed public costs read consent: %v", scope, err)
+				}
+				if scope == "crews:run" {
+					for _, action := range []string{"list", "setup"} {
+						if _, err := bounded.tools["browser_connections"].exec(ctx, map[string]any{"action": action}); err == nil || !strings.Contains(err.Error(), "This connection does not allow") {
+							t.Fatalf("run-only bypassed public browser %s consent: %v", action, err)
+						}
+					}
+				}
+			}
+			run := &recordingRegistrar{}
+			if err := f.api.registerCrewSettingsChatTools(run, nil, resolved, claims, true, chat.SessionID, externalCommandCrewRoot, "https://example.com"); err != nil || len(run.tools) != 0 {
+				t.Fatalf("Run acquired settings tools: %+v %v", run.tools, err)
+			}
+			// The feature declaration and actual registrar admit the same sharing tools.
+			if !agentprofiles.HasFeature(profile, "dashboard") {
+				t.Fatal("fixture has no dashboard feature")
+			}
+			gate := newProductToolGate(resolved)
+			for _, name := range []string{"get_dashboard_share", "share_dashboard"} {
+				if !gate.Admit(name) {
+					t.Fatalf("feature filters %s", name)
+				}
+			}
+
+		})
 	}
 }
 

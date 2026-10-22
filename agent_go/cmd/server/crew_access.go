@@ -94,7 +94,7 @@ func crewProjectOwnedByCaller(callerID, workspacePath string) bool {
 }
 
 // crewProjectOwnedByCallerStrict is crewProjectOwnedByCaller for the places that mean the MAIN owner's own things (their
-// browser, mailbox, personal connections), not the permission to build: a co-owner is not the owner there.
+// personal accounts outside the project), not permission to use the Crew's selected resources.
 func crewProjectOwnedByCallerStrict(callerID, workspacePath string) bool {
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(workspacePath)))
 	if _, shared := ref.SharedProject(); shared {

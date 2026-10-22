@@ -205,8 +205,8 @@ func TestCrewCoOwnersShareSelectedSecretsInChatAndMCP(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	managedGlobalsMu.Lock()
 	oldGlobals, oldManaged := globalSecrets, managedGlobals
-	globalSecrets = []globalSecretEntry{{Name: "CREW_TOKEN", Value: "test-only-value"}, {Name: "NOT_SELECTED", Value: "not-for-this-project"}}
-	managedGlobals = map[string]string{}
+	globalSecrets = nil
+	managedGlobals = map[string]string{"CREW_TOKEN": "test-only-value", "NOT_SELECTED": "not-for-this-project"}
 	managedGlobalsMu.Unlock()
 	t.Cleanup(func() {
 		managedGlobalsMu.Lock()
