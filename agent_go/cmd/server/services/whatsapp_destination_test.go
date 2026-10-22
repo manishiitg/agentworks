@@ -10,6 +10,13 @@ import (
 )
 
 func TestDiscoverWhatsAppDestinationsIncludesOwnedCrewProjects(t *testing.T) {
+	SetCrewScopeHooks(nil, nil, func(_ context.Context, userID string) []SharedCrewListing {
+		if userID != "owner-1" {
+			t.Errorf("Crew listing user = %q, want owner-1", userID)
+		}
+		return []SharedCrewListing{{ID: "company-ca", Title: "Company CA", WorkspacePath: "Crew/company-ca", ProfileID: "work"}}
+	})
+	t.Cleanup(func() { SetCrewScopeHooks(nil, nil, nil) })
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("X-User-ID"); got != "owner-1" {
 			t.Errorf("X-User-ID = %q, want owner-1", got)
@@ -17,14 +24,10 @@ func TestDiscoverWhatsAppDestinationsIncludesOwnedCrewProjects(t *testing.T) {
 		switch {
 		case r.URL.Path == "/api/documents" && r.URL.Query().Get("folder") == "Workflow":
 			fmt.Fprint(w, `{"success":true,"data":[{"filepath":"Workflow/invoices/workflow.json","type":"file"},{"filepath":"Workflow/review-relay/workflow.json","type":"file"}]}`)
-		case r.URL.Path == "/api/documents" && r.URL.Query().Get("folder") == "Chats/Work/projects":
-			fmt.Fprint(w, `{"success":true,"data":[{"filepath":"Chats/Work/projects/company-ca/product.json","type":"file"}]}`)
 		case r.URL.Path == "/api/documents/Workflow/invoices/workflow.json":
 			fmt.Fprint(w, `{"success":true,"data":{"filepath":"Workflow/invoices/workflow.json","content":"{\"id\":\"wf-invoices\",\"label\":\"Invoice Processing\"}"}}`)
 		case r.URL.Path == "/api/documents/Workflow/review-relay/workflow.json":
 			fmt.Fprint(w, `{"success":true,"data":{"filepath":"Workflow/review-relay/workflow.json","content":"{\"id\":\"relay-review\",\"kind\":\"relay\",\"label\":\"Review Relay\"}"}}`)
-		case r.URL.Path == "/api/documents/Chats/Work/projects/company-ca/product.json":
-			fmt.Fprint(w, `{"success":true,"data":{"filepath":"Chats/Work/projects/company-ca/product.json","content":"{\"product\":\"work\",\"id\":\"company-ca\",\"title\":\"Company CA\",\"identity\":{\"name\":\"CA Crew\"}}"}}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -40,7 +43,7 @@ func TestDiscoverWhatsAppDestinationsIncludesOwnedCrewProjects(t *testing.T) {
 		t.Fatalf("destinations = %+v, want the owned Crew, Goal and Flow", candidates)
 	}
 	crew := candidates[0]
-	if crew.Kind != "crew" || crew.Label != "Company CA" || crew.ProfileID != "work" || crew.ConversationKey != "company-ca" || crew.WorkspacePath != "Chats/Work/projects/company-ca" {
+	if crew.Kind != "crew" || crew.Label != "Company CA" || crew.ProfileID != "work" || crew.ConversationKey != "company-ca" || crew.WorkspacePath != "Crew/company-ca" {
 		t.Fatalf("Crew destination = %+v", crew)
 	}
 	flow := candidates[2]

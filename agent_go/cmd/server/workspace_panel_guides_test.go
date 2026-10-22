@@ -50,7 +50,7 @@ func TestSharedPanelReferencesReachBothTransports(t *testing.T) {
 func TestWhatsAppRelayRouteUsesCurrentProductAccess(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["agentworks","relays"]},{"id":"reader","role":"viewer","products":["agentworks","relays"]},{"id":"outsider","role":"viewer","products":["agentworks","relays"]}]}`)
-	const root = "Workflow/review-flow"
+	const root = "Workflow/invoices" // This fixture serves this canonical manifest path.
 	f.write(t, root+"/workflow.json", `{"id":"review-flow","kind":"relay","label":"Review","created_by":"owner","access":{"owners":["owner"],"readers":["reader"]}}`)
 	route := services.ChannelRoute{WorkflowID: "review-flow", WorkspacePath: root, WorkshopMode: "run"}
 	for _, user := range []string{"owner", "reader"} {
@@ -94,7 +94,6 @@ func TestSharedWhatsAppControlsRequireCurrentBuilder(t *testing.T) {
 			}
 			withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["agentworks","work","relays"]},{"id":"reader","role":"viewer","products":["agentworks","work","relays"]},{"id":"foreign","role":"editor","products":["agentworks","work","relays"]}]}`)
 			if product == "relays" {
-				root = "Workflow/control-flow"
 				f.write(t, root+"/workflow.json", `{"id":"control-flow","kind":"relay","created_by":"owner","access":{"owners":["owner"],"readers":["reader"]}}`)
 			}
 			for _, action := range []string{"whatsapp_status", "whatsapp_routing", "whatsapp_unpair"} {
