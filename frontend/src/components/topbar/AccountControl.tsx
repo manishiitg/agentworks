@@ -1,10 +1,8 @@
 import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { HelpCircle, Keyboard, KeyRound, LogOut, Globe } from 'lucide-react'
+import { HelpCircle, Keyboard, KeyRound, LogOut } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
-import NotificationsControl from './NotificationsControl'
-import TipsToggle from './TipsToggle'
 import ChangePasswordDialog from './ChangePasswordDialog'
 import BrowserConnectionsDialog from '../BrowserConnectionsDialog'
 import { APP_VERSION } from '../../version'
@@ -66,8 +64,7 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, men
             <p className="text-xs text-gray-500 dark:text-gray-400">{`AgentWorks v${APP_VERSION}`}</p>
           </div>
           {children}
-          {menuOnly && <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Preferences &amp; help</p>}
-          <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => { setOpen(false); setBrowserConnections(true) }}><Globe className="h-4 w-4 text-muted-foreground" />Browser connections</button>
+          {menuOnly && <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Help</p>}
           <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => { setOpen(false); window.dispatchEvent(new Event('open-welcome-home')) }}>
             <HelpCircle className="h-4 w-4 text-muted-foreground" />
             Getting started
@@ -86,8 +83,6 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, men
             <Keyboard className="h-4 w-4 text-muted-foreground" />
             Keyboard shortcuts
           </button>}
-          {<NotificationsControl menuItem />}
-          <TipsToggle />
           {isMultiUserMode && <div role="separator" className="my-1 border-t border-border" />}
           {isMultiUserMode && passwordSignIn && <button
             type="button"

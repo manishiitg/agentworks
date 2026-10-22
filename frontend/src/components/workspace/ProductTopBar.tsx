@@ -41,6 +41,14 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
     if (node && open) useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: node })
     else if (state.sidebarSettingsTarget === previous) useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: null })
   }, [open])
+  const ownCompactSettings = useRef<HTMLDivElement | null>(null)
+  const registerCompactSettings = useCallback((node: HTMLDivElement | null) => {
+    const previous = ownCompactSettings.current
+    ownCompactSettings.current = node
+    if (node || useProductNavigationToolbarStore.getState().compactSettingsTarget === previous) {
+      useProductNavigationToolbarStore.setState({ compactSettingsTarget: node })
+    }
+  }, [])
   const userId = useAuthStore(state => state.user?.id)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
@@ -81,6 +89,9 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
           <div className="flex h-[50px] shrink-0 items-center justify-center">{toggle}</div>
           <div className="mt-auto pb-14"><SharedToolShortcuts compact /></div>
         </aside>}
+        {/* The account icon belongs to the rail's stacking context. A fixed
+            descendant of the workspace toolbar is covered by this rail. */}
+        {!open && <div ref={registerCompactSettings} data-compact-setup-slot className="absolute bottom-3 left-2 z-10 w-8" />}
         {open && <div role="separator" aria-label="Resize your work list" aria-orientation="vertical" aria-valuemin={220} aria-valuemax={360} aria-valuenow={width} tabIndex={0}
           onDoubleClick={() => resize(DEFAULT_SIDEBAR_WIDTH)}
           onPointerDown={event => {

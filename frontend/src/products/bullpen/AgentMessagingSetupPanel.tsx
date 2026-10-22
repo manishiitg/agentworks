@@ -1,10 +1,10 @@
 import { useState, useEffect, type ReactNode } from 'react'
-import { ArrowRight, Check, Copy, Laptop, MessageSquare } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Copy, Laptop, MessageSquare } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { getApiBaseUrl } from '../../services/api'
 
 import { messagingGuides, type MessagingClient } from './agentMessagingSetup'
-import { AI_APPS, AiAppPicker, isHostedAiApp, type AiApp } from '../../components/integrations/AiAppPicker'
+import { AiAppPicker, isHostedAiApp, type AiApp } from '../../components/integrations/AiAppPicker'
 import { HostedAiAppGuide } from '../../components/integrations/HostedAiAppGuide'
 import { HowBullpenWorks } from './HowBullpenWorks'
 
@@ -33,15 +33,20 @@ function Step({ number, title, children }: { number: number; title: string; chil
 }
 
 /** Instructions only; no installation, login or attachment runs from this page. */
-export function AgentMessagingSetupPanel({ onOpenMcp }: { onOpenMcp: () => void }) {
+export function AgentMessagingSetupPanel({ onOpenMcp, onBack }: { onOpenMcp: () => void; onBack?: () => void }) {
   const [app, setApp] = useState<AiApp | 'pi' | 'agy' | null>(null)
   const origin = (getApiBaseUrl() || window.location.origin).replace(/\/+$/, '')
   const common = app === 'pi' || app === 'agy' ? null : app
   const hosted = isHostedAiApp(common)
   const coding = app === 'claude-code' ? 'claude' : app
-  return <section aria-label="AgentBridge setup" className="max-w-4xl space-y-5">
-    <div><h2 className="text-xl font-semibold">Let your agents work together</h2><p className="mt-1 text-sm text-muted-foreground">Connect a chat or app inbox, then send messages between your agents.</p></div>
-    <AiAppPicker value={common} onChange={setApp} extraCodingChoices={<div className="mt-2 flex gap-2"><Button variant="outline" size="sm" aria-pressed={app === 'pi'} onClick={() => setApp('pi')}>Pi</Button><Button variant="outline" size="sm" aria-pressed={app === 'agy'} onClick={() => setApp('agy')}>agy</Button></div>} />
+  const additionalApps = messagingGuides.filter((guide): guide is typeof guide & { id: 'pi' | 'agy' } => guide.id === 'pi' || guide.id === 'agy')
+    .map(guide => ({ id: guide.id, name: guide.name, description: guide.status }))
+  return <section aria-label="AgentBridge setup" className="space-y-6">
+    <header className="flex flex-wrap items-start justify-between gap-3">
+      <div><h2 className="text-xl font-semibold">Connect an agent</h2><p className="mt-2 text-sm text-muted-foreground">{app ? 'Follow the steps in your app. You choose which chat to connect.' : 'Choose where your agent works to see its setup steps.'}</p></div>
+      {onBack && <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="h-4 w-4" aria-hidden="true" />Your agents</Button>}
+    </header>
+    <div className="rounded-2xl border border-border bg-card p-4 sm:p-5"><AiAppPicker<'pi' | 'agy'> value={app} onChange={setApp} additionalApps={additionalApps} showHeading={false} /></div>
     {hosted ? <><HostedAiAppGuide app={common} endpoint={`${origin}/api/external/v1/mcp`} localServer={/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/.test(origin)} /><div className="space-y-2 rounded-lg border border-border p-4"><h3 className="text-sm font-medium">After connecting, ask your app</h3><Command label="Register an app inbox" text="Use your AgentWorks messages tool to register an inbox for this chat, then show me which agents I can message." /><p className="text-xs text-muted-foreground">App inboxes receive messages when the app checks them. Keep the same inbox for replies.</p><Button variant="outline" size="sm" onClick={onOpenMcp}>Open AI app connections</Button></div></>
       : app === 'json-client' ? <div className="space-y-3 rounded-lg border border-border p-4"><p className="text-sm">Connect your app to AgentWorks, then use its messages tool to register an inbox.</p><Button onClick={onOpenMcp}>Open AI app connections</Button></div>
         : coding && <CodingMessagingGuide key={coding} clientID={coding as MessagingClient} />}

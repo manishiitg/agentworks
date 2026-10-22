@@ -118,14 +118,14 @@ export function BullpenSurface() {
     <ModePresetBar reduced walkthroughPaused />
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="flex h-full min-h-0 w-full flex-col">
-        <WorkspacePageHeader title="AgentBridge" icon={MessagesSquare} showBack={false} onProductHome={() => setView('agents')} productMenuItems={[
+        <WorkspacePageHeader title={view === 'setup' ? 'Connect an agent' : view === 'admin' ? 'Administration' : 'AgentBridge'} icon={MessagesSquare} showBack={false} onProductHome={() => setView('agents')} productMenuItems={[
           ...views.map(item => ({ ...item, active: view === item.id, onSelect: () => setView(item.id) })),
           ...(user?.role === 'admin' ? [{ id: 'admin', label: 'Administration', icon: ShieldCheck, active: view === 'admin', onSelect: () => setView('admin') }] : []),
           { id: 'help', label: 'AgentBridge help', icon: BookOpen, href: 'https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md', external: true },
         ]} />
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <WorkspacePageContent>
-            {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : view === 'admin' && user?.role === 'admin' ? <AdminPanel /> : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
+          <WorkspacePageContent className={view === 'setup' ? 'mx-auto w-full max-w-5xl' : undefined}>
+            {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} onBack={() => setView('agents')} /> : view === 'admin' && user?.role === 'admin' ? <AdminPanel /> : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
           </WorkspacePageContent>
 
         </div>

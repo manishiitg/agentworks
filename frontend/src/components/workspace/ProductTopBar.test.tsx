@@ -6,6 +6,7 @@ vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: (
 import { ProductTopBar, ProductTopBarActions } from './ProductTopBar'
 import { WorkspaceTopToolbar } from './WorkspaceTopToolbar'
 import { WorkspacePageHeader } from './WorkspacePageHeader'
+import { ProductSettingsMenu } from './ProductSettingsMenu'
 import { useAppStore } from '../../stores/useAppStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
@@ -20,7 +21,7 @@ beforeEach(() => {
   saved.clear()
   useAppStore.setState({ showWorkflowsOverview: false, showSchedulesOverview: false, adminPage: null })
   useLLMStore.setState({ showLLMModal: false })
-  useProductNavigationToolbarStore.setState({ target: null, targetKind: null, leadingTarget: null, workspaceTrigger: null, pickerOpen: false })
+  useProductNavigationToolbarStore.setState({ target: null, targetKind: null, leadingTarget: null, workspaceTrigger: null, pickerOpen: false, compactSettingsTarget: null })
   useWorkspaceReturnStore.setState({ restore: null })
   Object.defineProperty(window, 'localStorage', { configurable: true, value: {
     getItem: (key: string) => saved.get(key) ?? null,
@@ -130,10 +131,29 @@ it('registers Setup only in the visible sidebar and releases its slot on hide an
   expect(useProductNavigationToolbarStore.getState().sidebarSettingsTarget).toBe(slot)
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close sidebar"]')!.click())
   expect(useProductNavigationToolbarStore.getState().sidebarSettingsTarget).toBeNull()
+  expect(useProductNavigationToolbarStore.getState().compactSettingsTarget).toBe(host.querySelector('[data-compact-setup-slot]'))
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Open sidebar"]')!.click())
   expect(useProductNavigationToolbarStore.getState().sidebarSettingsTarget).toBe(slot)
+  expect(useProductNavigationToolbarStore.getState().compactSettingsTarget).toBeNull()
   await act(async () => roots.shift()!.unmount())
   expect(useProductNavigationToolbarStore.getState().sidebarSettingsTarget).toBeNull()
+  expect(useProductNavigationToolbarStore.getState().compactSettingsTarget).toBeNull()
+})
+
+it('mounts the collapsed account trigger in the rail above its shortcuts instead of the lower workspace toolbar', async () => {
+  const host = await render(<ProductSettingsMenu accountTrigger={<span>Account</span>}><button role="menuitem" data-product-navigation-action>Connect AI tools</button></ProductSettingsMenu>)
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close sidebar"]')!.click())
+  const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Account & settings"]')!
+  expect(trigger.closest('[data-compact-setup-slot]')).not.toBeNull()
+  expect(trigger.closest('[data-terminal-focus-chrome="toolbar"]')).toBeNull()
+  await act(async () => trigger.click())
+  const menu = host.querySelector<HTMLElement>('[role="menu"]')!
+  expect(menu.hidden).toBe(false)
+  expect(trigger.getAttribute('aria-expanded')).toBe('true')
+  expect(host.querySelector('[aria-label="Open sidebar"]')).not.toBeNull()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Open sidebar"]')!.click())
+  expect(host.querySelector('[data-sidebar-setup-slot] [aria-label="Account & settings"]')).not.toBeNull()
+  expect(useProductNavigationToolbarStore.getState().compactSettingsTarget).toBeNull()
 })
 
 it('places global-page navigation beside the back action in the existing header', async () => {

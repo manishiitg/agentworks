@@ -19,7 +19,7 @@ async function mount(selectApp = true) {
 }
 function button(host: HTMLElement, label: string) { return [...host.querySelectorAll('button')].find(button => button.textContent === label)! }
 async function chooseApp(host: HTMLElement, label: string) {
-  const change = [...host.querySelectorAll('button')].find(item => item.textContent === 'Change app')
+  const change = [...host.querySelectorAll('button')].find(item => item.textContent === 'Back to all apps')
   if (change) await act(async () => change.click())
   await act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!.click())
 }

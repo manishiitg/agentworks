@@ -5,8 +5,6 @@ import { createPortal } from 'react-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 const auth = vi.hoisted(() => ({ user: { id: 'member', username: 'Member', can_create: true, is_admin: false, allowed_products: null } as any, isMultiUserMode: true, providers: [{ type: 'oauth' }], logout: vi.fn() }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select?: any) => select ? select(auth) : auth, { getState: () => auth }) }))
-vi.mock('../topbar/NotificationsControl', () => ({ default: () => <button role="menuitemcheckbox" aria-checked="true">Notifications &amp; sound</button> }))
-vi.mock('../topbar/TipsToggle', () => ({ default: () => <button role="menuitemcheckbox" aria-checked="true">Tips: on</button> }))
 vi.mock('../topbar/ChangePasswordDialog', () => ({ default: () => null }))
 vi.mock('../BrowserConnectionsDialog', () => ({ default: ({ open }: { open: boolean }) => open ? createPortal(<div role="dialog" aria-label="Browser connections" />, document.body) : null }))
 import { WorkspaceSetupMenu } from './WorkspaceSetupMenu'
@@ -40,7 +38,8 @@ it.each([false, true])('combines account and Setup with existing admin gates (ad
     expect(menu.hidden).toBe(false)
     expect(menu.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
     expect(menu.querySelector('[aria-label="My vaults"]') !== null).toBe(!admin)
-    for (const label of ['Workspace', 'Preferences & help', 'Browser connections', 'Sign out']) expect(menu.textContent).toContain(label)
+    for (const label of ['Workspace', 'Help', 'Getting started', 'Sign out']) expect(menu.textContent).toContain(label)
+    for (const label of ['Browser connections', 'Notifications & sound', 'Tips while working']) expect(menu.textContent).not.toContain(label)
     expect(menu.textContent).not.toContain('Change password')
     expect(menu.querySelector('[data-product-option]')).toBeNull()
     for (const label of ['Dashboards', 'Switch product', 'Audit logs', 'Vault MCP endpoint', 'Search']) expect(menu.textContent).not.toContain(label)
@@ -57,10 +56,9 @@ it('retains password eligibility and Run restrictions', async () => {
     expect(destination.querySelector('[aria-label="Users and access"]')).toBeNull()
   })
 })
-it('opens browser connections outside the closed menu', async () => {
+it('retains the explicit browser-setup event without a menu entry', async () => {
   await render(async (_host, destination) => {
-    await act(async () => destination.querySelector<HTMLButtonElement>('[aria-label="Account & settings"]')!.click())
-    await act(async () => [...destination.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Browser connections')!.click())
+    await act(async () => window.dispatchEvent(new Event('open-browser-connections')))
     expect(destination.querySelector<HTMLElement>('[role="menu"]')!.hidden).toBe(true)
     expect(document.querySelector('[role="dialog"][aria-label="Browser connections"]')).not.toBeNull()
   })
@@ -72,6 +70,8 @@ it('keeps a bottom-left entry with Escape dismissal when the sidebar is collapse
     await act(async () => trigger.click())
     const menu = host.querySelector<HTMLElement>('[role="menu"]')!
     expect(menu.hidden).toBe(false)
+    expect(menu.className).toContain('left-full')
+    expect(useProductNavigationToolbarStore.getState().sidebarSettingsTarget).toBeNull()
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(menu.hidden).toBe(true)
     expect(document.activeElement).toBe(trigger)

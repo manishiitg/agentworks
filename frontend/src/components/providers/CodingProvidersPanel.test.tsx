@@ -64,6 +64,21 @@ afterEach(() => {
 })
 
 describe('CodingProvidersPanel', () => {
+  it('opens account setup from Getting started with a return path and no automatic account changes', async () => {
+    vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({ id: 'claude-code', display_name: 'Claude Code' }), provider({})], provider_order: ['claude-code', 'codex-cli'], integration_kinds: {} })
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    const onClose = vi.fn()
+    try {
+      await act(async () => root.render(<CodingProvidersPanel isOpen welcomeSetup initialProviderId="codex-cli" product="work" onClose={onClose} />))
+      const dialog = document.querySelector('[aria-label="Set up your AI"]')!
+      expect(dialog.querySelector('h2')?.textContent).toBe('Set up your AI')
+      expect(dialog.textContent).toContain('Codex CLI')
+      expect(llmConfigService.getProviderConnections).toHaveBeenCalledWith({ product: 'work', workspacePath: undefined })
+      expect(llmConfigService.startProviderSetup).not.toHaveBeenCalled()
+      await act(async () => [...dialog.querySelectorAll('button')].find(button => button.textContent?.includes('Back to getting started'))!.click())
+      expect(onClose).toHaveBeenCalledOnce()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
   it.each(['member', 'reviewer', 'admin', 'unknown'] as const)('gates review navigation and account costs for %s', async role => {
     auth.state = { isMultiUserMode: role !== 'unknown', isMultiUserModeChecked: role !== 'unknown', user: { is_admin: role === 'admin', is_crew_reviewer: role === 'reviewer' } }
     vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({})], provider_order: ['codex-cli'], integration_kinds: {} })
@@ -217,9 +232,9 @@ describe('CodingProvidersPanel', () => {
       expect(terminal?.textContent).toBe('Terminal setup-1')
       await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
       expect(onClose).not.toHaveBeenCalled()
-      await act(async () => host.querySelector<HTMLButtonElement>('header button[aria-label="Back to Goals"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+      await act(async () => host.querySelector<HTMLButtonElement>('header button[aria-label="Back to workspace"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
       expect(onClose).toHaveBeenCalledOnce()
-      expect(openProductWorkspace).toHaveBeenCalledWith('agentworks')
+      expect(openProductWorkspace).not.toHaveBeenCalled()
       await act(async () => root.render(renderPage(false)))
       expect(host.querySelector('[data-testid="guided-terminal"]')).toBe(terminal)
       await act(async () => root.render(renderPage(true)))

@@ -37,6 +37,7 @@ export function activateTab(tabId: string): boolean {
   // Clearing the overlay is required for the pane to actually show — switching
   // the tab/mode alone is not enough.
   useLLMStore.getState().setShowLLMModal(false)
+  useAppStore.getState().setAdminPage(null)
   useAppStore.getState().setShowWorkflowsOverview(false)
   useAppStore.getState().setShowSchedulesOverview(false)
 

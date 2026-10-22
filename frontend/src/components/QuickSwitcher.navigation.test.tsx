@@ -453,8 +453,10 @@ it('distinguishes saved Crew side-chat names and activates the existing tab', as
   for (const name of ['Finance', 'Research']) {
     const row = host.querySelector(`[data-navigation-id="crew:${name}"]`)!
     expect(row.textContent).toContain(name)
+    useAppStore.setState({ adminPage: 'mcp' })
     await act(async () => { row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
     expect(useChatStore.getState().activeTabId).toBe(name)
+    expect(useAppStore.getState().adminPage).toBeNull()
     expect(Object.keys(useChatStore.getState().chatTabs)).toHaveLength(3)
   }
 })

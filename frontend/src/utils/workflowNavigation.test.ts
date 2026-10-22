@@ -83,18 +83,20 @@ afterEach(() => {
 })
 
 describe('workflow navigation coordinator', () => {
-  it('reveals a selected workflow from Providers without losing the session', async () => {
+  it('reveals a selected workflow from settings or Providers without losing the session', async () => {
     const { useLLMStore } = await import('../stores/useLLMStore')
     const { useAppStore } = await import('../stores/useAppStore')
     const tab = workflowTab('workflow-a', 'tab-a')
     useChatStore.setState({ chatTabs: { [tab.tabId]: tab } })
     useAppStore.getState().setShowWorkflowsOverview(true)
     useAppStore.getState().setShowSchedulesOverview(true)
+    useAppStore.getState().setAdminPage('mcp')
     useLLMStore.getState().setShowLLMModal(true)
     expect(navigation.activateWorkflowTab(tab.tabId)).toBe(true)
     expect(useLLMStore.getState().showLLMModal).toBe(false)
     expect(useAppStore.getState().showWorkflowsOverview).toBe(false)
     expect(useAppStore.getState().showSchedulesOverview).toBe(false)
+    expect(useAppStore.getState().adminPage).toBeNull()
     expect(useChatStore.getState().activeTabId).toBe(tab.tabId)
     expect(useChatStore.getState().chatTabs[tab.tabId].sessionId).toBe(tab.sessionId)
   })
@@ -123,7 +125,7 @@ describe('workflow navigation coordinator', () => {
     expect(useGlobalPresetStore.getState().activePresetIds.workflow).toBe('workflow-a')
     expect(navigation.isCurrentWorkflowNavigation(pending, 'workflow-a')).toBe(false)
     expect(navigation.activateWorkflowTab(tab.tabId, { expectedGeneration: pending })).toBe(false)
-    expect(useProductSurfaceStore.getState().productSurface).toBe('code')
+    expect(useProductSurfaceStore.getState().productSurface).toBe('work')
     expect(useChatStore.getState().activeTabId).toBeNull()
   })
 

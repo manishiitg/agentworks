@@ -3,9 +3,10 @@ import ProviderAccounts from './ProviderAccounts'
 import CostsOverview from './CostsOverview'
 import ConversationsOverview from './ConversationsOverview'
 import { useCanReviewCode } from '../../hooks/useCanReviewCode'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckCircle2,
+  ArrowLeft,
   ChevronRight,
   CircleAlert,
   Cpu,
@@ -37,6 +38,9 @@ interface CodingProvidersPanelProps {
   onClose: () => void
   allowedProviderIds?: readonly string[]
   product?: string
+  /** Getting started keeps its place behind the existing account setup. */
+  welcomeSetup?: boolean
+  initialProviderId?: string
 }
 
 const PROVIDER_SIDEBAR_NAMES: Record<string, string> = {
@@ -131,10 +135,17 @@ function ProviderListStatus({ provider }: { provider: ProviderManifestEntry }) {
   )
 }
 
-export default function CodingProvidersPanel({ isOpen, onClose, embedded = false, allowedProviderIds, product }: CodingProvidersPanelProps) {
+export default function CodingProvidersPanel({ isOpen, onClose, embedded = false, allowedProviderIds, product, welcomeSetup = false, initialProviderId }: CodingProvidersPanelProps) {
+  const welcomeBack = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!isOpen || !welcomeSetup) return
+    const previous = document.activeElement
+    welcomeBack.current?.focus()
+    return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus() }
+  }, [isOpen, welcomeSetup])
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(initialProviderId ?? null)
   const [view, setView] = useState<'provider' | 'costs' | 'chats'>('provider')
   // "Use your own model key" opens Pi's add flow (PLAT-717).
   const [keyRequest, setKeyRequest] = useState(0)
@@ -274,11 +285,19 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
         <div
           role={embedded ? 'region' : 'dialog'}
           aria-modal={embedded ? undefined : true}
-          aria-label="Providers"
+          aria-label={welcomeSetup ? 'Set up your AI' : 'Providers'}
           className={embedded
             ? 'flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900'
             : 'flex h-[min(860px,calc(100vh-1rem))] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:h-[min(860px,calc(100vh-2.5rem))]'}
         >
+          {welcomeSetup && <header className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-200 px-5 py-3 dark:border-gray-700">
+            <div>
+              <button ref={welcomeBack} type="button" onClick={closePanel} className="inline-flex min-h-8 items-center gap-2 rounded-md text-xs text-gray-500 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-gray-400 dark:hover:text-white"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to getting started</button>
+              <h2 className="text-lg font-semibold">Set up your AI</h2>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Choose a provider, then add your own account or use an available shared account.</p>
+            </div>
+            <button type="button" onClick={closePanel} aria-label="Close AI setup" className="rounded-md p-2 text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-gray-400 dark:hover:bg-gray-800"><X className="h-5 w-5" aria-hidden="true" /></button>
+          </header>}
           {embedded && <WorkspacePageHeader page="providers" title="AI models & accounts" icon={Cpu} onBack={closePanel} />}
           {error && (
             <div className="mx-4 mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300 sm:mx-6">
@@ -305,7 +324,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   >
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                   </button>}
-                  {!embedded && <button
+                  {!embedded && !welcomeSetup && <button
                     type="button"
                     onClick={closePanel}
                     aria-label="Close providers"

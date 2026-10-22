@@ -36,7 +36,7 @@ function button(host: HTMLElement, label: string) {
 }
 
 async function chooseApp(host: HTMLElement, label: string) {
-  const change = [...host.querySelectorAll('button')].find(item => item.textContent === 'Change app')
+  const change = [...host.querySelectorAll('button')].find(item => item.textContent === 'Back to all apps')
   if (change) await act(async () => change.click())
   await act(async () => button(host, label).click())
 }
@@ -49,9 +49,17 @@ describe('MCP setup', () => {
       expect(host.querySelector('pre')).toBeNull()
       expect(host.textContent).not.toContain('claude mcp add')
       expect(host.querySelector('[aria-label="Connection destination"]')).toBeNull()
+      for (const name of ['ChatGPT', 'Claude Cowork', 'Grok', 'OpenAI dots', 'Muse personal agent', 'Claude Code', 'Codex', 'Cursor', 'Muse Code', 'Other app']) {
+        const choice = host.querySelector(`[aria-label="${name}"]`)!
+        expect(choice, name).not.toBeNull()
+        expect(choice.closest('details'), name).toBeNull()
+      }
       await chooseApp(host, 'ChatGPT')
       expect(host.textContent).toContain('Choose OAuth')
       expect(host.textContent).not.toContain('claude mcp add')
+      await act(async () => button(host, 'Back to all apps').click())
+      expect(host.textContent).not.toContain('Choose OAuth')
+      expect(host.querySelector('[aria-label="Codex"]')).not.toBeNull()
     } finally { await act(async () => root.unmount()); host.remove() }
   })
   it('connects local and hosted agents directly through MCP without a token or binary', async () => {

@@ -10,6 +10,7 @@ export { useProductSettingsMenu, useProductSetupTiles } from './productNavigatio
 export function ProductSettingsMenu({ children, activity, accountTrigger }: { children: ReactNode; activity?: ReactNode; accountTrigger?: ReactNode }) {
   const target = useProductNavigationToolbarStore(state => state.settingsTarget)
   const sidebarTarget = useProductNavigationToolbarStore(state => state.sidebarSettingsTarget)
+  const compactTarget = useProductNavigationToolbarStore(state => state.compactSettingsTarget)
   const [open, setOpen] = useState(false)
   const accountMenu = Boolean(accountTrigger)
   const menuLabel = accountMenu ? 'Account & settings' : sidebarTarget ? 'Setup' : 'Settings'
@@ -28,14 +29,14 @@ export function ProductSettingsMenu({ children, activity, accountTrigger }: { ch
   }, [open])
   useEffect(() => {
     const show = () => {
-      if (sidebarTarget || !target) {
+      if (accountMenu || sidebarTarget || !target) {
         window.dispatchEvent(new Event('close-workspace-picker'))
         setOpen(true)
       }
     }
     window.addEventListener('open-product-settings', show)
     return () => window.removeEventListener('open-product-settings', show)
-  }, [target, sidebarTarget])
+  }, [target, sidebarTarget, accountMenu])
   const focusFirst = () => requestAnimationFrame(() => root.current?.querySelector<HTMLButtonElement>('[role="menuitem"], [role="menuitemcheckbox"]')?.focus())
   // Close before the action changes page/toolbar and reparents this portal.
   // Goals keeps its picker state above the portal, unlike Crew/Code selectors.
@@ -54,7 +55,7 @@ export function ProductSettingsMenu({ children, activity, accountTrigger }: { ch
         {children}
       </div>
     </SettingsMenuContext.Provider>, target)
-  const menu = <div ref={root} data-product-settings className={accountMenu && !sidebarTarget ? 'fixed bottom-3 left-3 z-40 md:left-2' : 'relative'}>
+  const menu = <div ref={root} data-product-settings className={accountMenu && !sidebarTarget && !compactTarget ? 'fixed bottom-3 left-3 z-40 md:left-2' : 'relative'}>
     <button ref={trigger} data-product-settings-trigger type="button" aria-label={menuLabel} aria-haspopup="menu" aria-expanded={open} aria-controls={id}
       onClick={() => { window.dispatchEvent(new Event('close-workspace-picker')); setOpen(value => !value) }}
       onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); focusFirst() } }}
@@ -74,11 +75,12 @@ export function ProductSettingsMenu({ children, activity, accountTrigger }: { ch
           const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (current + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length
           items[next]?.focus()
         }}
-        className={`absolute ${sidebarTarget || accountMenu ? 'bottom-full left-0 mb-2 w-full min-w-64' : 'right-0 top-full mt-2 w-60'} z-50 max-h-[calc(100dvh-100px)] max-w-[calc(100vw-24px)] space-y-1 overflow-auto rounded-xl border border-border bg-popover p-2 shadow-xl [&_button[data-product-navigation-action]]:flex [&_button[data-product-navigation-action]]:w-full [&_button[data-product-navigation-action]]:items-center [&_button[data-product-navigation-action]]:gap-2.5 [&_button[data-product-navigation-action]]:px-3 [&_button[data-product-navigation-action]]:py-1.5 [&_button[data-product-navigation-action]]:text-left [&_button[data-product-navigation-action]]:text-xs`}>
+        className={`absolute ${accountMenu && !sidebarTarget ? 'bottom-0 left-full ml-2 w-64' : sidebarTarget ? 'bottom-full left-0 mb-2 w-full min-w-64' : 'right-0 top-full mt-2 w-60'} z-50 max-h-[calc(100dvh-100px)] max-w-[calc(100vw-5rem)] space-y-1 overflow-auto rounded-xl border border-border bg-popover p-2 shadow-xl [&_button[data-product-navigation-action]]:flex [&_button[data-product-navigation-action]]:w-full [&_button[data-product-navigation-action]]:items-center [&_button[data-product-navigation-action]]:gap-2.5 [&_button[data-product-navigation-action]]:px-3 [&_button[data-product-navigation-action]]:py-1.5 [&_button[data-product-navigation-action]]:text-left [&_button[data-product-navigation-action]]:text-xs`}>
         {children}
         {activity && <div className="mt-1 border-t border-border pt-1">{activity}</div>}
       </div>
     </SettingsMenuContext.Provider>
   </div>
-  return sidebarTarget ? createPortal(menu, sidebarTarget) : menu
+  const destination = sidebarTarget ?? (accountMenu ? compactTarget : null)
+  return destination ? createPortal(menu, destination) : menu
 }
