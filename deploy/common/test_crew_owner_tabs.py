@@ -32,6 +32,19 @@ class OwnerTabMigrationTest(unittest.TestCase):
                     'resource_id': 'p', 'profile_id': 'work', 'workspace_path': 'Crew/demo'
                 }}, 'agents': {'work/p': {'name': 'Keep name ' + user, 'engine': 'example-provider'}},
                     'previous': {'work/p': [{'session_id': 'earlier-' + user, 'conversation_key': 'p'}]}}))
+            owner_registry = workspace / '_users/owner/chat_history/product-conversations.json'
+            owner_data = json.loads(owner_registry.read_text())
+            owner_data['entries']['work/p:chat:saved-name'] = {
+                'conversation_key': 'p:chat:saved-name', 'session_id': 'named-session', 'resource_id': 'p', 'profile_id': 'work', 'workspace_path': 'Crew/demo'
+            }
+            owner_data['agents']['work/p:chat:saved-name'] = {'engine': 'example-provider'}
+            owner_registry.write_text(json.dumps(owner_data))
+            title_index = project / 'builder/conversation/chat-index.json'
+            title_index.parent.mkdir(parents=True)
+            title_index.write_text(json.dumps({'complete': True, 'entries': {
+                'named-session': {'session': {'session_id': 'named-session', 'title': 'Existing coach name'}},
+                'session-owner': {'session': {'session_id': 'session-owner', 'title': 'Do not replace explicit tab names'}}
+            }}))
             messages = workspace / '_system/agent_messages/conversations.json'
             messages.parent.mkdir(parents=True)
             endpoints = [
@@ -43,7 +56,7 @@ class OwnerTabMigrationTest(unittest.TestCase):
             messages.write_text(json.dumps({'conversations': [{'endpoints': endpoints}]}))
             migration.migrate(workspace, state)
             results = [json.loads((workspace / '_users' / user / 'chat_history/product-conversations.json').read_text()) for user in ('owner', 'co')]
-            keys = [next(iter(result['entries'])) for result in results]
+            keys = [next(key for key in result['entries'] if key != 'work/p:chat:saved-name') for result in results]
             self.assertNotEqual(keys[0], keys[1])
             for user, result, key in zip(('owner', 'co'), results, keys):
                 self.assertEqual(result['entries'][key]['session_id'], 'session-' + user)
@@ -51,6 +64,7 @@ class OwnerTabMigrationTest(unittest.TestCase):
                 self.assertEqual(result['agents'][key]['name'], 'Keep name ' + user)
                 self.assertEqual(result['agents'][key]['engine'], 'example-provider')
                 self.assertEqual(result['previous'][key][0]['session_id'], 'earlier-' + user)
+            self.assertEqual(results[0]['agents']['work/p:chat:saved-name'], {'engine': 'example-provider', 'name': 'Existing coach name'})
             rewritten = json.loads(messages.read_text())['conversations'][0]['endpoints']
             self.assertEqual(rewritten[0]['chat_key'], keys[1].removeprefix('work/'))
             self.assertEqual(rewritten[1:], endpoints[1:])
@@ -58,8 +72,8 @@ class OwnerTabMigrationTest(unittest.TestCase):
             before = {path: path.read_bytes() for path in workspace.rglob('*.json')}
             migration.migrate(workspace, state)
             self.assertEqual(before, {path: path.read_bytes() for path in workspace.rglob('*.json')})
-            self.assertEqual(len(list((state / 'backups').rglob('*conversations.json'))), 2)
-            self.assertEqual(len(list((state / 'backups').rglob('agent-messages.json'))), 1)
+            self.assertEqual(len(list((state / 'migrations').rglob('*conversations.json'))), 2)
+            self.assertEqual(len(list((state / 'migrations').rglob('agent-messages.json'))), 1)
 
 
 if __name__ == '__main__':

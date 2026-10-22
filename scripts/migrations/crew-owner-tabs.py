@@ -16,8 +16,9 @@ def migrate(workspace, state):
         return
     projects = json.loads(ownership.read_text()).get('projects', {})
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-    backup = state / 'backups' / ('crew-owner-tabs-' + stamp)
+    backup = state / 'migrations' / ('crew-owner-tabs-backup-' + stamp)
     changed = 0
+    named = 0
     moved = {}
     for path in (workspace / '_users').glob('*/chat_history/product-conversations.json'):
         user = path.parent.parent.name
@@ -36,6 +37,24 @@ def migrate(workspace, state):
             manifest = json.loads(manifest_path.read_text())
             project_id = project_id or manifest.get('id')
             old = 'work/' + project_id
+            index_path = root / 'builder/conversation/chat-index.json'
+            titles = {}
+            if index_path.exists():
+                index = json.loads(index_path.read_text())
+                for entry in index.get('entries', {}).values():
+                    session = entry.get('session', {})
+                    if session.get('session_id') and session.get('title'):
+                        titles[session['session_id']] = session['title'].strip()
+            for entry_key, chat in entries.items():
+                if entry_key != old and not entry_key.startswith(old + ':chat:'):
+                    continue
+                identity = data.setdefault('agents', {}).get(entry_key, {})
+                title = titles.get(chat.get('session_id'), '')
+                if not identity.get('name', '').strip() and title:
+                    identity['name'] = title
+                    data['agents'][entry_key] = identity
+                    named += 1
+                    touched = True
             if old not in entries:
                 continue
             record = entries[old]
@@ -90,8 +109,8 @@ def migrate(workspace, state):
             dest.write_bytes(original)
             os.chmod(dest, 0o600)
             messages.write_text(json.dumps(data, indent=2) + '\n')
-    print(f'Crew owner tabs: migrated {changed} default chats; sessions and transcripts retained.')
-    if changed:
+    print(f'Crew owner tabs: migrated {changed} default chats, preserved {named} saved tab names; sessions and transcripts retained.')
+    if changed or named:
         print(f'Crew owner tabs backup: {backup}')
 
 
