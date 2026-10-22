@@ -1,13 +1,11 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { StepNode } from './StepNode'
-import { LegacyAgentNode } from './LegacyAgentNode'
 import { RoutingStepNode } from './RoutingStepNode'
 import { AgentNode } from './AgentNode'
 import { CrewNode } from './CrewNode'
 import type {
   StepNodeData,
-  LegacyAgentNodeData,
   RoutingStepNodeData,
   AgentNodeData,
   CrewStepNodeData,
@@ -32,14 +30,6 @@ export const HandoffStepNode = memo((props: NodeProps) => (
     <HandoffTarget />
   </>
 ))
-
-export const HandoffLegacyAgentNode = memo((props: NodeProps) => (
-  <>
-    <LegacyAgentNode data={props.data as LegacyAgentNodeData} selected={props.selected} />
-    <HandoffTarget />
-  </>
-))
-
 
 export const HandoffAgentNode = memo((props: NodeProps) => (
   <>
@@ -77,7 +67,6 @@ export const HandoffRoutingNode = memo((props: NodeProps) => {
 })
 
 HandoffStepNode.displayName = 'HandoffStepNode'
-HandoffLegacyAgentNode.displayName = 'HandoffLegacyAgentNode'
 HandoffAgentNode.displayName = 'HandoffAgentNode'
 HandoffCrewNode.displayName = 'HandoffCrewNode'
 HandoffRoutingNode.displayName = 'HandoffRoutingNode'

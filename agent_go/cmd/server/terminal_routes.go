@@ -1668,7 +1668,7 @@ func collectTerminalPlanStepTypes(value any, stepTypes map[string]string) {
 
 func isWorkflowPlanStepType(stepType string) bool {
 	switch strings.TrimSpace(stepType) {
-	case "scripted", "regular", "human_input", "orchestrator", "todo_task", "routing", "agent":
+	case "scripted", "regular", "human_input", "routing", "agent":
 		return true
 	default:
 		return false

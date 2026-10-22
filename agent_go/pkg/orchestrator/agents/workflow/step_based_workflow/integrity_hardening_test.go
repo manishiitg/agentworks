@@ -24,7 +24,7 @@ func TestPlanningResponseRejectsLegacyConditionalStep(t *testing.T) {
 
 func TestPlanValidationRejectsNestedMissingAndDuplicateIDs(t *testing.T) {
 	const missingNestedID = `{"steps":[{
-		"type":"todo_task","id":"orchestrator","title":"Orchestrator","description":"d",
+		"type":"agent","id":"orchestrator","title":"Orchestrator","description":"d",
 		"predefined_routes":[{"route_id":"route","route_name":"Route","condition":"always",
 			"sub_agent_step":{"type":"scripted","title":"Nested","description":"d"}}]
 	}]}`
@@ -39,7 +39,7 @@ func TestPlanValidationRejectsNestedMissingAndDuplicateIDs(t *testing.T) {
 	const duplicateNestedID = `{"steps":[{
 		"type":"scripted","id":"shared-id","title":"Top","description":"d"
 	},{
-		"type":"todo_task","id":"orchestrator","title":"Orchestrator","description":"d",
+		"type":"agent","id":"orchestrator","title":"Orchestrator","description":"d",
 		"predefined_routes":[{"route_id":"route","route_name":"Route","condition":"always",
 			"sub_agent_step":{"type":"scripted","id":"shared-id","title":"Nested","description":"d"}}]
 	}]}`

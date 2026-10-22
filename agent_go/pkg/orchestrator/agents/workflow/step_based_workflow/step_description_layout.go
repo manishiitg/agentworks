@@ -44,9 +44,6 @@ func MissingDescriptionLayoutHeadings(description string) []string {
 // blocked the 1.0.46 stamp).
 var descriptionLayoutStepTypes = map[string]bool{
 	string(StepTypeAgent): true,
-	"message_sequence":    true,
-	"orchestrator":        true,
-	"todo_task":           true,
 }
 
 // planStepDescriptionsFromPlanJSON returns every live agent step's description by

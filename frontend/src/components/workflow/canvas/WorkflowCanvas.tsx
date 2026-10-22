@@ -21,7 +21,6 @@ import {
   HandoffAgentNode,
   HandoffRoutingNode,
   HandoffStepNode,
-  HandoffLegacyAgentNode,
 } from '../nodes/HandoffNodeWrappers'
 import { getExecutionModeVisuals } from '../nodes/executionModeVisuals'
 import { edgeTypes } from '../edges'
@@ -48,7 +47,7 @@ import { PlanEmptyState } from '../PlanEmptyState'
 import { useChatStore } from '../../../stores/useChatStore'
 import { agentApi } from '../../../services/api'
 import type { AgentWriteAccess, PlanStep } from '../../../utils/stepConfigMatching'
-import { effectiveAgentItems, effectiveExecutionMode, isCrewStep } from '../../../utils/stepConfigMatching'
+import { configuredAgentItems, effectiveExecutionMode, isCrewStep } from '../../../utils/stepConfigMatching'
 import { CrewStepDetailSection } from './CrewStepDetailSection'
 import {
   WORKFLOW_PLAN_STEP_FOCUS_EVENT,
@@ -85,7 +84,6 @@ const canvasNodeTypes = {
   'workflow-trigger': WorkflowTriggerNode,
   'workflow-trigger-heading': WorkflowTriggerHeading,
   step: HandoffStepNode,
-  todo_task: HandoffLegacyAgentNode,
   routing: HandoffRoutingNode,
   branch: HandoffRoutingNode,
   agent: HandoffAgentNode,
@@ -771,11 +769,11 @@ export function ReadOnlyStepDetailPanel({
   const type = planStepTypeLabel(rawType)
   const routes = step?.type === 'routing' || step?.type === 'branch'
     ? step.routes
-    : (step?.type === 'todo_task' || step?.type === 'orchestrator' || step?.type === 'agent')
+    : step?.type === 'agent'
       ? step.predefined_routes
       : undefined
   const descriptionFirst = step?.type === 'agent' && step.prompt_contract === 'description-first-v1' && !step.authored_prompt
-  const runtimeItems = step && node.type === 'agent' ? effectiveAgentItems(step) : undefined
+  const runtimeItems = step && node.type === 'agent' ? configuredAgentItems(step) : undefined
   // The generated opening item is the description rendered below. Show its
   // content once, while retaining every authored follow-up (including repeats).
   const sequenceItems = descriptionFirst ? runtimeItems?.slice(1) : runtimeItems

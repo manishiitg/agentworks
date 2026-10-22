@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { agentApi } from '../../../services/api'
 import type { PlanStep, PlanningResponse, StepConfig, AgentConfigs } from '../../../utils/stepConfigMatching'
-import { isAgentStep, isLegacyAgentStep } from '../../../utils/stepConfigMatching'
+import { isAgentStep } from '../../../utils/stepConfigMatching'
 
 // Module-level cache to dedupe loadPlan calls across multiple hook instances
 // and to preserve per-workspace data across workflow switches.
@@ -121,7 +121,7 @@ function mergeStepConfigs(
     
     // Agent routes may live on the canonical agent shape or the
     // legacy orchestrator/todo_task compatibility shape.
-    if (isLegacyAgentStep(step) || isAgentStep(step)) {
+    if (isAgentStep(step)) {
       mergedStep = {
         ...mergedStep,
         predefined_routes: step.predefined_routes ? step.predefined_routes.map(route => ({
@@ -154,7 +154,7 @@ function resolveOrphanStepRefs(plan: PlanningResponse): PlanningResponse {
   const cloneStep = (step: PlanStep): PlanStep => JSON.parse(JSON.stringify(step)) as PlanStep
 
   const resolveStep = (step: PlanStep, orphanChain: string[] = []): PlanStep => {
-    if (isLegacyAgentStep(step) || isAgentStep(step)) {
+    if (isAgentStep(step)) {
       return {
         ...step,
         predefined_routes: step.predefined_routes?.map(route => {

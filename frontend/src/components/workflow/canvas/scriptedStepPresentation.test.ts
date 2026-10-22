@@ -13,11 +13,8 @@ describe('scripted step presentation', () => {
     expect(planStepTypeLabel('crew')).toBe('Crew')
   })
 
-  it('uses one Agent label for canonical and legacy agent steps', () => {
+  it('labels agent plan steps as Agent', () => {
     expect(planStepTypeLabel('agent')).toBe('Agent')
-    expect(planStepTypeLabel('orchestrator')).toBe('Agent')
-    expect(planStepTypeLabel('todo_task')).toBe('Agent')
-    expect(planStepTypeLabel('message_sequence')).toBe('Agent')
   })
 
   it('resolves the canonical script path from the workflow code layout', () => {

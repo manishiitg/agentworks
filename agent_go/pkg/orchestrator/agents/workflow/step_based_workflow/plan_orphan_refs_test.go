@@ -10,7 +10,7 @@ func TestResolvePlanOrphanStepRefs_ResolvesSharedRouteRef(t *testing.T) {
 	const planJSON = `{
 		"steps": [
 			{
-				"type": "todo_task",
+				"type": "agent",
 				"id": "orchestrator-a",
 				"title": "Orchestrator A",
 				"description": "Coordinate shared steps.",
@@ -85,7 +85,7 @@ func TestResolvePlanOrphanStepRefs_RejectsUnsharedRouteRef(t *testing.T) {
 	const planJSON = `{
 		"steps": [
 			{
-				"type": "todo_task",
+				"type": "agent",
 				"id": "orchestrator-a",
 				"title": "Orchestrator A",
 				"description": "Coordinate shared steps.",

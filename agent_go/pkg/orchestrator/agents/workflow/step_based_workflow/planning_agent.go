@@ -914,7 +914,7 @@ func parseStepFromJSON(stepData json.RawMessage, index int, label string) (PlanS
 			return nil, fmt.Errorf("failed to parse branch %s %d: %w", label, index, err)
 		}
 		return &step, nil
-	case "agent", "message_sequence", "orchestrator", "todo_task":
+	case "agent":
 		var step AgentPlanStep
 		if err := json.Unmarshal(stepData, &step); err != nil {
 			return nil, fmt.Errorf("failed to parse agent %s %d: %w", label, index, err)
@@ -2384,7 +2384,7 @@ func convertMapToStep(stepMap map[string]interface{}) (PlanStepInterface, error)
 			return nil, fmt.Errorf("failed to parse branch step: %w", err)
 		}
 		typedStep = &step
-	case "agent", "message_sequence", "orchestrator", "todo_task":
+	case "agent":
 		var step AgentPlanStep
 		if err := json.Unmarshal(stepJSON, &step); err != nil {
 			return nil, fmt.Errorf("failed to parse agent step: %w", err)
@@ -2446,7 +2446,7 @@ func unmarshalStepFromJSON(stepData json.RawMessage) (PlanStepInterface, error) 
 		}
 		step.Type = StepTypeBranch
 		typedStep = &step
-	case "agent", "message_sequence", "orchestrator", "todo_task":
+	case "agent":
 		var step AgentPlanStep
 		if err := json.Unmarshal(stepData, &step); err != nil {
 			return nil, fmt.Errorf("failed to parse agent step: %w", err)

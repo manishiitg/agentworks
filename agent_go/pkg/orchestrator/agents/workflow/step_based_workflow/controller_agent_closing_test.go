@@ -16,7 +16,7 @@ import (
 // []AgentItem — no plan migration needed.
 func TestOrchestratorMessagesDeserializeToUnifiedItem(t *testing.T) {
 	planJSON := `{"steps":[{
-		"type":"todo_task","id":"orch","title":"o","description":"d",
+		"type":"agent","id":"orch","title":"o","description":"d",
 		"predefined_routes":[{"route_id":"w","route_name":"W","condition":"c",
 			"sub_agent_step":{"type":"scripted","id":"w","title":"w","description":"d"}}],
 		"messages":[

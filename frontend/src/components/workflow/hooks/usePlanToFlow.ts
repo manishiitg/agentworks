@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react';
 import type { Node, Edge } from '@xyflow/react'
 import dagre from 'dagre'
 import type { PlanStep, PlanningResponse, AgentLLMConfig, ValidationSchema, RoutingRoute, AgentItem } from '../../../utils/stepConfigMatching'
-import { agentCardItems, isLegacyAgentStep, isRoutingStep, isBranchStep, isAgentStep, isScriptedStep, isCrewStep, configuredAgentItems, effectiveAgentItems } from '../../../utils/stepConfigMatching'
+import { agentCardItems, isRoutingStep, isBranchStep, isAgentStep, isScriptedStep, isCrewStep, configuredAgentItems } from '../../../utils/stepConfigMatching'
 import type { ChangeType, PlanChanges } from './usePlanData'
 import type { VariablesManifest, ScheduledJob } from '../../../services/api-types'
 import type { VariablesNodeData } from '../nodes/VariablesNode'
@@ -11,7 +11,6 @@ import { useLLMStore } from '../../../stores/useLLMStore'
 import { routeColorForIndex } from '../routeColors'
 
 const ROUTE_EDGE_LABEL_STYLE = { fill: 'hsl(var(--muted-foreground))', fontWeight: 500, fontSize: 10 }
-const COMPLETION_EDGE_LABEL_STYLE = { fill: 'hsl(var(--primary))', fontWeight: 600, fontSize: 11 }
 const EDGE_LABEL_BG_STYLE = { fill: 'hsl(var(--popover))', fillOpacity: 0.92 }
 
 // Node data types for our custom nodes
@@ -31,25 +30,6 @@ export interface StepNodeData extends Record<string, unknown> {
   parentOrchestratorTitle?: string  // Title of parent orchestrator node (for sub-agents)
   routeName?: string  // Route name from orchestration_routes (for sub-agents)
   routeCondition?: string  // Condition from orchestration_routes (for sub-agents)
-  isOrphan?: boolean  // True for orphan steps (workshop-only, not in main execution flow)
-}
-
-export interface LegacyAgentNodeData extends Record<string, unknown> {
-  id: string
-  title: string
-  todo_task_step?: PlanStep  // DEPRECATED: kept for backwards compat
-  predefined_routes?: Array<{ route_id: string; route_name: string; condition: string; sub_agent_step?: PlanStep; orphan_step_ref?: string }>
-  enable_generic_agent?: boolean
-  status: 'pending' | 'running' | 'failed' | 'executing' | 'evaluating' | 'orchestrating' | 'completed'
-  stepIndex: number
-  step: PlanStep
-  changeType?: ChangeType  // Highlight type for visual feedback
-  workspacePath?: string | null  // Workspace path for file opening
-  selectedRunFolder?: string  // Selected iteration folder for file opening
-  validation_schema?: ValidationSchema  // Validation schema from plan.json (now flat on step)
-  parentOrchestratorTitle?: string  // Title of parent orchestrator node (for nested todo sub-agents)
-  routeName?: string  // Route name from orchestration/todo routes
-  routeCondition?: string  // Condition from orchestration/todo routes
   isOrphan?: boolean  // True for orphan steps (workshop-only, not in main execution flow)
 }
 
@@ -85,7 +65,6 @@ export interface AgentNodeData extends Record<string, unknown> {
   workspacePath?: string | null
   selectedRunFolder?: string
   validation_schema?: ValidationSchema
-  enable_generic_agent?: boolean
   parentOrchestratorTitle?: string
   routeName?: string
   routeCondition?: string
@@ -149,7 +128,7 @@ export interface WorkflowTriggerNodeData extends Record<string, unknown> {
   onRefresh?: () => void
 }
 
-export type WorkflowNodeData = WorkflowTriggerNodeData | StepNodeData | LegacyAgentNodeData | RoutingStepNodeData | AgentNodeData | CrewStepNodeData | ValidationNodeData | LearningNodeData | VariablesNodeData | WorkflowArtifactNodeData
+export type WorkflowNodeData = WorkflowTriggerNodeData | StepNodeData | RoutingStepNodeData | AgentNodeData | CrewStepNodeData | ValidationNodeData | LearningNodeData | VariablesNodeData | WorkflowArtifactNodeData
 
 // Node and edge types
 export type WorkflowNode = Node<WorkflowNodeData>
@@ -193,7 +172,6 @@ const NODE_DIMENSIONS = {
   step: { width: 280, height: 120 },
   routing: { width: 280, height: 200 },
   agent: { width: 320, height: 160 },
-  todo_task: { width: 300, height: 120 },
   crew: { width: 280, height: 160 },
   loop: { width: 300, height: 140 },
   start: { width: 96, height: 40 },
@@ -205,7 +183,7 @@ const NODE_DIMENSIONS = {
 const SUB_AGENT_LAYOUT = {
   parentGap: 72,
   cellGap: 32,
-  cellWidth: Math.max(NODE_DIMENSIONS.step.width, NODE_DIMENSIONS.todo_task.width),
+  cellWidth: Math.max(NODE_DIMENSIONS.step.width, 300),
   cellHeight: NODE_DIMENSIONS.step.height
 }
 
@@ -244,12 +222,6 @@ function countOrphanStepRefs(steps: PlanStep[] | undefined): Map<string, number>
           }
         }
         for (const r of s.predefined_routes || []) {
-          if (r.orphan_step_ref) counts.set(r.orphan_step_ref, (counts.get(r.orphan_step_ref) || 0) + 1)
-          if (r.sub_agent_step) visit([r.sub_agent_step])
-        }
-      }
-      if (isLegacyAgentStep(s) && Array.isArray(s.predefined_routes)) {
-        for (const r of s.predefined_routes) {
           if (r.orphan_step_ref) counts.set(r.orphan_step_ref, (counts.get(r.orphan_step_ref) || 0) + 1)
           if (r.sub_agent_step) visit([r.sub_agent_step])
         }
@@ -405,9 +377,9 @@ function getNodeFootprintDimensions(
 }
 
 function isAgentCoordinatorNode(node: WorkflowNode): boolean {
-  if (node.type !== 'agent' && node.type !== 'todo_task') return false
-  const data = node.data as AgentNodeData | LegacyAgentNodeData
-  return (data.predefined_routes?.length ?? 0) > 0 || data.enable_generic_agent === true
+  if (node.type !== 'agent') return false
+  const data = node.data as AgentNodeData
+  return (data.predefined_routes?.length ?? 0) > 0
 }
 
 /**
@@ -422,7 +394,7 @@ function calculateTopologyMetrics(nodes: WorkflowNode[]): { hasOrchestrator: boo
   nodes.forEach(node => {
     if (isAgentCoordinatorNode(node)) {
       hasOrchestrator = true
-      const data = node.data as AgentNodeData | LegacyAgentNodeData
+      const data = node.data as AgentNodeData
       const routes = data.predefined_routes
       const numRoutes = routes?.length || 0
 
@@ -667,8 +639,7 @@ function buildPlanSuccessorMap(plan: PlanningResponse): Map<string, string[]> {
     const successors = [...(directSuccessors.get(step.id) || [])]
     const canContinueSequentially = !hasExplicitPlanContinuation(step) &&
       !isRoutingStep(step) &&
-      !isBranchStep(step) &&
-      !isLegacyAgentStep(step)
+      !isBranchStep(step)
     const nextStep = plan.steps[index + 1]
     if (canContinueSequentially && nextStep && !explicitTargets.has(nextStep.id)) {
       successors.push(nextStep.id)
@@ -1050,12 +1021,7 @@ function stepToNode(
     status = 'pending' as const
   }
 
-  const getStepTitle = () => {
-    if (isLegacyAgentStep(step)) {
-      return step.title || `Agent ${stepIndex + 1}`
-    }
-    return step.title || `Step ${stepIndex + 1}`
-  }
+  const getStepTitle = () => step.title || `Step ${stepIndex + 1}`
 
   const baseData = {
     id: nodeId,
@@ -1099,23 +1065,6 @@ function stepToNode(
         route_source: step.route_source,
         validation_schema: step.validation_schema
       } as RoutingStepNodeData
-    }
-  }
-
-  if (isLegacyAgentStep(step)) {
-    return {
-      id: nodeId,
-      type: 'agent',
-      position: { x: 0, y: 0 },
-      data: {
-        ...baseData,
-        items: effectiveAgentItems(step),
-        predefined_routes: step.predefined_routes,
-        enable_generic_agent: step.enable_generic_agent,
-        // Flat format: validation_schema is directly on step
-        validation_schema: step.validation_schema || step.todo_task_step?.validation_schema
-        // Note: status is inherited from baseData (computed based on completedStepIndices)
-      } as AgentNodeData
     }
   }
 
@@ -1201,7 +1150,6 @@ function processSteps(
   steps.forEach(s => {
     if (isRoutingStep(s) && s.routes) s.routes.forEach(r => addRouteTarget(r.next_step_id))
     if (isBranchStep(s) && s.routes) s.routes.forEach(r => addRouteTarget(r.next_step_id))
-    if (isLegacyAgentStep(s)) addRouteTarget(s.next_step_id)
   })
   const primaryRouteEntryStepIDs = new Set(
     steps.find(isRoutingStep)?.routes.map(route => route.next_step_id) || []
@@ -1218,7 +1166,7 @@ function processSteps(
     const parentStepIndex = todoTaskNodeData.stepIndex
     const todoTaskTitle = todoTaskNodeData.title || todoTaskStep.title || `Agent ${parentStepIndex + 1}`
 
-    if ((isLegacyAgentStep(todoTaskStep) || isAgentStep(todoTaskStep)) && todoTaskStep.predefined_routes && todoTaskStep.predefined_routes.length > 0) {
+    if (isAgentStep(todoTaskStep) && todoTaskStep.predefined_routes && todoTaskStep.predefined_routes.length > 0) {
       todoTaskStep.predefined_routes.forEach((route) => {
         const isEndRoute = route.route_id?.toLowerCase() === 'end'
 
@@ -1250,43 +1198,7 @@ function processSteps(
 
         const changeType = getChangeType(stepId, changes)
 
-        if (isLegacyAgentStep(subAgentStep)) {
-          const nestedTodoNode: WorkflowNode = {
-            id: subAgentNodeId,
-            type: 'agent',
-            position: { x: 0, y: 0 },
-            data: {
-              id: subAgentNodeId,
-              title: subAgentStep.title || `${route.route_name || route.route_id || routeId}`,
-              description: subAgentStep.description,
-              success_criteria: subAgentStep.success_criteria,
-              status,
-              stepIndex: parentStepIndex,
-              step: subAgentStep,
-              changeType,
-              items: effectiveAgentItems(subAgentStep),
-              predefined_routes: subAgentStep.predefined_routes,
-              enable_generic_agent: subAgentStep.enable_generic_agent,
-              validation_schema: subAgentStep.validation_schema || subAgentStep.todo_task_step?.validation_schema,
-              workspacePath,
-              selectedRunFolder,
-              parentOrchestratorTitle: todoTaskTitle,
-              routeName: route.route_name || undefined,
-              routeCondition: route.condition || undefined
-            } as AgentNodeData
-          }
-
-          todoTaskSubAgentNodes.push(nestedTodoNode)
-
-          const nestedTodoGraph = buildTodoTaskSubAgentGraph(
-            subAgentStep,
-            subAgentNodeId,
-            nestedTodoNode.data as AgentNodeData,
-            false
-          )
-          todoTaskSubAgentNodes.push(...nestedTodoGraph.nodes)
-          todoTaskEdges.push(...nestedTodoGraph.edges)
-        } else if (isAgentStep(subAgentStep)) {
+        if (isAgentStep(subAgentStep)) {
           // An agent sub-agent must render as an AgentNode so its
           // ordered items show — not as a generic step card.
           const seqNode: WorkflowNode = {
@@ -1361,79 +1273,6 @@ function processSteps(
           animated: false
         })
       })
-    }
-
-    if (isLegacyAgentStep(todoTaskStep) && todoTaskStep.enable_generic_agent) {
-      const routeId = 'generic'
-      const subAgentNodeId = `${todoTaskNodeId}-sub-agent-${routeId}`
-
-      const status: 'pending' | 'running' | 'completed' | 'failed' = 'pending'
-
-      const subAgentNode: WorkflowNode = {
-        id: subAgentNodeId,
-        type: 'step',
-        position: { x: 0, y: 0 },
-        data: {
-          id: subAgentNodeId,
-          title: 'Generic Agent',
-          description: 'Executes ad-hoc tasks using workspace tools',
-          success_criteria: 'Task completion verified by the parent agent',
-          status,
-          stepIndex: parentStepIndex,
-          step: {
-            id: subAgentNodeId,
-            title: 'Generic Agent',
-            description: 'Executes ad-hoc tasks using workspace tools',
-            type: 'scripted',
-          } as PlanStep,
-          changeType: undefined,
-          workspacePath,
-          selectedRunFolder,
-          parentOrchestratorTitle: todoTaskTitle,
-          routeName: 'Generic Execution',
-          routeCondition: 'Ad-hoc tasks'
-        } as StepNodeData
-      }
-
-      todoTaskSubAgentNodes.push(subAgentNode)
-
-      todoTaskEdges.push({
-        id: `${todoTaskNodeId}-route-generic-to-sub-agent`,
-        source: todoTaskNodeId,
-        target: subAgentNodeId,
-        targetHandle: 'top',
-        type: 'smoothstep',
-        style: { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5,5' },
-        animated: false
-      })
-    }
-
-    if (includeCompletionEdge && isLegacyAgentStep(todoTaskStep) && todoTaskStep.next_step_id) {
-      const targetNodeId = stepIdToNodeIdMap?.get(todoTaskStep.next_step_id)
-      if (targetNodeId) {
-        todoTaskEdges.push({
-          id: `${todoTaskNodeId}-todo-task-to-${targetNodeId}`,
-          source: todoTaskNodeId,
-          target: targetNodeId,
-          type: 'smoothstep',
-          style: { stroke: '#8b5cf6', strokeWidth: 2 },
-          animated: false
-        })
-      } else if (todoTaskStep.next_step_id === 'end') {
-        todoTaskEdges.push({
-          id: `${todoTaskNodeId}-todo-task-to-end`,
-          source: todoTaskNodeId,
-          target: 'end',
-          type: 'smoothstep',
-          label: 'Complete',
-          labelStyle: COMPLETION_EDGE_LABEL_STYLE,
-          labelBgStyle: EDGE_LABEL_BG_STYLE,
-          labelBgPadding: [4, 4] as [number, number],
-          labelBgBorderRadius: 4,
-          style: { stroke: '#8b5cf6', strokeWidth: 2 },
-          animated: false
-        })
-      }
     }
 
     return { nodes: todoTaskSubAgentNodes, edges: todoTaskEdges }
@@ -1547,7 +1386,7 @@ function processSteps(
     // Todo task steps have predefined routes (sub-agents)
     // and optionally a generic agent. After sub-agents complete, they return to the main todo task node.
     // The todo task step connects to next_step_id when all tasks are complete.
-    if (isLegacyAgentStep(step) || (isAgentStep(step) && (step.predefined_routes?.length ?? 0) > 0)) {
+    if (isAgentStep(step) && (step.predefined_routes?.length ?? 0) > 0) {
       const todoTaskGraph = buildTodoTaskSubAgentGraph(
         step,
         node.id,
@@ -1591,8 +1430,8 @@ function processSteps(
 /**
  * Check if a node is a step-type node (has step data)
  */
-function isStepTypeNode(node: WorkflowNode): node is WorkflowNode & { data: StepNodeData | LegacyAgentNodeData | AgentNodeData } {
-  return node.type === 'step' || node.type === 'todo_task' || node.type === 'agent'
+function isStepTypeNode(node: WorkflowNode): node is WorkflowNode & { data: StepNodeData | AgentNodeData } {
+  return node.type === 'step' || node.type === 'agent'
 }
 
 /**
@@ -1959,7 +1798,7 @@ export function usePlanToFlow(
         // Calculate the leftmost point of this node (accounting for sub-agent overflow if it's a compound node)
         let firstStepLeftEdge = firstStepNode.position.x
         if (isAgentCoordinatorNode(firstStepNode)) {
-          const data = firstStepNode.data as AgentNodeData | LegacyAgentNodeData
+          const data = firstStepNode.data as AgentNodeData
           const routes = data.predefined_routes
           const numSubAgents = routes?.length || 0
           
@@ -2298,7 +2137,7 @@ export function usePlanToFlow(
 
     // Inject read-only context into step-type nodes.
     layoutedResult.nodes = layoutedResult.nodes.map(node => {
-      if (node.type === 'step' || node.type === 'todo_task' || node.type === 'agent') {
+      if (node.type === 'step' || node.type === 'agent') {
         return {
           ...node,
           data: {
@@ -2350,7 +2189,6 @@ export function usePlanToFlow(
 
     lastComputedFlowRef.current = layoutedResult
     return layoutedResult
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disabled, plan, showDependencyEdges, changes, presetUseCodeExecutionMode, presetLLMConfig, availableLLMs, completedStepIndices, options.workspacePath, options.selectedRunFolder, variablesManifest, relayMode, onOpenVariablesSidebar, isLoadingVariables, layoutDirection])
 }
 

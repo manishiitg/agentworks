@@ -111,30 +111,6 @@ export interface ScriptedPlanStep extends CommonStepFields {
   next_step_id?: string;                    // Explicit successor for scripted route chains
 }
 
-// Todo task step (orchestrator with todo list management + predefined routes + generic agent)
-// Fields from the former inner todo_task_step are now flattened onto this level:
-//   description, success_criteria, context_dependencies, context_output, validation_schema
-// These are inherited from CommonStepFields already.
-export interface LegacyAgentPlanStep extends CommonStepFields {
-  type: 'todo_task' | 'orchestrator';  // 'orchestrator' since contract v1.0.35; 'todo_task' is the legacy on-disk alias
-  todo_task_step?: PlanStep;                // DEPRECATED: kept for backwards compat with old plan.json
-  predefined_routes?: PlanRoutingRoute[];   // Predefined sub-agents with learning/prevalidation
-  enable_generic_agent?: boolean;           // Allow generic execution agent (no learning/prevalidation)
-  next_step_id?: string;                    // ID of step after todo task completes (or "end")
-  messages?: LegacyAgentMessage[];             // Optional scripted agent fed into the orchestrator's own conversation after its first turn
-}
-
-export interface LegacyAgentMessage {
-  id?: string;
-  type?: 'message' | 'prevalidation' | 'foreach' | string;
-  message?: string;                         // message entries: instruction for one orchestrator turn; foreach entries: the per-row template
-  validation_schema?: ValidationSchema;     // prevalidation entries: the gate schema
-  max_corrections?: number;                 // prevalidation only: corrective turns allowed on failure (default 1)
-  source?: string;                          // foreach entries: workspace-relative JSON array file (e.g. db/tasks.json)
-  source_path?: string;                     // foreach entries: optional dot-path to the array field
-  max_iterations?: number;                  // foreach entries: optional cap on rows (0 = all)
-}
-
 export interface AgentWriteAccess {
   knowledgebase?: boolean;
   db?: boolean;
@@ -222,7 +198,7 @@ export interface CrewPlanStep extends CommonStepFields {
 }
 
 // Discriminated union type for all step types
-export type PlanStep = ScriptedPlanStep | LegacyAgentPlanStep | AgentPlanStep | RoutingPlanStep | BranchPlanStep | CrewPlanStep;
+export type PlanStep = ScriptedPlanStep | AgentPlanStep | RoutingPlanStep | BranchPlanStep | CrewPlanStep;
 
 // PlanRoutingRoute represents a possible route/sub-agent for planning
 export interface PlanRoutingRoute {
@@ -245,13 +221,6 @@ export interface PlanningResponse {
 export function isScriptedStep(step: PlanStep): step is ScriptedPlanStep {
   return step.type === 'scripted' || step.type === 'regular';
 }
-
-
-export function isLegacyAgentStep(step: PlanStep): step is LegacyAgentPlanStep {
-  return step.type === 'todo_task' || step.type === 'orchestrator';
-}
-
-// Preferred name; the plan type is `orchestrator` and `todo_task` is its legacy alias.
 
 
 export function isAgentStep(step: PlanStep): step is AgentPlanStep {
@@ -300,54 +269,6 @@ export function configuredAgentItems(step: PlanStep): AgentItem[] {
     return [{id: '__step_description__', type: 'user_message', title: 'Step task', kind: 'execution', message: step.description}, ...items];
   }
   return items;
-}
-
-// Convert the former orchestrator `messages` shape into the canonical Agent
-// item queue. This is display-only compatibility for plans which have not yet
-// been rewritten as `agent` steps.
-export function legacyTodoMessagesAsSequenceItems(step: LegacyAgentPlanStep): AgentItem[] {
-  const items = (step.messages ?? []).map((message, index): AgentItem => {
-    const id = message.id || `legacy-item-${index + 1}`;
-    if (message.type === 'prevalidation') {
-      return {
-        id,
-        type: 'prevalidation',
-        validation_schema: message.validation_schema
-      };
-    }
-    if (message.type === 'foreach') {
-      return {
-        id,
-        type: 'foreach',
-        message: message.message,
-        source: message.source,
-        source_path: message.source_path,
-        max_iterations: message.max_iterations
-      };
-    }
-    return {
-      id,
-      type: 'user_message',
-      kind: 'execution',
-      message: message.message
-    };
-  });
-
-  if (items.length > 0) return items;
-  return [{
-    id: 'execute-step-charter',
-    type: 'user_message',
-    kind: 'execution',
-    message: 'Execute the step charter and verify its success criteria.'
-  }];
-}
-
-// The Plan Design UI has one Agent concept. Canonical agents and
-// legacy orchestrator/todo_task records differ only in their stored shape.
-export function effectiveAgentItems(step: PlanStep): AgentItem[] {
-  return isLegacyAgentStep(step)
-    ? legacyTodoMessagesAsSequenceItems(step)
-    : configuredAgentItems(step);
 }
 
 export function isRoutingStep(step: PlanStep): step is RoutingPlanStep {

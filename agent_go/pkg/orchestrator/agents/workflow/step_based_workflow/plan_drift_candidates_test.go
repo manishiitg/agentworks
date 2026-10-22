@@ -473,7 +473,7 @@ func TestCollectPlanDriftCandidatesPopulatesStepTypeFromPlanJSON(t *testing.T) {
 func TestCollectPlanDriftCandidatesPopulatesStepTypeForNestedRoutingStep(t *testing.T) {
 	const workspacePath = "Workflow/drift-candidates-nested-routing"
 	planJSON := `{"steps":[
-  {"type":"todo_task","id":"todo-a","title":"Todo","description":"d","predefined_routes":[
+  {"type":"agent","id":"todo-a","title":"Todo","description":"d","predefined_routes":[
     {"route_id":"nested-router","route_name":"Nested Router","condition":"c","sub_agent_step":{
       "type":"routing","id":"nested-router","title":"Nested Router","routing_question":"Which path?","routes":[
         {"route_id":"r1","route_name":"One","condition":"c","next_step_id":"end"},
