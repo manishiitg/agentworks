@@ -1,4 +1,6 @@
-import { Children, Fragment, cloneElement, isValidElement, type ComponentType, type ReactElement, type ReactNode } from 'react'
+import { Children, Fragment, cloneElement, createElement, isValidElement, type ComponentType, type ReactElement, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { useWorkspacePanelHeaderSlots } from '../workspace/WorkspacePanelHeaderSlots'
 import { WorkspaceViewTabs, type WorkspaceViewTabOption } from './WorkspaceViewTabs'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
 import { panelGuideAskFromNode, type PanelGuideAsk } from './workspacePanelGuideAsk'
@@ -18,7 +20,7 @@ export interface WorkspaceViewHeaderTabs {
 type WorkspaceViewHeaderProps = {
   /**
    * Leading icon as a component reference (`icon={Activity}`): rendered in
-   * the standard h-9 tile spanning the title + subtitle block. A custom
+   * the standard h-8 tile spanning the title + subtitle block. A custom
    * element renders as-is at the same footprint.
    */
   icon?: ComponentType<{ className?: string }> | ReactElement
@@ -55,20 +57,22 @@ type WorkspaceViewHeaderProps = {
    * Visually identical to the standard header.
    */
   bare?: boolean
+  /** Full-screen tools keep their controls inside the expanded surface. */
+  local?: boolean
   className?: string
 }
 
 /**
  * The one header for every right-side workspace view — workflow inspectors,
- * capability sections, the automation hub, and Crew panes. Plan and Report
- * are the only views without one (canvas overlays instead of headers).
+ * capability sections, the automation hub, and Crew panes. Hosted headings
+ * and controls render in the panel shell; standalone views render locally.
  *
  * The fixed standard, enforced by this component:
- * - icon: h-9 tile (h-4 glyph) spanning title + subtitle; custom elements
- *   render as-is at the same h-9 footprint
- * - title: text-sm with a subtitle, text-lg without one; font-semibold
+ * - icon: h-8 tile (h-4 glyph) spanning title + subtitle; custom elements
+ *   render as-is at the same h-8 footprint
+ * - title: text-sm font-semibold in the shared compact heading
  * - subtitle: text-xs text-muted-foreground, rendered here
- * - actions: page operations and walkthrough; contextual questions live in the outer toolbar
+ * - actions: page operations, then Help and Back in the shared panel header
  */
 function isRefreshAction(node: ReactNode): boolean {
   if (!isValidElement<{ label?: string; icon?: unknown; 'aria-label'?: string; children?: ReactNode }>(node)) return false
@@ -136,18 +140,8 @@ function headerAsk(actions: ReactNode): PanelGuideAsk | undefined {
   }
 }
 
-/** Portaled help and assistance need no extra row inside the panel. */
-function hasInlineAction(node: ReactNode): boolean {
-  if (node == null || typeof node === 'boolean') return false
-  if (Array.isArray(node)) return node.some(hasInlineAction)
-  if (!isValidElement<{ children?: ReactNode; walkthrough?: ReactNode; hideRefresh?: boolean }>(node)) return true
-  if (node.type === WorkspacePanelGuideButton) return false
-  if (node.type === Fragment) return Children.toArray(node.props.children).some(hasInlineAction)
-  if (node.type === WorkspaceViewActions) return !node.props.hideRefresh || hasInlineAction(node.props.children) || hasInlineAction(node.props.walkthrough)
-  return true
-}
-
 export function WorkspaceViewHeader({
+  icon,
   title,
   hideHeader = false,
   helpTopic,
@@ -159,6 +153,7 @@ export function WorkspaceViewHeader({
   tabs,
   sticky = false,
   bare = false,
+  local = false,
   className = '',
   tabActions,
 }: WorkspaceViewHeaderProps) {
@@ -170,42 +165,39 @@ export function WorkspaceViewHeader({
   const guideTopic = helpTopic ?? (typeof title === 'string' ? title : '')
   const walkthrough = (!hideHeader || hosted) && showWalkthrough && guideTopic ? <WorkspacePanelGuideButton key="walkthrough" topic={guideTopic} /> : null
   const headerActions = insertWalkthrough(actions, walkthrough, assistantInHeader)
+  const slots = useWorkspacePanelHeaderSlots()
+  const iconNode = isValidElement(icon) ? icon : icon ? createElement(icon as ComponentType<{ className?: string }>, { className: 'h-4 w-4' }) : null
+  const heading = <div data-workspace-panel-title className="flex min-w-0 items-center gap-2.5">
+    {iconNode && <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">{iconNode}</span>}
+    <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <h2 className="truncate text-sm font-semibold">{title}</h2>
+        {context}
+      </div>
+      {hasSubtitle && <div className="mt-0.5 text-xs text-muted-foreground">{subtitle}</div>}
+    </div>
+  </div>
+  const controls = <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5">{tabExtra}{headerActions}</div>
+  const contentControls = <>{below}{tabs && <WorkspaceViewTabs value={tabs.value} onChange={tabs.onChange} options={tabs.options} ariaLabel={tabs.ariaLabel} inset={!bare} />}</>
+
+  // Portals retain each view's state and callbacks. Only its heading/actions
+  // move; search, filters and tabs remain content below the one fixed header.
+  if (!local && slots?.heading && slots.actions) return <>
+    {createPortal(heading, slots.heading)}
+    {createPortal(controls, slots.actions)}
+    {(below || tabs) && <div className={`shrink-0 border-b border-border px-3 py-2 ${className}`}>{contentControls}</div>}
+  </>
+
+  // Dialogs, full-screen tools and embedded views without an outer header keep
+  // the same compact header locally.
   if (hideHeader && !actions && !tabExtra && !below && !tabs) return hosted ? walkthrough : null
-  if (hosted && !hasSubtitle && !context && !below && !tabs && !tabExtra && !hasInlineAction(headerActions)) {
-    return <>{!hideHeader && <h2 className="sr-only">{title}</h2>}{headerActions}</>
-  }
-  const body = (
-    <>
-      {(!hideHeader || actions || tabExtra) && <div className={`flex ${hasSubtitle ? 'items-start' : 'items-center'} ${hideHeader ? 'justify-end' : 'justify-between'} gap-3`}>
-        {!hideHeader && <div className={`flex min-w-0 flex-1 ${hasSubtitle ? 'items-start' : 'items-center'} gap-2`}>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              {/* The side menu already names the panel; the title stays for screen readers only. */}
-              <h2 className="sr-only">{title}</h2>
-              {context}
-            </div>
-            {hasSubtitle && <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p>}
-          </div>
-        </div>}
-        {(actions || tabExtra || walkthrough) && <div className="flex shrink-0 items-center gap-2">{tabExtra}{headerActions}</div>}
-      </div>}
-      {below}
-      {tabs && (
-        <div className={bare ? 'pt-1' : '-mb-2 pt-1'}>
-          <WorkspaceViewTabs value={tabs.value} onChange={tabs.onChange} options={tabs.options} ariaLabel={tabs.ariaLabel} inset={!bare} />
-        </div>
-      )}
-    </>
-  )
+  const body = <>
+    {(!hideHeader || actions || tabExtra) && <div className="flex flex-wrap items-center justify-between gap-3">
+      {!hideHeader && heading}
+      {controls}
+    </div>}
+    {contentControls}
+  </>
   if (bare) return <>{body}</>
-  // Standalone views retain a light local action row. Hosted help lives in
-  // the panel navigation header; only page-specific controls stay here.
-  if (!hasSubtitle && !context && !below && !tabs && !tabExtra) {
-    return <div className={`shrink-0 px-3 pt-2 ${sticky ? 'sticky top-0 z-10 bg-background/95 backdrop-blur' : ''} ${className}`}>{body}</div>
-  }
-  return (
-    <header className={`${sticky ? 'sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur' : 'shrink-0 border-b border-border'} px-3 py-2 ${className}`}>
-      {body}
-    </header>
-  )
+  return <header className={`${sticky ? 'sticky top-0 z-10 bg-background/95 backdrop-blur' : 'shrink-0'} border-b border-border px-3 py-2 ${className}`}>{body}</header>
 }

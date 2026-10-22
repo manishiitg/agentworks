@@ -1,4 +1,5 @@
 import React from 'react'
+import { useWorkspacePanelHeaderSlots } from '../workspace/WorkspacePanelHeaderSlots'
 
 interface InspectorShellProps {
   /** The shell box's classes. */
@@ -20,9 +21,10 @@ export default function InspectorShell({
   headerClassName = '',
   children,
 }: InspectorShellProps) {
+  const slots = useWorkspacePanelHeaderSlots()
   return (
     <div className={className}>
-      <div className={headerClassName}>
+      <div className={slots?.heading ? 'contents' : headerClassName}>
         {header}
       </div>
 

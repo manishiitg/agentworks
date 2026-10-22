@@ -4,6 +4,7 @@ import { panelBackAction, useWorkspacePanelNavigationStore, useWorkspacePanelSco
 import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import type { WorkspacePanelSurface } from '../workflow/workspacePanelGuides'
+import { WorkspacePanelHeaderSlotsProvider } from './WorkspacePanelHeaderSlots'
 
 const WorkspacePanelNavigationContext = createContext<{ scope: string; chatTarget?: WorkspacePanelChatTarget; onOpenChat?: () => void }>({ scope: '' })
 
@@ -16,7 +17,7 @@ export function WorkspacePanelNavigationProvider({ workspacePath, view, children
   onOpenChat?: () => void
 }) {
   const scope = useWorkspacePanelScope(workspacePath, view)
-  return <WorkspacePanelNavigationContext.Provider value={{ scope, chatTarget, onOpenChat }}>{children}</WorkspacePanelNavigationContext.Provider>
+  return <WorkspacePanelNavigationContext.Provider value={{ scope, chatTarget, onOpenChat }}><WorkspacePanelHeaderSlotsProvider>{children}</WorkspacePanelHeaderSlotsProvider></WorkspacePanelNavigationContext.Provider>
 }
 
 export function useWorkspacePanelHosted() {

@@ -411,7 +411,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
                 iconOnly
               />} />
             <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
-              <h3 className="text-base font-semibold">Suggestions</h3>
               <p className="text-sm leading-6 text-muted-foreground">Changes other people using this {noun} asked for. Accepting records your decision; make the change in chat.</p>
               <ReportHumanInputPanel workspacePath={workspacePath} chatTarget={{ profileId: product.profileId, conversationKey: projectId }} source="user_suggestion" showEmptyState />
             </div>

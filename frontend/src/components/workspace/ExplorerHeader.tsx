@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
+import { useWorkspacePanelHeaderSlots } from './WorkspacePanelHeaderSlots'
 
 /** The EXPLORER title and the folder row that carries the toolbar icons. */
 export function ExplorerHeader({ title, titleAction, toolbar, leading }: {
@@ -9,6 +11,8 @@ export function ExplorerHeader({ title, titleAction, toolbar, leading }: {
   /** Left of the folder name (select-all in selection mode). */
   leading?: ReactNode
 }) {
+  const slots = useWorkspacePanelHeaderSlots()
+  if (slots?.heading && slots.actions) return <WorkspaceViewHeader title="Files" subtitle={title} actions={<>{leading}{titleAction}{toolbar}</>} />
   return (
     <div className="shrink-0 border-b border-border">
       <div className="flex h-9 items-center justify-between gap-2 px-3">

@@ -6,6 +6,7 @@ import { WorkspaceContextButton } from './WorkspaceContextButton'
 import { WorkspacePanelAssistant, WorkspacePanelAssistantButton, WorkspacePanelBack, WorkspacePanelNavigationProvider } from './WorkspacePanelNavigation'
 import { WorkspacePanelHelpButton } from './WorkspacePanelHelpButton'
 import { WorkspacePanelHeader } from './WorkspacePanelHeader'
+import { WorkspacePanelActions, WorkspacePanelHeaderBoundary } from './WorkspacePanelHeaderSlots'
 import { useWorkspacePanelNavigationStore } from '../../stores/useWorkspacePanelNavigationStore'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { WorkspaceViewActions } from '../workflow/WorkspaceViewActions'
@@ -152,7 +153,8 @@ it.each(['Crew/example', 'Workflow/example', 'Workflow/relay'])('keeps Help and 
   expect(help.closest('section')?.getAttribute('aria-label')).toBe('Right panel')
   expect(host.querySelectorAll('[aria-label="Back to context"]')).toHaveLength(1)
   expect(host.querySelector('[data-testid="panel-content"] button')).toBeNull()
-  expect(host.querySelector('[data-testid="panel-content"]')?.firstElementChild?.tagName).toBe('H2')
+  expect(host.querySelector('[data-testid="panel-content"] h2')).toBeNull()
+  expect(host.querySelector('header [data-workspace-panel-title] h2')?.textContent).toBe('Memory')
   await act(async () => help.click())
   expect(host.querySelector('[role="dialog"]')?.closest('header')).not.toBeNull()
   expect(host.querySelector('section[aria-label="Page guide"]')).not.toBeNull()
@@ -167,12 +169,46 @@ it.each(['Crew/example', 'Workflow/example', 'Workflow/relay'])('keeps Help and 
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back to context"]')!.click())
   expect(back).toHaveBeenCalledOnce()
   await render(pane('Skills'))
-  expect(host.querySelector('header h2')?.textContent).toBe('Integrations · Skills')
+  expect(host.querySelector('header [data-workspace-panel-title] h2')?.textContent).toBe('Skills')
   expect(host.querySelector('[data-testid="panel-content"]')?.textContent).toBe('Page content')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Help with this page"]')!.click())
   expect(host.querySelector('section[aria-label="Page guide"]')?.textContent).toContain('custom skills')
   await render(null)
   expect(useWorkspacePanelNavigationStore.getState().guides).toEqual([])
+})
+
+it.each(['Crew/example', 'Workflow/example', 'Workflow/relay'])('keeps live panel actions in one header and removes them on navigation for %s', async workspacePath => {
+  const back = vi.fn()
+  const Action = () => {
+    const [count, setCount] = useState(0)
+    return <WorkspacePanelActions><button onClick={() => setCount(value => value + 1)}>Share {count}</button></WorkspacePanelActions>
+  }
+  const pane = (view: string, details = false) => <WorkspacePanelNavigationProvider workspacePath={workspacePath} view={view}>
+    <WorkspacePanelHeader workspacePath={workspacePath} view={view} title={view} onBack={back} />
+    <div data-testid="panel-content">
+      <WorkspaceViewHeader title={view === 'browser' ? 'Browser' : 'Skills'} subtitle={view === 'browser' ? 'Chrome or Edge extension' : undefined} actions={view === 'browser' && <button>Settings</button>}
+        tabs={view === 'browser' ? { value: 'tabs', onChange: vi.fn(), options: [{ value: 'tabs', label: 'Tabs' }], ariaLabel: 'Browser tabs' } : undefined} />
+      {view === 'browser' && <Action />}
+      {details && <><WorkspaceViewHeader title="Skill instructions" /><WorkspacePanelBack label="Back to Skills" onBack={back} /></>}
+      <WorkspacePanelHeaderBoundary active={false}><WorkspaceViewHeader title="Hidden view" actions={<button>Hidden action</button>} /></WorkspacePanelHeaderBoundary>
+    </div>
+  </WorkspacePanelNavigationProvider>
+  await render(pane('browser'))
+  const header = host.querySelector('header[data-testid="workspace-panel-header"]')!
+  expect(header.textContent).toContain('Chrome or Edge extension')
+  expect([...header.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Settings', 'Share 0', 'Help', ''])
+  await act(async () => header.querySelectorAll('button')[1].click())
+  expect(header.textContent).toContain('Share 1')
+  expect(host.querySelector('[data-testid="panel-content"] [aria-label="Browser tabs"]')).not.toBeNull()
+  expect(header.textContent).not.toContain('Hidden action')
+  await render(pane('skills', true))
+  expect(header.textContent).not.toContain('Settings')
+  expect(header.textContent).not.toContain('Share')
+  expect(header.querySelector('[aria-label="Back to Skills"]')).not.toBeNull()
+  expect(header.querySelector('[data-workspace-panel-title]:last-child h2')?.textContent).toBe('Skill instructions')
+  await render(pane('skills'))
+  expect(header.querySelector('[aria-label="Back to Skills"]')).toBeNull()
+  expect(header.querySelector('[data-workspace-panel-title]:last-child h2')?.textContent).toBe('Skills')
 })
 
 it('does not show another workspace’s help', async () => {

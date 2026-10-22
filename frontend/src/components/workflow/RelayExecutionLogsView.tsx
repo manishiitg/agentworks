@@ -4,6 +4,7 @@ import { agentApi } from '../../services/api'
 import type { RunFolderInfo } from '../../services/api-types'
 import ExecutionLogsPopup from './ExecutionLogsPopup'
 import DBOSExecutionTimeline from './DBOSExecutionTimeline'
+import { WorkspacePanelHeaderBoundary } from '../workspace/WorkspacePanelHeaderSlots'
 
 /** Selects a Flow release, then uses the shared workflow execution log viewer. */
 export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, draftRunFolders, draftRunFolderInfos, draftSelectedRunFolder, onRefreshDraftRuns }: {
@@ -88,6 +89,7 @@ export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, dr
       <DBOSExecutionTimeline key={`${workspacePath}/${folder}`} workspacePath={workspacePath} runFolder={folder} onAvailable={onAvailable} />
     </div>
     <div className={mode === 'files' ? 'min-h-0 flex-1' : 'hidden'}>
+      <WorkspacePanelHeaderBoundary active={mode === 'files'}>
       <ExecutionLogsPopup
         key={`${workspacePath}/${folder}`}
         workspacePath={workspacePath}
@@ -96,6 +98,7 @@ export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, dr
         runFolderInfos={runFolderInfos}
         onRefreshRunFolders={selectedRelease ? refreshPublishedRuns : onRefreshDraftRuns}
       />
+      </WorkspacePanelHeaderBoundary>
     </div>
   </div>
 }

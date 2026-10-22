@@ -1,3 +1,5 @@
+import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
+import { WorkspacePanelActions, useWorkspacePanelHeaderSlots } from './workspace/WorkspacePanelHeaderSlots'
 import './PreviousChatHistoryPanel.css'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowUpRight, Bot, CalendarClock, Code2, Copy, Loader2, MessageSquare, MoreHorizontal, Paperclip, Pencil, Trash2, Webhook, type LucideIcon } from 'lucide-react'
@@ -842,6 +844,7 @@ export const PreviousChatHistoryPanel: React.FC<PreviousChatHistoryPanelProps> =
     }
   }, [addToast, filteredJobs, pendingRunCleanup, workspacePath])
 
+  const panelHeader = useWorkspacePanelHeaderSlots()
   const ActionIcon = actionLabel.toLowerCase() === 'attach' ? Paperclip : ArrowUpRight
   // This row is a content filter inside the conversation hub, not another set
   // of active chats. The main Chat owns the one continuing conversation;
@@ -852,17 +855,18 @@ export const PreviousChatHistoryPanel: React.FC<PreviousChatHistoryPanelProps> =
     { filter: 'bot' as const, label: 'Bots', icon: Bot },
     { filter: 'webhook' as const, label: 'Triggers', icon: Webhook },
   ].filter(({ filter }) => runOnly ? filter === runOnly : (!recentOnly || includeAutomationChats || filter === 'chat'))
-  const showPanelHeader = Boolean((!compact && title) || (!isLoading && (
+  const showPanelHeader = Boolean((!compact && title && !panelHeader?.heading) || (!isLoading && (
     filterItems.length > 1 || (!readOnly && !isRunFilter && hasOldVisibleSessions)
   )))
 
   return (
     <div className={`chat-history-panel min-w-0 w-full ${fill ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'shrink-0'} border-b border-border bg-background`}>
       <div className={`${fill ? 'flex min-h-0 flex-1 flex-col' : ''} w-full`}>
+        {!compact && title && panelHeader?.heading && <WorkspaceViewHeader title={runOnly ? title : activeFilter === 'webhook' ? 'Trigger activity' : activeFilter === 'schedule' ? 'Schedule activity' : title} icon={MessageSquare} />}
         {showPanelHeader && <div className={`flex flex-wrap items-center border-b border-border ${compact ? 'gap-2 px-3 py-2' : 'gap-3 px-4 py-3'} ${compact || !title ? 'justify-end' : 'justify-between'}`}>
           {/* The "Previous … chats" heading is redundant in the compact rail —
               the filter pills + list make the purpose obvious — so hide it there. */}
-          {!compact && title && (
+          {!compact && title && !panelHeader?.heading && (
             <div className="flex min-w-0 items-center gap-2 text-sm">
               <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground/80" />
               <span className="truncate font-medium text-foreground">{runOnly ? title : activeFilter === 'webhook' ? 'Trigger activity' : activeFilter === 'schedule' ? 'Schedule activity' : title}</span>
@@ -916,6 +920,7 @@ export const PreviousChatHistoryPanel: React.FC<PreviousChatHistoryPanelProps> =
                     ))}
                   </select>
                 )}
+              <WorkspacePanelActions local={compact}>
               {!readOnly && !isRunFilter && hasOldVisibleSessions && (
                 <CleanupOldChatsDropdown
                   counts={oldVisibleSessionCounts}
@@ -931,6 +936,7 @@ export const PreviousChatHistoryPanel: React.FC<PreviousChatHistoryPanelProps> =
                   title="Delete old runs"
                 />
               )}
+              </WorkspacePanelActions>
             </div>
           )}
         </div>}

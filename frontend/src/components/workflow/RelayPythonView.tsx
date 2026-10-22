@@ -1,3 +1,4 @@
+import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWorkspacePanelAssistant, useWorkspacePanelGuide } from '../workspace/WorkspacePanelNavigation'
 import { ArrowDown, Code2, RefreshCw, Settings2, Sparkles } from 'lucide-react'
@@ -68,7 +69,7 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
 }) {
   const [tab, setTab] = useState<'graph' | 'calls' | 'source'>('graph')
   const panelTopic = tab === 'graph' ? 'Flow' : tab === 'calls' ? 'Flow runs' : 'Flow code'
-  const hosted = useWorkspacePanelGuide(panelTopic, 'relay')
+  useWorkspacePanelGuide(panelTopic, 'relay')
   useWorkspacePanelAssistant({ workspacePath, message: `Help me with this Flow's ${tab === 'graph' ? 'steps and graph' : tab === 'calls' ? 'runs and results' : 'code'}. Explain the current view in plain words and ask what I want to do before changing anything.` })
   const viewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   useEffect(() => {
@@ -213,23 +214,19 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
   useLiveRefetch(refresh, { kinds: ['plan', 'sessions', 'schedules'], workflow: workspacePath, fallbackMs: 3000, safetyMs: tab === 'calls' || trace?.status === 'running' ? 2000 : 30_000, minIntervalMs: 500 })
 
   return <div className="relative flex h-full min-h-0 flex-col bg-background">
-    <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-      {/* Graph, Runs and Code are separate side-list items (owner, 2026-10-20); the side list picks one. */}
-      {!hosted && <span className="text-xs font-medium text-muted-foreground">{tab === 'graph' ? 'Flow' : tab === 'calls' ? 'Runs' : 'Code'}</span>}
-      <div className="ml-auto flex items-center gap-1">
-        <button type="button" onClick={() => setConfigurationOpen(open => !open)} aria-label="Flow configuration" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><Settings2 className="h-4 w-4" /></button>
-        <button type="button" onClick={() => { refresh(); void refreshReleases() }} aria-label="Refresh Flow" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><RefreshCw className="h-4 w-4" /></button>
-      </div>
-    </div>
+    <WorkspaceViewHeader title={panelTopic} showWalkthrough={false}
+      subtitle={tab === 'graph' ? 'Repeatable steps, AI tasks and decisions in one process.' : tab === 'source' ? 'Draft code · Implementation managed by the builder.' : undefined}
+      actions={<>
+        {tab === 'graph' && <button type="button" onClick={onBuild} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs hover:bg-muted"><Sparkles className="h-3.5 w-3.5" />Edit in chat</button>}
+        {tab === 'source' && <button type="button" onClick={() => useWorkflowStore.getState().openWorkspaceView('files', 'relay.py')} className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><Code2 className="h-3.5 w-3.5" />Open in Files</button>}
+        <button type="button" onClick={() => setConfigurationOpen(open => !open)} aria-label="Flow configuration" title="Flow configuration" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><Settings2 className="h-4 w-4" /></button>
+        <button type="button" onClick={() => { refresh(); void refreshReleases() }} aria-label="Refresh Flow" title="Refresh Flow" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><RefreshCw className="h-4 w-4" /></button>
+      </>} />
     {tab === 'graph' ? <div id="relay-python-graph" role="tabpanel" className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <div><h2 className="text-sm font-semibold">How it works</h2><p className="mt-1 text-xs text-muted-foreground">{sourceOverview.native ? 'Repeatable steps, AI tasks and decisions in one process. Open Runs to see what happened.' : 'Connect repeatable steps, AI tasks and decisions. Describe changes in the builder chat.'}</p></div>
-        <button type="button" onClick={onBuild} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted"><Sparkles className="h-3.5 w-3.5" />Edit in chat</button>
-      </div>
       {loadingSource || sourceOverview.loading ? <p className="p-6 text-sm text-muted-foreground">Loading graph…</p> : sourceError || sourceOverview.error ? <p role="alert" className="p-6 text-sm text-destructive">{sourceError || sourceOverview.error}</p> : <RelaySourceGraph key={workspacePath} source={source ?? ''} graph={sourceOverview.graph} onBuild={onBuild} onCode={() => setTab('source')} />}
 
     </div> : tab === 'source' ? <div id="relay-python-source" role="tabpanel" className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2 text-xs text-muted-foreground"><span>Draft code · Implementation managed by the builder.</span><button type="button" onClick={() => useWorkflowStore.getState().openWorkspaceView('files', 'relay.py')} className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted hover:text-foreground"><Code2 className="h-3.5 w-3.5" />Open in Files</button></div>
+
       {loadingSource ? <p className="p-6 text-sm text-muted-foreground">Loading source…</p> : sourceError ? <p role="alert" className="p-6 text-sm text-destructive">{sourceError}</p> : source === null ? <div className="m-auto max-w-md p-6 text-center"><h2 className="font-semibold">Build your Flow</h2><p className="mt-2 text-sm text-muted-foreground">Describe what your Flow should do in chat. The builder creates its implementation for you.</p><button type="button" onClick={onBuild} className="mt-4 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground">Build in chat</button></div> : <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-xs leading-6" aria-label="Flow Python source">{source}</pre>}
     </div> : <div id="relay-python-calls" role="tabpanel" className="min-h-0 flex-1 overflow-auto p-4">
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs"><label htmlFor="relay-python-version">Version</label><select id="relay-python-version" value={version} onChange={event => setVersion(event.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5"><option value="draft">Draft tests</option>{releases?.releases.map(release => <option key={release.version} value={release.version}>{release.version}{release.version === releases.active_version ? ' (active)' : ''}</option>)}</select><label htmlFor="relay-python-run">Run</label><select id="relay-python-run" value={folder ?? ''} onChange={event => useWorkflowStore.getState().setSelectedRunFolder(event.target.value || null)} className="max-w-full rounded-md border border-border bg-background px-2 py-1.5"><option value="" disabled>{runs.length ? 'Select a run' : 'No runs yet'}</option>{runs.map(run => <option key={run.name} value={run.name}>{run.name}{run.metadata?.status ? ` · ${run.metadata.status}` : ''}</option>)}</select>{trace && <span role="status" className="rounded bg-muted px-2 py-1">{trace.status}</span>}</div>

@@ -8,6 +8,7 @@ import api, { getApiBaseUrl, getAuthToken } from '../../services/api'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
+import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
 
@@ -723,8 +724,9 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
 
   return (
     <section className={`live-browser flex min-h-0 flex-1 flex-col overflow-hidden bg-background ${expanded ? 'fixed inset-0 z-50' : 'relative'}`} aria-label={`Live ${scopeNoun} browser`}>
-      {slim ? <BrowserChrome status={statusLabel} sessionLabel={singleBrowserLabel} tabs={tabs} canSelect={canControl} controlling={controlling} address={address} onAddress={setAddress} onNeedControl={canControl ? () => useChatStore.getState().addToast('Take control to type here', 'info') : undefined} onNavigate={navigateAddress} onHistory={action => send({ type: 'history', action })} onSelect={tab => { if (tab.active) return; if (controlling) send({ type: 'switch_tab', tab: tab.tabId }); else { pendingTab.current = tab.tabId; send({ type: 'take_control' }) } }} onClose={closeTab} onNew={() => send({ type: 'new_tab', url: 'about:blank' })} actions={<>{recordingIndicator}{controlToggle}{teachToggle}{pageSizeToggle}{recordingNote}{expandToggle}{overflowMenu}{toolbar}{showGuide && <WorkspacePanelGuideButton topic="Browser" />}</>} /> : (
+      {slim ? <BrowserChrome status={statusLabel} sessionLabel={singleBrowserLabel} tabs={tabs} canSelect={canControl} controlling={controlling} address={address} onAddress={setAddress} onNeedControl={canControl ? () => useChatStore.getState().addToast('Take control to type here', 'info') : undefined} onNavigate={navigateAddress} onHistory={action => send({ type: 'history', action })} onSelect={tab => { if (tab.active) return; if (controlling) send({ type: 'switch_tab', tab: tab.tabId }); else { pendingTab.current = tab.tabId; send({ type: 'take_control' }) } }} onClose={closeTab} onNew={() => send({ type: 'new_tab', url: 'about:blank' })} actions={<WorkspacePanelActions local={expanded}>{recordingIndicator}{controlToggle}{teachToggle}{pageSizeToggle}{recordingNote}{expandToggle}{overflowMenu}{toolbar}{showGuide && <WorkspacePanelGuideButton topic="Browser" />}</WorkspacePanelActions>} /> : (
         <WorkspaceViewHeader
+          local={expanded}
           icon={Monitor}
           title="Browser"
           showWalkthrough={showGuide}

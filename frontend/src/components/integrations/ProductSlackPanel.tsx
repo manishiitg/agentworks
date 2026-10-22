@@ -7,6 +7,7 @@ import type { SlackTargetSettings } from '../../services/api-types'
 import { SlackBotWhere } from '../workflow/bots/SlackBotWhere'
 import { SlackSlugsSection, slackErrorText } from '../workflow/bots/SlackSlugsSection'
 import SlackAccountsPanel from './SlackAccountsPanel'
+import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 
 export interface VaultSlackBot { id: string; name: string; configured: boolean; enabled: boolean; can_manage: boolean; scope_label: string; shared: boolean }
 export interface SlackBotState {
@@ -62,6 +63,6 @@ export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath
     <p className="break-words text-muted-foreground">{data.settings.dm_only?`In a direct message to ${chosen.name}, start with “${slug}” to reach this ${noun}, for example: ${slug} your question`:`@${chosen.name} ${slug} your question`}</p>
    </>}
   </>}
-  <Button size="sm" variant="outline" onClick={()=>openVault('vaults')}>Manage bots in My Vault</Button>
+  <WorkspacePanelActions><Button size="sm" variant="outline" onClick={()=>openVault('vaults')}>Manage bots in My Vault</Button></WorkspacePanelActions>
  </section>
 }

@@ -1,3 +1,4 @@
+import { WorkspacePanelActions } from '../../components/workspace/WorkspacePanelHeaderSlots'
 import { useProjectProduct } from './projectProduct'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
@@ -401,6 +402,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
           <span className={state === 'connected' ? 'sr-only' : ''}>{statusLabel}</span>
         </span>
         <span className="flex-1" />
+        <WorkspacePanelActions local={expanded || !active}>
         <button type="button" className={toolbarButton} title={`Search (${shellShortcutLabel('search', IS_MAC)})`} aria-label="Search the terminal" onClick={() => runAction('search')}><Search className="h-3.5 w-3.5" /></button>
         <div ref={menuRef} className="relative">
           <button type="button" className={toolbarButton} title="Terminal menu" aria-label="Terminal menu" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)} data-testid="code-shell-menu">
@@ -438,6 +440,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
             <Power className="h-3 w-3" /> Stop
           </button>
         )}
+        </WorkspacePanelActions>
       </div>
       {searchOpen && (
         <div className="flex items-center gap-1.5 border-b border-border bg-muted/40 px-3 py-1" role="search">

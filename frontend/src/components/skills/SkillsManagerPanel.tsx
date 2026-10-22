@@ -1,3 +1,4 @@
+import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 import { useEffect, useCallback, useRef, useState } from 'react'
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react'
 import { WorkspacePanelBack, useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
@@ -180,14 +181,14 @@ export default function SkillsManagerPanel({
   } : undefined)
   return (
     <div className={`${manageOwnScroll ? 'flex min-h-0 flex-1 flex-col' : 'flex flex-col'} gap-2`}>
-      {(headerAction || showRefresh) && <div className="flex justify-end gap-2">
+      {(headerAction || showRefresh) && <WorkspacePanelActions>
         {headerAction}
         {showRefresh && <button type="button" onClick={() => { void loadSkills() }} disabled={uninstalling || isLoading}
           title="Refresh skills" aria-label="Refresh skills"
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:text-primary">
           <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
         </button>}
-      </div>}
+      </WorkspacePanelActions>}
       {error && <div role="alert" className="flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4 shrink-0" /><span>{error}</span><button type="button" disabled={isLoading || uninstalling} onClick={() => { void loadSkills() }} className="ml-auto shrink-0 rounded px-2 py-1 text-xs underline disabled:opacity-50">Try again</button></div>}
       <div className={manageOwnScroll ? 'min-h-0 flex-1 overflow-y-auto' : ''}>
         {(isLoading && loadedScope !== scope) ? <div className="flex gap-2 py-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading skills...</div>

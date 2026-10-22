@@ -2,6 +2,8 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { Users } from 'lucide-react'
 import api from '../../services/api'
 import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
+import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
+import { useWorkspacePanelHosted } from '../workspace/WorkspacePanelNavigation'
 
 type ShareState = {
   mode: 'everyone' | 'people' | 'private'
@@ -31,6 +33,7 @@ const OPTIONS: { mode: ShareState['mode']; label: string; hint: string }[] = [
 /** variant 'button' is the floating Share button on a dashboard (options in a popup); 'row' is the side-list entry that
  * shows the current choice and calls onOpen; 'panel' is the options themselves, drawn full width in the workspace. */
 export function ShareDashboardButton({ workspacePath, label = 'Share', variant = 'button', onOpen, section }: { workspacePath: string; label?: string; variant?: 'button' | 'row' | 'panel'; onOpen?: () => void; section?: 'people' | 'owners' }) {
+  const hosted = useWorkspacePanelHosted()
   const [state, setState] = useState<ShareState | null>(null)
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<ShareState['mode']>('private')
@@ -124,7 +127,7 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
 
   const content = <>
           {section !== 'owners' && <>
-          {isPanel && <h3 className="text-base font-semibold">People &amp; access</h3>}
+          {isPanel && !hosted && <h3 className="text-base font-semibold">People &amp; access</h3>}
           <p className="text-sm leading-6 text-muted-foreground">People you share with open its dashboard, can ask it, use its functions and read its files (not secrets).</p>
           {state.accounts && state.accounts.length > 0 && <div className="space-y-3 rounded-lg border border-border p-4" aria-label="Selected accounts">
             <p className="text-xs font-medium">Accounts this project uses</p>
@@ -146,7 +149,7 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
           )}
           </>}
           {section !== 'people' && (section === 'owners' || owners || ownersLoading) && <section className={`space-y-5 ${section === 'owners' ? '' : 'border-t border-border pt-4'}`} aria-label="Owners">
-              <div className="space-y-2"><h3 className="text-base font-semibold">Owners &amp; collaborators</h3>
+              <div className="space-y-2">{(!hosted || section !== 'owners') && <h3 className="text-base font-semibold">Owners &amp; collaborators</h3>}
               <p className="text-sm leading-6 text-muted-foreground">Owners can edit, share or delete this project and read all Builder chats, including earlier messages. Work runs using the main owner’s account.</p></div>
               {ownersLoading && !owners && <p role="status" className="text-sm text-muted-foreground">Loading owners…</p>}
               {ownersError && <p role="alert" className="text-sm text-destructive">{ownersError} <button type="button" className="underline" onClick={() => void loadOwners()}>Try again</button></p>}
@@ -173,7 +176,7 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
           {message && <p className="text-xs text-muted-foreground" role="status">{message}</p>}
           <div className="flex justify-end gap-2">
             {!isPanel && <button type="button" onClick={() => setOpen(false)} className="rounded-md px-2 py-1 text-xs hover:bg-muted">Close</button>}
-            {section !== 'owners' && <button type="button" disabled={busy} onClick={() => void save()} className="h-9 rounded-md border border-border px-3 text-xs hover:bg-muted disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>}
+            {section !== 'owners' && <WorkspacePanelActions local={!isPanel}><button type="button" disabled={busy} onClick={() => void save()} className="h-8 rounded-md border border-border px-3 text-xs hover:bg-muted disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button></WorkspacePanelActions>}
           </div>
   </>
   if (isPanel) return <div className="w-full max-w-3xl space-y-5 text-sm">{content}</div>

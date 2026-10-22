@@ -10,6 +10,7 @@ import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './Workspac
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
+import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 
 interface BrowserWorkspacePanelProps {
   workspacePath: string | null
@@ -132,13 +133,7 @@ export function BrowserWorkspacePanel({
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col">
       {connection.loading ? <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Checking browser connection…</div> : extensionView ? <>
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary"><Monitor className="h-4 w-4" /></div>
-            <div className="min-w-0"><h3 className="text-sm font-semibold">Browser</h3><p className="text-xs text-muted-foreground">Chrome or Edge extension</p></div>
-          </div>
-          <div className="flex items-center gap-2"><WorkspaceViewIconButton label="Browser settings" icon={Settings2} onClick={() => setSettingsOpen(value => !value)} />{guidedAssistantControl}</div>
-        </div>
+        <WorkspaceViewHeader icon={Monitor} title="Browser" subtitle="Chrome or Edge extension" showWalkthrough={false} actions={<><WorkspaceViewIconButton label="Browser settings" icon={Settings2} onClick={() => setSettingsOpen(value => !value)} />{guidedAssistantControl}</>} />
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <div className="mx-auto my-6 max-w-sm space-y-4 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"><PlugZap className="h-6 w-6" /></div>
