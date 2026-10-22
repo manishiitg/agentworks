@@ -48,9 +48,10 @@ jobs:
           (cd agent_go && go mod download && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.cliVersion=$GITHUB_SHA" -o ../runtime-artifacts/agentworks ./cmd/agentworks)
           bash scripts/build-darwin-voice-binary.sh agent_go runtime-artifacts/agent-server arm64
           (cd workspace && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../runtime-artifacts/workspace-server .)
+          (cd mcp-gateway && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../runtime-artifacts/vault-server ./cmd/server)
           cp -R plugins runtime-artifacts/plugins
           printf '%s\n' "$GITHUB_SHA" > runtime-artifacts/revision.txt
-          (cd runtime-artifacts && shasum -a 256 agentworks agent-server workspace-server > SHA256SUMS)
+          (cd runtime-artifacts && shasum -a 256 agentworks agent-server workspace-server vault-server > SHA256SUMS)
           tar -czf agentworks-darwin-live.tar.gz runtime-artifacts
       - uses: actions/upload-artifact@v6
         with:

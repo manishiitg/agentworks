@@ -2760,8 +2760,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/mcp-config/logs", requireAdmin(api.handleGetServerLogs)).Methods("GET")
 
 	// Connector connection state (from oauth_routes.go)
-	apiRouter.HandleFunc("/mcp/connect", api.handleConnectServer).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/mcp/disconnect", api.handleDisconnectServer).Methods("POST", "OPTIONS")
 
 	// Secrets encryption API routes (from secrets_routes.go)
 	apiRouter.HandleFunc("/secrets/encrypt", api.handleEncryptSecret).Methods("POST", "OPTIONS")

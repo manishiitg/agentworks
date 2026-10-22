@@ -800,11 +800,12 @@ func (api *StreamingAPI) handleOAuthStart(w http.ResponseWriter, r *http.Request
 	var startResp *OAuthStartResponse
 	var discoveryResp *OAuthDiscoveryResponse
 	var err error
-	if req.ConnectionID != "" {
-		startResp, discoveryResp, err = api.beginVaultConnectionOAuth(r.Context(), userID, sessionID, req.ConnectionID, req.ServerName, redirectURI, req.ClientID, req.ClientSecret)
-	} else {
-		startResp, discoveryResp, err = api.beginOAuthFlow(userID, sessionID, req.ServerName, redirectURI, req.ClientID, req.ClientSecret, nil)
+	if !vaultConnectionID.MatchString(req.ConnectionID) {
+		writeUsersError(w, 400, "Use the saved Vault connection ID; setup is guided through chat.")
+		return
 	}
+	startResp, discoveryResp, err = api.beginVaultConnectionOAuth(r.Context(), userID, sessionID, req.ConnectionID, req.ServerName, redirectURI, req.ClientID, req.ClientSecret)
+
 	if err != nil {
 		status := http.StatusInternalServerError
 		var se *oauthStartError
@@ -840,89 +841,9 @@ func (api *StreamingAPI) handleOAuthStatus(w http.ResponseWriter, r *http.Reques
 		api.vaultConnectionOAuthStatus(w, r, id, serverName)
 		return
 	}
-	api.logger.Info(fmt.Sprintf("🔍 Platform OAuth status check for server %s", serverName))
-
-	// Load server config
-	config, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
-	if err != nil {
-		api.logger.Error(fmt.Sprintf("Failed to load config: %v", err), err)
-		http.Error(w, "Failed to load server config", http.StatusInternalServerError)
-		return
-	}
-
-	serverConfig, err := config.GetServer(serverName)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Server '%s' not found", serverName), http.StatusNotFound)
-		return
-	}
-
-	// A server with no oauth block is open, not undiscovered. Report it as such
-	// instead of probing — this is what made open servers like Exa return 500.
-	if serverConfig.OAuth == nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"server_name":   serverName,
-			"has_oauth":     false,
-			"valid":         false,
-			"authenticated": false,
-		})
-		return
-	}
-
-	// Existing overlay entries retain their saved path, promoting current
-	// connections without copying secrets. New connections use _platform.
-	if strings.TrimSpace(serverConfig.OAuth.TokenFile) == "" {
-		serverConfig.OAuth.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, serverName)
-	}
-
-	// Token refresh uses the configured token_url; there is no discovery fallback.
-
-	// Log the OAuth config for debugging
-	api.logger.Info(fmt.Sprintf("📋 OAuth status check for %s - Config: AuthURL=%s, TokenURL=%s, TokenFile=%s",
-		serverName, serverConfig.OAuth.AuthURL, serverConfig.OAuth.TokenURL, serverConfig.OAuth.TokenFile))
-
-	mutex := platformMCPOAuthMutex(serverName)
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	// Get token status - this also attempts token refresh if expired
-	oauthMgr := oauth.NewManager(serverConfig.OAuth, api.logger)
-
-	// Try to get a valid access token (this will attempt refresh if expired)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err = oauthMgr.GetAccessToken(ctx)
-	tokenRefreshed := err == nil
-
-	if err != nil {
-		api.logger.Info(fmt.Sprintf("⚠️ OAuth token refresh failed for %s: %v", serverName, err))
-	} else {
-		api.logger.Info(fmt.Sprintf("✅ OAuth token valid/refreshed for %s", serverName))
-	}
-
-	valid, expiresIn, _ := oauthMgr.GetTokenStatus()
-
-	// If token refresh succeeded, the status should now be valid
-	if tokenRefreshed && !valid {
-		// Re-check status after refresh
-		valid, expiresIn, _ = oauthMgr.GetTokenStatus()
-	}
-
-	api.logger.Info(fmt.Sprintf("📊 OAuth status result for %s: valid=%v, expiresIn=%s", serverName, valid, expiresIn))
-
-	response := OAuthStatusResponse{
-		ServerName: serverName,
-		Valid:      valid,
-		ExpiresIn:  expiresIn,
-		// Never disclose a deployment credential path to ordinary users.
-		TokenPath: "",
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeUsersError(w, 400, "Use the saved Vault connection ID.")
 }
 
-// handleOAuthLogout handles POST /api/oauth/logout - remove OAuth token
 func (api *StreamingAPI) handleOAuthLogout(w http.ResponseWriter, r *http.Request) {
 	var req OAuthLogoutRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

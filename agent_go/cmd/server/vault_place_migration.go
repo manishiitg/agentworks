@@ -80,6 +80,10 @@ func (api *StreamingAPI) migratePlaceConnections(ctx context.Context, apply bool
 			}
 		}
 	}
+	sharedRows, err := api.migrateLegacySharedMCP(ctx, apply)
+	if err != nil {
+		return sharedRows, err
+	}
 	secretRows, err := api.migrateLegacySecretDocuments(ctx, apply)
 	if err != nil {
 		return secretRows, err
@@ -91,7 +95,7 @@ func (api *StreamingAPI) migratePlaceConnections(ctx context.Context, apply bool
 	sort.Strings(roots)
 	moved := map[string]string{}  // source store + server -> its Vault connection
 	failed := map[string]string{} // the same key -> why it could not move
-	rows := secretRows
+	rows := append(sharedRows, secretRows...)
 	for _, root := range roots {
 		for _, a := range all[root] {
 			row := placeMigrationRow{Item: root, Owner: a.Owner, Server: a.Server}
@@ -484,4 +488,47 @@ func (api *StreamingAPI) migrateProjectMCPToolSelection(ctx context.Context, roo
 		return fmt.Errorf("project tool selection could not be migrated")
 	}
 	return nil
+}
+
+func (api *StreamingAPI) migrateLegacySharedMCP(ctx context.Context, apply bool) ([]placeMigrationRow, error) {
+	actor := mcpCaller(ctx)
+	if actor == "" && !IsMultiUserMode() {
+		actor = GetDefaultUserID()
+	}
+	data, err := vaultServiceRequest(ctx, actor, http.MethodGet, "/api/admin/connectors", nil)
+	if err != nil {
+		return nil, err
+	}
+	var inventory struct{ Connectors []vaultOAuthConnection }
+	if json.Unmarshal(data, &inventory) != nil {
+		return nil, fmt.Errorf("Vault inventory unavailable")
+	}
+	rows := []placeMigrationRow{}
+	for _, c := range inventory.Connectors {
+		if c.OAuthServer == "" || c.OAuthCredentialID != "" {
+			continue
+		}
+		row := placeMigrationRow{Owner: actor, Server: c.ID, Kind: "shared OAuth", Result: "would move"}
+		if apply {
+			if _, err = vaultServiceRequest(ctx, actor, http.MethodPost, "/api/admin/connectors/"+c.ID+"/migrate-oauth", nil); err != nil {
+				return rows, err
+			}
+			status, e := importVaultOAuthCredential(ctx, api, c.ID, true)
+			if e != nil {
+				row.Result = "failed"
+				row.Detail = e.Error()
+			} else {
+				row.Result = "moved"
+				row.Detail = status
+				if status != "sign-in required" {
+					_, e = vaultServiceRequest(ctx, actor, http.MethodPost, "/api/admin/connectors/"+c.ID+"/sync", nil)
+					if e != nil {
+						row.Detail = "credentials saved; discovery pending"
+					}
+				}
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
 }

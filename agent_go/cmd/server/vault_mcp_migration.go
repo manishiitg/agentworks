@@ -51,6 +51,9 @@ func importVaultOAuthCredential(ctx context.Context, api *StreamingAPI, id strin
 		return "", errors.New("destination configuration already exists; inspect it before importing")
 	}
 	source := expandPath(cfg.OAuth.TokenFile)
+	if source == "" {
+		source = expandPath(getUserTokenFilePath(platformMCPTokenUserID, name))
+	}
 	if source == "" || !((platformClientSealer{}).Handles(source)) {
 		return "", errors.New("legacy token must be under the platform tokens directory")
 	}

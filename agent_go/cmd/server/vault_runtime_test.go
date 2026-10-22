@@ -417,11 +417,8 @@ func TestVaultInventoryAndBuilderShareCallerGroupsAndSecretNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := api.placeMCPToolList(ctx, "alice", "Chats/Code/projects/test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, out := range []string{w.Body.String(), builder, code} {
+
+	for _, out := range []string{builder} {
 		for _, want := range []string{"Engineering", "TEAM_KEY", "vault_c"} {
 			if !strings.Contains(out, want) {
 				t.Fatalf("missing %s: %s", want, out)

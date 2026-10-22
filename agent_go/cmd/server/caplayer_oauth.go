@@ -47,6 +47,10 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 		writeUsersError(w, http.StatusBadRequest, "server name and URL required")
 		return
 	}
+	if !vaultConnectionID.MatchString(in.ConnectionID) {
+		writeUsersError(w, 403, "a Vault connection identity is required; run the Vault migration")
+		return
+	}
 	var name string
 	var cfg mcpclient.MCPServerConfig
 	if isCustomVaultOAuthServer(in.ServerName) {
@@ -68,12 +72,10 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 			return
 		}
 	}
-	if in.ConnectionID != "" {
-		cfg, err = api.vaultOAuthConfig(r.Context(), in.ConnectionID, name, in.URL)
-		if err != nil {
-			writeUsersError(w, 403, "OAuth connection does not match a live Vault connection")
-			return
-		}
+	cfg, err = api.vaultOAuthConfig(r.Context(), in.ConnectionID, name, in.URL)
+	if err != nil {
+		writeUsersError(w, 403, "OAuth connection does not match a live Vault connection")
+		return
 	}
 	copied := *cfg.OAuth
 	if copied.TokenFile == "" {
