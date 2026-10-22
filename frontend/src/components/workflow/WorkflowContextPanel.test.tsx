@@ -29,7 +29,7 @@ beforeEach(() => {
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.clearAllMocks() })
 const render = (relay = false, path = 'Workflow/example') => act(async () => root.render(relay ? <RelayContextPanel workspacePath={path} /> : <WorkflowContextPanel workspacePath={path} />))
-const button = (label: string) => [...host.querySelectorAll('button')].find(node => node.textContent === label)!
+const button = (label: string) => [...host.querySelectorAll('button')].find(node => (node.getAttribute('aria-label') || node.textContent) === label)!
 const scope = (relay = false, project = 'example') => projectMenuHistoryScope(state.server, state.user.id, relay ? 'relays' : 'agentworks', project)
 
 it.each([false, true])('uses Crew category order and keeps every product destination (%s)', async relay => {
@@ -42,7 +42,7 @@ it.each([false, true])('uses Crew category order and keeps every product destina
     for (const label of ['Pulse', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database']) expect(button(label)).toBeUndefined()
   } else {
     for (const label of ['Pulse', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database', 'Knowledge base']) expect(button(label)).toBeDefined()
-    expect(button('Pulse').closest('details')?.querySelector('summary')?.textContent).toBe('Use')
+    expect(button('Pulse').closest('details')).toBeNull()
   }
   await act(async () => button('Webhooks').click())
   expect(state.open).toHaveBeenLastCalledWith('workshop', 'triggers')
@@ -108,4 +108,28 @@ it.each([false, true])('groups named dashboards once and preserves selection in 
   expect(useProjectMenuHistoryStore.getState().recent[scope(relay)]).toEqual(['report'])
   expect(host.querySelectorAll('[aria-label="Project dashboards"]')).toHaveLength(1)
   expect(host.querySelector('[aria-label="Project dashboards"]')?.closest('section')?.querySelector('h2')?.textContent).toBe('Recent')
+})
+
+it('keeps Pulse as a permanent Goal agent entry, reflects off state and never duplicates it in Recent', async () => {
+  useProjectMenuHistoryStore.getState().visit(scope(), 'pulse')
+  await render()
+  const pulse = button('Pulse')
+  expect(pulse.textContent).toContain('Your goal agent')
+  expect(pulse.textContent).toContain('while you’re away')
+  expect(pulse.textContent).toContain('On')
+  expect(pulse.closest('section')).toBeNull()
+  expect(host.querySelector('[aria-label="Workspace context"] button')).toBe(pulse)
+  await act(async () => pulse.click())
+  expect(state.open).toHaveBeenLastCalledWith('pulse', undefined)
+  expect(host.querySelectorAll('[aria-label="Pulse"]')).toHaveLength(1)
+  expect([...host.querySelectorAll('h2')].some(node => node.textContent === 'Recent')).toBe(false)
+  state.enabled = false; await render()
+  const off = button('Turn Pulse on')
+  expect(off.textContent).toContain('Off')
+  expect(off.textContent).not.toContain('while you’re away')
+  await act(async () => off.click())
+  expect(state.open).toHaveBeenLastCalledWith('pulse', undefined)
+  expect(state.enabled).toBe(false)
+  await render(true)
+  expect(button('Turn Pulse on')).toBeUndefined()
 })
