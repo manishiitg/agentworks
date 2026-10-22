@@ -2143,6 +2143,21 @@ export const agentApi = {
     return response.data
   },
 
+  uploadCrewChatFile: async (file: File, projectId: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const response = await api.post(`/api/agent-profiles/work/projects/${encodeURIComponent(projectId)}/uploads`, formData)
+      return response.data
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.error?.message || error.response?.data?.error || error.response?.data?.message
+        if (typeof message === 'string') throw new Error(message)
+      }
+      throw error
+    }
+  },
+
   uploadPlannerFile: async (file: File, folderPath: string, commitMessage?: string) => {
     const formData = new FormData()
     formData.append('file', file)

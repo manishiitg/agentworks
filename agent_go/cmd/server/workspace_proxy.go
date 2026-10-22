@@ -94,6 +94,9 @@ func workspaceProxyHandler() http.Handler {
 				message := detail
 				if status == http.StatusForbidden {
 					message = "cross-user workspace access denied"
+					if workspaceProxyRelativePath(r) == "api/upload" {
+						message = "This folder is unavailable for uploads. Reopen the Crew and attach the file from its chat."
+					}
 				}
 				http.Error(w, message, status)
 				return
@@ -636,6 +639,7 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 					return http.StatusBadRequest, "request body could not be read", nil
 				}
 				if policy.deniesPath(part.FormName(), string(value)) {
+					log.Printf("[WORKSPACE_UPLOAD_DENIED] request_id=%q actor=%q route=%q field=%q path=%q", requestLogID(r), policy.own, workspaceProxyRelativePath(r), part.FormName(), string(value))
 					spooled.close()
 					return http.StatusForbidden, "multipart form path", nil
 				}
