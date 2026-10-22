@@ -171,6 +171,9 @@ func (api *StreamingAPI) syncAgentEmailInboxes(ctx context.Context) error {
 			}
 		}
 	}
+	if err := api.syncPersonalGmailWatchers(ctx, active); err != nil {
+		return err
+	}
 	return api.gmailInbound.Store.Reconcile(ctx, active)
 }
 func (api *StreamingAPI) agentEmailInboxResult(ctx context.Context, args map[string]interface{}) (any, error) {

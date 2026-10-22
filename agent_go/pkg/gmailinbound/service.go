@@ -10,7 +10,7 @@ import (
 )
 
 type Client interface {
-	List(context.Context, int64, []string) ([]string, error)
+	List(context.Context, int64, []string, bool) ([]string, error)
 	Message(context.Context, string) (RawMessage, error)
 }
 
@@ -88,12 +88,17 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 		return e
 	}
 	addresses := []string{}
+	personal := false
 	for _, i := range inboxes {
 		if i.ConnectionID == m.ConnectionID && i.OwnerID == m.OwnerID {
-			addresses = append(addresses, i.Address)
+			if i.PersonalGmail() {
+				personal = true
+			} else {
+				addresses = append(addresses, i.Address)
+			}
 		}
 	}
-	ids, e := client.List(ctx, m.Since, addresses)
+	ids, e := client.List(ctx, m.Since, addresses, personal)
 	if e != nil {
 		return e
 	}
@@ -121,9 +126,18 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 			if message.ReceivedAt < inbox.CreatedAt*1000 {
 				continue
 			}
-			matched := false
+			matched := inbox.PersonalGmail()
+			if inbox.PersonalGmail() {
+				// Alias queries also retain mail the owner sent to their Crew. That
+				// must not widen the private received-mail source to Sent or Drafts.
+				for _, label := range raw.LabelIDs {
+					if label == "SENT" || label == "DRAFT" {
+						matched = false
+					}
+				}
+			}
 			for _, to := range message.Recipients {
-				if strings.EqualFold(to, inbox.Address) {
+				if !inbox.PersonalGmail() && strings.EqualFold(to, inbox.Address) {
 					matched = true
 					break
 				}

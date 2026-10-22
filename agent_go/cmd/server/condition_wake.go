@@ -258,11 +258,15 @@ func (c *conditionService) processWake(ctx context.Context, job productScheduleJ
 			if readErr != nil {
 				return
 			}
-			page, readErr := c.inboxSnapshot(ctx, fresh, ledger.State)
+			page, readErr := c.readInboxSnapshot(ctx, fresh, ledger.State, false)
 			if readErr != nil {
 				return
 			}
-			moreInbox = len(page.Messages) > 0
+			var cursor struct {
+				After int64 `json:"inbox_cursor"`
+			}
+			_ = json.Unmarshal(ledger.State, &cursor)
+			moreInbox = page.NextCursor > cursor.After
 		}
 		m.Lock()
 		latest, found, err := c.readWake(ctx, id)

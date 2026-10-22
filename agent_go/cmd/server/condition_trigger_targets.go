@@ -57,7 +57,11 @@ var conditionChatIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 func (c *conditionService) validateTarget(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) error {
 	if job.WatcherSource != nil {
 		switch job.Profile.ID {
-		case "work", "relays":
+		case "work":
+			if cfg.Target.Kind != "function" && cfg.Target.Kind != "agent" {
+				return errors.New("Crew watchers send to this Crew's chat or call a published function")
+			}
+		case "relays":
 			if cfg.Target.Kind != "function" {
 				return errors.New("Crew and Flow watchers call a published function")
 			}

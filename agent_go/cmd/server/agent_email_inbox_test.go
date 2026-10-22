@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -293,5 +295,178 @@ print(json.dumps({"events":events,"state":{}}))`)
 	all, _ := store.Messages(ctx, inbox.ID, 0, "", 50)
 	if len(all.Messages) != 2 {
 		t.Fatal("Watcher consumed mail from the UI inbox")
+	}
+}
+
+type personalWatcherMailClient struct{ fetched *int }
+
+func (c personalWatcherMailClient) List(context.Context, int64, []string, bool) ([]string, error) {
+	return nil, nil
+}
+func (c personalWatcherMailClient) Message(ctx context.Context, id string) (gmailinbound.RawMessage, error) {
+	*c.fetched++
+	raw := gmailinbound.RawMessage{ID: id, ThreadID: "thread", InternalDate: fmt.Sprint(time.Now().UnixMilli())}
+	raw.Payload.MimeType = "text/plain"
+	raw.Payload.Body.Data = base64.RawURLEncoding.EncodeToString([]byte("PRIVATE_BODY"))
+	raw.Payload.Headers = append(raw.Payload.Headers, struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}{"From", "sender@example.com"})
+	return raw, nil
+}
+func TestPersonalGmailWatcherKeepsMailPrivateAndPinsOwnerSource(t *testing.T) {
+	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENT_INBOX_ENABLED", "true")
+	env, ctx, root := agentEmailCrewFixture(t)
+	env.mock.mu.Lock()
+	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"personal","personal":true,"owner_id":"owner","agent_inbox":true,"email":"owner@example.com","allow_read_access":true,"enabled":true}]}`
+	env.mock.mu.Unlock()
+	old := services.GetGmailService()
+	t.Cleanup(func() { services.SetGmailService(old) })
+	if _, err := services.InitGmailService(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := gmailinbound.Open(filepath.Join(t.TempDir(), "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	fetched := 0
+	env.api.gmailInbound = &gmailinbound.Service{Store: store, Client: func(context.Context, gmailinbound.Mailbox) (gmailinbound.Client, error) {
+		return personalWatcherMailClient{&fetched}, nil
+	}}
+	c := env.svc.conditionService()
+	id := "cond-" + conditiontrigger.Hash("owner\x00work\x00mail-checks\x00personal-watch")[:32]
+	blocked := productScheduleJob{UserID: "owner", Profile: agentprofiles.Profile{ID: "work"}, ProjectID: "mail-checks", Schedule: productschedule.Schedule{ID: id}}
+	c.wakeWorkers.Store(conditionWakeID(blocked), true)
+	args := map[string]interface{}{"action": "create", "request_id": "personal-watch", "trigger": map[string]interface{}{"name": "Personal Gmail", "check_mode": "inbox", "email_source": "personal_gmail", "script_content": "import json\nprint(json.dumps({'events':[],'state':{}}))\n", "target": map[string]interface{}{"kind": "agent", "message": "Summarize selected email data"}}}
+	out, err := c.manage(ctx, "owner", "work", "mail-checks", args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := env.svc.Job(ctx, "owner", projectScheduleJobID("work", "mail-checks", out.(map[string]interface{})["id"].(string)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := *job.Schedule.Condition
+	if retry, err := c.manage(ctx, "owner", "work", "mail-checks", args); err != nil || retry.(map[string]interface{})["id"] != id {
+		t.Fatal("create retry changed pinned start", retry, err)
+	}
+	if !cfg.PersonalGmail() || cfg.EmailAccountID != "personal" || cfg.EmailSince == 0 || !strings.HasPrefix(job.WorkspacePath, "_users/owner/watchers/") {
+		t.Fatal("source not private and server-pinned", job)
+	}
+	if err := c.validateTarget(ctx, job, cfg); err != nil {
+		t.Fatal("Crew chat target refused", err)
+	}
+	if _, err := env.api.resolveAgentEmailInbox(ctx, root); err == nil {
+		t.Fatal("personal Watcher silently enabled dedicated receiving")
+	}
+	source, err := c.personalGmailSource(ctx, job, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err = c.ensurePersonalGmailSource(ctx, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n := 0; n < 22; n++ {
+		at := time.Now().UnixMilli()
+		if n == 0 {
+			at = cfg.EmailSince - 1
+		}
+		_, err = store.StoreMessage(ctx, source, gmailinbound.Message{ID: fmt.Sprint(n), ThreadID: "thread", ReceivedAt: at, Body: "PRIVATE_BODY", Subject: "PRIVATE_SUBJECT", From: "private@example.com"})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	saved, _ := store.Message(ctx, source.ID, "1")
+	if saved.Body != "" || saved.Subject != "" || saved.From != "" {
+		t.Fatal("personal content persisted", saved)
+	}
+	page, err := c.inboxSnapshot(ctx, job, nil)
+	if err != nil || len(page.Messages) != 19 || fetched != 19 || !page.HasMore || page.Messages[0].Body != "PRIVATE_BODY" {
+		t.Fatal("snapshot cutoff, page bound or body lookup failed", len(page.Messages), fetched, err)
+	}
+	result, err := env.api.agentEmailInboxResult(ctx, map[string]interface{}{"workspace_path": root})
+	if err != nil || len(result.(map[string]interface{})["mail"].(gmailinbound.Page).Messages) != 0 {
+		t.Fatal("personal mail appeared in Crew Inbox", result, err)
+	}
+	for _, admin := range []bool{false, true} {
+		setDirectoryAdmin(t, "other", admin)
+		other := job
+		other.UserID = "other"
+		if _, err := c.personalGmailSource(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other"}), other, cfg); err == nil {
+			t.Fatal("other person or admin read owner Gmail")
+		}
+	}
+	setDirectoryAdmin(t, "other", false)
+	if _, err := c.manage(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other"}), "other", "work", "mail-checks", map[string]interface{}{"action": "history", "id": id}); err == nil {
+		t.Fatal("Run person read private Watcher history")
+	}
+	// The detector selects a short payload. Its source snapshot isn't the event.
+	data, _ := json.Marshal(page)
+	cmd := exec.CommandContext(ctx, "python3", "-c", `import json,sys
+page=json.load(sys.stdin)
+print(json.dumps({"events":[{"id":page["messages"][0]["id"],"payload":{"summary":"Selected information"}}],"state":{}}))`)
+	cmd.Stdin = strings.NewReader(string(data))
+	raw, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = inboxWatcherOutput(raw, page.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "PRIVATE_BODY") || strings.Contains(string(raw), "PRIVATE_SUBJECT") {
+		t.Fatal("unselected personal content reached events")
+	}
+	// The real chat adapter addresses the creator's Crew conversation, never a
+	// Run person's chat or the private detector folder.
+	if _, err = c.dispatch(conditionContext(ctx, job), cfg, conditiontrigger.Event{ID: "selected", Payload: map[string]interface{}{"summary": "Selected information"}}, "personal-selected"); err != nil {
+		t.Fatal("selected chat delivery refused", err)
+	}
+	messages, err := readAgentMessageStore(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivered := false
+	for _, conv := range messages.Conversations {
+		for _, ep := range conv.Endpoints {
+			if ep.Kind == triggerCallerCrew && ep.ID == job.ProjectID {
+				if ep.UserID != "owner" || ep.Guest != "" || !workspacePathsMatchForUser("owner", ep.Path, root) {
+					t.Fatal("personal output addressed another conversation", ep)
+				}
+				delivered = true
+			}
+		}
+	}
+	if !delivered {
+		t.Fatal("selected output did not reach creator's Crew conversation")
+	}
+	// Removing the last personal Watcher immediately stops broad polling.
+	if _, err = c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "update", "id": id, "expected_revision": conditionView(job.Schedule)["revision"], "trigger": map[string]interface{}{"enabled": false}}); err != nil {
+		t.Fatal(err)
+	}
+	active, _ := store.Inboxes(ctx)
+	if len(active) != 0 {
+		t.Fatal("paused private Watcher kept full-mailbox source", active)
+	}
+	// Restore the saved definition for the queued-source access assertion below.
+	if _, err = c.saveCaller(ctx, job, job.Schedule); err != nil {
+		t.Fatal(err)
+	}
+	// Account loss is checked before both another snapshot and queued dispatch.
+	svc := services.GetGmailService()
+	settings := svc.GetConfig()
+	settings.Connections[0].AgentInbox = false
+	if err = svc.SaveConfig(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.inboxSnapshot(ctx, job, nil); err == nil {
+		t.Fatal("disconnected account still read")
+	}
+	if _, err = c.dispatch(conditionContext(ctx, job), cfg, conditiontrigger.Event{ID: "1", Payload: map[string]interface{}{"summary": "Selected information"}}, "queued"); err == nil {
+		t.Fatal("queued dispatch ignored current Gmail selection")
 	}
 }

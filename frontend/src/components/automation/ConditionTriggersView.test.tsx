@@ -14,6 +14,7 @@ describe('ConditionTriggersView', () => {
     api.manage.mockResolvedValue({ checked: true })
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'code', projectId: 'project-a' }} />))
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click() })
     try {
       expect(host.textContent).toContain('Tagged tickets'); expect(host.textContent).toContain('process_ticket')
       const find = (label: string) => Array.from(host.querySelectorAll('button')).find(b => b.textContent === label)!
@@ -29,6 +30,7 @@ describe('ConditionTriggersView', () => {
     const onAsk = vi.fn().mockRejectedValue(new Error('This project chat is not ready.'))
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'code', projectId: 'project-a' }} onAsk={onAsk} />))
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click() })
     try {
       const edit = Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Edit in chat')!
       await act(async () => { edit.click(); await Promise.resolve(); await Promise.resolve() })
@@ -42,6 +44,7 @@ describe('ConditionTriggersView', () => {
     api.manage.mockResolvedValue({})
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'code', projectId: 'project-a' }} />))
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click() })
     try {
       const select = host.querySelector('select[aria-label="Chat for Tagged tickets"]') as HTMLSelectElement
       expect(select.value).toBe('373a2ae1')
@@ -58,11 +61,12 @@ describe('ConditionTriggersView', () => {
     api.manage.mockResolvedValue({})
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'code', projectId: 'project-a' }} />))
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click() })
     try {
       const select = host.querySelector('select[aria-label="Mode for One ticket"]') as HTMLSelectElement
       await act(async () => { select.value = 'once'; select.dispatchEvent(new Event('change', { bubbles: true })); await Promise.resolve() })
       expect(api.manage).toHaveBeenCalledWith('project-a', 'update', 'c1', { once: true }, 'r1', 'code')
-      expect(host.textContent).toContain('Completed')
+      expect(host.textContent).toContain('Done')
       expect(Array.from(host.querySelectorAll('button')).some(b => b.textContent === 'Enable')).toBe(false)
     } finally { await act(async () => root.unmount()); host.remove() }
   })
@@ -72,6 +76,7 @@ describe('ConditionTriggersView', () => {
     const onAsk = vi.fn().mockResolvedValue(undefined)
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'relays', projectId: 'relay-a' }} onAsk={onAsk} />))
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click() })
     try {
       expect(api.list).toHaveBeenCalledWith('relay-a', 'relays')
       expect(host.textContent).toContain('Watchers calling this product')
@@ -83,11 +88,14 @@ describe('ConditionTriggersView', () => {
   })
 
   it('shows a saved destination tab name even when the tab is not open', async () => {
-    api.list.mockResolvedValue({ triggers: [{ id: 'c1', name: 'One ticket', enabled: false, script: 'code/triggers/check.py', cron_expression: '*/5 * * * *', timezone: 'UTC', target: { kind: 'agent', chat_id: 'ticket-chat' } }], chats: [{ id: 'ticket-chat', name: 'Ticket review' }] })
+    api.list.mockResolvedValue({ triggers: [{ id: 'c1', name: 'One ticket', enabled: false, check_mode: 'inbox', email_source: 'personal_gmail', script: 'code/triggers/check.py', cron_expression: '*/5 * * * *', timezone: 'UTC', target: { kind: 'agent', chat_id: 'ticket-chat' } }], chats: [{ id: 'ticket-chat', name: 'Ticket review' }] })
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'code', projectId: 'project-a' }} />))
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click() })
     try {
-      expect(host.textContent).toContain('Code agent · Ticket review')
+      expect(host.textContent).toContain('Crew chat · Ticket review')
+      expect(host.textContent).toContain('Your Gmail · new received mail')
+      expect(host.textContent).toContain('Your mailbox stays private.')
       const select = host.querySelector('select[aria-label="Chat for One ticket"]') as HTMLSelectElement
       expect(select.selectedOptions[0]?.textContent).toBe('Ticket review')
       expect(select.value).toBe('ticket-chat')
@@ -99,6 +107,7 @@ describe('ConditionTriggersView', () => {
     const onAsk = vi.fn().mockResolvedValue(undefined)
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'code', projectId: 'project-a' }} onAsk={onAsk} />))
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click() })
     try {
       expect(host.textContent).toContain('When an event arrives')
       expect(host.textContent).toContain('/api/hooks/product/example')

@@ -130,3 +130,10 @@ The guide and MCP skill have source versions; package fingerprints identify the 
 <!-- product:work -->## Crew email inboxes
 
 <!-- product:work -->On servers, the company administrator turns Crew inboxes on or off. Connect Gmail in My Vault, grant Gmail read access, and mark one account **Use for Crew inboxes**. Incoming email is off by default for each Crew. Open **Inbox** in the Crew’s right panel and ask its Builder to enable receiving. Only enabled Crew addresses are checked, about every 60 seconds. Copy the address and read received conversations and attachments there. Ask Builder to disable receiving when needed; stored mail stays available. Only mail addressed to that Crew appears there, with existing Crew sharing. Other personal email stays private. No company receiving mailbox or Google Cloud receiving setup is needed. Disconnecting the selected account stops delivery to all your Crews. Receiving stores mail; optional Watchers choose what work to start. Local deployments do not have Crew inboxes.
+
+
+<!-- product:work -->### Watch your existing Gmail
+
+<!-- product:work -->Ask your Crew Builder to watch your personal Gmail and send only matching content to your Crew chat. It uses the same Watcher setup: check_mode=inbox, email_source=personal_gmail, with Python supplied through script_content. You must own the Crew and select your own Gmail inbox account in My Vault with read access. The server's email feature must be enabled. A dedicated Crew email address is optional for this use.
+
+<!-- product:work -->It watches new received mail, including archived arrivals, about every60seconds; it excludes sent mail and drafts and does not import old mail. Private message bodies exist only in the temporary detector snapshot, up to20 at a time, then are deleted. Message identities and the Watcher cursor stay private; personal mail is never listed in the Crew Inbox. Only the event payload chosen by your Watcher is sent to your chat or published function. Use target kind=agent and a message for chat; functions must be declared entry points. Changing the selected Gmail requires a new Watcher.

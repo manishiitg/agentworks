@@ -48,7 +48,7 @@ esac
 		t.Fatal("receiving account became the default sender")
 	}
 
-	ids, e := c.List(context.Background(), 100, []string{"owner+agent-one@example.com"})
+	ids, e := c.List(context.Background(), 100, []string{"owner+agent-one@example.com"}, false)
 	if e != nil || len(ids) != 2 {
 		t.Fatalf("alias mail %+v %v", ids, e)
 	}
@@ -66,18 +66,25 @@ esac
 			t.Fatalf("missing %q in %s", want, args)
 		}
 	}
+	if _, e = c.List(context.Background(), 100, nil, true); e != nil {
+		t.Fatal(e)
+	}
+	data, _ = os.ReadFile(logPath)
+	if !strings.Contains(string(data), "after:-200 -in:sent -in:drafts") {
+		t.Fatal("private source did not query new received mailbox mail")
+	}
 	svc.config.Connections[0].AllowReadAccess = false
-	if _, e = c.List(context.Background(), 100, []string{"owner+agent-one@example.com"}); e == nil {
+	if _, e = c.List(context.Background(), 100, []string{"owner+agent-one@example.com"}, false); e == nil {
 		t.Fatal("revoked read intent accepted")
 	}
 	svc.config.Connections[0].AllowReadAccess = true
 	svc.config.Connections[0].OwnerID = "other"
-	if _, e = c.List(context.Background(), 100, []string{"owner+agent-one@example.com"}); e == nil {
+	if _, e = c.List(context.Background(), 100, []string{"owner+agent-one@example.com"}, false); e == nil {
 		t.Fatal("another person's account used")
 	}
 	svc.config.Connections[0].OwnerID = "owner"
 	svc.config.Connections[0].AgentInbox = false
-	if _, e = c.List(context.Background(), 100, []string{"owner+agent-one@example.com"}); e == nil {
+	if _, e = c.List(context.Background(), 100, []string{"owner+agent-one@example.com"}, false); e == nil {
 		t.Fatal("unselected account used")
 	}
 }

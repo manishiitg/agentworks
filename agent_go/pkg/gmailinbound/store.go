@@ -21,6 +21,12 @@ type Inbox struct {
 	Address       string `json:"address"`
 	CreatedAt     int64  `json:"created_at"`
 }
+
+// PersonalGmailProfile identifies a private account source, never a shared product inbox.
+const PersonalGmailProfile = "personal-gmail"
+
+func (i Inbox) PersonalGmail() bool { return i.ProfileID == PersonalGmailProfile }
+
 type Item struct {
 	Sequence int64 `json:"sequence"`
 	Message
@@ -82,6 +88,11 @@ func (s *Store) Inboxes(ctx context.Context) ([]Inbox, error) {
 	return out, rows.Err()
 }
 func (s *Store) StoreMessage(ctx context.Context, i Inbox, m Message) (bool, error) {
+	// Private Gmail sources retain identities and arrival time only. Bodies are
+	// fetched into the owner's temporary detector snapshot, never this database.
+	if i.PersonalGmail() {
+		m = Message{ID: m.ID, ThreadID: m.ThreadID, ReceivedAt: m.ReceivedAt}
+	}
 	b, err := json.Marshal(m)
 	if err != nil {
 		return false, err

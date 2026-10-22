@@ -55,23 +55,40 @@ type Target struct {
 // Payload becomes named function arguments, or event data for messages/triggers.
 // Target selection and constant arguments are never taken from script output.
 type Config struct {
-	CheckMode     string   `json:"check_mode,omitempty"`
-	EventAuthMode string   `json:"event_auth_mode,omitempty"`
-	EventSecret   string   `json:"event_secret_name,omitempty"`
-	Once          bool     `json:"once,omitempty"`
-	Script        string   `json:"script"`
-	SHA256        string   `json:"sha256"`
-	Secrets       []string `json:"secrets,omitempty"`
-	Target        Target   `json:"target"`
+	CheckMode      string   `json:"check_mode,omitempty"`
+	EmailSource    string   `json:"email_source,omitempty"`
+	EmailAccountID string   `json:"email_account_id,omitempty"`
+	EmailSince     int64    `json:"email_since,omitempty"`
+	EventAuthMode  string   `json:"event_auth_mode,omitempty"`
+	EventSecret    string   `json:"event_secret_name,omitempty"`
+	Once           bool     `json:"once,omitempty"`
+	Script         string   `json:"script"`
+	SHA256         string   `json:"sha256"`
+	Secrets        []string `json:"secrets,omitempty"`
+	Target         Target   `json:"target"`
 }
 
 var secretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+func (c Config) PersonalGmail() bool {
+	return c.CheckMode == "inbox" && c.EmailSource == "personal_gmail"
+}
 
 func (c Config) WakesOnChanges() bool { return c.WakesOnEvents() || c.CheckMode == "inbox" }
 
 func (c Config) WakesOnEvents() bool { return c.CheckMode == "event" || c.CheckMode == "both" }
 
 func (c Config) Validate() error {
+	if c.EmailSource != "" && c.EmailSource != "crew_inbox" && c.EmailSource != "personal_gmail" {
+		return errors.New("email_source must be crew_inbox or personal_gmail")
+	}
+	if c.EmailSource != "" && c.CheckMode != "inbox" {
+		return errors.New("email_source requires check_mode=inbox")
+	}
+	if c.PersonalGmail() && c.EmailAccountID == "" {
+		return errors.New("choose your Gmail inbox account in My Vault before creating this Watcher")
+	}
+
 	switch c.CheckMode {
 	case "", "schedule", "event", "both", "inbox":
 	default:

@@ -19,3 +19,10 @@ The Crew right panel shows Inbox: address, conversation list, plain message cont
 The new private store is `gmail-inbound/user-agent-email.db`. The old company store is retired, never read or imported as personal mail. The one-off connection migration backs up the registry before removing reserved company receiver records, so old delivery credentials cannot become ordinary shared accounts. Existing personal Google records and tokens are retained. Previously created Google Cloud resources are no longer used; removing them is optional administrator cleanup, not required for receiving.
 
 Verification should cover exact alias/source isolation, disconnection, existing Crew sharing, attachments and a real Python Watcher path. A real Gmail delivery must be proven with the stored inbox record; code/build checks alone do not prove Google consent or mailbox delivery.
+
+
+### Watch your existing Gmail
+
+Ask your Crew Builder to watch your personal Gmail and send only matching content to your Crew chat. It uses the same Watcher setup: check_mode=inbox, email_source=personal_gmail, with Python supplied through script_content. You must own the Crew and select your own Gmail inbox account in My Vault with read access. The server's email feature must be enabled. A dedicated Crew email address is optional for this use.
+
+It watches new received mail, including archived arrivals, about every60seconds; it excludes sent mail and drafts and does not import old mail. Private message bodies exist only in the temporary detector snapshot, up to20 at a time, then are deleted. Message identities and the Watcher cursor stay private; personal mail is never listed in the Crew Inbox. Only the event payload chosen by your Watcher is sent to your chat or published function. Use target kind=agent and a message for chat; functions must be declared entry points. Changing the selected Gmail requires a new Watcher.

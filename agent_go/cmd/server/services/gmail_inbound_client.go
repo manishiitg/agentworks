@@ -14,7 +14,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
 )
 
-// GmailInboundClient is only used by server receiving and stored-message attachment reads.
+// GmailInboundClient is only used by server receiving, private Watcher sources and stored-message attachment reads.
 // It never grants a Crew general access to its owner's private mailbox.
 type GmailInboundClient struct {
 	ConnectionID string
@@ -122,11 +122,17 @@ func (c GmailInboundClient) Message(ctx context.Context, id string) (gmailinboun
 
 // List fetches only messages Gmail matched to the owner's Crew aliases.
 // The overlap window handles arrivals during listing; the inbox store deduplicates IDs.
-func (c GmailInboundClient) List(ctx context.Context, since int64, addresses []string) ([]string, error) {
-	if len(addresses) == 0 {
+func (c GmailInboundClient) List(ctx context.Context, since int64, addresses []string, personal bool) ([]string, error) {
+	if len(addresses) == 0 && !personal {
 		return nil, nil
 	}
 	var ids []string
+	// A private source covers received mail across the mailbox, including archived
+	// arrivals. Otherwise query only Crew aliases. Never download the old mailbox.
+	queries := []string{}
+	if personal {
+		queries = append(queries, fmt.Sprintf("after:%d -in:sent -in:drafts", since-300))
+	}
 	// Bound query size without changing the one-mailbox polling model.
 	for start := 0; start < len(addresses); start += 40 {
 		end := start + 40
@@ -137,7 +143,9 @@ func (c GmailInboundClient) List(ctx context.Context, since int64, addresses []s
 		for _, address := range addresses[start:end] {
 			terms = append(terms, "deliveredto:"+address)
 		}
-		query := fmt.Sprintf("after:%d {%s}", since-300, strings.Join(terms, " "))
+		queries = append(queries, fmt.Sprintf("after:%d {%s}", since-300, strings.Join(terms, " ")))
+	}
+	for _, query := range queries {
 		page := ""
 		for n := 0; n < 100; n++ {
 			params := map[string]any{"userId": "me", "maxResults": 100, "q": query}

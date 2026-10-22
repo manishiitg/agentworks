@@ -11,7 +11,7 @@ import (
 
 type inboxClient struct{ mail RawMessage }
 
-func (c inboxClient) List(context.Context, int64, []string) ([]string, error) {
+func (c inboxClient) List(context.Context, int64, []string, bool) ([]string, error) {
 	return []string{c.mail.ID}, nil
 }
 func (c inboxClient) Message(context.Context, string) (RawMessage, error) { return c.mail, nil }
@@ -80,5 +80,82 @@ func TestPersonalAliasMailIsSourceBoundWithoutExecution(t *testing.T) {
 	}
 	if _, err = store.Message(ctx, two.ID, "m1"); err == nil {
 		t.Fatal("attachment lookup crossed inboxes")
+	}
+}
+
+// Private sources share the poller without retaining content or widening Crew
+// inboxes. An older mailbox cursor does not backfill newly enabled private mail.
+func TestPrivateGmailSourceSkipsOldMailAndKeepsOnlyIdentity(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(filepath.Join(t.TempDir(), "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	private, err := store.EnsureInbox(ctx, Inbox{ID: "private", ProfileID: PersonalGmailProfile, ProjectID: "owner", OwnerID: "owner", ConnectionID: "account"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	crew, err := store.EnsureInbox(ctx, Inbox{ID: "crew", ProfileID: "work", ProjectID: "crew", OwnerID: "owner", ConnectionID: "account", Address: "owner+agent-crew@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = store.SetMailbox(ctx, "account", "owner", "owner@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	raw := RawMessage{ID: "old", ThreadID: "t", InternalDate: fmt.Sprint((private.CreatedAt - 10) * 1000)}
+	raw.Payload.MimeType = "text/plain"
+	raw.Payload.Body.Data = base64.RawURLEncoding.EncodeToString([]byte("PRIVATE_BODY"))
+	raw.Payload.Headers = append(raw.Payload.Headers, struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}{"From", "sender@example.com"}, struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}{"To", "owner@example.com"})
+	service := Service{Store: store, Inboxes: store.Inboxes, Client: func(context.Context, Mailbox) (Client, error) { return inboxClient{raw}, nil }}
+	box, _ := store.MailboxStatus(ctx, "account")
+	if err = service.syncMailbox(ctx, box); err != nil {
+		t.Fatal(err)
+	}
+	page, _ := store.Messages(ctx, private.ID, 0, "", 20)
+	if len(page.Messages) != 0 {
+		t.Fatal("backfilled personal mail")
+	}
+	raw.ID = "new"
+	raw.InternalDate = fmt.Sprint(time.Now().Add(time.Second).UnixMilli())
+	if err = service.syncMailbox(ctx, box); err != nil {
+		t.Fatal(err)
+	}
+	page, _ = store.Messages(ctx, private.ID, 0, "", 20)
+	if len(page.Messages) != 1 || page.Messages[0].Body != "" || page.Messages[0].From != "" {
+		t.Fatal("private source retained content", page)
+	}
+	shared, _ := store.Messages(ctx, crew.ID, 0, "", 20)
+	if len(shared.Messages) != 0 {
+		t.Fatal("personal mail leaked into Crew Inbox")
+	}
+	// A simultaneous personal Watcher cannot break self-sent Crew mail.
+	raw.ID = "sent-to-crew"
+	raw.LabelIDs = []string{"SENT"}
+	raw.Payload.Headers[1].Value = crew.Address
+	if err = service.syncMailbox(ctx, box); err != nil {
+		t.Fatal(err)
+	}
+	privatePage, _ := store.Messages(ctx, private.ID, 0, "", 20)
+	shared, _ = store.Messages(ctx, crew.ID, 0, "", 20)
+	if len(privatePage.Messages) != 1 || len(shared.Messages) != 1 {
+		t.Fatal("combined source changed sent-mail or alias behavior", privatePage, shared)
+	}
+	if err = store.Reconcile(ctx, map[string]bool{crew.ID: true}); err != nil {
+		t.Fatal(err)
+	}
+	active, _ := store.Inboxes(ctx)
+	if len(active) != 1 || active[0].PersonalGmail() {
+		t.Fatal("private receiver survived last Watcher removal", active)
+	}
+	boxes, _ := store.Mailboxes(ctx)
+	if len(boxes) != 1 {
+		t.Fatal("stopping private receiving stopped dedicated Crew mail")
 	}
 }

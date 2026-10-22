@@ -74,7 +74,11 @@ func (c *conditionService) authorize(ctx context.Context, job productScheduleJob
 		if IsLocalMode() || c.s.api == nil || c.s.api.gmailInbound == nil {
 			return errors.New("Agent inbox Watchers require a server deployment")
 		}
-		if _, err := c.s.api.resolveAgentEmailInbox(internalBotRequestContext(ctx, job.UserID), inboxWatcherWorkspace(job)); err != nil {
+		if cfg.PersonalGmail() {
+			if _, err := c.personalGmailSource(ctx, job, cfg); err != nil {
+				return err
+			}
+		} else if _, err := c.s.api.resolveAgentEmailInbox(internalBotRequestContext(ctx, job.UserID), inboxWatcherWorkspace(job)); err != nil {
 			return err
 		}
 	}
@@ -207,6 +211,11 @@ func (c *conditionService) poll(ctx context.Context, job productScheduleJob, sou
 			}
 		}
 	})
+	if job.Schedule.Condition.PersonalGmail() && err != nil && stateErr == nil {
+		if _, syncErr := c.syncPersonalGmailOwner(context.Background(), job.UserID); syncErr != nil {
+			scheduleLogf("[CONDITION] personal Gmail inventory needs attention")
+		}
+	}
 	if !backpressure && err != nil && stateErr == nil {
 		fresh, readErr := c.s.Job(context.Background(), job.UserID, job.ID())
 		if readErr == nil && fresh.State.ConsecutiveFailures == 5 && c.notifyPause != nil {
@@ -223,6 +232,9 @@ func (c *conditionService) pauseNotification(ctx context.Context, job productSch
 	if c.s.api.eventStore == nil {
 		scheduleLogf("[CONDITION] pause notice event store unavailable")
 		return
+	}
+	if job.Schedule.Condition != nil && job.Schedule.Condition.PersonalGmail() {
+		detail = "Open your private Watcher history to inspect the check."
 	}
 	ctx = conditionContext(ctx, job)
 	binding, err := resolveProductConversationBinding(ctx, job.UserID, job.Profile, job.ProjectID)
@@ -331,6 +343,9 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 		if len(detail) > 600 {
 			detail = detail[len(detail)-600:]
 		}
+		if cfg.PersonalGmail() {
+			return nil, errors.New("personal Gmail Watcher Python check failed; inspect your detector in Watchers")
+		}
 		return nil, fmt.Errorf("watcher Python check failed: %s", detail)
 	}
 	for n, value := range env {
@@ -345,6 +360,13 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 }
 
 func (c *conditionService) drain(ctx context.Context, job productScheduleJob) {
+	if job.Schedule.Condition != nil && job.Schedule.Condition.PersonalGmail() {
+		defer func() {
+			if _, err := c.syncPersonalGmailOwner(context.Background(), job.UserID); err != nil {
+				scheduleLogf("[CONDITION] personal Gmail inventory needs attention")
+			}
+		}()
+	}
 	// Refresh the caller before selecting rows: a pause holds them, while an
 	// edited definition follows Engine's revision/reconciliation path.
 	if fresh, err := c.s.Job(conditionContext(ctx, job), job.UserID, job.ID()); err == nil && fresh.Schedule.Condition != nil {
@@ -354,7 +376,11 @@ func (c *conditionService) drain(ctx context.Context, job productScheduleJob) {
 		job = fresh
 	}
 	if err := c.engine.Drain(conditionContext(ctx, job), conditionKey(job), *job.Schedule.Condition, time.Now().UTC()); err != nil {
-		scheduleLogf("[CONDITION] %s dispatch: %v", job.ID(), err)
+		if job.Schedule.Condition.PersonalGmail() {
+			scheduleLogf("[CONDITION] %s personal Gmail dispatch needs attention", job.ID())
+		} else {
+			scheduleLogf("[CONDITION] %s dispatch: %v", job.ID(), err)
+		}
 	}
 	if job.Schedule.Condition.Once {
 		l, err := c.engine.Read(ctx, conditionKey(job))
@@ -385,6 +411,16 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		return "", err
 	}
 	caller := c.caller(job)
+	if job.WatcherSource != nil && cfg.Target.Kind == "agent" {
+		// Chat delivery reuses this person's own Crew conversation. Detection stays
+		// in their private caller folder; the Crew sees only the selected payload.
+		profile, err := c.s.registry.Resolve(crewProfileID, 0, job.UserID)
+		if err != nil {
+			return "", err
+		}
+		job.Profile = profile
+		job.WorkspacePath = job.WatcherSource.Path
+	}
 	if cfg.Target.Kind != "agent" {
 		return c.dispatchTarget(ctx, job, caller, cfg, ev, key)
 	}
