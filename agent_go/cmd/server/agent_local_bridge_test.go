@@ -897,7 +897,21 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	stop(cancel, done)
 	// Recipient cleanup must invalidate an already cached native body on restart.
-	if out := call(child, map[string]any{"action": "delete", "agent_name": "hook-reviewer", "message_id": deletedBacklog["message_id"]}); out["removed"] != float64(1) {
+	// Earlier phases revoke and replace the first child. Use the current
+	// saved connection, just as the bridge does after reconnect.
+	files, e = filepath.Glob(filepath.Join(root, "connections", "*.json"))
+	if e != nil || len(files) != 1 {
+		t.Fatal("missing current child for inbox cleanup", e)
+	}
+	cfg, e = agentworksclient.LoadConfig(files[0])
+	if e != nil {
+		t.Fatal(e)
+	}
+	cleanupChild, e := agentworksclient.New(cfg.Server, cfg.Token)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if out := call(cleanupChild, map[string]any{"action": "delete", "agent_name": "hook-reviewer", "message_id": deletedBacklog["message_id"]}); out["removed"] != float64(1) {
 		t.Fatal("bound child did not delete its own incoming message", out)
 	}
 	// Cross the cutoff after the body is cached locally, so the real server
