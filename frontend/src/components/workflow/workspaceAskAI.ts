@@ -52,7 +52,7 @@ const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; 
     label: 'Integrations · Folders & workflows',
     summary: "Help me attach things to this workflow: folders on this server or other workflows as reference material. For shared knowledge, use Connections → Add connection → Brain instead. Ask what it needs and why, then set it up; folders should allow viewing only unless saving changes is needed.",
   },
-  secrets: { label: 'Integrations · Secrets', summary: 'Help me select project secrets or permitted Vault secrets. Never ask me to paste secret values in chat.' },
+  secrets: { label: 'Integrations · Secrets', summary: 'Help me select project secrets or permitted Vault secrets. Set up secrets through chat using Vault; store them encrypted and never repeat values.' },
   apps: {
     label: 'Integrations · MCPs',
     summary: "Help me add an app connection for this workflow. Ask what I want to connect, then help me set it up.",
@@ -64,7 +64,7 @@ const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; 
   slack: {
     label: 'Slack',
     summary: "Help me choose the Slack account this workflow uses to read or send messages. Explain current account permissions before changing the selection. Act in Slack and the bot choice share this Slack page. Use manage_slack_account to attach a saved personal account and manage_slack_bot to choose an existing bot from My Vault. Flows offer Act in Slack only.",
-    instructions: "Inspect authorized personal Slack accounts and current project selection. Preserve the server's account send/read rules. Never request tokens in chat.",
+    instructions: "Inspect authorized personal Slack accounts and current project selection. Preserve the server's account send/read rules. Manage tokens through Vault chat and never repeat their values.",
   },
   whatsapp: {
     label: 'Integrations · WhatsApp',

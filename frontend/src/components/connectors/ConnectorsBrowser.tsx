@@ -212,8 +212,8 @@ export default function ConnectorsBrowser({
             onAsk={onAskAI}
             label={`Ask ${assistantLabel} to connect`}
             message={query.trim()
-              ? `Help me add an MCP server for ${JSON.stringify(query.trim())} to this ${workspaceLabel}. Search the catalog and official provider documentation, and guide me through sign-in in My MCPs. Use Vault to share access. Never ask for secrets in chat.`
-              : `Help me add an MCP server to this ${workspaceLabel}. Ask which service I want, then find the official endpoint and help me connect in My MCPs. Use Vault to share access. Never ask for secrets in chat.`}
+              ? `Help me add an MCP server for ${JSON.stringify(query.trim())} to this ${workspaceLabel}. Search the catalog and official provider documentation, and complete setup through chat using Vault, including API keys or a real OAuth sign-in link. Verify discovery and never repeat secret values.`
+              : `Help me add an MCP server to this ${workspaceLabel}. Ask which service I want, then find the official endpoint and complete setup through chat using Vault, including API keys or a real OAuth sign-in link. Verify discovery and never repeat secret values.`}
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>

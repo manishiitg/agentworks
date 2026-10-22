@@ -1,16 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { McpConnectionsPanel } from './McpConnectionsPanel'
 import { useVaultMcpConnections } from './useVaultMcpConnections'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
+import { vaultConnectionsApi, type VaultCatalogApp } from '../../api/vaultConnections'
 import { useChatStore } from '../../stores/useChatStore'
 
 /** Vault is the only connection source across Crew, Goals and Flows. */
-export function ProjectMcpPanel({workspacePath,canEdit,onAsk,selectedServers,onSelectedServersChange}: {
+export function ProjectMcpPanel({view='connected',workspacePath,canEdit,onAsk,selectedServers,onSelectedServersChange}: {
  view?: 'connected'|'available'; chatSessionId?:string;workspacePath:string;placeNoun:string;canEdit:boolean;onAsk?:(message:string)=>Promise<void>
  selectedServers:string[];onSelectedServersChange:(servers:string[])=>Promise<unknown>|void
 }) {
  const vault=useVaultMcpConnections(workspacePath)
  const [error,setError]=useState('')
+ const [catalog,setCatalog]=useState<VaultCatalogApp[]>([])
+ useEffect(()=>{if(view!=='available')return;let current=true;void vaultConnectionsApi.catalog().then(apps=>{if(current)setCatalog(apps)}).catch(()=>{if(current)setError('Could not load the Vault catalog. You can still connect an app through chat.')});return()=>{current=false}},[view])
  const ask=async(message:string)=>{
   try {if(onAsk){await onAsk(message);return}
    const tabs=useChatStore.getState();const active=tabs.activeTabId?tabs.chatTabs[tabs.activeTabId]:undefined
@@ -19,7 +22,7 @@ export function ProjectMcpPanel({workspacePath,canEdit,onAsk,selectedServers,onS
   } catch(cause){setError(cause instanceof Error?cause.message:'Could not open chat.')}
  }
  const picked=selectedServers.filter(name=>name.startsWith('vault_'))
- return <McpConnectionsPanel servers={vault.servers.map(server=>({...server,
+ return <McpConnectionsPanel view={view} catalog={catalog.map(app=>({id:app.name,name:app.name,description:app.oauth?'Sign in with your account':'Connect through Vault',connect:canEdit?{label:'Connect in chat',run:()=>ask(`Connect ${app.name} to this project through Vault. Use this exact catalog provider, guide credential or OAuth setup here, return the real sign-in URL and verify discovery. Preserve existing accounts and permissions.`)}:undefined}))} servers={vault.servers.map(server=>({...server,
   selection:{label:`Use ${server.name}`,checked:!selectedServers.includes('NO_SERVERS')&&(picked.length===0||picked.includes(server.id)),disabled:!canEdit,change:async()=>{
    const current=selectedServers.includes('NO_SERVERS')?[]:picked.length?picked:vault.servers.map(item=>item.id)
    const next=current.includes(server.id)?current.filter(id=>id!==server.id):[...current,server.id]

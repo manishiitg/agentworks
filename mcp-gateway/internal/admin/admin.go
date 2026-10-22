@@ -925,7 +925,8 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			return
 		}
 		var in struct{ CustomOAuth bool }
-		if r.ContentLength != 0 && !decode(w, r, &in) {
+		if r.ContentLength != 0 && json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in) != nil {
+			writeErr(w, 400, errors.New("invalid migration options"))
 			return
 		}
 		if c.OAuthCredentialID == "" || in.CustomOAuth {
