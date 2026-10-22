@@ -176,6 +176,78 @@ func updateFetch(url string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 }
 
+// updateProgress receives the plain-words steps of an update; runUpdate points it at the terminal. Nil is silent (the background
+// auto-update).
+var updateProgress io.Writer
+
+// updateDownloadClient has no overall deadline: the program is about 30 MB and a slow link needs longer than five minutes. A
+// download that stops moving still ends, because the connection itself times out.
+var updateDownloadClient = &http.Client{Transport: &http.Transport{
+	Proxy: http.ProxyFromEnvironment, TLSHandshakeTimeout: 30 * time.Second, ResponseHeaderTimeout: time.Minute, IdleConnTimeout: 2 * time.Minute,
+}}
+
+func updateStep(format string, args ...any) {
+	if updateProgress != nil {
+		fmt.Fprintf(updateProgress, format+"\n", args...)
+	}
+}
+
+// updateFetchProgress downloads one file and shows how far it got: a live percentage on a terminal, a line every 10% otherwise.
+func updateFetchProgress(url, label string) ([]byte, error) {
+	resp, err := updateDownloadClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("server returned HTTP %d for %s", resp.StatusCode, url)
+	}
+	total := resp.ContentLength
+	const limit = 256 << 20
+	if total > limit {
+		return nil, fmt.Errorf("server offered an unexpectedly large %s", label)
+	}
+	live := false
+	if f, ok := updateProgress.(*os.File); ok {
+		if info, err := f.Stat(); err == nil && info.Mode()&os.ModeCharDevice != 0 {
+			live = true
+		}
+	}
+	buf := make([]byte, 0, max(total, 1<<20))
+	chunk := make([]byte, 64<<10)
+	lastTick, lastDecile := time.Time{}, -1
+	for {
+		n, readErr := resp.Body.Read(chunk)
+		buf = append(buf, chunk[:n]...)
+		if int64(len(buf)) > limit {
+			return nil, fmt.Errorf("server offered an unexpectedly large %s", label)
+		}
+		if updateProgress != nil && total > 0 {
+			percent := int(int64(len(buf)) * 100 / total)
+			if live && time.Since(lastTick) > 200*time.Millisecond {
+				fmt.Fprintf(updateProgress, "\r  %s: %.1f of %.1f MB (%d%%)   ", label, float64(len(buf))/1e6, float64(total)/1e6, percent)
+				lastTick = time.Now()
+			} else if !live && percent/10 > lastDecile {
+				lastDecile = percent / 10
+				fmt.Fprintf(updateProgress, "  %s: %d%% (%.1f of %.1f MB)\n", label, percent, float64(len(buf))/1e6, float64(total)/1e6)
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			if live {
+				fmt.Fprintln(updateProgress)
+			}
+			return nil, readErr
+		}
+	}
+	if live {
+		fmt.Fprintf(updateProgress, "\r  %s: %.1f of %.1f MB (100%%)   \n", label, float64(len(buf))/1e6, float64(len(buf))/1e6)
+	}
+	return buf, nil
+}
+
 func runUpdate(o *options, check, force, switchSource bool) error {
 	server, err := updateServer(o)
 	if err != nil {
@@ -185,6 +257,11 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 	if err != nil {
 		return err
 	}
+	if !check {
+		updateProgress = os.Stderr
+		defer func() { updateProgress = nil }()
+	}
+	updateStep("Checking %s for a newer program...", server)
 	base := strings.TrimRight(server, "/") + "/api/downloads/cli"
 	raw, err := updateFetch(base + "/version.json")
 	if err != nil {
@@ -208,16 +285,20 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 			return fmt.Errorf("locate current executable: %w", err)
 		}
 	}
+	updateStep("Downloading the new program (about 30 MB; a slow connection can take a few minutes)...")
 	if _, err = installUpdate(base, asset, target, release, false); err != nil {
 		return err
 	}
+	updateStep("Restarting the AgentBridge connection...")
 	if err = stopAgentBridge(context.Background()); err != nil {
 		return err
 	}
 	if err = restoreAgentBridge(context.Background(), o, target); err != nil {
 		return err
 	}
+	updateStep("Updating installed plugins (this can take a minute)...")
 	updateInstalledPlugins(context.Background(), o, switchSource)
+	updateStep("Done: now on %s. If your computer is connected to a Crew, run agentworks start again.", release.Version)
 	return o.output(map[string]any{"previous": current, "current": release.Version, "path": target, "updated": true})
 }
 
@@ -225,10 +306,11 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 // `version` as a self-test (restoring the old one if that fails). With keepBackup the previous executable stays at
 // the returned path so a caller can roll back.
 func installUpdate(base, asset, target string, release cliRelease, keepBackup bool) (string, error) {
-	binary, err := updateFetch(base + "/" + asset)
+	binary, err := updateFetchProgress(base+"/"+asset, "download")
 	if err != nil {
 		return "", err
 	}
+	updateStep("Checking the download and installing it...")
 	sidecar, err := updateFetch(base + "/" + asset + ".sha256")
 	if err != nil {
 		return "", err
