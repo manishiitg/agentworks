@@ -35,7 +35,7 @@ const scope = (relay = false, project = 'example') => projectMenuHistoryScope(st
 it.each([false, true])('uses Crew category order and keeps every product destination (%s)', async relay => {
   await render(relay)
   expect([...host.querySelectorAll('summary:not([aria-label="Pulse"])')].map(node => node.textContent)).toEqual(['Build', 'Use', 'Share', 'Integrations', 'Setup'])
-  expect([...host.querySelectorAll('details:not([aria-label="Pulse menu"])')].map(node => node.open)).toEqual([true, false, false, false, false])
+  expect([...host.querySelectorAll<HTMLDetailsElement>('details:not([aria-label="Pulse menu"])')].map(node => node.open)).toEqual([true, false, false, false, false])
   for (const label of ['Dashboards', 'Files', 'Skills', 'Chat history', 'People & access', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
   if (relay) {
     for (const label of ['Flow', 'Runs', 'Code']) expect(button(label)).toBeDefined()
