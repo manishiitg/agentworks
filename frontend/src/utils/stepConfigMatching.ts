@@ -15,13 +15,6 @@ export interface AgentConfigs {
   execution_llm?: AgentLLMConfig;
   execution_tier?: 'high' | 'medium' | 'low';
   lock_code?: boolean;                        // Freeze main.py against LLM rewrites
-  // Historical learning settings decode for old saved plans and execution logs.
-  // Contract1.0.50 retires automatic learning, and1.0.51 moves guides into
-  // workflow-local enabled_skills. New authoring never uses these settings.
-  disable_learning?: boolean;
-  learning_detail_level?: string;
-  learnings_access?: 'read' | 'read-write' | 'none';
-  learning_objective?: string;
   selected_servers?: string[];
   selected_tools?: string[];
   enabled_custom_tools?: string[];

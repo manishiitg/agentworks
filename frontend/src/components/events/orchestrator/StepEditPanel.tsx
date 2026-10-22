@@ -66,27 +66,10 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
       stepTitle: step.title,
       stepId: step.id,
       step_agent_configs: step.agent_configs,
-      disable_learning: configs.disable_learning,
       configs,
     });
     
-    // Determine effective code execution mode (step config > preset default)
-    const effectiveCodeExecMode = configs.use_code_execution_mode !== undefined 
-      ? configs.use_code_execution_mode 
-      : presetUseCodeExecutionMode;
-    
-    const updatedConfigs = { ...configs };
-    let needsUpdate = false;
-    
-    // Force enable learning for code execution mode
-    if (effectiveCodeExecMode) {
-      if (configs.disable_learning) {
-        updatedConfigs.disable_learning = false;
-        needsUpdate = true;
-      }
-    }
-    
-    return needsUpdate ? updatedConfigs : configs;
+    return configs;
   });
 
   // Initialize step-level server/tool selection
@@ -177,21 +160,7 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
       
       // Reset agentConfigs state from step's config
       // Force enable validation for loop steps
-      // Force enable validation and learning for code execution mode
-      const effectiveCodeExecMode = currentConfigs.use_code_execution_mode !== undefined 
-        ? currentConfigs.use_code_execution_mode 
-        : presetUseCodeExecutionMode;
-      
-      const newAgentConfigs: AgentConfigs = { ...currentConfigs };
-      
-      // Force enable learning for code execution mode
-      if (effectiveCodeExecMode) {
-        if (currentConfigs.disable_learning) {
-          newAgentConfigs.disable_learning = false;
-        }
-      }
-      
-      setAgentConfigs(newAgentConfigs);
+      setAgentConfigs({ ...currentConfigs });
       
       // Update servers: use step config if available, otherwise preset defaults
       if (currentConfigs.selected_servers && currentConfigs.selected_servers.length > 0) {
@@ -480,32 +449,6 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
       finalConfigs.enabled_custom_tools = enabledCustomTools;
     }
 
-    // Handle disable_learning: explicitly save false when enabled, true when disabled
-    // nil/undefined = not set (default enabled), false = explicitly enabled, true = disabled
-    // CRITICAL: When user unchecks checkbox (to enable learning), we MUST save false explicitly
-    // to override any previous true value in JSON. JSON.stringify will include false values.
-    if (agentConfigs.disable_learning === false) {
-      // User explicitly enabled learning (unchecked the checkbox)
-      // Save false to override any previous true value
-      finalConfigs.disable_learning = false;
-    } else if (agentConfigs.disable_learning === true) {
-      // User explicitly disabled learning (checked the checkbox)
-      finalConfigs.disable_learning = true;
-    } else {
-      // State is undefined - check if it was previously set in the step config
-      // If it was never set before, keep undefined (default enabled)
-      // If it was set before but now undefined, this is unexpected - keep undefined to reset to default
-      const wasPreviouslySet = step.agent_configs?.disable_learning !== undefined;
-      if (!wasPreviouslySet) {
-        // Never set before - keep undefined (default enabled, field omitted from JSON)
-        finalConfigs.disable_learning = undefined;
-      } else {
-        // Was set before but now undefined in state - reset to default (undefined)
-        // This allows user to "reset" by clearing the value
-        finalConfigs.disable_learning = undefined;
-      }
-    }
-
     // Handle use_code_execution_mode: save if explicitly set by user
     // If undefined, step will use preset default (field will be omitted from JSON)
     if (agentConfigs.use_code_execution_mode !== undefined) {
@@ -522,14 +465,11 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
       stepTitle: step.title,
       selectedServers,
       selectedTools,
-      agentConfigs_disable_learning: agentConfigs.disable_learning,
       agentConfigs_use_code_execution_mode: agentConfigs.use_code_execution_mode,
-      finalConfigs_disable_learning: finalConfigs.disable_learning,
       finalConfigs_use_code_execution_mode: finalConfigs.use_code_execution_mode,
       finalConfigs: {
         selected_servers: finalConfigs.selected_servers,
         selected_tools: finalConfigs.selected_tools,
-        disable_learning: finalConfigs.disable_learning,
         use_code_execution_mode: finalConfigs.use_code_execution_mode,
       },
     });
@@ -564,7 +504,6 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
       if (effectiveCodeExecMode) codeExecLabel = 'Code Exec';
       parts.push(`Exec: ${execLLM.label} (${codeExecLabel})`);
     }
-    if (agentConfigs.disable_learning) parts.push('Learn: Disabled');
     
     return parts.length > 0 ? parts.join(' • ') : 'Default config';
   };
@@ -784,10 +723,6 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
                             setAgentConfigs((prev) => ({
                               ...prev,
                               use_code_execution_mode: true,
-                              // Auto-enable learning when code exec is enabled
-                              disable_learning: false,
-                              // Auto-set learning detail level to 'exact' for code exec mode
-                              learning_detail_level: 'exact',
                             }));
                           }}
                           className={`px-2 py-1 text-xs font-medium transition-colors ${
@@ -848,51 +783,6 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
 
             {/* LLM Validation Agent Configuration — disabled (LLM validation is dead code in backend).
                Only pre-validation (code-based structural checks) is active. Kept commented out for reference. */}
-
-            {/* Divider */}
-            <div className="border-t border-gray-200 dark:border-gray-700"></div>
-
-            {/* Learning Agent Configuration */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-                  Learning
-                </div>
-                {(() => {
-                  const effectiveCodeExecMode = agentConfigs.use_code_execution_mode !== undefined 
-                    ? agentConfigs.use_code_execution_mode 
-                    : presetUseCodeExecutionMode;
-                  const isDisabled = effectiveCodeExecMode;
-                  const tooltipText = effectiveCodeExecMode
-                    ? "Learning is automatically enabled in Code Exec mode"
-                    : undefined;
-                  
-                  return (
-                    <label className={`flex items-center gap-1.5 ${isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`} title={tooltipText}>
-                      <input
-                        type="checkbox"
-                        checked={agentConfigs.disable_learning || false}
-                        onChange={(e) => {
-                          if (!isDisabled) {
-                            handleToggleChange('disable_learning', e.target.checked);
-                          }
-                        }}
-                        disabled={isDisabled}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                      />
-                      <span className="text-xs text-gray-600 dark:text-gray-400">
-                        Disable{effectiveCodeExecMode && ' (Auto-enabled)'}
-                      </span>
-                    </label>
-                  );
-                })()}
-              </div>
-              {agentConfigs.disable_learning ? (
-                <div className="text-xs text-gray-500 dark:text-gray-500 italic py-1">
-                  Learning disabled for this step
-                </div>
-              ) : null}
-            </div>
 
             {/* MCP Servers and Tools Selection (Step Level) */}
             {presetServers.length > 0 && (

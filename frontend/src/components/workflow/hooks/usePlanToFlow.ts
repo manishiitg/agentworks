@@ -1385,9 +1385,6 @@ function processSteps(
             title: 'Generic Agent',
             description: 'Executes ad-hoc tasks using workspace tools',
             type: 'scripted',
-            agent_configs: {
-              disable_learning: true
-            }
           } as PlanStep,
           changeType: undefined,
           workspacePath,
