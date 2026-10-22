@@ -488,8 +488,9 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 	if activity == "" {
 		activity = "mcp"
 	}
-	folderInfo, _ := json.Marshal(settings.Folders)
-	allowedFolders := " Allowed local folders (use the ID in folder): " + string(folderInfo)
+	// The tools are built once per chat and reused, so the allowed folders are not written into their descriptions (a folder
+	// added later would stay invisible); list_local_files with no folder returns the live list.
+	const allowedFolders = " Call list_local_files with no folder to see the allowed folders and their IDs."
 	gate.Declare("copy_local_file_to_crew")
 	hasWrite := false
 	for _, folder := range settings.Folders {
@@ -510,7 +511,20 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 			if dir == "" {
 				dir = "."
 			}
-			response, err := api.localDeviceCallForOwner(ctx, caller, selected.DeviceID, localfiles.Request{CrewID: root, ResourceID: externalArg(args, "folder"), Operation: "list", Path: dir, RequestID: uuid.NewString()})
+			folder := externalArg(args, "folder")
+			if folder == "" {
+				current, err := readLaptopSettings(caller.UserID, root)
+				if err != nil || current.DeviceID != selected.DeviceID {
+					return "", errors.New("Laptop access was removed from this Crew")
+				}
+				if len(current.Folders) != 1 {
+					// Several folders (or none): say which exist now, with their access, so the next call can name one.
+					out, _ := json.Marshal(map[string]interface{}{"folders": current.Folders, "next": "Call again with folder set to one of these IDs."})
+					return string(out), nil
+				}
+				folder = current.Folders[0].ID
+			}
+			response, err := api.localDeviceCallForOwner(ctx, caller, selected.DeviceID, localfiles.Request{CrewID: root, ResourceID: folder, Operation: "list", Path: dir, RequestID: uuid.NewString()})
 			if err != nil {
 				return "", err
 			}
