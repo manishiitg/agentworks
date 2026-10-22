@@ -210,6 +210,7 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	for key, invalid := range map[string]any{"older_than": "yesterday", "processed_only": "true", "from_agent": 42} {
 		call(owner, map[string]any{"action": "clear", "agent_name": "reviewer", key: invalid}, false)
 	}
+	call(owner, map[string]any{"action": "clear", "agent_name": "reviewer", "from_agent": "agent:"}, false)
 	call(owner, map[string]any{"action": "delete", "agent_name": "reviewer"}, false)
 	filters["action"], filters["from_agent"] = "clear", "reviewer"
 	if out := call(owner, filters, true); out["removed"] != float64(0) {

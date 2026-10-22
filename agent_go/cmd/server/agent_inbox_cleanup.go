@@ -49,6 +49,9 @@ func parseAgentInboxFilter(args map[string]any, now time.Time) (agentInboxFilter
 		}
 	}
 	f.from = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(externalArg(args, "from_agent"))), "agent:")
+	if f.from == "" && strings.TrimSpace(externalArg(args, "from_agent")) != "" {
+		return f, fmt.Errorf("from_agent must include the sender's name or ID after agent:")
+	}
 	f.inbox, f.message = strings.TrimSpace(externalArg(args, "inbox_id")), strings.TrimSpace(externalArg(args, "message_id"))
 	return f, nil
 }
