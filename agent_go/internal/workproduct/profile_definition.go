@@ -40,12 +40,6 @@ var registerFeatureSkillsMu sync.Mutex
 var registeredFeatureSkills = map[string]bool{}
 
 var productSkills = []agentprofiles.SkillFileBinding{
-	{Name: "work-mcp", Path: "skills/work-mcp/SKILL.md"},
-	{Name: "work-integrations", Path: "skills/work-integrations/SKILL.md"},
-	{Name: "work-workflow-files", Path: "skills/work-workflow-files/SKILL.md"},
-	{Name: "work-skills", Path: "skills/work-skills/SKILL.md"},
-	{Name: "work-schedules-and-bots", Path: "skills/work-schedules-and-bots/SKILL.md"},
-	{Name: "work-dashboard", Path: "skills/work-dashboard/SKILL.md"},
 	{Name: "work-ui-control", Path: "skills/work-ui-control/SKILL.md"},
 	{Name: "background-work", Path: "skills/background-work/SKILL.md"},
 }
@@ -203,10 +197,9 @@ func RegisterProductSkills() error {
 	return registerProductSkillsErr
 }
 
-// RegisterFeatureSkills registers the shared project-feature skills for one
-// product, rendered from the same templates: {{product}} becomes
-// productName (its product.yaml profile.name) and skill names follow
-// agentprofiles.FeatureSkillName (work-mcp for Crew, code-mcp for Code).
+// RegisterFeatureSkills renders only the product-specific navigation and
+// background execution rules. Panel procedures are shared builtins with the
+// same identity and supporting files in every product.
 func RegisterFeatureSkills(profileID, productName string) error {
 	registerFeatureSkillsMu.Lock()
 	defer registerFeatureSkillsMu.Unlock()
@@ -218,12 +211,6 @@ func RegisterFeatureSkills(profileID, productName string) error {
 	}
 	bindings := make([]agentprofiles.SkillFileBinding, 0, len(productSkills))
 	for _, binding := range productSkills {
-		// A product whose MCP feature is personal-scope (a Code) has no
-		// platform-wide connections to describe: it gets the connections text
-		// under the same skill name (code-mcp).
-		if binding.Name == "work-mcp" && profileID != "work" {
-			binding.Path = "skills/work-mcp-connections/SKILL.md"
-		}
 		binding.Name = agentprofiles.FeatureSkillName(profileID, binding.Name)
 		binding.Description = render(binding.Description)
 		bindings = append(bindings, binding)

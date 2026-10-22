@@ -1587,9 +1587,7 @@ func (w *WhatsAppService) discoverDestinationCandidates(ctx context.Context, own
 			log.Printf("[WHATSAPP] Failed to parse workflow manifest %s: %v", manifestPath, err)
 			continue
 		}
-		if manifest.Kind == "relay" {
-			continue
-		}
+
 		workspacePath := strings.TrimSuffix(manifestPath, "/workflow.json")
 		label := strings.TrimSpace(manifest.Label)
 		if label == "" {
@@ -1607,8 +1605,12 @@ func (w *WhatsAppService) discoverDestinationCandidates(ctx context.Context, own
 			continue
 		}
 		seenWorkflowKeys[workflowKey] = true
+		kind := "workflow"
+		if manifest.Kind == "relay" {
+			kind = "relay"
+		}
 		candidates = append(candidates, whatsappDestinationCandidate{
-			Kind:          "workflow",
+			Kind:          kind,
 			ID:            id,
 			Label:         label,
 			WorkspacePath: workspacePath,
@@ -1704,7 +1706,7 @@ func formatWhatsAppDestinationList(candidates []whatsappDestinationCandidate) st
 	}
 	const maxList = 25
 	var sb strings.Builder
-	sb.WriteString("Workflows and Crews:\n")
+	sb.WriteString("Goals, Crews and Flows:\n")
 	othersHeader := false
 	for i, c := range candidates {
 		if i >= maxList {
@@ -1785,6 +1787,8 @@ func (w *WhatsAppService) findDestinationCandidateByRoute(ctx context.Context, o
 // kindLabel names a destination's product in @list replies.
 func (c whatsappDestinationCandidate) kindLabel() string {
 	switch {
+	case c.Kind == "relay":
+		return "Flow"
 	case c.Kind != "crew":
 		return "Workflow"
 	}

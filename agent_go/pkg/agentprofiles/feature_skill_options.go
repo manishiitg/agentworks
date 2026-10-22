@@ -15,39 +15,32 @@ func FeatureSkillsForSession(profile Profile, attached []*llmtypes.Skill) []*llm
 			continue
 		}
 		copy := *skill
-		if copy.Name == FeatureSkillName(profile.ID, "work-schedules-and-bots") && FeatureOption(profile, "bots", "dm_only") == "true" {
-			body := copy.Content
-			if start := strings.Index(body, "## Project-chat bots"); start >= 0 {
-				body = body[:start]
+		if FeatureOption(profile, "bots", "dm_only") == "true" {
+			if copy.Name == "panel-slack-bot" {
+				copy.Content = "# Direct-message bots\n\nSlack supports direct messages only, with one chat per person. Channels, group chats, agent Slack sends and channel-route tools are unavailable. Configure this project's bot in its Bots settings and verify the result.\n"
+				copy.SupportingFiles = nil
 			}
-			body += "## Direct-message bots\n\nSlack supports direct messages only, with one chat per person. Channels, group chats, agent Slack sends and channel-route tools are unavailable. WhatsApp is for the owner. Configure this project's bot in its Bots settings; never claim a setup succeeded without verification.\n"
-			copy.Description = "Manage this project's message schedules, webhook triggers, and direct-message bots. Read before recurring work, event-driven messages, or bot setup."
-			if FeatureOption(profile, "bots", "gmail") == "own" {
-				start := strings.Index(copy.Content, "## Gmail and Google Workspace")
-				if start >= 0 {
-					google := copy.Content[start:]
-					if end := strings.Index(google[3:], "\n## "); end >= 0 {
-						google = google[:end+3]
-					}
-					body += "\n" + google
+			if copy.Name == "panel-google-apps" {
+				if FeatureOption(profile, "bots", "gmail") == "own" {
+					copy.Content += "\nUse only this project's private Google accounts in its owner's chats. Reads require an observed read grant; drafting/sending requires agent-write opt-in plus compose grant.\n"
+				} else {
+					copy.Content = "Gmail and Google Workspace are unavailable in this session."
+					copy.SupportingFiles = nil
 				}
-				body += "\nUse only this project's private Google accounts in its owner's chats. Reads require an observed read grant; drafting/sending requires agent-write opt-in plus compose grant.\n"
-				copy.Description += " Also read before using this project's private Google/Gmail accounts."
-			} else {
-				body += "\nGmail and Google Workspace are unavailable in this session.\n"
 			}
-			if start := strings.Index(copy.Content, "## Agent email inboxes"); start >= 0 {
-				body += "\n" + copy.Content[start:]
-			}
-			copy.Content = body
 		}
-		if copy.Name == FeatureSkillName(profile.ID, "work-workflow-files") {
+		if copy.Name == "panel-functions" {
 			switch FeatureOption(profile, "workflow-references", "direction") {
 			case "outbound":
-				if start := strings.Index(copy.Content, "- **Offer**"); start >= 0 {
-					if end := strings.Index(copy.Content[start:], "Calls that would loop"); end >= 0 {
-						copy.Content = copy.Content[:start] + copy.Content[start+end:]
+				copy.SupportingFiles = append([]llmtypes.SkillFile(nil), copy.SupportingFiles...)
+				for i, file := range copy.SupportingFiles {
+					body := string(file.Content)
+					if start := strings.Index(body, "- **Offer**"); start >= 0 {
+						if end := strings.Index(body[start:], "Calls that would loop"); end >= 0 {
+							body = body[:start] + body[start+end:]
+						}
 					}
+					copy.SupportingFiles[i].Content = []byte(body)
 				}
 				copy.Content += "\n## Outbound-only session\n\nCall only accessible Crews and workflows. This workspace cannot define or answer functions; private workspaces are not valid targets.\n"
 			}

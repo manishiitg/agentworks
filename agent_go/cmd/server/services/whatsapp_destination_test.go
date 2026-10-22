@@ -36,12 +36,16 @@ func TestDiscoverWhatsAppDestinationsIncludesOwnedCrewProjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(candidates) != 2 {
-		t.Fatalf("destinations = %+v, want one Crew and one workflow, with Relay excluded", candidates)
+	if len(candidates) != 3 {
+		t.Fatalf("destinations = %+v, want the owned Crew, Goal and Flow", candidates)
 	}
 	crew := candidates[0]
 	if crew.Kind != "crew" || crew.Label != "Company CA" || crew.ProfileID != "work" || crew.ConversationKey != "company-ca" || crew.WorkspacePath != "Chats/Work/projects/company-ca" {
 		t.Fatalf("Crew destination = %+v", crew)
+	}
+	flow := candidates[2]
+	if flow.Kind != "relay" || flow.ID != "relay-review" || flow.kindLabel() != "Flow" || !flow.matchesRoute(flow.route("run")) {
+		t.Fatalf("Flow destination did not preserve its actual route: %+v", flow)
 	}
 	workflow := candidates[1]
 	if workflow.Kind != "workflow" || workflow.ID != "wf-invoices" || workflow.Label != "Invoice Processing" {
@@ -89,7 +93,7 @@ func TestWhatsAppDestinationListIncludesWorkflowsAndCrews(t *testing.T) {
 		{Number: 2, Kind: "workflow", ID: "wf-invoices", Label: "Invoice Processing"},
 	}
 	message := formatWhatsAppDestinationList(candidates)
-	for _, want := range []string{"Workflows and Crews:", "1. Crew: Company CA", "2. Workflow: Invoice Processing"} {
+	for _, want := range []string{"Goals, Crews and Flows:", "1. Crew: Company CA", "2. Workflow: Invoice Processing"} {
 		if !strings.Contains(message, want) {
 			t.Fatalf("destination list %q does not contain %q", message, want)
 		}

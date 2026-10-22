@@ -42,8 +42,8 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   if (!relayMode) {
     add('mcp', 'Use', 'Slack bot', MessageSquareText, 'slack', 'Use from other apps')
     items[items.length - 1].id = 'mcp:slack-bot'
-    add('mcp', 'Use', 'WhatsApp', MessageSquareText, 'whatsapp', 'Use from other apps')
   }
+  add('mcp', 'Use', 'WhatsApp', MessageSquareText, 'whatsapp', 'Use from other apps')
   add('mcp', 'Use', 'MCP access', Cable, 'cli', 'Use from other apps')
   if (canShare) add('mcp', 'Share', 'People & access', ShieldCheck, 'share')
   if (isMultiUser && !relayMode) add('access', 'Share', 'Team', ShieldCheck, 'workflow')

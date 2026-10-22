@@ -18,7 +18,7 @@ chat:
     external_tools: [create_relay, update_relay, builder_chat, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, get_relay_releases, relay_owners, publish_relay, test_relay, run_relay, get_relay_run, list_relay_runs]
     prompt:
       file: prompts/builder.md
-    skills: [relay-builder, relay-dashboard, panel-dashboard, panel-functions, panel-skills, panel-files, panel-browser, panel-chat-history, panel-watchers, panel-webhooks, panel-mcp-access, panel-mcp-connections, panel-secrets, panel-brain, panel-linked-folders, panel-google-apps, panel-slack-account, panel-agentbridge, panel-sharing, panel-settings, panel-models, panel-costs, panel-relay-code, panel-relay-runs]
+    skills: [relay-builder, panel-dashboard, panel-functions, panel-skills, panel-files, panel-browser, panel-chat-history, panel-watchers, panel-webhooks, panel-mcp-access, panel-mcp-connections, panel-secrets, panel-brain, panel-linked-folders, panel-google-apps, panel-slack-account, panel-whatsapp, panel-agentbridge, panel-sharing, panel-settings, panel-models, panel-costs, panel-relay-code, panel-relay-runs]
     tools:
       # MCP Builder turns use the shared guarded revision/audit file tools.
       - settings
@@ -129,7 +129,7 @@ profile:
       description: Create or update this Flow's live Dashboard
       icon: layout-dashboard
       prompt: |
-        Create or update this Flow's Dashboard using the relay-dashboard skill. Inspect existing db/reports/ documents and preserve user design choices. Use the shared HTML runtime, validate_report_html and preview_report. Keep dashboard scripts under code/reports/ separate from relay.py and API publication. Use files or scripts when a database is unnecessary.
+        Create or update this Flow's Dashboard using the panel-dashboard skill. Inspect existing db/reports/ documents and preserve user design choices. Use the shared HTML runtime, validate_report_html and preview_report. Keep dashboard scripts under code/reports/ separate from relay.py and API publication. Use files or scripts when a database is unnecessary.
         {{context}}
     - name: test
       description: Test the draft with sample inputs and inspect its JSON output

@@ -30,6 +30,7 @@ import (
 	"text/template"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -41,11 +42,13 @@ var templatesFS embed.FS
 // time: which file holds its template, which workshop modes are allowed to
 // invoke it, and a one-line description used in the tool-list enum.
 type kindMeta struct {
-	Group       string // builder | review | improve | report | kb | learning | db
-	Description string // shown to the agent in the kind enum
-	Modes       []string
-	AliasOf     string // compatibility kind rendered from the canonical template
-	RawTemplate bool   // expose runtime template source without evaluating its conditions/placeholders
+	Group          string // builder | review | improve | report | kb | learning | db
+	Description    string // shown to the agent in the kind enum
+	Modes          []string
+	AliasOf        string // compatibility kind rendered from the canonical template
+	RawTemplate    bool   // expose runtime template source without evaluating its conditions/placeholders
+	PanelSkill     string
+	PanelReference string
 
 	// Tools names the runtime tools this doc explains. It is the selection key
 	// for surfaces that choose references by capability instead of by mode —
@@ -107,7 +110,7 @@ var allKinds = map[string]kindMeta{
 // References own procedures and examples. Prompts retain mode/authorization
 // boundaries and live context; tool discovery uses the current runtime registry.
 var referenceKinds = map[string]kindMeta{
-	"dashboard-authoring": {Group: "system", Description: "Use the shared dashboard APIs to discover, author, validate, preview, publish, restore and share live dashboards; follow user design preferences.", Modes: []string{"workshop", "run", "reporting"}, RawTemplate: true},
+	"dashboard-authoring": {Group: "system", Description: "Use the shared dashboard APIs to discover, author, validate, preview, publish, restore and share live dashboards; follow user design preferences.", Modes: []string{"workshop", "run", "reporting"}, RawTemplate: true, PanelSkill: "panel-dashboard", PanelReference: "references/authoring.md"},
 	"working-with-pulse":  {Group: "system", Description: "How the Builder works with the workflow's Pulse: when to ask it, #pulse, acting on its direction within its levels, raising decisions for it, reporting back.", Modes: []string{"workshop"}},
 	"workflow-chat":       {Group: "system", Description: "Workflow chat procedures: runtime grounding, route/input selection, execution and notifications, Builder design/review flow, schedules and channel handling. Read before any workflow platform action.", Modes: []string{"workshop", "run"}},
 	"step-system-prompts": {Group: "system", Description: "Canonical runtime system prompt source for agent steps, including managed DB guidance. Read alongside step-description before authoring: these platform rules are supplied by the runtime, so descriptions should add only task-specific requirements. Conditions/placeholders are resolved per run; get_step_prompts shows a saved run.", Modes: []string{"workshop"}, RawTemplate: true},
@@ -169,7 +172,7 @@ var referenceKinds = map[string]kindMeta{
 	"deployed-channel":        {Group: "system", Description: "Deployed channel runtime: handling Slack/WhatsApp/bot-channel-routed workflow requests — group identification from message, runtime context grounding (soul.md/learnings/KB/db), direct answer vs run_full_workflow vs execute_step decision, channel-context plumbing through human_inputs, in-channel result summarization, and Run-vs-Workshop boundary rules. Load when a chat or message arrives via a deployed channel route.", Modes: []string{"workshop", "run"}},
 	"runtime-context":         {Group: "system", Description: "Ground direct runtime work in workflow learnings, business context, DB contracts, current results and costs without crossing Run-mode edit boundaries.", Modes: []string{"workshop", "run"}},
 	"human-in-the-loop":       {Group: "system", Description: "Choose how a workflow gets human input: chat, planned checkpoints, execution-only urgent response cards, durable Pulse decisions, report-owned approvals, report-to-chat requests, and live execution corrections. Load when designing or handling human review, approval, feedback, or a human-in-the-loop handoff; distinguish saved answers, queued requests, and applied work.", Modes: []string{"workshop", "run"}, Tools: []string{"human_feedback", "create_human_input_request", "answer_human_input_request", "get_human_input_request", "mark_human_input_consumed", "send_step_message"}},
-	"motion-guide":            {Group: "system", Description: "On-demand dashboard motion usage: designer-controlled interactive playback with window.report.motion, real historical data, refresh, and optional snapshot MP4 through the core dashboard export operation.", Modes: []string{"workshop"}, Tools: []string{"export_dashboard_motion"}},
+	"motion-guide":            {Group: "system", Description: "On-demand dashboard motion usage: designer-controlled interactive playback with window.report.motion, real historical data, refresh, and optional snapshot MP4 through the core dashboard export operation.", Modes: []string{"workshop"}, Tools: []string{"export_dashboard_motion"}, PanelSkill: "panel-dashboard", PanelReference: "references/motion-guide.md"},
 	"reporting-policy":        {Group: "system", Description: "HTML report contract: multiple db/reports/*.html documents, optional views.json toolbar metadata and daisyUI, goal/measurement/cost helpers, live data and writes, live script data (window.report.run from code/, caching best practices), report chat actions, validation, preview, and Run-mode boundaries. Load for reports, dashboards, actions, themes, or layouts.", Modes: []string{"workshop", "run"}},
 	"running-steps":           {Group: "system", Description: "Step execution mechanics: iterations & groups (always iteration-0 in workshop builder, read variables.json for group names), the 6-step execution procedure (determine group → execute_step → handle human_input → wait/notification → success/failure handling → always follow up), auto-notification system (no polling, system-generated [AUTO-NOTIFICATION] prefix, may be delayed), and stopping tasks (stop_all_executions / stop_step are required, text alone does NOT stop). Load before calling execute_step / run_full_workflow or when a user asks how to stop/cancel.", Modes: []string{"workshop", "run"}},
 	"planning-steps":          {Group: "system", Description: "Workshop plan composition: take-action-by-default discipline, one large agent per shared-context span with proof/double-check/repair turns, intelligent separation when contexts should not be shared, scripted deterministic boundaries, required validation_schema, forward-only context flow, step types, fixed-branch routing, and deeper references. Load before adding/editing plan steps.", Modes: []string{"workshop"}},
@@ -222,7 +225,7 @@ func renderFromRegistry(kind string, data tmplData, registry map[string]kindMeta
 		return renderFromRegistry(meta.AliasOf, data, registry)
 	}
 	rel := path.Join("templates", meta.Group, kind+".md")
-	body, err := readTemplate(rel)
+	body, err := readKindTemplate(meta, rel)
 	if err != nil {
 		return "", fmt.Errorf("read template %s: %w", rel, err)
 	}
@@ -553,7 +556,7 @@ func RenderSystemDoc(kind string) string {
 		panic(fmt.Sprintf("guidance: RenderSystemDoc called with unknown kind %q", kind))
 	}
 	rel := path.Join("templates", meta.Group, kind+".md")
-	body, err := readTemplate(rel)
+	body, err := readKindTemplate(meta, rel)
 	if err != nil {
 		panic(fmt.Sprintf("guidance: read %s: %v", rel, err))
 	}
@@ -587,11 +590,44 @@ func ListReferenceKindsForTest() []string {
 
 // ExternalTopics selects only source files explicitly marked for MCP exposure.
 func ExternalTopics() ([]externalguidance.Topic, error) {
-	return externalguidance.Load(templatesFS, "templates/system/*.md")
+	topics, err := externalguidance.Load(templatesFS, "templates/system/*.md")
+	if err != nil {
+		return nil, err
+	}
+	for _, meta := range referenceKinds {
+		if meta.PanelSkill == "" {
+			continue
+		}
+		raw, err := skills.WorkspacePanelReference(meta.PanelSkill, meta.PanelReference)
+		if err != nil {
+			return nil, err
+		}
+		topic, content, err := externalguidance.Parse(raw)
+		if err != nil {
+			return nil, err
+		}
+		if topic.External {
+			topic.Content = content
+			topics = append(topics, topic)
+		}
+	}
+	return topics, nil
 }
 
 func readTemplate(path string) ([]byte, error) {
 	raw, err := templatesFS.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	_, body, err := externalguidance.Parse(raw)
+	return []byte(body), err
+}
+
+func readKindTemplate(meta kindMeta, relative string) ([]byte, error) {
+	if meta.PanelSkill == "" {
+		return readTemplate(relative)
+	}
+	raw, err := skills.WorkspacePanelReference(meta.PanelSkill, meta.PanelReference)
 	if err != nil {
 		return nil, err
 	}

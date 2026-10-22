@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productguide"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
 // A small catalog by default; only explicitly requested, changed topic files
@@ -67,7 +68,13 @@ func externalGuidanceSkillFiles(claims *UserClaims, topic externalGuidanceTopic)
 	if err != nil {
 		return nil, err
 	}
-	return []any{map[string]any{"path": "SKILL.md", "content": body}}, nil
+	files := []any{map[string]any{"path": "SKILL.md", "content": body}}
+	if topic.Source == "panel" {
+		for _, file := range skills.BuiltinDefinition(topic.Name).SupportingFiles {
+			files = append(files, map[string]any{"path": file.RelPath, "content": builderProductSelection(claims).Text(string(file.Content))})
+		}
+	}
+	return files, nil
 }
 
 // Render the same canonical SKILL.md for explicit skill fetch and schema preparation.

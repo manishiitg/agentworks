@@ -6,7 +6,7 @@ description: Read before Crew setup, creating another Crew, looking up earlier c
 Use the Crew's existing role and purpose. Change setup only within the user's
 request. Discover current skills, connections, secrets, schedules and functions
 before making changes; use their dedicated tools and names, never secret values.
-Load the relevant work-* feature skill before using its management tools.
+Load the relevant panel-* skill before using its management tools.
 For the person's laptop or a folder on their computer, read `crew-laptop`.
 
 ## Settings and panels from chat
@@ -21,14 +21,11 @@ still require the person's provider login or phone.
 
 | Panel or task | Guidance and tools |
 |---|---|
-| Dashboard; People & access; Owners | `work-dashboard`; the dashboard read, publish and sharing tools use the same server checks. |
-| Functions; Schedules; Watchers; Webhooks; Inbox; Google; Slack; WhatsApp | `work-schedules-and-bots`; use the existing per-action tools, not raw configuration files. |
-| Skills | `work-skills`; inspect recorded sources before claiming who installed something. |
-| Secrets; Models; Browser; Linked folders; Costs | `work-integrations`; use secret selection, `manage_crew_model`, `browser_connections`, folder tools and `get_crew_costs`. |
-| MCP connections and Vault access | `work-mcp` and `work-mcp-connections`. |
-| Local laptop | `crew-laptop`; check connected devices and the Crew's saved folder/command access separately. |
-| Crew tabs; AgentBridge; Suggestions | `crew-agents` and the Suggestions tools below; never attach someone else's native chat. |
-| Files; Database; Plan; Memory; Instructions; Terminal; Chat history | The Crew's scoped file, database, identity and shell tools; search saved history as described below. |
+| Dashboard; People & access; Owners | `panel-dashboard`, `panel-sharing`, `panel-owners` |
+| Functions; Schedules; Watchers; Webhooks | `panel-functions`, `panel-schedules`, `panel-watchers`, `panel-webhooks` |
+| Inbox; Google; Slack; WhatsApp | `panel-inbox`, `panel-google-apps`, `panel-slack-account`, `panel-slack-bot`, `panel-whatsapp` |
+| Skills; Secrets; Models; Browser; Linked folders; Costs | The matching `panel-skills`, `panel-secrets`, `panel-models`, `panel-browser`, `panel-linked-folders`, `panel-costs` skill |
+| MCP connections and Vault access | `panel-mcp-connections`, `panel-mcp-access` |
 
 Use `work-ui-control` and the advertised targets when showing a panel helps.
 If a requested control has no admitted management tool, state that concrete
@@ -61,7 +58,7 @@ Avoid choosing a different output path based on who called the Crew.
 - When asked for another Crew, use `create_crew` with the requested name and
   icon (defaults to the name's initial). It creates a separate persistent project.
 - For attached files, workflow references, or calls to another Crew/workflow,
-  read `work-workflow-files` before acting. For an incoming function call,
+  read `panel-functions` before acting. For an incoming function call,
   follow that skill's progress and result contract.
 - Before answering about earlier work, search this Crew's saved conversations
   by keyword or date: owner history in `builder/conversation/`, other users'
@@ -114,8 +111,6 @@ Expose a function for everything others may make the Crew do: everyone else uses
 
 ## Watchers
 
-For immediate event-driven checks, use `check_mode: "event"`; use `"both"` for events plus a backup `cron_expression` (at least five minutes apart). Omit `check_mode` for existing schedule-only behavior. Select an existing granted secret name in `secrets` and `event_secret_name`; `event_auth_mode` is `bearer` (default) or `github` for GitHub HMAC signatures. Management returns `event_path` on the existing product webhook receiver. Connect the source to that URL using the selected secret without printing its value. The source must support authenticated webhook notifications; otherwise keep scheduled checks. Incoming JSON is only a wake signal: the Python detector still queries/paginates the source and uses its saved state. Accepted wakes survive restart; bursts coalesce into checks at least five seconds apart. One time still stops after the first accepted matching action. In Watchers, use **Connect events in chat** or **Edit event connection**; the pane shows the event URL and secret name.
-
-Chat setup and editing stay in Builder mode. Existing Run views stay unchanged; caller attribution follows product access. Configuring a Watcher never edits the shared product.
-
-Read work-schedules-and-bots for condition-based calls. Use manage_condition_triggers in this Crew to create a person-owned caller that sends to this Crew’s own chat (target kind=agent) or a declared published function. For personal Gmail use check_mode=inbox and email_source=personal_gmail; read work-schedules-and-bots for private snapshots and setup. Pass script_content so the detector stays in the creator's own watcher folder with their selected Vault credentials. Use once=true for a specific wait that triggers once and disables after acceptance; omit it to keep watching. List first and use expected_revision on edits. The caller never borrows the Crew's credentials or reads its internals; the existing function keeps its own execution rules. Watchers are in Automation and Ctrl/Cmd+K.
+Read `panel-watchers` for person-owned callers and personal Gmail snapshots.
+Keep Crew plan artifacts in `panel-crew-plan`; execution and incoming function
+calls retain their own contract in `panel-functions`.

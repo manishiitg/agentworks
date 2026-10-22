@@ -15,7 +15,7 @@ func TestProfileProductProjectionDoesNotMutateRegistry(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "")
 	p := Profile{ID: "work", Name: "Crew", Version: 1, BuiltIn: true,
 		SystemPromptTemplate: "project <!-- product:knowledgebase -->Brain<!-- /product -->",
-		Skills:               []string{"brain", "work-mcp"},
+		Skills:               []string{"brain", "panel-mcp-connections"},
 		Features:             []FeatureBinding{{ID: "knowledgebase"}, {ID: "mcp"}, {ID: "secrets"}},
 		Tools:                []ToolBinding{{ID: "knowledgebase.manage-access"}, {ID: "caplayer.access"}, {ID: "work.create-project"}},
 		ToolPolicy:           ToolPolicy{Mode: "allowlist", Enabled: []string{"brain_read", "manage_vault_access", "list_mcp_servers", "set_workflow_secret"}},

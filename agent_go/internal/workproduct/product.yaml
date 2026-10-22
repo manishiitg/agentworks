@@ -99,7 +99,7 @@ profile:
   # under commands/; `{{context}}` is replaced with whatever the user typed
   # before the slash. Invoking /update-memory is the user's explicit ask to
   # preserve reusable procedures, which is what unlocks skill changes under
-  # the work-skills memory-vs-skill rules.
+  # the panel-skills memory-vs-skill rules.
   commands:
     - name: update-memory
       description: Update project memory and skills from this conversation

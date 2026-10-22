@@ -43,6 +43,8 @@ metadata:
 
 # Project dashboard
 
-Read the current value before changing it. The person’s Builder request authorizes the requested change under existing server checks. Discover the current tool schemas; use only tools offered in this chat. Opening a panel is optional and does not perform its action. Verify the saved result or execution receipt. If a capability is absent, name the concrete missing action rather than invent a website-only restriction. Provider sign-in and phone QR scanning still need the person.
-
 Use list_dashboards and get_dashboard first. Use create_dashboard/update_dashboard, validate_dashboard and preview_dashboard on the exact revision, then publish_dashboard when requested. Read get_dashboard_catalog for the authoring contract. Use get_dashboard_link to show the result; a link does not grant access. Preserve authored format and content. Cost, file and database access remain the current product’s own checks.
+
+Before authoring a dashboard, Read [the detailed procedure](references/authoring.md).
+
+When playback or a video export is requested, Read [the detailed procedure](references/motion-guide.md).

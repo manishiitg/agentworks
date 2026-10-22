@@ -21,6 +21,4 @@ metadata:
 
 # People and access
 
-Read the current value before changing it. The person’s Builder request authorizes the requested change under existing server checks. Discover the current tool schemas; use only tools offered in this chat. Opening a panel is optional and does not perform its action. Verify the saved result or execution receipt. If a capability is absent, name the concrete missing action rather than invent a website-only restriction. Provider sign-in and phone QR scanning still need the person.
-
 Use get_dashboard_share/share_dashboard for this product’s Share selection (Only me, Chosen people, Everyone). Goal owner/editor lists use manage_project get_access/set_access under existing owner checks. Share only the requested product with the requested people; a URL itself grants nothing. Crew has one main owner; using a Crew is through its shared dashboard. Read back the saved audience/access before reporting completion.

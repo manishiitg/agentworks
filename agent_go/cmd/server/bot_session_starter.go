@@ -131,6 +131,10 @@ func botRouteProfileAccessForRequest(claims *UserClaims, req QueryRequest) (Work
 // channel grants, while WhatsApp passes its paired workspace user and must
 // retain that user's current workflow access.
 func (api *StreamingAPI) checkBotWorkflowAccess(ctx context.Context, workspaceUserID, userEmail string, route services.ChannelRoute) (string, bool, error) {
+	return api.checkBotWorkflowAccessForPlatform(ctx, workspaceUserID, userEmail, route, "slack")
+}
+
+func (api *StreamingAPI) checkBotWorkflowAccessForPlatform(ctx context.Context, workspaceUserID, userEmail string, route services.ChannelRoute, platform string) (string, bool, error) {
 	fallbackID := strings.TrimSpace(workspaceUserID)
 	if fallbackID == "" {
 		return "", false, nil
@@ -161,12 +165,11 @@ func (api *StreamingAPI) checkBotWorkflowAccess(ctx context.Context, workspaceUs
 		log.Printf("[BOT_ACCESS] Denied: route workflow=%q does not match manifest=%q", routeID, manifest.ID)
 		return fallbackID, false, nil
 	}
-	if manifest.Kind == "relay" {
-		log.Printf("[BOT_ACCESS] Denied: Flow %q only accepts API function triggers", manifest.ID)
+	claims := botWorkflowAccessClaims(fallbackID, userEmail, route)
+	if manifest.Kind == "relay" && (platform != "whatsapp" || !userAllowedProduct(claims, "relays")) {
+		log.Printf("[BOT_ACCESS] Denied: Flow %q is unavailable to this channel or caller", manifest.ID)
 		return fallbackID, false, nil
 	}
-
-	claims := botWorkflowAccessClaims(fallbackID, userEmail, route)
 	if workflowAccessForManifest(claims, manifest) == WorkflowAccessNone {
 		log.Printf("[BOT_ACCESS] Denied: route principal %s has no access to workflow %s", claims.UserID, manifest.ID)
 		return fallbackID, false, nil
@@ -214,7 +217,7 @@ func (api *StreamingAPI) checkWhatsAppWorkflowAccess(ctx context.Context, userID
 		}
 		return workspacePathsMatchForUser(userID, route.WorkspacePath, binding.WorkspacePath), nil
 	}
-	_, allowed, err := api.checkBotWorkflowAccess(ctx, strings.TrimSpace(userID), "", route)
+	_, allowed, err := api.checkBotWorkflowAccessForPlatform(ctx, strings.TrimSpace(userID), "", route, "whatsapp")
 	return allowed, err
 }
 

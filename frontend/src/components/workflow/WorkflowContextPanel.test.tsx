@@ -80,6 +80,7 @@ it('keeps role and sharing gates for current and recent items', async () => {
   await act(async () => useProjectMenuHistoryStore.getState().visit(scope(), 'mcp:share'))
   expect(button('People & access')).toBeUndefined()
   expect(button('Team')).toBeUndefined()
+  expect(button('WhatsApp')).toBeDefined()
   state.canWrite = false; await render(); expect(host.textContent).toBe('')
 })
 
@@ -87,6 +88,7 @@ it('retains separate Relay graph, runs and code targets', async () => {
   state.multiUser = true
   await render(true)
   expect(button('Team')).toBeUndefined()
+  expect(button('WhatsApp')).toBeDefined()
   for (const [label, target] of [['Flow', 'graph'], ['Runs', 'calls'], ['Code', 'source']]) {
     await act(async () => button(label).click()); expect(state.open).toHaveBeenLastCalledWith('flow', target)
   }

@@ -31,6 +31,4 @@ metadata:
 
 # Instructions and identity
 
-Read the current value before changing it. The person’s Builder request authorizes the requested change under existing server checks. Discover the current tool schemas; use only tools offered in this chat. Opening a panel is optional and does not perform its action. Verify the saved result or execution receipt. If a capability is absent, name the concrete missing action rather than invent a website-only restriction. Provider sign-in and phone QR scanning still need the person.
-
 Read current project identity and instructions first. Crew uses set_work_identity plus its scoped instruction file tools; Goals and Relays use get_workflow_config/update_workflow_config and manage_project for label/description/icon. Use settings for its offered model, connection, secret-name and notification fields. Preserve unrelated settings and verify the saved result. Discover the current schema; never edit provider secrets or managed runtime configuration files directly.

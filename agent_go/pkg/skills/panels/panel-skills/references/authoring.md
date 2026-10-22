@@ -1,9 +1,4 @@
----
-name: work-skills
-description: Discover, install, import, create, select, and remove reusable skills in {{product}}. Use when the user asks to add a capability or manage the skills available in the current workspace.
----
-
-# {{product}} skills
+# project skills
 
 ## What the inventory means
 
@@ -20,10 +15,10 @@ requested scope first.
 
 - Use root `MEMORY.md` for project-specific truths: verified facts,
   preferences, decisions, constraints, corrections, and durable context. Test
-  the content with “{{product}} should remember that…”.
+  the content with “project should remember that…”.
 - Use `skills/<skill-name>/SKILL.md` for a reusable procedure: when it applies,
   ordered actions, checks, tools, expected output, and failure handling. Test
-  it with “When asked to do X, {{product}} should…”.
+  it with “When asked to do X, project should…”.
 - If both are relevant, keep the fact in memory and the procedure in the skill,
   then link them rather than duplicating instructions.
 - Put temporary status, raw chat, guesses, secrets, and reliably retrievable
@@ -42,7 +37,7 @@ requested scope first.
   selection is managed through chat. **Build > Skills** (or Recent) shows
   installed custom skills for reading; it has no select or uninstall buttons.
 - When the user explicitly asks to preserve or improve a repeatable procedure,
-  create or update a focused custom skill inside this {{product}} project at
+  create or update a focused custom skill inside this project project at
   `skills/<skill-name>/SKILL.md`. This is project-local durable knowledge, like
   the root `MEMORY.md`; keep skills scoped to this workspace. Inspect the names and descriptions of every existing project skill
   before choosing a destination, then select the skill for this project with
@@ -56,7 +51,7 @@ requested scope first.
   to the most recently edited skill, or combine topics merely because they were
   discussed in the same conversation. If an existing skill has already become
   a catch-all, split the relevant material into focused skills when updating it.
-  Keep the normal {{product}} identity; skill authoring is a capability, not a
+  Keep the normal project identity; skill authoring is a capability, not a
   separate chat persona.
 - A custom skill needs concise YAML frontmatter with `name` and `description`,
   followed by only the non-obvious instructions that improve future work. Add

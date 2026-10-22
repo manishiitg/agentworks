@@ -229,7 +229,7 @@ always use draft. Report the actual returned version/hash, not an assumed deploy
 Builder remains the shared scoped chat runtime with this product-owned prompt, skill
 and tool list. Vault/MCP tools retain their normal authorization. Brain is not an
 implicit Flow store or runtime. Do not create workflow knowledgebase assets.
-A requested Dashboard may use an optional managed database as described by relay-dashboard.
+A requested Dashboard may use an optional managed database as described by panel-dashboard.
 
 MVP custom Python tools must not call `agent` or `mcp` inside
 the tool callback; nested calls fail immediately. Put those calls in separate DBOS steps, or
@@ -238,12 +238,6 @@ external services using ordinary Python clients.
 
 ## Watchers
 
-For immediate event-driven checks, use `check_mode: "event"`; use `"both"` for events plus a backup `cron_expression` (at least five minutes apart). Omit `check_mode` for existing schedule-only behavior. Select an existing granted secret name in `secrets` and `event_secret_name`; `event_auth_mode` is `bearer` (default) or `github` for GitHub HMAC signatures. Management returns `event_path` on the existing product webhook receiver. Connect the source to that URL using the selected secret without printing its value. The source must support authenticated webhook notifications; otherwise keep scheduled checks. Incoming JSON is only a wake signal: the Python detector still queries/paginates the source and uses its saved state. Accepted wakes survive restart; bursts coalesce into checks at least five seconds apart. One time still stops after the first accepted matching action. In Watchers, use **Connect events in chat** or **Edit event connection**; the pane shows the event URL and secret name.
-
-Chat setup and editing stay in Builder mode. Existing Run views stay unchanged; caller attribution follows product access. Configuring a Watcher never edits the shared product.
-
-Use manage_condition_triggers for deterministic Python checks that call a published function of a Flow, defaulting to this Flow. They appear in Automation → Watchers and Ctrl/Cmd+K. Set once=true for a specific condition/event wait: no-match checks continue, the first new event is selected in detector order, its stable submission retries until accepted, then the watcher disables and shows Completed. Omit once for recurring monitoring. Completed waits do not rearm on Enable/edit; create another watcher for a new wait.
-
-The Watcher belongs to its creator. Pass script_content on create/update; the server saves and pins it in that person's own watcher folder. Use read_script before edits. Select only that caller's own/Vault credentials (SECRET_<NAME> in Python), never the target's credentials or files. The script reads prior state JSON from stdin and prints exactly {"events":[{"id":"stable-source-id","payload":{}}],"state":{}}; events=[] means no match. The first event dispatches; other matches in that batch are recorded as not sent for once=true. Use a stable request_id on create, list first and expected_revision on update. Configure five-field cron at least five minutes apart plus timezone. Current access is rechecked; target entry points keep their own execution rules and credentials. A receipt proves accepted delivery, not final success.
-
-A Flow Watcher calls only a published Flow entry (event payload is INPUT). Discover real published functions and choose one if there are several; with one, the tool selects it. Polling is caller work, separate from Flow execution. Do not create a workflow plan or timed Flow run.
+Read `panel-watchers` for the caller setup. A Relay Watcher invokes a published
+Flow function with the event payload as INPUT; it does not add polling, a Goal
+plan, DB/KB/learnings stages or automatic closing work to Flow execution.

@@ -50,6 +50,11 @@ func externalTopicVersionFor(claims *UserClaims, topic externalGuidanceTopic) st
 	if topic.Source == "mcp-usage" {
 		h.Write([]byte(productguide.Versions(builderProductSelection(claims))))
 	}
+	if topic.Source == "panel" {
+		for _, file := range skills.BuiltinDefinition(topic.Name).SupportingFiles {
+			h.Write([]byte(file.RelPath + "\n" + builderProductSelection(claims).Text(string(file.Content)) + "\n"))
+		}
+	}
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 

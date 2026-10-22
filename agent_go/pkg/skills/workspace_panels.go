@@ -17,7 +17,7 @@ import (
 // Product manifests select the panels they expose. Attaching a procedure never
 // registers a tool or changes the caller's permissions.
 //
-//go:embed panels/*/SKILL.md
+//go:embed panels
 var workspacePanelFiles embed.FS
 
 var workspacePanelTools = map[string]map[string][]string{}
@@ -56,11 +56,35 @@ func init() {
 		if parsed.Frontmatter.Name != name {
 			panic(fmt.Errorf("panel skill %s has a different name", name))
 		}
+		var supporting []llmtypes.SkillFile
+		root := path.Dir(file)
+		if err := fs.WalkDir(workspacePanelFiles, root, func(p string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || p == file {
+				return nil
+			}
+			content, err := workspacePanelFiles.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			supporting = append(supporting, llmtypes.SkillFile{RelPath: strings.TrimPrefix(p, root+"/"), Content: content})
+			return nil
+		}); err != nil {
+			panic(err)
+		}
 		if err := RegisterBuiltin(&llmtypes.Skill{Name: name, Description: parsed.Frontmatter.Description,
-			Content: parsed.Content, Source: llmtypes.SkillSource{Origin: "builtin"}}); err != nil {
+			Content: parsed.Content, SupportingFiles: supporting, Source: llmtypes.SkillSource{Origin: "builtin"}}); err != nil {
 			panic(err)
 		}
 	}
+}
+
+// WorkspacePanelReference reads the canonical source used by both a panel
+// package and product-specific reference projections.
+func WorkspacePanelReference(name, relative string) ([]byte, error) {
+	return workspacePanelFiles.ReadFile(path.Join("panels", name, relative))
 }
 
 func IsWorkspacePanelSkill(name string) bool {

@@ -134,7 +134,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
   const navigationOptions = integrationNavigationOptions(mcpTabs, pluginTabs)
   const selectConnection = (target: string) => {
-    if (target === 'share' || target === 'cli' || (target === 'slack' && mcpTabs.some(option => option.value === 'slack')) || (!relayMode && target === 'whatsapp' && mcpTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
+    if (target === 'share' || target === 'cli' || (target === 'slack' && mcpTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && mcpTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
     if (target === 'overview' || target === 'apps') { setSharing(false); setOverview(true); setTab('apps'); return }
     if (!mcpTabs.some(option => option.value === target) && !pluginTabs.some(option => option.value === target)) return
     setSharing(false); setOverview(false)

@@ -1,8 +1,3 @@
----
-name: work-mcp
-description: Connect and use apps and MCP tools through Vault for {{product}}.
----
-
 # Connect apps through Vault
 
 Vault is the only MCP account and credential store. Projects select Vault

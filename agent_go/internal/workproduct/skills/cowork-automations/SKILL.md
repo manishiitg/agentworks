@@ -6,7 +6,7 @@ description: "Turn a repeating task into an automation for a non-technical perso
 # Cowork: make it happen on its own
 
 When someone describes a chore that repeats ("every Monday", "when a form comes in", "each month end"), offer to automate it instead of
-doing it once. Read `code-schedules-and-bots` for how schedules and webhooks are created and managed; this skill is what to say and
+doing it once. Read `panel-watchers` for how schedules and webhooks are created and managed; this skill is what to say and
 check.
 
 ## Before creating it

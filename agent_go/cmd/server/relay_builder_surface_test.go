@@ -43,7 +43,8 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 	if err := api.installWorkflowPhaseTools(context.Background(), draft, "relay-surface", "test-user", "workflow-builder", "Workflow/relay-test", "", map[string]string{"WorkshopMode": "workshop", "WorkflowKind": "relay"}, nil, nil, nil, nil, nil, QueryRequest{}, false); err != nil {
 		t.Fatal(err)
 	}
-	if len(draft.skills) != 2 || draft.skills[0].Name != "relay-builder" || draft.skills[1].Name != "relay-dashboard" {
+	expectedSkills, _ := relayproduct.ChatSkills("builder")
+	if len(draft.skills) != len(expectedSkills) || draft.skills[0].Name != "relay-builder" {
 		t.Fatalf("Relay skills: %v", draft.skills)
 	}
 	for _, name := range []string{"test_relay", "get_relay_run", "manage_workflow_webhook", "get_relay_releases", "publish_relay", "validate_report_html", "preview_report", "get_report_link"} {

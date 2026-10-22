@@ -7109,10 +7109,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						return
 					}
 				}
-				if err := api.registerWhatsAppChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly); err != nil {
-					sendError(fmt.Sprintf("Failed to register WhatsApp tool: %v", err), true)
-					return
-				}
+
 			}
 			// Local folder grants belong to the owner's interactive website turn;
 			// scheduled, connector and unattended/background adapters need separate consent.

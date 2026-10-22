@@ -213,3 +213,6 @@ transcript.txt
 # Panel secret-management guidance contains procedures only, never credential values.
 !agent_go/pkg/skills/panels/panel-secrets/
 !agent_go/pkg/skills/panels/panel-secrets/SKILL.md
+
+!agent_go/pkg/skills/panels/panel-secrets/references/
+!agent_go/pkg/skills/panels/panel-secrets/references/configuration.md

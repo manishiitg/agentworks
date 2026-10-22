@@ -15,7 +15,7 @@ Explain how teammates submit work, add context and suggest changes. Use existing
 
 1. Discover live tools and selected schemas with `get_api_spec` (remote MCP) or the stdio tool list. Invoke returned names and arguments through `call_tool` or the tool itself.
 2. Call `help action=context` for current access and `guidance_version`; find relevant guidance with `help action=topics`. Load `agentworks-mcp` and the selected product topics with `help action=topic` or `help action=skills`. Keep their `external_note`: internal reference names may be action values rather than standalone MCP tools.
-3. Discover the project before acting. For workflow plan edits, use `plan action=list` and the revision from `workflow action=plan`. For combined Crew work, discover projects with `workspace action=list` and load `crew-authoring`; for Flows, load `relay-builder` or `relay-dashboard`. Follow current schemas, revisions and the product's test/publish/run lifecycle.
+3. Discover the project before acting. For workflow plan edits, use `plan action=list` and the revision from `workflow action=plan`. For combined Crew work, discover projects with `workspace action=list` and load `crew-authoring`; for Flows, load `relay-builder` or `panel-dashboard`. Follow current schemas, revisions and the product's test/publish/run lifecycle.
 
 Read prepared skills and retain the returned `guidance_session_id` per conversation; pass it on later schema/tool calls. Related tools share one delivered version. Full Crew/workflow skill-file reads and Brain skill-package fetches also record delivery. After context loss, reload canonical skills without `known_versions` or refetch the original files/package. Receipts grant no access and do not prove reading; preserve customized local copies.
 

@@ -149,7 +149,7 @@ func SkillProduct(name string) string {
 		return "mcp-gateway"
 	case "code-mcp", "code-integrations", "code-workflow-files", "code-skills", "code-schedules-and-bots", "code-dashboard", "code-ui-control", "code-background-work", "cowork-assistant", "cowork-browser-tasks", "cowork-automations", "make-a-crew":
 		return "work"
-	case "relay-builder", "relay-dashboard":
+	case "relay-builder":
 		return "relays"
 	default:
 		return ""

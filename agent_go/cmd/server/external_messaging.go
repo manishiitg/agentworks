@@ -15,10 +15,10 @@ import (
 // phone acts as its owner, so pairing stays behind a browser sign-in).
 
 func externalMessagingDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_messaging", "Slack and WhatsApp for a workflow, Flow or Crew. status: the Slack bot it uses, the channels routed to it and the bots you may choose. set_target: name, description and slug shown in Slack's \"who should answer\" picker (pass only what you want to change; an empty value goes back to the product's). add_channel / remove_channel: route a Slack channel (exact ID like C0123ABCD) to it. use_bot: answer through one of the listed bots (connection_id, or \"shared\" for the shared bot). whatsapp_link: where to pair your WhatsApp in the app (scan the QR code with your phone; pairing is never done over MCP). Connecting a new Slack bot also stays in the app. Changes need the owner.", true, false, map[string]any{
+	add("manage_messaging", "Slack and WhatsApp for a workflow, Flow or Crew. status: the Slack bot it uses, the channels routed to it and the bots you may choose. set_target: name, description and slug shown in Slack's \"who should answer\" picker (pass only what you want to change; an empty value goes back to the product's). add_channel / remove_channel: route a Slack channel (exact ID like C0123ABCD) to it. use_bot: answer through one of the listed bots (connection_id, or \"shared\" for the shared bot). whatsapp_status: your linked phone and connection. whatsapp_routing: existing agent destinations. whatsapp_unpair: disconnect your own phone when requested. whatsapp_link: where to pair your WhatsApp in the app (scan the QR code with your phone; pairing is never done over MCP). Connecting a new Slack bot also stays in the app. Changes need the owner.", true, false, map[string]any{
 		"workflow_id":   externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
 		"crew_id":       externalString("Crew ID from list_crews. Pass this or workflow_id."),
-		"action":        map[string]any{"type": "string", "enum": []any{"status", "set_target", "add_channel", "remove_channel", "use_bot", "whatsapp_link"}},
+		"action":        map[string]any{"type": "string", "enum": []any{"status", "set_target", "add_channel", "remove_channel", "use_bot", "whatsapp_link", "whatsapp_status", "whatsapp_routing", "whatsapp_unpair"}},
 		"channel_id":    externalString("Exact Slack channel ID, e.g. C0123ABCD."),
 		"connection_id": externalString("For use_bot: a bot id from status, or \"shared\"."),
 		"name":          map[string]any{"type": "string", "maxLength": 60, "description": "For set_target: the name shown in Slack's \"who should answer\" picker. Empty goes back to the product's name."},
@@ -46,12 +46,11 @@ func (api *StreamingAPI) externalMessagingCall(w http.ResponseWriter, r *http.Re
 		return true
 	}
 	switch action {
+	case "whatsapp_status", "whatsapp_routing", "whatsapp_unpair":
+		api.externalWhatsAppCall(w, r, action, target)
 	case "status":
 		out := map[string]any{"kind": target.kind, "id": target.id}
-		out["whatsapp"] = "Pair your own WhatsApp in the app (manage_messaging whatsapp_link says where); it runs as you."
-		if target.manifest != nil && target.manifest.Kind == "relay" {
-			out["whatsapp"] = "Flows offer Act in Slack only."
-		}
+		out["whatsapp"] = "Use whatsapp_status for your own phone connection and whatsapp_link for pairing instructions."
 		if _, err := personalConnectionItemScope(r, target.path, true, "Slack", "Slack"); err != nil {
 			out["status"] = "Ask this item's Builder to configure Slack. Your existing Run access is unchanged."
 			externalJSON(w, out)
@@ -115,6 +114,9 @@ func (api *StreamingAPI) externalMessagingCall(w http.ResponseWriter, r *http.Re
 		place := "the workflow"
 		if target.kind == "crew" {
 			place = "the Crew"
+		}
+		if target.kind == "relay" {
+			place = "the Flow"
 		}
 		externalJSON(w, map[string]any{"open": getBaseURL(r), "steps": "Sign in, open " + place + " \"" + target.label + "\", go to Integrations, open WhatsApp and scan the QR code with your phone (WhatsApp > Settings > Linked devices > Link a device).",
 			"note": "Pairing is done in the app, never over MCP: a paired phone acts as you until it is unpaired."})

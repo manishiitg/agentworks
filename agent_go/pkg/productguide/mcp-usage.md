@@ -55,7 +55,7 @@ For CLI installation, sign-in, updates or connecting a coding chat, load [the se
 Load guidance relevant to the work:
 
 <!-- product:crew -->- Crew: `workspace` for discovery, project setup and chat tabs; `crew-authoring` for detailed setup, functions and use. Crew works on the server. Optional laptop tools use the owner’s selected computer and folder access from Crew Settings; they do not replace server work or create a separate published project.
-<!-- /product --><!-- product:relays -->- Flows: `relay-builder` for source, test and publication; `relay-dashboard` for dashboards.
+<!-- /product --><!-- product:relays -->- Flows: `relay-builder` for source, test and publication; `panel-dashboard` for dashboards.
 <!-- /product --><!-- product:agentworks -->- Goals: the relevant plan, step, execution and Pulse topics.
 <!-- /product -->
 For other work, choose from the topics actually listed by this connection.

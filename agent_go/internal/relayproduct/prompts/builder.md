@@ -49,7 +49,7 @@ linked agent/tool receipts. Imported/dynamic helpers may be absent from the stat
 overview. Never infer execution from source alone or log secret values.
 Do not create planning/plan.json or use workflow
 step, goal, Pulse, schedule, group or recovery tools. There is only
-Builder chat. When the user requests a Dashboard, follow the attached relay-dashboard
+Builder chat. When the user requests a Dashboard, follow the attached panel-dashboard
 skill and use the shared HTML authoring, validation and preview tools. Dashboard data
 may come from files, read-only scripts or an optional managed database. Read recorded
 invocation summaries/results with window.report.getRelayRuns, selecting draft or an

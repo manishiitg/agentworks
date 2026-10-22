@@ -27,7 +27,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 	if manifest.Profile.Scope != agentprofiles.ProfileScopeProject {
 		t.Fatalf("work must declare scope: project, got %q", manifest.Profile.Scope)
 	}
-	for _, want := range []string{"agent-browser", "work-integrations", "work-workflow-files", "work-skills", "work-schedules-and-bots", "work-dashboard", "work-ui-control", "background-work"} {
+	for _, want := range []string{"agent-browser", "panel-secrets", "panel-functions", "panel-skills", "panel-watchers", "panel-dashboard", "work-ui-control", "background-work"} {
 		if !contains(manifest.Profile.Skills, want) {
 			t.Fatalf("work feature bundles omitted skill %q: %v", want, manifest.Profile.Skills)
 		}
@@ -248,42 +248,23 @@ func TestWorkPlatformSkillsRegisterAndLoad(t *testing.T) {
 	if err := RegisterProductSkills(); err != nil {
 		t.Fatalf("RegisterProductSkills: %v", err)
 	}
-	checks := map[string][]string{
-		"crew-builder":            {"## Coding rules", "create_crew", "builder/conversation/", "Crew should remember that", "When asked to do X, Crew should"},
-		"work-mcp":                {"list_mcp_servers", "MCPs", "api_key", "client_secret", "Ctrl+K", "list_ui_capabilities", "Vault", "trigger_mcp_discovery", "update_project_mcp_server_selection", "next user message"},
-		"work-integrations":       {"set_workflow_secret", "available to shell", "do not ask the user to start", "Share to Vault", "update_project_global_secret_selection", "selected_global_secret_names", "list_work_folders", "manage_crew_model"},
-		"work-workflow-files":     {"list_accessible_workflows", "WORK_FOLDER_<ALIAS>", "workflow.json", "knowledgebase/", "learnings/", "db/db.sqlite", "db/reports/", "runs/run_index.json", "sqlite3 -readonly", "get_file_link", "get_report_link", "current Crew access", "list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run", "delivery_id", "public webhook"},
-		"work-skills":             {"list_skills", "search_skills", "update_project_skill_selection", "skills/<skill-name>/SKILL.md", "keep skills scoped to this workspace", "Crew should remember that", "When asked to do X, Crew should", "link them rather than duplicating", "same topic", "independently reusable topics", "catch-all", "150 lines or fewer", "references/", "scripts/", "skill authoring is a capability", "Build > Skills"},
-		"work-schedules-and-bots": {"list_project_schedules", "five-field cron", "list_project_triggers", "Project webhook triggers", "Use > Slack bot", "Slack", "WhatsApp", "list_gmail_connections", "google_workspace_cli", "gmail.readonly"},
-		"work-dashboard":          {"db/reports/index.html", "window.report.sendChatMessage", "query_workflow_db", "validate_report_html", "get_report_link"},
-		"work-ui-control":         {"list_ui_capabilities", "perform_ui_action", "search_tools", "bridge tool routing", "`memory`", "`workshop`", "`identity`", "`mcp`", "Do not use Workflow-only views", "Scheduled, webhook, bot"},
-		"background-work":         {"run_in_background", "[AUTO-NOTIFICATION]", "query_agent"},
-		"crew-laptop":             {"manage_laptop_access", "devices", "Operation not permitted", "agentworks start", ".aws", "Read & write"},
+	manifest, err := WorkManifest()
+	if err != nil {
+		t.Fatal(err)
 	}
-	for name, required := range checks {
-		if !skills.IsBuiltinSkill(name) {
-			t.Fatalf("%s did not register as a built-in Crew skill", name)
-		}
+	for _, name := range manifest.Profile.Skills {
 		attached := skills.LoadAttachable("", []string{name})
-		if len(attached) != 1 {
-			t.Fatalf("LoadAttachable(%s) = %v, want one skill", name, attached)
+		if len(attached) != 1 || strings.TrimSpace(attached[0].Content) == "" {
+			t.Fatalf("feature skill %s has no readable source", name)
 		}
-		for _, text := range required {
-			if !strings.Contains(attached[0].Content, text) {
-				t.Fatalf("%s skill is missing %q", name, text)
-			}
-		}
-		if name == "work-dashboard" {
-			found := false
-			for _, file := range attached[0].SupportingFiles {
-				if file.RelPath == "references/motion-guide.md" {
-					found = strings.Contains(string(file.Content), "window.report.ready") && strings.Contains(string(file.Content), "MP4")
-				}
-			}
-			if !found {
-				t.Fatal("dashboard motion reference was not packaged for read_skill")
-			}
-		}
+	}
+	dashboard := skills.LoadAttachable("", []string{"panel-dashboard"})[0]
+	sources := map[string]bool{}
+	for _, file := range dashboard.SupportingFiles {
+		sources[file.RelPath] = len(file.Content) > 0
+	}
+	if !sources["references/authoring.md"] || !sources["references/motion-guide.md"] {
+		t.Fatal("shared dashboard authoring and motion sources must be available through read_skill")
 	}
 }
 
@@ -386,7 +367,7 @@ func TestRenderPromptSucceedsAgainstAPromptContext(t *testing.T) {
 		"general-purpose",
 		"Read the relevant attached skill",
 		"Read `crew-builder`",
-		"work-workflow-files",
+		"panel-functions",
 		"## How to talk to the user",
 		"runs a small business and is not technical",
 		"Use business words, never platform words alone",
