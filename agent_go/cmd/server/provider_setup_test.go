@@ -312,7 +312,13 @@ func TestCollectedProviderUsageWaitsForTrustSelectionAndReturnsOnlyUsage(t *test
 printf '❯No,exit\r\nYes,Itrustthisfolder\r\nEnter to confirm'
 selection=$(dd bs=1 count=3 2>/dev/null)
 [ "$selection" = "$(printf '\033[B')" ] || exit 1
+# Reproduce the real CLI's transient selection, then startup redraw to No.
 printf '\r\n❯Yes,Itrustthisfolder'
+sleep 0.05
+printf '\r\n❯No,exit\r\nYes,Itrustthisfolder'
+selection=$(dd bs=1 count=3 2>/dev/null)
+[ "$selection" = "$(printf '\033[B')" ] || exit 1
+printf '\r\nNo,exit\r\n❯Yes,Itrustthisfolder'
 confirm=$(dd bs=1 count=1 2>/dev/null)
 [ "$confirm" = "$(printf '\r')" ] || exit 1
 stty sane -echo
@@ -478,5 +484,27 @@ func TestProviderSetupTerminalStartsOnAnAllowedModel(t *testing.T) {
 	}
 	if providerSetupModelArgs("codex-cli", nil) != nil || providerSetupModelArgs("cursor-cli", []string{"x"}) != nil {
 		t.Fatal("no model flag when every model is allowed or the provider's flag is unknown")
+	}
+}
+
+// A failed startup must end collection while the CLI is still alive, so the
+// HTTP handler can remove the session and release its busy account promptly.
+func TestCollectedProviderUsageReportsStartupFailurePromptly(t *testing.T) {
+	terminal, err := os.CreateTemp(t.TempDir(), "closed-terminal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = terminal.Close()
+	now := time.Now()
+	session := &providerSetupSession{id: "usage-failure", provider: "claude-code", action: "usage", status: "running", terminal: terminal, createdAt: now, updatedAt: now, done: make(chan struct{}), usageStartupDone: make(chan struct{})}
+	session.appendOutput([]byte("❯No,exit\nYes,Itrustthisfolder\nEnter to confirm"))
+	go driveProviderUsage(t.Context(), session)
+	started := time.Now()
+	_ = collectProviderUsageOutput(session, 5*time.Second)
+	session.mu.Lock()
+	failed, submitted := session.usageStartupErr, session.usageSubmitted
+	session.mu.Unlock()
+	if failed == nil || !submitted.IsZero() || time.Since(started) > 2*time.Second {
+		t.Fatalf("startup failure was not reported promptly: %v, %v", failed, time.Since(started))
 	}
 }

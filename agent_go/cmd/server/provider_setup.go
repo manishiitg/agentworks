@@ -214,6 +214,8 @@ type providerSetupSession struct {
 	readOnly          bool
 	usageSubmitted    time.Time
 	usageOutputOffset int
+	usageStartupDone  chan struct{}
+	usageStartupErr   error
 	usageInput        providerUsageInput
 }
 
@@ -550,6 +552,9 @@ func (m *providerSetupManager) startWithArgs(ownerID, provider, action string, c
 		subscribers: make(map[chan []byte]struct{}),
 		done:        make(chan struct{}),
 	}
+	if action == "usage" {
+		session.usageStartupDone = make(chan struct{})
+	}
 	m.mu.Lock()
 	m.sessions[id] = session
 	m.mu.Unlock()
@@ -580,59 +585,73 @@ func (m *providerSetupManager) startWithArgs(ownerID, provider, action string, c
 // writes a fixed provider command and, in the throwaway usage directory, the
 // minimum keys needed to accept a workspace-trust prompt.
 func driveProviderUsage(ctx context.Context, session *providerSetupSession) {
-	usageCommand := providerUsageCommands[session.provider]
-	if usageCommand == "" {
+	if session.usageStartupDone != nil {
+		defer close(session.usageStartupDone)
+	}
+	command := providerUsageCommands[session.provider]
+	if command == "" {
 		return
+	}
+	started := time.Now()
+	startupCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	fail := func(step string, err error) {
+		session.mu.Lock()
+		session.usageStartupErr = err
+		status, size := session.status, len(session.output)
+		session.mu.Unlock()
+		log.Printf("[PROVIDER_USAGE] session=%s provider=%s startup_failed step=%s elapsed_ms=%d status=%s output_bytes=%d error=%q", session.id, session.provider, step, time.Since(started).Milliseconds(), status, size, err)
 	}
 	ticker := time.NewTicker(150 * time.Millisecond)
 	defer ticker.Stop()
-	deadline := time.NewTimer(30 * time.Second)
-	defer deadline.Stop()
-	baseline := 0
-	trustHandled := false
+	baseline, trustAttempts := 0, 0
 	for {
 		select {
-		case <-ctx.Done():
+		case <-startupCtx.Done():
+			fail("prompt", startupCtx.Err())
 			return
-		case <-deadline.C:
-			log.Printf("[PROVIDER_USAGE] session=%s provider=%s startup_timeout trust_handled=%t", session.id, session.provider, trustHandled)
+		case <-session.done:
+			fail("process_exit", errors.New("provider stopped before its command prompt"))
 			return
 		case <-ticker.C:
-			output := providerUsageScreenText(session.outputText())
-			if !trustHandled && providerUsageTrustPrompt(session.provider, output) {
-				if session.provider == "claude-code" && claudeUsageTrustChoice(output) == 0 {
-					continue // Wait for the selected row, not a partially drawn prompt.
-				}
-				if !acceptProviderUsageTrust(session, session.provider, output) {
-					log.Printf("[PROVIDER_USAGE] session=%s provider=%s trust_write_failed", session.id, session.provider)
-					return
-				}
-				log.Printf("[PROVIDER_USAGE] session=%s provider=%s trust_answered", session.id, session.provider)
-				trustHandled = true
-				baseline = len(providerUsageScreenText(session.outputText()))
-				continue
-			}
-			visible := output
-			if baseline >= len(output) && baseline > 0 {
-				continue
-			}
+			raw := session.outputText()
+			visible := raw
 			if baseline > 0 {
-				visible = output[baseline:]
+				if baseline >= len(raw) {
+					continue
+				}
+				visible = raw[baseline:]
 			}
-			if providerUsagePromptReady(session.provider, visible) {
-				session.mu.Lock()
-				session.usageOutputOffset = len(session.output)
-				session.mu.Unlock()
-				if session.write(usageCommand+"\r") != nil {
-					log.Printf("[PROVIDER_USAGE] session=%s provider=%s command_write_failed", session.id, session.provider)
+			output := providerUsageScreenText(visible)
+			if providerUsageTrustPrompt(session.provider, output) {
+				if session.provider == "claude-code" && claudeUsageTrustChoice(output) == 0 {
+					continue
+				}
+				trustAttempts++
+				var err error
+				baseline, err = acceptProviderUsageTrust(startupCtx, session, session.provider, output)
+				if err != nil {
+					fail("trust", err)
 					return
 				}
-				session.mu.Lock()
-				session.usageSubmitted = time.Now()
-				session.mu.Unlock()
-				log.Printf("[PROVIDER_USAGE] session=%s provider=%s command_submitted command=%s", session.id, session.provider, usageCommand)
+				log.Printf("[PROVIDER_USAGE] session=%s provider=%s trust_key_sent attempt=%d elapsed_ms=%d", session.id, session.provider, trustAttempts, time.Since(started).Milliseconds())
+				continue
+			}
+			if !providerUsagePromptReady(session.provider, output) {
+				continue
+			}
+			session.mu.Lock()
+			session.usageOutputOffset = len(session.output)
+			session.mu.Unlock()
+			if err := session.write(command + "\r"); err != nil {
+				fail("command_write", err)
 				return
 			}
+			session.mu.Lock()
+			session.usageSubmitted = time.Now()
+			session.mu.Unlock()
+			log.Printf("[PROVIDER_USAGE] session=%s provider=%s command_submitted command=%s trust_attempts=%d elapsed_ms=%d", session.id, session.provider, command, trustAttempts, time.Since(started).Milliseconds())
+			return
 		}
 	}
 }
@@ -654,35 +673,65 @@ func providerUsageTrustPrompt(provider, output string) bool {
 	}
 }
 
-func acceptProviderUsageTrust(session *providerSetupSession, provider, output string) bool {
-	lower := strings.ToLower(output)
-	switch provider {
-	case "claude-code":
-		if claudeUsageTrustChoice(output) < 0 {
-			if session.write("\x1b[B") != nil {
-				return false
+// Capture the raw offset BEFORE confirming. A fast CLI can print its real
+// prompt before write returns; taking a cleaned-text length afterwards loses it.
+func acceptProviderUsageTrust(ctx context.Context, session *providerSetupSession, provider, output string) (int, error) {
+	if provider == "claude-code" {
+		return acceptClaudeUsageTrust(ctx, session)
+	}
+	if provider == "codex-cli" && strings.Contains(strings.ToLower(output), "› 2. no, quit") {
+		if err := session.write("\x1b[A"); err != nil {
+			return 0, err
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	offset := len(session.outputText())
+	key := "\r"
+	if provider == "muse-cli" {
+		key = "1\r"
+	}
+	return offset, session.write(key)
+}
+
+// Claude can redraw the default selection while its input handlers settle.
+// Wait for a quiet frame after each key and inspect the new selection before
+// Enter. Other startup redraws are handled by the driver's next iteration.
+func acceptClaudeUsageTrust(ctx context.Context, session *providerSetupSession) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	var lastKey time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return 0, fmt.Errorf("trust selection did not settle: %w", ctx.Err())
+		case <-session.done:
+			return 0, errors.New("provider stopped at its trust screen")
+		case <-ticker.C:
+			session.mu.Lock()
+			ready := session.status == "running"
+			quietSince, raw := session.updatedAt, string(session.output)
+			session.mu.Unlock()
+			if !ready {
+				return 0, errors.New("provider stopped at its trust screen")
 			}
-			deadline := time.Now().Add(5 * time.Second)
-			for claudeUsageTrustChoice(providerUsageScreenText(session.outputText())) != 1 {
-				if !session.isRunning() || time.Now().After(deadline) {
-					return false
+			if lastKey.After(quietSince) {
+				quietSince = lastKey
+			}
+			if time.Since(quietSince) < 300*time.Millisecond {
+				continue
+			}
+			switch claudeUsageTrustChoice(providerUsageScreenText(raw)) {
+			case -1:
+				if err := session.write("\x1b[B"); err != nil {
+					return 0, fmt.Errorf("select trust row: %w", err)
 				}
-				time.Sleep(50 * time.Millisecond)
+				lastKey = time.Now()
+			case 1:
+				return len(raw), session.write("\r")
 			}
 		}
-		return session.write("\r") == nil
-	case "codex-cli":
-		if strings.Contains(lower, "› 2. no, quit") {
-			if session.write("\x1b[A") != nil {
-				return false
-			}
-			time.Sleep(250 * time.Millisecond)
-		}
-		return session.write("\r") == nil
-	case "muse-cli":
-		return session.write("1\r") == nil
-	default:
-		return false
 	}
 }
 
@@ -979,9 +1028,18 @@ func collectProviderUsageOutput(session *providerSetupSession, timeout time.Dura
 		}
 		return cleanProviderUsageText(raw)
 	}
+	startupDone := session.usageStartupDone
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		select {
+		case <-startupDone:
+			session.mu.Lock()
+			failed := session.usageStartupErr != nil
+			session.mu.Unlock()
+			if failed {
+				return result()
+			}
+			startupDone = nil
 		case <-session.done:
 			return result()
 		default:
