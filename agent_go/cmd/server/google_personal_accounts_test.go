@@ -171,8 +171,9 @@ esac
 	// Native chat execution can arrive without request claims. It must keep
 	// the authenticated turn's person and token, just as the website does.
 	t.Setenv("LOCAL_MODE", "false")
+	api.lastQueryRequests = map[string]QueryRequest{"google-session": {userID: "editor", SelectedFolder: "Workflow/orders"}}
 	native := crewCapabilityRegistrar{}
-	if err := api.registerPersonalGoogleAccountTool(native, "Workflow/orders", GetUserFromContext(ctx)); err != nil {
+	if err := api.registerPersonalGoogleAccountToolForCaller(native, "Workflow/orders", "google-session", GetUserFromContext(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := native["manage_google_account"].execute(context.Background(), map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err != nil {
@@ -184,8 +185,15 @@ esac
 	if _, err := native["manage_google_account"].execute(googleAppRequest("POST", "/", "", "builder").Context(), map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err == nil {
 		t.Fatal("native tool accepted a different runtime caller")
 	}
+	// Even if an old registered callback survived into a second person's
+	// context-free native turn, it cannot act as the first person.
+	api.lastQueryRequests["google-session"] = QueryRequest{userID: "builder", SelectedFolder: "Workflow/orders"}
+	if _, err := native["manage_google_account"].execute(context.Background(), map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err == nil {
+		t.Fatal("stale registered tool acted as the previous turn's caller")
+	}
+	api.lastQueryRequests["google-session"] = QueryRequest{userID: "editor", SelectedFolder: "Workflow/orders"}
 	bounded := crewCapabilityRegistrar{}
-	if err := api.registerPersonalGoogleAccountTool(bounded, "Workflow/orders", &UserClaims{UserID: "editor", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read", "builder:chat"}, WorkflowIDs: []string{"another"}}}); err != nil {
+	if err := api.registerPersonalGoogleAccountToolForCaller(bounded, "Workflow/orders", "google-session", &UserClaims{UserID: "editor", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read", "builder:chat"}, WorkflowIDs: []string{"another"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := bounded["manage_google_account"].execute(ctx, map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err == nil {

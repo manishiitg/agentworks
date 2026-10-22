@@ -121,7 +121,11 @@ func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar defini
 	}, "gmail_connection_management"); err != nil {
 		return err
 	}
-	if err := api.registerPersonalGoogleAccountTool(registrar, workspacePath, callers...); err != nil {
+	var caller *UserClaims
+	if len(callers) > 0 {
+		caller = callers[0]
+	}
+	if err := api.registerPersonalGoogleAccountToolForCaller(registrar, workspacePath, sessionID, caller); err != nil {
 		return err
 	}
 	if err := api.registerPersonalSlackAccountTool(registrar, workspacePath); err != nil {
