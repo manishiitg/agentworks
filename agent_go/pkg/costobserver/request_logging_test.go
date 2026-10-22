@@ -52,7 +52,7 @@ func TestModelRequestLogsKeepUnitsAndExcludeContent(t *testing.T) {
 	if strings.Contains(text, private) {
 		t.Fatal("request logging exposed content, error text or authored labels")
 	}
-	for _, want := range []string{"stage=started unit=native_turn", "stage=failed unit=native_turn", "stage=completed unit=native_turn", `source_id="workflow-schedule:test"`, `source_run_id="occurrence-1"`, "recorded_generations=3 count_basis=native_model_generations"} {
+	for _, want := range []string{`occurred_at="` + now.Format(time.RFC3339Nano) + `"`, `execution_id="execution-1"`, "stage=started unit=native_turn", "stage=failed unit=native_turn", "stage=completed unit=native_turn", `source_id="workflow-schedule:test"`, `source_run_id="occurrence-1"`, "recorded_generations=3 count_basis=native_model_generations"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("request log missing %q: %s", want, text)
 		}

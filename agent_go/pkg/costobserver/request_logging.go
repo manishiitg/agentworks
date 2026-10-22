@@ -2,6 +2,7 @@ package costobserver
 
 import (
 	"log"
+	"time"
 
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
@@ -17,8 +18,8 @@ func (o *Observer) logModelRequest(event *unifiedevents.AgentEvent, stage, provi
 	if countBasis == "retained_native_step" {
 		unit = "native_usage_step"
 	}
-	log.Printf("[MODEL_REQUEST] stage=%s unit=%s session_id=%q span_id=%q correlation_id=%q turn_id=%q provider=%q model=%q scope=%q activity=%q source_id=%q source_run_id=%q workflow_id=%q product_kind=%q product_id=%q recorded_generations=%d count_basis=%s",
-		stage, unit, o.sessionID, event.SpanID, event.CorrelationID, event.TurnID,
+	log.Printf("[MODEL_REQUEST] stage=%s unit=%s occurred_at=%q execution_id=%q session_id=%q span_id=%q correlation_id=%q turn_id=%q provider=%q model=%q scope=%q activity=%q source_id=%q source_run_id=%q workflow_id=%q product_kind=%q product_id=%q recorded_generations=%d count_basis=%s",
+		stage, unit, event.Timestamp.UTC().Format(time.RFC3339Nano), o.executionID, o.sessionID, event.SpanID, event.CorrelationID, event.TurnID,
 		provider, model, o.scope, o.attribution.Activity, o.sourceID, o.sourceRunID,
 		o.workflowID, o.attribution.ProductKind, o.attribution.ProductID, generations, countBasis)
 }
