@@ -17,6 +17,9 @@ metadata:
     - request_workflow_folder_access
     relays:
     - request_workflow_folder_access
+  external-tools:
+  - crew_folders
+  - crew_references
 ---
 
 # Linked projects and folders

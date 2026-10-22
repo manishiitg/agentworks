@@ -7,6 +7,9 @@ metadata:
     - consolidate_knowledgebase
     - reorganize_knowledgebase
     - execute_shell_command
+  external-tools:
+  - list_workflow_knowledge
+  - read_workflow_knowledge
 ---
 
 # Knowledge base

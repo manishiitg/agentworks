@@ -10,6 +10,9 @@ metadata:
     - update_step
     - maintain_plan
     - get_workflow_config
+  external-tools:
+  - plan
+  - get_plan
 ---
 
 # Goal plan

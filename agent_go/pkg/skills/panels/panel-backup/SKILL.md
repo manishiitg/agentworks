@@ -6,6 +6,7 @@ metadata:
     agentworks:
     - execute_shell_command
     - create_workflow_database_snapshot
+  external-tools: []
 ---
 
 # Backup

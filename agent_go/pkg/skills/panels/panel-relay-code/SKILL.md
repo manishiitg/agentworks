@@ -12,6 +12,10 @@ metadata:
     - publish_relay
     - execute_shell_command
     - diff_patch_workspace_file
+  external-tools:
+  - test_relay
+  - publish_relay
+  - get_relay_releases
 ---
 
 # Relay code and publishing

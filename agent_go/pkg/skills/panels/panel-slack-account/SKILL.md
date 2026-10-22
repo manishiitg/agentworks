@@ -9,6 +9,8 @@ metadata:
     - manage_slack_account
     relays:
     - manage_slack_account
+  external-tools:
+  - workflow_slack_account
 ---
 
 # Slack account

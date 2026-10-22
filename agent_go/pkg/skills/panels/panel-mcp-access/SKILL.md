@@ -17,6 +17,7 @@ metadata:
     - settings
     - get_ui_state
     - perform_ui_action
+  external-tools: []
 ---
 
 # MCP access

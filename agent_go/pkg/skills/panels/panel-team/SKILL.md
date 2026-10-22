@@ -6,6 +6,8 @@ metadata:
     agentworks:
     - workflow_team
     - get_workflow_team
+  external-tools:
+  - workflow_team
 ---
 
 # Team

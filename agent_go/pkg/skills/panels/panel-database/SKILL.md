@@ -13,6 +13,8 @@ metadata:
     - mutate_workflow_db
     - apply_workflow_db_migration
     - create_workflow_database_snapshot
+  external-tools:
+  - query_database
 ---
 
 # Database

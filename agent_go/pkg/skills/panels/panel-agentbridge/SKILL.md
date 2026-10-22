@@ -16,6 +16,10 @@ metadata:
     - list_agents
     - send_message
     - read_agent_messages
+  external-tools:
+  - list_agents
+  - send_message
+  - read_agent_messages
 ---
 
 # AgentBridge and computer chats

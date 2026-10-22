@@ -73,3 +73,28 @@ func TestWorkspacePanelChatToolsBindCurrentBuilder(t *testing.T) {
 		t.Fatal("retained callback accepted a different current turn user")
 	}
 }
+
+func TestRelayPanelToolsKeepDashboardSharing(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","relays"]}]}`)
+	const root, session = "Workflow/flow", "flow-builder"
+	f.write(t, root+"/workflow.json", `{"id":"flow","kind":"relay","label":"Flow","created_by":"owner","access":{"owners":["owner"]}}`)
+	f.api.lastQueryRequests = map[string]QueryRequest{session: {userID: "owner", SelectedFolder: root}}
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+	reg := &recordingRegistrar{}
+	if err := f.api.registerWorkspacePanelChatTools(reg, nil, "owner", session, root, "relays"); err != nil {
+		t.Fatal(err)
+	}
+	if len(reg.tools) != 5 {
+		t.Fatalf("unexpected Relay adapter surface: %v", reg.tools)
+	}
+	for _, action := range []string{"get_access", "set_access"} {
+		if _, err := reg.tools["manage_project"].exec(ctx, map[string]any{"action": action, "owners": []any{"owner", "another"}}); err == nil {
+			t.Fatal("Flow exposed owner/editor member lists")
+		}
+	}
+	f.api.lastQueryRequests[session] = QueryRequest{userID: "owner", SelectedFolder: "Workflow/invoices"}
+	if _, err := reg.tools["settings"].exec(ctx, map[string]any{"action": "get"}); err == nil {
+		t.Fatal("Relay callback moved to a Goal")
+	}
+}

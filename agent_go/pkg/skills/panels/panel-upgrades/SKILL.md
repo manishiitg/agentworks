@@ -9,6 +9,8 @@ metadata:
     - migrate_agent_steps
     - migrate_goal_agents
     - migrate_workflow_skills
+  external-tools:
+  - workflow_upgrade
 ---
 
 # Upgrades

@@ -8,6 +8,8 @@ metadata:
     - ask_pulse
     - update_workflow_config
     - settings
+  external-tools:
+  - manage_pulse
 ---
 
 # Pulse

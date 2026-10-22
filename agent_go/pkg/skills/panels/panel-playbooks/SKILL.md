@@ -5,6 +5,8 @@ metadata:
   panel-tools:
     agentworks:
     - search_playbooks
+  external-tools:
+  - search_playbooks
 ---
 
 # Workflow playbooks

@@ -18,6 +18,9 @@ metadata:
     - get_function_call
     relays:
     - manage_workflow_webhook
+  external-tools:
+  - '*workflow_function*'
+  - '*crew_function*'
 ---
 
 # Functions

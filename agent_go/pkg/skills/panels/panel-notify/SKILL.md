@@ -8,6 +8,8 @@ metadata:
     - update_workflow_config
     - get_notification_history
     - settings
+  external-tools:
+  - get_notification_history
 ---
 
 # Notify

@@ -7,6 +7,9 @@ metadata:
     - list_relay_runs
     - get_relay_run
     - get_relay_releases
+  external-tools:
+  - list_relay_runs
+  - get_relay_run
 ---
 
 # Relay runs

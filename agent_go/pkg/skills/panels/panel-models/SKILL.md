@@ -18,6 +18,9 @@ metadata:
     - list_published_llms
     - set_workflow_llm_config
     - settings
+  external-tools:
+  - manage_crew_chats
+  - get_llm_config
 ---
 
 # Models

@@ -12,6 +12,8 @@ metadata:
     - manage_workflow_webhook
     relays:
     - manage_workflow_webhook
+  external-tools:
+  - manage_triggers
 ---
 
 # Webhooks

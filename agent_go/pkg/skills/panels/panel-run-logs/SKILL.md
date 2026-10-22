@@ -8,6 +8,9 @@ metadata:
     - query_step
     - get_schedule_runs
     - execute_shell_command
+  external-tools:
+  - list_executions
+  - query_step
 ---
 
 # Run logs

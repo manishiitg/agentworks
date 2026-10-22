@@ -6,6 +6,12 @@ metadata:
   panel-tools:
     work:
     - manage_laptop_access
+  external-tools:
+  - manage_laptop_access
+  - list_local_files
+  - write_local_file
+  - copy_local_file_to_crew
+  - execute_local_shell_command
 ---
 
 # Local laptop

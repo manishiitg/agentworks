@@ -20,6 +20,8 @@ metadata:
     - set_workflow_secret
     - delete_workflow_secret
     - settings
+  external-tools:
+  - get_secret_sources
 ---
 
 # Secrets

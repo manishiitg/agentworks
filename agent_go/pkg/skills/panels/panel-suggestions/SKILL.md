@@ -7,6 +7,10 @@ metadata:
     - list_needs_you
     - answer_needs_you
     - dismiss_needs_you
+  external-tools:
+  - list_needs_you
+  - answer_needs_you
+  - dismiss_needs_you
 ---
 
 # Suggestions

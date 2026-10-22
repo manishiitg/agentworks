@@ -6,6 +6,8 @@ metadata:
   panel-tools:
     work:
     - crew_owners
+  external-tools:
+  - crew_owners
 ---
 
 # Owners and collaborators

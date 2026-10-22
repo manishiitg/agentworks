@@ -14,6 +14,9 @@ metadata:
     - get_dashboard_share
     - share_dashboard
     - manage_project
+  external-tools:
+  - get_dashboard_share
+  - share_dashboard
 ---
 
 # People and access

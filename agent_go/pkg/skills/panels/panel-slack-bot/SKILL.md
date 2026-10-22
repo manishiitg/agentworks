@@ -21,6 +21,8 @@ metadata:
     - update_slack_bot_route_permission
     - remove_slack_bot_route
     - manage_messaging
+  external-tools:
+  - workflow_slack_bot
 ---
 
 # Slack bot

@@ -14,6 +14,9 @@ metadata:
     - configure_agent_inbox
     - manage_google_account
     - manage_condition_triggers
+  external-tools:
+  - agent_inbox
+  - configure_agent_inbox
 ---
 
 # Email inbox

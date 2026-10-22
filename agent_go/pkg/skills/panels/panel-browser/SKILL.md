@@ -15,6 +15,8 @@ metadata:
     - browser_connections
     - agent_browser
     - settings
+  external-tools:
+  - browser_connections
 ---
 
 # Browser

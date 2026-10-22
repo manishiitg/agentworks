@@ -33,6 +33,8 @@ metadata:
     - remove_mcp_server
     - trigger_mcp_discovery
     - settings
+  external-tools:
+  - crew_mcp
 ---
 
 # MCP connections

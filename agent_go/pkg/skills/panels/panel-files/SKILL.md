@@ -14,6 +14,12 @@ metadata:
     - execute_shell_command
     - diff_patch_workspace_file
     - get_file_link
+  external-tools:
+  - list_files
+  - search_files
+  - read_file
+  - write_file
+  - get_file_link
 ---
 
 # Files

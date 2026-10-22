@@ -6,6 +6,7 @@ metadata:
     work:
     - execute_shell_command
     - diff_patch_workspace_file
+  external-tools: []
 ---
 
 # Memory

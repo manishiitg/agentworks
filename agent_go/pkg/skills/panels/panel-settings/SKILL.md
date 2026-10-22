@@ -23,6 +23,10 @@ metadata:
     - update_workflow_config
     - manage_project
     - settings
+  external-tools:
+  - get_settings
+  - update_settings
+  - manage_project
 ---
 
 # Instructions and identity

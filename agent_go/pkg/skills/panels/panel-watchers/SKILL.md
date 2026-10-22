@@ -9,6 +9,8 @@ metadata:
     - manage_condition_triggers
     relays:
     - manage_condition_triggers
+  external-tools:
+  - manage_condition_triggers
 ---
 
 # Watchers

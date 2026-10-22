@@ -6,6 +6,7 @@ metadata:
     work:
     - execute_shell_command
     - perform_ui_action
+  external-tools: []
 ---
 
 # Terminal

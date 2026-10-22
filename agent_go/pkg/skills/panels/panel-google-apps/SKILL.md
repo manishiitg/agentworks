@@ -15,6 +15,8 @@ metadata:
     - manage_google_account
     - list_gmail_connections
     - update_gmail_connection_grants
+  external-tools:
+  - workflow_google_account
 ---
 
 # Google apps

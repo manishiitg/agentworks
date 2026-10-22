@@ -15,6 +15,8 @@ metadata:
     - execute_shell_command
     - get_ui_state
     - perform_ui_action
+  external-tools:
+  - builder_file_history
 ---
 
 # Chat history

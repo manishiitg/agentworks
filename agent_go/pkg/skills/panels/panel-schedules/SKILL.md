@@ -15,6 +15,11 @@ metadata:
     - delete_schedule
     - trigger_schedule
     - get_schedule_runs
+  external-tools:
+  - manage_schedules
+  - list_schedules
+  - get_schedule_runs
+  - trigger_schedule
 ---
 
 # Schedules

@@ -8,6 +8,10 @@ metadata:
     - answer_human_input_request
     - create_human_input_request
     - withdraw_human_input_request
+  external-tools:
+  - get_human_input_request
+  - create_human_input_request
+  - answer_human_input_request
 ---
 
 # Decisions

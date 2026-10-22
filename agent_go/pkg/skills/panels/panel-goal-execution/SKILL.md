@@ -11,6 +11,11 @@ metadata:
     - list_executions
     - stop_step
     - stop_all_executions
+  external-tools:
+  - execute_step
+  - run_full_workflow
+  - stop_step
+  - stop_all_executions
 ---
 
 # Run a Goal

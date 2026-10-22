@@ -22,6 +22,8 @@ metadata:
     - brain_update
     - brain_skills
     - brain_access
+  external-tools:
+  - brain_*
 ---
 
 # Brain connection

@@ -6,6 +6,7 @@ metadata:
     agentworks:
     - execute_shell_command
     - get_report_link
+  external-tools: []
 ---
 
 # Publish

@@ -25,6 +25,13 @@ metadata:
     - install_skill
     - uninstall_skill
     - settings
+  external-tools:
+  - crew_skills
+  - list_skills
+  - search_skills
+  - install_skill
+  - import_skill
+  - uninstall_skill
 ---
 
 # Skills

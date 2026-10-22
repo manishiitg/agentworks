@@ -9,6 +9,8 @@ metadata:
     - manage_messaging
     agentworks:
     - manage_messaging
+  external-tools:
+  - manage_messaging
 ---
 
 # WhatsApp

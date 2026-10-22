@@ -26,6 +26,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productguide"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -281,6 +282,20 @@ func loadExternalGuidanceTopics() []externalGuidanceTopic {
 			seen[item.Name] = true
 			topics = append(topics, externalGuidanceTopic{Name: item.Name, Description: item.Description, ExternalNote: item.ExternalNote, Scopes: item.Scopes, Tools: item.Tools, Source: source.name, Content: item.Content})
 		}
+	}
+	// Use the same procedures for external schema guidance and native chat.
+	// Existing action resolution, visibility and delivery receipts still apply.
+	for _, name := range skills.WorkspacePanelNames() {
+		patterns := skills.WorkspacePanelExternalTools(name)
+		if len(patterns) == 0 {
+			continue
+		}
+		definition := skills.BuiltinDefinition(name)
+		if seen[name] {
+			panic("duplicate panel guidance: " + name)
+		}
+		seen[name] = true
+		topics = append(topics, externalGuidanceTopic{Name: name, Description: definition.Description, Source: "panel", Tools: patterns, Content: definition.Content})
 	}
 	topics = append(topics,
 		externalGuidanceTopic{Name: "product-guide", Description: "Choose AgentWorks products: purpose, abilities, access requirements and examples.", Source: "product-guide", SourceVersion: productguide.GuideVersion},

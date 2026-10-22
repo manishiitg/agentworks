@@ -10,6 +10,9 @@ metadata:
     - query_workflow_costs
     relays:
     - get_cost_summary
+  external-tools:
+  - get_cost_summary
+  - get_crew_costs
 ---
 
 # Costs and usage

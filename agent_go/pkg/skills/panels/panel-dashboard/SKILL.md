@@ -36,6 +36,9 @@ metadata:
     - get_dashboard_link
     - restore_dashboard
     - get_dashboard_catalog
+  external-tools:
+  - '*dashboard*'
+  - get_report_link
 ---
 
 # Project dashboard

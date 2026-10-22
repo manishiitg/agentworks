@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"path"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -20,6 +21,7 @@ import (
 var workspacePanelFiles embed.FS
 
 var workspacePanelTools = map[string]map[string][]string{}
+var workspacePanelExternalTools = map[string][]string{}
 
 func init() {
 	files, err := fs.Glob(workspacePanelFiles, "panels/*/SKILL.md")
@@ -38,7 +40,8 @@ func init() {
 		}
 		var header struct {
 			Metadata struct {
-				Tools map[string][]string `yaml:"panel-tools"`
+				Tools         map[string][]string `yaml:"panel-tools"`
+				ExternalTools []string            `yaml:"external-tools"`
 			} `yaml:"metadata"`
 		}
 		parts := strings.SplitN(string(body), "---", 3)
@@ -49,6 +52,7 @@ func init() {
 			panic(err)
 		}
 		workspacePanelTools[name] = header.Metadata.Tools
+		workspacePanelExternalTools[name] = header.Metadata.ExternalTools
 		if parsed.Frontmatter.Name != name {
 			panic(fmt.Errorf("panel skill %s has a different name", name))
 		}
@@ -91,4 +95,17 @@ func WorkspacePanelToolGuidance(tool, description string, attached []*llmtypes.S
 		return description
 	}
 	return description + "\nBefore changing this panel, read the matching attached skill with read_skill (choose the relevant one): " + strings.Join(names, ", ") + "."
+}
+
+func WorkspacePanelNames() []string {
+	names := make([]string, 0, len(workspacePanelTools))
+	for name := range workspacePanelTools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func WorkspacePanelExternalTools(name string) []string {
+	return append([]string(nil), workspacePanelExternalTools[name]...)
 }
