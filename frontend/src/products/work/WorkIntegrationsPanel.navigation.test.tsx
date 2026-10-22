@@ -8,7 +8,6 @@ vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ useWorkspaceViewTarget: (
 vi.mock('../../components/workflow/bots/gmailAskAI', () => ({ getGoogleAppsAskAIMessage: () => 'Google help' }))
 vi.mock('../../components/workflow/WorkspaceViewHeader', () => ({ WorkspaceViewHeader: ({ title, below, tabs, actions }: any) => <header><h2>{title}</h2>{below}{tabs && <div aria-label={tabs.ariaLabel}>{tabs.options.map((tab: any) => <button key={tab.value} onClick={() => tabs.onChange(tab.value)}>{tab.label}</button>)}</div>}{actions}</header> }))
 vi.mock('../../components/workflow/WorkspaceViewActions', () => ({ WorkspaceViewActions: () => null }))
-vi.mock('../../components/integrations/ConnectedProjectAccounts', () => ({ ConnectedProjectAccounts: () => null }))
 vi.mock('../../components/integrations/SlackAccountsPanel', () => ({ default: () => <div data-content="slack-account">Existing Slack account permissions</div> }))
 vi.mock('../../components/integrations/ProductSlackPanel', () => ({ ProductSlackPanel: ({ section }: any) => <div data-content="slack" data-section={section}>Act in Slack · Talk to this Crew</div> }))
 vi.mock('../../components/workflow/ShareDashboardButton', () => ({ ShareDashboardButton: ({ section }: any) => <div data-content="sharing" data-section={section}>Existing server-gated sharing</div> }))
@@ -47,7 +46,9 @@ it.each([CREW_PRODUCT])('opens current connections for origin $profileId and pre
   const host = await mount(product)
   expect(host.querySelector('[data-content="mcp"]')?.textContent).toBe('connected MCP content')
   expect(host.querySelector('[aria-label="Integration sections"]')).toBeNull()
-  expect(host.querySelector('nav')?.textContent).toContain('Add connection')
+  expect(host.querySelector('nav')).toBeNull()
+  expect(host.textContent).not.toContain('Accounts used here')
+  expect(host.textContent).not.toContain('Chats from your computer')
   expect(host.querySelector('[aria-label="MCP servers"]')).toBeNull()
   await act(async () => state.target('secrets')); expect(host.querySelector('[data-content="secrets"]')).not.toBeNull()
   expect(host.querySelector('[data-content="mcp"]')).toBeNull()
@@ -109,10 +110,10 @@ it('opens the new menu destinations without changing sharing or account permissi
 })
 
 
-it('keeps published agents discoverable in Connections and mounts only the selected list', async () => {
+it('keeps computer chats in their dedicated destination and mounts only that list', async () => {
   const host = await mount()
   expect(host.querySelector('[data-content="agents"]')).toBeNull()
-  await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Chats from your computer')!.click())
+  await act(async () => state.target('agents'))
   expect(host.querySelector('[data-content="agents"]')).not.toBeNull()
   expect(host.querySelector('[data-content="mcp"]')).toBeNull()
   await act(async () => state.target('overview'))

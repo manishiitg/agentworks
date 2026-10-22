@@ -82,7 +82,8 @@ describe('Workflow MCP panel layout', () => {
     expect(sections).toMatch(/'apps'[\s\S]*?'slack'[\s\S]*?'whatsapp'[\s\S]*?'gmail'/)
     expect(sections).toContain("{ value: 'apps', label: 'Vault'")
     // One resource navigation replaces the old intermediate section directory.
-    expect(panel).toContain('<IntegrationNavigation')
+    expect(panel).not.toContain('<IntegrationNavigation')
+    expect(panel).not.toContain('ConnectedProjectAccounts')
     expect(panel).not.toContain('<IntegrationSectionPicker')
     expect(panel).toContain('tabs={section ===')
     expect(panel).toContain('<ProjectPluginsPanel')

@@ -101,6 +101,7 @@ print_usage() {
     printf '%s\n' 'Usage: ./run_server_with_logging.sh [options]'
     printf '%s\n' ''
     printf '%s\n' 'Default (no composition flags): agent + workspace + frontend, with all core products.'
+    printf '%s\n' 'Vault must start successfully for the full local app to run.'
     printf '%s\n' 'Local Vault audit storage defaults to SQLite; VAULT_AUDIT_PROVIDER=off disables collection.'
     printf '%s\n' ''
     printf '%s\n' 'Options:'
@@ -2381,10 +2382,12 @@ if [ "$WITH_WORKSPACE" = true ]; then
 fi
 
 if [ "$WITH_GATEWAY" = true ]; then
-    # An explicit opt-in requires a healthy Vault; never leave a dangling URL.
+    # The full local app requires Vault for MCPs and secrets.
     if ! start_mcp_gateway; then
-        if [ "${LOCAL_VAULT:-false}" = true ] && [ "$GATEWAY_EXPLICIT" = true ]; then
-            echo "❌ Vault failed to start; see ${GATEWAY_LOG_PATH}. Fix the error there, or start with --without-server-products."
+        if [ "${LOCAL_VAULT:-false}" = true ]; then
+            echo "❌ Vault failed to start; see ${GATEWAY_LOG_PATH}."
+            echo "   Stop any other AgentWorks instance using this local workspace, fix the reported error, then run ./run_server_with_logging.sh again."
+            echo "   --without-server-products explicitly runs only Goals, Crew and AgentBridge."
             exit 1
         fi
         if [ "$GATEWAY_EXPLICIT" = true ]; then

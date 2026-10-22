@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,8 +23,9 @@ import (
 
 // Client is a bound upstream MCP session.
 type Client struct {
-	c   *client.Client
-	url string
+	c           *client.Client
+	url         string
+	diagnostics *refusalNote
 }
 
 type DialOptions struct {
@@ -112,8 +114,56 @@ type boundedTransport struct {
 
 // refusalNote keeps what the upstream server said when it answered an error, so a failed connect can show it.
 type refusalNote struct {
-	mu   sync.Mutex
-	text string
+	mu          sync.Mutex
+	text        string
+	credentials []string
+}
+
+// Only credentials actually sent on this connection are excluded from errors.
+// Successful tool replies and the original error classification are unchanged.
+func (n *refusalNote) rememberCredential(value string) {
+	if value == "" {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for _, existing := range n.credentials {
+		if existing == value {
+			return
+		}
+	}
+	n.credentials = append(n.credentials, value)
+}
+
+func (n *refusalNote) redact(text string) string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	// Replace longer values first when a header includes another credential.
+	values := append([]string(nil), n.credentials...)
+	sort.Slice(values, func(i, j int) bool { return len(values[i]) > len(values[j]) })
+	for _, value := range values {
+		text = strings.ReplaceAll(text, value, "[redacted]")
+	}
+	return text
+}
+
+type credentialSafeError struct {
+	cause error
+	text  string
+}
+
+func (e credentialSafeError) Error() string { return e.text }
+func (e credentialSafeError) Unwrap() error { return e.cause }
+
+func (n *refusalNote) safeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	text := n.redact(err.Error())
+	if text == err.Error() {
+		return err
+	}
+	return credentialSafeError{cause: err, text: text}
 }
 
 func (n *refusalNote) set(text string) {
@@ -129,16 +179,16 @@ func (n *refusalNote) get() string {
 }
 
 // refusalReason is the server's own sentence: a JSON-RPC error message, else the start of the body.
-func refusalReason(body string) string {
+func refusalReason(body string, redact func(string) string) string {
 	var rpc struct {
 		Error struct {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
 	if json.Unmarshal([]byte(body), &rpc) == nil && strings.TrimSpace(rpc.Error.Message) != "" {
-		return strings.TrimSpace(rpc.Error.Message)
+		body = rpc.Error.Message
 	}
-	body = strings.Join(strings.Fields(body), " ")
+	body = strings.Join(strings.Fields(redact(body)), " ")
 	if len(body) > 300 {
 		body = body[:300]
 	}
@@ -172,9 +222,20 @@ func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			_ = json.Unmarshal([]byte(token), &headers)
 			for name, value := range headers {
 				req.Header.Set(name, value)
+				if t.refusal != nil {
+					t.refusal.rememberCredential(value)
+					if strings.EqualFold(name, "Authorization") {
+						if _, credential, found := strings.Cut(value, " "); found {
+							t.refusal.rememberCredential(strings.TrimSpace(credential))
+						}
+					}
+				}
 			}
 		} else {
 			req.Header.Set("Authorization", scheme+" "+token)
+			if t.refusal != nil {
+				t.refusal.rememberCredential(token)
+			}
 		}
 	}
 	resp, err := t.base.RoundTrip(req)
@@ -182,12 +243,18 @@ func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	if t.refusal != nil && resp.StatusCode >= 400 && resp.StatusCode != http.StatusUnauthorized && resp.Body != nil {
-		excerpt, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		resp.Body = struct {
-			io.Reader
-			io.Closer
-		}{io.MultiReader(strings.NewReader(string(excerpt)), resp.Body), resp.Body}
-		t.refusal.set(refusalReason(string(excerpt)))
+		// Decode/redact before shortening the diagnostic, so truncation cannot
+		// expose a prefix of a credential at the old excerpt boundary.
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, t.refusal.safeError(readErr)
+		}
+		if len(body) > maxResponseBytes {
+			return nil, errors.New("upstream response exceeds size limit")
+		}
+		resp.Body = io.NopCloser(strings.NewReader(string(body)))
+		t.refusal.set(fmt.Sprintf("%s (HTTP %d)", refusalReason(string(body), t.refusal.redact), resp.StatusCode))
 	}
 	if resp.ContentLength > maxResponseBytes {
 		resp.Body.Close()
@@ -235,11 +302,12 @@ func Dial(ctx context.Context, url string) (*Client, error) {
 	return DialWithOptions(ctx, url, DialOptions{})
 }
 
-func DialWithOptions(ctx context.Context, url string, opts DialOptions) (*Client, error) {
+func DialWithOptions(ctx context.Context, url string, opts DialOptions) (_ *Client, dialErr error) {
 	if _, err := ValidateURL(url, opts); err != nil {
 		return nil, err
 	}
 	refusal := &refusalNote{}
+	defer func() { dialErr = refusal.safeError(dialErr) }()
 	var c *client.Client
 	var err error
 	httpClient := safeHTTPClientNoting(opts, refusal)
@@ -252,6 +320,9 @@ func DialWithOptions(ctx context.Context, url string, opts DialOptions) (*Client
 		return nil, fmt.Errorf("upstream client: %w", err)
 	}
 	if err := c.Start(ctx); err != nil {
+		if said := refusal.get(); said != "" && !IsAuthorizationRequired(err) {
+			return nil, fmt.Errorf("upstream refused the connection: %s", said)
+		}
 		return nil, fmt.Errorf("upstream start: %w", err)
 	}
 	initReq := mcp.InitializeRequest{}
@@ -265,10 +336,10 @@ func DialWithOptions(ctx context.Context, url string, opts DialOptions) (*Client
 		}
 		return nil, fmt.Errorf("upstream initialize: %w", err)
 	}
-	return &Client{c: c, url: url}, nil
+	return &Client{c: c, url: url, diagnostics: refusal}, nil
 }
 
-func (u *Client) Close() error { return u.c.Close() }
+func (u *Client) Close() error { return u.diagnostics.safeError(u.c.Close()) }
 
 // IsAuthorizationRequired reports an upstream that answered 401 because it needs a sign-in.
 func IsAuthorizationRequired(err error) bool {
@@ -281,7 +352,7 @@ func (u *Client) URL() string { return u.url }
 func (u *Client) Discover(ctx context.Context) ([]mcp.Tool, error) {
 	res, err := u.c.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {
-		return nil, fmt.Errorf("upstream tools/list: %w", err)
+		return nil, u.diagnostics.safeError(fmt.Errorf("upstream tools/list: %w", err))
 	}
 	return res.Tools, nil
 }
@@ -293,7 +364,7 @@ func (u *Client) Call(ctx context.Context, name string, args map[string]any) (*m
 	req.Params.Arguments = args
 	res, err := u.c.CallTool(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, u.diagnostics.safeError(err)
 	}
 	return res, nil
 }

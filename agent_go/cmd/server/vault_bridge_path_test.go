@@ -9,9 +9,10 @@ import (
 
 	events "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/mcpagent/mcpcache/openapi"
+	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
-func TestVaultGeneratedBridgePathUsesLiveGrantsWithoutProjectSelection(t *testing.T) {
+func TestVaultGeneratedBridgePathPreservesProjectSelection(t *testing.T) {
 	withMCPConnectionsRoot(t)
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
@@ -42,10 +43,20 @@ func TestVaultGeneratedBridgePathUsesLiveGrantsWithoutProjectSelection(t *testin
 	if err != nil || vaultSelectionName(got.Name) != raw {
 		t.Fatalf("selected generated path failed: %v", err)
 	}
-	for _, selected := range [][]string{nil, {"vault_c-other"}, {"vault_c_notion_1"}} {
-		if _, err = api.resolveScopedGovernedMCP(ctx, nil, selected, []string{"private:other"}, "alice", path, "fetch"); err != nil {
-			t.Fatalf("authorized Vault access was gated by project selection: %v", selected)
+	// The HTTP path normalizes punctuation; compare selections with the
+	// exact connection recovered from live grants, including per-tool picks.
+	for _, selected := range [][]string{nil, {raw}} {
+		if _, err = api.resolveScopedGovernedMCP(ctx, nil, selected, []string{raw + ":fetch"}, "alice", path, "fetch"); err != nil {
+			t.Fatalf("selected tool on generated path failed: %v", err)
 		}
+	}
+	for _, selected := range [][]string{{"vault_c-other"}, {"vault_c_notion_1"}, {mcpclient.NoServers}} {
+		if _, err = api.resolveScopedGovernedMCP(ctx, nil, selected, nil, "alice", path, "fetch"); err == nil {
+			t.Fatalf("unselected connection was allowed: %v", selected)
+		}
+	}
+	if _, err = api.resolveScopedGovernedMCP(ctx, nil, []string{raw}, []string{raw + ":other"}, "alice", path, "fetch"); err == nil {
+		t.Fatal("unselected tool was allowed")
 	}
 	_, tool, toolErr := api.vaultBridgeToolName(ctx, "crew-test", path, "notion_c_notion_1__notion_fetch")
 	if toolErr != nil || tool != "notion_c-notion-1__notion-fetch" {

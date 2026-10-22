@@ -629,7 +629,7 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 		return strings.ToLower(name)
 	}
 	for _, name := range selected {
-		if name != mcpclient.NoServers && canonical(name) == canonical(server) {
+		if name != mcpclient.NoServers && canonical(name) == canonical(resolved.Name) {
 			allowed = true
 		}
 	}
@@ -646,7 +646,7 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 		}
 		for _, entry := range tools {
 			n, t, ok := strings.Cut(entry, ":")
-			if ok && canonical(n) == canonical(server) && (t == "*" || t == tool || t == upstreamTool) {
+			if ok && canonical(n) == canonical(resolved.Name) && (t == "*" || t == tool || t == upstreamTool) {
 				allowed = true
 			}
 		}

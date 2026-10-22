@@ -11,12 +11,11 @@ import WorkflowLLMConfigurationPanel from './WorkflowLLMConfigurationPanel'
 import WorkflowBotsPanel from './WorkflowBotsPanel'
 import WorkflowEmailPanel from './WorkflowEmailPanel'
 import { ProjectMcpSetupPanel } from '../integrations/ProjectMcpSetupPanel'
-import { IntegrationNavigation, integrationNavigationOptions } from '../integrations/IntegrationNavigation'
+import { integrationNavigationOptions } from '../integrations/IntegrationNavigation'
 import { projectChannelLabel, type ProjectChannel } from '../integrations/projectChannels'
 import { ShareDashboardButton } from './ShareDashboardButton'
-import { ConnectedProjectAccounts } from '../integrations/ConnectedProjectAccounts'
 import { projectIntegrationSections } from '../integrations/integrationSections'
-import { ProjectPluginsPanel, projectPluginTabs, useProjectPluginTab } from '../integrations/ProjectPluginsPanel'
+import { ProjectPluginsPanel, projectPluginTabs, type PluginTab } from '../integrations/ProjectPluginsPanel'
 import { ProjectVaultPanel } from '../integrations/ProjectVaultPanel'
 import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
 import { ProjectMcpPanel } from '../integrations/ProjectMcpPanel'
@@ -85,8 +84,8 @@ const SECTION_COPY: Record<WorkflowCapabilitySection, { title: string; descripti
     savesViaManifest: false,
   },
   mcp: {
-    title: 'Connections',
-    description: 'Select the MCPs, accounts and resources this workflow may use. Incoming channels are in Use & share.',
+    title: 'MCPs',
+    description: 'Choose the Vault MCP connections this workflow uses. Add and manage accounts through chat.',
     // Selection changes persist immediately, so this long directory can use
     // one uninterrupted scroll surface without a fixed Save footer.
     savesViaManifest: false,
@@ -123,21 +122,20 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const mcpTabs = projectIntegrationSections(allowedProducts, relayMode)
   const [tab, setTab] = useState<McpTab>('apps')
   const activeMcpTab = mcpTabs.some(option => option.value === tab) ? tab : mcpTabs[0].value
-  const [preferredPluginTab, setPluginTab] = useProjectPluginTab()
-  const [overview, setOverview] = useState(true)
+  const [preferredPluginTab, setPluginTab] = useState<PluginTab>('connected')
   const [sharing, setSharing] = useState(false)
   const [shareChannel, setShareChannel] = useState<ProjectChannel>('cli')
   const pluginTabs = projectPluginTabs(allowedProducts)
-  const pluginTab = overview && pluginTabs.some(option => option.value === 'connected') ? 'connected' : pluginTabs.some(option => option.value === preferredPluginTab) ? preferredPluginTab : pluginTabs[0].value
+  const pluginTab = pluginTabs.some(option => option.value === preferredPluginTab) ? preferredPluginTab : pluginTabs[0].value
   const identityTabs = relayMode ? RELAY_IDENTITY_TABS : IDENTITY_TABS
   const [identityTab, setIdentityTab] = usePersistentTab<IdentityTab>(relayMode ? 'relays.tab.workflow-identity' : 'agentworks.tab.workflow-identity', 'general', identityTabs.map(option => option.value))
   const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
   const navigationOptions = integrationNavigationOptions(mcpTabs, pluginTabs)
   const selectConnection = (target: string) => {
     if (target === 'share' || target === 'cli' || (target === 'slack' && mcpTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && mcpTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
-    if (target === 'overview' || target === 'apps') { setSharing(false); setOverview(true); setTab('apps'); return }
+    if (target === 'overview' || target === 'apps') { setSharing(false); setTab('apps'); setPluginTab(pluginTabs.some(option => option.value === 'connected') ? 'connected' : pluginTabs[0].value); return }
     if (!mcpTabs.some(option => option.value === target) && !pluginTabs.some(option => option.value === target)) return
-    setSharing(false); setOverview(false)
+    setSharing(false)
     if (mcpTabs.some(option => option.value === target)) setTab(target as McpTab)
     else if (pluginTabs.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab) }
   }
@@ -205,7 +203,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
     }
     setTabNonce(nonce => nonce + 1)
   }, [activeMcpTab, pluginTab, handleRefreshServers])
-  const mcpRefreshLabel = overview ? 'Refresh connections' : `Refresh ${connectionLabel}`
+  const mcpRefreshLabel = `Refresh ${connectionLabel}`
 
   // Every Identity tab loads on mount, so Refresh always remounts.
   const [identityTabNonce, setIdentityTabNonce] = useState(0)
@@ -310,14 +308,14 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
 
   return (
     <section className="flex h-full min-h-0 w-full max-w-none flex-col bg-background">
-      {section === 'mcp' && !sharing && !overview && activeMcpTab === 'apps' && pluginTab === 'available' && <WorkspacePanelBack label="Back to MCPs" onBack={() => selectConnection('connected')} />}
+      {section === 'mcp' && !sharing && activeMcpTab === 'apps' && pluginTab === 'available' && <WorkspacePanelBack label="Back to MCPs" onBack={() => selectConnection('connected')} />}
       {section !== 'browser' && (
         <WorkspaceViewHeader
           hideHeader={skillsView}
           icon={section === 'mcp' && sharing ? Users : SectionIcon}
-          title={section === 'mcp' && sharing ? projectChannelLabel(shareChannel) : section === 'mcp' && !overview && pluginTab === 'skills' && activeMcpTab === 'apps' ? 'Skills' : copy.title}
+          title={section === 'mcp' && sharing ? projectChannelLabel(shareChannel) : section === 'mcp' ? connectionLabel : copy.title}
           helpTopic={section === 'mcp'
-            ? skillsView ? 'Integrations · Skills' : sharing ? projectChannelLabel(shareChannel) : overview ? 'Connections' : `${activeMcpTab === 'slack' ? 'Connections' : 'Integrations'} · ${connectionLabel}`
+            ? skillsView ? 'Integrations · Skills' : sharing ? projectChannelLabel(shareChannel) : `${activeMcpTab === 'slack' ? 'Connections' : 'Integrations'} · ${connectionLabel}`
             : section === 'identity'
               ? `Identity · ${identityTabs.find(option => option.value === activeIdentityTab)?.label ?? 'General'}`
               : undefined}
@@ -345,12 +343,9 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
               refreshing={section === 'mcp' && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available') && refreshingServers}
               refreshLabel={section === 'mcp' ? sharing ? 'Refresh sharing and channels' : mcpRefreshLabel : section === 'identity' ? identityRefreshLabel : `Refresh ${copy.title}`}
             >
-              {section === 'mcp' && !sharing && !overview && activeMcpTab === 'apps' && pluginTab === 'connected' && canWriteWorkflow && <button type="button" onClick={() => selectConnection('available')} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-3.5 w-3.5" aria-hidden="true" />Add an MCP</button>}
+              {section === 'mcp' && !sharing && activeMcpTab === 'apps' && pluginTab === 'connected' && canWriteWorkflow && <button type="button" onClick={() => selectConnection('available')} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-3.5 w-3.5" aria-hidden="true" />Add an MCP</button>}
             </WorkspaceViewActions>
           )}
-          below={section === 'mcp' && !sharing && !overview && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available')
-            ? undefined
-            : section === 'mcp' && !sharing && !(activeMcpTab === 'apps' && pluginTab === 'skills') ? <IntegrationNavigation options={navigationOptions} value={activeConnection} onChange={selectConnection} overview={overview} onOverview={() => selectConnection('overview')} canEdit={canWriteWorkflow} /> : undefined}
           tabs={section === 'mcp'
             ? undefined
             // Settings, Models and Upgrades are separate items in the side list, so Settings has no sub-tabs (owner, 2026-10-20).
@@ -375,7 +370,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 {sharing ? <>
                   {workspacePath && (shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun={relayMode ? 'Flow' : 'Goal'} allowBots={!relayMode} /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" />}</>)}
                 </> : <>
-                {overview && workspacePath && <ConnectedProjectAccounts workspacePath={workspacePath} options={navigationOptions} onOpen={selectConnection} />}
                 {activeMcpTab === 'apps' && workspacePath && <ProjectPluginsPanel tab={pluginTab}
                   connections={view => <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun={relayMode ? 'Flow' : 'workflow'} canEdit={canWriteWorkflow}
                       selectedServers={capabilities.selected_servers}

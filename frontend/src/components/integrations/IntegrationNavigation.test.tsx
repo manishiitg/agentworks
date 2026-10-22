@@ -1,21 +1,15 @@
 // @vitest-environment happy-dom
-import { act } from 'react'
-import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { IntegrationNavigation, integrationNavigationOptions } from './IntegrationNavigation'
+import { integrationNavigationOptions } from './IntegrationNavigation'
 import { projectIntegrationSections } from './integrationSections'
 import { projectPluginTabs } from './ProjectPluginsPanel'
 import { INTEGRATION_SECTIONS, RELAY_INTEGRATION_SECTION_IDS } from '../../products/productPanels'
 
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-const cleanups: (() => void)[] = []
-const originalScroll = HTMLElement.prototype.scrollIntoView
 beforeEach(() => {
   vi.stubEnv('VITE_DEPLOYMENT_MODE', 'server')
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'relays', 'knowledgebase', 'mcp-gateway'], gatewayUrl: 'https://example.com' }
-  HTMLElement.prototype.scrollIntoView = vi.fn()
 })
-afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); HTMLElement.prototype.scrollIntoView = originalScroll; delete window.__APP_RUNTIME_CONFIG__; vi.unstubAllEnvs() })
+afterEach(() => { delete window.__APP_RUNTIME_CONFIG__; vi.unstubAllEnvs() })
 
 it.each([false, true])('shows resources the agent can use and leaves incoming channels to Use & share (relay=%s)', relay => {
   const sections = projectIntegrationSections(null, relay)
@@ -43,25 +37,4 @@ it('keeps Relay search destinations consistent with its admitted connection inve
   expect(visible.map(section => section.id)).not.toContain('slack-app')
   expect(visible.find(section => section.id === 'slack')?.label).toBe('Slack')
   expect(visible.find(section => section.id === 'apps')).toBeUndefined()
-})
-
-it('keeps setup choices behind one action, supports keyboard selection and returns to Connections', async () => {
-  const host = document.createElement('div'); document.body.append(host)
-  const root = createRoot(host); cleanups.push(() => { act(() => root.unmount()); host.remove() })
-  const options = integrationNavigationOptions(projectIntegrationSections(), projectPluginTabs())
-  const select = vi.fn(), back = vi.fn()
-  const render = (overview: boolean, value = 'connected') => act(() => root.render(<IntegrationNavigation options={options} value={value} onChange={select} overview={overview} onOverview={back} />))
-  render(true)
-  expect([...host.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Add connection'])
-  expect(host.querySelector('[aria-pressed]')).toBeNull()
-  await act(async () => host.querySelector<HTMLButtonElement>('button')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
-  const google = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Google apps')!
-  expect(google).toBeDefined()
-  await act(async () => google.click())
-  expect(select).toHaveBeenLastCalledWith('gmail')
-  expect(document.querySelector('[role="menu"]')).toBeNull()
-  // A single item is its own page: no "Connections /" breadcrumb and no Add connection menu on it.
-  render(false, 'gmail')
-  expect(host.textContent).toBe('')
-  expect(back).not.toHaveBeenCalled()
 })
