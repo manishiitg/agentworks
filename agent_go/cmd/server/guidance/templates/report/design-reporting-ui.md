@@ -74,6 +74,46 @@ Validate/preview the draft, then publish it through the same dashboard tools.
 Existing authored HTML dashboards and historical revisions remain supported;
 when editing one, preserve its format unless the person asks to convert it.
 
+## Dashboard UI workflow
+
+1. Read the existing page and the user's design references. Keep their content,
+   visual identity, data sources and chosen layout. When no direction is given,
+   use the platform's default theme and make the layout fit the task; do not
+   invent brand rules, required sections, or sample business data.
+2. Read `get_dashboard_catalog` for supported props. Choose components for the
+   content: readable text, metrics, charts, forms or tables as needed. A catalog
+   is a set of available controls, not a complete page design. Use the actual
+   data shape and include meaningful loading, empty and error states.
+3. Style the composition deliberately. The default theme supplies page spacing,
+   typography, themed surfaces, buttons and metric styling. Grid uses one column
+   below640px, then its requested columns. Override it through supported
+   className/CSS when the user's layout needs different behavior. Check long
+   labels, dense tables, keyboard focus and names for icon-only controls.
+4. Keep everything customizable. Top-level `styles` is normal authored CSS and
+   takes precedence over the default CSS layers. `#dashboard-root` is the page
+   surface. Override `--dashboard-page-width`, `--dashboard-page-padding`,
+   `--dashboard-font-family`, `--dashboard-card-padding`,
+   `--dashboard-metric-size` and the app's palette/radius variables as needed.
+   These are CSS properties, not new dashboard settings. A full-width design can
+   set page width to none and page padding to0. Do not hand-edit generated HTML.
+5. Validate, then preview at desktop and mobile widths in the user's chosen
+   theme; check both light and dark if the page supports them. Preview uses real
+   browser widths (1280px desktop,390px mobile;768px tablet is also available).
+   Inspect the attached images and each `ui_checks` record. Resolve unintended
+   page overflow, missing stylesheets, broken images and unnamed controls.
+   Small-text counts and scan limits are observations for review, not mandatory
+   design scores. Local table scrolling can be intentional.
+6. Exercise local tabs, forms and filters with representative data and inspect
+   loading/empty/error handling. Preview does not send Ask messages or run
+   published business functions. Verify real actions separately when authorized.
+   Publish the checked revision; report any unverified behavior plainly.
+
+JSON dashboards use the shared prebuilt React runtime. They do not have a
+per-dashboard npm build step. Use the existing validate/preview/publish tools;
+TypeScript and npm builds belong to changes to the shared runtime or separately
+requested React source projects. A successful build or ready state never replaces
+visual inspection.
+
 ## Existing HTML documents and runtime
 
 - Dashboard documents are complete HTML files under `db/reports/`.
@@ -159,8 +199,9 @@ It checks document structure, literal SQL, referenced files and dependencies.
 Dynamic queries/paths require separate verification.
 Then run `preview_report` for each changed document. It uses the same runtime
 in a real browser and reports script/fetch errors, loading state and screenshots
-at 768px, 480px and 1280px in both themes. Open the screenshots with `read_image`
-to verify that the requested design renders and its data/actions work.
+at real768px,390px and1280px browser widths in both themes. Inspect the images
+and per-capture `ui_checks`; verify the requested design and local interactions.
+Use only image-viewing capabilities actually available to the current client.
 
 ## When it works
 Call `get_dashboard_link` and give the person the link in plain words. Share opens this dashboard, Ask and published functions to the chosen audience and allows MCP reads of product files, runs and logs; secret values and private logs stay excluded. Tell them to press Share, or use MCP `share` action=get|set with their chosen audience. Sharing creates a standard dashboard when needed. Never put the dashboard on a public website or add a password page. For an MP4 or animation of the data, use the dashboard tool's `export_motion` action after loading the motion guide (`motion-guide` skill).

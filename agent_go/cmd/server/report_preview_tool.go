@@ -28,7 +28,7 @@ const (
 	reportPreviewPollInterval  = 500 * time.Millisecond
 	reportPreviewDesktopWidth  = 1280
 	reportPreviewTabletWidth   = 768
-	reportPreviewMobileWidth   = 480
+	reportPreviewMobileWidth   = 390
 	reportPreviewScreenshotDir = "db/reports/preview"
 )
 
@@ -48,6 +48,26 @@ type reportPreviewSnapshot struct {
 		MarkdownTexts []string `json:"markdownTexts"`
 		Height        float64  `json:"height"`
 	} `json:"report"`
+}
+
+// Each check belongs to the same actual viewport/theme as its screenshot.
+// These are diagnostics, not a layout policy or an automatic publication gate.
+type reportPreviewUICheck struct {
+	Theme              string   `json:"theme"`
+	Width              int      `json:"width"`
+	ViewportWidth      float64  `json:"viewport_width"`
+	FrameWidth         float64  `json:"frame_width"`
+	ContentWidth       float64  `json:"content_width"`
+	HorizontalOverflow float64  `json:"horizontal_overflow_px"`
+	OverflowElements   []string `json:"overflow_elements"`
+	MissingStylesheets []string `json:"missing_stylesheets"`
+	StylesheetCount    int      `json:"stylesheet_count"`
+	BrokenImages       int      `json:"broken_images"`
+	UnnamedControls    []string `json:"unnamed_controls"`
+	SmallTextCount     int      `json:"small_text_count"`
+	ScannedElements    int      `json:"scanned_elements"`
+	ScanTruncated      bool     `json:"scan_truncated"`
+	Error              string   `json:"error,omitempty"`
 }
 
 type reportPreviewScreenshot struct {
@@ -103,12 +123,12 @@ func (api *StreamingAPI) registerReportPreviewTool(registrar definitionToolRegis
 			"width": map[string]interface{}{
 				"type":        "string",
 				"enum":        []string{"tablet", "mobile", "desktop", "all", "both"},
-				"description": "Viewport width(s): tablet (768px, primary), mobile (480px), desktop (1280px), or all. Default all. Legacy both means desktop + mobile.",
+				"description": "Viewport width(s): tablet (768px, primary), mobile (390px), desktop (1280px), or all. Default all. Legacy both means desktop + mobile.",
 			},
 		},
 		"additionalProperties": false,
 	}
-	description := "Render one HTML document under db/reports/ in a headless browser exactly as the Report tab does and return the real outcome: settled/error state, script errors, failed data reads, tab labels, stale loading text, page height, and screenshots. document_path defaults to db/reports/index.html. Run after validate_report_html passes; it is slower (~10-30s) and needs a browser."
+	description := "Render one HTML document under db/reports/ in a headless browser exactly as the Report tab does and return the real outcome: settled/error state, script errors, failed data reads, tab labels, stale loading text, page height, real viewport screenshots and UI measurements (overflow, missing CSS, broken images and unnamed controls). document_path defaults to db/reports/index.html. Run after validate_report_html passes; it is slower (~10-30s) and needs a browser."
 	return registrar.RegisterCustomToolWithTimeout(
 		"preview_report",
 		description,
@@ -273,6 +293,7 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 
 	// The report is closed to screenshots when there is nothing to show.
 	screenshots := []reportPreviewScreenshot{}
+	uiChecks := []reportPreviewUICheck{}
 	if snapshot.PreviewState == "ready" || snapshot.PreviewState == "error" {
 		for _, theme := range themes {
 			if _, err := eval(fmt.Sprintf("window.__reportPreview.setTheme(%q)", theme)); err != nil {
@@ -280,10 +301,23 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 			}
 			for _, width := range widths {
 				px := reportPreviewWidthPixels(width)
+				check := reportPreviewUICheck{Theme: theme, Width: px}
+				if _, err := run("set", "viewport", fmt.Sprint(px), "900"); err != nil {
+					check.Error = "Could not set the browser viewport."
+				}
 				if _, err := eval(fmt.Sprintf("window.__reportPreview.setWidth(%d)", px)); err != nil {
 					log.Printf("[REPORT_PREVIEW] set width %d: %v", px, err)
 				}
 				time.Sleep(400 * time.Millisecond)
+				if raw, err := eval("JSON.stringify(window.__reportPreview.getUIChecks())"); err != nil {
+					check.Error = "Could not inspect the rendered dashboard."
+				} else if err := json.Unmarshal([]byte(raw), &check); err != nil {
+					check.Error = "Could not read dashboard UI measurements."
+				}
+				if check.Error == "" && (check.ViewportWidth != float64(px) || check.FrameWidth <= 0 || check.FrameWidth > float64(px)+1) {
+					check.Error = "Could not verify the requested browser viewport and dashboard frame."
+				}
+				uiChecks = append(uiChecks, check)
 				destination, reported := reportPreviewScreenshotPaths(workspacePath, documentPath, theme, width)
 				reported = path.Join(path.Dir(reported), previewID, path.Base(reported))
 				destination = workspacePath + "/" + reported
@@ -300,27 +334,38 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 	}
 
 	summary := reportPreviewSummary(snapshot, screenshots, documentPath)
+	uiIssues := 0
+	for _, check := range uiChecks {
+		if check.Error != "" || check.HorizontalOverflow > 1 || len(check.MissingStylesheets) > 0 || check.BrokenImages > 0 || len(check.UnnamedControls) > 0 {
+			uiIssues++
+		}
+	}
+	if uiIssues > 0 {
+		summary += fmt.Sprintf(" UI checks found issues in %d viewport/theme capture(s); inspect ui_checks and screenshots.", uiIssues)
+	}
 	result := map[string]interface{}{
-		"document_path":  documentPath,
-		"workspace":      workspacePath,
-		"state":          snapshot.PreviewState,
-		"summary":        summary,
-		"title":          snapshot.Report.Title,
-		"report_state":   snapshot.Report.State,
-		"script_errors":  nonNilStrings(snapshot.Report.Errors),
-		"page_errors":    nonNilStrings(snapshot.ConsoleErrors),
-		"fetch_errors":   nonNilStrings(snapshot.FetchErrors),
-		"tabs":           nonNilStrings(snapshot.Report.Tabs),
-		"loading_texts":  nonNilStrings(snapshot.Report.LoadingTexts),
-		"markdown_texts": nonNilStrings(snapshot.Report.MarkdownTexts),
-		"opened_files":   nonNilStrings(snapshot.OpenedFiles),
-		"height_px":      snapshot.Report.Height,
-		"screenshots":    screenshots,
-		"rendered_via":   "headless browser, same report host runtime as the Report tab",
-		"next_step":      "Inspect the screenshots with your client's image viewer, or open their URLs in a browser signed in to this server with current project access. If you cannot view them, say visual inspection is still needed. Follow the designer's preferences and fix script/fetch errors and stale Loading placeholders.",
-		"page_url":       resultPageURL,
-		"authentication": "Screenshot and page URLs require sign-in and current project access; these URLs grant no access.",
-		"settle_timeout": reportPreviewSettleTimeout.String(),
+		"document_path":          documentPath,
+		"workspace":              workspacePath,
+		"state":                  snapshot.PreviewState,
+		"summary":                summary,
+		"title":                  snapshot.Report.Title,
+		"report_state":           snapshot.Report.State,
+		"script_errors":          nonNilStrings(snapshot.Report.Errors),
+		"page_errors":            nonNilStrings(snapshot.ConsoleErrors),
+		"fetch_errors":           nonNilStrings(snapshot.FetchErrors),
+		"tabs":                   nonNilStrings(snapshot.Report.Tabs),
+		"loading_texts":          nonNilStrings(snapshot.Report.LoadingTexts),
+		"markdown_texts":         nonNilStrings(snapshot.Report.MarkdownTexts),
+		"opened_files":           nonNilStrings(snapshot.OpenedFiles),
+		"height_px":              snapshot.Report.Height,
+		"screenshots":            screenshots,
+		"ui_checks":              uiChecks,
+		"visual_review_required": true,
+		"rendered_via":           "headless browser, same report host runtime as the Report tab",
+		"next_step":              "Inspect the screenshots with your client's image viewer, or open their URLs in a browser signed in to this server with current project access. If you cannot view them, say visual inspection is still needed. Inspect desktop/mobile screenshots and ui_checks for overflow, missing styles, broken images and unnamed controls. Small text is a measurement for review, not a design rule. Follow the designer's preferences; fix runtime/data errors and do not claim visual acceptance from ready alone.",
+		"page_url":               resultPageURL,
+		"authentication":         "Screenshot and page URLs require sign-in and current project access; these URLs grant no access.",
+		"settle_timeout":         reportPreviewSettleTimeout.String(),
 	}
 	out, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
@@ -362,6 +407,18 @@ func reportPreviewSummary(s reportPreviewSnapshot, shots []reportPreviewScreensh
 	if s.PreviewState == "error" || len(s.Report.Errors) > 0 {
 		parts = append(parts, fmt.Sprintf("the report's script threw (%d error(s))", len(s.Report.Errors)))
 	}
+	if len(s.ConsoleErrors) > 0 {
+		parts = append(parts, fmt.Sprintf("%d browser error(s)", len(s.ConsoleErrors)))
+	}
+	failedShots := 0
+	for _, shot := range shots {
+		if shot.Error != "" {
+			failedShots++
+		}
+	}
+	if failedShots > 0 {
+		parts = append(parts, fmt.Sprintf("%d screenshot(s) could not be captured", failedShots))
+	}
 	if len(s.FetchErrors) > 0 {
 		parts = append(parts, fmt.Sprintf("%d data read(s) failed", len(s.FetchErrors)))
 	}
@@ -372,7 +429,7 @@ func reportPreviewSummary(s reportPreviewSnapshot, shots []reportPreviewScreensh
 		parts = append(parts, fmt.Sprintf("%d text node(s) look like unrendered markdown; pass agent-written markdown through window.report.renderMarkdown", len(s.Report.MarkdownTexts)))
 	}
 	if len(parts) == 0 {
-		return fmt.Sprintf("Rendered cleanly: %d tab label(s), %.0fpx tall, %d screenshot(s).", len(s.Report.Tabs), s.Report.Height, len(shots))
+		return fmt.Sprintf("Rendered without runtime errors: %d tab label(s), %.0fpx tall, %d screenshot(s). Visual inspection is still required.", len(s.Report.Tabs), s.Report.Height, len(shots))
 	}
 	return "Rendered with problems: " + strings.Join(parts, "; ") + "."
 }

@@ -61,7 +61,7 @@ func (api *StreamingAPI) externalMCPDashboardPreviewResult(r *http.Request, rec 
 	}
 	value["attached_screenshots"] = attached
 	if len(images) > 0 {
-		value["next_step"] = "Inspect the attached screenshot images, in attached_screenshots order, following the designer's preferences. Fix script/fetch errors and stale Loading placeholders. More screenshots are available through the browser links. If your client does not display images, say visual inspection is still needed."
+		value["next_step"] = "Inspect the attached screenshot images, in attached_screenshots order, following the designer's preferences. Inspect ui_checks for each real desktop/mobile viewport and review the images. Fix script/fetch errors, overflow, missing styles and stale Loading placeholders; ready alone is not visual acceptance. More screenshots are available through the browser links. If your client does not display images, say visual inspection is still needed."
 	} else {
 		value["next_step"] = "No screenshot image could be attached within the two-image, 2 MiB per-image limit and current file access. Open the screenshot links in a signed-in browser; visual inspection is still needed."
 	}

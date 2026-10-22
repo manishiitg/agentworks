@@ -174,7 +174,7 @@ func TestReportPreviewWidthsDefaultTabletFirstAndPreserveLegacyBoth(t *testing.T
 	if got := reportPreviewWidthChoices("unknown"); !reflect.DeepEqual(got, []string{"tablet", "mobile", "desktop"}) {
 		t.Fatalf("unknown widths = %v", got)
 	}
-	if reportPreviewWidthPixels("tablet") != 768 || reportPreviewWidthPixels("mobile") != 480 || reportPreviewWidthPixels("desktop") != 1280 {
+	if reportPreviewWidthPixels("tablet") != 768 || reportPreviewWidthPixels("mobile") != 390 || reportPreviewWidthPixels("desktop") != 1280 {
 		t.Fatal("preview width pixel contract changed")
 	}
 }

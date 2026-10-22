@@ -28,7 +28,7 @@ func TestDashboardPreviewMCPImagesAndPublicLinks(t *testing.T) {
 	shots := []reportPreviewScreenshot{
 		{Theme: "dark", Width: 1280, Path: "db/reports/preview/run/desktop-dark.png"},
 		{Theme: "light", Width: 1280, Path: "db/reports/preview/run/desktop-light.png"},
-		{Theme: "light", Width: 480, Path: "db/reports/preview/run/mobile-light.png"},
+		{Theme: "light", Width: reportPreviewMobileWidth, Path: "db/reports/preview/run/mobile-light.png"},
 	}
 	for _, shot := range shots {
 		f.write(t, "Workflow/invoices/"+shot.Path, pngBytes.String())

@@ -16,6 +16,14 @@ let clock: any
 let refreshSequence = 0
 let refreshData: () => Promise<void>
 
+// Literal utility names are compiled with the shared runtime. Authored classes
+// follow these defaults so the upstream class merger can override them.
+const gridColumns = ['sm:grid-cols-1', 'sm:grid-cols-2', 'sm:grid-cols-3', 'sm:grid-cols-4', 'sm:grid-cols-5', 'sm:grid-cols-6']
+function GridComponent({ props, ...context }: any) {
+  const columns = Math.max(1, Math.min(6, Math.floor(Number(props.columns) || 1)))
+  return <shadcnComponents.Grid {...context} props={{ ...props, className: `dashboard-grid grid-cols-1 ${gridColumns[columns - 1]} ${props.className ?? ''}` }} />
+}
+
 function ImageComponent({ props, ...context }: any) {
   const [url, setURL] = useState<string | null>(null)
   useEffect(() => {
@@ -82,7 +90,7 @@ function MotionControls({ props }: any) {
   useStateStore()
   const state = clock?.getState()
   return <div className={props.className ?? 'dashboard-motion'} aria-label={props.label || 'Playback'}>
-    <button type="button" disabled={!clock} onClick={() => state?.playing ? clock.pause() : clock.play()}>{state?.playing ? 'Pause' : 'Play'}</button>
+    <button type="button" className="dashboard-button" disabled={!clock} onClick={() => state?.playing ? clock.pause() : clock.play()}>{state?.playing ? 'Pause' : 'Play'}</button>
     <input aria-label="Playback position" type="range" min="0" max={state?.duration ?? 1} step="0.01" value={state?.time ?? 0} disabled={!clock} onChange={e => clock.seek(Number(e.target.value))} />
     <span>{(state?.time ?? 0).toFixed(1)} / {state?.duration ?? 0}s</span>
   </div>
@@ -91,11 +99,11 @@ function MotionControls({ props }: any) {
 const { registry } = defineRegistry(catalog, {
   components: {
     ...shadcnComponents,
-    Image: ImageComponent, Avatar: AvatarComponent,
+    Image: ImageComponent, Avatar: AvatarComponent, Grid: GridComponent,
     // Link URLs were validated as static safe links by the server. Opening is
     // always from a click; the existing host handles external destinations.
     Link: ({ props }: any) => <a href={props.href} target="_blank" rel="noopener noreferrer">{props.label}</a>,
-    Metric: ({ props }: any) => <section className={props.className ?? ''}><div>{props.label}</div><strong className="dashboard-metric">{props.value}</strong>{props.detail && <p>{props.detail}</p>}</section>,
+    Metric: ({ props }: any) => <section className={`dashboard-stat ${props.className ?? ''}`}><div className="dashboard-stat-label">{props.label}</div><strong className="dashboard-metric">{props.value}</strong>{props.detail && <p className="dashboard-stat-detail">{props.detail}</p>}</section>,
     BarChart: (context: any) => <Chart {...context} />,
     LineChart: (context: any) => <Chart {...context} line />,
     AskButton, ChatPanel, MotionControls,

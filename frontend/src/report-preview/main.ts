@@ -19,6 +19,7 @@ import type { WorkflowCostsResponse } from '../services/api-types'
 import type { ReportDataApi } from '../components/workflow/reportWidgets/reportEmbedContext'
 import { reportMotionCapture } from '../components/workflow/reportWidgets/reportMotion'
 import { captureReportData } from './exportSnapshot'
+import { inspectReportUI } from './uiChecks'
 import {
   applyReportTheme,
   installReportHost,
@@ -257,6 +258,7 @@ async function start() {
   window.addEventListener('unhandledrejection', (e) => consoleErrors.push(String((e as PromiseRejectionEvent).reason?.message || e.reason || 'rejection')))
   ;(window as unknown as { __reportPreview: unknown }).__reportPreview = {
     getState: snapshot, setTheme, setWidth,
+    getUIChecks: () => frame?.contentDocument ? inspectReportUI(frame.contentDocument, window.innerWidth) : { error: 'Dashboard document is unavailable.' },
     motion: () => frame?.contentDocument ? reportMotionCapture(frame.contentDocument) : [],
     seek: (seconds: number) => frame?.contentDocument ? reportMotionCapture(frame.contentDocument, seconds) : [],
     freeze: async () => {

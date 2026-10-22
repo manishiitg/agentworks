@@ -60,6 +60,8 @@ func TestReportPreviewCarriesCallerAndIsolatedGuard(t *testing.T) {
 					switch {
 					case strings.Contains(req.Command, "data-preview-state"):
 						result = "ready"
+					case strings.Contains(req.Command, "getUIChecks()"):
+						result = `{"viewport_width":768,"frame_width":768,"content_width":768}`
 					case strings.Contains(req.Command, "getState()"):
 						result = `{"previewState":"ready","report":{"title":"Demo","height":200}}`
 					case strings.Contains(req.Command, "scrollHeight"):
@@ -92,14 +94,24 @@ func TestReportPreviewCarriesCallerAndIsolatedGuard(t *testing.T) {
 			var result struct {
 				State       string                    `json:"state"`
 				Screenshots []reportPreviewScreenshot `json:"screenshots"`
+				UIChecks    []reportPreviewUICheck    `json:"ui_checks"`
 			}
-			if err := json.Unmarshal([]byte(out), &result); err != nil || result.State != "ready" || len(result.Screenshots) != 1 || result.Screenshots[0].Error != "" {
+			if err := json.Unmarshal([]byte(out), &result); err != nil || result.State != "ready" || len(result.Screenshots) != 1 || result.Screenshots[0].Error != "" || len(result.UIChecks) != 1 || result.UIChecks[0].Error != "" || result.UIChecks[0].ViewportWidth != 768 {
 				t.Fatalf("preview did not settle and publish a screenshot: %v %s", err, out)
 			}
 			mu.Lock()
 			defer mu.Unlock()
 			if len(requests) == 0 {
 				t.Fatal("no workspace browser commands")
+			}
+			resized := false
+			for _, req := range requests {
+				if strings.Contains(req.Command, " set ") && strings.Contains(req.Command, "viewport") {
+					resized = true
+				}
+			}
+			if !resized {
+				t.Fatal("preview did not resize the actual browser viewport")
 			}
 			scope := requests[0].FolderGuard.BrowserSession
 			if !browser.IsUserBrowserSession(scope) || scope == common.SandboxBrowserSession(parent) || scope == previousBrowser {
