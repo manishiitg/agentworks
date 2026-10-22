@@ -1142,7 +1142,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		}
 		ownGmail := agentprofiles.FeatureOption(resolved.Definition, "bots", "gmail") == "own"
 		if !readOnly && (agentprofiles.FeatureOption(resolved.Definition, "bots", "dm_only") != "true" || (ownGmail && crewProjectOwnedByCallerStrict(userID, workspacePath))) {
-			if err := api.registerGmailConnectionManagementTools(registrar, sessionID, workspacePath, resolved.ToolCallerClaims); err != nil {
+			if err := api.registerGmailConnectionManagementTools(registrar, sessionID, workspacePath); err != nil {
 				return err
 			}
 		}

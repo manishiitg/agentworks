@@ -21,6 +21,7 @@ import (
 // persisted registry, then resolve the account as a different Run caller.
 func TestPersonalGoogleConnectionsAcrossSurfaces(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("LOCAL_MODE", "false")
 	t.Setenv("GOG_HOME", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"builder","username":"builder","can_create":true},{"id":"editor","username":"editor","can_create":true},{"id":"runner","username":"runner"},{"id":"boss","username":"boss","admin":true}]}`)
 	wf := WorkflowManifest{ID: "orders", Label: "Orders", Access: &WorkflowAccess{Owners: []string{"builder"}, Editors: []string{"editor"}, Readers: []string{"runner"}}}
@@ -39,7 +40,7 @@ esac
 	config := services.GmailConfig{GogPath: gog, GwsPath: gog, Connections: []services.GmailConnection{
 		{ID: "mine", DisplayName: "Personal account", Personal: true, OwnerID: "editor", Enabled: true, AuthBackend: "gog", ClientName: "personal-app", Email: "editor@example.com", AllowReadAccess: true},
 		{ID: "other", DisplayName: "Other account", Personal: true, OwnerID: "builder", Enabled: true},
-		{ID: "legacy", DisplayName: "Original Code account", ScopeWorkspace: "_users/editor/Chats/Code/projects/original", OwnerID: "editor", Enabled: true},
+		{ID: "legacy", DisplayName: "Original Code account", Email: "editor@example.com", AuthBackend: "gog", ClientName: "personal-app", AllowReadAccess: true, ScopeWorkspace: "_users/editor/Chats/Code/projects/original", OwnerID: "editor", Enabled: true},
 		{ID: "company", DisplayName: "Company account", Enabled: true},
 	}}
 	cfg, _ := json.Marshal(config)
@@ -177,37 +178,6 @@ esac
 	if err != nil || !strings.Contains(out, "mine") || strings.Contains(out, "Other account") {
 		t.Fatalf("saved accounts: %s %v", out, err)
 	}
-	// Native chat execution can arrive without request claims. It must keep
-	// the authenticated turn's person and token, just as the website does.
-	t.Setenv("LOCAL_MODE", "false")
-	api.lastQueryRequests = map[string]QueryRequest{"google-session": {userID: "editor", SelectedFolder: "Crew/second"}}
-	native := crewCapabilityRegistrar{}
-	if err := api.registerPersonalGoogleAccountToolForCaller(native, "Crew/second", "google-session", GetUserFromContext(ctx)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := native["manage_google_account"].execute(context.Background(), map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err != nil {
-		t.Fatalf("native inbox selection lost its caller: %v", err)
-	}
-	if selected, ok := svc.GetConnection("mine"); !ok || !selected.AgentInbox {
-		t.Fatal("native inbox selection was not saved")
-	}
-	if _, err := native["manage_google_account"].execute(googleAppRequest("POST", "/", "", "builder").Context(), map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err == nil {
-		t.Fatal("native tool accepted a different runtime caller")
-	}
-	// Even if an old registered callback survived into a second person's
-	// context-free native turn, it cannot act as the first person.
-	api.lastQueryRequests["google-session"] = QueryRequest{userID: "builder", SelectedFolder: "Crew/second"}
-	if _, err := native["manage_google_account"].execute(context.Background(), map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err == nil {
-		t.Fatal("stale registered tool acted as the previous turn's caller")
-	}
-	api.lastQueryRequests["google-session"] = QueryRequest{userID: "editor", SelectedFolder: "Crew/second"}
-	bounded := crewCapabilityRegistrar{}
-	if err := api.registerPersonalGoogleAccountToolForCaller(bounded, "Crew/second", "google-session", &UserClaims{UserID: "editor", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read", "builder:chat"}, WorkflowIDs: []string{"another"}}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := bounded["manage_google_account"].execute(ctx, map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err == nil {
-		t.Fatal("native tool discarded the authenticated turn's token restriction")
-	}
 	workflowAccountMCPRequest(t, api, "editor", "google", map[string]any{"action": "attach", "connection_id": "mine"}, 200)
 	workflowAccountMCPRequest(t, api, "runner", "google", map[string]any{"action": "list_saved"}, 403)
 	workflowAccountMCPRequest(t, api, "builder", "google", map[string]any{"action": "attach", "connection_id": "mine"}, 403)
@@ -225,10 +195,19 @@ esac
 	if !ok || len(c.Workspaces) != 1 {
 		t.Fatalf("saved selection lost: %+v", c)
 	}
+	// An old private account can look personal in the UI while its stored
+	// Personal bit is still unset. Keep the inbox ownership check strict;
+	// the existing explicit Use here operation adopts the saved record.
+	if _, err := reg["manage_google_account"].execute(ctx, map[string]any{"action": "set_inbox_account", "connection_id": "legacy"}); err == nil {
+		t.Fatal("unadopted account bypassed the inbox ownership check")
+	}
 	selectAccount("editor", "legacy", "Workflow/orders", true, 200)
 	c, _ = svc.GetConnection("legacy")
 	if !c.Personal || len(c.Workspaces) != 2 || c.ScopeWorkspace == "" {
 		t.Fatalf("legacy selection/store identity lost: %+v", c)
+	}
+	if _, err := reg["manage_google_account"].execute(ctx, map[string]any{"action": "set_inbox_account", "connection_id": "legacy"}); err != nil {
+		t.Fatalf("adopted own account could not supply inboxes from Builder: %v", err)
 	}
 	// An administrator can disconnect, but cannot put their browser's Google
 	// login under somebody else's saved personal connection.

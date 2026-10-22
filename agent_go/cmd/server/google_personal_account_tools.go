@@ -179,10 +179,6 @@ func (api *StreamingAPI) handlePersonalGoogleAccounts(w http.ResponseWriter, r *
 }
 
 func (api *StreamingAPI) registerPersonalGoogleAccountTool(reg definitionToolRegistrar, workspace string) error {
-	return api.registerPersonalGoogleAccountToolForCaller(reg, workspace, "", nil)
-}
-
-func (api *StreamingAPI) registerPersonalGoogleAccountToolForCaller(reg definitionToolRegistrar, workspace, session string, caller *UserClaims) error {
 	return reg.RegisterCustomTool("manage_google_account",
 		"Manage personal Google accounts saved in My Vault. list_saved shows reusable accounts and whether they are used here. connect saves your account and, when called from an item you build, explicitly adds it here, returning a Google sign-in link. attach/detach adds or removes the saved account here; disconnect removes it everywhere; reconnect signs in again and can update permissions. Website account management is in My Vault. Only the account owner signs in; existing Builder and account-management permissions apply. Personal Google connections use gog. On servers, set_inbox_account selects one of your own connected Gmail accounts with read access for Crew inboxes. Receiving is on by default on servers; selecting the account starts receiving for Crews unless explicitly turned off. The owner uses configure_agent_inbox to turn one Crew off or back on. Personal Gmail Watchers remain explicitly enabled. It does not lend general mailbox access to Crews or start work. Company accounts stay administrator-managed. "+googleAccountSharingNotice,
 		map[string]interface{}{"type": "object", "properties": map[string]interface{}{
@@ -193,21 +189,6 @@ func (api *StreamingAPI) registerPersonalGoogleAccountToolForCaller(reg definiti
 			"allow_agent_write_access": map[string]interface{}{"type": "boolean"},
 			"services":                 map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object", "properties": map[string]interface{}{"service": map[string]interface{}{"type": "string", "enum": []string{"drive", "sheets", "docs", "slides", "calendar"}}, "write": map[string]interface{}{"type": "boolean"}}, "required": []string{"service"}}},
 		}, "required": []string{"action"}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-			// Native execution may omit the authenticated turn's context. Keep
-			// that caller, including token restrictions; never infer an owner
-			// from the workspace or the account being changed.
-			if caller != nil {
-				api.lastQueryMu.RLock()
-				turn := api.lastQueryRequests[session]
-				api.lastQueryMu.RUnlock()
-				if turn.userID != caller.UserID || !workspacePathsMatchForUser(caller.UserID, turn.SelectedFolder, workspace) {
-					return "", fmt.Errorf("Use your own current project chat to manage your Google accounts")
-				}
-				if current := GetUserFromContext(ctx); current != nil && current.UserID != caller.UserID {
-					return "", fmt.Errorf("Open your own project chat to manage your Google accounts")
-				}
-				ctx = context.WithValue(ctx, UserContextKey, caller)
-			}
 			target := "/"
 			if action, _ := args["action"].(string); action == "connect" || action == "reconnect" {
 				target = strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/")
