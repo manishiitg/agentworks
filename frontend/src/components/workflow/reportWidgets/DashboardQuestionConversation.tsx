@@ -144,7 +144,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   return <ReportEmbedProvider value={runtime}>
     <div ref={container} className="relative overflow-hidden">
       <ReportQuestionFrame key={`${viewer}:${resourceId}`} {...frame} allowQuestions={canAsk} submitQuestion={submitQuestion} publication={{ resourceId, revision }} />
-      {!authored && canAsk && <button type="button" aria-label="Open dashboard chat" title="Ask" className="absolute left-3 top-3 z-30 inline-flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 py-1 text-sm shadow-sm" onClick={() => void widgetApi.current?.open().catch(reason => setError(reason instanceof Error ? reason.message : 'Could not open chat.'))}>
+      {!authored && canAsk && capability.mode === 'question_only' && <button type="button" aria-label="Open dashboard chat" title="Ask" className="absolute left-3 top-3 z-30 inline-flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 py-1 text-sm shadow-sm" onClick={() => void widgetApi.current?.open().catch(reason => setError(reason instanceof Error ? reason.message : 'Could not open chat.'))}>
         <MessageCircle className="h-4 w-4" /> Ask
       </button>}
       {slots.map(slot => <section key={slot.key} aria-label="Dashboard chat widget" aria-hidden={!slot.visible} data-report-theme={slot.palette} className={`absolute z-30 overflow-hidden bg-background text-foreground ${modeClass(slot.mode)}`} style={{ ...slot.vars, left: slot.left, top: slot.top, width: slot.width, height: slot.height, clipPath: slot.clipPath, visibility: slot.visible ? 'visible' : 'hidden' } as CSSProperties}>{conversation}</section>)}

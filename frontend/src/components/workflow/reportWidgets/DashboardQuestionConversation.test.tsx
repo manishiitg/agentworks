@@ -44,9 +44,9 @@ function click(text: string) {
   button.click()
 }
 
-it('opens a managed Relay dashboard in the Builder’s existing normal conversation', async () => {
+it('opens a shared Relay dashboard in the recipient’s existing normal conversation', async () => {
   get.mockResolvedValue({ data: { ...view, product: 'relay' } }); openAsk.mockResolvedValue('relay-builder-chat')
-  const current = await mount('relay')
+  const current = await mount('relay', 'question_only')
   await act(async () => click('Ask'))
   expect(openAsk).toHaveBeenCalledWith({ product: 'relay', projectId: 'project-1', workspacePath: 'Workflow/demo' }, { activate: false })
   expect(document.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('relay-builder-chat')
@@ -115,7 +115,7 @@ it('does not show a previous account’s Ask after an in-flight conversation loo
   get.mockResolvedValue({ data: view })
   let finish!: (id: string) => void
   openAsk.mockImplementation(() => new Promise<string>(resolve => { finish = resolve }))
-  const current = await mount()
+  const current = await mount('workflow', 'question_only')
   await act(async () => click('Ask'))
   auth.id = 'other'
   await current.render()
@@ -153,9 +153,20 @@ it.each([['crew', 'owner'], ['code', 'owner'], ['crew', 'question_only'], ['code
   expect(post).toHaveBeenCalledExactlyOnceWith('/api/dashboards/dashboard-1/functions/call', { function: 'count_items', args: { count: 3 }, submission_id: expect.any(String) })
   expect(document.querySelector('[data-testid="report-action-result"]')?.textContent).toContain('"count": 3')
   await act(async () => click('Close'))
-  await act(async () => click('Ask'))
+  if (mode === 'owner') { await editQuestion(current.frame); await submit() }
+  else await act(async () => click('Ask'))
   expect(openAsk).toHaveBeenCalledWith({ product, projectId: 'project-1', workspacePath: 'Workflow/demo' }, { activate: false })
   await act(async () => click('/count_items'))
   expect(document.querySelector('[data-testid="report-action-dialog"]')).not.toBeNull()
   expect(post).toHaveBeenCalledTimes(1)
+})
+
+it('omits the automatic Ask overlay for the owner while retaining contextual dashboard questions', async () => {
+  get.mockResolvedValue({ data: view }); openAsk.mockResolvedValue('owner-chat'); send.mockResolvedValue({ tabId: 'owner-chat' })
+  const current = await mount()
+  expect(current.host.querySelector('[aria-label="Open dashboard chat"]')).toBeNull()
+  expect(openAsk).not.toHaveBeenCalled()
+  await editQuestion(current.frame); await submit()
+  expect(openAsk).toHaveBeenCalledWith({ product: 'workflow', projectId: 'project-1', workspacePath: 'Workflow/demo' }, { activate: false })
+  expect(send).toHaveBeenCalledOnce()
 })
