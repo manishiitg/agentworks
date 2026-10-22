@@ -167,6 +167,157 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	if len(retained) == 0 || retained[0].(map[string]any)["message_id"] != receipt["message_id"] {
 		t.Fatal("active conversation lost its original message")
 	}
+	call(owner, map[string]any{"action": "register", "agent_name": "reviewer", "allowed_connection_ids": []string{workerToken.ID}}, true)
+	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, true)
+	call(owner, map[string]any{"action": "register", "agent_name": "reviewer"}, true) // preserves allowlist
+	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, true)
+	// Revoking a name's allowed connection also fences already queued native turns.
+	workerClaims := &UserClaims{UserID: "owner", AccessToken: &workerToken}
+	workerCtx := context.WithValue(context.Background(), UserContextKey, workerClaims)
+	registered, err := namedAgentForClaims(workerCtx, workerClaims, "reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow, err := resolveTriggerTarget(workerCtx, workerClaims, "workflow:Reports")
+	if err != nil {
+		t.Fatal(err)
+	}
+	queued := agentConversation{Endpoints: [2]agentMessageEndpoint{{UserID: "owner", Kind: triggerCallerUser, ID: "owner", External: true, NamedAgentID: registered.ID}, targetMessageEndpoint("owner", workflow)}}
+	pending := agentMessage{From: 0, SenderConnectionID: workerToken.ID}
+	if err := env.api.recheckAgentMessageAdmission(workerCtx, queued, pending); err != nil {
+		t.Fatalf("authorized queued sender refused: %v", err)
+	}
+	call(owner, map[string]any{"action": "register", "agent_name": "reviewer", "allowed_connection_ids": []string{}}, true)
+	if err := env.api.recheckAgentMessageAdmission(workerCtx, queued, pending); err == nil {
+		t.Fatal("queued turn kept withdrawn named-agent authority")
+	}
+
+	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, false)
+	call(owner, map[string]any{"action": "unregister", "agent_name": "reviewer"}, true)
+	call(owner, map[string]any{"action": "register", "agent_name": "reviewer"}, true)
+	if n := len(call(owner, map[string]any{"action": "read", "agent_name": "reviewer"}, true)["messages"].([]any)); n != 0 {
+		t.Fatal("replacement name inherited old mail")
+	}
+	call(owner, map[string]any{"action": "read", "agent_name": "reviewer", "inbox_id": inbox}, false)
+	// A long poll must recheck the actual durable connection before release.
+	claims := &UserClaims{UserID: "owner", AccessToken: &ownerToken}
+	ctx := context.WithValue(context.Background(), UserContextKey, claims)
+	if err := store.RevokeFamily(ctx, strings.TrimPrefix(ownerToken.ID, "oauth-"), "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.api.readNamedAgentMessages(ctx, claims, map[string]any{"agent_name": "reviewer", "wait_seconds": 1}); err == nil {
+		t.Fatal("waiting reader retained revoked connection")
+	}
+}
+
+// Cleanup uses real OAuth, HTTP and durable messages, without unrelated retired
+// internal product fixtures. It covers more than one page and actual owner checks.
+func TestAgentInboxCleanupOverAuthenticatedHTTP(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AUTH_SECRET", "named-agent-fixture-signing-secret")
+	store, err := openMCPOAuthStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	server := httptest.NewServer(AuthMiddleware(http.HandlerFunc(env.api.handleExternalCall)))
+	defer server.Close()
+	t.Setenv("PUBLIC_URL", server.URL)
+	issue := func(user, name string, scopes []string) (*agentworksclient.Client, accesstokens.Token) {
+		t.Helper()
+		// Separate native CLI sign-ins are renewable independent connections.
+		// Legacy PAT issuance deliberately replaces earlier account PATs.
+		device, verification, e := store.CreateCLIDevice(context.Background(), scopes...)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = store.DecideCLIDevice(context.Background(), verification, &UserClaims{UserID: user, Username: user}, true); e != nil {
+			t.Fatal(e)
+		}
+		grant, raw, _, e := store.PollCLIDevice(context.Background(), device, server.URL+"/api/external/v1")
+		if e != nil {
+			t.Fatal(e)
+		}
+		client, e := agentworksclient.New(server.URL, raw)
+		if e != nil {
+			t.Fatal(e)
+		}
+		token := mcpOAuthTokenForGrant(grant)
+		token.Name = name
+		return client, token
+	}
+	owner, _ := issue("owner", "Reviewer", []string{"crews:run", "workflows:read", "runs:execute"})
+	worker, _ := issue("owner", "Worker", []string{"crews:run", "workflows:read", "runs:execute"})
+	foreign, _ := issue("other", "Foreign", []string{"crews:run"})
+	call := func(c *agentworksclient.Client, args map[string]any, wantOK bool) map[string]any {
+		t.Helper()
+		raw, e := c.Call(context.Background(), "messages", args)
+		if !wantOK {
+			if e == nil {
+				t.Fatalf("accepted unauthorized call: %v", args)
+			}
+			return nil
+		}
+		if e != nil {
+			t.Fatalf("%v: %v", args, e)
+		}
+		out := map[string]any{}
+		if e = json.Unmarshal(raw, &out); e != nil {
+			t.Fatal(e)
+		}
+		return out
+	}
+	// A person's sign-in carries the full scope set (owner 2026-10-16), so there is no read-only sign-in to refuse here.
+	call(owner, map[string]any{"action": "register", "agent_name": "Reviewer"}, true)
+	call(worker, map[string]any{"action": "register", "agent_name": "worker"}, true)
+	// A name registered by a CLI sign-in keeps receiving while its chat is closed (no attachment): only names
+	// never attached and held by MCP sign-ins are refused (owner 2026-10-16).
+	// The unified directory includes accessible shared products. These two
+	// private connected names must remain absent from the other person's list.
+	for _, item := range call(foreign, map[string]any{"action": "list_agents"}, true)["agents"].([]any) {
+		row := item.(map[string]any)
+		if row["id"] == "agent:reviewer" || row["id"] == "agent:worker" {
+			t.Fatal("foreign account saw a private named agent", row["id"])
+		}
+	}
+	call(foreign, map[string]any{"action": "send", "target": "agent:reviewer", "message": "Foreign"}, false)
+	send := map[string]any{"action": "send", "agent_name": "worker", "target": "agent:reviewer", "message": "Ready for review", "submission_id": "review-one"}
+	receipt := call(worker, send, true)
+	inbox := receipt["inbox_id"].(string)
+	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, false)
+	call(worker, map[string]any{"action": "read", "inbox_id": inbox}, false)
+	call(worker, map[string]any{"action": "register", "agent_name": "reviewer"}, false)
+	page := call(owner, map[string]any{"action": "read", "agent_name": "reviewer"}, true)
+	items := page["messages"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["sender"] != "worker" {
+		t.Fatalf("initial contact missing: %v", page)
+	}
+	if items[0].(map[string]any)["delivery"] != "stored" {
+		t.Fatal("external delivery tried to start a model")
+	}
+	if again := call(worker, send, true); again["message_id"] != receipt["message_id"] {
+		t.Fatal("uncertain send duplicated")
+	}
+	// Sending to the same named peer in either direction preserves the inbox,
+	// even without an explicit reply or a locally retained offer.
+	back := call(owner, map[string]any{"action": "send", "agent_name": "reviewer", "target": "agent:worker", "message": "Review received", "submission_id": "review-answer"}, true)
+	if back["inbox_id"] != inbox {
+		t.Fatal("reverse named send split the conversation")
+	}
+	followup := map[string]any{"action": "send", "agent_name": "worker", "target": "agent:reviewer", "message": "Additional context", "submission_id": "review-context"}
+	next := call(worker, followup, true)
+	if next["inbox_id"] != inbox || next["sequence"] != float64(3) {
+		t.Fatal("follow-up named send split or reset the conversation")
+	}
+	if retry := call(worker, followup, true); retry["message_id"] != next["message_id"] {
+		t.Fatal("thread reuse duplicated a retry")
+	}
+	if n := len(call(worker, map[string]any{"action": "read", "agent_name": "worker"}, true)["messages"].([]any)); n != 1 {
+		t.Fatal("named reply missing")
+	}
+
 	// Count is not paged. Cleanup changes only the recipient's inbox view,
 	// including acknowledged status history, and never the sender's receipt.
 	baseline := call(owner, map[string]any{"action": "count", "agent_name": "reviewer"}, true)
@@ -176,7 +327,7 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 		}
 	}
 	agentMessageMu.Lock()
-	saved, e = readAgentMessageStore(context.Background())
+	saved, e := readAgentMessageStore(context.Background())
 	if e == nil {
 		for ci := range saved.Conversations {
 			c := &saved.Conversations[ci]
@@ -256,47 +407,6 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	}
 	if e != nil || kept != 106 {
 		t.Fatal("cleanup erased stored message history", kept, e)
-	}
-	call(owner, map[string]any{"action": "register", "agent_name": "reviewer", "allowed_connection_ids": []string{workerToken.ID}}, true)
-	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, true)
-	call(owner, map[string]any{"action": "register", "agent_name": "reviewer"}, true) // preserves allowlist
-	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, true)
-	// Revoking a name's allowed connection also fences already queued native turns.
-	workerClaims := &UserClaims{UserID: "owner", AccessToken: &workerToken}
-	workerCtx := context.WithValue(context.Background(), UserContextKey, workerClaims)
-	registered, err := namedAgentForClaims(workerCtx, workerClaims, "reviewer")
-	if err != nil {
-		t.Fatal(err)
-	}
-	workflow, err := resolveTriggerTarget(workerCtx, workerClaims, "workflow:Reports")
-	if err != nil {
-		t.Fatal(err)
-	}
-	queued := agentConversation{Endpoints: [2]agentMessageEndpoint{{UserID: "owner", Kind: triggerCallerUser, ID: "owner", External: true, NamedAgentID: registered.ID}, targetMessageEndpoint("owner", workflow)}}
-	pending := agentMessage{From: 0, SenderConnectionID: workerToken.ID}
-	if err := env.api.recheckAgentMessageAdmission(workerCtx, queued, pending); err != nil {
-		t.Fatalf("authorized queued sender refused: %v", err)
-	}
-	call(owner, map[string]any{"action": "register", "agent_name": "reviewer", "allowed_connection_ids": []string{}}, true)
-	if err := env.api.recheckAgentMessageAdmission(workerCtx, queued, pending); err == nil {
-		t.Fatal("queued turn kept withdrawn named-agent authority")
-	}
-
-	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, false)
-	call(owner, map[string]any{"action": "unregister", "agent_name": "reviewer"}, true)
-	call(owner, map[string]any{"action": "register", "agent_name": "reviewer"}, true)
-	if n := len(call(owner, map[string]any{"action": "read", "agent_name": "reviewer"}, true)["messages"].([]any)); n != 0 {
-		t.Fatal("replacement name inherited old mail")
-	}
-	call(owner, map[string]any{"action": "read", "agent_name": "reviewer", "inbox_id": inbox}, false)
-	// A long poll must recheck the actual durable connection before release.
-	claims := &UserClaims{UserID: "owner", AccessToken: &ownerToken}
-	ctx := context.WithValue(context.Background(), UserContextKey, claims)
-	if err := store.RevokeFamily(ctx, strings.TrimPrefix(ownerToken.ID, "oauth-"), "owner"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := env.api.readNamedAgentMessages(ctx, claims, map[string]any{"agent_name": "reviewer", "wait_seconds": 1}); err == nil {
-		t.Fatal("waiting reader retained revoked connection")
 	}
 }
 
