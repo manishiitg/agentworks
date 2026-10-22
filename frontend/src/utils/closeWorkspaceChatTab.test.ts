@@ -9,13 +9,13 @@ const mocks = vi.hoisted(() => ({
 }))
 vi.mock('../services/api', () => ({ agentApi: { stopSession: mocks.stop, closeAgentProfileSideChat: mocks.closeSide } }))
 vi.mock('../stores/useChatStore', () => ({ useChatStore: { getState: () => mocks.state } }))
-vi.mock('../stores/useProductSurfaceStore', () => ({ useProductSurfaceStore: { getState: () => ({ productSurface: 'code' }) } }))
+vi.mock('../stores/useProductSurfaceStore', () => ({ useProductSurfaceStore: { getState: () => ({ productSurface: 'work' }) } }))
 vi.mock('./activateTab', () => ({ activateTab: mocks.activate }))
 vi.mock('./chatIdentity', () => ({ captureChatIdentity: () => 1, isChatIdentityCurrent: () => mocks.current }))
 import { canCloseWorkspaceChatTab, closeWorkspaceChatTab } from './closeWorkspaceChatTab'
 const tab = (id: string, metadata: ChatTab['metadata'], patch: Partial<ChatTab> = {}) => ({ tabId: id, sessionId: id, createdAt: 1, metadata, ...patch }) as ChatTab
-const primary = tab('primary', { agentProfileId: 'code', agentProfileProjectId: 'p', agentProfileConversationKey: 'p' })
-const side = tab('side', { agentProfileId: 'code', agentProfileProjectId: 'p', agentProfileConversationKey: 'p:chat:side' })
+const primary = tab('primary', { agentProfileId: 'work', agentProfileProjectId: 'p', agentProfileConversationKey: 'p' })
+const side = tab('side', { agentProfileId: 'work', agentProfileProjectId: 'p', agentProfileConversationKey: 'p:chat:side' })
 function setup(target = side) {
   mocks.state = { chatTabs: { primary, [target.tabId]: target }, activeTabId: target.tabId, activeSessionsCache: [], closeTab: vi.fn(async () => {}), addToast: vi.fn() }
 }
@@ -39,7 +39,7 @@ it('lets the server release an idle chat and close its key before removing the t
   setup()
   await closeWorkspaceChatTab('side')
   expect(mocks.stop).not.toHaveBeenCalled()
-  expect(mocks.closeSide).toHaveBeenCalledWith('code', 'p:chat:side')
+  expect(mocks.closeSide).toHaveBeenCalledWith('work', 'p:chat:side')
   expect(mocks.state.closeTab).toHaveBeenCalledWith('side', false)
   expect(mocks.activate).toHaveBeenCalledWith('primary')
 })
@@ -48,7 +48,7 @@ it('shows the server busy refusal and keeps the chat open without stopping it', 
   mocks.state.activeSessionsCache = [{ session_id: 'side', status: 'running' }]
   mocks.closeSide.mockRejectedValueOnce({ response: { status: 409, data: { error: 'This agent is still working. Stop it before closing.' } } })
   await closeWorkspaceChatTab('side')
-  expect(mocks.closeSide).toHaveBeenCalledWith('code', 'p:chat:side')
+  expect(mocks.closeSide).toHaveBeenCalledWith('work', 'p:chat:side')
   expect(mocks.state.addToast).toHaveBeenCalledWith('This agent is still working. Stop it before closing.', 'error')
   expect(mocks.stop).not.toHaveBeenCalled()
   expect(mocks.state.closeTab).not.toHaveBeenCalled()
@@ -58,7 +58,7 @@ it('does not use stale browser activity to overrule a successful server close', 
   setup({ ...side, isStreaming: true, hasRunningBgAgents: true })
   mocks.state.activeSessionsCache = [{ session_id: 'side', status: 'running' }]
   await closeWorkspaceChatTab('side')
-  expect(mocks.closeSide).toHaveBeenCalledWith('code', 'p:chat:side')
+  expect(mocks.closeSide).toHaveBeenCalledWith('work', 'p:chat:side')
   expect(mocks.stop).not.toHaveBeenCalled()
   expect(mocks.state.closeTab).toHaveBeenCalledWith('side', false)
 })
