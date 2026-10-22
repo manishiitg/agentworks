@@ -7,7 +7,7 @@ external_tools: ["*dashboard*", "get_report_link"]
 # Dashboard API usage
 
 Follow the user’s design and motion preferences. These instructions describe
-platform operations and data access.
+platform operations, data access and finished defaults when no design is supplied.
 
 Sharing a product means sharing its dashboard: people use the published work there through Ask and available function buttons. Crew includes projects formerly called Code; existing Builder and Run roles apply to both origins. Use the current dashboard sharing controls and returned links; a copied URL alone does not give access. Describe people as Builder or Run in replies, never as permission-level labels.
 
@@ -71,6 +71,59 @@ when desired. MP4 captures the published layout, selected theme and frozen data.
 Images/avatars use allowed project assets or inline data images; links are static
 http(s)/mailto destinations opened by a click. The JSON format has no raw HTML,
 script or arbitrary-fetch component. Existing HTML keeps its browser API contract.
+
+## Finished dashboards from a plain-language request
+
+When the person gives a goal without a design brief, take responsibility for a
+finished first design. Infer the composition from the task and available data;
+do not ask them to choose fonts, spacing, card layouts or a template. Ask only
+for missing business meaning or data access that changes what the page can show.
+A dashboard request includes designing the page, not just arranging text blocks.
+Use the default theme as the foundation and refine the composition after seeing
+its desktop and mobile previews. Their explicit preferences always take priority.
+
+Choose an editable starting composition, then adapt or combine it:
+
+| What the person wants | Useful starting composition |
+| --- | --- |
+| Understand performance | A short title and recorded period, a small row of meaningful Metric components, a primary chart in a Card, then a compact breakdown Table. Show units, source and last refresh only when known. |
+| Manage work or follow progress | A clear current status, a table of tasks or records with useful owner/date/status columns, then next actions or recent activity. Add totals only when they help a decision. |
+| Research or compare options | A concise finding, a structured comparison Table, grouped evidence and source links, then an Ask entry point for follow-up. Long supporting notes can live in Tabs or Accordion. |
+| Use an assistant or service | The actual purpose, Card components for the available published functions, and AskButton or a placed ChatPanel. Explain each action in ordinary words; no invented metrics or decorative charts. |
+
+These are examples for the agent, not user-facing modes or required sections.
+Use only components and props returned by the pinned catalog. For a broad page,
+a vertical Stack with `align: "stretch"` avoids narrow child cards. A Grid of
+Metric components gives a compact summary; a Grid of Card components can pair a
+chart with its breakdown. Card already supplies its surface and heading; avoid
+nesting another card around every line. Use Heading and lead Text directly for
+the page introduction. Put related controls together and give the primary work
+more room than secondary notes. On mobile, preserve the reading order when
+columns stack; dense tables may scroll within their own region.
+
+Keep one clear visual hierarchy: a descriptive page title, useful section titles,
+short labels and formatted values. Use the theme's spacing, surfaces and restrained
+accent colors consistently. Explain a number with its unit and period rather
+than repeating the same label in several places. A chart should answer a question;
+a line needs recorded ordered history, and a bar chart needs comparable categories.
+If that data does not exist, use the actual records or an honest empty state with
+a useful next step. Avoid walls of prose, equal-sized empty boxes, generic welcome
+banners and repeated product labels that do not help the person use the page.
+
+CSS is a normal part of this design work when component props do not achieve the
+result. Use supported semantic className hooks and top-level styles for custom
+density, emphasis, responsive arrangements and visual identity. Do not interpret
+“default theme” or “shadcn” as a ban on CSS, or claim that removing CSS improves a
+page. Preserve existing authored styling unless asked to change it. Everything
+in the initial composition remains editable; do not inject this layout into
+someone's custom page on refresh.
+
+Before presenting it as finished, inspect the actual preview images: the first
+screen should make the purpose, most important information and next action clear.
+Check real content length, useful chart dimensions, whitespace, contrast and
+mobile reading order. Refine the page where the screenshot looks rough even if
+validation and ui_checks pass. Report missing data plainly; never fill a real
+business page with fictional values to make it look complete.
 
 ## Dashboard UI workflow
 

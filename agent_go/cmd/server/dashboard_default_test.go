@@ -28,6 +28,9 @@ func TestDefaultDashboardHTMLShowsOnlyDeclaredThings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if spec.Styles != "" || spec.Elements[spec.Root].Props["align"] != "stretch" || spec.Elements["function-0-card"].Type != "Card" || spec.Elements["function-0"].Props["name"] != "find_order" {
+		t.Fatal("the automatic composition uses the shared theme, full-width action cards and unchanged callable identities")
+	}
 	children := spec.Elements[spec.Root].Children
 	if strings.Contains(page, `"type":"ChatPanel"`) || len(children) == 0 || children[len(children)-1] != "ask" {
 		t.Fatal("the automatic page must show its content and actions before Ask, without a second inline chat")

@@ -77,38 +77,39 @@ func defaultDashboardText(s string, limit int) string {
 // anything. The Ask button and function buttons are the host's own widgets.
 func defaultDashboardHTML(info defaultDashboardInfo) (string, error) {
 	elements := map[string]dashboards.JSONElement{
-		"page":  {Type: "Stack", Props: map[string]any{"gap": "lg", "className": "dashboard-home"}, Children: []string{"title"}},
-		"title": {Type: "Heading", Props: map[string]any{"text": info.Title, "level": "h1"}, Children: []string{}},
+		"page":   {Type: "Stack", Props: map[string]any{"gap": "xl", "align": "stretch"}, Children: []string{}},
+		"header": {Type: "Stack", Props: map[string]any{"gap": "sm", "align": "stretch"}, Children: []string{"title"}},
+		"title":  {Type: "Heading", Props: map[string]any{"text": info.Title, "level": "h1"}, Children: []string{}},
 	}
-	children := []string{"title"}
+	children := []string{"header"}
 	if info.Description != "" {
-		elements["purpose"] = dashboards.JSONElement{Type: "Text", Props: map[string]any{"text": defaultDashboardText(info.Description, 600)}, Children: []string{}}
-		children = append(children, "purpose")
+		elements["purpose"] = dashboards.JSONElement{Type: "Text", Props: map[string]any{"text": defaultDashboardText(info.Description, 600), "variant": "lead"}, Children: []string{}}
+		header := elements["header"]
+		header.Children = append(header.Children, "purpose")
+		elements["header"] = header
 	}
 	if len(info.Functions) > 0 {
-		elements["actions-title"] = dashboards.JSONElement{Type: "Heading", Props: map[string]any{"text": "What it can do", "level": "h3"}, Children: []string{}}
+		elements["actions-title"] = dashboards.JSONElement{Type: "Heading", Props: map[string]any{"text": "What it can do", "level": "h2"}, Children: []string{}}
 		actions := []string{}
 		for i, fn := range info.Functions {
 			id := fmt.Sprintf("function-%d", i)
-			actions = append(actions, id)
-			elements[id] = dashboards.JSONElement{Type: "FunctionButton", Props: map[string]any{"name": fn.Name, "label": fn.Name, "className": "dashboard-button"}, Children: []string{}}
-			if fn.Description != "" {
-				description := id + "-description"
-				card := id + "-card"
-				elements[description] = dashboards.JSONElement{Type: "Text", Props: map[string]any{"text": defaultDashboardText(fn.Description, 140), "variant": "muted"}, Children: []string{}}
-				elements[card] = dashboards.JSONElement{Type: "Stack", Props: map[string]any{"gap": "sm"}, Children: []string{id, description}}
-				actions[len(actions)-1] = card
-			}
+			card := id + "-card"
+			actions = append(actions, card)
+			// The visible title is readable; the callable identity is unchanged.
+			label := strings.NewReplacer("_", " ", "-", " ").Replace(fn.Name)
+			elements[id] = dashboards.JSONElement{Type: "FunctionButton", Props: map[string]any{"name": fn.Name, "label": "Open " + label, "className": "dashboard-button"}, Children: []string{}}
+			elements[card] = dashboards.JSONElement{Type: "Card", Props: map[string]any{"title": label, "description": defaultDashboardText(fn.Description, 200), "maxWidth": "full"}, Children: []string{id}}
 		}
-		elements["actions"] = dashboards.JSONElement{Type: "Grid", Props: map[string]any{"columns": 2, "gap": "sm"}, Children: actions}
+		elements["actions"] = dashboards.JSONElement{Type: "Grid", Props: map[string]any{"columns": 2, "gap": "md"}, Children: actions}
 		children = append(children, "actions-title", "actions")
 	}
-	elements["ask"] = dashboards.JSONElement{Type: "AskButton", Props: map[string]any{"label": "Ask about this dashboard"}, Children: []string{}}
+	elements["ask-button"] = dashboards.JSONElement{Type: "AskButton", Props: map[string]any{"label": "Ask about this dashboard"}, Children: []string{}}
+	elements["ask"] = dashboards.JSONElement{Type: "Card", Props: map[string]any{"title": "Have a question?", "description": "Ask about this dashboard or get help with its actions.", "maxWidth": "full"}, Children: []string{"ask-button"}}
 	children = append(children, "ask")
 	root := elements["page"]
 	root.Children = children
 	elements["page"] = root
-	spec := dashboards.JSONSpec{Root: "page", Elements: elements, Styles: ".dashboard-home{max-width:1200px;margin:0 auto;padding:24px} @media(max-width:600px){.dashboard-home{padding:16px}}"}
+	spec := dashboards.JSONSpec{Root: "page", Elements: elements}
 	data, _ := json.Marshal(spec)
 	body, err := dashboards.JSONHTML(info.Title, data)
 	if err != nil {
