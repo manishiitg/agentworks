@@ -524,6 +524,20 @@ func TestProviderAccountsLiveMuseUsage(t *testing.T) {
 	if w.Code != http.StatusCreated {
 		t.Fatalf("usage: %d %s", w.Code, w.Body.String())
 	}
+	var started struct {
+		Session providerSetupSnapshot `json:"session"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+	session, ok := env.api.providerSetupManager().get(started.Session.ID)
+	if !ok {
+		t.Fatal("usage session was not retained")
+	}
+	// This live check explicitly drives the otherwise manual terminal.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go driveProviderUsage(ctx, session)
 	output := waitSetupOutputFor(t, env.api, w, "/usage", 60*time.Second)
 	t.Logf("live muse usage output: %s", output)
 	closeProviderSetups(env.api)

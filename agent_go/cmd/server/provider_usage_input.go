@@ -2,11 +2,16 @@ package server
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"unicode"
 )
 
 const providerUsageInputLimit = 512
+
+// Xterm generates these bytes itself, including when it replays old output.
+// Usage queries are answered by the server; focus reports are not user keys.
+var providerUsageProtocolInput = regexp.MustCompile(`\x1b\[(?:[IO]|[?>]?[0-9;]*c|[0-9]+;[0-9]+R)|\x1b\](?:10|11|4);[^\x07\x1b]*(?:\x07|\x1b\\)`)
 
 // Account setup and session changes belong in their existing screens, not in
 // an account's usage window. Read commands such as /usage, /status and /help
@@ -41,6 +46,7 @@ func (g *providerUsageInput) blocked() bool {
 // native. Keep a bounded draft so typed/pasted account changes are cancelled
 // before their Enter reaches the CLI. Never return or log the person's text.
 func (g *providerUsageInput) filter(data string) (string, error) {
+	data = providerUsageProtocolInput.ReplaceAllString(data, "")
 	paste := strings.HasPrefix(data, "\x1b[200~") && strings.HasSuffix(data, "\x1b[201~")
 	text := data
 	if paste {

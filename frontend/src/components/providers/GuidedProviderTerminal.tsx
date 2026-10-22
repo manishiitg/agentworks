@@ -127,6 +127,7 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
           const message = JSON.parse(event.data) as { type?: string; session?: ProviderSetupSession; error?: string }
           if (message.type === 'input_error') setTerminalError(message.error || 'This entry was not accepted.')
           if (message.type === 'exit' && message.session) {
+            terminal.options.disableStdin = true
             sessionRef.current = message.session
             setConnection('finished')
             onFinishedRef.current(message.session)
@@ -147,6 +148,7 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
     }
     socket.onclose = () => {
       if (!disposed) {
+        terminal.options.disableStdin = true
         setConnection(current => current === 'finished' ? current : 'disconnected')
       }
     }
@@ -232,14 +234,16 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
           Crew, Code or workflow, where tools, files and history are set up. */}
       <p data-testid="provider-terminal-purpose" className="border-b border-white/10 bg-violet-500/10 px-3 py-2 text-[11px] leading-4 text-violet-100">
         {isInstallation ? `Installing ${displayName} on this computer. When installation finishes, connect your account.` : isUsage
-          ? <>Type {session.usage_command} to check usage. Short entries up to {session.input_limit} characters and navigation keys work. Sign-in and account/session changes are blocked. Ordinary text can use the model and incur charges.</>
+          ? <>Use arrow keys and Enter for startup prompts, then type {session.usage_command} to check usage. Short entries up to {session.input_limit} characters work. Sign-in and account/session changes are blocked. Ordinary text can use the model and incur charges.</>
           : <>Use this terminal for account setup and checks. For real work, use a Crew or Goal.</>}
       </p>
       <div ref={mountRef} className="h-[min(65vh,640px)] w-full p-2" aria-label={`Interactive ${displayName} setup terminal`} />
       {terminalError && <p className="border-t border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{terminalError}</p>}
       <p className="border-t border-white/10 px-3 py-2 text-[11px] text-gray-500">
         {isInstallation ? `This window runs the platform's approved ${displayName} installer.` : isUsage
-          ? `AgentWorks opened a restricted ${displayName} session and submitted its usage command. Close it when you finish reviewing the result.`
+          ? connection === 'finished'
+            ? 'This session ended. Choose Check usage again to open a new terminal.'
+            : `This ${displayName} terminal waits for your input. Close it when you finish checking usage.`
           : isInspection
           ? `This administrator-only window opens the approved ${displayName} CLI with the configured inspection restrictions. Use its built-in commands, then exit the CLI when finished.`
           : `This restricted setup window runs only the approved ${displayName} login flow. It does not provide shell or SSH access.`}

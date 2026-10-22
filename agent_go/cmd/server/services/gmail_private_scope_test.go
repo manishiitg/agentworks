@@ -169,6 +169,55 @@ func TestPrivateGmailConnectionsHaveTheirOwnStore(t *testing.T) {
 	}
 }
 
+func TestDeletingSharedGmailPreservesSameAddressPrivateAccount(t *testing.T) {
+	t.Setenv("GOG_HOME", t.TempDir())
+	t.Setenv("GMAIL_OAUTH_TOKEN_DIR", t.TempDir())
+	shared := GmailConnection{ID: "shared", Email: "owner@example.com", ClientName: "company", AuthBackend: "gog", Enabled: true}
+	personal := GmailConnection{ID: "personal", Email: shared.Email, ClientName: "personal", AuthBackend: "gog", Enabled: true, Personal: true, OwnerID: "owner"}
+	privateHome := gogHomeForConnection(personal)
+	if err := os.MkdirAll(privateHome, 0700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(privateHome, "keep")
+	if err := os.WriteFile(marker, []byte("private-store"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "gog")
+	script := "#!/bin/sh\n[ \"$1\" = --home ] && [ \"$2\" = \"$GOG_HOME\" ] || exit 9\nfor arg in \"$@\"; do [ \"$arg\" != --force ] || exit 0; done\nexit 2\n"
+	if err := os.WriteFile(binary, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	var saved string
+	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodGet {
+			var body struct {
+				Content string `json:"content"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			saved = body.Content
+			_, _ = w.Write([]byte(`{"success":true}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]string{"content": saved}})
+	}))
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	g := &GmailService{config: &GmailConfig{GogPath: binary, DefaultConnectionID: shared.ID, Connections: []GmailConnection{shared, personal}}}
+	if err := g.DeleteConnection(context.Background(), shared.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := g.GetConnection(shared.ID); ok {
+		t.Fatal("shared account survived disconnect")
+	}
+	if _, ok := g.GetConnection(personal.ID); !ok {
+		t.Fatal("personal account was removed with the shared account")
+	}
+	if data, err := os.ReadFile(marker); err != nil || string(data) != "private-store" {
+		t.Fatal("shared disconnect changed the private token store")
+	}
+}
+
 // The service refuses credential paths on a private account too, and deleting
 // a connection never removes a gws dir another connection still uses.
 func TestPrivateGmailConnectionsTakeNoCredentialPaths(t *testing.T) {

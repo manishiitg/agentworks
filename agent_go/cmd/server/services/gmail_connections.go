@@ -691,7 +691,9 @@ func (g *GmailService) DeleteConnection(ctx context.Context, id string) error {
 			if binary == "" {
 				binary = "gog"
 			}
-			args := append(gogBaseArgs(home, nil), "--client", conn.ClientName, "auth", "tokens", "delete", conn.Email, "--no-input")
+			// The authorized disconnect is already the person's delete request.
+			// Non-interactive gog refuses token deletion without explicit force.
+			args := append(gogBaseArgs(home, nil), "--client", conn.ClientName, "auth", "tokens", "delete", conn.Email, "--force", "--no-input")
 			if err := exec.CommandContext(cmdCtx, binary, args...).Run(); err != nil {
 				return fmt.Errorf("remove gog account credential: %w", err)
 			}

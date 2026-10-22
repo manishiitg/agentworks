@@ -204,7 +204,7 @@ func TestProviderSetupSessionPassesSuppliedEnvironmentToTerminalProcess(t *testi
 	}
 }
 
-func TestProviderUsageSessionSubmitsAllowlistedCommand(t *testing.T) {
+func TestProviderUsageSessionWaitsForManualKeys(t *testing.T) {
 	original := providerSetupCommands
 	providerSetupCommands = map[string]map[string]providerSetupCommand{
 		"claude-code": {
@@ -229,6 +229,34 @@ printf '\nsubmitted:%s\npwd:%s\n' "$command" "$PWD"`},
 		t.Fatal(err)
 	}
 	defer manager.remove(session.id, true)
+	waitFor := func(text string) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if strings.Contains(session.outputText(), text) {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("terminal did not reach %q; output=%q", text, session.outputText())
+	}
+	waitFor("folder")
+	time.Sleep(350 * time.Millisecond)
+	if !session.isRunning() || strings.Contains(session.outputText(), "trust-accepted") {
+		t.Fatal("interactive usage answered its own startup prompt")
+	}
+	// These browser-generated reports must not become Escape/cancel at the
+	// trust picker. Only the person's Down+Enter should reach the PTY.
+	if err := session.userInput("\x1b[I\x1b[?1;2c\x1b[1;1R\x1b]11;rgb:0000/0000/0000\x07"); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.userInput("\x1b[B\r"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor("trust-accepted")
+	if err := session.userInput("/usage\r"); err != nil {
+		t.Fatal(err)
+	}
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
