@@ -101,3 +101,23 @@ func laptopActionErrorText(body string) string {
 	}
 	return body
 }
+
+// listIntArg reads a whole-number tool argument that may arrive as a float or an int; 0 when it is absent, negative or not a
+// number.
+func listIntArg(args map[string]interface{}, key string) int {
+	switch value := args[key].(type) {
+	case float64:
+		if value > 0 && value == float64(int(value)) {
+			return int(value)
+		}
+	case int:
+		if value > 0 {
+			return value
+		}
+	case int64:
+		if value > 0 {
+			return int(value)
+		}
+	}
+	return 0
+}

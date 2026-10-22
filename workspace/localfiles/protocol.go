@@ -76,7 +76,9 @@ type Request struct {
 	Folders             []FolderSelection `json:"folders,omitempty"`
 	CrewID              string            `json:"crew_id,omitempty"`
 	PublicationInfoOnly bool              `json:"publication_info_only,omitempty"`
-	Offset              int64             `json:"offset,omitempty"`
+	Offset              int64             `json:"offset,omitempty"` // a list's first entry, or a read's byte offset
+	Query               string            `json:"query,omitempty"`  // a list keeps only names containing this text
+	Limit               int               `json:"limit,omitempty"`  // a list's page size (default 200, at most 1000)
 	ProjectID           string            `json:"project_id,omitempty"`
 	Identity            wf.EditIdentity   `json:"identity"`
 	ID                  string            `json:"id"`
@@ -102,6 +104,8 @@ type Response struct {
 	Error       string               `json:"error,omitempty"`
 	File        *wf.File             `json:"file,omitempty"`
 	Entries     []wf.Entry           `json:"entries,omitempty"`
+	Total       int                  `json:"total,omitempty"`     // a list: how many entries matched, before paging
+	Truncated   bool                 `json:"truncated,omitempty"` // a list: more entries follow this page
 	Receipt     *wf.WriteReceipt     `json:"receipt,omitempty"`
 }
 

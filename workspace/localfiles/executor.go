@@ -201,7 +201,7 @@ func (e *Executor) Execute(ctx context.Context, r Request) Response {
 	case "shell":
 		result.Shell, err = e.shell(ctx, g, r)
 	case "list":
-		result.Entries, err = e.list(ctx, g, r.Path)
+		result.Entries, result.Total, result.Truncated, err = e.list(ctx, g, r)
 	default:
 		result.Status = 400
 		result.Error = "unsupported operation"
@@ -217,53 +217,89 @@ func (e *Executor) Execute(ctx context.Context, r Request) Response {
 	}
 	return result
 }
-func (e *Executor) list(ctx context.Context, g Grant, input string) ([]wf.Entry, error) {
-	p, err := wf.CleanRelative(input)
+
+const (
+	defaultListLimit = 200
+	maxListLimit     = 1000
+	maxListedFolder  = 50000 // a folder with more entries than this is not read; name a subfolder
+)
+
+// list is one level of a folder, in name order, as a page: Limit entries (default 200, at most 1000) from Offset, optionally only
+// the names containing Query. It returns how many entries matched and whether more follow, so a big folder such as Downloads is
+// browsed or searched instead of refused.
+func (e *Executor) list(ctx context.Context, g Grant, r Request) ([]wf.Entry, int, bool, error) {
+	p, err := wf.CleanRelative(r.Path)
 	if err != nil {
-		return nil, &wf.FileError{Status: 400, Message: "invalid path"}
+		return nil, 0, false, &wf.FileError{Status: 400, Message: "invalid path"}
 	}
 	if wf.Private(p) || !g.Guard.Allows(p, false) {
-		return nil, &wf.FileError{Status: 403, Message: "path outside grants"}
+		return nil, 0, false, &wf.FileError{Status: 403, Message: "path outside grants"}
 	}
 	dir, err := wf.OpenDirectory(e.roots[g.ID], p, false)
 	if err != nil {
-		return nil, err
+		return nil, 0, false, err
 	}
 	defer dir.Close()
 	f, err := dir.Open(".")
 	if err != nil {
-		return nil, err
+		return nil, 0, false, err
 	}
 	defer f.Close()
-	// A bounded single-directory listing: callers descend explicitly.
-	entries, err := f.ReadDir(201)
+	entries, err := f.ReadDir(maxListedFolder + 1)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
+		return nil, 0, false, err
 	}
-	if len(entries) > 200 {
-		return nil, &wf.FileError{Status: 413, Message: "directory exceeds 200 entries; narrow the shared folder"}
+	if len(entries) > maxListedFolder {
+		return nil, 0, false, &wf.FileError{Status: 413, Message: "this folder has more than 50,000 entries; list one of its subfolders"}
 	}
-	out := []wf.Entry{}
+	limit := r.Limit
+	if limit <= 0 {
+		limit = defaultListLimit
+	}
+	if limit > maxListLimit {
+		limit = maxListLimit
+	}
+	offset := int(r.Offset)
+	if offset < 0 {
+		offset = 0
+	}
+	query := strings.ToLower(strings.TrimSpace(r.Query))
+	kept := make([]fs.DirEntry, 0, len(entries))
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, 0, false, err
 		}
 		relative := filepath.ToSlash(filepath.Join(p, entry.Name()))
 		if entry.Type()&fs.ModeSymlink != 0 || wf.Private(relative) || !g.Guard.Allows(relative, false) {
 			continue
 		}
-		info, err := entry.Info()
-		if err != nil {
-			return nil, err
-		}
-		kind := "file"
-		if info.IsDir() {
-			kind = "folder"
-		} else if !info.Mode().IsRegular() {
+		if !entry.IsDir() && !entry.Type().IsRegular() {
 			continue
 		}
-		out = append(out, wf.Entry{Path: relative, Type: kind, Size: info.Size()})
+		if query != "" && !strings.Contains(strings.ToLower(entry.Name()), query) {
+			continue
+		}
+		kept = append(kept, entry)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
-	return out, nil
+	sort.Slice(kept, func(i, j int) bool { return kept[i].Name() < kept[j].Name() })
+	total := len(kept)
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	out := make([]wf.Entry, 0, end-offset)
+	for _, entry := range kept[offset:end] {
+		kind, size := "file", int64(0)
+		if entry.IsDir() {
+			kind = "folder"
+		}
+		if info, err := entry.Info(); err == nil {
+			size = info.Size()
+		}
+		out = append(out, wf.Entry{Path: filepath.ToSlash(filepath.Join(p, entry.Name())), Type: kind, Size: size})
+	}
+	return out, total, end < total, nil
 }

@@ -25,6 +25,7 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 - Read lists and copies files in. Read & write also lets you write files there. Suggest Read first and ask when unsure.
 - Commands are a separate choice: the "Run terminal commands" switch (`manage_laptop_access` set with `commands: true`) plus a Read & write folder to start in. Offer it only when the work needs to run programs, builds, git or a cloud CLI on the laptop; files alone need no commands.
 - With the switch on, a command is the person's own terminal: their login shell, their environment, their files, keys and cloud logins, not limited to the shared folders. Say this plainly when you offer it; it is the person's call.
+- A big folder such as Downloads is listed a page at a time: `list_local_files` returns `total` and, when more follow, `truncated` and `next_offset`. To find a file, pass `query` (part of its name) instead of reading every page. If the tool returns an error, tell the person what it says; an error is never an empty folder.
 - `set` saves the whole list: include every folder to keep, or the omitted ones lose access.
 - Do not offer folders that hold sign-ins (`.aws`, `.ssh`, `.config`, keychains, browser profiles) as shared file folders; commands can use the person's tools without that.
 

@@ -500,8 +500,8 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 	}
 	gate.Declare("list_local_files")
 	if err := registrar.RegisterCustomToolWithTimeout("list_local_files",
-		"List the files and folders inside one folder of your connected computer's shared folder (one level, at most 200 entries). path is relative to the granted folder; omit it for the folder itself. Works for Read and Read & write folders."+allowedFolders,
-		map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your Crew Laptop access settings; optional when only one is allowed"}, "path": map[string]interface{}{"type": "string", "description": "Folder inside the granted folder, relative to it; omit for the granted folder itself"}}},
+		"List the files and folders inside one folder of your connected computer's shared folder, one level, in name order, a page at a time (200 by default; the reply says total and, when more follow, truncated and next_offset). In a big folder such as Downloads, find a file with query (part of its name) instead of reading every page. path is relative to the granted folder; omit it for the folder itself. Works for Read and Read & write folders. An error is not an empty folder: report what it says."+allowedFolders,
+		map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your Crew Laptop access settings; optional when only one is allowed"}, "path": map[string]interface{}{"type": "string", "description": "Folder inside the granted folder, relative to it; omit for the granted folder itself"}, "query": map[string]interface{}{"type": "string", "description": "Only names containing this text (not case-sensitive), for finding a file in a big folder"}, "limit": map[string]interface{}{"type": "integer", "description": "Entries per page; default 200, at most 1000"}, "offset": map[string]interface{}{"type": "integer", "description": "Where the page starts, from next_offset of the previous page"}}},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
 			caller, err := check(ctx)
 			if err != nil {
@@ -524,12 +524,23 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 				}
 				folder = current.Folders[0].ID
 			}
-			response, err := api.localDeviceCallForOwner(ctx, caller, selected.DeviceID, localfiles.Request{CrewID: root, ResourceID: folder, Operation: "list", Path: dir, RequestID: uuid.NewString()})
+			request := localfiles.Request{CrewID: root, ResourceID: folder, Operation: "list", Path: dir, RequestID: uuid.NewString(), Query: externalArg(args, "query"), Limit: listIntArg(args, "limit"), Offset: int64(listIntArg(args, "offset"))}
+			response, err := api.localDeviceCallForOwner(ctx, caller, selected.DeviceID, request)
 			if err != nil {
+				if strings.Contains(err.Error(), "exceeds 200 entries") {
+					// A laptop program from before paging: say so plainly rather than let the folder read as empty.
+					return "", errors.New("This folder has more than 200 items and the AgentWorks program on the laptop is an older version that cannot page or search it. Ask the person to update it (agentworks update, then stop and start it), or list one of its subfolders instead. The folder is not empty.")
+				}
 				return "", err
 			}
-			log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=list entries=%d", activity, caller.UserID, len(response.Entries))
-			out, _ := json.Marshal(map[string]interface{}{"entries": response.Entries})
+			log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=list entries=%d total=%d", activity, caller.UserID, len(response.Entries), response.Total)
+			result := map[string]interface{}{"entries": response.Entries, "total": response.Total}
+			if response.Truncated {
+				result["truncated"] = true
+				result["next_offset"] = int(request.Offset) + len(response.Entries)
+				result["note"] = "More entries follow. Call again with offset=next_offset, or narrow it with query (part of a name) or a subfolder path."
+			}
+			out, _ := json.Marshal(result)
 			return string(out), nil
 		}, 60*time.Second, "workspace_advanced"); err != nil {
 		return err
