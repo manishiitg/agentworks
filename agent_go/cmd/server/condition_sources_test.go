@@ -14,15 +14,13 @@ import (
 // scheduler state, then restart discovery and use the same function dispatcher.
 // Creating the caller must not alter the product it watches.
 func TestConditionProductCallerOwnsDetectorAndCallsOwnCrew(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	env.api.agentProfiles = env.svc.registry
-	ctx := internalBotRequestContext(context.Background(), "owner")
-	target := triggerTarget{Kind: triggerCallerCrew, Path: linkAlphaPath, CrewID: "alpha", CrewProfile: "work", CrewOwner: "owner"}
+	env, ctx, root := agentEmailCrewFixture(t)
+	target := triggerTarget{Kind: triggerCallerCrew, Path: root, CrewID: "mail-checks", CrewProfile: "work", CrewOwner: "owner"}
 	if err := writeCrewFunctions(ctx, target, []crewFunction{{Name: "review", Instructions: "Review the supplied ticket."}}); err != nil {
 		t.Fatal(err)
 	}
 	env.mock.mu.Lock()
-	before := env.mock.files[linkAlphaPath+"/product.json"]
+	before := env.mock.files[root+"/product.json"]
 	env.mock.mu.Unlock()
 	c := env.svc.conditionService()
 	args := map[string]interface{}{"action": "create", "request_id": "crew-watch", "trigger": map[string]interface{}{
@@ -30,29 +28,29 @@ func TestConditionProductCallerOwnsDetectorAndCallsOwnCrew(t *testing.T) {
 		"script_content": "import json\nprint(json.dumps({'events': [], 'state': {}}))\n",
 		"target":         map[string]interface{}{"kind": "function", "function": "review"},
 	}}
-	out, err := c.manage(ctx, "owner", "work", "alpha", args)
+	out, err := c.manage(ctx, "owner", "work", "mail-checks", args)
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := out.(map[string]interface{})["id"].(string)
-	job, err := env.svc.Job(ctx, "owner", projectScheduleJobID("work", "alpha", id))
+	job, err := env.svc.Job(ctx, "owner", projectScheduleJobID("work", "mail-checks", id))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.WatcherSource == nil || !strings.HasPrefix(job.WorkspacePath, "_users/owner/watchers/") || !workspacePathsMatchForUser("owner", job.Schedule.Condition.Target.Name, linkAlphaPath) {
+	if job.WatcherSource == nil || !strings.HasPrefix(job.WorkspacePath, "_users/owner/watchers/") || !workspacePathsMatchForUser("owner", job.Schedule.Condition.Target.Name, root) {
 		t.Fatal(job)
 	}
 	if c.caller(job).Stamp.Type != triggerCallerUser {
 		t.Fatal("watcher impersonates its associated Crew")
 	}
 	env.mock.mu.Lock()
-	unchanged := sameProductIgnoringMainChatKey(t, before, env.mock.files[linkAlphaPath+"/product.json"])
-	_, sourceInTarget := env.mock.files[linkAlphaPath+"/"+job.Schedule.Condition.Script]
+	unchanged := sameProductIgnoringMainChatKey(t, before, env.mock.files[root+"/product.json"])
+	_, sourceInTarget := env.mock.files[root+"/"+job.Schedule.Condition.Script]
 	env.mock.mu.Unlock()
 	if !unchanged || sourceInTarget {
 		t.Fatal("caller wrote into associated product")
 	}
-	if _, err := c.manage(ctx, "other", "work", "alpha", map[string]interface{}{"action": "read_script", "id": id}); err == nil {
+	if _, err := c.manage(ctx, "other", "work", "mail-checks", map[string]interface{}{"action": "read_script", "id": id}); err == nil {
 		t.Fatal("another person read private detector")
 	}
 	// Restart the service; discovery comes from the shared schedule state.
@@ -78,7 +76,7 @@ func TestConditionProductCallerOwnsDetectorAndCallsOwnCrew(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.drain(ctx, job)
-	listed, err := c.manage(ctx, "owner", "work", "alpha", map[string]interface{}{"action": "list"})
+	listed, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "list"})
 	if err != nil || len(listed.(map[string]interface{})["callers"].([]map[string]interface{})) != 1 {
 		t.Fatal("caller attribution missing", listed, err)
 	}

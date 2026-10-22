@@ -421,14 +421,56 @@ print(json.dumps({"events":[{"id":page["messages"][0]["id"],"payload":{"summary"
 	if strings.Contains(string(raw), "PRIVATE_BODY") || strings.Contains(string(raw), "PRIVATE_SUBJECT") {
 		t.Fatal("unselected personal content reached events")
 	}
+	// Replace only the model turn; the real message/session adapter still runs.
+	env.api.eventStore = openClientIdentityTestStore(t, "gmail-personal-watcher")
+	previousTurn := agentMessageTurn
+	turn := make(chan string, 1)
+	agentMessageTurn = func(api *StreamingAPI, turnCtx context.Context, request map[string]interface{}, session, _ string) (internalSessionTurnResult, error) {
+		select {
+		case turn <- session:
+		default:
+		}
+		return internalSessionTurnResult{}, nil
+	}
+	t.Cleanup(func() { agentMessageTurn = previousTurn })
 	// The real chat adapter addresses the creator's Crew conversation, never a
 	// Run person's chat or the private detector folder.
 	if _, err = c.dispatch(conditionContext(ctx, job), cfg, conditiontrigger.Event{ID: "selected", Payload: map[string]interface{}{"summary": "Selected information"}}, "personal-selected"); err != nil {
 		t.Fatal("selected chat delivery refused", err)
 	}
-	messages, err := readAgentMessageStore(ctx)
-	if err != nil {
-		t.Fatal(err)
+	select {
+	case session := <-turn:
+		if session != "sess-mail-checks" {
+			t.Fatal("selected mail reached another chat", session)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("selected message did not reach model adapter")
+	}
+	var messages agentMessageStore
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		messages, err = readAgentMessageStore(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pending := false
+		for _, conv := range messages.Conversations {
+			for _, message := range conv.Messages {
+				if message.Delivery == "pending" || message.Delivery == "delivering" {
+					pending = true
+				}
+				if message.Delivery == "undeliverable" {
+					t.Fatal("chat adapter delivery failed", message.Error)
+				}
+			}
+		}
+		if !pending {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("message worker did not finish before fixture cleanup")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	delivered := false
 	for _, conv := range messages.Conversations {
