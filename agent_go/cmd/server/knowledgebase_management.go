@@ -45,16 +45,16 @@ func (api *StreamingAPI) handleKnowledgebaseManagement(w http.ResponseWriter, r 
 		}
 	}
 	if err := knowledgebase.ValidateToolArguments(knowledgebase.ToolAccess, args); err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "arguments", err)
 		return
 	}
 	s, err := knowledgebaseService()
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "store_open", err)
 		return
 	}
 	if err = knowledgebaseSyncIdentities(r.Context(), s); err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "identity_sync", err)
 		return
 	}
 	p := knowledgebasePrincipal(r, claims)
@@ -67,7 +67,7 @@ func (api *StreamingAPI) handleKnowledgebaseManagement(w http.ResponseWriter, r 
 		folder, _ := args["folder_path"].(string)
 		access, e := s.Call(r.Context(), p, "get_knowledgebase_access", map[string]any{"folder_path": folder})
 		if e != nil {
-			knowledgebaseHTTPError(w, e)
+			knowledgebaseHTTPError(w, r, "access_check", e)
 			return
 		}
 		data, ok := access.(map[string]any)
@@ -78,7 +78,7 @@ func (api *StreamingAPI) handleKnowledgebaseManagement(w http.ResponseWriter, r 
 	}
 	result, err := knowledgeProposeAccess(r.Context(), claims.UserID, args)
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "proposal_create", err)
 		return
 	}
 	var response any

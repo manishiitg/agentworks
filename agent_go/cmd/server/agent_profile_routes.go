@@ -590,15 +590,15 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		}
 		service, err := knowledgebaseService()
 		if err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "store_open", err)
 			return
 		}
 		if err = knowledgebaseSyncIdentities(r.Context(), service); err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "identity_sync", err)
 			return
 		}
 		if _, err = service.Call(r.Context(), knowledgebasePrincipal(r, GetUserFromContext(r.Context())), "list_knowledgebase_folders", map[string]any{"folder_path": folder, "depth": 1}); err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "folder_check", err)
 			return
 		}
 		query.Query = "Selected Brain folder (context only): " + strconv.Quote(folder) + "\n\n" + query.Query

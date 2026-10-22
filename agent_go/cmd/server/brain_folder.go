@@ -191,7 +191,7 @@ func handleBrainSeen(w http.ResponseWriter, r *http.Request) {
 	}
 	service, err := knowledgebaseService()
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "store_open", err)
 		return
 	}
 	identity := knowledgebasePrincipal(r, claims).IdentityID
@@ -204,7 +204,7 @@ func handleBrainSeen(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := service.SetSeenCommit(identity, strings.TrimSpace(body.Commit)); err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "seen_write", err)
 			return
 		}
 	}

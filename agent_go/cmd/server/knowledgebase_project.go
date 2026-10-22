@@ -132,7 +132,7 @@ func (api *StreamingAPI) handleKnowledgebaseProject(w http.ResponseWriter, r *ht
 	if r.Method == http.MethodGet {
 		project, err := knowledgeProjectLoad(r.Context(), claims.UserID, r.URL.Query().Get("workspace_path"), false)
 		if err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "project_load", err)
 			return
 		}
 		if !containsID(project.Audience, claims.UserID) {
@@ -155,7 +155,7 @@ func (api *StreamingAPI) handleKnowledgebaseProject(w http.ResponseWriter, r *ht
 	workspace, _ := args["workspace_path"].(string)
 	result, err := knowledgeProjectExecute(r.Context(), claims.UserID, workspace, knowledgebase.ToolAccess, args)
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "project_update", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

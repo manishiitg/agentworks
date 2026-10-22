@@ -247,11 +247,18 @@ func knowledgebasePrincipal(r *http.Request, claims *UserClaims) knowledgebase.P
 	return p
 }
 
-func knowledgebaseHTTPError(w http.ResponseWriter, err error) {
+func knowledgebaseHTTPError(w http.ResponseWriter, r *http.Request, stage string, err error) {
+	// Only the caller cancelling this request is quiet. A live caller still needs
+	// an error if an internal operation is cancelled or reaches its deadline.
+	if errors.Is(r.Context().Err(), context.Canceled) && errors.Is(err, context.Canceled) {
+		return
+	}
+	if step := knowledgebase.DiagnosticStep(err); step != "" {
+		stage = step
+	}
 	var domain *knowledgebase.Error
 	if !errors.As(err, &domain) {
-		// The person sees a plain message; the log keeps the real cause (PLAT-856-126: 503s with no reason).
-		log.Printf("[KB_ERROR] unavailable: %v", err)
+		knowledgebaseLogUnavailable(r, stage, err)
 		externalError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "Brain is temporarily unavailable.")
 		return
 	}
@@ -267,6 +274,7 @@ func knowledgebaseHTTPError(w http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case "BACKUP_UNAVAILABLE", "BACKUP_OUTCOME_UNKNOWN":
 		status = http.StatusServiceUnavailable
+		knowledgebaseLogUnavailable(r, stage, err)
 	case "LIMIT_EXCEEDED":
 		status = http.StatusRequestEntityTooLarge
 	}
@@ -276,6 +284,32 @@ func knowledgebaseHTTPError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": domain})
+}
+
+func knowledgebaseLogUnavailable(r *http.Request, stage string, err error) {
+	class := "internal"
+	var syntax *json.SyntaxError
+	var valueType *json.UnmarshalTypeError
+	var domain *knowledgebase.Error
+	switch {
+	case errors.Is(err, context.Canceled):
+		class = "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		class = "deadline_exceeded"
+	case errors.Is(err, os.ErrPermission):
+		class = "permission_denied"
+	case errors.Is(err, os.ErrNotExist):
+		class = "not_found"
+	case errors.As(err, &syntax), errors.As(err, &valueType):
+		class = "invalid_json"
+	case errors.As(err, &domain):
+		if domain.Code == "BACKUP_OUTCOME_UNKNOWN" {
+			class = "backup_outcome_unknown"
+		} else {
+			class = "backup_unavailable"
+		}
+	}
+	log.Printf("[KB_ERROR] request_id=%q stage=%s class=%s", requestLogID(r), stage, class)
 }
 
 func knowledgebaseWriteJSON(w http.ResponseWriter, result any) {
@@ -301,17 +335,17 @@ func (api *StreamingAPI) handleKnowledgebaseViewer(w http.ResponseWriter, r *htt
 	case "bootstrap":
 		cfg, err := knowledgebaseConfig()
 		if err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "config", err)
 			return
 		}
 		service, err := knowledgebaseService()
 		if err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "store_open", err)
 			return
 		}
 		backupConfigured, err := service.BackupConfigured()
 		if err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "backup_config", err)
 			return
 		}
 		knowledgebaseWriteJSON(w, map[string]any{"organization_id": cfg.OrganizationID, "profile_id": "knowledgebase", "chat_workspace": "Chats/Knowledgebase", "is_admin": currentUserIsAdmin(r), "identity_id": claims.UserID, "can_write": service.CanWriteSomewhere(knowledgebasePrincipal(r, claims)), "backup_configured": backupConfigured})
@@ -354,16 +388,16 @@ func (api *StreamingAPI) handleKnowledgebaseViewer(w http.ResponseWriter, r *htt
 	}
 	service, err := knowledgebaseService()
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "store_open", err)
 		return
 	}
 	if err = knowledgebaseSyncIdentities(r.Context(), service); err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "identity_sync", err)
 		return
 	}
 	result, err := service.Call(r.Context(), knowledgebasePrincipal(r, claims), tool, args)
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "operation", err)
 		return
 	}
 	knowledgebaseWriteJSON(w, result)
@@ -385,11 +419,11 @@ func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *htt
 	}
 	service, err := knowledgebaseService()
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "store_open", err)
 		return
 	}
 	if err = knowledgebaseSyncIdentities(r.Context(), service); err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "identity_sync", err)
 		return
 	}
 	principal := knowledgebasePrincipal(r, claims)
@@ -400,7 +434,7 @@ func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *htt
 	}
 	result, err := knowledgebaseDispatch(context.WithValue(r.Context(), knowledgebaseMigrationAuthorityKey{}, true), service, principal, claims.UserID, tool, args)
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "operation", err)
 		return
 	}
 	knowledgebaseWriteJSON(w, map[string]any{"result": result})

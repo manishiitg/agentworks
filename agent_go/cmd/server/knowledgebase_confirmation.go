@@ -101,14 +101,14 @@ func (api *StreamingAPI) handleKnowledgebaseAccessProposals(w http.ResponseWrite
 	}
 	root, err := knowledgeIntegrationRoot()
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "proposal_store", err)
 		return
 	}
 	if r.Method == http.MethodGet {
 		proposals := []knowledgeAccessProposal{}
 		paths, err := filepath.Glob(filepath.Join(root, "approval_*.json"))
 		if err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "proposal_list", err)
 			return
 		}
 		for _, path := range paths {
@@ -145,7 +145,7 @@ func (api *StreamingAPI) handleKnowledgebaseAccessProposals(w http.ResponseWrite
 	}
 	if !request.Approve {
 		if err := os.Remove(path); err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "proposal_remove", err)
 			return
 		}
 		knowledgebaseWriteJSON(w, map[string]any{"status": "cancelled"})
@@ -153,11 +153,11 @@ func (api *StreamingAPI) handleKnowledgebaseAccessProposals(w http.ResponseWrite
 	}
 	service, err := knowledgebaseService()
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "store_open", err)
 		return
 	}
 	if err = knowledgebaseSyncIdentities(r.Context(), service); err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "identity_sync", err)
 		return
 	}
 	p := knowledgebasePrincipal(r, claims)
@@ -180,11 +180,11 @@ func (api *StreamingAPI) handleKnowledgebaseAccessProposals(w http.ResponseWrite
 	}
 	result, err := knowledgebaseDispatch(r.Context(), service, p, claims.UserID, knowledgebase.ToolAccess, proposal.Arguments)
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "proposal_apply", err)
 		return
 	}
 	if err = os.Remove(path); err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "proposal_remove", err)
 		return
 	}
 	knowledgebaseWriteJSON(w, map[string]any{"result": result})

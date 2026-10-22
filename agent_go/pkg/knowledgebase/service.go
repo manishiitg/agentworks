@@ -98,7 +98,8 @@ type requestRecord struct {
 	Result any    `json:"result"`
 }
 
-func New(cfg Config) (*Service, error) {
+func New(cfg Config) (_ *Service, resultErr error) {
+	defer func() { resultErr = withDiagnosticStep("store_open", resultErr) }()
 	if cfg.Root == "" {
 		return nil, errors.New("knowledgebase root is required")
 	}
@@ -187,7 +188,8 @@ func safeRegularDir(p string) error {
 	}
 	return nil
 }
-func (s *Service) lock(ctx context.Context, try bool) (func(), error) {
+func (s *Service) lock(ctx context.Context, try bool) (_ func(), resultErr error) {
+	defer func() { resultErr = withDiagnosticStep("store_lock", resultErr) }()
 	f, err := os.OpenFile(filepath.Join(s.private, "content.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
@@ -305,7 +307,8 @@ func (s *Service) apply(j journal) error {
 	}
 	return nil
 }
-func (s *Service) recover() error {
+func (s *Service) recover() (resultErr error) {
+	defer func() { resultErr = withDiagnosticStep("store_recovery", resultErr) }()
 	p := filepath.Join(s.private, "mutation-journal.json")
 	b, err := os.ReadFile(p)
 	if os.IsNotExist(err) {
@@ -343,7 +346,8 @@ func stamp() string          { return time.Now().UTC().Format(time.RFC3339Nano) 
 func (s *Service) registryPath(folder string) string {
 	return filepath.Join(s.live, filepath.FromSlash(folder), ".kb-registry.json")
 }
-func (s *Service) registries() ([]folderRegistry, error) {
+func (s *Service) registries() (_ []folderRegistry, resultErr error) {
+	defer func() { resultErr = withDiagnosticStep("index_read", resultErr) }()
 	var out []folderRegistry
 	err := filepath.WalkDir(s.live, func(p string, d os.DirEntry, e error) error {
 		if e != nil {

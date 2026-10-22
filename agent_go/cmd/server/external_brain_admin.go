@@ -82,11 +82,11 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 	}
 	service, err := knowledgebaseService()
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "store_open", err)
 		return
 	}
 	if err = knowledgebaseSyncIdentities(r.Context(), service); err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "identity_sync", err)
 		return
 	}
 	principal := knowledgebasePrincipal(r, claims)
@@ -98,7 +98,7 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 		}
 		if principal.Recheck != nil {
 			if err := principal.Recheck(ctx); err != nil {
-				knowledgebaseHTTPError(w, err)
+				knowledgebaseHTTPError(w, r, "principal_check", err)
 				return
 			}
 		}
@@ -107,7 +107,7 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 	case "backup_status":
 		result, err := service.Call(ctx, principal, "get_knowledgebase_backup_status", map[string]any{})
 		if err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "git_backup_status", err)
 			return
 		}
 		out := map[string]any{"backup": result}
@@ -122,7 +122,7 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 		}
 		result, err := service.ReconcileBackup(ctx, principal)
 		if err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "git_backup_reconcile", err)
 			return
 		}
 		log.Printf("[BRAIN] backup reconcile run by %s over MCP", claims.UserID)
@@ -173,7 +173,7 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 		}
 		result, err := knowledgebaseDispatch(ctx, service, principal, claims.UserID, knowledgebase.ToolBrowse, browse)
 		if err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "git_history", err)
 			return
 		}
 		knowledgebaseWriteJSON(w, map[string]any{"result": map[string]any{"last_seen": seen, "changes": result}})
@@ -181,11 +181,11 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 		commit := strings.TrimSpace(externalArg(args, "commit"))
 		// The commit must be one of Brain's own (the same check `since` makes), not just a well-formed id.
 		if _, err := service.Call(ctx, principal, "list_knowledgebase_changes", map[string]any{"since": commit, "limit": 1}); err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "git_history", err)
 			return
 		}
 		if err := service.SetSeenCommit(principal.IdentityID, commit); err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "seen_write", err)
 			return
 		}
 		knowledgebaseWriteJSON(w, map[string]any{"result": map[string]any{"last_seen": service.SeenCommit(principal.IdentityID)}})
@@ -266,11 +266,11 @@ func (api *StreamingAPI) handleBrainSecretSet(w http.ResponseWriter, r *http.Req
 	}
 	service, err := knowledgebaseService()
 	if err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "store_open", err)
 		return
 	}
 	if err = knowledgebaseSyncIdentities(r.Context(), service); err != nil {
-		knowledgebaseHTTPError(w, err)
+		knowledgebaseHTTPError(w, r, "identity_sync", err)
 		return
 	}
 	principal := knowledgebasePrincipal(r, claims)
@@ -280,7 +280,7 @@ func (api *StreamingAPI) handleBrainSecretSet(w http.ResponseWriter, r *http.Req
 	}
 	if principal.Recheck != nil {
 		if err := principal.Recheck(r.Context()); err != nil {
-			knowledgebaseHTTPError(w, err)
+			knowledgebaseHTTPError(w, r, "principal_check", err)
 			return
 		}
 	}
