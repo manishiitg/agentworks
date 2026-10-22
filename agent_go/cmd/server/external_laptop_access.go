@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
@@ -169,9 +170,31 @@ func (api *StreamingAPI) externalLaptopAccessCall(w http.ResponseWriter, r *http
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	api.laptopAccessAction(w, r, c, root, args)
+}
+
+// laptopSetupSteps are the commands to put the AgentWorks program on a computer and connect it, built from this server's own
+// public address; shown only while no computer is connected, so a chat can walk the person through first-time setup.
+func laptopSetupSteps(noneConnected bool) map[string]any {
+	base := strings.TrimRight(effectiveShareBaseURL(), "/")
+	if !noneConnected || base == "" {
+		return nil
+	}
+	return map[string]any{
+		"mac_or_linux_install": "curl -fsSL '" + base + "/api/downloads/cli/install-agentworks.sh' | sh -s -- --server '" + base + "' --no-login",
+		"windows_install":      "& ([scriptblock]::Create((Invoke-RestMethod '" + base + "/api/downloads/cli/install-agentworks.ps1'))) -Server '" + base + "' -NoLogin",
+		"connect":              "agentworks start --server '" + base + "'",
+		"steps":                "Run the install command in a terminal on that computer, then the connect command and sign in with the same account in the browser window it opens. Leave it running; then call devices again.",
+	}
+}
+
+// laptopAccessAction runs one manage_laptop_access action for the Crew at root as the person c. The MCP tool and the Crew chat
+// tool share it, so both apply the same owner-only checks and the same saved settings.
+func (api *StreamingAPI) laptopAccessAction(w http.ResponseWriter, r *http.Request, c *UserClaims, root string, args map[string]any) {
 	switch externalArg(args, "action") {
 	case "devices":
-		externalJSON(w, map[string]any{"devices": api.localDeviceListForOwner(c), "next": "Choose your computer, browse its folders, then save Read or Read & write access. If none is connected, open Connections → Local laptop in your Crew for the download and sign-in steps. Install once on that computer, sign in and keep AgentWorks running (agentworks start for CLI users). The same app also connects AgentBridge."})
+		devices := api.localDeviceListForOwner(c)
+		externalJSON(w, map[string]any{"devices": devices, "setup": laptopSetupSteps(len(devices) == 0), "next": "Choose your computer, browse its folders, then save Read or Read & write access. If none is connected, open Connections → Local laptop in your Crew for the download and sign-in steps. Install once on that computer, sign in and keep AgentWorks running (agentworks start for CLI users). The same app also connects AgentBridge."})
 	case "get":
 		settings, err := readLaptopSettings(c.UserID, root)
 		if err != nil {

@@ -7118,6 +7118,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
+			// Laptop setup (computer, folders, commands switch) is available from the Crew owner's own chat, as in the panel.
+			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+				if err := api.registerLaptopAccessChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
+					sendError(fmt.Sprintf("Failed to register laptop setup tool: %v", err), true)
+					return
+				}
+			}
 			// Local folder grants belong to the owner's interactive website turn;
 			// scheduled, connector and unattended/background adapters need separate consent.
 			if laptopConnectionTurn(req, resolvedProfile) {

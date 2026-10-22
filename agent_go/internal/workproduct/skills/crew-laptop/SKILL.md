@@ -9,12 +9,15 @@ The Crew runs on the server. A connected laptop adds two separate things. Files:
 
 ## Check first (read-only)
 
-1. `manage_laptop_access` with `devices` lists the person's connected computers. `get` shows the folders saved for this Crew and whether commands are on.
+Everything the Local laptop panel does you can do here with `manage_laptop_access`; the person never has to open the panel.
+
+1. `manage_laptop_access` with `devices` lists the person's connected computers. `get` shows the computer, folders and whether commands are on for this Crew.
 2. Tell the person plainly what you found: connected or not, which folder, Read or Read & write, and whether terminal commands are on.
+3. To set up or change: `browse` to find the folder, then `set` with the complete choice (device, every folder to keep with Read or Read & write, and `commands`). It takes effect from the next message. `list_local_files` with no folder shows the folders you can use now.
 
 ## If no computer shows
 
-On the laptop, the person installs AgentWorks and signs in to this server, then leaves it running. With the command line: `agentworks start --server <this server's address>`. In the app, the Crew's Connections → Local laptop shows the download and sign-in steps. Ask them to say when it is running, then check `devices` again. Never ask for passwords or keys.
+`devices` then also returns the install and connect commands for this server (`setup`). Give the person the one for their system, in plain steps: run the install command in a terminal on that computer, run the connect command, sign in with the same account in the browser window it opens, and leave it running. Ask them to say when it is running, then check `devices` again. Never ask for passwords or keys.
 
 ## Choosing a folder
 
