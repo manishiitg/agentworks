@@ -21,29 +21,7 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	registry := newTestRegistry(t)
-	previous := defaultProjectOwnersOverride
-	defaultProjectOwnersOverride = registry
-	t.Cleanup(func() {
-		defaultProjectOwnersOverride = previous
-		crewOwners.mu.Lock()
-		crewOwners.entries = map[string]crewOwnerEntry{}
-		crewOwners.mu.Unlock()
-	})
-	const root = "Crew/owner-tabs"
-	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "owner-tabs", ProjectID: "beta", OwnerID: "owner", Shared: true, Private: true}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := registry.AddCoOwner("work", "owner-tabs", "other"); err != nil {
-		t.Fatal(err)
-	}
-	crewOwners.mu.Lock()
-	crewOwners.entries = map[string]crewOwnerEntry{}
-	crewOwners.mu.Unlock()
-	env.mock.mu.Lock()
-	env.mock.files[root+"/product.json"] = env.mock.files[linkBetaPath+"/product.json"]
-	delete(env.mock.files, linkBetaPath+"/product.json")
-	env.mock.mu.Unlock()
+	root := crewOwnerTabsFixture(t, env, "other")
 	profile, err := env.svc.registry.Resolve("work", 0, "owner")
 	if err != nil {
 		t.Fatal(err)
@@ -116,8 +94,17 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 				foreign = chat
 			}
 		}
+		if code, out := workspaceOwnerTabRequest(t, env, &UserClaims{UserID: person}, "workspace", map[string]any{"workspace_id": "work:beta", "action": "chats"}); code != 200 || len(out["chats"].([]any)) != 2 {
+			t.Fatalf("public tab list: %d %+v", code, out)
+		}
+		if code, out := workspaceOwnerTabRequest(t, env, &UserClaims{UserID: person}, "workspace", map[string]any{"workspace_id": "work:beta", "action": "read_chat", "chat_id": foreign.ChatID}); code != 200 {
+			t.Fatalf("public peer read: %d %+v", code, out)
+		}
+		if code, out := workspaceOwnerTabRequest(t, env, &UserClaims{UserID: person}, "workspace", map[string]any{"workspace_id": "work:beta", "action": "ask", "chat_id": foreign.ChatID, "message": "typed takeover"}); code != 403 {
+			t.Fatalf("public peer ask: %d %+v", code, out)
+		}
 		for _, action := range []string{"side_rename", "side_close", "set_model", "stop"} {
-			code, out := externalCrewRequest(t, env, &UserClaims{UserID: person}, "manage_crew_chats", map[string]any{"crew_id": "beta", "action": action, "chat_id": foreign.ChatID, "name": "changed"})
+			code, out := workspaceOwnerTabRequest(t, env, &UserClaims{UserID: person}, "workspace", map[string]any{"workspace_id": "work:beta", "action": map[string]string{"side_rename": "rename_chat", "side_close": "close_chat", "set_model": "set_chat_model", "stop": "stop"}[action], "chat_id": foreign.ChatID, "name": "changed"})
 			if code != 403 {
 				t.Fatalf("MCP %s foreign write: %d %+v", action, code, out)
 			}
@@ -220,7 +207,7 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("cross-owner agent message did not reach recipient")
 	}
-	if _, err = registry.RemoveCoOwner("work", "owner-tabs", "other"); err != nil {
+	if _, err = defaultProjectOwners().RemoveCoOwner("work", "owner-tabs", "other"); err != nil {
 		t.Fatal(err)
 	}
 	removed := env.api.agentMessageCallerRole(agentMessageEndpoint{Kind: triggerCallerCrew, ID: "beta", Profile: "work", UserID: "other", Path: root, Session: sessions["other"].SessionID, ChatKey: sessions["other"].ConversationKey})
@@ -247,4 +234,40 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 	if env.api.crewSessionTabView(request("other", http.MethodGet, "/api/terminals/main", ""), sessions["owner"].SessionID) {
 		t.Fatal("removed co-owner still views owner tab")
 	}
+}
+
+func crewOwnerTabsFixture(t *testing.T, env triggerLinkEnv, coOwners ...string) string {
+	t.Helper()
+	registry := newTestRegistry(t)
+	previous := defaultProjectOwnersOverride
+	defaultProjectOwnersOverride = registry
+	clear := func() { crewOwners.mu.Lock(); crewOwners.entries = map[string]crewOwnerEntry{}; crewOwners.mu.Unlock() }
+	t.Cleanup(func() { defaultProjectOwnersOverride = previous; clear() })
+	const root = "Crew/owner-tabs"
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "owner-tabs", ProjectID: "beta", OwnerID: "owner", Shared: true, Private: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, person := range coOwners {
+		if _, err := registry.AddCoOwner("work", "owner-tabs", person); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clear()
+	env.mock.mu.Lock()
+	env.mock.files[root+"/product.json"] = env.mock.files[linkBetaPath+"/product.json"]
+	delete(env.mock.files, linkBetaPath+"/product.json")
+	env.mock.mu.Unlock()
+	return root
+}
+
+func workspaceOwnerTabRequest(t *testing.T, env triggerLinkEnv, claims *UserClaims, name string, args map[string]any) (int, map[string]any) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
+	req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", strings.NewReader(string(body)))
+	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, claims))
+	rec := httptest.NewRecorder()
+	env.api.handleExternalCall(rec, req)
+	out := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out
 }

@@ -76,6 +76,7 @@ func TestCodeMessagingListsOnlySiblingChats(t *testing.T) {
 // never reaches the owner's tabs.
 func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
 	env := newTriggerLinkEnv(t)
+	crewOwnerTabsFixture(t, env)
 	env.api.agentProfiles = env.svc.registry
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	profile, err := env.svc.registry.Resolve("work", 0, "owner")

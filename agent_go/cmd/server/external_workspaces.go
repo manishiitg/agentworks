@@ -11,8 +11,8 @@ import (
 // The canonical action family reuses native project services. Origin IDs remain
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. ask and chat actions use your own conversations; update/export/import use existing Builder authority. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "costs", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "set_chat_model", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
+	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask and chat changes use your own conversations; update/export/import use existing Builder authority. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "costs", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "set_chat_model", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
 		"workspace_id": externalString("Crew workspace ID from workspace action=list."),
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
 		"session_id":   externalString("An earlier chat session from action=chats, for read/delete."),
@@ -20,8 +20,9 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"operation_id": externalString("Storage operation for storage_status/storage_backup/storage_move. Storage operations need administrator/users:manage access. storage_move moves ready projects to Crew with verified backups; omit workspace_id for all ready projects. Explicitly select a registered project with unreadable files to move it with a partial backup; skipped entries are reported."),
 		"kind":         externalString("read_saved_chat: raw (default) or summary. Builders can read an agent's private imported chat with its current website access."),
 		"offset":       externalInteger(0, 1<<30), "limit": externalInteger(0, 65536),
-		"conversation_key": externalString("Your exact conversation key from this Crew."),
-		"chat_id":          externalString("A chat name/id you can access; omit to use your caller conversation."),
+		"conversation_key": externalString("Exact conversation key from this Crew’s tab list."),
+		"chat_id":          externalString("Tab id from chats. Other owners’ tabs allow read_chat and message_chat; ask and control actions use your own tabs."),
+		"inbox_id":         externalString("For message_chat: existing agent reply address, when continuing a conversation."),
 		"query":            externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
 		"wait_seconds": externalInteger(0, 25), "after": externalInteger(0, 1<<30),
 		"days":             externalInteger(1, 90),
@@ -231,7 +232,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 	}
 
 	member := map[string]string{"costs": "get_crew_costs", "ask": "ask_crew", "update": "update_crew", "export": "export_crew", "import": "import_crew"}[action]
-	if chatAction := map[string]string{"chats": "list", "read_chat": "read", "open_chat": "side_open", "rename_chat": "side_rename", "close_chat": "side_close", "new_chat": "new", "delete_chat": "delete", "stop": "stop", "set_chat_model": "set_model", "chat_tools": "tools", "chat_tool": "tool"}[action]; chatAction != "" {
+	if chatAction := map[string]string{"chats": "list", "read_chat": "read", "open_chat": "side_open", "rename_chat": "side_rename", "close_chat": "side_close", "new_chat": "new", "delete_chat": "delete", "stop": "stop", "message_chat": "message", "set_chat_model": "set_model", "chat_tools": "tools", "chat_tool": "tool"}[action]; chatAction != "" {
 		memberArgs["action"] = chatAction
 		member = "manage_crew_chats"
 	}

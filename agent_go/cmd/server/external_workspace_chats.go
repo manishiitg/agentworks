@@ -27,7 +27,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		}
 	}
 
-	chats, err := api.externalCodeRunChats(r.Context(), claims.UserID, manifest.ID, project.Binding, manifest.Product)
+	chats, err := api.workspaceOwnerChats(r, claims.UserID, manifest.ID, project.Binding)
 	if err != nil {
 		externalFailure(w, err)
 		return
@@ -43,7 +43,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 			externalError(w, status, "chat_unavailable", message)
 			return
 		}
-		chats, err = api.externalCodeRunChats(r.Context(), claims.UserID, manifest.ID, project.Binding, manifest.Product)
+		chats, err = api.workspaceOwnerChats(r, claims.UserID, manifest.ID, project.Binding)
 		if err != nil {
 			externalFailure(w, err)
 			return
@@ -52,6 +52,10 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	}
 	if chat == nil {
 		externalError(w, 404, "chat_not_found", "Choose one of your chats with action=chats, or ask without a chat_id to open your caller's own tab.")
+		return
+	}
+	if action == "ask" && chat.OwnerID != "" && chat.OwnerID != claims.UserID {
+		externalError(w, 403, "tab_owner", crewOwnerDisplayName(chat.OwnerID)+" controls this tab. Use your own tab, or message_chat to communicate with its agent.")
 		return
 	}
 	after := externalInt(args, "after", 0)
@@ -140,4 +144,13 @@ func (api *StreamingAPI) externalWorkspaceTurnExecution(sessionID, queryID strin
 		}
 	}
 	return cloneTrackedExecution(latest)
+}
+
+func (api *StreamingAPI) workspaceOwnerChats(r *http.Request, user, project string, binding productConversationBinding) ([]codeChat, error) {
+	chats := api.crewChats(r, user, project, binding.WorkspacePath)
+	out := make([]codeChat, 0, len(chats))
+	for _, chat := range chats {
+		out = append(out, codeChat{OwnerID: chat.OwnerID, IsMain: chat.IsMain, Key: chat.key, ID: chat.ChatID, Name: chat.Name, SessionID: chat.SessionID, UpdatedAt: chat.UpdatedAt})
+	}
+	return out, nil
 }

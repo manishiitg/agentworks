@@ -91,7 +91,7 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 		ownMain := tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(crewID, userID))
 		chat := externalCrewChat{OwnerID: tab.OwnerID, OwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, SessionID: record.SessionID, UpdatedAt: record.UpdatedAt, key: record.ConversationKey, IsMain: ownMain}
 		switch {
-		case ownMain:
+		case record.ConversationKey == crewID:
 			chat.ChatID, chat.Name = "main", "Main chat"
 		case strings.HasPrefix(record.ConversationKey, crewID+codeChatSideMarker):
 			chat.ChatID = strings.TrimPrefix(record.ConversationKey, crewID+codeChatSideMarker)

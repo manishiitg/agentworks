@@ -296,27 +296,6 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		}
 		externalJSON(w, map[string]any{"status": "submitted_for_owner_review", "crew_id": manifest.ID, "suggestion_id": input.ID})
 	case "ask_crew":
-		if crew.OwnedByCaller {
-			profile, e := api.agentProfiles.Resolve(manifest.Product, 0, claims.UserID)
-			if e != nil {
-				externalError(w, 404, "not_found", "Crew chat is unavailable.")
-				return
-			}
-			if _, e = api.resolveAgentProfileConversation(r, profile, manifest.ID, ""); e != nil {
-				externalError(w, 409, "chat_unavailable", e.Error())
-				return
-			}
-			chat, allowed := api.crewAskChat(r, claims.UserID, manifest.ID, crew.Binding.WorkspacePath, firstNonEmptyTrimmed(str("chat_id"), "main"))
-			if !allowed {
-				externalError(w, 403, "tab_owner", "Choose one of your own tabs from manage_crew_chats. To communicate with another owner’s agent, use action=message.")
-				return
-			}
-			if chat != nil {
-				target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: chat.Name, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: claims.UserID, Chat: chat}
-				api.externalSendMessage(w, r, args, target)
-				return
-			}
-		}
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 		api.externalSendMessage(w, r, args, target)
 	case "call_crew_function":
