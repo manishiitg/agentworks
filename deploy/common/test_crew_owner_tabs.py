@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-spec = importlib.util.spec_from_file_location('crew_owner_tabs', Path(__file__).parent / 'migrations/crew-owner-tabs.py')
+spec = importlib.util.spec_from_file_location('crew_owner_tabs', Path(__file__).resolve().parents[2] / 'scripts/migrations/crew-owner-tabs.py')
 migration = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(migration)
 

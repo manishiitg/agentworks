@@ -207,5 +207,8 @@ func ensureCrewOwnerDefaultTab(ctx context.Context, user string, profile agentpr
 	if err != nil {
 		return err
 	}
+	if identity, e := defaultProductConversationRegistryStore().agentIdentity(ctx, user, profile.ID, record.ConversationKey); e == nil && identity.Name != "" {
+		return nil
+	}
 	return setCodeTabName(ctx, user, record.ConversationKey, crewOwnerDisplayName(user)+" · Builder", profile.ID)
 }

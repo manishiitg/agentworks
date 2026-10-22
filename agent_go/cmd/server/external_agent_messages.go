@@ -119,6 +119,9 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 	if peer.Kind == triggerCallerCrew && peer.ChatKey != "" && isSideChatConversationKey(peer.ChatKey) {
 		crew, manifest, _, ok := api.externalCrewResolve(ctx, claims, peer.ID)
 		if ok && crew.OwnedByCaller {
+			if send && !externalCodeRunAllowed(claims) {
+				return denied
+			}
 			tab, found, e := crewTabForKey(ctx, claims.UserID, manifest.Product, peer.ChatKey, crew.Binding.WorkspacePath)
 			if e == nil && found && tab.OwnerID == peer.UserID && tab.Record.SessionID == peer.Session {
 				return nil

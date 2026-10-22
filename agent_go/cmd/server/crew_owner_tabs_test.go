@@ -12,6 +12,7 @@ import (
 
 	"github.com/gorilla/mux"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
 // Exercise the actual website/MCP boundaries with two owners and two retained
@@ -178,6 +179,11 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 	}
 	if _, err := resumeProductConversation(restarted.Context(), "owner", profile, binding, sessions["other"].SessionID); err == nil {
 		t.Fatal("resumed another owner's tab into own slot")
+	}
+	readClaims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{"beta"}}}
+	peer := agentMessageEndpoint{Kind: triggerCallerCrew, ID: "beta", Profile: "work", UserID: "other", Path: root, Session: sessions["other"].SessionID, ChatKey: sessions["other"].ConversationKey}
+	if e := env.api.externalAuthorizeMessagePeer(internalBotRequestContext(t.Context(), "owner"), readClaims, peer, true); e == nil {
+		t.Fatal("read connection gained existing Builder send authority")
 	}
 	delivered := make(chan string, 1)
 	oldTurn := agentMessageTurn
