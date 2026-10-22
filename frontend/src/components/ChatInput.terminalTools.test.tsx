@@ -78,6 +78,25 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => root?.unmount())
     useProductSurfaceStore.setState({ productSurface: 'agentworks' }); client?.clear(); host?.remove(); setUserCommands([]); setProductCommands([]); vi.restoreAllMocks(); send.mockClear(); stopTurn.mockClear(); newChat.mockClear()
   })
+  it('stops terminal metadata intervals in chat and resumes them in the terminal view', async () => {
+    vi.useFakeTimers()
+    vi.mocked(agentApi.listTerminals).mockResolvedValue({ terminals: [{ terminal_id: 'A-main', active: true }] } as never)
+    await act(async () => {
+      useChatStore.getState().setTabStreaming('A', true)
+      useChatStore.getState().setTabViewMode('A', 'formatted')
+      renderComposer('A', false)
+    })
+    const before = vi.mocked(agentApi.listTerminals).mock.calls.length
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    expect(agentApi.listTerminals).toHaveBeenCalledTimes(before)
+    await act(async () => {
+      useChatStore.getState().setTabViewMode('A', 'terminal')
+      renderComposer('A')
+    })
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_100) })
+    expect(vi.mocked(agentApi.listTerminals).mock.calls.length).toBeGreaterThan(before)
+    vi.useRealTimers()
+  })
   it('sends the selected Queue next intent by click and Enter while a turn is running', async () => {
     useChatStore.getState().setTabConfig('A', { sendDeliveryMode: 'queue' })
     useChatStore.getState().setTabStreaming('A', true)

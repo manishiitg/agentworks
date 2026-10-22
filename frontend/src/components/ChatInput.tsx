@@ -1354,6 +1354,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     staleTime: 1_000,
     retry: false,
     refetchInterval: (query) => {
+      // Chat already receives live session events. The terminal hover/status
+      // may read once, but must not keep polling an unseen terminal pane.
+      if (!terminalViewSelected) return false
       const mainTerminal = query.state.data?.terminals?.find(isMainAgentTerminal)
       return isTurnInFlight || mainTerminal?.active ? 3_000 : false
     },
