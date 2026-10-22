@@ -12,15 +12,21 @@ import (
 )
 
 // The one-off move of the old project-connection store into Vault: a dry run says what each attachment would do, and
-// changes nothing. Slack and catalog sign-in servers move; a key server, a Google server and a custom server are listed
-// with the reason and stay where they are.
+// changes nothing. Catalog/custom OAuth, key/header and no-auth records all move.
 func TestPlaceMigrationDryRunClassifiesAndChangesNothing(t *testing.T) {
 	withMCPConnectionsRoot(t)
+	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{}})
+	t.Cleanup(workspace.Close)
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("AUTH_SECRET", "place-migration-test-secret-with-enough-entropy")
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/admin/connectors" {
+			json.NewEncoder(w).Encode(map[string]any{"connectors": []any{}})
+			return
+		}
 		if r.URL.Path != "/api/admin/catalog" {
 			http.NotFound(w, r)
 			return
@@ -59,7 +65,7 @@ func TestPlaceMigrationDryRunClassifiesAndChangesNothing(t *testing.T) {
 	for _, row := range rows {
 		got[row.Server] = row.Kind + ":" + row.Result
 	}
-	want := map[string]string{"slack_work": "slack:would move", "notion": "oauth:would move", "jam": "custom:skipped", "crm": "key:skipped", "context7": "noauth:would move", "gmail": "google:skipped"}
+	want := map[string]string{"slack_work": "slack:would move", "notion": "oauth:would move", "jam": "oauth:would move", "crm": "key:would move", "context7": "noauth:would move", "gmail": "oauth:would move"}
 	for server, result := range want {
 		if got[server] != result {
 			t.Fatalf("%s = %q, want %q (all: %v)", server, got[server], result, got)
