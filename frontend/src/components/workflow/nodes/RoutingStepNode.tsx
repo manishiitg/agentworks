@@ -4,7 +4,7 @@ import { CheckCircle, GitBranch, XCircle, Loader2, Plus, RefreshCw, Route } from
 import type { RoutingStepNodeData } from '../hooks/usePlanToFlow'
 import type { ChangeType } from '../hooks/usePlanData'
 import { getExecutionModeVisuals } from './executionModeVisuals'
-import { effectiveExecutionMode, effectiveExecutionModeReason } from '../../../utils/stepConfigMatching'
+import { effectiveExecutionMode } from '../../../utils/stepConfigMatching'
 import { routeColorForIndex } from '../routeColors'
 
 interface RoutingStepNodeProps {
@@ -44,7 +44,7 @@ export const RoutingStepNode = memo(({ data, selected }: RoutingStepNodeProps) =
   const fallbackLabel = isBranch ? `Branch ${stepIndex + 1}` : `Routing ${stepIndex + 1}`
   const DecisionIcon = isBranch ? GitBranch : Route
   const decisionLabel = isBranch ? 'Branch' : 'Route'
-  const executionModeVisuals = getExecutionModeVisuals(effectiveExecutionMode(data.step), effectiveExecutionModeReason(data.step))
+  const executionModeVisuals = getExecutionModeVisuals(effectiveExecutionMode(data.step))
   const ModeIcon = executionModeVisuals.Icon
   const selectedRouteId = data.step && 'selected_route_id' in data.step
     ? data.step.selected_route_id

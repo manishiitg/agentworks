@@ -4,7 +4,7 @@ import { CheckCircle, XCircle, Loader2, Plus, RefreshCw, ListOrdered, MessageSqu
 import type { AgentNodeData } from '../hooks/usePlanToFlow'
 import type { ChangeType } from '../hooks/usePlanData'
 import type { AgentItem } from '../../../utils/stepConfigMatching'
-import { agentCardItems, effectiveExecutionMode, effectiveExecutionModeReason } from '../../../utils/stepConfigMatching'
+import { agentCardItems, effectiveExecutionMode } from '../../../utils/stepConfigMatching'
 import { getExecutionModeVisuals } from './executionModeVisuals'
 
 interface AgentNodeProps {
@@ -116,7 +116,7 @@ export const AgentNode = memo(({ data, selected }: AgentNodeProps) => {
   const seqItems = agentCardItems(step, items || [])
   const preview = description ? descriptionPreview(description) : ''
   const displayTitle = title || `Agent ${stepIndex + 1}`
-  const executionModeVisuals = getExecutionModeVisuals(effectiveExecutionMode(step), effectiveExecutionModeReason(step))
+  const executionModeVisuals = getExecutionModeVisuals(effectiveExecutionMode(step))
   const ModeIcon = executionModeVisuals.Icon
   const nodeBorderColor = status === 'pending' && executionModeVisuals.borderClassName
     ? executionModeVisuals.borderClassName

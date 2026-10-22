@@ -25,21 +25,12 @@ export interface AgentConfigs {
   selected_servers?: string[];
   selected_tools?: string[];
   enabled_custom_tools?: string[];
-  enabled_custom_tool_categories?: string[];  // Legacy format kept for transitional frontend compatibility
   enabled_skills?: string[];
   use_code_execution_mode?: boolean;
   disable_parallel_tool_execution?: boolean;  // Disable parallel tool execution (default: enabled)
   knowledgebase_access?: 'read' | 'write' | 'read-write' | 'none';
   knowledgebase_contribution?: string;
   db_access?: 'read' | 'write' | 'read-write' | 'none';
-  // LEGACY, read-only (PLAT-287). A step's execution model is decided by its
-  // plan `type` now — `scripted` is scripted, `agent` is agentic.
-  // These two keys may still be present in a workflow's step_config.json until its
-  // v1.0.39 contract migration strips them; a `scripted` step still carrying
-  // "agentic" is a legacy agentic step the runtime runs as a sequence. Nothing
-  // writes them any more. Use effectiveExecutionMode() instead of reading them.
-  declared_execution_mode?: string;
-  declared_execution_mode_reason?: string;
 }
 
 // Extended TodoStep with agent_configs
@@ -287,56 +278,18 @@ export interface ExecutionModeStepLike {
   execution_mode?: string;
 }
 
-// The legacy declared mode, canonicalised the way the backend did
-// (learn_code -> scripted, code_exec -> agentic), or undefined when absent.
-function legacyDeclaredMode(step: ExecutionModeStepLike): string | undefined {
-  const raw = step.agent_configs?.declared_execution_mode?.trim().toLowerCase();
-  if (!raw) return undefined;
-  if (raw === 'learn_code') return 'scripted';
-  if (raw === 'code_exec') return 'agentic';
-  return raw;
-}
-
 // The execution model a step actually runs with (PLAT-287): decided by the plan
-// type, not by a config field. `scripted` is scripted — its work is the
-// checked-in learnings/<id>/main.py — and `agent` is agentic. The
-// one transitional exception: a `scripted` step whose config still carries the
-// legacy key with "agentic" (not yet stripped by the v1.0.39 migration) is a
-// legacy agentic step the runtime still normalises into a sequence.
+// type. `scripted` is scripted — its work is the checked-in
+// learnings/<id>/main.py — and `agent` is agentic.
 // Routing/branch/orchestrator/human-input/crew steps have no execution mode.
 export function effectiveExecutionMode(
   step: ExecutionModeStepLike | null | undefined,
 ): EffectiveExecutionMode | undefined {
   if (!step) return undefined;
   const type = step.type || 'scripted';
-  if (type === 'scripted' || type === 'regular') {
-    return legacyDeclaredMode(step) === 'agentic' ? 'agentic' : 'scripted';
-  }
+  if (type === 'scripted' || type === 'regular') return 'scripted';
   if (type === 'agent') return 'agentic';
   return undefined;
-}
-
-// Display-only: the rationale a legacy config recorded next to its declared
-// mode. Gone once the migration strips the key; nothing writes it any more.
-export function effectiveExecutionModeReason(step: ExecutionModeStepLike | null | undefined): string | undefined {
-  const reason = step?.agent_configs?.declared_execution_mode_reason?.trim();
-  return reason || undefined;
-}
-
-// Which steps the agent runtime executes. A `scripted` step is a
-// scripted step and runs through the scripted executor — except a legacy
-// agentic one (config still carries declared_execution_mode "agentic", not yet
-// stripped by v1.0.39), which the runtime normalises into a single-turn
-// sequence exactly as it did before PLAT-287. Rendering such a step as a
-// sequence keeps the canvas honest about the items it will report completing
-// ("execute-and-verify"), which exist nowhere in plan.json.
-//
-// Mirrors shouldNormalizeScriptedStepToAgent / effectiveRuntimeStepType
-// in controller_agent.go. The legacy key reaches us from
-// step_config.json, merged onto the step by usePlanData.
-export function runsAsAgent(step: PlanStep): boolean {
-  if (isAgentStep(step)) return true;
-  return isScriptedStep(step) && legacyDeclaredMode(step) === 'agentic';
 }
 
 // Card rows are presentation only; execution keeps the complete item queue.
@@ -345,36 +298,13 @@ export function agentCardItems(step: PlanStep, items: AgentItem[]): AgentItem[] 
     ? items.slice(1) : items;
 }
 
-// The item list the runtime actually executes. An authored agent
-// supplies its own; a normalized scripted step gets the single synthesized turn
-// from normalizeScriptedStepToAgent, plus the validation gate
-// appendAgentFinalValidation adds when the step declares a schema.
-//
-// Display only — these are never written back to plan.json, exactly as the Go
-// side marks them Synthetic and keeps them out of serialization.
+// The item list the runtime actually executes: an authored agent supplies its
+// own. Display only — never written back to plan.json.
 export function configuredAgentItems(step: PlanStep): AgentItem[] {
-  if (isAgentStep(step)) {
-    const items = step.items ?? [];
-    if (step.prompt_contract === 'description-first-v1' && !step.authored_prompt) {
-      return [{id: '__step_description__', type: 'user_message', title: 'Step task', kind: 'execution', message: step.description}, ...items];
-    }
-    return items;
-  }
-  if (!runsAsAgent(step)) return [];
-
-  const items: AgentItem[] = [{
-    id: 'execute-and-verify',
-    type: 'user_message',
-    kind: 'execution',
-    message: 'Complete the step described above. Re-open the produced evidence, verify the result against every stated requirement, repair any gap you find, and finish only when the step is complete.'
-  }];
-  if (step.validation_schema) {
-    items.push({
-      id: '__automatic_final_validation__',
-      type: 'prevalidation',
-      title: 'Final validation',
-      validation_schema: step.validation_schema
-    });
+  if (!isAgentStep(step)) return [];
+  const items = step.items ?? [];
+  if (step.prompt_contract === 'description-first-v1' && !step.authored_prompt) {
+    return [{id: '__step_description__', type: 'user_message', title: 'Step task', kind: 'execution', message: step.description}, ...items];
   }
   return items;
 }

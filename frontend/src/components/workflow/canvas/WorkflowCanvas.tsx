@@ -48,7 +48,7 @@ import { PlanEmptyState } from '../PlanEmptyState'
 import { useChatStore } from '../../../stores/useChatStore'
 import { agentApi } from '../../../services/api'
 import type { AgentWriteAccess, PlanStep } from '../../../utils/stepConfigMatching'
-import { effectiveAgentItems, effectiveExecutionMode, effectiveExecutionModeReason, isCrewStep } from '../../../utils/stepConfigMatching'
+import { effectiveAgentItems, effectiveExecutionMode, isCrewStep } from '../../../utils/stepConfigMatching'
 import { CrewStepDetailSection } from './CrewStepDetailSection'
 import {
   WORKFLOW_PLAN_STEP_FOCUS_EVENT,
@@ -782,8 +782,7 @@ export function ReadOnlyStepDetailPanel({
   const validationSchema = step?.validation_schema || ('validation_schema' in data ? data.validation_schema : undefined)
   const agentConfigs = step?.agent_configs
   const declaredExecutionMode = effectiveExecutionMode(step)
-  const declaredExecutionModeReason = effectiveExecutionModeReason(step)
-  const declaredExecutionModeVisuals = getExecutionModeVisuals(declaredExecutionMode, declaredExecutionModeReason)
+  const declaredExecutionModeVisuals = getExecutionModeVisuals(declaredExecutionMode)
   const DeclaredExecutionModeIcon = declaredExecutionModeVisuals.Icon
   const contextInputs = step?.context_dependencies || []
   const contextOutput = step?.context_output
@@ -929,9 +928,6 @@ export function ReadOnlyStepDetailPanel({
               <span className="font-medium text-foreground">
                 {declaredExecutionModeVisuals.label || declaredExecutionMode}
               </span>
-              {declaredExecutionModeReason && (
-                <span className="text-muted-foreground">{declaredExecutionModeReason}</span>
-              )}
             </div>
           </DetailSection>
         )}

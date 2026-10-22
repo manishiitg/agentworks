@@ -4,7 +4,7 @@ import { CheckCircle, XCircle, Loader2, Plus, RefreshCw, Bot } from 'lucide-reac
 import type { StepNodeData } from '../hooks/usePlanToFlow'
 import type { ChangeType } from '../hooks/usePlanData'
 import { getExecutionModeVisuals } from './executionModeVisuals'
-import { effectiveExecutionMode, effectiveExecutionModeReason } from '../../../utils/stepConfigMatching'
+import { effectiveExecutionMode } from '../../../utils/stepConfigMatching'
 import { planStepTypeLabel } from '../canvas/scriptedStepPresentation'
 
 interface StepNodeProps {
@@ -45,8 +45,7 @@ export const StepNode = memo(({ data, selected }: StepNodeProps) => {
   // Check if this is a sub-agent (part of a routing step)
   const isSubAgent = useMemo(() => id.includes('-sub-agent-'), [id])
   const executionMode = effectiveExecutionMode(step)
-  const executionModeReason = effectiveExecutionModeReason(step)
-  const executionModeVisuals = getExecutionModeVisuals(executionMode, executionModeReason)
+  const executionModeVisuals = getExecutionModeVisuals(executionMode)
   const ModeIcon = executionModeVisuals.Icon
   const statusIcon = statusIcons[status]
   const nodeBorderColor = status === 'pending' && executionModeVisuals.borderClassName

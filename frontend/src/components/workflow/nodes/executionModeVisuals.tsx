@@ -35,7 +35,7 @@ export function getExecutionModeLabel(mode?: string): string | null {
   }
 }
 
-export function getExecutionModeVisuals(mode?: string, reason?: string): ExecutionModeVisuals {
+export function getExecutionModeVisuals(mode?: string): ExecutionModeVisuals {
   const normalized = normalizeExecutionMode(mode)
   const label = getExecutionModeLabel(mode)
   if (!normalized || !label) {
@@ -51,7 +51,7 @@ export function getExecutionModeVisuals(mode?: string, reason?: string): Executi
     }
   }
 
-  const baseTitle =
+  const title =
     normalized === 'scripted'
       ? 'Scripted execution: runs a saved reusable script when available'
       : normalized === 'agentic'
@@ -59,7 +59,6 @@ export function getExecutionModeVisuals(mode?: string, reason?: string): Executi
         : normalized === 'code_exec'
           ? 'Code execution mode'
           : `${label} execution mode`
-  const title = reason ? `${baseTitle}: ${reason}` : baseTitle
 
   if (normalized === 'scripted') {
     return {

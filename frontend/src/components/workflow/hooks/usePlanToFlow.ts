@@ -1,8 +1,8 @@
-import { useMemo, useRef, useEffect } from 'react'
+import { useMemo, useRef } from 'react';
 import type { Node, Edge } from '@xyflow/react'
 import dagre from 'dagre'
 import type { PlanStep, PlanningResponse, AgentLLMConfig, ValidationSchema, RoutingRoute, AgentItem } from '../../../utils/stepConfigMatching'
-import { agentCardItems, isLegacyAgentStep, isRoutingStep, isBranchStep, isAgentStep, isScriptedStep, isCrewStep, runsAsAgent, configuredAgentItems, effectiveAgentItems } from '../../../utils/stepConfigMatching'
+import { agentCardItems, isLegacyAgentStep, isRoutingStep, isBranchStep, isAgentStep, isScriptedStep, isCrewStep, configuredAgentItems, effectiveAgentItems } from '../../../utils/stepConfigMatching'
 import type { ChangeType, PlanChanges } from './usePlanData'
 import type { VariablesManifest, ScheduledJob } from '../../../services/api-types'
 import type { VariablesNodeData } from '../nodes/VariablesNode'
@@ -52,7 +52,6 @@ export interface LegacyAgentNodeData extends Record<string, unknown> {
   routeCondition?: string  // Condition from orchestration/todo routes
   isOrphan?: boolean  // True for orphan steps (workshop-only, not in main execution flow)
 }
-
 
 export interface RoutingStepNodeData extends Record<string, unknown> {
   route_source?: 'human' // branch only: asks the person when nothing was preseeded
@@ -1120,7 +1119,6 @@ function stepToNode(
     }
   }
 
-
   if (isCrewStep(step)) {
     return {
       id: nodeId,
@@ -1136,11 +1134,7 @@ function stepToNode(
     }
   }
 
-  // Covers authored agent steps AND stored `scripted` steps, which the
-  // runtime normalizes into a sequence before running (see runsAsAgent).
-  // Showing the latter as a plain step card described an execution path that no
-  // longer exists.
-  if (runsAsAgent(step)) {
+  if (isAgentStep(step)) {
     return {
       id: nodeId,
       type: 'agent',
@@ -1148,7 +1142,7 @@ function stepToNode(
       data: {
         ...baseData,
         items: configuredAgentItems(step),
-        predefined_routes: isAgentStep(step) ? step.predefined_routes : undefined
+        predefined_routes: step.predefined_routes
         // Note: status is inherited from baseData (computed based on completedStepIndices)
       } as AgentNodeData
     }
@@ -1292,10 +1286,9 @@ function processSteps(
           )
           todoTaskSubAgentNodes.push(...nestedTodoGraph.nodes)
           todoTaskEdges.push(...nestedTodoGraph.edges)
-        } else if (runsAsAgent(subAgentStep)) {
-          // A agent sub-agent must render as a AgentNode so its
-          // ordered items show — not as a generic step card. A stored `scripted`
-          // sub-agent runs as one too, so it gets the same treatment.
+        } else if (isAgentStep(subAgentStep)) {
+          // An agent sub-agent must render as an AgentNode so its
+          // ordered items show — not as a generic step card.
           const seqNode: WorkflowNode = {
             id: subAgentNodeId,
             type: 'agent',

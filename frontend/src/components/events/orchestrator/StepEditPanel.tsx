@@ -129,48 +129,12 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
     return `${category}:${tool}`;
   };
 
-  // Convert old format (categories + tools) to new unified format
-  const convertOldFormatToNew = (categories?: string[], tools?: string[]): string[] => {
-    const result: string[] = [];
-    
-    // Convert categories to "category:*" format
-    if (categories && categories.length > 0) {
-      for (const category of categories) {
-        result.push(formatToolEntry(category, '*'));
-      }
-    }
-    
-    // Convert specific tools - determine category for each tool
-    if (tools && tools.length > 0) {
-      const allWorkspaceTools = getToolsByCategory('workspace_tools', capabilities?.workspace);
-      const allHumanTools = getToolsByCategory('human_tools', capabilities?.workspace);
-      
-      for (const toolName of tools) {
-        if (allWorkspaceTools.includes(toolName)) {
-          result.push(formatToolEntry('workspace_tools', toolName));
-        } else if (allHumanTools.includes(toolName)) {
-          result.push(formatToolEntry('human_tools', toolName));
-        }
-      }
-    }
-    
-    return result;
-  };
-
   // State for enabled custom tools in unified format: "category:tool" or "category:*"
   // Default: advanced + human tools only (matches backend default)
   const [enabledCustomTools, setEnabledCustomTools] = useState<string[]>(() => {
     const configs = step.agent_configs || {};
-    // Check if already in new format
     if (configs.enabled_custom_tools && configs.enabled_custom_tools.length > 0) {
-      const firstEntry = configs.enabled_custom_tools[0];
-      if (firstEntry.includes(':')) {
-        return configs.enabled_custom_tools;
-      }
-      // Convert from old format (backward compatibility)
-      const oldCategories = configs.enabled_custom_tool_categories;
-      const oldTools = configs.enabled_custom_tools;
-      return convertOldFormatToNew(oldCategories, oldTools);
+      return configs.enabled_custom_tools;
     }
     // Default: advanced + human tools only (matches backend prepareCustomTools default)
     return ['workspace_advanced:*', 'human_tools:*'];
@@ -256,16 +220,7 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
 
       // Update enabled custom tools: convert from old format if needed
       if (currentConfigs.enabled_custom_tools && currentConfigs.enabled_custom_tools.length > 0) {
-        const firstEntry = currentConfigs.enabled_custom_tools[0];
-        if (firstEntry.includes(':')) {
-          // Already in new format
-          setEnabledCustomTools(currentConfigs.enabled_custom_tools);
-        } else {
-          // Convert from old format
-          const oldCategories = currentConfigs.enabled_custom_tool_categories;
-          const oldTools = currentConfigs.enabled_custom_tools;
-          setEnabledCustomTools(convertOldFormatToNew(oldCategories, oldTools));
-        }
+        setEnabledCustomTools(currentConfigs.enabled_custom_tools);
       } else {
         // No tools specified - default to advanced + human tools only (matches backend default)
         setEnabledCustomTools(['workspace_advanced:*', 'human_tools:*']);
