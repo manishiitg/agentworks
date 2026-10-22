@@ -38,6 +38,7 @@ import { createBufferedPersistStorage } from '../utils/bufferedPersistStorage'
 import { retainEventInSessionWorkingSet } from '../utils/sessionEventWorkingSet'
 import { autoNotificationDedupKey } from '../utils/internalChatEvents'
 import { durableStreamStartCursor } from '../utils/forwardCursor'
+import { markViewSwitchStart } from '../utils/chatDeliveryTelemetry'
 import { reconcileDurableUserEchoes } from '../utils/clientMessageIdentity'
 import { intermediateUpdateFromTranscriptChunk, isTranscriptChunkUpdate, normalizeTranscriptChunkEvents } from '../utils/transcriptChunkUpdates'
 
@@ -2991,6 +2992,7 @@ export const useChatStore = create<ChatState>()(
         const nextMode = normalizeEventViewMode(viewMode)
         void state
         void tab
+        if (normalizeEventViewMode(tab.viewMode) !== nextMode) markViewSwitchStart()
 
         // We do NOT drop tabEvents on entering Terminal mode. Earlier
         // attempts to drop caused two cascading issues: (1) optimistic

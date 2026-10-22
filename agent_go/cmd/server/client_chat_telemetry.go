@@ -55,6 +55,8 @@ var allowedClientChatTelemetryPhases = map[string]bool{
 	"processed":        true,
 	"painted":          true,
 	"tab_reorder":      true,
+	"view_switch":      true, // the click on the chat/terminal switch to the first paint of the new view
+	"terminal_ready":   true, // one of the terminal view's own loads (metadata, history)
 }
 
 func boundedTelemetryField(value string, max int) string {

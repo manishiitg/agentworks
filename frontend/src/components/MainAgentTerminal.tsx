@@ -3,6 +3,7 @@ import { agentApi } from '../services/api'
 import type { TerminalSnapshot } from '../services/api-types'
 import { useTheme } from '../hooks/useTheme'
 import { MAIN_TERMINAL_FOCUS_EVENT } from '../utils/mainTerminalFocus'
+import { recordViewTimingTelemetry } from '../utils/chatDeliveryTelemetry'
 import { LiveAttachXtermPane, RAW_XTERM_THEMES, StaticXtermPane } from './TerminalCenter'
 
 type MainAgentTerminalProps = {
@@ -56,6 +57,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
     // Slow responses from another session cannot replace this terminal.
     let cancelled = false
     let requestInFlight = false
+    let firstLoad = true // the first answer after opening is timed (terminal_ready), later polls are not
     const refresh = async () => {
       if (cancelled || requestInFlight) return
       requestInFlight = true
@@ -64,7 +66,12 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
         // tmux seed. Poll only metadata here: repeatedly downloading a growing
         // full-history body made this 3s health check reach megabytes and could
         // starve the socket/browser until Axios hit its 15s read timeout.
+        const askedAt = performance.now()
         const metadata = await agentApi.getMainTerminal(sessionId, { content: 'none' })
+        if (firstLoad) {
+          firstLoad = false
+          recordViewTimingTelemetry('terminal_ready', sessionId, '', 'metadata', performance.now() - askedAt)
+        }
         if (cancelled) return
         const previous = snapshotRef.current
         if (paneIsLive(metadata)) {
@@ -193,7 +200,12 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
             reconnectOnClose
             interactive={!readOnly}
             streamUrl={(cols, rows) => agentApi.getMainTerminalStreamUrl(sessionId, cols, rows, snapshot.tmux_session)}
-            loadSnapshot={() => agentApi.getMainTerminal(sessionId, { content: 'history', lines: MAIN_AGENT_TERMINAL_HISTORY_LINES })}
+            loadSnapshot={async () => {
+              const askedAt = performance.now()
+              const history = await agentApi.getMainTerminal(sessionId, { content: 'history', lines: MAIN_AGENT_TERMINAL_HISTORY_LINES })
+              recordViewTimingTelemetry('terminal_ready', sessionId, '', 'history', performance.now() - askedAt)
+              return history
+            }}
           />
         ) : (
           <div className="flex h-full min-h-0 flex-col">

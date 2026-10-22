@@ -76,7 +76,7 @@ import { ProductChatSurface } from '../platform/chat/ProductChatSurface'
 import { buildCleanConversationItems } from '../utils/cleanConversation'
 import { submissionFailure } from '../platform/chat/submissionFailure'
 import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths } from '../utils/chatMessageContent'
-import { recordChatDeliveryTelemetry, recordChatSubmissionTelemetry } from '../utils/chatDeliveryTelemetry'
+import { recordChatDeliveryTelemetry, recordChatSubmissionTelemetry, recordViewTimingTelemetry, takeViewSwitchStart } from '../utils/chatDeliveryTelemetry'
 
 // Stable empty array to avoid infinite re-render loops in Zustand selectors
 // (a new [] on every selector call breaks referential equality checks)
@@ -774,6 +774,17 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const serverRuntimeDiagnosticsEnabled = useCapabilitiesStore(state => state.capabilities?.runtime_debug === true)
   const showMainTerminal = activeEventViewMode === 'terminal'
   const showRuntimeDiagnostics = serverRuntimeDiagnosticsEnabled && showMainTerminal
+  // How long a chat/terminal switch takes in this browser, from the click to the first paint of the new view, goes to the server
+  // log (view_switch) so a slow switch can be read with its numbers instead of guessed at.
+  useEffect(() => {
+    const startedAt = takeViewSwitchStart()
+    const sessionId = activeTab?.sessionId
+    if (!startedAt || !sessionId) return
+    const tabId = activeTab?.tabId ?? ''
+    const to = showMainTerminal ? 'terminal' : 'chat'
+    const frame = window.requestAnimationFrame(() => window.requestAnimationFrame(() => recordViewTimingTelemetry('view_switch', sessionId, tabId, to, performance.now() - startedAt)))
+    return () => window.cancelAnimationFrame(frame)
+  }, [showMainTerminal, activeTab?.sessionId, activeTab?.tabId])
 
   // processEventsResponse runs for every polled session and does not carry
   // activeSessionId in its dependency array, so reading it through a ref keeps

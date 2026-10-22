@@ -13,6 +13,8 @@ export type ChatDeliveryTelemetryPhase =
   | 'processed'
   | 'painted'
   | 'tab_reorder'
+  | 'view_switch'
+  | 'terminal_ready'
 
 export type ChatDeliveryTelemetryEvent = {
   sequence: number
@@ -173,6 +175,29 @@ export function recordTabReorderTelemetry(sessionId: string, attemptId: string, 
   if (queue.length >= MAX_QUEUED_EVENTS) queue.shift()
   queue.push({ sequence: ++sequence, phase: 'tab_reorder', session_id: sessionId, submission_id: attemptId,
     event_type: 'chat_tab', tab_id: sourceTabId, target_tab_id: targetTabId, delivery_status: status,
+    client_time: new Date().toISOString(), performance_ms: Math.round(performance.now() * 1000) / 1000 })
+  if (timer === undefined) timer = window.setTimeout(flush, 100)
+}
+
+let viewSwitchStartedAt = 0
+/** The moment a person asks to switch between the chat and the terminal view; the paint after it is timed against this. */
+export function markViewSwitchStart(): void {
+  viewSwitchStartedAt = typeof performance !== 'undefined' ? performance.now() : 0
+}
+/** The start mark, read once: 0 when no switch was asked for since the last read. */
+export function takeViewSwitchStart(): number {
+  const at = viewSwitchStartedAt
+  viewSwitchStartedAt = 0
+  return at
+}
+
+/** Content-free timings of the chat/terminal switch, so a slow switch shows up in the server log with its numbers.
+ * view_switch: the click to the first paint of the new view (what = chat or terminal); terminal_ready: one of the terminal's own
+ * loads (what = metadata or history). */
+export function recordViewTimingTelemetry(phase: 'view_switch' | 'terminal_ready', sessionId: string, tabId: string, what: string, elapsedMs: number) {
+  if (typeof window === 'undefined' || !sessionId) return
+  if (queue.length >= MAX_QUEUED_EVENTS) queue.shift()
+  queue.push({ sequence: ++sequence, phase, session_id: sessionId, tab_id: tabId, transport: what, elapsed_ms: Math.round(elapsedMs),
     client_time: new Date().toISOString(), performance_ms: Math.round(performance.now() * 1000) / 1000 })
   if (timer === undefined) timer = window.setTimeout(flush, 100)
 }
