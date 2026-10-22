@@ -13,7 +13,7 @@ export function workspaceIntegrationShortcuts({ allowedProducts, relayMode = fal
   enabledPanels?: Set<string>
   includeCli?: boolean
   onOpen: (section: string) => void
-}): Array<{ id: string; label: string; icon: LucideIcon; onClick: () => void }> {
+}): Array<{ id: string; label: string; icon: LucideIcon; subgroup?: string; onClick: () => void }> {
   const sections = projectIntegrationSections(allowedProducts, relayMode).filter(section =>
     !workMode || isWorkIntegrationTabEnabled(section.value, enabledPanels))
   const tools = sections.some(section => section.value === 'apps')
@@ -22,7 +22,7 @@ export function workspaceIntegrationShortcuts({ allowedProducts, relayMode = fal
       : section.value === 'skills' ? enabledPanels.has('skills') : enabledPanels.has('mcp'))) : []
   const pluginIcons = { connected: Puzzle, available: Puzzle, secrets: KeyRound, skills: Sparkles }
   return [
-    ...plugins.map(section => ({ id: `mcp:${section.value}`, label: section.value === 'connected' ? 'MCPs' : section.label, icon: pluginIcons[section.value] })),
+    ...plugins.map(section => ({ id: `mcp:${section.value}`, label: section.value === 'connected' ? 'MCPs' : section.label, icon: pluginIcons[section.value], subgroup: section.value === 'connected' || section.value === 'secrets' ? 'Vault' : undefined })),
     ...sections.filter(section => section.value !== 'apps' && (includeCli || section.value !== 'cli')).map(section => ({ id: `mcp:${section.value}`, label: section.label, icon: section.icon })),
   ].map(item => ({ ...item, onClick: () => onOpen(item.id.slice(4)) }))
 }

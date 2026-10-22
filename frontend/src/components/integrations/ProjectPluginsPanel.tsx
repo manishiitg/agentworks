@@ -9,7 +9,7 @@ export type PluginTab = 'connected' | 'available' | 'secrets' | 'skills'
 export const PROJECT_PLUGIN_TABS: Array<{ value: PluginTab; label: string; requiredProduct?: ProductSurface }> = [
   { value: 'connected', label: 'Connected MCPs' },
   { value: 'available', label: 'Available MCPs' },
-  { value: 'secrets', label: 'Vault & secrets' },
+  { value: 'secrets', label: 'Secrets' },
   { value: 'skills', label: 'Skills' },
 ]
 

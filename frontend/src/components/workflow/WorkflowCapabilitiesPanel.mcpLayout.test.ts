@@ -77,10 +77,10 @@ describe('Workflow MCP panel layout', () => {
   it('keeps AgentWorks channel tabs while Flow shows MCPs, Skills and Google apps', () => {
     const panel = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
 
-    // The section list (Tools & secrets, Slack, WhatsApp, Google apps, Use in AI apps) is shared with Crew and Code.
+    // The section list (Vault, Slack, WhatsApp, Google apps, Use in AI apps) is shared with Crew and Code.
     const sections = readFileSync('src/components/integrations/integrationSections.ts', 'utf8')
     expect(sections).toMatch(/'apps'[\s\S]*?'slack'[\s\S]*?'whatsapp'[\s\S]*?'gmail'/)
-    expect(sections).toContain("{ value: 'apps', label: 'Tools & secrets'")
+    expect(sections).toContain("{ value: 'apps', label: 'Vault'")
     // One resource navigation replaces the old intermediate section directory.
     expect(panel).toContain('<IntegrationNavigation')
     expect(panel).not.toContain('<IntegrationSectionPicker')

@@ -11,7 +11,7 @@ export interface IntegrationSectionOption {
 
 /** Shared names and descriptions for Crew, Code, workflows and Relay. */
 export const PROJECT_INTEGRATION_SECTIONS: IntegrationSectionOption[] = [
-  { value: 'apps', label: 'Tools & secrets', description: 'MCPs, secrets and Vault.', icon: Blocks },
+  { value: 'apps', label: 'Vault', description: 'MCP connections and secrets used by this project.', icon: Blocks },
   { value: 'brain', label: 'Brain', description: 'Shared knowledge for your agents: open and edit by default, open only, or off.', icon: Brain, requiredProduct: 'knowledgebase' },
   { value: 'folders', label: 'Linked work', description: 'Other workflows, Crews and projects this one can use.', icon: FolderOpen },
   { value: 'slack', label: 'Slack', description: 'Act in Slack with a saved account, or choose a bot from My Vault.', icon: Slack },

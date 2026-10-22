@@ -52,7 +52,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
     add('notify', 'Share', 'Notify', BellRing)
   }
   for (const item of projectConnectionSections({ allowedProducts, relayMode, onOpen: () => {} })) {
-    add('mcp', 'Integrations', item.label, item.icon, item.id.slice(4))
+    add('mcp', 'Integrations', item.label, item.icon, item.id.slice(4), item.subgroup)
   }
   add('mcp', 'Integrations', 'Slack account', MessageSquareText, 'slack')
   if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) items.push({ id: 'product:bullpen', label: 'AgentBridge', icon: Cable, group: 'Integrations', external: 'bullpen' })

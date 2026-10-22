@@ -40,7 +40,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
       if (item.id === 'slack') add('mcp', 'Integrations', 'Slack account', item.icon, 'slack-account')
     }
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
-      add('mcp', 'Integrations', item.id === 'mcp:secrets' ? 'Secrets' : item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4))
+      add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.subgroup)
     }
     if (projectId) add('mcp', 'Integrations', 'Chats from your computer', Laptop, 'agents')
     if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) items.push({ id: 'product:bullpen', label: 'AgentBridge', group: 'Integrations', icon: Cable, external: 'bullpen' })

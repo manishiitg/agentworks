@@ -25,9 +25,10 @@ export function IntegrationNavigation({ options, value, onChange, overview, onOv
   canEdit?: boolean
 }) {
   const selected = options.find(option => option.value === (value === 'available' ? 'connected' : value))
-  const accounts = options.filter(option => ['connected', 'gmail', 'slack', 'whatsapp'].includes(option.value))
-  const resources = options.filter(option => !accounts.includes(option))
-  const shared = resources.filter(option => ['brain', 'secrets'].includes(option.value)).sort((a, b) => Number(a.value === 'secrets') - Number(b.value === 'secrets'))
+  const vault = options.filter(option => ['connected', 'secrets'].includes(option.value))
+  const accounts = options.filter(option => ['gmail', 'slack', 'whatsapp'].includes(option.value))
+  const resources = options.filter(option => !vault.includes(option) && !accounts.includes(option))
+  const shared = resources.filter(option => option.value === 'brain')
   const project = resources.filter(option => !shared.includes(option))
   const choose = (next: string) => {
     if (options.some(option => option.value === next)) onChange(next === 'connected' && canEdit ? 'available' : next)
@@ -43,7 +44,7 @@ export function IntegrationNavigation({ options, value, onChange, overview, onOv
         <Plus className="h-3.5 w-3.5" aria-hidden="true" />{canEdit ? 'Add connection' : 'View connections'}
       </button></Menu.Trigger>
       <Menu.Portal><Menu.Content aria-label="Connection choices" align="end" sideOffset={6} collisionPadding={12} className="z-50 max-h-[min(70vh,420px)] w-60 max-w-[calc(100vw-24px)] overflow-y-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl">
-        {[{ label: 'Shared resources', items: shared }, { label: 'Apps & tools', items: accounts }, { label: 'Project resources', items: project }].filter(group => group.items.length).map(group => <Menu.Group key={group.label}>
+        {[{ label: 'Vault', items: vault }, { label: 'Shared resources', items: shared }, { label: 'Apps & tools', items: accounts }, { label: 'Project resources', items: project }].filter(group => group.items.length).map(group => <Menu.Group key={group.label}>
           <Menu.Label className="px-2.5 py-1.5 text-[10px] text-muted-foreground">{group.label}</Menu.Label>
           {group.items.map(option => <Menu.Item key={option.value} onSelect={() => choose(option.value)} className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-xs outline-none data-[highlighted]:bg-muted">
             <option.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />{option.label}
