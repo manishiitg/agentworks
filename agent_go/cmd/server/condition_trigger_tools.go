@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"path"
 	"strings"
@@ -64,7 +65,18 @@ func conditionView(s productschedule.Schedule) map[string]interface{} {
 }
 
 func (c *conditionService) manage(ctx context.Context, owner, profile, project string, args map[string]interface{}) (interface{}, error) {
+	actor := owner
+	if isProjectProfileID(profile) {
+		if projectOwner, err := c.s.projectBuilderOwner(ctx, owner, profile, project); err == nil {
+			// Owners manage one Crew configuration, including its saved Watchers.
+			owner = projectOwner
+			ctx = internalBotRequestContext(ctx, owner)
+		}
+	}
 	action, _ := args["action"].(string)
+	if action == "create" || action == "update" || action == "delete" || action == "check" {
+		log.Printf("[CREW_WATCHER] actor=%s owner=%s project=%s action=%s", actor, owner, project, action)
+	}
 	if action == "create" || action == "update" || action == "delete" {
 		conditionConfigMu.Lock()
 		defer conditionConfigMu.Unlock()

@@ -347,7 +347,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   }
   const toggleSection = (id: string) =>
     toggleExpanded(sidebarExpansionKey(scope, 'project', id))
-  const workspaces = sidebarWorkspaceGroups(rows)
+  const workspaces = sidebarWorkspaceGroups(rows, directory?.scope === scope ? directory.projects : [])
   const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: string, visible = true, disclosure?: { panelId: string; expanded: boolean; onToggle: () => void }) => {
     const tab = row.tabId ? tabs[row.tabId] : undefined
     const inspecting = tab?.metadata?.stepInspections?.items.some(item => inspectionKey(item) === tab.metadata?.stepInspections?.activeId)
@@ -473,6 +473,16 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   }
   const isResourceWorkspace = (surface: string) => surface === 'knowledgebase' || surface === 'mcp-gateway'
   const renderWorkspace = (workspace: (typeof workspaces)[number], index: number) => {
+    if (workspace.surface === 'work' && workspace.chats.length === 0) return <button
+      key={workspace.id}
+      type="button"
+      title={`Crew · ${workspace.title}`}
+      onClick={() => {
+        useProductSurfaceStore.getState().setSelectedWorkProjectId(workspace.id.slice('work:'.length))
+        openProductWorkspace('work')
+      }}
+      className="mb-2 flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    ><ProductSurfaceIcon surface="work" className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate font-medium">{workspace.title}</span></button>
     const hidden = !expanded[sidebarExpansionKey(scope, 'project', workspace.id)]
     const running = workspace.chats.filter(
       (row) => row.group === 'Running' && !row.waiting
@@ -567,7 +577,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             Some chats could not load · Retry
           </button>
         )}
-        {history && !history.error && !rows.length && directory?.scope === scope && directory.authoritative && (
+        {history && !history.error && !workspaces.length && directory?.scope === scope && directory.authoritative && (
           <p className="px-2 py-3 text-xs text-muted-foreground">No chats yet.</p>
         )}
       </div>

@@ -125,11 +125,13 @@ var providerSetupANSI = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x
 // providerSetupCursorMoves are the escapes a full-screen CLI draws rows with instead of newlines (move to row/column,
 // next line, line down). Codex 0.161 draws its whole screen this way, so with escapes simply removed its "›" prompt was
 // never at the start of a line, /status was never sent and Check usage returned the start screen (server B 2026-10-08).
+var providerSetupCursorSpaces = regexp.MustCompile(`\x1b\[[0-9]*C`)
+
 var providerSetupCursorMoves = regexp.MustCompile(`\x1b\[[0-9;]*[HfEBd]`)
 
 // providerUsageScreenText is a usage terminal's output as plain text, one screen row per line.
 func providerUsageScreenText(raw string) string {
-	text := providerSetupANSI.ReplaceAllString(providerSetupCursorMoves.ReplaceAllString(raw, "\n"), "")
+	text := providerSetupANSI.ReplaceAllString(providerSetupCursorMoves.ReplaceAllString(providerSetupCursorSpaces.ReplaceAllString(raw, " "), "\n"), "")
 	// Claude's prompt can separate the marker from its hint with a non-breaking space.
 	return strings.ReplaceAll(text, "\u00a0", " ")
 }
@@ -209,9 +211,10 @@ type providerSetupSession struct {
 	done        chan struct{}
 	// readOnly sessions belong to someone who does not manage the account:
 	// the server drives the usage command and every input is dropped.
-	readOnly       bool
-	usageSubmitted time.Time
-	usageInput     providerUsageInput
+	readOnly          bool
+	usageSubmitted    time.Time
+	usageOutputOffset int
+	usageInput        providerUsageInput
 }
 
 // Usage managers may type short input and navigate the CLI. Account/session
@@ -597,13 +600,16 @@ func driveProviderUsage(ctx context.Context, session *providerSetupSession) {
 		case <-ticker.C:
 			output := providerUsageScreenText(session.outputText())
 			if !trustHandled && providerUsageTrustPrompt(session.provider, output) {
+				if session.provider == "claude-code" && claudeUsageTrustChoice(output) == 0 {
+					continue // Wait for the selected row, not a partially drawn prompt.
+				}
 				if !acceptProviderUsageTrust(session, session.provider, output) {
 					log.Printf("[PROVIDER_USAGE] session=%s provider=%s trust_write_failed", session.id, session.provider)
 					return
 				}
 				log.Printf("[PROVIDER_USAGE] session=%s provider=%s trust_answered", session.id, session.provider)
 				trustHandled = true
-				baseline = len(output)
+				baseline = len(providerUsageScreenText(session.outputText()))
 				continue
 			}
 			visible := output
@@ -614,6 +620,9 @@ func driveProviderUsage(ctx context.Context, session *providerSetupSession) {
 				visible = output[baseline:]
 			}
 			if providerUsagePromptReady(session.provider, visible) {
+				session.mu.Lock()
+				session.usageOutputOffset = len(session.output)
+				session.mu.Unlock()
 				if session.write(usageCommand+"\r") != nil {
 					log.Printf("[PROVIDER_USAGE] session=%s provider=%s command_write_failed", session.id, session.provider)
 					return
@@ -649,12 +658,17 @@ func acceptProviderUsageTrust(session *providerSetupSession, provider, output st
 	lower := strings.ToLower(output)
 	switch provider {
 	case "claude-code":
-		compact := strings.Join(strings.Fields(lower), "")
-		if strings.Contains(compact, "❯no,exit") || strings.Contains(compact, "❯1.no,exit") {
+		if claudeUsageTrustChoice(output) < 0 {
 			if session.write("\x1b[B") != nil {
 				return false
 			}
-			time.Sleep(250 * time.Millisecond)
+			deadline := time.Now().Add(5 * time.Second)
+			for claudeUsageTrustChoice(providerUsageScreenText(session.outputText())) != 1 {
+				if !session.isRunning() || time.Now().After(deadline) {
+					return false
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
 		}
 		return session.write("\r") == nil
 	case "codex-cli":
@@ -672,6 +686,23 @@ func acceptProviderUsageTrust(session *providerSetupSession, provider, output st
 	}
 }
 
+// The transcript contains old redraws. Only its last selected trust row counts.
+func claudeUsageTrustChoice(output string) int {
+	compact := strings.Join(strings.Fields(strings.ToLower(output)), "")
+	last, choice := -1, 0
+	for _, marker := range []string{"❯", "›", ">"} {
+		for _, row := range []struct {
+			text   string
+			choice int
+		}{{"no,exit", -1}, {"1.no,exit", -1}, {"yes,itrustthisfolder", 1}, {"2.yes,itrustthisfolder", 1}} {
+			if at := strings.LastIndex(compact, marker+row.text); at > last {
+				last, choice = at, row.choice
+			}
+		}
+	}
+	return choice
+}
+
 func providerUsagePromptReady(provider, output string) bool {
 	lines := strings.Split(strings.ReplaceAll(output, "\r", ""), "\n")
 	start := len(lines) - 24
@@ -680,6 +711,9 @@ func providerUsagePromptReady(provider, output string) bool {
 	}
 	for _, line := range lines[start:] {
 		trimmed := strings.TrimSpace(line)
+		if provider == "claude-code" && claudeUsageTrustChoice(trimmed) != 0 {
+			continue
+		}
 		switch provider {
 		case "claude-code", "muse-cli":
 			if trimmed == "❯" || strings.HasPrefix(trimmed, "❯ ") {
@@ -910,6 +944,13 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 		go driveProviderUsage(r.Context(), session)
 		text := collectProviderUsageOutput(session, providerUsageCollectTimeout)
 		api.providerSetupManager().remove(session.id, true)
+		session.mu.Lock()
+		submitted := !session.usageSubmitted.IsZero()
+		session.mu.Unlock()
+		if !submitted {
+			writeAgentProfileError(w, http.StatusBadGateway, "The provider usage check stopped during startup. Try Check usage again.")
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"usage_output": text})
 		return
@@ -928,11 +969,21 @@ var (
 // its answer (output settles after the command was sent, or the CLI exits)
 // and returns the text without terminal escapes.
 func collectProviderUsageOutput(session *providerSetupSession, timeout time.Duration) string {
+	result := func() string {
+		session.mu.Lock()
+		offset := session.usageOutputOffset
+		session.mu.Unlock()
+		raw := session.outputText()
+		if offset > 0 && offset <= len(raw) {
+			raw = raw[offset:]
+		}
+		return cleanProviderUsageText(raw)
+	}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		select {
 		case <-session.done:
-			return cleanProviderUsageText(session.outputText())
+			return result()
 		default:
 		}
 		session.mu.Lock()
@@ -943,7 +994,7 @@ func collectProviderUsageOutput(session *providerSetupSession, timeout time.Dura
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return cleanProviderUsageText(session.outputText())
+	return result()
 }
 
 func cleanProviderUsageText(raw string) string {

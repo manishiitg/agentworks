@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression: owner-tab conversion preserves chats and exact message addresses."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -24,6 +25,10 @@ class OwnerTabMigrationTest(unittest.TestCase):
             project.mkdir(parents=True)
             manifest = {'id': 'p', 'product': 'work', 'session_id': 'current-session', 'main_chat_key': 'p:chat:current'}
             (project / 'product.json').write_text(json.dumps(manifest))
+            laptop_key = hashlib.sha256(b'owner\0Crew/demo').hexdigest()
+            laptop = state / 'crew-laptop' / (laptop_key + '.json')
+            laptop.parent.mkdir()
+            laptop.write_text(json.dumps({'device_id': 'laptop', 'commands': True, 'folders': []}))
             for user in ('owner', 'co'):
                 path = workspace / '_users' / user / 'chat_history/product-conversations.json'
                 path.parent.mkdir(parents=True)
@@ -55,6 +60,8 @@ class OwnerTabMigrationTest(unittest.TestCase):
             ]
             messages.write_text(json.dumps({'conversations': [{'endpoints': endpoints}]}))
             migration.migrate(workspace, state)
+            self.assertEqual(json.loads(laptop.read_text()), {'device_id': 'laptop', 'device_owner_id': 'owner', 'commands': True, 'folders': []})
+            laptop_after = laptop.read_bytes()
             results = [json.loads((workspace / '_users' / user / 'chat_history/product-conversations.json').read_text()) for user in ('owner', 'co')]
             keys = [next(key for key in result['entries'] if key != 'work/p:chat:saved-name') for result in results]
             self.assertNotEqual(keys[0], keys[1])
@@ -71,6 +78,7 @@ class OwnerTabMigrationTest(unittest.TestCase):
             self.assertEqual(json.loads((project / 'product.json').read_text()), manifest)
             before = {path: path.read_bytes() for path in workspace.rglob('*.json')}
             migration.migrate(workspace, state)
+            self.assertEqual(laptop.read_bytes(), laptop_after)
             self.assertEqual(before, {path: path.read_bytes() for path in workspace.rglob('*.json')})
             self.assertEqual(len(list((state / 'migrations').rglob('*conversations.json'))), 2)
             self.assertEqual(len(list((state / 'migrations').rglob('agent-messages.json'))), 1)

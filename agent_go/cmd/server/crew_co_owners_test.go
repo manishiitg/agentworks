@@ -10,6 +10,9 @@ import (
 // Builder), while IDENTITY stays the main owner's, and the creator can never be removed.
 func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","email":"owner@example.com","products":["work"]},{"id":"co","username":"co","email":"co@example.com","products":["work"]},{"id":"ann","username":"ann","email":"ann@example.com","products":["work"]},{"id":"nowork","username":"nowork","email":"nowork@example.com","products":["agentworks"]}]}`)
+	if name := crewOwnerDisplayName("owner"); name != "owner@example.com" {
+		t.Fatalf("tab controller is not identified by email: %q", name)
+	}
 	registry := newTestRegistry(t)
 	prev := defaultProjectOwnersOverride
 	defaultProjectOwnersOverride = registry
@@ -97,8 +100,8 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 	crew.Binding.WorkspacePath = root
 	api := &StreamingAPI{}
 	claims := &UserClaims{UserID: "owner", Username: "owner"}
-	if _, status, _, _ := api.changeCrewOwners(&UserClaims{UserID: "co", Username: "co"}, crew, "remove", "co@example.com"); status != http.StatusForbidden {
-		t.Fatalf("a co-owner changed the owners: status=%d", status)
+	if _, status, _, _ := api.changeCrewOwners(&UserClaims{UserID: "co", Username: "co"}, crew, "remove", "co@example.com"); status != 0 {
+		t.Fatalf("a co-owner could not change the owners: status=%d", status)
 	}
 	if _, status, code, _ := api.changeCrewOwners(claims, crew, "remove", "owner@example.com"); status != http.StatusConflict || code != "creator" {
 		t.Fatalf("removing the creator: status=%d code=%q", status, code)

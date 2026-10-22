@@ -290,7 +290,7 @@ func (api *StreamingAPI) localDeviceCallForOwner(ctx context.Context, claims *Us
 	if (request.Operation == "write" || request.Operation == "shell" || request.Operation == "patch") && !userAccessForClaims(current).CanEdit {
 		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Account is read-only"}
 	}
-	value, ok := api.localDevices.Load(claims.UserID + "/" + deviceID)
+	value, ok := api.localDevices.Load(api.crewLaptopDeviceOwner(claims.UserID, request.CrewID, deviceID) + "/" + deviceID)
 	if !ok {
 		return localfiles.Response{}, &wf.FileError{Status: 404, Message: "Your laptop is not connected. Start AgentWorks on that computer to use laptop tools; server work remains available."}
 	}
@@ -437,6 +437,14 @@ func (api *StreamingAPI) handleLocalDevices(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	if root := r.URL.Query().Get("workspace"); root != "" {
+		if !crewProjectOwnedByCaller(claims.UserID, root) {
+			externalError(w, 403, "forbidden", "Only Crew owners can view its connected laptop")
+			return
+		}
+		externalJSON(w, map[string]any{"devices": api.localDeviceListForCrew(claims, root)})
+		return
+	}
 	externalJSON(w, map[string]any{"devices": api.localDeviceList(claims)})
 }
 
@@ -469,7 +477,7 @@ func (api *StreamingAPI) registerLaptopTools(registrar definitionToolRegistrar, 
 		api.lastQueryMu.RLock()
 		req := api.lastQueryRequests[sessionID]
 		api.lastQueryMu.RUnlock()
-		if !crewProjectOwnedByCallerStrict(caller.UserID, agentProfileRuntimeWorkspace(caller.UserID, req.SelectedFolder)) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
+		if !crewProjectOwnedByCaller(caller.UserID, agentProfileRuntimeWorkspace(caller.UserID, req.SelectedFolder)) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
 			return nil, errors.New("Laptop tools require your own Crew's Builder chat")
 		}
 		settings, err := readLaptopSettings(caller.UserID, root)
@@ -682,4 +690,36 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 			log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=copy_in request=%s destination=%q bytes=%d", activity, caller.UserID, id, destination, len(response.Bytes))
 			return recorder.Body.String(), nil
 		}, 180*time.Second, "workspace_advanced")
+}
+
+// Device identity is stored with the Crew's shared grant; the actor remains the
+// current owner for access checks and audit attribution.
+func (api *StreamingAPI) crewLaptopDeviceOwner(caller, root, device string) string {
+	if !crewProjectOwnedByCaller(caller, root) {
+		return caller
+	}
+	settings, err := readLaptopSettings(caller, root)
+	if err == nil && settings.DeviceID == device && settings.DeviceOwnerID != "" {
+		return settings.DeviceOwnerID
+	}
+	return caller
+}
+
+func (api *StreamingAPI) localDeviceListForCrew(caller *UserClaims, root string) []localfiles.Hello {
+	devices := api.localDeviceListForOwner(caller)
+	if !crewProjectOwnedByCaller(caller.UserID, root) {
+		return devices
+	}
+	settings, err := readLaptopSettings(caller.UserID, root)
+	if err != nil || settings.DeviceID == "" || settings.DeviceOwnerID == "" || settings.DeviceOwnerID == caller.UserID {
+		return devices
+	}
+	owner := *caller
+	owner.UserID, owner.Username, owner.Email = settings.DeviceOwnerID, "", ""
+	for _, device := range api.localDeviceListForOwner(&owner) {
+		if device.DeviceID == settings.DeviceID {
+			devices = append(devices, device)
+		}
+	}
+	return devices
 }

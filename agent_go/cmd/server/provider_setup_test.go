@@ -276,6 +276,12 @@ printf '\nsubmitted:%s\npwd:%s\n' "$command" "$PWD"`},
 }
 
 func TestProviderUsagePromptAndTrustDetection(t *testing.T) {
+	if providerUsagePromptReady("claude-code", "❯ No, exit\n❯ Yes, I trust this folder") {
+		t.Fatal("trust redraw treated as a command prompt")
+	}
+	if claudeUsageTrustChoice("❯No,exit\n❯Yes,Itrustthisfolder") != 1 {
+		t.Fatal("old selection won over redraw")
+	}
 	if !providerUsageTrustPrompt("claude-code", "❯ No, exit\n  Yes, I trust this folder") {
 		t.Fatal("Claude trust prompt was not detected")
 	}
@@ -297,6 +303,37 @@ func TestProviderUsagePromptAndTrustDetection(t *testing.T) {
 	}
 	if !providerUsagePromptReady("claude-code", providerUsageScreenText("❯\u00a0Try a suggestion")) {
 		t.Fatal("Claude's non-breaking-space prompt was not detected")
+	}
+}
+
+func TestCollectedProviderUsageWaitsForTrustSelectionAndReturnsOnlyUsage(t *testing.T) {
+	original := providerSetupCommands
+	providerSetupCommands = map[string]map[string]providerSetupCommand{"claude-code": {"usage": {command: "/bin/sh", args: []string{"-c", `stty raw -echo
+printf '❯No,exit\r\nYes,Itrustthisfolder\r\nEnter to confirm'
+selection=$(dd bs=1 count=3 2>/dev/null)
+[ "$selection" = "$(printf '\033[B')" ] || exit 1
+printf '\r\n❯Yes,Itrustthisfolder'
+confirm=$(dd bs=1 count=1 2>/dev/null)
+[ "$confirm" = "$(printf '\r')" ] || exit 1
+stty sane -echo
+printf '\ntrust-accepted\n❯ '
+IFS= read -r command
+[ "$command" = /usage ] || exit 1
+printf '\nUsage: 42 percent\n'`}}}}
+	t.Cleanup(func() { providerSetupCommands = original })
+	manager := newProviderSetupManager()
+	session, err := manager.start("owner", "claude-code", "usage", 100, 24, nil, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.remove(session.id, true)
+	session.mu.Lock()
+	session.readOnly = true
+	session.mu.Unlock()
+	go driveProviderUsage(t.Context(), session)
+	output := collectProviderUsageOutput(session, 8*time.Second)
+	if !strings.Contains(output, "Usage: 42 percent") || strings.Contains(output, "trust") || strings.Contains(output, "No,exit") {
+		t.Fatalf("collected usage: %q", output)
 	}
 }
 

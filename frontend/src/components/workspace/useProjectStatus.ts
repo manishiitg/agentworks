@@ -61,7 +61,7 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
         api.post<{ owner?: { id: string }; co_owners: { id: string }[] }>('/api/dashboards', { workspace: workspacePath, action: 'owners' }).then(({ data }) => new Set([...(data.owner ? [data.owner.id] : []), ...data.co_owners.map(person => person.id)]).size),
         kind === 'crew' ? Promise.all([
           api.get<{ device_id: string }>(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}/laptop`, { skipSessionContext: true }),
-          api.get<{ devices: { device_id: string }[] }>('/api/devices', { skipSessionContext: true }),
+          api.get<{ devices: { device_id: string }[] }>('/api/devices', { skipSessionContext: true, params: { workspace: workspacePath } }),
         ]).then(([settings, devices]) => !settings.data.device_id ? 'Not set up' : devices.data.devices.some(device => device.device_id === settings.data.device_id) ? 'Connected' : 'Not connected') : Promise.reject(new Error('not listed')),
       ])
       loading = false

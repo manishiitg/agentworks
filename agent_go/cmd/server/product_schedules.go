@@ -513,6 +513,62 @@ func containsUserID(list []string, v string) bool {
 	return false
 }
 
+// UI and Builder discovery include co-owned project configuration. The scheduler
+// itself keeps JobsForUser, so sharing a project never schedules a second copy.
+func (s *ProductScheduleService) JobsForBuilder(ctx context.Context, userID string) ([]productScheduleJob, error) {
+	jobs, err := s.JobsForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	records, err := defaultProjectOwners().All()
+	if err != nil {
+		return nil, err
+	}
+	owners := map[string]bool{}
+	for _, record := range records {
+		if registryListHas(record.CoOwners, userID) {
+			owners[record.OwnerID] = true
+		}
+	}
+	for owner := range owners {
+		other, err := s.JobsForUser(ctx, owner)
+		if err != nil {
+			return nil, err
+		}
+		for _, job := range other {
+			workspace := job.WorkspacePath
+			if job.WatcherSource != nil {
+				workspace = job.WatcherSource.Path
+			}
+			if job.ProjectID != "" && isProjectProfileID(job.Profile.ID) && crewIsCoOwner(workspace, userID) {
+				jobs = append(jobs, job)
+			}
+		}
+	}
+	return jobs, nil
+}
+
+func (s *ProductScheduleService) projectBuilderOwner(ctx context.Context, caller, profileID, projectID string) (string, error) {
+	if !isProjectProfileID(profileID) {
+		return caller, nil
+	}
+	if s.registry == nil {
+		return "", fmt.Errorf("product profiles are unavailable")
+	}
+	profile, err := s.registry.Resolve(profileID, 0, caller)
+	if err != nil {
+		return "", err
+	}
+	project, err := resolveCrewProjectBinding(ctx, caller, profile, projectID, "")
+	if err != nil {
+		return "", err
+	}
+	if !project.OwnedByCaller {
+		return "", fmt.Errorf("Only a Crew owner can change its schedules")
+	}
+	return project.OwnerID, nil
+}
+
 // Job finds one product schedule for a user by job id.
 func (s *ProductScheduleService) Job(ctx context.Context, userID, jobID string) (productScheduleJob, error) {
 	profileID, scheduleID, ok := parseProductScheduleJobID(jobID)
@@ -522,6 +578,11 @@ func (s *ProductScheduleService) Job(ctx context.Context, userID, jobID string) 
 	}
 	if !ok {
 		return productScheduleJob{}, fmt.Errorf("not a product schedule id: %q", jobID)
+	}
+	if projectID != "" {
+		if owner, ownerErr := s.projectBuilderOwner(ctx, userID, profileID, projectID); ownerErr == nil {
+			userID = owner
+		}
 	}
 	jobs, err := s.JobsForUser(ctx, userID)
 	if err != nil {
@@ -541,11 +602,12 @@ func (s *ProductScheduleService) SetEnabled(ctx context.Context, userID, jobID s
 	if err != nil {
 		return job, err
 	}
-	if err := s.updateStateByKey(ctx, userID, scheduleStateKey(job), func(st *productScheduleUserState) {
+	if err := s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
 		st.Enabled = &enabled
 	}); err != nil {
 		return job, err
 	}
+	scheduleLogf("[CREW_SCHEDULE] actor=%s owner=%s project=%s job=%s action=update_state", GetUserIDFromContext(ctx), job.UserID, job.ProjectID, jobID)
 	return s.Job(ctx, userID, jobID)
 }
 
@@ -564,11 +626,12 @@ func (s *ProductScheduleService) SetCadence(ctx context.Context, userID, jobID s
 	if hours < minScheduleCadenceHours || hours > maxScheduleCadenceHours {
 		return job, fmt.Errorf("cadence must be between %d and %d hours", minScheduleCadenceHours, maxScheduleCadenceHours)
 	}
-	if err := s.updateStateByKey(ctx, userID, scheduleStateKey(job), func(st *productScheduleUserState) {
+	if err := s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
 		st.CadenceHours = &hours
 	}); err != nil {
 		return job, err
 	}
+	scheduleLogf("[CREW_SCHEDULE] actor=%s owner=%s project=%s job=%s action=update_state", GetUserIDFromContext(ctx), job.UserID, job.ProjectID, jobID)
 	return s.Job(ctx, userID, jobID)
 }
 
@@ -585,7 +648,7 @@ func (s *ProductScheduleService) SetMessage(ctx context.Context, userID, jobID, 
 	if len(message) > maxScheduleMessageBytes {
 		return job, fmt.Errorf("the schedule message is limited to %d bytes", maxScheduleMessageBytes)
 	}
-	if err := s.updateStateByKey(ctx, userID, scheduleStateKey(job), func(st *productScheduleUserState) {
+	if err := s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
 		st.Messages = nil
 		if message != "" {
 			st.Messages = []string{message}
@@ -593,6 +656,7 @@ func (s *ProductScheduleService) SetMessage(ctx context.Context, userID, jobID, 
 	}); err != nil {
 		return job, err
 	}
+	scheduleLogf("[CREW_SCHEDULE] actor=%s owner=%s project=%s job=%s action=update_state", GetUserIDFromContext(ctx), job.UserID, job.ProjectID, jobID)
 	return s.Job(ctx, userID, jobID)
 }
 
@@ -607,7 +671,11 @@ func (s *ProductScheduleService) projectManifestAnyOwner(ctx context.Context, us
 	}
 	profile, binding, manifest, err := s.projectManifest(ctx, userID, profileID, projectID)
 	if err == nil {
-		return profile, binding, manifest, sanitizeUserIDForPath(userID), nil
+		owner := sanitizeUserIDForPath(userID)
+		if projectOwner, ok := crewProjectOwnerID(binding.WorkspacePath); ok {
+			owner = projectOwner
+		}
+		return profile, binding, manifest, owner, nil
 	}
 	firstErr := err
 	if s.registry == nil {
@@ -652,6 +720,11 @@ func (s *ProductScheduleService) projectManifestAnyOwner(ctx context.Context, us
 func (s *ProductScheduleService) projectManifest(ctx context.Context, userID, profileID, projectID string) (agentprofiles.Profile, productConversationBinding, productProjectManifest, error) {
 	if s.registry == nil {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, fmt.Errorf("product profiles are unavailable")
+	}
+	var ownerErr error
+	userID, ownerErr = s.projectBuilderOwner(ctx, userID, profileID, projectID)
+	if ownerErr != nil {
+		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, ownerErr
 	}
 	profile, err := s.registry.Resolve(profileID, 0, userID)
 	if err != nil {
@@ -744,6 +817,11 @@ func (s *ProductScheduleService) writeProjectManifest(ctx context.Context, bindi
 }
 
 func (s *ProductScheduleService) CreateProjectSchedule(ctx context.Context, userID, profileID, projectID string, schedule productschedule.Schedule) (productScheduleJob, error) {
+	var ownerErr error
+	userID, ownerErr = s.projectBuilderOwner(ctx, userID, profileID, projectID)
+	if ownerErr != nil {
+		return productScheduleJob{}, ownerErr
+	}
 	profile, binding, manifest, err := s.projectManifest(ctx, userID, profileID, projectID)
 	if err != nil {
 		return productScheduleJob{}, err
@@ -761,6 +839,7 @@ func (s *ProductScheduleService) CreateProjectSchedule(ctx context.Context, user
 	if err := s.writeProjectManifest(ctx, binding, manifest); err != nil {
 		return productScheduleJob{}, err
 	}
+	scheduleLogf("[CREW_SCHEDULE] actor=%s owner=%s project=%s schedule=%s action=create", GetUserIDFromContext(ctx), userID, projectID, schedule.ID)
 	return productScheduleJob{UserID: userID, Profile: profile, Schedule: schedule, ProjectID: manifest.ID, ProjectTitle: manifest.displayTitle(), WorkspacePath: binding.WorkspacePath, ManifestPath: binding.ManifestPath}, nil
 }
 
@@ -769,6 +848,7 @@ func (s *ProductScheduleService) UpdateProjectSchedule(ctx context.Context, user
 	if err != nil || job.ProjectID == "" {
 		return job, firstError(err, fmt.Errorf("not a project schedule"))
 	}
+	userID = job.UserID
 	_, binding, manifest, err := s.projectManifest(ctx, userID, job.Profile.ID, job.ProjectID)
 	if err != nil {
 		return job, err
@@ -791,6 +871,7 @@ func (s *ProductScheduleService) UpdateProjectSchedule(ctx context.Context, user
 	if err := s.writeProjectManifest(ctx, binding, manifest); err != nil {
 		return job, err
 	}
+	scheduleLogf("[CREW_SCHEDULE] actor=%s owner=%s project=%s job=%s action=update_state", GetUserIDFromContext(ctx), job.UserID, job.ProjectID, jobID)
 	return s.Job(ctx, userID, jobID)
 }
 
@@ -802,6 +883,7 @@ func (s *ProductScheduleService) DeleteProjectSchedule(ctx context.Context, user
 	if job.ProjectID == "" {
 		return fmt.Errorf("not a project schedule")
 	}
+	userID = job.UserID
 	_, binding, manifest, err := s.projectManifest(ctx, userID, job.Profile.ID, job.ProjectID)
 	if err != nil {
 		return err
@@ -816,6 +898,7 @@ func (s *ProductScheduleService) DeleteProjectSchedule(ctx context.Context, user
 		return fmt.Errorf("schedule not found")
 	}
 	manifest.Schedules = next
+	scheduleLogf("[CREW_SCHEDULE] actor=%s owner=%s project=%s job=%s action=delete", GetUserIDFromContext(ctx), job.UserID, job.ProjectID, jobID)
 	return s.writeProjectManifest(ctx, binding, manifest)
 }
 
@@ -905,7 +988,7 @@ func (s *ProductScheduleService) tick(ctx context.Context, now time.Time) {
 				if activatedAt.IsZero() {
 					activatedAt = now.UTC()
 				}
-				if err := s.updateStateByKey(ctx, userID, scheduleStateKey(job), func(st *productScheduleUserState) {
+				if err := s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
 					if strings.TrimSpace(st.ActivatedAt) == "" {
 						st.ActivatedAt = activatedAt.Format(time.RFC3339)
 					}
@@ -982,6 +1065,7 @@ func (s *ProductScheduleService) ResetHistory(ctx context.Context, userID, jobID
 	if err != nil {
 		return err
 	}
+	userID = job.UserID
 	if !job.Schedule.Isolated {
 		return fmt.Errorf("schedule %q does not run its own conversation", jobID)
 	}

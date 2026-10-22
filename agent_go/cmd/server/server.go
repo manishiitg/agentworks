@@ -14095,7 +14095,7 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	}
 	// Laptop grants are server-owned, never granted by browser query fields or editable project files.
 	req.LaptopConnection = nil
-	if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && websiteDeviceClaims(GetUserFromContext(ctx)) && crewProjectOwnedByCallerStrict(currentUserID, agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)) {
+	if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && websiteDeviceClaims(GetUserFromContext(ctx)) && crewProjectOwnedByCaller(currentUserID, agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)) {
 		settings, err := readLaptopSettings(currentUserID, req.SelectedFolder)
 		if err == nil && (&laptopConnectionTarget{DeviceID: settings.DeviceID}).valid() && len(settings.Folders) > 0 {
 			req.LaptopConnection = &laptopConnectionTarget{DeviceID: settings.DeviceID}
@@ -14107,7 +14107,7 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 		req.LaptopConnection = nil
 	}
 	if req.LaptopConnection != nil {
-		if !laptopConnectionTurn(*req, resolvedProfile) || !req.LaptopConnection.valid() || !crewProjectOwnedByCallerStrict(currentUserID, agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)) {
+		if !laptopConnectionTurn(*req, resolvedProfile) || !req.LaptopConnection.valid() || !crewProjectOwnedByCaller(currentUserID, agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)) {
 			return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("Laptop tools require your interactive Crew Builder chat"), invalidProfile: true}
 		}
 		if err := api.validateLaptopConnection(GetUserFromContext(ctx), req.LaptopConnection); err != nil {

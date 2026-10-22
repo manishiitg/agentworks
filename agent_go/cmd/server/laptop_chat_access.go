@@ -15,7 +15,7 @@ import (
 // registerLaptopAccessChatTool gives a Crew's Builder chat the same laptop setup the Local laptop panel and the MCP tool have:
 // find the connected computers (with the install and connect commands when none is), browse its folders, save the folders and
 // the commands switch, or remove access. It is offered whether or not a computer is already chosen, so first-time setup can be
-// done from chat. Like the panel, it is the Crew's main owner's own interactive turn only: a person using a shared Crew, a
+// done from chat. Like the panel, it is a Crew owner's interactive turn only: a person using a shared Crew, a
 // schedule or a connector gets nothing, and nothing here widens what those settings allow.
 func (api *StreamingAPI) registerLaptopAccessChatTool(registrar definitionToolRegistrar, gate *productToolGate, claims *UserClaims, readOnly bool, sessionID, root string) error {
 	if !websiteDeviceClaims(claims) || readOnly || !userAccessForClaims(claims).CanEdit || strings.TrimSpace(root) == "" {
@@ -39,8 +39,8 @@ func (api *StreamingAPI) registerLaptopAccessChatTool(registrar definitionToolRe
 		if req.userID != caller.UserID || api.isSyntheticTurn(sessionID) {
 			return nil, errors.New("Laptop settings need your own interactive chat turn")
 		}
-		if !crewProjectOwnedByCallerStrict(caller.UserID, agentProfileRuntimeWorkspace(caller.UserID, req.SelectedFolder)) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
-			return nil, errors.New("Only this Crew's main owner can change its laptop settings")
+		if !crewProjectOwnedByCaller(caller.UserID, agentProfileRuntimeWorkspace(caller.UserID, req.SelectedFolder)) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
+			return nil, errors.New("Only a Crew owner can change its laptop settings")
 		}
 		return caller, nil
 	}

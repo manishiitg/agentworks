@@ -116,6 +116,19 @@ async function render(check: (host: HTMLDivElement, rerender: () => Promise<void
     host.remove()
   }
 }
+it('opens a server-listed co-owned Crew before its first chat exists', async () => {
+  mocks.history.mockResolvedValue({ sessions: [] })
+  mocks.navigation.mockResolvedValueOnce({ workspaces: [{ id: 'co-owned', workspace_id: 'work:co-owned', profile_id: 'work', name: 'Shared builder', workspace_path: 'Crew/co-owned' }] } as never)
+  await render(async host => {
+    const button = host.querySelector('button[title="Crew · Shared builder"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(host.textContent).not.toContain('No chats yet.')
+    await act(async () => button.click())
+    expect(mocks.selectWork).toHaveBeenCalledWith('co-owned')
+    expect(mocks.openProduct).toHaveBeenCalledWith('work')
+    expect(mocks.openActivity).not.toHaveBeenCalled()
+  })
+})
 it('opens existing tabs through the shared navigator and lists no stored history', async () => {
   mocks.tabs = {
     tab: {

@@ -20,6 +20,27 @@ def migrate(workspace, state):
     changed = 0
     named = 0
     moved = {}
+    laptop_changed = 0
+    for project in projects.values():
+        if project.get('product') != 'work':
+            continue
+        owner = project['owner_id']
+        root = project.get('canonical_root') or 'Crew/' + project['folder']
+        key = hashlib.sha256((owner + '\0' + root).encode()).hexdigest()
+        path = state / 'crew-laptop' / (key + '.json')
+        if not path.exists():
+            continue
+        data = json.loads(path.read_text())
+        if not data.get('device_id') or data.get('device_owner_id'):
+            continue
+        backup.mkdir(parents=True, exist_ok=True, mode=0o700)
+        shutil.copy2(path, backup / ('laptop-' + key + '.json'))
+        data['device_owner_id'] = owner
+        path.write_text(json.dumps(data, indent=2) + '\n')
+        os.chmod(path, 0o600)
+        laptop_changed += 1
+    if laptop_changed:
+        print(f'Crew shared settings: retained {laptop_changed} laptop device owners; backup {backup}')
     for path in (workspace / '_users').glob('*/chat_history/product-conversations.json'):
         user = path.parent.parent.name
         original = path.read_bytes()

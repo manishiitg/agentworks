@@ -9,12 +9,12 @@ import (
 )
 
 // crew_owners: who builds a Crew (crew_co_owners.go). One tool with an action, like Share. Listing is open to anyone who
-// can see the Crew; adding and removing is for the MAIN owner only (owner, 2026-10-16) with crews:write consent.
+// can see the Crew; adding and removing is for Crew owners (owner, 2026-10-22) with crews:write consent.
 // The main owner (the creator) can never be removed, so a Crew always has an owner.
 const externalCrewOwnersTool = "crew_owners"
 
 func externalCrewOwnersDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalCrewOwnersTool, "List, add or remove Crew owners. Each owner controls their own named chat tabs; all owners can view them and their agents can communicate. Co-owners build together: instructions, skills, functions, settings, knowledge, Share and delete. Only the main owner adds or removes owners; the creator cannot be removed. Execution accounts and limits still follow the main owner.", true, false, map[string]any{
+	add(externalCrewOwnersTool, "List, add or remove Crew owners. Each owner controls their own named chat tabs; all owners can view them and their agents can communicate. Co-owners build together: instructions, skills, functions, settings, knowledge, Share and delete. Owners can add or remove co-owners; the creator cannot be removed. Execution accounts and limits still follow the main owner.", true, false, map[string]any{
 		"crew_id": externalString("Crew ID from crew action=list."),
 		"action":  map[string]any{"type": "string", "enum": []any{"list", "add", "remove"}},
 		"email":   externalString("The person's account email; add and remove only."),
@@ -30,7 +30,7 @@ type crewOwnersState struct {
 
 func crewOwnersStateFor(crew crewProjectBinding, callerID string) crewOwnersState {
 	dir, _ := readUserDirectoryFile()
-	state := crewOwnersState{CanManage: crewProjectOwnedByCallerStrict(callerID, crew.Binding.WorkspacePath), CoOwners: []runSharePerson{}}
+	state := crewOwnersState{CanManage: crewProjectOwnedByCaller(callerID, crew.Binding.WorkspacePath), CoOwners: []runSharePerson{}}
 	if people := peopleForIDs(dir, []string{crew.OwnerID}); len(people) == 1 {
 		state.Owner = people[0]
 	}
@@ -80,10 +80,10 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 	externalJSON(w, state)
 }
 
-// changeCrewOwners applies one add or remove by the main owner. It returns the new state, or a refusal (status, code, plain message).
+// changeCrewOwners applies one add or remove by a Crew owner. It returns the new state, or a refusal (status, code, plain message).
 func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, crew crewProjectBinding, action, email string) (crewOwnersState, int, string, string) {
-	if !crewProjectOwnedByCallerStrict(claims.UserID, crew.Binding.WorkspacePath) {
-		return crewOwnersState{}, http.StatusForbidden, "forbidden", "Only the main owner of this Crew can add or remove owners."
+	if !crewProjectOwnedByCaller(claims.UserID, crew.Binding.WorkspacePath) {
+		return crewOwnersState{}, http.StatusForbidden, "forbidden", "Only a Crew owner can add or remove owners."
 	}
 
 	id, ok := projectIdentityOf(crew.Binding.WorkspacePath)

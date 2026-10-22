@@ -284,7 +284,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     const sessions = import('../products/work/workSessions')
     void sessions
       .then(module => module.loadWorkSessionsIncludingShared())
-      .then(crews => { if (!cancelled) setCrewDirectory(crews) })
+      .then(crews => { if (!cancelled) setCrewDirectory(crews.filter(crew => !crew.shared || crew.shared.canBuild)) })
       .catch(() => { if (!cancelled) setCrewDirectory([]) })
     // All accessible workflows, even if the workflow view was never opened.
     const presets = useGlobalPresetStore.getState()

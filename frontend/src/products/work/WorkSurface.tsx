@@ -1129,12 +1129,12 @@ function WorkTopBarControl({
               </button>
             </div>
           ))}
-          {sessions.some(session => session.shared) && (
+          {sessions.some(session => session.shared?.canBuild) && (
             <div aria-hidden="true" className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               {product.listsSharedProjects && !product.hasIdentity ? 'Shared with you' : 'Shared with you'}
             </div>
           )}
-          {sessions.filter(session => session.shared).map(session => (
+          {sessions.filter(session => session.shared?.canBuild).map(session => (
             <div
               key={`shared:${session.product}:${session.id}`}
               className={`flex items-center rounded-md text-sm transition-colors ${session.product === selected?.product && session.id === selected?.id ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/30 dark:text-blue-100' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-slate-700'}`}

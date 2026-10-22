@@ -19,8 +19,9 @@ import (
 )
 
 type crewLaptopSettings struct {
-	DeviceID string                       `json:"device_id"`
-	Folders  []localfiles.FolderSelection `json:"folders"`
+	DeviceOwnerID string                       `json:"device_owner_id,omitempty"`
+	DeviceID      string                       `json:"device_id"`
+	Folders       []localfiles.FolderSelection `json:"folders"`
 	// Commands lets the agent run terminal commands on the computer. It is separate from the folders' Read or
 	// Read & write, which cover files only; a command also needs a Read & write folder.
 	Commands bool `json:"commands"`
@@ -29,6 +30,9 @@ type crewLaptopSettings struct {
 var laptopSettingsMu sync.Mutex
 
 func laptopSettingsPath(owner, root string) (string, error) {
+	if projectOwner, ok := crewProjectOwnerID(root); ok && crewProjectOwnedByCaller(owner, root) {
+		owner = projectOwner
+	}
 	state, err := workflowCLIStateRoot()
 	if err != nil {
 		return "", err
@@ -59,8 +63,8 @@ func (api *StreamingAPI) laptopSettingsRoot(w http.ResponseWriter, r *http.Reque
 		return "", false
 	}
 	binding, _, ok := api.authorizeCrewProjectRead(r, mux.Vars(r)["project_id"])
-	if !ok || !crewProjectOwnedByCallerStrict(claims.UserID, agentProfileRuntimeWorkspace(claims.UserID, binding.WorkspacePath)) {
-		externalError(w, 403, "forbidden", "Only this Crew's owner can connect their laptop.")
+	if !ok || !crewProjectOwnedByCaller(claims.UserID, agentProfileRuntimeWorkspace(claims.UserID, binding.WorkspacePath)) {
+		externalError(w, 403, "forbidden", "Only a Crew owner can connect a laptop.")
 		return "", false
 	}
 	return binding.WorkspacePath, true
@@ -111,6 +115,14 @@ func (api *StreamingAPI) serveCrewLaptopSettings(w http.ResponseWriter, r *http.
 		externalError(w, 500, "settings_unavailable", "Laptop settings could not be read.")
 		return
 	}
+	if settings.DeviceID != "" {
+		settings.DeviceOwnerID = claims.UserID
+		if settings.DeviceID == previous.DeviceID {
+			settings.DeviceOwnerID = previous.DeviceOwnerID
+		}
+	} else {
+		settings.DeviceOwnerID = ""
+	}
 	needsLaptop := false
 	for _, folder := range settings.Folders {
 		existing := false
@@ -150,22 +162,23 @@ func (api *StreamingAPI) serveCrewLaptopSettings(w http.ResponseWriter, r *http.
 		return
 	}
 	for _, old := range previous.Folders {
-		log.Printf("[LAPTOP_GRANT] user=%q crew=%q device=%q folder=%q access=%q change=removed", claims.UserID, root, previous.DeviceID, old.Path, old.Access)
+		log.Printf("[LAPTOP_GRANT] actor=%q crew=%q device=%q folder=%q access=%q change=removed", claims.UserID, root, previous.DeviceID, old.Path, old.Access)
 	}
 	for _, folder := range settings.Folders {
-		log.Printf("[LAPTOP_GRANT] user=%q crew=%q device=%q folder=%q access=%q change=saved", claims.UserID, root, settings.DeviceID, folder.Path, folder.Access)
+		log.Printf("[LAPTOP_GRANT] actor=%q crew=%q device=%q folder=%q access=%q change=saved", claims.UserID, root, settings.DeviceID, folder.Path, folder.Access)
 	}
 	externalJSON(w, settings)
 }
 
 func (api *StreamingAPI) handleLaptopBrowse(w http.ResponseWriter, r *http.Request) {
-	if _, ok := api.laptopSettingsRoot(w, r); !ok {
+	root, ok := api.laptopSettingsRoot(w, r)
+	if !ok {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	ctx, cancel := contextWithLaptopTimeout(r)
 	defer cancel()
-	response, err := api.localDeviceCall(ctx, GetUserFromContext(r.Context()), r.URL.Query().Get("device_id"), localfiles.Request{Operation: "browse_folders", Path: r.URL.Query().Get("path")})
+	response, err := api.localDeviceCall(ctx, GetUserFromContext(r.Context()), r.URL.Query().Get("device_id"), localfiles.Request{CrewID: root, Operation: "browse_folders", Path: r.URL.Query().Get("path")})
 	if err != nil {
 		externalError(w, 400, "folder_unavailable", err.Error())
 		return

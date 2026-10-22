@@ -72,6 +72,18 @@ func TestMCPLaptopSettingsUseOwnerGrantsWithoutCommandAccess(t *testing.T) {
 	if w := call(&other, "get", nil); w.Code != 403 {
 		t.Fatalf("other owner got access: %d", w.Code)
 	}
+	if _, err := defaultProjectOwners().AddCoOwner("work", "dashboard-team", "other"); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(&other, "get", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "offline-laptop") {
+		t.Fatalf("co-owner shared settings: %d %s", w.Code, w.Body.String())
+	}
+	if coPath, err := laptopSettingsPath("other", root); err != nil || coPath != file {
+		t.Fatal("co-owner has a separate settings file")
+	}
+	if w := call(&other, "set", map[string]any{"device_id": "offline-laptop", "folders": folders}); w.Code != 400 {
+		t.Fatalf("co-owner expanded an offline grant: %d", w.Code)
+	}
 	for _, token := range []*accesstokens.Token{{ProjectKind: "crew"}, {BoundAgentID: "agent"}, {KnowledgebaseIdentityID: "brain"}, {Scopes: []string{"devices:connect"}}} {
 		c := *owner
 		c.AccessToken = token
@@ -192,6 +204,27 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 		t.Fatalf("listing: %s", listed)
 	}
 	call("manage_laptop_access", map[string]any{"action": "set", "device_id": "mcp-laptop", "folders": folders, "commands": true}, 200)
+	if _, err := defaultProjectOwners().AddCoOwner("work", "dashboard-team", "other"); err != nil {
+		t.Fatal(err)
+	}
+	co := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read", "crews:write"}, AllCrews: true}}
+	coRequest := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(context.WithValue(t.Context(), UserContextKey, co))
+	coResult := httptest.NewRecorder()
+	f.api.externalLaptopToolCall(coResult, coRequest, "write_local_file", map[string]any{"workspace_id": "work:dashboard-team", "folder": "files", "path": "notes/co-owner.txt", "content": "shared project"})
+	if coResult.Code != 200 {
+		t.Fatalf("co-owner laptop: %d %s", coResult.Code, coResult.Body.String())
+	}
+	if written, err := os.ReadFile(filepath.Join(folder, "notes/co-owner.txt")); err != nil || string(written) != "shared project" {
+		t.Fatalf("co-owner laptop write: %q %v", written, err)
+	}
+	if _, err := defaultProjectOwners().RemoveCoOwner("work", "dashboard-team", "other"); err != nil {
+		t.Fatal(err)
+	}
+	denied := httptest.NewRecorder()
+	f.api.externalLaptopToolCall(denied, coRequest, "list_local_files", map[string]any{"workspace_id": "work:dashboard-team", "folder": "files"})
+	if denied.Code != 403 {
+		t.Fatalf("removed co-owner laptop access: %d %s", denied.Code, denied.Body.String())
+	}
 	if capability := security.CurrentSandboxCapability(); capability.Available {
 		result := call("execute_local_shell_command", map[string]any{"folder": "files", "command": "printf laptop-mcp", "timeout": 10}, 200)
 		if !strings.Contains(string(result), "laptop-mcp") {

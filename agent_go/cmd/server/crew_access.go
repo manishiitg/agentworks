@@ -378,6 +378,9 @@ func crewOwnerDisplayName(ownerID string) string {
 	if dir, err := loadUserDirectory(); err == nil && dir != nil {
 		for _, rec := range dir.Users {
 			if sanitizeUserIDForPath(rec.ID) == ownerID {
+				if email := strings.TrimSpace(rec.Email); email != "" {
+					return email
+				}
 				if strings.TrimSpace(rec.Username) != "" {
 					return strings.TrimSpace(rec.Username)
 				}

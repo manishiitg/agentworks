@@ -429,11 +429,16 @@ export function sidebarChats({
 }
 
 /** One workspace holds every visible chat; identical names never merge sessions. */
-export function sidebarWorkspaceGroups(rows: SidebarChat[]) {
+export function sidebarWorkspaceGroups(rows: SidebarChat[], projects: SidebarProject[] = []) {
   const groups = new Map<
     string,
     { id: string; title: string; surface: ProductSurface; chats: SidebarChat[]; running: boolean; latestActivity: number }
   >()
+  // Server-admitted Builder projects appear before the person opens a chat.
+  for (const project of projects) {
+    const id = `${project.surface}:${project.id}`
+    groups.set(id, { id, title: project.title, surface: project.surface, chats: [], running: false, latestActivity: 0 })
+  }
   for (const row of rows) {
     if (row.group === 'Recent') continue
     const id = `${row.surface}:${row.workflowId || row.projectId || normalizedWorkspace(row.workspace) || row.surface}`

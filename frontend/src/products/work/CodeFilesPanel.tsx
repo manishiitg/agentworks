@@ -99,7 +99,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string; works
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [checkNote, setCheckNote] = useState<string>()
-  const { devices, error: deviceError, refreshing, refresh } = useLocalFileDevices(Boolean(endpoint))
+  const { devices, error: deviceError, refreshing, refresh } = useLocalFileDevices(Boolean(endpoint), tab?.metadata?.agentProfileWorkspace)
   const latest = useLatestCliVersion(Boolean(endpoint))
   useEffect(() => {
     let active = true

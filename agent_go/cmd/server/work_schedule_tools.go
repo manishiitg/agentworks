@@ -65,7 +65,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 	if err := register("list_project_schedules", "List this project's recurring message schedules and their latest run status.", map[string]interface{}{
 		"type": "object", "properties": map[string]interface{}{},
 	}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
-		jobs, err := api.productSchedules.JobsForUser(ctx, listUserID)
+		jobs, err := api.productSchedules.JobsForBuilder(ctx, listUserID)
 		if err != nil {
 			return "", err
 		}

@@ -28,7 +28,7 @@ function subscribe(listener: () => void) {
   return () => window.removeEventListener(changed, listener)
 }
 export const codeLocalFilesApi = {
-  devices: async (): Promise<LocalFileDevice[]> => (await api.get<{ devices: LocalFileDevice[] }>('/api/devices', { skipSessionContext: true })).data.devices,
+  devices: async (crewWorkspace?: string): Promise<LocalFileDevice[]> => (await api.get<{ devices: LocalFileDevice[] }>('/api/devices', { skipSessionContext: true, ...(crewWorkspace ? { params: { workspace: crewWorkspace } } : {}) })).data.devices,
 
 }
 export function localFileError(cause: unknown) {
@@ -37,7 +37,7 @@ export function localFileError(cause: unknown) {
   return typeof error === 'string' ? error : error?.message || err.message || 'Could not access local files.'
 }
 
-export function useLocalFileDevices(enabled: boolean) {
+export function useLocalFileDevices(enabled: boolean, crewWorkspace = '') {
   const account = useAuthStore(state => state.user?.id)
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const [devices, setDevices] = useState<LocalFileDevice[]>([])
@@ -54,7 +54,7 @@ export function useLocalFileDevices(enabled: boolean) {
       if (loading) return null
       loading = true
       if (active) setRefreshing(true)
-      try { const listed = await codeLocalFilesApi.devices(); if (active) { setDevices(listed); setError(null); setChecked(true) } return listed }
+      try { const listed = await codeLocalFilesApi.devices(crewWorkspace); if (active) { setDevices(listed); setError(null); setChecked(true) } return listed }
       catch (cause) { if (active) { setDevices([]); setError(localFileError(cause)); setChecked(true) } return null }
       finally { loading = false; if (active) setRefreshing(false) }
     }
@@ -62,7 +62,7 @@ export function useLocalFileDevices(enabled: boolean) {
     void refresh()
     const timer = window.setInterval(() => void refresh(), 5000)
     return () => { active = false; refreshRef.current = async () => null; window.clearInterval(timer) }
-  }, [enabled, account, workspace])
+  }, [enabled, account, workspace, crewWorkspace])
   return { devices, error, checked, refreshing, refresh: () => refreshRef.current() }
 }
 

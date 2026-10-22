@@ -13,10 +13,93 @@ import (
 	"github.com/gorilla/mux"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
 
 // Exercise the actual website/MCP boundaries with two owners and two retained
 // conversations. No provider runs: the message seam records delivery identity.
+func TestCrewOwnerNavigationBeforeFirstChat(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	crewOwnerTabsFixture(t, env, "other")
+	list := func(navigation bool) string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/workspaces", nil)
+		req = req.WithContext(internalBotRequestContext(req.Context(), "other"))
+		out := httptest.NewRecorder()
+		env.api.listExternalWorkspaces(out, req, map[string]any{"action": "list"}, navigation)
+		if out.Code != 200 {
+			t.Fatalf("list: %d %s", out.Code, out.Body.String())
+		}
+		return out.Body.String()
+	}
+	if !strings.Contains(list(true), `"workspace_id":"work:beta"`) {
+		t.Fatal("co-owned Crew missing before first chat")
+	}
+	if _, err := defaultProjectOwners().RemoveCoOwner("work", "owner-tabs", "other"); err != nil {
+		t.Fatal(err)
+	}
+	if err := defaultProjectOwners().SetPrivate("work", "owner-tabs", false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(list(true), `"workspace_id":"work:beta"`) {
+		t.Fatal("Run-only share leaked into Builder navigation")
+	}
+	if !strings.Contains(list(false), `"workspace_id":"work:beta"`) {
+		t.Fatal("ordinary MCP discovery lost Run access")
+	}
+}
+
+func TestCrewOwnersShareScheduleAndWatcherConfiguration(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	crewOwnerTabsFixture(t, env, "other")
+	env.svc.users = func(string) []string { return []string{"owner", "other"} }
+	ctx := internalBotRequestContext(t.Context(), "other")
+	job, err := env.svc.CreateProjectSchedule(ctx, "other", "work", "beta", productschedule.Schedule{ID: "daily", Name: "Daily", Enabled: true, CronExpression: "0 8 * * *", Timezone: "UTC", Messages: []string{"review"}})
+	if err != nil || job.UserID != "owner" {
+		t.Fatalf("shared create: %+v %v", job, err)
+	}
+	if _, err = env.svc.SetEnabled(ctx, "other", job.ID(), false); err != nil {
+		t.Fatal(err)
+	}
+	for _, person := range []string{"owner", "other"} {
+		found, err := env.svc.Job(ctx, person, job.ID())
+		if err != nil || found.UserID != "owner" || found.Effective().Enabled {
+			t.Fatalf("shared override %s: %+v %v", person, found, err)
+		}
+	}
+	if jobs, err := env.svc.JobsForUser(ctx, "other"); err != nil || len(jobs) != 0 {
+		t.Fatalf("co-owner scheduled duplicate executions: %+v %v", jobs, err)
+	}
+	if jobs, err := env.svc.JobsForBuilder(ctx, "other"); err != nil || len(jobs) != 1 {
+		t.Fatalf("Builder did not see schedule: %+v %v", jobs, err)
+	}
+	c := env.svc.conditionService()
+	base, err := c.source(ctx, "owner", "work", "beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.saveCaller(ctx, base, productschedule.Schedule{ID: "watch", Name: "Watch", Enabled: true, CronExpression: "* * * * *", Timezone: "UTC", Condition: &conditiontrigger.Config{Script: "watch.py"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := c.manage(ctx, "other", "work", "beta", map[string]interface{}{"action": "list"})
+	if err != nil || len(view.(map[string]interface{})["triggers"].([]interface{})) != 1 {
+		t.Fatalf("shared Watchers: %+v %v", view, err)
+	}
+	if _, err := defaultProjectOwners().RemoveCoOwner("work", "owner-tabs", "other"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.svc.SetEnabled(ctx, "other", job.ID(), true); err == nil {
+		t.Fatal("removed co-owner changed the shared schedule")
+	}
+	if _, err := c.manage(ctx, "other", "work", "beta", map[string]interface{}{"action": "delete", "id": "watch"}); err == nil {
+		t.Fatal("removed co-owner changed the shared Watcher")
+	}
+}
+
 func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry

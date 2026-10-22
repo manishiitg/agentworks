@@ -1376,7 +1376,7 @@ func productScheduleJobResponses(r *http.Request, svc *SchedulerService, enabled
 	}
 	ps := svc.api.productSchedules
 	userID := productWorkspaceUserID(r.Context())
-	jobs, err := ps.JobsForUser(r.Context(), userID)
+	jobs, err := ps.JobsForBuilder(r.Context(), userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1416,6 +1416,7 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 		http.Error(w, "not found", http.StatusNotFound)
 		return true
 	}
+	userID = job.UserID
 	respond := func(job productScheduleJob) {
 		runsWorkspace, _ := ps.RunsWorkspace(ctx, job)
 		_ = json.NewEncoder(w).Encode(withScheduleStatusText(ctx, ps.jobResponse(job, runsWorkspace)))

@@ -281,6 +281,11 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				if !ok {
 					continue
 				}
+				// The Builder sidebar lists work this person builds. Run-only
+				// shares are discovered through Dashboards and ordinary MCP lists.
+				if navigation && !binding.OwnedByCaller {
+					continue
+				}
 				seen[key] = true
 				item := map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]}
 				if navigation {

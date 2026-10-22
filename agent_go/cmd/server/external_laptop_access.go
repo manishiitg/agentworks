@@ -14,7 +14,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 )
 
-// Laptop settings are personal authority, even when the Crew is shared.
+// Crew owners share the project's saved laptop connection and folder grants.
 // A person's MCP connection acts as that person; product, device-only, Brain and
 // attached-agent credentials do not become a personal laptop connection.
 func personalLaptopSettingsClaims(c *UserClaims) bool {
@@ -55,12 +55,12 @@ func (api *StreamingAPI) externalLaptopToolCall(w http.ResponseWriter, r *http.R
 	}
 	crew, _, ok := api.resolveExternalWorkspace(r.Context(), c, externalArg(args, "workspace_id"))
 	if !ok {
-		externalError(w, 403, "forbidden", "Choose a Crew you own. Shared Crews cannot use another person's laptop.")
+		externalError(w, 403, "forbidden", "Choose a Crew you own. Only Crew owners can use its connected laptop.")
 		return
 	}
 	root := agentProfileRuntimeWorkspace(c.UserID, crew.Binding.WorkspacePath)
-	if !crewProjectOwnedByCallerStrict(c.UserID, root) {
-		externalError(w, 403, "forbidden", "Only this Crew's main owner can use their laptop tools.")
+	if !crewProjectOwnedByCaller(c.UserID, root) {
+		externalError(w, 403, "forbidden", "Only Crew owners can use its connected laptop tools.")
 		return
 	}
 	settings, err := readLaptopSettings(c.UserID, root)
@@ -69,7 +69,7 @@ func (api *StreamingAPI) externalLaptopToolCall(w http.ResponseWriter, r *http.R
 		return
 	}
 	check := func(ctx context.Context) (*UserClaims, error) {
-		if !personalLaptopSettingsClaims(c) || !crewProjectOwnedByCallerStrict(c.UserID, root) {
+		if !personalLaptopSettingsClaims(c) || !crewProjectOwnedByCaller(c.UserID, root) {
 			return nil, fmt.Errorf("Laptop tools require your own Crew and your own connected computer")
 		}
 		identity := accesstokens.Token{UserID: c.UserID, Username: c.Username, Email: c.Email, Provider: c.Provider}
@@ -163,12 +163,12 @@ func (api *StreamingAPI) externalLaptopAccessCall(w http.ResponseWriter, r *http
 	}
 	crew, _, ok := api.resolveExternalWorkspace(r.Context(), c, externalArg(args, "workspace_id"))
 	if !ok {
-		externalError(w, 403, "forbidden", "Choose a Crew you own. Shared Crews cannot use another person's laptop.")
+		externalError(w, 403, "forbidden", "Choose a Crew you own. Only Crew owners can use its connected laptop.")
 		return
 	}
 	root := agentProfileRuntimeWorkspace(c.UserID, crew.Binding.WorkspacePath)
-	if !crewProjectOwnedByCallerStrict(c.UserID, root) {
-		externalError(w, 403, "forbidden", "Choose a Crew you own. Shared Crews cannot use another person's laptop.")
+	if !crewProjectOwnedByCaller(c.UserID, root) {
+		externalError(w, 403, "forbidden", "Choose a Crew you own. Only Crew owners can use its connected laptop.")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -195,7 +195,7 @@ func laptopSetupSteps(noneConnected bool) map[string]any {
 func (api *StreamingAPI) laptopAccessAction(w http.ResponseWriter, r *http.Request, c *UserClaims, root string, args map[string]any) {
 	switch externalArg(args, "action") {
 	case "devices":
-		devices := api.localDeviceListForOwner(c)
+		devices := api.localDeviceListForCrew(c, root)
 		externalJSON(w, map[string]any{"devices": devices, "setup": laptopSetupSteps(len(devices) == 0), "next": "Choose your computer, browse its folders, then save Read or Read & write access. If none is connected, open Connections → Local laptop in your Crew for the download and sign-in steps. Install once on that computer, sign in and keep AgentWorks running (agentworks start for CLI users). The same app also connects AgentBridge."})
 	case "get":
 		settings, err := readLaptopSettings(c.UserID, root)
@@ -207,7 +207,7 @@ func (api *StreamingAPI) laptopAccessAction(w http.ResponseWriter, r *http.Reque
 	case "browse":
 		ctx, cancel := contextWithLaptopTimeout(r)
 		defer cancel()
-		response, err := api.laptopSettingsDeviceCall(ctx, c, externalArg(args, "device_id"), localfiles.Request{Operation: "browse_folders", Path: externalArg(args, "path")})
+		response, err := api.laptopSettingsDeviceCall(ctx, c, externalArg(args, "device_id"), localfiles.Request{CrewID: root, Operation: "browse_folders", Path: externalArg(args, "path")})
 		if err != nil {
 			externalError(w, 400, "folder_unavailable", err.Error())
 			return
