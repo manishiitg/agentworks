@@ -113,6 +113,40 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
     expect(send).toHaveBeenLastCalledWith('second message', expect.objectContaining({ sourceTabId: 'A', deliveryMode: 'queue' }))
   })
+  it('recalls a waiting message with Up only after server removal and sends the edit through Queue next', async () => {
+    let queued = [{ message_id: 'queued-1', client_message_id: 'client-1', content: 'Original queued instruction.', queue_position: 1, queue_reason: 'running' as const, can_steer: true }]
+    vi.mocked(agentApi.getQueuedMessages).mockImplementation(async () => queued)
+    const remove = vi.spyOn(agentApi, 'removeQueuedMessage').mockRejectedValueOnce(new Error('offline'))
+    remove.mockImplementation(async () => { queued = [] })
+    await act(async () => {
+      useChatStore.getState().setTabConfig('A', { inputText: '' })
+      useChatStore.getState().setTabStreaming('A', true)
+      renderComposer(undefined, false)
+    })
+    const flush = async () => act(async () => { await new Promise(resolve => setTimeout(resolve, 40)) })
+    await flush()
+    const input = host.querySelector<HTMLTextAreaElement>('[data-testid="chat-input-textarea"]')!
+    const edit = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Edit')!
+    expect(edit).toBeTruthy()
+    await act(async () => edit.click())
+    await flush()
+    expect(input.value).toBe('')
+    expect(host.textContent).toContain('Original queued instruction.')
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })))
+    await flush()
+    expect(remove).toHaveBeenLastCalledWith('A-session', 'queued-1')
+    expect(input.value).toBe('Original queued instruction.')
+    expect(host.querySelector('[aria-label="Queued messages"]')).toBeNull()
+    expect(useChatStore.getState().getTabConfig('A')?.sendDeliveryMode).toBe('queue')
+    expect(agentApi.sendTerminalInput).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'Updated queued instruction.')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    expect(send).toHaveBeenLastCalledWith('Updated queued instruction.', expect.objectContaining({ deliveryMode: 'queue' }))
+  })
   it('opens slash commands from the send-options menu without changing the draft or delivery mode', async () => {
     await act(async () => {
       setUserCommands([{ command: 'menu-review', description: 'Review via menu', icon: 'terminal', source: 'user', modes: ['workflow'], execute: ctx => ctx.onSubmit('review via menu') }])

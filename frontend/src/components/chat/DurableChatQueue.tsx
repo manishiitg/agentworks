@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Clock, Loader2 } from 'lucide-react'
 import { agentApi } from '../../services/api'
@@ -9,10 +9,13 @@ import { getDisplaySafeUserMessageContent } from '../../utils/chatMessageContent
 import { askAIDisplayText } from '../../utils/askAIMessage'
 import type { PendingQueuedMessage } from '../../../shared/session/types'
 
+export interface DurableChatQueueHandle { recallLatest: () => boolean }
+
 /** This is the server queue, never a second browser dispatch worker. */
-export function DurableChatQueue({ sessionId, tabId, busy }: {
+export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   sessionId: string; tabId: string; busy: boolean
-}) {
+  canEdit?: boolean; onEdit?: (content: string) => void
+}>(function DurableChatQueue({ sessionId, tabId, busy, canEdit = true, onEdit }, ref) {
   const [identity] = useState(captureChatIdentity)
   const [action, setAction] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -46,7 +49,7 @@ export function DurableChatQueue({ sessionId, tabId, busy }: {
     }
   }, [query.data, sessionId, owns])
 
-  const change = async (message: PendingQueuedMessage, steer: boolean, retry = false) => {
+  const change = async (message: PendingQueuedMessage, steer: boolean, retry = false, edit = false) => {
     if (!message.message_id || action || !owns()) return
     setAction(message.message_id)
     setError('')
@@ -69,6 +72,7 @@ export function DurableChatQueue({ sessionId, tabId, busy }: {
         const id = clientMessageEventId(message.client_message_id)
         store.setTabEvents(sessionId, store.getTabEvents(sessionId).filter(event => event.id !== id || !isProvisionalUserMessage(event)))
       }
+      if (edit) onEdit?.(message.content)
       await client.invalidateQueries({ queryKey: key })
     } catch {
       if (owns()) {
@@ -80,6 +84,13 @@ export function DurableChatQueue({ sessionId, tabId, busy }: {
     }
   }
   const messages = query.data ?? []
+  useImperativeHandle(ref, () => ({ recallLatest: () => {
+    if (!canEdit || !onEdit || !owns()) return false
+    const message = [...messages].reverse().find(message => message.message_id && !message.steering && !message.delivery_error)
+    if (!message) return false
+    if (!action) void change(message, false, false, true)
+    return true
+  } }))
   if (!messages.length && !error && !query.isError) return null
   return <div className="mb-1 space-y-1" aria-label="Queued messages" aria-live="polite">
     {(error || query.isError) && <p role="alert" className="text-xs text-amber-500">{error || 'Could not refresh queued messages.'}
@@ -102,6 +113,7 @@ export function DurableChatQueue({ sessionId, tabId, busy }: {
             <summary title={text} className="cursor-pointer list-none truncate [&::-webkit-details-marker]:hidden group-open:max-h-32 group-open:overflow-y-auto group-open:whitespace-pre-wrap group-open:break-words">{text}</summary>
           </details>
           {message.message_id && <div className="flex items-center gap-2 whitespace-nowrap text-[11px]">
+            {onEdit && !message.delivery_error && !message.steering && <button type="button" title={canEdit ? 'Move back to the composer to edit · ↑' : 'Clear the composer to edit this queued message'} disabled={!canEdit || pending || Boolean(action)} onClick={() => void change(message, false, false, true)} className="text-muted-foreground hover:text-foreground disabled:opacity-40">Edit</button>}
             {message.delivery_error && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, false, true)} className="text-primary hover:underline disabled:opacity-40">Retry</button>}
             {message.can_steer === true && !message.delivery_error && !refreshing && !message.steering && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, true)} className="text-primary hover:underline disabled:opacity-40">Steer now</button>}
             <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, false)} className="text-muted-foreground hover:text-foreground disabled:opacity-40">Remove</button>
@@ -111,4 +123,4 @@ export function DurableChatQueue({ sessionId, tabId, busy }: {
       </div>
     })}
   </div>
-}
+})

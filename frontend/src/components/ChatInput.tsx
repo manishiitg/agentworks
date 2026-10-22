@@ -51,6 +51,7 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentit
 import type { ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
 import { isAccessRefusal } from '../platform/chat/submissionFailure'
 import { liveTerminalControlKey } from '../utils/liveTerminalKeys'
+import type { DurableChatQueueHandle } from './chat/DurableChatQueue'
 import { recordChatSubmissionTelemetry } from '../utils/chatDeliveryTelemetry'
 import { chatUsesStructuredTransport, shouldRouteChatInputToLiveTransport, shouldShowLiveTerminalControl } from '../utils/liveInputSubmission'
 import { effectiveLLMUnderLock, effectiveProviderUnderLock, runtimeStatusLLMChoice } from '../utils/effectiveLLM'
@@ -1433,6 +1434,29 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   // Preset folder selection
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const durableQueueRef = useRef<DurableChatQueueHandle>(null)
+  const restoreQueuedDraft = useCallback((content: string) => {
+    if (!activeTabId || !isChatIdentityCurrent(composerIdentityRef.current)) return
+    const store = useChatStore.getState()
+    const tab = store.getTab(activeTabId)
+    if (tab?.sessionId !== tabSessionId) return
+    // Preserve typing or a tab change that happened while cancellation waited
+    // for the server. Only the original chat receives the withdrawn message.
+    const visible = store.activeTabId === activeTabId && composerMountedRef.current
+    const draft = visible ? latestInputTextRef.current : tab.config.inputText || ''
+    const text = draft.trim() ? `${content}\n\n${draft}` : content
+    if (syncToStoreTimeoutRef.current) clearTimeout(syncToStoreTimeoutRef.current)
+    store.setTabConfig(activeTabId, { inputText: text, sendDeliveryMode: 'queue' })
+    if (visible) {
+      latestInputTextRef.current = text
+      setLocalInputText(text)
+      requestAnimationFrame(() => {
+        if (useChatStore.getState().activeTabId !== activeTabId) return
+        textareaRef.current?.focus()
+        textareaRef.current?.setSelectionRange(text.length, text.length)
+      })
+    }
+  }, [activeTabId, tabSessionId])
   const [terminalCommandPalette, setTerminalCommandPalette] = useState(false)
   const nativeCommandButtonRef = useRef<HTMLButtonElement>(null)
   const terminalComposerId = React.useId()
@@ -2199,6 +2223,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     } else if (showWorkflowDialog || showSkillPopup || showServerPopup) {
       if (!isPlainPickerKey(e.nativeEvent)) e.stopPropagation()
       if (isPlainPickerKey(e.nativeEvent) && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return
+    }
+
+    // Recall the latest waiting message before forwarding Up to the CLI.
+    // The queue removes it on the server before restoring the editable draft.
+    if (e.key === 'ArrowUp' && isPlainPickerKey(e.nativeEvent) && !queryToSubmit.trim() && durableQueueRef.current?.recallLatest()) {
+      e.preventDefault()
+      return
     }
 
     // With an empty input, route prompt/menu keys into the coding-agent pane.
@@ -3067,7 +3098,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
           <div ref={setMicBannerHost} className="empty:hidden" />
-          {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} /></Suspense>}
+          {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue ref={durableQueueRef} key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canEdit={!queryToSubmit.trim() && !isUploadingFiles} onEdit={restoreQueuedDraft} /></Suspense>}
         </>}>
             {/* Queued messages: a message sent while the agent is still working is
                 held here until the current turn ends, then sent as the next one.
