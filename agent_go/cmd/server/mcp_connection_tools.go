@@ -250,9 +250,14 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 			return "", err
 		}
 	}
-	c, err := vaultConnection(ctx, id)
+	c, err := vaultSavedConnection(ctx, id)
 	if err != nil {
-		return "Saved " + vaultServerName(id) + " in Vault and selected it for this project. Run trigger_mcp_discovery with that exact ID to verify it before claiming it connected.", nil
+		return "", err
+	}
+	reconnect, _ := args["reconnect"].(bool)
+	if c.OAuthServer == "" || c.Status == "active" && !reconnect && clientID == "" && clientSecret == "" {
+		payload, _ := json.Marshal(map[string]any{"name": vaultServerName(id), "stored_in": "Vault", "connected": c.Status == "active", "project_selected": root != "", "next": "Verify current tools with trigger_mcp_discovery on this exact name before claiming a pending account connected."})
+		return string(payload), nil
 	}
 	redirect := api.mcpToolOAuthRedirect(ctx, person)
 	if redirect == "" {

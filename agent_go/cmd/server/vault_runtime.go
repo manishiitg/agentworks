@@ -372,6 +372,31 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if in.Session != "" {
+		if root := api.placeRootForSession(in.Session); root != "" {
+			selected, err := projectSelectedServers(r.Context(), root)
+			if err != nil {
+				http.Error(w, "project connection selection unavailable", 403)
+				return
+			}
+			picked, allowed := false, false
+			for _, name := range selected {
+				if name == mcpclient.NoServers {
+					http.Error(w, "no MCP connections selected for this project", 403)
+					return
+				}
+				if strings.HasPrefix(name, "vault_") {
+					picked = true
+					if name == vaultServerName(in.Connector) {
+						allowed = true
+					}
+				}
+			}
+			if picked && !allowed {
+				http.Error(w, "this Vault connection is not selected for the project", 403)
+				return
+			}
+		}
+
 		// The session's own person, or the owner of its Crew/Goal lending that project's Vault MCPs (scopeAgentMCP).
 		owner := api.mcpSessionPerson(in.Session)
 		if owner != in.Person {
@@ -546,6 +571,18 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		aliases[strings.ToLower(name)] = runtimeName
 		if strings.HasPrefix(runtimeName, "vault_") {
 			aliases[strings.ToLower(vaultSelectionName(runtimeName))] = runtimeName
+			for _, row := range rows {
+				if vaultServerName(row.ID) != vaultSelectionName(runtimeName) {
+					continue
+				}
+				for _, tool := range row.Tools {
+					_, short, ok := strings.Cut(tool.Name, "__")
+					if ok {
+						aliases[strings.ToLower(vaultServerName(row.ID)+":"+short)] = runtimeName + ":" + tool.Name
+					}
+				}
+			}
+
 		}
 	}
 	if len(selected) == 0 {
@@ -564,10 +601,21 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 	if err != nil {
 		return nil, err
 	}
+	allowed := len(selected) == 0
 	if strings.HasPrefix(resolved.Name, "vault_") {
-		return resolved, nil
+		picks := false
+		none := false
+		for _, n := range selected {
+			if strings.HasPrefix(n, "vault_") {
+				picks = true
+			}
+			if n == mcpclient.NoServers {
+				none = true
+			}
+		}
+		allowed = !picks && !none
 	}
-	allowed := false
+
 	canonical := func(name string) string {
 		name = vaultSelectionName(name)
 		if isPlaceMCPInternalName(name) {

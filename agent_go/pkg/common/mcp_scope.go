@@ -2,9 +2,10 @@ package common
 
 import (
 	"context"
-	"github.com/manishiitg/mcpagent/mcpclient"
 	"sort"
 	"strings"
+
+	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // Installed by the host before serving. Agent constructors use one boundary
@@ -16,6 +17,10 @@ var ScopeAgentMCP func(context.Context, string, []string, mcpclient.RuntimeOverr
 func RemapMCPToolSelection(tools []string, aliases map[string]string) []string {
 	out := make([]string, 0, len(tools))
 	for _, entry := range tools {
+		if target, found := aliases[strings.ToLower(entry)]; found {
+			out = append(out, target)
+			continue
+		}
 		server, tool, ok := strings.Cut(entry, ":")
 		if target, found := aliases[strings.ToLower(server)]; ok && found {
 			entry = target + ":" + tool
@@ -34,12 +39,17 @@ func IncludeDefaultVaultTools(tools, scopedServers []string) []string {
 	}
 	out := append([]string(nil), tools...)
 	seen := make(map[string]bool)
+	explicitServer := map[string]bool{}
 	for _, entry := range out {
 		seen[entry] = true
+		server, _, ok := strings.Cut(entry, ":")
+		if ok {
+			explicitServer[server] = true
+		}
 	}
 	defaults := []string{}
 	for _, server := range scopedServers {
-		if strings.HasPrefix(server, "vault_") && strings.Contains(server, "__scope_") && !seen[server+":*"] {
+		if strings.HasPrefix(server, "vault_") && strings.Contains(server, "__scope_") && !seen[server+":*"] && !explicitServer[server] {
 			defaults = append(defaults, server+":*")
 			seen[server+":*"] = true
 		}

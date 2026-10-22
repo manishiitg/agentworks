@@ -67,6 +67,13 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	if root := api.placeRootForSession(sessionID); root != "" && person != "" {
 		lender = api.projectSecretsOwner(person, root)
 	}
+	if root := api.placeRootForSession(sessionID); root != "" {
+		manifest, found, e := ReadWorkflowManifest(ctx, root)
+		if e != nil || !found || manifest == nil {
+			return nil, fmt.Errorf("project MCP selection unavailable")
+		}
+		return api.resolveScopedGovernedMCP(ctx, nil, manifest.Capabilities.SelectedServers, manifest.Capabilities.SelectedTools, lender, server, tool)
+	}
 	return api.resolveGovernedMCP(ctx, lender, server)
 }
 
@@ -81,12 +88,6 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 		return nil, false, nil
 	}
 	server = strings.TrimSpace(server)
-	// Exact Vault IDs do not require a project manifest or opt-in. Ownership
-	// is pinned above, and resolveGovernedMCP checks the live user's inventory.
-	if strings.HasPrefix(server, "vault_") {
-		resolved, err := api.resolveGovernedMCP(ctx, pin.Person, server)
-		return resolved, true, err
-	}
 	manifest, found, err := ReadWorkflowManifest(ctx, pin.CodeRoot)
 	if err != nil || !found {
 		return nil, true, fmt.Errorf("MCP scope unavailable for this Crew chat")
