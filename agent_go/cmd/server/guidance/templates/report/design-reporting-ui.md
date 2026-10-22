@@ -46,9 +46,20 @@ person presses Run. Flow function controls remain unavailable until its existing
 function adapter supports them. Preview has no native conversation or function
 execution. Native controls do not add access or choose another account/project.
 
-Use optional `styles` for authored CSS. The renderer supplies the app's light/dark
-theme variables; use classes and CSS to express the requested design. Its bundled
-Tailwind classes cover supplied components, not every dynamically invented utility.
+JSON-render changes the source format; it does not prohibit CSS or replace the
+designer's visual work. Bundled CSS supplies component defaults, not a complete
+page design. Put authored CSS in the top-level `styles` string, including media
+queries and theme overrides. On components whose catalog supports `className`,
+use that prop to connect semantic class names to selectors declared in `styles`.
+The renderer supplies the app's light/dark theme variables. Its bundled Tailwind
+classes cover supplied components, not every dynamically invented utility; new
+class names need their own CSS in `styles`.
+
+Do not remove existing styling merely because a dashboard uses JSON or shadcn
+components. When converting HTML, carry its requested visual design into the JSON
+styles and component props unless the person asks to change it. CSS remains
+optional when the supplied props already achieve that design. Preview and inspect
+the result: valid JSON and a ready response alone do not verify its appearance.
 For requested playback, optional `motion: {"duration":12,"statePath":"/playback"}`
 uses the existing shared clock; chart `progress` may bind to `/playback/progress`.
 Add MotionControls only where desired. Load historical values before playback;
