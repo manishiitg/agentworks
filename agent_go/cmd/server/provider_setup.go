@@ -65,7 +65,7 @@ var providerSetupCommands = map[string]map[string]providerSetupCommand{
 		// local browser of its own, where the plain flow can never complete.
 		"authenticate": {command: "codex", args: []string{"login", "--device-auth"}},
 		"inspect":      {command: "codex", args: []string{"--sandbox", "read-only", "--ask-for-approval", "never"}},
-		"usage":        {command: "codex", args: []string{"--sandbox", "read-only", "--ask-for-approval", "never", "--disable", "shell_tool", "-c", "mcp_servers={}"}},
+		"usage":        {command: "codex", args: []string{"--sandbox", "read-only", "--ask-for-approval", "never", "--disable", "shell_tool"}},
 	},
 	"cursor-cli": {
 		"authenticate": {command: "cursor-agent", args: []string{"login"}},

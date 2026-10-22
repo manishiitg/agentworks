@@ -357,7 +357,7 @@ func TestProviderSetupAllowlistIncludesReviewedProviderActions(t *testing.T) {
 
 	usage := map[string]providerSetupCommand{
 		"claude-code": {command: "claude", args: []string{"--tools", "", "--strict-mcp-config"}},
-		"codex-cli":   {command: "codex", args: []string{"--sandbox", "read-only", "--ask-for-approval", "never", "--disable", "shell_tool", "-c", "mcp_servers={}"}},
+		"codex-cli":   {command: "codex", args: []string{"--sandbox", "read-only", "--ask-for-approval", "never", "--disable", "shell_tool"}},
 		"muse-cli":    {command: "muse", args: []string{"--disable-shell", "--disable-write"}},
 	}
 	for provider, expected := range usage {
