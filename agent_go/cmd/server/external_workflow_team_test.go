@@ -113,33 +113,36 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 	bad = *policy
 	bad.Contributors = append(append([]WorkflowContributor{}, policy.Contributors...), WorkflowContributor{UserID: "owner"})
 	update(owner, &bad, 1, 400)
-	// Read-only consent sees the policy, not the management member directory.
+	// A Run person sees the policy, not the management member directory.
 	store, err := openAccessTokens()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	issue := func(scopes []string, ids []string, guard *wf.FolderGuard) string {
+	issue := func(user string, scopes []string, ids []string, guard *wf.FolderGuard) string {
 		t.Helper()
-		_, raw, err := store.Issue(t.Context(), accesstokens.Token{Name: "Team connection", UserID: "owner", Scopes: scopes, WorkflowIDs: ids, FileGuard: guard, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
+		_, raw, err := store.Issue(t.Context(), accesstokens.Token{Name: "Team connection", UserID: user, Scopes: scopes, WorkflowIDs: ids, FileGuard: guard, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}
 		return raw
 	}
-	readOnly := issue([]string{"workflows:read"}, []string{"invoices"}, nil)
+	readOnly := issue("reader", []string{"workflows:read"}, []string{"invoices"}, nil)
 	w := f.call(t, readOnly, "workflow_team", map[string]any{"action": "get"}, 200)
-	if strings.Contains(w.Body.String(), "eligible_members") {
+	if _, exposed := externalTestBody(t, w, 200)["eligible_members"]; exposed {
 		t.Fatal("read-only consent exposed the management directory")
 	}
 	update(readOnly, policy, 1, 403)
-	guarded := issue(builderConsentScopes, []string{"invoices"}, &wf.FolderGuard{ReadPaths: []string{"code"}, WritePaths: []string{"code"}})
-	update(guarded, policy, 1, 403)
-	foreign := issue(builderConsentScopes, []string{"secret"}, nil)
-	update(foreign, policy, 1, 404)
+	// Personal MCP follows the person's current website role. Old picked
+	// scopes, folder guards and workflow lists do not narrow an owner; scoped
+	// machine/project connections have their own contract regressions.
+	guarded := issue("owner", builderConsentScopes, []string{"invoices"}, &wf.FolderGuard{ReadPaths: []string{"code"}, WritePaths: []string{"code"}})
+	f.call(t, guarded, "workflow_team", map[string]any{"action": "get"}, 200)
+	foreign := issue("owner", builderConsentScopes, []string{"secret"}, nil)
+	f.call(t, foreign, "workflow_team", map[string]any{"action": "get"}, 200)
 	// Transfer must preserve the former Leader and must revoke their management rights.
 	// Legacy connection issuance replaces the owner's earlier grant; renew it
-	// after the read-only/file-guard/workflow-bound connection checks above.
+	// after the current-role connection checks above.
 	_, owner = f.issue(t, "owner")
 	transfer := *policy
 	transfer.LeaderID = "outsider"

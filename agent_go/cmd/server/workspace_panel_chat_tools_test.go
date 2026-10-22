@@ -7,12 +7,19 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 )
 
 // Drive real settings/project handlers. A hidden selector, a retained tool
 // after another person's turn, or a Run token must not widen the Builder.
 func TestWorkspacePanelChatToolsBindCurrentBuilder(t *testing.T) {
 	f := newExternalToolsFixture(t)
+	t.Setenv("AUTH_SECRET", "panel-fixture-encryption-key-for-tests")
+	history, err := chathistory.NewFilesystemStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.api.chatStore = history
 	const session, root = "builder", "Workflow/invoices"
 	f.api.lastQueryRequests = map[string]QueryRequest{session: {userID: "owner", SelectedFolder: root}}
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
