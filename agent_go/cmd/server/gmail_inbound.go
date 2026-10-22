@@ -63,6 +63,10 @@ func (api *StreamingAPI) initGmailInbound(router *mux.Router) func() {
 	router.HandleFunc("/api/agent-email/inbox", api.agentEmailInboxHTTP).Methods("GET")
 	router.HandleFunc("/api/agent-email/setup", api.agentEmailSetupHTTP).Methods("GET", "POST")
 	ctx, cancel := context.WithCancel(context.Background())
+	// Reconcile explicit Crew opt-ins before workers can use persisted inbox rows.
+	if err := api.syncAgentEmailInboxes(ctx); err != nil {
+		log.Printf("[AGENT-INBOX] inventory needs attention: %v", err)
+	}
 	service.Start(ctx)
 	var wg sync.WaitGroup
 	wg.Add(1)

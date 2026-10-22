@@ -1026,6 +1026,7 @@ func (m productProjectManifest) displayTitle() string {
 }
 
 type productProjectManifest struct {
+	EmailInboxEnabled            bool            `json:"email_inbox_enabled,omitempty"`
 	MainChatKey                  string          `json:"main_chat_key,omitempty"`
 	KnowledgebaseContractHistory json.RawMessage `json:"knowledgebase_contract_history,omitempty"`
 	SharedKnowledgebase          json.RawMessage `json:"shared_knowledgebase,omitempty"`

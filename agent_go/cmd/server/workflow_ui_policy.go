@@ -27,7 +27,7 @@ func workflowUICallerAllowed(phase, session string, req QueryRequest, active *Ac
 }
 
 func (api *StreamingAPI) registerWorkflowUIForCaller(registrar definitionToolRegistrar, phase, session, workspace string, req QueryRequest, readOnly bool) error {
-	if err := api.registerAgentInboxReadTool(registrar, workspace); err != nil {
+	if err := api.registerAgentInboxTools(registrar, workspace, false); err != nil {
 		return err
 	}
 	active, _ := api.getActiveSession(session)

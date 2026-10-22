@@ -270,6 +270,7 @@ chat:
       - list_executions
       - list_gmail_connections
       - get_agent_inbox
+      - configure_agent_inbox
       - list_mcp_servers
       - list_schedules
       - list_secrets

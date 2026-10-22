@@ -1137,7 +1137,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		}
 		// Google account tools: everywhere a product keeps its channels, and
 		// in a Code (gmail: own) for its owner's chats only.
-		if err := api.registerAgentInboxReadTool(registrar, workspacePath); err != nil {
+		if err := api.registerAgentInboxTools(registrar, workspacePath, !readOnly && policy.Origin == "interactive" && registerWorkUIAllowed(input)); err != nil {
 			return err
 		}
 		ownGmail := agentprofiles.FeatureOption(resolved.Definition, "bots", "gmail") == "own"

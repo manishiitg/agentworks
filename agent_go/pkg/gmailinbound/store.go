@@ -86,7 +86,7 @@ func (s *Store) StoreMessage(ctx context.Context, i Inbox, m Message) (bool, err
 	if err != nil {
 		return false, err
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO inbox_messages(inbox,message_id,thread,data,received_at) VALUES(?,?,?,?,?)`, i.ID, m.ID, m.ThreadID, string(b), m.ReceivedAt)
+	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO inbox_messages(inbox,message_id,thread,data,received_at) SELECT ?,?,?,?,? WHERE EXISTS (SELECT 1 FROM agent_inboxes WHERE id=? AND active=1)`, i.ID, m.ID, m.ThreadID, string(b), m.ReceivedAt, i.ID)
 	if err != nil {
 		return false, err
 	}

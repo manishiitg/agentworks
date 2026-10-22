@@ -14,7 +14,7 @@ export function CompanyAgentEmail() {
  if(!server)return null
  return <section aria-label="Crew inboxes" className="space-y-3 rounded-lg border border-border p-4 text-xs">
   <h3 className="text-sm font-semibold">Crew inboxes</h3>
-  <p className="text-muted-foreground">Enable email inboxes for this company. People connect Gmail in My Vault and choose Use for Crew inboxes. All their Crews get addresses automatically.</p>
+  <p className="text-muted-foreground">Enable email inboxes for this company. People connect Gmail in My Vault and choose Use for Crew inboxes. Incoming email stays off for each Crew until its owner asks Builder to enable it.</p>
   <p className="text-muted-foreground">Mail appears in each Crew’s Inbox. Optional Watchers decide what starts work. No company mailbox or Google Cloud receiving setup is needed.</p>
   {error && <p role="alert" className="text-destructive">{error}</p>}
   <Button size="sm" disabled={busy || enabled===null} onClick={()=>void toggle()}>{enabled ? 'Turn off Crew inboxes' : 'Turn on Crew inboxes'}</Button>

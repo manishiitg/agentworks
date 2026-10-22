@@ -60,6 +60,24 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	provisioned, err := store.Inboxes(ctx)
+	if err != nil || len(provisioned) != 0 {
+		t.Fatalf("account selection opted Crew into receiving: %+v %v", provisioned, err)
+	}
+	status, err := env.api.agentEmailInboxResult(ctx, map[string]interface{}{"workspace_path": root})
+	if err != nil || status.(map[string]any)["enabled"] != false {
+		t.Fatalf("off-by-default status unavailable: %+v %v", status, err)
+	}
+	mailboxes, err := store.Mailboxes(ctx)
+	if err != nil || len(mailboxes) != 0 {
+		t.Fatalf("opening disabled Inbox created a poller: %+v %v", mailboxes, err)
+	}
+	if _, err = env.api.configureAgentInbox(internalBotRequestContext(ctx, "other"), root, true); err == nil {
+		t.Fatal("Run person enabled the owner's personal mailbox")
+	}
+	if _, err = env.api.configureAgentInbox(ctx, root, true); err != nil {
+		t.Fatal("owner could not enable this Crew", err)
+	}
+	provisioned, err = store.Inboxes(ctx)
 	if err != nil || len(provisioned) != 1 || provisioned[0].WorkspacePath != root {
 		t.Fatalf("Crew inbox was not provisioned before opening its panel: %+v %v", provisioned, err)
 	}
@@ -79,6 +97,31 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	stranger := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "stranger"})
 	if _, err = env.api.resolveAgentEmailInbox(stranger, root); err == nil {
 		t.Fatal("private Crew inbox exposed")
+	}
+	if _, err = env.api.configureAgentInbox(ctx, root, false); err != nil {
+		t.Fatal("owner could not disable this Crew", err)
+	}
+	active, _ := store.Inboxes(ctx)
+	mailboxes, _ = store.Mailboxes(ctx)
+	if len(active) != 0 || len(mailboxes) != 0 {
+		t.Fatal("disabling the last Crew kept a mailbox poller", active, mailboxes)
+	}
+	if _, err = env.api.resolveAgentEmailInbox(ctx, root); err == nil {
+		t.Fatal("disabled Crew still available to a Watcher")
+	}
+	status, err = env.api.agentEmailInboxResult(ctx, map[string]interface{}{"workspace_path": root})
+	if err != nil || status.(map[string]any)["enabled"] != false {
+		t.Fatal("disabled Inbox status unavailable", status, err)
+	}
+	page, err := store.Messages(ctx, inbox.ID, 0, "", 50)
+	if err != nil || len(page.Messages) != 1 {
+		t.Fatal("disabling deleted stored mail", page, err)
+	}
+	if fresh, err := store.StoreMessage(ctx, inbox, gmailinbound.Message{ID: "late", Body: "Late result"}); err != nil || fresh {
+		t.Fatal("disabled Crew stored a late result", fresh, err)
+	}
+	if _, err = env.api.configureAgentInbox(ctx, root, true); err != nil {
+		t.Fatal("owner could not re-enable this Crew", err)
 	}
 	svc := services.GetGmailService()
 	cfg := svc.GetConfig()
@@ -136,6 +179,9 @@ func TestAgentEmailWatcherRealPythonAndDurableCursor(t *testing.T) {
 	t.Setenv("LOCAL_MODE", "false")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	env, ctx, root := agentEmailCrewFixture(t)
+	env.mock.mu.Lock()
+	env.mock.files[root+"/product.json"] = strings.Replace(env.mock.files[root+"/product.json"], `"schema_version":1`, `"schema_version":1,"email_inbox_enabled":true`, 1)
+	env.mock.mu.Unlock()
 	t.Setenv("AGENT_INBOX_ENABLED", "true")
 	env.mock.mu.Lock()
 	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"personal","personal":true,"owner_id":"owner","agent_inbox":true,"email":"owner@example.com","client_name":"app","allow_read_access":true,"enabled":true}]}`
