@@ -51,7 +51,20 @@ project's published function form and requires the person to press Run. Existing
 project and function access applies; Flow function buttons remain unavailable.
 Preview does not open a conversation or execute functions.
 
-Use optional `styles` for authored CSS; app light/dark theme variables are supplied.
+JSON-render is a source format, not a ban on CSS. Bundled CSS supplies component
+defaults; the designer still controls the page's visual design. Put authored CSS,
+media queries and theme overrides in the top-level `styles` string. Use
+`props.className` where the component catalog supports it and declare those
+selectors in `styles`; app light/dark theme variables are supplied. Bundled
+Tailwind utilities cover the supplied components, not arbitrary new utility
+classes invented at runtime.
+
+Do not discard existing styling just because the page uses JSON or shadcn. Carry
+its requested visual design into the JSON styles and component props when
+converting HTML, unless the person asks to change it. CSS is optional when the
+supplied props already achieve that design. Inspect the rendered preview; valid
+JSON and a ready response alone do not verify the appearance.
+
 Optional `motion: {duration: 12, statePath: "/playback"}` drives the existing shared
 clock; chart progress can bind to `/playback/progress`. Place MotionControls only
 when desired. MP4 captures the published layout, selected theme and frozen data.
