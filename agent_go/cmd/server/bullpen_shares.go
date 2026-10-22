@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -586,71 +585,4 @@ func (api *StreamingAPI) revokeShare(ctx context.Context, owner, id string) (int
 		return 0, "", ""
 	}
 	return http.StatusNotFound, "unknown_share", "No such share."
-}
-
-// Blocking a person revokes everything shared with them and refuses new sends.
-func (api *StreamingAPI) handleBullpenBlock(w http.ResponseWriter, r *http.Request) {
-	claims := api.bullpenShareClaims(w, r, true)
-	if claims == nil {
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-	var in struct {
-		Person  string `json:"person"`
-		Unblock bool   `json:"unblock"`
-	}
-	dir, dirErr := loadUserDirectory()
-	if json.NewDecoder(r.Body).Decode(&in) != nil || dirErr != nil || dir == nil {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "Choose a person.")
-		return
-	}
-	subject := dir.byUsername(in.Person)
-	if subject == nil || subject.Disabled || subject.ID == claims.UserID {
-		externalError(w, http.StatusBadRequest, "unknown_person", "No active person with that username.")
-		return
-	}
-	agentMessageMu.Lock()
-	defer agentMessageMu.Unlock()
-	s, err := readAgentMessageStore(r.Context())
-	if err != nil {
-		externalError(w, http.StatusServiceUnavailable, "shares_unavailable", "Sharing is unavailable. Try again.")
-		return
-	}
-	if in.Unblock {
-		kept := s.Blocks[:0]
-		for _, b := range s.Blocks {
-			if !(b.OwnerUserID == claims.UserID && b.BlockedUserID == subject.ID) {
-				kept = append(kept, b)
-			}
-		}
-		s.Blocks = kept
-		s.auditShare("unblocked", claims.UserID, claims.UserID, subject.ID, "", "")
-	} else if !s.shareBlocked(claims.UserID, subject.ID) {
-		now := time.Now().UTC()
-		owned := 0
-		for _, b := range s.Blocks {
-			if b.OwnerUserID == claims.UserID {
-				owned++
-			}
-		}
-		if owned >= blocksPerOwner {
-			externalError(w, http.StatusTooManyRequests, "block_limit", "Unblock someone before blocking another person.")
-			return
-		}
-		s.Blocks = append(s.Blocks, agentShareBlock{OwnerUserID: claims.UserID, BlockedUserID: subject.ID, At: now})
-		for i := range s.Shares {
-			if sh := &s.Shares[i]; sh.OwnerUserID == claims.UserID && sh.SubjectUserID == subject.ID && sh.RevokedAt.IsZero() {
-				sh.RevokedAt = now
-				sh.RevocationVersion++
-				s.suppressShare(sh.ID)
-			}
-		}
-		s.suppressFrom(claims.UserID, subject.ID)
-		s.auditShare("blocked", claims.UserID, claims.UserID, subject.ID, "", "")
-	}
-	if err := saveAgentMessageStore(r.Context(), s); err != nil {
-		externalError(w, http.StatusServiceUnavailable, "shares_unavailable", "Sharing is unavailable. Try again.")
-		return
-	}
-	externalJSON(w, map[string]interface{}{"person": shareOwnerLabel(subject.ID), "blocked": !in.Unblock})
 }

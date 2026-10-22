@@ -387,7 +387,6 @@ func findProviderOptionByID(options []agentprofiles.ProviderOption, id string) (
 
 func AgentProfileRoutes(router *mux.Router, registry *agentprofiles.Registry) {
 	router.HandleFunc("/agent-profiles", listAgentProfilesHandler(registry)).Methods(http.MethodGet, http.MethodOptions)
-	router.HandleFunc("/agent-profiles/validate", validateAgentProfileHandler()).Methods(http.MethodPost, http.MethodOptions)
 	router.HandleFunc("/agent-profiles/{id}", getAgentProfileHandler(registry)).Methods(http.MethodGet, http.MethodOptions)
 }
 
@@ -1003,34 +1002,6 @@ func getAgentProfileHandler(registry *agentprofiles.Registry) http.HandlerFunc {
 // by the provider manifest rather than silently removing an engine.
 func profileWithAvailableProviders(profile agentprofiles.Profile) agentprofiles.Profile {
 	return profileWithProductDefault(context.Background(), profile)
-}
-
-func validateAgentProfileHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		decoder := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes))
-		decoder.DisallowUnknownFields()
-		var profile agentprofiles.Profile
-		if err := decoder.Decode(&profile); err != nil {
-			writeAgentProfileError(w, http.StatusBadRequest, "invalid agent profile: "+err.Error())
-			return
-		}
-		// Validation is the user-profile contract. A client cannot claim built-in
-		// authority or choose a different owner through this endpoint.
-		profile.BuiltIn = false
-		profile.OwnerID = GetUserIDFromContext(r.Context())
-		if err := agentprofiles.Validate(profile); err != nil {
-			writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
-			return
-		}
-		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{
-			"valid":   true,
-			"profile": profile,
-		})
-	}
 }
 
 func writeAgentProfileQueryError(w http.ResponseWriter, err error) {

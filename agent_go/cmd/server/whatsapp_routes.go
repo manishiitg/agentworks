@@ -34,7 +34,6 @@ func WhatsAppRoutes(router *mux.Router, manager *services.WhatsAppServiceManager
 	waRouter.HandleFunc("/routing", whatsappGetRoutingHandler(manager)).Methods("GET")
 	waRouter.HandleFunc("/routing", whatsappPutRoutingHandler(manager)).Methods("PUT", "OPTIONS")
 	waRouter.HandleFunc("/default-profile", whatsappPutDefaultProfileHandler(manager, defaults)).Methods("PUT", "OPTIONS")
-	waRouter.HandleFunc("/device-label", whatsappPutDeviceLabelHandler(manager)).Methods("PUT", "OPTIONS")
 	log.Printf("[WHATSAPP] Registered routes: GET /api/whatsapp/pair, GET /api/whatsapp/status, DELETE /api/whatsapp/session, GET|PUT /api/whatsapp/routing, PUT /api/whatsapp/default-profile, PUT /api/whatsapp/device-label")
 }
 
@@ -93,45 +92,6 @@ func whatsappPutDefaultProfileHandler(manager *services.WhatsAppServiceManager, 
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"default_profile_id":    profileID,
 			"default_upload_folder": folder,
-		})
-	}
-}
-
-func whatsappPutDeviceLabelHandler(manager *services.WhatsAppServiceManager) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		_, user, err := whatsappServiceForRequest(r, manager)
-		if err != nil {
-			http.Error(w, "whatsapp service unavailable: "+err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-		var body struct {
-			Slot  string `json:"slot"`
-			Label string `json:"label"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "invalid JSON body: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-		if strings.TrimSpace(body.Slot) != "" {
-			http.Error(w, services.ErrWhatsAppOnePhone.Error(), http.StatusConflict)
-			return
-		}
-		if err := manager.SetDeviceLabel(r.Context(), user.UserID, body.Label); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		devices, err := manager.Devices(r.Context(), user.UserID)
-		if err != nil {
-			http.Error(w, "whatsapp devices unavailable: "+err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"devices": devices,
 		})
 	}
 }

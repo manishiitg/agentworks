@@ -2447,7 +2447,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/agents/usage", api.handleAgentUsageReport).Methods("POST")
 	apiRouter.HandleFunc("/bullpen/shares", api.handleBullpenShares).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/shares/{id}", api.handleBullpenShareRevoke).Methods("DELETE")
-	apiRouter.HandleFunc("/bullpen/blocks", api.handleBullpenBlock).Methods("POST")
 	apiRouter.HandleFunc("/bullpen/notices", api.handleBullpenNotices).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/notices/{id}", api.handleBullpenNoticeDismiss).Methods("DELETE")
 	apiRouter.HandleFunc("/bullpen/admin/agents", api.handleBullpenAdmin).Methods("GET")
@@ -2517,7 +2516,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/knowledgebase/secrets/{name}", api.handleBrainSecrets).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/knowledgebase/access-proposals", api.handleKnowledgebaseAccessProposals).Methods("GET", "POST")
 	apiRouter.HandleFunc("/knowledgebase/manage", api.handleKnowledgebaseManagement).Methods("POST")
-	apiRouter.HandleFunc("/knowledgebase/maintenance/reconcile-backup", api.handleKnowledgebaseReconcileBackup).Methods("POST")
 	apiRouter.PathPrefix("/knowledgebase/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		externalError(w, http.StatusNotFound, "NOT_FOUND", "Brain endpoint not found.")
 	})
@@ -2588,13 +2586,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/work/folders", api.handleListWorkFolders).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/work/folders", api.handleAddWorkFolder).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/work/folders/{id}", api.handleDeleteWorkFolder).Methods("DELETE", "OPTIONS")
-	apiRouter.HandleFunc("/work/roots", api.handleGetWorkRoots).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/work/roots", api.handlePutWorkRoots).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/health", api.handleHealth).Methods("GET")
 	apiRouter.HandleFunc("/capabilities", api.handleCapabilities).Methods("GET")
-	CLISecurityRoutes(apiRouter, api.cliSecurityStore)
 	apiRouter.HandleFunc("/cdp-check", api.handleCdpCheck).Methods("GET")
-	apiRouter.HandleFunc("/downloads/chrome-cdp-macOS.zip", api.handleChromeCdpDownload).Methods("GET")
 	apiRouter.HandleFunc("/downloads/cli/{file}", api.handleCliDownload).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/defaults", api.handleGetLLMDefaults).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/discovery", api.handleDiscoverLLMSetup).Methods("GET")
@@ -2634,7 +2628,6 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	apiRouter.HandleFunc("/mcp/execute", api.requireOwnBodySession(executorHandlers.HandleMCPExecute)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/custom/execute", executorHandlers.HandleCustomExecute).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/virtual/execute", api.requireOwnBodySession(executorHandlers.HandleVirtualExecute)).Methods("POST", "OPTIONS")
 
 	// Per-tool endpoints for code execution mode (bearer token auth, bypasses JWT)
 	// LLM-generated code calls these directly, so they use API token auth instead of JWT.
@@ -2782,15 +2775,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/secrets/workflow/store/{name}", api.handleDeleteWorkflowSecret).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/workflow/sources", api.handleSecretSources).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/workflow/stored", api.handleListStoredWorkflowSecrets).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow-provider-credentials/claude-code", api.handleGetWorkflowClaudeCodeCredential).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow-provider-credentials/claude-code", api.handleStoreWorkflowClaudeCodeCredential).Methods("PUT", "OPTIONS")
-	apiRouter.HandleFunc("/workflow-provider-credentials/claude-code", api.handleDeleteWorkflowClaudeCodeCredential).Methods("DELETE", "OPTIONS")
-	apiRouter.HandleFunc("/workflow-provider-credentials/cursor-cli", api.handleGetWorkflowCursorCLICredential).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow-provider-credentials/cursor-cli", api.handleStoreWorkflowCursorCLICredential).Methods("PUT", "OPTIONS")
-	apiRouter.HandleFunc("/workflow-provider-credentials/cursor-cli", api.handleDeleteWorkflowCursorCLICredential).Methods("DELETE", "OPTIONS")
-	apiRouter.HandleFunc("/workflow-provider-credentials/pi-cli", api.handleGetWorkflowPiCLICredential).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow-provider-credentials/pi-cli", api.handleStoreWorkflowPiCLICredential).Methods("PUT", "OPTIONS")
-	apiRouter.HandleFunc("/workflow-provider-credentials/pi-cli", api.handleDeleteWorkflowPiCLICredential).Methods("DELETE", "OPTIONS")
 
 	// Provider API keys (encrypted file storage for scheduled runs)
 	apiRouter.HandleFunc("/provider-keys", api.handleSaveProviderKeys).Methods("PUT", "OPTIONS")
@@ -2899,7 +2883,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/sessions/{session_id}/live-input", api.handleLiveInputMessage).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/sessions/{session_id}/coding-agent-question/answer", api.handleCodingAgentQuestionAnswer).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/sessions/{session_id}/muse-question/answer", api.handleCodingAgentQuestionAnswer).Methods("POST", "OPTIONS") // Existing clients.
-	apiRouter.HandleFunc("/chat/submissions/{submission_id}", api.handleChatSubmissionStatus).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/control", api.handleControlKey).Methods("POST", "OPTIONS")
 
 	// Human Feedback API
@@ -2914,7 +2897,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// The Pulse's goal memory, edited by the owner in the Pulse tab (PLAT-697).
 	// The Pulse conversation and focus areas in the Pulse tab (PLAT-697 phase 4).
 	apiRouter.HandleFunc("/workflow/team", api.handleWorkflowTeam).Methods("GET", "PUT")
-	apiRouter.HandleFunc("/workflow/goal-lead/message", requireReportHumanInputAccess(true, api.handlePostGoalLeadMessage)).Methods("POST", "OPTIONS")
 
 	// Workflow running-session API (decoupled from chat session storage).
 	apiRouter.HandleFunc("/workflow/running", api.handleListRunningWorkflows).Methods("GET")

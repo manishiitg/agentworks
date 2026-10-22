@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -64,7 +63,6 @@ type defaultDashboardInfo struct {
 }
 
 func (api *StreamingAPI) registerDefaultDashboardRoutes(router *mux.Router) {
-	router.HandleFunc("/dashboards/default", api.handleDefaultDashboard).Methods(http.MethodPost)
 }
 
 func defaultDashboardText(s string, limit int) string {
@@ -311,34 +309,4 @@ func (api *StreamingAPI) refreshPublicationDashboard(ctx context.Context, claims
 	}
 	_, _, err = api.ensureDefaultDashboard(ctx, claims, target)
 	return err
-}
-
-func (api *StreamingAPI) handleDefaultDashboard(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Workspace string `json:"workspace"`
-	}
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&body) != nil || decoder.Decode(new(any)) != io.EOF || body.Workspace == "" {
-		externalError(w, 400, "invalid_arguments", "workspace is required")
-		return
-	}
-	claims := GetUserFromContext(r.Context())
-	w.Header().Set("Cache-Control", "no-store")
-	if claims == nil || claims.UserID == "" || claims.Scope != "" || claims.Provider == "bot_route" || !dashboardScopeAllowed(claims, "get") {
-		externalError(w, 403, "insufficient_scope", "dashboard access required")
-		return
-	}
-	target, err := api.dashboardTarget(r.Context(), claims, body.Workspace)
-	if err != nil {
-		dashboardError(w, err)
-		return
-	}
-	id, generated, err := api.ensureDefaultDashboard(r.Context(), claims, target)
-	if err != nil {
-		dashboardError(w, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"dashboard_id": id, "generated": generated})
 }

@@ -370,26 +370,6 @@ func TestGetAgentProfileDoesNotLeakAnotherOwner(t *testing.T) {
 	}
 }
 
-func TestValidateAgentProfileCannotClaimBuiltInAuthority(t *testing.T) {
-	profile := routeTestProfile("custom-agent", true, "server-owner")
-	body, _ := json.Marshal(profile)
-	recorder := httptest.NewRecorder()
-	validateAgentProfileHandler()(recorder, profileRouteRequest(http.MethodPost, "/api/agent-profiles/validate", body, "user-1"))
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
-	}
-	var response struct {
-		Valid   bool                  `json:"valid"`
-		Profile agentprofiles.Profile `json:"profile"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatal(err)
-	}
-	if !response.Valid || response.Profile.BuiltIn || response.Profile.OwnerID != "user-1" {
-		t.Fatalf("validation did not enforce user ownership: %+v", response)
-	}
-}
-
 func accountSwitchTestSetup(t *testing.T, key string) (*StreamingAPI, *http.Request, agentprofiles.Profile, ProductConversationRecord) {
 	t.Helper()
 	server, _ := newFakeWorkspaceServer(t)

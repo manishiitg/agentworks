@@ -284,32 +284,6 @@ func knowledgebaseWriteJSON(w http.ResponseWriter, result any) {
 	_ = json.NewEncoder(w).Encode(result)
 }
 
-// Explicit administrator maintenance only observes a backup branch. It never
-// changes live content or publishes a commit, and is unavailable to MCP tokens.
-func (api *StreamingAPI) handleKnowledgebaseReconcileBackup(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	claims := GetUserFromContext(r.Context())
-	if !knowledgebaseProductAllowed(claims) || claims.AccessToken != nil || !currentUserIsAdmin(r) {
-		externalError(w, http.StatusForbidden, "FORBIDDEN", "Administrator access is required.")
-		return
-	}
-	service, err := knowledgebaseService()
-	if err != nil {
-		knowledgebaseHTTPError(w, err)
-		return
-	}
-	if err = knowledgebaseSyncIdentities(r.Context(), service); err != nil {
-		knowledgebaseHTTPError(w, err)
-		return
-	}
-	result, err := service.ReconcileBackup(r.Context(), knowledgebasePrincipal(r, claims))
-	if err != nil {
-		knowledgebaseHTTPError(w, err)
-		return
-	}
-	knowledgebaseWriteJSON(w, result)
-}
-
 func (api *StreamingAPI) handleKnowledgebaseViewer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method == http.MethodOptions {

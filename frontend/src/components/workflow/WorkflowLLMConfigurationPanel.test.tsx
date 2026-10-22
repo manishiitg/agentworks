@@ -34,7 +34,6 @@ vi.mock('../../services/llm-config-api', () => ({
   llmConfigService: { getModelMetadata: vi.fn(async () => ({ models: [] })), getProviderConnections: vi.fn(async () => [] as import('../../services/llm-config-api').ProviderConnection[]) },
 }))
 vi.mock('../llm/CodingAgentSection', () => ({ CodingAgentSection: () => null }))
-vi.mock('../WorkflowProviderCredentialField', () => ({ WorkflowProviderCredentialField: () => null }))
 
 import WorkflowLLMConfigurationPanel from './WorkflowLLMConfigurationPanel'
 import { llmConfigService } from '../../services/llm-config-api'

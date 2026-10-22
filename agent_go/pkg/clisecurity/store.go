@@ -73,10 +73,6 @@ func DefaultConfig() UserConfig {
 	}
 }
 
-func ValidateConfig(config UserConfig) (UserConfig, error) {
-	return validateConfig(config)
-}
-
 func (s *Store) Read(userID string) (UserConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

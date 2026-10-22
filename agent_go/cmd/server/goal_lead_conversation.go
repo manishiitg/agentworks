@@ -6,11 +6,9 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -676,51 +674,6 @@ func (api *StreamingAPI) projectGoalLeadConversation(ctx context.Context, worksp
 		view["messages"] = messages
 	}
 	return view
-}
-
-// handlePostGoalLeadMessage takes the owner's message from the Pulse tab's
-// "Talk to Pulse" box and runs it as a turn in the Pulse conversation. It
-// returns at once; the reply appears in the "<workflow> Pulse" chat tab.
-func (api *StreamingAPI) handlePostGoalLeadMessage(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	var body struct {
-		WorkspacePath string `json:"workspace_path"`
-		Message       string `json:"message"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-	if query := strings.TrimSpace(r.URL.Query().Get("workspace_path")); query != "" {
-		body.WorkspacePath = query
-	}
-	workspacePath, err := normalizeReportHumanInputWorkspacePath(body.WorkspacePath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	message := strings.TrimSpace(body.Message)
-	if message == "" {
-		http.Error(w, "message is required", http.StatusBadRequest)
-		return
-	}
-	if len([]rune(message)) > goalLeadOwnerMessageRunes {
-		http.Error(w, fmt.Sprintf("message is longer than %d characters", goalLeadOwnerMessageRunes), http.StatusBadRequest)
-		return
-	}
-	if !workflowHasGoal(r.Context(), workspacePath) {
-		http.Error(w, "this workflow's Pulse is off or has no goal yet (Pulse on and soul/soul.md); set it up in the Builder chat first", http.StatusConflict)
-		return
-	}
-	if err := api.sendGoalLeadOwnerMessage(r.Context(), workspacePath, message); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 
 // sendGoalLeadOwnerMessage logs the owner's message in the Pulse conversation

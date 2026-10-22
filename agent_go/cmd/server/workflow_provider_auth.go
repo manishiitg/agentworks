@@ -46,39 +46,6 @@ type workflowCredentialProvider struct {
 	closeIdleSessions func(api *StreamingAPI, userID, workflowPath, reason string)
 }
 
-func claudeCodeCredentialProvider() workflowCredentialProvider {
-	return workflowCredentialProvider{
-		id:       claudeCodeProviderID,
-		label:    "Claude Code token",
-		validate: validateClaudeCodeOAuthToken,
-		closeIdleSessions: func(api *StreamingAPI, userID, workflowPath, reason string) {
-			api.closeIdleWorkflowClaudeCodeSessions(userID, workflowPath, reason)
-		},
-	}
-}
-
-func cursorCLICredentialProvider() workflowCredentialProvider {
-	return workflowCredentialProvider{
-		id:       cursorCLIProviderID,
-		label:    "Cursor API key",
-		validate: validateCursorCLIAPIKey,
-		closeIdleSessions: func(api *StreamingAPI, userID, workflowPath, reason string) {
-			api.closeIdleWorkflowCursorCLISessions(userID, workflowPath, reason)
-		},
-	}
-}
-
-func piCLICredentialProvider() workflowCredentialProvider {
-	return workflowCredentialProvider{
-		id:       piCLIProviderID,
-		label:    "Pi CLI (Gemini) API key",
-		validate: validatePiCLIGeminiAPIKey,
-		closeIdleSessions: func(api *StreamingAPI, userID, workflowPath, reason string) {
-			api.closeIdleWorkflowPiCLISessions(userID, workflowPath, reason)
-		},
-	}
-}
-
 type workflowProviderCredentialRequest struct {
 	WorkspacePath  string `json:"workspace_path"`
 	EncryptedValue string `json:"encrypted_value"`
@@ -104,68 +71,6 @@ func maskCredentialPreview(token string) string {
 		return ""
 	}
 	return token[:affixLen] + "..." + token[len(token)-affixLen:]
-}
-
-func (api *StreamingAPI) handleGetWorkflowClaudeCodeCredential(w http.ResponseWriter, r *http.Request) {
-	api.getWorkflowProviderCredential(w, r, claudeCodeCredentialProvider())
-}
-
-func (api *StreamingAPI) handleStoreWorkflowClaudeCodeCredential(w http.ResponseWriter, r *http.Request) {
-	api.storeWorkflowProviderCredential(w, r, claudeCodeCredentialProvider())
-}
-
-func (api *StreamingAPI) handleDeleteWorkflowClaudeCodeCredential(w http.ResponseWriter, r *http.Request) {
-	api.deleteWorkflowProviderCredential(w, r, claudeCodeCredentialProvider())
-}
-
-func (api *StreamingAPI) handleGetWorkflowCursorCLICredential(w http.ResponseWriter, r *http.Request) {
-	api.getWorkflowProviderCredential(w, r, cursorCLICredentialProvider())
-}
-
-func (api *StreamingAPI) handleStoreWorkflowCursorCLICredential(w http.ResponseWriter, r *http.Request) {
-	api.storeWorkflowProviderCredential(w, r, cursorCLICredentialProvider())
-}
-
-func (api *StreamingAPI) handleDeleteWorkflowCursorCLICredential(w http.ResponseWriter, r *http.Request) {
-	api.deleteWorkflowProviderCredential(w, r, cursorCLICredentialProvider())
-}
-
-func (api *StreamingAPI) handleGetWorkflowPiCLICredential(w http.ResponseWriter, r *http.Request) {
-	api.getWorkflowProviderCredential(w, r, piCLICredentialProvider())
-}
-
-func (api *StreamingAPI) handleStoreWorkflowPiCLICredential(w http.ResponseWriter, r *http.Request) {
-	api.storeWorkflowProviderCredential(w, r, piCLICredentialProvider())
-}
-
-func (api *StreamingAPI) handleDeleteWorkflowPiCLICredential(w http.ResponseWriter, r *http.Request) {
-	api.deleteWorkflowProviderCredential(w, r, piCLICredentialProvider())
-}
-
-func (api *StreamingAPI) getWorkflowProviderCredential(w http.ResponseWriter, r *http.Request, provider workflowCredentialProvider) {
-	workspacePath := strings.TrimSpace(r.URL.Query().Get("workspace_path"))
-	if workspacePath == "" {
-		http.Error(w, "workspace_path is required", http.StatusBadRequest)
-		return
-	}
-	userID := GetUserIDFromContext(r.Context())
-	credential, err := api.chatStore.GetWorkflowProviderCredential(r.Context(), userID, workspacePath, provider.id)
-	if err != nil {
-		http.Error(w, "Failed to load workflow provider credential", http.StatusInternalServerError)
-		return
-	}
-	status := workflowProviderCredentialStatus{Configured: credential != nil}
-	if credential != nil {
-		updatedAt := credential.UpdatedAt
-		status.UpdatedAt = &updatedAt
-		// Decrypted only to build the masked preview; the plaintext is never
-		// stored, logged, or returned — only the two short affixes below.
-		if token, decErr := decryptSecretValue(credential.EncryptedValue, userID); decErr == nil {
-			status.Preview = maskCredentialPreview(token)
-		}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(status)
 }
 
 func (api *StreamingAPI) storeWorkflowProviderCredential(w http.ResponseWriter, r *http.Request, provider workflowCredentialProvider) {
@@ -398,22 +303,6 @@ func (api *StreamingAPI) workflowHasBusySession(userID, workflowPath string) boo
 		}
 	}
 	return false
-}
-
-func (api *StreamingAPI) closeIdleWorkflowClaudeCodeSessions(userID, workflowPath, reason string) {
-	for _, sessionID := range api.workflowSessionIDs(userID, workflowPath) {
-		llmproviders.CloseClaudeCodeInteractiveSessionForOwner(sessionID, reason)
-		if api.terminalStore == nil {
-			continue
-		}
-		for _, snapshot := range api.terminalStore.ListRaw(sessionID) {
-			if !strings.HasPrefix(strings.TrimSpace(snapshot.TmuxSession), "mlp-claude-code") {
-				continue
-			}
-			llmproviders.CloseClaudeCodeInteractiveSessionByTmux(snapshot.TmuxSession, reason)
-			api.terminalStore.MarkProcessClosed(snapshot.TerminalID, reason)
-		}
-	}
 }
 
 // closeIdleWorkflowCursorCLISessions is the Cursor counterpart. Video Studio

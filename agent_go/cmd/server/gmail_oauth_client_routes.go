@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 
@@ -69,7 +68,6 @@ func GmailOAuthClientRoutes(router *mux.Router, api *StreamingAPI) {
 	r := router.PathPrefix("/api/human-feedback/gmail/oauth-clients").Subrouter()
 	r.HandleFunc("", listGmailOAuthClientsHandler(api)).Methods("GET")
 	r.HandleFunc("", createGmailOAuthClientHandler(api)).Methods("POST", "OPTIONS")
-	r.HandleFunc("/import-legacy", requireAdminWrite(importLegacyGmailOAuthClientHandler(api))).Methods("POST", "OPTIONS")
 	r.HandleFunc("/{name}", requireAdminWrite(deleteGmailOAuthClientHandler(api))).Methods("DELETE", "OPTIONS")
 }
 
@@ -137,40 +135,5 @@ func deleteGmailOAuthClientHandler(api *StreamingAPI) http.HandlerFunc {
 		log.Printf("[GMAIL] Deleted OAuth client %q", name)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"deleted": name})
-	}
-}
-
-// importLegacyGmailOAuthClientHandler is the one-time migration action: name
-// the box's existing shared client_secret.json and backfill it onto every
-// connection that predates the named-client registry.
-func importLegacyGmailOAuthClientHandler(api *StreamingAPI) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		svc, err := ensureGmailService()
-		if err != nil {
-			http.Error(w, fmt.Sprintf("failed to initialize Gmail service: %v", err), http.StatusInternalServerError)
-			return
-		}
-		var req GmailOAuthClientImportLegacyRequest
-		if r.ContentLength != 0 {
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
-				http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
-				return
-			}
-		}
-		client, backfilled, err := svc.ImportLegacyOAuthClient(r.Context(), req.Name)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		log.Printf("[GMAIL] Imported legacy OAuth client as %q, backfilled %d connection(s)", client.Name, backfilled)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(GmailOAuthClientImportLegacyResponse{
-			Client:                projectGmailOAuthClient(client),
-			ConnectionsBackfilled: backfilled,
-		})
 	}
 }

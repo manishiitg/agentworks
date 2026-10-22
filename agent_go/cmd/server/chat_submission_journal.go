@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -541,45 +540,6 @@ func ListUnresolvedChatSubmissions(ctx context.Context, owner, session string) (
 		}
 	}
 	return result, nil
-}
-
-// Submission lookup is scoped to the authenticated owner, regardless of the
-// supplied key. It works even after the in-memory terminal registry was lost.
-func (api *StreamingAPI) handleChatSubmissionStatus(w http.ResponseWriter, r *http.Request) {
-	owner := strings.TrimSpace(GetUserIDFromContext(r.Context()))
-	if owner == "" {
-		http.Error(w, "Submission owner required", http.StatusUnauthorized)
-		return
-	}
-	id := strings.TrimSpace(r.PathValue("submission_id"))
-	if id == "" {
-		id = strings.TrimSpace(mux.Vars(r)["submission_id"])
-	}
-	if id == "" || len(id) > 256 {
-		http.Error(w, "Invalid submission ID", http.StatusBadRequest)
-		return
-	}
-	path := filepath.ToSlash(filepath.Join(chatHistoryRoot(owner), "submissions", submissionDigest(id)+".json"))
-	raw, exists, err := readFileFromWorkspace(r.Context(), path)
-	if err != nil {
-		http.Error(w, "Cannot read submission", http.StatusServiceUnavailable)
-		return
-	}
-	if !exists {
-		http.Error(w, "Submission not found", http.StatusNotFound)
-		return
-	}
-	var record chatSubmissionRecord
-	if err := json.Unmarshal([]byte(raw), &record); err != nil {
-		http.Error(w, "Unreadable submission", http.StatusServiceUnavailable)
-		return
-	}
-	if record.Owner != owner {
-		http.Error(w, "Submission not found", http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(record)
 }
 
 func durableSubmissionProject(owner, session string) (string, error) {
