@@ -2147,7 +2147,11 @@ export const agentApi = {
     const formData = new FormData()
     formData.append('file', file)
     try {
-      const response = await api.post(`/api/agent-profiles/work/projects/${encodeURIComponent(projectId)}/uploads`, formData)
+      // Override the chat client's JSON default. Axios otherwise serializes
+      // FormData as JSON; the browser adapter supplies the multipart boundary.
+      const response = await api.post(`/api/agent-profiles/work/projects/${encodeURIComponent(projectId)}/uploads`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
       return response.data
     } catch (error) {
       if (axios.isAxiosError(error)) {

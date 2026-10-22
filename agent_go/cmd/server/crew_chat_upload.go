@@ -2,9 +2,11 @@ package server
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"path"
 	"strings"
@@ -57,8 +59,15 @@ func (api *StreamingAPI) handleCrewChatUpload(w http.ResponseWriter, r *http.Req
 		if r.MultipartForm != nil {
 			_ = r.MultipartForm.RemoveAll()
 		}
-		log.Printf("[CREW_CHAT_UPLOAD] request_id=%q actor=%q owner=%q crew=%q mode=%s status=413 reason=multipart_rejected", requestLogID(r), claims.UserID, crew.OwnerID, projectID, mode)
-		writeAgentProfileError(w, http.StatusRequestEntityTooLarge, "The file could not be uploaded. Choose a smaller file and attach it again.")
+		status, reason := http.StatusBadRequest, "multipart_invalid"
+		message := "The upload was not understood. Attach the file again."
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) || errors.Is(err, multipart.ErrMessageTooLarge) {
+			status, reason = http.StatusRequestEntityTooLarge, "multipart_too_large"
+			message = fmt.Sprintf("This file is too large. Choose a file smaller than %d MB and attach it again.", limit>>20)
+		}
+		log.Printf("[CREW_CHAT_UPLOAD] request_id=%q actor=%q owner=%q crew=%q mode=%s status=%d reason=%s content_type=%q content_length=%d error=%q", requestLogID(r), claims.UserID, crew.OwnerID, projectID, mode, status, reason, r.Header.Get("Content-Type"), r.ContentLength, err.Error())
+		writeAgentProfileError(w, status, message)
 		return
 	}
 	if r.MultipartForm != nil {

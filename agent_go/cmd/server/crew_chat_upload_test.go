@@ -74,6 +74,14 @@ func TestCrewChatUploadUsesCallerFolder(t *testing.T) {
 	if w := upload(&UserClaims{UserID: "other"}, make([]byte, crewSharedFileMaxBytes+1), "big.png"); w.Code != 413 || !strings.Contains(w.Body.String(), "smaller than 5 MB") {
 		t.Fatalf("over-limit = %d %s", w.Code, w.Body.String())
 	}
+	// A malformed form is a format failure, not a file-size failure.
+	bad := adminRequest(http.MethodPost, "/api/agent-profiles/work/projects/team/uploads", `{}`, &UserClaims{UserID: "owner"}, map[string]string{"id": "work", "project_id": "team"})
+	bad.Header.Set("Content-Type", "application/json")
+	invalid := httptest.NewRecorder()
+	f.api.handleCrewChatUpload(invalid, bad)
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), "upload was not understood") {
+		t.Fatalf("malformed upload = %d %s", invalid.Code, invalid.Body.String())
+	}
 	view := &UserClaims{UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
 	if w := upload(view, image, "view.png"); w.Code != 403 {
 		t.Fatalf("view token upload = %d %s", w.Code, w.Body.String())
