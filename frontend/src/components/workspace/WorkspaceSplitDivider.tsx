@@ -1,6 +1,5 @@
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
-import { GripVertical, Laptop, PanelLeftClose, PanelRightClose, Smartphone, Tablet } from 'lucide-react'
-import type { ReportPreviewDevice } from '../../utils/reportPreviewPreference'
+import { GripVertical } from 'lucide-react'
 
 type WorkspaceSplitDividerProps = {
   ratio: number
@@ -44,90 +43,5 @@ export function WorkspaceSplitDivider({ ratio, onPointerDown, onStep, children, 
         </div>
       ) : null}
     </div>
-  )
-}
-
-type WorkspaceSplitCollapseControlsProps = {
-  onCollapseChat?: () => void
-  onCollapseWorkspace: () => void
-}
-
-/** Shared AgentWorks/Work controls rendered inside the resize rail. */
-export function WorkspaceSplitCollapseControls({
-  onCollapseChat,
-  onCollapseWorkspace,
-}: WorkspaceSplitCollapseControlsProps) {
-  return (
-    <>
-      {onCollapseChat ? (
-        <button
-          type="button"
-          onPointerDown={event => event.stopPropagation()}
-          onClick={onCollapseChat}
-          className="pointer-events-auto flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Collapse chat panel"
-          title="Collapse chat panel"
-        >
-          <PanelLeftClose className="h-3 w-3" />
-        </button>
-      ) : null}
-      <button
-        type="button"
-        onPointerDown={event => event.stopPropagation()}
-        onClick={onCollapseWorkspace}
-        className="pointer-events-auto flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        aria-label="Collapse workspace panel"
-        title="Collapse workspace panel"
-      >
-        <PanelRightClose className="h-3 w-3" />
-      </button>
-    </>
-  )
-}
-
-type WorkspaceSplitRailProps = Omit<WorkspaceSplitDividerProps, 'children'> & {
-  previewDevice?: ReportPreviewDevice
-  onPreviewDeviceChange?: (device: ReportPreviewDevice) => void
-  onCollapseChat?: () => void
-  onCollapseWorkspace: () => void
-}
-
-/**
- * Complete shared AgentWorks/Crew split rail. Consumers provide state changes;
- * the visible controls, ordering, sizing and interaction stay identical.
- */
-export function WorkspaceSplitRail({
-  previewDevice,
-  onPreviewDeviceChange,
-  onCollapseChat,
-  onCollapseWorkspace,
-  ...dividerProps
-}: WorkspaceSplitRailProps) {
-  return (
-    <WorkspaceSplitDivider {...dividerProps}>
-      {onPreviewDeviceChange && ([
-        ['mobile', Smartphone, 'Mobile preview'],
-        ['tablet', Tablet, 'Tablet preview'],
-        ['desktop', Laptop, 'Laptop preview'],
-      ] as const).map(([device, Icon, label]) => (
-        <button
-          key={device}
-          type="button"
-          onPointerDown={event => event.stopPropagation()}
-          onClick={() => onPreviewDeviceChange(device)}
-          className={`pointer-events-auto flex h-6 w-6 items-center justify-center rounded transition-colors ${previewDevice === device ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-          aria-label={label}
-          aria-pressed={previewDevice === device}
-          title={label}
-        >
-          <Icon className="h-3 w-3" />
-        </button>
-      ))}
-      {onPreviewDeviceChange && <span className="h-px w-3 bg-border" />}
-      <WorkspaceSplitCollapseControls
-        onCollapseChat={onCollapseChat}
-        onCollapseWorkspace={onCollapseWorkspace}
-      />
-    </WorkspaceSplitDivider>
   )
 }

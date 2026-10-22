@@ -160,11 +160,42 @@ business page with fictional values to make it look complete.
    published business functions. Verify real actions separately when authorized.
    Publish the checked revision; report any unverified behavior plainly.
 
-JSON dashboards use the shared prebuilt React runtime. They do not have a
-per-dashboard npm build step. Use the existing validate/preview/publish tools;
-TypeScript and npm builds belong to changes to the shared runtime or separately
-requested React source projects. A successful build or ready state never replaces
-visual inspection.
+## React dashboards stay in Dashboards
+
+JSON dashboards already use the shared prebuilt React runtime. They do not have a
+per-dashboard npm build step. A request to “move dashboards to our React system”
+uses this hosted renderer and the existing Dashboard list, not a separate React
+login demo, Vite app or localhost dev server. Preserve the requested design,
+existing pages and live data connections. Do not turn live report data into a
+build-time copy that the person must refresh with `npm run sync-data`.
+
+1. List/get the existing dashboards and read their source before choosing a
+   format. For the platform React renderer, convert the requested page to
+   `index.json` using the actual catalog, then update its managed dashboard or
+   create a named replacement while retaining other pages. Avoid an accidental
+   second product or unrelated sign-in screen.
+2. If the person explicitly requests custom React source, keep that source in
+   the project and publish a browser-ready HTML/JS/CSS bundle with the same
+   create/update/validate/preview/publish tools. React itself does not require a
+   running dev server after a static build. A `frontend/dist/index.html` left
+   outside the dashboard bundle is not registered and will not appear in
+   Dashboards or Ctrl+K. Include the built assets, adapt their URLs using the
+   bundle asset prefix, and verify imports, styles and data in the hosted preview.
+   Do not claim a raw `/src/main.jsx` or root `/assets/` Vite entry is hosted.
+3. Use the authorized `window.report`/JSON data bindings for current project
+   data. Reuse existing scripts, queries and explicit user actions; do not add a
+   new data/auth server just to render the page.
+4. Publish when the person asked to create or update their usable dashboard.
+   Check `list_dashboards` for that dashboard and its published revision, then
+   return `get_dashboard_link`. Name the page specifically so it can be selected
+   and linked alongside other dashboards. Link other dashboards using their
+   returned authenticated links; the link grants no new access.
+
+Only create a separately run standalone React app when the person explicitly
+asks for that separate app. A successful build or ready state never replaces
+hosted visual inspection or proves publication. If publishing/preview is refused,
+report the actual refusal and leave the task unfinished; do not silently replace
+it with instructions for the person to start a server.
 
 ## MCP operations
 

@@ -12,7 +12,7 @@ describe('Crew shared AgentWorks platform contract', () => {
 
     for (const sharedConversationPrimitive of [
       "../../components/ChatArea",
-      "../../components/workspace/WorkspaceSplitDivider",
+      "../../components/workflow/DashboardLayoutControls",
       "../../platform/ui-control/useWorkspaceUIControl",
     ]) {
       expect(surface).toContain(sharedConversationPrimitive)
@@ -54,15 +54,17 @@ describe('Crew shared AgentWorks platform contract', () => {
     expect(workPane).toContain("../../components/workflow/BrowserWorkspacePanel")
   })
 
-  it('uses the complete shared split rail in AgentWorks and Crew', () => {
+  it('keeps shared sizing controls in Dashboard headers instead of a general split rail', () => {
     const workflowLayout = read('src/components/workflow/WorkflowLayout.tsx')
     const workSurface = read('src/products/work/WorkSurface.tsx')
 
     for (const consumer of [workflowLayout, workSurface]) {
-      expect(consumer).toContain('<WorkspaceSplitRail')
+      expect(consumer).toContain('<DashboardLayoutProvider')
+      expect(consumer).toContain('<DashboardLayoutControls')
+      expect(consumer).not.toContain('<WorkspaceSplitRail')
       expect(consumer).toContain('onPreviewDeviceChange=')
-      expect(consumer).toContain('onCollapseChat=')
-      expect(consumer).toContain('onCollapseWorkspace=')
+      expect(consumer).toContain('onToggleChat=')
+      expect(consumer).toContain('onWidthChange=')
       expect(consumer).not.toContain('<WorkspaceSplitCollapseControls')
     }
   })

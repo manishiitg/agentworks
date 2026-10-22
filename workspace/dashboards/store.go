@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"html"
 	"io"
 	"os"
 	"path"
@@ -26,6 +27,55 @@ const Prefix = "db/reports/managed/"
 
 var identifier = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 var revisionID = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var documentTitle = regexp.MustCompile(`(?is)<title\b[^>]*>\s*([^<]+?)\s*</title>`)
+
+// Names come from authored metadata/HTML, never from another discovery tree.
+func authoredDashboardTitles(root *os.Root, guard *wf.FolderGuard) map[string]string {
+	titles := map[string]string{}
+	const manifestPath = "db/reports/views.json"
+	if guard != nil && !guard.Allows(manifestPath, false) {
+		return titles
+	}
+	var manifest struct {
+		Views []struct{ Path, Title string }
+	}
+	if readJSON(root, manifestPath, &manifest) != nil {
+		return titles
+	}
+	for _, view := range manifest.Views {
+		p := strings.TrimLeft(strings.TrimSpace(view.Path), "/")
+		if !strings.Contains(p, "/") {
+			p = "db/reports/" + p
+		}
+		clean, err := wf.CleanRelative(p)
+		if err == nil && clean == p && strings.HasPrefix(p, "db/reports/") && strings.HasSuffix(p, ".html") && strings.TrimSpace(view.Title) != "" {
+			titles[p] = strings.TrimSpace(view.Title)
+		}
+	}
+	return titles
+}
+
+func authoredDashboardTitle(root *os.Root, p string, titles map[string]string) string {
+	if title := titles[p]; title != "" {
+		return title
+	}
+	// Follow the same no-symlink file rule as snapshot/manifest reads. Read only
+	// the head of the already-admitted document; large scripts need not be read.
+	if checkParents(root, p) == nil {
+		if info, err := root.Lstat(p); err == nil && info.Mode().IsRegular() {
+			if file, err := root.Open(p); err == nil {
+				data, err := io.ReadAll(io.LimitReader(file, 64<<10))
+				file.Close()
+				if match := documentTitle.FindSubmatch(data); err == nil && len(match) > 1 {
+					if title := strings.Join(strings.Fields(html.UnescapeString(string(match[1]))), " "); title != "" {
+						return title
+					}
+				}
+			}
+		}
+	}
+	return strings.TrimSuffix(path.Base(p), ".html")
+}
 
 type Request struct {
 	Root             string            `json:"root"`
@@ -267,6 +317,7 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 	}
 	defer root.Close()
 	if req.Action == "list" {
+		titles := authoredDashboardTitles(root, req.Guard)
 		dir, e := root.Open("db/reports/.dashboard-state")
 		if e == nil {
 			entries, e := dir.ReadDir(-1)
@@ -331,7 +382,7 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 					if req.Guard != nil && !req.Guard.Allows(f, false) {
 						continue
 					}
-					out.Dashboards = append(out.Dashboards, Dashboard{ID: f, Title: strings.TrimSuffix(v.Name(), ".html"), DocumentPath: f})
+					out.Dashboards = append(out.Dashboards, Dashboard{ID: f, Title: authoredDashboardTitle(root, f, titles), DocumentPath: f})
 				}
 			}
 			return nil

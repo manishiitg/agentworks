@@ -8,7 +8,7 @@ import { useLLMStore } from '../stores/useLLMStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { openProductWorkspace } from './productWorkspaceNavigation'
 
-export type QuickNavigationScope = 'active' | 'workflows' | 'relays' | 'crew' | 'chats' | 'products' | 'panels' | 'create'
+export type QuickNavigationScope = 'active' | 'workflows' | 'relays' | 'crew' | 'chats' | 'products' | 'panels' | 'create' | 'dashboards'
 export type NavigationAction = 'active' | 'browse' | 'activity' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vault-audit' | 'vault-connect' | 'create'
 export type QuickNavigationItem = {
   type: 'product' | 'menu'
@@ -62,6 +62,7 @@ export function quickNavigationItems(
     items.push({ ...common, type: 'menu', id: `browse:${scope}`, label, subtitle: 'Browse · show the full list', isActive: false, action: scope === 'active' ? 'active' : 'browse', scope })
   }
   browse('active', 'Running work')
+  browse('dashboards', 'All dashboards')
   if (products.includes('agentworks')) { browse('workflows', 'All Goals'); browse('chats', 'All chats') }
   if (products.includes('relays')) browse('relays', 'All Flows')
   if (products.includes('work')) browse('crew', 'All Crews')

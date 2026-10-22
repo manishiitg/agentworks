@@ -13,6 +13,7 @@ vi.mock('./reportWidgets/DashboardQuestionConversation', () => ({ DashboardQuest
 vi.mock('./reportWidgets/ReportQuestionFrame', () => ({ ReportQuestionFrame: ({ title, documentPath }: any) => <div data-document={documentPath}>{title}</div> }))
 vi.mock('./ShareDashboardButton', () => ({ ShareDashboardButton: () => null }))
 vi.mock('./WorkspacePanelGuideButton', () => ({ WorkspacePanelGuideButton: () => null }))
+vi.mock('../workspace/WorkspacePanelNavigation', () => ({ useWorkspacePanelAssistant: () => false, useWorkspacePanelHosted: () => false }))
 import { ReportView } from './ReportViewer'
 import { allowedReportPath } from './reportWidgets/reportMarkdown'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -39,6 +40,24 @@ it('keeps an explicit authored document instead of replacing it with a default',
  mocks.get.mockResolvedValue({ data: '<html><title>Actual project dashboard</title></html>' })
  expect(await mount('db/reports/team.html')).toBe('Crew/project/db/reports/team.html')
  expect(mocks.catalog).not.toHaveBeenCalled()
+})
+
+it('names the dashboard header and offers the existing named project documents', async () => {
+ mocks.catalog.mockResolvedValue({ documents: [
+  { id: 'solar', title: 'Solar Plan', path: 'db/reports/solar.html', order: 0 },
+  { id: 'budget', title: 'Budget', path: 'db/reports/budget.html', order: 1 },
+ ], defaultPath: 'db/reports/solar.html' })
+ mocks.get.mockResolvedValue({ data: '<html><title>Older page title</title></html>' })
+ const host = document.createElement('div'); document.body.append(host)
+ const root = createRoot(host)
+ try {
+  await act(async () => root.render(<ReportView workspacePath="Crew/project" />))
+  await vi.waitFor(() => expect(host.querySelector('select')?.value).toBe('db/reports/solar.html'))
+  expect(host.querySelectorAll('header')).toHaveLength(1)
+  expect([...host.querySelectorAll('header option')].map(option => option.textContent)).toEqual(['Solar Plan', 'Budget'])
+  expect(host.querySelector('header select')?.getAttribute('title')).toBe('Solar Plan')
+  expect(host.querySelector('[data-document]')?.textContent).toBe('Solar Plan')
+ } finally { await act(async () => root.unmount()); host.remove() }
 })
 
 it('reads project memory through the same bound report endpoint as dashboard files', async () => {

@@ -1,30 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowUpRight, Globe2, LayoutDashboard, RefreshCw, Search, Users, X } from 'lucide-react'
-import api from '../services/api'
+import { dashboardDisplayName as dashboardTitle, dashboardDirectoryLink, loadDashboardDirectory, type DashboardDirectoryEntry as Dashboard } from '../services/dashboardDirectory'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
-import { sharedReportLink } from '../utils/sharedLinks'
 import { WorkspaceTopToolbar } from './workspace/WorkspaceTopToolbar'
 import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
 import { WorkspacePageContent } from './workspace/WorkspacePageContent'
-
-type Dashboard = {
-  dashboard_id: string
-  title?: string
-  workspace: string
-  project_title?: string
-  document_path: string
-  short_path?: string
-  shared_with_me: boolean
-}
-type DashboardPage = { dashboards: Dashboard[]; next_offset: number; has_more: boolean; unavailable_projects?: string[] }
-
-// Loose HTML pages often have a filename for a title. Keep publication metadata
-// intact; use the project's name as the human-facing label in this library.
-function dashboardTitle(row: Dashboard) {
-  const title = row.title?.trim()
-  return (!title || /^index(?:\.html?)?$/i.test(title)) ? row.project_title?.trim() || 'Dashboard' : title
-}
 
 /** Publication and access are decided by the same discovery service used by MCP. */
 export function DashboardsPage({ navigationActive = true }: { navigationActive?: boolean } = {}) {
@@ -44,20 +25,10 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
     const controller = new AbortController()
     setRows(null); setFailed(false); setPartial(false)
     void (async () => {
-      const all: Dashboard[] = []
-      let offset = 0
-      let incomplete = false
       try {
-        for (;;) {
-          const { data } = await api.post<DashboardPage>('/api/dashboards', { action: 'list', published_only: true, limit: 200, offset }, { signal: controller.signal })
-          if (controller.signal.aborted) return
-          all.push(...data.dashboards)
-          incomplete ||= Boolean(data.unavailable_projects?.length)
-          if (!data.has_more) break
-          if (data.next_offset <= offset) throw new Error('Dashboard list did not advance')
-          offset = data.next_offset
-        }
-        setRows(all); setPartial(incomplete)
+        const result = await loadDashboardDirectory(controller.signal)
+        if (controller.signal.aborted) return
+        setRows(result.dashboards); setPartial(result.partial)
       } catch {
         if (!controller.signal.aborted) setFailed(true)
       }
@@ -73,7 +44,7 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
     <WorkspaceTopToolbar navigationKind="page" navigationActive={navigationActive}>
       <ProductSurfaceSwitcher variant="header" menuTitle="Dashboards" menuContent={close => <div role="group" aria-label="Published dashboards" className="p-1">
         <button type="button" role="menuitem" aria-current="page" onClick={close} className="flex min-h-8 w-full items-center gap-2 rounded-md bg-muted/60 px-2 py-1.5 text-left text-xs"><LayoutDashboard className="h-4 w-4" />All dashboards</button>
-        {rows?.map(row => <a key={`${row.workspace}/${row.dashboard_id}`} role="menuitem" onClick={close} href={row.short_path || sharedReportLink(window.location.origin, row.workspace, row.document_path)} className="flex min-h-8 items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Globe2 className="h-4 w-4 shrink-0" /><span className="truncate">{dashboardTitle(row)}</span></a>)}
+        {rows?.map(row => <a key={`${row.workspace}/${row.dashboard_id}`} role="menuitem" onClick={close} href={dashboardDirectoryLink(row)} className="flex min-h-8 items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Globe2 className="h-4 w-4 shrink-0" /><span className="truncate">{dashboardTitle(row)}</span></a>)}
         {rows === null && <p role="status" className="px-2 py-2 text-xs text-muted-foreground">{failed ? 'Dashboards could not be loaded.' : 'Loading dashboards…'}</p>}
       </div>} />
     </WorkspaceTopToolbar>
@@ -122,7 +93,7 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
               {items.map(row => {
                 const title = dashboardTitle(row)
                 return <li key={`${row.workspace}/${row.dashboard_id}`} className="min-w-0">
-                  <a href={row.short_path || sharedReportLink(window.location.origin, row.workspace, row.document_path)} className="group flex h-full min-h-20 items-center gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <a href={dashboardDirectoryLink(row)} className="group flex h-full min-h-20 items-center gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <Globe2 aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 break-words text-sm font-medium leading-snug">{title}</span>
                     <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-foreground" />

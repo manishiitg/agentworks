@@ -6,7 +6,6 @@ import { isCurrentWorkflowBuilderTab } from '../../utils/currentWorkflowBuilder'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
 import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
-import { usePointerDrag } from '../../hooks/usePointerDrag'
 import React, { useMemo, useCallback, useRef, useEffect, forwardRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { PanelLeftOpen, PanelRightOpen, Waypoints, Target } from 'lucide-react'
@@ -58,7 +57,7 @@ import {
   writeReportPreviewPreference,
   writeWorkflowSplitPreference,
 } from '../../utils/reportPreviewPreference'
-import { WorkspaceSplitRail } from '../workspace/WorkspaceSplitDivider'
+import { DashboardLayoutControls, DashboardLayoutProvider } from './DashboardLayoutControls'
 import { WorkspacePageHeader } from '../workspace/WorkspacePageHeader'
 import { RelayIntro } from './RelayIntro'
 import { ReportView } from './ReportViewer'
@@ -1019,21 +1018,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     if (persist) writeWorkflowSplitPreference(workspacePath, ratio, reportPreviewPreference)
   }, [reportPreviewPreference, workspacePath])
 
-  const { start: startSplitDrag, stop: stopSplitDrag } = usePointerDrag()
-  useEffect(() => stopSplitDrag, [stopSplitDrag, workspacePath, reportPreviewPreference, showChatArea, showWorkspacePane])
-  const handleSplitPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-    // Mobile preview pins the workspace pane to phone width; nothing to drag.
-    if (window.innerWidth < 768 || (dashboardView && reportPreviewPreference === 'mobile')) return
-    const container = splitLayoutRef.current
-    if (!container) return
-    const rect = container.getBoundingClientRect()
-    if (!rect.width) return
-    startSplitDrag(event, {
-      onMove: clientX => setSplitRatio((clientX - rect.left) / rect.width),
-      onEnd: () => writeWorkflowSplitPreference(workspacePath, workspaceSplitRatioRef.current, reportPreviewPreference),
-    })
-  }, [dashboardView, reportPreviewPreference, setSplitRatio, startSplitDrag, workspacePath])
-
   const collapseWorkspaceFromRail = useCallback(() => {
     setShowWorkspacePane(false)
     setWorkspaceMinimized(true)
@@ -1084,7 +1068,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     showWorkspacePane,
     focusedPane,
     reportPreviewPreference: dashboardView ? reportPreviewPreference : 'desktop',
-    workspaceSplitRatio,
+    workspaceSplitRatio: dashboardView ? workspaceSplitRatio : 0.5,
     isWorkspaceViewActive: isWorkspacePaneView(workflowWorkspaceView),
     compactContext: workflowWorkspaceView === 'context',
   })
@@ -2271,6 +2255,15 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   }
 
   const canvasElement = (
+    <DashboardLayoutProvider value={dashboardView ? <DashboardLayoutControls
+      width={Math.round((1 - workspaceSplitRatio) * 100)}
+      onWidthChange={reportPreviewPreference === 'mobile' ? undefined : width => setSplitRatio(1 - width / 100, true)}
+      previewDevice={reportPreviewPreference}
+      onPreviewDeviceChange={device => writeReportPreviewPreference(workspacePath, device)}
+      chatVisible={showChatArea}
+      onToggleChat={() => { if (showChatArea) collapseChatFromRail(); else handleToggleChatArea() }}
+      onClose={collapseWorkspaceFromRail}
+    /> : null}>
     <WorkflowCanvas
       ref={canvasRef}
       workspacePath={workspacePath}
@@ -2292,6 +2285,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       onToggleChatArea={handleToggleChatArea}
       className={showChatArea && !workspacePaneVisible ? '!h-auto shrink-0' : 'h-full'}
     />
+    </DashboardLayoutProvider>
   )
 
   // Run enters the product dashboard, including when an old browser preference
@@ -2444,18 +2438,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
 
         {workspacePaneVisible && canvasElement}
 
-        {showChatArea && workspacePaneVisible && workflowWorkspaceView !== 'context' && (
-          <WorkspaceSplitRail
-            ratio={workspaceSplitRatio}
-            onPointerDown={handleSplitPointerDown}
-            onStep={delta => { if (!dashboardView || reportPreviewPreference !== 'mobile') setSplitRatio(workspaceSplitRatioRef.current + delta, true) }}
-            className="md:row-start-2"
-            previewDevice={reportPreviewPreference}
-            onPreviewDeviceChange={dashboardView ? device => writeReportPreviewPreference(workspacePath, device) : undefined}
-            onCollapseChat={collapseChatFromRail}
-            onCollapseWorkspace={collapseWorkspaceFromRail}
-          />
-        )}
+
       </div>
     </div>
   )

@@ -7,7 +7,7 @@ import { replaceProductSelection } from '../../utils/productUrlNavigation'
 import { markFeatureUsed } from '../../utils/featureUsage'
 import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
 import { ArrowDown, ArrowUp, CalendarClock, UsersRound, Sparkles, Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, Trash2, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
@@ -48,8 +48,7 @@ import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLan
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { setProjectMode } from './codeLocalFiles'
 import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
-import { usePointerDrag } from '../../hooks/usePointerDrag'
-import { WorkspaceSplitRail } from '../../components/workspace/WorkspaceSplitDivider'
+import { DashboardLayoutControls, DashboardLayoutProvider } from '../../components/workflow/DashboardLayoutControls'
 import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
@@ -1250,7 +1249,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [reportPreviewPreference, setReportPreviewPreference] = useState<ReportPreviewDevice>(() => readReportPreviewPreference(selected?.workspacePath))
   // All split classes derive from the shared layout resolver: one decision
   // point for every flag combination (see workSurfaceLayoutResolver.ts).
-  const { start: startSplitDrag, stop: stopSplitDrag } = usePointerDrag()
   const [createError, setCreateError] = useState<string | null>(null)
   const showProviders = useLLMStore((state) => state.showLLMModal)
   const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
@@ -1511,7 +1509,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     }
   }, [enabledWorkspacePanels, product.defaultView, product.profileId, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView, routeSuppliedView])
 
-  useEffect(() => stopSplitDrag, [selected?.id, stopSplitDrag])
 
   const setSplitRatio = useCallback((next: number, persist = false) => {
     const width = splitLayoutRef.current?.getBoundingClientRect().width || window.innerWidth
@@ -1520,28 +1517,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setSplitRatioState(ratio)
     if (persist) writeWorkSplitRatio(selected?.id, ratio)
   }, [selected?.id])
-
-  const handleSplitPointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (window.innerWidth < 768) return
-    const rect = splitLayoutRef.current?.getBoundingClientRect()
-    if (!rect?.width) return
-    if (workspaceView === 'dashboard' && reportPreviewPreference === 'mobile') {
-      // Mobile preview keeps a phone-width column, but the rail still drags: the column's width follows the pointer.
-      startSplitDrag(event, {
-        onMove: clientX => {
-          const width = Math.max(MOBILE_PANE_MIN, Math.min(rect.width - 240, rect.right - clientX))
-          mobilePaneWidthRef.current = width
-          setMobilePaneWidthState(width)
-        },
-        onEnd: () => { if (mobilePaneWidthRef.current) writeMobilePaneWidth(selected?.id, mobilePaneWidthRef.current) },
-      })
-      return
-    }
-    startSplitDrag(event, {
-      onMove: clientX => setSplitRatio((clientX - rect.left) / rect.width),
-      onEnd: () => writeWorkSplitRatio(selected?.id, splitRatioRef.current),
-    })
-  }, [reportPreviewPreference, workspaceView, selected?.id, setSplitRatio, startSplitDrag])
 
   const createProject = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection, mode?: ProductMode, onboarding?: CrewOnboarding) => {
     if (creating) return
@@ -1724,7 +1699,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               splitRef={splitLayoutRef}
               compactContext={!isWorkSessionRun(selected) && workspaceView==='context'}
               toolbarWhenPanelClosed={!isWorkSessionRun(selected)}
-              chatOpen={!isShared && chatOpen} panelOpen={isShared || panelOpen} splitRatio={splitRatio}
+              chatOpen={!isShared && chatOpen} panelOpen={isShared || panelOpen} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
               showChatReopenControl={!isShared}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
@@ -1775,23 +1750,21 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                     </div>
                   )}
               </>}
-              divider={
-                  <WorkspaceSplitRail
-                    ratio={splitRatio}
-                    onPointerDown={handleSplitPointerDown}
-                    onStep={delta => {
-                      if (workspaceView !== 'dashboard' || reportPreviewPreference !== 'mobile') { setSplitRatio(splitRatioRef.current + delta, true); return }
-                      const width = Math.max(MOBILE_PANE_MIN, (mobilePaneWidthRef.current ?? 494) - Math.round(delta * 600))
-                      mobilePaneWidthRef.current = width; setMobilePaneWidthState(width); writeMobilePaneWidth(selected?.id, width)
-                    }}
-                    className="max-md:hidden md:row-start-2"
-                    previewDevice={reportPreviewPreference}
-                    onPreviewDeviceChange={workspaceView === 'dashboard' ? device => writeReportPreviewPreference(selected.workspacePath, device) : undefined}
-                    onCollapseChat={() => setChatOpen(false)}
-                    onCollapseWorkspace={() => setPanelOpen(false)}
-                  />
-              }
-              workspace={<>
+              workspace={<DashboardLayoutProvider value={workspaceView === 'dashboard' && !isShared ? <DashboardLayoutControls
+                width={reportPreviewPreference === 'mobile' ? mobilePaneWidth ?? 494 : Math.round((1 - splitRatio) * 100)}
+                minWidth={reportPreviewPreference === 'mobile' ? MOBILE_PANE_MIN : 15}
+                maxWidth={reportPreviewPreference === 'mobile' ? Math.max(MOBILE_PANE_MIN, (splitLayoutRef.current?.clientWidth || window.innerWidth) - 240) : 85}
+                widthUnit={reportPreviewPreference === 'mobile' ? 'px' : '%'}
+                onWidthChange={width => {
+                  if (reportPreviewPreference !== 'mobile') { setSplitRatio(1 - width / 100, true); return }
+                  mobilePaneWidthRef.current = width; setMobilePaneWidthState(width); writeMobilePaneWidth(selected.id, width)
+                }}
+                previewDevice={reportPreviewPreference}
+                onPreviewDeviceChange={device => writeReportPreviewPreference(selected.workspacePath, device)}
+                chatVisible={chatOpen && !isShared}
+                onToggleChat={() => setChatOpen(value => !value)}
+                onClose={() => setPanelOpen(false)}
+              /> : null}><>
                   {tabId || isWorkSessionRun(selected) ? (
                     <><span hidden data-ui-view-mounted /><WorkWorkspacePane
                         key={`${selected.id}:${workspaceViewRefresh}`}
@@ -1827,7 +1800,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                   ) : (
                     <div className="grid h-full place-items-center text-sm text-muted-foreground">Opening workspace…</div>
                   )}
-              </>}
+              </></DashboardLayoutProvider>}
             />
           )}
         </div>

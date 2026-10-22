@@ -3,7 +3,7 @@
 // tabs, sections, a sidebar, or a single scrolling page.
 
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { LayoutDashboard, Loader2, RefreshCw } from 'lucide-react'
 import { DashboardEmptyState } from './DashboardEmptyState'
 import api, { agentApi, workspaceApi, getApiBaseUrl } from '../../services/api'
 import { useReportFilePreviewStore } from '../../stores/useReportFilePreviewStore'
@@ -25,10 +25,12 @@ import { useReportChat } from './reportWidgets/useReportChat'
 
 import { WORKFLOW_REPORT_REFRESH_EVENT } from './reportRefreshEvent'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
-import { loadReportDocumentCatalog, useSelectedReportDocument } from './reportDocuments'
+import { loadReportDocumentCatalog, selectReportDocument, useSelectedReportDocument, type ReportDocumentCatalog } from './reportDocuments'
+import { reportDocumentLabel } from './reportDocumentLabels'
+import { WorkspaceViewHeader } from './WorkspaceViewHeader'
+import { DashboardLayoutActions } from './DashboardLayoutControls'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
 import { ShareDashboardButton } from './ShareDashboardButton'
-import { WorkspacePanelActions, useWorkspacePanelHeaderSlots } from '../workspace/WorkspacePanelHeaderSlots'
 import { panelGuideAskFromNode } from './workspacePanelGuideAsk'
 
 function debugReportView(event: string, detail?: Record<string, unknown>) {
@@ -232,6 +234,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshNonce, setRefreshNonce] = useState(0)
+  const [catalog, setCatalog] = useState<(ReportDocumentCatalog & { workspacePath: string; activePath: string }) | null>(null)
   // open_workspace_view(view="report", target="<tab>") lands here; the frame
   // hands it to the report HTML, which owns its own tabs.
   const viewTarget = useWorkflowStore(state => state.workspaceViewTarget)
@@ -268,12 +271,17 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
       // its document picker. Read the catalog here too so server-provided
       // project defaults are ready before looking for a legacy index.html.
       let path = selectedDocumentPath
+      let documents: ReportDocumentCatalog | undefined
       if (!documentPath) {
-        const catalog = await loadReportDocumentCatalog(workspacePath)
+        documents = await loadReportDocumentCatalog(workspacePath)
         if (cancelled) return null
-        if (catalog.documents.length && !catalog.documents.some(document => document.path === path)) path = catalog.defaultPath
+        if (documents.documents.length && !documents.documents.some(document => document.path === path)) path = documents.defaultPath
       }
-      return loadReportDocument(workspacePath, path, dashboardConversation)
+      const next = await loadReportDocument(workspacePath, path, dashboardConversation)
+      if (cancelled) return null
+      setCatalog(documents ? { ...documents, workspacePath, activePath: path } : null)
+      const named = documents?.documents.find(document => document.path === path)
+      return next && named?.title && named.title !== 'Dashboard' ? { ...next, label: reportDocumentLabel(named, documents!.documents) } : next
     }
     void load().then(next => {
       if (cancelled) return
@@ -290,7 +298,15 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
   }, [workspacePath])
 
   const guideAsk = panelGuideAskFromNode(headerAction)
-  const panelHeader = useWorkspacePanelHeaderSlots()
+  const currentCatalog = catalog?.workspacePath === workspacePath ? catalog : null
+  const dashboardTitle = !loading && !error && report ? report.label : 'Dashboard'
+  const title = !documentPath && currentCatalog && currentCatalog.documents.length > 1
+    ? <select aria-label="Choose dashboard" title={dashboardTitle} value={currentCatalog.activePath} disabled={loading}
+        onChange={event => selectReportDocument(workspacePath, event.target.value)}
+        className="max-w-full cursor-pointer truncate rounded-md border-0 bg-transparent py-1 pr-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
+        {currentCatalog.documents.map(document => <option key={document.path} value={document.path}>{reportDocumentLabel(document, currentCatalog.documents)}</option>)}
+      </select>
+    : dashboardTitle
   const previewMode = focusTier || previewPreference
   const shellClass = previewMode === 'mobile' ? 'mx-auto w-full max-w-[480px] p-1.5' : 'w-full max-w-full'
   const runtime = useMemo(() => ({ data: dataApi }), [dataApi])
@@ -298,7 +314,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
   return (
     <ReportEmbedProvider value={runtime}>
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
-        {!hideToolbar && <div className={panelHeader?.actions ? 'contents' : 'absolute right-3 top-3 z-20 flex gap-1'}><WorkspacePanelActions>
+        {!hideToolbar && <WorkspaceViewHeader icon={LayoutDashboard} title={title} helpTopic="Dashboard" showWalkthrough={false} actions={<>
           {guideAsk ? null : headerAction}
           {!loading && !error && <ShareDashboardButton workspacePath={workspacePath} />}
           <WorkspacePanelGuideButton topic="Dashboard" ask={guideAsk} />
@@ -306,7 +322,8 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
           {onClose && <button type="button" onClick={onClose} aria-label="Close dashboard" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-lg text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">×</button>}
-        </WorkspacePanelActions></div>}
+          <DashboardLayoutActions />
+        </>} />}
         <div
           tabIndex={0}
           aria-label="Dashboard content"
