@@ -37,6 +37,8 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 		fields map[string]any
 	}{
 		{[]string{"messages", "register", "--agent", "reviewer", "--allow-connection", "connection-other"}, "", "messages", map[string]any{"action": "register", "agent_name": "reviewer", "allowed_connection_ids": []string{"connection-other"}}},
+		{[]string{"messages", "count", "--agent", "reviewer", "--unread", "--from", "worker"}, "", "messages", map[string]any{"action": "count", "agent_name": "reviewer", "unread_only": true, "from_agent": "worker"}},
+		{[]string{"messages", "delete", "--agent", "reviewer", "--id", "message-one"}, "", "messages", map[string]any{"action": "delete", "agent_name": "reviewer", "message_id": "message-one"}},
 		{[]string{"messages", "list"}, "", "messages", map[string]any{"action": "list_agents"}},
 		{[]string{"tools", "call", "messages", "--input", "-"}, `{"action":"list_agents"}`, "messages", map[string]any{"action": "list_agents"}},
 		{[]string{"messages", "read", "--agent", "reviewer", "--after", "42", "--wait", "25"}, "", "messages", map[string]any{"action": "read", "agent_name": "reviewer", "after": 42, "wait_seconds": 25}},

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -127,6 +128,48 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		network, _ := a["network"].(string)
 		return call(ctx, LocalBridgeRequest{Action: "read", InboxID: inbox, Cursor: int(cursor), Network: network}, req)
 	})
+	for _, action := range []string{"count", "delete", "clear"} {
+		description := "Count this attached name's incoming messages, unread (not acknowledged), pending and handled, without paging. Filters also return a matching count. Counts do not acknowledge messages."
+		if action == "delete" {
+			description = "Remove one incoming message_id from this attached name's inbox. Other participants retain their message history and receipts."
+		}
+		if action == "clear" {
+			description = "Remove matching incoming messages from this attached name's inbox. Count with the same filters and show that count first. Other participants retain their history and receipts."
+		}
+		opts := []mcp.ToolOption{mcp.WithDescription(description), mcp.WithString("inbox_id"), mcp.WithString("older_than", mcp.Description("Age filter such as 24h or 7d.")), mcp.WithString("from_agent", mcp.Description("Sender's registered agent name or ID.")), mcp.WithBoolean("processed_only", mcp.Description("Only explicitly handled messages.")), mcp.WithBoolean("unread_only", mcp.Description("Only messages with no receipt acknowledgement.")), mcp.WithString("network", mcp.Description("Optional joined network or own server URL. Omitted send resolves a unique recipient; other actions use the primary network."))}
+		if action == "delete" {
+			opts = append(opts, mcp.WithString("message_id", mcp.Required()))
+		} else {
+			opts = append(opts, mcp.WithString("message_id"))
+		}
+		AddPluginAction(s, mcp.NewTool("agent_message_"+action, opts...), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			a := req.GetArguments()
+			// Preserve filter intent: a malformed filter must not become an unfiltered clear.
+			for _, key := range []string{"message_id", "inbox_id", "older_than", "from_agent", "network"} {
+				if value, exists := a[key]; exists {
+					if _, ok := value.(string); !ok {
+						return mcp.NewToolResultError(fmt.Sprintf("%s must be text", key)), nil
+					}
+				}
+			}
+			for _, key := range []string{"processed_only", "unread_only"} {
+				if value, exists := a[key]; exists {
+					if _, ok := value.(bool); !ok {
+						return mcp.NewToolResultError(fmt.Sprintf("%s must be true or false", key)), nil
+					}
+				}
+			}
+			in := LocalBridgeRequest{Action: action}
+			in.MessageID, _ = a["message_id"].(string)
+			in.InboxID, _ = a["inbox_id"].(string)
+			in.OlderThan, _ = a["older_than"].(string)
+			in.FromAgent, _ = a["from_agent"].(string)
+			in.ProcessedOnly, _ = a["processed_only"].(bool)
+			in.UnreadOnly, _ = a["unread_only"].(bool)
+			in.Network, _ = a["network"].(string)
+			return call(ctx, in, req)
+		})
+	}
 	AddPluginAction(s, mcp.NewTool("agent_message_ping_person", mcp.WithDescription("Ping the person behind an agent that has not answered a message you sent: they get one desktop notification. Once per message, only when the reply matters; never on a loop."), mcp.WithString("message_id", mcp.Required())), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id, _ := req.GetArguments()["message_id"].(string)
 		return call(ctx, LocalBridgeRequest{Action: "ping_person", MessageID: id}, req)

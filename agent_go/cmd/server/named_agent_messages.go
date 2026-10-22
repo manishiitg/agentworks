@@ -21,7 +21,7 @@ import (
 func agentMailCall(args map[string]any) bool {
 	target := strings.ToLower(strings.TrimSpace(externalArg(args, "target")))
 	switch externalArg(args, "action") {
-	case "register", "unregister", "list_agents", "ack", "update_purpose", "ping_person", "get_file":
+	case "register", "unregister", "list_agents", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear":
 		return true
 	}
 	return externalArg(args, "agent_name") != "" || strings.HasPrefix(target, "agent:")
@@ -516,7 +516,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 					continue
 				}
 				for _, m := range c.Messages {
-					if m.From == side || m.AgentSequence <= after {
+					if m.From == side || m.AgentSequence <= after || !m.InboxRemovedAt.IsZero() {
 						continue
 					}
 					position := sort.Search(len(items), func(i int) bool { return items[i]["sequence"].(int) > m.AgentSequence })

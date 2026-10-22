@@ -311,6 +311,8 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 	claims := GetUserFromContext(r.Context())
 	inbox := strings.TrimSpace(externalArg(args, "inbox_id"))
 	switch externalArg(args, "action") {
+	case "count", "delete", "clear":
+		api.externalAgentInboxCleanup(w, r, args)
 	case "update_purpose":
 		api.externalNamedAgentPurpose(w, r, args)
 	case "register", "unregister":
@@ -430,17 +432,21 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		recordNamedAgentActivity(r.Context(), caller.NamedAgentID, "", false)
 		externalJSON(w, out)
 	default:
-		externalError(w, 400, "invalid_arguments", "action must be register, unregister, list_agents, send, read, state, ack or update_purpose; live attachment is configured by the person through the CLI")
+		externalError(w, 400, "invalid_arguments", "action must be register, unregister, list_agents, send, read, count, delete, clear, state, ack or update_purpose; live attachment is configured by the person through the CLI")
 	}
 }
 
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. Register an agent_name; list_agents lists every agent you can use (Crews, Goals and Relays you own or that are shared with you, with their functions and ids, and your AgentBridge agents); send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Read/send product conversations through their existing access. Read results use non-destructive cursors; wait_seconds is at most 25. State inspects only owned product delivery metadata. CLI bridge receipt arguments remain compatible.", false, false, map[string]any{
+	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. Register an agent_name; list_agents lists every agent you can use (Crews, Goals and Relays you own or that are shared with you, with their functions and ids, and your AgentBridge agents); send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox count/delete/clear use the same owner and connection checks. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Read/send product conversations through their existing access. Read results use non-destructive cursors; wait_seconds is at most 25. State inspects only owned product delivery metadata. Count reports incoming totals/unread/pending and filter matches without paging. Delete removes one incoming message_id; clear removes filtered incoming messages from your own agent inbox. Count with the same filters before clear to show how many match. Other participants keep their history and receipts.", false, false, map[string]any{
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
-		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose", "ping_person", "get_file"}},
+		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}},
+		"older_than":             externalString("Inbox cleanup filter: age such as 24h or 7d."),
+		"from_agent":             externalString("Inbox cleanup filter: sender's registered agent name or agent ID."),
+		"processed_only":         map[string]any{"type": "boolean", "description": "Inbox cleanup filter: only messages explicitly acknowledged as handled."},
+		"unread_only":            map[string]any{"type": "boolean", "description": "Inbox cleanup filter: only messages with no admission or processing acknowledgement."},
 		"purpose":                externalString("What this attached agent works on; 1 to 512 characters."),
 		"attachment_id":          externalString("Exact attachment generation in the channel event; required for receipt acknowledgements."),
-		"message_id":             externalString("Incoming message ID being explicitly acknowledged; for ping_person, a message this agent sent that is still waiting for a reply (one ping per message: the target's person gets a desktop notification)."),
+		"message_id":             externalString("Incoming message ID being acknowledged or removed with delete; for ping_person, a message this agent sent that is still waiting for a reply (one ping per message: the target's person gets a desktop notification)."),
 		"delivery":               externalString("Adapter receipt: admitted, typed, processed or failed; processed requires an explicit receiving-agent acknowledgement."),
 		"transport":              externalString("Receipt route: codex_queue, codex_hook, claude_channel, claude_hook, muse_session, tmux or mailbox."),
 		"agent_name":             externalString("Account-owned registered name. Register/unregister selects it; send selects the named sender; read without inbox_id polls all incoming contacts for this name. Only its allowed connections can use it."),

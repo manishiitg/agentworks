@@ -886,6 +886,8 @@ func bridgeCommand(o *options) *cobra.Command {
 	_ = serve.Flags().MarkHidden("pi-root")
 	cmd.AddCommand(serve)
 	var provider, session, messageID, delivery, message, submission, target, inbox, purpose, cursorAttachment, filePath, fileID, saveDir, network string
+	var olderThan, fromAgent string
+	var processedOnly, unreadOnly bool
 	var cursor int
 	call := &cobra.Command{Use: "message ACTION", Args: cobra.ExactArgs(1), Short: "Messaging for this exact attached provider session", RunE: func(cmd *cobra.Command, args []string) error {
 		host, err := providerHostKey(provider)
@@ -925,8 +927,8 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			session = os.Getenv("CODEX_THREAD_ID")
 		}
-		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "read" && args[0] != "purpose" && args[0] != "ping_person" && args[0] != "get_file" {
-			return errors.New("choose ack, reply, peers, send, read, purpose, ping_person or get_file")
+		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "read" && args[0] != "purpose" && args[0] != "ping_person" && args[0] != "get_file" && args[0] != "count" && args[0] != "delete" && args[0] != "clear" {
+			return errors.New("choose ack, reply, peers, send, read, purpose, ping_person, get_file, count, delete or clear")
 		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
@@ -939,6 +941,7 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 		}
 		request := agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose, Cursor: cursor, FileID: fileID, SaveDir: saveDir, Network: network}
+		request.OlderThan, request.FromAgent, request.ProcessedOnly, request.UnreadOnly = olderThan, fromAgent, processedOnly, unreadOnly
 		if filePath != "" {
 			if args[0] != "send" && args[0] != "reply" {
 				return errors.New("--file works with send and reply")
@@ -960,6 +963,27 @@ func bridgeCommand(o *options) *cobra.Command {
 				return errors.New("this exact Pi session is not attached")
 			}
 			request.AttachmentID = status.Attachment.ID
+		}
+		if request.Action == "clear" {
+			preview := request
+			preview.Action = "count"
+			count, e := agentworksclient.CallMessagingBridge(cmd.Context(), root, preview, func(ctx context.Context) error { return ensureLocalBridge(ctx, root, o) })
+			if e != nil {
+				return e
+			}
+			if count.Error != "" {
+				return errors.New(count.Error)
+			}
+			var result struct {
+				Matched *int `json:"matched"`
+			}
+			if e = json.Unmarshal(count.Result, &result); e != nil {
+				return e
+			}
+			if result.Matched == nil || *result.Matched < 0 {
+				return errors.New("The server did not return the matching inbox count. Try counting again.")
+			}
+			fmt.Fprintf(o.stderr, "%d matching messages. Clearing this agent's inbox selection...\n", *result.Matched)
 		}
 		out, err := agentworksclient.CallMessagingBridge(cmd.Context(), root, request, func(ctx context.Context) error {
 			return ensureLocalBridge(ctx, root, o)
@@ -992,6 +1016,10 @@ func bridgeCommand(o *options) *cobra.Command {
 	call.Flags().IntVar(&cursor, "after", 0, "Explicit mailbox recovery cursor")
 	call.Flags().StringVar(&inbox, "inbox", "", "Conversation address")
 	call.Flags().StringVar(&network, "network", "", "Joined network name or own server URL (send/read); send otherwise resolves a unique named agent across joined networks")
+	call.Flags().StringVar(&olderThan, "older-than", "", "Cleanup: select messages older than 24h, 7d or another age")
+	call.Flags().StringVar(&fromAgent, "from", "", "Cleanup: select this sender's agent name or ID")
+	call.Flags().BoolVar(&processedOnly, "processed", false, "Cleanup: only explicitly handled messages")
+	call.Flags().BoolVar(&unreadOnly, "unread", false, "Cleanup: only messages with no acknowledgement")
 	call.AddCommand(museWatchCommand(o))
 	cmd.AddCommand(call)
 

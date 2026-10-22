@@ -312,6 +312,11 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if _, e = child.Call(context.Background(), "messages", map[string]any{"action": "read", "agent_name": "other-agent"}); e == nil {
 		t.Fatal("child read another agent")
 	}
+	for _, action := range []string{"count", "delete", "clear"} {
+		if _, e = child.Call(context.Background(), "messages", map[string]any{"action": action, "agent_name": "other-agent", "message_id": "missing"}); e == nil {
+			t.Fatal("bound child managed another agent's inbox", action)
+		}
+	}
 	if _, e = child.Tools(context.Background()); e == nil {
 		t.Fatal("child obtained full catalog")
 	}
@@ -876,16 +881,25 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	freshAfterBacklog := send("fresh body beside the old digest")
 	expiredBacklog := send("old pending delivery keeps its history")
 	missingBacklog := send("removed server message must leave the local queue")
+	deletedBacklog := send("inbox cleanup must suppress a cached native offer")
 	cancel, done = start()
 	defer cancel()
 	deadline = time.Now().Add(5 * time.Second)
-	for local(routeStatus).Pending < 28 && time.Now().Before(deadline) {
+	for local(routeStatus).Pending < 29 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if local(routeStatus).Pending != 28 {
+	if local(routeStatus).Pending != 29 {
 		t.Fatal("backlog was not cached before native recovery")
 	}
+	preview := local(agentworksclient.LocalBridgeRequest{Action: "count", Provider: base.Provider, SessionID: base.SessionID, HostKey: base.HostKey, MessageID: deletedBacklog["message_id"].(string)})
+	if !strings.Contains(string(preview.Result), `"matched":1`) {
+		t.Fatal("local bridge did not forward count filters", preview)
+	}
 	stop(cancel, done)
+	// Recipient cleanup must invalidate an already cached native body on restart.
+	if out := call(child, map[string]any{"action": "delete", "agent_name": "hook-reviewer", "message_id": deletedBacklog["message_id"]}); out["removed"] != float64(1) {
+		t.Fatal("bound child did not delete its own incoming message", out)
+	}
 	// Cross the cutoff after the body is cached locally, so the real server
 	// validator must drain it without offering it or inventing a receipt.
 	agentMessageMu.Lock()

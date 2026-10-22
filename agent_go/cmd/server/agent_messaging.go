@@ -52,6 +52,9 @@ type agentMessageEndpoint struct {
 	ShareVersion int    `json:"share_version,omitempty"`
 }
 type agentMessage struct {
+	// Removing an incoming message affects only its recipient's inbox. The sender
+	// keeps the original message and receipts in the shared conversation record.
+	InboxRemovedAt     time.Time `json:"inbox_removed_at,omitempty"`
 	InboxAtSend        bool      `json:"inbox_at_send,omitempty"`
 	AgentSequence      int       `json:"agent_sequence,omitempty"`
 	ID                 string    `json:"message_id"`
@@ -177,7 +180,7 @@ func agentConversationActivity(c agentConversation) time.Time {
 }
 func agentConversationIdle(c agentConversation) bool {
 	for _, m := range c.Messages {
-		if m.Delivery == "pending" || m.Delivery == "dispatching" {
+		if m.InboxRemovedAt.IsZero() && (m.Delivery == "pending" || m.Delivery == "dispatching") {
 			return false
 		}
 	}
@@ -631,7 +634,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 			}
 			found = true
 			for _, m := range c.Messages {
-				if m.Sequence <= after || m.From == side {
+				if m.Sequence <= after || m.From == side || !m.InboxRemovedAt.IsZero() {
 					continue
 				}
 				item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error}

@@ -222,7 +222,7 @@ func (s agentMessageStore) shareQuotaErr(c agentConversation, side int, now time
 				if recent {
 					hourly++
 				}
-				if m.Delivery == "pending" || m.Delivery == "dispatching" || m.Delivery == "stored" {
+				if m.InboxRemovedAt.IsZero() && (m.Delivery == "pending" || m.Delivery == "dispatching" || m.Delivery == "stored") {
 					pending++
 				}
 			}

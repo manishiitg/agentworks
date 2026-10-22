@@ -20,7 +20,7 @@ func TestPluginExposesOneToolWithActions(t *testing.T) {
 		t.Fatalf("want exactly the %q tool, got %d tools", PluginToolName, len(tools))
 	}
 	tool := tools[PluginToolName]
-	for _, action := range []string{"send", "ack", "reply", "read", "peers", "set_purpose", "get_file", "ping_person"} {
+	for _, action := range []string{"send", "ack", "reply", "read", "peers", "set_purpose", "get_file", "ping_person", "count", "delete", "clear"} {
 		if !strings.Contains(tool.Tool.Description, "- "+action) {
 			t.Errorf("action %s is missing from the tool description", action)
 		}
@@ -41,5 +41,13 @@ func TestPluginExposesOneToolWithActions(t *testing.T) {
 	}
 	if r := call(map[string]any{"action": "send", "target": "agent:x"}); !r.IsError || !strings.Contains(text(r), "action=send needs: message") {
 		t.Fatalf("missing argument: %+v", r)
+	}
+	if r := call(map[string]any{"action": "delete"}); !r.IsError || !strings.Contains(text(r), "message_id") {
+		t.Fatalf("delete without an ID: %+v", r)
+	}
+	for key, value := range map[string]any{"older_than": 24, "from_agent": true, "processed_only": "true", "unread_only": "false"} {
+		if r := call(map[string]any{"action": "clear", key: value}); !r.IsError || !strings.Contains(text(r), key+" must be") {
+			t.Fatalf("invalid cleanup filter %s: %+v", key, r)
+		}
 	}
 }

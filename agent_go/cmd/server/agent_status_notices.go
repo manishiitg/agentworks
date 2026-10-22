@@ -79,7 +79,7 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 		}
 		for mi := range c.Messages {
 			m := &c.Messages[mi]
-			if m.Kind != "" || m.Wakeup || m.NoticeSent || m.Delivery != "stored" || now.Sub(m.SentAt) < agentStatusNoticeAfter || now.Sub(m.SentAt) > agentStatusNoticeMaxAge {
+			if !m.InboxRemovedAt.IsZero() || m.Kind != "" || m.Wakeup || m.NoticeSent || m.Delivery != "stored" || now.Sub(m.SentAt) < agentStatusNoticeAfter || now.Sub(m.SentAt) > agentStatusNoticeMaxAge {
 				continue
 			}
 			src, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]

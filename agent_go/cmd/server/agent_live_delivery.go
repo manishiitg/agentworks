@@ -450,7 +450,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 		var waiting []pending
 		for _, c := range store.Conversations {
 			for _, m := range c.Messages {
-				if m.Delivery == "stored" && !agentMessagePendingExpired(m, time.Now().UTC()) && !sent[m.ID] && c.Endpoints[1-m.From].NamedAgentID == a.ID {
+				if m.InboxRemovedAt.IsZero() && m.Delivery == "stored" && !agentMessagePendingExpired(m, time.Now().UTC()) && !sent[m.ID] && c.Endpoints[1-m.From].NamedAgentID == a.ID {
 					waiting = append(waiting, pending{c, m})
 				}
 			}
@@ -466,7 +466,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 		})
 		for _, p := range waiting {
 			c, m := p.conversation, p.message
-			if m.Delivery != "stored" || sent[m.ID] {
+			if !m.InboxRemovedAt.IsZero() || m.Delivery != "stored" || sent[m.ID] {
 				continue
 			}
 			dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
@@ -559,7 +559,7 @@ func recordAgentMessageOffer(ctx context.Context, agentID, attachmentID, message
 		c := &s.Conversations[ci]
 		for mi := range c.Messages {
 			m := &c.Messages[mi]
-			if m.ID == messageID && c.Endpoints[1-m.From].NamedAgentID == agentID && m.Delivery == "stored" {
+			if m.ID == messageID && m.InboxRemovedAt.IsZero() && c.Endpoints[1-m.From].NamedAgentID == agentID && m.Delivery == "stored" {
 				m.LiveAttachment = attachmentID
 				return saveAgentMessageStore(ctx, s)
 			}
@@ -606,6 +606,10 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 					if !history {
 						cleared = append(cleared, id)
 					}
+					continue
+				case !m.InboxRemovedAt.IsZero():
+					cleared = append(cleared, id)
+					reasons[id] = "removed_from_inbox"
 					continue
 				case !history && (m.Delivery == "expired" || agentMessagePendingExpired(m, time.Now().UTC())):
 					cleared = append(cleared, id)

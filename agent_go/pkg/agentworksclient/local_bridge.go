@@ -51,16 +51,20 @@ type LocalBridgeRequest struct {
 	ConfigPath       string `json:"config_path,omitempty"`
 	AgentName        string `json:"agent_name,omitempty"`
 	// LabelName is the literal NAME supplied at attach, before identity reuse.
-	LabelName    string `json:"label_name,omitempty"`
-	Purpose      string `json:"purpose,omitempty"`
-	MessageID    string `json:"message_id,omitempty"`
-	Delivery     string `json:"delivery,omitempty"`
-	Transport    string `json:"transport,omitempty"`
-	Message      string `json:"message,omitempty"`
-	SubmissionID string `json:"submission_id,omitempty"`
-	Target       string `json:"target,omitempty"`
-	InboxID      string `json:"inbox_id,omitempty"`
-	Cursor       int    `json:"after,omitempty"`
+	LabelName     string `json:"label_name,omitempty"`
+	Purpose       string `json:"purpose,omitempty"`
+	MessageID     string `json:"message_id,omitempty"`
+	Delivery      string `json:"delivery,omitempty"`
+	Transport     string `json:"transport,omitempty"`
+	Message       string `json:"message,omitempty"`
+	SubmissionID  string `json:"submission_id,omitempty"`
+	Target        string `json:"target,omitempty"`
+	InboxID       string `json:"inbox_id,omitempty"`
+	Cursor        int    `json:"after,omitempty"`
+	OlderThan     string `json:"older_than,omitempty"`
+	FromAgent     string `json:"from_agent,omitempty"`
+	ProcessedOnly bool   `json:"processed_only,omitempty"`
+	UnreadOnly    bool   `json:"unread_only,omitempty"`
 	// FileName and FileBase64 send a file with a message (send, reply); FileID asks get_file for one.
 	FileName   string `json:"file_name,omitempty"`
 	FileBase64 string `json:"file_base64,omitempty"`
@@ -378,7 +382,7 @@ func CallMessagingBridge(ctx context.Context, root string, request LocalBridgeRe
 		return out, err
 	}
 	switch request.Action {
-	case "peers", "send", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file":
+	case "peers", "send", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file", "count", "delete", "clear":
 	default:
 		return out, err
 	}
@@ -1512,7 +1516,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out.Attachment = s.Attachment
 		out.Result = raw
 		return out
-	case "peers", "send", "read", "reply_inbox", "ping_person", "get_file":
+	case "peers", "send", "read", "reply_inbox", "ping_person", "get_file", "count", "delete", "clear":
 		// The plugin exposes only messaging for its attached identity. A full
 		// AgentWorks tool connection must be installed separately by the person.
 		// The server calls run without the bridge lock (a busy server can take many seconds);
@@ -2026,6 +2030,26 @@ func nativeCodexTransport(remote string) string {
 func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in LocalBridgeRequest, out LocalBridgeReply) LocalBridgeReply {
 	args := map[string]any{"agent_name": s.Attachment.AgentName}
 	switch in.Action {
+	case "count", "delete", "clear":
+		args["action"] = in.Action
+		if in.MessageID != "" {
+			args["message_id"] = in.MessageID
+		}
+		if in.InboxID != "" {
+			args["inbox_id"] = in.InboxID
+		}
+		if in.OlderThan != "" {
+			args["older_than"] = in.OlderThan
+		}
+		if in.FromAgent != "" {
+			args["from_agent"] = in.FromAgent
+		}
+		if in.ProcessedOnly {
+			args["processed_only"] = true
+		}
+		if in.UnreadOnly {
+			args["unread_only"] = true
+		}
 	case "peers":
 		args["action"] = "list_agents"
 	case "ping_person":
@@ -2077,7 +2101,7 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 	}
 	var raw json.RawMessage
 	var err error
-	if in.Action == "peers" || in.Action == "read" {
+	if in.Action == "peers" || in.Action == "read" || in.Action == "count" {
 		// These only read, so the lease check runs beside the read and the answer is dropped
 		// if the check fails: one server round trip less. Sends and replies check first.
 		checked := make(chan error, 1)

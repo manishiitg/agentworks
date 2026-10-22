@@ -69,6 +69,9 @@ func (api *StreamingAPI) externalAgentPing(w http.ResponseWriter, r *http.Reques
 	m := &c.Messages[mi]
 	dest := c.Endpoints[1-m.From]
 	switch {
+	case !m.InboxRemovedAt.IsZero():
+		externalError(w, 409, "message_unavailable", "That message is no longer waiting in the agent's inbox.")
+		return
 	case m.Delivery == "processed" || !m.ProcessedAt.IsZero():
 		externalError(w, 409, "already_handled", "That message was already handled; there is nothing to ping about.")
 		return

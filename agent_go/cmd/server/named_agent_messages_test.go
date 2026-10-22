@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
@@ -160,6 +161,95 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	retained := call(owner, map[string]any{"action": "read", "agent_name": "reviewer", "inbox_id": inbox}, true)["messages"].([]any)
 	if len(retained) == 0 || retained[0].(map[string]any)["message_id"] != receipt["message_id"] {
 		t.Fatal("active conversation lost its original message")
+	}
+	// Count is not paged. Cleanup changes only the recipient's inbox view,
+	// including acknowledged status history, and never the sender's receipt.
+	baseline := call(owner, map[string]any{"action": "count", "agent_name": "reviewer"}, true)
+	for _, client := range []*agentworksclient.Client{worker, foreign} {
+		for _, action := range []string{"count", "delete", "clear"} {
+			call(client, map[string]any{"action": action, "agent_name": "reviewer", "message_id": receipt["message_id"]}, false)
+		}
+	}
+	agentMessageMu.Lock()
+	saved, e = readAgentMessageStore(context.Background())
+	if e == nil {
+		for ci := range saved.Conversations {
+			c := &saved.Conversations[ci]
+			if c.ID != inbox {
+				continue
+			}
+			original := c.Messages[0]
+			for i := 0; i < 105; i++ {
+				m := original
+				saved.NextAgentSequence++
+				c.Next++
+				m.ID, m.Submission = fmt.Sprintf("old-status-%d", i), fmt.Sprintf("old-status-submission-%d", i)
+				m.Sequence, m.AgentSequence = c.Next, saved.NextAgentSequence
+				m.Kind, m.Delivery = "status", "processed"
+				m.SentAt = time.Now().UTC().Add(-48 * time.Hour)
+				m.AdmittedAt, m.ProcessedAt = m.SentAt, m.SentAt
+				c.Messages = append(c.Messages, m)
+			}
+		}
+		e = saveAgentMessageStore(context.Background(), saved)
+	}
+	agentMessageMu.Unlock()
+	if e != nil {
+		t.Fatal(e)
+	}
+	filters := map[string]any{"action": "count", "agent_name": "reviewer", "older_than": "1d", "from_agent": "agent:worker", "processed_only": true}
+	counts := call(owner, filters, true)
+	if counts["matched"] != float64(105) || counts["total"] != baseline["total"].(float64)+105 || counts["unread"] != baseline["unread"] {
+		t.Fatalf("count was paged or acknowledged unread messages: %v", counts)
+	}
+	for key, invalid := range map[string]any{"older_than": "yesterday", "processed_only": "true", "from_agent": 42} {
+		call(owner, map[string]any{"action": "clear", "agent_name": "reviewer", key: invalid}, false)
+	}
+	call(owner, map[string]any{"action": "delete", "agent_name": "reviewer"}, false)
+	filters["action"], filters["from_agent"] = "clear", "reviewer"
+	if out := call(owner, filters, true); out["removed"] != float64(0) {
+		t.Fatal("sender filter removed another sender's messages", out)
+	}
+	filters["from_agent"] = "worker"
+	if out := call(owner, filters, true); out["removed"] != float64(105) || out["remaining"] != baseline["total"] {
+		t.Fatal("filtered clear lost fresh messages or stopped at one page", out)
+	}
+	if out := call(owner, filters, true); out["removed"] != float64(0) {
+		t.Fatal("clear was not idempotent", out)
+	}
+	deleted := map[string]any{"action": "delete", "agent_name": "reviewer", "message_id": receipt["message_id"]}
+	if out := call(owner, deleted, true); out["removed"] != float64(1) {
+		t.Fatal("delete did not select one incoming message", out)
+	}
+	if out := call(owner, deleted, true); out["removed"] != float64(0) {
+		t.Fatal("repeated delete changed history", out)
+	}
+	for _, args := range []map[string]any{{"action": "read", "agent_name": "reviewer", "inbox_id": inbox}, {"action": "read", "inbox_id": inbox}} {
+		for _, item := range call(owner, args, true)["messages"].([]any) {
+			if item.(map[string]any)["message_id"] == receipt["message_id"] {
+				t.Fatal("deleted message reappeared on an inbox read")
+			}
+		}
+	}
+	if retry := call(worker, send, true); retry["message_id"] != receipt["message_id"] {
+		t.Fatal("cleanup erased submission deduplication")
+	}
+	agentMessageMu.Lock()
+	saved, e = readAgentMessageStore(context.Background())
+	agentMessageMu.Unlock()
+	kept := 0
+	for _, c := range saved.Conversations {
+		for _, m := range c.Messages {
+			if m.ID == receipt["message_id"] || strings.HasPrefix(m.ID, "old-status-") {
+				if m.Text == "" || m.InboxRemovedAt.IsZero() || m.ID == receipt["message_id"] && (!m.ProcessedAt.IsZero() || m.Delivery != "stored") {
+					t.Fatal("cleanup changed shared content or invented an acknowledgement", m.ID)
+				}
+				kept++
+			}
+		}
+	}
+	if e != nil || kept != 106 {
+		t.Fatal("cleanup erased stored message history", kept, e)
 	}
 	call(owner, map[string]any{"action": "register", "agent_name": "reviewer", "allowed_connection_ids": []string{workerToken.ID}}, true)
 	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, true)

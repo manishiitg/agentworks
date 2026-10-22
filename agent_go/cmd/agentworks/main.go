@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -67,7 +68,7 @@ var cliOperationGroups = []struct {
 	{"runs", "Start, steer, stop, and inspect runs", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"start-step", "execute_step"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"message", "send_step_message"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
 	{"schedules", "List, inspect, and trigger schedules", []struct{ command, tool string }{{"list", "list_schedules"}, {"runs", "get_schedule_runs"}, {"trigger", "trigger_schedule"}}},
 	{"chat", "Send messages to the workflow assistant", []struct{ command, tool string }{{"ask", "chat"}}},
-	{"messages", "Register named agents, discover addresses, send and read inbox messages", []struct{ command, tool string }{{"register", "messages"}, {"unregister", "messages"}, {"list", "messages"}, {"send", "messages"}, {"read", "messages"}}},
+	{"messages", "Register named agents, discover addresses and manage your inbox", []struct{ command, tool string }{{"register", "messages"}, {"unregister", "messages"}, {"list", "messages"}, {"send", "messages"}, {"read", "messages"}, {"count", "messages"}, {"delete", "messages"}, {"clear", "messages"}}},
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skills", "get_guidance_skills"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
 	{"functions", "List and call a workflow's functions (typed, input-checked entry points)", []struct{ command, tool string }{{"list", "list_workflow_functions"}, {"call", "call_workflow_function"}, {"call-status", "get_workflow_function_call"}, {"call-file", "get_workflow_function_call"}, {"suggest", "suggest_workflow_change"}}},
@@ -636,6 +637,13 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	}
 	if tool == "messages" {
 		f.String("agent", "", "Registered agent name: register/remove it, send as it, or read its incoming contacts")
+		if cmd.Name() == "count" || cmd.Name() == "delete" || cmd.Name() == "clear" {
+			f.String("id", "", "Incoming message ID to select")
+			f.String("older-than", "", "Select messages older than an age, such as 24h or 7d")
+			f.String("from", "", "Select messages from this registered agent name or ID")
+			f.Bool("processed", false, "Select only explicitly handled messages")
+			f.Bool("unread", false, "Select only messages with no acknowledgement")
+		}
 		if cmd.Name() == "register" {
 			f.StringSlice("allow-connection", nil, "Explicit additional connection IDs of this account allowed to use this name; the registering connection is always included")
 		}
@@ -717,6 +725,18 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 	if cmd.Flags().Lookup("allow-connection") != nil && cmd.Flags().Changed("allow-connection") {
 		arguments["allowed_connection_ids"], _ = cmd.Flags().GetStringSlice("allow-connection")
 	}
+	if cmd.Parent() != nil && cmd.Parent().Name() == "messages" {
+		for flag, field := range map[string]string{"id": "message_id", "older-than": "older_than", "from": "from_agent"} {
+			if cmd.Flags().Changed(flag) {
+				arguments[field], _ = cmd.Flags().GetString(flag)
+			}
+		}
+		for flag, field := range map[string]string{"processed": "processed_only", "unread": "unread_only"} {
+			if cmd.Flags().Changed(flag) {
+				arguments[field], _ = cmd.Flags().GetBool(flag)
+			}
+		}
+	}
 	if cmd.Flags().Lookup("args") != nil && cmd.Flags().Changed("args") {
 		raw, _ := cmd.Flags().GetString("args")
 		var object map[string]any
@@ -792,6 +812,28 @@ func (o *options) call(cmd *cobra.Command, name string) error {
 		arguments["action"] = cmd.Name()
 		if cmd.Name() == "list" {
 			arguments["action"] = "list_agents"
+		}
+		if cmd.Name() == "clear" {
+			client, err := o.client()
+			if err != nil {
+				return err
+			}
+			preview := maps.Clone(arguments)
+			preview["action"] = "count"
+			raw, err := client.Call(cmd.Context(), "messages", preview)
+			if err != nil {
+				return err
+			}
+			var count struct {
+				Matched *int `json:"matched"`
+			}
+			if err = json.Unmarshal(raw, &count); err != nil {
+				return err
+			}
+			if count.Matched == nil || *count.Matched < 0 {
+				return errors.New("The server did not return the matching inbox count. Try counting again.")
+			}
+			fmt.Fprintf(o.stderr, "%d matching messages. Clearing this agent's inbox selection...\n", *count.Matched)
 		}
 	}
 	return o.callWithArguments(cmd, name, arguments)
