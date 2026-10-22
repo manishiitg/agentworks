@@ -17,7 +17,7 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 
 ## If no computer shows
 
-`devices` then also returns the install and connect commands for this server (`setup`). Give the person the one for their system, in plain steps: run the install command in a terminal on that computer, run the connect command, sign in with the same account in the browser window it opens, and leave it running. Ask them to say when it is running, then check `devices` again. Never ask for passwords or keys.
+`devices` then also returns the install and connect commands for this server (`setup`). Give the person the one for their system, in plain steps: run the install command in a terminal on that computer, run the connect command (`agentworks start --server <this server's address>`), sign in with the same account in the browser window it opens, and leave it running. Ask them to say when it is running, then check `devices` again. Never ask for passwords or keys.
 
 ## Choosing a folder
 
