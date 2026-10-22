@@ -269,7 +269,7 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	if err := c.current(ctx, job, cfg); err != nil {
 		return nil, err
 	}
-	root := canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath))
+	root := conditionScriptRoot(job)
 	source, found, err := c.s.readFile(ctx, path.Join(root, cfg.Script))
 	if err != nil || !found {
 		return nil, errors.New("watcher script is unavailable")

@@ -220,6 +220,13 @@ func conditionCallerOwners() []string {
 	return owners
 }
 
+// conditionScriptRoot is the folder a watcher's saved script lives in: the Crew's canonical root, the one a scheduled run reads it
+// from. Saving or reading the script through the raw job path found nothing once Crews moved to their canonical root, so updating
+// a working watcher was refused as "save the script first".
+func conditionScriptRoot(job productScheduleJob) string {
+	return canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath))
+}
+
 func (c *conditionService) callerScript(ctx context.Context, job productScheduleJob, cfg *conditiontrigger.Config, trigger map[string]interface{}) (string, error) {
 	if job.WatcherSource != nil {
 		// The server chooses the path: a script cannot replace another
@@ -238,18 +245,18 @@ func (c *conditionService) callerScript(ctx context.Context, job productSchedule
 			return "", errors.New("Code watchers use a saved Python file under code/triggers")
 		}
 	}
-	raw, found, err := c.s.readFile(ctx, path.Join(job.WorkspacePath, cfg.Script))
+	raw, found, err := c.s.readFile(ctx, path.Join(conditionScriptRoot(job), cfg.Script))
 	if err != nil {
 		return "", err
 	}
 	if !found {
-		return "", fmt.Errorf("save the Python script before creating the watcher; Crew, workflow and Flow callers use script_content")
+		return "", fmt.Errorf("the watcher script %s was not found in this project; save the Python file there first (script_content is only for mail watchers)", cfg.Script)
 	}
 	return raw, nil
 }
 
 func (c *conditionService) readCallerScript(ctx context.Context, job productScheduleJob) (interface{}, error) {
-	raw, found, err := c.s.readFile(ctx, path.Join(job.WorkspacePath, job.Schedule.Condition.Script))
+	raw, found, err := c.s.readFile(ctx, path.Join(conditionScriptRoot(job), job.Schedule.Condition.Script))
 	if err != nil {
 		return nil, err
 	}
