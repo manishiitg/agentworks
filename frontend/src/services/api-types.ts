@@ -273,6 +273,9 @@ export interface AgentProfileEffectiveChatModel extends AgentProfileChatModel {
 
 /** An open side tab of a Code or Crew project as the server knows it. */
 export interface AgentProfileSideChat {
+  tab_owner_id?: string
+  tab_owner_name?: string
+  can_write?: boolean
  agent_id?: string
  provider?: string
  model_id?: string
@@ -288,6 +291,9 @@ export interface AgentProfileSideChat {
 }
 
 export interface AgentProfileConversationResponse {
+  tab_owner_id?: string
+  tab_owner_name?: string
+  can_write?: boolean
   is_main_chat?: boolean
   conversation_id: string
   conversation_key: string

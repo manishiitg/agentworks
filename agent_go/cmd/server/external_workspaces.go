@@ -179,9 +179,6 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 					externalError(w, 403, "forbidden", "Only a Builder can change project memory.")
 					return
 				}
-				if crewEditLockRefuse(w, binding, claims, "") {
-					return
-				}
 
 				if err := setWorkspaceMemory(r.Context(), manifest.Product, binding.Binding.WorkspacePath, enabled); err != nil {
 					externalFailure(w, err)

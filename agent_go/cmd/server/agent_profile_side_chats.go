@@ -13,6 +13,9 @@ import (
 
 // AgentProfileSideChat is one open tab of a Code or Crew project as the server knows it.
 type AgentProfileSideChat struct {
+	TabOwnerID      string `json:"tab_owner_id,omitempty"`
+	TabOwnerName    string `json:"tab_owner_name,omitempty"`
+	CanWrite        bool   `json:"can_write"`
 	ConversationKey string `json:"conversation_key"`
 	ConversationID  string `json:"conversation_id,omitempty"`
 	SessionID       string `json:"session_id"`
@@ -129,24 +132,20 @@ func (api *StreamingAPI) handlePinAgentProfileSideChat(w http.ResponseWriter, r 
 // sideChatsFor lists the caller's open side tabs of one project in the order the person arranged them; tabs they
 // have not placed follow, oldest key first.
 func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profileAndBinding, projectID string) ([]AgentProfileSideChat, error) {
-	store := defaultProductConversationRegistryStore()
-	records, err := store.projectChats(r.Context(), userID, slot.profile.ID, projectID)
+	owned, err := crewOwnerChatRecords(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath)
 	if err != nil {
 		return nil, err
 	}
-	identities, _ := store.agentIdentities(r.Context(), userID, slot.profile.ID, projectID)
-	titles := map[string]string{}
-	for id, session := range chatHistorySessionsByID(userID, slot.binding.WorkspacePath) {
-		titles[id] = strings.TrimSpace(session.Title)
-	}
 	out := []AgentProfileSideChat{}
-	for _, record := range records {
-		if record.IsMainChat || !isSideChatConversationKey(record.ConversationKey) || !workspacePathsMatchForUser(userID, record.WorkspacePath, slot.binding.WorkspacePath) {
+	for _, tab := range owned {
+		record := tab.Record
+		ownMain := tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, userID))
+		if ownMain || !isSideChatConversationKey(record.ConversationKey) || !workspacePathsMatchForUser(userID, record.WorkspacePath, slot.binding.WorkspacePath) {
 			continue
 		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
-		name := firstNonEmptyTrimmed(identities[record.ConversationKey].Name, titles[record.SessionID], "Chat "+id)
-		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: identities[record.ConversationKey].Position, Pinned: !identities[record.ConversationKey].Unpinned}
+		name := firstNonEmptyTrimmed(tab.Identity.Name, "Chat "+id)
+		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID}
 		if agentID := publicationAgentID(record.ConversationKey); agentID != "" {
 			if p, e := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(userID, slot.binding.WorkspacePath), agentID); e == nil && p != nil {
 				row.AgentID, row.Provider, row.ModelID, row.ConnectionID = p.AgentID, p.Provider, p.ModelID, p.ConnectionID
@@ -294,6 +293,10 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		if key == projectID {
 			key = slot.binding.ConversationKey
 		}
+		if err := crewTabWriteError(r.Context(), userID, slot.profile.ID, key, slot.binding.WorkspacePath); err != nil {
+			externalError(w, 403, "tab_owner", err.Error())
+			return
+		}
 		if engine := strings.TrimSpace(input.Engine); engine != "" {
 			if _, offered := findProviderOptionByID(slot.profile.Runtime.ProviderOptions, engine); !offered {
 				writeAgentProfileError(w, http.StatusUnprocessableEntity, "that model provider is not available here")
@@ -305,10 +308,14 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 			return
 		}
 	}
-	identities, err := store.agentIdentities(r.Context(), userID, slot.profile.ID, projectID)
+	allTabs, err := crewOwnerChatRecords(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath)
 	if err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		writeAgentProfileError(w, 500, err.Error())
 		return
+	}
+	identities := map[string]ProductAgentIdentity{}
+	for _, tab := range allTabs {
+		identities[tab.Record.ConversationKey] = tab.Identity
 	}
 	out := []AgentProfileChatModel{}
 	for key, identity := range identities {
@@ -317,18 +324,14 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ConversationKey < out[j].ConversationKey })
-	chats, err := store.projectChats(r.Context(), userID, slot.profile.ID, projectID)
-	if err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	effective := []AgentProfileEffectiveChatModel{}
-	for _, chat := range chats {
+	for _, tab := range allTabs {
+		chat := tab.Record
 		if publicationAgentID(chat.ConversationKey) != "" || !workspacePathsMatchForUser(userID, chat.WorkspacePath, slot.binding.WorkspacePath) {
 			continue
 		}
 		row, err := effectiveProfileChatModel(slot.profile, slot.binding, chat, identities[chat.ConversationKey])
-		if err == nil {
+		if err == nil && tab.OwnerID == userID {
 			query := QueryRequest{Provider: row.Provider, ModelID: row.ModelID, ConnectionID: row.ConnectionID}
 			err = constrainProductChatModel(r.Context(), &query)
 			row.ModelID = query.ModelID

@@ -1712,6 +1712,9 @@ func (api *StreamingAPI) canAccessTerminalSession(r *http.Request, sessionID str
 		return false
 	}
 
+	if !api.crewSessionCanControl(r, sessionID) {
+		return r.Method == http.MethodGet && api.crewSessionTabView(r, sessionID)
+	}
 	currentUserID := GetUserIDFromContext(r.Context())
 	// Every terminal route (metadata, stream, input, keys, live attach) comes through here,
 	// so a read-only user is refused in one place. See terminalDeniedForReadOnlyAccess.
@@ -1760,6 +1763,9 @@ func botSessionTerminalAllowed(ctx context.Context, session *ActiveSessionInfo) 
 }
 
 func (api *StreamingAPI) canUseSessionIDForQuery(r *http.Request, sessionID string) bool {
+	if !api.crewSessionCanControl(r, sessionID) {
+		return false
+	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return false

@@ -26,6 +26,7 @@ const (
 )
 
 type codeChat struct {
+	OwnerID   string
 	IsMain    bool
 	Key       string // conversation key: <projectId> or <projectId>:chat:<id>
 	ID        string // "main" or the side chat's id
@@ -69,36 +70,30 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 	if err != nil || !owned || !workspacePathsMatchForUser(userID, binding.WorkspacePath, workspacePath) {
 		return denied, unavailable
 	}
-	chats, err := defaultProductConversationRegistryStore().projectChats(ctx, userID, manifest.Product, manifest.ID)
+	ownedChats, err := crewOwnerChatRecords(ctx, userID, manifest.Product, manifest.ID, binding.WorkspacePath)
 	if err != nil {
 		return denied, err
 	}
 	project := codeChatProject{OwnerID: sanitizeUserIDForPath(userID), ProfileID: manifest.Product, ProjectID: manifest.ID, Workspace: binding.WorkspacePath, Binding: binding}
-	titles := map[string]string{}
-	if sessions, listErr := ListChatHistorySessions(userID, 200, 0, binding.WorkspacePath); listErr == nil {
-		for _, session := range sessions {
-			titles[session.SessionID] = strings.TrimSpace(session.Title)
-		}
-	}
-	identities, _ := defaultProductConversationRegistryStore().agentIdentities(ctx, userID, manifest.Product, manifest.ID)
 	found := false
-	for _, record := range chats {
+	for _, tab := range ownedChats {
+		record := tab.Record
 		if !workspacePathsMatchForUser(userID, record.WorkspacePath, binding.WorkspacePath) {
 			continue
 		}
-		chat := codeChat{Key: record.ConversationKey, SessionID: record.SessionID, UpdatedAt: record.UpdatedAt}
+		chat := codeChat{OwnerID: tab.OwnerID, Key: record.ConversationKey, SessionID: record.SessionID, UpdatedAt: record.UpdatedAt}
 		chat.ID = strings.TrimPrefix(record.ConversationKey, manifest.ID+codeChatSideMarker)
-		chat.IsMain = record.IsMainChat
-		chat.Name = firstNonEmptyTrimmed(titles[record.SessionID], "Chat "+chat.ID)
+		chat.IsMain = tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(manifest.ID, userID))
+		chat.Name = "Chat " + chat.ID
 		if chat.IsMain {
 			chat.Name = "Main chat"
 		}
 		// The person's or the agent's own name wins over the chat's automatic title.
-		if identity, ok := identities[record.ConversationKey]; ok {
+		if identity := tab.Identity; identity.Name != "" || identity.Purpose != "" {
 			chat.Name = firstNonEmptyTrimmed(identity.Name, chat.Name)
 			chat.Purpose = identity.Purpose
 		}
-		if record.SessionID == sessionID {
+		if record.SessionID == sessionID && tab.OwnerID == userID {
 			project.Self, found = chat, true
 		}
 		project.Chats = append(project.Chats, chat)
@@ -161,7 +156,7 @@ func codeChatCaller(project codeChatProject, base triggerLinkCaller) triggerLink
 // physical folder, the same one its calls are keyed by.
 func codeChatTarget(project codeChatProject, chat codeChat, codePath string) triggerTarget {
 	return triggerTarget{Kind: triggerCallerCrew, Path: codePath, Label: chat.Name,
-		CrewID: project.ProjectID, CrewProfile: project.ProfileID, CrewOwner: project.OwnerID, Chat: &chat}
+		CrewID: project.ProjectID, CrewProfile: project.ProfileID, CrewOwner: firstNonEmptyTrimmed(chat.OwnerID, project.OwnerID), Chat: &chat}
 }
 
 // codeChatTurnRequest builds the turn in the target chat's existing
@@ -233,7 +228,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 	describe := func(project codeChatProject) []map[string]interface{} {
 		out := make([]map[string]interface{}, 0, len(project.Chats))
 		for _, chat := range project.Chats {
-			item := map[string]interface{}{"id": chat.ID, "name": chat.Name, "is_main": chat.IsMain, "working": api.conversationTurnOccupied(chat.SessionID)}
+			item := map[string]interface{}{"id": chat.ID, "name": chat.Name, "is_main": chat.IsMain, "owner_id": chat.OwnerID, "owner_name": crewOwnerDisplayName(chat.OwnerID), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
 			if chat.Purpose != "" {
 				item["purpose"] = chat.Purpose
 			}

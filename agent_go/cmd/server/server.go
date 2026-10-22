@@ -4057,15 +4057,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
-	// One owner at a time edits a Crew (crew_edit_lock.go): an owner's Builder chat takes the lock, and another owner who
-	// tries while it is held is told who has it and when it frees.
-	if !currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && crewBuilderTurn(req) {
-		if ref, ok := resolveCrewPath(r.Context(), currentUserID, req.SelectedFolder); ok && (ref.Shared || len(crewCoOwnerIDs(ref.Root)) > 0) && crewAccessFor(GetUserFromContext(r.Context()), ref) == crewAccessOwner {
-			if message := crewEditLockTake(ref.Root, currentUserID, sessionID, time.Now()); message != "" {
-				logfWithContext(queryLogCtx, "[CREW_LOCK] %s refused for session %s: %s", sanitizeUserIDForPath(currentUserID), sessionID, message)
-				http.Error(w, message, http.StatusConflict)
-				return
-			}
+	if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+		if e := crewQueryTabWriteError(r.Context(), currentUserID, resolvedProfile.Definition.ID, req.SelectedFolder, sessionID); e != nil {
+			externalError(w, 403, "tab_owner", e.Error())
+			return
 		}
 	}
 	// One person at a time uses the Builder on a workflow. When someone else has it, this turn runs in Run mode instead
@@ -8940,6 +8935,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *StreamingAPI) verifySessionAccess(r *http.Request, sessionID string) error {
+	if !api.crewSessionCanControl(r, sessionID) {
+		return fmt.Errorf("Only this tab's owner can control it")
+	}
 	currentUserID := GetUserIDFromContext(r.Context())
 	api.activeSessionsMux.RLock()
 	activeSession, exists := api.activeSessions[sessionID]

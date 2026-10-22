@@ -84,9 +84,10 @@ export function WorkModelsPanel({
       .finally(() => { if (!cancelled) setChatModelsLoading(false) })
     return () => { cancelled = true }
   }, [effectiveProfileId, projectId, supportsChatModels, initialModelTarget])
+  const observingModel = Boolean(modelTarget) && modelChats.some(chat => chat.conversation_key === modelTarget && chat.can_write === false)
   const ownChatModel = modelTarget ? chatModels.find(model => model.conversation_key === modelTarget) : undefined
   const saveChatModel = async (selection?: WorkRuntimeSelection) => {
-    if (!projectId || !modelTarget || !chatModelsReady || chatModelSaving || chatModelsLoading) return
+    if (observingModel || !projectId || !modelTarget || !chatModelsReady || chatModelSaving || chatModelsLoading) return
     setChatModelSaving(true); setChatModelError('')
     try {
       const models = await agentApi.setAgentProfileChatModel(effectiveProfileId, projectId, {
@@ -428,11 +429,11 @@ export function WorkModelsPanel({
             <span className="font-medium">Crew’s model</span><span className="text-xs text-muted-foreground">For chats without their own model</span>
           </button>
           {chatModelsLoading ? <p role="status" className="px-3 py-2 text-xs text-muted-foreground">Loading chats…</p> : [
-            { conversation_key: mainChatKey!, name: 'Main chat' },
+            { conversation_key: mainChatKey!, name: 'My Builder', can_write: true },
             ...modelChats,
           ].map(chat => {
             const own = chatModels.find(model => model.conversation_key === chat.conversation_key)
-            return <button key={chat.conversation_key} type="button" disabled={chatModelSaving || !chatModelsReady} aria-pressed={modelTarget === chat.conversation_key} onClick={() => setModelTarget(chat.conversation_key)} className={`flex w-full items-center justify-between gap-3 border-t border-border px-3 py-2 text-left text-sm disabled:opacity-50 ${modelTarget === chat.conversation_key ? 'bg-primary/10' : 'hover:bg-muted'}`}>
+            return <button key={chat.conversation_key} type="button" disabled={chat.can_write === false || chatModelSaving || !chatModelsReady} aria-pressed={modelTarget === chat.conversation_key} onClick={() => setModelTarget(chat.conversation_key)} className={`flex w-full items-center justify-between gap-3 border-t border-border px-3 py-2 text-left text-sm disabled:opacity-50 ${modelTarget === chat.conversation_key ? 'bg-primary/10' : 'hover:bg-muted'}`}>
               <span className="min-w-0 truncate">{chat.name}</span>
               <span className="max-w-[60%] truncate text-xs text-muted-foreground">{own ? own.display_label || 'Selected model' : "Crew's model"}</span>
             </button>
@@ -441,9 +442,9 @@ export function WorkModelsPanel({
         {chatModelError && <p role="alert" className="mb-3 text-sm text-destructive">{chatModelError}</p>}
         {modelTarget && <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">{ownChatModel ? 'Used for messages and automated work in this agent.' : "Uses the Crew's model."}</p>
-          {ownChatModel && <button type="button" disabled={chatModelSaving} onClick={() => void saveChatModel()} className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50">Use Crew's model</button>}
+          {ownChatModel && <button type="button" disabled={observingModel || chatModelSaving} onClick={() => void saveChatModel()} className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50">Use Crew's model</button>}
         </div>}
-        <fieldset disabled={chatModelSaving || (Boolean(modelTarget) && chatModelsLoading)} className="min-w-0 border-0 p-0">
+        <fieldset disabled={observingModel || chatModelSaving || (Boolean(modelTarget) && chatModelsLoading)} className="min-w-0 border-0 p-0">
         {savedProviderUnusable && (
           <p role="alert" className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
             This {effectiveProfileId === 'knowledgebase' || effectiveProfileId === 'caplayer' ? 'assistant' : 'project'} is set to {selectedOption?.label || selectedOption?.provider}, which is not available to you here. Choose another coding agent below; your next message uses it.

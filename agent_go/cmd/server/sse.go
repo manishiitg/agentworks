@@ -96,7 +96,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 				http.Error(w, "Failed to authorize durable chat", http.StatusInternalServerError)
 				return
 			}
-			if ownerID == "" || !durableChatReadAllowed(r, sessionID, ownerID, r.URL.Query().Get("workspace_path")) {
+			if ownerID == "" || !durableChatReadAllowed(r, sessionID, ownerID, r.URL.Query().Get("workspace_path")) && !api.crewSessionTabView(r, sessionID) {
 				http.Error(w, "Session not found or access denied", http.StatusNotFound)
 				return
 			}

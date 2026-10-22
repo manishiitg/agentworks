@@ -1778,6 +1778,9 @@ func (api *StreamingAPI) handleTerminalStream(w http.ResponseWriter, r *http.Req
 			}
 			continue
 		}
+		if !api.crewSessionCanControl(r, snapshot.SessionID) {
+			continue
+		}
 		// Child diagnostics accept geometry changes only.
 		if !terminalSnapshotIsMainAgent(snapshot) {
 			continue

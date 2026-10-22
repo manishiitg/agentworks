@@ -406,7 +406,7 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 	if claims := GetUserFromContext(ctx); claims != nil {
 		release.PublishedBy = sanitizeUserIDForPath(claims.UserID)
 		if previous, _, err := activeRelayRelease(ctx, workspace); err == nil && previous.PublishedBy != "" && previous.PublishedBy != release.PublishedBy {
-			release.Replaced = fmt.Sprintf("replaced %s's version %s from %s; it is kept in history", crewEditLockName(previous.PublishedBy), previous.Version, previous.PublishedAt.UTC().Format("2006-01-02 15:04 UTC"))
+			release.Replaced = fmt.Sprintf("replaced %s's version %s from %s; it is kept in history", crewOwnerDisplayName(previous.PublishedBy), previous.Version, previous.PublishedAt.UTC().Format("2006-01-02 15:04 UTC"))
 			log.Printf("[FLOW_PUBLISH] flow=%s %s by=%s", manifest.ID, release.Replaced, release.PublishedBy)
 		}
 	}

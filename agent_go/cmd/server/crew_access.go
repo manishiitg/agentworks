@@ -140,7 +140,7 @@ func resolveConversationBindingForUser(ctx context.Context, userID string, profi
 	if err != nil {
 		return productConversationBinding{}, true, err
 	}
-	return crew.Binding, crew.OwnedByCaller, nil
+	return crewOwnerDefaultBinding(userID, crew.Binding), crew.OwnedByCaller, nil
 }
 
 // crewBuilderDiskHiddenFromUser reports whether project-local transcript

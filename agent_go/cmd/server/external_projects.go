@@ -158,9 +158,6 @@ func (api *StreamingAPI) externalCrewProjectCall(w http.ResponseWriter, r *http.
 			externalError(w, 409, "published_project", reason)
 			return
 		}
-		if crewEditLockRefuse(w, crew, claims, "") {
-			return
-		}
 	}
 	if action == "get_access" {
 		externalJSON(w, map[string]any{"crew_id": crewID, "owner": summary["owner"], "my_access": map[bool]string{true: "owner", false: "member"}[crew.OwnedByCaller]})

@@ -22,7 +22,7 @@ export function SessionStopButton({ tabId, footer = false }: SessionStopButtonPr
   const turnActive = useTabTurnActive(tabId, footer ? 'any' : 'foreground')
 
   const sessionId = tab?.sessionId
-  if (!sessionId || (!turnActive && !stopping)) return null
+  if (tab?.metadata?.agentProfileTabCanWrite === false || !sessionId || (!turnActive && !stopping)) return null
 
   const stopSession = async () => {
     if (inFlight.current) return

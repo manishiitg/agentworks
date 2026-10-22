@@ -46,13 +46,16 @@ func externalChatName(args map[string]any) (string, error) {
 }
 
 func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_crew_chats", "Your own chats with a Crew, as in the Crew screen. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", name required) or close a side chat; side_rename: give a side chat a new name (chat_id, name); talk in it with ask_crew chat_id. set_model: give one chat (main or a side chat) its own model (engine, model_id, optional reasoning_effort), used by everything that reaches that chat; an empty engine returns it to the Crew's model; list shows each chat's own model. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. Human confirmations remain in the chat.", true, false, map[string]any{
+	add("manage_crew_chats", "Crew chat tabs, as in the Crew screen. Owners see all owners' tabs; only the tab's owner can write, stop, rename, reset, close or change its model. message: send an attributed agent message to any owner’s tab, using the normal messaging path. Agents may also use ask_project_chat from their own tab. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", name required) or close a side chat; side_rename: give a side chat a new name (chat_id, name); talk in it with ask_crew chat_id. set_model: give one chat (main or a side chat) its own model (engine, model_id, optional reasoning_effort), used by everything that reaches that chat; an empty engine returns it to the Crew's model; list shows each chat's own model. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. Human confirmations remain in the chat.", true, false, map[string]any{
 		"crew_id":          externalString("Crew ID from list_crews."),
-		"action":           map[string]any{"type": "string", "enum": []any{"list", "read", "new", "side_open", "side_close", "side_rename", "set_model", "delete", "stop", "tools", "tool"}},
+		"action":           map[string]any{"type": "string", "enum": []any{"list", "read", "new", "side_open", "side_close", "side_rename", "set_model", "delete", "stop", "message", "tools", "tool"}},
 		"engine":           externalString("For set_model: a provider option of this Crew (as on its Models page, e.g. claude-code, codex-cli); empty returns the chat to the Crew's model."),
 		"model_id":         externalString("For set_model: a model of that provider."),
 		"reasoning_effort": externalString("For set_model: optional reasoning level."),
 		"name":             externalString("A short tab name saying what the agent is for; required for side_open and side_rename."),
+		"message":          externalString("For message: an attributed agent message to this tab, including another owner's tab."),
+		"submission_id":    externalString("For message: stable ID for retries."),
+		"inbox_id":         externalString("For message: existing reply address."),
 		"chat_id":          externalString("main or a side chat id from list."),
 		"tool_name":        externalString("Exact native name from tools."),
 		"arguments":        map[string]any{"type": "object"},
@@ -61,6 +64,9 @@ func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string
 }
 
 type externalCrewChat struct {
+	OwnerID   string `json:"owner_id,omitempty"`
+	OwnerName string `json:"owner_name,omitempty"`
+	CanWrite  bool   `json:"can_write"`
 	IsMain    bool   `json:"is_main"`
 	ChatID    string `json:"chat_id"`
 	Name      string `json:"name"`
@@ -75,22 +81,17 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 	if !ok {
 		return nil
 	}
-	records, err := defaultProductConversationRegistryStore().projectChats(r.Context(), userID, product.ProfileID, workspaceTokenProjectID(crewID))
+	owned, err := crewOwnerChatRecords(r.Context(), userID, product.ProfileID, workspaceTokenProjectID(crewID), workspace)
 	if err != nil {
 		return nil
 	}
-	titles := map[string]string{}
-	if sessions, listErr := ListChatHistorySessions(userID, 200, 0, workspace); listErr == nil {
-		for _, session := range sessions {
-			titles[session.SessionID] = strings.TrimSpace(session.Title)
-		}
-	}
-	identities, _ := defaultProductConversationRegistryStore().agentIdentities(r.Context(), userID, product.ProfileID, workspaceTokenProjectID(crewID))
 	chats := []externalCrewChat{}
-	for _, record := range records {
-		chat := externalCrewChat{SessionID: record.SessionID, UpdatedAt: record.UpdatedAt, key: record.ConversationKey, IsMain: record.IsMainChat}
+	for _, tab := range owned {
+		record := tab.Record
+		ownMain := tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(crewID, userID))
+		chat := externalCrewChat{OwnerID: tab.OwnerID, OwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, SessionID: record.SessionID, UpdatedAt: record.UpdatedAt, key: record.ConversationKey, IsMain: ownMain}
 		switch {
-		case record.ConversationKey == crewID:
+		case ownMain:
 			chat.ChatID, chat.Name = "main", "Main chat"
 		case strings.HasPrefix(record.ConversationKey, crewID+codeChatSideMarker):
 			chat.ChatID = strings.TrimPrefix(record.ConversationKey, crewID+codeChatSideMarker)
@@ -98,9 +99,12 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 			if chat.IsMain {
 				fallback = "Main chat"
 			}
-			chat.Name = firstNonEmptyTrimmed(identities[record.ConversationKey].Name, titles[record.SessionID], fallback)
+			chat.Name = firstNonEmptyTrimmed(tab.Identity.Name, fallback)
 		default:
 			continue
+		}
+		if tab.Identity.Name != "" {
+			chat.Name = tab.Identity.Name
 		}
 		chats = append(chats, chat)
 	}
@@ -156,6 +160,12 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 	crewID = manifest.ID
 	workspace := crew.Binding.WorkspacePath
 	chats := api.crewChats(r, claims.UserID, crewID, workspace)
+	if action != "list" && action != "read" && action != "message" {
+		if chat, found := findCrewChat(chats, externalArg(args, "chat_id")); found && !chat.CanWrite {
+			externalError(w, 403, "tab_owner", crewOwnerDisplayName(chat.OwnerID)+" controls this tab. Use your own tab or send its agent a message.")
+			return
+		}
+	}
 	respond := func(status int, body []byte) { externalScheduleRespond(w, status, body) }
 	vars := map[string]string{"id": manifest.Product}
 	earlier := func() []map[string]any {
@@ -178,6 +188,14 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 			_ = json.Unmarshal(body, &models)
 		}
 		externalJSON(w, map[string]any{"crew_id": crewID, "chats": chats, "chat_models": models.ChatModels, "earlier": earlier(), "side_chats_left": max(0, externalCrewMaxSideChats-crewSideChatCount(chats))})
+	case "message":
+		chat, found := findCrewChat(chats, externalArg(args, "chat_id"))
+		if !found {
+			externalError(w, 404, "chat_not_found", "Choose a tab from list.")
+			return
+		}
+		target := triggerTarget{Kind: triggerCallerCrew, Path: workspace, Label: chat.Name, CrewID: crewID, CrewProfile: manifest.Product, CrewOwner: chat.OwnerID, Chat: &codeChat{OwnerID: chat.OwnerID, ID: chat.ChatID, Key: chat.key, Name: chat.Name, SessionID: chat.SessionID}}
+		api.externalSendMessage(w, r, args, target)
 	case "set_model":
 		chat, found := findCrewChat(chats, externalArg(args, "chat_id"))
 		if !found {
@@ -291,14 +309,14 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 // crewAskChat resolves ask_crew's optional chat_id to one of the caller's
 // live chats with the Crew.
 func (api *StreamingAPI) crewAskChat(r *http.Request, userID, crewID, workspace, chatID string) (*codeChat, bool) {
-	if chatID == "" || chatID == "main" {
-		return nil, true
+	if chatID == "" {
+		chatID = "main"
 	}
 	chat, found := findCrewChat(api.crewChats(r, userID, crewID, workspace), chatID)
-	if !found {
+	if !found || !chat.CanWrite {
 		return nil, false
 	}
-	return &codeChat{IsMain: chat.IsMain, Key: chat.key, ID: chat.ChatID, Name: chat.Name, SessionID: chat.SessionID, UpdatedAt: chat.UpdatedAt}, true
+	return &codeChat{OwnerID: chat.OwnerID, IsMain: chat.IsMain, Key: chat.key, ID: chat.ChatID, Name: chat.Name, SessionID: chat.SessionID, UpdatedAt: chat.UpdatedAt}, true
 }
 
 func crewSideChatCount(chats []externalCrewChat) int {

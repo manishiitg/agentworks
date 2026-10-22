@@ -136,6 +136,12 @@ func (api *StreamingAPI) agentProfileConversationSlot(w http.ResponseWriter, r *
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return "", profileAndBinding{}, false
 	}
+	if r.Method != http.MethodGet {
+		if err := crewTabWriteError(r.Context(), userID, profile.ID, binding.ConversationKey, binding.WorkspacePath); err != nil {
+			externalError(w, 403, "tab_owner", err.Error())
+			return "", profileAndBinding{}, false
+		}
+	}
 	return userID, profileAndBinding{profile: profile, binding: binding, canBuild: canBuild}, true
 }
 
@@ -246,6 +252,7 @@ func (api *StreamingAPI) handleSwitchAgentProfileConversation(w http.ResponseWri
 		return
 	}
 	writeAgentProfileJSON(w, http.StatusOK, AgentProfileConversationResponse{
+		CanWrite:        true,
 		ConversationID:  conversation.ConversationID,
 		ConversationKey: conversation.ConversationKey,
 		SessionID:       conversation.SessionID,
@@ -423,7 +430,6 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		// A deleted Code takes its shells with it.
 		stopCodeShellsFor(sanitizeUserIDForPath(actingFor), projectID, nil)
 	}
-	crewEditLockReleaseRoot(binding.WorkspacePath)
 	if coOwner {
 		log.Printf("[CREW_DELETE] project=%s deleted by=%s as co-owner of %s", projectID, sanitizeUserIDForPath(userID), actingFor)
 	}

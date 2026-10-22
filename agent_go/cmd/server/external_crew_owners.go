@@ -1,11 +1,11 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // crew_owners: who builds a Crew (crew_co_owners.go). One tool with an action, like Share. Listing is open to anyone who
@@ -14,9 +14,9 @@ import (
 const externalCrewOwnersTool = "crew_owners"
 
 func externalCrewOwnersDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalCrewOwnersTool, "List a Crew's owners (action=list), add a co-owner by email (action=add), remove one (action=remove), or see who is editing it now (action=lock_status; locks are kept in memory, so a server restart frees them). One owner edits at a time: the lock is taken by an owner's Builder chat or first change, freed when their chat ends or after 15 minutes without a change; memory, run results, asking and running are never locked. Co-owners build the Crew with its main owner: they change its instructions, skills, functions, settings and knowledge, share it, and can delete it. Only the main owner adds or removes owners. Everything still runs as the main owner. The main owner (the creator) cannot be removed. Listing needs crews:read; add and remove need crews:write and must come from the main owner.", true, false, map[string]any{
+	add(externalCrewOwnersTool, "List, add or remove Crew owners. Each owner controls their own named chat tabs; all owners can view them and their agents can communicate. Co-owners build together: instructions, skills, functions, settings, knowledge, Share and delete. Only the main owner adds or removes owners; the creator cannot be removed. Execution accounts and limits still follow the main owner.", true, false, map[string]any{
 		"crew_id": externalString("Crew ID from crew action=list."),
-		"action":  map[string]any{"type": "string", "enum": []any{"list", "add", "remove", "lock_status"}},
+		"action":  map[string]any{"type": "string", "enum": []any{"list", "add", "remove"}},
 		"email":   externalString("The person's account email; add and remove only."),
 	}, "crew_id", "action")
 }
@@ -42,8 +42,8 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 	claims := GetUserFromContext(r.Context())
 	crewID, action, email := externalArg(args, "crew_id"), externalArg(args, "action"), strings.TrimSpace(externalArg(args, "email"))
 	write := action == "add" || action == "remove"
-	if action != "list" && action != "lock_status" && !write {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "action must be list, add, remove or lock_status.")
+	if action != "list" && !write {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "action must be list, add or remove.")
 		return
 	}
 	if t := claims.AccessToken; t != nil {
@@ -67,10 +67,7 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 		externalError(w, http.StatusNotFound, "not_found", "Crew not found or not allowed for this connection.")
 		return
 	}
-	if action == "lock_status" {
-		externalJSON(w, crewEditLockStatus(crew.Binding.WorkspacePath, time.Now()))
-		return
-	}
+
 	if !write {
 		externalJSON(w, crewOwnersStateFor(crew, claims.UserID))
 		return
@@ -121,8 +118,14 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, crew crewProjectBi
 		return crewOwnersState{}, http.StatusInternalServerError, "failed", "The owners could not be changed. Try again."
 	}
 	log.Printf("[CREW_OWNERS] crew=%s %s co_owner=%s by=%s changed=%t", id.Folder, action, target.ID, claims.UserID, changed)
+	if action == "add" && changed && api.agentProfiles != nil {
+		if profile, e := api.agentProfiles.Resolve(id.Product, 0, target.ID); e == nil {
+			if e = ensureCrewOwnerDefaultTab(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: target.ID}), target.ID, profile, crew.Binding.ResourceID); e != nil {
+				return crewOwnersStateFor(crew, claims.UserID), 503, "chat_unavailable", "Owner added, but their Builder tab could not be opened. Ask them to open the Crew."
+			}
+		}
+	}
 	if action == "remove" && changed {
-		crewEditLockRelease(crew.Binding.WorkspacePath, target.ID)
 		api.stopRemovedOwnerSessions(target.ID, crew.Binding.WorkspacePath)
 	}
 	state := crewOwnersStateFor(crew, claims.UserID)

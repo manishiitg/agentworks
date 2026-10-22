@@ -31,7 +31,7 @@ func (api *StreamingAPI) getSessionStatusString(r *http.Request, sessionID strin
 	if !existsInActive {
 		return "", false
 	}
-	if activeSession.UserID != "" && activeSession.UserID != currentUserID {
+	if activeSession.UserID != "" && activeSession.UserID != currentUserID && !api.crewSessionTabView(r, sessionID) {
 		return "", true
 	}
 	return activeSession.Status, false
@@ -220,7 +220,7 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 	// Authorize before touching either the live window or durable journal.
 	currentUserID := GetUserIDFromContext(r.Context())
 	activeSession, existsInActive := api.getActiveSession(sessionID)
-	if existsInActive && activeSession.UserID != "" && activeSession.UserID != currentUserID {
+	if existsInActive && activeSession.UserID != "" && activeSession.UserID != currentUserID && !api.crewSessionTabView(r, sessionID) {
 		http.Error(w, "Session not found or access denied", http.StatusNotFound)
 		return
 	}
@@ -851,7 +851,7 @@ func (api *StreamingAPI) handleGetSessionStatus(w http.ResponseWriter, r *http.R
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
-	if activeSession.UserID != "" && activeSession.UserID != currentUserID {
+	if activeSession.UserID != "" && activeSession.UserID != currentUserID && !api.crewSessionTabView(r, sessionID) {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}

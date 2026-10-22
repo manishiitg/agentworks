@@ -8,6 +8,7 @@ import { captureChatIdentity, isChatIdentityCurrent } from './chatIdentity'
 /** Preserve the permanent chat and the product's existing close rules. */
 export function canCloseWorkspaceChatTab(tab: ChatTab, tabs: Record<string, ChatTab>): boolean {
   const meta = tab.metadata
+  if (meta?.agentProfileTabCanWrite === false) return false
   if (meta?.mode === 'workflow') {
     if (meta.isViewOnly !== true && meta.phaseId === 'workflow-builder') return false
     return (

@@ -92,6 +92,7 @@ mkdir -p "$BUILD_DIR/bin" "$BUILD_DIR/frontend" "$BUILD_DIR/configs"
 touch "$BUILD_DIR/.deploying"
 mkdir -p "$BUILD_DIR/migrations"
 install -m 0755 "$REPO_ROOT/scripts/migrations/agent-email-inboxes.py" "$BUILD_DIR/migrations/agent-email-inboxes.py"
+install -m 0755 "$REPO_ROOT/scripts/migrations/crew-owner-tabs.py" "$BUILD_DIR/migrations/crew-owner-tabs.py"
 cleanup_build() {
   if declare -F vault_recover >/dev/null; then vault_recover; fi
   if [[ "$MIGRATION_STOPPED_AGENT" == 1 ]]; then
@@ -415,6 +416,7 @@ MIGRATION_STOPPED_AGENT=1
 systemctl --user stop "$PRODUCT-agent"
 python3 "$BUILD_DIR/migrations/agent-email-inboxes.py" \
   "$REMOTE_APP/state/gmail-inbound/email.db" --workspace-root "$REMOTE_APP/data/docs"
+python3 "$BUILD_DIR/migrations/crew-owner-tabs.py" --workspace-root "$REMOTE_APP/data/docs" --state-root "$REMOTE_APP/state"
 MIGRATION_STOPPED_AGENT=0
 ln -sfn "$BUILD_DIR" "$REMOTE_APP/current"
 MIGRATION_STOPPED_AGENT=1

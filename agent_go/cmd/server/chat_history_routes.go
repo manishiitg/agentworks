@@ -54,6 +54,15 @@ func renameChatHistorySessionHandler(api *StreamingAPI) http.HandlerFunc {
 			return
 		}
 		workspacePath := strings.TrimSpace(req.WorkspacePath)
+		if isCrewProjectPath(workspacePath) {
+			if data, e := ReadChatHistoryConversation(userID, mux.Vars(r)["session_id"], workspacePath); e == nil {
+				author, _ := chatHistoryConversationIdentity(data)
+				if author != "" && author != userID {
+					externalError(w, 403, "tab_owner", "Only this tab’s owner can rename it.")
+					return
+				}
+			}
+		}
 		_, workflowScoped, allowed := chatHistoryWorkspaceAccess(r, workspacePath)
 		if !allowed {
 			http.Error(w, "workflow access denied", http.StatusForbidden)
@@ -70,6 +79,10 @@ func renameChatHistorySessionHandler(api *StreamingAPI) http.HandlerFunc {
 				http.Error(w, "only the chat author can rename it", http.StatusForbidden)
 				return
 			}
+		}
+		if !api.crewSessionCanControl(r, mux.Vars(r)["session_id"]) {
+			externalError(w, 403, "tab_owner", "Only this tab’s owner can rename it.")
+			return
 		}
 		if err := RenameChatHistorySession(userID, mux.Vars(r)["session_id"], workspacePath, title); err != nil {
 			if strings.Contains(strings.ToLower(err.Error()), "not found") {
@@ -1198,6 +1211,19 @@ func deleteChatHistorySessionHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 		sessionID := mux.Vars(r)["session_id"]
 		workspacePath := r.URL.Query().Get("workspace_path")
+		if !api.crewSessionCanControl(r, sessionID) {
+			externalError(w, 403, "tab_owner", "Only this tab’s owner can delete it.")
+			return
+		}
+		if isCrewProjectPath(workspacePath) {
+			if data, e := ReadChatHistoryConversation(userID, sessionID, workspacePath); e == nil {
+				author, _ := chatHistoryConversationIdentity(data)
+				if author != "" && author != userID {
+					externalError(w, 403, "tab_owner", "Only this tab’s owner can delete it.")
+					return
+				}
+			}
+		}
 		_, workflowScoped, allowed := chatHistoryWorkspaceAccess(r, workspacePath)
 		if !allowed {
 			http.Error(w, "workflow access denied", http.StatusForbidden)

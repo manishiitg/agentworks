@@ -141,7 +141,6 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 		return
 	}
 	log.Printf("[STOP] session=%s begin runtime cancel (reason=%q phase=%s)", sessionID, closeReason, terminalPhase)
-	crewEditLockReleaseSession(sessionID)
 	api.markSessionStoppedAs(sessionID, terminalPhase, closeReason)
 
 	api.agentCancelMux.Lock()

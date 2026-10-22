@@ -1068,6 +1068,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // run, never a fresh chat. The chat-surface resolver keeps such tabs in
   // restoring (while events load) or active (once present) and never lets them
   // bounce to the previous-chats landing panel (the "schedule-bounce" fix).
+  const observingOwnerTab = activeTab?.metadata?.agentProfileTabCanWrite === false
   const isReadOnlyRunView =
     !!activeTab?.metadata?.isScheduledRun || !!activeTab?.metadata?.isBotRun
   // A resumed conversation becomes active when its durable events arrive. Never
@@ -3639,7 +3640,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
             landingContent={landingContent}
             onRetryLastMessage={retryLastProductMessage}
-            onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
+            onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
             closedCodingAgentQuestions={closedCodingAgentQuestions}
             onSubmitQuery={(query) => submitQueryWithQuery(query)}
           />
@@ -3687,14 +3688,14 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                             <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
                           </Suspense>
                         )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
+                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
                     runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
-                    onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
+                    onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
                     closedCodingAgentQuestions={closedCodingAgentQuestions}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
@@ -3754,14 +3755,14 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                             <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
                           </Suspense>
                         )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
+                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
                     runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
-                    onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
+                    onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
                     closedCodingAgentQuestions={closedCodingAgentQuestions}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
@@ -3782,7 +3783,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       {/* Input Area - completely isolated from event updates. AgentWorks keeps
           this composer on its one persistent Chat; Workshop history is rendered
           outside ChatArea and therefore never exposes a composer. */}
-      {!hideInput && (
+      {!hideInput && !observingOwnerTab && (
         <ChatInput
           // The composer owns tab-local draft, paste, upload and submit state.
           // Remount only this boundary when switching chats. Remounting the
@@ -3805,9 +3806,11 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         />
       )}
 
+      {observingOwnerTab && <div className="border-t border-border px-4 py-3 text-sm text-muted-foreground">{activeTab?.metadata?.agentProfileTabOwnerName || 'Another owner'} controls this tab. You can follow the conversation here and use your own tab to chat.</div>}
+
       {/* Scheduled runs show a compact stop action beside the terminal toggle.
           Keep the footer for bot runs and surfaces that hide the input row. */}
-      {!showMainTerminal && isReadOnlyRunView && activeTab && (!activeTab.metadata?.isScheduledRun || hideInput) && (
+      {!showMainTerminal && !observingOwnerTab && isReadOnlyRunView && activeTab && (!activeTab.metadata?.isScheduledRun || hideInput) && (
         <SessionStopButton key={`run-stop-${activeTab.tabId}`} tabId={activeTab.tabId} footer />
       )}
 

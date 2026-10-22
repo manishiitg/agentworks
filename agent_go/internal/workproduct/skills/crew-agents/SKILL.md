@@ -11,14 +11,18 @@ with their purposes, marks which tab is you and which is the main chat.
 
 ## Who leads
 
-Chat IDs stay fixed. `main` is an address for the chat currently marked `is_main` in the list; use a listed ID to keep addressing the same agent after the main chat changes.
+Chat IDs stay fixed. `main` is the calling owner’s default chat address (external channels retain the project’s main chat); use a listed ID to keep addressing the same agent after the main chat changes.
 
 The main chat leads. It splits work, hands parts to other tabs, collects what
 they report and decides when tabs disagree or would change the same files.
 Every other tab does the work it is given, reports the result back to the main
 chat once and checks with it before starting large or overlapping work on its
-own. The person
-can talk to any tab directly, and what they say there wins.
+own. Each owner controls their own named Builder tab and any further tabs they create.
+All owners can view all owners’ tabs. Only a tab’s owner can type, steer, stop,
+use its terminal, rename, reset, close or change its model, on the website or MCP.
+A person speaks directly in their own tabs; other owners communicate through
+attributed agent messages. The Crew’s instructions, skills and files remain shared.
+There is no whole-Crew edit lock; coordinate overlapping file changes through messages.
 
 ## Asking another tab
 

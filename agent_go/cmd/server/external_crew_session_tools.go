@@ -16,7 +16,7 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 	claims := GetUserFromContext(r.Context())
 	id, action := externalArg(args, "crew_id"), externalArg(args, "action")
 	chat, found := findCrewChat(api.crewChats(r, claims.UserID, id, crew.Binding.WorkspacePath), externalArg(args, "chat_id"))
-	if !found {
+	if !found || !chat.CanWrite {
 		externalError(w, 404, "chat_not_found", "Pass an explicit chat_id from your own live chat list.")
 		return
 	}

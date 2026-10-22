@@ -89,6 +89,9 @@ func agentProfileResumeConversationKey(profileID string, input AgentProfileConve
 }
 
 type AgentProfileConversationResponse struct {
+	TabOwnerID      string `json:"tab_owner_id,omitempty"`
+	TabOwnerName    string `json:"tab_owner_name,omitempty"`
+	CanWrite        bool   `json:"can_write"`
 	IsMainChat      bool   `json:"is_main_chat,omitempty"`
 	ConversationID  string `json:"conversation_id"`
 	ConversationKey string `json:"conversation_key"`
@@ -576,6 +579,10 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		writeAgentProfileQueryError(w, err)
 		return
 	}
+	if err := crewTabWriteError(r.Context(), productWorkspaceUserID(r.Context()), profile.ID, conversation.ConversationKey, conversation.WorkspacePath); err != nil {
+		externalError(w, http.StatusForbidden, "tab_owner", err.Error())
+		return
+	}
 	input.interactive = true
 	query, err := prepareProductConversationTurn(r.Context(), productWorkspaceUserID(r.Context()), profile, input, conversation)
 	if err != nil {
@@ -670,7 +677,9 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	ownerID, ownerName, canWrite := crewConversationTabAccess(r.Context(), productWorkspaceUserID(r.Context()), profile, conversation)
 	writeAgentProfileJSON(w, http.StatusOK, AgentProfileConversationResponse{
+		TabOwnerID: ownerID, TabOwnerName: ownerName, CanWrite: canWrite,
 		IsMainChat:      conversation.IsMainChat,
 		ConversationID:  conversation.ConversationID,
 		ConversationKey: conversation.ConversationKey,
@@ -714,9 +723,13 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 		return
 	}
-	binding, err := resolveProductConversationBinding(r.Context(), userID, profile, input.ConversationKey)
+	binding, _, err := resolveConversationBindingForUser(r.Context(), userID, profile, input.ConversationKey)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if err := crewTabWriteError(r.Context(), userID, profile.ID, binding.ConversationKey, binding.WorkspacePath); err != nil {
+		externalError(w, 403, "tab_owner", err.Error())
 		return
 	}
 	conversation, err := defaultProductConversationRegistryStore().rotate(r.Context(), userID, profile, binding)
@@ -724,7 +737,9 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	ownerID, ownerName, canWrite := crewConversationTabAccess(r.Context(), productWorkspaceUserID(r.Context()), profile, conversation)
 	writeAgentProfileJSON(w, http.StatusOK, AgentProfileConversationResponse{
+		TabOwnerID: ownerID, TabOwnerName: ownerName, CanWrite: canWrite,
 		IsMainChat:      conversation.IsMainChat,
 		ConversationID:  conversation.ConversationID,
 		ConversationKey: conversation.ConversationKey,
@@ -771,7 +786,17 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
-	unlock, isNew, capErr := guardNewSideChat(r.Context(), userID, profile.ID, requestedKey)
+	if owned {
+		if tab, found, tabErr := crewTabForKey(r.Context(), userID, profile.ID, binding.ConversationKey, binding.WorkspacePath); tabErr != nil {
+			return ProductConversationRecord{}, tabErr
+		} else if found && tab.OwnerID != userID {
+			return tab.Record, nil
+		}
+	}
+	if binding.ConversationKey == crewOwnerDefaultChatKey(binding.ResourceID, userID) {
+		name = crewOwnerDisplayName(userID) + " · Builder"
+	}
+	unlock, isNew, capErr := guardNewSideChat(r.Context(), userID, profile.ID, binding.ConversationKey)
 	if capErr != nil {
 		return ProductConversationRecord{}, capErr
 	}
@@ -880,6 +905,14 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 			return ProductConversationRecord{}, err
 		}
 		_ = RenameChatHistorySession(userID, record.SessionID, binding.WorkspacePath, name)
+	}
+	if owned && (record.IsMainChat || binding.ConversationKey == crewOwnerDefaultChatKey(binding.ResourceID, userID)) {
+		if identity, e := store.agentIdentity(r.Context(), userID, profile.ID, record.ConversationKey); e == nil && identity.Name == "" {
+			title := crewOwnerDisplayName(userID) + " · Builder"
+			if e = setCodeTabName(r.Context(), userID, record.ConversationKey, title, profile.ID); e != nil {
+				return ProductConversationRecord{}, e
+			}
+		}
 	}
 	return record, nil
 }
@@ -1255,7 +1288,7 @@ func checkSideChatCapacity(ctx context.Context, store productConversationRegistr
 		if record.ConversationKey == strings.TrimSpace(key) {
 			return false, nil // already open: not a new chat
 		}
-		if !record.IsMainChat {
+		if !record.IsMainChat && record.ConversationKey != crewOwnerDefaultChatKey(project, userID) {
 			sides++
 		}
 	}
@@ -1302,9 +1335,13 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 		return
 	}
-	binding, err := resolveProductConversationBinding(r.Context(), userID, profile, input.ConversationKey)
+	binding, _, err := resolveConversationBindingForUser(r.Context(), userID, profile, input.ConversationKey)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if err := crewTabWriteError(r.Context(), userID, profile.ID, binding.ConversationKey, binding.WorkspacePath); err != nil {
+		externalError(w, 403, "tab_owner", err.Error())
 		return
 	}
 	if binding.ProjectMainChatKey != "" && binding.ConversationKey == binding.ProjectMainChatKey {

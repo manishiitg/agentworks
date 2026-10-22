@@ -572,9 +572,6 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		externalError(w, 403, "forbidden", "Only the Crew's owner can change its settings.")
 		return
 	}
-	if crewEditLockRefuse(w, crew, claims, "") {
-		return
-	}
 	if _, ok := args["notifications"]; ok {
 		externalError(w, 400, "invalid_settings", "notifications apply to workflows and Flows only.")
 		return

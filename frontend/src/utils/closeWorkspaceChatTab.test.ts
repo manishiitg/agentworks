@@ -87,3 +87,12 @@ it('does not show a previous account’s refusal after identity changes', async 
   expect(mocks.state.addToast).not.toHaveBeenCalled()
   expect(mocks.state.closeTab).not.toHaveBeenCalled()
 })
+
+it('keeps another owner’s named tab visible without allowing Close to control it', async () => {
+  const observed = tab('observed', { agentProfileId: 'work', agentProfileProjectId: 'p', agentProfileConversationKey: 'p:chat:observed', agentProfileTabCanWrite: false })
+  setup(observed)
+  expect(canCloseWorkspaceChatTab(observed, mocks.state.chatTabs)).toBe(false)
+  await closeWorkspaceChatTab(observed.tabId)
+  expect(mocks.closeSide).not.toHaveBeenCalled()
+  expect(mocks.state.closeTab).not.toHaveBeenCalled()
+})

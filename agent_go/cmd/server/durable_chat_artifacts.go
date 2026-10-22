@@ -16,7 +16,7 @@ import (
 func (api *StreamingAPI) authorizeDurableChatRead(r *http.Request, sessionID, workspacePath string) (int, string) {
 	currentUserID := GetUserIDFromContext(r.Context())
 	activeSession, existsInActive := api.getActiveSession(sessionID)
-	if existsInActive && activeSession.UserID != "" && activeSession.UserID != currentUserID {
+	if existsInActive && activeSession.UserID != "" && activeSession.UserID != currentUserID && !api.crewSessionTabView(r, sessionID) {
 		return http.StatusNotFound, "Session not found or access denied"
 	}
 	if _, _, allowed := chatHistoryWorkspaceAccess(r, workspacePath); !allowed {
@@ -32,7 +32,7 @@ func (api *StreamingAPI) authorizeDurableChatRead(r *http.Request, sessionID, wo
 	if err != nil {
 		return http.StatusInternalServerError, "Failed to authorize durable chat"
 	}
-	if ownerID == "" || !durableChatReadAllowed(r, sessionID, ownerID, workspacePath) {
+	if ownerID == "" || !durableChatReadAllowed(r, sessionID, ownerID, workspacePath) && !api.crewSessionTabView(r, sessionID) {
 		return http.StatusNotFound, "Session not found or access denied"
 	}
 	return 0, ""
