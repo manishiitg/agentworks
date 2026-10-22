@@ -83,7 +83,7 @@ func TestExternalGuidanceCatalogAndWorkflowSkills(t *testing.T) {
 	}
 	prepare := func(handle string) map[string]any {
 		t.Helper()
-		req := httptest.NewRequest(http.MethodGet, "/api/external/v1/tools?names=files&names=plan&names=settings&guidance_session_id="+handle, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external/v1/tools?names=files&names=plan&names=settings&names=list_workflows&guidance_session_id="+handle, nil)
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, claims))
 		w := httptest.NewRecorder()
 		f.api.handleExternalTools(w, req)
@@ -143,10 +143,10 @@ func TestExternalGuidanceCatalogAndWorkflowSkills(t *testing.T) {
 
 func TestExternalGuidanceCrewAndBrainSkillDelivery(t *testing.T) {
 	t.Run("Crew", func(t *testing.T) {
-		f, _ := newExternalCrewCommandFixture(t)
-		docs := f.docs
 		t.Setenv("AUTH_SECRET", "crew-guidance-test-secret")
 		t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+		f, _ := newExternalCrewCommandFixture(t)
+		docs := f.docs
 		location := filepath.Join(docs, filepath.FromSlash(externalCommandCrewRoot), "skills", "custom", "SKILL.md")
 		if err := os.MkdirAll(filepath.Dir(location), 0700); err != nil {
 			t.Fatal(err)

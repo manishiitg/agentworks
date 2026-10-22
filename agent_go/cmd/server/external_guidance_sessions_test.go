@@ -159,6 +159,10 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	}
 	measured := call("create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "measured", "title": "Measured", "files": map[string]any{"index.html": "<html><title>Measured</title><body>Data</body></html>"}}, handle)
 	revision := measured["dashboard"].(map[string]any)["revision"].(string)
+	beforeCalls, err := f.api.guidanceStore.Stats(ctx)
+	if err != nil || beforeCalls.Deliveries != int64(2*len(prepared)) {
+		t.Fatalf("independent preparations must each deliver the selected skills once: %+v %v", beforeCalls, err)
+	}
 	baselineBytes, baselineTokens, advisoryBytes, advisoryTokens, noHandleBytes, noHandleTokens := 0, 0, 0, 0, 0, 0
 	for i := 0; i < 20; i++ {
 		name, args := "dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "measured", "title": fmt.Sprintf("Measured %02d", i), "expected_revision": revision}
@@ -199,8 +203,8 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 		t.Fatal("get reply includes unnecessary guidance")
 	}
 	counts, err := f.api.guidanceStore.Stats(ctx)
-	// Each of the two conversations fetched the two skills once.
-	if err != nil || counts.Deliveries != 4 {
+	// Ordinary calls do not redeliver either conversation's prepared skills.
+	if err != nil || counts.Deliveries != beforeCalls.Deliveries {
 		t.Fatalf("20 calls re-delivered skills: %+v %v", counts, err)
 	}
 	guideBytes := len(wire(prep))
