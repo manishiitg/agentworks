@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -62,12 +61,8 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 	if err != nil || !os.SameFile(held, actual) {
 		return nil, &wf.FileError{Status: 409, Message: "local folder moved; reconnect before executing commands"}
 	}
-	// Windows has no command sandbox (owner decision, 2026-10-09): commands run as the user through Git Bash, and the folder rules
-	// bind the file tools only.
-	capability := security.CurrentSandboxCapability()
-	if runtime.GOOS != "windows" && (!capability.Available || runtime.GOOS == "linux" && capability.Backend != "landlock") {
-		return nil, &wf.FileError{Status: 503, Message: "SANDBOX_UNAVAILABLE: local commands require sandbox-exec on macOS or the Landlock launcher on Linux"}
-	}
+	// Commands run as the person, in their own login shell and environment, on every system (owner decision, 2026-10-22, replacing
+	// the 2026-10-09 sandbox on Mac and Linux): the folder rules bind the file tools, and a command starts in the granted folder.
 	operationCtx, cancel := context.WithTimeout(ctx, time.Duration(r.ShellTimeout())*time.Second)
 	defer cancel()
 	unlock, err := wf.LockWorkspace(operationCtx, root)
@@ -128,7 +123,6 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 		}
 		defer cleanup()
 	} else {
-		iso := &security.Isolator{BaseDir: root, WorkDir: workDir, StrictAllowlist: true, AllowNetwork: true, PrivateScratch: true}
 		commandGrants := []Grant{g}
 		if r.CrewID != "" {
 			commandGrants = nil
@@ -151,59 +145,13 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 			if err != nil || !os.SameFile(held, actual) {
 				return nil, &wf.FileError{Status: 409, Message: "local folder moved; reconnect before executing commands"}
 			}
-			for _, path := range append(append([]string{}, grant.Guard.ReadPaths...), grant.Guard.ReadOnlyPaths...) {
-				iso.ReadPaths = append(iso.ReadPaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
-			}
-			if !grant.Writable {
-				// A writable companion must not override a read-only project nested within it.
-				iso.BlockedWritePaths = append(iso.BlockedWritePaths, grantRoot)
-			}
-			for _, path := range grant.Guard.WritePaths {
-				iso.WritePaths = append(iso.WritePaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
-			}
-			for _, path := range grant.Guard.BlockedPaths {
-				iso.BlockedPaths = append(iso.BlockedPaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
-			}
-			for _, path := range append(append([]string{}, grant.Guard.ReadOnlyPaths...), grant.Guard.BlockedWritePaths...) {
-				iso.BlockedWritePaths = append(iso.BlockedWritePaths, filepath.Join(grantRoot, filepath.FromSlash(path)))
-			}
-			if runtime.GOOS == "linux" {
-				exclusions := append(append([]string{}, grant.Guard.BlockedPaths...), grant.Guard.ReadOnlyPaths...)
-				exclusions = append(exclusions, grant.Guard.BlockedWritePaths...)
-				for _, path := range exclusions {
-					if _, err := os.Lstat(filepath.Join(grantRoot, filepath.FromSlash(path))); err != nil {
-						return nil, &wf.FileError{Status: 503, Message: "SANDBOX_UNAVAILABLE: Linux shell exclusions must exist before commands run"}
-					}
-				}
-			}
 		}
-		for _, grant := range e.grants {
-			if grant.State != "" {
-				iso.BlockedPaths = append(iso.BlockedPaths, grant.State)
-			}
-			iso.BlockedPaths = append(iso.BlockedPaths, grant.PrivatePaths...)
-			if lockState, err := wf.DefaultStateDir(grant.Root); err == nil {
-				iso.BlockedPaths = append(iso.BlockedPaths, lockState)
-			}
-		}
-		var isoErr error
-		if runtime.GOOS == "darwin" {
-			// On a person's own Mac commands run under the light sandbox: their normal environment and home folder, writes limited
-			// to the shared folders, temp and home, secrets unreadable, the folder rules enforced (owner decision, 2026-10-09).
-			cmd, cleanup, isoErr = security.ExecuteLightLocal(operationCtx, workDir, security.LightLocalPolicy{WritePaths: iso.WritePaths, BlockedPaths: iso.BlockedPaths, BlockedWritePaths: iso.BlockedWritePaths}, r.Command)
-		} else {
-			cmd, cleanup, isoErr = iso.ExecuteIsolated(operationCtx, r.Command, nil)
-		}
-		if isoErr != nil {
-			return nil, &wf.FileError{Status: 503, Message: isoErr.Error()}
-		}
-		defer cleanup()
+		cmd = userTerminalCommand(operationCtx, workDir, r.Command)
+		cleanup = func() {}
 	}
-	// Keep only local tool lookup, locale and sandbox cache paths. Login tokens,
-	// server/provider secrets and arbitrary CLI environment never reach commands.
-	if runtime.GOOS != "darwin" {
-		cmd.Env = shellEnvironment(cmd.Env)
-	}
+	// The person's own environment (their tools, profiles and cloud settings), without the CLI's own variables: its login and
+	// server settings are not the person's terminal.
+	cmd.Env = userEnvironment(cmd.Env)
 	if downloads != nil {
 		cmd.Env = append(cmd.Env, "AGENTWORKS_DOWNLOADS="+downloads.Root)
 	}
@@ -273,27 +221,47 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 	return result, nil
 }
 
-// What Windows programs need to start (system folders, the user's profile, program locations); no tokens or secrets.
-var windowsShellEnv = map[string]bool{"SYSTEMROOT": true, "WINDIR": true, "SYSTEMDRIVE": true, "COMSPEC": true, "PATHEXT": true, "USERPROFILE": true, "HOMEDRIVE": true,
-	"HOMEPATH": true, "APPDATA": true, "LOCALAPPDATA": true, "PROGRAMDATA": true, "PROGRAMFILES": true, "PROGRAMFILES(X86)": true, "PROGRAMW6432": true,
-	"COMMONPROGRAMFILES": true, "COMMONPROGRAMFILES(X86)": true, "COMMONPROGRAMW6432": true, "ALLUSERSPROFILE": true, "USERNAME": true, "USERDOMAIN": true,
-	"COMPUTERNAME": true, "OS": true, "PROCESSOR_ARCHITECTURE": true, "NUMBER_OF_PROCESSORS": true}
-
-func shellEnvironment(env []string) []string {
-	allowed := map[string]bool{"PATH": true, "HOME": true, "TMPDIR": true, "TMP": true, "TEMP": true, "LANG": true, "LC_ALL": true, "TZ": true, "XDG_CACHE_HOME": true, "XDG_CONFIG_HOME": true, "XDG_DATA_HOME": true, "GOCACHE": true, "GOMODCACHE": true, "GOPATH": true, "NPM_CONFIG_CACHE": true, "npm_config_cache": true, "PIP_CACHE_DIR": true, "PYTHONUNBUFFERED": true, "CARGO_HOME": true, "RUSTUP_HOME": true}
-	result := []string{}
+// userEnvironment is the environment a command gets: everything the CLI was started with, except the CLI's own AGENTWORKS_*
+// variables (its login and server settings).
+func userEnvironment(env []string) []string {
+	result := make([]string, 0, len(env))
 	for _, value := range env {
-		key, _, _ := strings.Cut(value, "=")
-		if allowed[key] || runtime.GOOS == "windows" && windowsShellEnv[strings.ToUpper(key)] {
-			result = append(result, value)
+		if key, _, _ := strings.Cut(value, "="); strings.HasPrefix(strings.ToUpper(key), "AGENTWORKS_") {
+			continue
 		}
-	}
-	// PATH is local machine configuration, not a value supplied by the server.
-	path := os.Getenv("PATH")
-	if path != "" {
-		result = append(result, "PATH="+path)
+		result = append(result, value)
 	}
 	return result
+}
+
+// userTerminalCommand runs command the way the person's own terminal would: through their login shell (so their profile, PATH and
+// tools such as cloud CLIs are there), starting in workDir, with no sandbox. zsh also reads its interactive startup file, where
+// many people set their PATH.
+func userTerminalCommand(ctx context.Context, workDir, command string) *exec.Cmd {
+	shell := strings.TrimSpace(os.Getenv("SHELL"))
+	if _, err := os.Stat(shell); shell == "" || err != nil {
+		shell = "/bin/sh"
+		for _, candidate := range []string{"/bin/zsh", "/bin/bash"} {
+			if _, err := os.Stat(candidate); err == nil {
+				shell = candidate
+				break
+			}
+		}
+	}
+	args := []string{"-c", command}
+	switch filepath.Base(shell) {
+	case "zsh", "fish":
+		args = []string{"-l", "-i", "-c", command}
+	case "bash":
+		args = []string{"-l", "-c", command}
+	}
+	cmd := exec.CommandContext(ctx, shell, args...)
+	cmd.Dir = workDir
+	cmd.Env = os.Environ()
+	if os.Getenv("TERM") == "" {
+		cmd.Env = append(cmd.Env, "TERM=dumb")
+	}
+	return cmd
 }
 
 type boundedOutput struct {

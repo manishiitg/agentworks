@@ -20,14 +20,15 @@ On the laptop, the person installs AgentWorks and signs in to this server, then 
 
 - One project folder, as small as works. Use `browse` to list folder names.
 - Read lists and copies files in. Read & write also lets you write files there. Suggest Read first and ask when unsure.
-- Commands are a separate choice: the "Run terminal commands" switch (`manage_laptop_access` set with `commands: true`) plus a Read & write folder. Offer it only when the work needs to run programs, builds or git on the laptop; files alone need no commands.
+- Commands are a separate choice: the "Run terminal commands" switch (`manage_laptop_access` set with `commands: true`) plus a Read & write folder to start in. Offer it only when the work needs to run programs, builds, git or a cloud CLI on the laptop; files alone need no commands.
+- With the switch on, a command is the person's own terminal: their login shell, their environment, their files, keys and cloud logins, not limited to the shared folders. Say this plainly when you offer it; it is the person's call.
 - `set` saves the whole list: include every folder to keep, or the omitted ones lose access.
-- Never offer folders that hold sign-ins: `.aws`, `.ssh`, `.config`, keychains, browser profiles, files with keys.
+- Do not offer folders that hold sign-ins (`.aws`, `.ssh`, `.config`, keychains, browser profiles) as shared file folders; commands can use the person's tools without that.
 
 ## When it is refused
 
 - "Operation not permitted" on a folder outside the shared one comes from the computer's own privacy rules, not the Crew. Say so once. The person can add the folder in the Crew's laptop settings; if it still fails, the AgentWorks app or terminal needs access in the computer's privacy settings. Do not retry in a loop or look for a way around it.
-- For cloud sign-ins (AWS and similar): prefer doing the check from the server. If it has to be the laptop, the person signs in themselves, for example `aws sso login`. You never read their key or config files.
+- For cloud CLIs (AWS and similar) on the laptop: with the commands switch on, run them as the person would, for example `aws sts get-caller-identity`. If the person's login has expired, ask them to sign in themselves (`aws sso login`). Do not print, copy or send their key or config files.
 - A command that timed out or lost the connection may have run. Look at the result before trying again.
 
 ## Care
