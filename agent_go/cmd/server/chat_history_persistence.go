@@ -1748,19 +1748,6 @@ func listChatHistorySessionsFromDisk(userID, workspaceRoot, workflowPath string,
 		}
 		entryName := entry.Name()
 
-		// Legacy layout: chat_history/<session-id>/conversation.json
-		legacyConvPath := filepath.Join(baseDir, entryName, "conversation.json")
-		if info, err := os.Stat(legacyConvPath); err == nil && !info.IsDir() {
-			addLocalChatHistoryFile(filesBySession, localChatHistoryFile{
-				sessionID:     entryName,
-				dedupeKey:     chatHistoryDisplayKey(entryName, scheduleIDBySessionID),
-				convPath:      legacyConvPath,
-				workspacePath: pathpkg.Join(workspaceRoot, entryName, "conversation.json"),
-				modTime:       info.ModTime(),
-				size:          info.Size(),
-			})
-		}
-
 		// Date-bucket layout: chat_history/YYYY-MM-DD/session-<id>-conversation.json
 		dateDir := filepath.Join(baseDir, entryName)
 		matches, err := filepath.Glob(filepath.Join(dateDir, "session-*-conversation.json"))
@@ -1887,40 +1874,6 @@ func listWorkflowScopedChatHistorySessionsFromDisk(userID, chatHistoryRootPath, 
 		if builderSessions, ok := listWorkflowBuilderHistoryFromDisk(userID, builderWorkspacePath, readBudget, kind); ok {
 			all = append(all, builderSessions...)
 		}
-	} else {
-		// Earlier shared turns wrapped the project in the caller's own root,
-		// including a second _users prefix for owner-tree projects. Keep these
-		// private transcripts discoverable; never scan the owner's Builder store.
-		legacy := workspaceref.PhysicalPath(userID, canonicalChatHistoryWorkspacePath(userID, workflowPath))
-		if sessions, ok := listWorkflowBuilderHistoryFromDisk(userID, legacy, readBudget, kind); ok {
-			all = append(all, sessions...)
-		}
-	}
-
-	// Compatibility fallback for product conversations written before Work moved
-	// to the same project-owned builder/conversation layout as AgentWorks. Match
-	// structured workspace metadata so pasted paths cannot create false results.
-	if productSessions, ok, err := listChatHistorySessionsFromDisk(userID, chatHistoryRootPath, "", 0, 0); err != nil {
-		return nil, true, err
-	} else if ok {
-		for _, session := range productSessions {
-			if !chatHistorySessionMatchesKind(session.SessionID, kind) || !chatHistorySessionMatchesWorkspace(userID, session, workflowPath) {
-				continue
-			}
-			// Migrate legacy Work transcripts opportunistically when the project is
-			// opened. This is a non-destructive copy; the central source remains as
-			// a compatibility fallback until a later cleanup policy removes it.
-			timestamp, parseErr := time.Parse(time.RFC3339, strings.TrimSpace(session.UpdatedAt))
-			if parseErr != nil {
-				timestamp = time.Now()
-			}
-			if projectPath, isWorkProject := workProjectChatHistoryConversationPath(userID, workflowPath, session.SessionID, timestamp); isWorkProject {
-				if err := copyChatHistoryConversationIfNeeded(session.ConversationPath, projectPath); err == nil {
-					session.ConversationPath = projectPath
-				}
-			}
-			all = append(all, session)
-		}
 	}
 
 	bySessionID := make(map[string]ChatHistorySession, len(all))
@@ -1937,14 +1890,6 @@ func listWorkflowScopedChatHistorySessionsFromDisk(userID, chatHistoryRootPath, 
 		return deduped[i].UpdatedAt > deduped[j].UpdatedAt
 	})
 	return paginateChatHistorySessions(deduped, limit, offset), true, nil
-}
-
-func chatHistorySessionMatchesWorkspace(userID string, session ChatHistorySession, workspacePath string) bool {
-	candidate := strings.TrimSpace(session.WorkspacePath)
-	if session.Runtime != nil && strings.TrimSpace(session.Runtime.WorkspacePath) != "" {
-		candidate = session.Runtime.WorkspacePath
-	}
-	return canonicalChatHistoryWorkspacePath(userID, candidate) == canonicalChatHistoryWorkspacePath(userID, workspacePath)
 }
 
 func canonicalChatHistoryWorkspacePath(userID, workspacePath string) string {
@@ -2321,13 +2266,8 @@ func chatHistorySchedulePrefixBeforeTimestamp(value string) string {
 func workflowBuilderConversationFiles(workflowDir string) ([]string, error) {
 	builderDir := filepath.Join(workflowDir, "builder")
 	out := make([]string, 0)
-	legacyRootMatches, err := filepath.Glob(filepath.Join(builderDir, "session-*-conversation.json"))
-	if err != nil {
-		return nil, err
-	}
-	out = append(out, legacyRootMatches...)
 	conversationDir := filepath.Join(builderDir, "conversation")
-	err = filepath.WalkDir(conversationDir, func(candidate string, entry os.DirEntry, err error) error {
+	err := filepath.WalkDir(conversationDir, func(candidate string, entry os.DirEntry, err error) error {
 		if err != nil {
 			if os.IsNotExist(err) {
 				return nil
@@ -3101,19 +3041,11 @@ func ReadChatHistoryConversation(userID, sessionID, workspacePath string) (json.
 	}
 	workspacePath = normalizeChatHistoryWorkspacePath(workspacePath)
 	if crewBuilderDiskHiddenFromUser(userID, workspacePath) {
-		// Run replies belong to this caller. Prefer the current central copy,
-		// with a fallback only to the old malformed path inside their own tree.
+		// Run replies belong to this caller: read their own central copy.
 		if data, ok, err := readUserChatHistoryConversationDirect(userID, sessionID); ok || err != nil {
 			return data, err
 		}
 		if data, ok, err := readUserChatHistoryConversationFromWorkspace(userID, sessionID); ok || err != nil {
-			return data, err
-		}
-		legacy := workspaceref.PhysicalPath(userID, canonicalChatHistoryWorkspacePath(userID, workspacePath))
-		if data, ok, err := readWorkflowScopedChatHistoryConversationDirect(sessionID, legacy); ok || err != nil {
-			return data, err
-		}
-		if data, ok, err := readWorkflowScopedChatHistoryConversationFromWorkspace(sessionID, legacy); ok || err != nil {
 			return data, err
 		}
 		return nil, errChatHistoryConversationNotFound
@@ -4031,22 +3963,6 @@ func DeleteChatHistoryOlderThan(userID string, olderThanDays int, workspacePath 
 		}
 		entryName := entry.Name()
 		entryDir := filepath.Join(baseDir, entryName)
-
-		// Legacy layout: chat_history/<session-id>/conversation.json
-		legacyConvPath := filepath.Join(entryDir, "conversation.json")
-		if shouldDelete, err := chatHistoryFileCleanupCandidate(legacyConvPath, cutoff); err != nil {
-			return result, err
-		} else if shouldDelete {
-			if err := deleteConversationBackgroundTranscripts(userID, entryName, legacyConvPath); err != nil {
-				return result, err
-			}
-			if err := os.RemoveAll(entryDir); err != nil {
-				return result, err
-			}
-			result.DeletedCount++
-			result.DeletedPaths = append(result.DeletedPaths, pathpkg.Join(root, entryName))
-			continue
-		}
 
 		// Date-bucket layout: chat_history/YYYY-MM-DD/session-<id>-conversation.json
 		matches, err := filepath.Glob(filepath.Join(entryDir, "session-*-conversation.json"))
