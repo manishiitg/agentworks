@@ -255,7 +255,7 @@ describe('Panel walkthroughs', () => {
     expect(workflowSkills).toContain('there is no separate selection step')
     expect(workflowSkills).toContain('Ask the agent in chat to uninstall')
     expect(renderToStaticMarkup(<IntegrationHowToGuide topic="Slack" scopeNoun="project" />)).toContain('this project')
-    expect(renderToStaticMarkup(<IntegrationHowToGuide topic="WhatsApp" scopeNoun="workflow" />)).toContain('Workflow routes')
+    expect(renderToStaticMarkup(<IntegrationHowToGuide topic="WhatsApp" scopeNoun="workflow" />)).toContain('Show workflow progress')
     expect(renderToStaticMarkup(<IntegrationHowToGuide topic="Connect" scopeNoun="workflow" />)).toContain('Remote MCP URL')
   })
 
