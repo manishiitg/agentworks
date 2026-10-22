@@ -115,8 +115,10 @@ func (api *StreamingAPI) configureAgentInbox(ctx context.Context, workspace stri
 	if err = writeFileToWorkspace(ctx, manifestPath, string(data)+"\n"); err != nil {
 		return nil, err
 	}
-	if err = api.syncAgentEmailInboxes(ctx); err != nil {
-		return nil, err
+	if !enabled {
+		if err = api.gmailInbound.Store.DisableInbox(ctx, target.ProfileID, target.ProjectID, target.OwnerID); err != nil {
+			return nil, err
+		}
 	}
 	log.Printf("[AGENT-INBOX] receiving setting changed crew=%s enabled=%t", target.ProjectID, enabled)
 	return api.agentEmailInboxResult(ctx, map[string]interface{}{"workspace_path": target.WorkspacePath})

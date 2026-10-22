@@ -174,6 +174,18 @@ func (s *Store) SyncError(ctx context.Context, id string, e error) error {
 	return err
 }
 
+// Disable only the named Crew; another owner's receiving state is unchanged.
+func (s *Store) DisableInbox(ctx context.Context, profile, project, owner string) error {
+	if _, err := s.db.ExecContext(ctx, `UPDATE agent_inboxes SET active=0 WHERE profile=? AND project=? AND owner=?`, profile, project, owner); err != nil {
+		return err
+	}
+	return s.removeUnusedMailboxes(ctx)
+}
+func (s *Store) removeUnusedMailboxes(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM mailboxes WHERE connection NOT IN (SELECT connection FROM agent_inboxes WHERE active=1)`)
+	return err
+}
+
 // Remove retired mailbox pollers and inbox bindings. Stored mail is never reattached to a different source.
 func (s *Store) Reconcile(ctx context.Context, active map[string]bool) error {
 	all, err := s.Inboxes(ctx)
@@ -187,8 +199,7 @@ func (s *Store) Reconcile(ctx context.Context, active map[string]bool) error {
 			}
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `DELETE FROM mailboxes WHERE connection NOT IN (SELECT connection FROM agent_inboxes WHERE active=1)`)
-	return err
+	return s.removeUnusedMailboxes(ctx)
 }
 
 // The screen opens on recent mail; Watchers and MCP use the forward cursor above.

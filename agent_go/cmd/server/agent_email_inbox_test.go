@@ -71,11 +71,11 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	if err != nil || len(mailboxes) != 0 {
 		t.Fatalf("opening disabled Inbox created a poller: %+v %v", mailboxes, err)
 	}
-	if _, err = env.api.configureAgentInbox(internalBotRequestContext(ctx, "other"), root, true); err == nil {
+	if _, err = env.api.configureAgentInbox(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other"}), root, true); err == nil {
 		t.Fatal("Run person enabled the owner's personal mailbox")
 	}
 	setDirectoryAdmin(t, "other", true)
-	if _, err = env.api.configureAgentInbox(internalBotRequestContext(ctx, "other"), root, true); err == nil {
+	if _, err = env.api.configureAgentInbox(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other"}), root, true); err == nil {
 		t.Fatal("administrator enabled another person's personal Gmail")
 	}
 	setDirectoryAdmin(t, "other", false)
@@ -96,17 +96,32 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	if _, err = store.StoreMessage(ctx, inbox, gmailinbound.Message{ID: "mail", Body: "Crew mail"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = env.api.agentEmailInboxResult(internalBotRequestContext(ctx, "other"), map[string]interface{}{"workspace_path": root}); err != nil {
+	if _, err = env.api.agentEmailInboxResult(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other"}), map[string]interface{}{"workspace_path": root}); err != nil {
 		t.Fatal("shared Crew mail lost existing access", err)
 	}
 	stranger := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "stranger"})
 	if _, err = env.api.resolveAgentEmailInbox(stranger, root); err == nil {
 		t.Fatal("private Crew inbox exposed")
 	}
+	// Changing one Crew must not reconcile away another person's receiving state.
+	if _, err = store.EnsureInbox(ctx, gmailinbound.Inbox{ID: "other-inbox", ProfileID: "work", ProjectID: "other-crew", OwnerID: "other", ConnectionID: "other-account", Address: "other+agent-fixture@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.SetMailbox(ctx, "other-account", "other", "other@example.com"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = env.api.configureAgentInbox(ctx, root, false); err != nil {
 		t.Fatal("owner could not disable this Crew", err)
 	}
 	active, _ := store.Inboxes(ctx)
+	mailboxes, _ = store.Mailboxes(ctx)
+	if len(active) != 1 || active[0].ID != "other-inbox" || len(mailboxes) != 1 || mailboxes[0].ConnectionID != "other-account" {
+		t.Fatal("changing this Crew disturbed another person's receiver", active, mailboxes)
+	}
+	if err = store.DisableInbox(ctx, "work", "other-crew", "other"); err != nil {
+		t.Fatal(err)
+	}
+	active, _ = store.Inboxes(ctx)
 	mailboxes, _ = store.Mailboxes(ctx)
 	if len(active) != 0 || len(mailboxes) != 0 {
 		t.Fatal("disabling the last Crew kept a mailbox poller", active, mailboxes)
