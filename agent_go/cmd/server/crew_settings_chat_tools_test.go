@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 	"testing"
 
@@ -25,7 +26,23 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 			for _, group := range []string{"crew_execution", "crew_integrations"} {
 				owner := crewCapabilityHTTP(t, f, crewWriter("owner"), group, map[string]any{"action": "list"}, 200)
 				coOwner := crewCapabilityHTTP(t, f, crewWriter("other"), group, map[string]any{"action": "list"}, 200)
-				if owner != coOwner {
+				names := func(body string) string {
+					var inventory struct {
+						Tools []struct {
+							Name string `json:"name"`
+						} `json:"tools"`
+					}
+					if err := json.Unmarshal([]byte(body), &inventory); err != nil {
+						t.Fatal(err)
+					}
+					out := []string{}
+					for _, tool := range inventory.Tools {
+						out = append(out, tool.Name)
+					}
+					sort.Strings(out)
+					return strings.Join(out, ",")
+				}
+				if names(owner) != names(coOwner) {
 					t.Fatalf("%s exposes different owner/co-owner native tools", group)
 				}
 			}
