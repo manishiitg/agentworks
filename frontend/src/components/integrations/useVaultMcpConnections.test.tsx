@@ -4,7 +4,7 @@ import { TooltipProvider } from '../ui/tooltip'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 const get = vi.hoisted(() => vi.fn())
-vi.mock('../../services/api', () => ({ default: { get } }))
+vi.mock('../../services/api', () => ({ default: { get }, getApiBaseUrl: () => '', getAuthToken: () => null }))
 vi.mock('./useVaultSetupDraft', () => ({ useVaultSetupDraft: () => ({ open: vi.fn(), error: '' }) }))
 import { useVaultMcpConnections } from './useVaultMcpConnections'
 import { McpConnectionsPanel } from './McpConnectionsPanel'

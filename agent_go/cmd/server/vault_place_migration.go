@@ -501,22 +501,28 @@ func (api *StreamingAPI) migrateLegacySharedMCP(ctx context.Context, apply bool)
 	}
 	rows := []placeMigrationRow{}
 	for _, c := range inventory.Connectors {
-		if c.OAuthServer == "" || c.OAuthCredentialID != "" {
+		if c.OAuthServer == "" {
 			continue
+		}
+		if c.OAuthCredentialID != "" {
+			if _, err := os.Stat(expandPath(vaultCredentialConfigPath(c.ID))); err == nil || isCustomVaultOAuthServer(c.OAuthServer) {
+				continue
+			}
 		}
 		row := placeMigrationRow{Owner: actor, Server: c.ID, Kind: "shared OAuth", Result: "would move"}
 		if apply {
-			if _, err = vaultServiceRequest(ctx, actor, http.MethodPost, "/api/admin/connectors/"+c.ID+"/migrate-oauth", nil); err != nil {
-				return rows, err
-			}
 			status, e := importVaultOAuthCredential(ctx, api, c.ID, true)
 			if e != nil {
 				row.Result = "failed"
 				row.Detail = e.Error()
 			} else {
+				custom := status == "credentials saved; provider setup required"
+				if _, err = vaultServiceRequest(ctx, actor, http.MethodPost, "/api/admin/connectors/"+c.ID+"/migrate-oauth", vaultPromoteJSON(map[string]bool{"CustomOAuth": custom})); err != nil {
+					return rows, err
+				}
 				row.Result = "moved"
 				row.Detail = status
-				if status != "sign-in required" {
+				if status != "sign-in required" && !custom {
 					_, e = vaultServiceRequest(ctx, actor, http.MethodPost, "/api/admin/connectors/"+c.ID+"/sync", nil)
 					if e != nil {
 						row.Detail = "credentials saved; discovery pending"

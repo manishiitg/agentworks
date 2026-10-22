@@ -21,7 +21,7 @@ func importVaultOAuthCredential(ctx context.Context, api *StreamingAPI, id strin
 	if err := ValidateConfiguredAuthSecret(); err != nil {
 		return "", err
 	}
-	c, err := vaultConnection(ctx, id)
+	c, err := vaultSavedConnection(ctx, id)
 	if err != nil {
 		return "", err
 	}
@@ -30,9 +30,18 @@ func importVaultOAuthCredential(ctx context.Context, api *StreamingAPI, id strin
 		return "", errors.New("cannot read legacy MCP configuration")
 	}
 	name, cfg, err := config.ResolveServer(c.OAuthServer)
-	if err != nil || cfg.OAuth == nil || cfg.URL != c.UpstreamURL {
+	missingProvider := err != nil || cfg.OAuth == nil
+	if !missingProvider && cfg.URL != c.UpstreamURL {
 		return "", errors.New("legacy provider does not match the Vault connection")
 	}
+	if missingProvider {
+		// A removed catalog template must not strand its encrypted login in the
+		// retired provider store. Preserve the real account data; chat can finish
+		// provider discovery later without inventing authorization endpoints.
+		name = c.OAuthServer
+		cfg = mcpclient.MCPServerConfig{URL: c.UpstreamURL, OAuth: &oauth.OAuthConfig{TokenFile: getUserTokenFilePath(platformMCPTokenUserID, name), Resource: c.UpstreamURL}}
+	}
+
 	destination := expandPath(getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id)))
 	configPath := expandPath(vaultCredentialConfigPath(id))
 	tokenExists := false
@@ -44,6 +53,9 @@ func importVaultOAuthCredential(ctx context.Context, api *StreamingAPI, id strin
 	if tokenExists {
 		if _, err := os.Stat(configPath); err != nil {
 			return "", errors.New("incomplete destination credential; inspect it before retrying")
+		}
+		if missingProvider {
+			return "credentials saved; provider setup required", nil
 		}
 		return "already imported", nil // Never overwrite a refreshed or reauthorized token.
 	}
@@ -72,16 +84,13 @@ func importVaultOAuthCredential(ctx context.Context, api *StreamingAPI, id strin
 	if json.Unmarshal(data, &token) != nil || token.AccessToken == "" {
 		return "", errors.New("invalid legacy OAuth token")
 	}
-	template, err := api.vaultOAuthTemplate(ctx, id, name, cfg.URL)
-	if err != nil {
-		return "", err
+	saved := *cfg.OAuth
+	clientPath := cfg.OAuth.ClientSecretFile
+	if clientPath == "" {
+		clientPath = getUserClientFilePath(platformMCPTokenUserID, name)
 	}
-	saved := *template.OAuth
-	// Preserve the client that issued the old token, including its refresh setup.
-	saved.ClientID = cfg.OAuth.ClientID
-	saved.ClientSecret = cfg.OAuth.ClientSecret
-	if saved.ClientSecret == "" && cfg.OAuth.ClientSecretFile != "" {
-		clientPath := expandPath(cfg.OAuth.ClientSecretFile)
+	clientPath = expandPath(clientPath)
+	if _, err := os.Stat(clientPath); err == nil {
 		if !((platformClientSealer{}).Handles(clientPath)) {
 			return "", errors.New("legacy client secret is outside the platform tokens directory")
 		}
@@ -90,12 +99,19 @@ func importVaultOAuthCredential(ctx context.Context, api *StreamingAPI, id strin
 		if err != nil || json.Unmarshal(clientData, &client) != nil {
 			return "", errors.New("cannot read legacy client registration")
 		}
-		saved.ClientSecret = client.ClientSecret
+		if saved.ClientID == "" {
+			saved.ClientID = client.ClientID
+		}
+		if saved.ClientSecret == "" {
+			saved.ClientSecret = client.ClientSecret
+		}
+		if saved.RedirectURL == "" {
+			saved.RedirectURL = client.RedirectURI
+		}
 	}
+
 	saved.ClientSecretFile = ""
 	saved.TokenFile = destination
-	saved.RedirectURL = cfg.OAuth.RedirectURL
-	saved.Scopes = cfg.OAuth.Scopes
 	configData, err := json.Marshal(saved)
 	if err != nil {
 		return "", errors.New("cannot encode destination OAuth configuration")
@@ -113,6 +129,9 @@ func importVaultOAuthCredential(ctx context.Context, api *StreamingAPI, id strin
 	}
 	if err := writeImportedVaultCredential(destination, data); err != nil {
 		return "", errors.New("cannot seal destination OAuth token")
+	}
+	if missingProvider {
+		return "credentials saved; provider setup required", nil
 	}
 	return "imported", nil
 }

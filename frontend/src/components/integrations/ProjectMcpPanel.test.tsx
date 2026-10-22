@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '../ui/tooltip'
 const mocks=vi.hoisted(()=>({get:vi.fn()}))
-vi.mock('../../services/api',()=>({default:{get:mocks.get}}))
+vi.mock('../../services/api',()=>({default:{get:mocks.get},getApiBaseUrl:()=>'',getAuthToken:()=>null}))
 vi.mock('./useVaultSetupDraft', () => ({ useVaultSetupDraft: () => ({ open: vi.fn(), error: '' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: vi.fn() } }))
 vi.mock('../../utils/workspacePaneChat', () => ({ openWorkspacePaneChatWithDraft: vi.fn() }))

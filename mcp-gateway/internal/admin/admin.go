@@ -924,8 +924,15 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			writeErr(w, 404, errors.New("OAuth connection not found"))
 			return
 		}
-		if c.OAuthCredentialID == "" {
+		var in struct{ CustomOAuth bool }
+		if r.ContentLength != 0 && !decode(w, r, &in) {
+			return
+		}
+		if c.OAuthCredentialID == "" || in.CustomOAuth {
 			a.Gateway.ResetConnectorSession(c.ID)
+			if in.CustomOAuth {
+				c.OAuthServer = "custom:" + c.Provider
+			}
 			c.OAuthCredentialID = c.ID
 			c.Status = store.StatusAuthRequired
 			a.Store.AddConnector(c)

@@ -110,4 +110,30 @@ func TestVaultOAuthMigrationResealsWithoutExposingOrOverwritingCredentials(t *te
 	if _, err := importVaultOAuthCredential(context.Background(), api, id, true); err == nil {
 		t.Fatal("source outside credential root accepted")
 	}
+	// The local import found an orphaned provider template with a real saved
+	// login. Keep that login and DCR client in Vault without inventing endpoints.
+	delete(cfg.MCPServers, "Linear")
+	writeConfig()
+	legacy := expandPath(getUserTokenFilePath(platformMCPTokenUserID, "Linear"))
+	if err := oauth.WriteTokenFile(legacy, data); err != nil {
+		t.Fatal(err)
+	}
+	clientPath := expandPath(getUserClientFilePath(platformMCPTokenUserID, "Linear"))
+	if err := oauth.WriteTokenFile(clientPath, []byte(`{"client_id":"retained-client","client_secret":"retained-secret","redirect_uri":"https://example.com/callback"}`)); err != nil {
+		t.Fatal(err)
+	}
+	status, err = importVaultOAuthCredential(context.Background(), api, id, true)
+	if err != nil || status != "credentials saved; provider setup required" {
+		t.Fatal(status, err)
+	}
+	got, err = oauth.ReadTokenFile(dest)
+	if err != nil || string(got) != string(data) {
+		t.Fatal("orphaned credential lost", err)
+	}
+	rawConfig, err := oauth.ReadTokenFile(vaultCredentialConfigPath(id))
+	var retained oauth.OAuthConfig
+	if err != nil || json.Unmarshal(rawConfig, &retained) != nil || retained.ClientID != "retained-client" || retained.ClientSecret != "retained-secret" || retained.AuthURL != "" || retained.TokenURL != "" || retained.RedirectURL != "https://example.com/callback" {
+		t.Fatal("orphaned account data lost or invented")
+	}
+
 }
