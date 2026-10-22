@@ -348,7 +348,7 @@ func (api *StreamingAPI) reportPreviewScriptHandler(w http.ResponseWriter, r *ht
 // comes through the authenticated report host and its current caller checks.
 func (api *StreamingAPI) dashboardJSONAssetHandler(w http.ResponseWriter, r *http.Request) {
 	name := filepath.Base(r.URL.Path)
-	if name != "dashboard-json.js" && name != "dashboard-json.css" {
+	if name != "dashboard-json.js" && name != "dashboard-json.css" && name != "dashboard-react.js" {
 		http.NotFound(w, r)
 		return
 	}

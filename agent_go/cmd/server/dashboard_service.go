@@ -304,7 +304,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if args.Action == "catalog" {
-		externalJSON(w, json.RawMessage(dashboards.JSONCatalog))
+		externalJSON(w, dashboards.AuthoringCatalog())
 		return
 	}
 	if args.Action == "list" && args.Workspace == "" {

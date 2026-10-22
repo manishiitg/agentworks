@@ -242,7 +242,7 @@ func TestJSONDashboardAssetsUseThePackagedFrontend(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("STATIC_DIR", dir)
 	api := &StreamingAPI{}
-	for _, name := range []string{"dashboard-json.js", "dashboard-json.css"} {
+	for _, name := range []string{"dashboard-json.js", "dashboard-json.css", "dashboard-react.js"} {
 		body := "/* trusted renderer " + name + " */"
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0644); err != nil {
 			t.Fatal(err)

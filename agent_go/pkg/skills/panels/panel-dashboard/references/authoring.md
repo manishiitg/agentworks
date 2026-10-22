@@ -1,6 +1,6 @@
 ---
 name: "dashboard-authoring"
-description: "Dashboard MCP operations, JSON-render defaults, the full shadcn catalog, existing HTML, data scripts, preview and team links."
+description: "Dashboard MCP operations, React TSX defaults, existing JSON/shadcn and HTML compatibility, data scripts, preview and team links."
 external: true
 external_tools: ["*dashboard*", "get_report_link"]
 ---
@@ -21,10 +21,71 @@ new functions appear there only when they update the page. The platform does
 not add controls to custom dashboards. Exact revisions and exports stay saved
 snapshots.
 
-## JSON-render is the default
+## React TSX is the default
 
-Create new dashboards with Vercel json-render and the complete supplied shadcn
-catalog. Call `get_dashboard_catalog` for the pinned component props and supported
+Author new dashboards as `files["index.tsx"]` through create_dashboard or
+update_dashboard. The server compiles the submitted source and saves an immutable
+hosted Dashboard revision. Do not create a separate Vite/npm application, ask the
+person to run a dev server, or hand-edit the generated index.html/dashboard-app.js/
+dashboard-app.css. A compile error leaves the current draft and live page unchanged.
+TypeScript is transpiled; this does not claim a full TypeScript type check.
+
+Read get_dashboard_catalog for supported imports. React, react-dom,
+react-dom/client, react/jsx-runtime and @agentworks/dashboard are supplied by the
+platform. Relative imports resolve only within the submitted bundle: .tsx, .ts,
+.js, .mjs, .json, .css and image/font assets. Other npm packages and network imports
+are not installed by this authoring path; bundle needed browser code as local
+files or use the supplied modules. No server code runs during compilation.
+
+Default-export a React component receiving `{data, report}`. Optionally export
+`async function loadData(report)` to fetch the initial data and each explicit
+refresh. The host waits for that promise and committed React DOM before reporting
+preview readiness or freezing export data. Use React state for local navigation,
+filters and interactions. Put initial data reads in loadData, not an untracked
+effect or top-level asynchronous call. Do not start business actions on page load.
+
+```tsx
+import { useState } from 'react';
+import './style.css';
+type Summary = { total: number };
+export async function loadData(report): Promise<Summary> {
+  return report.get('db/summary.json'); // inspect the actual file/schema first
+}
+export default function Dashboard({data, report}: {data: Summary; report: any}) {
+  const [details, setDetails] = useState(false);
+  return <main><h1>Overview</h1><strong>{data.total}</strong>
+    <button onClick={() => setDetails(!details)}>Details</button>
+    {details && <p>Recorded total from the project summary.</p>}
+    {report.chat?.available && <button onClick={() => report.chat.open()}>Ask</button>}
+    <button data-report-action="lookup">Look up a record</button>
+  </main>;
+}
+```
+
+The report prop (also imported as `report` from @agentworks/dashboard) uses the
+same authorized query/get/run, file/media, updates, costs, goal metrics, Ask,
+published-function and motion APIs documented below. Function buttons keep the
+same data-report-action attributes in JSX. Preview never sends chat or runs a
+published function. Use report.motion for seekable animations and MP4 exports.
+Project permissions, selected sources and existing execution rights still apply.
+
+Import ordinary CSS for responsive design; the shared base theme is supplied.
+Arbitrary Tailwind utility classes are not compiled from dashboard source. Keep
+styles customizable and preserve the person's visual design. Read and inspect the
+existing page, data and controls before converting; carry every view and action
+across. When converting a JSON dashboard remove index.json in the same update.
+Keep the same dashboard_id so its list entry, shared link and publication history
+remain intact. Confirm publish with list_dashboards and get_dashboard_link.
+
+HTML-only authoring is deprecated for new dashboards. Existing HTML pages and
+revisions continue to render, edit, publish, restore, share and export. Existing
+JSON dashboards also remain supported. Do not silently rewrite them or delete
+saved HTML history. Use the compatibility sections below for their current APIs.
+
+## Existing JSON-render dashboards
+
+Existing JSON dashboards retain Vercel json-render and the complete supplied shadcn
+catalog. For new dashboards use TSX below. Call `get_dashboard_catalog` for the pinned component props and supported
 actions. The designer chooses layout, typography, colors, navigation and placement;
 there are no required sections or sample business values.
 
@@ -93,7 +154,7 @@ Choose an editable starting composition, then adapt or combine it:
 | Use an assistant or service | The actual purpose, Card components for the available published functions, and AskButton or a placed ChatPanel. Explain each action in ordinary words; no invented metrics or decorative charts. |
 
 These are examples for the agent, not user-facing modes or required sections.
-Use only components and props returned by the pinned catalog. For a broad page,
+For existing JSON pages, use only components and props returned by the pinned catalog. TSX pages use React and the runtime imports returned by get_dashboard_catalog. For a broad page,
 a vertical Stack with `align: "stretch"` avoids narrow child cards. A Grid of
 Metric components gives a compact summary; a Grid of Card components can pair a
 chart with its breakdown. Card already supplies its surface and heading; avoid
@@ -141,7 +202,7 @@ business page with fictional values to make it look complete.
    below640px, then its requested columns. Override it through supported
    className/CSS when the user's layout needs different behavior. Check long
    labels, dense tables, keyboard focus and names for icon-only controls.
-4. Keep everything customizable. Top-level `styles` is normal authored CSS and
+4. Keep everything customizable. Imported CSS (or existing JSON top-level `styles`) is normal authored CSS and
    takes precedence over the default CSS layers. `#dashboard-root` is the page
    surface. Override `--dashboard-page-width`, `--dashboard-page-padding`,
    `--dashboard-font-family`, `--dashboard-card-padding`,

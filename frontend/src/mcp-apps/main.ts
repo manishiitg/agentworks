@@ -37,7 +37,7 @@ function renderDocument() {
   // an authorization token or fetches the app's authenticated static routes.
   for (const script of page.querySelectorAll<HTMLScriptElement>('script[src]')) {
     const src = script.getAttribute('src') || ''
-    const name = src.endsWith('/dashboard-json.js') ? 'dashboard-json.js' : ''
+    const name = src.endsWith('/dashboard-json.js') ? 'dashboard-json.js' : src.endsWith('/dashboard-react.js') ? 'dashboard-react.js' : ''
     const source = name ? runtimes[name] : dashboard.files[src.replace(dashboard.asset_prefix + '/', '')]
     if (source) {
       script.removeAttribute('src')

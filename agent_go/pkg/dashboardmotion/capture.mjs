@@ -69,10 +69,10 @@ async function prepareDashboard(page) {
   if (!runtime.ok) throw new Error('The dashboard rendering runtime is unavailable.')
   fs.mkdirSync(path.join(config.project, '.runtime'), { recursive: true })
   fs.writeFileSync(path.join(config.project, '.runtime/report-preview.js'), await runtime.text())
-  if (captured.renderer === 'json-render') {
-    for (const name of ['dashboard-json.js', 'dashboard-json.css']) {
+  if (captured.renderer === 'json-render' || captured.renderer === 'tsx') {
+    for (const name of [captured.renderer === 'tsx' ? 'dashboard-react.js' : 'dashboard-json.js', 'dashboard-json.css']) {
       const asset = await fetch(new URL('/' + name, origin))
-      if (!asset.ok) throw new Error('The JSON dashboard rendering assets are unavailable.')
+      if (!asset.ok) throw new Error('The dashboard rendering assets are unavailable.')
       fs.writeFileSync(path.join(config.project, '.runtime', name), Buffer.from(await asset.arrayBuffer()))
     }
   }

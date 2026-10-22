@@ -16,7 +16,7 @@ var dashboardActions = map[string]string{"get_dashboard_catalog": "catalog", "ex
 
 func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("get_dashboard_catalog", "Read the complete pinned json-render/shadcn dashboard component catalog, props and supported local actions. Use once before authoring index.json; layout and styling are the designer choice. Includes existing project data, Ask and function widget mechanics.", false, false, map[string]any{})
+	add("get_dashboard_catalog", "Read the managed React TSX authoring contract, supported runtime imports, starter source, and existing JSON-render/shadcn catalog. Use before authoring index.tsx. HTML authoring is deprecated; existing HTML and JSON dashboards remain supported. Data, Ask, functions and sharing use the existing project contracts.", false, false, map[string]any{})
 	for _, name := range []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"} {
 		action := dashboardActions[name]
 		props := map[string]any{
@@ -43,7 +43,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		}
 		if action == "create" || action == "update" {
 			props["title"] = externalString("Dashboard title (at most 200 characters).")
-			props["files"] = map[string]any{"type": "object", "maxProperties": 100, "additionalProperties": map[string]any{"type": "string"}, "description": "File contents by dashboard-relative path. Binary images/fonts use matching base64 data URLs. index.json is the default json-render specification (root/elements/state); the server generates index.html. Existing HTML dashboards may still supply index.html without index.json. Assets may be HTML/CSS/JS/JSON/SVG/text/CSV, Python/JS scripts go under scripts/. Use {{dashboard_assets}} and {{dashboard_scripts}} in source to address this exact revision."}
+			props["files"] = map[string]any{"type": "object", "maxProperties": 100, "additionalProperties": map[string]any{"type": "string"}, "description": "File contents by dashboard-relative path. Binary images/fonts use matching base64 data URLs. index.tsx is the default React source; default-export a component and optionally export async loadData(report). Relative TSX/TS/JS/JSON/CSS imports are bundled by the server; see get_dashboard_catalog for runtime modules. The server generates index.html/dashboard-app.js/dashboard-app.css. Supply only one source entry; remove index.json when converting JSON to TSX. Existing index.json remains supported; index.html-only authoring is deprecated and retained for existing HTML compatibility. Assets may be HTML/TSX/TS/CSS/JS/JSON/SVG/text/CSV, Python/JS scripts go under scripts/. Use {{dashboard_assets}} and {{dashboard_scripts}} in source to address this exact revision."}
 			if action == "create" {
 				required = append(required, "title", "files")
 			} else {
@@ -67,7 +67,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		descriptions := map[string]string{
 			"list":     "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. Existing HTML dashboards are included.",
 			"get":      "Read a dashboard bundle and revision. Draft source requires edit rights and existing product authoring consent.",
-			"create":   "Create a new dashboard draft from index.json using the full json-render/shadcn catalog (get_dashboard_catalog). Existing HTML bundles remain supported. Does not publish or select new data sources. Uses existing workflow/Flow/Crew/Code authoring consent and current project edit access.",
+			"create":   "Create a managed React TSX dashboard draft from index.tsx (get_dashboard_catalog). The server compiles and hosts it in Dashboards; no separate npm app/server. Existing JSON and deprecated HTML bundles remain supported. Does not publish or select new data sources. Uses existing workflow/Flow/Crew/Code authoring consent and current project edit access.",
 			"update":   "Update supplied draft files/title and optionally remove files, preserving omitted files. Creates an immutable revision; published viewers keep seeing the published bundle.",
 			"validate": "Validate the exact dashboard revision with the same HTML, SQL schema and referenced-file checks as the app Builder.",
 			"preview":  "Render the exact dashboard revision with the app's real browser runtime; returns state, data/script errors and screenshots. Requires project edit rights, dashboards:read and runs:execute (live scripts may use your allowed selected sources).",

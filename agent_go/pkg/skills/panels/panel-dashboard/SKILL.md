@@ -43,7 +43,7 @@ metadata:
 
 # Project dashboard
 
-Use list_dashboards and get_dashboard first. Use create_dashboard/update_dashboard, validate_dashboard and preview_dashboard on the exact revision, then publish_dashboard when requested. Read get_dashboard_catalog for the authoring contract. Use get_dashboard_link to show the result; a link does not grant access. Preserve authored format and content. Cost, file and database access remain the current product’s own checks.
+Use list_dashboards and get_dashboard first. Use create_dashboard/update_dashboard, validate_dashboard and preview_dashboard on the exact revision, then publish_dashboard when requested. Read get_dashboard_catalog for the authoring contract. Use get_dashboard_link to show the result; a link does not grant access. Use managed TSX for new dashboards. HTML authoring is deprecated; existing HTML and JSON remain supported. Preserve authored content and format unless conversion is requested. Cost, file and database access remain the current product’s own checks.
 
 Dashboard work stays in the project's dashboard list. “Move this dashboard to React” means the hosted dashboard, not a separate Vite app or localhost server. Read the React section in the detailed procedure; a successful npm build alone is not a completed dashboard. Do not claim it is published until list_dashboards confirms its publication and get_dashboard_link returns its link.
 

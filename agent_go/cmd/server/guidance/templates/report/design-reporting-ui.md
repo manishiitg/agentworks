@@ -1,5 +1,5 @@
 Create or update the workflow's Dashboard using the user's requested design.
-Use JSON-render by default, preserving existing HTML when editing it.
+Use managed React TSX (index.tsx) by default. HTML is deprecated for new dashboards; preserve existing HTML and JSON unless asked to convert.
 Load the platform usage references first:
 `read_skill(skills=[{"name":"builder-reference","path":"references/reporting-policy.md"}])`
 and
@@ -16,9 +16,9 @@ If motion is requested, also load
 ## Shared dashboard authoring
 
 Read `builder-reference/references/dashboard-authoring.md` with read_skill
-before choosing components, authoring index.json, previewing or publishing.
+before choosing components, authoring index.tsx, previewing or publishing.
 It is the same canonical authoring procedure as panel-dashboard in Crew and
-Relay Builders. It owns the JSON-render schema, default theme, design workflow
+Relay Builders. It owns the TSX contract, existing JSON schema, default theme, design workflow
 and shared widget/API examples. Use get_dashboard_catalog for the current
 component contracts. The sections below cover this Goal's own report data and
 runtime; a dashboard edit does not authorize plan or execution changes.

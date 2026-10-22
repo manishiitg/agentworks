@@ -132,7 +132,7 @@ func safeFile(p string) bool {
 		return ext == ".py" || ext == ".js" || ext == ".mjs"
 	}
 	switch ext {
-	case ".html", ".css", ".js", ".mjs", ".json", ".svg", ".txt", ".csv", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2":
+	case ".html", ".tsx", ".ts", ".css", ".js", ".mjs", ".json", ".svg", ".txt", ".csv", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2":
 		return true
 	}
 	return false
@@ -553,7 +553,15 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 		}
 		delete(snap.Files, p)
 	}
-	if err := prepareJSONSnapshot(&snap); err != nil {
+	// Bound authored input before compilation as well as the resulting bundle.
+	input, err := json.Marshal(snap)
+	if err != nil {
+		return out, err
+	}
+	if len(snap.Files) > 100 || len(input) > MaxBytes {
+		return out, fail(413, "dashboard exceeds 100 files or 8 MiB")
+	}
+	if err := prepareTSXSnapshot(&snap); err != nil {
 		return out, err
 	}
 	if _, ok := snap.Files["index.html"]; !ok {

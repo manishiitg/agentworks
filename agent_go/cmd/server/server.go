@@ -3230,6 +3230,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	router.HandleFunc(reportPreviewPagePath, api.reportPreviewPageHandler).Methods("GET")
 	router.HandleFunc(reportPreviewPagePath+"report-preview.js", api.reportPreviewScriptHandler).Methods("GET")
 	router.HandleFunc("/dashboard-json.js", api.dashboardJSONAssetHandler).Methods("GET")
+	router.HandleFunc("/dashboard-react.js", api.dashboardJSONAssetHandler).Methods("GET")
 	router.HandleFunc("/dashboard-json.css", api.dashboardJSONAssetHandler).Methods("GET")
 
 	// Static file serving (for frontend). Unknown GET/HEAD routes fall back to

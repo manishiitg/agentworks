@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && DASHBOARD_RUNTIME=tsx vite build",
     "catalog": "node scripts/catalog.mjs"
   },
   "dependencies": {
