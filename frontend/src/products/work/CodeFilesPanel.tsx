@@ -93,6 +93,8 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string; works
   const [settings, setSettings] = useState<LaptopSettings>({ device_id: '', folders: [], commands: false })
   const [directory, setDirectory] = useState<LaptopDirectory>()
   const [path, setPath] = useState('')
+  const [folderFilter, setFolderFilter] = useState('')
+  const [showHidden, setShowHidden] = useState(false)
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -118,10 +120,13 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string; works
     try {
       const query = new URLSearchParams({ device_id: settings.device_id, path: next })
       const result = await api.get<LaptopDirectory>(`${endpoint}/folders?${query}`, { skipSessionContext: true })
-      setDirectory(result.data); setPath(result.data.path)
+      setDirectory(result.data); setPath(result.data.path); setFolderFilter('')
     } catch (cause) { setError(localFileError(cause)) }
     finally { setBusy(false) }
   }
+  // Folders starting with a dot are hidden unless asked for or searched for with a dot; the search matches anywhere in the name.
+  const needle = folderFilter.trim().toLowerCase()
+  const visibleFolders = (directory?.folders ?? []).filter(name => (showHidden || needle.startsWith('.') || !name.startsWith('.')) && (!needle || name.toLowerCase().includes(needle)))
   const join = (root: string, child: string) => `${root.replace(/[\\/]$/, '')}${root.includes('\\') ? '\\' : '/'}${child}`
   return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Laptop access" description="Connect your computer once, then choose the folders this Crew can use.">
     <div className="space-y-4">
@@ -146,7 +151,14 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string; works
       {directory && <div className="space-y-2 rounded-md border border-border p-3">
         <form className="flex gap-2" onSubmit={event => { event.preventDefault(); void browse(path) }}><input aria-label="Folder path" value={path} onChange={event => setPath(event.target.value)} className="min-w-0 flex-1 rounded border border-border bg-background p-2 text-xs" /><Button size="sm" variant="outline" disabled={busy}>Open</Button></form>
         <Button size="sm" variant="ghost" disabled={busy || directory.parent === directory.path} onClick={() => void browse(directory.parent)}><ArrowUp className="h-3 w-3" />Parent folder</Button>
-        <div className="max-h-52 overflow-auto">{directory.folders.map(name => <button key={name} disabled={busy} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" onClick={() => void browse(join(directory.path, name))}><Folder className="h-4 w-4" />{name}</button>)}</div>
+        <div className="flex items-center gap-3">
+          <input aria-label="Search folders" placeholder="Search folders here…" value={folderFilter} onChange={event => setFolderFilter(event.target.value)}
+            onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); if (visibleFolders.length === 1) void browse(join(directory.path, visibleFolders[0])) } }}
+            className="min-w-0 flex-1 rounded border border-border bg-background p-2 text-xs" />
+          <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" checked={showHidden} onChange={event => setShowHidden(event.target.checked)} />Show hidden</label>
+        </div>
+        <div className="max-h-52 overflow-auto">{visibleFolders.map(name => <button key={name} disabled={busy} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" onClick={() => void browse(join(directory.path, name))}><Folder className="h-4 w-4" />{name}</button>)}
+          {visibleFolders.length === 0 && <p role="status" className="px-2 py-1.5 text-xs text-muted-foreground">{folderFilter.trim() ? 'No folder here matches. Type a full path above and press Open to go elsewhere.' : 'No folders here.'}</p>}</div>
         <div className="flex gap-2"><Button size="sm" disabled={busy || settings.folders.some(folder => folder.path === directory.path)} onClick={() => void save({ ...settings, folders: [...settings.folders, { id: '', path: directory.path, access: 'read' }] }).then(saved => { if (saved) setDirectory(undefined) })}>Allow this folder</Button><Button size="sm" variant="ghost" onClick={() => setDirectory(undefined)}>Close</Button></div>
       </div>}
       {settings.device_id && <label className="flex items-start gap-2 rounded-md border border-border p-3 text-xs leading-5">

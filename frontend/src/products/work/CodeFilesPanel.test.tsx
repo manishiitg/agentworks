@@ -29,6 +29,26 @@ it('uses backend folder permissions and changes them without reconnecting the CL
  expect(container.textContent).toContain('AgentBridge uses the same CLI')
  expect(container.textContent).not.toContain('--workspace')
 })
+it('searches the folders of the folder picker and hides dot folders until asked', async () => {
+ const settings = { device_id: 'laptop', commands: false, folders: [] }
+ const directory = { path: '/Users/me', parent: '/Users', folders: ['.hidden', 'Documents', 'notes', 'notes-old'] }
+ transport.get.mockImplementation(async (url: string) => ({ data: url.includes('/folders') ? directory : settings }))
+ container = document.createElement('div'); document.body.append(container); root = createRoot(container)
+ await act(async () => root.render(<CodeLocalFilesSettings sessionId="chat" />))
+ const add = [...container.querySelectorAll('button')].find(button => button.textContent === 'Add folder') as HTMLButtonElement
+ await act(async () => { add.click() })
+ const names = () => [...container.querySelectorAll('button')].map(button => button.textContent).filter(text => ['.hidden', 'Documents', 'notes', 'notes-old'].includes(text ?? ''))
+ expect(names()).toEqual(['Documents', 'notes', 'notes-old'])
+ const type = async (input: HTMLInputElement, value: string) => act(async () => {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+ })
+ const search = container.querySelector('input[aria-label="Search folders"]') as HTMLInputElement
+ await type(search, 'NOTES')
+ expect(names()).toEqual(['notes', 'notes-old'])
+ await type(search, '.hi')
+ expect(names()).toEqual(['.hidden'])
+})
 it('keeps ordinary files on the server', async () => {
  container = document.createElement('div'); document.body.append(container); root = createRoot(container)
  await act(async () => root.render(<CodeFilesPanel sessionId="chat" onAsk={async () => {}} serverFiles={<p>Server files</p>} />))
