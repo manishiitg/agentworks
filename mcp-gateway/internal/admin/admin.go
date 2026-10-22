@@ -913,6 +913,25 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 	}))
+	// One-off credential identity import. Keeps connector IDs, grants and history.
+	mux.HandleFunc("/api/admin/connectors/{id}/migrate-oauth", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(405)
+			return
+		}
+		c, ok := a.Store.GetConnector(r.PathValue("id"))
+		if !ok || c.WorkspaceID != a.WorkspaceID || c.OAuthServer == "" {
+			writeErr(w, 404, errors.New("OAuth connection not found"))
+			return
+		}
+		if c.OAuthCredentialID == "" {
+			a.Gateway.ResetConnectorSession(c.ID)
+			c.OAuthCredentialID = c.ID
+			c.Status = store.StatusAuthRequired
+			a.Store.AddConnector(c)
+		}
+		writeJSON(w, 200, c)
+	}))
 	mux.HandleFunc("/api/admin/connectors/{id}/oauth/disconnect", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(405)
