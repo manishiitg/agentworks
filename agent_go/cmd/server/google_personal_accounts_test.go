@@ -263,12 +263,12 @@ esac
 	}
 	coReconnect := httptest.NewRecorder()
 	startGmailOAuthHandler(api)(coReconnect, mux.SetURLVars(googleAppRequest(http.MethodPost, "/", "", "builder"), map[string]string{"id": "mine"}))
-	if coReconnect.Code != http.StatusForbidden {
+	if coReconnect.Code != http.StatusNotFound {
 		t.Fatalf("co-owner personal reconnect: %d", coReconnect.Code)
 	}
 	coDisconnect := httptest.NewRecorder()
 	deleteGmailConnectionHandler(api)(coDisconnect, mux.SetURLVars(googleAppRequest(http.MethodDelete, "/", "", "builder"), map[string]string{"id": "mine"}))
-	if coDisconnect.Code != http.StatusForbidden {
+	if coDisconnect.Code != http.StatusNotFound {
 		t.Fatalf("co-owner personal disconnect: %d", coDisconnect.Code)
 	}
 	selectAccount("builder", "other", crew, false, 200)
