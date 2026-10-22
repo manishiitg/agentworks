@@ -106,6 +106,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"diff_patch_workspace_file":              false,
 		"execute_shell_command":                  false,
 		"agent_browser":                          false,
+		"browser_connections":                    false,
 		"read_image":                             false,
 		"list_secrets":                           false,
 		"set_workflow_secret":                    false,

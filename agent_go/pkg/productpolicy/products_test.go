@@ -74,8 +74,8 @@ func TestCallerCannotEnableUninstalledProducts(t *testing.T) {
 	if s.Has("vault") || s.Has("code") {
 		t.Fatal("caller bypassed local installation")
 	}
-	if s.AllowsBinding("code.create-project") || s.AllowsTool("create_code_workspace") || s.AllowsSkill("code-mcp") {
-		t.Fatal("disabled Code capability remains available")
+	if s.AllowsBinding("relay.create") || s.AllowsTool("create_relay") || s.AllowsSkill("relay-builder") {
+		t.Fatal("disabled Flow capability remains available")
 	}
 	if !s.AllowsSkill("code-authoring") || !s.AllowsTool("execute_shell_command") {
 		t.Fatal("ordinary CLI/script authoring was removed")
@@ -136,7 +136,7 @@ func TestProjectionCleanupPreservesUserSkillsAndSymlinks(t *testing.T) {
 		return p
 	}
 	disabled := mkdir("brain", true)
-	disabledCode := mkdir("code-mcp", true)
+	crewGuide := mkdir("code-mcp", true) // Existing copies are classified as Crew after project consolidation.
 	user := mkdir("vault-access", false)
 	local := mkdir("workflow-learnings", true)
 	outside := t.TempDir()
@@ -149,10 +149,7 @@ func TestProjectionCleanupPreservesUserSkillsAndSymlinks(t *testing.T) {
 	if _, err := os.Stat(disabled); !os.IsNotExist(err) {
 		t.Fatal("disabled projection remains")
 	}
-	if _, err := os.Stat(disabledCode); !os.IsNotExist(err) {
-		t.Fatal("disabled Code projection remains")
-	}
-	for _, p := range []string{user, local, outside, filepath.Join(root, ".agents", "skills", "relay-builder")} {
+	for _, p := range []string{crewGuide, user, local, outside, filepath.Join(root, ".agents", "skills", "relay-builder")} {
 		if _, err := os.Lstat(p); err != nil {
 			t.Fatal("removed user content", p, err)
 		}

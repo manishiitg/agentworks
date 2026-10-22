@@ -241,7 +241,7 @@ func TestMCPFeatureScope(t *testing.T) {
 	feature := personal.ResolvedFeatures[0]
 	// The platform-wide tools go; the skill stays (the product supplies the
 	// text for its own kind of connection) and the guidance names the tool.
-	if len(feature.Tools) != 0 || len(feature.Skills) != 1 || !strings.Contains(feature.PromptExtension, "install_mcp_server") {
+	if len(feature.Tools) != 0 || !containsString(feature.Skills, "panel-mcp-connections") || !containsString(feature.Skills, "panel-mcp-access") || !strings.Contains(feature.PromptExtension, "install_mcp_server") {
 		t.Fatalf("personal MCP = %+v", feature)
 	}
 	if _, err := resolve("everyone"); err == nil {

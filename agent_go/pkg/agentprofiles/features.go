@@ -145,13 +145,13 @@ var featureCatalog = map[string]featureDefinition{
 		Tools:           []string{"list_work_folders", "attach_work_folder", "detach_work_folder"},
 		Skills:          []string{"panel-linked-folders", "panel-files"},
 		UIPanels:        []string{"folders"},
-		PromptExtension: "Administrator-authorized attached folders are enabled. Read `panel-linked-folders` before managing grants and `panel-linked-folders` before reading attached content. Use the least access required and inspect the current grants before changing them.",
+		PromptExtension: "Administrator-authorized attached folders are enabled. Read `panel-linked-folders` before managing grants and `panel-files` before reading attached content. Use the least access required and inspect the current grants before changing them.",
 	},
 	"workflow-references": {
 		Tools:           []string{"list_accessible_workflows", "attach_workflow_reference", "detach_workflow_reference", "list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run", "define_function", "delete_function", "list_functions", "call_function", "get_function_call", "reply_function_call", "ask_function_update", "report_function_progress", "return_function_result"},
 		Skills:          []string{"panel-linked-folders", "panel-functions", "panel-files"},
 		Capabilities:    map[string]CapabilityRequirement{"workflow_references": CapabilityPreferred},
-		PromptExtension: "Crew and workflow references and functions are enabled. Read the attached `panel-linked-folders` skill before discovering, attaching, reading or invoking referenced projects, or answering incoming function calls.",
+		PromptExtension: "Crew and workflow references and functions are enabled. Read `panel-linked-folders` before discovering or attaching referenced projects, `panel-files` before reading their files, and `panel-functions` before invoking a project or answering incoming function calls.",
 	},
 	"terminal": {
 		Capabilities:    map[string]CapabilityRequirement{"raw_terminal": CapabilityPreferred},
