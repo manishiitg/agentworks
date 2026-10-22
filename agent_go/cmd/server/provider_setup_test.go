@@ -325,7 +325,9 @@ stty sane -echo
 printf '\ntrust-accepted\n❯ '
 IFS= read -r command
 [ "$command" = /usage ] || exit 1
-printf '\nUsage: 42 percent\n'`}}}}
+printf '\nLoading usage data...\n'
+sleep 2.5
+printf '\nCurrent session: 42%% used\n'`}}}}
 	t.Cleanup(func() { providerSetupCommands = original })
 	manager := newProviderSetupManager()
 	session, err := manager.start("owner", "claude-code", "usage", 100, 24, nil, nil, false)
@@ -338,7 +340,7 @@ printf '\nUsage: 42 percent\n'`}}}}
 	session.mu.Unlock()
 	go driveProviderUsage(t.Context(), session)
 	output := collectProviderUsageOutput(session, 8*time.Second)
-	if !strings.Contains(output, "Usage: 42 percent") || strings.Contains(output, "trust") || strings.Contains(output, "No,exit") {
+	if !strings.Contains(output, "Current session: 42% used") || strings.Contains(output, "trust") || strings.Contains(output, "No,exit") {
 		t.Fatalf("collected usage: %q", output)
 	}
 }
@@ -506,5 +508,22 @@ func TestCollectedProviderUsageReportsStartupFailurePromptly(t *testing.T) {
 	session.mu.Unlock()
 	if failed == nil || !submitted.IsZero() || time.Since(started) > 2*time.Second {
 		t.Fatalf("startup failure was not reported promptly: %v, %v", failed, time.Since(started))
+	}
+}
+
+func TestProviderUsageLoadingWaitsForResultOrProviderError(t *testing.T) {
+	for _, check := range []struct {
+		output  string
+		pending bool
+	}{
+		{"Loading usage data…\nWhat's contributing to your limits usage?", true},
+		{"Loading usage data…\nCurrent session: 42% used", false},
+		{"Loading usage data…\nLogin expired. Run /login", false},
+		{"Loading usage data…\nUsage unavailable for this account", false},
+		{"Loading usage data…\nCurrent week 42%\nLoading usage data…", true},
+	} {
+		if got := providerUsageResultPending("claude-code", check.output); got != check.pending {
+			t.Errorf("pending(%q)=%t", check.output, got)
+		}
 	}
 }

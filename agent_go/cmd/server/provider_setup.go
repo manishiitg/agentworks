@@ -127,6 +127,8 @@ var providerSetupANSI = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x
 // never at the start of a line, /status was never sent and Check usage returned the start screen (server B 2026-10-08).
 var providerSetupCursorSpaces = regexp.MustCompile(`\x1b\[[0-9]*C`)
 
+var providerUsagePercentage = regexp.MustCompile(`\d+(?:\.\d+)?%`)
+
 var providerSetupCursorMoves = regexp.MustCompile(`\x1b\[[0-9;]*[HfEBd]`)
 
 // providerUsageScreenText is a usage terminal's output as plain text, one screen row per line.
@@ -992,6 +994,7 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 		session.mu.Unlock()
 		go driveProviderUsage(r.Context(), session)
 		text := collectProviderUsageOutput(session, providerUsageCollectTimeout)
+		pending := providerUsageResultPending(session.provider, text)
 		api.providerSetupManager().remove(session.id, true)
 		session.mu.Lock()
 		submitted := !session.usageSubmitted.IsZero()
@@ -1000,6 +1003,12 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 			writeAgentProfileError(w, http.StatusBadGateway, "The provider usage check stopped during startup. Try Check usage again.")
 			return
 		}
+		if pending {
+			log.Printf("[PROVIDER_USAGE] session=%s provider=%s result_timeout output_bytes=%d", session.id, session.provider, len(text))
+			writeAgentProfileError(w, http.StatusBadGateway, "The provider has not returned its usage details yet. Try Check usage again.")
+			return
+		}
+		log.Printf("[PROVIDER_USAGE] session=%s provider=%s collected output_bytes=%d", session.id, session.provider, len(text))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"usage_output": text})
 		return
@@ -1047,12 +1056,34 @@ func collectProviderUsageOutput(session *providerSetupSession, timeout time.Dura
 		session.mu.Lock()
 		submitted, updated := session.usageSubmitted, session.updatedAt
 		session.mu.Unlock()
-		if !submitted.IsZero() && time.Since(submitted) > providerUsageSettle && time.Since(updated) > providerUsageSettle {
+		if !submitted.IsZero() && time.Since(submitted) > providerUsageSettle && time.Since(updated) > providerUsageSettle && !providerUsageResultPending(session.provider, result()) {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	return result()
+}
+
+// The CLI draws its loading notice before the network reply. Quiet output alone
+// does not mean quota data is ready. Match text after the last loading redraw so
+// the retained transcript's old notice cannot hide a later result or error.
+func providerUsageResultPending(provider, output string) bool {
+	if provider != "claude-code" {
+		return false
+	}
+	compact := strings.ToLower(strings.Join(strings.Fields(output), ""))
+	marker := "loadingusagedata"
+	at := strings.LastIndex(compact, marker)
+	if at < 0 {
+		return false
+	}
+	tail := compact[at+len(marker):]
+	for _, result := range []string{"currentsession", "currentweek", "remaining", "notavailable", "unavailable", "failed", "error", "login", "signinto", "used"} {
+		if strings.Contains(tail, result) {
+			return false
+		}
+	}
+	return !providerUsagePercentage.MatchString(tail)
 }
 
 func cleanProviderUsageText(raw string) string {
