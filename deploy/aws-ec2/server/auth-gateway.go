@@ -844,6 +844,12 @@ func isChromeExtensionBrowserRequest(r *http.Request) bool {
 	return r.Method == http.MethodGet && r.URL.Path == "/api/browser/extension/connect"
 }
 
+// The MCP Apps child loads without cookies or a bearer. It serves only an
+// inert bootstrap; the agent response enforces an opaque sandbox origin.
+func isMCPAppsFrameRequest(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.URL.Path == "/api/mcp-apps/frame"
+}
+
 func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	// Do not promote a browser stream's URL credential to a bearer header.
 	// Enforce this before either shared-password or per-user authentication.
@@ -851,7 +857,7 @@ func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Use an Authorization header for event streams", http.StatusBadRequest)
 		return
 	}
-	if isWebhookRequest(r) || isGmailSetupBrowserRequest(r) || isChromeExtensionBrowserRequest(r) {
+	if isWebhookRequest(r) || isGmailSetupBrowserRequest(r) || isChromeExtensionBrowserRequest(r) || isMCPAppsFrameRequest(r) {
 		r.Header.Del("X-User-ID")
 		g.agent.ServeHTTP(w, r)
 		return
