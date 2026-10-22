@@ -1,6 +1,6 @@
 ---
 name: "dashboard-authoring"
-description: "Dashboard MCP operations, revisioned bundles, live HTML data APIs, Python/JS scripts, validation, preview and authenticated team links."
+description: "Dashboard MCP operations, JSON-render defaults, the full shadcn catalog, existing HTML, data scripts, preview and team links."
 external: true
 external_tools: ["*dashboard*", "get_report_link"]
 ---
@@ -21,37 +21,77 @@ new functions appear there only when they update the page. The platform does
 not add controls to custom dashboards. Exact revisions and exports stay saved
 snapshots.
 
-For external MCP, call `get_api_spec` to discover tool schemas, then `call_tool`
-with the chosen name and arguments. App Builder tools are bound to their project;
-external operations use the authorized `workspace` returned by discovery.
+## JSON-render is the default
 
-1. `list_dashboards` lists accessible documents, project roots and live URLs.
-   Omit workspace for cross-project discovery; use limit/offset for pagination.
-   Use `published_only: true` for the same live publications shown on `/dashboards`.
-   That page collects yours and dashboards shared with you automatically. Sharing
-   is still project access; removing access removes it from discovery and blocks its link.
-   Goals, <!-- product:relays -->Flows and <!-- /product -->Crews (including projects formerly called Code) use current project access.
-2. `get_dashboard` returns source and revision. Existing HTML documents can be
-   read using their returned document_path; adopt them by creating a new managed
-   bundle from that source. Existing files are preserved.
-3. `create_dashboard` takes dashboard_id (lowercase slug), title and files.
-   index.html is required. Text assets use file contents. PNG/JPEG/GIF/WebP images
-   and WOFF/WOFF2 fonts use matching base64 data URLs. Optional Python/JS/MJS
-   scripts go under scripts/. Maximum: 100 files, 8 MiB per bundle.
-4. `update_dashboard` supplies changed files/title and optional remove paths,
-   plus expected_revision. Omitted files remain. A stale revision is refused.
-5. `validate_dashboard` checks HTML APIs, SQL schema and referenced files.
-   `preview_dashboard` renders an exact revision with the actual report runtime
-   and returns state, errors and screenshot paths/authenticated URLs. Rendering
-   requires a configured browser. Fix observed errors before publishing.
-6. `publish_dashboard` validates the expected revision, then switches the live
-   pointer atomically. Drafts remain hidden in Run mode, and shared URLs keep
-   displaying the published bundle. `restore_dashboard` republishes a previously
-   published revision with the current draft revision as expected_revision.
-7. `get_dashboard_link` returns a live authenticated URL. For existing Goals<!-- product:relays --> or
-   Flow<!-- /product --> documents, `get_report_link` also returns it directly. URLs contain no
-   credentials and grant no access. Recipients must sign in with current project
-   access. Check shareable/warning: localhost links work on that machine only.
+Create new dashboards with Vercel json-render and the complete supplied shadcn
+catalog. Call `get_dashboard_catalog` for the pinned component props and supported
+actions. The designer chooses layout, typography, colors, navigation and placement;
+there are no required sections or sample business values.
+
+Use `index.json` as the editable source: `root`, `elements` and optional `state`.
+Each element has `type`, `props` and `children` (empty for a leaf); optional
+`on`, `watch`, `visible`, `repeat` and named `slots` use json-render semantics.
+Supply its JSON text in `files["index.json"]`. The server validates the catalog
+and tree and generates `index.html`; do not hand-edit that generated entry.
+Existing HTML documents and saved HTML revisions remain supported. Preserve an
+existing page's format unless the person asks to convert it.
+
+Optional `data` declarations use `{statePath, method: "query"|"get"|"run",
+sql|path, params|args}` through the existing authorized report APIs. Bind props
+with `{"$state":"/summary/total"}`; form inputs can use `$bindState`. Query
+params and script args can reference state. Inspect actual schemas/files and use
+recorded values; missing history stays unavailable. Local state/form actions and
+`refreshData` do not invoke a published function.
+
+The catalog includes all supplied shadcn components plus `Metric`, `BarChart`,
+`LineChart`, `AskButton`, `ChatPanel`, `FunctionButton` and `MotionControls`.
+Ask opens the existing composer without sending. ChatPanel needs its own id and
+positive height; the designer places and styles it. FunctionButton opens this
+project's published function form and requires the person to press Run. Existing
+project and function access applies; Flow function buttons remain unavailable.
+Preview does not open a conversation or execute functions.
+
+Use optional `styles` for authored CSS; app light/dark theme variables are supplied.
+Optional `motion: {duration: 12, statePath: "/playback"}` drives the existing shared
+clock; chart progress can bind to `/playback/progress`. Place MotionControls only
+when desired. MP4 captures the published layout, selected theme and frozen data.
+Images/avatars use allowed project assets or inline data images; links are static
+http(s)/mailto destinations opened by a click. The JSON format has no raw HTML,
+script or arbitrary-fetch component. Existing HTML keeps its browser API contract.
+
+## MCP operations
+
+Call `get_api_spec` for current schemas, then `call_tool` with a discovered name
+and matching arguments. Use `dashboard` with an `action` for the operations below;
+app Builder uses its native dashboard tools. Keep the discovered `workspace_id`,
+workflow_id or other project selector exactly as returned; do not infer a new root.
+
+1. `dashboard action=list` discovers accessible documents and authenticated URLs.
+   Omit the project selector for cross-project discovery; paginate with limit/offset.
+   `published_only: true` matches the Dashboards page. Removing access removes
+   discovery and blocks the link.
+2. `dashboard action=get` reads the source and revision. Existing HTML may use its
+   returned document_path and stays intact when adopted into a managed bundle.
+3. `dashboard action=create` takes dashboard_id (lowercase slug), title and files.
+   New pages supply index.json text; HTML-only pages may still supply index.html.
+   Images/fonts use matching base64 data URLs. Optional scripts go under scripts/.
+   Maximum:100 files and8 MiB per bundle.
+4. `dashboard action=update` takes changed files/title, optional remove paths and
+   expected_revision. Omitted files remain. Stale revisions are refused.
+5. `dashboard action=validate` checks the exact source, SQL and referenced files.
+   `dashboard action=preview` renders that revision with the real browser runtime;
+   inspect errors and screenshots and verify visible content, not only ready status.
+6. `dashboard action=publish` validates expected_revision and switches the live
+   pointer. Run users keep seeing the publication while drafts are edited.
+   `dashboard action=restore` republishes a saved revision, checking the current draft.
+7. `dashboard action=link` returns the authenticated URL. URLs contain no credentials
+   and grant no access; recipients sign in with their current project access.
+   Localhost links work only on that machine.
+
+Use `{{dashboard_assets}}` and `{{dashboard_scripts}}` for immutable bundle paths.
+For example a data declaration can run `{{dashboard_scripts}}/summary.py`; the
+script contract below still applies. The HTML widget/API examples below are
+references for existing HTML pages, not instructions to replace JSON source.
 
 External connections need `dashboards:read` for discovery, source reads and links.
 Drafts and publication use existing product authoring consent: `builder:chat` for
@@ -64,7 +104,7 @@ scripts can execute. Connections without authoring consent cannot edit or publis
 consent adds no authority; reconnect for existing product authoring consent.
 Connections gain no new scopes automatically; expiry and revocation remain enforced.
 
-## Optional native chat widgets
+## Existing HTML: optional native chat widgets
 
 In a managed Crew or workflow<!-- product:relays --> or Flow<!-- /product --> dashboard, the designer may add an open
 chat panel, a button, or both. Choose the placement, size, label, visibility and
@@ -125,7 +165,7 @@ another origin. Preview has no conversation: `chat.available` is false. Check
 availability before calling widget controls. These widgets require the managed dashboard
 host; loose HTML documents do not acquire native chat through markup alone.
 
-## Function buttons
+## Existing HTML: function buttons
 
 In a managed Crew or workflow dashboard, a button can open a native form for one
 of this project's published functions. Mark it with the function's name:
@@ -147,7 +187,7 @@ support these buttons. The chat’s `/` menu lists the same published functions.
 Current project access and each function’s allowed people are checked by the
 server when called.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product -->
 
-## Live HTML and scripts
+## Existing HTML APIs and the shared script contract
 
 The dashboard runs inside the shared report host. Load data in
 `window.report.ready(async () => { ... })`; the host repeats it on refresh.
