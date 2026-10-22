@@ -424,6 +424,20 @@ func TestProviderAccountsUsageRunsInAccountHome(t *testing.T) {
 	if w.Code != http.StatusCreated {
 		t.Fatalf("usage: %d %s", w.Code, w.Body.String())
 	}
+	waitSetupOutput(t, env.api, w, "❯")
+	var started struct {
+		Session providerSetupSnapshot `json:"session"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+	session, ok := env.api.providerSetupManager().get(started.Session.ID)
+	if !ok {
+		t.Fatal("usage session was not retained")
+	}
+	if err := session.userInput("/usage\r"); err != nil {
+		t.Fatal(err)
+	}
 	output := waitSetupOutput(t, env.api, w, "submitted:")
 	accountHome, _ := providerConnectionHome(account.ID)
 	if !strings.Contains(output, "submitted:/usage home:"+accountHome) {
