@@ -1,4 +1,4 @@
-import { BookOpen, Braces, CalendarClock, CheckCircle2, Code2, Database, DollarSign, Files, FolderTree, KeyRound, LayoutDashboard, MessageSquareText, Mic, Monitor, PanelsTopLeft, Plug, Settings, Sparkles, Terminal, UsersRound, Webhook, Workflow, Zap, type LucideIcon } from 'lucide-react'
+import { BookOpen, Braces, CalendarClock, CheckCircle2, Code2, Database, DollarSign, Files, FolderTree, KeyRound, LayoutDashboard, MessageSquareText, Mic, Monitor, Network, PanelsTopLeft, Plug, Settings, Sparkles, Terminal, UsersRound, Webhook, Workflow, Zap, type LucideIcon } from 'lucide-react'
 import type { AgentProfileFeature } from '../../utils/agentProfileCapabilities'
 import type { ProductMode } from '../../platform/chat/productProjects'
 import type { CrewStarterType } from './crewStarterTypes'
@@ -39,13 +39,16 @@ const PRIORITIES: Record<CrewStarterType, string[]> = {
   specialist: ['skills', 'files', 'memory', 'dashboard'],
   automation: ['workflow-references', 'skills', 'schedules', 'condition-triggers'],
   brain: ['knowledgebase', 'attached-folders', 'files', 'schedules'],
+  'chief-of-staff': ['workflow-references', 'attached-folders', 'dashboard', 'schedules', 'memory'],
 }
 
 export function crewFeaturePresentation(features: AgentProfileFeature[], type: CrewStarterType | undefined, mode: ProductMode) {
   const priority = type ? PRIORITIES[type] : ['files', 'memory', 'skills', 'dashboard']
   return [...new Map(features.map(feature => [feature.id, feature])).values()].map(feature => {
     const fallback = feature.id.replace(/[-_]/g, ' ').replace(/^./, text => text.toUpperCase())
-    const copy = COPY[feature.id] || { label: fallback, icon: CheckCircle2, example: `Ask how to use ${fallback.toLowerCase()} in this Crew.`, location: 'Chat' }
+    const copy = type === 'chief-of-staff' && feature.id === 'workflow-references'
+      ? { label: 'Crews & workflows', icon: Network, example: 'Show the Crews and workflows I can access, then help me coordinate the ones I choose.', location: 'Chat · Build → Functions', setup: true }
+      : COPY[feature.id] || { label: fallback, icon: CheckCircle2, example: `Ask how to use ${fallback.toLowerCase()} in this Crew.`, location: 'Chat' }
     // Cowork keeps code tools in chat, while its menu omits the terminal page.
     return { id: feature.id, ...copy, location: mode === 'cowork' && feature.id === 'terminal' ? 'Chat' : copy.location }
   }).sort((a, b) => {

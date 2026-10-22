@@ -29,7 +29,7 @@ async function input(host: HTMLElement, selector: string, value: string) {
 }
 it.each(CREW_STARTER_TYPES)('previews and creates the $label starting point without changing runtime mode', async starter => {
   const { host, onCreate } = await render()
-  expect(host.querySelectorAll('input[name="crew-type"]')).toHaveLength(6)
+  expect(host.querySelectorAll('input[name="crew-type"]')).toHaveLength(CREW_STARTER_TYPES.length)
   expect(host.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true)
   await act(async () => host.querySelector<HTMLInputElement>(`input[value="${starter.id}"]`)!.click())
   await click(host, 'Continue')

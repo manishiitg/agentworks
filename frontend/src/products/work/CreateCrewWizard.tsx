@@ -71,7 +71,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
         {step === 1 ? <fieldset disabled={submitting}>
           <legend className="sr-only">Crew type</legend>
           <div className="grid gap-2.5 sm:grid-cols-2">
-            {CREW_STARTER_TYPES.map(item => <label key={item.id} className={`relative flex cursor-pointer gap-3 rounded-xl border p-3.5 focus-within:ring-2 focus-within:ring-ring ${type === item.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}>
+            {CREW_STARTER_TYPES.map(item => <label key={item.id} className={`relative flex cursor-pointer gap-3 rounded-xl border p-3.5 focus-within:ring-2 focus-within:ring-ring ${item.id === 'chief-of-staff' ? 'sm:col-span-2' : ''} ${type === item.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}>
               <input type="radio" name="crew-type" value={item.id} checked={type === item.id} onChange={() => choose(item.id)} className="sr-only" />
               <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${type === item.id ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}><item.icon aria-hidden="true" className="h-5 w-5" /></span>
               <span className="min-w-0"><span className="block pr-3 text-sm font-semibold">{item.label}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{item.summary}</span></span>

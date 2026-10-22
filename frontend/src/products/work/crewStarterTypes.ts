@@ -1,4 +1,4 @@
-import { Bell, BookOpen, Braces, BriefcaseBusiness, CalendarClock, CheckCircle2, Code2, FileCheck2, Files, FolderTree, LayoutDashboard, ListChecks, Plug, Search, UserRound, UsersRound, Workflow, Wrench } from 'lucide-react'
+import { Bell, BookOpen, Braces, BriefcaseBusiness, CalendarClock, CheckCircle2, Code2, FileCheck2, Files, FolderTree, LayoutDashboard, ListChecks, Network, Plug, Search, UserRound, UsersRound, Workflow, Wrench } from 'lucide-react'
 
 /** Onboarding suggestions only. The live menu inventory still admits every link. */
 export const CREW_STARTER_TYPES = [
@@ -67,6 +67,18 @@ export const CREW_STARTER_TYPES = [
     shortcuts: [
       { id: 'mcp:brain', label: 'Brain' }, { id: 'mcp:folders', label: 'Linked projects & folders' },
       { id: 'files', label: 'Files' }, { id: 'schedules:schedules', label: 'Schedules' },
+    ],
+  },
+  {
+    id: 'chief-of-staff', label: 'Chief of Staff', icon: Network,
+    summary: 'Coordinate your Crews & workflows',
+    flow: [{ icon: Network, label: 'Connect your work', features: ['workflow-references', 'attached-folders', 'knowledgebase'] }, { icon: ListChecks, label: 'Coordinate the work', features: ['live-chat', 'background-work', 'memory'] }, { icon: LayoutDashboard, label: 'Stay informed', features: ['dashboard', 'schedules', 'bots'] }],
+    purpose: 'Coordinate my Crews and workflows: track progress, route work through their available functions and triggers, follow up on blockers and prepare status summaries. Help me choose the projects to connect. Use only the projects and actions I have access to.',
+    example: 'Coordinate a launch across my Crews and workflows, highlight blockers and prepare a daily brief.',
+    shortcuts: [
+      { id: 'schedules:functions', label: 'Functions' }, { id: 'mcp:folders', label: 'Linked projects & folders' },
+      { id: 'dashboard', label: 'Project dashboard' }, { id: 'schedules:schedules', label: 'Schedules' },
+      { id: 'memory:memory', label: 'Memory' },
     ],
   },
 ] as const

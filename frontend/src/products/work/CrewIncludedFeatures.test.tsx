@@ -10,6 +10,7 @@ vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => sel
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: any) => select({ activeWorkspaceId: mocks.server }) }))
 import { CrewIncludedFeatures } from './CrewIncludedFeatures'
 import { crewFeaturePresentation } from './crewFeaturePresentation'
+import { CREW_STARTER_TYPES } from './crewStarterTypes'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root
 const ids = ['live-chat', 'files', 'memory', 'dashboard', 'schedules', 'skills', 'workflow-references', 'condition-triggers', 'knowledgebase', 'triggers', 'coding']
@@ -87,7 +88,7 @@ it('uses chat instructions for the terminal in Cowork mode', () => {
   expect(crewFeaturePresentation([{ id: 'terminal' }], 'code', 'cowork')[0].location).toBe('Chat')
 })
 
-it.each(['code', 'cowork', 'personal', 'specialist', 'automation', 'brain'] as const)('keeps every %s step linked without inventing unavailable defaults', async type => {
+it.each(CREW_STARTER_TYPES.map(starter => starter.id))('keeps every %s step linked without inventing unavailable defaults', async type => {
   const { host } = await render(type)
   const stages = [...host.querySelectorAll<HTMLElement>('li[aria-label]')]
   expect(stages).toHaveLength(3)
@@ -98,4 +99,15 @@ it.each(['code', 'cowork', 'personal', 'specialist', 'automation', 'brain'] as c
   }
   await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.startsWith('All '))!.click())
   expect(featureButtons(host)).toHaveLength(ids.length)
+})
+
+it('explains Chief of Staff coordination through existing enabled project references', async () => {
+  const { host } = await render('chief-of-staff')
+  expect(host.querySelector('li[aria-label="Connect your work"]')?.textContent).toContain('Crews & workflows')
+  expect(host.querySelector('li[aria-label="Coordinate the work"]')?.textContent).toContain('Memory')
+  expect(host.querySelector('li[aria-label="Stay informed"]')?.textContent).toContain('Schedules')
+  await act(async () => featureButtons(host).find(item => item.textContent === 'Crews & workflows')!.click())
+  expect(host.textContent).toContain('Crews and workflows I can access')
+  expect(host.textContent).toContain('Set up first')
+  expect(mocks.get).toHaveBeenCalledTimes(1)
 })
