@@ -2,9 +2,10 @@ package agentprofiles
 
 import (
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"sort"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 
 	"gopkg.in/yaml.v3"
 )
@@ -456,7 +457,7 @@ func featureTools(id string, tools []string, options map[string]string) ([]strin
 func featurePromptExtension(id, extension string, options map[string]string) string {
 	switch {
 	case id == "mcp" && strings.TrimSpace(options["scope"]) == "personal":
-		return "MCP connections here belong to this {{product}}: they are added with its owner's own sign-in and used by every chat in it. Read the attached `work-mcp` skill before connecting or using one. Use manage_my_mcp_servers to list the catalog and this {{product}}'s connections, and to connect or remove one (only the owner connects); never install, add or authenticate a platform-wide connection."
+		return "Vault stores this {{product}}'s MCP accounts. Read `work-mcp`, inspect list_mcp_servers and complete setup with install_mcp_server in chat. Keep exact account IDs, current Builder checks, project selection and Vault permissions."
 	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "outbound":
 		return "Crew and workflow references and calls are enabled, outbound only. Read the attached `work-workflow-files` skill before discovering, reading or invoking them. This workspace cannot define or answer functions, and private workspaces are not valid call targets."
 	case id == "bots" && strings.TrimSpace(options["dm_only"]) == "true" && strings.TrimSpace(options["gmail"]) == "own":
@@ -496,7 +497,7 @@ func FeaturePromptExtensions(profile Profile) []string {
 			rule = "Create or change reusable skills only when explicitly requested, under project-local skills/<name>/SKILL.md; keep product-authored skills inside the current workspace and preserve the agent's identity."
 		case "mcp":
 			if feature.Options["scope"] == "personal" {
-				rule = "Personal MCP connections belong to this project and use its owner's login. Only the owner may connect; never create or authenticate a platform-wide connection."
+				rule = "MCP accounts live in Vault. Use the owner's selected accounts through their existing grants; only current Builders can change project selection."
 			}
 		case "workflow-references":
 			switch feature.Options["direction"] {

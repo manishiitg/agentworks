@@ -76,7 +76,6 @@ import (
 	"github.com/manishiitg/mcpagent/llm"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/mcpclient"
-	"github.com/manishiitg/mcpagent/oauth"
 	"github.com/manishiitg/mcpagent/observability"
 	"github.com/manishiitg/mcpagent/toolcalllog"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
@@ -13499,219 +13498,57 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 	if err := api.registerMCPCallTool(registrar, disabled); err != nil {
 		return err
 	}
-	registerTool := func(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error)) error {
+	registerTool := func(name, description string, params map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
 		if disabled != nil && disabled(name) {
 			return nil
 		}
-		if name == "install_mcp_server" || name == "add_mcp_server" {
-			properties, _ := params["properties"].(map[string]interface{})
-			properties["label"] = map[string]interface{}{"type": "string", "description": "Human-readable account label. Creates a separate account with its own login. Omit for reconnecting an existing exact connection name."}
-			properties["catalog"] = map[string]interface{}{"type": "string", "description": "Catalog provider name. Use with label to create another account of the same provider."}
-			description += " For another account of the same provider, pass catalog and label; each returned connection name has independent credentials. Reconnect/remove/select by exact connection name, not provider alias."
-		}
-		if name == "install_mcp_server" {
-			delete(params, "required")
-			params["anyOf"] = []any{map[string]any{"required": []string{"name"}}, map[string]any{"required": []string{"catalog"}}}
-		}
-		if name == "trigger_mcp_discovery" {
-			// The per-chat executor below discovers one connection (private or governed) and
-			// requires its name, while the shared schema declares no arguments, so the call
-			// was rejected with or without a name. Declare it.
-			if properties, ok := params["properties"].(map[string]interface{}); ok {
-				properties["name"] = map[string]interface{}{"type": "string", "description": "Exact connection name to discover tools for (see list_mcp_servers), for example this place's Upwork connection."}
-			}
-			description += " Pass name to discover one of this place's connections. <!-- product:mcp-gateway -->You may also discover a permitted Vault connection.<!-- /product -->"
-		}
-		if name == "install_mcp_server" || name == "add_mcp_server" || name == "edit_mcp_server" || name == "remove_mcp_server" || name == "list_mcp_servers" || name == "trigger_mcp_discovery" {
-			exec = func(ctx context.Context, args map[string]interface{}) (string, error) {
-				userID, err := api.mcpToolUserID(ctx)
-				if err != nil {
-					return "", err
-				}
-				if GetUserFromContext(ctx) == nil {
-					ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: userID})
-				}
-				return api.mcpConnectionTool(ctx, userID, name, args)
-			}
-		}
-		return registrar.RegisterCustomTool(name, description, params, exec, "mcp_server_tools")
+		return registrar.RegisterCustomTool(name, description, params, execute, "mcp_server_tools")
 	}
-
-	toStringSlice := func(raw interface{}) []string {
-		items, ok := raw.([]interface{})
-		if !ok {
-			return nil
-		}
-		result := make([]string, 0, len(items))
-		for _, item := range items {
-			value, ok := item.(string)
-			if !ok {
-				continue
-			}
-			value = strings.TrimSpace(value)
-			if value != "" {
-				result = append(result, value)
-			}
-		}
-		return result
+	stringField := func(description string) map[string]interface{} {
+		return map[string]interface{}{"type": "string", "description": description}
 	}
-
-	toStringMap := func(raw interface{}) map[string]string {
-		items, ok := raw.(map[string]interface{})
-		if !ok {
-			return nil
-		}
-		result := make(map[string]string, len(items))
-		for key, value := range items {
-			strValue, ok := value.(string)
-			if !ok {
-				continue
-			}
-			trimmedKey := strings.TrimSpace(key)
-			if trimmedKey == "" {
-				continue
-			}
-			result[trimmedKey] = strValue
-		}
-		if len(result) == 0 {
-			return nil
-		}
-		return result
+	properties := map[string]interface{}{
+		"name":           stringField("Exact saved vault_<connection ID>, catalog name, or a name for a new custom MCP."),
+		"server_name":    stringField("Exact Vault connection ID; same as name for discovery."),
+		"catalog":        stringField("Catalog provider from list_mcp_servers."),
+		"label":          stringField("A label creates a separate account. Omit when reconnecting an existing exact ID."),
+		"url":            stringField("Verified provider MCP endpoint for a custom connection."),
+		"vault_id":       stringField("Optional vault you own; defaults to your accounts vault."),
+		"transport":      map[string]interface{}{"type": "string", "enum": []string{"http", "sse"}},
+		"api_key":        stringField("User-provided key; stored encrypted in Vault. Never repeat it."),
+		"api_key_header": stringField("Provider-documented key header; defaults to Authorization."),
+		"api_key_format": stringField("Header format with {}; default Bearer {} for Authorization, otherwise {}."),
+		"credential":     map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"type": "string"}, "description": "Advanced: user-provided credential headers. Stored encrypted; never repeat values."},
+		"client_id":      stringField("OAuth app client ID if the provider requires an app."),
+		"client_secret":  stringField("User-provided OAuth app secret with client_id. Encrypted; never repeat."),
+		"reconnect":      map[string]interface{}{"type": "boolean"},
 	}
-
-	loadUserConfig := func() (string, *mcpclient.MCPConfig, error) {
-		userConfigPath := strings.Replace(api.mcpConfigPath, ".json", "_user.json", 1)
-		userConfig, err := mcpclient.LoadConfig(userConfigPath, api.logger)
-		if err != nil {
-			userConfig = &mcpclient.MCPConfig{MCPServers: make(map[string]mcpclient.MCPServerConfig)}
-		}
-		if userConfig.MCPServers == nil {
-			userConfig.MCPServers = make(map[string]mcpclient.MCPServerConfig)
-		}
-		return userConfigPath, userConfig, nil
+	descriptions := map[string]string{
+		"list_mcp_servers":      "List the current caller's permitted Vault connections, owned vaults and provider catalog. Metadata only; no credentials.",
+		"install_mcp_server":    "Connect or reuse an exact Vault account through this chat, complete key/OAuth setup, return a real provider sign-in link, verify discovery and select it for the current project. Never echo credentials. Existing Builder, ownership, sharing and Vault grants apply.",
+		"add_mcp_server":        "Connect a verified custom HTTP/SSE MCP through Vault in this chat, with the same behavior as install_mcp_server.",
+		"edit_mcp_server":       "Update an owned Vault connection's label, URL or credentials. Use its exact saved ID, preserve its grants and finish any required sign-in through chat.",
+		"remove_mcp_server":     "Deselect an exact Vault connection from this project. Outside a project, remove an owned Vault account. Unrelated accounts and grants stay unchanged.",
+		"trigger_mcp_discovery": "Verify and refresh an exact permitted Vault connection's live tools. Pass its saved name. Report the real discovery result before claiming it connected.",
 	}
-
-	buildServerConfig := func(args map[string]interface{}) (mcpclient.MCPServerConfig, error) {
-		server := mcpclient.MCPServerConfig{
-			Args:       toStringSlice(args["args"]),
-			Env:        toStringMap(args["env"]),
-			Headers:    toStringMap(args["headers"]),
-			PoolConfig: nil,
+	for _, name := range []string{"list_mcp_servers", "install_mcp_server", "add_mcp_server", "edit_mcp_server", "remove_mcp_server", "trigger_mcp_discovery"} {
+		params := map[string]interface{}{"type": "object", "additionalProperties": false, "properties": properties}
+		if name != "list_mcp_servers" {
+			params["anyOf"] = []any{map[string]any{"required": []string{"name"}}, map[string]any{"required": []string{"catalog"}}, map[string]any{"required": []string{"server_name"}}}
 		}
-		if value, ok := args["command"].(string); ok {
-			server.Command = strings.TrimSpace(value)
-		}
-		if value, ok := args["working_dir"].(string); ok {
-			server.WorkingDir = strings.TrimSpace(value)
-		}
-		if value, ok := args["description"].(string); ok {
-			server.Description = strings.TrimSpace(value)
-		}
-		if value, ok := args["url"].(string); ok {
-			server.URL = strings.TrimSpace(value)
-		}
-		if value, ok := args["protocol"].(string); ok {
-			server.Protocol = mcpclient.ProtocolType(strings.TrimSpace(value))
-		}
-		return server, nil
-	}
-
-	if err := registerTool(
-		"list_mcp_servers",
-		"List the MCP connections of this project (outside a place, your own). Use this live inventory before proposing setup. <!-- product:mcp-gateway -->Also lists your Vault groups, their permitted shared connections/tools, and permitted secret names (never values). Vault MCPs are available automatically through current user/group permissions; call them using the exact vault_ connection IDs. Select secrets by name.<!-- /product --> Credentials are private by default; sharing a project does not share them. Use search_mcp_catalog for connection templates.",
-		map[string]interface{}{
-			"type":       "object",
-			"properties": map[string]interface{}{},
-		},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			mergedConfig, err := api.loadMergedConfig()
-			if err != nil {
-				return "", fmt.Errorf("failed to load MCP config: %w", err)
-			}
-
-			userConfigPath, _, err := loadUserConfig()
+		if err := registerTool(name, descriptions[name], params, func(ctx context.Context, args map[string]interface{}) (string, error) {
+			person, err := api.mcpToolUserID(ctx)
 			if err != nil {
 				return "", err
 			}
-
-			toolStatusCopy := make(map[string]ToolStatus, len(mergedConfig.MCPServers))
-			for name, cfg := range mergedConfig.MCPServers {
-				toolStatusCopy[name] = api.mcpToolStatusForUser(name, GetUserIDFromContext(ctx), cfg)
+			if GetUserFromContext(ctx) == nil {
+				ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: person})
 			}
-
-			names := make([]string, 0, len(mergedConfig.MCPServers))
-			for name := range mergedConfig.MCPServers {
-				names = append(names, name)
-			}
-			sort.Strings(names)
-
-			var sb strings.Builder
-			sb.WriteString("## MCP Servers\n\nEach name below is an exact connection ID. Separate connections may access different accounts. Verify workspace/account identity with each connection’s read-only service tools; never infer it from its name. If the intended account is unclear, ask which connection to use. Connected does not mean selected for this project or loaded in this turn.\n\n")
-			if len(names) == 0 {
-				sb.WriteString("No MCP servers are configured.\n")
-				return sb.String(), nil
-			}
-
-			if isMCPConfigLocked() {
-				sb.WriteString("Configuration mode: locked (read-only)\n\n")
-			} else {
-				sb.WriteString(fmt.Sprintf("Platform MCP overlay path: `%s`\n\n", userConfigPath))
-			}
-
-			for _, name := range names {
-				server := mergedConfig.MCPServers[name]
-				_, isBase := api.mcpConfig.MCPServers[name]
-
-				// "source" names where the definition comes from; a base
-				// catalog server also needs a separate platform connection
-				// signal (searchable does not mean connected).
-				source := "custom platform server"
-				switch {
-				case isBase && server.OAuth == nil:
-					source = "catalog, no sign-in required"
-				case isBase && !toolStatusCopy[name].RequiresOAuth:
-					source = "catalog, installed/authorized"
-				case isBase:
-					source = "catalog, NOT installed — needs sign-in from the connector directory"
-				}
-
-				statusLabel := "not yet discovered"
-				if status, ok := toolStatusCopy[name]; ok {
-					switch status.Status {
-					case "ok":
-						statusLabel = fmt.Sprintf("discovered (%d tools)", len(status.FunctionNames))
-					case "error":
-						statusLabel = "discovery failed"
-					case "not_connected":
-						statusLabel = "admin sign-in required"
-					case "not_loaded", "":
-						statusLabel = "not yet discovered"
-					default:
-						statusLabel = status.Status
-					}
-				}
-
-				sb.WriteString(fmt.Sprintf("- connection_id: `%s` [%s] [%s]\n", name, source, statusLabel))
-				if server.Description != "" {
-					sb.WriteString(fmt.Sprintf("  %s\n", server.Description))
-				}
-				protocol := server.GetProtocol()
-				if server.URL != "" {
-					sb.WriteString(fmt.Sprintf("  protocol: `%s`, url: `%s`\n", protocol, server.URL))
-				} else {
-					sb.WriteString(fmt.Sprintf("  protocol: `%s`, command: `%s`\n", protocol, server.Command))
-				}
-				if status, ok := toolStatusCopy[name]; ok && status.Error != "" {
-					sb.WriteString(fmt.Sprintf("  last error: %s\n", status.Error))
-				}
-			}
-
-			return sb.String(), nil
-		},
-	); err != nil {
-		return err
+			return api.mcpConnectionTool(ctx, person, name, args)
+		}); err != nil {
+			return err
+		}
 	}
-
 	if err := registerTool(
 		"search_mcp_catalog",
 		"Search for an MCP (Model Context Protocol) server for a given service or capability — e.g. \"is there an MCP for ClickUp?\". Searches our curated catalog, GitHub's public MCP Registry, and the official MCP Registry. Registries supply metadata, not a required hosting or authorization service. Prefer the provider's own documented endpoint. If no suitable MCP is found, continue with an internet search using available web/search/browser tools and verify the provider's official documentation or repository. A registry miss does not establish that no MCP exists; never invent an endpoint. Catalog hits report whether the user has already connected them; public registry hits are NOT vetted — do not assume they are safe to add sight-unseen, and note to the user that adding one (especially an OAuth or locally-run package one) needs the same scrutiny a human would give any third-party integration. Use install_mcp_server for a verified provider URL; add_mcp_server is for a custom configuration whose auth is already known.",
@@ -13811,445 +13648,6 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 	); err != nil {
 		return err
 	}
-
-	if err := registerTool(
-		"install_mcp_server",
-		"Connect a catalog server or verified remote MCP URL from this chat using the authenticated user's login. Accept user-provided api_key, or client_id/client_secret when the provider needs an OAuth app; store credentials encrypted and never repeat values. Return the actual OAuth sign-in link here, then verify discovery and finish project selection after the user approves at the provider. Guide missing app/key setup in chat; do not send the person to find an Integrations screen. Reuse an existing exact name without label when completing setup. Everyone with access to this project can use its connection. Select it with update_workflow_config or update_project_mcp_server_selection. <!-- product:mcp-gateway -->Shared setup belongs in Vault and retains current group grants.<!-- /product -->",
-		map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"reconnect": map[string]interface{}{
-					"type":        "boolean",
-					"description": "Restart OAuth authorization for this existing connector without creating another server entry.",
-				},
-				"name": map[string]interface{}{
-					"type":        "string",
-					"description": "Server name — exact catalog name from search_mcp_catalog/list_mcp_servers, or a name you choose for a fresh install from url.",
-				},
-				"url": map[string]interface{}{
-					"type":        "string",
-					"description": "Only when name is not already in our catalog: the server's URL (from a search_mcp_catalog public registry hit, or one the user gave you). Triggers a live auth probe before installing.",
-				},
-				"api_key": map[string]interface{}{
-					"type":        "string",
-					"description": "User-provided API key to store encrypted for this exact connection. Never repeat it or write it to project files.",
-				},
-				"vault_id":       map[string]interface{}{"type": "string", "description": "Optional existing vault you own; defaults to your accounts vault."},
-				"api_key_header": map[string]interface{}{"type": "string", "description": "API key header from the provider documentation. Default Authorization."},
-				"api_key_format": map[string]interface{}{"type": "string", "description": "Header format with {} for the key, e.g. Bearer {}. Default Bearer {} for Authorization; otherwise the raw key."},
-				"client_id": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional. Only for an OAuth server with no Dynamic Client Registration support, after the user has registered their own OAuth app and given you its client_id.",
-				},
-				"client_secret": map[string]interface{}{
-					"type": "string", "description": "User-provided OAuth app secret, with client_id. Kept encrypted after successful sign-in; never repeat its value.",
-				},
-			},
-			"required": []string{"name"},
-		},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			if isMCPConfigLocked() {
-				return "MCP configuration is locked (MCP_CONFIG_LOCKED is set), so chat cannot install servers.", nil
-			}
-			name, _ := args["name"].(string)
-			name = strings.TrimSpace(name)
-			if name == "" {
-				return "name is required.", nil
-			}
-			candidateURL, _ := args["url"].(string)
-			candidateURL = strings.TrimSpace(candidateURL)
-			apiKey, _ := args["api_key"].(string)
-			apiKey = strings.TrimSpace(apiKey)
-			clientID, _ := args["client_id"].(string)
-			clientID = strings.TrimSpace(clientID)
-			clientSecret, _ := args["client_secret"].(string)
-			clientSecret = strings.TrimSpace(clientSecret)
-
-			// Chat has no other way to learn an install finished — the
-			// connector-directory UI refreshes itself on its own button
-			// clicks, but a chat-driven change needs to nudge the mcp
-			// workspace view explicitly if it's open. Best-effort: a stale
-			// panel just means the user needs to reopen it, not a failure.
-			sessionID := executor.SessionIDFromContext(ctx)
-			workspacePath := api.uiBroker().scope(sessionID)
-			notifyMCPViewRefresh := func() {
-				if sessionID == "" || workspacePath == "" {
-					return
-				}
-				if event, evErr := workspaceViewAction("mcp", workspacePath, "refresh", ""); evErr == nil {
-					api.emitAgentProfileEvent(sessionID, event)
-				}
-			}
-
-			config, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
-			if err != nil {
-				return "", fmt.Errorf("failed to load MCP config: %w", err)
-			}
-			canonicalName, serverConfig, err := config.ResolveServer(name)
-			notInConfigYet := err != nil
-			if !notInConfigYet {
-				name = canonicalName
-			}
-			if notInConfigYet && candidateURL == "" {
-				return fmt.Sprintf("%q is not in our catalog. Pass url to install it fresh (from a search_mcp_catalog hit or any URL), or use add_mcp_server for a wholly custom stdio/no-auth server.", name), nil
-			}
-
-			_, userConfig, err := loadUserConfig()
-			if err != nil {
-				return "", err
-			}
-			if !notInConfigYet {
-				if _, alreadyInstalled := userConfig.MCPServers[name]; alreadyInstalled {
-					reconnect, _ := args["reconnect"].(bool)
-					connected := serverConfig.OAuth == nil
-					if serverConfig.OAuth != nil && !reconnect {
-						owned := serverConfig
-						oauthConfig := *owned.OAuth
-						if strings.TrimSpace(oauthConfig.TokenFile) == "" {
-							oauthConfig.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, name)
-						}
-						owned.OAuth = &oauthConfig
-						connected = hasOAuthTokenFile(owned)
-					}
-					if connected {
-						return fmt.Sprintf("%q is already connected across AgentWorks. Select it with update_workflow_config(add_servers=[%q]) in a workflow, or update_project_mcp_server_selection(action=select, server=%q) in an active Work project. For OAuth reauthorization, call install_mcp_server with reconnect=true (requires admin access).", name, name, name), nil
-					}
-				}
-			}
-
-			// Fresh install from a URL: live-probe its auth requirements before
-			// touching any config — the same scrutiny a human gives any
-			// third-party integration, automated via spec-compliant discovery
-			// rather than guessed from a search result's description text.
-			if notInConfigYet {
-				probe, probeErr := services.ProbeMCPServerAuth(ctx, candidateURL)
-				if probeErr != nil {
-					return fmt.Sprintf("Could not determine %s's auth requirements: %v. Not installing — this needs a human to verify before it's trustworthy to add.", candidateURL, probeErr), nil
-				}
-				serverConfig = mcpclient.MCPServerConfig{URL: candidateURL}
-				if probe.NoAuthRequired {
-					if apiKey != "" {
-						serverConfig.Headers = map[string]string{"Authorization": "Bearer " + apiKey}
-					}
-					if err := api.persistOAuthConfig(name, serverConfig); err != nil {
-						return "", fmt.Errorf("failed to install %q: %w", name, err)
-					}
-					api.invalidateServerDiscovery(name, "Installed — discovering tools...")
-					api.startServerDiscovery(GetUserIDFromContext(ctx), name)
-					notifyMCPViewRefresh()
-					return fmt.Sprintf("Installed %q (no sign-in required). Discovery is running now. Select it with update_workflow_config(add_servers=[%q]) in a workflow, or update_project_mcp_server_selection(action=select, server=%q) in an active Work project.", name, name, name), nil
-				}
-				// Needs OAuth. Build the config from what discovery found.
-				serverConfig.OAuth = &oauth.OAuthConfig{
-					AuthURL:              probe.Endpoints.AuthURL,
-					TokenURL:             probe.Endpoints.TokenURL,
-					RegistrationEndpoint: probe.Endpoints.RegistrationEndpoint,
-					Scopes:               probe.Endpoints.ScopesSupported,
-					Resource:             probe.Endpoints.Resource,
-					ClientID:             clientID,
-				}
-				if serverConfig.OAuth.RegistrationEndpoint == "" && clientID == "" {
-					return fmt.Sprintf("%s requires OAuth but published no Dynamic Client Registration endpoint. It may still support a Client ID Metadata Document, or need a manually registered OAuth app — tell the user this before proceeding. Auth URL: %s — Token URL: %s. If they give you a client_id, call install_mcp_server again with the same name/url and client_id set.",
-						candidateURL, probe.Endpoints.AuthURL, probe.Endpoints.TokenURL), nil
-				}
-				// Write the draft config (no token yet) so beginOAuthFlow can find it.
-				if err := api.persistOAuthConfig(name, serverConfig); err != nil {
-					return "", fmt.Errorf("failed to register %q: %w", name, err)
-				}
-			}
-
-			// No OAuth: install directly, optionally with an API key header.
-			if serverConfig.OAuth == nil {
-				if apiKey != "" {
-					if serverConfig.Headers == nil {
-						serverConfig.Headers = make(map[string]string)
-					}
-					serverConfig.Headers["Authorization"] = "Bearer " + apiKey
-				}
-				if err := api.persistOAuthConfig(name, serverConfig); err != nil {
-					return "", fmt.Errorf("failed to install %q: %w", name, err)
-				}
-				api.invalidateServerDiscovery(name, "Installed — discovering tools...")
-				api.startServerDiscovery(GetUserIDFromContext(ctx), name)
-				notifyMCPViewRefresh()
-				return fmt.Sprintf("Installed %q. Discovery is running now. Select it with update_workflow_config(add_servers=[%q]) in a workflow, or update_project_mcp_server_selection(action=select, server=%q) in an active Work project.", name, name, name), nil
-			}
-
-			// OAuth: start the flow and hand back the URL for the user to open.
-			redirectURI := deriveOAuthRedirectURIFromEnv()
-			if redirectURI == "" {
-				return fmt.Sprintf("%q requires OAuth sign-in, and this server has no PUBLIC_URL configured to build a callback URL from chat. Ask the user to connect it from the connector directory in the UI instead.", name), nil
-			}
-
-			startResp, discoveryResp, err := api.beginOAuthFlow(GetUserIDFromContext(ctx), sessionID, name, redirectURI, clientID, clientSecret, notifyMCPViewRefresh)
-			if err != nil {
-				return "", fmt.Errorf("failed to start OAuth for %q: %w", name, err)
-			}
-			if discoveryResp != nil {
-				// No sign-in link without a client: an authorize URL with no client_id fails at the provider (PLAT-708).
-				return fmt.Sprintf("%s Do not give the user a sign-in link. If they register an OAuth app (callback URL %s) and give you its client_id, call install_mcp_server again with client_id set.",
-					discoveryResp.Message, discoveryResp.RedirectURI), nil
-			}
-			return fmt.Sprintf("%q needs OAuth sign-in. Give the user this link to open in their browser — the connection finishes automatically once they authorize, no further action from you needed: %s", name, startResp.AuthURL), nil
-		},
-	); err != nil {
-		return err
-	}
-
-	if err := registerTool(
-		"add_mcp_server",
-		"Add a remote MCP server to this workflow, <!-- product:relays -->Flow, <!-- /product -->Crew<!-- product:code --> or Code<!-- /product --> with the authenticated person's login. Use a catalog name or an HTTPS URL. Enter credentials in Integrations. <!-- product:mcp-gateway -->Use Vault for access shared across places.<!-- /product -->",
-		map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"name": map[string]interface{}{
-					"type":        "string",
-					"description": "Unique server name.",
-				},
-				"description": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional human-readable description.",
-				},
-				"protocol": map[string]interface{}{
-					"type":        "string",
-					"enum":        []string{"stdio", "sse", "http"},
-					"description": "Optional explicit protocol. If omitted, the backend infers it from url or command when possible.",
-				},
-				"command": map[string]interface{}{
-					"type":        "string",
-					"description": "Command to run for stdio servers.",
-				},
-				"args": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Command arguments for stdio servers.",
-				},
-				"env": map[string]interface{}{
-					"type":                 "object",
-					"additionalProperties": map[string]interface{}{"type": "string"},
-					"description":          "Optional environment variables for stdio servers.",
-				},
-				"working_dir": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional working directory for stdio servers.",
-				},
-				"url": map[string]interface{}{
-					"type":        "string",
-					"description": "URL for SSE or HTTP MCP servers.",
-				},
-				"headers": map[string]interface{}{
-					"type":                 "object",
-					"additionalProperties": map[string]interface{}{"type": "string"},
-					"description":          "Optional HTTP headers for SSE or HTTP MCP servers.",
-				},
-			},
-			"required": []string{"name"},
-		},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			if isMCPConfigLocked() {
-				return "MCP configuration is locked (MCP_CONFIG_LOCKED is set), so chat cannot add or update servers.", nil
-			}
-
-			name, _ := args["name"].(string)
-			name = strings.TrimSpace(name)
-			if name == "" {
-				return "name is required.", nil
-			}
-
-			if _, exists := api.mcpConfig.MCPServers[name]; exists {
-				return fmt.Sprintf("Server %q is part of the base/admin config and can't be modified from chat. Use a new name or update the base config directly.", name), nil
-			}
-
-			userConfigPath, userConfig, err := loadUserConfig()
-			if err != nil {
-				return "", err
-			}
-			if _, exists := userConfig.MCPServers[name]; exists {
-				return fmt.Sprintf("User-defined MCP server %q already exists. Use edit_mcp_server to change it.", name), nil
-			}
-
-			server, err := buildServerConfig(args)
-			if err != nil {
-				return "", err
-			}
-
-			if err := api.validateMCPConfig(&mcpclient.MCPConfig{
-				MCPServers: map[string]mcpclient.MCPServerConfig{name: server},
-			}); err != nil {
-				return fmt.Sprintf("Invalid MCP server config: %v", err), nil
-			}
-
-			userConfig.MCPServers[name] = server
-			if err := saveUserMCPOverlay(userConfigPath, userConfig); err != nil {
-				return "", fmt.Errorf("failed to save user MCP config: %w", err)
-			}
-
-			api.invalidateServerDiscovery(name, "Configuration saved — discovering tools...")
-			api.startServerDiscovery(GetUserIDFromContext(ctx), name)
-
-			return fmt.Sprintf("Saved user MCP server %q and started discovery. After discovery completes, select it with update_workflow_config(add_servers=[name]) in a workflow, or update_project_mcp_server_selection(action=select, server=name) in an active Work project. The chat catalog refreshes on the next turn; no server restart is needed.", name), nil
-		},
-	); err != nil {
-		return err
-	}
-
-	if err := registerTool(
-		"edit_mcp_server",
-		"Edit a remote MCP connection you added to this place. Updating its URL clears its sign-in. <!-- product:mcp-gateway -->Shared Vault connections are managed in Vault.<!-- /product -->",
-		map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"name": map[string]interface{}{
-					"type":        "string",
-					"description": "Existing user-defined server name.",
-				},
-				"description": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional human-readable description.",
-				},
-				"protocol": map[string]interface{}{
-					"type":        "string",
-					"enum":        []string{"stdio", "sse", "http"},
-					"description": "Optional explicit protocol. If omitted, the backend infers it from url or command when possible.",
-				},
-				"command": map[string]interface{}{
-					"type":        "string",
-					"description": "Command to run for stdio servers.",
-				},
-				"args": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Command arguments for stdio servers.",
-				},
-				"env": map[string]interface{}{
-					"type":                 "object",
-					"additionalProperties": map[string]interface{}{"type": "string"},
-					"description":          "Optional environment variables for stdio servers.",
-				},
-				"working_dir": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional working directory for stdio servers.",
-				},
-				"url": map[string]interface{}{
-					"type":        "string",
-					"description": "URL for SSE or HTTP MCP servers.",
-				},
-				"headers": map[string]interface{}{
-					"type":                 "object",
-					"additionalProperties": map[string]interface{}{"type": "string"},
-					"description":          "Optional HTTP headers for SSE or HTTP MCP servers.",
-				},
-			},
-			"required": []string{"name"},
-		},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			if isMCPConfigLocked() {
-				return "MCP configuration is locked (MCP_CONFIG_LOCKED is set), so chat cannot edit servers.", nil
-			}
-
-			name, _ := args["name"].(string)
-			name = strings.TrimSpace(name)
-			if name == "" {
-				return "name is required.", nil
-			}
-
-			if _, exists := api.mcpConfig.MCPServers[name]; exists {
-				return fmt.Sprintf("Server %q is part of the base/admin config and can't be edited from chat.", name), nil
-			}
-
-			userConfigPath, userConfig, err := loadUserConfig()
-			if err != nil {
-				return "", err
-			}
-			if _, exists := userConfig.MCPServers[name]; !exists {
-				return fmt.Sprintf("User-defined MCP server %q does not exist. Use add_mcp_server first.", name), nil
-			}
-
-			server, err := buildServerConfig(args)
-			if err != nil {
-				return "", err
-			}
-			if err := api.validateMCPConfig(&mcpclient.MCPConfig{
-				MCPServers: map[string]mcpclient.MCPServerConfig{name: server},
-			}); err != nil {
-				return fmt.Sprintf("Invalid MCP server config: %v", err), nil
-			}
-
-			userConfig.MCPServers[name] = server
-			if err := saveUserMCPOverlay(userConfigPath, userConfig); err != nil {
-				return "", fmt.Errorf("failed to save user MCP config: %w", err)
-			}
-
-			api.appendServerLog(name, "info", "Server configuration edited from multi-agent chat, triggering discovery...")
-			go api.triggerMCPDiscovery()
-
-			return fmt.Sprintf("Updated user MCP server %q and started discovery refresh.", name), nil
-		},
-	); err != nil {
-		return err
-	}
-
-	if err := registerTool(
-		"remove_mcp_server",
-		"Remove a connection and its sign-in. It stops working in this place for everyone. <!-- product:mcp-gateway -->This does not remove any shared Vault connection.<!-- /product -->",
-		map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"name": map[string]interface{}{
-					"type":        "string",
-					"description": "Server name to remove.",
-				},
-			},
-			"required": []string{"name"},
-		},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			if isMCPConfigLocked() {
-				return "MCP configuration is locked (MCP_CONFIG_LOCKED is set), so chat cannot remove servers.", nil
-			}
-
-			name, _ := args["name"].(string)
-			name = strings.TrimSpace(name)
-			if name == "" {
-				return "name is required.", nil
-			}
-
-			if _, exists := api.mcpConfig.MCPServers[name]; exists {
-				return fmt.Sprintf("Server %q is part of the base/admin config and can't be removed from chat.", name), nil
-			}
-
-			userConfigPath, userConfig, err := loadUserConfig()
-			if err != nil {
-				return "", err
-			}
-			if _, exists := userConfig.MCPServers[name]; !exists {
-				return fmt.Sprintf("User-defined MCP server %q was not found.", name), nil
-			}
-
-			// Removal is platform-wide (this account's config), but a workflow
-			// that attached this server via update_workflow_config(add_servers)
-			// keeps a dangling reference — nothing else checks or cleans that up.
-			// Warn about every workflow affected so the agent can actually tell
-			// the user, instead of them finding out later when a run breaks.
-			affectedWorkflows := workflowsReferencingMCPServer(ctx, name)
-
-			delete(userConfig.MCPServers, name)
-			if err := saveUserMCPOverlay(userConfigPath, userConfig); err != nil {
-				return "", fmt.Errorf("failed to save user MCP config: %w", err)
-			}
-
-			api.appendServerLog(name, "info", "Server removed from user MCP config")
-			go api.triggerMCPDiscovery()
-
-			if len(affectedWorkflows) == 0 {
-				return fmt.Sprintf("Removed user MCP server %q and started discovery refresh. No workflow had it attached.", name), nil
-			}
-			return fmt.Sprintf("Removed user MCP server %q and started discovery refresh. WARNING: it is still attached to %d workflow(s), which now reference a server that no longer exists: %s. Tell the user this before they next run one of those workflows — offer to detach it there with update_workflow_config(remove_servers=[%q]).",
-				name, len(affectedWorkflows), strings.Join(affectedWorkflows, ", "), name), nil
-		},
-	); err != nil {
-		return err
-	}
-
 	if err := registerTool(
 		"get_mcp_server_logs",
 		"Show recent logs for a specific MCP server, or list which servers currently have logs.",
@@ -14301,38 +13699,6 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 	); err != nil {
 		return err
 	}
-
-	if err := registerTool(
-		"trigger_mcp_discovery",
-		"Trigger MCP server discovery in the background after config changes or when you want to refresh server tool metadata.",
-		map[string]interface{}{
-			"type":       "object",
-			"properties": map[string]interface{}{},
-		},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			cfg, err := api.loadMergedConfig()
-			if err != nil {
-				return "", err
-			}
-			for name, server := range cfg.MCPServers {
-				if server.OAuth != nil {
-					oauthConfig := *server.OAuth
-					if strings.TrimSpace(oauthConfig.TokenFile) == "" {
-						oauthConfig.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, name)
-					}
-					server.OAuth = &oauthConfig
-					if hasOAuthTokenFile(server) {
-						api.startServerDiscovery(platformMCPTokenUserID, name)
-					}
-				}
-			}
-			go api.triggerMCPDiscovery()
-			return "Triggered discovery for the shared AgentWorks MCP connections in the background.", nil
-		},
-	); err != nil {
-		return err
-	}
-
 	return nil
 }
 

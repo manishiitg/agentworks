@@ -41,13 +41,25 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 	catalog, _ := args["catalog"].(string)
 	label, _ := args["label"].(string)
 	rawURL, _ := args["url"].(string)
+	credential := ""
+	if headers, ok := args["credential"].(map[string]interface{}); ok && len(headers) > 0 {
+		raw, err := json.Marshal(headers)
+		if err != nil {
+			return "", err
+		}
+		credential = string(raw)
+	}
+	if headers, ok := args["credential"].(map[string]string); ok && len(headers) > 0 {
+		raw, _ := json.Marshal(headers)
+		credential = string(raw)
+	}
 	apiKey, _ := args["api_key"].(string)
 	clientID, _ := args["client_id"].(string)
 	clientSecret, _ := args["client_secret"].(string)
 	if clientSecret != "" && strings.TrimSpace(clientID) == "" {
 		return "", fmt.Errorf("client_id is required with client_secret")
 	}
-	if apiKey != "" && (clientID != "" || clientSecret != "") {
+	if (apiKey != "" || credential != "") && (clientID != "" || clientSecret != "") {
 		return "", fmt.Errorf("choose API key or OAuth app credentials")
 	}
 	// Existing native project authoring gates remain authoritative.
@@ -174,7 +186,7 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 		}
 		if rawURL == "" {
 			if entry, ok := api.placeMCPCatalogEntry(catalog); ok {
-				if apiKey != "" {
+				if apiKey != "" || credential != "" {
 					rawURL = entry.config.URL
 					if name == "" {
 						name = entry.Name
@@ -193,8 +205,11 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 				return "", fmt.Errorf("name is required for a custom server")
 			}
 		}
-		if apiKey != "" {
-			credential, err := vaultAPIKeyHeaders(args, apiKey)
+		if apiKey != "" || credential != "" {
+			var err error
+			if apiKey != "" {
+				credential, err = vaultAPIKeyHeaders(args, apiKey)
+			}
 			if err != nil {
 				return "", err
 			}
@@ -210,8 +225,11 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 			return "", fmt.Errorf("Vault returned no connection ID")
 		}
 		id = made.ID
-	} else if apiKey != "" {
-		credential, err := vaultAPIKeyHeaders(args, apiKey)
+	} else if apiKey != "" || credential != "" {
+		var err error
+		if apiKey != "" {
+			credential, err = vaultAPIKeyHeaders(args, apiKey)
+		}
 		if err != nil {
 			return "", err
 		}

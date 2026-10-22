@@ -25,7 +25,7 @@ func nativeClaudeQuestionTestServer(t *testing.T) (*StreamingAPI, string) {
 	t.Helper()
 	const session = "native-claude-question-test"
 	api := &StreamingAPI{eventStore: events.NewEventStore(100), activeSessions: map[string]*ActiveSessionInfo{session: {SessionID: session, UserID: "owner"}}}
-	registrar := &placeMCPToolRegistrar{}
+	registrar := &singleToolCaptureRegistrar{}
 	if err := api.registerCodingAgentClarificationTool(registrar, session, "claude-code"); err != nil {
 		t.Fatal(err)
 	}

@@ -20,13 +20,25 @@ import (
 // Exercise the actual stdio MCP bridge used by the coding providers, through
 // HTTP, the registered platform tool and the UI's answer endpoint. No bank
 // workflow or model is involved in this transport test.
+type singleToolCaptureRegistrar struct {
+	exec func(context.Context, map[string]interface{}) (string, error)
+}
+
+func (r *singleToolCaptureRegistrar) RegisterCustomTool(_ string, _ string, _ map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), _ string) error {
+	r.exec = exec
+	return nil
+}
+func (r *singleToolCaptureRegistrar) RegisterCustomToolWithTimeout(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), _ time.Duration, category string) error {
+	return r.RegisterCustomTool(name, description, params, exec, category)
+}
+
 func TestCodingAgentClarificationThroughMCPBridge(t *testing.T) {
 	binary := buildPulseTestMCPBridge(t)
 	for _, provider := range []string{"muse-cli", "claude-code", "codex-cli"} {
 		t.Run(provider, func(t *testing.T) {
 			const session = "clarification-bridge-test"
 			api := &StreamingAPI{eventStore: events.NewEventStore(100), activeSessions: map[string]*ActiveSessionInfo{session: {SessionID: session, UserID: "owner"}}}
-			registrar := &placeMCPToolRegistrar{}
+			registrar := &singleToolCaptureRegistrar{}
 			if err := api.registerCodingAgentClarificationTool(registrar, session, provider); err != nil {
 				t.Fatal(err)
 			}

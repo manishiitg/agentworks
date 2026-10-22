@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -312,6 +314,9 @@ func (api *StreamingAPI) replaceMigratedMCPSelection(ctx context.Context, owner,
 	if err := api.selectVaultServer(ctx, owner, root, id, true); err != nil {
 		return err
 	}
+	if err := api.migrateProjectMCPToolSelection(ctx, root, oldName, internal, vaultServerName(id)); err != nil {
+		return err
+	}
 	return api.setProjectSelectedServers(ctx, root, func(current []string) []string {
 		out := []string{}
 		for _, name := range current {
@@ -411,4 +416,69 @@ func lookupPersonalMCP(person, name string) (placeMCPServer, bool, error) {
 		return match, false, fmt.Errorf("several legacy accounts match; use the exact name")
 	}
 	return match, count == 1, nil
+}
+
+// Keep a project's existing per-tool picks when its account identity moves.
+func (api *StreamingAPI) migrateProjectMCPToolSelection(ctx context.Context, root, old, internal, next string) error {
+	rewrite := func(items []string) []string {
+		out := append([]string{}, items...)
+		for i, item := range out {
+			server, tool, ok := strings.Cut(item, ":")
+			if ok && (strings.EqualFold(server, old) || server == internal) {
+				out[i] = next + ":" + tool
+			}
+		}
+		return out
+	}
+	if isProjectWorkspacePath(root) {
+		raw, file, err := ensureProjectRuntimeManifest(ctx, "work", root)
+		if err != nil {
+			return err
+		}
+		var manifest map[string]interface{}
+		if err = json.Unmarshal([]byte(raw), &manifest); err != nil {
+			return err
+		}
+		caps, _ := manifest["capabilities"].(map[string]interface{})
+		if caps == nil {
+			return nil
+		}
+		var items []string
+		if source, ok := caps["selected_tools"].([]interface{}); ok {
+			for _, item := range source {
+				if value, ok := item.(string); ok {
+					items = append(items, value)
+				}
+			}
+		}
+		if len(items) == 0 {
+			return nil
+		}
+		caps["selected_tools"] = rewrite(items)
+		encoded, err := json.MarshalIndent(manifest, "", "  ")
+		if err != nil {
+			return err
+		}
+		return writeFileToWorkspace(ctx, file, string(encoded)+"\n")
+	}
+	manifest, found, err := ReadWorkflowManifest(ctx, root)
+	if err != nil {
+		return err
+	}
+	if !found || manifest == nil {
+		return fmt.Errorf("project manifest unavailable")
+	}
+	if len(manifest.Capabilities.SelectedTools) == 0 {
+		return nil
+	}
+	caps := manifest.Capabilities
+	caps.SelectedTools = rewrite(caps.SelectedTools)
+	raw, _ := json.Marshal(UpdateWorkflowManifestRequest{WorkspacePath: root, Capabilities: &caps})
+	request := httptest.NewRequest(http.MethodPut, "/api/workflows/manifest", bytes.NewReader(raw)).WithContext(ctx)
+	response := httptest.NewRecorder()
+	requireWorkflowWriteAccess(api.handleUpdateWorkflowManifest)(response, request)
+	if response.Code != 200 {
+		return fmt.Errorf("project tool selection could not be migrated")
+	}
+	return nil
 }
