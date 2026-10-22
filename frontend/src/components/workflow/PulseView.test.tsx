@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 vi.mock('./SoulViewer', () => ({ SoulViewer: () => <p>Grow useful customer conversations.</p>, WORKFLOW_SOUL_REFRESH_EVENT: 'test-soul' }))
 vi.mock('../../utils/pulseChatTab', () => ({ openWorkflowPulseChatTab: vi.fn(async () => {}) }))
+const navigation = vi.hoisted(() => ({ apply: undefined as undefined | ((target: string) => void) }))
+vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ useWorkspaceViewTarget: (_view: string, apply: (target: string) => void) => { navigation.apply = apply } }))
 import PulseView from './PulseView'
 
 it.each([true, false])('shows one Pulse screen, keeps simple settings and respects OFF (on=%s)', async on => {
@@ -18,5 +20,13 @@ it.each([true, false])('shows one Pulse screen, keeps simple settings and respec
   expect(host.querySelector('[aria-label="Pulse on/off"]')?.getAttribute('aria-checked')).toBe(String(on))
   const chat = [...host.querySelectorAll('button')].find(button => button.textContent === 'Open Pulse chat')!
   expect(chat.disabled).toBe(!on)
+  for (const [target, label] of [['settings', 'Pulse settings'], ['chat', 'Talk to Pulse']]) {
+   const section = host.querySelector<HTMLElement>(`section[aria-label="${label}"]`)!
+   section.scrollIntoView = vi.fn()
+   await act(async () => navigation.apply?.(target))
+   expect(section.scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
+   expect(document.activeElement).toBe(section)
+   expect(chat.disabled).toBe(!on)
+  }
  } finally { await act(async () => root.unmount()); host.remove() }
 })

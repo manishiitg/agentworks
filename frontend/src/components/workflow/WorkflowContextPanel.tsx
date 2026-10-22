@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ChevronRight, MessageSquareText, Settings2 } from 'lucide-react'
 import { PulseIcon } from './pulseIcon'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
@@ -48,9 +49,11 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
   const menuOptions = { relayMode, isMultiUser: multiUser, pulseEnabled: manifest?.pulse?.enabled === true, incomingEmail, canShare: sharing?.scope === scope && sharing.allowed }
   const inventory = workflowProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const pulse = inventory.find(item => item.id === 'pulse')
-  const items = inventory.filter(item => item.id !== 'pulse')
+  const pulseDecisions = pulse ? inventory.find(item => item.id === 'human-actions') : undefined
+  const inPulseMenu = (id: string) => id === 'pulse' || Boolean(pulseDecisions && id === pulseDecisions.id)
+  const items = inventory.filter(item => !inPulseMenu(item.id))
   const byId = new Map(inventory.map(item => [item.id, item]))
-  const recent = [...new Set(storedRecent)].filter(id => id !== 'pulse').flatMap(id => byId.get(id) || []).slice(0, 10)
+  const recent = [...new Set(storedRecent)].filter(id => !inPulseMenu(id)).flatMap(id => byId.get(id) || []).slice(0, 10)
   const recentIDs = new Set(recent.map(item => item.id))
   if (!workspacePath || !canWrite) return null
   const open = (item: WorkflowMenuItem) => {
@@ -58,7 +61,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     const admitted = workflowProjectMenuItems({ ...menuOptions, allowedProducts: current?.allowed_products })
     if (!admitted.some(candidate => candidate.id === item.id)) return
-    if (item.id !== 'pulse') useProjectMenuHistoryStore.getState().visit(scope, item.id)
+    if (!inPulseMenu(item.id)) useProjectMenuHistoryStore.getState().visit(scope, item.id)
     if (item.external) { openProductWorkspace(item.external); return }
     if (!item.view) return
     if (item.reportPath) selectReportDocument(workspacePath, item.reportPath)
@@ -76,10 +79,19 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} attention={item.id === 'human-actions' && decisions.loaded && decisions.count > 0} onClick={() => open(item)}>{item.label}</Row>
   }
   return <WorkspaceContextCard>
-    {pulse && <Row icon={PulseIcon} ariaLabel={pulse.label} highlighted
-      hint={menuOptions.pulseEnabled ? 'Your goal agent. Keeps work moving while you’re away.' : 'Your goal agent. Turn on Pulse to get started.'}
-      detail={<span className={menuOptions.pulseEnabled ? 'text-emerald-600 dark:text-emerald-400' : undefined}>{menuOptions.pulseEnabled ? 'On' : 'Off'}</span>}
-      onClick={() => open(pulse)}>Pulse</Row>}
+    {pulse && <details key={scope} open aria-label="Pulse menu" className="group/pulse">
+      <summary aria-label="Pulse" title="Your goal agent" className="flex min-h-8 cursor-pointer list-none items-center gap-2.5 rounded-md px-1 py-1.5 text-xs font-medium text-primary hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <PulseIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 flex-1">Pulse</span>
+        <span className={`text-[10px] font-normal ${menuOptions.pulseEnabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{menuOptions.pulseEnabled ? 'On' : 'Off'}</span>
+        <ChevronRight aria-hidden="true" className="h-3 w-3 text-muted-foreground transition-transform group-open/pulse:rotate-90" />
+      </summary>
+      <div role="group" aria-label="Pulse panels" className="ml-2.5 mt-1 space-y-0.5 border-l border-border pl-3">
+        <Row icon={MessageSquareText} onClick={() => open({ ...pulse, target: 'chat' })}>Talk to Pulse</Row>
+        {pulseDecisions && renderItem(pulseDecisions)}
+        <Row icon={Settings2} onClick={() => open({ ...pulse, target: 'settings' })}>Settings</Row>
+      </div>
+    </details>}
     {recent.length > 0 && <Group title="Recent">{recent.map(renderItem)}</Group>}
     {PROJECT_MENU_GROUPS.map(group => {
       const remaining = items.filter(item => item.group === group && !recentIDs.has(item.id))

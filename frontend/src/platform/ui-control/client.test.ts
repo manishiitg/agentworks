@@ -13,6 +13,10 @@ describe('closed semantic UI control contract', () => {
       expect(supportedAction({ ...base, view: id, action: 'refresh' })).toBe(true)
     }
   })
+  it('opens the two existing Pulse sections without advertising extra operations', () => {
+    for (const target of ['settings', 'chat']) expect(supportedAction({ ...base, view: 'pulse', action: 'open', target })).toBe(true)
+    expect(supportedAction({ ...base, view: 'pulse', action: 'open', target: 'enable' })).toBe(false)
+  })
   it('allows a bounded report tab target', () => {
     expect(supportedAction({ ...base, view: 'report', action: 'open', target: 'Suites' })).toBe(true)
   })

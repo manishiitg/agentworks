@@ -102,7 +102,11 @@ export const UI_CONTROL_CONTRACT = {
         "open",
         "refresh"
       ],
-      "targets": []
+      "targets": [
+        "settings",
+        "chat"
+      ],
+      "target_kind": "view_section"
     },
     {
       "id": "human-actions",
