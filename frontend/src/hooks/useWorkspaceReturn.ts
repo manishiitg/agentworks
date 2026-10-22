@@ -29,7 +29,10 @@ export async function flushWorkspaceState() {
       if (record && useWorkspaceReturnStore.getState().account === account && useWorkspaceReturnStore.getState().workspace === workspace) useWorkspaceReturnStore.setState({ record })
     }
     if (useWorkspaceReturnStore.getState().account !== account || useWorkspaceReturnStore.getState().workspace !== workspace) return
-    useWorkspaceReturnStore.setState({ saveError: 'Your latest workspace could not be saved. It will retry when you continue working.' })
+    const status = (error as { response?: { status?: number } }).response?.status
+    useWorkspaceReturnStore.setState({ saveError: status === 403
+      ? 'Your place in this workspace could not be saved: it is not available to you on this server. Open it again from the list.'
+      : 'Your latest workspace could not be saved. It will retry when you continue working.' })
   } finally { writing = false; if (pending) void flushWorkspaceState() }
 }
 

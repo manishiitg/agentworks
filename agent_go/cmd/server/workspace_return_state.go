@@ -326,6 +326,11 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 			}
 		}
 		if !available {
+			reason := "workspace not found"
+			if !homeProductAllowed(claims, incoming.Last.Surface) {
+				reason = "product not enabled on this server or for this account"
+			}
+			log.Printf("[WORKSPACE_STATE] restore check refused user=%q surface=%q id=%q reason=%q", claims.UserID, incoming.Last.Surface, incoming.Last.ID, reason)
 			http.Error(w, "This workspace is no longer available.", 403)
 			return
 		}
