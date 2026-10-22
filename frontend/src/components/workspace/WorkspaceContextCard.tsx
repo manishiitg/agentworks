@@ -68,6 +68,8 @@ export function WorkspaceContextRow({
   hint,
   attention = false,
   active = false,
+  highlighted = false,
+  ariaLabel,
 }: {
   icon: LucideIcon
   children: ReactNode
@@ -76,16 +78,19 @@ export function WorkspaceContextRow({
   hint?: string
   attention?: boolean
   active?: boolean
+  highlighted?: boolean
+  ariaLabel?: string
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={hint}
+      aria-label={ariaLabel}
       aria-current={active ? 'page' : undefined}
-      className={`flex w-full items-center gap-2.5 rounded-md px-1 min-h-8 py-1.5 text-left text-xs ${attention ? 'bg-amber-500/10 text-amber-500' : active ? 'bg-background/50 text-foreground' : 'text-foreground/85'} hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+      className={`flex w-full items-center gap-2.5 rounded-md px-1 min-h-8 py-1.5 text-left text-xs ${attention ? 'bg-amber-500/10 text-amber-500' : highlighted ? 'bg-primary/10 text-primary' : active ? 'bg-background/50 text-foreground' : 'text-foreground/85'} hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <Icon className={`h-3.5 w-3.5 shrink-0 ${highlighted ? 'text-primary' : 'text-muted-foreground'}`} />
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {detail && (
         <span className="max-w-[60%] shrink-0 truncate text-[10px] text-muted-foreground">{detail}</span>

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight } from 'lucide-react'
 import { PulseIcon } from './pulseIcon'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
@@ -77,14 +76,10 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} attention={item.id === 'human-actions' && decisions.loaded && decisions.count > 0} onClick={() => open(item)}>{item.label}</Row>
   }
   return <WorkspaceContextCard>
-    {pulse && <button type="button" aria-label={pulse.label} onClick={() => open(pulse)} className="flex w-full items-center gap-3 rounded-xl border border-border bg-background/40 p-3 text-left transition-colors hover:bg-background/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${menuOptions.pulseEnabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}><PulseIcon aria-hidden="true" className="h-5 w-5" /></span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center justify-between gap-2"><span className="text-sm font-semibold">Pulse</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${menuOptions.pulseEnabled ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>{menuOptions.pulseEnabled ? 'On' : 'Off'}</span></span>
-        <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">{menuOptions.pulseEnabled ? 'Your goal agent. Keeps work moving while you’re away.' : 'Your goal agent. Turn on Pulse to get started.'}</span>
-      </span>
-      <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-    </button>}
+    {pulse && <Row icon={PulseIcon} ariaLabel={pulse.label} highlighted
+      hint={menuOptions.pulseEnabled ? 'Your goal agent. Keeps work moving while you’re away.' : 'Your goal agent. Turn on Pulse to get started.'}
+      detail={<span className={menuOptions.pulseEnabled ? 'text-emerald-600 dark:text-emerald-400' : undefined}>{menuOptions.pulseEnabled ? 'On' : 'Off'}</span>}
+      onClick={() => open(pulse)}>Pulse</Row>}
     {recent.length > 0 && <Group title="Recent">{recent.map(renderItem)}</Group>}
     {PROJECT_MENU_GROUPS.map(group => {
       const remaining = items.filter(item => item.group === group && !recentIDs.has(item.id))
