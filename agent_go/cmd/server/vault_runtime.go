@@ -10,8 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/mcpagent/mcpcache"
-	"github.com/manishiitg/mcpagent/mcpcache/openapi"
 	"io"
 	"log"
 	"net/http"
@@ -19,6 +17,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/mcpagent/mcpcache"
+	"github.com/manishiitg/mcpagent/mcpcache/openapi"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/mcpagent/executor"
@@ -259,12 +260,55 @@ func vaultServersFor(ctx context.Context, person string) ([]vaultRuntimeServer, 
 }
 func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	rows, err := vaultAccessFor(r.Context(), mcpCaller(r.Context()))
+	actor := mcpCaller(r.Context())
+	owner := actor
+	root := strings.TrimSpace(r.URL.Query().Get("workspace_path"))
+	if root != "" {
+		_, roots, err := authorizeWorkflowContextPathsWithReadRoots(r.Context(), []string{root})
+		if err != nil || len(roots) != 1 {
+			writeUsersError(w, 403, "project unavailable")
+			return
+		}
+		root = roots[0]
+		owner = api.projectSecretsOwner(actor, root)
+	}
+	access, err := vaultAccessFor(r.Context(), owner)
 	if err != nil {
 		writeUsersError(w, 503, err.Error())
 		return
 	}
-	writeUsersJSON(w, 200, rows)
+	rows := []map[string]any{}
+	seen := map[string]bool{}
+	picks := map[string]bool{}
+	if root != "" {
+		if selected, e := projectSelectedServers(r.Context(), root); e == nil {
+			for _, name := range selected {
+				picks[name] = true
+			}
+		}
+	}
+	for _, s := range access.Servers {
+		if actor != owner && len(picks) > 0 && !picks[vaultServerName(s.ID)] {
+			continue
+		}
+		rows = append(rows, map[string]any{"id": s.ID, "label": s.Label, "provider": s.Provider, "tools": s.Tools, "status": "active", "can_manage": api.vaultActorCanManage(r.Context(), actor, s.ID)})
+		seen[s.ID] = true
+	}
+
+	if own, e := personalVaults(r.Context(), owner); e == nil {
+		for _, v := range own.Vaults {
+			if v.Role != "owner" {
+				continue
+			}
+			for _, s := range v.Connections {
+				if seen[s.ID] || actor != owner && !picks[vaultServerName(s.ID)] {
+					continue
+				}
+				rows = append(rows, map[string]any{"id": s.ID, "label": s.Label, "provider": s.Provider, "tools": []any{}, "status": s.Status, "can_manage": actor == owner})
+			}
+		}
+	}
+	writeUsersJSON(w, 200, map[string]any{"servers": rows})
 }
 
 type vaultDelegation struct {
@@ -386,42 +430,6 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 	if !activeMCPPerson(person) {
 		return nil, errors.New("active MCP user required")
 	}
-	selector := server
-	inPlace := placeScopedContext(ctx)
-	if isPlaceMCPInternalName(server) {
-		if inPlace {
-			// A place's own connections resolve before this point; any other place's is not available here.
-			return nil, errors.New("this connection is not attached to this workflow, Crew or Code")
-		}
-		plain := placeMCPPlainName(server)
-		if placeMCPInternalName(person, plain) != server {
-			return nil, errors.New("this connection does not belong to this user")
-		}
-		selector = plain
-	}
-	var p placeMCPServer
-	var found bool
-	if !inPlace {
-		var lookupErr error
-		p, found, lookupErr = lookupPersonalMCP(person, selector)
-		if lookupErr != nil {
-			return nil, lookupErr
-		}
-	}
-	if found {
-		dir, _ := placeMCPDir(person)
-		if !placeMCPServerConnected(dir, person, p) {
-			return nil, errors.New("this MCP connection needs sign-in; connect it in Integrations")
-		}
-		name, cfg, err := placeMCPServerConfig(person, p.Name)
-		if err != nil {
-			return nil, err
-		}
-		return &executor.ResolvedMCPServer{Name: name, Config: cfg, ConnectionSessionID: name}, nil
-	}
-	if isPlaceMCPInternalName(server) {
-		return nil, errors.New("this connection does not belong to this user")
-	}
 	authority, builder, err := api.vaultBuilderAuthority(ctx, person)
 	if err != nil {
 		return nil, err
@@ -440,7 +448,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 		}
 	}
 	if len(matches) != 1 {
-		return nil, errors.New("MCP is not connected privately or permitted through Vault; use a specific connection ID from the live inventory")
+		return nil, errors.New("MCP is not available through Vault; use a specific connection ID from the live inventory")
 	}
 	v := matches[0]
 	cfg, err := api.vaultServerConfig(person, v.ID)
@@ -490,7 +498,13 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			break
 		}
 	}
-	if inventoryErr == nil && !picksVault {
+	explicitNone := false
+	for _, name := range names {
+		if name == mcpclient.NoServers {
+			explicitNone = true
+		}
+	}
+	if inventoryErr == nil && !picksVault && !explicitNone {
 		for _, row := range rows {
 			names = append(names, vaultServerName(row.ID))
 		}
@@ -504,45 +518,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			continue
 		}
 		if common.IsBuiltinToolCategory(name) {
-			if _, private := personalMCPByCatalog(person, name); inPlace || !private {
-				selected = append(selected, name)
-				continue
-			}
-		}
-		// A connection attached to this session's own workflow, Relay, Crew or Code is the place's: it is
-		// available to every session of that place, including runs that have no person.
-		if internal, cfg, found, denied, _ := api.placeAttachedMatch(ctx, sessionID, name); found {
-			if !denied {
-				if _, seen := scoped[internal]; !seen {
-					selected = append(selected, internal)
-				}
-				config := cfg
-				scoped[internal] = mcpclient.RuntimeConfigOverride{Server: &config}
-				aliases[strings.ToLower(name)] = internal
-				aliases[strings.ToLower(placeMCPPlainName(internal))] = internal
-			}
-			continue
-		}
-		// Legacy per-place credentials remain sealed at the original path, private
-		// to their original owner. The caller's matching internal prefix is required.
-		if !inPlace && isPlaceMCPInternalName(name) && api.ownsLegacyPlaceMCP(ctx, person, name) {
-			placeMCPMu.Lock()
-			all, _ := readPlaceMCPAttachmentsLocked()
-			placeMCPMu.Unlock()
-			for root, items := range all {
-				for _, a := range items {
-					if a.Owner == person && placeMCPInternalName(attachmentStore(a, root), a.Server) == name {
-						_, cfg, err := placeMCPServerConfig(attachmentStore(a, root), a.Server)
-						if err == nil {
-							if _, seen := scoped[name]; !seen {
-								selected = append(selected, name)
-							}
-							scoped[name] = mcpclient.RuntimeConfigOverride{Server: &cfg}
-							aliases[strings.ToLower(name)] = name
-						}
-					}
-				}
-			}
+			selected = append(selected, name)
 			continue
 		}
 
@@ -571,37 +547,11 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		if strings.HasPrefix(runtimeName, "vault_") {
 			aliases[strings.ToLower(vaultSelectionName(runtimeName))] = runtimeName
 		}
-		if isPlaceMCPInternalName(runtimeName) {
-			plain := placeMCPPlainName(runtimeName)
-			aliases[strings.ToLower(plain)] = runtimeName
-			if own, found := personalMCPByCatalog(person, plain); found && own.Catalog != "" {
-				if unambiguous, ok := personalMCPByCatalog(person, own.Catalog); !ok || unambiguous.Name != own.Name {
-					continue
-				}
-				aliases[strings.ToLower(own.Catalog)] = runtimeName
-			}
-		}
 	}
 	if len(selected) == 0 {
 		selected = []string{mcpclient.NoServers}
 	}
 	return selected, scoped, aliases, nil
-}
-func (api *StreamingAPI) ownsLegacyPlaceMCP(ctx context.Context, person, internal string) bool {
-	placeMCPMu.Lock()
-	all, err := readPlaceMCPAttachmentsLocked()
-	placeMCPMu.Unlock()
-	if err != nil || person == "" {
-		return false
-	}
-	for root, items := range all {
-		for _, a := range items {
-			if a.Scope != "user" && a.Owner == person && placeMCPCanAttach(ctx, person, root) && placeMCPInternalName(attachmentStore(a, root), a.Server) == internal {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // Kept separate from management authorization: ordinary product users consume

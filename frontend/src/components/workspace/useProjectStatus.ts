@@ -6,7 +6,7 @@ import { conditionTriggersApi } from '../../api/conditionTriggers'
 import { crewFunctionsApi } from '../../api/crewFunctions'
 import { workflowWebhooksApi } from '../../api/workflowWebhooks'
 import api, { agentApi } from '../../services/api'
-import { placeMcpApi } from '../../api/placeMcp'
+import { vaultConnectionsApi } from '../../api/vaultConnections'
 import { slackBotsApi } from '../integrations/ProductSlackPanel'
 import { skillsApi } from '../../api/skills'
 import type { SecretSources } from '../../api/secrets'
@@ -50,7 +50,7 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
         }),
         agentApi.getWhatsAppStatus().then(result => (result.connected ? 'Connected' : result.paired ? 'Not connected' : 'Not set up')),
         inboxEnabled ? agentApi.getAgentInbox(workspacePath).then(result => result.inbox.address) : Promise.resolve(''),
-        placeMcpApi.list(workspacePath).then(servers => servers.length),
+        vaultConnectionsApi.list(workspacePath).then(servers => servers.length),
         kind === 'crew' ? api.post<{ agents: unknown[] }>('/api/workspaces', { action: 'agents', workspace_id: `${profileId}:${projectId}` }).then(({ data }) => (data.agents || []).length) : Promise.reject(new Error('not listed')),
         skillsApi.workspaceSummary(workspacePath).then(result => result.custom_count),
         agentApi.listGmailConnections(workspacePath).then(result => result.connections.length),

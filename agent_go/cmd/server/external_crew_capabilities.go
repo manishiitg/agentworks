@@ -48,7 +48,7 @@ func (r crewCapabilityRegistrar) RegisterCustomTool(name, description string, sc
 	if name == "install_mcp_server" {
 		props := normalized["properties"].(map[string]any)
 		for key := range props {
-			if key != "name" && key != "url" && key != "label" && key != "catalog" && key != "reconnect" && key != "api_key" && key != "api_key_header" && key != "api_key_format" && key != "client_id" && key != "client_secret" {
+			if key != "name" && key != "url" && key != "label" && key != "catalog" && key != "vault_id" && key != "reconnect" && key != "api_key" && key != "api_key_header" && key != "api_key_format" && key != "client_id" && key != "client_secret" {
 				delete(props, key)
 			}
 		}

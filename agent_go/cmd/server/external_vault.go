@@ -336,23 +336,18 @@ func (api *StreamingAPI) vaultAdminDo(r *http.Request, method, path string, payl
 	return resp.status, resp.Bytes()
 }
 
-
 // vaultShareProjectSecret copies a workflow's or Crew's secret into Vault on
 // the server; the value never passes through the caller. The share itself
 // re-checks the admin's read access to the source folder.
 func (api *StreamingAPI) vaultShareProjectSecret(w http.ResponseWriter, r *http.Request, claims *UserClaims, args map[string]any) {
 	ctx := r.Context()
-	workflowID, crewID, sourcePath := externalArg(args, "source_workflow_id"), externalArg(args, "source_crew_id"), externalArg(args, "source_workspace_path")
-	if sources := btoi(workflowID != "") + btoi(crewID != "") + btoi(sourcePath != ""); sources != 1 {
-		externalError(w, 400, "invalid_arguments", "share requires exactly one of source_workflow_id, source_crew_id or source_workspace_path.")
+	workflowID, crewID := externalArg(args, "source_workflow_id"), externalArg(args, "source_crew_id")
+	if sources := btoi(workflowID != "") + btoi(crewID != ""); sources != 1 {
+		externalError(w, 400, "invalid_arguments", "share requires exactly one of source_workflow_id, source_crew_id.")
 		return
 	}
 	root := ""
-	if sourcePath != "" {
-		// A project's secrets stored under the folder it used before it moved (the move into Vault reads them from
-		// there). The share itself still checks that this administrator may read that folder.
-		root = strings.Trim(strings.TrimSpace(sourcePath), "/")
-	} else if crewID != "" {
+	if crewID != "" {
 		if t := claims.AccessToken; t != nil && !t.AllowsCrew(crewID) {
 			externalError(w, 403, "insufficient_scope", "This connection does not allow this Crew.")
 			return
@@ -389,7 +384,7 @@ func (api *StreamingAPI) vaultShareProjectSecret(w http.ResponseWriter, r *http.
 	}
 	name, vaultName := externalArg(args, "name"), externalArg(args, "vault_name")
 	overwrite, _ := args["overwrite"].(bool)
-	if err := api.shareWorkflowSecretToVault(ctx, claims.UserID, root, name, vaultName, ids, overwrite, sourcePath != ""); err != nil {
+	if err := api.shareWorkflowSecretToVault(ctx, claims.UserID, root, name, vaultName, ids, overwrite); err != nil {
 		vaultSecretFail(w, err)
 		return
 	}

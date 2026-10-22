@@ -72,7 +72,7 @@ func (api *StreamingAPI) saveManagedGlobalSecret(ctx context.Context, userID, na
 // storeManagedGlobalSecret encrypts and stores one value in the managed global store, with no role check: the platform
 // administrator's save and a vault owner's save (under the vault's reserved name) both call it after their own checks.
 func (api *StreamingAPI) storeManagedGlobalSecret(ctx context.Context, name, value string, createOnly bool) error {
-	if len(name) > 128 || !globalSecretNamePattern.MatchString(name) || value == "" {
+	if len(name) > 256 || !globalSecretNamePattern.MatchString(name) || value == "" {
 		return errors.New("A valid secret name and non-empty value are required")
 	}
 	managedGlobalsMu.Lock()

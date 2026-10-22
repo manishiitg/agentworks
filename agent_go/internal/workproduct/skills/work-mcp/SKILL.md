@@ -1,99 +1,69 @@
 ---
 name: work-mcp
-description: Connect and manage this project's MCP connections for {{product}} projects.
+description: Connect and use apps and MCP tools through Vault for {{product}}.
 ---
 
-# {{product}} MCP
+# Connect apps through Vault
 
-Read this skill before acting on an MCP Connect request. Use the setup tools
-below; a new connection request does not require reading old conversations.
+Vault is the only MCP account and credential store. Projects select Vault
+connections; they never keep a second login. A project uses its owner's selected
+accounts under the existing sharing, Builder/Run and Vault rules. Personal Slack
+keeps its send-only restriction for other people. Never widen grants to bypass a
+refusal or connect another person's account without its existing Vault grant.
 
-Use `list_mcp_servers` to inspect this project's connections. Use `search_mcp_catalog` for connection templates.
+## Complete setup in chat
 
-- A new MCP connection belongs to the project it is added to: everyone with
-  access to the project uses it, and no other project does. It acts as the
-  connected account, so say whose login it is. Use `install_mcp_server` for a
-  catalog server. Crew agent turns, including function and message runs, can
-  install or reuse current catalog servers and verified public remote MCP
-  URLs through the advertised setup tool. Keep its URL and ownership checks;
-  never attach another person's saved connection or bypass a denied call.
-<!-- product:mcp-gateway -->- MCPs shared across projects belong in **Vault**. An administrator connects them there and
-  assigns tools and resource conditions to groups. Connecting grants no access.
-- Use `update_project_mcp_server_selection` to select or deselect a
-  private connection for the active project. Vault MCPs are available automatically
-  through current user/group permissions; project selection does not limit them.
-- Vault checks the caller's current permissions on every call, including
-  argument conditions and schema validation. Revoked permissions
-  stop working on retained sessions too. Never suggest a direct upstream URL
-  or another user's connection as a way around a denied call.
-<!-- /product -->- Use `trigger_mcp_discovery` to refresh an owned or permitted connection.
-  Discover loaded tools with `search_tools(query="<provider or task>")`, then
-  `get_api_spec(tool_name="<returned-name>")` for their argument schemas.
-  Only use a runtime `server_name` returned by `search_tools` when filtering;
-  public connection IDs and connection names are selection IDs.
-- Tools become available from the next user message. Confirm what was saved,
-  which connection was saved and any remaining sign-in step.
-- For a Connect request, inspect the current inventory first to avoid a duplicate.
-  Install the requested catalog connection, return any real OAuth sign-in link,
-  and select the connection for this project after sign-in. Refresh the inventory
-  to verify `connected`; an installation or sign-in link alone is not success.
-  Completing that setup and checking it are part of the user's Connect request;
-  do not ask again whether to check or select the requested connection.
-- If a setup or shell tool fails, report the observed error briefly. Do not send
-  the person back to the same Connect button that invoked this request, retry
-  identical failing commands, or describe a filesystem error as a missing role.
-- Own the setup in chat instead of sending the person to a settings screen.
-  For a user-provided API key, pass `api_key` to `install_mcp_server` so the
-  server seals it; use the provider's documented `api_key_header` and
-  `api_key_format` when its header is not Authorization/Bearer. For OAuth app
-  setup, request only the missing `client_id` and `client_secret`, then call
-  the same tool on the saved exact connection name without label or catalog.
-  Credentials are encrypted; never repeat values or write them to project
-  files. Never ask for the person's account password. Display only the real
-  returned sign-in URL; the person signs in and approves at the provider.
+1. Inspect `list_mcp_servers` for the live permitted inventory, owned vaults and
+   catalog. Reuse the requested account. Use `search_mcp_catalog` when necessary;
+   registry entries are leads, so verify custom endpoints against provider docs.
+2. Use `install_mcp_server` with a catalog provider, or name and verified URL.
+   A label creates a separate named account. Reconnect using the exact saved
+   `vault_<connection ID>`, omitting label/catalog so it does not create a duplicate.
+   An optional `vault_id` selects a vault the person already owns.
+3. For a user-supplied API key, pass `api_key`, with `api_key_header` and
+   `api_key_format` when required. For OAuth, return the real sign-in URL. The
+   person signs in and approves at the provider; never ask for their password.
+4. If the provider requires an OAuth app, guide its creation here using the
+   returned callback URL. Collect only the missing `client_id`/`client_secret`,
+   then retry the exact saved account. Never invent a link or send the person to
+   a retired Integrations > Connections page or secure credential form.
+5. Run `trigger_mcp_discovery` on that exact account after approval, inspect the
+   real result and finish the requested project selection. Setup, verification
+   and selection are already authorized by a request to connect an app here.
+   A saved account or sign-in link alone is not a working connection.
 
-## Help the person reach the current screen
+Credentials are encrypted by Vault. Never repeat their values, write them in
+project files, print them in shell output, or include them in URLs. A value the
+person supplies may stay in their chat history. Tool results contain metadata,
+not credential values. Report actual errors in plain words and continue the
+setup the tools support; do not send users back to the button that opened chat.
 
-The menu has Recent, Build, Use, Share, Integrations and Setup. An item in
-Recent is not repeated in its category. MCP connections are labelled **MCPs**;
-**MCP access** is a different page for using AgentWorks from another AI app.
-There is no separate "Integrations > Connections > Available" menu path.
+## Use and selection
 
-Connecting is done through the setup tools in chat. Only when the person asks
-to inspect the connection or needs help finding a screen, use UI navigation.
-In an interactive Builder, discover the UI tools as described in
-`work-ui-control`, inspect `list_ui_capabilities`, then open the advertised
-`mcp` view with target `connected` to show saved and pending accounts. Use
-target `available` only to add a new provider. Confirm an `applied` receipt
-before saying the page opened. Refresh it after setup if it is already open.
-If UI control is unavailable, say **Ctrl+K** (**Cmd+K** on Mac), search
-**MCPs**, and select the current project's result. The menu's **Find a view**
-opens the same search. Do not invent a sidebar or ask the person to hunt for
-a retired tab.
+Use the product's advertised selection tool (`update_project_mcp_server_selection`
+for Crew, the settings/config tool for Goals and Flows). Select exact Vault IDs.
+No explicit picks means all currently permitted Vault accounts; an explicit
+NO_SERVERS selection means none. Removing a connection from a project only
+changes selection. Removing it from Vault removes the account everywhere.
+Vault grants, tool permissions and argument conditions are checked at every call.
 
-If setup returns no sign-in link, explain the actual tool result. A provider
-that requires an OAuth app needs guided steps at the provider and the exact
-callback URL returned by the tool; collect its app details and retry the saved
-name here. A missing server callback address is a server configuration problem,
-not a reason to send the person to AgentWorks settings. Do not create another
-account, invent a link, or claim it connected. After authorization, verify and
-finish the original request without asking again whether to continue.
+Use `search_tools` for the task and `get_api_spec` for the returned tool. Runtime
+server names can contain a session suffix: use the exact name returned by search,
+not an invented alias. New tools become available on the next message. Inspect
+discovery before claiming a tool is loaded. Labels are user labels, not verified
+provider identities.
 
-## Multiple accounts
+For account-level actions, `manage_my_vaults` manages only vaults the person owns:
+connect/sign_in, sync/remove_connection, set_secret/remove_secret and membership.
+Administrators use `manage_vault_access` for company connections and grants;
+`sign_in_apps` and `configure_sign_in_app` manage shared provider app registrations.
+Do not change memberships or grant tools merely to finish a connection.
 
-All products support multiple named connections to one MCP provider.
-Use `install_mcp_server(name="<catalog provider>", catalog="<catalog provider>",
-label="Notion · Engineering")` to create a separate account. A label creates a
-new connection, with a stable generated connection name and independent OAuth
-credentials. Return that exact name with any real sign-in link. For another
-account, pass a different label and authorize the intended upstream account.
-Labels describe the user's choice, not a verified provider identity.
+## Screen help only when requested
 
-Inspect `list_mcp_servers` first. Reconnect, remove, discover and select using the
-exact connection name, not the catalog provider when there are multiple accounts.
-To reconnect an existing account, omit label. Never replace another account or
-change its selection. Named connections do not share the legacy Google/provider
-group login.
-<!-- product:mcp-gateway -->
-Vault MCPs are available automatically through the executing user's current user/group permissions, independent of project MCP selections. Do not call select/deselect for Vault. Tool grants and regex rules are checked at the gateway on every call. Secrets still require explicit selection by name.
-<!-- /product -->
+The project menu is Recent / Build / Use / Share / Integrations / Setup. Recent
+items are not repeated below. MCPs shows Vault accounts and selection; Secrets
+shows Vault-backed secret names. MCP access connects another AI app to AgentWorks.
+Use the advertised UI tool and require an applied receipt before claiming it
+opened. Otherwise suggest Ctrl+K (Cmd+K on Mac), search MCPs or Secrets, and pick
+the current project's result. Setup itself stays in chat.

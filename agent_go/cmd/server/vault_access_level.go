@@ -48,7 +48,7 @@ func vaultClaimsLevel(c *UserClaims) int {
 }
 
 var vaultReadOperations = map[string]map[string]bool{
-	"manage_vault_access":        {"inspect_environment": true, "list_users": true, "inspect_group": true, "inspect_user": true, "inspect_tool": true, "connection_status": true},
+	"manage_vault_access":        {"inspect_environment": true, "list_users": true, "inspect_group": true, "inspect_user": true, "inspect_tool": true, "connection_status": true, "sign_in_apps": true},
 	"manage_vault_groups":        {"list": true, "list_members": true},
 	"manage_vault_secret_access": {"list": true},
 	"manage_vault_tools":         {"list": true, "versions": true},

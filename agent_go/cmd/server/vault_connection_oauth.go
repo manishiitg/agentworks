@@ -84,7 +84,7 @@ func vaultServiceRequestAs(ctx context.Context, actor string, platformUser bool,
 	}
 	return body, nil
 }
-func vaultConnection(ctx context.Context, id string) (vaultOAuthConnection, error) {
+func vaultSavedConnection(ctx context.Context, id string) (vaultOAuthConnection, error) {
 	var c vaultOAuthConnection
 	if !vaultConnectionID.MatchString(id) {
 		return c, errors.New("invalid connection ID")
@@ -93,8 +93,18 @@ func vaultConnection(ctx context.Context, id string) (vaultOAuthConnection, erro
 	if err != nil {
 		return c, err
 	}
-	if json.Unmarshal(data, &c) != nil || c.ID != id || c.OAuthCredentialID != id || c.OAuthServer == "" || (c.Status != "active" && c.Status != "authentication_required") {
+	if json.Unmarshal(data, &c) != nil || c.ID != id {
 		return c, errors.New("OAuth connection unavailable")
+	}
+	return c, nil
+}
+func vaultConnection(ctx context.Context, id string) (vaultOAuthConnection, error) {
+	c, err := vaultSavedConnection(ctx, id)
+	if err != nil {
+		return c, err
+	}
+	if c.OAuthCredentialID != id || c.OAuthServer == "" {
+		return c, errors.New("connection does not use OAuth")
 	}
 	return c, nil
 }
@@ -214,7 +224,7 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 	}
 	cfg.OAuth.RedirectURL = redirect
 	if requiresRegisteredMCPClientSecret(name) && (cfg.OAuth.ClientID == "" || !hasRegisteredMCPClientSecret(cfg.OAuth)) {
-		return nil, &OAuthDiscoveryResponse{Status: "needs_client_id", ServerName: name, RedirectURI: redirect, NeedsClientSecret: true, Message: "Enter the OAuth app credentials in this connection’s sign-in form."}, nil
+		return nil, &OAuthDiscoveryResponse{Status: "needs_client_id", ServerName: name, RedirectURI: redirect, NeedsClientSecret: true, Message: "Provide the missing OAuth app client ID and secret in this chat. Register the returned callback URL with the provider; credentials are stored encrypted and never repeated."}, nil
 	}
 	// Flows started together share a generation, so whichever the person finishes wins; only a sign-out or removal
 	// (advanceVaultOAuthGeneration) cancels flows that are still waiting.
@@ -422,25 +432,88 @@ func (api *StreamingAPI) capLayerConnectionAccess(ctx context.Context, userID, o
 	if level := vaultPersonLevel(userID); level == vaultNone || (level == vaultRead && !vaultReadOperations["manage_vault_access"][operation]) {
 		return "", errors.New("Vault management requires an administrator account")
 	}
+	if operation == "sign_in_apps" {
+		data, _ := json.Marshal(map[string]any{"apps": api.mcpAppGroups(), "redirect_uri": api.mcpToolOAuthRedirect(ctx, userID)})
+		return string(data), nil
+	}
+	if operation == "configure_sign_in_app" {
+		var in struct {
+			Key          string `json:"key"`
+			ClientID     string `json:"client_id"`
+			ClientSecret string `json:"client_secret"`
+			Remove       bool   `json:"remove"`
+		}
+		if json.Unmarshal(args, &in) != nil {
+			return "", errors.New("invalid sign-in app details")
+		}
+		key := strings.ToLower(strings.TrimSpace(in.Key))
+		known := false
+		for _, group := range api.mcpAppGroups() {
+			if group.Key == key {
+				known = true
+			}
+		}
+		if !known || !mcpAppKeyPattern.MatchString(key) {
+			return "", errors.New("use an app key from sign_in_apps")
+		}
+		if in.Remove {
+			file, err := mcpAppFile(key)
+			if err != nil {
+				return "", err
+			}
+			if err = os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return "", err
+			}
+			return "Removed the shared sign-in app registration.", nil
+		}
+		if strings.TrimSpace(in.ClientID) == "" || len(in.ClientID) > 300 || strings.ContainsAny(in.ClientID, " \r\n\t") || len(in.ClientSecret) > 8192 {
+			return "", errors.New("provide the app client ID and required secret")
+		}
+		if err := writeMCPApp(key, mcpApp{ClientID: strings.TrimSpace(in.ClientID), ClientSecret: in.ClientSecret, UpdatedAt: time.Now().UTC().Format(time.RFC3339), UpdatedBy: userID}); err != nil {
+			return "", err
+		}
+		return "Stored the shared sign-in app encrypted. Existing accounts and grants are retained; credential values are never returned.", nil
+	}
+	if operation == "connect_server" {
+		var in map[string]interface{}
+		if json.Unmarshal(args, &in) != nil {
+			return "", errors.New("invalid connection setup")
+		}
+		if value, _ := in["api_key"].(string); value != "" {
+			credential, err := vaultAPIKeyHeaders(in, value)
+			if err != nil {
+				return "", err
+			}
+			in["credential"] = credential
+			in["auth_scheme"] = "Headers"
+		}
+		for _, key := range []string{"api_key", "api_key_header", "api_key_format", "client_id", "client_secret"} {
+			delete(in, key)
+		}
+		encoded, _ := json.Marshal(in)
+		return capLayerAgentAccess(ctx, userID, operation, encoded)
+	}
 	if operation != "sign_in_connection" && operation != "connection_status" && operation != "sync_connection" && operation != "disconnect_connection" {
 		return capLayerAgentAccess(ctx, userID, operation, args)
 	}
 	var in struct {
 		ConnectionID string `json:"connection_id"`
+		ClientID     string `json:"client_id,omitempty"`
+		ClientSecret string `json:"client_secret,omitempty"`
 	}
 	dec := json.NewDecoder(bytes.NewReader(args))
 	dec.DisallowUnknownFields()
 	if dec.Decode(&in) != nil || dec.Decode(&struct{}{}) != io.EOF {
-		return "", errors.New("provide only connection_id")
+		return "", errors.New("provide connection_id and optional OAuth app credentials")
 	}
-	c, err := vaultConnection(ctx, in.ConnectionID)
+	c, err := vaultSavedConnection(ctx, in.ConnectionID)
 	if err != nil {
 		return "", err
 	}
 	var result any
 	switch operation {
 	case "sign_in_connection":
-		start, discovery, err := api.beginVaultConnectionOAuth(ctx, userID, chatSessionIDFromContext(ctx), c.ID, c.OAuthServer, deriveOAuthRedirectURIFromEnv(), "", "")
+		start, discovery, err := api.beginVaultConnectionOAuth(ctx, userID, chatSessionIDFromContext(ctx), c.ID, c.OAuthServer, api.mcpToolOAuthRedirect(ctx, userID), in.ClientID, in.ClientSecret)
 		if err != nil {
 			return "", err
 		}
@@ -462,7 +535,7 @@ func (api *StreamingAPI) capLayerConnectionAccess(ctx context.Context, userID, o
 		mutex.Unlock()
 		return `{"disconnected":true,"group_permissions_removed":true}`, nil
 	case "connection_status":
-		valid := false
+		valid := c.OAuthServer == "" && c.Status == "active"
 		cfg, err := api.vaultOAuthConfig(ctx, c.ID, c.OAuthServer, c.UpstreamURL)
 		if err == nil {
 			mutex := platformMCPOAuthMutex("vault:" + c.ID)

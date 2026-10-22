@@ -18,11 +18,13 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 	switch name {
 	case "connect_server":
 		var in struct {
-			Provider string `json:"provider,omitempty"`
-			Label    string `json:"label,omitempty"`
-			Name     string `json:"name"`
-			URL      string `json:"url"`
-			Instance string `json:"instance,omitempty"`
+			Provider   string `json:"provider,omitempty"`
+			Label      string `json:"label,omitempty"`
+			Name       string `json:"name"`
+			URL        string `json:"url"`
+			Instance   string `json:"instance,omitempty"`
+			Credential string `json:"credential,omitempty"`
+			AuthScheme string `json:"auth_scheme,omitempty"`
 		}
 		decoder := json.NewDecoder(strings.NewReader(string(raw)))
 		decoder.DisallowUnknownFields()
@@ -44,9 +46,17 @@ func (a *Admin) setupTool(ctx context.Context, name string, raw json.RawMessage,
 			if in.URL != "" || len(in.Label) > 100 || len(in.Instance) > 100 {
 				return nil, errors.New("catalog connections accept provider, label and instance only")
 			}
-			c, err = a.AddConnectorFromCatalog(ctx, in.Provider, in.Label, in.Instance)
+			if in.Credential != "" {
+				p, ok := a.Catalog.Find(in.Provider)
+				if !ok {
+					return nil, errors.New("unknown provider")
+				}
+				c, err = a.AddConnectorCustomWithCredential(ctx, in.Provider, in.Label, in.Instance, p.URL, in.Credential, in.AuthScheme)
+			} else {
+				c, err = a.AddConnectorFromCatalog(ctx, in.Provider, in.Label, in.Instance)
+			}
 		} else {
-			c, err = a.AddConnectorCustom(ctx, in.Name, in.Name, in.Instance, in.URL)
+			c, err = a.AddConnectorCustomWithCredential(ctx, in.Name, in.Name, in.Instance, in.URL, in.Credential, in.AuthScheme)
 		}
 		if err != nil {
 			return nil, err

@@ -7,7 +7,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/mcpagent/executor"
-	"github.com/manishiitg/mcpagent/mcpcache"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
@@ -48,26 +47,15 @@ func (api *StreamingAPI) mcpToolUserID(ctx context.Context) (string, error) {
 	return userID, nil
 }
 
-// Connection status and tool metadata come only from this person's store.
+// Connection status comes from the current Vault inventory, never a private store.
 func (api *StreamingAPI) mcpToolStatusForUser(name, person string, _ mcpclient.MCPServerConfig) ToolStatus {
-	private, found := personalMCPByCatalog(person, name)
-	if !found {
-		return ToolStatus{Name: name, Server: name, Status: "not_connected", Connection: connectionAvailable}
+	rows, err := vaultServersFor(context.Background(), person)
+	if err == nil {
+		for _, row := range rows {
+			if vaultServerName(row.ID) == name {
+				return ToolStatus{Name: name, Server: name, Status: "not_loaded", Connection: connectionConnected}
+			}
+		}
 	}
-	internal, cfg, err := placeMCPServerConfig(person, private.Name)
-	if err != nil {
-		return ToolStatus{Name: name, Server: name, Status: "error", Connection: connectionAvailable}
-	}
-	dir, _ := placeMCPDir(person)
-	if !placeMCPServerConnected(dir, person, private) {
-		return ToolStatus{Name: name, Server: name, Status: "not_connected", Connection: connectionAvailable, RequiresOAuth: private.OAuth != nil}
-	}
-	if entry, ok := mcpcache.GetCacheManager(api.logger).Get(mcpcache.GenerateUnifiedCacheKey(internal, cfg)); ok {
-		status := api.convertCacheEntryToToolStatus(entry)
-		status.Name = name
-		status.Server = name
-		status.Connection = connectionConnected
-		return status
-	}
-	return ToolStatus{Name: name, Server: name, Status: "not_loaded", Connection: connectionConnected, RequiresOAuth: private.OAuth != nil}
+	return ToolStatus{Name: name, Server: name, Status: "not_connected", Connection: connectionAvailable}
 }

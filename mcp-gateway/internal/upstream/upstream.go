@@ -28,6 +28,7 @@ type Client struct {
 
 type DialOptions struct {
 	// AllowPrivate is for an explicitly configured private-network deployment.
+	Transport    string
 	AllowPrivate bool
 	BearerToken  string
 	AuthScheme   string
@@ -149,7 +150,7 @@ func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if scheme == "" {
 		scheme = "Bearer"
 	}
-	if scheme != "Bearer" && scheme != "Basic" {
+	if scheme != "Bearer" && scheme != "Basic" && scheme != "Headers" {
 		return nil, errors.New("unsupported authorization scheme")
 	}
 	token := t.bearerToken
@@ -163,7 +164,18 @@ func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	if token != "" {
 		req = req.Clone(req.Context())
-		req.Header.Set("Authorization", scheme+" "+token)
+		if scheme == "Headers" {
+			if err := ValidateCredentialHeaders(token); err != nil {
+				return nil, err
+			}
+			var headers map[string]string
+			_ = json.Unmarshal([]byte(token), &headers)
+			for name, value := range headers {
+				req.Header.Set(name, value)
+			}
+		} else {
+			req.Header.Set("Authorization", scheme+" "+token)
+		}
 	}
 	resp, err := t.base.RoundTrip(req)
 	if err != nil {
@@ -228,7 +240,14 @@ func DialWithOptions(ctx context.Context, url string, opts DialOptions) (*Client
 		return nil, err
 	}
 	refusal := &refusalNote{}
-	c, err := client.NewStreamableHttpClient(url, transport.WithHTTPBasicClient(safeHTTPClientNoting(opts, refusal)))
+	var c *client.Client
+	var err error
+	httpClient := safeHTTPClientNoting(opts, refusal)
+	if opts.Transport == "sse" {
+		c, err = client.NewSSEMCPClient(url, client.WithHTTPClient(httpClient))
+	} else {
+		c, err = client.NewStreamableHttpClient(url, transport.WithHTTPBasicClient(httpClient))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("upstream client: %w", err)
 	}
@@ -277,4 +296,30 @@ func (u *Client) Call(ctx context.Context, name string, args map[string]any) (*m
 		return nil, err
 	}
 	return res, nil
+}
+
+// Credential header values are kept in the existing encrypted credential store.
+func ValidateCredentialHeaders(raw string) error {
+	if len(raw) > 65536 {
+		return errors.New("credential headers too large")
+	}
+	var headers map[string]string
+	if json.Unmarshal([]byte(raw), &headers) != nil || len(headers) == 0 || len(headers) > 32 {
+		return errors.New("invalid credential headers")
+	}
+	for name, value := range headers {
+		if name == "" || strings.ContainsAny(value, "\r\n") {
+			return errors.New("invalid credential header")
+		}
+		for _, r := range name {
+			if !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || strings.ContainsRune("!#$%&'*+-.^_`|~", r)) {
+				return errors.New("invalid credential header name")
+			}
+		}
+		switch strings.ToLower(name) {
+		case "host", "connection", "content-length", "transfer-encoding", "proxy-authorization":
+			return errors.New("unsupported credential header")
+		}
+	}
+	return nil
 }

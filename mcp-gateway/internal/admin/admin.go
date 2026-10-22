@@ -322,7 +322,10 @@ func (a *Admin) AddConnectorCustomWithBearer(ctx context.Context, provider, labe
 }
 
 func validateConnectorCredential(token, scheme string) error {
-	if strings.ContainsAny(token, "\r\n") || len(token) > 8192 || (scheme != "" && scheme != "Bearer" && scheme != "Basic") {
+	if scheme == "Headers" {
+		return upstream.ValidateCredentialHeaders(token)
+	}
+	if strings.ContainsAny(token, "\r\n") || len(token) > 65536 || (scheme != "" && scheme != "Bearer" && scheme != "Basic") {
 		return errors.New("invalid connector credential")
 	}
 	if scheme == "Basic" {
@@ -336,6 +339,10 @@ func validateConnectorCredential(token, scheme string) error {
 
 // The scheme is public metadata; credential bytes stay in the encrypted store.
 func (a *Admin) AddConnectorCustomWithCredential(ctx context.Context, provider, label, slug, upstreamURL, bearerToken, scheme string) (store.Connector, error) {
+	return a.addConnectorCustomFor(ctx, "", provider, label, slug, upstreamURL, bearerToken, scheme)
+}
+
+func (a *Admin) addConnectorCustomFor(ctx context.Context, vaultID, provider, label, slug, upstreamURL, bearerToken, scheme string) (store.Connector, error) {
 	if err := validateConnectorCredential(bearerToken, scheme); err != nil {
 		return store.Connector{}, err
 	}
@@ -347,10 +354,10 @@ func (a *Admin) AddConnectorCustomWithCredential(ctx context.Context, provider, 
 	if err := a.Gateway.ValidateUpstreamURL(upstreamURL); err != nil {
 		return store.Connector{}, err
 	}
-	if u, err := url.Parse(upstreamURL); err == nil && (strings.EqualFold(u.Hostname(), "slack.com") || strings.HasSuffix(strings.ToLower(u.Hostname()), ".slack.com")) {
+	if u, err := url.Parse(upstreamURL); vaultID == "" && err == nil && (strings.EqualFold(u.Hostname(), "slack.com") || strings.HasSuffix(strings.ToLower(u.Hostname()), ".slack.com")) {
 		return store.Connector{}, errors.New("Slack is a personal account: connect it in your own vault (My Vault), not the company Vault")
 	}
-	c, err := a.addConnectorRow(key, label, slug, upstreamURL)
+	c, err := a.addConnectorRowFor(vaultID, key, label, slug, upstreamURL)
 	if err != nil {
 		return store.Connector{}, err
 	}
@@ -369,7 +376,7 @@ func (a *Admin) AddConnectorCustomWithCredential(ctx context.Context, provider, 
 		// A custom server that needs a sign-in becomes a sign-in connection: the product discovers the server's own
 		// published sign-in details (OAuthServer "custom:<key>") the way it does for a catalog app's fixed ones.
 		if bearerToken == "" && upstream.IsAuthorizationRequired(err) && a.Gateway.HasSharedOAuth() {
-			return a.addConnectorRow(key, label, slug, upstreamURL, "custom:"+key)
+			return a.addConnectorRowFor(vaultID, key, label, slug, upstreamURL, "custom:"+key)
 		}
 		return store.Connector{}, err
 	}

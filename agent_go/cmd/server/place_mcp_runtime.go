@@ -50,16 +50,6 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 		}
 		return resolved, err
 	}
-	// A connection attached to the session's own workflow, Relay, Crew or Code belongs to that place:
-	// any session of it (a chat of anyone with access, a run, a step, a schedule) resolves it.
-	if resolved, handled, err := api.resolvePlaceAttachedMCP(ctx, sessionID, server); handled {
-		if err == nil && resolved != nil {
-			if guardErr := api.guardPersonalSlackCall(ctx, sessionID, resolved.Name, tool); guardErr != nil {
-				return nil, guardErr
-			}
-		}
-		return resolved, err
-	}
 	resolved, err := api.resolveWorkshopMCPServer(ctx, sessionID, server, tool)
 	if resolved != nil || err != nil {
 		return resolved, err
@@ -91,28 +81,6 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 		return nil, false, nil
 	}
 	server = strings.TrimSpace(server)
-	// One of this Code's own connections, by its internal name or by its
-	// plain name (what the person sees); found is false when it is not one.
-	place := func(name string) (*executor.ResolvedMCPServer, bool) {
-		names, overrides := attachedMCPServersForRoot(context.WithValue(ctx, common.UserIDKey, pin.Person), pin.CodeRoot)
-		for _, internal := range names {
-			plain := placeMCPPlainName(internal)
-			if internal != name && !strings.EqualFold(plain, name) {
-				continue
-			}
-			if override, ok := overrides[internal]; ok && override.Server != nil {
-				return &executor.ResolvedMCPServer{Name: internal, Config: *override.Server, ConnectionSessionID: internal}, true
-			}
-		}
-		return nil, false
-	}
-	if isPlaceMCPInternalName(server) {
-		if resolved, found := place(server); found {
-			return resolved, true, nil
-		}
-		// Anyone else's connection, or one that is no longer here.
-		return nil, true, fmt.Errorf("MCP server %q is not available in this chat", server)
-	}
 	// Exact Vault IDs do not require a project manifest or opt-in. Ownership
 	// is pinned above, and resolveGovernedMCP checks the live user's inventory.
 	if strings.HasPrefix(server, "vault_") {
@@ -122,13 +90,6 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 	manifest, found, err := ReadWorkflowManifest(ctx, pin.CodeRoot)
 	if err != nil || !found {
 		return nil, true, fmt.Errorf("MCP scope unavailable for this Crew chat")
-	}
-	// The Code's own connection under its plain name, unless a global server
-	// the Code selected has that name (then the plain name is the global one).
-	if !serverListHasName(runtimeMCPServers(manifest.Capabilities.SelectedServers), server) {
-		if resolved, found := place(server); found {
-			return resolved, true, nil
-		}
 	}
 	// A global server the Code selected.
 	catalog, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)

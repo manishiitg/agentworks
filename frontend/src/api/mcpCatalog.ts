@@ -1,8 +1,6 @@
 import api from '../services/api'
 
-// The catalog of MCP servers that can be connected to a Code, Crew or workflow
-// (docs/design/personal_mcp_attach.md). Connections themselves live in
-// placeMcp.ts: a Code is a place like a Crew.
+// Provider templates only. Saved connections and credentials are owned by Vault.
 
 export interface PersonalMcpHeader { secret: string; format?: string }
 

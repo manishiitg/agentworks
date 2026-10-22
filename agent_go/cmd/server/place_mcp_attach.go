@@ -13,8 +13,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
-	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
@@ -579,10 +577,6 @@ func forgetPlaceConnections(root string) {
 // server name that is not one of this place's connections.
 var errPlaceMCPUnavailable = fmt.Errorf("this MCP connection is not available here")
 
-func init() {
-	workshop.PlaceMCPServers = attachedMCPServersForRoot
-}
-
 // projectSecretValue reads one secret of a workflow, Crew or Code from the
 // shared project secret store (the same store Setup > Secrets writes).
 func (api *StreamingAPI) projectSecretValue(root, name string) (string, error) {
@@ -591,7 +585,7 @@ func (api *StreamingAPI) projectSecretValue(root, name string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	secrets, err := api.chatStore.ListWorkflowSecrets(ctx, chathistory.SharedWorkflowSecretsUserID, root)
+	secrets, err := api.ensureSharedWorkflowSecrets(ctx, root, api.projectSecretsOwner(mcpCaller(ctx), root))
 	if err != nil {
 		return "", err
 	}

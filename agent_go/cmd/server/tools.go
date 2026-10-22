@@ -314,18 +314,6 @@ func (api *StreamingAPI) handleGetTools(w http.ResponseWriter, r *http.Request) 
 		status.RequiresOAuth = config.OAuth != nil
 		allResults = append(allResults, status)
 	}
-	private, _ := listPlaceMCPServers(userID)
-	for _, server := range private {
-		if _, catalog := cfg.MCPServers[server.Name]; catalog {
-			continue
-		}
-		if server.Catalog != "" {
-			if _, catalog := cfg.MCPServers[server.Catalog]; catalog {
-				continue
-			}
-		}
-		allResults = append(allResults, api.mcpToolStatusForUser(server.Name, userID, mcpclient.MCPServerConfig{}))
-	}
 
 	// Sort results alphabetically by server name
 	sort.Slice(allResults, func(i, j int) bool {

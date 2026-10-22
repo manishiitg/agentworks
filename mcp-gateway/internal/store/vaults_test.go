@@ -88,3 +88,31 @@ func TestVaultOwnershipRules(t *testing.T) {
 		t.Fatalf("a stranger sees no vaults, got %d", len(got))
 	}
 }
+
+func TestProjectVaultPreservesProjectIsolationAndOwnership(t *testing.T) {
+	s := NewMemoryStore()
+	s.AddWorkspace(Workspace{ID: "w"})
+	s.AddUser(User{ID: "owner", WorkspaceID: "w"})
+	s.AddUser(User{ID: "other", WorkspaceID: "w"})
+	if err := s.EnsureProjectVault("w", "owner", "v-12345678", "Workflow/example", "Example"); err != nil {
+		t.Fatal(err)
+	}
+	if s.VaultOwnedBy("other", "v-12345678") {
+		t.Fatal("project secret scope exposed to another person")
+	}
+	if s.VaultSetMember("owner", "v-12345678", "other", true) == nil {
+		t.Fatal("project sharing bypassed")
+	}
+	if s.VaultSetOwner("owner", "v-12345678", "other", true) == nil {
+		t.Fatal("project ownership bypassed")
+	}
+	if err := s.EnsureProjectVault("w", "other", "v-12345678", "Workflow/example", "Example"); err != nil {
+		t.Fatal(err)
+	}
+	if s.VaultOwnedBy("owner", "v-12345678") || !s.VaultOwnedBy("other", "v-12345678") {
+		t.Fatal("old owner retained secret access after transfer")
+	}
+	if s.EnsureProjectVault("w", "owner", "v-12345678", "Workflow/different", "Different") == nil {
+		t.Fatal("different project reused secret scope")
+	}
+}

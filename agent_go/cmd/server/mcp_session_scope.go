@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -40,18 +39,6 @@ func (api *StreamingAPI) resolveWorkshopMCPServer(ctx context.Context, sessionID
 		return nil, fmt.Errorf("MCP session owner is unavailable")
 	}
 	ctx = context.WithValue(ctx, common.UserIDKey, userID)
-	// The workflow's own connections: only the ones this place has, never
-	// anyone else's personal server.
-	if isPlaceMCPInternalName(strings.TrimSpace(server)) {
-		_, overrides := attachedMCPServersForRoot(ctx, cfg.WorkspacePath)
-		if override, ok := overrides[strings.TrimSpace(server)]; ok && override.Server != nil {
-			if guardErr := api.guardPersonalSlackCall(ctx, sessionID, server, tool); guardErr != nil {
-				return nil, guardErr
-			}
-			return &executor.ResolvedMCPServer{Name: strings.TrimSpace(server), Config: *override.Server, ConnectionSessionID: strings.TrimSpace(server)}, nil
-		}
-		return nil, errPlaceMCPUnavailable
-	}
 	manifest, found, err := ReadWorkflowManifest(ctx, cfg.WorkspacePath)
 	if err != nil {
 		return nil, fmt.Errorf("read current workflow MCP scope: %w", err)

@@ -2,23 +2,20 @@ package server
 
 import (
 	"context"
-	"log"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/sealbox"
 )
 
-// Workflow secrets belong to the workflow, not to whichever user typed them
-// in. Before PLAT-272 they lived under the storing user's own
-// _users/<uid>/workflow_secrets/ document and were AES-GCM bound to that
-// user's ID, so a second user with access to the workflow -- a read-only
-// reviewer running it, a co-owner, or a scheduled run started as anyone else
-// -- resolved nothing and every $SECRET_<NAME> came up empty. This file is the
-// shared store that replaces that: one document per workflow under the
-// reserved chathistory.SharedWorkflowSecretsUserID, bound to the workflow
-// path instead of a user, gated by workflow access (owners manage and reveal,
-// readers may use at runtime but never see values).
+// Project tools retain their existing scope and authorization. Vault is the
+// sole metadata and encrypted-value store, partitioned by stable project root.
+// Legacy ciphertext helpers are retained only for migration and owner reveal.
 
 // sharedWorkflowSecretAAD is the AES-GCM additional data for a shared
 // workflow secret: the store's canonical workflow path. Binding to the path
@@ -48,105 +45,115 @@ func decryptSecretValueWithAAD(encryptedBase64 string, aad []byte) (string, erro
 
 // upsertSharedWorkflowSecret stores plaintext for everyone with access to the
 // workflow.
-func (api *StreamingAPI) upsertSharedWorkflowSecret(ctx context.Context, workflowPath, name, plaintext string) error {
-	aad, err := sharedWorkflowSecretAAD(workflowPath)
-	if err != nil {
-		return err
-	}
-	encrypted, err := encryptSecretValueWithAAD(plaintext, aad)
-	if err != nil {
-		return err
-	}
-	if err := api.chatStore.UpsertWorkflowSecret(ctx, chathistory.SharedWorkflowSecretsUserID, workflowPath, name, encrypted); err != nil {
-		return err
-	}
-	markWorkflowSecretsChanged(workflowPath)
-	return nil
-}
 
-// deleteSharedWorkflowSecret removes a shared workflow secret. The caller's
-// own legacy per-user copy, if any survived migration, is removed too so the
-// name cannot resurface through a later migration pass.
-func (api *StreamingAPI) deleteSharedWorkflowSecret(ctx context.Context, workflowPath, name, callerUserID string) error {
-	if err := api.chatStore.DeleteWorkflowSecret(ctx, chathistory.SharedWorkflowSecretsUserID, workflowPath, name); err != nil {
-		return err
+func (api *StreamingAPI) projectVault(ctx context.Context, root, actor string) (string, string, error) {
+	normalized, err := chathistory.NormalizeWorkflowSecretPath(root)
+	if err != nil {
+		return "", "", err
 	}
-	markWorkflowSecretsChanged(workflowPath)
-	if callerUserID != "" && callerUserID != chathistory.SharedWorkflowSecretsUserID {
-		if err := api.chatStore.DeleteWorkflowSecret(ctx, callerUserID, workflowPath, name); err != nil {
-			log.Printf("[SECRETS] shared delete of %q for %s succeeded but the legacy per-user copy for %s could not be removed: %v", name, workflowPath, callerUserID, err)
+	if actor == "" {
+		actor = mcpCaller(ctx)
+	}
+	if actor == "" && !IsMultiUserMode() {
+		actor = GetDefaultUserID()
+	}
+	owner := api.projectSecretsOwner(actor, normalized)
+	if normalized == brainSecretsPath {
+		if directory, e := readUserDirectoryFile(); e == nil {
+			var admins []string
+			for _, u := range directory.Users {
+				if a := userAccessForClaims(&UserClaims{UserID: u.ID}); a.Admin && !a.Disabled {
+					admins = append(admins, u.ID)
+				}
+			}
+			sort.Strings(admins)
+			if len(admins) > 0 {
+				owner = admins[0]
+			}
 		}
 	}
+
+	if owner == "" || !activeMCPPerson(owner) {
+		return "", "", fmt.Errorf("an active project owner is required")
+	}
+	data, err := vaultPersonRequest(ctx, owner, http.MethodPost, "/api/project-vaults", vaultPromoteJSON(map[string]string{"workspace_root": normalized}))
+	if err != nil {
+		return "", "", err
+	}
+	var result struct{ ID string }
+	if json.Unmarshal(data, &result) != nil || result.ID == "" {
+		return "", "", fmt.Errorf("project Vault identity unavailable")
+	}
+	return result.ID, owner, nil
+}
+
+// Project tools keep their existing permissions and names; Vault is their only
+// resource store. Values use the same encrypted Vault value store as shared keys.
+func (api *StreamingAPI) upsertSharedWorkflowSecret(ctx context.Context, workflowPath, name, plaintext string) error {
+	id, owner, err := api.projectVault(ctx, workflowPath, mcpCaller(ctx))
+	if err != nil {
+		return err
+	}
+	full, err := vaultSecretName(id, name)
+	if err != nil {
+		return err
+	}
+	if err = api.storeManagedGlobalSecret(ctx, full, plaintext, false); err != nil {
+		return err
+	}
+	if _, err = vaultPersonRequest(ctx, owner, http.MethodPost, "/api/vaults/"+url.PathEscape(id)+"/secrets", vaultPromoteJSON(map[string]string{"Name": full})); err != nil {
+		return err
+	}
+	markWorkflowSecretsChanged(workflowPath)
 	return nil
 }
 
-// decryptSharedWorkflowSecret returns the plaintext of one shared secret
-// record. Access is the caller's responsibility.
-func decryptSharedWorkflowSecret(workflowPath string, s chathistory.UserSecret) (string, error) {
-	aad, err := sharedWorkflowSecretAAD(workflowPath)
+func (api *StreamingAPI) deleteSharedWorkflowSecret(ctx context.Context, workflowPath, name, callerUserID string) error {
+	id, owner, err := api.projectVault(ctx, workflowPath, callerUserID)
 	if err != nil {
-		return "", err
+		return err
 	}
-	return decryptSecretValueWithAAD(s.EncryptedValue, aad)
+	if err = api.removeVaultSecret(ctx, owner, id, name); err != nil {
+		return err
+	}
+	markWorkflowSecretsChanged(workflowPath)
+	return nil
 }
 
-// ensureSharedWorkflowSecrets lists the workflow's shared secrets, migrating
-// the pre-PLAT-272 per-user documents into the shared one first if the shared
-// document is still empty. Migration candidates are the requesting user, the
-// workflow's creator, and its listed owners -- the identities that could have
-// stored a value through the old per-user path. Migrated entries are removed
-// from the per-user documents so this is a one-shot move, not a lingering
-// second source; a legacy entry that fails to decrypt (a different
-// AUTH_SECRET, a corrupt blob) is left where it is and logged.
+func decryptSharedWorkflowSecret(workflowPath string, s chathistory.UserSecret) (string, error) {
+	if s.VaultName == "" {
+		return "", fmt.Errorf("secret has not been migrated to Vault")
+	}
+	managedGlobalsMu.RLock()
+	value, ok := managedGlobals[s.VaultName]
+	managedGlobalsMu.RUnlock()
+	if !ok {
+		return "", fmt.Errorf("Vault secret value unavailable")
+	}
+	return value, nil
+}
+
 func (api *StreamingAPI) ensureSharedWorkflowSecrets(ctx context.Context, workflowPath, requestingUserID string) ([]chathistory.UserSecret, error) {
 	if strings.TrimSpace(workflowPath) == "" {
 		return nil, nil
 	}
-	shared, err := api.chatStore.ListWorkflowSecrets(ctx, chathistory.SharedWorkflowSecretsUserID, workflowPath)
+	id, owner, err := api.projectVault(ctx, workflowPath, requestingUserID)
 	if err != nil {
 		return nil, err
 	}
-	if len(shared) > 0 {
-		return shared, nil
+	data, err := vaultPersonRequest(ctx, owner, http.MethodGet, "/api/vaults/"+url.PathEscape(id), nil)
+	if err != nil {
+		return nil, err
 	}
-
-	candidates := []string{requestingUserID}
-	if manifest, exists, err := ReadWorkflowManifest(ctx, workflowPath); err == nil && exists && manifest != nil {
-		candidates = append(candidates, manifest.CreatedBy)
-		candidates = append(candidates, manifest.effectiveOwners()...)
+	var view struct {
+		Names []string `json:"secret_names"`
 	}
-	seen := map[string]bool{"": true, chathistory.SharedWorkflowSecretsUserID: true}
-	migrated := 0
-	for _, uid := range candidates {
-		uid = strings.TrimSpace(uid)
-		if seen[uid] {
-			continue
-		}
-		seen[uid] = true
-		legacy, err := api.chatStore.ListWorkflowSecrets(ctx, uid, workflowPath)
-		if err != nil {
-			log.Printf("[SECRETS] migration: cannot read legacy workflow secrets of %s for %s: %v", uid, workflowPath, err)
-			continue
-		}
-		for _, s := range legacy {
-			plaintext, err := decryptSecretValue(s.EncryptedValue, uid)
-			if err != nil {
-				log.Printf("[SECRETS] migration: legacy secret %q of %s for %s left in place, cannot decrypt: %v", s.Name, uid, workflowPath, err)
-				continue
-			}
-			if err := api.upsertSharedWorkflowSecret(ctx, workflowPath, s.Name, plaintext); err != nil {
-				log.Printf("[SECRETS] migration: cannot write shared secret %q for %s: %v", s.Name, workflowPath, err)
-				continue
-			}
-			if err := api.chatStore.DeleteWorkflowSecret(ctx, uid, workflowPath, s.Name); err != nil {
-				log.Printf("[SECRETS] migration: shared copy of %q written for %s but the legacy copy of %s could not be removed: %v", s.Name, workflowPath, uid, err)
-			}
-			migrated++
-		}
+	if err = json.Unmarshal(data, &view); err != nil {
+		return nil, err
 	}
-	if migrated == 0 {
-		return shared, nil
+	rows := make([]chathistory.UserSecret, 0, len(view.Names))
+	for _, full := range view.Names {
+		rows = append(rows, chathistory.UserSecret{Name: vaultSecretShortName(full), VaultName: full, WorkflowPath: workflowPath})
 	}
-	log.Printf("[SECRETS] migrated %d workflow secret(s) for %s from per-user storage into the shared workflow store", migrated, workflowPath)
-	return api.chatStore.ListWorkflowSecrets(ctx, chathistory.SharedWorkflowSecretsUserID, workflowPath)
+	return rows, nil
 }

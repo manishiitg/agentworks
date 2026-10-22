@@ -870,7 +870,7 @@ func (s *ProductScheduleService) validateCrewCreationServers(ctx context.Context
 		}
 		servers = append(servers, canonical)
 		if !connected {
-			pending = append(pending, PendingConnection{Kind: "mcp_server", Name: canonical, Reason: "configured but not connected; connect it in the Crew UI before the crew can use its tools"})
+			pending = append(pending, PendingConnection{Kind: "mcp_server", Name: canonical, Reason: "configured but not connected; connect it through chat using Vault before the Crew can use its tools"})
 		}
 	}
 	return servers, pending, nil
@@ -883,10 +883,7 @@ func (s *ProductScheduleService) probeCrewCreationMCPServer(ctx context.Context,
 	if s == nil || s.api == nil {
 		return "", false, fmt.Errorf("MCP configuration is unavailable")
 	}
-	if own, found := personalMCPByCatalog(userID, name); found {
-		dir, _ := placeMCPDir(userID)
-		return own.Name, placeMCPServerConnected(dir, userID, own), nil
-	}
+
 	if resolved, err := s.api.resolveGovernedMCP(ctx, userID, name); err == nil {
 		return vaultSelectionName(resolved.Name), true, nil
 	}

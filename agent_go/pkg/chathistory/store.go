@@ -66,6 +66,7 @@ type UserSecret struct {
 	Name           string    `json:"name"`
 	WorkflowPath   string    `json:"workflow_path,omitempty"`
 	EncryptedValue string    `json:"encrypted_value"`
+	VaultName      string    `json:"-"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -78,6 +79,7 @@ type WorkflowProviderCredential struct {
 	WorkflowPath   string    `json:"workflow_path"`
 	Provider       string    `json:"provider"`
 	EncryptedValue string    `json:"encrypted_value"`
+	VaultName      string    `json:"-"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }

@@ -49,10 +49,10 @@ func (api *StreamingAPI) vaultActorCanManage(ctx context.Context, person, connec
 	if vaultAdminActive(person) {
 		return true
 	}
-	if !personVaultActive(person) {
+	if !activeMCPPerson(person) || workflowAccessForClaims(&UserClaims{UserID: person}) == WorkflowAccessRead {
 		return false
 	}
-	c, err := vaultConnection(ctx, connectionID)
+	c, err := vaultSavedConnection(ctx, connectionID)
 	if err != nil || c.VaultID == "" {
 		return false
 	}
@@ -64,11 +64,11 @@ const manageMyVaultsDescription = "Create vaults and share MCP connections throu
 	"Operations: list (your vaults, with members' emails and connection IDs); apps (the apps Vault can connect, by catalog name); create {name, description}; inspect {vault_id}; " +
 	"add_member / remove_member {vault_id, email}; add_owner / remove_owner {vault_id, email}; " +
 	"connect {vault_id, provider, label} for a server in the Vault catalog (returns the sign-in link for you to open); " +
-	"sign_in {vault_id, connection_id} to sign a connection in again; promote {vault_id, name, confirm} to move a sign-in connection that already works in this Crew, Code or workflow (exact name from list_mcp_servers) into your vault with its existing sign-in, no second sign-in (call once without confirm for the explanation, then with confirm=true); " +
+	"sign_in {vault_id, connection_id, client_id?, client_secret?} to finish or renew sign-in in chat; " +
 	"promote_secret {vault_id, name, confirm} copies a secret of this Crew, Code or workflow into your vault server-side (you never see the value; confirm as for promote); " +
 	"set_secret {vault_id, name, value, replace} stores a value the person gave you (replace=true to overwrite an existing name); the answer names the secret and never repeats the value, and you must not either; remove_secret {vault_id, name}; " +
 	"sync {vault_id, connection_id}; remove_connection {vault_id, connection_id}; delete {vault_id} (only when it holds no connections or secrets). " +
-	"Members get a connection's tools as soon as it is in the vault. A vault owner can give you a secret value to store with set_secret, or type it on the vault screen, or run `agentworks secret set NAME` in their terminal, or promote an existing one."
+	"Members get a connection's tools as soon as it is in the vault. A vault owner can give you a secret value to store with set_secret, or run `agentworks secret set NAME` in their terminal, or promote an existing one."
 
 func manageMyVaultsParameters() map[string]interface{} {
 	str := func(desc string) map[string]interface{} {
@@ -78,17 +78,21 @@ func manageMyVaultsParameters() map[string]interface{} {
 		"type": "object", "additionalProperties": false,
 		"required": []string{"operation"},
 		"properties": map[string]interface{}{
-			"operation":     map[string]interface{}{"type": "string", "enum": []string{"list", "apps", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote", "promote_secret", "set_secret", "remove_secret", "sync", "remove_connection", "delete"}},
-			"vault_id":      str("The vault's ID from list."),
-			"name":          str("create: the vault's name. promote: the exact connection name from list_mcp_servers. promote_secret / remove_secret: the secret's name."),
-			"description":   str("create: what the vault is for."),
-			"email":         str("A person's email, for the member and owner operations."),
-			"provider":      str("connect: the catalog server's name."),
-			"label":         str("connect: an account label, e.g. Notion · Engineering."),
-			"connection_id": str("The connection's ID (c-...) from inspect."),
-			"confirm":       map[string]interface{}{"type": "boolean", "description": "promote: true after the explanation has been shown."},
-			"value":         str("set_secret: the secret value the person gave you. Stored on the server; never repeat it."),
-			"replace":       map[string]interface{}{"type": "boolean", "description": "set_secret: replace an existing secret with this name."},
+			"operation":      map[string]interface{}{"type": "string", "enum": []string{"list", "apps", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote_secret", "set_secret", "remove_secret", "sync", "remove_connection", "delete"}},
+			"vault_id":       str("The vault's ID from list."),
+			"name":           str("create: the vault's name. promote: the exact connection name from list_mcp_servers. promote_secret / remove_secret: the secret's name."),
+			"description":    str("create: what the vault is for."),
+			"email":          str("A person's email, for the member and owner operations."),
+			"provider":       str("connect: the catalog server's name."),
+			"url":            str("Verified custom MCP URL, with name instead of provider."),
+			"label":          str("connect: an account label, e.g. Notion · Engineering."),
+			"connection_id":  str("The connection's ID (c-...) from inspect."),
+			"confirm":        map[string]interface{}{"type": "boolean", "description": "promote: true after the explanation has been shown."},
+			"value":          str("set_secret: the secret value the person gave you. Stored on the server; never repeat it."),
+			"api_key":        str("User-provided connection key; encrypted in Vault, never repeat."),
+			"api_key_header": str("Provider's documented API-key header."), "api_key_format": str("Header format, such as Bearer {}."),
+			"client_id": str("OAuth app client ID when required."), "client_secret": str("OAuth app secret when required; encrypted, never repeat."),
+			"replace": map[string]interface{}{"type": "boolean", "description": "set_secret: replace an existing secret with this name."},
 		},
 	}
 }
@@ -201,33 +205,23 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 			return "", err
 		}
 		return fmt.Sprintf("Done: %s %s.", strings.ReplaceAll(operation, "_", " "), target.Email), nil
-	case "connect":
+	case "connect", "sign_in":
 		if err := needVault(); err != nil {
 			return "", err
 		}
-		in := map[string]string{"Provider": argString(args, "provider"), "Label": argString(args, "label")}
-		data, err := call(http.MethodPost, "/api/vaults/"+url.PathEscape(vaultID)+"/connectors", in)
-		if err != nil {
-			return "", err
+		in := map[string]interface{}{"_vault_only": true, "vault_id": vaultID, "catalog": argString(args, "provider"), "label": argString(args, "label"), "name": argString(args, "name"), "url": argString(args, "url")}
+		if operation == "sign_in" {
+			in["name"] = vaultServerName(connectionID)
+			delete(in, "catalog")
+			delete(in, "label")
+			delete(in, "url")
 		}
-		var made struct{ ID string }
-		if json.Unmarshal(data, &made) != nil || !vaultConnectionID.MatchString(made.ID) {
-			return "", errors.New("the vault created a connection but returned no usable ID")
+		for _, field := range []string{"api_key", "api_key_header", "api_key_format", "client_id", "client_secret"} {
+			if value, ok := args[field]; ok {
+				in[field] = value
+			}
 		}
-		return api.vaultSignInLink(ctx, person, made.ID, "Added the connection to the vault. ")
-	case "sign_in":
-		if err := needVault(); err != nil {
-			return "", err
-		}
-		if !vaultConnectionInVault(ctx, person, vaultID, connectionID) {
-			return "", errors.New("that connection is not in a vault you own")
-		}
-		return api.vaultSignInLink(ctx, person, connectionID, "")
-	case "promote":
-		if err := needVault(); err != nil {
-			return "", err
-		}
-		return api.promoteConnectionToVault(ctx, person, argString(args, "name"), vaultID, args["confirm"] == true)
+		return api.mcpConnectionTool(ctx, person, "install_mcp_server", in)
 	case "promote_secret":
 		if err := needVault(); err != nil {
 			return "", err
@@ -326,28 +320,24 @@ func vaultConnectionInVault(ctx context.Context, person, vaultID, connectionID s
 	if !vaultConnectionID.MatchString(connectionID) || !vaultOwnerOf(ctx, person, vaultID) {
 		return false
 	}
-	c, err := vaultConnection(ctx, connectionID)
+	c, err := vaultSavedConnection(ctx, connectionID)
 	return err == nil && c.VaultID == vaultID
 }
 
 // vaultSignInLink starts the owner's sign-in for a vault connection, or reports that none is needed.
 func (api *StreamingAPI) vaultSignInLink(ctx context.Context, person, connectionID, prefix string) (string, error) {
-	c, err := vaultConnection(ctx, connectionID)
+	c, err := vaultSavedConnection(ctx, connectionID)
 	if err != nil {
 		return prefix + "It needs no sign-in or is not ready yet; use sync to discover its tools.", nil
 	}
-	start, discovery, err := api.beginVaultConnectionOAuth(ctx, person, chatSessionIDFromContext(ctx), c.ID, c.OAuthServer, deriveOAuthRedirectURIFromEnv(), "", "")
+	start, discovery, err := api.beginVaultConnectionOAuth(ctx, person, chatSessionIDFromContext(ctx), c.ID, c.OAuthServer, api.mcpToolOAuthRedirect(ctx, person), "", "")
 	if err != nil {
 		return "", err
 	}
 	if discovery != nil {
-		// No usable client: there is no sign-in link to give. Say why in words with no URL in them, because the
-		// Vault screen links the first URL it finds (PLAT-708). A new connection stays added; a sign-in fails.
-		if prefix == "" {
-			return "", errors.New(discovery.Message)
-		}
-		return prefix + "Connection " + c.ID + " is not signed in. " + discovery.Message, nil
+		return prefix + mcpOAuthAppSetupMessage(vaultServerName(c.ID), discovery), nil
 	}
+
 	data, err := json.Marshal(start)
 	if err != nil {
 		return "", err

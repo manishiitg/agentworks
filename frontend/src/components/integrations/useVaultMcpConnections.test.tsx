@@ -19,9 +19,9 @@ async function mount() {
 it('shows authorized MCPs automatically without project opt-in', async () => {
  get.mockResolvedValue({ data: { servers: [{ id: 'c1', label: 'Company Linear', provider: 'linear', tools: [{ name: 'linear__search', description: 'Search issues', input_schema: { type: 'object' } }] }] } })
  const { host } = await mount()
- expect(get).toHaveBeenCalledWith('/api/me/mcp/vault')
+ expect(get).toHaveBeenCalledWith('/api/vault/connections', {params:{}})
  expect(host.textContent).toContain('Company Linear')
- expect(host.textContent).toContain('Available automatically')
+ expect(host.textContent).toContain('Sign-in required')
  expect(host.querySelector('input[type="checkbox"]')).toBeNull()
 })
 it('does not display connections absent from authorized inventory', async () => {
@@ -33,6 +33,6 @@ it('does not display connections absent from authorized inventory', async () => 
 it('reports unavailable Vault without substituting platform connections', async () => {
  get.mockRejectedValue(new Error('offline'))
  const { host } = await mount()
- expect(host.querySelector('[role="alert"]')?.textContent).toContain('The connections of this place still work')
+ expect(host.querySelector('[role="alert"]')?.textContent).toContain('Vault is unavailable')
  expect(host.querySelector('input[type="checkbox"]')).toBeNull()
 })

@@ -66,7 +66,7 @@ func (s *MemoryStore) CreateVault(workspace, ownerID, id, name, description stri
 	}
 	owned := 0
 	for _, g := range s.groups {
-		if g.WorkspaceID == workspace && g.IsVault() && g.HasOwner(ownerID) {
+		if g.WorkspaceID == workspace && g.IsVault() && g.ProjectRoot == "" && g.HasOwner(ownerID) {
 			owned++
 		}
 	}
@@ -151,6 +151,9 @@ func (s *MemoryStore) VaultSetMember(actor, vaultID, userID string, add bool) er
 	if err != nil {
 		return err
 	}
+	if g.ProjectRoot != "" {
+		return errors.New("project Vault access follows the project; use its sharing settings")
+	}
 	if u, ok := s.users[userID]; !ok || u.WorkspaceID != g.WorkspaceID {
 		return errors.New("unknown user")
 	}
@@ -176,6 +179,9 @@ func (s *MemoryStore) VaultSetOwner(actor, vaultID, userID string, add bool) err
 	g, err := s.ownedVaultLocked(actor, vaultID)
 	if err != nil {
 		return err
+	}
+	if g.ProjectRoot != "" {
+		return errors.New("project Vault access follows the project; use its sharing settings")
 	}
 	if u, ok := s.users[userID]; !ok || u.WorkspaceID != g.WorkspaceID {
 		return errors.New("unknown user")
@@ -288,6 +294,9 @@ func (s *MemoryStore) VaultAddSecret(actor, vaultID, name string) error {
 	if err != nil {
 		return err
 	}
+	if g.ProjectRoot != "" {
+		return errors.New("project Vault access follows the project; use its sharing settings")
+	}
 	if existing, ok := s.secretResources[name]; ok && existing.VaultID != vaultID {
 		return errors.New("a secret with that name already exists")
 	}
@@ -313,5 +322,26 @@ func (s *MemoryStore) VaultRemoveSecret(actor, vaultID, name string) error {
 	for _, grants := range s.secretGrants {
 		delete(grants, name)
 	}
+	return nil
+}
+
+// EnsureProjectVault keeps the existing project secret boundary in Vault. The host
+// supplies the owner after its native project access checks; Run users are lent
+// the selected secrets through the existing owner execution identity.
+func (s *MemoryStore) EnsureProjectVault(workspace, owner, id, root, name string) error {
+	s.mu.Lock()
+	defer s.persistUnlock()
+	if u, ok := s.users[owner]; !ok || u.WorkspaceID != workspace {
+		return errors.New("unknown project owner")
+	}
+	g, exists := s.groups[id]
+	if exists && (g.WorkspaceID != workspace || g.ProjectRoot != root) {
+		return errors.New("project vault identity mismatch")
+	}
+	if exists && g.HasOwner(owner) && len(g.Owners) == 1 {
+		return nil
+	}
+	s.groups[id] = Group{ID: id, WorkspaceID: workspace, Name: name, Kind: GroupKindVault, ProjectRoot: root, Owners: []string{owner}}
+	s.members[id] = map[string]bool{owner: true}
 	return nil
 }

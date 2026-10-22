@@ -394,14 +394,6 @@ func (api *StreamingAPI) executeCrewSelectedMCP(ctx context.Context, root string
 	handler := executor.NewExecutorHandlers(api.mcpConfigPath, api.logger)
 	handler.SetMCPServerResolver(func(callCtx context.Context, _ string, server, tool string) (*executor.ResolvedMCPServer, error) {
 		callCtx = context.WithValue(callCtx, placeScopedKey{}, true)
-		if resolved, handled, err := api.resolvePlaceAttachedMCP(callCtx, "", server); handled {
-			if err == nil && resolved != nil {
-				if guardErr := api.guardPersonalSlackCall(callCtx, "", resolved.Name, tool); guardErr != nil {
-					return nil, guardErr
-				}
-			}
-			return resolved, err
-		}
 		manifest, found, err := ReadWorkflowManifest(callCtx, root)
 		if err != nil || !found {
 			return nil, fmt.Errorf("Crew MCP selection is unavailable")

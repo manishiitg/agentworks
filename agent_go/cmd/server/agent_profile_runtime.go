@@ -6,10 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"log"
 	"path/filepath"
 	"reflect"
@@ -17,6 +13,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -815,19 +816,13 @@ func chatMCPConnections(ctx context.Context, profileID, userID, selectedFolder s
 	if !isProjectProfileID(profileID) {
 		return nil
 	}
-	root := agentProfileRuntimeWorkspace(userID, selectedFolder)
-	names, _ := attachedMCPServersForRoot(ctx, root)
-	if len(names) == 0 {
-		return names
+	rows, err := vaultServersFor(ctx, userID)
+	if err != nil {
+		return []string{"vault-unavailable"}
 	}
-	signedIn := placeMCPSignedInInternalNames(ctx, root)
-	out := make([]string, 0, len(names))
-	for _, name := range names {
-		if signedIn[name] {
-			out = append(out, name+"#signed-in")
-		} else {
-			out = append(out, name+"#signed-out")
-		}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, vaultServerName(row.ID)+"#active")
 	}
 	return out
 }

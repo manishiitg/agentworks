@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"html"
 	"net/http"
 	"os"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 
 	"github.com/manishiitg/mcpagent/mcpcache"
 	"github.com/manishiitg/mcpagent/mcpclient"
@@ -780,10 +781,6 @@ func (api *StreamingAPI) handleOAuthStart(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if req.Scope == "" || req.Scope == "private" {
-		api.startPrivateOAuth(w, r, req)
-		return
-	}
 	if !vaultOAuthScope(w, r, req.Scope) {
 		return
 	}
@@ -835,10 +832,6 @@ func (api *StreamingAPI) handleOAuthStatus(w http.ResponseWriter, r *http.Reques
 	}
 
 	scope := r.URL.Query().Get("scope")
-	if scope == "" || scope == "private" {
-		privateOAuthStatus(w, r, serverName)
-		return
-	}
 	if !vaultOAuthScope(w, r, scope) {
 		return
 	}
@@ -942,10 +935,6 @@ func (api *StreamingAPI) handleOAuthLogout(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if req.Scope == "" || req.Scope == "private" {
-		disconnectPrivateCatalog(w, r, req.ServerName)
-		return
-	}
 	if !vaultOAuthScope(w, r, req.Scope) {
 		return
 	}
@@ -1071,10 +1060,6 @@ func (api *StreamingAPI) handleConnectServer(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if req.Scope == "" || req.Scope == "private" {
-		api.connectPrivateCatalog(w, r, req)
-		return
-	}
 	if !vaultOAuthScope(w, r, req.Scope) {
 		return
 	}
@@ -1153,10 +1138,6 @@ func (api *StreamingAPI) handleDisconnectServer(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if req.Scope == "" || req.Scope == "private" {
-		disconnectPrivateCatalog(w, r, req.ServerName)
-		return
-	}
 	if !vaultOAuthScope(w, r, req.Scope) {
 		return
 	}

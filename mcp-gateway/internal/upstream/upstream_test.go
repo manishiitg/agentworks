@@ -111,3 +111,29 @@ func TestManagedBasicAndOAuthSchemes(t *testing.T) {
 		t.Fatal("unsupported scheme sent")
 	}
 }
+
+func TestVaultCredentialHeadersStayOnTheValidatedUpstream(t *testing.T) {
+	raw := `{"X-API-Key":"example-key","Authorization":"Basic ZXhhbXBsZTprZXk="}`
+	if err := ValidateCredentialHeaders(raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{`{"Host":"other.example"}`, `{"X-Key":"line\nvalue"}`, `null`, `{}`} {
+		if ValidateCredentialHeaders(bad) == nil {
+			t.Fatalf("accepted unsafe header metadata: %s", bad)
+		}
+	}
+	seen := false
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Get("X-API-Key") == "example-key" && r.Header.Get("Authorization") == "Basic ZXhhbXBsZTprZXk="
+		w.WriteHeader(200)
+	}))
+	defer target.Close()
+	response, err := safeHTTPClient(DialOptions{AllowPrivate: true, AuthScheme: "Headers", BearerToken: raw}).Get(target.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if !seen {
+		t.Fatal("saved headers not applied")
+	}
+}

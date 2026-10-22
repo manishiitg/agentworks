@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	"github.com/manishiitg/mcpagent/mcpcache"
 )
 
 func crewDiagnosticPage[T any](items []T, limit, offset int) map[string]any {
@@ -129,67 +129,43 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 		externalError(w, 403, "forbidden", "Only the Crew owner can read full connection parameter schemas. Omit include_tools for tool names and descriptions.")
 		return
 	}
-	attachments, err := placeMCPAttachmentsFor(root)
+	inventory, err := vaultServersFor(ctx, api.projectSecretsOwner(claims.UserID, root))
 	if err != nil {
-		externalError(w, 502, "connections_unavailable", "Cannot read this Crew's attached connections.")
+		externalError(w, 502, "connections_unavailable", "Vault is unavailable.")
 		return
 	}
+	selected, _ := projectSelectedServers(ctx, root)
+	hasPicks := false
+	none := false
+	for _, pick := range selected {
+		if pick == "NO_SERVERS" {
+			none = true
+		}
+		if strings.HasPrefix(pick, "vault_") {
+			hasPicks = true
+		}
+	}
 	rows := []map[string]any{}
-	for _, attached := range attachments {
-		if name != "" && attached.Server != name {
+	for _, server := range inventory {
+		exact := vaultServerName(server.ID)
+		if none || hasPicks && !containsExactString(selected, exact) || name != "" && name != exact {
 			continue
 		}
-		store := attachmentStore(attached, root)
-		servers, err := listPlaceMCPServers(store)
-		if err != nil {
-			externalError(w, 502, "connections_unavailable", "Cannot read an attached connection.")
-			return
-		}
-		row := map[string]any{"name": attached.Server, "status": "unavailable", "active": false, "connected": false, "cached_tool_count": 0}
-		for _, server := range servers {
-			if server.Name != attached.Server {
-				continue
-			}
-			dir, _ := placeMCPDir(store)
-			active := placeMCPCanAttach(r.Context(), attached.Owner, root)
-			connected := placeMCPServerConnected(dir, store, server)
-			row["label"], row["catalog"], row["active"], row["connected"] = server.Label, server.Catalog, active, connected
-			row["status"] = "not_connected"
-			if !active {
-				row["status"] = "inactive"
-				break
-			}
-			if !connected {
-				break
-			}
-			row["status"] = "not_loaded"
-			internal, config, err := placeMCPServerConfig(store, server.Name)
-			if err != nil {
-				break
-			}
-			entry, found := mcpcache.GetCacheManager(api.logger).Get(mcpcache.GenerateUnifiedCacheKey(internal, config))
-			if !found {
-				break
-			}
+		row := map[string]any{"name": exact, "label": server.Label, "catalog": server.Provider, "status": "connected", "active": true, "connected": true, "cached_tool_count": len(server.Tools)}
+		if name != "" {
 			tools := []map[string]any{}
-			for _, tool := range entry.Tools {
-				if tool.Function == nil {
-					continue
-				}
-				item := map[string]any{"name": tool.Function.Name, "description": tool.Function.Description}
+			for _, tool := range server.Tools {
+				item := map[string]any{"name": tool.Name, "description": tool.Description}
 				if include, _ := args["include_tools"].(bool); include {
-					item["parameters"] = tool.Function.Parameters
+					item["parameters"] = tool.InputSchema
 				}
 				tools = append(tools, item)
 			}
-			row["status"], row["cached_tool_count"] = "cached", len(tools)
-			if name != "" {
-				row["tools"] = crewDiagnosticPage(tools, limit, offset)
-			}
-			break
+			row["tools"] = crewDiagnosticPage(tools, limit, offset)
 		}
 		rows = append(rows, row)
 	}
+
 	if name != "" {
 		if len(rows) != 1 {
 			externalError(w, 403, "forbidden", "Use an exact connection name attached to this Crew.")
@@ -202,5 +178,5 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 		externalError(w, 400, "invalid_arguments", "include_tools requires an exact attached connection name.")
 		return
 	}
-	externalJSON(w, map[string]any{"crew_id": id, "action": action, "connections": crewDiagnosticPage(rows, limit, offset), "metadata_source": "attached connection cache"})
+	externalJSON(w, map[string]any{"crew_id": id, "action": action, "connections": crewDiagnosticPage(rows, limit, offset), "metadata_source": "Vault"})
 }

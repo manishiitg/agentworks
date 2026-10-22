@@ -43,7 +43,7 @@ the UI action confirms success.
 
 - Call `list_secrets` before creating, replacing, or deleting a secret.
 - `set_workflow_secret` and `delete_workflow_secret` manage project-scoped
-  secrets in {{product}} (legacy tool names for the shared project store).
+  secrets in the project’s Vault scope (existing tool names and permissions).
 - After `set_workflow_secret` succeeds, `$SECRET_<NAME>` is available to shell
   tools immediately in the current chat and remains available in later turns.
   Continue the requested work in the same chat; do not ask the user to start a
@@ -53,17 +53,7 @@ the UI action confirms success.
   Secret values remain encrypted outside the manifest. <!-- product:mcp-gateway -->Shared Vault credentials also require the executing user's current group permission.<!-- /product --> Respect the user's
   selections under **Secrets**; do not attach an unrelated credential.
 - A read-only workflow or Crew reference never grants its secrets.
-<!-- product:mcp-gateway -->- A read-only workflow or Crew reference never grants its secrets. To reuse a
-  credential across projects, it goes into Vault: a Vault administrator shares
-  the project secret into Vault (the **Share to Vault** button, Vault's chat or
-  Vault's MCP tools; the value is copied on the server and the project copy
-  stays), or creates it in Vault > Secrets, and grants use to an existing
-  group in Vault > Access > Secrets. Explicitly select that shared
-  name in each destination {{product}} project with
-  `update_project_global_secret_selection(action="select", name="NAME")`.
-  Call `list_secrets` first and use an exact name from `global.names`. {{product}} persists this allowlist in
-  `capabilities.selected_global_secret_names`; it never inherits newly created
-  globals automatically.
+<!-- product:mcp-gateway -->- All secrets are stored in Vault. Project tools manage the project's isolated Vault scope, preserving its owner and use permissions. For reuse, a Vault administrator uses `manage_vault_secret_access(operation=share)` to copy a project secret server-side and grant existing groups; `manage_my_vaults promote_secret` copies into a vault the person owns. Values never pass through the model during copying. Select exact shared names with the product's global-secret selection tool. Copies rotate independently; do not change grants without a request.
 <!-- /product -->- Never print, echo, store in project files, or otherwise reveal a secret
   value. Refer to secrets by name.
 

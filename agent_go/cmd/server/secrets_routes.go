@@ -404,7 +404,21 @@ func (api *StreamingAPI) handleListStoredWorkflowSecrets(w http.ResponseWriter, 
 	for i, s := range secrets {
 		result[i] = entry{Name: s.Name}
 		if canReveal {
-			result[i].EncryptedValue = s.EncryptedValue
+			value, err := decryptSharedWorkflowSecret(workspacePath, s)
+			if err != nil {
+				http.Error(w, "Vault secret unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			aad, err := sharedWorkflowSecretAAD(workspacePath)
+			if err != nil {
+				http.Error(w, "invalid project", 400)
+				return
+			}
+			result[i].EncryptedValue, err = encryptSecretValueWithAAD(value, aad)
+			if err != nil {
+				http.Error(w, "could not prepare secret", 500)
+				return
+			}
 		}
 	}
 

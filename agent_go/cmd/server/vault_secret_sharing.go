@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
 )
 
@@ -45,7 +44,7 @@ func vaultSecretShareGroups(ctx context.Context, actor string) ([]vaultShareGrou
 // overwrite replaces a Vault secret of the same name with the project's value (the migration into Vault, where the
 // owner chose that a project's own value wins, 2026-10-20); without it an existing name is never touched.
 // storedSecretsFolder reads the secrets from workspace as given, for a folder in the actor's own tree (source_workspace_path).
-func (api *StreamingAPI) shareWorkflowSecretToVault(ctx context.Context, actor, workspace, sourceName, vaultName string, groupIDs []string, overwrite bool, storedSecretsFolder ...bool) error {
+func (api *StreamingAPI) shareWorkflowSecretToVault(ctx context.Context, actor, workspace, sourceName, vaultName string, groupIDs []string, overwrite bool) error {
 	if !canShareVaultSecrets(actor) {
 		return errGlobalAdmin
 	}
@@ -72,19 +71,9 @@ func (api *StreamingAPI) shareWorkflowSecretToVault(ctx context.Context, actor, 
 			return errors.New("Select existing Vault groups")
 		}
 	}
-	fromFolder := len(storedSecretsFolder) > 0 && storedSecretsFolder[0]
-	var roots []string
-	if ownFolder := "_users/" + sanitizeUserIDForPath(actor) + "/"; fromFolder && strings.HasPrefix(workspace, ownFolder) && !strings.Contains(workspace, "..") && path.Clean(workspace) == workspace {
-		// The folder is a key into the secret store (looked up by the exact path string), not a file read, so a symlink
-		// cannot lead to another person's store; the prefix keeps the key inside the actor's own tree.
-		// A folder in the administrator's own tree that still holds a moved project's secrets: read where they are.
-		roots = []string{workspace}
-	} else {
-		_, authorized, err := authorizeWorkflowContextPathsWithReadRoots(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: actor}), []string{workspace})
-		if err != nil || len(authorized) != 1 {
-			return errors.New("Source project or workflow is unavailable")
-		}
-		roots = authorized
+	_, roots, err := authorizeWorkflowContextPathsWithReadRoots(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: actor}), []string{workspace})
+	if err != nil || len(roots) != 1 {
+		return errors.New("Source project or workflow is unavailable")
 	}
 	rows, err := api.ensureSharedWorkflowSecrets(ctx, roots[0], actor)
 	if err != nil {

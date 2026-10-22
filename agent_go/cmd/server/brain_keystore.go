@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 )
 
 // Brain keeps its own secrets (owner, 2026-10-06: "Vault = platform secrets and everything is product specific"): the
@@ -24,7 +23,7 @@ var brainSecretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 var brainSecretsAPI *StreamingAPI
 
 func (api *StreamingAPI) brainSecretNames(ctx context.Context) ([]string, error) {
-	secrets, err := api.chatStore.ListWorkflowSecrets(ctx, chathistory.SharedWorkflowSecretsUserID, brainSecretsPath)
+	secrets, err := api.ensureSharedWorkflowSecrets(ctx, brainSecretsPath, mcpCaller(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +36,7 @@ func (api *StreamingAPI) brainSecretNames(ctx context.Context) ([]string, error)
 }
 
 func (api *StreamingAPI) brainSecretValue(ctx context.Context, name string) (string, bool) {
-	secrets, err := api.chatStore.ListWorkflowSecrets(ctx, chathistory.SharedWorkflowSecretsUserID, brainSecretsPath)
+	secrets, err := api.ensureSharedWorkflowSecrets(ctx, brainSecretsPath, mcpCaller(ctx))
 	if err != nil {
 		return "", false
 	}

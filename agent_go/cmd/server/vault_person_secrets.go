@@ -12,15 +12,12 @@ import (
 	"github.com/manishiitg/mcpagent/executor"
 )
 
-// Secrets in a person-owned vault (PLAT-507). The value is stored encrypted in the host's managed global secret store
-// under a name reserved for the vault, VLT_<vault>__<NAME>; the Vault service records only that name and grants it to the
-// vault's members, and to nobody else. The platform's own name sync skips these names. Values never pass through a tool
-// or a chat: an owner types one into the vault screen, or promotes a secret that already exists in a Crew, Code or
-// workflow, which the server copies without showing it.
+// Vault owns secret metadata and encrypted values. People can supply values
+// through chat; tool replies contain names only and never echo a value.
 
 const vaultSecretPrefix = "VLT_"
 
-var vaultSecretUserName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,99}$`)
+var vaultSecretUserName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 
 func isVaultSecretName(name string) bool {
 	return strings.HasPrefix(name, vaultSecretPrefix) && strings.Contains(name[len(vaultSecretPrefix):], "__")
@@ -34,7 +31,7 @@ func vaultSecretName(vaultID, name string) (string, error) {
 	}
 	name = strings.TrimSpace(name)
 	if !vaultSecretUserName.MatchString(name) {
-		return "", errors.New("a secret name is letters, digits and underscores, starting with a letter or underscore, up to 100 characters")
+		return "", errors.New("a secret name is letters, digits and underscores, starting with a letter or underscore, up to 128 characters")
 	}
 	return vaultSecretPrefix + id + "__" + name, nil
 }

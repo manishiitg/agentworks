@@ -82,7 +82,7 @@ Connect once and explicitly add the account to every item that should use it. Sh
 
 Discover the attached Slack connection with `list_mcp_servers`, inspect its live tools, then use `call_mcp_tool`. Resolve the actual recipient/channel before sending. For a new DM, Slack needs `im:write`; use the live conversation-creation tool rather than guessing a channel. Report a pending sign-in or Slack error accurately. Personal Slack and bot messaging use separate connections and identities. Use only tools actually available in this product; do not substitute a bot for the person's selected account, or the reverse.
 
-An administrator sets up an internal Slack app named **AgentWorks** once in Sign-in apps. Enable its Slack MCP Server feature in the Slack app's Agents settings, register the returned callback URL and the required user scopes, then store its client ID and secret in the website. Slack may require workspace app approval. See https://docs.slack.dev/ai/slack-mcp-server/.
+An administrator sets up an internal Slack app named **AgentWorks** once in Sign-in apps. Enable its Slack MCP Server feature in the Slack app's Agents settings, register the returned callback URL and the required user scopes, then store its client ID and secret through the Vault chat tool. Slack may require workspace app approval. See https://docs.slack.dev/ai/slack-mcp-server/.
 
 ## Project-chat bots
 

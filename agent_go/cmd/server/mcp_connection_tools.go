@@ -4,265 +4,270 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/mcpagent/executor"
+	"net/http"
+	"net/url"
 	"strings"
+
+	"github.com/manishiitg/mcpagent/executor"
 )
 
-// All legacy chat MCP management names now act on the authenticated person's
-// private store. Shared setup is exclusively the Vault agent's management tool.
+// All setup and discovery act on Vault. Project config contains selection IDs,
+// never an independent account or credential store.
 func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operation string, args map[string]interface{}) (string, error) {
 	if !activeMCPPerson(person) {
 		return "", fmt.Errorf("active user required")
 	}
-	// Inside a workflow, Relay, Crew or Code the connections are that place's (shared with everyone who has
-	// access to it); outside any place they are still the person's own.
 	session := executor.SessionIDFromContext(ctx)
-	place := api.mcpPlaceRoot(ctx, session)
-	if place != "" {
-		ctx = context.WithValue(ctx, placeScopedKey{}, true)
+	root := api.mcpPlaceRoot(ctx, session)
+	if args["_vault_only"] == true {
+		root = ""
 	}
 	if operation == "list_mcp_servers" {
-		if _, _, err := api.vaultBuilderAuthority(ctx, person); err != nil {
+		access, err := vaultAccessFor(ctx, person)
+		if err != nil {
 			return "", err
 		}
-		rows := []map[string]any{}
-		if place != "" {
-			attachments, _ := placeMCPAttachmentsFor(place)
-			for _, a := range attachments {
-				store := attachmentStore(a, place)
-				servers, _ := listPlaceMCPServers(store)
-				for _, s := range servers {
-					if s.Name != a.Server {
-						continue
-					}
-					dir, _ := placeMCPDir(store)
-					rows = append(rows, map[string]any{"name": s.Name, "label": s.Label, "catalog": s.Catalog, "connected": placeMCPServerConnected(dir, store, s), "added_by": a.Owner})
-				}
-			}
-		} else {
-			own, _ := listPlaceMCPServers(person)
-			for _, s := range own {
-				dir, _ := placeMCPDir(person)
-				rows = append(rows, map[string]any{"name": s.Name, "label": s.Label, "catalog": s.Catalog, "connected": placeMCPServerConnected(dir, person, s)})
-			}
-		}
-		vault, err := vaultAccessFor(ctx, person)
-		vaultError := ""
+		own, err := personalVaults(ctx, person)
 		if err != nil {
-			vaultError = err.Error()
+			return "", err
 		}
-		selection := builderProductSelection(GetUserFromContext(ctx))
-		sharing := selection.Text("Connections added to this project are used by everyone with access to it.<!-- product:mcp-gateway --> Vault connections are shared by group permissions.<!-- /product -->")
-		if _, builder, _ := api.vaultBuilderAuthority(ctx, person); builder {
-			sharing = "Vault administrator setup access covers connected Vault MCPs and secret metadata independently of group grants. Other products and external clients remain group scoped. Secret values are excluded."
-		}
-		inventory := map[string]any{"connections": rows, "vault": vault.Servers, "vault_groups": vault.Groups, "vault_secrets": vault.Secrets, "vault_error": vaultError, "catalog": api.placeMCPCatalog(), "sharing": sharing}
-		if !selection.Has("mcp-gateway") {
-			for _, field := range []string{"vault", "vault_groups", "vault_secrets", "vault_error"} {
-				delete(inventory, field)
-			}
-		}
-		if vault.Users != nil {
-			inventory["vault_users"] = vault.Users
-		}
-		data, _ := json.Marshal(inventory)
+		data, _ := json.Marshal(map[string]any{"vault": access, "own_vaults": own.Vaults, "catalog": api.placeMCPCatalog(), "setup": "Use Vault in this chat. Return the real provider sign-in link, verify discovery and select the requested account. Never repeat credentials."})
 		return string(data), nil
 	}
 	name, _ := args["name"].(string)
-	name = strings.TrimSpace(name)
 	if name == "" {
 		name, _ = args["server_name"].(string)
-		name = strings.TrimSpace(name)
 	}
-	if name == "" {
-		name, _ = args["catalog"].(string)
-		name = strings.TrimSpace(name)
-	}
-	if name == "" {
-		return "", fmt.Errorf("name or catalog is required")
-	}
-	if operation == "remove_mcp_server" && place != "" {
-		a, found := placeAttachmentNamed(place, name)
-		if !found {
-			return "", fmt.Errorf("this place has no connection named %q; use its exact connection name (list_mcp_servers)", name)
-		}
-		if !placeMCPCanAttach(ctx, person, place) {
-			return "", fmt.Errorf("you can remove connections only where you can edit")
-		}
-		if err := removePlaceMCP(a.Owner, a.Server, place); err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("Removed %s from this place. It stops working here for everyone; other places that use the same login keep it.", a.Server), nil
-	}
-	if operation == "remove_mcp_server" {
-		saved, found, lookupErr := lookupPersonalMCP(person, name)
-		if lookupErr != nil {
-			return "", lookupErr
-		}
-		if !found {
-			return "", fmt.Errorf("connection not found")
-		}
-		if err := forgetPlaceMCPLogin(person, saved.Name); err != nil {
-			return "", err
-		}
-		if err := removePlaceMCPServer(person, saved.Name); err != nil {
-			return "", err
-		}
-		closePlaceMCPConnection(person, saved.Name)
-		return "Removed your connection and its sign-in.", nil
-	}
-	if operation == "trigger_mcp_discovery" {
-		var status *ToolStatus
-		var err error
-		if place != "" {
-			if resolved, handled, resolveErr := api.resolvePlaceAttachedMCP(ctx, session, name); handled {
-				if resolveErr != nil {
-					return "", resolveErr
-				}
-				status, err = api.discoverResolvedServerTools(ctx, resolved)
-			} else {
-				status, err = api.discoverGovernedServerTools(ctx, person, name)
-			}
-		} else {
-			status, err = api.discoverGovernedServerTools(ctx, person, name)
-		}
-		if err != nil {
-			return "", err
-		}
-		data, _ := json.Marshal(map[string]any{"server": name, "tools": status.FunctionNames, "tool_count": status.ToolsEnabled, "message": "Discovered tools for this project's permitted connection."})
-		return string(data), nil
-	}
-
+	catalog, _ := args["catalog"].(string)
+	label, _ := args["label"].(string)
+	rawURL, _ := args["url"].(string)
 	apiKey, _ := args["api_key"].(string)
 	clientID, _ := args["client_id"].(string)
 	clientSecret, _ := args["client_secret"].(string)
 	if clientSecret != "" && strings.TrimSpace(clientID) == "" {
-		return "", fmt.Errorf("client_id is required with client_secret; ask for the OAuth app's client ID without repeating its secret")
+		return "", fmt.Errorf("client_id is required with client_secret")
 	}
 	if apiKey != "" && (clientID != "" || clientSecret != "") {
-		return "", fmt.Errorf("use either an API key or OAuth app credentials for this connection")
+		return "", fmt.Errorf("choose API key or OAuth app credentials")
 	}
-	url, _ := args["url"].(string)
-	if raw, ok := args["server"].(map[string]interface{}); ok {
-		if url == "" {
-			url, _ = raw["url"].(string)
-		}
-		if raw["headers"] != nil || raw["env"] != nil || raw["command"] != nil {
-			return "", fmt.Errorf("remote MCP setup accepts a URL and the documented api_key/client_id/client_secret fields; arbitrary headers, environment and process commands are not supported")
-		}
+	// Existing native project authoring gates remain authoritative.
+	if operation != "trigger_mcp_discovery" && root != "" && !placeMCPCanAttach(ctx, person, root) {
+		return "", fmt.Errorf("only a current Builder can change this project's connections")
 	}
-	label, _ := args["label"].(string)
-	catalog, _ := args["catalog"].(string)
-	label, catalog = strings.TrimSpace(label), strings.TrimSpace(catalog)
-	if catalog == "" && url == "" {
-		// Prefer a saved exact connection (including a custom server) before
-		// interpreting the selector as a provider from the catalog.
-		existing, found, err := lookupPersonalMCP(person, name)
+	id := strings.TrimPrefix(strings.TrimSpace(name), "vault_")
+	vaultID, _ := args["vault_id"].(string)
+	if vaultID != "" && !vaultOwnerOf(ctx, person, vaultID) {
+		return "", fmt.Errorf("you may add connections only to a vault you own")
+	}
+	if !vaultConnectionID.MatchString(id) && label == "" && name != "" {
+		own, err := personalVaults(ctx, person)
 		if err != nil {
 			return "", err
 		}
-		catalog = name
-		if found {
-			catalog = existing.Catalog
-		}
-	}
-	if entry, found := api.placeMCPCatalogEntry(catalog); found {
-		catalog = entry.Catalog
-	}
-	// Catalog and custom remote servers use the same live project/account
-	// authority. URL validation, public-only auth probing and private credential
-	// storage stay in the shared website setup path below.
-	if place != "" && operation != "edit_mcp_server" && !placeMCPCanAttach(ctx, person, place) {
-		return "", fmt.Errorf("you can add connections only where you can edit this workflow, Crew or Code")
-	}
-	var saved placeMCPServer
-	var err error
-	if operation == "edit_mcp_server" {
-		if label != "" {
-			return "", fmt.Errorf("use install_mcp_server with label for a new account")
-		}
-		existing, found, lookupErr := lookupPersonalMCP(person, name)
-		if lookupErr != nil {
-			return "", lookupErr
-		}
-		if !found {
-			return "", fmt.Errorf("connection not found; use its exact connection name")
-		}
-		body := existing
-		if url != "" {
-			body.URL = url
-			catalog = ""
-		} else {
-			catalog = existing.Catalog
-		}
-		// Updating an exact account must retain its ID and isolated-login marker.
-		saved, _, err = api.addPlaceMCP(ctx, person, body, catalog)
-	} else {
-		body := placeMCPServer{Label: label, URL: url}
-		if catalog == "" {
-			body.Name = strings.ToLower(name)
-		} else if label == "" {
-			body.Name = name
-			if entry, found := api.placeMCPCatalogEntry(catalog); found && (strings.EqualFold(name, entry.Catalog) || strings.EqualFold(name, entry.Name)) {
-				body.Name = entry.Name
+		matches := 0
+		for _, v := range own.Vaults {
+			if v.Role != "owner" {
+				continue
+			}
+			for _, c := range v.Connections {
+				if strings.EqualFold(c.Label, name) || strings.EqualFold(c.Provider, name) {
+					id = c.ID
+					vaultID = v.Group.ID
+					matches++
+				}
 			}
 		}
-		saved, _, err = api.ensurePersonalMCP(ctx, person, body, catalog)
+		if matches > 1 {
+			return "", fmt.Errorf("several accounts match; use the exact vault_ connection ID from list_mcp_servers")
+		}
 	}
-	if err != nil {
-		return "", err
+	exists := vaultConnectionID.MatchString(id)
+	if exists {
+		if operation != "trigger_mcp_discovery" && !api.vaultActorCanManage(ctx, person, id) {
+			return "", fmt.Errorf("only an owner of this Vault connection can change it")
+		}
+		if vaultID == "" {
+			data, err := vaultServiceRequest(ctx, person, http.MethodGet, "/api/admin/connectors/"+id, nil)
+			if err != nil {
+				return "", err
+			}
+			var c struct{ VaultID string }
+			if json.Unmarshal(data, &c) != nil {
+				return "", fmt.Errorf("invalid Vault connection")
+			}
+			vaultID = c.VaultID
+		}
 	}
-	if apiKey != "" {
-		header, _ := args["api_key_header"].(string)
-		format, _ := args["api_key_format"].(string)
-		saved, err = configurePlaceMCPAPIKey(person, saved, apiKey, header, format)
+	if operation == "trigger_mcp_discovery" {
+		if !exists {
+			return "", fmt.Errorf("use an exact Vault connection ID from list_mcp_servers")
+		}
+		allowed, err := vaultServersFor(ctx, person)
 		if err != nil {
 			return "", err
 		}
-	}
-	// Remember this project attachment for the owner's Integrations panel.
-	// Other users of the project never inherit this private account.
-	root := place
-	if root == "" {
-		if pin, ok, _ := codeSessionPinFor(session); ok && pin.Person == person {
-			root = pin.CodeRoot
+		permitted := false
+		for _, row := range allowed {
+			if row.ID == id {
+				permitted = true
+			}
 		}
-	}
-	if root == "" {
-		api.lastQueryMu.RLock()
-		request, found := api.lastQueryRequests[session]
-		api.lastQueryMu.RUnlock()
-		if found && request.userID == person {
-			root = attachRootForCaller(person, request.SelectedFolder)
+		if !permitted && !api.vaultActorCanManage(ctx, person, id) {
+			return "", fmt.Errorf("this connection is not available to your account")
 		}
+		if api.vaultActorCanManage(ctx, person, id) {
+			var syncErr error
+			if vaultID == "" {
+				_, syncErr = vaultServiceRequest(ctx, person, http.MethodPost, "/api/admin/connectors/"+id+"/sync", nil)
+			} else {
+				_, syncErr = vaultPersonRequest(ctx, person, http.MethodPost, "/api/vaults/"+url.PathEscape(vaultID)+"/connectors/"+id+"/sync", nil)
+			}
+			if err := syncErr; err != nil {
+				return "", err
+			}
+		}
+		rows, err := vaultServersFor(ctx, person)
+		if err != nil {
+			return "", err
+		}
+		for _, row := range rows {
+			if row.ID == id {
+				data, _ := json.Marshal(row)
+				return string(data), nil
+			}
+		}
+		return "", fmt.Errorf("Vault has not discovered an active connection; complete its sign-in first")
 	}
-	if root != "" && placeMCPCanAttach(ctx, person, root) {
-		if err := attachPersonalLoginToPlace(person, saved.Name, root); err != nil {
+	if operation == "remove_mcp_server" {
+		if !exists {
+			return "", fmt.Errorf("use an exact Vault connection ID")
+		}
+		if root != "" {
+			if err := api.selectVaultServer(ctx, person, root, id, false); err != nil {
+				return "", err
+			}
+			return "Removed the connection from this project; its Vault account is kept.", nil
+		}
+		if _, err := vaultPersonRequest(ctx, person, http.MethodDelete, "/api/vaults/"+url.PathEscape(vaultID)+"/connectors/"+id, nil); err != nil {
+			return "", err
+		}
+		removeVaultCredentialFiles(id)
+		return "Removed the connection from Vault.", nil
+	}
+	if !exists {
+		if operation == "edit_mcp_server" {
+			return "", fmt.Errorf("use an exact saved Vault connection ID")
+		}
+		var err error
+		if vaultID == "" {
+			vaultID, err = ensurePersonalVault(ctx, person)
+			if err != nil {
+				return "", err
+			}
+		}
+		payload := map[string]any{"Label": label}
+		if transport, _ := args["transport"].(string); transport != "" {
+			payload["Transport"] = transport
+		}
+		if catalog == "" && rawURL == "" {
+			catalog = name
+		}
+		if rawURL == "" {
+			if entry, ok := api.placeMCPCatalogEntry(catalog); ok {
+				if apiKey != "" {
+					rawURL = entry.URL
+					if name == "" {
+						name = entry.Name
+					}
+				} else {
+					payload["Provider"] = entry.Catalog
+				}
+			} else {
+				return "", fmt.Errorf("choose a provider from the catalog or supply its verified MCP URL")
+			}
+		}
+		if rawURL != "" {
+			payload["URL"] = rawURL
+			payload["Name"] = name
+			if name == "" {
+				return "", fmt.Errorf("name is required for a custom server")
+			}
+		}
+		if apiKey != "" {
+			credential, err := vaultAPIKeyHeaders(args, apiKey)
+			if err != nil {
+				return "", err
+			}
+			payload["Credential"] = credential
+			payload["AuthScheme"] = "Headers"
+		}
+		data, err := vaultPersonRequest(ctx, person, http.MethodPost, "/api/vaults/"+url.PathEscape(vaultID)+"/connectors", vaultPromoteJSON(payload))
+		if err != nil {
+			return "", err
+		}
+		var made struct{ ID string }
+		if json.Unmarshal(data, &made) != nil || !vaultConnectionID.MatchString(made.ID) {
+			return "", fmt.Errorf("Vault returned no connection ID")
+		}
+		id = made.ID
+	} else if apiKey != "" {
+		credential, err := vaultAPIKeyHeaders(args, apiKey)
+		if err != nil {
+			return "", err
+		}
+		if _, err = vaultPersonRequest(ctx, person, http.MethodPut, "/api/vaults/"+url.PathEscape(vaultID)+"/connectors/"+id+"/credentials", vaultPromoteJSON(map[string]string{"Credential": credential, "AuthScheme": "Headers"})); err != nil {
 			return "", err
 		}
 	}
-	if saved.OAuth == nil {
-		return fmt.Sprintf(builderProductSelection(GetUserFromContext(ctx)).Text("Saved %s. Everyone with access to this project can use it once discovery succeeds. Run trigger_mcp_discovery and inspect the result before claiming it connected. Credentials are encrypted and are not returned.<!-- product:mcp-gateway --> Use Vault to share it across projects.<!-- /product -->"), saved.Name), nil
+	if exists && operation == "edit_mcp_server" && (label != "" || rawURL != "") {
+		if _, err := vaultPersonRequest(ctx, person, http.MethodPut, "/api/vaults/"+url.PathEscape(vaultID)+"/connectors/"+id, vaultPromoteJSON(map[string]string{"Label": label, "URL": rawURL})); err != nil {
+			return "", err
+		}
+		if rawURL != "" {
+			removeVaultCredentialFiles(id)
+		}
+	}
+	if root != "" {
+		if err := api.selectVaultServer(ctx, person, root, id, true); err != nil {
+			return "", err
+		}
+	}
+	c, err := vaultConnection(ctx, id)
+	if err != nil {
+		return "Saved " + vaultServerName(id) + " in Vault and selected it for this project. Run trigger_mcp_discovery with that exact ID to verify it before claiming it connected.", nil
 	}
 	redirect := api.mcpToolOAuthRedirect(ctx, person)
 	if redirect == "" {
-		return fmt.Sprintf("Saved %s, but sign-in could not start: this server has no PUBLIC_URL OAuth callback address and this chat has no authenticated browser request address. Report this exact server configuration problem; do not invent an OAuth URL or send the user to find an Integrations tab. Reuse this exact connection name after the callback address is configured, with no label.", saved.Name), nil
+		return "Saved " + vaultServerName(id) + " in Vault. The server needs its OAuth callback address configured before sign-in can start; do not invent a link or send the user to an old UI path.", nil
 	}
-	var entered *registeredClient
-	if strings.TrimSpace(clientID) != "" {
-		entered = &registeredClient{ClientID: strings.TrimSpace(clientID), ClientSecret: clientSecret}
-	}
-	authURL, discovery, _, err := api.startPlaceMCPSignIn(person, saved.Name, redirect, chatSessionIDFromContext(ctx), entered)
+	start, discovery, err := api.beginVaultConnectionOAuth(ctx, person, chatSessionIDFromContext(ctx), id, c.OAuthServer, redirect, clientID, clientSecret)
 	if err != nil {
 		return "", err
 	}
 	if discovery != nil {
-		return mcpOAuthAppSetupMessage(saved.Name, discovery), nil
+		return mcpOAuthAppSetupMessage(vaultServerName(id), discovery), nil
 	}
-	return fmt.Sprintf("Added %s. Sign in: %s", saved.Name, authURL), nil
+	data, _ := json.Marshal(start)
+	return "Saved " + vaultServerName(id) + " in Vault. Open the real provider sign-in link in this result, approve access there, then verify discovery and finish the original request: " + string(data), nil
 }
 
-// Keep a pending account recoverable in chat without duplicating it.
+func vaultAPIKeyHeaders(args map[string]interface{}, value string) (string, error) {
+	header, _ := args["api_key_header"].(string)
+	if header == "" {
+		header = "Authorization"
+	}
+	format, _ := args["api_key_format"].(string)
+	if format == "" {
+		if strings.EqualFold(header, "Authorization") {
+			format = "Bearer {}"
+		} else {
+			format = "{}"
+		}
+	}
+	data, err := json.Marshal(map[string]string{header: strings.ReplaceAll(format, "{}", value)})
+	return string(data), err
+}
+
 func mcpOAuthAppSetupMessage(name string, discovery *OAuthDiscoveryResponse) string {
 	credentials := "client ID"
 	if discovery.NeedsClientSecret {
@@ -284,40 +289,4 @@ func (api *StreamingAPI) mcpToolOAuthRedirect(ctx context.Context, person string
 		return request.oauthRedirectURI
 	}
 	return ""
-}
-
-// Match the existing website's private key storage and retain the connection's
-// account identity and other headers. Values never enter servers.json or replies.
-func configurePlaceMCPAPIKey(person string, saved placeMCPServer, value, header, format string) (placeMCPServer, error) {
-	if saved.OAuth != nil {
-		return saved, fmt.Errorf("this connection uses OAuth; request its sign-in link instead of replacing it with an API key")
-	}
-	if len(value) > 65536 {
-		return saved, fmt.Errorf("API key is too large")
-	}
-	header = strings.TrimSpace(header)
-	if header == "" {
-		header = "Authorization"
-	}
-	if format == "" && strings.EqualFold(header, "Authorization") {
-		format = "Bearer {}"
-	}
-	secretName := "MCP_" + strings.ToUpper(saved.Name) + "_TOKEN"
-	headers := make(map[string]placeMCPHeader, len(saved.Headers)+1)
-	for key, ref := range saved.Headers {
-		headers[key] = ref
-	}
-	headers[header] = placeMCPHeader{Secret: secretName, Format: format}
-	saved.Headers = headers
-	if err := validatePlaceMCPServer(&saved); err != nil {
-		return saved, err
-	}
-	if err := setPersonalSecret(person, secretName, value); err != nil {
-		return saved, err
-	}
-	stored, err := addPlaceMCPServer(person, saved)
-	if err == nil {
-		closePlaceMCPConnection(person, saved.Name)
-	}
-	return stored, err
 }

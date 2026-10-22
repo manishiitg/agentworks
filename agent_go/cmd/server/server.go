@@ -2576,19 +2576,14 @@ func runServer(cmd *cobra.Command, args []string) {
 	}()
 	// The catalog of servers that can be connected, and connections of a place.
 	apiRouter.HandleFunc("/mcp/catalog", api.handlePlaceMCPCatalog).Methods("GET")
+	apiRouter.HandleFunc("/vault/connections", api.handleMyVaultServers).Methods("GET")
+	apiRouter.HandleFunc("/vault/migration", requireAdmin(api.handleVaultMigration)).Methods("POST")
 	// The old path, kept for a browser tab still running the previous frontend.
-	apiRouter.HandleFunc("/me/secrets", handlePersonalMCPSecrets).Methods("GET", "POST")
-	apiRouter.HandleFunc("/me/mcp/vault", api.handleMyVaultServers).Methods("GET")
-	apiRouter.HandleFunc("/me/mcp/catalog", api.handlePlaceMCPCatalog).Methods("GET")
 	// Sign-in apps (Google, GitHub, ...): set up once by an admin.
 	apiRouter.HandleFunc("/admin/mcp-apps", requireAdmin(api.handleListMCPApps)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/mcp-apps/{key}", requireAdmin(api.handlePutMCPApp)).Methods("PUT", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/integrations/slack/accounts", api.handlePersonalSlackAccounts).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/integrations/slack/bots", api.handleSlackVaultBots).Methods("GET", "POST", "OPTIONS")
-	apiRouter.HandleFunc("/mcp/place", api.handleListPlaceMCP).Methods("GET")
-	apiRouter.HandleFunc("/mcp/place", api.handleAddPlaceMCP).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/mcp/place/{name}/connect", api.handleConnectPlaceMCP).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/mcp/place/{name}", api.handleRemovePlaceMCP).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/files", api.handleListSharedProjectFiles).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/file", api.handleGetSharedProjectFile).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/presentations/{presentationID}", api.handleAgentProfilePresentationDelete).Methods("DELETE", "OPTIONS")
@@ -6290,31 +6285,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// A Code chat: pin its person before anything connects. The Code's own
 		// connections join below, exactly as a Crew's do.
 
-		// A workflow's, Crew's or Code's own connections (docs/design/
-		// personal_mcp_attach.md) join its selected servers like any other:
-		// one mechanism for all three.
-		placeRoot := ""
-		if isWorkflowPhase {
-			placeRoot = workflowPhaseFolder
-		} else if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-			placeRoot = agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
-		}
-		{
-			if placeNames, placeOverrides := attachedMCPServersForRoot(r.Context(), placeRoot); len(placeNames) > 0 {
-				selectedServers = mergeServerLists(selectedServers, placeNames)
-				if agentConfig.RuntimeOverrides == nil {
-					agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
-				}
-				for name, override := range placeOverrides {
-					agentConfig.RuntimeOverrides[name] = override
-				}
-				// Someone else's personal Slack added to this place: this person's turn lists only its send side.
-				if entries, restricted := personalSlackSendOnlyEntries(placeRoot, currentUserID); len(entries) > 0 {
-					agentConfig.SelectedTools = restrictSelectedToolsForSlack(agentConfig.SelectedTools, selectedServers, entries, restricted)
-					log.Printf("[SLACK_ACCOUNTS] item=%s caller=%s tool list cut to the send side for %d account(s)", placeRoot, currentUserID, len(restricted))
-				}
-			}
-		}
 		// A fixed access builder never mounts personal, attached or ambient MCP
 		// servers, even if an old conversation saved a broader selection.
 		// A guest's free-text ask mounts no MCP server: guests act only through the functions the owner exposes (856-59).
@@ -12592,7 +12562,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 			nameSet[gs.Name] = true
 		}
 		if workspacePath != "" {
-			workflowSecrets, err := api.chatStore.ListWorkflowSecrets(ctx, currentUserID, workspacePath)
+			workflowSecrets, err := api.ensureSharedWorkflowSecrets(ctx, workspacePath, currentUserID)
 			if err == nil {
 				for _, ws := range workflowSecrets {
 					nameSet[ws.Name] = true
@@ -13764,8 +13734,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			}
 			needle := strings.ToLower(query)
 
-			person, err := api.mcpToolUserID(ctx)
-			if err != nil {
+			if _, err := api.mcpToolUserID(ctx); err != nil {
 				return "", err
 			}
 
@@ -13779,17 +13748,11 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				if !strings.Contains(strings.ToLower(name), needle) {
 					continue
 				}
-				status := "available template — connect it in Integrations"
-				if own, found := personalMCPByCatalog(person, name); found {
-					dir, _ := placeMCPDir(person)
-					if placeMCPServerConnected(dir, person, own) {
-						status = "connected privately for you"
-					} else {
-						status = "this connection needs sign-in in Integrations"
-					}
-				} else if server.OAuth == nil {
-					status = "available template, no OAuth — add it in Integrations"
+				status := "available template — connect it through chat using Vault"
+				if server.OAuth == nil {
+					status = "available template — add it through chat using Vault"
 				}
+
 				catalogHits = append(catalogHits, fmt.Sprintf("- **%s** [our catalog, vetted] — %s", name, status))
 			}
 			sort.Strings(catalogHits)
@@ -13872,6 +13835,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 					"type":        "string",
 					"description": "User-provided API key to store encrypted for this exact connection. Never repeat it or write it to project files.",
 				},
+				"vault_id":       map[string]interface{}{"type": "string", "description": "Optional existing vault you own; defaults to your accounts vault."},
 				"api_key_header": map[string]interface{}{"type": "string", "description": "API key header from the provider documentation. Default Authorization."},
 				"api_key_format": map[string]interface{}{"type": "string", "description": "Header format with {} for the key, e.g. Bearer {}. Default Bearer {} for Authorization; otherwise the raw key."},
 				"client_id": map[string]interface{}{

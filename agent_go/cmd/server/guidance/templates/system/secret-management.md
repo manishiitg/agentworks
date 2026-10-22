@@ -1,3 +1,5 @@
+All secret values are stored encrypted in Vault. Existing project secret tools keep their names, selections and permissions; setup and rotation happen through chat.
+
 ## Secret Management
 
 Secrets are credentials (API keys, tokens, passwords). Keep project-specific credentials in the project secret store:
@@ -46,7 +48,7 @@ secret into Vault is done in Vault, by a Vault administrator: the
 **Share to Vault** button in the project's secrets, Vault's chat, or Vault's
 `manage_vault_secret_access(operation=share)` over MCP. The copy is made inside
 the backend (the value never passes through a model), the project copy stays,
-and the chosen groups get access. Copies rotate independently. Use an available secret-sharing tool or show the person the Share to Vault action. Never fetch or print a stored value to make the copy. Project ownership alone does not grant Vault administration. There is no per-user secret bucket: project secrets and Vault secrets
+and the chosen groups get access. Copies rotate independently. Use the available secret-sharing tool through chat. Never fetch or print a stored value to make the copy. Project ownership alone does not grant Vault administration. There is no per-user secret bucket: project secrets and Vault secrets
 are the platform model.
 
 Use the current attached canonical references and admitted tools. Legacy

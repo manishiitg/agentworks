@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+
+	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // Personal Slack lives in the person's own vault (owner, 2026-10-21: one store, Vault only). One Slack account per
@@ -141,23 +143,58 @@ func (api *StreamingAPI) setProjectSelectedServers(ctx context.Context, workspac
 // selectVaultServer adds or removes one Vault connection from the project. A project that picks no Vault connection uses
 // every one its owner may use; the first pick would silently drop all the others, so it keeps them picked alongside.
 func (api *StreamingAPI) selectVaultServer(ctx context.Context, person, workspace, connectionID string, on bool) error {
+	if !placeMCPCanAttach(ctx, person, workspace) {
+		return errors.New("only a current Builder can change project connections")
+	}
 	name := vaultServerName(connectionID)
-	var keep []string
-	if on {
-		if current, err := projectSelectedServers(ctx, workspace); err == nil && !slices.ContainsFunc(current, func(s string) bool { return strings.HasPrefix(s, "vault_") }) {
-			if rows, err := vaultServersFor(ctx, person); err == nil {
-				for _, row := range rows {
-					keep = append(keep, vaultServerName(row.ID))
-				}
-			}
+	current, err := projectSelectedServers(ctx, workspace)
+	if err != nil {
+		return err
+	}
+	owner := api.projectSecretsOwner(person, workspace)
+	rows, err := vaultServersFor(ctx, owner)
+	if err != nil {
+		return err
+	}
+	available := []string{}
+	allowed := false
+	for _, row := range rows {
+		n := vaultServerName(row.ID)
+		available = append(available, n)
+		if n == name {
+			allowed = true
 		}
 	}
-	return api.setProjectSelectedServers(ctx, workspace, func(current []string) []string {
-		if !on {
-			return settingsWithout(current, []string{name})
+	if on && !allowed { // Pending accounts can be selected by their owner before sign-in.
+		c, e := vaultSavedConnection(ctx, connectionID)
+		if e != nil || !vaultOwnerOf(ctx, person, c.VaultID) {
+			return errors.New("this Vault connection is unavailable")
 		}
-		return settingsWith(settingsWith(current, keep...), name)
-	})
+	}
+	picked := []string{}
+	others := []string{}
+	none := false
+	for _, n := range current {
+		if n == mcpclient.NoServers {
+			none = true
+		} else if strings.HasPrefix(n, "vault_") {
+			picked = append(picked, n)
+		} else {
+			others = append(others, n)
+		}
+	}
+	if len(picked) == 0 && !none {
+		picked = available
+	}
+	picked = settingsWithout(picked, []string{name})
+	if on {
+		picked = settingsWith(picked, name)
+	}
+	if len(picked) == 0 {
+		picked = []string{mcpclient.NoServers}
+	}
+	return api.setProjectSelectedServers(ctx, workspace, func([]string) []string { return append(others, picked...) })
+
 }
 
 func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string) (slackAccountsResponse, error) {

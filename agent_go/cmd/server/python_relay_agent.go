@@ -138,10 +138,7 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 		output = relaypython.AgentResult{Output: output, Tools: receipts, Provider: model.Provider, Model: model.ModelID}
 	}()
 	for _, source := range call.MCP {
-		resolved, matched, err := api.resolvePlaceAttachedMCP(ctx, sessionID, source.Server)
-		if !matched {
-			resolved, err = api.resolveGovernedMCP(context.WithValue(ctx, placeScopedKey{}, true), sctx.OwnerUserID, source.Server)
-		}
+		resolved, err := api.resolveGovernedMCP(context.WithValue(ctx, placeScopedKey{}, true), sctx.OwnerUserID, source.Server)
 		if err != nil {
 			return nil, err
 		}

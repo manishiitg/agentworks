@@ -3,12 +3,13 @@ package admin
 import (
 	"crypto/subtle"
 	"encoding/json"
-	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 	"net/http"
 	"regexp"
+
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 )
 
-var secretNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+var secretNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,255}$`)
 
 func (a *Admin) secretRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/admin/secrets", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {

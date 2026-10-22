@@ -223,6 +223,7 @@ func (g *Gateway) connectorOptions(c store.Connector) (upstream.DialOptions, err
 	opts := g.upstreamOptions
 	opts.BearerToken = g.store.ConnectorBearer(c.ID)
 	opts.AuthScheme = c.AuthScheme
+	opts.Transport = c.Transport
 	if c.OAuthServer != "" {
 		g.mu.RLock()
 		resolve := g.sharedOAuth
@@ -401,15 +402,16 @@ func (g *Gateway) SuspendOAuth(c store.Connector) {
 func (g *Gateway) ReplaceConnectorCredentials(ctx context.Context, c store.Connector, bearer string) error {
 	defer g.lockConnector(c.ID)()
 	current, ok := g.store.GetConnector(c.ID)
-	if !ok || current.WorkspaceID != c.WorkspaceID || current.Status != store.StatusActive {
+	if !ok || current.WorkspaceID != c.WorkspaceID {
 		return fmt.Errorf("connector is not active")
 	}
-	if current.OAuthServer != "" {
+	if c.OAuthServer != "" {
 		return fmt.Errorf("OAuth credentials are managed by the shared product sign-in flow")
 	}
 	opts := g.upstreamOptions
 	opts.BearerToken = bearer
-	opts.AuthScheme = current.AuthScheme
+	opts.AuthScheme = c.AuthScheme
+	opts.Transport = c.Transport
 	newUp, err := upstream.DialWithOptions(ctx, current.UpstreamURL, opts)
 	if err != nil {
 		return err
@@ -422,7 +424,10 @@ func (g *Gateway) ReplaceConnectorCredentials(ctx context.Context, c store.Conne
 	old := g.upstreams[c.ID]
 	g.upstreams[c.ID] = newUp
 	g.mu.Unlock()
-	if err := g.syncConnector(ctx, current); err != nil {
+	c.Status = store.StatusActive
+	g.store.AddConnector(c)
+	if err := g.syncConnector(ctx, c); err != nil {
+		g.store.AddConnector(current)
 		g.mu.Lock()
 		g.upstreams[c.ID] = old
 		g.mu.Unlock()
@@ -434,6 +439,18 @@ func (g *Gateway) ReplaceConnectorCredentials(ctx context.Context, c store.Conne
 		old.Close()
 	}
 	return nil
+}
+
+// ResetConnectorSession drops an old URL session while keeping its identity and grants.
+func (g *Gateway) ResetConnectorSession(id string) {
+	defer g.lockConnector(id)()
+	g.mu.Lock()
+	up := g.upstreams[id]
+	delete(g.upstreams, id)
+	g.mu.Unlock()
+	if up != nil {
+		up.Close()
+	}
 }
 
 // RemoveConnector disconnects an instance and drops its snapshots. The MCP

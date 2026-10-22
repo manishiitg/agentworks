@@ -1,40 +1,17 @@
+import { useVaultSetupDraft } from '../../components/integrations/useVaultSetupDraft'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { KeyRound, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
-import OAuthStatusBadge from '../../components/OAuthStatusBadge'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { McpConnectionsPanel, type McpConnectionRow, type McpCatalogRow } from '../../components/integrations/McpConnectionsPanel'
-import { McpCredentialSettings, McpNamedConnectionForm } from '../../components/integrations/McpConnectionForms'
+import { McpNamedConnectionForm } from '../../components/integrations/McpConnectionForms'
 import { descriptionFor, groupFor, statusIndicator } from '../../components/connectors/catalog'
 import { useMCPStore } from '../../stores/useMCPStore'
-import { agentApi } from '../../services/api'
 import type { ToolDefinition, ToolDetail } from '../../stores/types'
-import { createConnector, approveTool, deleteConnector, listCatalog, listConnectors, listTools, syncConnector, setConnectorBearer, type GatewayConnector, type GatewayTool } from './gatewayAdminApi'
+import { approveTool, listCatalog, listConnectors, listTools, syncConnector, type GatewayConnector, type GatewayTool } from './gatewayAdminApi'
 import { gatewayErrorMessage, mergeServerRows, plural, useAttempt, useGatewayLoader, type AgentWorksServer, type ServerRow } from './gatewayConsoleUtils'
 import { GatewayToolReviewActions } from './GatewayToolReviewActions'
 import { useVaultReadOnly } from './vaultReadOnly'
-
-function agentWorksServers(toolList: ToolDefinition[]): AgentWorksServer[] {
-  const groups = new Map<string, ToolDefinition[]>()
-  for (const tool of toolList) {
-    if (!tool.server) continue
-    const list = groups.get(tool.server) ?? []
-    list.push(tool)
-    groups.set(tool.server, list)
-  }
-  return [...groups.entries()].map(([name, entries]) => {
-    const details = entries.flatMap((entry) => entry.tools ?? [])
-    const names = [...new Set(entries.flatMap((entry) => entry.function_names ?? entry.tools?.map((tool) => tool.name) ?? []))]
-    return {
-      name,
-      connection: entries[0]?.connection,
-      status: entries[0]?.status,
-      toolCount: Math.max(names.length, details.length),
-      toolNames: names,
-      tools: details,
-    }
-  })
-}
 
 function displayName(row: ServerRow): string {
   return row.agentworks?.name ?? row.catalogMatch?.Name ?? row.gateway[0]?.Label ?? row.name
@@ -57,6 +34,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
   chatSessionId?: string
 }) {
   const readOnly = useVaultReadOnly()
+  const setup = useVaultSetupDraft()
   const [attempt, bump] = useAttempt()
   const { data, loading, error } = useGatewayLoader(async () => {
     const [connectors, catalog, tools] = await Promise.all([listConnectors(base), listCatalog(base), listTools(base)])
@@ -78,9 +56,6 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
   const [deleting, setDeleting] = useState<GatewayConnector | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [credentialFor, setCredentialFor] = useState<string | null>(null)
-  const [credentialValue, setCredentialValue] = useState('')
-  const [credentialBusy, setCredentialBusy] = useState(false)
   const [chatRequestBusy, setChatRequestBusy] = useState(false)
 
   const lastRevision = useRef(revision)
@@ -102,7 +77,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
 
   const rows = useMemo(() => {
     if (!data) return []
-    return mergeServerRows(standalone ? [] : agentWorksServers(toolList), data.connectors, data.providers)
+    return mergeServerRows([], data.connectors, data.providers)
   }, [data, toolList, standalone])
 
   const toolsByConnector = useMemo(() => {
@@ -121,7 +96,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
     setAddingKey(row.key)
     setActionError(null)
     try {
-      await createConnector(base, { Provider: row.catalogMatch.Name, Label: label, Slug: '', URL: '' })
+      await setup.open(`Connect ${row.catalogMatch.Name} in Vault with account label ${label}. Use manage_vault_access connect_server, guide required credentials in chat, return a real sign-in link and verify discovery. Preserve existing accounts and grants.`)
       setNamingKey(null)
       bump()
       if (row.catalogMatch.OAuth && !standalone) void refreshTools()
@@ -163,7 +138,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
     if (!deleting) return
     setDeleteBusy(true)
     try {
-      await deleteConnector(base, deleting.ID)
+      await setup.open(`Disconnect Vault connection ${deleting.ID} because I want to remove it. Use the existing Vault tools and preserve unrelated accounts and permissions.`)
       setDeleting(null)
       bump()
     } catch (err: unknown) {
@@ -171,21 +146,6 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
       setDeleting(null)
     } finally {
       setDeleteBusy(false)
-    }
-  }
-
-  async function onRotateCredential(id: string) {
-    setCredentialBusy(true)
-    setActionError(null)
-    try {
-      await setConnectorBearer(base, id, credentialValue.trim())
-      setCredentialValue('')
-      setCredentialFor(null)
-      bump()
-    } catch (err: unknown) {
-      setActionError(gatewayErrorMessage(err))
-    } finally {
-      setCredentialBusy(false)
     }
   }
 
@@ -198,7 +158,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
       return {
         id: c.ID, name, provider: row.catalogMatch?.Name ?? c.Provider, source: c.OAuthCredentialID ? c.OAuthServer : undefined, status: c.Status === 'active' ? 'Connected' : c.Status === 'disabled' ? 'Disabled' : c.Status === 'quarantined' ? 'Connection needs review' : c.Status === 'authentication_required' ? 'Sign-in required' : c.Status,
         statusDot: gatewayStatusDot(c.Status), toolCount: c.Status === 'authentication_required' ? undefined : tools.length,
-        controls: !readOnly && c.Status === 'authentication_required' && c.OAuthServer ? <OAuthStatusBadge chatSessionId={chatSessionId} scope="vault" serverName={c.OAuthServer} connectionId={c.OAuthCredentialID} requiresOAuth connection="available" connectLabel="Sign in" onAuthChange={valid => { if (valid) bump() }} /> : undefined,
+        controls: !readOnly && c.Status === 'authentication_required' ? <Button size="sm" variant="outline" onClick={()=>void setup.open(`Finish Vault sign-in for connection ${c.ID}. Guide OAuth app setup in chat if needed and return the real provider link.`)}>Finish setup in chat</Button> : undefined,
         toolsLabel: (open: boolean) => `${open ? 'Hide' : 'Show'} ${plural(tools.length, 'tool')} on ${name}`,
         tools: c.Status === 'authentication_required' && tools.length === 0 ? undefined : tools.map(tool => ({ id: tool.PublicName, name: tool.UpstreamName, description: tool.Description, schema: tool.InputSchema,
           status: tool.Status === 'quarantined' ? 'Needs review' : tool.Status === 'active' ? 'Approved' : tool.Status === 'disabled' ? 'Disabled' : tool.Status,
@@ -208,25 +168,13 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
         toolsNotice: <>{needsReview > 0 && <p className="text-muted-foreground">{needsReview} need review. Tools changed since connection. Review before approving. Group access is assigned separately.</p>}{approved > 0 && <p className="text-muted-foreground">{approved} approved</p>}</>,
         actions: readOnly ? [] : [
           { label: 'Refresh tool list', ariaLabel: `Sync ${name}`, icon: <RefreshCw />, disabled: syncing === c.ID, run: () => onSync(c.ID) },
-          { label: 'Connection settings', icon: <KeyRound />, run: () => { setCredentialFor(c.ID); setCredentialValue('') } },
+          { label: 'Manage in chat', icon: <KeyRound />, run: () => setup.open(`Manage Vault connection ${c.ID}. Help me update its credentials or sign in again through the current Vault tools. Never repeat credential values.`) },
           { label: 'Disconnect server', icon: <Trash2 />, destructive: true, run: () => setDeleting(c) },
         ],
-        settings: credentialFor === c.ID ? <McpCredentialSettings name={name} value={credentialValue} change={setCredentialValue} save={() => void onRotateCredential(c.ID)} busy={credentialBusy}
-          close={() => { setCredentialFor(null); setCredentialValue('') }}
-          oauthControl={c.OAuthServer ? <OAuthStatusBadge chatSessionId={chatSessionId} scope="vault" serverName={c.OAuthServer} connectionId={c.OAuthCredentialID} requiresOAuth connection="available" connectLabel="Sign in again" onAuthChange={valid => { if (valid) { if (c.OAuthCredentialID) bump(); else void onSync(c.ID) } }} /> : undefined} /> : undefined,
+
       }
     })
-    const personal = !standalone && row.agentworks?.connection === 'connected' ? [{
-      id: `private:${row.key}`, name: row.agentworks.name, provider: row.catalogMatch?.Name ?? row.agentworks.name, source: 'This place', status: row.agentworks.status === 'not_loaded' ? 'Connected · Tools not loaded' : statusIndicator(row.agentworks.connection, row.agentworks.status).title,
-      toolCount: row.agentworks.status === 'not_loaded' ? undefined : row.agentworks.toolCount,
-      toolsLabel: (open: boolean) => `${open ? 'Hide' : 'Show'} AgentWorks tools on ${row.agentworks!.name}`,
-      loadTools: async () => {
-        const result = await agentApi.getToolDetail(row.agentworks!.name)
-        if (result.status === 'error' || result.status === 'not_connected') throw new Error(/authorization required|unauthorized|oauth/i.test(result.error || '') ? 'Authorization is required to load this server’s tools.' : result.error || 'Could not discover tools.')
-        return (result.tools ?? []).map((tool: ToolDetail) => ({ id: tool.name, name: tool.name, description: tool.description, rawSchema: tool.parameters ? { type: 'object', properties: tool.parameters, ...(tool.required ? { required: tool.required } : {}) } : undefined }))
-      },
-    }] : []
-    return [...central, ...personal]
+    return central
   })
   const catalog: McpCatalogRow[] = rows.filter(row => row.catalogMatch).map(row => ({
     id: row.key, name: row.catalogMatch!.Name, description: descriptionFor(row.catalogMatch!.Name), category: groupFor(row.catalogMatch!.Name), testId: `gateway-add-${row.key}`,
@@ -238,7 +186,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
     headerActions={view === 'connected' && !readOnly && onBrowse ? <Button size="sm" onClick={onBrowse}><Plus />Connect MCP</Button> : undefined}
     notices={[
       ...(error ? [{ message: data ? `Could not refresh: ${error}. Saved data may be outdated.` : error, retry: bump }] : []),
-      ...(actionError ? [{ message: actionError, retry: bump }] : []),
+      ...((actionError||setup.error) ? [{ message: actionError || setup.error, retry: bump }] : []),
       ...(!standalone && agentWorksError ? [{ message: `This place's connections could not be refreshed: ${agentWorksError}`, retry: () => void refreshTools() }] : []),
     ]}
     addCustom={readOnly ? undefined : { label: 'Add custom server', disabled: !onAddCustom || chatRequestBusy, run: requestCustomServer }}>

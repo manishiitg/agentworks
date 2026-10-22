@@ -455,25 +455,24 @@ func (api *StreamingAPI) handleAdminCodeMCP(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	rows := []codeAdminPersonalServer{}
-	place := cleanAttachRoot(root)
-	attachments, _ := placeMCPAttachmentsFor(place)
-	for _, a := range attachments {
-		store := placeMCPStoreID(a.Owner, place)
-		servers, err := listPlaceMCPServers(store)
-		if err != nil {
-			continue
-		}
-		dir, _ := placeMCPDir(store)
-		for _, server := range servers {
-			if server.Name != a.Server {
-				continue
-			}
-			rows = append(rows, codeAdminPersonalServer{
-				UserID: a.Owner, Username: crewOwnerDisplayName(sanitizeUserIDForPath(a.Owner)), Name: server.Name,
-				URL: redactedURL(server.URL), Transport: server.Transport, OAuth: server.OAuth != nil,
-				Connected: placeMCPServerConnected(dir, store, server),
-			})
+	inventory, err := vaultServersFor(r.Context(), api.projectSecretsOwner(ownerID, root))
+	if err != nil {
+		writeAgentProfileError(w, 502, "Vault is unavailable")
+		return
+	}
+	selected, _ := projectSelectedServers(r.Context(), root)
+	picks := false
+	for _, n := range selected {
+		if strings.HasPrefix(n, "vault_") {
+			picks = true
 		}
 	}
+	for _, c := range inventory {
+		if containsExactString(selected, "NO_SERVERS") || picks && !containsExactString(selected, vaultServerName(c.ID)) {
+			continue
+		}
+		rows = append(rows, codeAdminPersonalServer{UserID: ownerID, Username: crewOwnerDisplayName(ownerID), Name: vaultServerName(c.ID), Connected: true, Transport: "http"})
+	}
+
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"servers": rows})
 }
