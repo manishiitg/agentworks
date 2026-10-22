@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { LayoutDashboard } from 'lucide-react'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { useProjectStatus } from '../../components/workspace/useProjectStatus'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
-import { reportDocumentLabel } from '../../components/workflow/reportDocumentLabels'
+import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import api, { agentApi } from '../../services/api'
@@ -57,16 +56,11 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     return () => { disposed = true }
   }, [workspacePath, scope, showSuggestions, tick])
   const count = suggestions?.scope === scope ? suggestions.count : null
-  const { documents, defaultPath } = useReportDocuments(allowed('dashboard') ? workspacePath : '')
+  const { documents } = useReportDocuments(allowed('dashboard') ? workspacePath : '')
   const status = useProjectStatus({ kind: 'crew', workspacePath, profileId, projectId })
   const menuOptions = { panels, enabledPanels, incomingEmail, projectId, canShare: sharing?.scope === scope && sharing.allowed }
   const inventory = crewProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
-  const items: CrewMenuItem[] = [
-    ...inventory.map(item => item.id === 'dashboard' ? { ...item, reportPath: defaultPath } : item),
-    ...(allowed('dashboard') ? documents.filter(document => document.path !== defaultPath).map(document => ({
-      id: 'dashboard:document:' + document.path, label: reportDocumentLabel(document, documents), icon: LayoutDashboard, group: 'Build' as const, view: 'dashboard' as const, reportPath: document.path,
-    })) : []),
-  ]
+  const items = inventory
   const byId = new Map(items.map(item => [item.id, item]))
   const recent = [...new Set(storedRecent)].flatMap(id => byId.get(id) || []).slice(0, 10)
   const recentIDs = new Set(recent.map(item => item.id))
@@ -77,7 +71,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     const current = useAuthStore.getState().user
     if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     const admitted = crewProjectMenuItems({ ...menuOptions, allowedProducts: current?.allowed_products })
-    if (!admitted.some(candidate => candidate.id === item.id) && !(item.reportPath && admitted.some(candidate => candidate.id === 'dashboard') && byId.has(item.id))) return
+    if (!admitted.some(candidate => candidate.id === item.id)) return
     useProjectMenuHistoryStore.getState().visit(scope, item.id)
     if (item.external) { openProductWorkspace(item.external); return }
     if (!item.view) return
@@ -86,6 +80,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     onOpen(item.view)
   }
   const renderItem = (item: CrewMenuItem) => {
+    if (item.id === 'dashboard') return <WorkspaceDashboardMenu key={scope + item.id} documents={documents} onSelect={path => open({ ...item, reportPath: path })} />
     if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} onClick={() => open(item)} />
     const automation = item.id.startsWith('schedules:') ? item.target : undefined
     const total = item.id === 'memory:skills' ? status.skills : item.id === 'mcp:gmail' ? status.googleApps : item.id === 'mcp:secrets' ? status.secrets : item.id === 'mcp:share-owners' ? status.owners : automation === 'schedules' ? status.schedules : automation === 'conditions' ? status.conditions : automation === 'triggers' ? status.triggers : automation === 'functions' ? status.functions : item.id === 'mcp:connected' ? status.mcps : item.id === 'mcp:agents' ? status.computerChats : undefined

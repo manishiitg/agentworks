@@ -24,7 +24,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   const add = (view: WorkWorkspaceView, group: CrewMenuGroup, label: string, icon: LucideIcon, target?: string, subgroup?: string) => {
     if (has(view)) items.push({ id: target ? `${view}:${target}` : view, view, group, label, icon, target, subgroup })
   }
-  add('dashboard', 'Build', 'Project dashboard', LayoutDashboard)
+  add('dashboard', 'Build', 'Dashboards', LayoutDashboard)
   if (has('schedules')) for (const item of projectAutomationSections({ incomingEmail, triggers: enabledPanels?.has('triggers') !== false })) {
     add('schedules', item.id === 'functions' ? 'Build' : 'Use', item.id === 'email' ? 'Email inbox' : item.label, item.icon, item.id, item.id === 'functions' ? undefined : item.id === 'email' ? 'Use from other apps' : 'Run automatically')
   }

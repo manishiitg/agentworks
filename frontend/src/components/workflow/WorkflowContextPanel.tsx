@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { LayoutDashboard } from 'lucide-react'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
@@ -15,7 +14,7 @@ import { PROJECT_MENU_GROUPS } from '../workspace/projectMenuGroups'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { ShareDashboardButton } from './ShareDashboardButton'
 import { selectReportDocument, useReportDocuments } from './reportDocuments'
-import { reportDocumentLabel } from './reportDocumentLabels'
+import { WorkspaceDashboardMenu } from '../workspace/WorkspaceDashboardMenu'
 import { usePendingDecisionState } from './hooks/usePendingDecisionCount'
 import { workflowProjectMenuItems, type WorkflowMenuItem } from './workflowProjectMenu'
 
@@ -33,7 +32,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', product, manifest?.id ?? workspacePath ?? '')
   const storedRecent = useProjectMenuHistoryStore(state => state.recent[scope] || EMPTY_RECENT)
   const incomingEmail = false
-  const { documents, defaultPath } = useReportDocuments(workspacePath || '')
+  const { documents } = useReportDocuments(workspacePath || '')
   const decisions = usePendingDecisionState(relayMode ? null : workspacePath)
   const status = useProjectStatus({ kind: 'goal', workspacePath: workspacePath || '', profileId: product, projectId: manifest?.id ?? workspacePath ?? '', enabled: canWrite })
   const [sharing, setSharing] = useState<{ scope: string; allowed: boolean } | null>(null)
@@ -47,10 +46,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
   }, [scope, workspacePath, canWrite])
   const menuOptions = { relayMode, isMultiUser: multiUser, pulseEnabled: manifest?.pulse?.enabled === true, incomingEmail, canShare: sharing?.scope === scope && sharing.allowed }
   const inventory = workflowProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
-  const items: WorkflowMenuItem[] = [
-    ...inventory.map(item => item.id === 'report' ? { ...item, reportPath: defaultPath } : item),
-    ...documents.filter(document => document.path !== defaultPath).map(document => ({ id: 'report:document:' + document.path, view: 'report' as const, group: 'Build' as const, label: reportDocumentLabel(document, documents), icon: LayoutDashboard, reportPath: document.path })),
-  ]
+  const items = inventory
   const byId = new Map(items.map(item => [item.id, item]))
   const recent = [...new Set(storedRecent)].flatMap(id => byId.get(id) || []).slice(0, 10)
   const recentIDs = new Set(recent.map(item => item.id))
@@ -59,7 +55,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     const current = useAuthStore.getState().user
     if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     const admitted = workflowProjectMenuItems({ ...menuOptions, allowedProducts: current?.allowed_products })
-    if (!admitted.some(candidate => candidate.id === item.id) && !(item.reportPath && byId.has(item.id))) return
+    if (!admitted.some(candidate => candidate.id === item.id)) return
     useProjectMenuHistoryStore.getState().visit(scope, item.id)
     if (item.external) { openProductWorkspace(item.external); return }
     if (!item.view) return
@@ -67,6 +63,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     openView(item.view, item.target)
   }
   const renderItem = (item: WorkflowMenuItem) => {
+    if (item.id === 'report') return <WorkspaceDashboardMenu key={scope + item.id} documents={documents} onSelect={path => open({ ...item, reportPath: path })} />
     if (item.external) return <WorkspaceAgentBridgeRows key={item.id} onOpen={() => open(item)} />
     if (item.id === 'mcp:share') return <ShareDashboardButton key={item.id} workspacePath={workspacePath} label={item.label} variant="row" onOpen={() => open(item)} />
     if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId="workflow" onClick={() => open(item)} />

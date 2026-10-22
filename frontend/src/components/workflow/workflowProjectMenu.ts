@@ -19,7 +19,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   const add = (view: WorkspaceViewId, group: ProjectMenuGroup, label: string, icon: LucideIcon, target?: string, subgroup?: string) => {
     items.push({ id: target ? `${view}:${target}` : view, view, group, label, icon, target, subgroup })
   }
-  add('report', 'Build', 'Project dashboard', LayoutDashboard)
+  add('report', 'Build', 'Dashboards', LayoutDashboard)
   add('flow', 'Build', relayMode ? 'Flow' : 'Plan & progress', Route, relayMode ? 'graph' : undefined)
   add('mcp', 'Build', 'Skills', Sparkles, 'skills')
   add('files', 'Build', 'Files', Files)

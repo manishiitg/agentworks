@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
-const state = vi.hoisted(() => ({ enabled: true, canWrite: true, canShare: true, multiUser: false, user: { id: 'alice', allowed_products: ['agentworks', 'relays'] as string[] | null }, server: 'local', open: vi.fn() }))
+const state = vi.hoisted(() => ({ enabled: true, canWrite: true, canShare: true, multiUser: false, user: { id: 'alice', allowed_products: ['agentworks', 'relays'] as string[] | null }, server: 'local', documents: [] as { id: string; path: string; title: string; order: number }[], open: vi.fn() }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => state.canWrite }))
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: (select: any) => select({ openWorkspaceView: state.open }) }))
 vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: (select: any) => select({ workflows: [{ workspace_path: 'Workflow/example', manifest: { id: 'example', pulse: { enabled: state.enabled } } }] }) }))
@@ -16,14 +16,15 @@ vi.mock('./ShareDashboardButton', () => ({ ShareDashboardButton: ({ label, onOpe
 vi.mock('../workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: any) => <button onClick={onClick}>Browser</button> }))
 vi.mock('../workspace/useProjectStatus', () => ({ useProjectStatus: () => ({}) }))
 vi.mock('../workspace/WorkspaceAgentBridgeRows', () => ({ WorkspaceAgentBridgeRows: () => null }))
-vi.mock('./reportDocuments', () => ({ useReportDocuments: () => ({ documents: [], defaultPath: 'db/reports/index.html' }), selectReportDocument: vi.fn() }))
+vi.mock('./reportDocuments', () => ({ useReportDocuments: () => ({ documents: state.documents, defaultPath: 'db/reports/index.html' }), selectReportDocument: vi.fn() }))
+import { selectReportDocument } from './reportDocuments'
 import { WorkflowContextPanel } from './WorkflowContextPanel'
 import { RelayContextPanel } from './RelayContextPanel'
 import { useProjectMenuHistoryStore, projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let host: HTMLDivElement, root: Root
 beforeEach(() => {
-  Object.assign(state, { enabled: true, canWrite: true, canShare: true, multiUser: false, server: 'local', user: { id: 'alice', allowed_products: ['agentworks', 'relays'] } })
+  Object.assign(state, { enabled: true, canWrite: true, canShare: true, multiUser: false, server: 'local', documents: [], user: { id: 'alice', allowed_products: ['agentworks', 'relays'] } })
   useProjectMenuHistoryStore.setState({ recent: {} }); host = document.createElement('div'); document.body.append(host); root = createRoot(host)
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.clearAllMocks() })
@@ -35,7 +36,7 @@ it.each([false, true])('uses Crew category order and keeps every product destina
   await render(relay)
   expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build', 'Use', 'Share', 'Integrations', 'Setup'])
   expect([...host.querySelectorAll('details')].map(node => node.open)).toEqual([true, false, false, false, false])
-  for (const label of ['Project dashboard', 'Files', 'Skills', 'Chat history', 'People & access', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
+  for (const label of ['Dashboards', 'Files', 'Skills', 'Chat history', 'People & access', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
   if (relay) {
     for (const label of ['Flow', 'Runs', 'Code']) expect(button(label)).toBeDefined()
     for (const label of ['Pulse', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database']) expect(button(label)).toBeUndefined()
@@ -92,4 +93,19 @@ it('retains separate Relay graph, runs and code targets', async () => {
   for (const [label, target] of [['Flow', 'graph'], ['Runs', 'calls'], ['Code', 'source']]) {
     await act(async () => button(label).click()); expect(state.open).toHaveBeenLastCalledWith('flow', target)
   }
+})
+
+it.each([false, true])('groups named dashboards once and preserves selection in Goals/Relay (%s)', async relay => {
+  state.documents = [
+    { id: 'overview', path: 'db/reports/index.html', title: 'Overview', order: 0 },
+    { id: 'budget', path: 'db/reports/budget.html', title: 'Budget', order: 1 },
+  ]
+  await render(relay)
+  expect([...host.querySelector('[aria-label="Project dashboards"]')!.querySelectorAll('button')].map(row => row.textContent)).toEqual(['Overview', 'Budget'])
+  await act(async () => button('Budget').click())
+  expect(selectReportDocument).toHaveBeenLastCalledWith('Workflow/example', 'db/reports/budget.html')
+  expect(state.open).toHaveBeenLastCalledWith('report', undefined)
+  expect(useProjectMenuHistoryStore.getState().recent[scope(relay)]).toEqual(['report'])
+  expect(host.querySelectorAll('[aria-label="Project dashboards"]')).toHaveLength(1)
+  expect(host.querySelector('[aria-label="Project dashboards"]')?.closest('section')?.querySelector('h2')?.textContent).toBe('Recent')
 })

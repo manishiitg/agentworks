@@ -1696,6 +1696,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
             </div>
           ) : (
             <ProductWorkspaceShell
+              divider={null}
               splitRef={splitLayoutRef}
               compactContext={!isWorkSessionRun(selected) && workspaceView==='context'}
               toolbarWhenPanelClosed={!isWorkSessionRun(selected)}
