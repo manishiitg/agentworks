@@ -10,6 +10,7 @@ external_scopes: ["crews:write"]
 Crew combines private project and coding work with reusable agents. Start with
 `workspace action=list` and keep the returned `workspace_id`; `get`, `create`,
 `update`, `ask` and chat actions use that same Crew.
+To delete a Crew when the person asks, discover `manage_project action=delete`; pass its `crew_id` and required `confirm` value using the current schema.
 New projects start **Only me**. Share changes the same hosted project's audience;
 Use the current action families returned by discovery. Project and chat identities stay stable.
 A Crew can have standing instructions (`purpose`), skills, typed **functions**,

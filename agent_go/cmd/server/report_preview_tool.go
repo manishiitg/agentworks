@@ -75,6 +75,17 @@ func reportPreviewScreenshotPaths(workspacePath, documentPath, theme, width stri
 	return workspacePath + "/" + dir + "/" + name, dir + "/" + name
 }
 
+// Result links use the same public address as dashboard links. The headless
+// browser still uses the internal API address; result links carry no token and
+// require the recipient's normal sign-in and project access.
+func (api *StreamingAPI) reportPreviewResultBaseURL() string {
+	base := effectiveShareBaseURL()
+	if base == "" {
+		base = api.GetCodeExecAPIURL()
+	}
+	return strings.TrimRight(base, "/")
+}
+
 // registerReportPreviewTool adds preview_report for a Workshop session.
 func (api *StreamingAPI) registerReportPreviewTool(registrar definitionToolRegistrar, sessionID, userID, workspacePath string) error {
 	params := map[string]interface{}{
@@ -171,6 +182,11 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 	token, err := mintReportPreviewToken(previewClaims, workspacePath)
 	if err != nil {
 		return "", fmt.Errorf("mint preview token: %w", err)
+	}
+	resultBase := api.reportPreviewResultBaseURL()
+	resultPageURL, err := parseDashboardURL(sharedAssetPublicURL(resultBase, "report", workspacePath), documentPath)
+	if err != nil {
+		return "", fmt.Errorf("preview link: %w", err)
 	}
 	pageURL := fmt.Sprintf("%s%s?workspace=%s&token=%s&theme=%s&width=%d&document=%s",
 		strings.TrimRight(api.GetCodeExecAPIURL(), "/"), reportPreviewPagePath,
@@ -271,7 +287,7 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 				destination, reported := reportPreviewScreenshotPaths(workspacePath, documentPath, theme, width)
 				reported = path.Join(path.Dir(reported), previewID, path.Base(reported))
 				destination = workspacePath + "/" + reported
-				shot := reportPreviewScreenshot{Theme: theme, Width: px, Path: reported, URL: strings.TrimRight(api.GetCodeExecAPIURL(), "/") + "/api/workflow/report-preview/file?workspace=" + url.QueryEscape(workspacePath) + "&path=" + url.QueryEscape(reported)}
+				shot := reportPreviewScreenshot{Theme: theme, Width: px, Path: reported, URL: sharedAssetPublicURL(resultBase, "file", path.Join(workspacePath, reported))}
 				if _, err := run("screenshot", destination, "--full"); err != nil {
 					// Retry without the full-page flag in case this CLI build rejects it.
 					if _, retryErr := run("screenshot", destination); retryErr != nil {
@@ -286,6 +302,7 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 	summary := reportPreviewSummary(snapshot, screenshots, documentPath)
 	result := map[string]interface{}{
 		"document_path":  documentPath,
+		"workspace":      workspacePath,
 		"state":          snapshot.PreviewState,
 		"summary":        summary,
 		"title":          snapshot.Report.Title,
@@ -300,8 +317,9 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 		"height_px":      snapshot.Report.Height,
 		"screenshots":    screenshots,
 		"rendered_via":   "headless browser, same report host runtime as the Report tab",
-		"next_step":      "Open each screenshot with read_image and judge layout, contrast and empty states; fix every script/fetch error and stale 'Loading…' placeholder.",
-		"page_url":       strings.Split(pageURL, "&token=")[0],
+		"next_step":      "Inspect the screenshots with your client's image viewer, or open their URLs in a browser signed in to this server with current project access. If you cannot view them, say visual inspection is still needed. Follow the designer's preferences and fix script/fetch errors and stale Loading placeholders.",
+		"page_url":       resultPageURL,
+		"authentication": "Screenshot and page URLs require sign-in and current project access; these URLs grant no access.",
 		"settle_timeout": reportPreviewSettleTimeout.String(),
 	}
 	out, err := json.MarshalIndent(result, "", "  ")

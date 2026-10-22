@@ -81,6 +81,9 @@ workflow_id or other project selector exactly as returned; do not infer a new ro
 5. `dashboard action=validate` checks the exact source, SQL and referenced files.
    `dashboard action=preview` renders that revision with the real browser runtime;
    inspect errors and screenshots and verify visible content, not only ready status.
+   Connected MCP attaches up to two PNG screenshot images; inspect those image
+   blocks. Other screenshots open through signed-in browser links. If your client
+   cannot display images, report that visual inspection is still needed.
 6. `dashboard action=publish` validates expected_revision and switches the live
    pointer. Run users keep seeing the publication while drafts are edited.
    `dashboard action=restore` republishes a saved revision, checking the current draft.

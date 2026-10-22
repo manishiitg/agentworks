@@ -413,6 +413,9 @@ func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Reques
 			return result
 		}
 	}
+	if target == "preview_dashboard" && rec.status >= 200 && rec.status < 300 {
+		return api.externalMCPDashboardPreviewResult(r, rec)
+	}
 	return externalMCPDispatchResult(rec)
 }
 
