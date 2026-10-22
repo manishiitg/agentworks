@@ -69,7 +69,7 @@ Images/avatars resolve project assets (db/, knowledgebase/, docs/) through the
 existing file API; inline data images are also supported. Links are static
 http(s)/mailto addresses and open only from a person's click. JSON contains no
 raw HTML, scripts or arbitrary fetch operations. Managed assets/scripts still use
-`{{dashboard_assets}}` and `{{dashboard_scripts}}` for immutable revision paths.
+`{{"{{dashboard_assets}}"}}` and `{{"{{dashboard_scripts}}"}}` for immutable revision paths.
 Validate/preview the draft, then publish it through the same dashboard tools.
 Existing authored HTML dashboards and historical revisions remain supported;
 when editing one, preserve its format unless the person asks to convert it.
