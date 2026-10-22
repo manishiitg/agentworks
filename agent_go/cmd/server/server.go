@@ -1788,6 +1788,12 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	// A backend launched inside tmux must not route CLI launches to its parent
+	// server while supervision uses the configured TMUX_TMPDIR socket.
+	if clearInheritedTmuxEnvironment() {
+		log.Printf("[STARTUP] cleared inherited TMUX and TMUX_PANE")
+	}
+
 	cliUpdateCtx, stopCLIUpdates := context.WithCancel(context.Background())
 	defer stopCLIUpdates()
 	if !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_ENABLED")), "false") && !strings.EqualFold(strings.TrimSpace(os.Getenv("CLI_UPDATE_DRY_RUN")), "true") {
