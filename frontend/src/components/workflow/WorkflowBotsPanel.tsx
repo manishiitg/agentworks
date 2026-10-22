@@ -80,7 +80,7 @@ export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = '
               {routes.map(route => <RouteChip key={routeId(route)} bots={bots} route={route} />)}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">{workflowId ? 'No routes yet.' : `Select a ${scopeNoun} to manage routes.`}</p>
+            <p className="text-xs text-muted-foreground">Send @list in your WhatsApp self-chat and choose an agent. No custom route is needed.</p>
           )}
           {routeError && <p className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400"><AlertCircle className="h-3.5 w-3.5 shrink-0" />{routeError}</p>}
           {waRoutingError && <p className="text-xs text-amber-600 dark:text-amber-400">WhatsApp routing unavailable: {waRoutingError}</p>}

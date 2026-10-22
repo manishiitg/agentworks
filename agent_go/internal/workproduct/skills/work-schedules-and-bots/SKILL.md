@@ -93,6 +93,21 @@ turn, explain the exact UI location rather than pretending a route was created.
 Bot messages inherit this project's workspace boundary, selected skills, MCP
 servers, and available secrets.
 
+### WhatsApp conversations
+
+Use `manage_whatsapp` to check the linked phone, connection and existing routing,
+or disconnect it when requested. Pairing requires the person's phone: open the
+WhatsApp panel and have them scan its QR under Linked devices. AgentWorks is a
+linked device; WhatsApp can display a generic device category.
+
+After pairing, the person opens **Message yourself** on the linked number,
+sends `@list` and chooses an agent from the options shown. Later messages use
+that selection until changed; `@list` chooses another agent and `@off` stops
+the conversation. An already working chat needs no setup. Do not ask the owner
+to send a DM link code or create a custom slug for their own self-chat. Those
+manual controls are not part of the normal setup. Do not remove checks on
+other people's messages or expose this account to another person.
+
 ## Gmail and Google Workspace
 
 - Determine the mailbox from `list_gmail_connections` and a successful scoped
@@ -141,7 +156,7 @@ Call `get_slack_bot_settings` before changing a route and again afterward to con
 
 When asked to connect Slack or configure a route, inspect `get_slack_bot_settings` first. Distinguish enabled/configured settings from a successful connection test; never say connected merely because `enabled` and `bot_mode` are true. A channel is live when it has a saved route and the connection test passes.
 
-1. Open `perform_ui_action(action="open", view="bots")`. The main Bots screen contains separate Slack and WhatsApp cards. Routes for the current workflow/project, Add controls and blocked-email Options live inside each card. Open on the Slack card shows shared connection settings only.
+1. Open the Slack panel using the advertised UI target. Slack's card contains channel Add controls and route Options. WhatsApp has its own pairing panel and uses the existing agent selection in the phone conversation, without a custom-slug Add control.
 2. Guide the operator to create a Slack app, install it in the workspace, and obtain its Bot User OAuth Token (`xoxb-`). In the same Slack app, open Socket Mode and turn on Enable Socket Mode before configuring Event Subscriptions. Refresh Event Subscriptions, leave Request URL empty (Socket Mode needs no public URL), enable events, add the bot events, and click Save Changes. If Save Changes is disabled and a Request URL is shown, verify Socket Mode is enabled in this same app. Obtain an App-Level Token (`xapp-`) with `connections:write`. Required for full delivery: subscribe to all three bot events: `app_mention`, `message.channels`, and `message.groups`. Invite the bot and verify both an @mention and a plain thread reply reach the service. Token checks passing alone do not establish complete setup; never describe these delivery requirements as optional. Grant `app_mentions:read`, `channels:history`, `groups:history`, `channels:read`, `groups:read`, `chat:write`, `chat:write.public`, `reactions:write`, `users:read`, and `users:read.email`; add `files:read` only if incoming attachments are needed.. For 1:1 direct messages with a workflow's or {{product}} project's own bot, also add `im:history`, `im:read`, the `message.im` event, and App Home → Messages Tab (tick "Allow users to send Slash commands and messages from the messages tab"); a DM runs as the sender's own AgentWorks account (matched by Slack email, owner → full, reader → Run mode), while channels always run in Run mode. The shared bot does not take DMs. Reinstall the app after changing scopes.
 3. The operator saves both tokens once in My Vault → Slack bots, then returns to the item’s Slack page and chooses that saved bot. The Enable Slack bot switch covers only channels without a route and is operator-managed; skip it when every channel will have a saved route, since routes enable their own channels. There is one switch, not a separate Bot Mode choice. Test Connection saves changed settings before testing bot authentication and the app token's Socket Mode access. It does not require a default channel or post a test message. A failed test is not a connection. If the operator pastes the tokens in chat, save them right away with `configure_slack_bot` (the bot token starts `xoxb-`, the app token `xapp-`); do not send them to the settings screen instead. Never echo the values or write them through workspace files; refer to the bot by name afterwards. Entering them in the settings screen is the alternative. Test with `test_slack_bot_connection` after saving.
 4. Invite the bot to the desired channel. Obtain the exact channel ID from Slack's channel details, then create a route for the current workflow/project with `create_slack_bot_route`. Channel IDs belong only to routes; there is no global/default channel. Use `run` for bot routes. Do not ask users to choose a grant or offer bot authoring mode. Confirm with `get_slack_bot_settings` after the change.
@@ -189,6 +204,12 @@ Use `slack` with the exact configured `route_id`, a supported API `method`, and 
 Crew inbox receiving is available by default on server deployments. There is one receiving setting per Crew, controlled by its owner through Builder or MCP. No company receiving mailbox, Pub/Sub, Google Cloud project setup or per-Crew binding is needed. Local deployments have no inbox UI, receiving workers or inbox tools.
 
 The person connects Gmail once in My Vault using the existing Google/gog sign-in. They choose **Use for Crew inboxes** on one of their own saved accounts (`manage_google_account` action=set_inbox_account with connection_id). Gmail read access must be selected and granted; use Change access and complete sign-in if missing. Do not create another login or silently increase permissions. Multiple Gmail accounts are fine; exactly one is the inbox account. Changing that selection switches their enabled Crews; disconnecting or turning off that account stops delivery everywhere.
+
+The person may request this account selection from Builder chat with the same
+tool; it is not a website-only personal choice. A tool refusal is evidence of
+that failed operation, not evidence of a new policy. Report the actual error,
+inspect the saved account/ownership and ask for missing access when needed;
+do not invent a restriction against carrying out the person's request in chat.
 
 Incoming email is **on by default for each Crew** once its owner has selected a Gmail inbox account in My Vault. Existing explicit off choices stay off. When the person requests turning one Crew off or back on, use `configure_agent_inbox` with enabled=true/false for the current Crew. Over MCP use `crew_integrations` with crew_id, action=configure_agent_inbox and arguments={enabled:true/false}. The existing personal-account Builder/ownership and token checks apply. Change only the requested Crew. Selecting Gmail starts receiving for all of that owner’s default-on Crews; it never creates a Watcher. Disabling keeps stored mail; disabling the last Crew removes its mailbox poller unless an explicitly enabled personal Gmail Watcher still needs it. Enabled Crews get an address based on the selected Gmail and stable Crew ID. Renaming a Crew keeps its address. These are Gmail plus-addresses, not additional Google mailboxes or accounts. No labels, sender approvals or special Gmail filters are required. This first rollout is for Crews; do not promise Goal or Relay inboxes.
 

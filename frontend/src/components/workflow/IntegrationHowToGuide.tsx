@@ -84,12 +84,12 @@ function questionsFor(topic: Exclude<IntegrationHowToTopic, 'Gmail'>, scopeNoun:
         answer: <>Click <b>Refresh</b> beside the QR and scan the new code. If there is no QR or the connector says disabled, check the status message; a server operator may need to enable or restart the WhatsApp connector.</>,
       },
       {
-        title: 'How do I link a direct-message chat?',
-        answer: <>After pairing, open <b>How to chat</b> and copy its <code>link</code> command. Send that command in a WhatsApp direct message to the paired number. The link code expires, so use the current one shown in the panel.</>,
+        title: 'How do I start chatting?',
+        answer: <>Open <b>Message yourself</b> in WhatsApp on your linked number. Send <code>@list</code> and choose an agent from the options shown, then send your message. Your choice is remembered. You do not need a DM link code or a custom route for your own chat.</>,
       },
       {
-        title: 'How do I route a message to this work?',
-        answer: <>Use the default slug or enter another in the WhatsApp row and click <b>Add</b>. Begin the WhatsApp message with <code>@slug</code> to send it to this {scopeNoun}. Review the route under <b>{scopeNoun === 'project' ? 'Routes for this project' : 'Workflow routes'}</b>.</>,
+        title: 'How do I change the agent?',
+        answer: <>Send <code>@list</code> again and choose another agent. Send <code>@off</code> to stop the current conversation.</>,
       },
       {
         title: 'How do I include progress updates?',

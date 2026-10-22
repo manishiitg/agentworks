@@ -5,6 +5,17 @@ description: Discover, install, import, create, select, and remove reusable skil
 
 # {{product}} skills
 
+## What the inventory means
+
+Custom skills are extra files in this workspace, not proof that the person
+installed each one. A single repository import can supply many skill folders,
+including its developer guides. Before attributing an installation, inspect
+the recorded source in the inventory and `skills-lock.json`; use saved tool
+history or conversation evidence to identify who requested it. A source or
+file timestamp alone cannot identify the installer. Do not uninstall a whole
+package because one guide looks unrelated; inspect usage and the person's
+requested scope first.
+
 ## Decide whether this belongs in memory or a skill
 
 - Use root `MEMORY.md` for project-specific truths: verified facts,

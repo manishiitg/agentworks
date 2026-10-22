@@ -77,6 +77,7 @@ export default function SkillRow({ skill, onDelete, selected, onToggleSelect, on
       </div>
 
       <div className="flex flex-wrap gap-x-2 gap-y-1 px-3 pb-2 text-xs text-muted-foreground">
+        {inventoryOnly && !reader && <span>{skill.brain_source ? `From Brain: ${skill.brain_source}` : skill.source ? `From ${skill.source}` : 'Source not recorded'}</span>}
         {inclusionLabels.map(label => <span key={label}>{label}</span>)}
         {platformStatus && <span>{platformStatus}</span>}
         {!inventoryOnly && !inclusionLabels.length && !skill.used_by?.length && <span>Available · Not selected</span>}

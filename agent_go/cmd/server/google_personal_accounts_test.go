@@ -168,6 +168,29 @@ esac
 	if err != nil || !strings.Contains(out, "mine") || strings.Contains(out, "Other account") {
 		t.Fatalf("saved accounts: %s %v", out, err)
 	}
+	// Native chat execution can arrive without request claims. It must keep
+	// the authenticated turn's person and token, just as the website does.
+	t.Setenv("LOCAL_MODE", "false")
+	native := crewCapabilityRegistrar{}
+	if err := api.registerPersonalGoogleAccountTool(native, "Workflow/orders", GetUserFromContext(ctx)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := native["manage_google_account"].execute(context.Background(), map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err != nil {
+		t.Fatalf("native inbox selection lost its caller: %v", err)
+	}
+	if selected, ok := svc.GetConnection("mine"); !ok || !selected.AgentInbox {
+		t.Fatal("native inbox selection was not saved")
+	}
+	if _, err := native["manage_google_account"].execute(googleAppRequest("POST", "/", "", "builder").Context(), map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err == nil {
+		t.Fatal("native tool accepted a different runtime caller")
+	}
+	bounded := crewCapabilityRegistrar{}
+	if err := api.registerPersonalGoogleAccountTool(bounded, "Workflow/orders", &UserClaims{UserID: "editor", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read", "builder:chat"}, WorkflowIDs: []string{"another"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bounded["manage_google_account"].execute(ctx, map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err == nil {
+		t.Fatal("native tool discarded the authenticated turn's token restriction")
+	}
 	workflowAccountMCPRequest(t, api, "editor", "google", map[string]any{"action": "attach", "connection_id": "mine"}, 200)
 	workflowAccountMCPRequest(t, api, "runner", "google", map[string]any{"action": "list_saved"}, 403)
 	workflowAccountMCPRequest(t, api, "builder", "google", map[string]any{"action": "attach", "connection_id": "mine"}, 403)

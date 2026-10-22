@@ -55,7 +55,7 @@ func gmailToolScope(workspacePath string) services.GmailUseScope {
 	return services.GmailUseScope{Workspace: canonicalCrewWorkspaceRoot(workspacePath)}
 }
 
-func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar definitionToolRegistrar, sessionID, workspacePath string) error {
+func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar definitionToolRegistrar, sessionID, workspacePath string, callers ...*UserClaims) error {
 	scope := gmailToolScope(workspacePath)
 	serviceNames := services.GoogleServiceCatalog()
 	serviceKeys := make([]string, 0, len(serviceNames))
@@ -121,7 +121,7 @@ func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar defini
 	}, "gmail_connection_management"); err != nil {
 		return err
 	}
-	if err := api.registerPersonalGoogleAccountTool(registrar, workspacePath); err != nil {
+	if err := api.registerPersonalGoogleAccountTool(registrar, workspacePath, callers...); err != nil {
 		return err
 	}
 	if err := api.registerPersonalSlackAccountTool(registrar, workspacePath); err != nil {

@@ -30,6 +30,9 @@ api.interceptors.request.use((config) => {
 })
 
 export const skillsApi = {
+  workspaceSummary: async (workspacePath: string): Promise<{ custom_count: number; total: number }> => {
+    return (await api.get('/api/skills', { params: { workspace_path: workspacePath, summary: true } })).data;
+  },
   runtimeSkills: async (workspacePath: string, sessionId?: string | null): Promise<RuntimeSkillsResponse> => {
     const response = await api.get('/api/skills/runtime', { params: { workspace_path: workspacePath, session_id: sessionId || undefined } });
     return response.data;

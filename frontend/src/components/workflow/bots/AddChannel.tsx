@@ -10,7 +10,7 @@ import type { WorkflowBots } from './useWorkflowBots'
 type ChannelRowBots = Pick<WorkflowBots,
   | 'readOnly' | 'workflowId' | 'setSetup'
   | 'slackReady' | 'waReady' | 'slackStatusLabel' | 'waStatusLabel' | 'slackLoading' | 'slackOriginal' | 'waStatus' | 'waError'
-  | 'newSlackChannel' | 'setNewSlackChannel' | 'newWaSlug' | 'setNewWaSlug' | 'addSlackRoute' | 'addWaRoute'
+  | 'newSlackChannel' | 'setNewSlackChannel' | 'addSlackRoute'
   | 'routeSaving' | 'myRoutes' | 'addError' | 'setAddError'
 >
 
@@ -18,7 +18,7 @@ export function ChannelRow({ bots, kind, manageRoutes = false, headerAction }: {
   const {
     readOnly, workflowId, setSetup,
     slackReady, waReady, slackStatusLabel, waStatusLabel, slackLoading, slackOriginal, waStatus, waError,
-    newSlackChannel, setNewSlackChannel, newWaSlug, setNewWaSlug, addSlackRoute, addWaRoute,
+    newSlackChannel, setNewSlackChannel, addSlackRoute,
     routeSaving, myRoutes, addError, setAddError,
   } = bots
 
@@ -28,9 +28,9 @@ export function ChannelRow({ bots, kind, manageRoutes = false, headerAction }: {
   const loading = kind === 'slack' ? slackLoading : (!waStatus && !waError)
   const Icon = kind === 'slack' ? MessageSquare : Phone
   const name = kind === 'slack' ? 'Slack' : 'WhatsApp'
-  const value = kind === 'slack' ? newSlackChannel : newWaSlug
-  const setValue = kind === 'slack' ? setNewSlackChannel : setNewWaSlug
-  const add = kind === 'slack' ? addSlackRoute : addWaRoute
+  const value = newSlackChannel
+  const setValue = setNewSlackChannel
+  const add = addSlackRoute
   const adding = routeSaving?.startsWith(`${kind}:`) && !myRoutes.some(r => routeId(r) === routeSaving)
   const error = addError[kind]
   return (
@@ -59,21 +59,18 @@ export function ChannelRow({ bots, kind, manageRoutes = false, headerAction }: {
           </button>
         )}
       </div>
-      {manageRoutes && ready && workflowId && (
+      {kind === 'slack' && manageRoutes && ready && workflowId && (
         <div className="mt-2 flex items-center gap-2">
-          {kind === 'whatsapp' && <span className="text-xs text-muted-foreground select-none">@</span>}
           <input
             type="text"
             value={value}
             onChange={e => {
-              const next = kind === 'slack'
-                ? e.target.value.toUpperCase().replace(/[^A-Z0-9_,;\s-]/g, '')
-                : e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')
+              const next = e.target.value.toUpperCase().replace(/[^A-Z0-9_,;\s-]/g, '')
               setValue(next)
               if (error) setAddError(prev => ({ ...prev, [kind]: undefined }))
             }}
             onKeyDown={e => { if (e.key === 'Enter') add() }}
-            placeholder={kind === 'slack' ? 'channel ID, e.g. C1234567890' : 'slug, e.g. rca'}
+            placeholder="channel ID, e.g. C1234567890"
             disabled={readOnly || !!adding}
             title={readOnly ? READ_ONLY_TITLE : undefined}
             className="min-w-0 flex-1 px-2 py-1 text-xs bg-secondary border border-border rounded font-mono focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"

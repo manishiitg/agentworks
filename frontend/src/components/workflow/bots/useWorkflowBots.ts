@@ -13,7 +13,6 @@ import { resolveWorkflowSlackConnection, sameBotWorkspacePath, selectedWorkflowS
 
 type WaRoute = WhatsAppRoute
 
-const SLUG_RE = /^[a-z0-9-]+$/
 const SLACK_CHANNEL_RE = /^[CDG][A-Z0-9]{2,}$/
 
 // Server errors come back as plain-text bodies; prefer them over axios's
@@ -130,7 +129,6 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
   const [routeSaving, setRouteSaving] = useState<string | null>(null)
   const [routeError, setRouteError] = useState<string | null>(null)
   const [newSlackChannel, setNewSlackChannel] = useState('')
-  const [newWaSlug, setNewWaSlug] = useState('')
   const [addError, setAddError] = useState<Partial<Record<ChannelKind, string>>>({})
 
   // ── Slack ─────────────────────────────────────────────────────────────────
@@ -638,30 +636,6 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     })
   }
 
-  const addWaRoute = () => {
-    const slug = newWaSlug.trim().toLowerCase()
-    if (!slug || !workflowId) return
-    if (!SLUG_RE.test(slug)) {
-      setAddError(e => ({ ...e, whatsapp: 'Slugs can only contain a-z, 0-9 and dashes.' }))
-      return
-    }
-    const existing = waRouting[slug]
-    if (existing && !routeMatchesTarget(existing)) {
-      setAddError(e => ({ ...e, whatsapp: `@${slug} is already routed to ${existing.profile_label || workflowLabel(existing.workflow_id || '')}.` }))
-      return
-    }
-    if (existing) {
-      setAddError(e => ({ ...e, whatsapp: `@${slug} is already routed to this workflow.` }))
-      return
-    }
-    setAddError(e => ({ ...e, whatsapp: undefined }))
-    void withRouteSaving(`whatsapp:${slug}`, async () => {
-      const route: WaRoute = { ...routeForTarget() }
-      await saveWaRouting({ ...waRouting, [slug]: route })
-      setNewWaSlug('')
-    })
-  }
-
   // ── Slack handlers (setup screen) ─────────────────────────────────────────
   const handleEmailsSave = async () => {
     setEmailsSaving(true)
@@ -1036,7 +1010,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     workflowId, readOnly, canManageOwnWhatsAppDevices,
     // navigation
     setup, setSetup, expandedChip, setExpandedChip,
-    routeSaving, routeError, newSlackChannel, setNewSlackChannel, newWaSlug, setNewWaSlug, addError, setAddError,
+    routeSaving, routeError, newSlackChannel, setNewSlackChannel, addError, setAddError,
     // slack
     slackConfig, setSlackConfig, slackOriginal, loadSlack, slackLoading, slackSaving, slackTesting, slackError, slackSuccess,
     testResult, testReply, pollingForReply, showBotToken, setShowBotToken, showAppToken, setShowAppToken,
@@ -1060,7 +1034,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     waUnpairConfirmSlot, waUnpairingSlot, refreshWaQR, handleUnpairWhatsAppDevice,
     waReady, waStatusLabel,
     // routes
-    myRoutes, workflowRoutes, removeRoute, updateRoute, addSlackRoute, addWaRoute,
+    myRoutes, workflowRoutes, removeRoute, updateRoute, addSlackRoute,
     // gmail
     gmailConnectionsReadOnly, gmailSettingsReadOnly, canRemoveGmailConnection,
     gmailConfig, setGmailConfig, gmailBlockedText, setGmailBlockedText,

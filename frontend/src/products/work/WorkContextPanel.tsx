@@ -35,12 +35,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const incomingEmail = useAgentInboxEnabled()
   const allowed = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
   const canReadSharing = allowed('dashboard') && allowed('mcp')
-  const [sharing, setSharing] = useState<{ scope: string; allowed: boolean } | null>(null)
+  const [sharing, setSharing] = useState<{ scope: string; allowed: boolean; detail?: string } | null>(null)
   useEffect(() => {
     if (!canReadSharing) return
     const controller = new AbortController()
-    void api.post<{ can_share: boolean }>('/api/dashboards', { workspace: workspacePath, action: 'share_status' }, { signal: controller.signal })
-      .then(({ data }) => { if (!controller.signal.aborted) setSharing({ scope, allowed: data.can_share === true }) })
+    void api.post<{ can_share: boolean; mode?: string; people?: { id: string }[]; unknown_emails?: string[] }>('/api/dashboards', { workspace: workspacePath, action: 'share_status' }, { signal: controller.signal })
+      .then(({ data }) => { if (!controller.signal.aborted) setSharing({ scope, allowed: data.can_share === true, detail: data.mode === 'everyone' ? 'Everyone' : data.mode === 'private' ? 'Only me' : data.mode === 'people' ? String(new Set((data.people || []).map(person => person.id)).size + (data.unknown_emails || []).length) : undefined }) })
       .catch(() => { if (!controller.signal.aborted) setSharing({ scope, allowed: false }) })
     return () => controller.abort()
   }, [scope, workspacePath, canReadSharing])
@@ -88,8 +88,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const renderItem = (item: CrewMenuItem) => {
     if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} onClick={() => open(item)} />
     const automation = item.id.startsWith('schedules:') ? item.target : undefined
-    const total = automation === 'schedules' ? status.schedules : automation === 'conditions' ? status.conditions : automation === 'triggers' ? status.triggers : automation === 'functions' ? status.functions : item.id === 'mcp:connected' ? status.mcps : item.id === 'mcp:agents' ? status.computerChats : undefined
-    const detail = item.id === 'suggestions' ? count ? count + ' waiting' : undefined
+    const total = item.id === 'memory:skills' ? status.skills : item.id === 'mcp:gmail' ? status.googleApps : item.id === 'mcp:secrets' ? status.secrets : item.id === 'mcp:share-owners' ? status.owners : automation === 'schedules' ? status.schedules : automation === 'conditions' ? status.conditions : automation === 'triggers' ? status.triggers : automation === 'functions' ? status.functions : item.id === 'mcp:connected' ? status.mcps : item.id === 'mcp:agents' ? status.computerChats : undefined
+    const detail = item.id === 'identity:location' ? status.laptop : item.id === 'mcp:share' ? sharing?.scope === scope ? sharing.detail : undefined : item.id === 'suggestions' ? count ? count + ' waiting' : undefined
       : item.id === 'mcp:slack-account' ? status.slackAccount : item.id === 'mcp:slack-bot' ? status.slackBot
       : item.id === 'mcp:whatsapp' ? status.whatsapp : item.id === 'schedules:email' ? status.email : total === undefined ? undefined : total ? String(total) : 'None'
     return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} attention={item.id === 'suggestions' && Boolean(count)} onClick={() => open(item)}>{item.label}</Row>

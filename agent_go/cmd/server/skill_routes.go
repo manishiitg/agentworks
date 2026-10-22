@@ -117,6 +117,16 @@ func listSkillsHandler(workspaceAPIURL string) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("summary") == "true" {
+			custom := 0
+			for _, skill := range inventory.Skills {
+				if skill.IsCustomWorkspaceSkill(r.URL.Query().Get("workspace_path")) {
+					custom++
+				}
+			}
+			json.NewEncoder(w).Encode(map[string]int{"custom_count": custom, "total": response.Total})
+			return
+		}
 		json.NewEncoder(w).Encode(response)
 	}
 }

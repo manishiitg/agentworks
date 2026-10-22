@@ -100,3 +100,19 @@ it("uses the same Slack page in all hosts without a credential form", async () =
  expect(host.querySelector('[data-testid="sending-account"]')).toBeNull()
  expect(host.querySelector('input[type="password"]')).toBeNull()
 });
+
+it('guides paired self-chat without a manual link code or slug form', async () => {
+  const { ChannelRow } = await vi.importActual<typeof import('./bots/AddChannel')>('./bots/AddChannel')
+  const { WhatsAppSetup } = await import('./bots/WhatsAppSetup')
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+  const bots = { workflowId: 'example', waReady: true, waStatusLabel: 'Connected', waStatus: { enabled: true, paired: true, connected: true }, slackOriginal: {}, myRoutes: [], addError: {} } as never
+  try {
+    await act(async () => root.render(<><ChannelRow bots={bots} kind="whatsapp" manageRoutes /><WhatsAppSetup bots={bots} /></>))
+    expect(host.querySelector('input')).toBeNull()
+    expect([...host.querySelectorAll('button')].some(button => button.textContent?.trim() === 'Add')).toBe(false)
+    expect(host.querySelectorAll('ol li')).toHaveLength(3)
+    expect(host.textContent).toContain('Message yourself')
+    expect(host.textContent).toContain('@list')
+    expect(host.textContent).not.toContain('Step 1: link a DM')
+  } finally { await act(async () => root.unmount()); host.remove() }
+})

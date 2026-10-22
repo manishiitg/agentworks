@@ -2,11 +2,29 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 )
+
+func TestWorkspaceSkillSummaryOmitsInstructionsAndPlatformFiles(t *testing.T) {
+	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"documents": []map[string]any{
+			{"folder_name": "extra", "file_path": "skills/extra/SKILL.md", "source": "example/package", "document": "---\nname: extra\ndescription: Extra\n---\nInstructions"},
+			{"folder_name": "project-memory", "file_path": ".claude/skills/project-memory/SKILL.md", "managed": true, "document": "---\nname: project-memory\ndescription: Platform\n---\nInstructions"},
+			{"folder_name": "old-projection", "file_path": ".claude/skills/old-projection/SKILL.md", "document": "---\nname: old-projection\ndescription: Old\n---\nInstructions"},
+		}})
+	}))
+	defer workspace.Close()
+	response := httptest.NewRecorder()
+	listSkillsHandler(workspace.URL)(response, httptest.NewRequest("GET", "/api/skills?workspace_path=Crew/example&summary=true", nil))
+	var counts map[string]int
+	if err := json.Unmarshal(response.Body.Bytes(), &counts); err != nil || response.Code != http.StatusOK || counts["custom_count"] != 1 || counts["total"] != 3 || len(counts) != 2 {
+		t.Fatalf("invalid lightweight summary: %s (%v)", response.Body.String(), err)
+	}
+}
 
 // The new skills edge must not turn a caller's supplied workspace into an
 // account-wide or cross-user filesystem capability.

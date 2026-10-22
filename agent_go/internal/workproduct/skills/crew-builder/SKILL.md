@@ -9,6 +9,31 @@ before making changes; use their dedicated tools and names, never secret values.
 Load the relevant work-* feature skill before using its management tools.
 For the person's laptop or a folder on their computer, read `crew-laptop`.
 
+## Settings and panels from chat
+
+The person's Builder request is enough to perform the same authorized action
+as its website control. Opening a panel is optional presentation, not completion
+of a setting change. Discover the admitted tool/schema, read the current value,
+make the requested change through that tool and verify the saved result. Do
+not invent website-only restrictions from a tool error. Report the exact
+failure and what is missing; Google/provider sign-in and phone QR consent
+still require the person's provider login or phone.
+
+| Panel or task | Guidance and tools |
+|---|---|
+| Dashboard; People & access; Owners | `work-dashboard`; the dashboard read, publish and sharing tools use the same server checks. |
+| Functions; Schedules; Watchers; Webhooks; Inbox; Google; Slack; WhatsApp | `work-schedules-and-bots`; use the existing per-action tools, not raw configuration files. |
+| Skills | `work-skills`; inspect recorded sources before claiming who installed something. |
+| Secrets; Models; Browser; Linked folders; Costs | `work-integrations`; use secret selection, `manage_crew_model`, `browser_connections`, folder tools and `get_crew_costs`. |
+| MCP connections and Vault access | `work-mcp` and `work-mcp-connections`. |
+| Local laptop | `crew-laptop`; check connected devices and the Crew's saved folder/command access separately. |
+| Crew tabs; AgentBridge; Suggestions | `crew-agents` and the Suggestions tools below; never attach someone else's native chat. |
+| Files; Database; Plan; Memory; Instructions; Terminal; Chat history | The Crew's scoped file, database, identity and shell tools; search saved history as described below. |
+
+Use `work-ui-control` and the advertised targets when showing a panel helps.
+If a requested control has no admitted management tool, state that concrete
+capability gap instead of claiming the person must always do it themselves.
+
 In the private CLI runtime, `project/` links to the real Crew. Read, create,
 rename and edit durable project files there; for commands that need
 project-relative paths, cd to the Crew's absolute path (named in your instructions),

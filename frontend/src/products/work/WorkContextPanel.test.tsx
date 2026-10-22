@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
-const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn(), share: true, user: { id: 'alice', allowed_products: null as string[] | null }, server: 'local', documents: [] as { path: string; name?: string }[] }))
+const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn(), share: true, user: { id: 'alice', allowed_products: null as string[] | null }, server: 'local', documents: [] as { path: string; name?: string }[], status: {} as Record<string, number | string> }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ setWorkspaceViewTarget: mocks.target }))
 vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: { can_share: mocks.share } }) }, getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { listReportHumanInputs: async () => ({ success: true, inputs: [] }) } }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: any) => select({ user: mocks.user }), { getState: () => ({ user: mocks.user }) }) }))
@@ -12,7 +12,7 @@ vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace:
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 vi.mock('../../components/integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled: () => true }))
 vi.mock('../../components/workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Browser</button> }))
-vi.mock('../../components/workspace/useProjectStatus', () => ({ useProjectStatus: () => ({}) }))
+vi.mock('../../components/workspace/useProjectStatus', () => ({ useProjectStatus: () => mocks.status }))
 vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments: () => ({ documents: mocks.documents, defaultPath: 'db/reports/index.html' }), selectReportDocument: vi.fn() }))
 import { WorkContextPanel } from './WorkContextPanel'
 import { workWorkspacePanels } from './workWorkspacePanels'
@@ -21,7 +21,7 @@ import { CREW_STARTER_TYPES, crewStarterShortcuts } from './crewStarterTypes'
 import { crewProjectMenuItems } from './crewProjectMenu'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 beforeEach(() => {
-  mocks.share = true; mocks.user = { id: 'alice', allowed_products: null }; mocks.server = 'local'; mocks.documents = []
+  mocks.share = true; mocks.user = { id: 'alice', allowed_products: null }; mocks.server = 'local'; mocks.documents = []; mocks.status = {}
   useProjectMenuHistoryStore.setState({ recent: {}, startHere: {} })
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://vault' }
 })
@@ -131,5 +131,18 @@ it('applies feature and sharing admission to starting shortcuts and drops stale 
     mocks.server = 'other'
     await act(async () => skills.click())
     expect(mocks.open).not.toHaveBeenCalled()
+  })
+})
+
+it('shows configured counts and laptop connection state beside their existing destinations', async () => {
+  mocks.status = { skills: 32, googleApps: 1, secrets: 0, owners: 2, laptop: 'Not connected' }
+  await render(async host => {
+    for (const [label, detail] of [['Skills', '32'], ['Google apps', '1'], ['Secrets', 'None'], ['Owners & collaborators', '2'], ['Local laptop', 'Not connected']]) {
+      const row = [...host.querySelectorAll('button')].find(node => node.textContent?.startsWith(label))!
+      expect(row.textContent).toBe(label + detail)
+    }
+    await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Skills32')!.click())
+    expect(mocks.target).toHaveBeenLastCalledWith('memory', 'skills')
+    expect(mocks.open).toHaveBeenLastCalledWith('memory')
   })
 })

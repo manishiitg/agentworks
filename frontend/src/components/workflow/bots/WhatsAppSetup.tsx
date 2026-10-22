@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, Loader2, RotateCcw, Trash2 } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, List, MessageCircle, Send, Loader2, RotateCcw, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '../../ui/Button'
 import { Card } from '../../ui/Card'
@@ -31,7 +31,6 @@ export function WhatsAppSetup({ bots }: { bots: WhatsAppSetupBots }) {
     waUnpairConfirmSlot, waUnpairingSlot, handleUnpairWhatsAppDevice,
     refreshWaQR,
   } = bots
-  const [linkCopyState, setLinkCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   // One person, one WhatsApp: the account links a single phone.
@@ -51,17 +50,6 @@ export function WhatsAppSetup({ bots }: { bots: WhatsAppSetupBots }) {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [qrExpiresAt])
-
-  const handleCopyLinkCommand = async () => {
-    const cmd = `link ${waStatus?.link_code || '123456'}`
-    try {
-      await navigator.clipboard.writeText(cmd)
-      setLinkCopyState('copied')
-    } catch {
-      setLinkCopyState('failed')
-    }
-    window.setTimeout(() => setLinkCopyState('idle'), 2000)
-  }
 
   return (
     <div className="space-y-4">
@@ -239,48 +227,22 @@ export function WhatsAppSetup({ bots }: { bots: WhatsAppSetupBots }) {
         </Card>
       )}
 
-      {/* How-to-chat card — shown once paired. */}
-      {waStatus && waStatus.enabled && waStatus.paired && (
+      {waStatus?.enabled && waStatus.paired && (
         <Card className="p-4">
-          <h3 className="text-sm font-medium text-foreground mb-1.5">How to chat</h3>
-          <div className="space-y-2 text-xs text-muted-foreground">
-            <div className="rounded-md border border-border bg-muted/30 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="text-[11px] text-muted-foreground">Step 1: link a DM chat</div>
-                  <code className="mt-1 block rounded bg-background px-2 py-1 font-mono text-[11px] text-muted-foreground">
-                    link {waStatus.link_code || '123456'}
-                  </code>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCopyLinkCommand}
-                  className="shrink-0"
-                >
-                  {linkCopyState === 'copied' ? 'Copied!' : linkCopyState === 'failed' ? 'Copy failed' : 'Copy'}
-                </Button>
-              </div>
-              {waStatus.link_code && (
-                <div className="mt-2 text-[11px] text-muted-foreground/80">
-                  Linked chats: {waStatus.bound_chat_count ?? 0}. Link code expires{' '}
-                  {waStatus.link_code_expires_at ? new Date(waStatus.link_code_expires_at).toLocaleString() : 'soon'}.
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-md border border-border bg-muted/30 p-3">
-              <div className="text-[11px] text-muted-foreground">Step 2: route to a workflow</div>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                A default slug is created from the automation name. You can delete it or add another slug for this automation, then start a message with <code>@slug</code> to route the chat.
-              </p>
-            </div>
-
-            <p className="text-[11px] text-muted-foreground/80">
-              Tip: for a separate-bot experience, pair a dedicated WhatsApp number (WhatsApp Business on a different number also works).
-            </p>
-          </div>
+          <h3 className="flex items-center gap-2 text-sm font-medium text-foreground"><CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden="true" />Ready to chat</h3>
+          <ol className="mt-4 grid gap-3 sm:grid-cols-3">
+            {[
+              { icon: MessageCircle, title: '1. Message yourself', text: 'Open your own chat in WhatsApp on the linked number.' },
+              { icon: List, title: '2. Choose an agent', text: 'Send @list and choose an agent from the options shown.' },
+              { icon: Send, title: '3. Start chatting', text: 'Send your message. Your choice is remembered for the next message.' },
+            ].map(step => <li key={step.title} className="rounded-lg border border-border bg-muted/30 p-3">
+              <step.icon className="mb-3 h-5 w-5 text-primary" aria-hidden="true" />
+              <p className="text-xs font-medium text-foreground">{step.title}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{step.text}</p>
+            </li>)}
+          </ol>
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">Already chatting? Keep going. Send @list whenever you want to choose another agent. No DM link code or custom route is needed for your own chat.</p>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">AgentWorks connects as a linked device. WhatsApp may show a generic device name such as “Other device”. Unpair above to disconnect it.</p>
         </Card>
       )}
 

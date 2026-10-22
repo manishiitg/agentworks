@@ -54,6 +54,19 @@ type WorkspaceInventory struct {
 	Usage  map[string][]string `json:"usage"`
 }
 
+// Custom means extra files in the workspace, not proof that the person
+// installed them. Old provider projections alone do not establish provenance.
+func (s Skill) IsCustomWorkspaceSkill(workspacePath string) bool {
+	if s.Managed || s.FileManaged || s.Builtin || s.FilePath == "" || s.FilePath == "Platform" {
+		return false
+	}
+	if s.Source != "" || s.SourceURL != "" || s.BrainSource != "" {
+		return true
+	}
+	path := strings.TrimPrefix(s.FilePath, strings.TrimRight(workspacePath, "/")+"/")
+	return strings.HasPrefix(path, "skills/") || strings.HasPrefix(path, ".skills/")
+}
+
 func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventory, error) {
 	var raw struct {
 		Documents []struct {

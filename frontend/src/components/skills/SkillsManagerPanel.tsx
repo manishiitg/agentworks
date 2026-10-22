@@ -145,7 +145,7 @@ export default function SkillsManagerPanel({
   const missing = [...new Set([...selectedSkills, ...Object.keys(usage)])]
     .filter(name => !completeInventory.some(skill => skill.folder_name === name))
   const groups = customOnly ? [
-    { title: 'Custom skills', description: `Skills installed for this ${selectionScopeLabel}. Ask in chat to install, create or uninstall a skill.`, skills: inventory },
+    { title: 'Custom skills', description: `Extra skill files in this ${selectionScopeLabel}, added by a person, a chat or an import. This list does not identify who installed them. Ask in chat to inspect, add or remove one.`, skills: inventory },
   ] : groupBySource ? [
     { title: 'Project skills', description: 'Skill files in this project. Their selection and usage are shown below.', skills: inventory.filter(skill => !isPlatform(skill)) },
     { title: 'Platform skills', description: 'Platform-managed files and declared defaults for Builder and Run. Actual access is checked when a session runs.', skills: inventory.filter(isPlatform) },
