@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { agentApi } from '../services/api'
 import type { TerminalSnapshot } from '../services/api-types'
 import { useTheme } from '../hooks/useTheme'
+import { useAuthStore } from '../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { MAIN_TERMINAL_FOCUS_EVENT } from '../utils/mainTerminalFocus'
 import { recordViewTimingTelemetry } from '../utils/chatDeliveryTelemetry'
 import { LiveAttachXtermPane, RAW_XTERM_THEMES, StaticXtermPane } from './TerminalCenter'
@@ -23,6 +25,10 @@ type MainAgentTerminalProps = {
 export const MAIN_AGENT_TERMINAL_MIN_WIDTH_PX = 680
 const MAIN_AGENT_TERMINAL_HISTORY_LINES = 1000
 const MAIN_AGENT_TERMINAL_MISSES_BEFORE_DROP = 3
+// Reopening the same pane can attach immediately while metadata revalidates.
+// Retain only one identity, never terminal output, and scope it to the login,
+// server, session and input access. Hidden chat views own no terminal poll.
+let retainedTerminal: { scope: string; snapshot: TerminalSnapshot } | null = null
 
 // Product raw view for the one main coding-agent terminal. This intentionally
 // reuses the mature xterm renderer/live tmux attach rather than maintaining a
@@ -31,7 +37,10 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
   const onUnavailableRef = useRef(onUnavailable)
   useEffect(() => { onUnavailableRef.current = onUnavailable }, [onUnavailable])
   const { theme } = useTheme()
-  const [snapshot, setSnapshot] = useState<TerminalSnapshot | null>(null)
+  const account = useAuthStore(state => state.user?.id)
+  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const scope = JSON.stringify([account, server, sessionId, readOnly])
+  const [snapshot, setSnapshot] = useState<TerminalSnapshot | null>(() => retainedTerminal?.scope === scope ? retainedTerminal.snapshot : null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   // No live view yet (the agent has not started one: before the first
@@ -81,8 +90,10 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
             rows: previous?.terminal_id === metadata.terminal_id && previous.tmux_session === metadata.tmux_session ? previous.rows : [],
           }
           snapshotRef.current = next
+          retainedTerminal = { scope, snapshot: { ...next, content: '', rows: [] } }
           setSnapshot(next)
         } else {
+          if (retainedTerminal?.scope === scope) retainedTerminal = null
           // A settled pane has no stream to retain its output, so fetch its final
           // history once per revision instead of on every poll. A retained agent
           // (e.g. Cursor on tmux) reuses this pane for later turns; a turn that
@@ -110,6 +121,9 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
       } catch (cause: any) {
         if (cancelled) return
         const hadSnapshot = snapshotRef.current !== null
+        if (cause?.response?.status === 403 || cause?.response?.status === 404) {
+          if (retainedTerminal?.scope === scope) retainedTerminal = null
+        }
         if (cause?.response?.status === 403) {
           // The server refuses the terminal for read-only access (a Crew reader, a
           // read-only login, a read-only channel). Typing into the CLI would skip the
@@ -139,19 +153,20 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
         requestInFlight = false
       }
     }
-    snapshotRef.current = null
+    const retained = retainedTerminal?.scope === scope ? retainedTerminal.snapshot : null
+    snapshotRef.current = retained
     missesRef.current = 0
-    setSnapshot(null)
+    setSnapshot(retained)
     setError(null)
     setNotStarted(false)
-    setLoading(true)
+    setLoading(!retained)
     void refresh()
     const timer = window.setInterval(() => { void refresh() }, 3000)
     return () => {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [sessionId])
+  }, [sessionId, scope])
 
   // A retained CLI keeps its tmux pane between turns (process_state "live"),
   // so the live view stays mounted across turns. Keying it on the turn

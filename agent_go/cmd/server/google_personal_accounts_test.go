@@ -40,7 +40,7 @@ esac
 	config := services.GmailConfig{GogPath: gog, GwsPath: gog, Connections: []services.GmailConnection{
 		{ID: "mine", DisplayName: "Personal account", Personal: true, OwnerID: "editor", Enabled: true, AuthBackend: "gog", ClientName: "personal-app", Email: "editor@example.com", AllowReadAccess: true},
 		{ID: "other", DisplayName: "Other account", Personal: true, OwnerID: "builder", Enabled: true},
-		{ID: "legacy", DisplayName: "Original Code account", Email: "editor@example.com", AuthBackend: "gog", ClientName: "personal-app", AllowReadAccess: true, ScopeWorkspace: "_users/editor/Chats/Code/projects/original", OwnerID: "editor", Enabled: true},
+		{ID: "legacy", DisplayName: "Original Code account", Email: "original@example.com", AuthBackend: "gog", ClientName: "personal-app", AllowReadAccess: true, ScopeWorkspace: "_users/editor/Chats/Code/projects/original", OwnerID: "editor", Enabled: true},
 		{ID: "company", DisplayName: "Company account", Enabled: true},
 	}}
 	cfg, _ := json.Marshal(config)

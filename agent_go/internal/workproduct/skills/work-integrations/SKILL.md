@@ -23,6 +23,15 @@ to send as that owner. Removing here leaves other items connected; disconnect
 in My Vault removes the saved account everywhere. Company Google accounts and
 Slack bots keep their administrator setup.
 
+For Crew inbox setup, list saved accounts first and use `set_inbox_account` on
+the requested owned, connected account with Gmail read access. If an older
+private account is already selected here but that operation says to choose
+your own account, verify its owner and reapply `attach` to the same account
+in this project, then retry `set_inbox_account` and read back the result.
+The normal **Use here** operation records that explicit personal selection;
+it does not create another login. Do not edit account flags in files, choose
+a different account, or treat this refusal as a website-only restriction.
+
 ## Secrets
 
 Open **Connections → Secrets**. To show it in the current project with

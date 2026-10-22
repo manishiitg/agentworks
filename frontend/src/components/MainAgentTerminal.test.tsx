@@ -3,7 +3,8 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const { getMainTerminal } = vi.hoisted(() => ({
+const { getMainTerminal, identity } = vi.hoisted(() => ({
+  identity: { user: 0 },
   getMainTerminal: vi.fn(),
 }))
 
@@ -14,6 +15,8 @@ vi.mock('../services/api', () => ({
   },
 }))
 vi.mock('../hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }))
+vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: 'owner-' + identity.user } }) }))
+vi.mock('../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (state: unknown) => unknown) => select({ activeWorkspaceId: 'server' }) }))
 vi.mock('./TerminalCenter', () => ({
   LiveAttachXtermPane: ({ interactive, terminalId, contentRef }: { interactive: boolean; terminalId: string; contentRef: React.Ref<HTMLDivElement> }) => (
     <div ref={contentRef} data-testid="live-terminal" data-terminal={terminalId} data-interactive={String(interactive)}>
@@ -30,12 +33,32 @@ import { requestMainTerminalFocus } from '../utils/mainTerminalFocus'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 afterEach(() => {
+  identity.user++
   vi.clearAllMocks()
   vi.useRealTimers()
   document.body.innerHTML = ''
 })
 
 describe('MainAgentTerminal sizing', () => {
+  it('reopens the same terminal without waiting for metadata and polls nothing while unmounted', async () => {
+    vi.useFakeTimers()
+    getMainTerminal.mockResolvedValue({ terminal_id: 'warm-terminal', tmux_session: 'warm-tmux', process_state: 'live', active: false })
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<MainAgentTerminal sessionId="warm" />))
+      expect(host.querySelector('[data-testid="live-terminal"]')).not.toBeNull()
+      await act(async () => root.render(null))
+      getMainTerminal.mockClear()
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+      expect(getMainTerminal).not.toHaveBeenCalled()
+      getMainTerminal.mockImplementation(() => new Promise(() => {}))
+      await act(async () => root.render(<MainAgentTerminal sessionId="warm" />))
+      expect(host.querySelector('[data-testid="live-terminal"]')).not.toBeNull()
+      identity.user++
+      await act(async () => root.render(<MainAgentTerminal sessionId="warm" />))
+      expect(host.querySelector('[data-testid="live-terminal"]')).toBeNull()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
   it('returns toolbar focus only to the matching writable terminal and removes the listener on unmount', async () => {
     getMainTerminal.mockResolvedValue({ terminal_id: 'terminal', tmux_session: 'tmux', active: true })
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
