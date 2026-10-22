@@ -413,7 +413,7 @@ func TestProviderAccountsUsageRunsInAccountHome(t *testing.T) {
 	original := providerSetupCommands
 	providerSetupCommands = map[string]map[string]providerSetupCommand{
 		"muse-cli":    {"usage": {command: "/bin/sh", args: []string{"-c", `printf '❯\n'; IFS= read -r command; printf 'submitted:%s home:%s\n' "$command" "$HOME"; sleep 1`}}},
-		"claude-code": {"usage": {command: "/bin/sh", args: []string{"-c", `if [ "$CLAUDE_CODE_OAUTH_TOKEN" = server-chat-token ]; then printf 'server-usage\n'; else printf 'missing-chat-credential\n'; fi; sleep 1`}}},
+		"claude-code": {"usage": {command: "/bin/sh", args: []string{"-c", `printf '❯\n'; IFS= read -r command; if [ "$command" = /usage ] && [ "$CLAUDE_CODE_OAUTH_TOKEN" = server-chat-token ]; then printf 'server-usage\n'; else printf 'missing-chat-credential\n'; fi; sleep 1`}}},
 	}
 	t.Cleanup(func() { providerSetupCommands = original })
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "muse-cli", "display_name": "Alice Muse", "auth_method": "cli_login"})
@@ -450,7 +450,7 @@ func TestProviderAccountsUsageRunsInAccountHome(t *testing.T) {
 	// A member sees server-account usage as text the server collected; they
 	// never get a terminal.
 	w = usage("bob", "claude-code", "")
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"usage_output":"server-usage"`) {
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "server-usage") {
 		t.Fatalf("member server usage: %d %s", w.Code, w.Body.String())
 	}
 	if w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "bob", map[string]interface{}{"provider": "muse-cli", "action": "inspect"}, nil); w.Code != http.StatusForbidden {
