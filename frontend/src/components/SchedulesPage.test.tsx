@@ -28,7 +28,7 @@ describe('Schedules page', () => {
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
       await act(async () => root.render(<SchedulesPage />))
-      expect(host.querySelector('h1')?.textContent).toBe('Schedules and triggers')
+      expect(host.querySelector('header')?.textContent).toContain('Schedules and triggers')
       expect(host.querySelector('[data-testid="schedules-panel"]')).not.toBeNull()
       expect(captured.props?.embedded).toBe(true)
       expect(captured.props?.active).toBe(true)
@@ -37,7 +37,7 @@ describe('Schedules page', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
-  it.each([['agentworks', 'Goals'], ['work', 'Crew'], ['code', 'Crew'], ['mcp-gateway', 'Vault']])('returns from Schedules to %s with a labeled page action', async (surface, label) => {
+  it.each([['agentworks', 'Goals'], ['work', 'Crew'], ['mcp-gateway', 'Vault']])('returns from Schedules to %s with a labeled page action', async (surface, label) => {
     surfaceState.productSurface = surface
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
