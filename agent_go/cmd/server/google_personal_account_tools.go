@@ -104,6 +104,7 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 			return nil, fmt.Errorf("Crew inboxes are available on server deployments")
 		}
 		if !c.Personal || c.OwnerID != actor {
+			log.Printf("[GOOGLE_ACCOUNTS] actor=%q connection=%s account_owner=%q personal=%t claims_present=%t reason=inbox_owner_mismatch", actor, id, c.OwnerID, c.Personal, GetUserFromContext(r.Context()) != nil)
 			return nil, fmt.Errorf("Choose a Gmail account you own. Ask me to list your saved accounts, or choose one in My Vault.")
 		}
 		status, _ := svc.AuthStatusForConnectionBlocking(r.Context(), c.ID)
