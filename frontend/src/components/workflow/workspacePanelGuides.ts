@@ -114,8 +114,12 @@ const AGENTWORKS_GUIDES: Record<string, GuideCopy> = {
     howTo: 'Check the publishing destination and status. Ask AI to help set up a host or update what gets published.',
   },
   Pulse: {
-    purpose: 'See your goal, what Pulse changed, and what needs your answer.',
-    howTo: 'Review your goals, metrics, evidence and saved Pulse activity. Ask Pulse about a specific goal, measurement or update, send your own question, or open its chat directly. Answer decisions and adjust On/Off and outward actions here.',
+    purpose: 'See your goals, measurements and saved Pulse activity.',
+    howTo: 'Review your goals, metrics, evidence and saved Pulse activity. Ask Pulse about a specific goal, measurement or update, send your own question, or open its chat directly. Use Decisions for pending answers and Pulse settings for On/Off and outward actions.',
+  },
+  'Pulse settings': {
+    purpose: 'Choose whether Pulse is on and how it handles outward actions.',
+    howTo: 'Turn Pulse on or fully off. Choose whether posts and messages ask first or use existing limits. Review progress in Goals & metrics and pending answers in Decisions.',
   },
   Schedules: {
     purpose: 'Run work automatically at chosen times.',

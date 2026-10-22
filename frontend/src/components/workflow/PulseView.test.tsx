@@ -1,36 +1,50 @@
 // @vitest-environment happy-dom
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 vi.mock('./SoulViewer', () => ({ SoulViewer: () => <p>Grow useful customer conversations.</p>, WORKFLOW_SOUL_REFRESH_EVENT: 'test-soul' }))
 vi.mock('../../utils/pulseChatTab', () => ({ openWorkflowPulseChatTab: vi.fn(async () => 'pulse-tab'), askWorkflowPulse: vi.fn(async () => {}) }))
-vi.mock('./ReportHumanInputPanel', () => ({ ReportHumanInputPanel: () => <p>No decisions waiting.</p> }))
 vi.mock('./AskAIButton', () => ({ AskAIButton: () => <button>Edit goals &amp; numbers</button> }))
 import { askWorkflowPulse, openWorkflowPulseChatTab } from '../../utils/pulseChatTab'
 import type { PulseOverviewResponse } from '../../services/api-types'
 const navigation = vi.hoisted(() => ({ apply: undefined as undefined | ((target: string) => void) }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ useWorkspaceViewTarget: (_view: string, apply: (target: string) => void) => { navigation.apply = apply } }))
 import PulseView from './PulseView'
+import { useWorkflowStore } from '../../stores/useWorkflowStore'
+import { WorkspacePanelNavigationProvider } from '../workspace/WorkspacePanelNavigation'
+import { WorkspacePanelHeader } from '../workspace/WorkspacePanelHeader'
+import { AskAIButton } from './AskAIButton'
 
-it.each([true, false])('shows one Pulse screen, keeps simple settings and respects OFF (on=%s)', async on => {
+beforeEach(() => {
+ useWorkflowStore.setState({ workspaceViewTarget: null })
+ HTMLElement.prototype.scrollIntoView = vi.fn()
+})
+
+it.each([true, false])('separates goals from settings and decisions and keeps one hosted Help (on=%s)', async on => {
  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
  try {
-  await act(async () => root.render(<PulseView workspacePath="Workflow/example" monitorOn={on} hasSoul monitorSaving={false} onToggleMonitor={() => {}}
-   statusError={null} statusLoading={false} onRefresh={() => {}} />))
-  for (const label of ['Goals', 'Metrics', 'Pulse activity', 'Decisions', 'Pulse settings', 'Talk to Pulse']) expect(host.querySelector(`[aria-label="${label}"]`)).not.toBeNull()
-  expect(host.querySelector('[role="tablist"]')).toBeNull()
-  expect(host.textContent).not.toMatch(/Platform health|Maintenance issues|Review run history|Weekly/)
-  expect(host.querySelector('[aria-label="Pulse on/off"]')?.getAttribute('aria-checked')).toBe(String(on))
+  await act(async () => root.render(<WorkspacePanelNavigationProvider workspacePath="Workflow/example" view="pulse">
+   <WorkspacePanelHeader workspacePath="Workflow/example" view="pulse" title="Pulse" onBack={() => {}} />
+   <PulseView workspacePath="Workflow/example" monitorOn={on} hasSoul monitorSaving={false} onToggleMonitor={() => {}}
+    statusError={null} statusLoading={false} onRefresh={() => {}} headerAction={<AskAIButton workspacePath="Workflow/example" message="Explain Pulse" iconOnly />} />
+  </WorkspacePanelNavigationProvider>))
+  for (const label of ['Goals', 'Metrics', 'Pulse activity', 'Talk to Pulse']) expect(host.querySelector(`section[aria-label="${label}"]`)).not.toBeNull()
+  expect(host.querySelector('section[aria-label="Decisions"]')).toBeNull()
+  expect(host.querySelector('section[aria-label="Pulse settings"]')).toBeNull()
+  expect(host.querySelectorAll('[aria-label="Help with this page"]')).toHaveLength(1)
+  expect(host.querySelector('[aria-label^="Walkthrough:"]')).toBeNull()
   const chat = [...host.querySelectorAll('button')].find(button => button.textContent === 'Open Pulse chat')!
   expect(chat.disabled).toBe(!on)
-  for (const [target, label] of [['settings', 'Pulse settings'], ['goals', 'Goals'], ['metrics', 'Metrics'], ['activity', 'Pulse activity'], ['decisions', 'Decisions']]) {
-   const section = host.querySelector<HTMLElement>(`section[aria-label="${label}"]`)!
-   section.scrollIntoView = vi.fn()
+  await act(async () => navigation.apply?.('settings'))
+  expect(host.querySelector('section[aria-label="Goals"]')).toBeNull()
+  expect(host.querySelectorAll('section[aria-label="Pulse settings"]')).toHaveLength(1)
+  expect(host.querySelector('[aria-label="Pulse on/off"]')?.getAttribute('aria-checked')).toBe(String(on))
+  expect(host.querySelectorAll('[aria-label="Help with this page"]')).toHaveLength(1)
+  for (const [target, label] of [['goals', 'Goals'], ['metrics', 'Metrics'], ['activity', 'Pulse activity']]) {
    await act(async () => navigation.apply?.(target))
-   expect(section.scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
-   expect(document.activeElement).toBe(section)
-   expect(chat.disabled).toBe(!on)
+   expect(document.activeElement).toBe(host.querySelector(`section[aria-label="${label}"]`))
+   expect(host.querySelector('section[aria-label="Pulse settings"]')).toBeNull()
   }
   await act(async () => navigation.apply?.('chat'))
   expect(openWorkflowPulseChatTab).toHaveBeenCalledWith('Workflow/example')

@@ -2490,10 +2490,10 @@ else
     echo "🔖 Platform revision: unknown (not a git checkout) — findings will record no version"
 fi
 
-# Build the small browser runtimes before the backend can receive a preview.
-# Vite itself compiles the app in dev mode, but these standalone JS/CSS files
-# are served by the agent and are not produced by Vite's development server.
-if [ "$WITH_FRONTEND" = true ]; then
+# The agent needs standalone dashboard/preview assets even when the person
+# keeps an existing frontend running (--with-workspace without --with-frontend).
+# Prepare them from this source checkout independently of launching Vite.
+if [ -f "$FRONTEND_DIR/package.json" ]; then
     echo "🎨 Preparing dashboard and preview runtimes..."
     ensure_frontend_deps "$FRONTEND_DIR" "$FRONTEND_LOG_PATH" || exit 1
     (cd "$FRONTEND_DIR" && npm run prepare:local-assets) >> "$FRONTEND_LOG_PATH" 2>&1 || {

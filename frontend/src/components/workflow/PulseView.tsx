@@ -1,14 +1,13 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { PulseIcon } from './pulseIcon'
 import { SoulViewer, WORKFLOW_SOUL_REFRESH_EVENT } from './SoulViewer'
 import { GoalProgress } from './GoalProgress'
-import { ReportHumanInputPanel } from './ReportHumanInputPanel'
-import { WORKFLOW_DECISIONS_REFRESH_EVENT } from './workflowEvents'
 import { PlainMarkdown } from '../ui/PlainMarkdown'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { askWorkflowPulse, openWorkflowPulseChatTab } from '../../utils/pulseChatTab'
+import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
 import type { PulseOutwardActions, PulseOverviewResponse } from '../../services/api-types'
 
@@ -33,11 +32,14 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
   overview = null, outwardActions = 'ask', outwardSaving = false,
   onChangeOutward, statusError, statusLoading, onRefresh, headerAction }: PulseViewProps) {
   const settingsSection = useRef<HTMLElement>(null)
-  const chatSection = useRef<HTMLElement>(null)
   const goalSection = useRef<HTMLElement>(null)
   const metricsSection = useRef<HTMLElement>(null)
   const activitySection = useRef<HTMLElement>(null)
-  const decisionsSection = useRef<HTMLElement>(null)
+  const [target, setTarget] = useState(() => {
+    const current = useWorkflowStore.getState().workspaceViewTarget
+    return current?.view === 'pulse' ? current.target : 'goals'
+  })
+  const settingsOnly = target === 'settings'
   const [question, setQuestion] = useState('')
   const [sending, setSending] = useState(false)
   const canTalk = Boolean(monitorOn && hasSoul && workspacePath)
@@ -52,21 +54,25 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
     } catch (error) { fail(error) }
     finally { setSending(false) }
   }
-  useWorkspaceViewTarget('pulse', target => {
-    if (target === 'chat') { talk(); return }
-    const section = target === 'settings' ? settingsSection.current : target === 'goals' ? goalSection.current
-      : target === 'metrics' ? metricsSection.current : target === 'activity' ? activitySection.current
-        : target === 'decisions' ? decisionsSection.current : null
+  useWorkspaceViewTarget('pulse', next => {
+    if (next === 'chat') { talk(); return }
+    if (next === 'decisions') { useWorkflowStore.getState().openWorkspaceView('human-actions'); return }
+    setTarget(next)
+  })
+  useEffect(() => {
+    const section = settingsOnly ? settingsSection.current : target === 'metrics' ? metricsSection.current
+      : target === 'activity' ? activitySection.current : goalSection.current
     section?.scrollIntoView({ block: 'start' })
     section?.focus({ preventScroll: true })
-  })
+  }, [target, settingsOnly])
   const messages = overview?.conversation?.messages || []
   return <div className="flex h-full min-h-0 w-full flex-col bg-background">
-    <WorkspaceViewHeader icon={PulseIcon} title="Pulse" helpTopic="Pulse" subtitle="Pulse works with Builder on your goal."
+    <WorkspaceViewHeader icon={PulseIcon} title={settingsOnly ? 'Pulse settings' : 'Goals & metrics'} helpTopic={settingsOnly ? 'Pulse settings' : 'Pulse'} subtitle={settingsOnly ? 'Choose when Pulse works and how it handles outward actions.' : 'Pulse works with Builder on your goal.'}
       actions={<>{headerAction}<WorkspaceViewIconButton label="Refresh Pulse" disabled={statusLoading} spinning={statusLoading}
-        onClick={() => { window.dispatchEvent(new CustomEvent(WORKFLOW_SOUL_REFRESH_EVENT)); window.dispatchEvent(new CustomEvent(WORKFLOW_DECISIONS_REFRESH_EVENT)); onRefresh() }} /></>} />
+        onClick={() => { window.dispatchEvent(new CustomEvent(WORKFLOW_SOUL_REFRESH_EVENT)); onRefresh() }} /></>} />
     <div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
       {statusError && <p role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{statusError}</p>}
+      {!settingsOnly && <>
       <section ref={goalSection} tabIndex={-1} aria-label="Goals" className="space-y-3 focus:outline-none">
         <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">Your goals</h2>
           <button type="button" disabled={!canTalk || sending} onClick={() => void ask('Review our goals and acceptance conditions. Where are we on track, what is blocking progress, and what should we do next?')}
@@ -92,11 +98,8 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
             </li>)}</ol></details>
             : <p className="text-sm text-muted-foreground">{statusLoading ? 'Loading saved Pulse activity…' : 'No saved Pulse conversation yet.'}</p>}
       </section>
-      <section ref={decisionsSection} tabIndex={-1} aria-label="Decisions" className="space-y-3 focus:outline-none">
-        <h2 className="text-sm font-semibold">Decisions</h2>
-        {workspacePath && <ReportHumanInputPanel key={workspacePath} workspacePath={workspacePath} contentMode="all" showEmptyState />}
-      </section>
-      <section ref={settingsSection} tabIndex={-1} aria-label="Pulse settings" className="focus:outline-none rounded-xl border bg-background p-4">
+      </>}
+      {settingsOnly && <section ref={settingsSection} tabIndex={-1} aria-label="Pulse settings" className="focus:outline-none rounded-xl border bg-background p-4">
         <div className="flex items-center justify-between gap-4"><div><h2 className="text-sm font-semibold">Pulse</h2>
           <p className="mt-1 text-xs text-muted-foreground">{monitorOn ? 'Checks the goal and works with Builder on improvements.' : 'Fully off. No checks, reports, reminders or messages.'}</p></div>
           <button type="button" role="switch" aria-label="Pulse on/off" aria-checked={monitorOn} disabled={monitorSaving} onClick={onToggleMonitor}
@@ -105,8 +108,8 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
           <select aria-label="Pulse outward actions" value={outwardActions} disabled={outwardSaving || !onChangeOutward} onChange={event => onChangeOutward?.(event.target.value as PulseOutwardActions)} className="rounded-md border bg-background px-3 py-2 text-sm">
             <option value="ask">Ask first</option><option value="allow">Allowed within limits</option></select></label>
         {monitorOn && !hasSoul && <p className="mt-3 text-sm text-muted-foreground">Set the goal with Builder so Pulse knows what to pursue.</p>}
-      </section>
-      <section ref={chatSection} tabIndex={-1} aria-label="Talk to Pulse" className="focus:outline-none rounded-xl border bg-background p-4">
+      </section>}
+      {!settingsOnly && <section tabIndex={-1} aria-label="Talk to Pulse" className="focus:outline-none rounded-xl border bg-background p-4">
         <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">Talk to Pulse</h2>
           <button type="button" disabled={!canTalk} onClick={talk} className="text-sm font-medium text-primary disabled:opacity-50">Open Pulse chat</button></div>
         <p className="mt-1 text-xs text-muted-foreground">{monitorOn ? hasSoul ? 'Send a question to Pulse, or continue in its chat.' : 'Set a goal with Builder before messaging Pulse.' : 'Turn Pulse on before sending it a message.'}</p>
@@ -121,7 +124,7 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
           <textarea aria-label="Question for Pulse" placeholder="Ask Pulse a specific question…" value={question} onChange={event => setQuestion(event.target.value)} rows={2} disabled={!canTalk || sending} className="w-full resize-y rounded-lg border bg-background p-3 text-sm disabled:opacity-50" />
           <button type="submit" disabled={!canTalk || sending || !question.trim()} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{sending ? 'Opening Pulse…' : 'Send to Pulse'}</button>
         </form>
-      </section>
+      </section>}
     </div></div>
   </div>
 }
