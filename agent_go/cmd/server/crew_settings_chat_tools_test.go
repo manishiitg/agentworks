@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/santhosh-tekuri/jsonschema/v6"
+
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
@@ -65,6 +67,19 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 	out, err := reg.tools["browser_connections"].exec(ctx, map[string]any{"action": "list", "crew_id": "another", "workspace": "Crew/another"})
 	if err != nil || !strings.Contains(out, "https://example.com/?browser_connections=1") {
 		t.Fatalf("saved-browser list: %s %v", out, err)
+	}
+	// The live native bridge validates this schema before the callback. An
+	// empty engine is the existing reset operation and must survive admission.
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("https://example.com/crew-model.json", reg.tools["manage_crew_model"].params); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := compiler.Compile("https://example.com/crew-model.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.Validate(map[string]any{"action": "set", "engine": ""}); err != nil {
+		t.Fatalf("native schema rejects the documented model reset: %v", err)
 	}
 	if _, err := reg.tools["manage_crew_model"].exec(ctx, map[string]any{"action": "set", "engine": "", "conversation_key": side.ConversationKey, "chat_id": "other"}); err != nil {
 		t.Fatal(err)

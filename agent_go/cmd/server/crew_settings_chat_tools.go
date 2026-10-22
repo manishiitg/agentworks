@@ -120,7 +120,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 	if agentprofiles.HasFeature(profile.Definition, "models") {
 		return register("manage_crew_model", "Read the model choices and saved model of this chat (action=list), or change this chat's model when the person asks (action=set). Changes apply from the next message; this reply still uses the current model. Use an engine/model_id returned by list. An empty engine returns the chat to the Crew's default. Other chats and the Crew default stay unchanged.", map[string]any{
 			"action":           map[string]any{"type": "string", "enum": []string{"list", "set"}},
-			"engine":           externalString("Provider option from list. For set, an empty string uses the Crew default."),
+			"engine":           map[string]any{"type": "string", "description": "Provider option from list. For set, an empty string uses the Crew default."},
 			"model_id":         externalString("Model from that provider's offered models."),
 			"reasoning_effort": externalString("Optional reasoning level offered for that provider."),
 		}, []string{"action"}, func(r *http.Request, args map[string]any) (string, error) {
