@@ -122,6 +122,7 @@ describe('terminal toolbar shared tools', () => {
       useChatStore.getState().setTabConfig('A', { inputText: '' })
       useChatStore.getState().setTabStreaming('A', true)
       renderComposer(undefined, false)
+      await client.invalidateQueries({ queryKey: ['chat-queued-messages'] })
     })
     const flush = async () => act(async () => { await new Promise(resolve => setTimeout(resolve, 40)) })
     await flush()
