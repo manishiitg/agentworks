@@ -577,6 +577,16 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 			return
 		}
 	}
+	if token := GetUserFromContext(r.Context()).AccessToken; token != nil && isAgentServerLinkClient(token.OAuthClientID) {
+		allowed := []string{"send", "read", "ack", "count", "list_agents"}
+		if token.BoundAgentID == "" {
+			allowed = []string{"register", "list_agents"}
+		}
+		if call.Name != "messages" || !slices.Contains(allowed, externalArg(call.Arguments, "action")) {
+			externalError(w, 403, "insufficient_scope", "Linked servers support sending and receiving agent messages only.")
+			return
+		}
+	}
 	if token := GetUserFromContext(r.Context()).AccessToken; token != nil && token.BoundAgentID != "" {
 		if call.Name != "messages" || !slices.Contains([]string{"list_agents", "send", "read", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}, externalArg(call.Arguments, "action")) || externalArg(call.Arguments, "agent_name") != token.BoundAgentName {
 			externalError(w, 403, "insufficient_scope", "This connection only supports messaging for its attached agent.")

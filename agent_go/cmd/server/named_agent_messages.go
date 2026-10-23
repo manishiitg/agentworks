@@ -30,6 +30,7 @@ func agentMailCall(args map[string]any) bool {
 // A registration survives reconnects; deleting and recreating a name gets a new
 // ID so old conversations cannot silently reach a replacement agent.
 type namedMessageAgent struct {
+	Relay            *namedAgentRelay      `json:"relay,omitempty"`
 	ID               string                `json:"agent_id"`
 	UserID           string                `json:"user_id"`
 	Name             string                `json:"name"`
@@ -46,6 +47,19 @@ type namedMessageAgent struct {
 
 func normalizeMessageAgentName(name string) (string, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
+	if parts := strings.Split(name, "@"); len(parts) == 2 {
+		local, err := normalizeMessageAgentName(parts[0])
+		if err != nil || strings.Contains(local, "@") || len(parts[1]) < 1 || len(parts[1]) > 253 {
+			return "", fmt.Errorf("Use name@server for a linked agent.")
+		}
+		for i, c := range parts[1] {
+			if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || i > 0 && (c == '.' || c == '-') {
+				continue
+			}
+			return "", fmt.Errorf("Use name@server for a linked agent.")
+		}
+		return local + "@" + parts[1], nil
+	}
 	if len(name) < 1 || len(name) > 64 {
 		return "", fmt.Errorf("agent_name must contain 1 to 64 ASCII letters, digits, dots, underscores or hyphens")
 	}
@@ -279,6 +293,26 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 		externalError(w, 400, "invalid_arguments", err.Error())
 		return
 	}
+	var relayOrigin string
+	if claims.AccessToken != nil && isAgentServerLinkClient(claims.AccessToken.OAuthClientID) {
+		if claims.AccessToken.BoundAgentID != "" || externalArg(args, "action") != "register" {
+			externalError(w, 403, "registration_refused", "Only the linked server can register its agents.")
+			return
+		}
+		relayOrigin, err = agentServerLinkOrigin(r.Context(), claims)
+		namespace, namespaceErr := agentServerNamespace(relayOrigin)
+		if err != nil || namespaceErr != nil || !strings.HasSuffix(name, "@"+namespace) {
+			externalError(w, 403, "registration_refused", "The agent name must end with its home server's name.")
+			return
+		}
+		if _, present := args["allowed_connection_ids"]; present {
+			externalError(w, 400, "invalid_arguments", "A relayed agent is read through its linked server.")
+			return
+		}
+	} else if strings.Contains(name, "@") {
+		externalError(w, 400, "registration_refused", "Names ending in @server belong to linked servers. Use a short name for a local agent.")
+		return
+	}
 	// Additional readers must be explicit, live connections of this account.
 	var connections []string
 	if raw, present := args["allowed_connection_ids"]; present {
@@ -347,6 +381,10 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 			index = len(s.Agents) - 1
 		} else if _, present := args["allowed_connection_ids"]; !present {
 			connections = s.Agents[index].Connections
+		}
+		if relayOrigin != "" {
+			s.Agents[index].Relay = &namedAgentRelay{Origin: relayOrigin}
+			connections = []string{claims.AccessToken.ID}
 		}
 		s.Agents[index].Connections = connections
 		if purpose, present := args["purpose"]; present {

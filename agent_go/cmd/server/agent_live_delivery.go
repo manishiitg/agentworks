@@ -47,10 +47,12 @@ var agentLiveEvents = struct {
 	lastRecorded map[string]time.Time
 }{changed: make(chan struct{}), online: map[string]*agentLiveStream{}, lastRecorded: map[string]time.Time{}}
 
-// Attachment is a person-configured CLI operation, not an agent MCP tool.
-// The native bridge gets this credential from its explicit launch config.
+// Native attachment uses the approved CLI. Linked servers derive one child
+// per relayed address; only that child may attach its server reader.
 func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Request) {
-	if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+cliOAuthAccessPrefix) {
+	claims := GetUserFromContext(r.Context())
+	linked := claims != nil && claims.AccessToken != nil && isAgentServerLinkClient(claims.AccessToken.OAuthClientID)
+	if !linked && !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+cliOAuthAccessPrefix) {
 		externalError(w, 403, "attachment_refused", "Configure attachment through your signed-in AgentWorks CLI, not an agent tool.")
 		return
 	}
@@ -58,6 +60,10 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 	var args map[string]any
 	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label", "inbox"}, externalArg(args, "action")) {
 		externalError(w, 400, "invalid_arguments", "Choose attach or detach for this exact native session.")
+		return
+	}
+	if linked && claims.AccessToken.BoundAgentID == "" && externalArg(args, "action") != "connection" {
+		externalError(w, 403, "attachment_refused", "Use the connection for this relayed agent.")
 		return
 	}
 	if externalArg(args, "action") == "connection" {
@@ -110,6 +116,10 @@ func namedAgentPresence(a namedMessageAgent) string {
 }
 
 func namedAgentOnline(a namedMessageAgent) bool {
+	return (a.Relay == nil || a.Relay.Online) && namedAgentConnected(a)
+}
+
+func namedAgentConnected(a namedMessageAgent) bool {
 	agentLiveEvents.Lock()
 	defer agentLiveEvents.Unlock()
 	stream := agentLiveEvents.online[a.ID]
@@ -123,6 +133,9 @@ func namedAgentDiscoverable(a namedMessageAgent, now time.Time) bool {
 		return true
 	}
 	last := a.CreatedAt
+	if a.Relay != nil {
+		last = a.Relay.LastSeenAt
+	}
 	if a.LastOnlineAt.After(last) {
 		last = a.LastOnlineAt
 	}
@@ -157,6 +170,9 @@ func recordNamedAgentActivity(ctx context.Context, agentID, attachmentID string,
 		a := &s.Agents[i]
 		if a.ID != agentID {
 			continue
+		}
+		if a.Relay != nil {
+			return // Its home server reports the real agent's last-seen time.
 		}
 		if attachmentID != "" {
 			if a.Attachment == nil || a.Attachment.ID != attachmentID {
@@ -216,7 +232,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	switch externalArg(args, "action") {
 	case "attach":
 		provider, session, purpose := externalArg(args, "provider"), externalArg(args, "native_session_id"), strings.TrimSpace(externalArg(args, "purpose"))
-		if !slices.Contains([]string{"codex", "claude", "muse", "cursor", "agy", "pi"}, provider) || session == "" || len(session) > 128 || strings.ContainsAny(session, "/\\\r\n\x00") || utf8.RuneCountInString(purpose) > 512 || strings.ContainsAny(purpose, "\r\n") {
+		relay := a.Relay != nil
+		relayAllowed := isAgentServerLinkClient(claims.AccessToken.OAuthClientID) && claims.AccessToken.BoundAgentID == a.ID
+		if relay && !relayAllowed || relay != (provider == "relay") || !slices.Contains([]string{"codex", "claude", "muse", "cursor", "agy", "pi", "relay"}, provider) || session == "" || len(session) > 128 || strings.ContainsAny(session, "/\\\r\n\x00") || utf8.RuneCountInString(purpose) > 512 || strings.ContainsAny(purpose, "\r\n") {
 			externalError(w, 400, "invalid_arguments", "Attach requires a supported provider, its exact native_session_id and an optional purpose (at most 512 characters).")
 			return
 		}
@@ -244,7 +262,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		}
 		if route, supplied := args["delivery_route"]; supplied {
 			value, ok := route.(string)
-			providers := map[string]string{"codex_desktop": "codex", "codex_queue": "codex", "claude_session": "claude", "claude_channel": "claude", "muse_monitor": "muse", "pi_extension": "pi", "codex_hook": "codex", "claude_hook": "claude", "cursor_hook": "cursor", "muse_hook": "muse", "agy_hook": "agy"}
+			providers := map[string]string{"codex_desktop": "codex", "codex_queue": "codex", "claude_session": "claude", "claude_channel": "claude", "muse_monitor": "muse", "pi_extension": "pi", "codex_hook": "codex", "claude_hook": "claude", "cursor_hook": "cursor", "muse_hook": "muse", "agy_hook": "agy", "relay": "relay"}
 			if !ok || value != "" && value != "inbox" && providers[value] != a.Attachment.Provider {
 				externalError(w, 400, "invalid_arguments", "Delivery route must match this chat's provider.")
 				return
@@ -255,6 +273,12 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			a.Attachment.ClientBuild = build
 		}
 		a.Attachment.Repository = cleanAgentLabel(externalArg(args, "repository"))
+		if a.Relay != nil {
+			if err := updateRelayPresence(a, args); err != nil {
+				externalError(w, 400, "invalid_arguments", err.Error())
+				return
+			}
+		}
 		a.Attachment.Branch = cleanAgentLabel(externalArg(args, "branch"))
 		activity := externalArg(args, "activity")
 		if activity != "" && activity != "busy" && activity != "idle" && activity != "unknown" {
@@ -288,7 +312,11 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			return
 		}
 		delivery, transport := externalArg(args, "delivery"), externalArg(args, "transport")
-		if delivery != "delivered" || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "muse_session", "mailbox"}, transport) {
+		if transport == "relay" && a.Relay == nil {
+			externalError(w, 403, "receipt_refused", "Only a relayed agent can record this receipt.")
+			return
+		}
+		if delivery != "delivered" || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "muse_session", "mailbox", "relay"}, transport) {
 			externalError(w, 400, "invalid_arguments", "Use delivery=delivered when this chat has received the message.")
 			return
 		}
@@ -315,7 +343,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 					externalError(w, 409, "receipt_refused", "The sender is no longer allowed to message this account.")
 					return
 				}
-				providerForTransport := map[string]string{"claude_session": "claude", "claude_channel": "claude", "claude_hook": "claude", "codex_queue": "codex", "codex_desktop": "codex", "codex_hook": "codex", "cursor_hook": "cursor", "muse_session": "muse", "muse_hook": "muse", "agy_hook": "agy", "pi_hook": "pi", "pi_extension": "pi"}
+				providerForTransport := map[string]string{"claude_session": "claude", "claude_channel": "claude", "claude_hook": "claude", "codex_queue": "codex", "codex_desktop": "codex", "codex_hook": "codex", "cursor_hook": "cursor", "muse_session": "muse", "muse_hook": "muse", "agy_hook": "agy", "pi_hook": "pi", "pi_extension": "pi", "relay": "relay"}
 				if providerForTransport[transport] != "" && a.Attachment.Provider != providerForTransport[transport] {
 					externalError(w, 400, "invalid_arguments", "Receipt transport does not match the attached provider.")
 					return

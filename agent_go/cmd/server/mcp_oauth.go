@@ -108,11 +108,12 @@ func (api *StreamingAPI) handleMCPOAuthRegister(w http.ResponseWriter, r *http.R
 	w.Header().Set("Cache-Control", "no-store")
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 	var input struct {
-		Name         string   `json:"client_name"`
-		RedirectURIs []string `json:"redirect_uris"`
-		GrantTypes   []string `json:"grant_types"`
-		Response     []string `json:"response_types"`
-		AuthMethod   string   `json:"token_endpoint_auth_method"`
+		Name            string   `json:"client_name"`
+		RedirectURIs    []string `json:"redirect_uris"`
+		GrantTypes      []string `json:"grant_types"`
+		Response        []string `json:"response_types"`
+		AuthMethod      string   `json:"token_endpoint_auth_method"`
+		AgentServerLink bool     `json:"agent_server_link"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || len(strings.TrimSpace(input.Name)) == 0 || len(input.Name) > 128 || len(input.RedirectURIs) == 0 || len(input.RedirectURIs) > 5 || input.AuthMethod != "" && input.AuthMethod != "none" {
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_client_metadata")
@@ -134,7 +135,21 @@ func (api *StreamingAPI) handleMCPOAuthRegister(w http.ResponseWriter, r *http.R
 		return
 	}
 	defer store.Close()
-	client, err := store.RegisterClient(r.Context(), strings.TrimSpace(input.Name), input.RedirectURIs)
+	var client mcpOAuthClient
+	if input.AgentServerLink {
+		if len(input.RedirectURIs) != 1 {
+			mcpOAuthError(w, http.StatusBadRequest, "invalid_client_metadata")
+			return
+		}
+		probe := mcpOAuthClient{ID: agentServerLinkClientPrefix, RedirectURIs: input.RedirectURIs}
+		if _, e := agentServerLinkClientOrigin(probe); e != nil {
+			mcpOAuthError(w, http.StatusBadRequest, "invalid_redirect_uri")
+			return
+		}
+		client, err = store.registerClient(r.Context(), strings.TrimSpace(input.Name), input.RedirectURIs, agentServerLinkClientPrefix)
+	} else {
+		client, err = store.RegisterClient(r.Context(), strings.TrimSpace(input.Name), input.RedirectURIs)
+	}
 	if err != nil {
 		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
 		return
@@ -284,6 +299,14 @@ func (api *StreamingAPI) handleMCPOAuthAuthorize(w http.ResponseWriter, r *http.
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_client")
 		return
 	}
+	if isAgentServerLinkClient(client.ID) {
+		_, messagingResource, _ := mcpOAuthURLs()
+		if resource != messagingResource {
+			mcpOAuthError(w, http.StatusBadRequest, "invalid_target")
+			return
+		}
+		scopes = slices.Clone(agentServerLinkScopes)
+	}
 	id, err := store.SaveRequest(r.Context(), mcpOAuthRequest{ClientID: clientID, RedirectURI: redirect, Resource: resource, State: state, Scopes: scopes, Challenge: challenge, ExpiresAt: time.Now().Add(10 * time.Minute)})
 	if err != nil {
 		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
@@ -342,6 +365,10 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 	var project *projectMCPConsent
 	projectIdentity := ""
 	consentScopes := mcpOAuthPersonScopes(claims)
+	messagingOnly := isAgentServerLinkClient(requestInfo.ClientID)
+	if messagingOnly {
+		consentScopes = slices.Clone(agentServerLinkScopes)
+	}
 	if audience, bound := projectMCPAudienceForResource(requestInfo.Resource); bound {
 		target, err := api.projectMCPTarget(r.Context(), claims, audience)
 		if err != nil {
@@ -371,8 +398,16 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 			mcpOAuthError(w, http.StatusNotFound, "invalid_client")
 			return
 		}
+		linkOrigin := ""
+		if messagingOnly {
+			linkOrigin, err = agentServerLinkClientOrigin(client)
+			if err != nil {
+				mcpOAuthError(w, http.StatusBadRequest, "invalid_client")
+				return
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": consentScopes, "editable_workflows": []map[string]string{}, "project": project})
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "link_origin": linkOrigin, "redirect_uri": request.RedirectURI, "scopes": consentScopes, "messaging_only": messagingOnly, "editable_workflows": []map[string]string{}, "project": project})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -474,12 +509,16 @@ func (api *StreamingAPI) handleMCPOAuthToken(w http.ResponseWriter, r *http.Requ
 }
 
 func authenticateMCPOAuthToken(w http.ResponseWriter, r *http.Request, raw string) (*UserClaims, bool) {
-	if !isMCPRequestPath(r.URL.Path) || r.Header.Get("Authorization") == "" {
+	linkAPI := agentServerLinkAPIPath(r.Method, r.URL.Path)
+	if (!isMCPRequestPath(r.URL.Path) && !linkAPI) || r.Header.Get("Authorization") == "" {
 		mcpOAuthError(w, http.StatusForbidden, "invalid_target")
 		return nil, false
 	}
 	origin, _, ok := mcpOAuthURLs()
 	resource := origin + r.URL.Path
+	if linkAPI {
+		resource = origin + externalMCPPath
+	}
 	if !ok {
 		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
 		return nil, false
@@ -491,7 +530,7 @@ func authenticateMCPOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 	}
 	defer store.Close()
 	grant, err := store.Authenticate(r.Context(), raw)
-	if err != nil || grant.Resource != resource || len(grant.Scopes) == 0 {
+	if err != nil || grant.Resource != resource || len(grant.Scopes) == 0 || linkAPI && !isAgentServerLinkClient(grant.ClientID) {
 		if err == nil && grant.Resource != resource {
 			projectMCPAudit(grant, "resource_mismatch", "request_audience")
 		}
@@ -571,9 +610,12 @@ func mcpOAuthTokenForGrant(grant mcpOAuthGrant) accesstokens.Token {
 	// they signed in, so a connection made earlier gets full access without reconnecting and loses it the moment a role is
 	// removed. Bound-agent connections (messaging only) and grants that name workflows keep the scopes they were given.
 	scopes := grant.Scopes
-	if grant.BoundAgentID == "" && len(grant.WorkflowIDs) == 0 && personSignInScopes(grant.Scopes) {
+	if isAgentServerLinkClient(grant.ClientID) {
+		scopes = slices.Clone(agentServerLinkScopes)
+	}
+	if !isAgentServerLinkClient(grant.ClientID) && grant.BoundAgentID == "" && len(grant.WorkflowIDs) == 0 && personSignInScopes(grant.Scopes) {
 		scopes = mcpOAuthPersonScopes(&UserClaims{UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider})
 	}
 	allCrews := slices.Contains(scopes, "dashboards:read") || slices.Contains(scopes, "crews:read") || slices.Contains(scopes, "crews:run") || slices.Contains(scopes, "crews:write")
-	return accesstokens.Token{OAuthClientID: grant.ClientID, ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: len(grant.WorkflowIDs) == 0 && grant.BoundAgentID == "", AllCrews: allCrews, ExpiresAt: grant.Expires, BoundAgentName: grant.BoundAgentName, BoundAgentID: grant.BoundAgentID}
+	return accesstokens.Token{OAuthClientID: grant.ClientID, ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: !isAgentServerLinkClient(grant.ClientID) && len(grant.WorkflowIDs) == 0 && grant.BoundAgentID == "", AllCrews: allCrews, ExpiresAt: grant.Expires, BoundAgentName: grant.BoundAgentName, BoundAgentID: grant.BoundAgentID}
 }
