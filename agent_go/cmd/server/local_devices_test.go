@@ -23,10 +23,10 @@ func localDeviceTestServer(t *testing.T) (*StreamingAPI, *httptest.Server, *acce
 	t.Helper()
 	tokenTestSetup(t)
 	f := newExternalToolsFixture(t)
-	f.write(t, "Crew/local-test/product.json", `{"schema_version":1,"product":"code","id":"local-test","title":"Laptop test"}`)
+	f.write(t, "Crew/local-test/product.json", `{"schema_version":1,"product":"work","id":"local-test","title":"Laptop test"}`)
 	f.write(t, "Crew/local-test/workflow.json", `{"capabilities":{}}`)
 	registry := withProjectOwnerRegistry(t)
-	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "local-test", ProjectID: "local-test", OwnerID: "owner", CanonicalRoot: "Crew/local-test"}); err != nil {
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "local-test", ProjectID: "local-test", OwnerID: "owner", CanonicalRoot: "Crew/local-test"}); err != nil {
 		t.Fatal(err)
 	}
 	store, err := openAccessTokens()
@@ -110,7 +110,7 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 		t.Fatalf("cross-user %v", err)
 	}
 	registrar := &recordingRegistrar{}
-	if err = api.registerLaptopTools(registrar, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, &laptopConnectionTarget{DeviceID: "laptop", ResourceID: "project"}), "Crew/local-test", &laptopConnectionTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(registrar.tools) != 2 {
+	if err = api.registerLaptopTools(registrar, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, &laptopConnectionTarget{DeviceID: "laptop", ResourceID: "project"}), "Crew/local-test", &laptopConnectionTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(registrar.tools) != 4 {
 		t.Fatalf("local tool count=%d: %v", len(registrar.tools), err)
 	}
 
@@ -124,7 +124,7 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 		}
 	}
 	api.lastQueryRequests["local-code"] = baseline
-	api.lastQueryRequests["local-code"] = QueryRequest{userID: "owner", AgentProfileID: "code"}
+	api.lastQueryRequests["local-code"] = QueryRequest{userID: "owner", AgentProfileID: "work"}
 	if _, err := registrar.tools["execute_local_shell_command"].exec(t.Context(), map[string]interface{}{"command": "touch unauthorized"}); err == nil {
 		t.Fatal("disconnected retained callback dispatched to laptop")
 	}
@@ -407,7 +407,7 @@ func localWorkspaceTestSession(api *StreamingAPI, claims *UserClaims, target *la
 	if api.lastQueryRequests == nil {
 		api.lastQueryRequests = map[string]QueryRequest{}
 	}
-	api.lastQueryRequests["local-code"] = QueryRequest{userID: claims.UserID, AgentProfileID: "code", SelectedFolder: "Crew/local-test", LaptopConnection: target}
+	api.lastQueryRequests["local-code"] = QueryRequest{userID: claims.UserID, AgentProfileID: "work", SelectedFolder: "Crew/local-test", LaptopConnection: target}
 	return "local-code"
 }
 
