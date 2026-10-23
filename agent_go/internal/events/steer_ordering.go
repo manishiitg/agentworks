@@ -189,14 +189,24 @@ func (es *EventStore) CompleteDeferredSteer(sessionID string, user Event) {
 		_ = es.addEventUnheld(sessionID, user)
 		return
 	}
+	var sentAt time.Time
 	for i, pending := range hold.pending {
 		if pending.event.ID == user.ID {
+			sentAt = pending.event.Timestamp
 			hold.pending = append(hold.pending[:i], hold.pending[i+1:]...)
 			break
 		}
 	}
 	remaining := len(hold.pending)
-	user = datedBeforeHeldAnswer(user, hold.held)
+	if !hold.boundaryPassed && !sentAt.IsZero() {
+		// Acked while the previous answer is still running: the CLI took the
+		// message mid-answer (Cursor, Claude and Codex steer at tool boundaries),
+		// and the rows after it already answer it. Dated at the ack, the question
+		// sorted below its own reply (server A 2026-10-23). Keep its send time.
+		user = UserMessageAt(user, sentAt)
+	} else {
+		user = datedBeforeHeldAnswer(user, hold.held)
+	}
 	state.mu.Unlock()
 	_ = es.addEventUnheld(sessionID, user)
 	if remaining == 0 {

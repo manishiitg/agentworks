@@ -328,3 +328,29 @@ func TestAckedSteerWritesAfterTheGraceWhenNoEndComes(t *testing.T) {
 	waitForIDs(t, store, "chat", 2)
 	expectIDs(t, store, "chat", "answer-a", "user:b")
 }
+
+// server A 2026-10-23, Cursor: a message sent at 08:10:06 while the previous turn
+// was still running was taken mid-turn; its reply (08:10:12) passed as part of
+// the running answer and the ack (08:10:15) dated the question below it. Acked
+// before that answer ended, the question keeps its send time.
+func TestSteerTakenMidAnswerKeepsItsSendTime(t *testing.T) {
+	store := NewEventStore(100)
+	defer store.Stop()
+	old := deferredSteerAckGrace
+	deferredSteerAckGrace = 50 * time.Millisecond
+	defer func() { deferredSteerAckGrace = old }()
+	sent := time.Date(2026, 10, 23, 8, 10, 6, 0, time.UTC)
+
+	store.AddEvent("chat", steerRow("tool-a", "tool_call_start"))
+	user := UserMessageAt(steerUser("user:b"), sent)
+	store.BeginDeferredSteer("chat", user)
+	reply := transcriptMessage("answer-b", "I'll ask SDE Private")
+	reply.Timestamp = sent.Add(6 * time.Second)
+	store.AddEvent("chat", reply)
+	store.CompleteDeferredSteer("chat", UserMessageAt(user, sent.Add(9*time.Second)))
+
+	rows := liveEvents(store, "chat")
+	if got := rows["user:b"].Timestamp; !got.Equal(sent) || !got.Before(rows["answer-b"].Timestamp) {
+		t.Fatalf("question dated %s, want its send time %s before the reply %s", got, sent, rows["answer-b"].Timestamp)
+	}
+}
