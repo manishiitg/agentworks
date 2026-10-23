@@ -224,8 +224,7 @@ reported route or Monitor line does not prove admission.
 
 On a hint Muse calls `the agentworks tool (action=receive)` to obtain a bounded authorized body
 batch through its exact-session MCP, handles the peer data, optionally replies
-in the original inbox and acknowledges `processed` once (also records admission).
-An earlier `admitted` receipt is optional.
+in the original inbox and acknowledges `delivered` once received. This does not mean the work is finished.
 The watch never marks a body offered or clears it. Individual ambiguous hints do not replay
 on restart. A new consumer emits one aggregate pending notice for unread bodies; lifecycle hooks and bounded mailbox recovery remain available.
 If Monitor is unavailable or refused, report that limit and keep hook delivery;

@@ -29,10 +29,10 @@ and journal remain. Type `/agentworks attach` in the same session to reconnect, 
 Durable offers prevent automatic duplicates after restart. A crash between
 persisting an offer and delivering it is ambiguous: read the mailbox explicitly
 instead of automatically replaying a possible turn. SDK/stdout writes do not
-prove model receipt. Bodies are cleared on offer and acknowledgement; processed metadata is reclaimed
+prove model receipt. Bodies are cleared on offer and acknowledgement; delivered metadata is reclaimed
 under quota pressure, and offered metadata after seven days. Automatic cleanup reclaims offered metadata while retaining pending bodies and the receive watermark.
 Retired messages require an explicit inbox read/reply. Legacy direct channels
-store bounded metadata without bodies. Use admitted/processed acknowledgements
+store bounded metadata without bodies. Use one delivered receipt
 and explicit replies in the original conversation. The private local cache is
 bounded to 2,000 pending messages per session and 32 MiB total. No message bodies
 are included in desktop notifications.

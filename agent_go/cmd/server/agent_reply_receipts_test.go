@@ -127,7 +127,7 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 	}
 	sent := call(sender, map[string]any{"action": "send", "agent_name": "sender", "target": "agent:receiver", "message": "Please review", "submission_id": "receipt-review"})
 	id, inbox := sent["message_id"].(string), sent["inbox_id"].(string)
-	tool(map[string]any{"action": "ack", "message_id": id, "delivery": "processed"}, true)
+	tool(map[string]any{"action": "ack", "message_id": id, "delivery": "delivered"}, true)
 	page := tool(map[string]any{"action": "read", "inbox_id": inbox}, false)
 	var recovered struct {
 		Messages []struct {
@@ -156,17 +156,17 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 	if saved().Delivery != "stored" {
 		t.Fatal("a read fabricated admission")
 	}
-	ack := map[string]any{"action": "ack", "message_id": id, "delivery": "processed"}
+	ack := map[string]any{"action": "ack", "message_id": id, "delivery": "delivered"}
 	tool(ack, false)
 	first := saved()
-	if first.Delivery != "processed" || first.AdmittedAt.IsZero() || first.ProcessedAt.IsZero() || first.LiveTransport != "mailbox" {
+	if first.Delivery != "delivered" || first.DeliveredAt.IsZero() || first.LiveTransport != "mailbox" {
 		t.Fatalf("single processed ack: %+v", first)
 	}
 	tool(ack, false)
-	ack["delivery"] = "admitted"
+	ack["delivery"] = "delivered"
 	tool(ack, false)
 	last := saved()
-	if last.Delivery != "processed" || !last.AdmittedAt.Equal(first.AdmittedAt) || !last.ProcessedAt.Equal(first.ProcessedAt) {
+	if last.Delivery != "delivered" || !last.DeliveredAt.Equal(first.DeliveredAt) {
 		t.Fatal("retry changed the receipt or its times")
 	}
 	cleanup := base
@@ -226,7 +226,7 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 	}
 	hostedID, hostedInbox := hosted["message_id"].(string), hosted["inbox_id"].(string)
 	tool(map[string]any{"action": "read", "inbox_id": hostedInbox}, false)
-	tool(map[string]any{"action": "ack", "message_id": hostedID, "delivery": "processed"}, false)
+	tool(map[string]any{"action": "ack", "message_id": hostedID, "delivery": "delivered"}, false)
 	oldTurn := agentMessageTurn
 	agentMessageTurn = func(_ *StreamingAPI, _ context.Context, request map[string]interface{}, session, _ string) (internalSessionTurnResult, error) {
 		if session != hostedSession || request["agent_message_inbox"] != hostedInbox {
@@ -296,7 +296,7 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 		t.Fatal(e)
 	}
 	tool(map[string]any{"action": "read", "inbox_id": inbox}, true)
-	tool(map[string]any{"action": "ack", "message_id": id, "delivery": "processed"}, true)
+	tool(map[string]any{"action": "ack", "message_id": id, "delivery": "delivered"}, true)
 }
 
 // A Windows hook chat is online but cannot wake itself. Stored receipts must
@@ -318,7 +318,7 @@ func TestStoredAgentReceiptFollowsRoute(t *testing.T) {
 		if state != "sent" || text != tc.text {
 			t.Fatalf("route %q: %s %s", tc.route, state, text)
 		}
-		if state, _ = receiptState(agentMessage{Delivery: "processed"}, &a, true); state != "handled" {
+		if state, _ = receiptState(agentMessage{Delivery: "delivered"}, &a, true); state != "delivered" {
 			t.Fatal("route changed a real receipt")
 		}
 	}

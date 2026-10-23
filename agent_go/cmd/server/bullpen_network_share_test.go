@@ -137,12 +137,12 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 	if got := stateOf(id); got != "waiting_offline" {
 		t.Fatalf("sent receipt before delivery: %s", got)
 	}
-	setDelivery(id, "admitted")
+	setDelivery(id, "delivered")
 	if got := stateOf(id); got != "delivered" {
 		t.Fatalf("sent receipt after admission: %s", got)
 	}
-	setDelivery(id, "processed")
-	if got := stateOf(id); got != "handled" {
+	setDelivery(id, "delivered")
+	if got := stateOf(id); got != "delivered" {
 		t.Fatalf("sent receipt after processing: %s", got)
 	}
 	listed, _ := try(carol, map[string]any{"action": "list_agents"})

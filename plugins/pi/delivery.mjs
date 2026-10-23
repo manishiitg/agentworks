@@ -2,13 +2,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { Recovery } from './recovery.mjs';
 
-export const receiptEntry = 'agentworks-pi-admitted';
+export const receiptEntry = 'agentworks-pi-received';
 export const transport = 'pi_extension';
 const injectionEntry = 'agentworks-pi-injection';
 const recoveredEntry = 'agentworks-pi-mailbox-read';
-const requestedEntry = 'agentworks-pi-admission-requested';
+const requestedEntry = 'agentworks-pi-receipt-requested';
 const acknowledgedEntry = 'agentworks-pi-acknowledged';
-const processedEntry = 'agentworks-pi-processed';
 const refusedEntry = 'agentworks-pi-receipt-refused';
 const digest = text => createHash('sha256').update(text).digest('hex');
 const messageText = message => typeof message.content === 'string' ? message.content :
@@ -52,7 +51,7 @@ export function formatDelivery(message, lease) {
   const note = truncated ? `\n[message truncated: read the full text with the agentworks tool (action=read) inbox ${inboxId}]` : '';
   const fenced = `<<<BEGIN ${id}>>>\n${body}${note}\n<<<END ${id}>>>`;
   return `${senderLine(message)}\n${fenced}\nreply: inbox ${inboxId} · ack: message ${id} · lease ${sanitizeToken(lease)}` +
-    '\nUse the registered AgentWorks tools: acknowledge processed once after handling (also records admission); admitted is optional for an earlier receipt; reply explicitly in the original inbox. Only the person controls attachment.';
+    '\nUse the registered AgentWorks tools: acknowledge delivered once received; reply explicitly in the original inbox. Only the person controls attachment.';
 }
 
 // The line that opens a batch: how many peer messages are being handed over, from whom, and how old the oldest is.
@@ -120,7 +119,7 @@ export class Delivery {
     this.session = ctx.sessionManager.getSessionId();
     this.accepted = new Set();
     this.receipts = new Set();
-    this.processed = new Set();
+    this.confirmed = new Set();
     this.refused = new Set();
     this.receiptRetry = new Map();
     this.serial = Promise.resolve();
@@ -145,7 +144,7 @@ export class Delivery {
         if (entry.customType === receiptEntry || entry.customType === recoveredEntry) this.accepted.add(id);
         if (entry.customType === requestedEntry) requested.add(id);
         if (entry.customType === acknowledgedEntry) acknowledged.add(id);
-        if (entry.customType === processedEntry) { this.processed.add(id); this.accepted.add(id); }
+        if (entry.customType === acknowledgedEntry) this.confirmed.add(id);
         if (entry.customType === refusedEntry) this.refused.add(id);
       }
       // Native transcript evidence can survive a crash before the admission entry.
@@ -154,7 +153,7 @@ export class Delivery {
       }
       for (const id of this.accepted) {
         this.pending.delete(id);
-        if (requested.has(id) && !acknowledged.has(id) && !this.processed.has(id) && !this.refused.has(id)) this.receipts.add(id);
+        if (requested.has(id) && !acknowledged.has(id) && !this.confirmed.has(id) && !this.refused.has(id)) this.receipts.add(id);
       }
       const recovery = new Recovery(this.bridge.root, this.session, this.attachment.attachment_id);
       const uncertain = await recovery.prepare(this.accepted);
@@ -296,10 +295,11 @@ export class Delivery {
         if (!this.receipts.has(id) || (this.receiptRetry.get(id) || 0) > Date.now()) continue;
         try {
           const result = await this.bridge.call({ action: 'ack', session_id: this.session,
-            attachment_id: this.attachment.attachment_id, host_key: this.host, message_id: id, delivery: 'admitted' }, { signal: this.controller.signal });
+            attachment_id: this.attachment.attachment_id, host_key: this.host, message_id: id, delivery: 'delivered' }, { signal: this.controller.signal });
           if (!this.current(generation)) return;
           if (!result.attached || result.attachment?.attachment_id !== this.attachment.attachment_id) { this.leaseChanged(); return; }
           this.journal(acknowledgedEntry, id);
+          this.confirmed.add(id);
           this.receipts.delete(id);
           this.receiptRetry.delete(id);
         } catch (error) {
@@ -341,7 +341,7 @@ export class Delivery {
     if (!this.attachment || action !== 'reply' && !this.accepted.has(id)) throw new Error('Message was not received in this attached Pi session');
     const generation = this.generation;
     return this.serialize(generation, async () => {
-      if (action === 'ack' && extra.delivery === 'admitted' && !this.processed.has(id)) {
+      if (action === 'ack' && extra.delivery === 'delivered' && !this.confirmed.has(id)) {
         this.journal(requestedEntry, id);
         this.receipts.add(id);
       }
@@ -351,21 +351,17 @@ export class Delivery {
       if (!result.attached || result.attachment?.attachment_id !== this.attachment.attachment_id) {
         this.leaseChanged(); throw new Error('AgentWorks attachment is no longer active');
       }
-      if (action === 'ack' && extra.delivery === 'admitted') {
+      if (action === 'ack' && extra.delivery === 'delivered') {
         this.journal(acknowledgedEntry, id);
+        this.confirmed.add(id);
         this.receipts.delete(id); this.receiptRetry.delete(id);
-      }
-      if (action === 'ack' && extra.delivery === 'processed') {
-        this.processed.add(id);
-        this.receipts.delete(id); this.receiptRetry.delete(id);
-        this.journal(processedEntry, id);
       }
       return result.result;
     }).catch(error => {
       if (this.current(generation) && error.code === 'attachment_changed') {
         this.leaseChanged();
       }
-      if (this.current(generation) && action === 'ack' && extra.delivery === 'admitted' && this.receipts.has(id)) {
+      if (this.current(generation) && action === 'ack' && extra.delivery === 'delivered' && this.receipts.has(id)) {
         if (error.terminalReceipt) { this.receipts.delete(id); this.refused.add(id); this.journal(refusedEntry, id);
           this.ctx.ui.notify('AgentWorks refused a delivery receipt. Check the attachment and read the mailbox explicitly; other delivery continues.', 'warning'); }
         else { this.receiptRetry.set(id, Date.now() + 3000);

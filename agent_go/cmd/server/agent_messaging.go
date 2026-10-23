@@ -71,8 +71,7 @@ type agentMessage struct {
 	LiveAttachment     string    `json:"live_attachment,omitempty"`
 	Wakeup             bool      `json:"wakeup,omitempty"`
 	Kind               string    `json:"kind,omitempty"` // "status": a server-authored line, not a message from a peer
-	AdmittedAt         time.Time `json:"admitted_at,omitempty"`
-	ProcessedAt        time.Time `json:"processed_at,omitempty"`
+	DeliveredAt        time.Time `json:"delivered_at,omitempty"`
 	PingedAt           time.Time `json:"pinged_at,omitempty"`   // the sender pinged the person once for this message
 	PingSender         string    `json:"ping_sender,omitempty"` // on a ping line: the agent that pinged
 	PingCount          int       `json:"ping_count,omitempty"`  // on a ping line: messages it is waiting on

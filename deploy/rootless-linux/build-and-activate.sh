@@ -93,6 +93,7 @@ touch "$BUILD_DIR/.deploying"
 mkdir -p "$BUILD_DIR/migrations"
 install -m 0755 "$REPO_ROOT/scripts/migrations/agent-email-inboxes.py" "$BUILD_DIR/migrations/agent-email-inboxes.py"
 install -m 0755 "$REPO_ROOT/scripts/migrations/crew-owner-tabs.py" "$BUILD_DIR/migrations/crew-owner-tabs.py"
+install -m 0755 "$REPO_ROOT/scripts/migrations/agentbridge-receipts.py" "$BUILD_DIR/migrations/agentbridge-receipts.py"
 cleanup_build() {
   if declare -F vault_recover >/dev/null; then vault_recover; fi
   if [[ "$MIGRATION_STOPPED_AGENT" == 1 ]]; then
@@ -417,6 +418,7 @@ systemctl --user stop "$PRODUCT-agent"
 python3 "$BUILD_DIR/migrations/agent-email-inboxes.py" \
   "$REMOTE_APP/state/gmail-inbound/email.db" --workspace-root "$REMOTE_APP/data/docs"
 python3 "$BUILD_DIR/migrations/crew-owner-tabs.py" --workspace-root "$REMOTE_APP/data/docs" --state-root "$REMOTE_APP/state"
+python3 "$BUILD_DIR/migrations/agentbridge-receipts.py" "$REMOTE_APP/data/docs/_system/agent_messages/conversations.json"
 MIGRATION_STOPPED_AGENT=0
 ln -sfn "$BUILD_DIR" "$REMOTE_APP/current"
 MIGRATION_STOPPED_AGENT=1

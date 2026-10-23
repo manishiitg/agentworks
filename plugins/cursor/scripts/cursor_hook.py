@@ -37,7 +37,7 @@ def agent_action(argv):
     parser.add_argument("--session", required=True)
     parser.add_argument("--attachment-id", required=True)
     parser.add_argument("--message-id")
-    parser.add_argument("--delivery", choices=["admitted", "processed"])
+    parser.add_argument("--delivery", choices=["delivered"])
     parser.add_argument("--message")
     parser.add_argument("--submission-id")
     parser.add_argument("--after", type=int, default=0)

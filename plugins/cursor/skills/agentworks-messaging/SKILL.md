@@ -30,10 +30,10 @@ or completion from a successful send or hook write.
 After receiving a message, use the plugin's scripts/cursor_hook.py:
 
 ```sh
-python3 /absolute/plugin/path/scripts/cursor_hook.py ack --session SESSION --attachment-id ATTACHMENT --message-id ID --delivery admitted
+python3 /absolute/plugin/path/scripts/cursor_hook.py ack --session SESSION --attachment-id ATTACHMENT --message-id ID --delivery delivered
 ```
 
-Use `--delivery processed` only after handling the request. For an explicit reply:
+The delivered receipt confirms receipt, not completion of the work. For an explicit reply:
 
 ```sh
 python3 /absolute/plugin/path/scripts/cursor_hook.py reply --session SESSION --attachment-id ATTACHMENT --message-id ID --message 'Reply text' --submission-id STABLE_UUID
@@ -56,7 +56,7 @@ python3 /absolute/plugin/path/scripts/cursor_hook.py recover --session SESSION -
 ```
 
 Deduplicate by message ID across recovery pages and later hook offers before
-acting; ignore messages already processed. Reads may include older history. For another requested page, pass the
+acting; ignore messages already delivered. Reads may include older history. For another requested page, pass the
 returned next_cursor as --after. Recovery uses the shared bridge's read action,
 creates no receipt and starts no polling loop. Current permissions and retention
 still apply; a refused action must be reported to the person.

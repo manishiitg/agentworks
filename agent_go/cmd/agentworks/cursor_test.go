@@ -212,8 +212,8 @@ func TestCursorDesktopFenceIsOneShotAndPerChat(t *testing.T) {
 	now := time.Now()
 	const chatA, chatB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
 	host := cursorHostKey(4242, strings.Repeat("a", 64))
-	ack := map[string]any{"action": "ack", "message_id": "m1", "delivery": "admitted"}
-	if err := writeCursorFence(root, host, chatA, "agentworks-messages_agentworks", `{"action":"ack","delivery":"admitted","message_id":"m1"}`, now); err != nil {
+	ack := map[string]any{"action": "ack", "message_id": "m1", "delivery": "delivered"}
+	if err := writeCursorFence(root, host, chatA, "agentworks-messages_agentworks", `{"action":"ack","delivery":"delivered","message_id":"m1"}`, now); err != nil {
 		t.Fatal(err)
 	}
 	if chat, err := consumeCursorFence(root, host, "agentworks", ack, now); err != nil || chat != chatA {

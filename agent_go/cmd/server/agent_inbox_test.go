@@ -194,10 +194,10 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 	if len(items) != 1 || items[0].(map[string]any)["delivery_mode"] != "inbox" {
 		t.Fatalf("hosted inbox: %v", page)
 	}
-	call(other, map[string]any{"action": "ack", "agent_name": "browser-helper", "message_id": reply["message_id"], "delivery": "handled"}, false)
-	call(hosted, map[string]any{"action": "ack", "agent_name": "browser-helper", "message_id": receipt["message_id"], "delivery": "handled"}, false)
-	call(hosted, map[string]any{"action": "ack", "agent_name": "browser-helper", "message_id": reply["message_id"], "delivery": "read"}, true)
-	call(hosted, map[string]any{"action": "ack", "agent_name": "browser-helper", "message_id": reply["message_id"], "delivery": "handled"}, true)
+	call(other, map[string]any{"action": "ack", "agent_name": "browser-helper", "message_id": reply["message_id"], "delivery": "delivered"}, false)
+	call(hosted, map[string]any{"action": "ack", "agent_name": "browser-helper", "message_id": receipt["message_id"], "delivery": "delivered"}, false)
+	call(hosted, map[string]any{"action": "ack", "agent_name": "browser-helper", "message_id": reply["message_id"], "delivery": "delivered"}, true)
+	call(hosted, map[string]any{"action": "ack", "agent_name": "browser-helper", "message_id": reply["message_id"], "delivery": "delivered"}, true)
 	call(hosted, map[string]any{"action": "attach", "agent_name": "browser-helper", "native_session_id": "another-chat"}, false)
 	saved, err := readAgentMessageStore(ctx)
 	if err != nil {
@@ -210,7 +210,7 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 	}
 	for _, c := range saved.Conversations {
 		for _, m := range c.Messages {
-			if m.ID == reply["message_id"] && (m.Delivery != "processed" || m.LiveTransport != "mailbox" || m.LiveSession != "" || m.LiveAttachment != "") {
+			if m.ID == reply["message_id"] && (m.Delivery != "delivered" || m.LiveTransport != "mailbox" || m.LiveSession != "" || m.LiveAttachment != "") {
 				t.Fatalf("inbox falsely claimed live delivery: %+v", m)
 			}
 		}

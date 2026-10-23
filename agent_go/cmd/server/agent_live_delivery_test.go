@@ -184,7 +184,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		}
 	}
 	for messageIndex, id := range []any{newPeerReceipt["message_id"], receipt["message_id"]} {
-		for i, delivery := range []string{"admitted", "processed"} {
+		for i, delivery := range []string{"delivered", "delivered"} {
 			write(map[string]any{"jsonrpc": "2.0", "id": 100 + messageIndex*2 + i, "method": "tools/call", "params": map[string]any{"name": "agentworks", "arguments": map[string]any{"action": "ack", "message_id": id, "delivery": delivery}}})
 			response := next()
 			res, ok := response["result"].(map[string]any)
@@ -196,7 +196,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	page = call(receiver, map[string]any{"action": "read", "agent_name": "reviewer"})
 	for _, item := range page["messages"].([]any) {
 		m := item.(map[string]any)
-		if m["message_id"] == receipt["message_id"] && m["delivery"] != "processed" {
+		if m["message_id"] == receipt["message_id"] && m["delivery"] != "delivered" {
 			t.Fatalf("explicit receipt missing: %v", m)
 		}
 	}
@@ -247,7 +247,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	for _, raw := range directory["agents"].([]any) {
 		a := raw.(map[string]any)
 		if a["agent_name"] == "reviewer" {
-			foundLabel = a["label"] == "Sender (reviewer)" && a["target"] == "agent:reviewer" && a["online"] == true && a["presence"] == "Wakes now" && a["last_received_at"] != nil && a["last_handled_at"] != nil
+			foundLabel = a["label"] == "Sender (reviewer)" && a["target"] == "agent:reviewer" && a["online"] == true && a["presence"] == "Wakes now" && a["last_delivered_at"] != nil
 		}
 	}
 	if !foundLabel {
@@ -326,7 +326,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	if replacement["attachment_id"] == meta["attachment_id"] {
 		t.Fatal("attachment did not rotate")
 	}
-	_, err = receiver.Call(context.Background(), "messages", map[string]any{"action": "ack", "agent_name": "reviewer", "attachment_id": meta["attachment_id"], "message_id": receipt["message_id"], "delivery": "processed", "transport": "claude_channel"})
+	_, err = receiver.Call(context.Background(), "messages", map[string]any{"action": "ack", "agent_name": "reviewer", "attachment_id": meta["attachment_id"], "message_id": receipt["message_id"], "delivery": "delivered", "transport": "claude_channel"})
 	if err == nil {
 		t.Fatal("old session acknowledged after replacement")
 	}
@@ -413,13 +413,13 @@ func TestAgentReceiptActivityKeepsOwnerAndReceiptBoundaries(t *testing.T) {
 	s := agentMessageStore{Conversations: []agentConversation{
 		{Endpoints: [2]agentMessageEndpoint{{UserID: "sender"}, {UserID: "owner", NamedAgentID: "own"}}, Messages: []agentMessage{
 			{From: 0, SentAt: now.Add(time.Hour)}, // storage is not a received receipt
-			{From: 0, AdmittedAt: now, ProcessedAt: now.Add(time.Minute)},
-			{From: 0, Kind: "status", AdmittedAt: now.Add(time.Hour)},
+			{From: 0, DeliveredAt: now},
+			{From: 0, Kind: "status", DeliveredAt: now.Add(time.Hour)},
 		}},
-		{Endpoints: [2]agentMessageEndpoint{{UserID: "sender"}, {UserID: "other", NamedAgentID: "foreign"}}, Messages: []agentMessage{{From: 0, AdmittedAt: now.Add(time.Hour)}}},
+		{Endpoints: [2]agentMessageEndpoint{{UserID: "sender"}, {UserID: "other", NamedAgentID: "foreign"}}, Messages: []agentMessage{{From: 0, DeliveredAt: now.Add(time.Hour)}}},
 	}}
 	activity := ownerAgentReceiptActivity(s, "owner")
-	if len(activity) != 1 || !activity["own"]["last_received_at"].Equal(now) || !activity["own"]["last_handled_at"].Equal(now.Add(time.Minute)) {
+	if len(activity) != 1 || !activity["own"]["last_delivered_at"].Equal(now) {
 		t.Fatal("activity mixed owners, server notices or stored messages", activity)
 	}
 }

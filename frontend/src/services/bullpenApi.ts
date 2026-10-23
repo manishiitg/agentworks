@@ -18,8 +18,7 @@ export interface BullpenAgent {
   type?: string
   delivery_mode?: string
   last_seen_at?: string
-  last_received_at?: string
-  last_handled_at?: string
+  last_delivered_at?: string
   update_needed?: boolean // its AgentWorks CLI is older than the one this server offers
   owner?: string
   shared?: boolean

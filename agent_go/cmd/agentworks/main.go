@@ -642,7 +642,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 			f.String("id", "", "Incoming message ID to select")
 			f.String("older-than", "", "Select messages older than an age, such as 24h or 7d")
 			f.String("from", "", "Select messages from this registered agent name or ID")
-			f.Bool("processed", false, "Select only explicitly handled messages")
+			f.Bool("delivered", false, "Select only delivered messages")
 			f.Bool("unread", false, "Select only messages with no acknowledgement")
 		}
 		if cmd.Name() == "register" {
@@ -732,7 +732,7 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 				arguments[field], _ = cmd.Flags().GetString(flag)
 			}
 		}
-		for flag, field := range map[string]string{"processed": "processed_only", "unread": "unread_only"} {
+		for flag, field := range map[string]string{"delivered": "delivered_only", "unread": "unread_only"} {
 			if cmd.Flags().Changed(flag) {
 				arguments[field], _ = cmd.Flags().GetBool(flag)
 			}

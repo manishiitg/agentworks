@@ -619,7 +619,7 @@ func ownerAgentReceiptActivity(s agentMessageStore, userID string) map[string]ma
 			if out[dest.NamedAgentID] == nil {
 				out[dest.NamedAgentID] = map[string]time.Time{}
 			}
-			for key, stamp := range map[string]time.Time{"last_received_at": message.AdmittedAt, "last_handled_at": message.ProcessedAt} {
+			for key, stamp := range map[string]time.Time{"last_delivered_at": message.DeliveredAt} {
 				if stamp.After(out[dest.NamedAgentID][key]) {
 					out[dest.NamedAgentID][key] = stamp
 				}

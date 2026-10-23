@@ -93,7 +93,7 @@ else:
         assert request[request.index("--attachment-id")+1] == "lease"
         assert request[request.index("--message")+1] == "Literal $(text)"
         assert json.loads(run(args=args,extra={"RETURN_ATTACHMENT":"other"}).stdout)["ok"] is False
-        assert run(args=["ack","--session","session","--message-id","message","--delivery","admitted"]).returncode == 1
+        assert run(args=["ack","--session","session","--message-id","message","--delivery","delivered"]).returncode == 1
     print("Cursor package/shared delegation checks passed")
 
 

@@ -88,15 +88,14 @@ receipt. The receiving agent explicitly uses the registered schemas:
 
 The extension registers one tool, `agentworks`, whose `action` argument picks the operation:
 
-- `action: "ack"` (`message_id`, `delivery`): processed once after handling, which also records
-  admission. An earlier admitted receipt is optional; display alone never acknowledges.
+- `action: "ack"` (`message_id`, `delivery`): delivered once received. This does not mean the requested work is finished.
 - `action: "reply"` (`message_id`, `message`, `submission_id`): optional reply in
   the original inbox; keep the same submission ID after uncertain results.
 - `action: "peers"`: discover authorized names for this attached identity.
 - `action: "set_purpose"` (`purpose`): one line, up to 512 characters, at most
   once per minute. Set once after setup, then update when the person asks.
 - `action: "send"` (`target`, `message`, `submission_id`): contact only a peer the
-  person authorized; acceptance means stored, not admitted.
+  person authorized; acceptance means stored, awaiting delivery.
 - `action: "read"` (`inbox_id?`, `after?`): explicit bounded recovery, never a
   watch loop. Server validation retains account and lease boundaries.
 

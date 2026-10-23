@@ -12,7 +12,7 @@ import (
 type agentInboxFilter struct {
 	before                    time.Time
 	from, inbox, message      string
-	processedOnly, unreadOnly bool
+	deliveredOnly, unreadOnly bool
 }
 
 func parseAgentInboxFilter(args map[string]any, now time.Time) (agentInboxFilter, error) {
@@ -24,7 +24,7 @@ func parseAgentInboxFilter(args map[string]any, now time.Time) (agentInboxFilter
 			}
 		}
 	}
-	for key, dest := range map[string]*bool{"processed_only": &f.processedOnly, "unread_only": &f.unreadOnly} {
+	for key, dest := range map[string]*bool{"delivered_only": &f.deliveredOnly, "unread_only": &f.unreadOnly} {
 		if value, exists := args[key]; exists {
 			b, ok := value.(bool)
 			if !ok {
@@ -60,8 +60,8 @@ func (f agentInboxFilter) matches(s agentMessageStore, c agentConversation, m ag
 	if f.inbox != "" && f.inbox != c.ID || f.message != "" && f.message != m.ID || !f.before.IsZero() && !m.SentAt.Before(f.before) {
 		return false
 	}
-	processed := !m.ProcessedAt.IsZero() || m.Delivery == "processed"
-	if f.processedOnly && !processed || f.unreadOnly && (!m.AdmittedAt.IsZero() || processed) {
+	delivered := !m.DeliveredAt.IsZero() || m.Delivery == "delivered"
+	if f.deliveredOnly && !delivered || f.unreadOnly && delivered {
 		return false
 	}
 	if f.from != "" {
@@ -121,7 +121,7 @@ func (api *StreamingAPI) externalAgentInboxCleanup(w http.ResponseWriter, r *htt
 		externalError(w, 404, "not_found", "That inbox is unavailable or does not belong to this connection.")
 		return
 	}
-	total, unread, pending, processed, matched := 0, 0, 0, 0, 0
+	total, unread, pending, delivered, matched := 0, 0, 0, 0, 0
 	for ci := range s.Conversations {
 		c := &s.Conversations[ci]
 		for mi := range c.Messages {
@@ -131,9 +131,9 @@ func (api *StreamingAPI) externalAgentInboxCleanup(w http.ResponseWriter, r *htt
 				continue
 			}
 			total++
-			if !m.ProcessedAt.IsZero() || m.Delivery == "processed" {
-				processed++
-			} else if m.AdmittedAt.IsZero() {
+			if !m.DeliveredAt.IsZero() || m.Delivery == "delivered" {
+				delivered++
+			} else {
 				unread++
 			}
 			if (m.Delivery == "stored" || m.Delivery == "pending" || m.Delivery == "dispatching") && !agentMessagePendingExpired(*m, now) {
@@ -154,7 +154,7 @@ func (api *StreamingAPI) externalAgentInboxCleanup(w http.ResponseWriter, r *htt
 		}
 		log.Printf("[AGENT-INBOX] action=%s agent=%s removed=%d remaining=%d", action, agent.Name, matched, total-matched)
 	}
-	out := map[string]any{"agent_name": agent.Name, "total": total, "unread": unread, "pending": pending, "processed": processed, "matched": matched}
+	out := map[string]any{"agent_name": agent.Name, "total": total, "unread": unread, "pending": pending, "delivered": delivered, "matched": matched}
 	if action != "count" {
 		out["removed"], out["remaining"] = matched, total-matched
 		out["message"] = fmt.Sprintf("Removed %d messages from %s's inbox. Other participants keep their history and receipts.", matched, agent.Name)

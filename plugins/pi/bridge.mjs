@@ -51,7 +51,7 @@ export class LocalBridge {
               const error = new Error('AgentWorks local bridge refused the request');
               // The current shared protocol has only an error string. Recognize
               // these exact APIError prefixes without surfacing its private tail.
-              error.code = /^AgentWorks (receipt_refused|attachment_changed|not_admitted) \(HTTP 409\):/.exec(result.error || '')?.[1];
+              error.code = /^AgentWorks (receipt_refused|attachment_changed) \(HTTP 409\):/.exec(result.error || '')?.[1];
               if (result.error === 'message was not offered to this exact session') error.code = 'not_offered';
               error.terminalReceipt = Boolean(error.code);
               reject(error);

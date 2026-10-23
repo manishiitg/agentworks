@@ -61,8 +61,8 @@ func externalMessageToolForRequest(r *http.Request, tool externalTool) externalT
 	props := maps.Clone(tool.InputSchema["properties"].(map[string]any))
 	tool.InputSchema["properties"] = props
 	if hostedAgentMailbox(claims) {
-		tool.Description = "Message agents through your inbox: register your agent_name, list_agents to find recipients, send, read, or reply with send in the same inbox_id. The directory includes Crews, Goals, Relays, coding chats and hosted inboxes. Show name, type, provider, presence, last_seen_at and available receipt times; Builder/Run is access, not online status. Acknowledge your incoming message with ack and delivery=read or handled. Count shows total/unread/pending and matching filters without paging; delete removes one incoming message_id, and clear removes matching incoming messages from your agent inbox only. Count with the same filters before clear to show the count. Other participants retain their history/receipts. " + hostedInboxInstructions + " Connected agents are private to their person and that person's agents. Published agents can be found and messaged by everyone on this server. Existing account and connection access still applies. Send uses the same message size and rate limits as the CLI. Publishing an agent still needs the person's request."
-		props["delivery"] = map[string]any{"type": "string", "enum": []any{"read", "handled"}, "description": "For ack: read means you received the message; handled means you finished handling it. This never claims live delivery."}
+		tool.Description = "Message agents through your inbox: register your agent_name, list_agents to find recipients, send, read, or reply with send in the same inbox_id. The directory includes Crews, Goals, Relays, coding chats and hosted inboxes. Show name, type, provider, presence, last_seen_at and available receipt times; Builder/Run is access, not online status. Acknowledge your incoming message with ack and delivery=delivered. Count shows total/unread/pending and matching filters without paging; delete removes one incoming message_id, and clear removes matching incoming messages from your agent inbox only. Count with the same filters before clear to show the count. Other participants retain their history/receipts. " + hostedInboxInstructions + " Connected agents are private to their person and that person's agents. Published agents can be found and messaged by everyone on this server. Existing account and connection access still applies. Send uses the same message size and rate limits as the CLI. Publishing an agent still needs the person's request."
+		props["delivery"] = map[string]any{"type": "string", "enum": []any{"delivered"}, "description": "For ack: delivered means this chat received the message. It does not mean the requested work is finished."}
 		delete(props, "attachment_id")
 		delete(props, "transport")
 	} else if !cliAgentMailRequest(r) {
@@ -127,7 +127,7 @@ func messageArrivalFields(m agentMessage) map[string]any {
 	mode, text := "inbox", "Read from the inbox."
 	if m.InboxAtSend {
 		text = "This message waited in the inbox until the agent checked or connected."
-	} else if m.LiveTransport != "" && m.LiveTransport != "mailbox" && !m.AdmittedAt.IsZero() {
+	} else if m.LiveTransport != "" && m.LiveTransport != "mailbox" && !m.DeliveredAt.IsZero() {
 		mode, text = "live", "The agent received this message through its live chat."
 	} else if m.LiveAttachment != "" && m.LiveTransport != "mailbox" {
 		mode, text = "live", "This message was sent to the open chat; waiting for the agent to pick it up."
@@ -142,8 +142,8 @@ func (api *StreamingAPI) externalMailboxAck(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	delivery := externalArg(args, "delivery")
-	if (delivery != "read" && delivery != "handled") || externalArg(args, "attachment_id") != "" || externalArg(args, "transport") != "" {
-		externalError(w, 400, "invalid_arguments", "Use delivery=read when you receive the message, or handled after handling it. An inbox does not attach a live chat.")
+	if delivery != "delivered" || externalArg(args, "attachment_id") != "" || externalArg(args, "transport") != "" {
+		externalError(w, 400, "invalid_arguments", "Use delivery=delivered when this chat receives the message. An inbox does not attach a live chat.")
 		return
 	}
 	a, err := namedAgentForClaims(r.Context(), claims, externalArg(args, "agent_name"))
@@ -180,15 +180,11 @@ func (api *StreamingAPI) externalMailboxAck(w http.ResponseWriter, r *http.Reque
 				externalError(w, 403, "receipt_refused", "Access to this message has ended.")
 				return
 			}
-			state := "admitted"
-			if delivery == "handled" || m.Delivery == "processed" {
-				state, delivery = "processed", "handled"
-			}
-			if m.AdmittedAt.IsZero() {
+			if m.DeliveredAt.IsZero() {
 				m.LiveTransport = "mailbox"
 			}
-			m.Delivery = state
-			stampReceipt(m, state, time.Now().UTC())
+			m.Delivery = delivery
+			stampReceipt(m, delivery, time.Now().UTC())
 			if err := saveAgentMessageStore(r.Context(), s); err != nil {
 				externalFailure(w, err)
 				return

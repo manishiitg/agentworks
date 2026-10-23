@@ -45,7 +45,7 @@ func TestPluginExposesOneToolWithActions(t *testing.T) {
 	if r := call(map[string]any{"action": "delete"}); !r.IsError || !strings.Contains(text(r), "message_id") {
 		t.Fatalf("delete without an ID: %+v", r)
 	}
-	for key, value := range map[string]any{"older_than": 24, "from_agent": true, "processed_only": "true", "unread_only": "false"} {
+	for key, value := range map[string]any{"older_than": 24, "from_agent": true, "delivered_only": "true", "unread_only": "false"} {
 		if r := call(map[string]any{"action": "clear", key: value}); !r.IsError || !strings.Contains(text(r), key+" must be") {
 			t.Fatalf("invalid cleanup filter %s: %+v", key, r)
 		}

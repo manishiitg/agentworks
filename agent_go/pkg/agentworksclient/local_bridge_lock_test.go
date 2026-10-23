@@ -428,7 +428,7 @@ func TestAckOfAMessageOnlySeenAsANoticeSaysToReceiveFirst(t *testing.T) {
 	b := &localBridge{sessions: map[string]*localSession{}, changed: make(chan struct{})}
 	b.sessions[localBridgeKey("muse", "s1")] = &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "muse", SessionID: "s1"}, HostKey: "h", client: client,
 		Offers: map[string]localOffer{"m1": {MuseHinted: true, AgentLiveMessage: AgentLiveMessage{MessageID: "m1"}}}}
-	reply := b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "ack", Provider: "muse", SessionID: "s1", HostKey: "h", MessageID: "m1", Delivery: "admitted"})
+	reply := b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "ack", Provider: "muse", SessionID: "s1", HostKey: "h", MessageID: "m1", Delivery: "delivered"})
 	if !strings.Contains(reply.Error, "action=receive") {
 		t.Fatalf("ack of a notice-only message = %q", reply.Error)
 	}
@@ -617,7 +617,7 @@ func TestAutoUpdateWaitsWhileAMessageIsBeingDelivered(t *testing.T) {
 		AutoUpdateFirst: 20 * time.Millisecond, AutoUpdateEvery: time.Hour, AutoUpdateRetry: 30 * time.Millisecond,
 	}}
 	s := &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "claude", SessionID: "s1"}, Offers: map[string]localOffer{
-		"m1": {Offered: true, OfferedAt: time.Now(), AgentLiveMessage: AgentLiveMessage{MessageID: "m1", Delivery: "admitted"}},
+		"m1": {Offered: true, OfferedAt: time.Now(), AgentLiveMessage: AgentLiveMessage{MessageID: "m1", Delivery: "delivered"}},
 	}}
 	b.sessions[localBridgeKey("claude", "s1")] = s
 	if b.idleForUpdate() {
@@ -632,7 +632,7 @@ func TestAutoUpdateWaitsWhileAMessageIsBeingDelivered(t *testing.T) {
 	}
 	b.mu.Lock()
 	m := s.Offers["m1"]
-	m.Delivery = "processed"
+	m.Delivery = "delivered"
 	s.Offers["m1"] = m
 	b.mu.Unlock()
 	for i := 0; i < 40 && calls.Load() == 0; i++ {

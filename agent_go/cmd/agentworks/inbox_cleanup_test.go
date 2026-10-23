@@ -33,7 +33,7 @@ func TestCLIInboxCleanup(t *testing.T) {
 				}
 				action, _ := body.Arguments["action"].(string)
 				actions = append(actions, action)
-				if body.Name != "messages" || body.Arguments["agent_name"] != "reviewer" || body.Arguments["older_than"] != "7d" || body.Arguments["from_agent"] != "worker" || body.Arguments["processed_only"] != true {
+				if body.Name != "messages" || body.Arguments["agent_name"] != "reviewer" || body.Arguments["older_than"] != "7d" || body.Arguments["from_agent"] != "worker" || body.Arguments["delivered_only"] != true {
 					t.Error("cleanup selection changed", body)
 				}
 				if action == "count" {
@@ -46,7 +46,7 @@ func TestCLIInboxCleanup(t *testing.T) {
 				fmt.Fprint(w, `{"removed":105,"remaining":2}`)
 			}))
 			defer s.Close()
-			code := run(context.Background(), []string{"--config", filepath.Join(t.TempDir(), "config.json"), "--server", s.URL, "--json", "messages", "clear", "--agent", "reviewer", "--older-than", "7d", "--from", "worker", "--processed"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
+			code := run(context.Background(), []string{"--config", filepath.Join(t.TempDir(), "config.json"), "--server", s.URL, "--json", "messages", "clear", "--agent", "reviewer", "--older-than", "7d", "--from", "worker", "--delivered"}, strings.NewReader(""), &stdout, &stderr, func(key string) string {
 				if key == "AGENTWORKS_TOKEN" {
 					return "jwt"
 				}

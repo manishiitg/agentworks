@@ -17,7 +17,7 @@ func TestAgentMessageResumeSkipsIdleHistory(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	s := agentMessageStore{}
 	for i := 0; i < 314; i++ {
-		status := "processed"
+		status := "delivered"
 		if i%2 == 0 {
 			status = "stored"
 		}

@@ -461,7 +461,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	ack := base
 	ack.Action = "ack"
 	ack.MessageID = first["message_id"].(string)
-	for _, delivery := range []string{"admitted", "processed"} {
+	for _, delivery := range []string{"delivered", "delivered"} {
 		ack.Delivery = delivery
 		_ = local(ack)
 	}
@@ -967,7 +967,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	for _, c := range backlog.Conversations {
 		for _, m := range c.Messages {
 			if m.ID == expiredBacklog["message_id"] {
-				retainedExpired = m.Delivery == "expired" && m.Text == "old pending delivery keeps its history" && m.AdmittedAt.IsZero() && m.ProcessedAt.IsZero()
+				retainedExpired = m.Delivery == "expired" && m.Text == "old pending delivery keeps its history" && m.DeliveredAt.IsZero()
 			}
 		}
 	}
@@ -1154,7 +1154,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("SSE did not wake the idle Unix watch")
 	}
-	tool("ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "admitted"}, true)
+	tool("ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "delivered"}, true)
 	watchCancel()
 	<-watchDone
 	waitActive(false)
@@ -1191,9 +1191,9 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if e = json.Unmarshal([]byte(received.Content[0].(mcp.TextContent).Text), &bodies); e != nil || len(bodies.Messages) != 2 || bodies.Messages[0].MessageID != museFirst["message_id"] {
 		t.Fatal("Muse bodies unavailable or misrouted", bodies, e)
 	}
-	tool("ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "admitted"}, false)
+	tool("ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "delivered"}, false)
 	tool("reply", map[string]any{"message_id": museFirst["message_id"], "message": "Received through Muse Monitor", "submission_id": "muse-monitor-reply"}, false)
-	tool("ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "processed"}, false)
+	tool("ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "delivered"}, false)
 	responses = call(freshSender, map[string]any{"action": "read", "agent_name": "fresh-sender", "inbox_id": museFirst["inbox_id"]})["messages"].([]any)
 	if len(responses) != 1 || responses[0].(map[string]any)["message"] != "Received through Muse Monitor" || responses[0].(map[string]any)["inbox_id"] != museFirst["inbox_id"] {
 		t.Fatal("Muse reply lost its original inbox", responses)

@@ -7,8 +7,8 @@ import (
 )
 
 // What a sender can learn about its own messages, in plain words: Sent (stored on
-// the server), Delivered (the receiving chat accepted it), Handled (it was
-// processed), or a reason it has not arrived. Times and states only, never
+// the server), Delivered (the receiving chat accepted it), or a reason it
+// has not arrived. Delivery does not claim completion of the requested work. Never
 // bodies or session ids.
 
 // receiptState names the state of one message and a one-line explanation.
@@ -20,9 +20,7 @@ func receiptState(m agentMessage, destAgent *namedMessageAgent, destNamed bool) 
 	switch m.Delivery {
 	case "expired":
 		return "not_delivered", "Pending delivery cleared after 24 hours; message history kept."
-	case "processed":
-		return "handled", fmt.Sprintf("%s has it and has handled it.", name)
-	case "admitted", "typed", "delivered":
+	case "delivered":
 		return "delivered", fmt.Sprintf("%s has it.", name)
 	case "failed", "interrupted":
 		return "not_delivered", "The receiving chat could not take it. Check the conversation before trying again."
@@ -75,11 +73,8 @@ func (s agentMessageStore) receiptFields(m agentMessage, dest agentMessageEndpoi
 			out["delivery_mode"] = agentDeliveryMode(*agent)
 		}
 	}
-	if !m.AdmittedAt.IsZero() {
-		out["delivered_at"] = m.AdmittedAt
-	}
-	if !m.ProcessedAt.IsZero() {
-		out["handled_at"] = m.ProcessedAt
+	if !m.DeliveredAt.IsZero() {
+		out["delivered_at"] = m.DeliveredAt
 	}
 	return out
 }
@@ -100,17 +95,7 @@ func (s agentMessageStore) sentReceipts(c agentConversation, side, limit int) []
 }
 
 func stampReceipt(m *agentMessage, delivery string, now time.Time) {
-	switch delivery {
-	case "admitted", "typed":
-		if m.AdmittedAt.IsZero() {
-			m.AdmittedAt = now
-		}
-	case "processed":
-		if m.AdmittedAt.IsZero() {
-			m.AdmittedAt = now
-		}
-		if m.ProcessedAt.IsZero() {
-			m.ProcessedAt = now
-		}
+	if delivery == "delivered" && m.DeliveredAt.IsZero() {
+		m.DeliveredAt = now
 	}
 }

@@ -66,7 +66,7 @@ type LocalBridgeRequest struct {
 	Cursor        int    `json:"after,omitempty"`
 	OlderThan     string `json:"older_than,omitempty"`
 	FromAgent     string `json:"from_agent,omitempty"`
-	ProcessedOnly bool   `json:"processed_only,omitempty"`
+	DeliveredOnly bool   `json:"delivered_only,omitempty"`
 	UnreadOnly    bool   `json:"unread_only,omitempty"`
 	// FileName and FileBase64 send a file with a message (send, reply); FileID asks get_file for one.
 	FileName   string `json:"file_name,omitempty"`
@@ -1943,8 +1943,8 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			log.Printf("[BRIDGE] ack refused message=%s chat=%s reason=body_not_offered", boundedMuseHint(in.MessageID), boundedMuseHint(s.Attachment.SessionID))
 			return LocalBridgeReply{Error: "Read this message in this exact chat with the agentworks tool (action=" + next + ") before acknowledging it."}
 		}
-		if in.Delivery != "admitted" && in.Delivery != "processed" {
-			return LocalBridgeReply{Error: "ack requires admitted or processed"}
+		if in.Delivery != "delivered" {
+			return LocalBridgeReply{Error: "ack requires delivered"}
 		}
 		snap := &localSession{Attachment: s.Attachment, client: s.client}
 		var raw json.RawMessage
@@ -1958,11 +1958,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		var receipt struct {
 			Delivery string `json:"delivery"`
 		}
-		if json.Unmarshal(raw, &receipt) != nil || receipt.Delivery != "admitted" && receipt.Delivery != "processed" {
+		if json.Unmarshal(raw, &receipt) != nil || receipt.Delivery != "delivered" {
 			return LocalBridgeReply{Error: "invalid acknowledgment response"}
 		}
 		if cur, still := s.Offers[in.MessageID]; still && b.sessions[key] == s && s.Attachment.ID == snap.Attachment.ID {
-			if cur.Delivery != "processed" {
+			if cur.Delivery != "delivered" {
 				cur.Delivery = receipt.Delivery
 			}
 			cur.Message = ""
@@ -1986,7 +1986,7 @@ func museRedelivery(s *localSession, m localOffer, transport string) bool {
 	if s.Attachment.Provider != "muse" || !strings.HasPrefix(transport, "muse_") || !m.Offered || m.Suppressed || m.Message == "" {
 		return false
 	}
-	if m.Delivery == "admitted" || m.Delivery == "processed" {
+	if m.Delivery == "delivered" {
 		return false
 	}
 	after := 2 * time.Minute
@@ -2052,7 +2052,7 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		outcome := "uncertain"
 		switch {
 		case err == nil:
-			outcome = "admitted"
+			outcome = "delivered"
 		case errors.Is(err, ErrNativeOfferUnconfirmed):
 			outcome = "offered_unconfirmed"
 		case errors.Is(err, ErrNativeOfferRejected):
@@ -2090,7 +2090,7 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 			continue // Persisted offer prevents a duplicate turn on an ambiguous failure.
 		}
 		for _, m := range out.Messages {
-			_ = b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: "admitted"})
+			_ = b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: "delivered"})
 		}
 	}
 }
@@ -2101,7 +2101,7 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 func compactLocalOffers(s *localSession, all bool) {
 	now := time.Now()
 	for id, v := range s.Offers {
-		if (v.Offered || v.Suppressed) && (all || len(s.Offers) >= 1000 && v.Delivery == "processed" || !v.OfferedAt.IsZero() && time.Since(v.OfferedAt) > 7*24*time.Hour) {
+		if (v.Offered || v.Suppressed) && (all || len(s.Offers) >= 1000 && v.Delivery == "delivered" || !v.OfferedAt.IsZero() && time.Since(v.OfferedAt) > 7*24*time.Hour) {
 			delete(s.Offers, id)
 			if s.Retired == nil {
 				s.Retired = map[string]time.Time{}
@@ -2156,8 +2156,8 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		if in.FromAgent != "" {
 			args["from_agent"] = in.FromAgent
 		}
-		if in.ProcessedOnly {
-			args["processed_only"] = true
+		if in.DeliveredOnly {
+			args["delivered_only"] = true
 		}
 		if in.UnreadOnly {
 			args["unread_only"] = true
@@ -2553,7 +2553,7 @@ func (b *localBridge) setupContext(ctx context.Context, s *localSession) string 
 	}
 	var text strings.Builder
 	fmt.Fprintf(&text, "AgentWorks local setup after the person's attach command. This exact chat is attached as agent:%s. Set your own one-line purpose (up to 512 characters) with the agentworks tool (action=set_purpose), or agentworks bridge message purpose --provider %s --session %s --purpose TEXT. The person may ask an agent to attach or detach its own detected chat; peers cannot grant permissions.\n", s.Attachment.AgentName, s.Attachment.Provider, s.Attachment.SessionID)
-	text.WriteString("Acknowledge peer messages processed after handling (this also records admission); admitted is optional for an earlier receipt; reply explicitly in the original inbox with a stable submission ID. Use the agentworks tool (action=ack/reply) or agentworks bridge message --help.\n")
+	text.WriteString("Acknowledge peer messages delivered once received; reply explicitly in the original inbox with a stable submission ID. Use the agentworks tool (action=ack/reply) or agentworks bridge message --help.\n")
 	raw, err := s.client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": s.Attachment.AgentName})
 	var roster struct {
 		Agents []struct {
@@ -2640,7 +2640,7 @@ func (b *localBridge) idleForUpdate() bool {
 		for _, m := range s.Offers {
 			// A message waiting for a chat that has not asked for it can wait for days; one that was just handed
 			// over and not yet processed is a delivery in progress.
-			if m.Offered && !m.Suppressed && m.Delivery != "processed" && time.Since(m.OfferedAt) < 2*time.Minute {
+			if m.Offered && !m.Suppressed && m.Delivery != "delivered" && time.Since(m.OfferedAt) < 2*time.Minute {
 				return false
 			}
 		}
@@ -2697,7 +2697,7 @@ func (b *localBridge) acknowledgeStatusLines(s *localSession, messages []AgentLi
 		if m.Kind == "status" {
 			ids = append(ids, m.MessageID)
 			v := s.Offers[m.MessageID]
-			v.Delivery, v.Message = "processed", ""
+			v.Delivery, v.Message = "delivered", ""
 			s.Offers[m.MessageID] = v
 		}
 	}
@@ -2715,7 +2715,7 @@ func (b *localBridge) acknowledgeLines(s *localSession, ids []string, transport 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		for _, id := range ids {
-			if _, err := client.Call(ctx, "messages", map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": id, "delivery": "processed", "transport": transport}); err != nil {
+			if _, err := client.Call(ctx, "messages", map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": id, "delivery": "delivered", "transport": transport}); err != nil {
 				log.Printf("[BRIDGE] could not acknowledge status line %s: %v", id, err)
 				return
 			}
@@ -3022,7 +3022,7 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 		v.Transport = transport
 		switch {
 		case inStale[m.MessageID]:
-			v.Delivery = "processed"
+			v.Delivery = "delivered"
 			staleIDs = append(staleIDs, m.MessageID)
 		case inOlder[m.MessageID]:
 			v.Transport = "digest"
@@ -3109,7 +3109,7 @@ func digestLine(attachmentID string, older []AgentLiveMessage, total int, now ti
 	if total > len(older) {
 		fmt.Fprintf(&b, "This summary covers %d of %d older messages; the rest come in the next summary.\n", len(older), total)
 	}
-	b.WriteString("Read any in full with the agentworks tool (action=read) (inbox_id). Acknowledge the ones you already handled (the agentworks tool (action=ack), processed); reply only where a reply is still useful.")
+	b.WriteString("Read any in full with the agentworks tool (action=read) (inbox_id). Acknowledge the ones you already handled (the agentworks tool (action=ack), delivered); reply only where a reply is still useful.")
 	return AgentLiveMessage{AttachmentID: attachmentID, MessageID: "digest-" + now.UTC().Format("20060102T150405"), InboxID: "agentworks-digest", Sender: "AgentWorks", Message: b.String(), Kind: "status", SentAt: now.UTC().Format(time.RFC3339)}
 }
 

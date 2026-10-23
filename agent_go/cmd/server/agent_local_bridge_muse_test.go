@@ -178,7 +178,7 @@ func TestAgentLocalBridgeMuseOffersSurviveARestart(t *testing.T) {
 		t.Fatalf("reply after a helper restart was refused: %s", out.Error)
 	}
 	ack := chat
-	ack.Action, ack.Delivery, ack.HostKey, ack.MessageID = "ack", "admitted", "muse-process-new", again["first waiting message"]
+	ack.Action, ack.Delivery, ack.HostKey, ack.MessageID = "ack", "delivered", "muse-process-new", again["first waiting message"]
 	if out := call(ack); out.Error != "" {
 		t.Fatalf("ack failed: %s", out.Error)
 	}

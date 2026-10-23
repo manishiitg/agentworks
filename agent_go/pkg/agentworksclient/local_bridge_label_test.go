@@ -26,7 +26,7 @@ func TestBridgeLabelRefreshKeepsLeaseAndDoesNotBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &localSession{Attachment: AgentAttachment{ID: "lease", AgentID: "stable-id", AgentName: "worker", Label: "Earlier", Provider: "codex", SessionID: "session"}, client: client,
-		Offers: map[string]localOffer{"message": {AgentLiveMessage: AgentLiveMessage{MessageID: "message", Delivery: "processed"}}}}
+		Offers: map[string]localOffer{"message": {AgentLiveMessage: AgentLiveMessage{MessageID: "message", Delivery: "delivered"}}}}
 	b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{"chat": s}, changed: make(chan struct{}), options: LocalBridgeOptions{
 		ClientBuild: "current-build",
 		ChatLabel:   func(AgentAttachment, string) string { return "Renamed" },
@@ -51,7 +51,7 @@ func TestBridgeLabelRefreshKeepsLeaseAndDoesNotBlock(t *testing.T) {
 	b.mu.Unlock()
 	release <- struct{}{}
 	<-done
-	if s.Attachment.ID != "lease" || s.Attachment.AgentID != "stable-id" || s.Attachment.Label != "Renamed" || s.Attachment.ClientBuild != "current-build" || s.Offers["message"].Delivery != "processed" {
+	if s.Attachment.ID != "lease" || s.Attachment.AgentID != "stable-id" || s.Attachment.Label != "Renamed" || s.Attachment.ClientBuild != "current-build" || s.Offers["message"].Delivery != "delivered" {
 		t.Fatal("label update changed delivery state")
 	}
 	// A new helper reports its build even when all chat metadata is unchanged.
@@ -68,7 +68,7 @@ func TestBridgeLabelRefreshKeepsLeaseAndDoesNotBlock(t *testing.T) {
 	}
 	release <- struct{}{}
 	<-done
-	if s.Attachment.ClientBuild != "updated-build" || s.Offers["message"].Delivery != "processed" {
+	if s.Attachment.ClientBuild != "updated-build" || s.Offers["message"].Delivery != "delivered" {
 		t.Fatal("helper update changed message state")
 	}
 	// An unchanged label and a closed chat cause no HTTP request.

@@ -77,7 +77,7 @@ func TestSharedConversationFenceAndSuppression(t *testing.T) {
 	end := func(user, agent string) agentMessageEndpoint {
 		return agentMessageEndpoint{UserID: user, Kind: triggerCallerUser, ID: user, External: true, NamedAgentID: agent, Label: agent, ShareID: "share-1", ShareVersion: 1}
 	}
-	c := agentConversation{ID: "inbox-1", Endpoints: [2]agentMessageEndpoint{end("guest", "agent-b"), end("owner", "agent-a")}, Messages: []agentMessage{{ID: "m1", From: 0, Delivery: "stored"}, {ID: "m2", From: 0, Delivery: "processed"}}}
+	c := agentConversation{ID: "inbox-1", Endpoints: [2]agentMessageEndpoint{end("guest", "agent-b"), end("owner", "agent-a")}, Messages: []agentMessage{{ID: "m1", From: 0, Delivery: "stored"}, {ID: "m2", From: 0, Delivery: "delivered"}}}
 	if err := s.conversationShareErr(c, now); err != nil {
 		t.Fatalf("legitimate shared conversation refused: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestSharedConversationFenceAndSuppression(t *testing.T) {
 	}
 	s.Conversations = []agentConversation{c}
 	s.suppressShare("share-1")
-	if got := s.Conversations[0].Messages; got[0].Delivery != "suppressed" || got[1].Delivery != "processed" {
+	if got := s.Conversations[0].Messages; got[0].Delivery != "suppressed" || got[1].Delivery != "delivered" {
 		t.Fatalf("suppression changed the wrong receipts: %+v", got)
 	}
 }

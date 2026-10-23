@@ -83,7 +83,7 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 				reads.Add(1)
 				json.NewEncoder(w).Encode(map[string]any{"messages": []map[string]any{{"message_id": id, "inbox_id": "inbox-" + network, "message": "Review"}}, "next_cursor": 1})
 			case "ack":
-				json.NewEncoder(w).Encode(map[string]any{"delivery": "processed"})
+				json.NewEncoder(w).Encode(map[string]any{"delivery": "delivered"})
 			default:
 				json.NewEncoder(w).Encode(map[string]any{})
 			}

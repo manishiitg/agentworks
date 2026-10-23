@@ -283,10 +283,11 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			return
 		}
 		delivery, transport := externalArg(args, "delivery"), externalArg(args, "transport")
-		if !slices.Contains([]string{"admitted", "typed", "processed", "failed"}, delivery) || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "muse_session", "tmux", "mailbox"}, transport) || delivery == "typed" && transport != "tmux" || delivery == "admitted" && transport == "tmux" {
-			externalError(w, 400, "invalid_arguments", "Use an adapter receipt: admitted, typed (tmux only), processed (explicit agent acknowledgement), or failed.")
+		if delivery != "delivered" || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "muse_session", "mailbox"}, transport) {
+			externalError(w, 400, "invalid_arguments", "Use delivery=delivered when this chat has received the message.")
 			return
 		}
+
 		found := false
 		for ci := range s.Conversations {
 			c := &s.Conversations[ci]
@@ -309,14 +310,6 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				if (!mailbox && m.LiveAttachment != a.Attachment.ID) || !s.shareSenderAllowed(*c, m.From, claims.UserID, time.Now().UTC()) {
 					externalError(w, 409, "receipt_refused", "The message was not offered to this exact attachment or its sender is outside this account.")
 					return
-				}
-				if m.Delivery == "processed" && delivery != "processed" {
-					if delivery == "failed" {
-						externalError(w, 409, "receipt_refused", "A processed receipt cannot be downgraded.")
-						return
-					}
-					// A late admission or a retry cannot undo completed processing.
-					delivery = "processed"
 				}
 				m.Delivery = delivery
 				stampReceipt(m, delivery, time.Now().UTC())
@@ -584,7 +577,7 @@ func recordAgentMessageOffer(ctx context.Context, agentID, attachmentID, message
 }
 
 // Recheck durable offers immediately before releasing a local cached body. This
-// reads current authority without fabricating admitted/processed receipts.
+// reads current authority without fabricating delivery receipts.
 func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	a, live, err := currentAgentAttachment(r.Context(), GetUserFromContext(r.Context()), externalArg(args, "agent_name"), externalArg(args, "attachment_id"))
 	if err != nil {

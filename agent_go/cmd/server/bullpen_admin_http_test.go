@@ -131,7 +131,7 @@ func TestBullpenAdminCloseEndsStreamAndOwnerCanReattach(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the live stream stayed open after the attachment was closed")
 	}
-	if _, err = owner.Call(ctx, "messages", map[string]any{"action": "ack", "agent_name": "helper", "attachment_id": attachment.ID, "message_id": "msg-none", "delivery": "admitted", "transport": "claude_channel"}); err == nil {
+	if _, err = owner.Call(ctx, "messages", map[string]any{"action": "ack", "agent_name": "helper", "attachment_id": attachment.ID, "message_id": "msg-none", "delivery": "delivered", "transport": "claude_channel"}); err == nil {
 		t.Fatal("the closed lease was still accepted")
 	}
 	replacement, err := owner.AttachAgent(ctx, agentworksclient.AgentAttachmentOptions{AgentName: "helper", Provider: "claude", SessionID: "exact-session-two"})

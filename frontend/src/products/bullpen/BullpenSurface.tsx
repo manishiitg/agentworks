@@ -93,8 +93,7 @@ function AgentDirectory({ onConnect }: { onConnect: () => void }) {
         {(agent.repository || agent.activity) && <p className="text-xs text-muted-foreground">{agent.repository && <span>{agent.repository}{agent.branch ? `@${agent.branch}` : ''} · </span>}{agent.activity || 'Unknown'}{agent.activity_at && <span title={new Date(agent.activity_at).toLocaleString()}> (last reported {new Date(agent.activity_at).toLocaleTimeString()})</span>}</p>}
         <div className="space-y-1 text-xs text-muted-foreground">
           <div>Last seen: {agent.last_seen_at ? <time dateTime={agent.last_seen_at}>{new Date(agent.last_seen_at).toLocaleString()}</time> : 'Unknown'}</div>
-          {agent.last_received_at && <div>Last message received: <time dateTime={agent.last_received_at}>{new Date(agent.last_received_at).toLocaleString()}</time></div>}
-          {agent.last_handled_at && <div>Last message handled: <time dateTime={agent.last_handled_at}>{new Date(agent.last_handled_at).toLocaleString()}</time></div>}
+          {agent.last_delivered_at && <div>Last message delivered: <time dateTime={agent.last_delivered_at}>{new Date(agent.last_delivered_at).toLocaleString()}</time></div>}
         </div>
         {agent.provider === 'cursor' && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer" title="Cursor picks up new messages after a tool finishes or when its current turn ends. An idle Cursor chat is not woken; messages wait safely.">Gets messages when its chat is used</summary><p className="mt-1">Cursor picks up new messages after a tool finishes or when its current turn ends. An idle Cursor chat is not woken; messages wait safely.</p></details>}
         <AgentUsage usage={agent.usage} unavailable={agent.usage_unavailable} provider={agent.provider} />

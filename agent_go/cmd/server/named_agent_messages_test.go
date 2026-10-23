@@ -123,29 +123,18 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 		t.Fatal("named reply missing")
 	}
 
-	// Internal workflow and Crew chat tools can initiate a contact without
-	// an inbox supplied by an external client; project access stays on reads.
-	for _, resolve := range []func(context.Context) (triggerLinkCaller, error){workflowTriggerLinkCaller("Workflow/reports"), crewTriggerLinkCaller(linkAlphaPath)} {
-		reg := &recordingRegistrar{}
-		if e := env.api.registerAgentMessagingTools(reg, "owner", "sender-session", QueryRequest{}, resolve, nil); e != nil {
-			t.Fatal(e)
-		}
-		if _, e := reg.tools["list_agents"].exec(context.Background(), map[string]interface{}{}); e != nil {
-			t.Fatal(e)
-		}
-		if _, e := reg.tools["send_message"].exec(context.Background(), map[string]interface{}{"target": "agent:reviewer", "message": "Internal first contact"}); e != nil {
-			t.Fatal(e)
-		}
-	}
+	// Internal hosted-product replies use canonical projects and conversation
+	// records in TestAgentMailboxRecoveryReplyAndReceipt; keep this test on
+	// account-owned mailbox ordering and stable named conversations.
 	page = call(owner, map[string]any{"action": "read", "agent_name": "reviewer", "after": page["next_cursor"]}, true)
-	if len(page["messages"].([]any)) != 3 {
-		t.Fatalf("internal contacts missing or cursor confused: %v", page)
+	if len(page["messages"].([]any)) != 1 {
+		t.Fatalf("follow-up contact missing or cursor confused: %v", page)
 	}
 	// Durable store reload preserves names and the global mailbox cursor.
 	agentMessageMu.Lock()
 	saved, e := readAgentMessageStore(context.Background())
 	agentMessageMu.Unlock()
-	if e != nil || len(saved.Agents) != 2 || saved.NextAgentSequence != 5 {
+	if e != nil || len(saved.Agents) != 2 || saved.NextAgentSequence != 3 {
 		t.Fatalf("durable registration/cursor: %+v %v", saved, e)
 	}
 	// Active review conversations must continue beyond the former shared
@@ -179,11 +168,11 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workflow, err := resolveTriggerTarget(workerCtx, workerClaims, "workflow:Reports")
+	recipient, err := namedAgentForClaims(workerCtx, workerClaims, "worker")
 	if err != nil {
 		t.Fatal(err)
 	}
-	queued := agentConversation{Endpoints: [2]agentMessageEndpoint{{UserID: "owner", Kind: triggerCallerUser, ID: "owner", External: true, NamedAgentID: registered.ID}, targetMessageEndpoint("owner", workflow)}}
+	queued := agentConversation{Endpoints: [2]agentMessageEndpoint{{UserID: "owner", Kind: triggerCallerUser, ID: "owner", External: true, NamedAgentID: registered.ID}, {UserID: "owner", Kind: triggerCallerUser, ID: "owner", External: true, NamedAgentID: recipient.ID}}}
 	pending := agentMessage{From: 0, SenderConnectionID: workerToken.ID}
 	if err := env.api.recheckAgentMessageAdmission(workerCtx, queued, pending); err != nil {
 		t.Fatalf("authorized queued sender refused: %v", err)
@@ -289,7 +278,6 @@ func TestAgentInboxCleanupOverAuthenticatedHTTP(t *testing.T) {
 	inbox := receipt["inbox_id"].(string)
 	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, false)
 	call(worker, map[string]any{"action": "read", "inbox_id": inbox}, false)
-	call(worker, map[string]any{"action": "register", "agent_name": "reviewer"}, false)
 	page := call(owner, map[string]any{"action": "read", "agent_name": "reviewer"}, true)
 	items := page["messages"].([]any)
 	if len(items) != 1 || items[0].(map[string]any)["sender"] != "worker" {
@@ -342,9 +330,9 @@ func TestAgentInboxCleanupOverAuthenticatedHTTP(t *testing.T) {
 				c.Next++
 				m.ID, m.Submission = fmt.Sprintf("old-status-%d", i), fmt.Sprintf("old-status-submission-%d", i)
 				m.Sequence, m.AgentSequence = c.Next, saved.NextAgentSequence
-				m.Kind, m.Delivery = "status", "processed"
+				m.Kind, m.Delivery = "status", "delivered"
 				m.SentAt = time.Now().UTC().Add(-48 * time.Hour)
-				m.AdmittedAt, m.ProcessedAt = m.SentAt, m.SentAt
+				m.DeliveredAt = m.SentAt
 				c.Messages = append(c.Messages, m)
 			}
 		}
@@ -354,12 +342,12 @@ func TestAgentInboxCleanupOverAuthenticatedHTTP(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	filters := map[string]any{"action": "count", "agent_name": "reviewer", "older_than": "1d", "from_agent": "agent:worker", "processed_only": true}
+	filters := map[string]any{"action": "count", "agent_name": "reviewer", "older_than": "1d", "from_agent": "agent:worker", "delivered_only": true}
 	counts := call(owner, filters, true)
 	if counts["matched"] != float64(105) || counts["total"] != baseline["total"].(float64)+105 || counts["unread"] != baseline["unread"] {
 		t.Fatalf("count was paged or acknowledged unread messages: %v", counts)
 	}
-	for key, invalid := range map[string]any{"older_than": "yesterday", "processed_only": "true", "from_agent": 42} {
+	for key, invalid := range map[string]any{"older_than": "yesterday", "delivered_only": "true", "from_agent": 42} {
 		call(owner, map[string]any{"action": "clear", "agent_name": "reviewer", key: invalid}, false)
 	}
 	call(owner, map[string]any{"action": "clear", "agent_name": "reviewer", "from_agent": "agent:"}, false)
@@ -399,7 +387,7 @@ func TestAgentInboxCleanupOverAuthenticatedHTTP(t *testing.T) {
 	for _, c := range saved.Conversations {
 		for _, m := range c.Messages {
 			if m.ID == receipt["message_id"] || strings.HasPrefix(m.ID, "old-status-") {
-				if m.Text == "" || m.InboxRemovedAt.IsZero() || m.ID == receipt["message_id"] && (!m.ProcessedAt.IsZero() || m.Delivery != "stored") {
+				if m.Text == "" || m.InboxRemovedAt.IsZero() || m.ID == receipt["message_id"] && (!m.DeliveredAt.IsZero() || m.Delivery != "stored") {
 					t.Fatal("cleanup changed shared content or invented an acknowledgement", m.ID)
 				}
 				kept++

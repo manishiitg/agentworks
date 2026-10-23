@@ -68,8 +68,7 @@ does not authorize another person's private inbox or usage data.
 
 The `agentworks-messages` MCP exposes only session-bound messaging tools. It is
 not the full-account HTTP MCP connection for workflows or Crews. The agent
-acknowledges `processed` once after handling an offer (also records admission),
-with an earlier `admitted` receipt optional,
+acknowledges `delivered` once received, without claiming the work is finished,
 and replies explicitly in its original inbox with a stable submission ID.
 Terminal display, hook stdout, a send result or a notification is not admission.
 

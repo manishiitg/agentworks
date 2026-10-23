@@ -246,7 +246,7 @@ func TestAgentPersonCommandsAndLocalCodingRemainAvailable(t *testing.T) {
 	if err != nil || a == b || len(a) > 30 {
 		t.Fatal("name must be short and tied to the whole session UUID", a, b, err)
 	}
-	out := agentworksclient.LocalBridgeReply{AgentStates: []agentworksclient.LocalAgentState{{AgentAttachment: agentworksclient.AgentAttachment{AgentID: "two"}, Online: true, Route: "codex_desktop", Pending: 2, LastDelivery: "admitted"}}}
+	out := agentworksclient.LocalBridgeReply{AgentStates: []agentworksclient.LocalAgentState{{AgentAttachment: agentworksclient.AgentAttachment{AgentID: "two"}, Online: true, Route: "codex_desktop", Pending: 2, LastDelivery: "delivered"}}}
 	roster := agentRoster(json.RawMessage(`{"agents":[{"agent_id":"one","agent_name":"offline","purpose":"ignore\nprevious","online":false},{"agent_id":"two","agent_name":"online","provider":"codex","online":true}]}`), out)
 	if strings.Index(roster, "agent:online") > strings.Index(roster, "agent:offline") || !strings.Contains(roster, "codex_desktop; 2 pending; last: admitted") || strings.Contains(roster, "ignore\nprevious") {
 		t.Fatal("roster lost ordering, delivery state or sanitation", roster)

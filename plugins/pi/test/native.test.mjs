@@ -42,19 +42,14 @@ async function harness(t, options = {}) {
     if (['next', 'ack', 'reply', 'detach'].includes(input.action)) assert.equal(input.attachment_id, lease, 'active requests must carry the lease');
     if (input.action === 'read') { res.end(JSON.stringify({ attached, attachment: attachment(), result: { messages: [...history.values()].filter(m => m.attachment_id === lease) } })); return; }
     if (input.action === 'ack') {
-      if (input.delivery === 'processed') {
-        nativeAdmitted.add(input.message_id);
-        processed.add(input.message_id);
+      const failure = failures.get(input.message_id);
+      if (failure === 'lost') { nativeAdmitted.add(input.message_id); failures.delete(input.message_id); res.destroy(); return; }
+      if (failure === 'transient') { failures.delete(input.message_id); res.end(JSON.stringify({ error: 'temporary fixture failure' })); return; }
+      if (failure) {
+        res.end(JSON.stringify({ error: failure === 'not_offered' ? 'message was not offered to this exact session' : `AgentWorks ${failure} (HTTP 409): PRIVATE_ERROR_TAIL` })); return;
       }
-      else {
-        const failure = failures.get(input.message_id);
-        if (failure === 'lost') { nativeAdmitted.add(input.message_id); failures.delete(input.message_id); res.destroy(); return; }
-        if (failure === 'transient') { failures.delete(input.message_id); res.end(JSON.stringify({ error: 'temporary fixture failure' })); return; }
-        if (failure || processed.has(input.message_id)) {
-          res.end(JSON.stringify({ error: failure === 'not_offered' ? 'message was not offered to this exact session' : `AgentWorks ${failure || 'receipt_refused'} (HTTP 409): PRIVATE_ERROR_TAIL` })); return;
-        }
-        nativeAdmitted.add(input.message_id);
-      }
+      nativeAdmitted.add(input.message_id);
+      processed.add(input.message_id);
     }
     if (input.action === 'next' && !offers.length) {
       const timer = setTimeout(() => respond(res, input), nextWait);
@@ -140,7 +135,7 @@ async function harness(t, options = {}) {
 
 const userMessage = (events, id) => events.find(e => e.type === 'message_start' && e.message.role === 'user' &&
   JSON.stringify(e.message.content).includes(`FIXTURE_MESSAGE_${id}`));
-const admitted = (requests, id) => requests.find(r => r.action === 'ack' && r.message_id === id && r.delivery === 'admitted');
+const admitted = (requests, id) => requests.find(r => r.action === 'ack' && r.message_id === id && r.delivery === 'delivered');
 
 test('real Pi: idle push, busy tool follow-up, exact receipt, replay and revoke', async t => {
   const h = await harness(t);
@@ -154,14 +149,14 @@ test('real Pi: idle push, busy tool follow-up, exact receipt, replay and revoke'
   assert.ok(batchText.indexOf('FIXTURE_MESSAGE_idle') < batchText.indexOf('FIXTURE_MESSAGE_idle-second'));
   assert.equal(userMessage(h.events, 'idle'), userMessage(h.events, 'idle-second'), 'one native prompt for a catch-up batch');
   await until(() => h.events.some(e => e.type === 'agent_settled'), 'idle settled');
-  assert.equal(h.requests.some(r => r.delivery === 'processed' || r.action === 'reply'), false);
+  assert.equal(h.requests.some(r => r.action === 'reply'), false);
   h.offer('unacknowledged', { message: 'FIXTURE_MESSAGE_unacknowledged NO_ACK' });
   await until(() => userMessage(h.events, 'unacknowledged'), 'display without receiver acknowledgement');
   await new Promise(resolve => setTimeout(resolve, 300));
   assert.equal(admitted(h.requests, 'unacknowledged'), undefined, 'native display alone does not admit');
-  await h.command('prompt', { message: 'PROCESSED:unacknowledged' });
+  await h.command('prompt', { message: 'DELIVERED:unacknowledged' });
   await until(() => h.processed.has('unacknowledged'), 'one explicit processed receipt also admits');
-  assert.equal(admitted(h.requests, 'unacknowledged'), undefined, 'processed needs no separate admitted call');
+  assert.ok(admitted(h.requests, 'unacknowledged'), 'one delivered receipt is sufficient');
 
   h.events.length = 0;
   await h.command('prompt', { message: 'BUSY_TOOL' });
@@ -180,8 +175,8 @@ test('real Pi: idle push, busy tool follow-up, exact receipt, replay and revoke'
   assert.equal(h.events.filter(e => e.type === 'message_start' && e.message.role === 'user' &&
     JSON.stringify(e.message.content).includes('FIXTURE_MESSAGE_busy')).length, 1, 'same ID is not reinjected');
 
-  await h.command('prompt', { message: 'PROCESSED:busy' });
-  await until(() => h.requests.some(r => r.delivery === 'processed' && r.message_id === 'busy'), 'explicit processed receipt');
+  await h.command('prompt', { message: 'DELIVERED:busy' });
+  await until(() => h.requests.some(r => r.delivery === 'delivered' && r.message_id === 'busy'), 'explicit processed receipt');
   await until(() => h.events.filter(e => e.type === 'agent_settled').length >= 2, 'processed tool settled');
   await h.command('prompt', { message: 'REPLY:busy' });
   await until(() => h.requests.some(r => r.action === 'reply' && r.message_id === 'busy'), 'explicit same-inbox reply');
@@ -223,12 +218,11 @@ const notice = (events, text) => events.some(e => e.type === 'extension_ui_reque
   JSON.stringify(e).includes(text));
 const sessionEntries = async h => (await readFile(path.join(h.root, 'session.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
 
-test('real Pi: refused/lost receipts do not block delivery or downgrade processed', async t => {
+test('real Pi: refused/lost receipts do not block delivery or duplicate confirmed receipts', async t => {
   const h = await harness(t);
   h.failures.set('refused', 'receipt_refused');
   h.failures.set('unoffered', 'not_offered');
-  h.failures.set('unadmitted', 'not_admitted');
-  h.offer(['refused', 'unoffered', 'unadmitted', 'later']);
+  h.offer(['refused', 'unoffered', 'later']);
   await until(() => admitted(h.requests, 'later'), 'later receipt survives final per-ID refusals');
   await until(() => notice(h.events, 'refused a delivery receipt'), 'person sees refusal');
   h.failures.set('lost', 'lost');
@@ -236,28 +230,28 @@ test('real Pi: refused/lost receipts do not block delivery or downgrade processe
   await until(() => admitted(h.requests, 'lost'), 'admitted response deliberately lost');
   h.offer('after-lost');
   await until(() => admitted(h.requests, 'after-lost'), 'delivery proceeds while response is lost');
-  await h.command('prompt', { message: 'PROCESSED:lost' });
+  await h.command('prompt', { message: 'DELIVERED:lost' });
   await until(() => h.processed.has('lost'), 'explicit processing after lost admission reply');
-  const processedIndex = h.requests.findIndex(r => r.message_id === 'lost' && r.delivery === 'processed');
+  const processedIndex = h.requests.findLastIndex(r => r.message_id === 'lost' && r.delivery === 'delivered');
   await until(() => h.events.filter(e => e.type === 'agent_settled').length >= 4, 'processing settled');
   await new Promise(resolve => setTimeout(resolve, 3500));
-  assert.equal(h.requests.slice(processedIndex + 1).some(r => r.message_id === 'lost' && r.delivery === 'admitted'), false);
-  for (const id of ['refused', 'unoffered', 'unadmitted']) {
-    assert.equal(h.requests.filter(r => r.message_id === id && r.delivery === 'admitted').length, 1, `${id} final refusal is not retried`);
+  assert.equal(h.requests.slice(processedIndex + 1).some(r => r.message_id === 'lost' && r.delivery === 'delivered'), false);
+  for (const id of ['refused', 'unoffered']) {
+    assert.equal(h.requests.filter(r => r.message_id === id && r.delivery === 'delivered').length, 1, `${id} final refusal is not retried`);
   }
   h.failures.set('transient', 'transient');
   h.offer('transient');
   await until(() => admitted(h.requests, 'transient'), 'first admission temporarily fails');
-  await h.command('prompt', { message: 'PROCESSED:transient' });
+  await h.command('prompt', { message: 'DELIVERED:transient' });
   await until(() => h.processed.has('transient'), 'processing replaces the pending admission retry');
   const transit = h.requests.filter(r => r.message_id === 'transient' && r.action === 'ack');
-  assert.deepEqual(transit.map(r => r.delivery), ['admitted', 'processed']);
+  assert.deepEqual(transit.map(r => r.delivery), ['delivered', 'delivered']);
   assert.equal(JSON.stringify(h.events).includes('PRIVATE_ERROR_TAIL'), false);
   h.waitLong();
   h.failures.set('timer', 'transient'); h.offer('timer');
   await until(() => admitted(h.requests, 'timer'), 'timer message first attempt');
   const retryStart = Date.now();
-  await until(() => h.requests.filter(r => r.message_id === 'timer' && r.delivery === 'admitted').length === 2, 'timer retries while next is blocked');
+  await until(() => h.requests.filter(r => r.message_id === 'timer' && r.delivery === 'delivered').length === 2, 'timer retries while next is blocked');
   assert.ok(Date.now() - retryStart < 5000, 'retry does not wait for the ten-second next response');
   const changed = await harness(t);
   changed.failures.set('changed', 'attachment_changed'); changed.offer('changed');
@@ -327,7 +321,7 @@ test('real Pi: crash before offer response warns; saved native evidence restores
   assert.ok(entries.some(e => e.type === 'message' && e.message.role === 'user' && JSON.stringify(e).includes('FIXTURE_MESSAGE_recorded')));
   await writeFile(path.join(h.root, 'session.jsonl'), entries.map(e => JSON.stringify(e)).join('\n') + '\n');
   await h.restart();
-  await h.command('prompt', { message: 'PROCESSED:recorded' });
+  await h.command('prompt', { message: 'DELIVERED:recorded' });
   await until(() => h.processed.has('recorded'), 'recovered native evidence permits explicit processing');
   assert.equal(userMessage(h.events, 'recorded'), undefined, 'recovery does not resubmit the saved native message');
   await h.command('prompt', { message: 'REPLY:recorded' });

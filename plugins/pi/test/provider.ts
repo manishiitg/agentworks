@@ -76,7 +76,7 @@ export default function (pi: ExtensionAPI) {
       const latest = context.messages.at(-1);
       const text = latest?.role === 'user' ? latest.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '';
       let tool = text === 'FORGE_HOOK' ? { name: 'fixture_forge_hook', arguments: {} } : text === 'BUSY_TOOL' ? { name: 'fixture_wait', arguments: {} } :
-        text.startsWith('PROCESSED:') ? { name: 'agentworks', arguments: { action: 'ack', message_id: text.slice(10), delivery: 'processed' } } :
+        text.startsWith('DELIVERED:') ? { name: 'agentworks', arguments: { action: 'ack', message_id: text.slice(10), delivery: 'delivered' } } :
         text.startsWith('REPLY:') ? { name: 'agentworks', arguments: { action: 'reply', message_id: text.slice(6), message: 'EXPLICIT_REPLY', submission_id: 'fixture-reply-one' } } : undefined;
       // These are receiver-selected tools, never adapter-generated receipts.
       const lastUser = context.messages.findLastIndex(m => m.role === 'user');
@@ -90,14 +90,14 @@ export default function (pi: ExtensionAPI) {
         return ack && !body.includes('NO_ACK') ? [ack[1]] : [];
       });
       const next = offered.find(id => !used.includes(id));
-      if (next) tool = { name: 'agentworks', arguments: { action: 'ack', message_id: next, delivery: 'admitted' } };
+      if (next) tool = { name: 'agentworks', arguments: { action: 'ack', message_id: next, delivery: 'delivered' } };
       const usedTools = context.messages.slice(lastUser + 1).flatMap(m => m.role === 'assistant' ? m.content.filter(p => p.type === 'toolCall').map(p => p.name + ':' + (p.arguments?.action ?? '')) : []);
       if (incoming.startsWith('RECOVER:')) {
         const id = incoming.slice(8);
         if (!usedTools.includes('agentworks:read')) tool = { name: 'agentworks', arguments: { action: 'read', inbox_id: 'original-inbox', after: 0 } };
-        else if (!used.includes(id)) tool = { name: 'agentworks', arguments: { action: 'ack', message_id: id, delivery: 'admitted' } };
+        else if (!used.includes(id)) tool = { name: 'agentworks', arguments: { action: 'ack', message_id: id, delivery: 'delivered' } };
       }
-      if (text.startsWith('ADMITTED:')) tool = { name: 'agentworks', arguments: { action: 'ack', message_id: text.slice(9), delivery: 'admitted' } };
+
       const message = { role: 'assistant'  as const, api: model.api, provider: model.provider, model: model.id,
         content: tool ? [{ type: 'toolCall' as const, id: 'wait-one', name: tool.name, arguments: tool.arguments }] :
           [{ type: 'text' as const, text: 'FIXTURE_RESPONSE' }],

@@ -42,7 +42,7 @@ func TestAgentStreamEndsWhenTheServerGoesSilent(t *testing.T) {
 // a new late arrival (a second turn); a message never seen before is accepted.
 func TestRetiredOfferIsNotTakenForALateArrival(t *testing.T) {
 	s := &localSession{Offers: map[string]localOffer{
-		"old": {AgentLiveMessage: AgentLiveMessage{MessageID: "old", Delivery: "admitted"}, Offered: true, OfferedAt: time.Now().Add(-8 * 24 * time.Hour)},
+		"old": {AgentLiveMessage: AgentLiveMessage{MessageID: "old", Delivery: "delivered"}, Offered: true, OfferedAt: time.Now().Add(-8 * 24 * time.Hour)},
 	}}
 	compactLocalOffers(s, false)
 	if _, still := s.Offers["old"]; still {
