@@ -23,4 +23,8 @@ metadata:
 
 Use browser_connections to list saved connections, get setup, select or disconnect for this project. Connecting is separate from browsing. Use settings for a Goal’s browser mode and the admitted project setup tools for Crew. Load agent-browser before an actual browser task. Use server status as evidence; opening the Browser panel is not proof that the connection succeeded.
 
+When the person needs to sign in or do a manual step, direct them to **Take control** in the Browser panel. They can return control when finished. Recordings are evidence for reviewing a run, not an automatic learned procedure.
+
+When asked to save a working browser task for reuse, follow the project skill authoring guidance: inspect existing skills, write or update a focused `skills/<name>/SKILL.md` with the scoped file tools, and select it for this project where supported. Include the task's inputs, browser steps, expected result and recovery instructions. Verify the saved file and selection; describe only checks actually performed. Do not store passwords, cookies or other secret values in the skill. No separate teaching, draft-review or publishing flow is required.
+
 For saved-browser selection, read [configuration](references/configuration.md).

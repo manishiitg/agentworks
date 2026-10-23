@@ -2615,7 +2615,7 @@ export default function LearningApp() {
 
               {drawerTab === 'browser' && (
                 <div className="fl-browser-view fl-platform-ui">
-                  <WorkflowLiveBrowser workspacePath={FAMILY_WORKSPACE} scopeNoun="project" profileId={PARENT_PROFILE_ID} allowTeaching={false} minimal />
+                  <WorkflowLiveBrowser workspacePath={FAMILY_WORKSPACE} scopeNoun="project" profileId={PARENT_PROFILE_ID} minimal />
                 </div>
               )}
 

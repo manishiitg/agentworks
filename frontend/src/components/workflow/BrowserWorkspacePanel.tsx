@@ -8,7 +8,6 @@ import WorkflowLiveBrowser, { type BrowserEmptyStateActions } from './WorkflowLi
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './WorkspaceViewActions'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
-import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { openBrowserConnections } from '../BrowserConnectionsDialog'
@@ -90,7 +89,7 @@ export function BrowserWorkspacePanel({
         <PlugZap className="h-4 w-4 shrink-0" aria-hidden="true" />{connection.status.account_connected ? 'Choose a saved browser' : 'Connect Chrome or Edge'}
         <ArrowRight className="ml-auto h-4 w-4 shrink-0" aria-hidden="true" />
       </Button>
-      <p className="text-xs leading-relaxed text-muted-foreground">Connect once to your account, then use it across projects. To watch and teach a task here, use the workspace browser.</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">Connect once to your account, then use it across projects. Use the workspace browser to watch and control it here.</p>
     </div>}
     {isBrowserCDPEnabled() && <Button type="button" variant="ghost" disabled={connection.busy} onClick={() => { void changeChoice('cdp').then(() => setSettingsOpen(true)) }} className="h-auto whitespace-normal text-xs">Advanced browser connection</Button>}
   </div> : null
@@ -102,7 +101,7 @@ export function BrowserWorkspacePanel({
     <div className="space-y-2">
       <h3 className="text-base font-semibold">Your browser will appear here</h3>
       <p className="text-sm leading-relaxed text-muted-foreground">When your helper browses a website or runs a browser test, you can watch it here.</p>
-      <p className="text-xs leading-relaxed text-muted-foreground">You can also open a browser yourself to visit a website or show your helper what to do.</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">You can also open a browser yourself and take control when needed.</p>
     </div>
     {otherBrowsers}
     {canStart && <div className="space-y-2">
@@ -127,9 +126,6 @@ export function BrowserWorkspacePanel({
     })
     : <>{assistantControl}{walkthrough}</>
 
-  const learn = isValidElement<WorkspaceViewActionsProps>(assistantControl) ? assistantControl.props.onAsk : undefined
-  const onLearn = learn ?? (workspacePath ? (message: string) => sendWorkspacePaneMessageToChat({ workspacePath, message }) : undefined)
-
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col">
       {connection.loading ? <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Checking browser connection…</div> : extensionView ? <>
@@ -147,7 +143,7 @@ export function BrowserWorkspacePanel({
             {!connection.status.connected && browserOptions}
           </div>
         </div>
-      </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} onLearn={onLearn} emptyContent={emptyBrowser} showGuide={false} toolbar={<>
+      </> : <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} emptyContent={emptyBrowser} showGuide={false} toolbar={<>
         <WorkspaceViewIconButton label="Browser settings" icon={Settings2} onClick={() => setSettingsOpen(value => !value)} />
         {guidedAssistantControl}
       </>} />}

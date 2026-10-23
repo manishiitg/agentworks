@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { BrowserWorkspacePanel } from './BrowserWorkspacePanel'
 import { TooltipProvider } from '../ui/tooltip'
-import { getDisplaySafeUserMessageContent } from '../../utils/chatMessageContent'
 import WorkflowLiveBrowser, { BROWSER_RECONNECT_ATTEMPTS, browserReconnectDelayMs, mapToViewport } from './WorkflowLiveBrowser'
 const api = vi.hoisted(() => ({ defaults: {}, get: vi.fn(), post: vi.fn() }))
 const addToast = vi.hoisted(() => vi.fn())
@@ -546,19 +545,7 @@ it('lets the user start a scoped browser before an agent opens one', async () =>
  expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/workspace-browser/stream')
 })
 
-it('starts teaching from one click without asking for a task name or description', async () => {
-  api.get.mockResolvedValue({ data: { sessions: [shared] } })
-  const { host } = await mountBrowser()
-  const ws = FakeSocket.instances.at(-1)!
-  await act(async () => { ws.onmessage?.(frameMessage()) })
-  await act(async () => { buttonNamed(host, 'Teach task')!.click() })
-  expect(ws.send.mock.calls.map(([message]) => JSON.parse(message))).toContainEqual({ type: 'take_control' })
-  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) }) })
-  expect(ws.send.mock.calls.map(([message]) => JSON.parse(message))).toContainEqual({ type: 'teach_start' })
-  expect(host.querySelector('[aria-label="Task goal"]')).toBeNull()
-})
-
-it('hides startup for an existing browser and supports per-tab close while teaching', async () => {
+it('hides startup for an existing browser and supports manual tabs without teaching controls', async () => {
   api.get.mockResolvedValue({ data: { sessions: [shared] } })
   const { host } = await mountBrowser()
   expect(buttonNamed(host, 'Start browser')).toBeUndefined()
@@ -567,9 +554,8 @@ it('hides startup for an existing browser and supports per-tab close while teach
     ws.onmessage?.(frameMessage())
     ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
     ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'One', active: true }, { tabId: 't2', title: 'Two', active: false }] }) })
-    ws.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { id: 'demo', status: 'recording', actions: [] } }) })
   })
-  expect(host.querySelector('.live-browser-bar')?.textContent).toContain('Teach task')
+  expect(buttonNamed(host, 'Teach task')).toBeUndefined()
   expect(buttonNamed(host, 'Start browser')).toBeUndefined()
   await act(async () => { buttonNamed(host, 'New tab')!.click(); buttonNamed(host, 'Close One')!.click(); buttonNamed(host, 'Two')!.click() })
   const sent = ws.send.mock.calls.map(([message]) => JSON.parse(message))
@@ -578,24 +564,10 @@ it('hides startup for an existing browser and supports per-tab close while teach
   expect(sent).toContainEqual({ type: 'switch_tab', tab: 't2' })
 })
 
-it('sends review records to the helper as hidden file context with a plain chat request', async () => {
-  api.get.mockResolvedValue({ data: { sessions: [shared] } })
-  const { root } = await mountBrowser()
-  const onLearn = vi.fn()
-  await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Workflow/test" onLearn={onLearn} />) })
-  const ws = FakeSocket.instances.at(-1)!
-  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { id: 'demo', status: 'draft', goal: 'Export customers', directory: 'Workflow/test/browser-demonstrations/demo' } }) }) })
-  const prompt = onLearn.mock.calls[0][0]
-  expect(prompt).toContain('browser-demonstrations/demo/manifest.json')
-  expect(prompt).toContain('Keep the status draft')
-  expect(getDisplaySafeUserMessageContent(prompt)).toBe('Prepare my demonstrated task for reuse: Export customers.')
-})
-
-it('keeps startup and tab controls while disabling teaching in SparkQuill', async () => {
-  const onLearn = vi.fn()
+it('keeps startup and tab controls in the minimal browser', async () => {
   api.get.mockResolvedValue({ data: { sessions: [] } })
   const { root, host } = await mountBrowser()
-  await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Chats/SparkQuill" profileId="sparkquill" allowTeaching={false} minimal onLearn={onLearn} />) })
+  await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Chats/SparkQuill" profileId="sparkquill" minimal />) })
   api.post.mockResolvedValueOnce({ data: { browser_session: 'workspace-browser' } })
   await act(async () => { buttonNamed(host, 'Start browser')!.click() })
   expect(api.post).toHaveBeenCalledWith('/api/browser/workspace', { action: 'start' }, expect.objectContaining({ params: { workspace_path: 'Chats/SparkQuill', profile_id: 'sparkquill' } }))
@@ -606,8 +578,6 @@ it('keeps startup and tab controls while disabling teaching in SparkQuill', asyn
     ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'One', active: true }, { tabId: 't2', title: 'Two', active: false }] }) })
   })
   expect(buttonNamed(host, 'Teach task')).toBeUndefined()
-  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { status: 'draft', goal: 'Export', directory: 'Chats/SparkQuill/browser-demonstrations/demo' } }) }) })
-  expect(onLearn).not.toHaveBeenCalled()
   expect(host.querySelector('[aria-label="Browser page size"]')).not.toBeNull()
   await act(async () => { buttonNamed(host, 'Two')!.click(); buttonNamed(host, 'New tab')!.click(); buttonNamed(host, 'Close One')!.click() })
   expect(ws.send.mock.calls.map(([message]) => JSON.parse(message))).toEqual(expect.arrayContaining([
@@ -680,7 +650,7 @@ it('keeps tab controls by the tabs and navigation mutations behind manual contro
   expect(ws.send.mock.calls.map(([value]) => JSON.parse(value))).toEqual(expect.arrayContaining([{ type: 'history', action: 'back' }, { type: 'history', action: 'forward' }, { type: 'history', action: 'reload' }]))
 })
 
-it('recovers a previously controlled managed browser once and never restarts teaching', async () => {
+it('recovers a previously controlled managed browser once', async () => {
   const managed = { browser_session: 'project-0123456789abcdef--browser', workflow_session: 'workspace', label: 'Code browser' }
   api.get.mockResolvedValue({ data: { sessions: [managed] } })
   const { host } = await mountBrowser(true)
@@ -688,7 +658,6 @@ it('recovers a previously controlled managed browser once and never restarts tea
   await act(async () => {
     first.onmessage?.(frameMessage())
     first.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
-    first.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { status: 'recording', goal: 'A task' } }) })
     first.onclose?.()
     vi.advanceTimersByTime(1000)
   })
@@ -700,8 +669,6 @@ it('recovers a previously controlled managed browser once and never restarts tea
   expect(recoveries()[0][2].params.workspace_path).toBe('Workflow/test')
   await act(async () => { FakeSocket.instances.at(-1)!.onclose?.(); vi.advanceTimersByTime(15000) })
   expect(recoveries()).toHaveLength(1)
-  expect(FakeSocket.instances.flatMap(socket => socket.send.mock.calls).some(([value]) => JSON.parse(value).type === 'teach_start')).toBe(false)
-  expect(host.textContent).not.toContain('Recording your task')
 })
 
 it('never launches a missing managed browser for a passive viewer', async () => {

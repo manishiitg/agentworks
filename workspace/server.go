@@ -203,10 +203,9 @@ func registerAPIRoutes(r *gin.Engine) {
 		// CDP connectivity check (used by frontend to verify Chrome is reachable from container)
 		api.GET("/cdp-check", handlers.CheckCdpConnection)
 
-		// Live browser viewer, recording and teaching
+		// Live browser viewer and recording
 		api.GET("/browser/live/:session/stream", requireWorkspaceAPIToken(), handlers.BrowserLiveStream)
 		api.POST("/browser/live/:session/recording", requireWorkspaceAPIToken(), handlers.BrowserRecording)
-		api.POST("/browser/live/:session/teaching", requireWorkspaceAPIToken(), handlers.BrowserTeaching)
 		api.POST("/browser/live/:session/text", requireWorkspaceAPIToken(), handlers.BrowserViewerText)
 		api.POST("/browser/live/:session/restore-tabs", requireWorkspaceAPIToken(), handlers.BrowserRestoreTabs)
 

@@ -1,16 +1,13 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -330,107 +327,6 @@ func workspaceBrowserEndpoint() string {
 		return "http://127.0.0.1:8081"
 	}
 	return endpoint
-}
-func forwardTeaching(ctx context.Context, session string, payload any) (json.RawMessage, error) {
-	data, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, "POST", workspaceBrowserEndpoint()+"/api/browser/live/"+session+"/teaching", bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Workspace-Token", os.Getenv("WORKSPACE_API_TOKEN"))
-	response, err := (&http.Client{Timeout: 100 * time.Second}).Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
-	if err != nil {
-		return nil, err
-	}
-	if response.StatusCode != 200 {
-		var result struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(body, &result) == nil && result.Error != "" {
-			return nil, fmt.Errorf("%s", result.Error)
-		}
-		return nil, fmt.Errorf("Teaching request failed (%d)", response.StatusCode)
-	}
-	return body, nil
-}
-
-func (api *StreamingAPI) handleBrowserTeaching(w http.ResponseWriter, r *http.Request) {
-	workspace := strings.TrimSpace(r.URL.Query().Get("workspace_path"))
-	var payload map[string]any
-	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&payload) != nil {
-		http.Error(w, "Invalid teaching request", 400)
-		return
-	}
-	action, _ := payload["action"].(string)
-	readonly := action == "list" || action == "status"
-	physical, err := api.browserWorkspaceAccess(r, workspace, r.URL.Query().Get("profile_id"), !readonly)
-	if err != nil {
-		http.Error(w, err.Error(), 403)
-		return
-	}
-	session := mux.Vars(r)["session"]
-	if session != browserSessionForWorkspace(GetUserIDFromContext(r.Context()), workspace) {
-		http.Error(w, "Browser belongs to another workspace", 403)
-		return
-	}
-	if action == "review_status" {
-		id, _ := payload["id"].(string)
-		outcome, _ := payload["outcome"].(string)
-		if id == "" || len(id) > 80 || (outcome != "queued" && outcome != "failed") {
-			http.Error(w, "Invalid teaching review status", http.StatusBadRequest)
-			return
-		}
-		// This is the client's queue receipt, not proof that the helper finished.
-		// Never include demonstration contents or a raw client error in the log.
-		log.Printf("[BROWSER_TEACH] event=review_handoff workspace=%q demo=%q outcome=%q", workspace, id, outcome)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	payload["workspace_path"] = physical
-	// Direct local Chrome teaching can hold control without a viewer socket.
-	// Remote viewer teaching is handled on its already-controlled WebSocket.
-	if action == "start" || action == "pause" || action == "resume" || action == "finish" || action == "cancel" || action == "interrupt" || action == "flush" || action == "select_tab" || action == "prepare_close" || action == "prepare_navigation" || action == "cancel_navigation" {
-		http.Error(w, "Take control and start teaching in the browser viewer", 409)
-		return
-	}
-	var release func()
-	if action == "test" {
-		var ok bool
-		release, ok = browser.TryTakeWorkspaceBrowserControl(session)
-		if !ok {
-			http.Error(w, "Return browser control before testing", 409)
-			return
-		}
-		defer release()
-	}
-	body, err := forwardTeaching(r.Context(), session, payload)
-	if err != nil {
-		http.Error(w, err.Error(), 502)
-		return
-	}
-	if action == "publish" && isProjectWorkspacePath(workspace) {
-		var saved struct {
-			ID     string `json:"id"`
-			Status string `json:"status"`
-		}
-		if json.Unmarshal(body, &saved) != nil || saved.Status != "saved" {
-			http.Error(w, "Invalid saved browser procedure", 502)
-			return
-		}
-		product, _, _ := projectProductForPath(workspace)
-		if err := updateProductSelectedSkills(r.Context(), product.ProfileID, physical, func(current []string) []string { return appendUniqueStrings(current, "browser-"+saved.ID) }); err != nil {
-			http.Error(w, "Procedure saved, but could not select it for future chats. Retry Save for reuse or select it in Setup > Skills.", 502)
-			return
-		}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(body)
 }
 
 // Restoring is a trusted operation in the workspace namespace. The route has

@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"github.com/gin-gonic/gin"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -57,7 +57,7 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 	received := make(chan map[string]interface{}, 8)
 	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/documents/") {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]string{"content": `{"version":"1","id":"test","label":"Test"}`}})
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]string{"content": `{"version":"1","id":"test","label":"Test","pulse":{"enabled":false,"outward_actions":"ask"}}`}})
 			return
 		}
 		if r.Header.Get("X-Workspace-Token") != "test-service-token" {
@@ -73,13 +73,6 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 			json.NewDecoder(r.Body).Decode(&request)
 			received <- request
 			json.NewEncoder(w).Encode(map[string]bool{"success": true})
-			return
-		}
-		if strings.HasSuffix(r.URL.Path, "/teaching") {
-			var request map[string]interface{}
-			json.NewDecoder(r.Body).Decode(&request)
-			received <- request
-			json.NewEncoder(w).Encode(map[string]interface{}{"status": "recording", "id": "test"})
 			return
 		}
 		if r.URL.Path == "/api/execute" {
@@ -205,48 +198,20 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("resize not executed")
 	}
-	conn.WriteJSON(map[string]string{"type": "teach_start", "goal": "Use tabs"})
-	readType("teaching")
-	select {
-	case request := <-received:
-		if request["action"] != "start" {
-			t.Fatal(request)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("Teaching did not start")
-	}
-	for _, change := range []map[string]string{{"type": "new_tab", "url": "https://example.com"}, {"type": "switch_tab", "tab": "t2"}} {
+	for _, change := range []map[string]string{{"type": "new_tab", "url": "https://example.com"}, {"type": "switch_tab", "tab": "t2"}, {"type": "navigate", "url": "https://example.com/second"}} {
 		conn.WriteJSON(change)
-		for _, expected := range []string{"flush", "command", "select_tab"} {
-			select {
-			case request := <-received:
-				if expected == "command" {
-					command, _ := request["command"].(string)
-					if !strings.Contains(command, "tab") {
-						t.Fatal(request)
-					}
-				} else if request["action"] != expected {
-					t.Fatal(request)
-				}
-			case <-time.After(time.Second):
-				t.Fatalf("Missing tab operation %s", expected)
-			}
-		}
-	}
-	conn.WriteJSON(map[string]string{"type": "navigate", "url": "https://example.com/second"})
-	for _, expected := range []string{"flush", "prepare_navigation", "command"} {
 		select {
 		case request := <-received:
-			if expected == "command" {
-				command, _ := request["command"].(string)
-				if !strings.Contains(command, "open") || !strings.Contains(command, "https://example.com/second") {
+			command, _ := request["command"].(string)
+			if change["type"] == "navigate" {
+				if !strings.Contains(command, "open") || !strings.Contains(command, change["url"]) {
 					t.Fatal(request)
 				}
-			} else if request["action"] != expected {
+			} else if !strings.Contains(command, "tab") {
 				t.Fatal(request)
 			}
 		case <-time.After(time.Second):
-			t.Fatalf("Missing navigation operation %s", expected)
+			t.Fatalf("Missing browser operation %s", change["type"])
 		}
 	}
 	conn.WriteJSON(map[string]interface{}{"type": "resize_viewport", "width": 900, "height": 99999})
@@ -300,7 +265,7 @@ func TestLiveBrowserInputFlowsWhileNavigateRuns(t *testing.T) {
 	releaseNav := make(chan struct{})
 	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/documents/") {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]string{"content": `{"version":"1","id":"test","label":"Test"}`}})
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]string{"content": `{"version":"1","id":"test","label":"Test","pulse":{"enabled":false,"outward_actions":"ask"}}`}})
 			return
 		}
 		if r.URL.Path == "/api/execute" {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
-	"github.com/manishiitg/coding-agent-loop/workspace/browserteach"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"github.com/spf13/viper"
 )
@@ -22,8 +22,8 @@ import (
 // Qualifies the actual guarded shell path, not just direct CLI execution. Each
 // browser/profile/socket belongs to this temporary fixture and is removed.
 func TestBrowserRealGuardedStartup(t *testing.T) {
-	if os.Getenv("RUN_BROWSER_TEACH_E2E") != "1" {
-		t.Skip("set RUN_BROWSER_TEACH_E2E=1 for owned Chrome")
+	if os.Getenv("RUN_BROWSER_E2E") != "1" {
+		t.Skip("set RUN_BROWSER_E2E=1 for owned Chrome")
 	}
 	t.Setenv("NATIVE_WORKSPACE", "true")
 	t.Setenv(slots.EnvEnabled, "off")
@@ -92,7 +92,7 @@ func TestBrowserRealGuardedStartup(t *testing.T) {
 		closeArgs := append([]string{"close"}, launch...)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, _ = runTeachCommand(ctx, browserconfig.SocketDirForSession(session), session, closeArgs...)
+		_, _ = runBrowserFixtureCommand(ctx, browserconfig.SocketDirForSession(session), session, closeArgs...)
 		os.RemoveAll(browserconfig.SocketDirForSession(session))
 	}()
 	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +109,7 @@ func TestBrowserRealGuardedStartup(t *testing.T) {
 	if !strings.Contains(string(run("eval", "localStorage.getItem('signed_in_fixture')")), `"yes"`) {
 		t.Fatal("Repeated startup lost sign-in")
 	}
-	// Teaching must attach to the guarded daemon without changing its process.
+	// Diagnostic capture must keep the guarded daemon and signed-in profile.
 	_, socket, err := browserLiveEndpoint(session)
 	if err != nil {
 		t.Fatal(err)
@@ -118,36 +118,12 @@ func TestBrowserRealGuardedStartup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	teachBody, _ := json.Marshal(map[string]any{"action": "start", "goal": "Guarded teaching fixture", "workspace_path": workspace, "launch_args": launch})
-	teachResponse := httptest.NewRecorder()
-	teachContext, _ := gin.CreateTestContext(teachResponse)
-	teachContext.Params = gin.Params{{Key: "session", Value: session}}
-	teachContext.Request = httptest.NewRequest("POST", "/", strings.NewReader(string(teachBody)))
-	teachContext.Request.Header.Set("Content-Type", "application/json")
-	BrowserTeaching(teachContext)
-	if teachResponse.Code != 200 {
-		t.Fatalf("Guarded teaching: HTTP %d %s", teachResponse.Code, teachResponse.Body.String())
-	}
-	after, err := os.ReadFile(filepath.Join(socket, session+".pid"))
-	if err != nil || string(before) != string(after) {
-		t.Fatalf("Teaching restarted the browser: before=%s after=%s err=%v", before, after, err)
-	}
-	if value, ok := teachingActive.Load(session); ok {
-		stopTeach(value.(*teachState), "cancelled")
-	}
-	if err := replayTeach(context.Background(), socket, session, &teachState{Actions: []browserteach.Action{{ID: 1, Kind: "navigate", Page: "root", URL: fixture.URL}}, Check: teachCheck{Kind: "text", Value: "Browser ready"}}, nil); err != nil {
-		t.Fatalf("Guarded replay: %v", err)
-	}
-	after, err = os.ReadFile(filepath.Join(socket, session+".pid"))
-	if err != nil || string(before) != string(after) {
-		t.Fatal("Replay restarted the browser", err)
-	}
 	for _, args := range [][]string{{"network", "har", "start", "--content", "none"}, {"console", "--clear"}, {"errors", "--clear"}, {"network", "har", "stop", os.DevNull}} {
 		if _, err := runCaptureCommand(context.Background(), socket, session, args...); err != nil {
 			t.Fatalf("Managed capture %v: %v", args, err)
 		}
 	}
-	after, err = os.ReadFile(filepath.Join(socket, session+".pid"))
+	after, err := os.ReadFile(filepath.Join(socket, session+".pid"))
 	if err != nil || string(before) != string(after) {
 		t.Fatal("Capture restarted browser", err)
 	}
@@ -221,4 +197,30 @@ func TestBrowserRealGuardedStartup(t *testing.T) {
 		t.Fatal("Restored tabs lost sign-in")
 	}
 
+}
+
+func runBrowserFixtureCommand(ctx context.Context, socket, session string, args ...string) ([]byte, error) {
+	argv := append([]string{"--session", session}, args...)
+	argv = append(argv, "--json")
+	cmd := exec.CommandContext(ctx, "agent-browser", argv...)
+	for _, env := range os.Environ() {
+		if !strings.HasPrefix(env, "AGENT_BROWSER_SOCKET_DIR=") {
+			cmd.Env = append(cmd.Env, env)
+		}
+	}
+	cmd.Env = append(cmd.Env, "AGENT_BROWSER_SOCKET_DIR="+socket)
+	var diagnostics strings.Builder
+	cmd.Stderr = &diagnostics
+	out, err := cmd.Output()
+	if err != nil {
+		return out, fmt.Errorf("Browser command failed: %s", strings.TrimSpace(diagnostics.String()))
+	}
+	var result struct {
+		Success *bool  `json:"success"`
+		Error   string `json:"error"`
+	}
+	if json.Unmarshal(out, &result) == nil && result.Success != nil && !*result.Success {
+		return out, fmt.Errorf("%s", result.Error)
+	}
+	return out, nil
 }

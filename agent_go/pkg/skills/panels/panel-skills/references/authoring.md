@@ -1,5 +1,18 @@
 # project skills
 
+## Save a browser procedure from chat
+
+A request such as “Save how we did that as a reusable skill” uses the normal
+project skill tools and file access. Inspect the existing skills, then create or
+update `skills/<name>/SKILL.md` with the verified steps, variable inputs, expected
+result and what to do when the website changes. Use the project's existing
+browser tools; **Take control** lets the person sign in or complete a manual
+step. A video alone does not prove the procedure works. Preserve only useful
+instructions, never passwords, cookies or secret values. Read back the file,
+list the skill, and select it using this product's existing selection tool when
+available. Explain any untested steps plainly. There is no separate browser
+teaching or publish requirement.
+
 ## What the inventory means
 
 Custom skills are extra files in this workspace, not proof that the person
@@ -31,17 +44,19 @@ requested scope first.
   creating another skill. Use `search_skills` to discover an existing skill.
 - Use `install_skill` for a discovered skill and `import_skill` for a supplied
   skill source. Installation stays in the current workspace; selecting it for an agent is
-  a separate action. Call `update_project_skill_selection(action="select",
-  skill="folder-name")` with the exact folder returned by `list_skills`.
-  Use `action="deselect"` to remove only this project's selection. The same
+  a separate action. For Crew, call
+  `update_project_skill_selection(action="select", skill="folder-name")` with
+  the exact folder returned by `list_skills`; `action="deselect"` removes only
+  this project's selection. For a Goal, update its selected skills through
+  `settings action=update` using the current settings version. The same
   selection is managed through chat. **Build > Skills** (or Recent) shows
   installed custom skills for reading; it has no select or uninstall buttons.
 - When the user explicitly asks to preserve or improve a repeatable procedure,
   create or update a focused custom skill inside this project project at
   `skills/<skill-name>/SKILL.md`. This is project-local durable knowledge, like
   the root `MEMORY.md`; keep skills scoped to this workspace. Inspect the names and descriptions of every existing project skill
-  before choosing a destination, then select the skill for this project with
-  `update_project_skill_selection` so the runtime can load it.
+  before choosing a destination, then select the skill with this product's existing settings or selection tool
+  so the runtime can load it.
 - Update an existing skill only when the new knowledge has the same topic and
   would be loaded for the same kind of future request. Create a separate,
   clearly named skill when the topic, external system, audience, trigger, or

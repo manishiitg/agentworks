@@ -19,12 +19,12 @@ vi.mock('../../components/workflow/BrowserWorkspacePanel', () => ({
 
 afterEach(() => { browser.prepare = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-it('sends a finished demonstration into the named chat represented by the Browser pane', async () => {
+it('sends browser help to the named chat represented by the Browser pane', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.spyOn(api, 'get').mockResolvedValue({ data: { mode: 'headless', port: 9222 } } as Awaited<ReturnType<typeof api.get>>)
   const previous = useChatStore.getState()
   const root = createRoot(document.createElement('div'))
-  const tabId = await previous.createChatTab('My browser task', {
+  const tabId = await previous.createChatTab('My browser chat', {
     mode: 'multi-agent', agentProfileId: 'work', agentProfileProjectId: 'crew-one',
     agentProfileConversationKey: 'crew-one:chat:mine', agentProfileBuilder: false,
     agentProfileWorkspace: 'Crew/example-crew-one',
@@ -34,8 +34,8 @@ it('sends a finished demonstration into the named chat represented by the Browse
       <WorkBrowserPanel tabId={tabId} workspacePath="Crew/example-crew-one" onAsk={message => sendWorkspacePaneMessageToChat({ tabId, message })} />
     </ProjectProductProvider>))
     expect(browser.prepare).toBeDefined()
-    await act(async () => { await browser.prepare!('Prepare my recorded browser task') })
-    expect(useChatStore.getState().getTabConfig(tabId)?.queuedMessages).toContain('Prepare my recorded browser task')
+    await act(async () => { await browser.prepare!('Help me save this browser procedure as a skill') })
+    expect(useChatStore.getState().getTabConfig(tabId)?.queuedMessages).toContain('Help me save this browser procedure as a skill')
     expect(useChatStore.getState().activeTabId).toBe(tabId)
   } finally {
     act(() => root.unmount())

@@ -215,16 +215,10 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 	// Control state is shared with the command worker below; stateMu guards it.
 	var stateMu sync.Mutex
 	var releaseControl func()
-	teachingActive := false
 	controlHeld := func() bool {
 		stateMu.Lock()
 		defer stateMu.Unlock()
 		return releaseControl != nil
-	}
-	teachingOn := func() bool {
-		stateMu.Lock()
-		defer stateMu.Unlock()
-		return teachingActive
 	}
 	workspace := r.URL.Query().Get("workspace_path")
 	physical := workspace
@@ -232,11 +226,6 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 		physical = browserProjectKey(GetUserIDFromContext(r.Context()), workspace)
 	}
 	defer func() {
-		if teachingOn() {
-			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cleanupCancel()
-			_, _ = forwardTeaching(cleanupCtx, session, map[string]any{"action": "interrupt", "workspace_path": physical})
-		}
 		stateMu.Lock()
 		release := releaseControl
 		releaseControl = nil
@@ -310,7 +299,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 		}
 		return api.canControlLiveBrowser(ctx, GetUserFromContext(r.Context()), workspace)
 	}
-	// Browser commands (open, tab, resize, teaching, paste) can take seconds.
+	// Browser commands (open, tab, resize, paste) can take seconds.
 	// Running them in the viewer read loop stalled input forwarding and pings
 	// behind them, so clicks landed late or not at all (PLAT-776). One ordered
 	// worker per viewer runs them in arrival order from a bounded queue; the
@@ -352,7 +341,6 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			Tab       string `json:"tab"`
 			Width     int    `json:"width"`
 			Height    int    `json:"height"`
-			Goal      string `json:"goal"`
 			URL       string `json:"url"`
 			Action    string `json:"action"`
 			RequestID string `json:"requestId"`
@@ -390,34 +378,6 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 				}
 			}
 			_ = send(map[string]interface{}{"type": "viewer_control", "controlling": true, "platform": runtime.GOOS})
-		case "teach_start", "teach_pause", "teach_resume", "teach_finish", "teach_cancel":
-			action := strings.TrimPrefix(message.Type, "teach_")
-			goal := message.Goal
-			enqueue(func() {
-				if !controlHeld() || !canControl() {
-					sendError("Take control before teaching.")
-					return
-				}
-				result, err := forwardTeaching(ctx, session, map[string]any{"action": action, "goal": goal, "workspace_path": physical})
-				if err != nil {
-					sendError(err.Error())
-					return
-				}
-				stateMu.Lock()
-				teachingActive = action != "finish" && action != "cancel"
-				stateMu.Unlock()
-				_ = send(map[string]any{"type": "teaching", "state": result})
-				if action == "finish" || action == "cancel" {
-					stateMu.Lock()
-					release := releaseControl
-					releaseControl = nil
-					stateMu.Unlock()
-					if release != nil {
-						release()
-					}
-					_ = send(map[string]any{"type": "viewer_control", "controlling": false, "platform": runtime.GOOS})
-				}
-			})
 		case "navigate", "history":
 			command := []string{"open", message.URL}
 			if message.Type == "history" {
@@ -439,29 +399,12 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 				if !controlHeld() || !canControl() {
 					return
 				}
-				if teachingOn() {
-					if _, e := forwardTeaching(ctx, session, map[string]any{"action": "flush", "workspace_path": physical}); e != nil {
-						sendError("Unable to finish recording the current page.")
-						return
-					}
-					if _, e := forwardTeaching(ctx, session, map[string]any{"action": "prepare_navigation", "workspace_path": physical}); e != nil {
-						sendError("Unable to record opening this address.")
-						return
-					}
-				}
 				_, err := browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), append([]string{"--session", session}, append(command, "--json")...)...), workspaceBrowserExecuteOptions(userID, physical, session, 30*time.Second))
 				if err != nil {
-					if teachingOn() {
-						_, _ = forwardTeaching(ctx, session, map[string]any{"action": "cancel_navigation", "workspace_path": physical})
-					}
 					sendError("Unable to open this address.")
 				}
 			})
 		case "release_control":
-			if teachingOn() {
-				sendError("Finish or cancel teaching before returning control.")
-				continue
-			}
 			stateMu.Lock()
 			release := releaseControl
 			releaseControl = nil
@@ -542,18 +485,6 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 					}
 					command = []string{"tab", "close", tabRef}
 				}
-				if teachingOn() {
-					if _, e := forwardTeaching(ctx, session, map[string]any{"action": "flush", "workspace_path": physical}); e != nil {
-						sendError("Unable to finish recording the current tab.")
-						return
-					}
-					if msgType == "close_tab" {
-						if _, e := forwardTeaching(ctx, session, map[string]any{"action": "prepare_close", "workspace_path": physical}); e != nil {
-							sendError("Unable to record the tab change.")
-							return
-						}
-					}
-				}
 				if _, e := run(command...); e != nil {
 					sendError("Unable to change browser tabs.")
 					return
@@ -562,11 +493,6 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 					if _, e := run("tab", recovery); e != nil {
 						sendError("Select another browser tab to continue.")
 						return
-					}
-				}
-				if teachingOn() {
-					if _, e := forwardTeaching(ctx, session, map[string]any{"action": "select_tab", "workspace_path": physical}); e != nil {
-						sendError("Unable to record the selected tab. Finish teaching and ask your helper to adjust the task.")
 					}
 				}
 			})

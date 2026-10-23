@@ -11,7 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
-	"github.com/manishiitg/coding-agent-loop/workspace/browserteach"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/spf13/viper"
 	"net/http"
@@ -19,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 )
 
@@ -83,51 +81,38 @@ func TestWorkspaceBrowserStartsWithoutChatAndEnforcesScope(t *testing.T) {
 			json.NewEncoder(w).Encode(map[string]bool{"success": true})
 			return
 		}
-		if strings.HasSuffix(r.URL.Path, "/teaching") {
-			var payload map[string]any
-			json.NewDecoder(r.Body).Decode(&payload)
-			if payload["workspace_path"] != "Workflow/one" {
-				t.Error("caller chose upstream workspace")
-			}
-			json.NewEncoder(w).Encode(map[string]string{"status": "idle"})
-			return
-		}
 		http.NotFound(w, r)
 	}))
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	api := &StreamingAPI{}
-	call := func(user, route, body string, teaching bool) *httptest.ResponseRecorder {
+	call := func(user, route, body string) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest("POST", route, strings.NewReader(body))
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user}))
 		response := httptest.NewRecorder()
-		if teaching {
-			api.handleBrowserTeaching(response, req)
-		} else {
-			api.handleWorkspaceBrowser(response, req)
-		}
+		api.handleWorkspaceBrowser(response, req)
 		return response
 	}
 	session := browserSessionForWorkspace("alice", "Workflow/one")
 	defer browser.GetSessionTracker().Remove(session)
 	for _, user := range []string{"", "bob", "stranger"} {
-		r := call(user, "/?workspace_path=Workflow/one", `{"action":"start"}`, false)
+		r := call(user, "/?workspace_path=Workflow/one", `{"action":"start"}`)
 		if r.Code != 403 {
 			t.Fatalf("%q can start: %d %s", user, r.Code, r.Body.String())
 		}
 	}
 	for _, bad := range []string{"Workflow/one/../other", "_users/alice/Chats/Code/projects/p/../../../../../bob", "/Workflow/one"} {
-		if r := call("alice", "/?workspace_path="+bad, `{"action":"start"}`, false); r.Code != 403 {
+		if r := call("alice", "/?workspace_path="+bad, `{"action":"start"}`); r.Code != 403 {
 			t.Fatal("Unsafe workspace accepted", bad, r.Code)
 		}
 	}
 	for _, user := range []string{"", "bob", "stranger"} {
-		if response := call(user, "/?workspace_path=Workflow/one", `{"action":"recover"}`, false); response.Code != 403 {
+		if response := call(user, "/?workspace_path=Workflow/one", `{"action":"recover"}`); response.Code != 403 {
 			t.Fatal("unwritable recovery was admitted")
 		}
 	}
-	r := call("alice", "/?workspace_path=Workflow/one", `{"action":"start"}`, false)
+	r := call("alice", "/?workspace_path=Workflow/one", `{"action":"start"}`)
 	if r.Code != 200 || !strings.Contains(r.Body.String(), session) {
 		t.Fatalf("cannot start without a chat: %d %s", r.Code, r.Body.String())
 	}
@@ -138,44 +123,19 @@ func TestWorkspaceBrowserStartsWithoutChatAndEnforcesScope(t *testing.T) {
 		t.Fatalf("wrong startup/stream lifecycle: %v", commands)
 	}
 	browser.BindViewerCDPPort(session, 9222)
-	if response := call("alice", "/?workspace_path=Workflow/one", `{"action":"recover"}`, false); response.Code != 409 {
+	if response := call("alice", "/?workspace_path=Workflow/one", `{"action":"recover"}`); response.Code != 409 {
 		t.Fatal("Recovery restarted physical Chrome", response.Code)
 	}
 	browser.BindViewerCDPPort(session, 0)
-	r = call("alice", "/?workspace_path=Workflow/one", `{"action":"save","mode":"cdp","port":9222}`, false)
+	r = call("alice", "/?workspace_path=Workflow/one", `{"action":"save","mode":"cdp","port":9222}`)
 	if r.Code != 400 {
 		t.Fatal("server allowed local Chrome", r.Code)
-	}
-	req := httptest.NewRequest("POST", "/?workspace_path=Workflow/one", strings.NewReader(`{"action":"status","workspace_path":"Workflow/stolen"}`))
-	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "alice"}))
-	req = mux.SetURLVars(req, map[string]string{"session": session})
-	r = httptest.NewRecorder()
-	api.handleBrowserTeaching(r, req)
-	if r.Code != 200 {
-		t.Fatal(r.Code, r.Body.String())
-	}
-	for user, expected := range map[string]int{"alice": http.StatusNoContent, "bob": http.StatusForbidden} {
-		receipt := httptest.NewRequest("POST", "/?workspace_path=Workflow/one", strings.NewReader(`{"action":"review_status","id":"demo-one","outcome":"queued"}`))
-		receipt = receipt.WithContext(context.WithValue(receipt.Context(), UserContextKey, &UserClaims{UserID: user}))
-		receipt = mux.SetURLVars(receipt, map[string]string{"session": session})
-		response := httptest.NewRecorder()
-		api.handleBrowserTeaching(response, receipt)
-		if response.Code != expected {
-			t.Fatalf("teaching review receipt for %q: got %d, want %d", user, response.Code, expected)
-		}
-	}
-	req = mux.SetURLVars(req, map[string]string{"session": "another-browser"})
-	req.Body = http.NoBody
-	r = httptest.NewRecorder()
-	api.handleBrowserTeaching(r, req)
-	if r.Code == 200 {
-		t.Fatal("invalid teaching request accepted")
 	}
 	release, ok := browser.TryTakeBrowserControl(session)
 	if !ok {
 		t.Fatal("startup leaked control gate")
 	}
-	r = call("alice", "/?workspace_path=Workflow/one", `{"action":"start"}`, false)
+	r = call("alice", "/?workspace_path=Workflow/one", `{"action":"start"}`)
 	release()
 	if r.Code != 409 {
 		t.Fatal("startup interrupted manual control", r.Code)
@@ -184,8 +144,8 @@ func TestWorkspaceBrowserStartsWithoutChatAndEnforcesScope(t *testing.T) {
 
 // Qualify the actual user-start bridge, not just a mocked execute response.
 func TestWorkspaceBrowserStartsRealChrome(t *testing.T) {
-	if os.Getenv("RUN_BROWSER_TEACH_E2E") != "1" {
-		t.Skip("set RUN_BROWSER_TEACH_E2E=1 for owned Chrome")
+	if os.Getenv("RUN_BROWSER_E2E") != "1" {
+		t.Skip("set RUN_BROWSER_E2E=1 for owned Chrome")
 	}
 	if _, err := exec.LookPath("agent-browser"); err != nil {
 		t.Fatal(err)
@@ -221,7 +181,6 @@ func TestWorkspaceBrowserStartsRealChrome(t *testing.T) {
 	}()
 	router := gin.New()
 	router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
-	router.POST("/api/browser/live/:session/teaching", workspacehandlers.BrowserTeaching)
 	router.POST("/api/browser/live/:session/restore-tabs", workspacehandlers.BrowserRestoreTabs)
 	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Workspace-Token") != "start-real-token" {
@@ -229,7 +188,7 @@ func TestWorkspaceBrowserStartsRealChrome(t *testing.T) {
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/documents/") {
-			json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]string{"content": `{"version":"1","id":"real","label":"Real"}`}})
+			json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]string{"content": `{"version":"1","id":"real","label":"Real","pulse":{"enabled":false,"outward_actions":"ask"}}`}})
 			return
 		}
 		router.ServeHTTP(w, r)
@@ -279,57 +238,6 @@ func TestWorkspaceBrowserStartsRealChrome(t *testing.T) {
 	}
 	if out := run("get", "url"); !strings.Contains(out, site.URL) {
 		t.Fatal("Repeated start reset the page", out)
-	}
-	call := func(payload map[string]any) struct {
-		ID      string                `json:"id"`
-		Status  string                `json:"status"`
-		Actions []browserteach.Action `json:"actions"`
-		Errors  []string              `json:"errors"`
-	} {
-		t.Helper()
-		payload["workspace_path"] = workspacePath
-		body, err := forwardTeaching(context.Background(), session, payload)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var state struct {
-			ID      string                `json:"id"`
-			Status  string                `json:"status"`
-			Actions []browserteach.Action `json:"actions"`
-			Errors  []string              `json:"errors"`
-		}
-		if err := json.Unmarshal(body, &state); err != nil {
-			t.Fatal(err)
-		}
-		return state
-	}
-	call(map[string]any{"action": "start", "goal": "Greet a customer"})
-	run("click", "#customer")
-	run("keyboard", "type", "Alice")
-	run("press", "Tab")
-	run("click", "button")
-	state := call(map[string]any{"action": "finish"})
-	found := false
-	for i, action := range state.Actions {
-		if action.Kind == "fill" {
-			state.Actions[i].Parameter = "customer"
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("service recorder missed demonstrated field edit", state)
-	}
-	call(map[string]any{"action": "save", "id": state.ID, "actions": state.Actions, "check": map[string]string{"kind": "text", "value": "Hello Bob"}})
-	state = call(map[string]any{"action": "test", "id": state.ID, "inputs": map[string]string{"customer": "Bob"}})
-	if state.Status != "tested" {
-		t.Fatal("service replay failed", state.Errors)
-	}
-	state = call(map[string]any{"action": "publish", "id": state.ID})
-	if state.Status != "saved" {
-		t.Fatal("service publication failed", state)
-	}
-	if out := run("eval", "localStorage.getItem('signed_in')"); !strings.Contains(out, "yes") {
-		t.Fatal("teaching lost sign-in", out)
 	}
 
 }

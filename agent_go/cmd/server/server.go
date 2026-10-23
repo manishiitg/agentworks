@@ -2800,7 +2800,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/browser/extension", api.handleBrowserExtension).Methods("GET", "POST")
 	apiRouter.HandleFunc("/browser/extension/connect", api.handleBrowserExtensionConnect).Methods("GET")
 	apiRouter.HandleFunc("/downloads/chrome-extension.zip", api.handleBrowserExtensionDownload).Methods("GET")
-	apiRouter.HandleFunc("/browser/live/{session}/teaching", api.handleBrowserTeaching).Methods("POST")
 	apiRouter.HandleFunc("/browser/live/sessions", api.handleLiveBrowserSessions).Methods("GET")
 	apiRouter.HandleFunc("/browser/live/{session}/stream", api.handleLiveBrowserStream).Methods("GET")
 	apiRouter.HandleFunc("/browser/live/{session}/recording", api.handleBrowserRecording).Methods("GET", "POST")

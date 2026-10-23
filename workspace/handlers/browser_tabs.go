@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -92,7 +93,7 @@ func saveBrowserTabs(ctx context.Context, socket, session string, expectedPID ..
 		if len(state.URLs) >= 50 {
 			break
 		}
-		if len(tab.URL) > 8192 || !validTeachingAddress(tab.URL) {
+		if len(tab.URL) > 8192 || !validBrowserTabAddress(tab.URL) {
 			continue
 		}
 		if tab.Active {
@@ -170,7 +171,7 @@ func restoreBrowserTabs(ctx context.Context, session string) error {
 		return fmt.Errorf("invalid browser tab state")
 	}
 	for _, address := range state.URLs {
-		if len(address) > 8192 || !validTeachingAddress(address) {
+		if len(address) > 8192 || !validBrowserTabAddress(address) {
 			return fmt.Errorf("invalid browser tab address")
 		}
 	}
@@ -320,4 +321,12 @@ func monitorBrowserTabs(session string) {
 			failures = 0
 		}
 	}()
+}
+
+func validBrowserTabAddress(address string) bool {
+	if address == "about:blank" {
+		return true
+	}
+	u, err := url.Parse(address)
+	return err == nil && u.User == nil && u.Host != "" && (u.Scheme == "http" || u.Scheme == "https")
 }
