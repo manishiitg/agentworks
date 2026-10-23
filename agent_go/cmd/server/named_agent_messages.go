@@ -309,13 +309,10 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 		externalCommunicationError(w, 400, "registration_refused", err)
 		return
 	}
-	index, own := -1, 0
+	index := -1
 	for i, a := range s.Agents {
-		if a.UserID == claims.UserID {
-			own++
-			if a.Name == name {
-				index = i
-			}
+		if a.UserID == claims.UserID && a.Name == name {
+			index = i
 		}
 	}
 	if expected := externalArg(args, "expected_agent_id"); expected != "" && (index < 0 || s.Agents[index].ID != expected) {
@@ -346,10 +343,6 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 		s.revokeServerShares(gone.ID, claims.UserID, time.Now().UTC())
 	} else {
 		if index < 0 {
-			if own >= 100 || len(s.Agents) >= agentConversationKeep {
-				externalError(w, 400, "capacity_reached", "Named agent directory is full.")
-				return
-			}
 			s.Agents = append(s.Agents, namedMessageAgent{ID: "agent-" + uuid.NewString(), UserID: claims.UserID, Name: name, CreatedAt: time.Now().UTC()})
 			index = len(s.Agents) - 1
 		} else if _, present := args["allowed_connection_ids"]; !present {

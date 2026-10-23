@@ -86,16 +86,6 @@ func (api *StreamingAPI) createAgentConnection(w http.ResponseWriter, r *http.Re
 		externalFailure(w, err)
 		return
 	}
-	var count int
-	err = tx.QueryRowContext(r.Context(), `SELECT COUNT(DISTINCT a.family_id) FROM agent_connections a JOIN tokens t ON t.family_id=a.family_id WHERE a.parent_family=? AND t.revoked_at IS NULL AND t.expires_at>?`, parent.FamilyID, time.Now().Unix()).Scan(&count)
-	if err != nil {
-		externalFailure(w, err)
-		return
-	}
-	if count >= 100 {
-		externalError(w, 409, "connection_limit", "Revoke unused agent connections before attaching another session.")
-		return
-	}
 	if _, err = tx.ExecContext(r.Context(), `INSERT INTO agent_connections(family_id,parent_family,agent_name,agent_id) VALUES(?,?,?,?)`, grant.FamilyID, parent.FamilyID, agent.Name, agent.ID); err != nil {
 		externalFailure(w, err)
 		return

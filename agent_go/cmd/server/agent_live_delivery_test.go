@@ -502,6 +502,39 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("revoked stream stayed open after write")
 	}
+	// Retained addresses and their history must not exhaust connection slots.
+	before, err := readAgentMessageSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeHistory, err := json.Marshal(before.Conversations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 101 {
+		name := fmt.Sprintf("retained-%03d", i)
+		call(sender, map[string]any{"action": "register", "agent_name": name})
+		if _, err := sender.CreateAgentConnection(context.Background(), name); err != nil {
+			t.Fatalf("connect retained address %d: %v", i, err)
+		}
+	}
+	after, err := readAgentMessageSnapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterHistory, err := json.Marshal(after.Conversations)
+	if err != nil || string(beforeHistory) != string(afterHistory) {
+		t.Fatal("new connections changed message history or receipts", err)
+	}
+	for _, previous := range before.Agents {
+		found := false
+		for _, current := range after.Agents {
+			found = found || current.ID == previous.ID && current.Name == previous.Name && current.UserID == previous.UserID
+		}
+		if !found {
+			t.Fatal("new connections discarded a retained address", previous.ID)
+		}
+	}
 }
 
 func TestAgentLabelCollisionsKeepAddresses(t *testing.T) {
