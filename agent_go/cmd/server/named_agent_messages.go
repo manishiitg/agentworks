@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"sort"
@@ -601,6 +602,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 				next = items[len(items)-1]["sequence"].(int)
 			}
 			out := map[string]interface{}{"agent_name": a.Name, "messages": items, "next_cursor": next}
+			log.Printf("[AGENT-READ] scope=mailbox agent=%s after=%d returned=%d next=%d", a.ID, after, len(items), next)
 			if agentUpdateNeeded(a) {
 				out["update_notice"] = cliUpdateNotice
 			}

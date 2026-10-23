@@ -370,6 +370,16 @@ func TestAgentServerRelayTwoServersAndDeliveredBoundary(t *testing.T) {
 		return false
 	}
 	wait(func() bool { return projectedOnline(true) })
+	agentMessageMu.Lock()
+	cursorFixture, e := readAgentMessageStore(ctx)
+	if e == nil {
+		cursorFixture.NextAgentSequence = 300
+		e = saveAgentMessageStore(ctx, cursorFixture)
+	}
+	agentMessageMu.Unlock()
+	if e != nil {
+		t.Fatal(e)
+	}
 	reply := call(remoteChild, map[string]any{"action": "send", "agent_name": "reviewer", "inbox_id": remoteMessage.InboxID, "message": "relay reply", "submission_id": "relay-reply-fixture"})
 	var replyReceipt struct {
 		ID string `json:"message_id"`
@@ -384,6 +394,22 @@ func TestAgentServerRelayTwoServersAndDeliveredBoundary(t *testing.T) {
 		homeMessage = rows[0]
 		return homeMessage.Message == "relay reply"
 	})
+	mailboxPage := call(homeChild, map[string]any{"action": "read", "agent_name": "worker", "after": 271})
+	var mailbox struct {
+		Next     int              `json:"next_cursor"`
+		Messages []map[string]any `json:"messages"`
+	}
+	if json.Unmarshal(mailboxPage, &mailbox) != nil || mailbox.Next <= 271 || len(mailbox.Messages) != 1 {
+		t.Fatal("whole-mailbox read missed the reply")
+	}
+	conversationPage := call(homeChild, map[string]any{"action": "read", "agent_name": "worker", "inbox_id": outgoing.Inbox, "after": 271})
+	var conversation struct {
+		Next     int              `json:"next_cursor"`
+		Messages []map[string]any `json:"messages"`
+	}
+	if json.Unmarshal(conversationPage, &conversation) != nil || conversation.Next != mailbox.Next || len(conversation.Messages) != 1 {
+		t.Fatal("inbox filter changed the mailbox-wide cursor")
+	}
 	if homeMessage.InboxID != outgoing.Inbox || !strings.HasSuffix(homeMessage.Sender, "@team") {
 		t.Fatal("reply did not retain its home thread and remote identity")
 	}

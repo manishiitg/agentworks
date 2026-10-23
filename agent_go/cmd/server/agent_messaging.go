@@ -687,10 +687,14 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 			}
 			found = true
 			for _, m := range c.Messages {
-				if m.Sequence <= after || m.From == side || !m.InboxRemovedAt.IsZero() {
+				position := m.Sequence
+				if caller.NamedAgentID != "" {
+					position = m.AgentSequence
+				}
+				if position <= after || m.From == side || !m.InboxRemovedAt.IsZero() {
 					continue
 				}
-				item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error}
+				item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": position, "conversation_sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error}
 				for k, v := range messageArrivalFields(m) {
 					item[k] = v
 				}
@@ -698,7 +702,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 					item["from_person"], item["untrusted"] = person, true
 				}
 				items = append(items, item)
-				next = m.Sequence
+				next = position
 				if len(items) >= limit {
 					break
 				}
@@ -710,6 +714,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 		if len(items) > 0 || wait <= 0 || time.Now().After(deadline) {
 			api.resumeAgentMessagesThrottled()
 			out := map[string]interface{}{"messages": items, "next_cursor": next, "inbox_id": inboxID}
+			log.Printf("[AGENT-READ] filter=inbox agent=%s inbox=%s after=%d returned=%d next=%d", caller.NamedAgentID, inboxID, after, len(items), next)
 			for _, c := range s.Conversations {
 				if c.ID != inboxID {
 					continue
@@ -1290,7 +1295,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			raw, err := json.Marshal(out)
 			return string(raw), err
 		}},
-		{"read_agent_messages", "Read messages explicitly sent to your conversation. Reading does not ask an agent, require a reply or settle work. Use inbox_id to continue a specific conversation and its next_cursor for later reads.", map[string]interface{}{"type": "object", "required": []string{"inbox_id"}, "properties": map[string]interface{}{"inbox_id": map[string]interface{}{"type": "string"}, "after": map[string]interface{}{"type": "integer", "minimum": 0}, "limit": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		{"read_agent_messages", "Read messages explicitly sent to your conversation. Reading does not ask an agent, require a reply or settle work. Use inbox_id to continue a specific conversation and its next_cursor for later reads. AgentBridge uses one mailbox-wide read position, including when inbox_id filters one conversation.", map[string]interface{}{"type": "object", "required": []string{"inbox_id"}, "properties": map[string]interface{}{"inbox_id": map[string]interface{}{"type": "string"}, "after": map[string]interface{}{"type": "integer", "minimum": 0}, "limit": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 100}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			ctx = internalBotRequestContext(ctx, userID)
 			caller, err := callerFor(ctx)
 			if err != nil {

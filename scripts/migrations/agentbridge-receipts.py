@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-time AgentBridge receipt conversion; stop the writer before running."""
+"""One-time AgentBridge receipt and read-position conversion; stop the writer first."""
 import argparse
 import datetime
 import json
@@ -31,7 +31,22 @@ def migrate(store):
                 message.pop('live_attachment', None)
                 message.pop('live_transport', None)
                 message.pop('live_session', None)
-    return converted, retired
+    position = max([store.get('next_agent_sequence', 0)] + [
+        message.get('agent_sequence', 0)
+        for conversation in store['conversations']
+        for message in conversation.get('messages', [])
+    ])
+    assigned = 0
+    for conversation in store['conversations']:
+        for message in conversation.get('messages', []):
+            destination = conversation['endpoints'][1 - message['from']]
+            if destination.get('named_agent_id') and message.get('agent_sequence', 0) <= 0:
+                position += 1
+                message['agent_sequence'] = position
+                assigned += 1
+    if position > store.get('next_agent_sequence', 0):
+        store['next_agent_sequence'] = position
+    return converted, retired, assigned
 
 
 def main():
@@ -45,7 +60,7 @@ def main():
     original = json.dumps(store, sort_keys=True)
     if not isinstance(store, dict) or not isinstance(store.get('conversations'), list):
         parser.error('Expected the AgentBridge conversation store')
-    converted, retired = migrate(store)
+    converted, retired, assigned = migrate(store)
     if json.dumps(store, sort_keys=True) == original:
         print(f'AgentBridge receipts: {args.store}: already current; no change')
         return
@@ -62,7 +77,7 @@ def main():
         if os.path.exists(temporary):
             os.unlink(temporary)
     print(json.dumps({'store': str(args.store), 'backup': str(backup), 'converted_receipts': converted,
-                      'retired_pending_notices': retired, 'history_kept': True}))
+                      'retired_pending_notices': retired, 'assigned_mailbox_positions': assigned, 'history_kept': True}))
 
 
 if __name__ == '__main__':

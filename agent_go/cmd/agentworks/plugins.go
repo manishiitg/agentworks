@@ -72,7 +72,7 @@ func pluginCommand(o *options) *cobra.Command {
 		defer func() {
 			if hookErr != nil {
 				reason := strings.TrimSuffix(strings.Join(strings.Fields(hookErr.Error()), " "), ".")
-				hookErr = fmt.Errorf("AgentWorks hook failed: %s. Run agentworks update.", reason)
+				hookErr = fmt.Errorf("AgentWorks hook failed: %s.", reason)
 			}
 		}()
 		if !messagingPluginProvider(args[0]) && args[0] != "pi" && args[0] != "cursor" {

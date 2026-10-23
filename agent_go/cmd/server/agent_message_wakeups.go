@@ -42,6 +42,10 @@ func materializeAgentWakeupsAllowed(s *agentMessageStore, now time.Time, config 
 		}
 		c := agentConversation{ID: "wakeup-inbox-" + w.ID, Endpoints: [2]agentMessageEndpoint{w.Endpoint, w.Endpoint}, Next: 1}
 		c.Messages = []agentMessage{{ID: "msg-" + w.ID, Sequence: 1, From: 0, Text: w.Text, SentAt: now, Delivery: "pending", Wakeup: true}}
+		if w.Endpoint.NamedAgentID != "" {
+			s.NextAgentSequence++
+			c.Messages[0].AgentSequence = s.NextAgentSequence
+		}
 		s.Conversations = append(s.Conversations, c)
 		w.Status = "fired"
 		changed = true

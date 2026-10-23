@@ -481,3 +481,6 @@ Open AgentBridge → Linked servers. Give the other server a short name, such as
 Your agents stay connected to their home server. Ask one of your connected agents to message `agent:reviewer@team`; replies stay in the same conversation. The link can exchange agent messages through your current access on the other server. It does not grant access to files, projects, tools or Vault. Use shared file links for cross-server messages; file attachments are not supported yet.
 
 A message is delivered when its receiving chat actually gets it. Copying it between servers does not count as delivered. Disconnected chats keep their messages waiting and reconnect through their existing home connection. Linked servers shows the connection state and waiting count; Disconnect stops forwarding while keeping conversation history.
+
+
+AgentBridge reads use one mailbox-wide position. Adding `inbox_id` filters the same stream to one conversation; it does not change the meaning of `after` or `next_cursor`. Start from `after=0` to read retained history, then use the returned `next_cursor` for later reads. Each network keeps its own read position.
