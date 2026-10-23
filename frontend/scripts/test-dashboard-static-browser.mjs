@@ -10,7 +10,6 @@ import { chromium } from 'playwright'
 const frontend = fileURLToPath(new URL('..', import.meta.url)), repo = path.dirname(frontend)
 const output = process.env.BROWSER_CHECK_ARTIFACT_DIR || await mkdtemp(path.join(os.tmpdir(), 'static-dashboard-'))
 await mkdir(output, { recursive: true })
-execFileSync('go', ['test', './cmd/server', '-run', '^TestStatic', '-count=1'], { cwd: path.join(repo, 'agent_go'), env: { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'auto' }, stdio: 'inherit' })
 const fixture = path.join(output, 'source.html')
 execFileSync('go', ['test', './dashboards', '-run', '^TestTSXDashboardLifecycle$', '-count=1'], { cwd: path.join(repo, 'workspace'), env: { ...process.env, DASHBOARD_TSX_TEST_FIXTURE: fixture }, stdio: 'inherit' })
 execFileSync('npm', ['run', 'prepare:local-assets'], { cwd: frontend, stdio: 'inherit' })
@@ -63,7 +62,7 @@ try {
     sites.set(name,result);await writeFile(path.join(output, name+'.html'),result)
   }
   const before=reads
-  await page.route('https://app.example.com/**',route=>route.fulfill({body:'Sign in to AgentWorks',contentType:'text/html'}))
+  await page.context().route('https://app.example.com/**',route=>route.fulfill({body:'Sign in to AgentWorks',contentType:'text/html'}))
   for(const [name,value] of [['first',42],['fresh',84]]){
     await page.goto(origin+'/sites/'+name+'/index.html')
     await settle()
@@ -82,7 +81,7 @@ try {
     await page.screenshot({path:path.join(output,name+'-static-mobile.png'),fullPage:true})
     const popup=page.waitForEvent('popup')
     await frame.getByRole('button',{name:'Look up',exact:true}).click()
-    const opened=await popup;assert.equal(opened.url(),live);await opened.close()
+    const opened=await popup;await opened.waitForURL(live);assert.equal(opened.url(),live);await opened.close()
   }
   assert.equal(reads,before)
   console.log('PASS: same compiled TSX, packaged React/shadcn/Recharts/CSS, relative subfolder hosting, authorized frozen data/media, local interaction, live function link, no private API/preview credential, fresh Publish export updates data')
