@@ -468,7 +468,7 @@ func TestExternalBuilderOperationsRealMCPTransportAndDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	readToken, _, err := store.Issue(ctx, accesstokens.Token{Name: "Run only", UserID: "outsider", Username: "outsider", Scopes: []string{"workflows:read", "files:read", "runs:execute"}, WorkflowIDs: []string{"invoices"}, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
+	readToken, _, err := store.Issue(ctx, accesstokens.Token{Name: "Run only", UserID: "reader", Username: "reader", Scopes: []string{"workflows:read", "files:read", "runs:execute"}, WorkflowIDs: []string{"invoices"}, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
 	store.Close()
 	if err != nil {
 		t.Fatal(err)
