@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 const cliOAuthDevicePath = "/api/oauth/cli/device"
@@ -238,6 +240,13 @@ func (api *StreamingAPI) handleCLIOAuthRevoke(w http.ResponseWriter, r *http.Req
 }
 
 func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw string) (*UserClaims, bool) {
+	started := time.Now()
+	var openTime, grantTime, claimsTime time.Duration
+	defer func() {
+		if elapsed := time.Since(started); elapsed >= 100*time.Millisecond {
+			log.Printf("[CLI-AUTH-TIMING] path=%s open_ms=%d grant_ms=%d claims_ms=%d total_ms=%d", r.URL.Path, openTime.Milliseconds(), grantTime.Milliseconds(), claimsTime.Milliseconds(), elapsed.Milliseconds())
+		}
+	}()
 	if r.Header.Get("Authorization") == "" || !cliOAuthAllowedPath(r.Method, r.URL.Path) {
 		mcpOAuthError(w, http.StatusForbidden, "invalid_target")
 		return nil, false
@@ -248,12 +257,15 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 		return nil, false
 	}
 	store, err := openMCPOAuthStore()
+	openTime = time.Since(started)
 	if err != nil {
 		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
 		return nil, false
 	}
 	defer store.Close()
+	checked := time.Now()
 	grant, err := store.Authenticate(r.Context(), raw)
+	grantTime = time.Since(checked)
 	if err != nil || grant.Resource != resource || grant.ClientID != cliOAuthClientID || len(grant.Scopes) == 0 {
 		mcpOAuthError(w, http.StatusUnauthorized, "invalid_token")
 		return nil, false
@@ -262,7 +274,9 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 		mcpOAuthError(w, http.StatusForbidden, "invalid_target")
 		return nil, false
 	}
+	checked = time.Now()
 	claims, err := accessTokenClaims(mcpOAuthTokenForGrant(grant))
+	claimsTime = time.Since(checked)
 	if err != nil {
 		mcpOAuthError(w, http.StatusUnauthorized, "invalid_token")
 		return nil, false

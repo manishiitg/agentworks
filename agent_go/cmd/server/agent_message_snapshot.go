@@ -93,6 +93,10 @@ func readAgentMessageSnapshot(ctx context.Context) (agentMessageStore, error) {
 }
 
 func fetchAgentMessageSnapshot(ctx context.Context, key agentSnapshotKey, prior agentSnapshotEntry) (agentSnapshotEntry, error) {
+	started := time.Now()
+	var ioTime time.Duration
+	var size int
+	defer func() { agentMailboxTiming("snapshot", started, size, ioTime) }()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, key.url, nil)
 	if err != nil {
 		return agentSnapshotEntry{}, err
@@ -103,6 +107,7 @@ func fetchAgentMessageSnapshot(ctx context.Context, key agentSnapshotKey, prior 
 	}
 	// Workspace service authorization is validated even for conditional reads.
 	res, err := workspaceHTTPClient.Do(req)
+	ioTime = time.Since(started)
 	if err != nil {
 		return agentSnapshotEntry{}, err
 	}
@@ -120,6 +125,7 @@ func fetchAgentMessageSnapshot(ctx context.Context, key agentSnapshotKey, prior 
 		return agentSnapshotEntry{}, fmt.Errorf("snapshot unavailable (HTTP %d)", res.StatusCode)
 	}
 	raw, err := io.ReadAll(res.Body)
+	ioTime, size = time.Since(started), len(raw)
 	if err != nil {
 		return agentSnapshotEntry{}, err
 	}

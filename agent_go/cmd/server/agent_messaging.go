@@ -119,8 +119,11 @@ func expiredConversationForCaller(s agentMessageStore, id, userID string, caller
 }
 
 func readAgentMessageStore(ctx context.Context) (agentMessageStore, error) {
+	start := time.Now()
 	var s agentMessageStore
 	raw, exists, err := readFileFromWorkspace(ctx, agentMessagesPath)
+	ioTime := time.Since(start)
+	defer func() { agentMailboxTiming("read", start, len(raw), ioTime) }()
 	if err != nil {
 		return s, err
 	}
@@ -130,16 +133,26 @@ func readAgentMessageStore(ctx context.Context) (agentMessageStore, error) {
 	return s, err
 }
 func saveAgentMessageStore(ctx context.Context, s agentMessageStore) error {
+	start := time.Now()
 	raw, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
+	ioStart := time.Now()
 	err = writeFileToWorkspace(ctx, agentMessagesPath, string(raw))
+	agentMailboxTiming("write", start, len(raw), time.Since(ioStart))
 	agentMessageVersion.Add(1)
 	if err == nil {
 		notifyAgentLiveChanged()
 	}
 	return err
+}
+
+// Slow-path metadata only: never message bodies, account names or credentials.
+func agentMailboxTiming(operation string, start time.Time, size int, ioTime time.Duration) {
+	if elapsed := time.Since(start); elapsed >= 100*time.Millisecond {
+		log.Printf("[AGENT-MAILBOX-TIMING] operation=%s bytes=%d io_ms=%d total_ms=%d", operation, size, ioTime.Milliseconds(), elapsed.Milliseconds())
+	}
 }
 
 // agentMessageVersion changes on every save, so a waiting reader rereads the
