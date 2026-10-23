@@ -583,6 +583,10 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 	} else if o.newAgentWhy != "" {
 		fmt.Fprintln(o.stdout, o.newAgentWhy)
 	}
+	// A move already reports each chat; avoid repeating the whole directory.
+	if o.switchPath != "" {
+		return nil
+	}
 	req.Action = "peers"
 	peers, e := agentworksclient.CallLocalBridge(ctx, root, req)
 	if e == nil {
@@ -1109,8 +1113,15 @@ func restoreAgentBridge(ctx context.Context, o *options, executable string) erro
 	if _, err = os.Stat(filepath.Join(root, "sessions.json")); errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	if _, err = agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
-		return nil
+	if running, pingErr := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); pingErr == nil {
+		if executable != "" || running.Version == cliVersion {
+			return nil
+		}
+		// Explicit start/update adopts the installed binary even when only the
+		// helper is old. Ordinary hooks keep a responsive helper untouched.
+		if err = stopLocalBridgeAt(ctx, root, "update"); err != nil {
+			return err
+		}
 	}
 	if executable == "" {
 		executable, err = os.Executable()

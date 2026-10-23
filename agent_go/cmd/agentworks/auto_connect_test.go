@@ -116,6 +116,7 @@ func TestMoveCursorChatKeepsItsExistingDeliverySetup(t *testing.T) {
 	attachment := agentworksclient.AgentAttachment{ID: "lease", AgentName: "cursor-agent", Provider: "cursor", SessionID: session}
 	var mu sync.Mutex
 	var moves []agentworksclient.LocalBridgeRequest
+	directoryCalls := 0
 	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in agentworksclient.LocalBridgeRequest
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -123,6 +124,9 @@ func TestMoveCursorChatKeepsItsExistingDeliverySetup(t *testing.T) {
 			return
 		}
 		mu.Lock()
+		if in.Action == "peers" || in.Action == "list" {
+			directoryCalls++
+		}
 		if in.Action == "attach" {
 			moves = append(moves, in)
 		}
@@ -138,6 +142,9 @@ func TestMoveCursorChatKeepsItsExistingDeliverySetup(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
+	if directoryCalls != 0 {
+		t.Fatalf("move repeated the whole directory %d times", directoryCalls)
+	}
 	if len(moves) != 1 || moves[0].Setup || !moves[0].SwitchConnection || moves[0].AgentName != "cursor-agent" || moves[0].ConfigPath != login {
 		t.Fatalf("move must keep identity without reinstalling delivery: %+v", moves)
 	}

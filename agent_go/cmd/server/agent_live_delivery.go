@@ -558,16 +558,19 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 					reasons[id] = "share_check_failed"
 					continue
 				}
-				if api.recheckAgentMessageAdmission(r.Context(), c, m) != nil {
-					reasons[id] = "admission_recheck_failed"
-					continue
-				}
 				if api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
 					reasons[id] = "sender_authorization_failed"
 					continue
 				}
-				permitted = append(permitted, id)
+				// Reply context belongs to the current recipient and sharing,
+				// not the sending credential on an older submission. This map
+				// contains no body; a new send rechecks current inbox authority.
 				inboxes[id] = c.ID
+				if api.recheckAgentMessageAdmission(r.Context(), c, m) != nil {
+					reasons[id] = "admission_recheck_failed"
+					continue
+				}
+				permitted = append(permitted, id)
 			}
 		}
 	}

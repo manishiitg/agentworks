@@ -1974,22 +1974,8 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 	case "get_file":
 		args["action"], args["inbox_id"], args["file_id"] = "get_file", in.InboxID, in.FileID
 	case "reply_inbox":
-		history, e := s.client.Call(callCtx, "messages", map[string]any{"action": "read", "agent_name": s.Attachment.AgentName, "inbox_id": in.InboxID, "after": 0, "limit": 20})
-		if e != nil {
-			return LocalBridgeReply{Error: e.Error()}
-		}
-		filtered, e := filterAttachedMailbox(callCtx, s, history)
-		if e != nil {
-			return LocalBridgeReply{Error: e.Error()}
-		}
-		var checked struct {
-			Messages []json.RawMessage `json:"messages"`
-		}
-		if json.Unmarshal(filtered, &checked) != nil || len(checked.Messages) == 0 {
-			return LocalBridgeReply{Error: "inbox has no currently authorized incoming message for this attachment"}
-		}
-		// Explicit mailbox recovery survives local metadata compaction.
-		// The server still verifies this caller's inbox participation.
+		// A new reply uses the current lease and the server's current inbox
+		// membership/send checks below, not credentials on historical mail.
 		args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", in.InboxID, in.Message, in.SubmissionID
 		if in.FileBase64 != "" {
 			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
@@ -2382,10 +2368,15 @@ func (b *localBridge) setupContext(ctx context.Context, s *localSession) string 
 			}
 			return string(r)
 		}
-		for i, a := range roster.Agents {
-			if i >= 30 {
+		shown := 0
+		for _, a := range roster.Agents {
+			if strings.TrimSpace(a.Name) == "" {
+				continue
+			}
+			if shown >= 30 {
 				break
 			}
+			shown++
 			state := "offline"
 			if a.Online {
 				state = "online"
@@ -2499,21 +2490,18 @@ func (b *localBridge) replyToMessage(ctx context.Context, key string, s *localSe
 }
 
 // The server returns an inbox only for an incoming message addressed to this
-// exact attached agent and owner, after rechecking the sender's current access.
+// exact attached agent and owner, after checking current sharing and peer access.
+// Historical body admission does not authorize a new reply.
 func authorizedReplyInbox(ctx context.Context, client *Client, att AgentAttachment, id string) (string, error) {
 	raw, err := client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{id}}, true)
 	if err != nil {
 		return "", err
 	}
 	var checked struct {
-		IDs     []string          `json:"message_ids"`
 		Inboxes map[string]string `json:"inbox_ids"`
 	}
 	if json.Unmarshal(raw, &checked) != nil {
 		return "", errors.New("invalid reply authorization response")
-	}
-	if !slices.Contains(checked.IDs, id) {
-		return "", nil
 	}
 	return checked.Inboxes[id], nil
 }

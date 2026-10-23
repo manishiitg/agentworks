@@ -59,7 +59,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		return c, mcpOAuthTokenForGrant(grant).ID, token
 	}
 	receiver, receiverConnection, receiverToken := issue()
-	sender, _, _ := issue()
+	sender, senderConnection, _ := issue()
 	stranger, _, _ := issue()
 	call := func(c *agentworksclient.Client, args map[string]any) map[string]any {
 		t.Helper()
@@ -446,6 +446,48 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("person ping was not signalled")
 	}
+	// Old submissions stay blocked after their sending grant is revoked, but
+	// an exact current recipient can resolve reply context and send new mail.
+	if err = store.RevokeFamily(context.Background(), strings.TrimPrefix(senderConnection, "oauth-"), "owner"); err != nil {
+		t.Fatal(err)
+	}
+	validateContext := func(c *agentworksclient.Client, token string, att agentworksclient.AgentAttachment) map[string]any {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{first["message_id"].(string)}})
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", strings.NewReader(string(body)))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, e := http.DefaultClient.Do(req)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer resp.Body.Close()
+		var result map[string]any
+		if e = json.NewDecoder(resp.Body).Decode(&result); e != nil || resp.StatusCode != http.StatusOK {
+			t.Fatalf("reply context status=%d %v", resp.StatusCode, e)
+		}
+		return result
+	}
+	replyContext := validateContext(receiver, receiverToken, attachment)
+	if ids, ok := replyContext["message_ids"].([]any); ok && len(ids) != 0 {
+		t.Fatal("revoked submission was admitted", replyContext)
+	}
+	if replyContext["inbox_ids"].(map[string]any)[first["message_id"].(string)] != first["inbox_id"] {
+		t.Fatal("current recipient lost reply context", replyContext)
+	}
+	outsider, _, outsiderToken := issue()
+	call(outsider, map[string]any{"action": "register", "agent_name": "outside-inbox"})
+	outsideLease, e := outsider.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{AgentName: "outside-inbox", Provider: "claude", SessionID: "outside-session"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	deniedContext := validateContext(outsider, outsiderToken, outsideLease)
+	if len(deniedContext["inbox_ids"].(map[string]any)) != 0 {
+		t.Fatal("another agent learned reply context", deniedContext)
+	}
+	call(receiver, map[string]any{"action": "send", "agent_name": attachment.AgentName, "inbox_id": first["inbox_id"], "message": "new reply after old grant revoked", "submission_id": "current-reply"})
+	sender, _, _ = issue()
+	call(sender, map[string]any{"action": "register", "agent_name": "sender"})
 	if err = store.RevokeFamily(context.Background(), strings.TrimPrefix(receiverConnection, "oauth-"), "owner"); err != nil {
 		t.Fatal(err)
 	}

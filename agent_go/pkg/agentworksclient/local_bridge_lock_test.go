@@ -912,3 +912,60 @@ func TestAccountMoveDoesNotReuseThePreviousAccountChild(t *testing.T) {
 		t.Fatal("move retained the old account child")
 	}
 }
+
+// A current inbox member can write a new reply even when the first history page
+// contains only old submissions whose sending connections have been revoked.
+func TestInboxReplyUsesCurrentServerMembership(t *testing.T) {
+	var reads, sends, leases atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Action     string         `json:"action"`
+			MessageIDs []string       `json:"message_ids"`
+			Arguments  map[string]any `json:"arguments"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Action == "validate" {
+			leases.Add(1)
+			_, _ = w.Write([]byte(`{"message_ids":[],"inbox_ids":{"old-submission":"own-inbox"}}`))
+			return
+		}
+		switch body.Arguments["action"] {
+		case "read":
+			reads.Add(1)
+			_, _ = w.Write([]byte(`{"messages":[{"message_id":"old-submission"}],"next_cursor":20}`))
+		case "send":
+			sends.Add(1)
+			if body.Arguments["inbox_id"] != "own-inbox" {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"error":{"code":"not_found","message":"conversation unavailable or access denied"}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"accepted":true}`))
+		default:
+			t.Errorf("unexpected request: %+v", body)
+		}
+	}))
+	defer srv.Close()
+	client, err := New(srv.URL, "current-child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &localSession{client: client, Attachment: AgentAttachment{ID: "current-lease", AgentName: "coding-agent"}}
+	b := &localBridge{}
+	for _, inbox := range []string{"own-inbox", "another-inbox"} {
+		reply := b.mailboxCall(context.Background(), s, LocalBridgeRequest{Action: "reply_inbox", InboxID: inbox, Message: "reply", SubmissionID: "reply-" + inbox}, LocalBridgeReply{})
+		if inbox == "own-inbox" && reply.Error != "" {
+			t.Fatalf("current member could not reply: %s", reply.Error)
+		}
+		if inbox != "own-inbox" && reply.Error == "" {
+			t.Fatal("server refusal was ignored")
+		}
+	}
+	inbox, err := authorizedReplyInbox(context.Background(), client, s.Attachment, "old-submission")
+	if err != nil || inbox != "own-inbox" {
+		t.Fatalf("reply context was gated by old body admission: %q %v", inbox, err)
+	}
+	if reads.Load() != 0 || sends.Load() != 2 || leases.Load() != 3 {
+		t.Fatalf("reply repeated old admission or skipped current authority: reads=%d sends=%d leases=%d", reads.Load(), sends.Load(), leases.Load())
+	}
+}
