@@ -122,11 +122,11 @@ func isExternalLaptopFileTool(name string) bool {
 
 func externalLaptopAccessDefinition(register func(string, string, bool, bool, map[string]any, ...string)) {
 	add := func(name, description string, mutation, workflow bool, properties map[string]any, required ...string) {
-		properties["workflow_id"] = externalString("Goal ID from list_workflows. Pass this or workspace_id for a Crew, exactly one.")
-		properties["workspace_id"] = externalString("Crew workspace_id from workspace action=list. Pass this or workflow_id for a Goal, exactly one.")
+		properties["workflow_id"] = externalString("Goal ID from list_workflows. For a project pass this or workspace_id, exactly one. Only action=devices may omit both for your My Vault computers.")
+		properties["workspace_id"] = externalString("Crew workspace_id from workspace action=list. For a project pass this or workflow_id, exactly one. Only action=devices may omit both.")
 		register(name, description, mutation, workflow, properties, required...)
 	}
-	add("manage_laptop_access", "Manage the shared laptop connection and folders of a Goal or Crew you build. get returns the saved access and setup steps; devices lists your computers plus the project's selected computer; browse lists folder names; set saves the complete folder selection with Read or Read & write; remove disconnects the project. Uses the same settings as My Vault and project Local laptop settings. Install and sign in to AgentWorks on that computer once, then keep it running. Folders cover files (list_local_files, copy_local_file_to_project, and write_local_file for Read & write); commands (execute_local_shell_command) need the separate commands switch.", true, false, map[string]any{
+	add("manage_laptop_access", "Manage the shared laptop connection and folders of a Goal or Crew you build. get returns the saved access and setup steps; devices with no project lists your own My Vault computers and setup steps; with a project it also includes that project's selected computer; browse lists folder names; set saves the complete folder selection with Read or Read & write; remove disconnects the project. Uses the same settings as My Vault and project Local laptop settings. Install and sign in to AgentWorks on that computer once, then keep it running. Folders cover files (list_local_files, copy_local_file_to_project, and write_local_file for Read & write); commands (execute_local_shell_command) need the separate commands switch.", true, false, map[string]any{
 		"action":       map[string]any{"type": "string", "enum": []any{"get", "devices", "browse", "set", "remove"}},
 		"workspace_id": externalString("Your Crew's stable workspace_id from workspace action=list."),
 		"device_id":    externalString("Your connected computer from action=devices; required for browse or set with folders."),
@@ -158,6 +158,11 @@ func (api *StreamingAPI) externalLaptopAccessCall(w http.ResponseWriter, r *http
 	c := GetUserFromContext(r.Context())
 	if !personalLaptopSettingsClaims(c) {
 		externalError(w, 403, "forbidden", "Use your own Builder connection to manage laptop access, or connect a computer in My Vault and select it in the project’s Local laptop panel.")
+		return
+	}
+	if externalArg(args, "action") == "devices" && externalArg(args, "workspace_id") == "" && externalArg(args, "workflow_id") == "" {
+		w.Header().Set("Cache-Control", "no-store")
+		externalJSON(w, api.personalLaptopConnections(c))
 		return
 	}
 	root, ok := api.externalLaptopRoot(w, r, args)

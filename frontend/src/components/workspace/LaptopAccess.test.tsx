@@ -2,6 +2,15 @@
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+
+vi.hoisted(() => {
+  const data = new Map<string, string>()
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: (key: string) => data.get(key) ?? null,
+    setItem: (key: string, value: string) => { data.set(key, value) },
+    removeItem: (key: string) => { data.delete(key) }, clear: () => data.clear(),
+  } })
+})
 import api, { agentApi } from '../../services/api'
 import { CodeLocalFilesSettings } from '../../products/work/CodeFilesPanel'
 import { LaptopAccountsPanel } from '../integrations/LaptopAccountsPanel'

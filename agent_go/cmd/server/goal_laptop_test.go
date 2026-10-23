@@ -64,7 +64,14 @@ func TestGoalBuilderLaptopUsesSharedGrantsOnlyInInteractiveTurns(t *testing.T) {
 			t.Fatalf("Goal missing %s", name)
 		}
 	}
-	for _, source := range []string{"step", "schedule", "autopilot", "run", "child", "connector"} {
+	setup := &laptopToolCallRegistrar{name: "manage_laptop_access"}
+	if err := f.api.registerLaptopAccessChatTool(setup, newProductToolGate(nil), owner, false, "goal-session", root); err != nil || setup.execute == nil {
+		t.Fatalf("Goal chat setup unavailable: %v", err)
+	}
+	if _, err := setup.execute(ctx, map[string]any{"action": "get"}); err != nil {
+		t.Fatalf("Goal chat setup failed: %v", err)
+	}
+	for _, source := range []string{"step", "schedule", "autopilot", "run", "run_mode", "child", "connector"} {
 		t.Run(source, func(t *testing.T) {
 			next := base
 			switch source {
@@ -76,6 +83,8 @@ func TestGoalBuilderLaptopUsesSharedGrantsOnlyInInteractiveTurns(t *testing.T) {
 				next.PulseLifecycleTurn = true
 			case "run":
 				next.PinRunMode = true
+			case "run_mode":
+				next.ExecutionOptions = &ExecutionOptions{WorkshopMode: "run"}
 			case "child":
 				next.ParentSessionID = "parent"
 			case "connector":
@@ -90,6 +99,9 @@ func TestGoalBuilderLaptopUsesSharedGrantsOnlyInInteractiveTurns(t *testing.T) {
 			f.api.lastQueryRequests["goal-session"] = next
 			if f.api.laptopTurnAllowed("goal-session", owner.UserID, *req.LaptopConnection) {
 				t.Fatal("retained local tool accepted a later automated turn")
+			}
+			if _, err := setup.execute(ctx, map[string]any{"action": "get"}); err == nil {
+				t.Fatal("retained setup tool accepted automated work")
 			}
 		})
 	}

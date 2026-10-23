@@ -186,10 +186,12 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 					t.Fatalf("personal Vault computers: %s %v", vault, err)
 				}
 			}
-			call := func(name string, args map[string]any, status int) []byte {
+			call := func(name string, args map[string]any, status int, project ...bool) []byte {
 				t.Helper()
-				for key, value := range target {
-					args[key] = value
+				if len(project) == 0 || project[0] {
+					for key, value := range target {
+						args[key] = value
+					}
 				}
 				data, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
 				r, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/external/v1/call", bytes.NewReader(data))
@@ -206,6 +208,10 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 				}
 				return body
 			}
+			if computers := call("manage_laptop_access", map[string]any{"action": "devices"}, 200, false); !strings.Contains(string(computers), "mcp-laptop") {
+				t.Fatalf("MCP My Vault computers: %s", computers)
+			}
+			call("manage_laptop_access", map[string]any{"action": "get"}, 400, false)
 			folders := []any{map[string]any{"id": "files", "path": folder, "access": "read"}}
 			call("manage_laptop_access", map[string]any{"action": "set", "device_id": "mcp-laptop", "folders": folders}, 200)
 			call("execute_local_shell_command", map[string]any{"folder": "files", "command": "printf laptop-mcp"}, 403)

@@ -9,7 +9,6 @@ metadata:
     agentworks:
     - manage_laptop_access
   external-tools:
-  - manage_my_vaults
   - manage_laptop_access
   - list_local_files
   - write_local_file
@@ -23,4 +22,4 @@ Goals and Crews use manage_laptop_access: devices/get first, browse to find a fo
 
 Use list_local_files, write_local_file, copy_local_file_to_project (local_path to project_path) and execute_local_shell_command for the connected computer. Normal files and shell stay on the server. Laptop tools are available only in a person’s interactive Builder chat or own MCP connection, never steps, schedules, Autopilot, child agents or Run callers.
 
-The one-time computer connection is in My Vault. Use manage_my_vaults operation=laptops to see your computers and setup steps without choosing a project. Then use manage_laptop_access in the chosen Goal or Crew for its saved selection and grants. Connecting in My Vault never gives workflow steps a laptop; Gmail and Slack selections for steps remain independent.
+The one-time computer connection is in My Vault. Builder chat uses manage_my_vaults operation=laptops to see your computers and setup steps without choosing a project. External MCP uses manage_laptop_access action=devices without a project selector for the same personal list. Then use manage_laptop_access in the chosen Goal or Crew for its saved selection and grants. Connecting in My Vault never gives workflow steps a laptop; Gmail and Slack selections for steps remain independent.

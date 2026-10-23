@@ -241,6 +241,9 @@ func externalTools() ([]externalTool, error) {
 		for i := range defined {
 			if defined[i].Name == "manage_laptop_access" || isExternalLaptopFileTool(defined[i].Name) {
 				defined[i].InputSchema["oneOf"] = []any{map[string]any{"required": []any{"workspace_id"}}, map[string]any{"required": []any{"workflow_id"}}}
+				if defined[i].Name == "manage_laptop_access" {
+					defined[i].InputSchema["oneOf"] = append(defined[i].InputSchema["oneOf"].([]any), map[string]any{"properties": map[string]any{"action": map[string]any{"const": "devices"}}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []any{"workspace_id"}}, map[string]any{"required": []any{"workflow_id"}}}}})
+				}
 			}
 		}
 		// Shared-account token limits (get: crews:review or users:manage; set: users:manage, admins).

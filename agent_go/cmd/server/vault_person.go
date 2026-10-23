@@ -125,8 +125,7 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		if !personVaultActive(person) {
 			return "", errors.New("Your account cannot manage My Vault")
 		}
-		devices := api.localDeviceListForOwner(&UserClaims{UserID: person})
-		data, err := json.Marshal(map[string]any{"devices": devices, "setup": laptopSetupSteps(len(devices) == 0), "next": "Connect your computer once in My Vault, then select it with manage_laptop_access in any Goal or Crew you build. Each project chooses folders and terminal commands. Steps, schedules and Autopilot never inherit laptop access."})
+		data, err := json.Marshal(api.personalLaptopConnections(&UserClaims{UserID: person}))
 		return string(data), err
 	}
 	if _, _, err := capLayerServiceConfig(); err != nil {
