@@ -2915,7 +2915,7 @@ func afterRunHousekeepingSteps(runID string, backup, publish bool) []pulseLifecy
 		actions = append(actions, "(backup) run the configured source-hash-gated backup following backup-strategy.md (read_skill builder-reference references/backup-strategy.md), directly in this turn, and report its actual result in the run chat")
 	}
 	if publish {
-		actions = append(actions, "(publish) independently of whether backup succeeded, publish workflow.json's publish.targets other than \"pulse\" (the run's own report) following publish-strategy.md, exactly as an ordinary run would, and report its actual result in the run chat. Never suppress a valid report publish merely because backup was partial or failed")
+		actions = append(actions, "(publish) independently of whether backup succeeded, publish workflow.json's publish.targets other than \"pulse\" (the run's own report) following publish-strategy.md (read_skill builder-reference references/publish-strategy.md). Call export_dashboard_static afresh for each selected dashboard, then deploy its whole returned folder to the saved destination; do not redeploy an older snapshot. Report its actual result in the run chat. Never suppress a valid report publish merely because backup was partial or failed")
 	}
 	return []pulseLifecycleStep{{label: "finalize", query: fmt.Sprintf(
 		"AFTER-RUN HOUSEKEEPING. run_id=%q. This run's after-run options asked for this, and the platform found something to do. This is not an Autopilot pass: do not run Gate, reviewers or Fixer, do not present old Autopilot findings, do not notify (the platform sends the run summary itself), and do not write builder/improve.html.\n\n"+

@@ -75,6 +75,7 @@ AgentWorks dark gate styling below every time.
 
 ```
 cd /tmp/publish-<workflow>
+# For multiple dashboard folders, include every data-bearing HTML page here.
 npx staticrypt index.html \
   -p "$SECRET_PUBLISH_PASSWORD" --remember --salt <fixed-32-hex> -d . \
   --template-title "AgentWorks Private Report" \
@@ -389,15 +390,12 @@ Do not write operational publish status into `workflow.json`. Use `publish/statu
 If a destination is missing credentials or setup, mark it `failed` and continue with any
 others.
 
-**Get `last_source_hash` right or the dot lies.** The backend computes the source hash itself
-(a sha256 over `db/db.sqlite` and `reports/`) and reports it as
-`current_source_hash` in the workflow publish status. Set `last_source_hash` to the current source hash you just
-published. If you write any other string, a successful publish immediately reads as
-**`stale`** (amber) and Autopilot will keep re-publishing. If you genuinely can't obtain it,
-leave `last_source_hash` empty — the dot stays green `published`, only change-detection is
-disabled. The two states this controls:
-- `published` (green) = config enabled + status `published` + hash matches.
-- `stale` (amber) = published but the source changed since (it changes every run) — the next Autopilot fire re-publishes and returns it to green.
+**Record the source hash from the backend.** Read `current_source_hash` from the
+workflow Publish status and save it as `last_source_hash` after a successful
+deploy. It covers report/db/code sources, including managed TSX and JSON data;
+`publish/exports` is outside the hash. The existing after-run check compares these
+hashes to decide whether a new Publish is needed. A changed source does not turn
+a successful deployment into a failure; record destination health truthfully.
 
 ## Discipline
 
