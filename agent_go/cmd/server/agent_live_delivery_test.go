@@ -77,7 +77,45 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	call(stranger, map[string]any{"action": "register", "agent_name": "stranger"})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	bridge, err := agentworksclient.NewClaudeChannelServer(ctx, receiver, agentworksclient.ClaudeChannelOptions{AgentName: "reviewer", Purpose: "Review incoming work", SessionID: "exact-session-one", JournalDir: filepath.Join(t.TempDir(), "private-journal"), Log: os.Stderr})
+	call(receiver, map[string]any{"action": "register", "agent_name": "reviewer", "purpose": "Review incoming work"})
+	attached, err := receiver.AttachAgent(ctx, agentworksclient.AgentAttachmentOptions{AgentName: "reviewer", Purpose: "Review incoming work", Provider: "claude", SessionID: "exact-session-one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp("", "aw-channel-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	config := filepath.Join(root, "connection.json")
+	if err := agentworksclient.SaveConfig(config, agentworksclient.Config{Server: srv.URL, Token: receiverToken}); err != nil {
+		t.Fatal(err)
+	}
+	sessions, _ := json.Marshal(map[string]any{"claude:exact-session-one": map[string]any{"attachment": attached, "host_key": "native-host", "account_senders": true, "config_path": config, "parent_config_path": config}})
+	if err := os.WriteFile(filepath.Join(root, "sessions.json"), sessions, 0600); err != nil {
+		t.Fatal(err)
+	}
+	helperDone := make(chan error, 1)
+	go func() {
+		helperDone <- agentworksclient.ServeLocalBridge(ctx, root, agentworksclient.LocalBridgeOptions{HostAlive: func(string, string) bool { return true }})
+	}()
+	defer func() {
+		cancel()
+		if err := <-helperDone; err != nil {
+			t.Error(err)
+		}
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("helper did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	bridge, err := agentworksclient.NewPluginMCPServer(ctx, root, "claude", "native-host", true, nil, "exact-session-one")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +208,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	}
 	params := incoming["params"].(map[string]any)
 	meta := params["meta"].(map[string]any)
-	if params["content"] != "native push proof" || meta["message_id"] != receipt["message_id"] {
+	if !strings.Contains(params["content"].(string), "native push proof") || !strings.Contains(params["content"].(string), "<<<BEGIN "+receipt["message_id"].(string)+">>>") || meta["message_id"] != receipt["message_id"] {
 		t.Fatalf("wrong sender/identity: %v", incoming)
 	}
 	close(busyRelease)
