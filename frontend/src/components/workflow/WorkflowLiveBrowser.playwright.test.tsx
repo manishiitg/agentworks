@@ -7,9 +7,10 @@ import { TooltipProvider } from '../ui/tooltip'
 import { getDisplaySafeUserMessageContent } from '../../utils/chatMessageContent'
 import WorkflowLiveBrowser, { BROWSER_RECONNECT_ATTEMPTS, browserReconnectDelayMs, mapToViewport } from './WorkflowLiveBrowser'
 const api = vi.hoisted(() => ({ defaults: {}, get: vi.fn(), post: vi.fn() }))
+const addToast = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ default: api, getApiBaseUrl: () => 'http://localhost', getAuthToken: () => 'viewer-token' }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => true }))
-vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
+vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast }) } }))
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({ openWorkspaceView: vi.fn() }) } }))
 class FakeSocket {
   static OPEN = 1
@@ -93,7 +94,7 @@ it('follows new Playwright cases instead of staying on the default shared blank 
   api.get.mockResolvedValue({ data: { sessions: [shared] } })
   const { host, picker } = await mountBrowser()
   expect(picker()).toBeNull()
-  expect(host.querySelector('header')?.textContent).toContain('Shared browser · all users')
+  expect(host.querySelector('[role="status"]')?.getAttribute('title')).toBe('Shared browser · all users')
   expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/shared-browser/stream')
   await pollBrowsers([shared, testBrowser('pw-one')])
   expect(picker().value).toBe('playwright-tests')
@@ -140,7 +141,7 @@ it('migrates a saved follow-latest-test selection to the managed Crew browser wh
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Chats/Work/projects/gptlive1" scopeNoun="project" />) })
   expect(host.querySelector('select[aria-label="Browser session"]')).toBeNull()
-  expect(host.querySelector('header')?.textContent).toContain('Persistent browser')
+  expect(host.querySelector('[role="status"]')?.getAttribute('title')).toBe('Persistent browser')
   expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/crew-browser/stream')
   expect(host.textContent).not.toContain('Waiting for a Playwright test')
 })
@@ -194,23 +195,39 @@ it('does not show a retained test frame when the shared browser is selected', as
   expect(host.textContent).not.toContain('Completed')
 })
 
-it('plays completed tests, offers download, and deletes the replay when the panel closes', async () => {
+it('previews the last live frame, plays the replay and quietly accepts already-expired cleanup', async () => {
   const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:replay')
   const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
   const completed = { ...testBrowser('pw-replay'), state: 'completed', recording_state: 'ready' }
-  api.get.mockImplementation(async (url: string) => ({ data: url.endsWith('/recording') ? new Blob(['video'], { type: 'video/mp4' }) : { sessions: [shared, completed] } }))
+  let ready = false
+  api.get.mockImplementation(async (url: string) => ({ data: url.endsWith('/recording') ? new Blob(['video'], { type: 'video/mp4' }) : { sessions: [shared, ready ? completed : { ...testBrowser('pw-replay'), recording_state: 'recording' }] } }))
   const { root, host } = await mountBrowser()
+  await act(async () => { FakeSocket.instances.at(-1)!.onmessage?.(frameMessage()) })
+  ready = true
+  await act(async () => { vi.advanceTimersByTime(1000) })
   expect(host.querySelector('video')?.getAttribute('src')).toBe('blob:replay')
+  expect(host.querySelector('video')?.getAttribute('poster')).toBe('data:image/jpeg;base64,/9j/')
   expect(host.querySelector('video')?.controls).toBe(true)
+  expect(host.querySelector('[role="status"]')?.textContent).toBe('Replay')
   expect(host.querySelector('a[download]')?.getAttribute('href')).toBe('blob:replay')
   expect(host.querySelector('[role="note"]')?.getAttribute('aria-label')).toContain('deleted when this panel closes')
   expect(host.textContent).not.toContain('Closing this panel deletes')
-  expect(FakeSocket.instances).toHaveLength(0)
+  expect(FakeSocket.instances).toHaveLength(1)
   expect(api.post).not.toHaveBeenCalledWith(expect.anything(), { action: 'delete' }, expect.anything())
+  api.post.mockRejectedValueOnce({ response: { status: 404 } })
   await act(async () => { root.unmount(); await new Promise(resolve => setTimeout(resolve, 5)) })
   expect(api.post).toHaveBeenCalledWith('/api/browser/live/pw-replay/recording', { action: 'delete' }, { params: { workspace_path: 'Workflow/test' } })
+  expect(addToast).not.toHaveBeenCalled()
   expect(revoke).toHaveBeenCalledWith('blob:replay')
   create.mockRestore(); revoke.mockRestore()
+})
+
+it('leaves an active capture running when its viewer closes', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [{ ...testBrowser('pw-active'), recording_state: 'recording' }] } })
+  const { root } = await mountBrowser()
+  await act(async () => { root.unmount(); await new Promise(resolve => setTimeout(resolve, 5)) })
+  expect(api.post).not.toHaveBeenCalledWith(expect.anything(), { action: 'delete' }, expect.anything())
+  expect(addToast).not.toHaveBeenCalled()
 })
 
 it('continues following live tests when an older completed replay remains', async () => {
@@ -290,7 +307,7 @@ it('explains the idle state in plain language without a picker or controls', asy
   expect(FakeSocket.instances).toHaveLength(0)
 })
 
-it('shows a starting message, then header, tabs and one address bar', async () => {
+it('shows one header and address bar without a redundant single-tab row', async () => {
   api.get.mockResolvedValue({ data: { sessions: [shared] } })
   const { host } = await mountBrowser()
   expect(host.textContent).toContain('Starting browser…')
@@ -306,9 +323,9 @@ it('shows a starting message, then header, tabs and one address bar', async () =
   expect(host.textContent).not.toContain('See what your helper does')
   expect(host.querySelector('[role="status"]')?.textContent).toBe('Live')
   expect(bar.textContent).not.toContain('https://example.com/pricing')
-  expect(host.querySelector('[role="tab"]')?.textContent).toBe('Pricing')
+  expect(host.querySelector('[role="tab"]')).toBeNull()
   expect((host.querySelector('[aria-label="Website address"]') as HTMLInputElement).value).toBe('https://example.com/pricing')
-  expect(host.querySelector('[aria-label="Browser tabs"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Browser tabs"]')).toBeNull()
   expect(buttonNamed(host, 'Take control')).toBeDefined()
 })
 

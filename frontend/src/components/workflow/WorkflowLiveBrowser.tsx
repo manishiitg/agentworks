@@ -8,9 +8,7 @@ import api, { getApiBaseUrl, getAuthToken } from '../../services/api'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
-import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
-import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
 
 // Keep the persisted value for compatibility with existing browser selections,
 // but treat it as automatic activity following. Older clients described this
@@ -230,7 +228,11 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
     return () => {
       // Defer past React's effect replay; only actual panel disposal deletes files.
       scope.cleanup = setTimeout(() => {
-        for (const id of scope.ids) void api.post(`/api/browser/live/${encodeURIComponent(id)}/recording`, { action: 'delete' }, { params: { workspace_path: scope.workspace } }).catch(() => { useChatStore.getState().addToast('Could not delete a recording. It will expire automatically within 1 hour.', 'error') })
+        void Promise.allSettled([...scope.ids].map(id => api.post(`/api/browser/live/${encodeURIComponent(id)}/recording`, { action: 'delete' }, { params: { workspace_path: scope.workspace } }))).then(results => {
+          // Another panel or the server's expiry can already have removed a replay.
+          const failed = results.some(result => result.status === 'rejected' && result.reason?.response?.status !== 404)
+          if (failed) useChatStore.getState().addToast('Could not remove a temporary replay. The server will clean it up automatically.', 'error')
+        })
       }, 0)
     }
   }, [workspacePath])
@@ -273,7 +275,8 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
         setSessions(nextSessions)
         setSessionsLoaded(true)
         const tests = nextSessions.filter(item => item.kind === 'playwright')
-        for (const item of tests) if (item.recording_state && replayScope.current?.workspace === workspacePath) replayScope.current.ids.add(item.browser_session)
+        // Closing a viewer must not delete a capture that the test is still writing.
+        for (const item of tests) if (item.state === 'completed' && item.recording_state && replayScope.current?.workspace === workspacePath) replayScope.current.ids.add(item.browser_session)
         const activeTests = tests.filter(item => item.state !== 'completed')
         let choice = selectedBrowser.current
         if (choice && choice !== AUTO_BROWSER && !nextSessions.some(item => item.browser_session === choice)) {
@@ -604,9 +607,8 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
 
   const activeTab = tabs.find(tab => tab.active) ?? (tabs.length === 1 ? tabs[0] : undefined)
   const managedBrowsers = sessions.filter(item => item.kind !== 'playwright')
-  const hasTests = sessions.some(item => item.kind === 'playwright')
   // One browser per crew / per workflow is the normal case: no picker then.
-  const showPicker = !minimal && (sessions.length > 1 || hasTests)
+  const showPicker = !minimal && sessions.length > 1
   const singleBrowserLabel = !showPicker ? (currentBrowser?.label || managedBrowsers[0]?.label || '') : ''
   const slim = Boolean(displayFrame) && !replayURL
   useEffect(() => {
@@ -622,7 +624,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
   const menuItems = (session && canControl) || canResize
 
   const browserPicker = showPicker ? (
-    <select className="h-7 min-w-0 max-w-96 flex-1 rounded-md border border-border bg-background px-2 text-xs" aria-label="Browser session" title={followingActivity ? followLabel : currentBrowser?.kind === 'playwright' ? testBrowserLabel(currentBrowser) : currentBrowser?.label} value={selection || session} onChange={event => chooseBrowser(event.target.value)}>
+    <select className="h-7 w-44 min-w-0 max-w-full shrink truncate rounded-md border border-border bg-background px-2 text-xs" aria-label="Browser session" title={followingActivity ? followLabel : currentBrowser?.kind === 'playwright' ? testBrowserLabel(currentBrowser) : currentBrowser?.label} value={selection || session} onChange={event => chooseBrowser(event.target.value)}>
             {!selection && !session && <option value="" disabled>No managed browser</option>}
             <option value={AUTO_BROWSER}>{followingActivity ? followLabel : 'Follow browser activity'}</option>
             {sessions.map((item, index) => <option key={item.browser_session} value={item.browser_session}>{item.kind === 'playwright' ? testBrowserLabel(item) : item.label || `Browser ${index + 1} · ${item.workflow_session.slice(0, 8)}`}</option>)}
@@ -630,13 +632,13 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
   ) : null
   const hasPlaywrightRecording = sessions.some(item => item.kind === 'playwright' && item.recording_state)
   const recordingNote = !minimal && hasPlaywrightRecording ? (
-    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground" role="note" aria-label="Playwright recordings are deleted when this panel closes and expire after 1 hour. Download any videos you want to keep." title="Playwright recordings are deleted when this panel closes and expire after 1 hour. Download any videos you want to keep.">
+    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground" role="note" aria-label="Temporary replays are deleted when this panel closes and expire after 1 hour. Active recordings continue. Download any videos you want to keep." title="Temporary replays are deleted when this panel closes and expire after 1 hour. Active recordings continue. Download any videos you want to keep.">
       <Info className="h-4 w-4" aria-hidden="true" />
     </span>
   ) : null
   const statusLabel = controlling ? 'You have control'
     : connected && displayFrame ? 'Live'
-      : completed ? 'Completed'
+      : completed ? 'Replay'
         : retainedFrame ? 'Disconnected'
           : startingBrowser ? 'Opening…'
             : !session ? 'No browser open'
@@ -666,7 +668,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
     if (!tab.active && activeTab) send({ type: 'switch_tab', tab: activeTab.tabId })
   }
   const pageSizeToggle = minimal && connected && canControl && <select aria-label="Browser page size" disabled={!controlling} className="h-7 rounded-md border border-border bg-background px-2 text-xs" defaultValue="" onChange={event => { const [width, height] = event.target.value.split('x').map(Number); send({ type: 'resize_viewport', width, height }); event.target.value = '' }}><option value="" disabled>Page size</option>{PAGE_SIZES.map(size => <option key={size.value} value={size.value}>{size.label.replace(' page', '')}</option>)}</select>
-  const expandToggle = !minimal && Boolean(displayFrame) && (
+  const expandToggle = !minimal && Boolean(displayFrame || replayURL) && (
     <button type="button" aria-pressed={expanded} aria-label={expanded ? 'Exit expanded view' : 'Expand browser'} title={expanded ? 'Exit expanded view (Esc)' : 'Expand browser'} className={iconButtonClass} onClick={() => setExpanded(value => !value)}>
       {expanded ? <Minimize2 className="h-4 w-4" aria-hidden="true" /> : <Maximize2 className="h-4 w-4" aria-hidden="true" />}
     </button>
@@ -724,14 +726,13 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
 
   return (
     <section className={`live-browser flex min-h-0 flex-1 flex-col overflow-hidden bg-background ${expanded ? 'fixed inset-0 z-50' : 'relative'}`} aria-label={`Live ${scopeNoun} browser`}>
-      {slim ? <BrowserChrome status={statusLabel} sessionLabel={singleBrowserLabel} tabs={tabs} canSelect={canControl} controlling={controlling} address={address} onAddress={setAddress} onNeedControl={canControl ? () => useChatStore.getState().addToast('Take control to type here', 'info') : undefined} onNavigate={navigateAddress} onHistory={action => send({ type: 'history', action })} onSelect={tab => { if (tab.active) return; if (controlling) send({ type: 'switch_tab', tab: tab.tabId }); else { pendingTab.current = tab.tabId; send({ type: 'take_control' }) } }} onClose={closeTab} onNew={() => send({ type: 'new_tab', url: 'about:blank' })} actions={<WorkspacePanelActions local={expanded}>{recordingIndicator}{controlToggle}{teachToggle}{pageSizeToggle}{recordingNote}{expandToggle}{overflowMenu}{toolbar}{showGuide && <WorkspacePanelGuideButton topic="Browser" />}</WorkspacePanelActions>} /> : (
-        <WorkspaceViewHeader
+      <WorkspaceViewHeader
+          className="live-browser-bar"
           local={expanded}
           icon={Monitor}
           title="Browser"
           showWalkthrough={showGuide}
-          subtitle={browserPicker ?? (sessions.length ? undefined : 'Watch your helper browse websites. You can take control when needed.')}
-          context={<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" role="status"><span className={`h-2 w-2 rounded-full ${statusDot}`} aria-hidden="true" />{statusLabel}{singleBrowserLabel && <span className="text-muted-foreground/80">· {singleBrowserLabel}</span>}{lastAction && <span className="text-muted-foreground/80">·</span>}{lastAction}</span>}
+          context={<>{browserPicker}<span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status" title={singleBrowserLabel}><span className={`h-2 w-2 rounded-full ${statusDot}`} aria-hidden="true" />{statusLabel}</span>{lastAction}</>}
           actions={<>
             {startToggle}
             {recordingIndicator}
@@ -744,18 +745,12 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
             {overflowMenu}
             {toolbar}
           </>}
-        />
-      )}
+      />
+      {slim && <BrowserChrome tabs={tabs} canSelect={canControl} controlling={controlling} address={address} onAddress={setAddress} onNeedControl={canControl ? () => useChatStore.getState().addToast('Take control to type here', 'info') : undefined} onNavigate={navigateAddress} onHistory={action => send({ type: 'history', action })} onSelect={tab => { if (tab.active) return; if (controlling) send({ type: 'switch_tab', tab: tab.tabId }); else { pendingTab.current = tab.tabId; send({ type: 'take_control' }) } }} onClose={closeTab} onNew={() => send({ type: 'new_tab', url: 'about:blank' })} />}
       {allowTeaching && teachOpen && workspacePath && session && <BrowserTeachingPanel workspacePath={workspacePath} session={session} state={teachState} onState={setTeachState} profileId={profileId} onClose={()=>setTeachOpen(false)} onReview={()=>{if(learnCallback.current && teachState.directory) void Promise.resolve(learnCallback.current(`Adjust my demonstrated task so it works reliably: ${teachState.goal}.
 
 📁 Files in context: ${teachState.directory}/manifest.json
 Review this browser demonstration. Inspect its recorded evidence and test errors, update the actions, guidance and expected result, preserve capture metadata and keep status draft. Do not execute browser actions or publish yet. Explain readiness and required inputs in plain language.`)).catch(()=>useChatStore.getState().addToast('Unable to ask your helper. Try again.', 'error'))}} onControl={action=>send({type:`teach_${action}`})} onStart={goal=>{if(controlling)send({type:'teach_start',goal});else{pendingTeach.current=goal;send({type:'take_control'})}}} />}
-      {showPicker && slim && (
-        <div key="picker" className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1">
-          <span className="shrink-0 text-xs text-muted-foreground">Browser</span>
-          {browserPicker}
-        </div>
-      )}
       {!minimal && !recording.recording && recording.directory && recording.directory !== dismissedRecording && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted/30 px-3 py-1.5 text-xs">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
@@ -778,7 +773,7 @@ Review this browser demonstration. Inspect its recorded evidence and test errors
       {currentBrowser?.recording_error && <p className="px-3 py-1.5 text-xs text-destructive" role="alert">{currentBrowser.recording_error}</p>}
       {error && <p className="px-3 py-1.5 text-xs text-destructive" role="alert">{error}</p>}
 
-      {replayURL ? <video controls preload="metadata" src={replayURL} aria-label="Playwright test recording" className="min-h-0 flex-1 bg-black object-contain" /> : displayFrame ? <div className="live-browser-viewport relative min-h-0 flex-1 bg-black/90">
+      {replayURL ? <video controls preload="metadata" src={replayURL} poster={lastPlaywrightFrame?.workspace === workspacePath && lastPlaywrightFrame.session === session ? lastPlaywrightFrame.frame : undefined} aria-label="Playwright test recording" className="min-h-0 w-full flex-1 bg-black object-contain" /> : displayFrame ? <div className="live-browser-viewport relative min-h-0 flex-1 bg-black/90">
         <img ref={screen} src={displayFrame} alt={retainedFrame ? "Last Playwright test frame" : "Live server browser viewport"} draggable={false} tabIndex={-1} className="live-browser-frame absolute inset-0 block h-full w-full select-none object-contain outline-none focus:ring-2 focus:ring-inset focus:ring-ring" onMouseDown={event => mouse(event, 'mousePressed')} onMouseUp={event => mouse(event, 'mouseReleased')} onMouseMove={event => mouse(event, 'mouseMoved')} onContextMenu={event => { event.preventDefault(); if (controlling) { const rect = event.currentTarget.getBoundingClientRect(); setClipboardMenu({ x: Math.max(0, Math.min(event.clientX - rect.left, rect.width - 160)), y: Math.max(0, Math.min(event.clientY - rect.top, rect.height - 80)) }) } }} />
         <textarea ref={keyboardTarget} aria-label="Browser keyboard input" defaultValue=" " onFocus={event => event.currentTarget.select()} onCut={event => event.preventDefault()} tabIndex={controlling ? 0 : -1} readOnly={!controlling} className="pointer-events-none absolute left-0 top-0 h-px w-px resize-none opacity-0" onKeyDown={event => keyboard(event, 'keyDown')} onKeyUp={event => keyboard(event, 'keyUp')} onPaste={clipboard.paste} onCopy={event => { event.preventDefault(); void clipboard.copy() }} />
         {controlling && clipboardMenu && <div role="menu" aria-label="Browser clipboard" className="absolute z-20 min-w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md" style={{ left: clipboardMenu.x, top: clipboardMenu.y }}>
