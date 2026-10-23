@@ -487,7 +487,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 		}
 		for _, ping := range pings {
 			message := ping.message
-			if write(map[string]any{"type": "message", "kind": "ping", "attachment_id": id, "message_id": message.ID, "inbox_id": ping.inbox, "message": message.Text, "sequence": message.AgentSequence}) != nil {
+			if write(map[string]any{"type": "message", "kind": "ping", "attachment_id": id, "message_id": message.ID, "inbox_id": ping.inbox, "message": firstLineClip(message.Text, 160), "sequence": message.AgentSequence}) != nil {
 				return
 			}
 			sentPings[message.ID] = true

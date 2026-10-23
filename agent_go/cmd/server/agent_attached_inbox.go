@@ -69,6 +69,9 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		if serverAuthoredKind(message.Kind) {
 			row["sender"], row["sender_id"], row["kind"] = "AgentWorks", "", message.Kind
 		}
+		if message.Kind == agentPingKind {
+			row["message"] = firstLineClip(message.Text, 160)
+		}
 		if person := crossPersonOwner(source, agent.UserID); person != "" && !serverAuthoredKind(message.Kind) {
 			row["from_person"], row["untrusted"] = person, true
 		}

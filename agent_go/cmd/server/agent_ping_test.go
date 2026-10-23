@@ -103,7 +103,7 @@ func TestAgentPingOncePerMessageAndCollapses(t *testing.T) {
 		for _, m := range c.Messages {
 			if m.Kind == agentPingKind {
 				pings++
-				if m.PingCount != 2 || !strings.Contains(m.Text, "waiting for 2 replies") || !strings.Contains(m.Text, "And the release notes") || strings.Contains(m.Text, "long details") {
+				if m.PingCount != 2 || !strings.Contains(m.Text, "waiting for 2 replies") || strings.Contains(m.Text, "And the release notes") || strings.Contains(m.Text, "long details") {
 					t.Fatalf("ping line: %+v", m)
 				}
 			}

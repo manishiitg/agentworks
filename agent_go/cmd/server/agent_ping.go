@@ -84,7 +84,6 @@ func (api *StreamingAPI) externalAgentPing(w http.ResponseWriter, r *http.Reques
 	}
 	sender := c.Endpoints[m.From]
 	senderName, targetName := endpointDisplayLabel(sender, dest.UserID), endpointDisplayLabel(dest, dest.UserID)
-	preview := firstLineClip(m.Text, 80)
 	m.PingedAt = now
 	collapsed := false
 	statusID := agentStatusConversationPrefix + dest.NamedAgentID
@@ -96,13 +95,13 @@ func (api *StreamingAPI) externalAgentPing(w http.ResponseWriter, r *http.Reques
 			p := &s.Conversations[i].Messages[j]
 			if p.Kind == agentPingKind && p.Delivery == "stored" && p.PingSender == sender.NamedAgentID {
 				p.PingCount++
-				p.Text = fmt.Sprintf("agent:%s is waiting for %d replies from agent:%s\n%s", senderName, p.PingCount, targetName, preview)
+				p.Text = fmt.Sprintf("agent:%s is waiting for %d replies from agent:%s", senderName, p.PingCount, targetName)
 				collapsed = true
 			}
 		}
 	}
 	if !collapsed {
-		appendAgentStatusMessage(&s, dest, fmt.Sprintf("agent:%s is waiting for a reply from agent:%s\n%s", senderName, targetName, preview), now)
+		appendAgentStatusMessage(&s, dest, fmt.Sprintf("agent:%s is waiting for a reply from agent:%s", senderName, targetName), now)
 		for i := range s.Conversations {
 			if s.Conversations[i].ID == statusID {
 				last := &s.Conversations[i].Messages[len(s.Conversations[i].Messages)-1]

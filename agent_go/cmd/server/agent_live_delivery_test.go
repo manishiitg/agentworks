@@ -439,7 +439,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	call(sender, map[string]any{"action": "ping_person", "agent_name": "sender", "message_id": first["message_id"]})
 	select {
 	case ping := <-caught:
-		if ping.Kind != "ping" || ping.MessageID == "" || !strings.Contains(ping.Message, "waiting for a reply") {
+		if ping.Kind != "ping" || ping.MessageID == "" || !strings.Contains(ping.Message, "waiting for a reply") || strings.Contains(ping.Message, "offline first") {
 			t.Fatalf("explicit person ping lost its notice: %+v", ping)
 		}
 		call(receiver, map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": ping.MessageID, "delivery": "delivered", "transport": "mailbox"})
