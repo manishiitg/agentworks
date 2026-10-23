@@ -83,6 +83,12 @@ func (c *Client) AttachAgent(ctx context.Context, opts AgentAttachmentOptions) (
 	return a, nil
 }
 
+// AgentAttachmentCall uses the same refreshed, address-bound credential for
+// server delivery adapters. Credentials never leave the client.
+func (c *Client) AgentAttachmentCall(ctx context.Context, args map[string]any) (json.RawMessage, error) {
+	return c.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", args, true)
+}
+
 // UpdateAgentLabel changes only presentation, using the same exact lease.
 func (c *Client) UpdateAgentLabel(ctx context.Context, a AgentAttachment, label string) error {
 	body := map[string]any{"action": "label", "agent_name": a.AgentName, "attachment_id": a.ID, "label": label, "client_build": a.ClientBuild}

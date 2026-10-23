@@ -364,6 +364,8 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
+	serverRelayOnce             sync.Once
+	serverRelay                 *agentServerRelayService
 	localDevices                sync.Map // user/device -> authenticated outbound executor
 	codingAgentClarificationsMu sync.Mutex
 	codingAgentClarifications   map[string]*pendingCodingAgentClarification
@@ -3127,6 +3129,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/devices/connect", api.handleLocalDeviceConnect).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/events", api.handleAgentEvents).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/attachment", api.handleAgentAttachment).Methods("POST")
+	apiRouter.HandleFunc("/external/v1/agents/link", api.handleAgentServerLinkGrant).Methods("POST")
+	apiRouter.HandleFunc("/agentbridge/servers", api.handleAgentServerLinks).Methods("GET", "POST")
+	apiRouter.HandleFunc("/agentbridge/servers/callback", api.handleAgentServerLinkCallback).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/agents/sharing", api.handleAgentSharing).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/brain/secret", api.handleBrainSecretSet).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/secrets", api.handleSecretsImport).Methods("POST")

@@ -57,7 +57,7 @@ func TestAgentServerLinkGrantKeepsItsNamespaceAndMessagingScope(t *testing.T) {
 		}
 		return response.StatusCode, raw, response.Header
 	}
-	status, raw, _ := request("POST", mcpOAuthRegisterPath, `{"client_name":"Home server","redirect_uris":["https://home.example.com/api/agentbridge/servers/callback"],"agent_server_link":true}`, "", "application/json")
+	status, raw, _ := request("POST", mcpOAuthRegisterPath, `{"client_name":"Home server","redirect_uris":["https://home.example.com/agentbridge/servers/callback"],"agent_server_link":true}`, "", "application/json")
 	var registered mcpOAuthClient
 	if status != 201 || json.Unmarshal(raw, &registered) != nil || !isAgentServerLinkClient(registered.ID) {
 		t.Fatal("link client registration", status)
@@ -158,6 +158,41 @@ func TestAgentServerLinkGrantKeepsItsNamespaceAndMessagingScope(t *testing.T) {
 	if _, err := child.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{AgentName: "reviewer@home.example.com", Provider: "relay", SessionID: "home-agent"}); err != nil {
 		t.Fatal("connect relay reader", err)
 	}
+
+	sent, err := child.Call(context.Background(), "messages", map[string]any{"action": "send", "agent_name": "reviewer@home.example.com", "target": "agent:reviewer", "message": "reader restart continuity", "submission_id": "relay-reader-restart"})
+	var sentReceipt struct {
+		ID string `json:"message_id"`
+	}
+	if err != nil || json.Unmarshal(sent, &sentReceipt) != nil || sentReceipt.ID == "" {
+		t.Fatal("send before reader replacement", err)
+	}
+	replacement, err := parent.CreateAgentConnection(context.Background(), "reviewer@home.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacementClient, _ := agentworksclient.New(srv.URL, replacement.Token)
+	if _, err = replacementClient.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{AgentName: "reviewer@home.example.com", Provider: "relay", SessionID: "home-agent"}); err != nil {
+		t.Fatal(err)
+	}
+	mail, err = readAgentMessageStore(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queued agentMessage
+	var conversation agentConversation
+	for _, c := range mail.Conversations {
+		for _, m := range c.Messages {
+			if m.ID == sentReceipt.ID {
+				queued, conversation = m, c
+			}
+		}
+	}
+	if queued.ID == "" {
+		t.Fatal("missing queued relay mail")
+	}
+	if err = env.api.recheckAgentMessageAdmission(context.Background(), conversation, queued); err != nil {
+		t.Fatal("reader replacement stranded approved mail", err)
+	}
 	refresh := url.Values{"grant_type": {"refresh_token"}, "client_id": {registered.ID}, "resource": {resource}, "refresh_token": {pair.Refresh}}
 	status, raw, _ = request("POST", mcpOAuthTokenPath, refresh.Encode(), "", "application/x-www-form-urlencoded")
 	if status != 200 || json.Unmarshal(raw, &pair) != nil || pair.Scope != strings.Join(agentServerLinkScopes, " ") {
@@ -176,4 +211,7 @@ func TestAgentServerLinkGrantKeepsItsNamespaceAndMessagingScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	call(child, map[string]any{"action": "count", "agent_name": "reviewer@home.example.com"}, false)
+	if err = env.api.recheckAgentMessageAdmission(context.Background(), conversation, queued); err == nil {
+		t.Fatal("revoked server approval released queued mail")
+	}
 }

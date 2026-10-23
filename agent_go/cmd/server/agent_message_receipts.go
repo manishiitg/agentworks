@@ -59,6 +59,9 @@ func (s agentMessageStore) destAgentOf(e agentMessageEndpoint) (*namedMessageAge
 func (s agentMessageStore) receiptFields(m agentMessage, dest agentMessageEndpoint) map[string]interface{} {
 	agent, named := s.destAgentOf(dest)
 	state, text := receiptState(m, agent, named)
+	if dest.Remote != nil && m.Delivery == "stored" {
+		state, text = "sent", fmt.Sprintf("Saved for %s; waiting for its receiving chat.", dest.Label)
+	}
 	out := map[string]interface{}{"state": state, "state_text": text, "message": text, "sent_at": m.SentAt}
 	// The recipient's own name for itself (a Crew's title, an agent's label), so the sender's chat can say "Message to
 	// <label>" instead of a raw agent id.

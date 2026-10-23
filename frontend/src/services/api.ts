@@ -148,6 +148,8 @@ function markRequestStart(config: TimedRequestConfig): TimedRequestConfig {
 
 function recordResponseTiming(config: TimedRequestConfig | undefined, status: number | 'error', responseData?: unknown) {
   if (!config || config.__requestStartedAt === undefined) return
+  // This one-time OAuth code must not enter request/response diagnostics.
+  if (apiTimingPathFor(config.url, config.baseURL) === '/api/agentbridge/servers/callback') return
   recordApiTiming({
     method: (config.method || 'get').toUpperCase(),
     path: apiTimingPathFor(config.url, config.baseURL),

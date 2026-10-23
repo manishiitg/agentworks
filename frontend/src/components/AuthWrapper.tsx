@@ -1,3 +1,4 @@
+import { AgentServerLinkReturn } from "../pages/AgentServerLinkReturn";
 import { lazy, Suspense, useEffect, useState, useCallback } from "react";
 import { useAuthStore } from "../stores/useAuthStore";
 import { Login } from "../pages/Login";
@@ -67,6 +68,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   const [isAuthCallback, setIsAuthCallback] = useState(false);
   const [isMcpConsent, setIsMcpConsent] = useState(false);
   const [isCliConsent, setIsCliConsent] = useState(false);
+  const [isAgentServerReturn, setIsAgentServerReturn] = useState(window.location.pathname === "/agentbridge/servers/callback");
   const [singleUserAuthAttempted, setSingleUserAuthAttempted] = useState(false);
 
   // Check for shared file/folder URL or OAuth callback
@@ -80,6 +82,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
       setIsAuthCallback(false);
       setIsMcpConsent(false);
       setIsCliConsent(false);
+      setIsAgentServerReturn(false);
       setSharedUid(null);
       const path = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
@@ -145,6 +148,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
         return;
       }
 
+      if (path === "/agentbridge/servers/callback") { setIsAgentServerReturn(true);return; }
       // Check for OAuth callback
       if (path === "/auth/callback") {
         setIsAuthCallback(true);
@@ -184,6 +188,8 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   if (isAuthCallback) {
     return <AuthCallback />;
   }
+
+  if (isAgentServerReturn) return <AgentServerLinkReturn />;
 
   // Still loading auth mode or local single-user token
   if (!isMultiUserModeChecked || isLoading || (!isMultiUserMode && !isAuthenticated && !singleUserAuthAttempted)) {

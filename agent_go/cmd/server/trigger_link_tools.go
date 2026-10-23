@@ -37,6 +37,7 @@ const (
 var triggerTargetPollInterval = 10 * time.Second
 
 type triggerTarget struct {
+	Remote       *agentRemoteEndpoint
 	NamedAgentID string // Message-only address; never used for structured functions.
 	// A named agent shared by another account: the grant that allows sending to it.
 	ShareOwnerUserID string

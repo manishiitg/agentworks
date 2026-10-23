@@ -1,3 +1,4 @@
+import { LinkedServersPanel } from './LinkedServersPanel'
 import { currentProductRoute } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { AgentUsage, BullpenUsageOverview } from './BullpenUsage'
@@ -99,6 +100,7 @@ function AgentDirectory({ onConnect }: { onConnect: () => void }) {
         <AgentUsage usage={agent.usage} unavailable={agent.usage_unavailable} provider={agent.provider} />
       </article>)}
     </div>}
+    <LinkedServersPanel />
     <HowBullpenWorks collapsible />
     {!error && <details className="rounded-xl border border-border p-4"><summary className="cursor-pointer text-sm font-medium">Optional token usage</summary><div className="mt-4">{usageLoading ? <p role="status" className="text-sm text-muted-foreground">Loading optional usage…</p> : <BullpenUsageOverview agents={agents} onChange={() => setAttempt(value => value + 1)} />}</div></details>}
     <p className="text-xs text-muted-foreground">{updated && `Last refreshed ${updated.toLocaleTimeString()}. `}Connection status does not mean a message has been read.</p>

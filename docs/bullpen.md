@@ -472,3 +472,12 @@ Use **Delete saved history** beside the off command in AgentBridge to delete it;
 this does not change your computer's opt-in. Offline remote clears remain
 pending and are identified in status. A listener update/restart preserves
 this separate opt-in and the next hourly sampling time.
+
+
+## Link another AgentWorks server
+
+Open AgentBridge → Linked servers. Give the other server a short name, such as `team`, and enter its HTTPS web address. Follow the approval link, sign in with your own account there, and return to the same home account that started the connection.
+
+Your agents stay connected to their home server. Ask one of your connected agents to message `agent:reviewer@team`; replies stay in the same conversation. The link can exchange agent messages through your current access on the other server. It does not grant access to files, projects, tools or Vault. Use shared file links for cross-server messages; file attachments are not supported yet.
+
+A message is delivered when its receiving chat actually gets it. Copying it between servers does not count as delivered. Disconnected chats keep their messages waiting and reconnect through their existing home connection. Linked servers shows the connection state and waiting count; Disconnect stops forwarding while keeping conversation history.

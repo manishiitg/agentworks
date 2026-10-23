@@ -28,20 +28,21 @@ var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
 type agentMessageEndpoint struct {
-	ConditionJob   string `json:"condition_job,omitempty"`
-	NamedAgentID   string `json:"named_agent_id,omitempty"`
-	UserID         string `json:"user_id"`
-	Kind           string `json:"kind"`
-	ID             string `json:"id"`
-	Profile        string `json:"profile,omitempty"`
-	Path           string `json:"path,omitempty"`
-	Label          string `json:"label"`
-	Session        string `json:"session,omitempty"`
-	ChatKey        string `json:"chat_key,omitempty"`
-	External       bool   `json:"external,omitempty"`
-	Mode           string `json:"mode,omitempty"`
-	Guest          string `json:"guest,omitempty"`
-	FunctionCallID string `json:"function_call_id,omitempty"`
+	Remote         *agentRemoteEndpoint `json:"remote,omitempty"`
+	ConditionJob   string               `json:"condition_job,omitempty"`
+	NamedAgentID   string               `json:"named_agent_id,omitempty"`
+	UserID         string               `json:"user_id"`
+	Kind           string               `json:"kind"`
+	ID             string               `json:"id"`
+	Profile        string               `json:"profile,omitempty"`
+	Path           string               `json:"path,omitempty"`
+	Label          string               `json:"label"`
+	Session        string               `json:"session,omitempty"`
+	ChatKey        string               `json:"chat_key,omitempty"`
+	External       bool                 `json:"external,omitempty"`
+	Mode           string               `json:"mode,omitempty"`
+	Guest          string               `json:"guest,omitempty"`
+	FunctionCallID string               `json:"function_call_id,omitempty"`
 	// OwnerAuthority is set at send time, from the validated connection, only for the person's own unrestricted external
 	// connection (externalOwnerAuthority). It is the one positive evidence, besides a Crew builder chat, that a message
 	// to a Crew may start the owner's turn (856-59); absent means the message is treated as a guest's.
@@ -52,6 +53,7 @@ type agentMessageEndpoint struct {
 	ShareVersion int    `json:"share_version,omitempty"`
 }
 type agentMessage struct {
+	Relay *agentRelayMessage `json:"relay,omitempty"`
 	// Removing an incoming message affects only its recipient's inbox. The sender
 	// keeps the original message and receipts in the shared conversation record.
 	InboxRemovedAt     time.Time `json:"inbox_removed_at,omitempty"`
@@ -273,6 +275,9 @@ func callerMessageEndpoint(userID string, c triggerLinkCaller) agentMessageEndpo
 	return e
 }
 func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint {
+	if t.Remote != nil {
+		return agentMessageEndpoint{UserID: userID, Kind: triggerCallerUser, ID: "remote:" + t.Remote.LinkID + ":" + t.Remote.Target, Label: t.Label, External: true, Remote: t.Remote}
+	}
 	if t.NamedAgentID != "" {
 		if t.ShareID != "" {
 			return agentMessageEndpoint{UserID: t.ShareOwnerUserID, Kind: triggerCallerUser, ID: t.ShareOwnerUserID, Label: t.Label, External: true, NamedAgentID: t.NamedAgentID, ShareID: t.ShareID, ShareVersion: t.ShareVersion}
@@ -296,6 +301,9 @@ func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint 
 	return e
 }
 func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLinkCaller) bool {
+	if e.Remote != nil {
+		return false
+	}
 	if e.NamedAgentID != c.NamedAgentID {
 		return false
 	}
@@ -314,6 +322,10 @@ func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLink
 	return false // an undelivered target cannot impersonate a receiving conversation
 }
 func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) error {
+	if e.Remote != nil {
+		_, err := ownAgentServerLink(ctx, e.UserID, e.Remote.LinkID)
+		return err
+	}
 	// Existing reply addresses must not acknowledge new mail to a disabled
 	// Pulse. This also rechecks pending deliveries after a setting change.
 	if e.Kind == triggerCallerWorkflow && e.ChatKey == pulseBuilderChatKey {
@@ -459,7 +471,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		// Registered agents have stable identities in either direction. Reuse
 		// their most recently active conversation under this exact sharing grant.
 		// Anonymous external contacts still select their own explicit inbox.
-		if e.External && dest.External && e.NamedAgentID != "" && dest.NamedAgentID != "" {
+		if e.External && dest.External && e.NamedAgentID != "" && (dest.NamedAgentID != "" || dest.Remote != nil) {
 			var latest time.Time
 			for i := range s.Conversations {
 				c := &s.Conversations[i]
@@ -479,6 +491,11 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			if index >= 0 {
 				// Keep displayed names and send-time authority current. They are
 				// not part of either agent's stable conversation identity.
+				if prior := s.Conversations[index].Endpoints[1-side].Remote; dest.Remote != nil && prior != nil {
+					copy := *dest.Remote
+					copy.InboxID = prior.InboxID
+					dest.Remote = &copy
+				}
 				s.Conversations[index].Endpoints[side] = e
 				s.Conversations[index].Endpoints[1-side] = dest
 				log.Printf("[AGENT-MESSAGE-THREAD] inbox=%s sender=%s recipient=%s reused=true", s.Conversations[index].ID, e.NamedAgentID, dest.NamedAgentID)
@@ -524,6 +541,18 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 	}
 	dest := c.Endpoints[1-side]
+	if dest.Remote != nil && (c.Endpoints[side].NamedAgentID == "" || c.Endpoints[side].UserID != userID || c.Endpoints[side].Guest != "") {
+		agentMessageMu.Unlock()
+		return nil, fmt.Errorf("Use one of your own AgentBridge agents to message a linked server.")
+	}
+	remoteFileTarget := dest.Remote != nil
+	if a, _ := s.destAgentOf(dest); a != nil && a.Relay != nil {
+		remoteFileTarget = true
+	}
+	if remoteFileTarget && file != nil {
+		agentMessageMu.Unlock()
+		return nil, fmt.Errorf("Send a shared file link to an agent on another server.")
+	}
 	if err = validateMessageDestination(ctx, dest); err != nil {
 		agentMessageMu.Unlock()
 		return nil, err
@@ -597,6 +626,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		return nil, err
 	}
 	api.kickAgentMessages(id)
+	if dest.Remote != nil {
+		api.agentServerRelay().changed()
+	}
 	return out, nil
 }
 func agentMessageReceipt(id string, m agentMessage) map[string]interface{} {
@@ -750,6 +782,7 @@ func (api *StreamingAPI) expectDeliveredAgentMessage(ctx context.Context, sessio
 	return api.eventStore.ExpectAgentMessageSender(sessionID, query, metadata)
 }
 func (api *StreamingAPI) recoverAgentMessages() {
+	api.agentServerRelay()
 	agentMessageMu.Lock()
 	s, err := readAgentMessageStore(context.Background())
 	if err == nil {
@@ -1306,6 +1339,24 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		raw, err := json.Marshal(out)
 		return string(raw), err
 	}})
+
+	if !parentReq.PinRunMode && parentReq.CrewGuestCaller == "" {
+		tools = append(tools, struct {
+			name, description string
+			parameters        map[string]interface{}
+			execute           func(context.Context, map[string]interface{}) (string, error)
+		}{
+			"agent_servers", "Link your own account on another AgentWorks server for messages. Connect returns a browser approval link; list shows your linked servers; disconnect stops forwarding. Use agent:name@server to message a linked agent.", map[string]interface{}{"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{"action": map[string]interface{}{"type": "string", "enum": []string{"list", "connect", "disconnect"}}, "name": externalString("Short server name, for example team."), "server": externalString("HTTPS server web address.")}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+				ctx = internalBotRequestContext(ctx, userID)
+				out, err := api.agentServerLinksCall(ctx, GetUserFromContext(ctx), args)
+				if err != nil {
+					return "", err
+				}
+				raw, err := json.Marshal(out)
+				return string(raw), err
+			},
+		})
+	}
 	for _, t := range tools {
 		if declare != nil {
 			declare(t.name)
@@ -1329,6 +1380,9 @@ func (api *StreamingAPI) agentMessageSessionClosed(session string) bool {
 // Stable named-agent contacts do not change when a display name, attachment or
 // sending connection changes. A different owner or sharing grant is separate.
 func sameNamedAgentConversationEndpoint(existing, requested agentMessageEndpoint) bool {
+	if requested.Remote != nil || existing.Remote != nil {
+		return requested.Remote != nil && existing.Remote != nil && existing.UserID == requested.UserID && existing.Remote.LinkID == requested.Remote.LinkID && existing.Remote.Target == requested.Remote.Target && requested.Remote.Target != ""
+	}
 	return existing.External && requested.External && requested.NamedAgentID != "" &&
 		existing.NamedAgentID == requested.NamedAgentID && existing.UserID == requested.UserID &&
 		existing.Kind == requested.Kind && existing.ID == requested.ID &&

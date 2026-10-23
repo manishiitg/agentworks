@@ -73,6 +73,7 @@ func externalTools() ([]externalTool, error) {
 		p["query"] = externalString("Filter workflow labels and IDs.")
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and Autopilot state only. Pass false for every workflow's full manifest (tens of thousands of characters); get_workflow returns one manifest."}
 		externalAgentMessageDefinition(add)
+		add("agent_servers", "Link your own account on another AgentWorks server for messages between your agents. Connect returns a browser approval link; list shows your links; disconnect stops forwarding. Messages use agent:name@server. Your files and projects are outside this connection.", true, false, map[string]any{"action": map[string]any{"type": "string", "enum": []any{"list", "connect", "disconnect"}}, "name": externalString("Short server name, for example team."), "server": externalString("HTTPS web address of the AgentWorks server to link.")}, "action")
 		externalServerProductDefinitions(add)
 		add("list_workflows", "List workflows visible to the signed-in user (compact by default; compact: false adds every manifest).", false, false, p)
 		add("get_workflow", "Read one workflow manifest and the caller's access level.", false, true, nil)
@@ -805,6 +806,15 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if isExternalCodeReviewTool(tool.Name) {
 		api.externalCodeReviewCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == "agent_servers" {
+		out, err := api.agentServerLinksCall(r.Context(), GetUserFromContext(r.Context()), call.Arguments)
+		if err != nil {
+			externalCommunicationError(w, 403, "connection_refused", err)
+			return
+		}
+		externalJSON(w, out)
 		return
 	}
 	if tool.Name == "agent_inbox" {

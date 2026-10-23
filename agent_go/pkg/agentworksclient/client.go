@@ -68,6 +68,9 @@ func (c *Client) WithExecutorTrace(trace func(request localfiles.Request, respon
 	return c
 }
 
+// WithHTTPClient selects the transport used by requests and event streams.
+func (c *Client) WithHTTPClient(client *http.Client) *Client { c.http = client; return c }
+
 // WithTokenProvider resolves a browser-login credential before each request.
 // Long-running MCP bridges can refresh without restarting.
 func (c *Client) WithTokenProvider(provider func(context.Context) (string, error)) *Client {

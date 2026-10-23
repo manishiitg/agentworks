@@ -12,7 +12,7 @@ import (
 )
 
 const agentServerLinkClientPrefix = "agent_link_"
-const agentServerLinkCallbackPath = "/api/agentbridge/servers/callback"
+const agentServerLinkCallbackPath = "/agentbridge/servers/callback"
 
 var agentServerLinkScopes = []string{"messages:read", "messages:send"}
 
@@ -31,7 +31,7 @@ func isAgentServerLinkClient(id string) bool {
 }
 
 func agentServerLinkAPIPath(method, path string) bool {
-	return method == http.MethodPost && (path == "/api/external/v1/call" || path == "/api/external/v1/agents/attachment") ||
+	return method == http.MethodPost && (path == "/api/external/v1/call" || path == "/api/external/v1/agents/attachment" || path == "/api/external/v1/agents/link") ||
 		method == http.MethodGet && (path == "/api/external/v1/tools" || path == "/api/external/v1/agents/events")
 }
 
@@ -94,4 +94,43 @@ func updateRelayPresence(agent *namedMessageAgent, args map[string]any) error {
 	agent.Relay.DeliveryMode, agent.Relay.Online = mode, online
 	agent.Relay.LastSeenAt, agent.LastOnlineAt = seen, seen
 	return nil
+}
+
+// Reader restarts replace a derived child, not the person's server approval.
+// Queued mail may use a current child of the same account, address and verified
+// home origin. Never substitute general account authority or a native agent.
+func currentRelaySenderClaims(ctx context.Context, source agentMessageEndpoint, connectionID string) (*UserClaims, error) {
+	a, err := namedAgentByID(ctx, source.UserID, source.NamedAgentID)
+	if err != nil || a.Relay == nil || !strings.HasPrefix(connectionID, "oauth-") {
+		return nil, errors.New("Relayed sender unavailable.")
+	}
+	s, err := openMCPOAuthStore()
+	if err != nil {
+		return nil, err
+	}
+	var user, clientID string
+	err = s.db.QueryRowContext(ctx, `SELECT user_id,client_id FROM tokens WHERE family_id=? LIMIT 1`, strings.TrimPrefix(connectionID, "oauth-")).Scan(&user, &clientID)
+	var origin string
+	if err == nil && user == source.UserID {
+		var client mcpOAuthClient
+		client, err = s.Client(ctx, clientID)
+		if err == nil {
+			origin, err = agentServerLinkClientOrigin(client)
+		}
+	}
+	s.Close()
+	if err != nil || origin != a.Relay.Origin {
+		return nil, errors.New("Relayed sender origin changed.")
+	}
+	for _, id := range a.Connections {
+		claims, e := agentMessageConnectionClaims(ctx, id)
+		if e != nil || claims.AccessToken == nil || claims.AccessToken.BoundAgentID != a.ID || !isAgentServerLinkClient(claims.AccessToken.OAuthClientID) {
+			continue
+		}
+		current, e := agentServerLinkOrigin(ctx, claims)
+		if e == nil && current == origin && namedAgentConnectionAllowed(a, claims) {
+			return claims, nil
+		}
+	}
+	return nil, errors.New("The linked-server approval has ended.")
 }

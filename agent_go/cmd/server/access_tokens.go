@@ -404,6 +404,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "costs" {
 		return externalCostsAllowed(c)
 	}
+	if tool.Name == "agent_servers" {
+		return personalAgentServerLinkClaims(c)
+	}
 	if tool.Name == "agent_inbox" {
 		return !IsLocalMode() && c != nil
 	}

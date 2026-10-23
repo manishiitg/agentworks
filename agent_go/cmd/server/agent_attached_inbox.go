@@ -69,6 +69,9 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 			}
 			if err := api.recheckAgentMessageAdmission(r.Context(), conversation, message); err != nil {
 				why := "The sender or its sign-in no longer has access to this chat."
+				if message.Relay != nil && message.Relay.Incoming {
+					why = err.Error()
+				}
 				if strings.Contains(err.Error(), "connection is no longer authorized") {
 					why = "The sign-in that sent it is no longer connected."
 				}
