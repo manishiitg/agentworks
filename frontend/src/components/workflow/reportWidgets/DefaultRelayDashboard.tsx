@@ -177,14 +177,14 @@ export default function DefaultRelayDashboard({ workspacePath, refreshToken, ren
         <button type="submit" disabled={sending || !draft.question.trim()} className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50">{sending ? 'Queueing…' : 'Send question'}</button>
         <button type="button" onClick={() => setDraft(null)} className="ml-2 text-sm">Cancel</button>
       </form>}
-      <section aria-label="Flow Ask conversation" className="rounded-xl border border-border p-4">
+      {!data.can_draft && <section aria-label="Flow Ask conversation" className="rounded-xl border border-border p-4">
         <h2 className="font-semibold">Ask</h2>
         {data.can_ask ? <>
           <p className="mt-1 text-xs text-muted-foreground">Your existing Flow conversation.</p>
           {bound?.identity === identity ? <div className="mt-3 h-[min(65vh,40rem)] min-h-80"><WorkingTipsContext.Provider value={false}><Suspense fallback={<p>Opening Ask…</p>}><ChatArea tabId={bound.tabId} compact hideHeader previousChatsWorkspacePath={workspacePath} composerPlaceholder="Ask about this Flow…" /></Suspense></WorkingTipsContext.Provider></div>
             : <button type="button" onClick={() => void openAsk().catch(reason => setError(reason instanceof Error ? reason.message : 'Could not open Ask.'))} className="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted">Open Ask</button>}
         </> : <p className="mt-2 text-sm text-muted-foreground">Ask is unavailable for this Flow.</p>}
-      </section>
+      </section>}
     </>}
   </div>
 }

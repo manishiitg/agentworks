@@ -20,6 +20,8 @@ execFileSync('npm', ['run', 'prepare:local-assets'], { cwd: frontend, stdio: 'in
 for (const root of ['agent_go/static', 'agent_go/cmd/server/static', 'frontend/dist']) {
   for (const name of ['dashboard-json.js', 'dashboard-json.css', 'dashboard-react.js', 'report-preview.js']) assert((await readFile(path.join(repo, root, name))).length > 0, `missing native asset: ${root}/${name}`)
 }
+await mkdir(path.join(output, 'runtime-assets'), { recursive: true })
+for (const name of ['dashboard-json.js', 'dashboard-json.css', 'dashboard-react.js']) await copyFile(path.join(frontend, 'dist', name), path.join(output, 'runtime-assets', name))
 const html = await readFile(fixture, 'utf8')
 let total = 42, reads = 0, queries = 0, runs = 0, rejectData = false
 const server = createServer(async (req, res) => {
@@ -59,7 +61,10 @@ try {
   assert.deepEqual([reads, queries, runs], [1, 1, 1])
   await frame.getByRole('button', { name: 'Details', exact: true }).click()
   await frame.getByText('Recorded details', { exact: true }).waitFor()
-  assert.equal(await frame.getByRole('button', { name: 'Ask', exact: true }).isDisabled(), true)
+  assert.equal(await frame.getByRole('button', { name: 'Ask', exact: true }).count(), 0)
+  assert.equal(await frame.locator('.dashboard-stat').count(), 2)
+  await frame.getByText('Optional JSON', { exact: true }).waitFor()
+  assert.equal(await frame.getByRole('table').count(), 1)
   assert.equal(await frame.locator('[data-report-action="lookup"]').count(), 1)
   total = 84
   await frame.evaluate(() => Promise.all(window.__reportQueuedCallbacks.map(callback => window.__runReportCallback(callback))))
@@ -69,6 +74,19 @@ try {
   await page.evaluate(() => window.__reportPreview.setWidth(390))
   assert.equal(await frame.evaluate(() => document.documentElement.scrollWidth <= 392), true)
   await page.screenshot({ path: path.join(output, 'tsx-mobile.png'), fullPage: true })
+  // Rebind the real runtime to shared/owner presentation; no actual chat call.
+  await frame.evaluate(async () => {
+    window.__askOpened = 0
+    window.report.chat = { available: true, open: async () => { window.__askOpened++ }, close() {}, mount: async () => {} }
+    await Promise.all(window.__reportQueuedCallbacks.map(callback => window.__runReportCallback(callback)))
+  })
+  await frame.getByRole('button', { name: 'Ask', exact: true }).click()
+  assert.equal(await frame.evaluate(() => window.__askOpened), 1, 'shared Ask opened more than once')
+  await frame.evaluate(async () => {
+    window.report.chat.available = false
+    await Promise.all(window.__reportQueuedCallbacks.map(callback => window.__runReportCallback(callback)))
+  })
+  assert.equal(await frame.getByRole('button', { name: 'Ask', exact: true }).count(), 0)
   assert.deepEqual(errors, [])
   // The exact same source waits for data in export and surfaces real failures.
   await page.goto(previewURL + '&export=1')

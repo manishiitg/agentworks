@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/evanw/esbuild/pkg/api"
@@ -108,11 +109,19 @@ func AuthoringCatalog() map[string]any {
 	var catalog map[string]any
 	_ = json.Unmarshal(JSONCatalog, &catalog)
 	catalog["default_format"] = "tsx"
+	var names []string
+	if components, ok := catalog["components"].(map[string]any); ok {
+		for name := range components {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	catalog["tsx_components"] = map[string]any{"module": "@agentworks/dashboard", "components": names, "exports": []string{"components", "DashboardUI", "RefreshButton", "useDashboardStore", "useDashboardBinding"}, "contract": "Import shared components from @agentworks/dashboard. Common components have named exports; the complete catalog is available as components.Name. Use direct props and children, onPress for Button, on={{event: callback}} for catalog events, bindings for state. The props match this catalog (nullable props may be omitted in TSX). DashboardUI optionally renders a JSON spec through the same registry; do not reimplement a JSON renderer. AskButton and ChatPanel render only in shared Run dashboards. The host provides state/action/visibility/validation providers."}
 	catalog["formats"] = map[string]any{
 		"tsx": map[string]any{"entry": "index.tsx", "runtime_modules": []string{"react", "react-dom", "react-dom/client", "react/jsx-runtime", "@agentworks/dashboard"},
-			"contract": "Default-export a React component receiving {data, report}. Optionally export async loadData(report) for initial data and refresh. Relative TSX/TS/JS/JSON/CSS/assets are bundled by the server. TypeScript is transpiled; type checking is the author's responsibility. No separate npm app or server. Use ordinary CSS; arbitrary Tailwind classes are not generated. Generated index.html/dashboard-app.js/dashboard-app.css are replaced on every save. Imports outside the runtime modules and submitted files are unsupported.",
-			"example":  "import './style.css';\nexport async function loadData(report) { return report.query('SELECT name FROM sqlite_master WHERE type = ?', ['table']); }\nexport default function Dashboard({data, report}) { return <main><h1>Project records</h1><pre>{JSON.stringify(data, null, 2)}</pre></main>; }"},
-		"json-render": map[string]any{"entry": "index.json", "supported": true},
+			"contract": "Default-export a React component receiving {data, report}. Use shared platform components from @agentworks/dashboard, including components.Name for the full catalog; JSON is optional. Optionally export async loadData(report) for initial data and refresh. Relative TSX/TS/JS/JSON/CSS/assets are bundled by the server. TypeScript is transpiled; type checking is the author's responsibility. No separate npm app or server. Use ordinary CSS; arbitrary Tailwind classes are not generated. Generated index.html/dashboard-app.js/dashboard-app.css are replaced on every save. Imports outside the runtime modules and submitted files are unsupported.",
+			"example":  "import { Card, Table, AskButton, RefreshButton } from '@agentworks/dashboard';\nexport async function loadData(report) { return report.query('SELECT name FROM sqlite_master WHERE type = ?', ['table']); }\nexport default function Dashboard({data}) { return <Card title=\"Project records\"><Table columns={['Name']} rows={data.map(row => [row.name])}/><RefreshButton/><AskButton label=\"Ask about this dashboard\"/></Card>; }"},
+		"json-render": map[string]any{"entry": "index.json", "supported": true, "optional": true},
 		"html":        map[string]any{"entry": "index.html", "deprecated": true, "compatibility": "Existing HTML dashboards and saved revisions continue to render, edit, publish, share and export. Use TSX for new dashboards; convert existing pages only when requested."},
 	}
 	return catalog

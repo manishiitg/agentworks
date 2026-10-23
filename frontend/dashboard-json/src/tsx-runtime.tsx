@@ -4,6 +4,7 @@ import * as ReactDOMClient from 'react-dom/client'
 import * as JSXRuntime from 'react/jsx-runtime'
 import * as JSXDevRuntime from 'react/jsx-dev-runtime'
 import './style.css'
+import * as platform from './components'
 
 type DashboardModule = {
   default: React.ComponentType<{ data: unknown; report: any }>
@@ -41,14 +42,15 @@ function mount(module: DashboardModule) {
   if (!module.default) { showError(new Error('index.tsx must default-export a React component.')); return }
   const root = ReactDOMClient.createRoot(document.getElementById('dashboard-root')!)
   let sequence = 0
-  window.report.ready(async () => {
+  const refresh = async () => {
     const current = ++sequence
     try {
       const data = module.loadData ? await module.loadData(report) : undefined
       if (current !== sequence) return
-      ReactDOM.flushSync(() => root.render(<DashboardError key={current}><module.default data={data} report={report} /></DashboardError>))
+      ReactDOM.flushSync(() => root.render(<DashboardError key={current}><platform.DashboardProviders refresh={refresh}><module.default data={data} report={report} /></platform.DashboardProviders></DashboardError>))
     } catch (error) { if (current === sequence) showError(error) }
-  })
+  }
+  window.report.ready(refresh)
 }
 
 // Compiled dashboard imports resolve only to this pinned runtime or files in
@@ -59,5 +61,5 @@ Object.assign(window, { __agentworksDashboard: { modules: {
   'react-dom/client': ReactDOMClient,
   'react/jsx-runtime': JSXRuntime,
   'react/jsx-dev-runtime': JSXDevRuntime,
-  '@agentworks/dashboard': { report, mount },
+  '@agentworks/dashboard': { ...platform, report, mount },
 } } })

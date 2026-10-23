@@ -126,7 +126,7 @@ it('does not show a previous account’s Ask after an in-flight conversation loo
 
 it.each(['crew', 'code', 'workflow'])('renders %s native chat in a designer-selected slot in the host document without appending a layout', async product => {
   get.mockResolvedValue({ data: { ...view, product } }); openAsk.mockResolvedValue('designer-chat')
-  const current = await mount(product, 'owner', true, '<p id="total">42</p><section id="custom" data-report-chat-panel></section><button data-report-chat-button data-report-chat-target="#custom">Help</button>')
+  const current = await mount(product, 'question_only', true, '<p id="total">42</p><section id="custom" data-report-chat-panel></section><button data-report-chat-button data-report-chat-target="#custom">Help</button>')
   expect(current.host.querySelector('[aria-label="Open dashboard chat"]')).toBeNull()
   expect(document.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('designer-chat')
   expect(current.frame.contentDocument!.querySelector('[data-native-tab]')).toBeNull()
@@ -169,4 +169,13 @@ it('omits the automatic Ask overlay for the owner while retaining contextual das
   await editQuestion(current.frame); await submit()
   expect(openAsk).toHaveBeenCalledWith({ product: 'workflow', projectId: 'project-1', workspacePath: 'Workflow/demo' }, { activate: false })
   expect(send).toHaveBeenCalledOnce()
+})
+
+// Regression: authored controls previously bypassed the owner-only overlay rule.
+it.each(['crew', 'code', 'workflow', 'relay'])('withholds authored %s Ask widgets from Builders without removing contextual questions', async product => {
+  const current = await mount(product, 'owner', true, '<p id="total">42</p><section data-report-chat-panel></section><button data-report-chat-button>Ask about this dashboard</button>')
+  expect(current.host.querySelector('[aria-label="Dashboard chat widget"]')).toBeNull()
+  expect(current.frame.contentDocument!.head.textContent).toContain('display: none !important')
+  expect(openAsk).not.toHaveBeenCalled()
+  expect(send).not.toHaveBeenCalled()
 })

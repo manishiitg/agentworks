@@ -79,7 +79,7 @@ export function readChatStyle(el: Element): { palette?: string; vars?: Record<st
   return { palette: PALETTES.has(palette) ? palette : undefined, vars: Object.keys(vars).length ? vars : undefined, fit, mode: modeAttr === 'light' || modeAttr === 'dark' ? modeAttr : undefined }
 }
 type Options = {
-  available: boolean; container: HTMLElement; openConversation: () => Promise<unknown>
+  available: boolean; visible?: boolean; container: HTMLElement; openConversation: () => Promise<unknown>
   changed: (slots: ChatWidgetSlot[], authored: boolean) => void; popup: (open: boolean) => void; error: (message: string) => void
   /** The dashboard's own --report-* theme, for native UI that is not a chat panel (the function form, the chat dialog). */
   themeChanged?: (theme: ReportTheme) => void
@@ -89,6 +89,11 @@ type Options = {
 export function installDashboardChatWidgets(frame: HTMLIFrameElement, options: Options) {
   const doc = frame.contentDocument!
   const win = doc.defaultView!
+  // Suppress marked controls in old HTML and dynamically mounted React pages.
+  // This changes presentation only; native chat permissions are unchanged.
+  const visibility = doc.createElement('style')
+  visibility.textContent = options.visible === false ? `[${CHAT_BUTTON_ATTR}], [${CHAT_PANEL_ATTR}] { display: none !important; }` : ''
+  doc.head.append(visibility)
   let disposed = false, lastOpen = -Infinity, requested = false, nextKey = 0
   let pendingFrame = 0
   let lastSlots: ChatWidgetSlot[] | null = null, lastAuthored = false, lastTheme = ''
@@ -124,7 +129,7 @@ export function installDashboardChatWidgets(frame: HTMLIFrameElement, options: O
     if (themeKey !== lastTheme) { lastTheme = themeKey; options.themeChanged?.(reportTheme) }
     if (!observed.has(frame)) { observed.add(frame); resize?.observe(frame) }
     for (const el of keys.keys()) if (!panels.includes(el as HTMLElement)) { resize?.unobserve(el); observed.delete(el); keys.delete(el) }
-    for (const el of panels) {
+    for (const el of options.visible === false ? [] : panels) {
       if (!keys.has(el)) keys.set(el, ++nextKey)
       if (!observed.has(el)) { observed.add(el); resize?.observe(el) }
       const box = el.getBoundingClientRect(), style = win.getComputedStyle(el)
@@ -214,7 +219,7 @@ export function installDashboardChatWidgets(frame: HTMLIFrameElement, options: O
   window.addEventListener('scroll', scheduleMeasure, true); window.addEventListener('resize', scheduleMeasure)
   measure()
   return { api, reveal, dispose: () => {
-    disposed = true; mutation.disconnect(); resize?.disconnect()
+    disposed = true; visibility.remove(); mutation.disconnect(); resize?.disconnect()
     win.cancelAnimationFrame(pendingFrame)
     doc.removeEventListener('click', click)
     win.removeEventListener('scroll', scheduleMeasure, true); win.removeEventListener('resize', scheduleMeasure)

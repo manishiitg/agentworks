@@ -2,7 +2,7 @@ import { DashboardHostBridge, resultData } from './bridge'
 import { withReportBootstrap } from '../components/workflow/reportWidgets/reportHostRuntime'
 import { actionArgs, buildActionFields } from '../components/workflow/reportWidgets/reportActionForm'
 
-type Dashboard = { resource_id: string; workspace_id: string; revision: string; title: string; url: string; html: string; asset_prefix: string; files: Record<string, string>; capability: { can_ask: boolean } }
+type Dashboard = { resource_id: string; workspace_id: string; revision: string; title: string; url: string; html: string; asset_prefix: string; files: Record<string, string>; capability: { can_ask: boolean; mode: string } }
 type PublishedFunction = { name: string; description?: string; input_schema?: unknown; can_call?: boolean }
 const runtimes = JSON.parse(document.getElementById('aw-runtimes')!.textContent!) as Record<string, string>
 const bridge = new DashboardHostBridge()
@@ -64,7 +64,7 @@ function renderDocument() {
   const config = element('script')
   config.id = 'aw-document-config'
   config.type = 'application/json'
-  config.textContent = JSON.stringify({ channel, title: dashboard.title, workspacePath: dashboard.workspace_id, canAsk: dashboard.capability.can_ask, theme }).replace(/</g, '\\u003c')
+  config.textContent = JSON.stringify({ channel, title: dashboard.title, workspacePath: dashboard.workspace_id, canAsk: dashboard.capability.can_ask && dashboard.capability.mode === 'question_only', theme }).replace(/</g, '\\u003c')
   const runtime = element('script')
   runtime.textContent = inlineScript(runtimes.document)
   page.head.prepend(config, runtime)

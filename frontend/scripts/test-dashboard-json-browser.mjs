@@ -59,7 +59,7 @@ try {
   await frame.getByRole('textbox', { name: 'Filter' }).fill('open')
   await frame.getByRole('button', { name: 'Show details' }).click()
   await frame.getByText('Recorded values only', { exact: true }).waitFor()
-  assert.equal(await frame.getByRole('button', { name: 'Ask about this', exact: true }).isDisabled(), true)
+  assert.equal(await frame.getByRole('button', { name: 'Ask about this', exact: true }).count(), 0)
   assert.equal(await frame.locator('button[data-report-action="lookup"]').count(), 1)
   await frame.getByRole('slider', { name: 'Playback position' }).focus()
   await frame.getByRole('slider', { name: 'Playback position' }).press('End')

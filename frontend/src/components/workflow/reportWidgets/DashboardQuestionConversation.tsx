@@ -44,6 +44,9 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   // Native project chat enforces Builder/Run permissions on every request.
   // Merged Crew projects retain their work/code origin for native conversation routing.
   const canAsk = Boolean(viewer && capability.can_ask && ['crew', 'code', 'workflow', 'relay'].includes(product))
+  // Widgets belong to the shared Run view. Owner/context-menu questions retain
+  // their existing native chat access, independently of widget presentation.
+  const showChatWidgets = canAsk && capability.mode === 'question_only'
   // Function buttons run the project's published functions as this person; the
   // server resolves the project from the dashboard record, including either Crew origin.
   const canUseFunctions = Boolean(viewer && capability.can_view && ['crew', 'code', 'workflow'].includes(product))
@@ -102,7 +105,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   opener.current = openAsk
   const chatWidgets = useCallback((frame: HTMLIFrameElement) => {
     const binding = installDashboardChatWidgets(frame, {
-      available: canAsk, container: container.current!, openConversation: () => opener.current(),
+      available: showChatWidgets, visible: showChatWidgets, container: container.current!, openConversation: () => opener.current(),
       changed: (next, hasWidgets) => { setSlots(next); setAuthored(hasWidgets) }, popup: setPopup, error: setError, themeChanged: setTheme,
     })
     const buttons = installDashboardActionButtons(frame, { available: canUseFunctions, open: setAction })
@@ -117,7 +120,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
     widgetApi.current = binding.api
     revealWidgets.current = binding.reveal
     return { api: binding.api, dispose: () => { binding.dispose(); buttons.dispose(); if (widgetApi.current === binding.api) { widgetApi.current = null; revealWidgets.current = null } } }
-  }, [canAsk, canUseFunctions, viewer, resourceId])
+  }, [showChatWidgets, canUseFunctions, viewer, resourceId])
   const runtime = useMemo(() => data ? { data, chatWidgets } : null, [data, chatWidgets])
   useEffect(() => { if (popup) dialog.current?.showModal() }, [popup])
 
@@ -134,7 +137,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
     await sendWorkspacePaneMessageToChat({ tabId: id, message, notificationId: submissionId })
     if (generation.current === token) {
       accepted.current.set(submissionId, message)
-      if (revealWidgets.current) revealWidgets.current()
+      if (showChatWidgets && revealWidgets.current) revealWidgets.current()
       else setPopup(true)
     }
   }
@@ -144,7 +147,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   return <ReportEmbedProvider value={runtime}>
     <div ref={container} className="relative overflow-hidden">
       <ReportQuestionFrame key={`${viewer}:${resourceId}`} {...frame} allowQuestions={canAsk} submitQuestion={submitQuestion} publication={{ resourceId, revision }} />
-      {!authored && canAsk && capability.mode === 'question_only' && <button type="button" aria-label="Open dashboard chat" title="Ask" className="absolute left-3 top-3 z-30 inline-flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 py-1 text-sm shadow-sm" onClick={() => void widgetApi.current?.open().catch(reason => setError(reason instanceof Error ? reason.message : 'Could not open chat.'))}>
+      {!authored && showChatWidgets && <button type="button" aria-label="Open dashboard chat" title="Ask" className="absolute left-3 top-3 z-30 inline-flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 py-1 text-sm shadow-sm" onClick={() => void widgetApi.current?.open().catch(reason => setError(reason instanceof Error ? reason.message : 'Could not open chat.'))}>
         <MessageCircle className="h-4 w-4" /> Ask
       </button>}
       {slots.map(slot => <section key={slot.key} aria-label="Dashboard chat widget" aria-hidden={!slot.visible} data-report-theme={slot.palette} className={`absolute z-30 overflow-hidden bg-background text-foreground ${modeClass(slot.mode)}`} style={{ ...slot.vars, left: slot.left, top: slot.top, width: slot.width, height: slot.height, clipPath: slot.clipPath, visibility: slot.visible ? 'visible' : 'hidden' } as CSSProperties}>{conversation}</section>)}

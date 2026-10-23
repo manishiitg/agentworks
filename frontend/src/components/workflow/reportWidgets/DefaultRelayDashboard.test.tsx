@@ -101,7 +101,7 @@ it('discards a previous account’s in-flight conversation lookup', async () => 
   expect(send).not.toHaveBeenCalled()
 })
 
-it('shows the empty introduction for an owner without removing version and Ask controls', async () => {
+it('shows the empty introduction for an owner with version controls and no duplicate owner Ask widget', async () => {
   get.mockResolvedValue({ data: { ...fixture(), can_draft: true, runs: [] } })
   const { host } = await mount(canCreate => <section aria-label="Dashboard introduction">Common dashboard examples{canCreate && <button>Create dashboard</button>}</section>)
   expect(host.querySelector('[aria-label="Dashboard introduction"]')).not.toBeNull()
@@ -109,7 +109,8 @@ it('shows the empty introduction for an owner without removing version and Ask c
   expect(host.querySelector('select')).not.toBeNull()
   expect([...host.querySelectorAll('option')].some(option => option.value === 'draft')).toBe(true)
   expect(host.textContent).toContain('No recorded runs for this version.')
-  expect(host.textContent).toContain('Open Ask')
+  expect(host.textContent).not.toContain('Open Ask')
+  expect(host.querySelector('[aria-label="Flow Ask conversation"]')).toBeNull()
   expect(openAsk).not.toHaveBeenCalled()
   expect(send).not.toHaveBeenCalled()
 })

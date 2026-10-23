@@ -56,6 +56,11 @@ const api: ReportDataApi = {
 }
 
 function start() {
+  if (!config.canAsk) {
+    const style = document.createElement('style')
+    style.textContent = '[data-report-chat-button], [data-report-chat-panel] { display: none !important; }'
+    document.head.append(style)
+  }
   installReportDocumentHost(document, {
     title: config.title, dataApi: api, theme: config.theme, tokenSource: null, dispatchData: true,
     chatApi: {
@@ -64,7 +69,7 @@ function start() {
       close: () => { void request('chat.close') },
       mount: async selector => {
         const target = document.querySelector(selector)
-        if (!target) return
+        if (!target || !config.canAsk) return
         const button = document.createElement('button')
         button.textContent = 'Ask about this dashboard'
         button.type = 'button'

@@ -2168,7 +2168,7 @@
       },
       "slots": [],
       "events": [],
-      "description": "Opens the existing project Ask composer when clicked. Does not send a message."
+      "description": "Opens the existing project Ask composer for shared Run users only. Hidden for Builders and preview; does not send a message."
     },
     "ChatPanel": {
       "props": {
@@ -2201,7 +2201,7 @@
       },
       "slots": [],
       "events": [],
-      "description": "Designer-placed native project conversation. Requires a positive height. Preview does not open a conversation."
+      "description": "Designer-placed native project conversation for shared Run users only. Hidden for Builders and preview; requires a positive height."
     },
     "FunctionButton": {
       "props": {

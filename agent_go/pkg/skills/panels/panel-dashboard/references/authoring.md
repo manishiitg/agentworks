@@ -13,7 +13,7 @@ Sharing a product means sharing its dashboard: people use the published work the
 
 When nobody has designed a dashboard, Share creates an automatic starting page.
 It shows the project content and actions first, with an **Ask about this dashboard**
-button that opens the existing chat. This starting layout does not constrain
+button for shared Run users that opens the existing chat. Builders use their existing project chat; dashboard Ask buttons and panels are hidden for them. This starting layout does not constrain
 authored dashboards: their designer can choose an open panel, a button, or both.
 Automatic Crew and Goal pages reflect the current callable functions without
 republishing. Once the owner or their AI edits a page, its content and layout belong to them:
@@ -37,6 +37,10 @@ platform. Relative imports resolve only within the submitted bundle: .tsx, .ts,
 are not installed by this authoring path; bundle needed browser code as local
 files or use the supplied modules. No server code runs during compilation.
 
+Prefer the shared components exported by `@agentworks/dashboard`: Card, Stack, Grid, Heading, Text, Metric, Table, BarChart, LineChart, Button, Tabs, Accordion, Collapsible, Alert, Badge, Input, Select, Checkbox, AskButton, ChatPanel, FunctionButton and MotionControls. `components.Name` exposes the complete catalog; `RefreshButton` refreshes loadData. The same implementations power optional JSON dashboards. Do not copy the component implementations or create a switch-based JSON interpreter in dashboard source.
+
+Pass catalog props directly in TSX; nullable props may be omitted. Button uses `onPress`; other catalog events use `on={{change: callback}}`. `useDashboardBinding(path)` returns a state value/setter, `useDashboardStore()` exposes the shared store, and `bindings={{value: path}}` connects inputs or Tabs to that state. The host supplies the providers. `DashboardUI spec={spec}` optionally composes a JSON tree within TSX using the platform registry. Use React state/custom markup where a bespoke visualization is needed. JSON is optional, not required as an intermediate format.
+
 Default-export a React component receiving `{data, report}`. Optionally export
 `async function loadData(report)` to fetch the initial data and each explicit
 refresh. The host waits for that promise and committed React DOM before reporting
@@ -45,20 +49,17 @@ filters and interactions. Put initial data reads in loadData, not an untracked
 effect or top-level asynchronous call. Do not start business actions on page load.
 
 ```tsx
-import { useState } from 'react';
-import './style.css';
-type Summary = { total: number };
+import { Card, Grid, Metric, Table, AskButton, RefreshButton } from '@agentworks/dashboard';
+type Summary = { total: number; rows: (string | number)[][] };
 export async function loadData(report): Promise<Summary> {
   return report.get('db/summary.json'); // inspect the actual file/schema first
 }
-export default function Dashboard({data, report}: {data: Summary; report: any}) {
-  const [details, setDetails] = useState(false);
-  return <main><h1>Overview</h1><strong>{data.total}</strong>
-    <button onClick={() => setDetails(!details)}>Details</button>
-    {details && <p>Recorded total from the project summary.</p>}
-    {report.chat?.available && <button onClick={() => report.chat.open()}>Ask</button>}
-    <button data-report-action="lookup">Look up a record</button>
-  </main>;
+export default function Dashboard({data}: {data: Summary}) {
+  return <Card title="Overview">
+    <Grid columns={2}><Metric label="Total" value={data.total}/></Grid>
+    <Table columns={['Record', 'Value']} rows={data.rows}/>
+    <RefreshButton/><AskButton label="Ask about this dashboard"/>
+  </Card>;
 }
 ```
 
@@ -82,10 +83,10 @@ revisions continue to render, edit, publish, restore, share and export. Existing
 JSON dashboards also remain supported. Do not silently rewrite them or delete
 saved HTML history. Use the compatibility sections below for their current APIs.
 
-## Existing JSON-render dashboards
+## Optional JSON-render dashboards
 
 Existing JSON dashboards retain Vercel json-render and the complete supplied shadcn
-catalog. For new dashboards use the TSX contract above. Call `get_dashboard_catalog` for the pinned component props and supported
+catalog. TSX with shared components is the default; JSON remains an optional authoring format when it fits the task. Call `get_dashboard_catalog` for the pinned component props and supported
 actions. The designer chooses layout, typography, colors, navigation and placement;
 there are no required sections or sample business values.
 
@@ -106,7 +107,7 @@ recorded values; missing history stays unavailable. Local state/form actions and
 
 The catalog includes all supplied shadcn components plus `Metric`, `BarChart`,
 `LineChart`, `AskButton`, `ChatPanel`, `FunctionButton` and `MotionControls`.
-Ask opens the existing composer without sending. ChatPanel needs its own id and
+AskButton and ChatPanel are visible only to shared Run users and hidden for Builders and preview. Ask opens the existing composer without sending. ChatPanel needs its own id and
 positive height; the designer places and styles it. FunctionButton opens this
 project's published function form and requires the person to press Run. Existing
 project and function access applies; Flow function buttons remain unavailable.
@@ -344,7 +345,7 @@ composer never sits below the fold.
 Crew includes projects formerly called Code. Both use these same widgets and
 the signed-in person’s existing project conversation; Run access stays in Run
 mode. Keep the project identity returned by discovery; do not convert it to
-another origin. Preview has no conversation: `chat.available` is false. Check
+another origin. Dashboard widgets are for shared Run users only: `chat.available` is false for Builders and preview, even though Builders retain their ordinary project chat and contextual questions. Use the supplied AskButton/ChatPanel or marked HTML controls, never an unconditional custom Ask button. Check
 availability before calling widget controls. These widgets require the managed dashboard
 host; loose HTML documents do not acquire native chat through markup alone.
 
