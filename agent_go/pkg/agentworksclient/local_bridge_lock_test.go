@@ -806,12 +806,18 @@ func TestNativeHandoffDoesNotRepeatDuringSlowReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &localSession{Attachment: AgentAttachment{ID: "lease", Provider: "claude", SessionID: "chat", AgentName: "reviewer"}, HostKey: "host", client: client, latestSequence: 2, NativeRemote: "claude+session://fixture"}
-	b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{localBridgeKey("claude", "chat"): s}, changed: make(chan struct{}), options: LocalBridgeOptions{NativeOffer: func(_ context.Context, _ string, reply LocalBridgeReply) error {
+	b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{localBridgeKey("claude", "chat"): s}, changed: make(chan struct{})}
+	b.options.NativeOffer = func(_ context.Context, _ string, reply LocalBridgeReply) error {
 		if len(reply.Messages) != 2 {
 			t.Errorf("native batch: %+v", reply)
 		}
+		// The app can run this hook before its socket write returns.
+		hook := b.handle(ctx, ctx, LocalBridgeRequest{Action: "drain", Provider: "claude", SessionID: "chat", HostKey: "host", Transport: "claude_hook"})
+		if hook.Error != "" || len(hook.Messages) != 0 {
+			t.Errorf("prompt repeated the in-flight native write: %+v", hook)
+		}
 		return nil
-	}}}
+	}
 	done := make(chan struct{})
 	go func() { defer close(done); b.nativeLoop(ctx, s, "host") }()
 	defer func() {

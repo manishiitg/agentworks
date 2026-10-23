@@ -1846,6 +1846,14 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		}
 		b.mu.Lock()
 		offeredRemote := s.NativeRemote
+		// Native input can start a prompt before the write returns. Guard the
+		// whole batch through handoff and receipt saving, without storing bodies.
+		if s.handedOff == nil {
+			s.handedOff = map[string]time.Time{}
+		}
+		for _, message := range out.Messages {
+			s.handedOff[message.MessageID] = time.Now().Add(30 * time.Second)
+		}
 		b.mu.Unlock()
 		err := b.options.NativeOffer(ctx, offeredRemote, out)
 		if errors.Is(err, ErrNativeOfferRejected) && b.options.NativeRoute != nil {
@@ -1879,18 +1887,15 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		for _, message := range out.Messages {
 			log.Printf("[BRIDGE-NATIVE] outcome=%s agent=%s attachment=%s message=%s route=%s", outcome, out.Attachment.AgentName, out.Attachment.ID, message.MessageID, nativeCodexTransport(offeredRemote))
 		}
+		if err != nil {
+			b.mu.Lock()
+			for _, message := range out.Messages {
+				delete(s.handedOff, message.MessageID)
+			}
+			b.mu.Unlock()
+		}
 		if err == nil || errors.Is(err, ErrNativeOfferUnconfirmed) {
 			b.mu.Lock()
-			if err == nil {
-				// Mark the whole batch before any remote receipt: native input can
-				// start a prompt hook while the first receipt is still saving.
-				if s.handedOff == nil {
-					s.handedOff = map[string]time.Time{}
-				}
-				for _, message := range out.Messages {
-					s.handedOff[message.MessageID] = time.Now().Add(30 * time.Second)
-				}
-			}
 			if s.LastError != "" {
 				s.LastError = ""
 				_ = b.save()
@@ -2576,7 +2581,7 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 			return nil, 0, nil, 0, errors.New("inbox response changed attachment")
 		}
 		if now.Before(primary.handedOff[message.MessageID]) {
-			log.Printf("[BRIDGE-NATIVE] outcome=already_handed_off attachment=%s message=%s route=%s", attachment.ID, message.MessageID, transport)
+			log.Printf("[BRIDGE-NATIVE] outcome=native_handoff_in_flight attachment=%s message=%s route=%s", attachment.ID, message.MessageID, transport)
 			continue
 		}
 		if message.Kind == "ping" {
