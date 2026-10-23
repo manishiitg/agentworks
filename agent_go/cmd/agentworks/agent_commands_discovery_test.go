@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -10,7 +11,21 @@ import (
 // A move probes only the Codex threads that already have a lease; ordinary
 // discovery still sees the whole catalog.
 func TestCodexMoveDiscoveryProbesOnlyLeasedThreads(t *testing.T) {
-	leased := codexProbeCandidates([]agentworksclient.AgentAttachment{{Provider: "codex", SessionID: "leased"}, {Provider: "claude", SessionID: "other-provider"}})
+	// Real helper list shape: no second sessions array. Offline leases still
+	// retain names so a newly verified owner can reconnect to its own identity.
+	var local agentworksclient.LocalBridgeReply
+	if err := json.Unmarshal([]byte(`{"agent_states":[
+        {"provider":"codex","native_session_id":"leased","agent_name":"coding-agent","online":false},
+        {"provider":"claude","native_session_id":"other-provider","agent_name":"reviewer","online":true},
+        {"provider":"codex","native_session_id":"leased","agent_name":"other-network-name","network":"other"}
+    ]}`), &local); err != nil {
+		t.Fatal(err)
+	}
+	chats := localAttachedChats(local)
+	if len(chats) != 2 || chats[0].AgentName != "coding-agent" || chats[1].AgentName != "reviewer" {
+		t.Fatalf("discovery lost primary saved names: %+v", chats)
+	}
+	leased := codexProbeCandidates(chats)
 	if len(leased) != 1 || leased["leased"] != "" {
 		t.Fatalf("lease candidates: %v", leased)
 	}

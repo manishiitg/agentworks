@@ -635,11 +635,12 @@ func detachAgentCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if len(out.Sessions) == 0 {
+		sessions := localAttachedChats(out)
+		if len(sessions) == 0 {
 			fmt.Fprintln(o.stdout, "No attached chats.")
 			return nil
 		}
-		for i, s := range out.Sessions {
+		for i, s := range sessions {
 			fmt.Fprintf(o.stderr, "%d. agent:%s (%s)\n", i+1, s.AgentName, s.Provider)
 		}
 		fmt.Fprint(o.stderr, "Choose the chat to detach (number, or cancel): ")
@@ -648,10 +649,10 @@ func detachAgentCommand(o *options) *cobra.Command {
 			return err
 		}
 		n, err := strconv.Atoi(answer)
-		if err != nil || n < 1 || n > len(out.Sessions) {
+		if err != nil || n < 1 || n > len(sessions) {
 			return errors.New("detach cancelled")
 		}
-		a := out.Sessions[n-1]
+		a := sessions[n-1]
 		request := agentworksclient.LocalBridgeRequest{Action: "detach_person", Provider: a.Provider, SessionID: a.SessionID}
 		if a.Provider == "pi" {
 			request.AttachmentID = a.ID
@@ -891,6 +892,18 @@ func providerHostAliveWith(provider, host string, ps func(env []string, args ...
 	return false
 }
 
+// The helper has one local chat projection. Joined networks are connections of
+// that same chat; discovery and a move use its primary saved identity once.
+func localAttachedChats(local agentworksclient.LocalBridgeReply) []agentworksclient.AgentAttachment {
+	chats := make([]agentworksclient.AgentAttachment, 0, len(local.AgentStates))
+	for _, state := range local.AgentStates {
+		if state.Network == "" {
+			chats = append(chats, state.AgentAttachment)
+		}
+	}
+	return chats
+}
+
 func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAgentSession, error) {
 	if os.Getenv("AGENTWORKS_BRIDGE_ROOT") != "" {
 		configured, err := piBridgeRoot()
@@ -907,7 +920,7 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 	local, _ := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"})
 	var found []liveAgentSession
 	names := map[string]string{}
-	for _, s := range local.Sessions {
+	for _, s := range localAttachedChats(local) {
 		names[s.Provider+":"+s.SessionID] = s.AgentName
 	}
 	for _, s := range discoverMuseSessions(root) {
@@ -953,7 +966,7 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 		}
 	}
 	if desktopHost != "" && validateCodexRemote(remote) == nil {
-		candidates := codexProbeCandidates(local.Sessions)
+		candidates := codexProbeCandidates(localAttachedChats(local))
 		leased := map[string]bool{}
 		for id := range candidates {
 			leased[id] = true

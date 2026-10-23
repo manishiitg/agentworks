@@ -126,7 +126,6 @@ type LocalBridgeReply struct {
 	Error             string                `json:"error,omitempty"`
 	Warning           string                `json:"warning,omitempty"`
 	Result            json.RawMessage       `json:"result,omitempty"`
-	Sessions          []AgentAttachment     `json:"sessions,omitempty"`
 	LastError         string                `json:"last_error,omitempty"`
 	Offline           bool                  `json:"offline,omitempty"`
 	Version           string                `json:"version,omitempty"`
@@ -958,7 +957,6 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 
 			out.AgentStates = append(out.AgentStates, state)
 		}
-		sort.Slice(out.Sessions, func(i, j int) bool { return out.Sessions[i].AgentName < out.Sessions[j].AgentName })
 		sort.Slice(out.AgentStates, func(i, j int) bool {
 			if out.AgentStates[i].Online != out.AgentStates[j].Online {
 				return out.AgentStates[i].Online

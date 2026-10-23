@@ -383,7 +383,7 @@ func tidyPiSession(root, file string) {
 
 func discoverPiLiveAgents(root string, local agentworksclient.LocalBridgeReply) []liveAgentSession {
 	names := map[string]string{}
-	for _, state := range local.Sessions {
+	for _, state := range localAttachedChats(local) {
 		if state.Provider == "pi" {
 			names[state.SessionID] = state.AgentName
 		}
