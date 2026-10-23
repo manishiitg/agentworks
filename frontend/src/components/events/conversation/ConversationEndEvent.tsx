@@ -96,7 +96,7 @@ export const ConversationEndEventDisplay: React.FC<ConversationEndEventProps> = 
             
             {/* Full result with markdown rendering - always visible */}
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-3">
-              <ConversationMarkdownRenderer content={event.result} framed={false} />
+              <ConversationMarkdownRenderer content={event.result} framed={false} allowVisuals />
             </div>
           </div>
         )}

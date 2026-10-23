@@ -98,7 +98,7 @@ export const LLMGenerationEndEventDisplay: React.FC<LLMGenerationEndEventProps> 
           <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Content:</div>
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
             {event.content ? (
-              <ConversationMarkdownRenderer content={event.content} maxHeight="none" framed={false} />
+              <ConversationMarkdownRenderer content={event.content} maxHeight="none" framed={false} allowVisuals />
             ) : (
               <div className="text-xs text-gray-500 dark:text-gray-400 italic">
                 {event.tool_calls && event.tool_calls > 0 

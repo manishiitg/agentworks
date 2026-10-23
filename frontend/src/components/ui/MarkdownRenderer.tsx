@@ -11,6 +11,8 @@ import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { workspaceApi, agentApi } from '../../services/api'
 import { CodeCopyButton, codeBlockText } from './CodeCopyButton'
+import { ChatVisual } from './ChatVisual'
+import { closedVisualFence } from './chatVisualDocument'
 
 const SyntaxHighlightedCode = lazy(() => import('./SyntaxHighlightedCode'))
 
@@ -24,6 +26,7 @@ interface MarkdownRendererProps {
   /** Block remote media and workspace navigation for shared untrusted content. */
   untrustedContent?: boolean
   content: string
+  allowVisuals?: boolean
   className?: string
   maxHeight?: string
   showScrollbar?: boolean
@@ -596,6 +599,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
   untrustedContent = false,
   compactImages = false,
   copyableCode = false,
+  allowVisuals = false,
   basePath,
   onLinkClick,
   workspaceLinkHref,
@@ -1242,7 +1246,12 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
               </div>
             )
           },
-          pre: ({ children }) => {
+          pre: ({ children, node }) => {
+            const visualClass = React.isValidElement<{ className?: string }>(children) ? children.props.className : ''
+            const position = node?.position
+            if (allowVisuals && !untrustedContent && visualClass === 'language-visual' && position?.start.offset !== undefined && position.end.offset !== undefined && closedVisualFence(processedContent.slice(position.start.offset, position.end.offset))) {
+              return <ChatVisual html={codeBlockText(children).replace(/\n$/, '')} />
+            }
             // Pre tag is handled by the code component above
             // This is a fallback for any pre tags that don't contain code
             const block = (
@@ -1410,13 +1419,13 @@ export const ToolMarkdownRenderer: React.FC<{ content: string; maxHeight?: strin
 
 // Memoized for the same reason as MarkdownRenderer above — this is the wrapper
 // every chat surface renders per message, so it is the one that multiplies.
-export const ConversationMarkdownRenderer: React.FC<{ content: string; maxHeight?: string; disablePathLinking?: boolean; framed?: boolean; copyableCode?: boolean }> = React.memo(({ content, maxHeight = "384px", disablePathLinking, framed = true, copyableCode }) => (
+export const ConversationMarkdownRenderer: React.FC<{ content: string; maxHeight?: string; disablePathLinking?: boolean; framed?: boolean; copyableCode?: boolean; allowVisuals?: boolean }> = React.memo(({ content, maxHeight = "384px", disablePathLinking, framed = true, copyableCode, allowVisuals }) => (
   <div
     className={`${framed ? 'border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800' : ''} overflow-y-auto overflow-x-hidden min-w-0`}
     style={{ maxHeight }}
   >
     <div className={`${framed ? 'p-3' : 'p-0'} min-w-0`}>
-      <MarkdownRenderer content={content} className="conversation-markdown" disablePathLinking={disablePathLinking} compactImages copyableCode={copyableCode} />
+      <MarkdownRenderer content={content} className="conversation-markdown" disablePathLinking={disablePathLinking} compactImages copyableCode={copyableCode} allowVisuals={allowVisuals} />
     </div>
   </div>
 ))

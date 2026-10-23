@@ -564,7 +564,7 @@ const AssistantTranscriptMessage: React.FC<{ event: PollingEvent; content: strin
     <article data-testid="terminal-clear-assistant-message" className={framed ? `my-4 ${AGENT_BLOCK_CLASS}` : 'py-1'}>
       {framed && <AssistantTurnHeader event={event} timestamp={timestamp} label={label} icon={icon} />}
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
-        <ConversationMarkdownRenderer content={full.text || content} framed={false} maxHeight="none" copyableCode />
+        <ConversationMarkdownRenderer content={full.text || content} framed={false} maxHeight="none" copyableCode allowVisuals />
       </div>
       {artifact && !full.text && (
         <ShowFullContentButton ref_={artifact} loading={full.loading} error={full.error} onLoad={() => { void full.load() }} label="Show full response" />

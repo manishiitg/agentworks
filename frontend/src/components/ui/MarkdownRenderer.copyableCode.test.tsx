@@ -34,10 +34,10 @@ const writeText = vi.fn(async () => undefined)
 Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
 Object.defineProperty(window, 'isSecureContext', { value: true })
 
-async function renderContent(content: string, copyableCode: boolean): Promise<HTMLElement> {
+async function renderContent(content: string, copyableCode: boolean, allowVisuals = false): Promise<HTMLElement> {
   const container = document.createElement('div')
   const root = createRoot(container)
-  await act(async () => root.render(<MarkdownRenderer content={content} copyableCode={copyableCode} />))
+  await act(async () => root.render(<MarkdownRenderer content={content} copyableCode={copyableCode} allowVisuals={allowVisuals} />))
   return container
 }
 
@@ -54,4 +54,18 @@ it('puts a Copy button on each code block of a chat reply and copies that block'
 it('leaves code blocks without a Copy button everywhere else', async () => {
   const container = await renderContent(reply, false)
   expect(container.querySelector('button')).toBeNull()
+})
+
+
+it('renders only complete explicit visual fences when the assistant reply opts in', async () => {
+  const html = '<!doctype html><html><head><title>Sample</title></head><body><p>Recorded total: 12</p></body></html>'
+  const reply = 'Summary\n\n```visual\n' + html + '\n```'
+  const assistant = await renderContent(reply, true, true)
+  expect(assistant.querySelector('iframe')?.getAttribute('sandbox')).toBe('allow-scripts')
+  expect((await renderContent(reply, true)).querySelector('iframe')).toBeNull()
+  expect((await renderContent(reply.slice(0, -3), true, true)).querySelector('iframe')).toBeNull()
+  expect((await renderContent(reply.replace('```visual', '```html'), true, true)).querySelector('iframe')).toBeNull()
+  const invalid = await renderContent('```visual\nnot HTML\n```', true, true)
+  expect(invalid.querySelector('iframe')).toBeNull()
+  expect(invalid.textContent).toContain('not HTML')
 })

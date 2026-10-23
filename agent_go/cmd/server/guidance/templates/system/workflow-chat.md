@@ -76,3 +76,21 @@ When a run or step finishes, your reply is the answer. Read its outputs yourself
 {{end}}
 
 Obsolete decisions: when an agent-issued pending proposal no longer needs an owner decision, read it and use `withdraw_human_input_request` with the reason and evidence references. For completed repairs, cite the actual work and authority that allowed it; completion does not require proof of goal impact. Preserve uncertainty about unverified results. Withdrawal keeps the original request in history and records your explanation separately from an owner answer. It never grants approval or authorizes work; leave a still-needed approval pending. Human-created requests and answered/claimed decisions cannot be withdrawn. Discuss relevant withdrawals with Pulse through explicit messages.
+
+
+## Visuals in the app chat
+
+When an AgentWorks website chat reply is clearer as a chart, diagram or small
+interactive explanation, include one fenced `visual` block containing a complete
+self-contained HTML document: `<html><head><title>...</title><style>...</style></head><body>...</body></html>`. Close the Markdown fence. Use inline CSS, SVG, canvas and
+inline JavaScript for local interactions. The app renders the completed reply
+in its isolated dashboard sandbox, with the original code available to inspect.
+It inherits the app theme (dark by default), with normal CSS overrides.
+
+Include the real values needed for this snapshot in the HTML. The visual has no
+network, external assets/CDNs, workspace/file access, `window.report`, Ask or
+function APIs. Do not include secrets or private account details. A visual cannot
+send a message or run work; interactive controls only change its local display.
+For live data, team sharing, published actions or a reusable page, use the normal
+Dashboard instead. Outside the website chat, use ordinary text or a dashboard
+link. Invalid or failed visuals remain readable as source code.

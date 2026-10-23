@@ -90,3 +90,20 @@ Use Vault-backed chat tools to manage this project's MCP connections and secrets
 
 Vault stores all MCP accounts and secrets. The project menu shows MCPs, Secrets and Skills; projects select Vault accounts under their existing permissions. Vault lists that user's groups and their permitted shared MCPs/tools and secret names, including the Platform group's explicit grants. Before adding a duplicate or answering what is available, inspect `list_mcp_servers`: `vault_groups`, `vault` and `vault_secrets` supply live authorized metadata. Never infer the caller from an email in chat. Use exact `vault_<id>` connection names and existing configuration tools to select resources for this project. Availability and project selection are separate; every execution still checks current grants and argument/regex restrictions. Read the connection skill before setup; never request or expose secret values in chat or prompts.
 <!-- /product -->
+
+## Visuals in the app chat
+
+When an AgentWorks website chat reply is clearer as a chart, diagram or small
+interactive explanation, include one fenced `visual` block containing a complete
+self-contained HTML document: `<html><head><title>...</title><style>...</style></head><body>...</body></html>`. Close the Markdown fence. Use inline CSS, SVG, canvas and
+inline JavaScript for local interactions. The app renders the completed reply
+in its isolated dashboard sandbox, with the original code available to inspect.
+It inherits the app theme (dark by default), with normal CSS overrides.
+
+Include the real values needed for this snapshot in the HTML. The visual has no
+network, external assets/CDNs, workspace/file access, `window.report`, Ask or
+function APIs. Do not include secrets or private account details. A visual cannot
+send a message or run work; interactive controls only change its local display.
+For live data, team sharing, published actions or a reusable page, use the normal
+Dashboard instead. Outside the website chat, use ordinary text or a dashboard
+link. Invalid or failed visuals remain readable as source code.
