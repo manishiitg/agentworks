@@ -102,6 +102,9 @@ func TestCodexDesktopAmbiguousOfferDoesNotStartTurn(t *testing.T) {
 // before reaching the open chat. It must not delay independent live ownership.
 func TestCodexDiscoverySkipsUnresponsiveThread(t *testing.T) {
 	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
 	socket := filepath.Join(root, "discovery.sock")
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
