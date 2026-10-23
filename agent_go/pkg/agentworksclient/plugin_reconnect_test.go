@@ -53,6 +53,10 @@ func TestCodexMessagingRestartsStoppedBridge(t *testing.T) {
 	for _, id := range []string{session, closed} {
 		saved[localBridgeKey("codex", id)] = &localSession{Attachment: AgentAttachment{ID: "saved-lease", AgentID: "same-agent", AgentName: "saved-chat", Provider: "codex", SessionID: id}, HostKey: "prior-process", AccountSenders: true, Offline: true, ServerClosed: id == closed, ConfigPath: config, ParentConfigPath: config, Offers: map[string]localOffer{}}
 	}
+	// The closed chat is a different agent, not another holder of saved-chat.
+	saved[localBridgeKey("codex", closed)].Attachment.ID = "closed-lease"
+	saved[localBridgeKey("codex", closed)].Attachment.AgentID = "closed-agent"
+	saved[localBridgeKey("codex", closed)].Attachment.AgentName = "closed-chat"
 	if err = atomicLiveJSON(filepath.Join(root, "sessions.json"), saved); err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +99,9 @@ func TestCodexMessagingRestartsStoppedBridge(t *testing.T) {
 			t.Fatal(e)
 		}
 		var out LocalBridgeReply
+		if result.IsError {
+			t.Logf("messaging refusal: %v", result.Content)
+		}
 		if !result.IsError {
 			if e = json.Unmarshal([]byte(result.Content[0].(mcp.TextContent).Text), &out); e != nil {
 				t.Fatal(e)
