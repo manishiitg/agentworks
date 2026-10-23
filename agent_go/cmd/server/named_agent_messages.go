@@ -322,24 +322,23 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 	if index >= 0 && !namedAgentConnectionAllowed(s.Agents[index], claims) {
 		// The holding sign-in may be gone (revoked or expired); the same person then takes the name.
 		// While it is still active, say which one holds it and how to move the name.
-		holder, live, onlyMCP := "", false, true
+		holder, live := "", false
 		for _, id := range s.Agents[index].Connections {
 			if c, e := agentMessageConnectionClaims(r.Context(), id); e == nil && c.UserID == claims.UserID && c.AccessToken != nil {
 				live = true
-				onlyMCP = onlyMCP && c.AccessToken.Name == "MCP OAuth"
 				if holder == "" {
 					holder = c.AccessToken.Name
 				}
 			}
 		}
-		if live && onlyMCP && s.Agents[index].Attachment == nil && claims.AccessToken != nil && claims.AccessToken.Name == "AgentWorks CLI" {
-			// The same person's MCP sign-in only holds a mailbox (never attached) and now the CLI attaches the name:
-			// the CLI sign-in joins it in one step and the name keeps its publication.
+		if live && externalArg(args, "action") == "register" && !namedAgentOnline(s.Agents[index]) && claims.AccessToken != nil && claims.AccessToken.Name == "AgentWorks CLI" && claims.AccessToken.BoundAgentID == "" {
+			// An approved login can reclaim its own disconnected address.
+			// Keep its inbox and publication; an active chat is still refused.
 			if !slices.Contains(s.Agents[index].Connections, claims.AccessToken.ID) {
 				s.Agents[index].Connections = append(slices.Clone(s.Agents[index].Connections), claims.AccessToken.ID)
 			}
 			connections = s.Agents[index].Connections
-			log.Printf("[AGENT_MSG] same person joined a mailbox-only name: name=%s", name)
+			log.Printf("[AGENT_MSG] reclaimed disconnected name: name=%s", name)
 		} else if live {
 			who := "another sign-in of yours"
 			if holder != "" {

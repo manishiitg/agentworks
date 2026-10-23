@@ -1027,15 +1027,10 @@ func bridgeCommand(o *options) *cobra.Command {
 }
 
 func ensureLocalBridge(ctx context.Context, root string, o *options) error {
-	if reply, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
-		if !bridgeIsOlder(root, reply.Version) {
-			return nil
-		}
-		// The running helper is another build than this CLI (an update or installer
-		// replaced the program but not the helper): replace it so new commands work.
-		if stopLocalBridgeAt(ctx, root) != nil {
-			return nil
-		}
+	if _, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
+		// Hooks and MCP processes may retain an older executable. Only an
+		// explicit update restarts a responsive shared helper.
+		return nil
 	}
 	exe, err := os.Executable()
 	if err != nil {

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -354,13 +355,15 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	externalJSON(w, out)
 }
 
+var errAgentLoginUnavailable = errors.New("connection revoked")
+
 func currentAgentAttachment(ctx context.Context, claims *UserClaims, name, id string) (namedMessageAgent, *UserClaims, error) {
 	if claims == nil || claims.AccessToken == nil {
 		return namedMessageAgent{}, nil, fmt.Errorf("agent connection required")
 	}
 	live, err := agentMessageConnectionClaims(ctx, claims.AccessToken.ID)
 	if err != nil || live.UserID != claims.UserID || !namedAgentOperationAllowed(live, false) {
-		return namedMessageAgent{}, nil, fmt.Errorf("connection revoked")
+		return namedMessageAgent{}, nil, errAgentLoginUnavailable
 	}
 	a, err := namedAgentForClaims(ctx, live, name)
 	if err != nil || a.Attachment == nil || a.Attachment.DeliveryContract != 2 || a.Attachment.ID != id || a.Attachment.ConnectionID != live.AccessToken.ID {
@@ -436,7 +439,11 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 		changed := agentLiveChanged()
 		_, live, e := currentAgentAttachment(r.Context(), claims, name, id)
 		if e != nil {
-			_ = write(map[string]any{"type": "closed"})
+			kind := "closed"
+			if errors.Is(e, errAgentLoginUnavailable) {
+				kind = "login_changed"
+			}
+			_ = write(map[string]any{"type": kind})
 			return
 		}
 		store, e := readAgentMessageSnapshot(r.Context())

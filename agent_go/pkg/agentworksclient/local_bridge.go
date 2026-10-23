@@ -261,7 +261,7 @@ func DefaultLocalBridgeRoot() (string, error) {
 func localReleaseOld(ctx context.Context, v *localSession) error {
 	benign := func(err error) bool {
 		var apiErr *APIError
-		return errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 404 || apiErr.Status == 409)
+		return errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 404 || apiErr.Status == 409 || apiErr.Code == "invalid_grant")
 	}
 	if !v.Offline {
 		if _, err := v.client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": v.Attachment.AgentName, "attachment_id": v.Attachment.ID}, true); err != nil && !benign(err) {
@@ -499,6 +499,7 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 	if len(options) > 0 {
 		b.options = options[0]
 	}
+	log.Printf("[BRIDGE] started pid=%d build=%s", os.Getpid(), b.options.ClientBuild)
 	if err = readLiveJSON(filepath.Join(root, "sessions.json"), &b.sessions); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -574,6 +575,7 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 				return
 			}
 			if in.Action == "shutdown" {
+				log.Printf("[BRIDGE] shutdown requested pid=%d build=%s", os.Getpid(), b.options.ClientBuild)
 				shutdownOnce.Do(func() { close(shutdown) })
 			} else {
 				callCtx := r.Context()
@@ -759,7 +761,11 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 			b.wake()
 			b.mu.Unlock()
 			var apiErr *APIError
-			if errors.As(err, &apiErr) && apiErr.Code != "agent_attachment_closed" && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 404) {
+			loginFailure := errors.As(err, &apiErr) && apiErr.Code != "agent_attachment_closed" && (apiErr.Code == "invalid_grant" || apiErr.Status == 401)
+			if loginFailure && b.recoverSessionLogin(ctx, s) {
+				return // the replacement owns its own stream and native worker
+			}
+			if !loginFailure && errors.As(err, &apiErr) && apiErr.Code != "agent_attachment_closed" && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 404) {
 				return
 			}
 			timer := time.NewTimer(backoff)
@@ -777,6 +783,51 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 			}
 		}
 	}()
+}
+
+// A browser login replaces the parent credential, not a chat's derived file.
+// Rebuild only an existing approved chat on its own saved network. Explicit
+// detach and server-closed leases remain closed.
+func (b *localBridge) recoverSessionLogin(ctx context.Context, s *localSession) bool {
+	b.mu.Lock()
+	key := localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)
+	if s.Also {
+		key = localAlsoKey(key, s.ParentConfigPath)
+	}
+	if b.closed || b.sessions[key] != s || s.OfflineExplicit || s.ServerClosed || s.ParentConfigPath == "" || s.HostKey == "" {
+		b.mu.Unlock()
+		return false
+	}
+	in := LocalBridgeRequest{Action: "attach", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, HostKey: s.HostKey, AgentName: s.Attachment.AgentName, NativeRemote: s.NativeRemote, ConfigPath: s.ParentConfigPath, Also: s.Also}
+	server := s.client.baseURL
+	b.mu.Unlock()
+	cfg, err := LoadConfig(in.ConfigPath)
+	if err != nil || cfg.Server != server || cfg.Token == "" && cfg.RefreshToken == "" {
+		return false
+	}
+	if b.options.HostAlive != nil && !b.options.HostAlive(in.Provider, in.HostKey) {
+		return false
+	}
+	release, ok := b.attachGate(localBridgeKey(in.Provider, in.SessionID), localBridgeLockBudget)
+	if !ok {
+		return false
+	}
+	defer release()
+	// A simultaneous detach must win before any network work begins.
+	b.mu.Lock()
+	active := !b.closed && b.sessions[key] == s && !s.OfflineExplicit && !s.ServerClosed
+	b.mu.Unlock()
+	if !active {
+		return false
+	}
+	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out := b.handle(ctx, callCtx, in)
+	if !out.Attached || out.Error != "" {
+		return false
+	}
+	log.Printf("[BRIDGE-LOGIN] recovered agent=%s attachment=%s", out.Attachment.AgentName, out.Attachment.ID)
+	return true
 }
 
 // Recover transport metadata for a live, already approved lease. This never
@@ -827,7 +878,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return LocalBridgeReply{Version: b.options.Version}
 	}
 	var probed map[hostProbeKey]bool
-	if in.Action == "list" {
+	if in.Action == "list" || in.Action == "attach" {
 		probed = b.probeHosts() // process checks run before the lock, not inside it
 	}
 	if serverCtx == callCtx {
@@ -1064,10 +1115,15 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if s != nil && !in.SwitchConnection && (in.AgentName == "" || in.AgentName == s.Attachment.AgentName || in.ReuseIdentity) {
 			effectiveConfig = s.ParentConfigPath
 		}
+		var abandoned []*localSession
 		for k, other := range b.sessions {
-			if k != key && (!other.Offline || in.OwnAttach) && other.Attachment.AgentName == name && !localDifferentNetwork(other.ParentConfigPath, effectiveConfig) {
+			if k == key || other.Attachment.AgentName != name || localDifferentNetwork(other.ParentConfigPath, effectiveConfig) {
+				continue
+			}
+			if b.options.HostAlive == nil || hostAliveFrom(probed, other.Attachment.Provider, other.HostKey, b.options.HostAlive) {
 				return LocalBridgeReply{Error: "agent:" + name + " is attached to another chat; detach it there first"}
 			}
+			abandoned = append(abandoned, other)
 		}
 		if s != nil {
 			if in.AgentName == "" || in.AgentName == s.Attachment.AgentName || in.ReuseIdentity {
@@ -1150,6 +1206,13 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			client, err := localConfiguredClient(in.ConfigPath)
 			if err != nil {
 				return fail(err)
+			}
+			for _, old := range abandoned {
+				// A verified dead provider cannot receive again. Release its
+				// exact lease before claiming the stable name; keep the inbox.
+				if err := localReleaseOld(callCtx, old); err != nil {
+					return fail(err)
+				}
 			}
 			registration := map[string]any{"action": "register", "agent_name": in.AgentName}
 			if in.Purpose != "" {
@@ -1255,7 +1318,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		// Another chat may have taken the name while the lock was released.
 		for k, other := range b.sessions {
-			if k != key && (!other.Offline || in.OwnAttach) && other.Attachment.AgentName == in.AgentName && !localDifferentNetwork(other.ParentConfigPath, effectiveConfig) {
+			if k != key && other.Attachment.AgentName == in.AgentName && !localDifferentNetwork(other.ParentConfigPath, effectiveConfig) && !slices.Contains(abandoned, other) {
 				undo()
 				return LocalBridgeReply{Error: "agent:" + in.AgentName + " is attached to another chat; detach it there first"}
 			}
@@ -1271,6 +1334,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			next.Offers = previous.Offers
 			next.SeenThrough = previous.SeenThrough
 			if previous.Attachment.SessionID == a.SessionID {
+				next.OwnCLI = next.OwnCLI || previous.OwnCLI
 				next.LastGuidanceAt = previous.LastGuidanceAt
 				if next.HookTransport == "" && previous.HostKey == in.HostKey {
 					next.HookTransport = previous.HookTransport

@@ -142,6 +142,58 @@ func installedPluginUpdates(home string, onPath func(string) bool, read func(str
 	return out
 }
 
+// Claude keeps hook approval with the installed package. A server/CLI release
+// does not require installing that same package again.
+func claudePluginCurrent(home, id string, read func(string) string) bool {
+	var installed struct {
+		Plugins map[string][]struct {
+			Version string `json:"version"`
+		} `json:"plugins"`
+	}
+	if json.Unmarshal([]byte(read(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"))), &installed) != nil || len(installed.Plugins[id]) == 0 {
+		return false
+	}
+	var known map[string]struct {
+		InstallLocation string `json:"installLocation"`
+	}
+	if json.Unmarshal([]byte(read(filepath.Join(home, ".claude", "plugins", "known_marketplaces.json"))), &known) != nil {
+		return false
+	}
+	root := known["agentworks"].InstallLocation
+	if !filepath.IsAbs(root) {
+		return false
+	}
+	var catalog struct {
+		Plugins []struct{ Name, Source string } `json:"plugins"`
+	}
+	if json.Unmarshal([]byte(read(filepath.Join(root, ".claude-plugin", "marketplace.json"))), &catalog) != nil {
+		return false
+	}
+	name, _, _ := strings.Cut(id, "@")
+	for _, entry := range catalog.Plugins {
+		if entry.Name != name || filepath.IsAbs(entry.Source) {
+			continue
+		}
+		path := filepath.Join(root, entry.Source, ".claude-plugin", "plugin.json")
+		if rel, err := filepath.Rel(root, path); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return false
+		}
+		var manifest struct {
+			Version string `json:"version"`
+		}
+		if json.Unmarshal([]byte(read(path)), &manifest) != nil || manifest.Version == "" {
+			return false
+		}
+		for _, copy := range installed.Plugins[id] {
+			if copy.Version != manifest.Version {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
 const (
 	pluginsRepo    = "manishiitg/agentworks-plugins"
 	pluginsRepoURL = "https://github.com/manishiitg/agentworks-plugins.git"
@@ -320,6 +372,21 @@ func updateInstalledPlugins(ctx context.Context, o *options, switchSource bool) 
 		return string(out)
 	})
 	for _, update := range installedPluginUpdates(home, onPath, read) {
+		if update.Provider == "claude" {
+			step, cancel := context.WithTimeout(ctx, 90*time.Second)
+			_, err := exec.CommandContext(step, "claude", update.Auto[0]...).CombinedOutput()
+			cancel()
+			if err != nil {
+				fmt.Fprintln(o.stderr, "Could not check the Claude plugin; kept its installed hooks unchanged.")
+				continue
+			}
+			id := update.Auto[1][2]
+			if claudePluginCurrent(home, id, read) {
+				fmt.Fprintf(o.stderr, "Claude plugin %s is current; kept its installed hooks unchanged.\n", id)
+				continue
+			}
+			update.Auto = update.Auto[1:] // the marketplace was already refreshed
+		}
 		if old[update.Provider] && switchSource && (update.Disabled || strings.Contains(strings.ToLower(pluginListBlock(ctx, update.Provider)), "disabled")) {
 			// Moving the source reinstalls the plugin, which would turn it back on.
 			fmt.Fprintf(o.stderr, "Your %s plugin is turned off, so its source was not switched (that would turn it on). Turn it on, then run agentworks update again.\n", update.Provider)

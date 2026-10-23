@@ -155,6 +155,9 @@ func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttach
 			}
 			continue
 		}
+		if frame.Type == "login_changed" {
+			return &APIError{Status: 401, Code: "agent_login_changed", Message: "The saved sign-in needs to be reloaded."}
+		}
 		if frame.Type == "closed" {
 			return &APIError{Status: 403, Code: "agent_attachment_closed", Message: "The attachment or its connection is no longer authorized."}
 		}
