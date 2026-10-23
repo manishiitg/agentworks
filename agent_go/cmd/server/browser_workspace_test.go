@@ -58,7 +58,7 @@ func TestWorkspaceBrowserStartsWithoutChatAndEnforcesScope(t *testing.T) {
 			t.Error("missing service authentication")
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/documents/") {
-			json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]string{"content": `{"version":"1","id":"one","label":"One","access":{"owners":["alice"],"readers":["bob"]},"capabilities":{"browser_mode":"none"}}`}})
+			json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]string{"content": `{"version":"1","id":"one","label":"One","access":{"owners":["alice"],"readers":["bob"]},"capabilities":{"browser_mode":"none"},"pulse":{"enabled":false,"outward_actions":"ask"}}`}})
 			return
 		}
 		if r.URL.Path == "/api/execute" {
