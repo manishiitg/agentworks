@@ -285,9 +285,9 @@ describe('Context walkthroughs', () => {
       await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
       expect(dialog.textContent).toContain('Open or create an automation')
       selector.remove()
-      addTarget('workspace-picker')
+      addTarget('global-schedules')
       await act(async () => vi.advanceTimersByTime(300))
-      expect(dialog.textContent).toContain('Activity')
+      expect(dialog.textContent).toContain('Schedules')
       expect(dialog.textContent).toContain('2 of 2')
     } finally {
       await act(async () => root.unmount())
@@ -396,9 +396,9 @@ describe('Context walkthroughs', () => {
     }
   })
 
-  it('resets progress when moving from Activity into an automation', async () => {
+  it('resets progress when moving from the overview into an automation', async () => {
     addTarget('workflow-add-edit')
-    addTarget('workspace-picker')
+    addTarget('global-schedules')
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)
@@ -408,7 +408,7 @@ describe('Context walkthroughs', () => {
       await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
       expect(dialog.textContent).toContain('Open or create an automation')
       await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
-      expect(dialog.textContent).toContain('Activity')
+      expect(dialog.textContent).toContain('Schedules')
       addTarget('workflow-chat-pane')
       await act(async () => root.render(<WorkflowWalkthrough isOpen surface="automation" openToken={1} onClose={() => {}} />))
       expect(dialog.textContent).toContain('From goal to running automation')
