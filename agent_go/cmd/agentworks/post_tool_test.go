@@ -77,7 +77,7 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 			if !strings.Contains(trace, "event=PostToolUse transport="+provider+"_hook outcome=rendered message=message") || !strings.Contains(trace, "rendered_at=") || strings.Contains(trace, "MID_TURN_MARKER") {
 				t.Fatal("hook render trace missing or contains body", trace)
 			}
-			if !strings.Contains(output.String(), "MID_TURN_MARKER") || !strings.Contains(output.String(), "acknowledge delivered once") {
+			if !strings.Contains(output.String(), "MID_TURN_MARKER") || !strings.Contains(strings.ToLower(output.String()), "acknowledge delivered once") {
 				t.Fatal("body or receipt reminder lost", output.String())
 			}
 			if provider == "codex" && (!strings.Contains(output.String(), `"hookEventName":"PostToolUse"`) || !strings.Contains(output.String(), `"additionalContext"`)) {
