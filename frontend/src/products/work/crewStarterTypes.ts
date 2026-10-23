@@ -9,7 +9,7 @@ export const CREW_STARTER_TYPES = [
     purpose: 'Help me build and maintain software, understand code and fix issues.',
     example: 'Review a project, explain how it works or help make a change.',
     shortcuts: [
-      { id: 'files', label: 'Files' }, { id: 'identity:location', label: 'Local laptop' },
+      { id: 'files', label: 'Files' }, { id: 'mcp:vault', label: 'Vault' },
       { id: 'shell', label: 'Terminal' }, { id: 'memory:skills', label: 'Skills' },
     ],
   },
@@ -21,7 +21,7 @@ export const CREW_STARTER_TYPES = [
     example: 'Research a topic, prepare a brief or organize a set of documents.',
     shortcuts: [
       { id: 'files', label: 'Files' }, { id: 'browser', label: 'Browser' },
-      { id: 'dashboard', label: 'Project dashboard' }, { id: 'mcp:connected', label: 'MCPs' },
+      { id: 'dashboard', label: 'Project dashboard' }, { id: 'mcp:vault', label: 'Vault' },
     ],
   },
   {
@@ -31,8 +31,8 @@ export const CREW_STARTER_TYPES = [
     purpose: 'Help me organize my work, prepare briefings and follow up on tasks.',
     example: 'Prepare a daily briefing or help me plan the week.',
     shortcuts: [
-      { id: 'memory:memory', label: 'Memory' }, { id: 'mcp:gmail', label: 'Google account' },
-      { id: 'schedules:schedules', label: 'Schedules' }, { id: 'mcp:connected', label: 'MCPs' },
+      { id: 'memory:memory', label: 'Memory' }, { id: 'mcp:vault', label: 'Vault' },
+      { id: 'schedules:schedules', label: 'Schedules' },
     ],
   },
   {
