@@ -132,3 +132,17 @@ export function personCommand(text, ctx, host) {
       hook_event_name: 'UserPromptSubmit', prompt: text, pi_person_token: token }));
   });
 }
+
+// A native session-start event connects privately using the saved CLI login.
+// It carries no prompt or person-command proof and cannot publish or move a chat.
+export function connectSession(ctx) {
+  if (ctx.mode !== 'tui' || !ctx.hasUI) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const child = spawn('agentworks', ['plugin', 'hook', 'pi'], { cwd: ctx.cwd, stdio: ['pipe', 'ignore', 'ignore'] });
+    const timer = setTimeout(() => { child.kill(); reject(new Error('AgentWorks connection is still starting')); }, 12000);
+    child.on('error', () => { clearTimeout(timer); reject(new Error('AgentWorks CLI unavailable')); });
+    child.on('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error('AgentWorks connection unavailable')); });
+    child.stdin.on('error', () => {});
+    child.stdin.end(JSON.stringify({ session_id: ctx.sessionManager.getSessionId(), cwd: ctx.cwd, hook_event_name: 'SessionStart' }));
+  });
+}

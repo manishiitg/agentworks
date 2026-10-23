@@ -113,3 +113,30 @@ func claudeSessionOffer(ctx context.Context, remote string, out agentworksclient
 	// socket write remains an offer; the receiving agent explicitly acknowledges.
 	return agentworksclient.ErrNativeOfferUnconfirmed
 }
+
+// MCP startup needs only its own process registration, not whole-app discovery.
+func claudeSessionIDForHost(host string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || host == "" {
+		return ""
+	}
+	files, _ := filepath.Glob(filepath.Join(home, ".claude", "sessions", "*.json"))
+	found := ""
+	for _, file := range files {
+		raw, err := os.ReadFile(file)
+		var rec claudeSessionRecord
+		if err != nil || len(raw) > 64<<10 || json.Unmarshal(raw, &rec) != nil {
+			continue
+		}
+		if _, _, err = nativeClaudeSession("claude+session://"+file, rec.SessionID); err != nil {
+			continue
+		}
+		if key, err := providerPIDHostKey("claude", rec.PID); err == nil && key == host {
+			if found != "" && found != rec.SessionID {
+				return ""
+			}
+			found = rec.SessionID
+		}
+	}
+	return found
+}

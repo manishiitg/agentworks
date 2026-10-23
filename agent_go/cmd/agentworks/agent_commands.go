@@ -1065,6 +1065,11 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 			}
 		}
 	}
+	if observations, err := cursorLiveObservations(root); err == nil {
+		for _, observation := range observations {
+			found = append(found, liveAgentSession{provider: "cursor", session: observation.Session, host: observation.Host, cwd: observation.Cwd, name: names["cursor:"+observation.Session]})
+		}
+	}
 	found = append(found, discoverPiLiveAgents(root, local)...)
 
 	sort.Slice(found, func(i, j int) bool { return found[i].provider+found[i].session < found[j].provider+found[j].session })

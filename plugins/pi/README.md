@@ -1,3 +1,5 @@
+With a saved AgentWorks sign-in and the Pi package already loaded, a verified native TUI session now connects privately at startup. Explicit detach stays stopped. Publishing, changing logins and hook/package trust remain the person's choice. No folder or terminal permission is granted by connecting.
+
 # AgentWorks for Pi (PLAT-868)
 
 This package connects an exact existing Pi conversation to the common AgentWorks

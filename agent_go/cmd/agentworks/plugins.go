@@ -120,6 +120,11 @@ func pluginCommand(o *options) *cobra.Command {
 			if err != nil || recordErr != nil || record.Mode != "tui" {
 				return pluginBlock(o, "AgentWorks cannot tell which Pi chat this is. Reload Pi and type /agentworks attach in the chat.")
 			}
+			if input.Event == "SessionStart" {
+				ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
+				defer cancel()
+				return autoConnectChat(ctx, root, o, req, input.Cwd)
+			}
 			if input.Event != "UserPromptSubmit" {
 				return nil
 			}
@@ -279,6 +284,11 @@ func pluginCommand(o *options) *cobra.Command {
 			}
 			return pluginBlock(o, "Handled by AgentWorks. This conversation is detached.")
 		}
+		if input.Event == "SessionStart" || input.Event == "UserPromptSubmit" {
+			if e := autoConnectChat(ctx, root, o, req, input.Cwd); e != nil {
+				hookLog(root, "event=%s outcome=connect_failed detail=%q", input.Event, e.Error())
+			}
+		}
 		if input.Event == "SessionStart" {
 			req.Action = "status"
 			req.RefreshRoute = true // a chat starting can bring its route: look at once
@@ -289,11 +299,7 @@ func pluginCommand(o *options) *cobra.Command {
 				}
 				return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "SessionStart", "additionalContext": "AgentWorks identity agent:" + out.Attachment.AgentName + " is offline. The person can type /agentworks attach to reconnect this exact session."}})
 			}
-			if e == nil && !out.Attached && !out.Offline && req.Provider != "pi" {
-				if line := autoAttachOnStart(ctx, root, o, req, input.Cwd); line != "" {
-					return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "SessionStart", "additionalContext": line}})
-				}
-			}
+
 			return nil
 		}
 		if input.Event == "SessionEnd" {
@@ -374,11 +380,15 @@ func pluginCommand(o *options) *cobra.Command {
 		defer cancel()
 		var bridge *server.MCPServer
 		if args[0] == "muse" {
-			bridge, err = agentworksclient.NewMusePluginMCPServer(ctx, dir, host, func() (string, error) { return museSessionForHost(dir, host) })
+			bridge, err = agentworksclient.NewMusePluginMCPServer(ctx, dir, host, func() (string, error) { return museSessionForHost(dir, host) }, pluginAutoConnect(dir, o))
 		} else {
-			bridge, err = agentworksclient.NewPluginMCPServer(ctx, dir, args[0], host, args[0] == "claude" && o.getenv("AGENTWORKS_CLAUDE_CHANNEL") == "1", func(ctx context.Context) error {
+			startupSession := os.Getenv("CODEX_THREAD_ID")
+			if args[0] == "claude" {
+				startupSession = claudeSessionIDForHost(host)
+			}
+			bridge, err = agentworksclient.NewConnectingPluginMCPServer(ctx, dir, args[0], host, args[0] == "claude" && o.getenv("AGENTWORKS_CLAUDE_CHANNEL") == "1", func(ctx context.Context) error {
 				return ensureLocalBridge(ctx, dir, o)
-			}, os.Getenv("CODEX_THREAD_ID"))
+			}, pluginAutoConnect(dir, o), startupSession)
 		}
 		if err != nil {
 			return err
@@ -880,7 +890,7 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			root = configured
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Ping: notifyPing, HostAlive: cursorAwareHostAlive, ChatAlive: attachedChatAlive, UsageRead: readAttachedUsage(root), ChatLabel: attachedChatLabel, ChatContext: attachedChatContext, AutoUpdate: autoUpdateHelperCallback})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Ping: notifyPing, HostAlive: cursorAwareHostAlive, ChatAlive: attachedChatAlive, UsageRead: readAttachedUsage(root), ChatLabel: attachedChatLabel, ChatContext: attachedChatContext, AutoUpdate: autoUpdateHelperCallback, Ready: func(ctx context.Context) { connectLiveChats(ctx, o) }})
 	}}
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")
@@ -1047,17 +1057,41 @@ func ensureLocalBridge(ctx context.Context, root string, o *options) error {
 	detach(child)
 	child.Stdin = nil
 	child.Stdout = nil
-	child.Stderr = nil
+	// Keep the real startup refusal (socket, directory, lock, state) instead
+	// of turning an immediate exit into an unexplained hook timeout.
+	if err = agentworksclient.PrepareLocalBridgeRoot(root); err != nil {
+		return err
+	}
+	startupPath := filepath.Join(root, "startup.log")
+	if info, e := os.Lstat(startupPath); e == nil && !info.Mode().IsRegular() {
+		return errors.New("refusing redirected helper startup log")
+	}
+	startup, err := os.OpenFile(startupPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return err
+	}
+	defer startup.Close()
+	if err = agentworksclient.SecurePrivateFile(startup); err != nil {
+		return err
+	}
+	child.Stderr = startup
 	if err = child.Start(); err != nil {
 		return err
 	}
-	go func() { _ = child.Wait() }()
+	exited := make(chan error, 1)
+	go func() { exited <- child.Wait() }()
 	tick := time.NewTicker(50 * time.Millisecond)
 	defer tick.Stop()
 	for {
 		select {
+		case exitErr := <-exited:
+			// Another simultaneous starter may have won the listener lock.
+			if _, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); e == nil {
+				return nil
+			}
+			return fmt.Errorf("AgentWorks connection helper exited before it was ready (%v). Startup details: %s", exitErr, startupPath)
 		case <-ctx.Done():
-			return errors.New("local bridge did not start")
+			return fmt.Errorf("AgentWorks connection helper is not ready yet. Startup details: %s; connection log: %s", startupPath, filepath.Join(root, "bridge.log"))
 		case <-tick.C:
 			if _, err = agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
 				return nil

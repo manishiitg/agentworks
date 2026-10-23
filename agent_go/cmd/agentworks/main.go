@@ -388,6 +388,7 @@ func loginCommand(o *options) *cobra.Command {
 		if err := o.browserLogin(cmd.Context(), cfg, path, scopes, noBrowser); err != nil {
 			return err
 		}
+		connectLiveChats(cmd.Context(), o)
 		return o.output(map[string]any{"server": cfg.Server, "logged_in": true, "name": firstNonEmpty(loginName, agentworksclient.DefaultLoginName)})
 	}}
 	cmd.Flags().StringVar(&loginName, "name", "", "Save this login under a name (for example work) instead of replacing the default login")

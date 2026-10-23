@@ -2,7 +2,7 @@ import { AgentSession, type ExtensionAPI } from '@earendil-works/pi-coding-agent
 import { Type } from 'typebox';
 import { LocalBridge } from './bridge.mjs';
 import { Delivery } from './delivery.mjs';
-import { Host, personCommand } from './host.mjs';
+import { Host, personCommand, connectSession } from './host.mjs';
 
 const help = 'AgentWorks: /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks agents shows available agents; /agentworks share publishes the agent from this chat to the network; /agentworks unshare takes it back. Type the command yourself.';
 
@@ -12,7 +12,7 @@ export default function (pi: ExtensionAPI) {
   const host = new Host(bridge, delivery, AgentSession);
 
   pi.on('session_start', async (_event, ctx) => {
-    try { await host.start(ctx); await delivery.start(ctx); }
+    try { await host.start(ctx); await connectSession(ctx); await delivery.start(ctx); }
     catch { delivery.stop(); await host.stop(); /* Unsupported or unavailable native startup stays quiet. */ }
   });
   pi.on('session_shutdown', async (event, ctx) => {

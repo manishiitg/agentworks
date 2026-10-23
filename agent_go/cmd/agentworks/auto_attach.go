@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -160,72 +159,6 @@ func setAutoAttach(root, provider, cwd string, on bool) string {
 		return "Automatic reconnect is on for this folder: a new chat here reconnects as the agent you attached before, once that chat is closed."
 	}
 	return "Automatic reconnect is off for this folder. Type /agentworks attach in a new chat to connect it."
-}
-
-// autoAttachOnStart runs for a chat the bridge does not know. It returns one plain
-// line for the person ("" when nothing applies); the chat is attached only when
-// exactly one earlier agent of this folder exists, no live chat holds its name and
-// the server did not close it.
-func autoAttachOnStart(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest, cwd string) string {
-	key := autoAttachKey(req.Provider, cwd)
-	if autoAttachDisabled() || key == "" || req.HostKey == "" {
-		return ""
-	}
-	folder := autoAttachRead(root, key)
-	if folder.Off || len(folder.Records) == 0 {
-		return ""
-	}
-	hint := "AgentWorks: this folder had an agent before. Type /agentworks attach to connect this chat (or /agentworks auto off to stop this hint)."
-	if len(folder.Records) != 1 {
-		// Never guess between agents without the person typing; name the free ones
-		// so a bare /agentworks attach is a known choice.
-		if free := freeAutoAttachRecords(ctx, root, req, cwd); len(free) > 0 {
-			names := make([]string, len(free))
-			for i, r := range free {
-				names[i] = "agent:" + r.Name
-			}
-			return "AgentWorks: this folder had " + strings.Join(names, ", ") + ". Type /agentworks attach to reconnect as agent:" + free[0].Name + " (most recent), or /agentworks attach NAME."
-		}
-		return hint
-	}
-	record := folder.Records[0]
-	list, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"})
-	if err != nil {
-		return ""
-	}
-	serverOnline := false
-	if reply, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "agent_online", AgentName: record.Name, ConfigPath: record.ConfigPath}); e == nil && reply.Error == "" {
-		var seen struct {
-			Online bool `json:"online"`
-		}
-		_ = json.Unmarshal(reply.Result, &seen)
-		serverOnline = seen.Online
-	} else {
-		return "" // cannot prove the name is free: never take it on a guess
-	}
-	switch autoAttachDecision(list.AgentStates, record.Name, req, serverOnline) {
-	case "forget":
-		forgetAutoAttach(root, req.Provider, cwd, record.Name)
-		return ""
-	case "hint":
-		return "AgentWorks: agent:" + record.Name + " is still attached to another chat. Type /agentworks attach NAME to give this chat its own agent."
-	}
-	if _, statErr := os.Stat(record.ConfigPath); statErr != nil {
-		forgetAutoAttach(root, req.Provider, cwd, record.Name)
-		return ""
-	}
-	req.Action, req.AgentName, req.Purpose, req.ConfigPath = "attach", record.Name, record.Purpose, record.ConfigPath
-	req.LabelName = record.LabelName
-	req.Setup, req.ReuseIdentity = true, false
-	req.NativeRemote = discoverNativeRemote(req.Provider, req.SessionID, req.HostKey)
-	if err = ensureLocalBridge(ctx, root, o); err != nil {
-		return ""
-	}
-	out, err := agentworksclient.CallLocalBridge(ctx, root, req)
-	if err != nil || !out.Attached || out.Error != "" {
-		return hint
-	}
-	return fmt.Sprintf("AgentWorks: reconnected as agent:%s (the previous chat in this folder was closed). Type /agentworks detach to stop, or /agentworks auto off to turn this off for the folder.", out.Attachment.AgentName)
 }
 
 func autoAttachCommand(words []string) (on bool, ok bool) {

@@ -93,10 +93,30 @@ func TestAgentLocalBridgeAttachedChatsComeBackAfterRestart(t *testing.T) {
 	cancel, done := start(true)
 	for _, chat := range chats {
 		attach := chat
-		attach.Action, attach.ConfigPath = "attach", loginPath
+		attach.Action, attach.ConfigPath, attach.Automatic = "attach", loginPath, true
 		if out := call(attach); !out.Attached {
 			t.Fatalf("%s did not attach: %+v", chat.Provider, out)
 		}
+	}
+	// Automatic first connection is private, retains identity on repetition,
+	// and an explicit detach remains stopped across a helper restart.
+	snapshot, err := readAgentMessageStore(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Shares) != 0 {
+		t.Fatal("automatic connection published an agent")
+	}
+	detached := chats[2]
+	detached.Action = "detach"
+	call(detached)
+	detached.Action = "status"
+	if !call(detached).Stopped {
+		t.Fatal("detach was forgotten")
+	}
+	detached.Action, detached.ConfigPath, detached.Automatic = "attach", loginPath, true
+	if _, err := agentworksclient.CallLocalBridge(context.Background(), root, detached); err == nil {
+		t.Fatal("automatic event undid explicit detach")
 	}
 	// An administrator disconnects the Claude chat. It must not come back by itself.
 	listing, _, _, _ := env.api.bullpenAdminAct(context.Background(), "root", "list", map[string]any{})
@@ -129,15 +149,25 @@ func TestAgentLocalBridgeAttachedChatsComeBackAfterRestart(t *testing.T) {
 	// The update restarted the bridge and the old provider processes are gone.
 	cancel, done = start(false)
 	defer func() { cancel(); <-done }()
-	for _, chat := range chats {
+	detached.Action = "status"
+	if !call(detached).Stopped {
+		t.Fatal("helper restart lost explicit detach")
+	}
+	for _, chat := range chats[:2] {
 		status := chat
 		status.Action = "status"
-		if out := call(status); !out.Offline {
-			t.Fatalf("%s should be offline after the restart: %+v", chat.Provider, out)
+		for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+			if out := call(status); out.Offline {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s should be offline after the restart", chat.Provider)
+			}
 		}
 	}
+
 	// Each chat's next hook event proves its (new) process and resumes it.
-	for _, chat := range chats {
+	for _, chat := range chats[:2] {
 		resume := chat
 		resume.Action, resume.HostKey, resume.AgentName = "resume", chat.HostKey+"-new", ""
 		if chat.Provider == "claude" {

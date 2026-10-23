@@ -97,8 +97,9 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		}
 	}
 	return map[string]interface{}{
-		"agents": agents,
-		"note":   "Every agent you own or that is shared with you. Show name, type, provider, presence and last_seen_at; include last_received_at and last_handled_at when supplied. Builder/Run describes access, not connection or delivery. Crews, Goals and Relays run when called and have no laptop heartbeat. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
+		"signed_in_as": firstNonEmptyTrimmed(claims.Email, claims.Username, claims.UserID),
+		"agents":       agents,
+		"note":         "Every agent you own or that is shared with you. Show name, type, provider, presence and last_seen_at; include last_received_at and last_handled_at when supplied. Builder/Run describes access, not connection or delivery. Crews, Goals and Relays run when called and have no laptop heartbeat. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
 	}, nil
 }
 

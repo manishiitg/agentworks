@@ -333,6 +333,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 			externalCommunicationError(w, 400, "directory_refused", err)
 			return
 		}
+		out["signed_in_as"] = firstNonEmptyTrimmed(claims.Email, claims.Username, claims.UserID)
 		// Chats running inside AgentWorks that this person's own agents can reach (listed only to them).
 		if chats := api.hostedChatsFor(r.Context(), claims); len(chats) > 0 {
 			items := make([]map[string]interface{}, 0, len(chats))

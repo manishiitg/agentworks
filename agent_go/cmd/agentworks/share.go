@@ -192,6 +192,7 @@ func startCommand(o *options) *cobra.Command {
 		if err := restoreAgentBridge(cmd.Context(), o, ""); err != nil {
 			fmt.Fprintln(o.stderr, err)
 		}
+		connectLiveChats(cmd.Context(), o)
 		return runStart(cmd.Context(), o, f)
 	}}
 	cmd.Flags().StringVar(&f.device, "device", "", "Name for this computer (default: its host name)")

@@ -28,6 +28,8 @@ import (
 // LocalBridgeRequest is the adapter boundary. Attachment/configuration is a
 // person-only CLI or prompt-submit action, never exposed as an MCP tool.
 type LocalBridgeRequest struct {
+	// Automatic connects a verified native chat without overriding an explicit disconnect.
+	Automatic      bool   `json:"automatic,omitempty"`
 	ShutdownReason string `json:"shutdown_reason,omitempty"`
 	WorkspaceDir   string `json:"workspace_dir,omitempty"`
 	Activity       string `json:"activity,omitempty"`
@@ -107,6 +109,7 @@ type LocalAgentDirectory struct {
 }
 
 type LocalBridgeReply struct {
+	Stopped       bool `json:"stopped,omitempty"`
 	MonitorActive bool `json:"monitor_active,omitempty"`
 	// Notice is a one-time line for the person, e.g. an attach that finished after the command gave up.
 	Notice            string                `json:"notice,omitempty"`
@@ -212,6 +215,7 @@ type localBridge struct {
 	attaching   map[string]chan struct{}
 	root        string
 	sessions    map[string]*localSession
+	stopped     map[string]bool // explicit detach, keyed by exact native chat; no credentials or messages
 	changed     chan struct{}
 	options     LocalBridgeOptions
 	workers     sync.WaitGroup
@@ -225,6 +229,8 @@ var ErrNativeOfferUnconfirmed = errors.New("native offer has no admission receip
 var ErrNativeOfferRejected = errors.New("native offer failed before delivery")
 
 type LocalBridgeOptions struct {
+	Ready func(context.Context) // one bounded native-chat discovery after local readiness
+
 	ChatContext func(context.Context, AgentAttachment, string) (string, string)
 	ChatLabel   func(AgentAttachment, string) string
 	UsageNow    func() time.Time
@@ -259,6 +265,9 @@ func DefaultLocalBridgeRoot() (string, error) {
 	}
 	return filepath.Join(dir, "agentworks", "bridge"), nil
 }
+
+// PrepareLocalBridgeRoot applies the same private-directory checks as the listener.
+func PrepareLocalBridgeRoot(root string) error { return privateLiveDir(root) }
 
 // localReleaseOld tells a login a chat has left to drop its lease and child
 // connection. Auth failures and an already-gone lease count as released.
@@ -510,6 +519,9 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 	if b.sessions == nil {
 		b.sessions = map[string]*localSession{}
 	}
+	if err = readLiveJSON(filepath.Join(root, "disconnected.json"), &b.stopped); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	for _, s := range b.sessions {
 		if s == nil {
 			return errors.New("invalid attached session state")
@@ -542,10 +554,6 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 				missingHostNotices = append(missingHostNotices, s.Attachment)
 			}
 		}
-		if b.options.HostAlive != nil && !b.options.HostAlive(s.Attachment.Provider, s.HostKey) {
-			s.Offline = true
-		}
-		b.recoverNativeRoute(s)
 	}
 	if err = b.save(); err != nil {
 		return err
@@ -554,13 +562,6 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 	for _, a := range missingHostNotices {
 		b.options.Notify(a, "Legacy attachment is offline. Ask this chat to run agentworks attach to reconnect; its process binding must be verified.")
 	}
-	b.mu.Lock()
-	for _, s := range b.sessions {
-		if s.client != nil && !s.Offline {
-			b.start(ctx, s)
-		}
-	}
-	b.mu.Unlock()
 	shutdown := make(chan struct{})
 	var shutdownOnce sync.Once
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -619,6 +620,10 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		_ = json.NewEncoder(w).Encode(out)
 	})
 	srv := &http.Server{Handler: h, ReadHeaderTimeout: 3 * time.Second}
+	// Provider process/route probes can take seconds for each saved chat. Serve
+	// the local socket first; an unrelated old chat must not time out a new hook.
+	b.workers.Add(1)
+	go func() { defer b.workers.Done(); b.restoreSavedSessions(ctx) }()
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -629,6 +634,9 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 	houseCtx, houseCancel := context.WithCancel(ctx)
 	defer houseCancel()
 	go b.housekeeping(houseCtx)
+	if b.options.Ready != nil {
+		go b.options.Ready(houseCtx)
+	}
 	if b.options.AutoUpdate != nil {
 		go b.autoUpdateLoop(houseCtx)
 	}
@@ -655,6 +663,44 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		return nil
 	}
 	return err
+}
+
+func (b *localBridge) restoreSavedSessions(ctx context.Context) {
+	b.mu.Lock()
+	saved := make(map[string]*localSession, len(b.sessions))
+	for key, s := range b.sessions {
+		saved[key] = s
+	}
+	b.mu.Unlock()
+	for key, s := range saved {
+		b.mu.Lock()
+		if b.closed || ctx.Err() != nil {
+			b.mu.Unlock()
+			return
+		}
+		if b.sessions[key] != s || s.client == nil || s.Offline || s.cancel != nil {
+			b.mu.Unlock()
+			continue
+		}
+		provider, session, host, remote := s.Attachment.Provider, s.Attachment.SessionID, s.HostKey, s.NativeRemote
+		b.mu.Unlock()
+		alive := b.options.HostAlive == nil || b.options.HostAlive(provider, host)
+		route := remote
+		if alive && route == "" && b.options.NativeOffer != nil && b.options.NativeRoute != nil {
+			route = b.options.NativeRoute(provider, session, host, "")
+		}
+		b.mu.Lock()
+		if !b.closed && ctx.Err() == nil && b.sessions[key] == s && !s.Offline && s.cancel == nil && s.HostKey == host && s.NativeRemote == remote {
+			if !alive {
+				s.Offline = true
+			} else {
+				s.NativeRemote = route
+				b.start(ctx, s)
+			}
+			_ = b.save()
+		}
+		b.mu.Unlock()
+	}
 }
 
 func (b *localBridge) start(ctx context.Context, s *localSession) {
@@ -960,6 +1006,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 	}
 	s := b.sessions[key]
+	if in.Action == "attach" && in.Automatic && (b.stopped[key] || s != nil && s.ServerClosed) {
+		return LocalBridgeReply{Stopped: true, Error: "This chat was disconnected. Ask to connect it again when you want messages."}
+	}
 	if in.SessionID == "" && in.HostKey != "" {
 		for k, v := range b.sessions {
 			if v.Also {
@@ -972,6 +1021,15 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				key, s = k, v
 			}
 		}
+	}
+	if in.Action == "connection" {
+		if s == nil {
+			return LocalBridgeReply{Stopped: b.stopped[key]}
+		}
+		if !s.Offline && in.HostKey != s.HostKey {
+			return LocalBridgeReply{Error: "This chat's saved provider process is still connected. Try again after its restart completes."}
+		}
+		return LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Stopped: s.ServerClosed, Attachment: s.Attachment}
 	}
 	if in.Action == "list" {
 		out := LocalBridgeReply{}
@@ -1409,6 +1467,10 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			return LocalBridgeReply{Error: err.Error()}
 		}
+		if b.stopped[key] {
+			delete(b.stopped, key)
+			_ = atomicLiveJSON(filepath.Join(b.root, "disconnected.json"), b.stopped)
+		}
 		warning := ""
 		var toRelease []*localSession
 		for _, v := range old {
@@ -1452,7 +1514,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != "", Warning: warning, Networks: b.networkStates(primaryKey)}
 	}
 	if s == nil {
-		return LocalBridgeReply{}
+		return LocalBridgeReply{Stopped: b.stopped[key]}
 	}
 	switch in.Action {
 	case "share_person", "unshare_person", "share_own", "unshare_own":
@@ -1509,7 +1571,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if in.Action == "status" {
 			// Status only reports local state, so it works without a usable connection: the explicit attach that follows
 			// it rebuilds the connection from the saved login. It grants nothing and revives nothing.
-			return LocalBridgeReply{Offline: true, Attachment: s.Attachment, LastError: "This chat's saved connection is missing. Type /agentworks attach in the chat to reconnect it."}
+			return LocalBridgeReply{Stopped: s.ServerClosed, Offline: true, Attachment: s.Attachment, LastError: "This chat's saved connection is missing. Type /agentworks attach in the chat to reconnect it."}
 		}
 		return LocalBridgeReply{Error: "This chat's connection is not available. Run agentworks login if needed, then type /agentworks attach in the chat."}
 	}
@@ -1560,7 +1622,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		in.Action = "drain"
 	}
-	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != "" || piNativeActive(s) || museWatchActive(s), MonitorActive: museWatchActive(s)}
+	out := LocalBridgeReply{Stopped: s.ServerClosed, Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != "" || piNativeActive(s) || museWatchActive(s), MonitorActive: museWatchActive(s)}
 	if in.WantNotice && s.lateNotice != "" {
 		out.Notice, s.lateNotice = s.lateNotice, ""
 	}
@@ -1788,6 +1850,13 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			s.Offline = true
 			s.HostKey = ""
 		} else {
+			if b.stopped == nil {
+				b.stopped = map[string]bool{}
+			}
+			b.stopped[key] = true
+			if err = atomicLiveJSON(filepath.Join(b.root, "disconnected.json"), b.stopped); err != nil {
+				return LocalBridgeReply{Error: err.Error()}
+			}
 			delete(b.sessions, key)
 		}
 		if err = b.save(); err != nil {

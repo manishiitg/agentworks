@@ -171,6 +171,14 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 		return nil
 	}
 	req := agentworksclient.LocalBridgeRequest{Provider: "cursor", SessionID: input.SessionID, HostKey: process.Host, WorkspaceDir: cursorFolder(input), Activity: hookActivity(input.Event), Transport: "cursor_hook"}
+	if !control && (input.Event == "SessionStart" || input.Event == "UserPromptSubmit") {
+		ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
+		err := autoConnectChat(ctx, root, o, req, cursorFolder(input))
+		cancel()
+		if err != nil {
+			hookLog(root, "event=%s outcome=connect_failed detail=%q", input.Event, err.Error())
+		}
+	}
 	if input.Event == "PostToolUse" {
 		return postToolMessages(cmd.Context(), root, o, req)
 	}

@@ -1,9 +1,9 @@
 {
   "name": "@agentworks/pi",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "type": "module",
-  "description": "Explicit AgentWorks attachment and native delivery for Pi",
+  "description": "Automatic private AgentWorks connection and native delivery for Pi",
   "keywords": [
     "pi-package"
   ],

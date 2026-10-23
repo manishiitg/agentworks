@@ -22,8 +22,12 @@ var cursorHookEvents = []string{"sessionStart", "beforeSubmitPrompt", "stop", "p
 
 func setupCommand(o *options) *cobra.Command {
 	say := newSetupStyle(o.stdout).Say
-	cmd := &cobra.Command{Use: "setup", Short: "Set up a coding app to work with AgentWorks: claude, codex, cursor, muse or pi"}
-	cmd.AddCommand(&cobra.Command{Use: "cursor", Args: cobra.NoArgs, Short: "Set up the Cursor app for AgentWorks (every project)", Long: "Adds the AgentWorks hooks and the AgentWorks message tools to your Cursor user settings (~/.cursor/hooks.json and ~/.cursor/mcp.json), so every Cursor chat in every project can be connected with /agentworks attach. Other entries in those files are kept. Run it again any time; it only changes what is missing or outdated.", RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "setup", Short: "Set up a coding app to work with AgentWorks: claude, codex, cursor, muse or pi", PersistentPostRun: func(cmd *cobra.Command, _ []string) {
+		if cmd.Name() != "notifications" {
+			connectLiveChats(cmd.Context(), o)
+		}
+	}}
+	cmd.AddCommand(&cobra.Command{Use: "cursor", Args: cobra.NoArgs, Short: "Set up the Cursor app for AgentWorks (every project)", Long: "Adds the AgentWorks hooks and the AgentWorks message tools to your Cursor user settings (~/.cursor/hooks.json and ~/.cursor/mcp.json), so verified Cursor chats connect privately using your saved AgentWorks sign-in. Other entries in those files are kept. Run it again any time; it only changes what is missing or outdated.", RunE: func(cmd *cobra.Command, _ []string) error {
 		if runtime.GOOS == "windows" {
 			return errors.New("Cursor on Windows cannot connect to AgentWorks yet. Use Claude or Codex on Windows for now")
 		}
@@ -51,7 +55,7 @@ func setupCommand(o *options) *cobra.Command {
 		if line := addToolsServer(cmd.Context(), o, "cursor"); line != "" {
 			say(line)
 		}
-		say("Next: restart Cursor, open a chat and type /agentworks attach (or /agentworks attach NAME) as its own message.")
+		say("Next: restart Cursor. With your saved AgentWorks sign-in, verified chats connect privately automatically. Publishing is your choice.")
 		say("To undo: remove the entries that run agentworks from those two files (or put back a saved copy listed above), then restart Cursor.")
 		say("Messages from other agents reach a connected chat when it finishes a turn, and can start a turn you did not type. A chat that is idle gets them after its next turn.")
 		if cwd, e := os.Getwd(); e == nil && cursorProjectHasAgentWorksHooks(filepath.Join(cwd, ".cursor", "hooks.json")) {
@@ -92,7 +96,7 @@ func setupCommand(o *options) *cobra.Command {
 	} {
 		app := app
 		var noHooks, withHooks bool
-		sub := &cobra.Command{Use: app.provider, Args: cobra.NoArgs, Short: "Set up " + app.name + " for AgentWorks (every project)", Long: "Installs the AgentWorks plugin for " + app.name + " with its own plugin commands, for every project. Running it again is safe. It does not trust hooks, sign in or connect a chat; you do those next.", RunE: func(cmd *cobra.Command, _ []string) error {
+		sub := &cobra.Command{Use: app.provider, Args: cobra.NoArgs, Short: "Set up " + app.name + " for AgentWorks (every project)", Long: "Installs the AgentWorks plugin for " + app.name + " with its own plugin commands, for every project. Running it again is safe. It does not trust hooks or sign in. With a saved sign-in, verified chats connect privately automatically.", RunE: func(cmd *cobra.Command, _ []string) error {
 			o.setupAll = true
 			// Windows Codex uses hooks by default; other setups keep the tools-only default.
 			// --hooks installs the full plugin (typed /agentworks shortcuts, delivery at the end of a turn,
@@ -121,7 +125,7 @@ func setupCommand(o *options) *cobra.Command {
 				if line := addToolsServer(cmd.Context(), o, app.provider); line != "" {
 					say(line)
 				}
-				say("Next: restart " + app.name + ", then say \"connect this chat to AgentWorks\" in a chat. Nothing is typed and nothing shows as blocked.")
+				say("Next: restart " + app.name + ". Verified chats connect privately through your saved sign-in when their tools load.")
 				say(noHooksGivesUp)
 				if app.provider == "codex" {
 					say("Using the Codex command line? Run agentworks setup codex --hooks.")

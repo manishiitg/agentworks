@@ -206,6 +206,7 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 	}
 	if upToDate {
 		updateStep(progress, "AgentWorks is already up to date.")
+		connectLiveChats(context.Background(), o)
 		target, err := os.Executable()
 		if err != nil {
 			return err

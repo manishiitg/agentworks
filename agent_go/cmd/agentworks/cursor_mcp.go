@@ -33,7 +33,7 @@ func cursorMessagingChild(parent context.Context, o *options) error {
 			return consumeCursorFence(dir, process.Host, tool, args, time.Now())
 		}
 	}
-	bridge, err := agentworksclient.NewCursorPluginMCPServer(ctx, dir, process.Host, session)
+	bridge, err := agentworksclient.NewCursorPluginMCPServer(ctx, dir, process.Host, session, pluginAutoConnect(dir, o))
 	if err != nil {
 		return err
 	}
