@@ -29,11 +29,11 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	server := httptest.NewServer(AuthMiddleware(http.HandlerFunc(env.api.handleExternalCall)))
 	defer server.Close()
 	t.Setenv("PUBLIC_URL", server.URL)
-	issue := func(user, name string, scopes []string) (*agentworksclient.Client, accesstokens.Token) {
+	issue := func(user, name string) (*agentworksclient.Client, accesstokens.Token) {
 		t.Helper()
 		// Separate native CLI sign-ins are renewable independent connections.
 		// Legacy PAT issuance deliberately replaces earlier account PATs.
-		device, verification, e := store.CreateCLIDevice(context.Background(), scopes...)
+		device, verification, e := store.CreateCLIDevice(context.Background())
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -52,9 +52,9 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 		token.Name = name
 		return client, token
 	}
-	owner, ownerToken := issue("owner", "Reviewer", []string{"crews:run", "workflows:read", "runs:execute"})
-	worker, workerToken := issue("owner", "Worker", []string{"crews:run", "workflows:read", "runs:execute"})
-	foreign, _ := issue("other", "Foreign", []string{"crews:run"})
+	owner, ownerToken := issue("owner", "Reviewer")
+	worker, workerToken := issue("owner", "Worker")
+	foreign, _ := issue("other", "Foreign")
 	call := func(c *agentworksclient.Client, args map[string]any, wantOK bool) map[string]any {
 		t.Helper()
 		raw, e := c.Call(context.Background(), "messages", args)
@@ -226,11 +226,11 @@ func TestAgentInboxCleanupOverAuthenticatedHTTP(t *testing.T) {
 	server := httptest.NewServer(AuthMiddleware(http.HandlerFunc(env.api.handleExternalCall)))
 	defer server.Close()
 	t.Setenv("PUBLIC_URL", server.URL)
-	issue := func(user, name string, scopes []string) (*agentworksclient.Client, accesstokens.Token) {
+	issue := func(user, name string) (*agentworksclient.Client, accesstokens.Token) {
 		t.Helper()
 		// Separate native CLI sign-ins are renewable independent connections.
 		// Legacy PAT issuance deliberately replaces earlier account PATs.
-		device, verification, e := store.CreateCLIDevice(context.Background(), scopes...)
+		device, verification, e := store.CreateCLIDevice(context.Background())
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -249,9 +249,9 @@ func TestAgentInboxCleanupOverAuthenticatedHTTP(t *testing.T) {
 		token.Name = name
 		return client, token
 	}
-	owner, _ := issue("owner", "Reviewer", []string{"crews:run", "workflows:read", "runs:execute"})
-	worker, _ := issue("owner", "Worker", []string{"crews:run", "workflows:read", "runs:execute"})
-	foreign, _ := issue("other", "Foreign", []string{"crews:run"})
+	owner, _ := issue("owner", "Reviewer")
+	worker, _ := issue("owner", "Worker")
+	foreign, _ := issue("other", "Foreign")
 	call := func(c *agentworksclient.Client, args map[string]any, wantOK bool) map[string]any {
 		t.Helper()
 		raw, e := c.Call(context.Background(), "messages", args)

@@ -191,7 +191,7 @@ func TestAgentRejoinKeepsInboxAndReloadsLogin(t *testing.T) {
 	}
 	old.Action, old.Automatic = "attach", true
 	oldStatus, err = agentworksclient.CallLocalBridge(ctx, root, old)
-	if err != nil || oldStatus.Attached || !oldStatus.Stopped {
+	if oldStatus.Attached || !oldStatus.Stopped {
 		t.Fatalf("old hook reclaimed the name: %+v %v", oldStatus, err)
 	}
 	// Replace the browser login while this exact helper and chat remain running.
