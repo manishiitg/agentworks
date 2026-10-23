@@ -102,6 +102,11 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			return
 		}
 
+		if strings.HasPrefix(rel, "_users/") && strings.HasSuffix(rel, "/chat_history/product-conversations.json") {
+			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
+			workspacehandlers.GetDocument(c)
+			return
+		}
 		if strings.HasSuffix(rel, "/preferences/workspace-state.json") || strings.Contains(rel, "/preferences/context-shortcuts/") {
 			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
 			workspacehandlers.GetDocument(c)
@@ -122,6 +127,11 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 	router.PUT("/api/documents/*file", func(c *gin.Context) {
 		rel := strings.TrimPrefix(c.Param("file"), "/")
 		if strings.HasPrefix(rel, "_system/dashboard_questions/") {
+			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
+			workspacehandlers.UpdateDocument(c)
+			return
+		}
+		if strings.HasPrefix(rel, "_users/") && strings.HasSuffix(rel, "/chat_history/product-conversations.json") {
 			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
 			workspacehandlers.UpdateDocument(c)
 			return
