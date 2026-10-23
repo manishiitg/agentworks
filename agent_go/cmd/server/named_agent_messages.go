@@ -319,6 +319,18 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 			}
 		}
 	}
+	if expected := externalArg(args, "expected_agent_id"); expected != "" && (index < 0 || s.Agents[index].ID != expected) {
+		externalError(w, 403, "agent_account_changed", "This saved login does not own the agent. Sign in to its account, or connect this chat with a different name.")
+		return
+	}
+	if index >= 0 && externalArg(args, "action") == "register" {
+		a := s.Agents[index]
+		provider, session := externalArg(args, "provider"), externalArg(args, "native_session_id")
+		if a.Attachment != nil && provider != "" && session != "" && (a.Attachment.Provider != provider || a.Attachment.SessionID != session) && namedAgentOnline(a) {
+			externalError(w, 409, "agent_attached_elsewhere", "agent:"+name+" is attached to another chat; detach it there first")
+			return
+		}
+	}
 	if index >= 0 && !namedAgentConnectionAllowed(s.Agents[index], claims) {
 		// The holding sign-in may be gone (revoked or expired); the same person then takes the name.
 		// While it is still active, say which one holds it and how to move the name.

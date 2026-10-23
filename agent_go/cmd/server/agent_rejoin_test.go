@@ -19,7 +19,7 @@ import (
 func TestAgentRejoinKeepsInboxAndReloadsLogin(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
-	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"bob","username":"bob","can_create":true,"products":[]}]}`)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AUTH_SECRET", "rejoin-fixture-secret")
 	store, err := openMCPOAuthStore()
@@ -45,13 +45,17 @@ func TestAgentRejoinKeepsInboxAndReloadsLogin(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("PUBLIC_URL", srv.URL)
 	ctx := context.Background()
-	issue := func() (agentworksclient.Config, string) {
+	issue := func(users ...string) (agentworksclient.Config, string) {
 		t.Helper()
+		user := "alice"
+		if len(users) > 0 {
+			user = users[0]
+		}
 		device, code, e := store.CreateCLIDevice(ctx)
 		if e != nil {
 			t.Fatal(e)
 		}
-		if e = store.DecideCLIDevice(ctx, code, &UserClaims{UserID: "alice", Username: "alice"}, true); e != nil {
+		if e = store.DecideCLIDevice(ctx, code, &UserClaims{UserID: user, Username: user}, true); e != nil {
 			t.Fatal(e)
 		}
 		grant, access, refresh, e := store.PollCLIDevice(ctx, device, srv.URL+"/api/external/v1")
@@ -122,8 +126,40 @@ func TestAgentRejoinKeepsInboxAndReloadsLogin(t *testing.T) {
 		t.Fatal("another live chat's name was reclaimed")
 	}
 	prior, _ := agentworksclient.New(srv.URL, first.Token)
+	if _, err := prior.Call(ctx, "messages", map[string]any{"action": "register", "agent_name": "reviewer", "provider": "claude", "native_session_id": "different-chat", "expected_agent_id": attached.Attachment.AgentID}); err == nil {
+		t.Fatal("same login stole a live chat before child creation")
+	}
 	if _, err := prior.Call(ctx, "messages", map[string]any{"action": "register", "agent_name": "sender"}); err != nil {
 		t.Fatal(err)
+	}
+	// A disconnected own address can be reclaimed only by a full parent
+	// login of the same person, never a child or another person's login.
+	heldRaw, err := prior.Call(ctx, "messages", map[string]any{"action": "register", "agent_name": "held-address"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var held struct {
+		ID string `json:"agent_id"`
+	}
+	if err := json.Unmarshal(heldRaw, &held); err != nil || held.ID == "" {
+		t.Fatalf("held address: %s %v", heldRaw, err)
+	}
+	childCfg, err := prior.CreateAgentConnection(ctx, "sender")
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, _ := agentworksclient.New(srv.URL, childCfg.Token)
+	if _, err := child.Call(ctx, "messages", map[string]any{"action": "register", "agent_name": "held-address"}); err == nil {
+		t.Fatal("bound child reclaimed another address")
+	}
+	other, _ := issue("bob")
+	foreign, _ := agentworksclient.New(srv.URL, other.Token)
+	claim := map[string]any{"action": "register", "agent_name": "held-address", "expected_agent_id": held.ID}
+	if _, err := foreign.Call(ctx, "messages", claim); err == nil {
+		t.Fatal("another person reclaimed the stable address")
+	}
+	if _, err := newer.Call(ctx, "messages", claim); err != nil {
+		t.Fatalf("same person's disconnected address: %v", err)
 	}
 	raw, err := prior.Call(ctx, "messages", map[string]any{"action": "send", "agent_name": "sender", "target": "agent:reviewer", "message": "Keep this inbox", "submission_id": "rejoin-one"})
 	if err != nil {
@@ -177,8 +213,14 @@ func TestAgentRejoinKeepsInboxAndReloadsLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var page struct {
+		Messages []agentworksclient.AgentLiveMessage `json:"messages"`
+	}
+	if err := json.Unmarshal(inbox.Result, &page); err != nil {
+		t.Fatal(err)
+	}
 	found := false
-	for _, m := range inbox.Messages {
+	for _, m := range page.Messages {
 		if m.MessageID == sent.ID && m.Message == "Keep this inbox" {
 			found = true
 		}

@@ -51,7 +51,7 @@ func winHostAlive(provider, host string) bool {
 			continue
 		}
 		e.Created = winProcCreated(uint32(e.PID))
-		if e.Created != 0 && winHostKey(e) == host {
+		if e.Created == 0 || winHostKey(e) == host {
 			return true
 		}
 	}

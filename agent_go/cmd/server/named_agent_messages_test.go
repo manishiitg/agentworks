@@ -92,7 +92,8 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	inbox := receipt["inbox_id"].(string)
 	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, false)
 	call(worker, map[string]any{"action": "read", "inbox_id": inbox}, false)
-	call(worker, map[string]any{"action": "register", "agent_name": "reviewer"}, false)
+	// An explicit same-person register can now reclaim a disconnected address;
+	// live-chat and child boundaries are pinned by TestAgentRejoinKeepsInboxAndReloadsLogin.
 	page := call(owner, map[string]any{"action": "read", "agent_name": "reviewer"}, true)
 	items := page["messages"].([]any)
 	if len(items) != 1 || items[0].(map[string]any)["sender"] != "worker" {
