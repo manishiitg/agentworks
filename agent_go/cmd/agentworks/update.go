@@ -206,7 +206,11 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 	}
 	if upToDate {
 		updateStep(progress, "AgentWorks is already up to date.")
-		connectLiveChats(context.Background(), o)
+		// Restore existing chat connections if needed. Startup discovery belongs
+		// to that helper; a healthy helper must not rescan old desktop history.
+		if err = restoreAgentBridge(context.Background(), o, ""); err != nil {
+			return err
+		}
 		target, err := os.Executable()
 		if err != nil {
 			return err
