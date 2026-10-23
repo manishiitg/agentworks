@@ -100,7 +100,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   </div>
 })
 
-function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; projectId: string; workspacePath: string }) {
+export function WorkBrowserPanel({ tabId, workspacePath, onAsk }: { tabId: string; workspacePath: string; onAsk: (message: string) => unknown | Promise<unknown> }) {
   const product = useProjectProduct()
   const savedMode = useChatStore(state => state.chatTabs[tabId]?.config.browserMode ?? 'auto')
   const savedPort = useChatStore(state => state.chatTabs[tabId]?.config.cdpPort ?? 9222)
@@ -194,7 +194,7 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
         <WorkspaceViewActions
           workspacePath={workspacePath}
           message="Help me configure browser access for this project. Ask what site or task it is for before changing anything."
-          onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message, product.profileId) }}
+          onAsk={async message => { await onAsk(message) }}
           onRefresh={() => setRefreshNonce(nonce => nonce + 1)}
           refreshLabel="Refresh Browser"
         />
@@ -415,7 +415,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
               <ReportHumanInputPanel workspacePath={workspacePath} chatTarget={{ profileId: product.profileId, conversationKey: projectId }} source="user_suggestion" showEmptyState />
             </div>
           </div>}
-          {view === 'browser' && <WorkBrowserPanel tabId={tabId} projectId={projectId} workspacePath={workspacePath} />}
+          {view === 'browser' && <WorkBrowserPanel tabId={tabId} workspacePath={workspacePath} onAsk={ask} />}
           {view === 'costs' && <CostsPopup projectMode workspacePath={workspacePath} runFolders={[]} selectedRunFolder={null} emptyHint="Send a message to see this project's usage here." headerAction={<AskAIButton
             workspacePath={workspacePath}
             message={`Help me understand what this ${noun} project costs to run. Explain in plain words where the money goes, then ask what I want to change.`}

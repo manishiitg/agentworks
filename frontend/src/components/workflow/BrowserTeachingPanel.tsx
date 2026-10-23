@@ -36,13 +36,12 @@ export function BrowserTeachingPanel({
   session: string
   state: TeachState
   onState: (state: TeachState) => void
-  onStart: (goal: string) => void
+  onStart: () => void
   onControl: (action: string) => void
   onClose: () => void
   onReview?: () => void
   profileId?: string
 }) {
-  const [goal, setGoal] = useState('')
   const [items, setItems] = useState<TeachState[]>([])
   const [actions, setActions] = useState<TeachAction[]>(state.actions || [])
   const [check, setCheck] = useState(state.check || { kind: 'text', value: '' })
@@ -148,25 +147,15 @@ export function BrowserTeachingPanel({
       </div>
       {!active && (
         <p className="mb-3 text-xs text-muted-foreground">
-          Show your helper a task, try it, then save it as a reusable skill for this workspace. Sign in before teaching.
+          Sign in first, then show the task in the browser. Your helper will prepare the recorded steps for reuse.
         </p>
       )}
       {!active && !state.id && (
         <>
-          <label className="block text-sm">
-            Result to demonstrate
-            <textarea
-              aria-label="Task goal"
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              maxLength={1000}
-              className="my-2 block w-full rounded border bg-background p-2"
-            />
-          </label>
           <button
             type="button"
-            disabled={busy || !goal.trim()}
-            onClick={() => onStart(goal)}
+            disabled={busy}
+            onClick={onStart}
             className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-40"
           >
             Start teaching
@@ -251,6 +240,7 @@ export function BrowserTeachingPanel({
                     onChange={(e) =>
                       setCheck((current) => ({
                         ...current,
+                        kind: current.kind || 'text',
                         value: e.target.value,
                       }))
                     }

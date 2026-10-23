@@ -11,6 +11,7 @@ import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
+import { openBrowserConnections } from '../BrowserConnectionsDialog'
 
 interface BrowserWorkspacePanelProps {
   workspacePath: string | null
@@ -82,15 +83,14 @@ export function BrowserWorkspacePanel({
   const otherBrowsers = extensionAvailable || isBrowserCDPEnabled() ? <div className="space-y-3">
     {extensionAvailable && <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
       <div className="space-y-1">
-        <p className="text-[11px] font-medium text-primary">Recommended for signed-in websites</p>
-        <h4 className="text-sm font-semibold">Use your signed-in websites</h4>
-        <p className="text-xs leading-relaxed text-muted-foreground">Your helper can use your existing sign-ins and work in separate tabs for this {scopeNoun}.</p>
+        <h4 className="text-sm font-semibold">Use your Chrome or Edge</h4>
+        <p className="text-xs leading-relaxed text-muted-foreground">Reuse your sign-ins. Your helper opens tabs in the browser you choose.</p>
       </div>
-      <Button type="button" disabled={connection.busy} onClick={() => { void changeChoice('extension').then(() => setSettingsOpen(true)) }} className="h-auto w-full justify-start gap-2 whitespace-normal py-2 text-left">
-        <PlugZap className="h-4 w-4 shrink-0" aria-hidden="true" />{connection.status.account_connected ? 'Use my Chrome or Edge' : 'Connect my Chrome or Edge'}
+      <Button type="button" disabled={connection.busy} onClick={() => { if (connection.status.account_connected) setSettingsOpen(true); else openBrowserConnections() }} className="h-auto w-full justify-start gap-2 whitespace-normal py-2 text-left">
+        <PlugZap className="h-4 w-4 shrink-0" aria-hidden="true" />{connection.status.account_connected ? 'Choose a saved browser' : 'Connect Chrome or Edge'}
         <ArrowRight className="ml-auto h-4 w-4 shrink-0" aria-hidden="true" />
       </Button>
-      <p className="text-xs leading-relaxed text-muted-foreground">{connection.status.account_connected ? 'Your browser is connected to your account. Choose it to use it here.' : 'Requires the AgentWorks browser extension. We’ll guide you through the one-time setup.'}</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">Connect once to your account, then use it across projects. To watch and teach a task here, use the workspace browser.</p>
     </div>}
     {isBrowserCDPEnabled() && <Button type="button" variant="ghost" disabled={connection.busy} onClick={() => { void changeChoice('cdp').then(() => setSettingsOpen(true)) }} className="h-auto whitespace-normal text-xs">Advanced browser connection</Button>}
   </div> : null
@@ -171,7 +171,7 @@ export function BrowserWorkspacePanel({
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <BrowserAutomationSettings
+          {!isBrowserCDPEnabled() && extensionAvailable ? <ChromeExtensionConnection connection={connection} workspaceBrowser={{ selected: !connection.status.selected, onSelect: () => { void changeChoice(browserMode) } }} /> : <BrowserAutomationSettings
             browserMode={browserMode}
             onBrowserModeChange={onBrowserModeChange}
             browserChoice={choice}
@@ -188,8 +188,8 @@ export function BrowserWorkspacePanel({
             onCheckCdpConnection={onCheckCdpConnection}
             readOnly={readOnly || connection.busy}
             scopeNoun={scopeNoun}
-          />
-          {!readOnly && onSave && choice !== 'extension' && (
+          />}
+          {!readOnly && onSave && choice !== 'extension' && (dirty || saving) && (
             <div className="mt-3 flex items-center justify-end gap-3 border-t pt-3">
               {dirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
               <Button

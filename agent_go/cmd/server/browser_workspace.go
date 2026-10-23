@@ -10,6 +10,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path"
@@ -376,6 +377,19 @@ func (api *StreamingAPI) handleBrowserTeaching(w http.ResponseWriter, r *http.Re
 	session := mux.Vars(r)["session"]
 	if session != browserSessionForWorkspace(GetUserIDFromContext(r.Context()), workspace) {
 		http.Error(w, "Browser belongs to another workspace", 403)
+		return
+	}
+	if action == "review_status" {
+		id, _ := payload["id"].(string)
+		outcome, _ := payload["outcome"].(string)
+		if id == "" || len(id) > 80 || (outcome != "queued" && outcome != "failed") {
+			http.Error(w, "Invalid teaching review status", http.StatusBadRequest)
+			return
+		}
+		// This is the client's queue receipt, not proof that the helper finished.
+		// Never include demonstration contents or a raw client error in the log.
+		log.Printf("[BROWSER_TEACH] event=review_handoff workspace=%q demo=%q outcome=%q", workspace, id, outcome)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	payload["workspace_path"] = physical

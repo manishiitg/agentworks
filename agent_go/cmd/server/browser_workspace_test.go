@@ -154,6 +154,16 @@ func TestWorkspaceBrowserStartsWithoutChatAndEnforcesScope(t *testing.T) {
 	if r.Code != 200 {
 		t.Fatal(r.Code, r.Body.String())
 	}
+	for user, expected := range map[string]int{"alice": http.StatusNoContent, "bob": http.StatusForbidden} {
+		receipt := httptest.NewRequest("POST", "/?workspace_path=Workflow/one", strings.NewReader(`{"action":"review_status","id":"demo-one","outcome":"queued"}`))
+		receipt = receipt.WithContext(context.WithValue(receipt.Context(), UserContextKey, &UserClaims{UserID: user}))
+		receipt = mux.SetURLVars(receipt, map[string]string{"session": session})
+		response := httptest.NewRecorder()
+		api.handleBrowserTeaching(response, receipt)
+		if response.Code != expected {
+			t.Fatalf("teaching review receipt for %q: got %d, want %d", user, response.Code, expected)
+		}
+	}
 	req = mux.SetURLVars(req, map[string]string{"session": "another-browser"})
 	req.Body = http.NoBody
 	r = httptest.NewRecorder()

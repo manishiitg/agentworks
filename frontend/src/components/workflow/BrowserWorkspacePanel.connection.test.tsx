@@ -19,21 +19,27 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
   const root = createRoot(host)
   const clipboard = vi.fn()
   vi.stubGlobal('navigator', { userAgent: navigator.userAgent, clipboard: { writeText: clipboard } })
-  mocks.get.mockResolvedValue({ data: { selected: false, connected: false, account_connected: true, tabs: 0 } })
-  mocks.post.mockResolvedValue({ data: { selected: true, connected: true, account_connected: true, tabs: 0, workspace: 'Chats/Work/projects/crew-one' } })
+  const browsers = [{ id: 'chrome-one', name: 'My Chrome', connected: true, enabled: true }, { id: 'edge-two', name: 'My Edge', connected: true, enabled: true }]
+  mocks.get.mockResolvedValue({ data: { selected: false, connected: false, account_connected: true, tabs: 0, browsers } })
+  mocks.post.mockResolvedValue({ data: { selected: true, connected: true, account_connected: true, browser_id: 'chrome-one', tabs: 0, browsers, workspace: 'Crew/example-crew-one' } })
   try {
-    await act(async () => root.render(<TooltipProvider><BrowserWorkspacePanel workspacePath="Chats/Work/projects/crew-one" profileId="work" scopeNoun="project" browserMode="headless" onBrowserModeChange={vi.fn()} cdpPort={9222} onCdpPortChange={vi.fn()} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} /></TooltipProvider>))
-    const chrome = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Use my Chrome or Edge'))!
-    expect(host.textContent).toContain('Your browser is connected to your account')
-    expect(host.textContent).toContain('Recommended for signed-in websites')
-    expect(host.textContent).toContain('Your helper can use your existing sign-ins and work in separate tabs for this project')
+    await act(async () => root.render(<TooltipProvider><BrowserWorkspacePanel workspacePath="Crew/example-crew-one" profileId="work" scopeNoun="project" browserMode="headless" onBrowserModeChange={vi.fn()} cdpPort={9222} onCdpPortChange={vi.fn()} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} /></TooltipProvider>))
+    const chrome = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Choose a saved browser'))!
+    expect(host.textContent).toContain('Reuse your sign-ins')
+    expect(host.textContent).toContain('Connect once to your account')
     expect(host.textContent).not.toContain('one-time setup')
     expect(mocks.post).not.toHaveBeenCalled()
     await act(async () => chrome.click())
-    expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'connect' }, expect.objectContaining({ params: { workspace_path: 'Chats/Work/projects/crew-one', profile_id: 'work' } }))
+    expect(mocks.post).not.toHaveBeenCalled()
+    expect(host.querySelectorAll('select')).toHaveLength(1)
+    const picker = host.querySelector('#project-saved-browser') as HTMLSelectElement
+    expect([...picker.options].map(option => option.value)).toEqual(['workspace-browser', 'chrome-one', 'edge-two'])
+    await act(async () => { picker.value = 'chrome-one'; picker.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Use this browser')!.click() })
+    expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'connect', browser_id: 'chrome-one' }, expect.objectContaining({ params: { workspace_path: 'Crew/example-crew-one', profile_id: 'work' } }))
     expect(clipboard).not.toHaveBeenCalled()
     expect(host.textContent).toContain('Connected · 0 shared tabs')
-    expect(host.querySelector('option[value="extension"]')?.textContent).toContain('Connected')
+    expect(host.querySelector('option[value="chrome-one"]')?.textContent).toContain('Connected')
     expect(host.textContent).not.toContain('Install the extension')
     const manage = [...host.querySelectorAll('button')].find(button => button.textContent === 'Manage browser connections')!
     expect(manage).toBeTruthy()

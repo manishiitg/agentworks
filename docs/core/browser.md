@@ -584,10 +584,24 @@ never resumes automatically across an unobserved gap.
 
 ## Teach a browser task
 
-**Start browser → sign in → Teach task → describe the result → demonstrate →
+**Start browser → sign in → Teach task → demonstrate →
 Finish → helper prepares the task → Try task → Save skill** is implemented for
 ordinary browser forms and controls. Diagnostic video/HAR recording stays a
 separate feature; it does not automatically become a learned task.
+
+Teach task starts recording without a name or description form. The helper
+suggests a name from the captured steps, then prepares variable inputs and an
+observable outcome. A new draft defaults to a page-text check; its expected
+value must still be provided before a real test, and publication requires that
+test to pass. Completing capture sends preparation to the chat represented by
+the pane, including named Crew chats. A failed handoff keeps the draft.
+
+On server deployments, Browser settings has one picker for the workspace
+browser and the person's saved Chrome/Edge browsers. Connect a personal browser
+once at account level, then explicitly use it in a project. The workspace
+browser supports live viewing and teaching here; a selected personal browser
+opens the project's tabs in Chrome or Edge. Selection and access still use the
+same backend operations.
 
 Local settings show a compact browser choice: Automatic, Workspace browser or
 My Chrome. Connection ports, diagnostics and setup commands sit under a closed

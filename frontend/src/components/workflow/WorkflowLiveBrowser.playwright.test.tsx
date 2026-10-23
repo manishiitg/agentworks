@@ -546,6 +546,18 @@ it('lets the user start a scoped browser before an agent opens one', async () =>
  expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/workspace-browser/stream')
 })
 
+it('starts teaching from one click without asking for a task name or description', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  const { host } = await mountBrowser()
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => { ws.onmessage?.(frameMessage()) })
+  await act(async () => { buttonNamed(host, 'Teach task')!.click() })
+  expect(ws.send.mock.calls.map(([message]) => JSON.parse(message))).toContainEqual({ type: 'take_control' })
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) }) })
+  expect(ws.send.mock.calls.map(([message]) => JSON.parse(message))).toContainEqual({ type: 'teach_start' })
+  expect(host.querySelector('[aria-label="Task goal"]')).toBeNull()
+})
+
 it('hides startup for an existing browser and supports per-tab close while teaching', async () => {
   api.get.mockResolvedValue({ data: { sessions: [shared] } })
   const { host } = await mountBrowser()

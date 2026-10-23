@@ -224,9 +224,13 @@ func BrowserTeaching(c *gin.Context) {
 			c.JSON(200, state)
 			return
 		}
-		if len(strings.TrimSpace(req.Goal)) == 0 || len(req.Goal) > 1000 {
-			c.JSON(400, gin.H{"error": "Describe the task result (up to 1000 characters)"})
+		if len(req.Goal) > 1000 {
+			c.JSON(400, gin.H{"error": "Task description is too long (up to 1000 characters)"})
 			return
+		}
+		goal := strings.TrimSpace(req.Goal)
+		if goal == "" {
+			goal = "Browser task"
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 		defer cancel()
@@ -290,7 +294,7 @@ func BrowserTeaching(c *gin.Context) {
 			return
 		}
 		relative, _ := filepath.Rel(root, dir)
-		state = &teachState{ID: filepath.Base(dir), Goal: req.Goal, Workspace: req.Workspace, Directory: filepath.ToSlash(relative), Status: "recording", StartedAt: time.Now().UTC(), path: dir, session: session, recorder: rec}
+		state = &teachState{ID: filepath.Base(dir), Goal: goal, Workspace: req.Workspace, Directory: filepath.ToSlash(relative), Status: "recording", Check: teachCheck{Kind: "text"}, StartedAt: time.Now().UTC(), path: dir, session: session, recorder: rec}
 		teachingActive.Store(session, state)
 		state.timer = time.AfterFunc(10*time.Minute, func() {
 			lock.Lock()

@@ -100,7 +100,10 @@ func TestTeachingRealBrowserCaptureAndReplay(t *testing.T) {
 		}
 		return state
 	}
-	call(map[string]any{"action": "start", "goal": "Greet a customer"})
+	started := call(map[string]any{"action": "start"})
+	if started.Goal != "Browser task" || started.Check.Kind != "text" {
+		t.Fatalf("Teaching without a name must have a usable draft: goal=%q check=%+v", started.Goal, started.Check)
+	}
 	run("click", "#customer")
 	run("keyboard", "type", "Alice")
 	run("press", "Tab")

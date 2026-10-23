@@ -100,6 +100,17 @@ it('tests the reviewed draft using the parameter example and prevents publishing
   expect(publish.disabled).toBe(true)
   expect(host.textContent).toContain('Try the task again')
 })
+it('treats an entered expected result as page text when the draft has no check type yet', async () => {
+  const host = await mount({ ...draft, check: { kind: '', value: '' } })
+  const check = host.querySelector('[aria-label="Expected outcome"]') as HTMLInputElement
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(check, 'Hello')
+    check.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Try task')!.click() })
+  expect(api.post.mock.calls.find(([, body]) => body.action === 'save')?.[1].check).toEqual({ kind: 'text', value: 'Hello' })
+})
+
 it('keeps the recorder controls compact and hides the draft editor while demonstrating', async () => {
   const host = await mount({ ...draft, status: 'recording' })
   const dialog = host.querySelector('[role="dialog"]')!

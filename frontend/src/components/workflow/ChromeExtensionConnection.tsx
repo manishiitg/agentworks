@@ -111,19 +111,20 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
 }
 export type ChromeExtensionController = ReturnType<typeof useChromeExtensionConnection>
 
-export function ChromeExtensionConnection({ connection }: { connection: ChromeExtensionController }) {
+export function ChromeExtensionConnection({ connection, workspaceBrowser }: { connection: ChromeExtensionController; workspaceBrowser?: { selected: boolean; onSelect: () => void } }) {
   const { status, busy, error, connect, download } = connection
   const [chosenBrowser, setChosenBrowser] = useState('')
+  const choice = chosenBrowser || (workspaceBrowser?.selected ? 'workspace-browser' : status.browser_id || '')
   return <div className="space-y-4">
     <p className="text-xs text-muted-foreground">Connect browsers to your account once, then use them across your projects.</p>
     <Button size="sm" variant="outline" onClick={openBrowserConnections}>Manage browser connections</Button>
-    {!!status.browsers?.filter(b => b.enabled).length ? <div className="space-y-2">
+    {workspaceBrowser || !!status.browsers?.filter(b => b.enabled).length ? <div className="space-y-2">
       <label className="block text-xs font-medium" htmlFor="project-saved-browser">Browser for this project</label>
-      <select id="project-saved-browser" value={chosenBrowser || status.browser_id || ''} onChange={e => setChosenBrowser(e.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm">
-        <option value="">Most recently connected browser</option>
-        {status.browsers.filter(b => b.enabled).map(b => <option key={b.id} value={b.id}>{b.name} · {b.connected ? 'Connected' : 'Offline'}</option>)}
+      <select id="project-saved-browser" value={choice} onChange={e => setChosenBrowser(e.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm">
+        {workspaceBrowser ? <option value="workspace-browser">Workspace browser · watch and teach tasks here</option> : <option value="">Most recently connected browser</option>}
+        {status.browsers?.filter(b => b.enabled).map(b => <option key={b.id} value={b.id}>{b.name} · {b.connected ? 'Connected' : 'Offline'}</option>)}
       </select>
-      <Button size="sm" disabled={busy} onClick={() => { void connect(chosenBrowser || status.browser_id) }}>{busy && <Loader2 />}Use this browser</Button>
+      <Button size="sm" disabled={busy} onClick={() => { if (choice === 'workspace-browser' && workspaceBrowser) workspaceBrowser.onSelect(); else void connect(choice || status.browser_id) }}>{busy && <Loader2 />}Use this browser</Button>
     </div> : !status.account_connected && <p className="text-sm text-muted-foreground">Connect Chrome or Edge from Browser connections above. No workflow is needed.</p>}
     {status.selected && <div className="space-y-1 rounded-md border border-border p-3">
       <p className="text-sm font-medium">{status.connected ? 'Connected' : 'Offline'}{status.browser_id ? ` · ${status.browsers?.find(b => b.id === status.browser_id)?.name || 'Saved browser'}` : ''}</p>
