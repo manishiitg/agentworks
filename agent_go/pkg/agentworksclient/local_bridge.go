@@ -43,16 +43,17 @@ type LocalBridgeRequest struct {
 	ReuseIdentity bool `json:"reuse_identity,omitempty"`
 	// SwitchConnection is the person's explicit move of this exact chat to the
 	// connection in ConfigPath. Without it a saved chat keeps its own connection.
-	SwitchConnection bool   `json:"switch_connection,omitempty"`
-	Setup            bool   `json:"setup,omitempty"`
-	Action           string `json:"action"`
-	AttachmentID     string `json:"attachment_id,omitempty"`
-	Provider         string `json:"provider"`
-	SessionID        string `json:"session_id"`
-	HostKey          string `json:"host_key,omitempty"`
-	NativeRemote     string `json:"native_remote,omitempty"`
-	ConfigPath       string `json:"config_path,omitempty"`
-	AgentName        string `json:"agent_name,omitempty"`
+	SwitchConnection bool           `json:"switch_connection,omitempty"`
+	Setup            bool           `json:"setup,omitempty"`
+	Action           string         `json:"action"`
+	Arguments        map[string]any `json:"arguments,omitempty"`
+	AttachmentID     string         `json:"attachment_id,omitempty"`
+	Provider         string         `json:"provider"`
+	SessionID        string         `json:"session_id"`
+	HostKey          string         `json:"host_key,omitempty"`
+	NativeRemote     string         `json:"native_remote,omitempty"`
+	ConfigPath       string         `json:"config_path,omitempty"`
+	AgentName        string         `json:"agent_name,omitempty"`
 	// LabelName is the literal NAME supplied at attach, before identity reuse.
 	LabelName     string `json:"label_name,omitempty"`
 	Purpose       string `json:"purpose,omitempty"`
@@ -369,7 +370,7 @@ func CallMessagingBridge(ctx context.Context, root string, request LocalBridgeRe
 		return out, err
 	}
 	switch request.Action {
-	case "peers", "send", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file", "count", "delete", "clear":
+	case "message", "peers", "send", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file", "count", "delete", "clear":
 	default:
 		return out, err
 	}
@@ -880,6 +881,13 @@ func (b *localBridge) startNative(s *localSession) {
 }
 
 func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeRequest) LocalBridgeReply {
+	if in.Action == "message" {
+		var err error
+		in, err = messagingRequest(in)
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+	}
 	if in.Action == "usage_status" || in.Action == "usage_refresh" {
 		return b.usageControl(in)
 	}
