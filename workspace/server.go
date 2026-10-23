@@ -218,7 +218,7 @@ func registerAPIRoutes(r *gin.Engine) {
 		api.POST("/skills/workspace/import", requireWorkspaceAPIToken(), handleWorkspaceSkillImport)
 		api.POST("/skills/workspace/files", requireWorkspaceAPIToken(), handleWorkspaceSkillFiles)
 		// Append-only Code admin audit log (agent server only; the proxy refuses it).
-		api.POST("/audit/code-admin/append", handlers.AppendCodeAdminAudit)
+		api.POST("/audit/crew-admin/append", handlers.AppendCodeAdminAudit)
 		api.GET("/skills/cli/search", handleSkillSearch)
 		api.GET("/skills/cli/available", handleSkillCLIAvailable)
 
