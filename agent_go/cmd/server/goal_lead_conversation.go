@@ -557,6 +557,9 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	}
 	release := beginGoalWorkTurn(sessionID, perms)
 	defer release()
+	// Autopilot's own on/off and autonomy are the owner's. Whatever path a turn
+	// writes them by (a shell included), they are put back when it ends.
+	defer restoreAutopilotSettings(context.WithoutCancel(ctx), workspacePath)()
 	ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, sessionID)
 
 	// As the scheduler's own Pulse turns: the principal is the userID, not

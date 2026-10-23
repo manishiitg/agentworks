@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 
@@ -134,4 +136,26 @@ func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) er
 		}
 	}
 	return nil
+}
+
+// restoreAutopilotSettings remembers the workflow's Autopilot on/off and
+// autonomy now and returns a func that puts them back if the turn changed them.
+func restoreAutopilotSettings(ctx context.Context, workspacePath string) func() {
+	before, found, err := readWorkflowManifest(ctx, workspacePath, false)
+	if err != nil || !found || before.Pulse == nil {
+		return func() {}
+	}
+	enabled, outward := before.Pulse.Enabled, before.Pulse.OutwardActions
+	return func() {
+		now, found, err := readWorkflowManifest(ctx, workspacePath, false)
+		if err != nil || !found || now.Pulse == nil || (now.Pulse.Enabled == enabled && now.Pulse.OutwardActions == outward) {
+			return
+		}
+		now.Pulse.Enabled, now.Pulse.OutwardActions = enabled, outward
+		if err := writeWorkflowManifest(ctx, workspacePath, now); err != nil {
+			log.Printf("[PULSE_PERMISSIONS] could not restore Autopilot settings for %s: %v", workspacePath, err)
+			return
+		}
+		log.Printf("[PULSE_PERMISSIONS] restored Autopilot settings for %s after a turn changed them", workspacePath)
+	}
 }

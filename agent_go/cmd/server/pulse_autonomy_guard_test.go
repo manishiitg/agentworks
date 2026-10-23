@@ -176,3 +176,27 @@ func TestGoalWorkDecideUnlocksPlanToolsButNotSecrets(t *testing.T) {
 		t.Fatal("GoalWorkHeld must be set only by WithGoalWorkHeld")
 	}
 }
+
+func TestAutopilotSettingsAreRestoredAfterATurnChangesThem(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	raw, _ := json.Marshal(WorkflowManifest{ID: "invoices", Label: "Invoices", CreatedBy: "owner", Access: &WorkflowAccess{Owners: []string{"owner"}}, Pulse: &WorkflowPulseConfig{Enabled: true, OutwardActions: "ask"}})
+	f.write(t, "Workflow/invoices/workflow.json", string(raw))
+	ctx := context.Background()
+
+	restore := restoreAutopilotSettings(ctx, "Workflow/invoices")
+	// A Goal Work turn writes workflow.json by any path (here a shell-style raw write).
+	changed, _, err := ReadWorkflowManifest(ctx, "Workflow/invoices")
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed.Pulse.OutwardActions = "decide"
+	if err := writeWorkflowManifest(ctx, "Workflow/invoices", changed); err != nil {
+		t.Fatal(err)
+	}
+	restore()
+
+	after, _, err := ReadWorkflowManifest(ctx, "Workflow/invoices")
+	if err != nil || after.Pulse == nil || after.Pulse.OutwardActions != "ask" || !after.Pulse.Enabled {
+		t.Fatalf("autonomy must be back to ask and Autopilot on: %+v, %v", after.Pulse, err)
+	}
+}
