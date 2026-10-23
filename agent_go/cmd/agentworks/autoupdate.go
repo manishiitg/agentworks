@@ -29,7 +29,7 @@ var autoUpdateInstallsOnWindows = false
 
 // The steps after the swap; tests replace them.
 var (
-	autoUpdateStopHelper    = stopAgentBridge
+	autoUpdateStopHelper    = func(ctx context.Context) error { return stopAgentBridge(ctx, "update") }
 	autoUpdateRestoreHelper = restoreAgentBridge
 	autoUpdatePlugins       = updateInstalledPlugins
 )
