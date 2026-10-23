@@ -68,7 +68,7 @@ func TestBuildBrowserRuntimeInstructionsIsCompactAndDynamic(t *testing.T) {
 		CdpPort:         9222,
 		CdpPorts:        []int{9222, 9333},
 	})
-	for _, want := range []string{"Configured mode: `auto`", "http://localhost:9222", "http://localhost:9333", "Open agent-browser when browser work is needed", "status reports live availability", "builder-reference/references/playwright-scripted.md"} {
+	for _, want := range []string{"Configured mode: `auto`", "http://localhost:9222", "http://localhost:9333", "Open agent-browser when browser work is needed", "status reports live availability", "agent-browser/references/playwright-scripted.md"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("compact browser runtime instructions missing %q: %s", want, got)
 		}

@@ -65,6 +65,25 @@ func RegisterBuiltin(skill *llmtypes.Skill) error {
 	return nil
 }
 
+// AddBuiltinSupportingFile adds one reference file to an already registered
+// builtin skill, so a guide owned by another package ships inside that skill
+// in every product that attaches it. Call it during startup.
+func AddBuiltinSupportingFile(skillName, relPath, content string) error {
+	builtinSkillsMu.Lock()
+	defer builtinSkillsMu.Unlock()
+	skill, ok := builtinSkills[skillName]
+	if !ok {
+		return fmt.Errorf("builtin skill %q is not registered", skillName)
+	}
+	for _, file := range skill.SupportingFiles {
+		if file.RelPath == relPath {
+			return fmt.Errorf("builtin skill %q already has %q", skillName, relPath)
+		}
+	}
+	skill.SupportingFiles = append(skill.SupportingFiles, llmtypes.SkillFile{RelPath: relPath, Content: []byte(content)})
+	return nil
+}
+
 // IsBuiltinSkill reports whether folderName is served from the in-memory
 // builtin/product registry rather than the workspace skills/ folder.
 func IsBuiltinSkill(folderName string) bool {

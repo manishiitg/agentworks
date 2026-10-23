@@ -3,7 +3,7 @@ package skills
 const agentBrowserSkillContent = `# Agent Browser In Builder
 
 This skill covers interactive managed browsing. For repeatable test suites, call
-read_skill(skills=[{"name":"builder-reference","path":"references/playwright-scripted.md"}]).
+read_skill(skills=[{"name":"agent-browser","path":"references/playwright-scripted.md"}]).
 Use @agentworks/playwright for JS/TS or agentworks-playwright for Python when available;
 that reference owns installation, custom fixtures, visibility, and Python compatibility.
 Its test sessions use the same Browser panel in watch-only mode. The managed browser
