@@ -67,7 +67,8 @@ class ChosenBuildTest(unittest.TestCase):
         (directory / "manifest.json").write_text(json.dumps({"schema": 1, "name": name, "revisions": revs, "files": {}, "symlinks": {}}))
 
     def run_deploy_lib(self, script):
-        env = {**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}", "BUILDS_DIR": str(self.builds)}
+        env = {**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}", "BUILDS_DIR": str(self.builds),
+               "BUILD_HOST": "example.com", "BUILD_PORT": "22", "BUILD_USER": "builder"}
         return subprocess.run(
             ["bash", "-c", f'set -euo pipefail; REPO_ROOT="{self.root}/mcp-agent-builder-go"; source "{DEPLOY}/common/build-once.sh"; {script}'],
             capture_output=True, text=True, env=env)
@@ -96,11 +97,29 @@ class ChosenBuildTest(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "33333333-20261003000000")
 
 
+    def test_pinned_commits_build_without_a_remote_head_lookup(self):
+        for repo in REPOS:
+            git(self.root / repo, "remote", "set-url", "origin", "https://github.com/example/" + repo)
+        shutil.copy(DEPLOY / "common/build-release.sh", self.root / "mcp-agent-builder-go/deploy/common/build-release.sh")
+        pins = "; ".join(f'DEPLOY_SHA_{repo.upper().replace("-", "_")}={self.good[repo]}' for repo in REPOS)
+        result = self.run_deploy_lib("""
+            git() {
+                if [[ "$1" == ls-remote ]]; then echo "unexpected network lookup" >&2; return 97; fi
+                command git "$@"
+            }
+            build_ssh() {
+                if [[ "$1" == *systemd-run* ]]; then echo BUILD_NAME=pinned-build; else cat >/dev/null; fi
+            }
+        """ + pins + "; build_release_remote")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "pinned-build")
+
+
 class EntryPointTest(unittest.TestCase):
     def test_deploy_sh_parses_and_exposes_the_new_commands(self):
         subprocess.run(["bash", "-n", str(DEPLOY.parent / "deploy.sh")], check=True)
         help_text = subprocess.run([str(DEPLOY.parent / "deploy.sh"), "--help"], capture_output=True, text=True).stdout
-        for word in ("all-hetzner", "builds", "build [--force]", "--build <name|sha>", "DEPLOY_BUILD_MODE=server", "pin|unpin"):
+        for word in ("all-hetzner", "builds", "build [--force]", "--build <name|sha>", "pin|unpin"):
             self.assertIn(word, help_text)
 
     def test_all_hetzner_never_deploys_dominion(self):
@@ -110,19 +129,6 @@ class EntryPointTest(unittest.TestCase):
         self.assertEqual([l.strip() for l in block.splitlines() if l.strip().startswith("deploy_rootless_product ")],
                          ["deploy_rootless_product agents", "deploy_rootless_product confida", "deploy_rootless_product sparkquill"])
 
-    def test_the_build_on_the_server_path_is_kept_as_the_fallback(self):
-        entry = (DEPLOY.parent / "deploy.sh").read_text()
-        self.assertIn('DEPLOY_BUILD_MODE:-prebuilt}" == prebuilt', entry)
-        self.assertIn("Building on $PRODUCT@$HOST_IP: cloning/using $DEPLOY_BRANCH and building natively", entry)
-        for script in ("rootless-linux/build-and-activate.sh", "aws-ec2/server/build-and-activate.sh"):
-            text = (DEPLOY / script).read_text()
-            self.assertIn('if [[ -n "$PREBUILT" ]]; then', text)
-            self.assertIn("else", text)
-            self.assertIn("build-linux-agent.sh", text)  # the compile step is still there
-            self.assertIn("go build", text)
-        for script in ("rootless-linux/bootstrap-build.sh", "aws-ec2/server/bootstrap-build.sh"):
-            text = (DEPLOY / script).read_text()
-            self.assertIn('git clone --quiet --depth 1', text)  # clone-and-build path after the prebuilt branch
 
 
 if __name__ == "__main__":
