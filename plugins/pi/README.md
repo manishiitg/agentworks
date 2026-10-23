@@ -9,14 +9,13 @@ server credentials and runs no remote mailbox poller.
 
 ## Person setup
 
-The person runs `agentworks attach [NAME]` in a terminal. The CLI discovers live
-SDK sessions, lets the person select one, installs a missing Pi package only
-with the person's approval from its bundled source or exact CLI commit (the
-source is shown before approval), starts the shared bridge and activates the selected
-session after its authorized lease exists. NAME is an agent identity, not a
-provider argument. Use the existing CLI connection; no new login is inferred.
-A missing package requires Pi reload and a fresh person attach. Provider trust
-prompts remain the person's choice.
+Sign in to AgentWorks and load the Pi package, accepting Pi's own package
+approval when it asks. Native TUI chats connect privately on startup with the
+saved sign-in; no attach command or laptop folder grant is needed. A missing
+package needs installation and a Pi reload. Explicitly detached chats remain
+stopped. `/agentworks attach [NAME]` is the optional way to reconnect one or
+choose its name; `--on LOGIN` explicitly changes its saved login. Publishing
+remains a separate person command.
 
 For manual project installation from a reviewed local checkout:
 
