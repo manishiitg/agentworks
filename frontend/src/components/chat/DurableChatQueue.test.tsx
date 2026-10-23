@@ -40,7 +40,7 @@ it('restores the server queue and keeps a failed remove visible until the server
     expect(host.querySelector('[title="Sends automatically when the current turn finishes"]')).toBeTruthy()
     expect(host.textContent).toContain('Steer now')
     fixture.remove.mockRejectedValueOnce(new Error('network unavailable'))
-    const remove = () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Remove')!
+    const remove = () => host.querySelector<HTMLButtonElement>('[aria-label="Remove queued message"]')!
     await act(async () => remove().click())
     await flush()
     expect(host.textContent).toContain('Review the settings page.')
@@ -118,7 +118,7 @@ it('says the chat is being updated and offers no Steer now, but keeps Remove so 
     expect(host.textContent).toContain('chat restarts with the Crew')
     expect(host.textContent).toContain('Go on with the plan.')
     expect(host.textContent).not.toContain('Steer now')
-    const remove = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Remove')
+    const remove = host.querySelector<HTMLButtonElement>('[aria-label="Remove queued message"]')
     expect(remove).toBeTruthy()
     expect(remove!.disabled).toBe(false)
   } finally {
@@ -138,7 +138,7 @@ for (const reason of ['starting', 'waiting', undefined] as const) {
       await act(async () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy /></QueryClientProvider>))
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
       expect(host.textContent).not.toContain('Steer now')
-      expect(host.textContent).toContain('Remove')
+      expect(host.querySelector('[aria-label="Remove queued message"]')).not.toBeNull()
       expect(host.querySelector('[title="Sends automatically when the current turn finishes"]')).toBeNull()
       if (reason === 'starting') {
         expect(host.textContent).toContain('Agent starting · sends when ready')

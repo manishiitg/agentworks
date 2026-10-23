@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, Loader2 } from 'lucide-react'
+import { ArrowUp, Clock, Loader2, X } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
@@ -113,10 +113,10 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
             <summary title={text} className="cursor-pointer list-none truncate [&::-webkit-details-marker]:hidden group-open:max-h-32 group-open:overflow-y-auto group-open:whitespace-pre-wrap group-open:break-words">{text}</summary>
           </details>
           {message.message_id && <div className="flex items-center gap-2 whitespace-nowrap text-[11px]">
-            {onEdit && !message.delivery_error && !message.steering && <button type="button" title={canEdit ? 'Move back to the composer to edit · ↑' : 'Clear the composer to edit this queued message'} disabled={!canEdit || pending || Boolean(action)} onClick={() => void change(message, false, false, true)} className="text-muted-foreground hover:text-foreground disabled:opacity-40">Edit</button>}
+            {onEdit && !message.delivery_error && !message.steering && <button type="button" aria-label="Edit queued message" title={canEdit ? 'Move back to the composer to edit · ↑' : 'Clear the composer to edit this queued message'} disabled={!canEdit || pending || Boolean(action)} onClick={() => void change(message, false, false, true)} className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" /></button>}
             {message.delivery_error && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, false, true)} className="text-primary hover:underline disabled:opacity-40">Retry</button>}
             {message.can_steer === true && !message.delivery_error && !refreshing && !message.steering && <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, true)} className="text-primary hover:underline disabled:opacity-40">Steer now</button>}
-            <button type="button" disabled={pending || Boolean(action)} onClick={() => void change(message, false)} className="text-muted-foreground hover:text-foreground disabled:opacity-40">Remove</button>
+            <button type="button" aria-label="Remove queued message" title="Remove queued message" disabled={pending || Boolean(action)} onClick={() => void change(message, false)} className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
           </div>}
         </div>
         {message.delivery_error && <p className="mt-1 text-[11px] text-muted-foreground">{message.delivery_error}</p>}
