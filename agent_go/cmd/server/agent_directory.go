@@ -119,18 +119,6 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 				row[key] = value
 			}
 			row["id"] = item["target"]
-			if crewProjectOwnedByCaller(claims.UserID, crewPath) {
-				tabs, err := crewOwnerChatRecords(ctx, claims.UserID, profileID, id, crewPath)
-				if err != nil {
-					return nil, err
-				}
-				chats := []map[string]interface{}{}
-				for _, tab := range tabs {
-					chats = append(chats, map[string]interface{}{"chat_id": tab.Record.ConversationKey, "name": firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), "owner_name": crewOwnerDisplayName(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat})
-				}
-				row["chats"] = chats
-			}
-			row["reach"] = "send_message(target=<id>, chat_id=<optional chat_id>); omit chat_id for the Crew's main Builder. Functions use call_function."
 			agents = append(agents, row)
 		}
 	}

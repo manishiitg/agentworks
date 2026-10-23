@@ -194,6 +194,9 @@ func (api *StreamingAPI) goalTabForSession(ctx context.Context, session string) 
 	if owner == "" {
 		return goalOwnerTab{}, "", false
 	}
+	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil && !claims.AccessToken.Allows("builder:chat") {
+		return goalOwnerTab{}, "", false
+	}
 	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(owner))
 	if err != nil {
 		return goalOwnerTab{}, "", false
