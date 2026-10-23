@@ -50,7 +50,7 @@ func (target *laptopConnectionTarget) valid() bool {
 // follows the project into Run callers, schedules, child agents or synthetic turns.
 func laptopBuilderTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
 	crew := profile != nil && isProjectProfileID(profile.Definition.ID)
-	goal := profile == nil && (req.AgentMode == "workflow_phase" || req.admittedWorkflowPhase) && req.PhaseID == "workflow-builder" && req.WorkshopMode != "run"
+	goal := profile == nil && (req.AgentMode == "workflow_phase" || req.admittedWorkflowPhase) && req.PhaseID == "workflow-builder" && workflowCLIMode(&req, false) != "run"
 	return (crew || goal) && !req.PinRunMode && req.BotPlatform == "" &&
 		(strings.TrimSpace(req.TriggeredBy) == "" || req.TriggeredBy == "interactive") &&
 		req.ParentSessionID == "" && req.SessionKind == "" && !req.IsAutoNotification && !req.PulseLifecycleTurn
