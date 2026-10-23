@@ -3258,7 +3258,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// pane is parked on a provider usage/rate-limit wall, so they do not wedge
 	// "running" forever and lock the UI.
 	api.startCodingTmuxRateLimitWatchdog()
-	startAgentStatusNoticeSweeper()
 
 	// Keep the service's own tokens out of the tmux server that hosts the CLIs (PLAT-663).
 	startTmuxServerEnvCheck()
