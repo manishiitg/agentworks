@@ -11,10 +11,12 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
 
-// Publish is the share-twin of Backup: it deploys the workflow's HTML artifacts
-// (Pulse log + report dashboard) to a public URL on any static host. It mirrors
+// Publish is the share-twin of Backup: it deploys the workflow's dashboard
+// and any explicitly selected public pages to a public URL on any static host. It mirrors
 // workflow_backup.go — provider-agnostic, agent-driven, status in publish/status.json.
 
 const (
@@ -139,6 +141,16 @@ var publishHashFolders = []string{
 func computeWorkflowPublishSourceHash(ctx context.Context, workspacePath string) string {
 	workspacePath = strings.TrimRight(workspacePath, "/")
 	files := make(map[string]string)
+	metadata := make(map[string]string)
+	var collectMetadata func([]virtualtools.WorkspaceFolderItem)
+	collectMetadata = func(items []virtualtools.WorkspaceFolderItem) {
+		for _, item := range items {
+			if item.Type != "folder" {
+				metadata[item.FilePath] = fmt.Sprintf("%d:%s", item.Size, item.LastModified)
+			}
+			collectMetadata(item.Children)
+		}
+	}
 	for _, relPath := range publishHashFiles {
 		files[relPath] = workspacePath + "/" + relPath
 	}
@@ -147,6 +159,7 @@ func computeWorkflowPublishSourceHash(ctx context.Context, workspacePath string)
 		if err != nil || !exists {
 			continue
 		}
+		collectMetadata(listing)
 		var fullPaths []string
 		collectWorkspaceFilePaths(listing, &fullPaths)
 		for _, fullPath := range fullPaths {
@@ -166,11 +179,12 @@ func computeWorkflowPublishSourceHash(ctx context.Context, workspacePath string)
 
 	hasher := sha256.New()
 	for _, relPath := range relPaths {
+		hasher.Write([]byte(relPath))
+		hasher.Write([]byte(metadata[files[relPath]]))
 		content, exists, err := readFileFromWorkspace(ctx, files[relPath])
 		if err != nil || !exists {
 			continue
 		}
-		hasher.Write([]byte(relPath))
 		hasher.Write([]byte(content))
 	}
 	return hex.EncodeToString(hasher.Sum(nil))

@@ -49,9 +49,11 @@ type WorkspaceAPIResponse struct {
 
 // WorkspaceFolderItem is a single item in a folder listing (can have Children for nested listing)
 type WorkspaceFolderItem struct {
-	FilePath string                `json:"filepath"`
-	Type     string                `json:"type"`
-	Children []WorkspaceFolderItem `json:"children,omitempty"`
+	Size         int64                 `json:"size,omitempty"`
+	LastModified string                `json:"last_modified,omitempty"`
+	FilePath     string                `json:"filepath"`
+	Type         string                `json:"type"`
+	Children     []WorkspaceFolderItem `json:"children,omitempty"`
 }
 
 // WorkspaceFolderListing is the folder listing response (array of folder items)

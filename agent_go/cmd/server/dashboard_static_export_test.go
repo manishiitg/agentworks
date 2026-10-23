@@ -5,6 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
@@ -30,23 +33,38 @@ func TestStaticExportKeepsAuthoringAndExecuteConsent(t *testing.T) {
 }
 
 func TestStaticPublishTracksSourcesAndNotGeneratedExports(t *testing.T) {
-	store := &mockWorkspaceAPI{files: map[string]string{}}
-	host := httptest.NewServer(store)
+	f := newExternalToolsFixture(t)
+	router := gin.New()
+	router.GET("/api/documents", workspacehandlers.ListDocuments)
+	router.GET("/api/documents/*filepath", workspacehandlers.GetDocument)
+	host := httptest.NewServer(router)
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
 	ctx := context.Background()
 	first := computeWorkflowPublishSourceHash(ctx, "Workflow/invoices")
-	store.files["Workflow/invoices/code/reports/managed/overview/index.tsx"] = "export default ()=>null"
+	f.write(t, "Workflow/invoices/code/reports/managed/overview/index.tsx", "export default ()=>null")
 	source := computeWorkflowPublishSourceHash(ctx, "Workflow/invoices")
 	if source == first {
 		t.Fatal("managed TSX source did not trigger Publish")
 	}
-	store.files["Workflow/invoices/db/summary.json"] = `{"total":42}`
+	f.write(t, "Workflow/invoices/db/summary.json", `{"total":42}`)
 	data := computeWorkflowPublishSourceHash(ctx, "Workflow/invoices")
 	if data == source {
 		t.Fatal("JSON data change did not trigger Publish")
 	}
-	store.files["Workflow/invoices/publish/exports/example/index.html"] = "published snapshot"
+	f.write(t, "Workflow/invoices/publish/exports/example/index.html", "published snapshot")
+	f.write(t, "Workflow/invoices/db/assets/image.png", "\x89PNG\x00binary")
+	binary := computeWorkflowPublishSourceHash(ctx, "Workflow/invoices")
+	if binary == data {
+		t.Fatal("binary data change did not trigger Publish")
+	}
+	f.write(t, "Workflow/invoices/db/db.sqlite", "SQLite format 3\x00first")
+	database := computeWorkflowPublishSourceHash(ctx, "Workflow/invoices")
+	f.write(t, "Workflow/invoices/db/db.sqlite", "SQLite format 3\x00changed-longer")
+	data = computeWorkflowPublishSourceHash(ctx, "Workflow/invoices")
+	if data == database || database == binary {
+		t.Fatal("managed database metadata did not trigger Publish")
+	}
 	if current := computeWorkflowPublishSourceHash(ctx, "Workflow/invoices"); current != data {
 		t.Fatal("generated export triggered Publish loop")
 	}
