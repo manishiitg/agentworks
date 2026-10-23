@@ -106,19 +106,8 @@ func TestAgentLocalBridgeMuseOffersSurviveARestart(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	waiting := func() int {
-		for _, state := range call(agentworksclient.LocalBridgeRequest{Action: "list"}).AgentStates {
-			if state.AgentName == "muse-chat" {
-				return state.Pending
-			}
-		}
-		return 0
-	}
-	for deadline := time.Now().Add(5 * time.Second); waiting() < 2; time.Sleep(20 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			t.Fatal("the bridge never received the waiting messages")
-		}
-	}
+	// Accepted sends already live in the server mailbox; the helper need not
+	// receive or save a body before it can restart.
 	// Ctrl+C and resume: the bridge restarts and the chat comes back on a new lease.
 	cancel()
 	<-done
@@ -147,8 +136,7 @@ func TestAgentLocalBridgeMuseOffersSurviveARestart(t *testing.T) {
 
 	// A message the chat never acknowledged (interrupted, lost tool result) is
 	// handed out again after the quiet period; an admitted one is not.
-	t.Setenv("AGENTWORKS_MUSE_REDELIVER_AFTER", "1s")
-	time.Sleep(1200 * time.Millisecond)
+	// Every real boundary rechecks the server; no local retry timer.
 	again := map[string]string{}
 	drain := chat
 	drain.Action, drain.Transport, drain.HostKey = "drain", "muse_hook", "muse-process-new"
@@ -182,7 +170,6 @@ func TestAgentLocalBridgeMuseOffersSurviveARestart(t *testing.T) {
 	if out := call(ack); out.Error != "" {
 		t.Fatalf("ack failed: %s", out.Error)
 	}
-	time.Sleep(1200 * time.Millisecond)
 	left := call(drain).Messages
 	if len(left) != 1 || left[0].Message != "second waiting message" {
 		t.Fatalf("only the unacknowledged message may come back: %+v", left)

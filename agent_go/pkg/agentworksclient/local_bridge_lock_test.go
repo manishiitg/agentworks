@@ -121,7 +121,7 @@ func TestSlowServerCallDoesNotHoldTheBridgeLock(t *testing.T) {
 			if err := SaveConfig(config, Config{Server: slow.URL, Token: "token"}); err != nil {
 				t.Fatal(err)
 			}
-			session := &localSession{Attachment: AgentAttachment{ID: "lease", AgentName: "a", Provider: "claude", SessionID: "s"}, HostKey: "h", AccountSenders: true, client: client, ParentConfigPath: config, Offers: map[string]localOffer{}}
+			session := &localSession{Attachment: AgentAttachment{ID: "lease", AgentName: "a", Provider: "claude", SessionID: "s"}, HostKey: "h", AccountSenders: true, client: client, ParentConfigPath: config}
 			b := &localBridge{sessions: map[string]*localSession{localBridgeKey("claude", "s"): session}, changed: make(chan struct{})}
 			done := make(chan LocalBridgeReply, 1)
 			go func() {
@@ -361,7 +361,7 @@ func TestMuseWatchWaitsOutABusyServerButEndsWhenTheLeaseIsRefused(t *testing.T) 
 	}
 	run := func() (*lockedBuffer, chan struct{}, context.CancelFunc) {
 		b := &localBridge{sessions: map[string]*localSession{}, changed: make(chan struct{}), museCurrent: map[string]string{}}
-		b.sessions[localBridgeKey("muse", "s1")] = &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "muse", SessionID: "s1"}, HostKey: "h", client: client, Offers: map[string]localOffer{}}
+		b.sessions[localBridgeKey("muse", "s1")] = &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "muse", SessionID: "s1"}, HostKey: "h", client: client}
 		ctx, cancel := context.WithCancel(context.Background())
 		out := &lockedBuffer{hdr: http.Header{}}
 		done := make(chan struct{})
@@ -420,27 +420,6 @@ func TestHoldClockLeavesOutTimeSpentWithTheLockReleased(t *testing.T) {
 
 // A notice (or a read) never hands a message to a chat; acking it must stay refused, and the refusal
 // must tell the chat the one thing that works: take it with receive first.
-func TestAckOfAMessageOnlySeenAsANoticeSaysToReceiveFirst(t *testing.T) {
-	client, err := New("http://127.0.0.1:1", "token")
-	if err != nil {
-		t.Fatal(err)
-	}
-	b := &localBridge{sessions: map[string]*localSession{}, changed: make(chan struct{})}
-	b.sessions[localBridgeKey("muse", "s1")] = &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "muse", SessionID: "s1"}, HostKey: "h", client: client,
-		Offers: map[string]localOffer{"m1": {MuseHinted: true, AgentLiveMessage: AgentLiveMessage{MessageID: "m1"}}}}
-	reply := b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "ack", Provider: "muse", SessionID: "s1", HostKey: "h", MessageID: "m1", Delivery: "delivered"})
-	if !strings.Contains(reply.Error, "action=receive") {
-		t.Fatalf("ack of a notice-only message = %q", reply.Error)
-	}
-	if b.sessions[localBridgeKey("muse", "s1")].Offers["m1"].Offered {
-		t.Fatal("the refused ack marked the message offered")
-	}
-}
-
-// Muse sends each plugin tool to its model provider as "mcp__plugin_<plugin>_<server>__<tool>" and the
-// provider rejects names over 64 characters ("name must be at most 64 characters, got 66"), which
-// broke a Muse chat right after attach. Every Muse tool must fit with room to spare, so a long tool name
-// or server id fails here and not in the owner's chat.
 func TestMusePluginToolNamesFitTheProviderNameLimit(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "plugins", "muse", ".muse-plugin", "plugin.json"))
 	if err != nil {
@@ -528,7 +507,7 @@ func TestRouteLookupWaitsBetweenFailuresButNotAfterAChatStarts(t *testing.T) {
 		NativeOffer: func(context.Context, string, LocalBridgeReply) error { return nil },
 		NativeRoute: func(_, _, _, _ string) string { lookups.Add(1); return "" },
 	}}
-	b.sessions[localBridgeKey("claude", "s1")] = &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "claude", SessionID: "s1"}, HostKey: "h", AccountSenders: true, client: client, Offers: map[string]localOffer{}}
+	b.sessions[localBridgeKey("claude", "s1")] = &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "claude", SessionID: "s1"}, HostKey: "h", AccountSenders: true, client: client}
 	status := LocalBridgeRequest{Action: "status", Provider: "claude", SessionID: "s1", HostKey: "h"}
 	call := func(in LocalBridgeRequest) { b.handle(context.Background(), context.Background(), in) }
 	call(status)
@@ -610,93 +589,6 @@ func TestAttachFinishedAfterTheCommandGaveUpIsConfirmedOnTheNextPrompt(t *testin
 }
 
 // The helper checks for an update on a schedule but never while a chat is being delivered to: it waits and tries again.
-func TestAutoUpdateWaitsWhileAMessageIsBeingDelivered(t *testing.T) {
-	var calls atomic.Int32
-	b := &localBridge{sessions: map[string]*localSession{}, changed: make(chan struct{}), options: LocalBridgeOptions{
-		AutoUpdate:      func(context.Context) { calls.Add(1) },
-		AutoUpdateFirst: 20 * time.Millisecond, AutoUpdateEvery: time.Hour, AutoUpdateRetry: 30 * time.Millisecond,
-	}}
-	s := &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "claude", SessionID: "s1"}, Offers: map[string]localOffer{
-		"m1": {Offered: true, OfferedAt: time.Now(), AgentLiveMessage: AgentLiveMessage{MessageID: "m1", Delivery: "delivered"}},
-	}}
-	b.sessions[localBridgeKey("claude", "s1")] = s
-	if b.idleForUpdate() {
-		t.Fatal("a message just handed over and not processed is a delivery in progress")
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go b.autoUpdateLoop(ctx)
-	time.Sleep(80 * time.Millisecond) // inside the loop's six retries (6 x 30 ms)
-	if calls.Load() != 0 {
-		t.Fatalf("the update ran during a delivery (%d calls)", calls.Load())
-	}
-	b.mu.Lock()
-	m := s.Offers["m1"]
-	m.Delivery = "delivered"
-	s.Offers["m1"] = m
-	b.mu.Unlock()
-	for i := 0; i < 40 && calls.Load() == 0; i++ {
-		time.Sleep(25 * time.Millisecond)
-	}
-	if calls.Load() != 1 {
-		t.Fatalf("the update did not run once the delivery was processed (%d calls)", calls.Load())
-	}
-}
-
-// takeOffers asks the server with the bridge lock released. Two calls for one chat at the same time (the
-// adapter and a hook) must not both pick the same waiting message: each comes out exactly once.
-func TestConcurrentTakeOffersHandOverEachMessageOnce(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var in struct {
-			IDs []string `json:"message_ids"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&in)
-		time.Sleep(100 * time.Millisecond)
-		_ = json.NewEncoder(w).Encode(map[string]any{"message_ids": in.IDs})
-	}))
-	defer srv.Close()
-	client, err := New(srv.URL, "token")
-	if err != nil {
-		t.Fatal(err)
-	}
-	b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{}, changed: make(chan struct{})}
-	s := &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "claude", SessionID: "s1"}, client: client, Offers: map[string]localOffer{}}
-	for i, id := range []string{"m1", "m2", "m3"} {
-		s.Offers[id] = localOffer{AgentLiveMessage: AgentLiveMessage{MessageID: id, Sequence: i}}
-	}
-	b.sessions[localBridgeKey("claude", "s1")] = s
-	var mu sync.Mutex
-	seen := map[string]int{}
-	var errs []string
-	var wg sync.WaitGroup
-	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			b.mu.Lock()
-			defer b.mu.Unlock()
-			got, _, _, err := b.takeOffers(context.Background(), s, "", 20)
-			mu.Lock()
-			if err != nil {
-				errs = append(errs, err.Error())
-			}
-			for _, m := range got {
-				seen[m.MessageID]++
-			}
-			mu.Unlock()
-		}()
-	}
-	wg.Wait()
-	for _, id := range []string{"m1", "m2", "m3"} {
-		if seen[id] != 1 {
-			t.Fatalf("message %s handed out %d times: %v (errors: %v)", id, seen[id], seen, errs)
-		}
-	}
-}
-
-// A Codex chat whose own saved connection file was deleted could not attach again: the quick own-attach
-// path stopped at "saved connection is incomplete" and the normal path reused the missing file. It must
-// make a new connection from the saved login and keep the chat's name.
 func TestCodexOwnAttachRebuildsAMissingChatConnection(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -730,7 +622,7 @@ func TestCodexOwnAttachRebuildsAMissingChatConnection(t *testing.T) {
 	lost := filepath.Join(root, "connections", "gone.json")
 	b := &localBridge{root: root, changed: make(chan struct{}), sessions: map[string]*localSession{key: {
 		Attachment: AgentAttachment{ID: "L1", AgentName: "codex-chat", Provider: "codex", SessionID: "sess"},
-		HostKey:    "h", AccountSenders: true, OwnCLI: true, Offline: true, ParentConfigPath: parent, ConfigPath: lost, Offers: map[string]localOffer{},
+		HostKey:    "h", AccountSenders: true, OwnCLI: true, Offline: true, ParentConfigPath: parent, ConfigPath: lost,
 	}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() { cancel(); b.workers.Wait() }()
@@ -790,7 +682,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		t.Fatal(err)
 	}
 	seed := func(session, id string, closed bool) *localSession {
-		return &localSession{Attachment: AgentAttachment{ID: id, AgentID: "agent-" + session, AgentName: "saved-" + session, Provider: "codex", SessionID: session}, HostKey: "prior-process", AccountSenders: true, OwnCLI: true, Offline: true, ServerClosed: closed, ConfigPath: config, ParentConfigPath: config, Offers: map[string]localOffer{}}
+		return &localSession{Attachment: AgentAttachment{ID: id, AgentID: "agent-" + session, AgentName: "saved-" + session, Provider: "codex", SessionID: session}, HostKey: "prior-process", AccountSenders: true, OwnCLI: true, Offline: true, ServerClosed: closed, ConfigPath: config, ParentConfigPath: config}
 	}
 	if err = atomicLiveJSON(filepath.Join(root, "sessions.json"), map[string]*localSession{
 		localBridgeKey("codex", "saved"):  seed("saved", "lease-saved", false),
@@ -849,21 +741,5 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	}
 	if attachments.Load() != 2 {
 		t.Fatal("an unavailable chat was attached")
-	}
-}
-
-func TestPostToolEmptyStaysLocal(t *testing.T) {
-	b := &localBridge{root: t.TempDir(), changed: make(chan struct{}), sessions: map[string]*localSession{}}
-	client, err := New("https://example.com", "fixture-token")
-	if err != nil {
-		t.Fatal(err)
-	}
-	session := &localSession{Attachment: AgentAttachment{Provider: "codex", SessionID: "exact", ID: "lease"}, HostKey: "host", client: client, Offers: map[string]localOffer{}}
-	b.sessions[localBridgeKey("codex", "exact")] = session
-	b.options.NativeRoute = func(string, string, string, string) string { t.Fatal("post-tool discovered native route"); return "" }
-	start := time.Now()
-	out := b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "post_tool", Provider: "codex", SessionID: "exact", HostKey: "host", Transport: "codex_hook"})
-	if out.Error != "" || len(out.Messages) != 0 || time.Since(start) > 100*time.Millisecond {
-		t.Fatal("empty post-tool left the local fast path", out.Error)
 	}
 }

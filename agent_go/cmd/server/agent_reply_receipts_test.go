@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 )
 
 // The production OAuth, workspace store, Unix helper and MCP handler reproduce
-// mailbox recovery without a native offer, then a reply after local cleanup.
+// server-owned hook delivery, retry after an unconfirmed receipt, and an exact reply.
 func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
@@ -127,7 +128,36 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 	}
 	sent := call(sender, map[string]any{"action": "send", "agent_name": "sender", "target": "agent:receiver", "message": "Please review", "submission_id": "receipt-review"})
 	id, inbox := sent["message_id"].(string), sent["inbox_id"].(string)
-	tool(map[string]any{"action": "ack", "message_id": id, "delivery": "delivered"}, true)
+	hook := base
+	hook.Action, hook.Transport = "drain", "codex_hook"
+	for attempt := 0; attempt < 2; attempt++ {
+		batch, e := agentworksclient.CallLocalBridge(ctx, root, hook)
+		if e != nil || len(batch.Messages) != 1 || batch.Messages[0].MessageID != id || batch.Messages[0].Message != "Please review" {
+			t.Fatalf("server-owned pending hook %d: %+v %v", attempt, batch, e)
+		}
+	}
+	localState, e := os.ReadFile(filepath.Join(root, "sessions.json"))
+	if e != nil || strings.Contains(string(localState), "Please review") || strings.Contains(string(localState), `"offers"`) || strings.Contains(string(localState), `"retired"`) {
+		t.Fatalf("helper retained a second mailbox: %v", e)
+	}
+	_, foreignConfig := issue("other")
+	foreignLogin, e := agentworksclient.LoadConfig(foreignConfig)
+	if e != nil {
+		t.Fatal(e)
+	}
+	foreignRequest, e := http.NewRequest(http.MethodPost, remote.URL+"/api/external/v1/agents/attachment", strings.NewReader(`{"action":"inbox","agent_name":"receiver","attachment_id":"`+attached.Attachment.ID+`"}`))
+	if e != nil {
+		t.Fatal(e)
+	}
+	foreignRequest.Header.Set("Authorization", "Bearer "+foreignLogin.Token)
+	foreignResponse, e := http.DefaultClient.Do(foreignRequest)
+	if e != nil {
+		t.Fatal(e)
+	}
+	foreignResponse.Body.Close()
+	if foreignResponse.StatusCode != http.StatusForbidden {
+		t.Fatalf("foreign account read pending inbox: %d", foreignResponse.StatusCode)
+	}
 	page := tool(map[string]any{"action": "read", "inbox_id": inbox}, false)
 	var recovered struct {
 		Messages []struct {
@@ -169,15 +199,13 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 	if last.Delivery != "delivered" || !last.DeliveredAt.Equal(first.DeliveredAt) {
 		t.Fatal("retry changed the receipt or its times")
 	}
-	cleanup := base
-	cleanup.Action = "cleanup"
-	if _, e := agentworksclient.CallLocalBridge(ctx, root, cleanup); e != nil {
-		t.Fatal(e)
+	if batch, e := agentworksclient.CallLocalBridge(ctx, root, hook); e != nil || len(batch.Messages) != 0 {
+		t.Fatalf("delivered message reappeared in hook: %+v %v", batch, e)
 	}
 	reply := tool(map[string]any{"action": "reply", "message_id": id, "message": "Reviewed", "submission_id": "review-answer"}, false)
 	var answer map[string]any
 	if json.Unmarshal(reply.Result, &answer) != nil || answer["inbox_id"] != inbox {
-		t.Fatal("reply after cleanup lost its original conversation")
+		t.Fatal("reply lost its original conversation")
 	}
 	// A known outgoing message ID is not permission to reply as its recipient.
 	tool(map[string]any{"action": "reply", "message_id": answer["message_id"], "message": "Wrong direction", "submission_id": "bad-reply"}, true)

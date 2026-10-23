@@ -40,19 +40,3 @@ func TestAgentStreamEndsWhenTheServerGoesSilent(t *testing.T) {
 
 // An offer that was retired from the local list is remembered, so the server still holding it as stored does not make it
 // a new late arrival (a second turn); a message never seen before is accepted.
-func TestRetiredOfferIsNotTakenForALateArrival(t *testing.T) {
-	s := &localSession{Offers: map[string]localOffer{
-		"old": {AgentLiveMessage: AgentLiveMessage{MessageID: "old", Delivery: "delivered"}, Offered: true, OfferedAt: time.Now().Add(-8 * 24 * time.Hour)},
-	}}
-	compactLocalOffers(s, false)
-	if _, still := s.Offers["old"]; still {
-		t.Fatal("the old offer was not retired")
-	}
-	recent := time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
-	if lateButNew(s, AgentLiveMessage{MessageID: "old", SentAt: recent}) {
-		t.Fatal("a retired offer came back as a new message")
-	}
-	if !lateButNew(s, AgentLiveMessage{MessageID: "never-seen", SentAt: recent}) {
-		t.Fatal("a message never seen before was refused")
-	}
-}

@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 	"unicode"
 )
@@ -174,129 +173,39 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 		return
 	}
 	state.ready = true
-	pendingCount := 0
-	for _, m := range s.Offers {
-		if !m.Offered && !m.Suppressed && m.MuseHinted {
-			pendingCount++
-		}
-	}
 	b.mu.Unlock()
 	ready := MuseWatchHint{Kind: "ready", Source: "agentworks-muse-watch", SessionID: in.SessionID, AttachmentID: in.AttachmentID}
 	if encoder.Encode(ready) != nil {
 		return
 	}
 	flusher.Flush()
-	// One aggregate catch-up notice on a NEW consumer. Individual ambiguous
-	// hints stay journaled and do not replay; bodies remain unoffered.
-	if pendingCount > 0 {
-		notice := ready
-		notice.Kind = "pending"
-		notice.Pending = pendingCount
-		notice.Note = "Messages are waiting. Call the agentworks tool (action=receive) in this chat to read them, then ack."
-		if encoder.Encode(notice) != nil {
-			return
-		}
-		flusher.Flush()
-	}
-	var lastEmission time.Time
+	hintedThrough := 0
 	for {
 		b.mu.Lock()
 		if !valid() {
 			b.mu.Unlock()
-			log.Printf("[BRIDGE] Muse watch for lease %s ended: the lease, host or session changed", boundedMuseHint(in.AttachmentID))
 			return
 		}
-		var pending []localOffer
-		for _, m := range s.Offers {
-			if !m.Offered && !m.Suppressed && !m.MuseHinted {
-				pending = append(pending, m)
-			}
-		}
-		sort.Slice(pending, func(i, j int) bool { return pending[i].Sequence < pending[j].Sequence })
-		if len(pending) == 0 {
-			changed := b.changed
-			b.mu.Unlock()
-			select {
-			case <-changed:
-				continue
-			case <-ctx.Done():
-				log.Printf("[BRIDGE] Muse watch for lease %s ended: the Monitor process disconnected", boundedMuseHint(in.AttachmentID))
-				return
-			case <-serverCtx.Done():
-				log.Printf("[BRIDGE] Muse watch for lease %s ended: the helper is stopping", boundedMuseHint(in.AttachmentID))
+		latest, position := s.latestSequence, s.ReadPosition
+		changed := b.changed
+		b.mu.Unlock()
+		if latest > hintedThrough && latest > position {
+			hint := ready
+			hint.Kind, hint.Pending = "pending", 1
+			hint.Note = "Messages are waiting. Call the agentworks tool (action=receive) in this chat to read them."
+			if encoder.Encode(hint) != nil {
 				return
 			}
+			flusher.Flush()
+			hintedThrough = latest
 		}
-		m := pending[0]
-		client, name = s.client, s.Attachment.AgentName
-		b.mu.Unlock()
-		raw, err := client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": name, "attachment_id": in.AttachmentID, "message_ids": []string{m.MessageID}}, true)
-		var checked struct {
-			IDs []string `json:"message_ids"`
-		}
-		if err != nil && museWatchRetry(ctx, serverCtx, err) {
-			continue // the server was busy or unreachable, which says nothing about the lease
-		}
-		if err != nil || json.Unmarshal(raw, &checked) != nil {
-			failed("Muse offer is no longer authorized")
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return
+		case <-serverCtx.Done():
 			return
 		}
-		b.mu.Lock()
-		if !valid() {
-			b.mu.Unlock()
-			log.Printf("[BRIDGE] Muse watch for lease %s ended: the lease, host or session changed", boundedMuseHint(in.AttachmentID))
-			return
-		}
-		current, exists := s.Offers[m.MessageID]
-		if !exists || current.Offered || current.Suppressed || current.MuseHinted {
-			b.mu.Unlock()
-			continue
-		}
-		allowed := len(checked.IDs) == 1 && checked.IDs[0] == m.MessageID
-		old := current
-		current.MuseHinted = true
-		s.Offers[m.MessageID] = current
-		if err = b.save(); err != nil {
-			s.Offers[m.MessageID] = old
-			b.mu.Unlock()
-			failed("cannot persist Muse notification watermark")
-			return
-		}
-		b.mu.Unlock()
-		if !allowed {
-			continue
-		}
-		// Persist before writing: an ambiguous individual hint never replays.
-		// Pacing is output backpressure, not a timed inbox or bridge poll.
-		if delay := 250*time.Millisecond - time.Since(lastEmission); delay > 0 {
-			timer := time.NewTimer(delay)
-			select {
-			case <-timer.C:
-			case <-ctx.Done():
-				timer.Stop()
-				return
-			case <-serverCtx.Done():
-				timer.Stop()
-				return
-			}
-		}
-		b.mu.Lock()
-		stillCurrent := valid()
-		b.mu.Unlock()
-		if !stillCurrent || serverCtx.Err() != nil {
-			return
-		}
-		hint := ready
-		hint.Kind = "offer"
-		hint.MessageID = boundedMuseHint(m.MessageID)
-		hint.InboxID = boundedMuseHint(m.InboxID)
-		hint.Sender = boundedMuseHint(m.Sender)
-		hint.Note = "Notice only, without the message text. Call the agentworks tool (action=receive) in this chat to read it, then ack."
-		if encoder.Encode(hint) != nil {
-			return
-		}
-		flusher.Flush()
-		lastEmission = time.Now()
 	}
 }
 

@@ -15,7 +15,7 @@ func TestPiPendingNextDistinguishesBridgeStopFromDetach(t *testing.T) {
 			name = "bridge stop"
 		}
 		t.Run(name, func(t *testing.T) {
-			session := &localSession{Attachment: AgentAttachment{Provider: "pi", SessionID: "sdk-session", ID: "person-lease"}, HostKey: "host", client: &Client{}, Offers: map[string]localOffer{}}
+			session := &localSession{Attachment: AgentAttachment{Provider: "pi", SessionID: "sdk-session", ID: "person-lease"}, HostKey: "host", client: &Client{}}
 			key := localBridgeKey("pi", "sdk-session")
 			b := &localBridge{sessions: map[string]*localSession{key: session}, changed: make(chan struct{})}
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -67,7 +67,7 @@ func TestPiPendingNextDistinguishesBridgeStopFromDetach(t *testing.T) {
 // Route observations must come from the exact fenced SDK adapter. They cannot
 // revive an offline identity or claim that a queued message was admitted.
 func TestPiRouteRequiresFencedSDKConsumer(t *testing.T) {
-	session := &localSession{Attachment: AgentAttachment{Provider: "pi", SessionID: "sdk-session", ID: "person-lease"}, HostKey: "host", client: &Client{}, Offers: map[string]localOffer{}}
+	session := &localSession{Attachment: AgentAttachment{Provider: "pi", SessionID: "sdk-session", ID: "person-lease"}, HostKey: "host", client: &Client{}}
 	b := &localBridge{sessions: map[string]*localSession{localBridgeKey("pi", "sdk-session"): session}, changed: make(chan struct{})}
 	request := LocalBridgeRequest{Action: "status", Provider: "pi", SessionID: "sdk-session", HostKey: "host", AttachmentID: "person-lease"}
 	if b.handle(context.Background(), context.Background(), request).NativeDelivery {
@@ -99,7 +99,7 @@ func TestPiRouteRequiresFencedSDKConsumer(t *testing.T) {
 	if !b.handle(context.Background(), context.Background(), request).NativeDelivery {
 		t.Fatal("valid SDK observation not reported")
 	}
-	if len(session.Offers) != 0 {
+	if session.ReadPosition != 0 {
 		t.Fatal("route observation admitted or fabricated messages")
 	}
 	session.Offline = true

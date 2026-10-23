@@ -74,7 +74,9 @@ export function waitingLine(messages, now = Date.now()) {
 // Messages the server has not released: named by reason class, their text is never shown.
 export function heldLine(result) {
   const held = Number(result?.held) || 0;
-  if (held <= 0) return '';
+  const more = Number(result?.pending) || 0;
+  const waiting = more > 0 ? `${more} more messages are waiting. Read the inbox to see them.` : '';
+  if (held <= 0) return waiting;
   const classes = new Set();
   for (const reason of Object.keys(result.held_reasons || {})) {
     if (['sender_authorization_failed', 'share_check_failed', 'admission_recheck_failed'].includes(reason)) classes.add('a check on the sender did not pass');
@@ -82,7 +84,7 @@ export function heldLine(result) {
     else classes.add('the server did not release them');
   }
   const why = classes.size ? [...classes].sort().join('; ') : 'the server did not release them';
-  return `AgentWorks is holding ${held} ${held === 1 ? 'message' : 'messages'} for this chat that it cannot release yet (${why}). Their text is not shown. Tell your person to ask the AgentWorks admin.`;
+  return waiting + (waiting ? '\n' : '') + `AgentWorks is holding ${held} ${held === 1 ? 'message' : 'messages'} for this chat that it cannot release yet (${why}). Their text is not shown. Tell your person to ask the AgentWorks admin.`;
 }
 
 function matches(text, expected) {

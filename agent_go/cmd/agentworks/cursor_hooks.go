@@ -90,6 +90,9 @@ func cursorFollowup(out agentworksclient.LocalBridgeReply, session, attachment s
 		return ""
 	}
 	var text strings.Builder
+	if out.Pending > 0 {
+		fmt.Fprintf(&text, "%d more messages are waiting. Read the inbox to see them.\n", out.Pending)
+	}
 	if out.SetupContext != "" {
 		text.WriteString(out.SetupContext + "\n")
 	}

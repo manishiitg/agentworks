@@ -56,7 +56,7 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	var args map[string]any
-	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label"}, externalArg(args, "action")) {
+	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label", "inbox"}, externalArg(args, "action")) {
 		externalError(w, 400, "invalid_arguments", "Choose attach or detach for this exact native session.")
 		return
 	}
@@ -66,6 +66,10 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 	}
 	if token := GetUserFromContext(r.Context()).AccessToken; token != nil && token.BoundAgentID != "" && externalArg(args, "agent_name") != token.BoundAgentName {
 		externalError(w, 403, "attachment_refused", "This connection belongs to another agent.")
+		return
+	}
+	if externalArg(args, "action") == "inbox" {
+		api.readAttachedAgentInbox(w, r, args)
 		return
 	}
 	if externalArg(args, "action") == "validate" {
@@ -300,15 +304,14 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				// A mailbox receipt follows an explicit body read by this exact
 				// attached agent. Recheck current authority instead of requiring an
 				// earlier SSE offer, which may belong to its previous lease.
-				mailbox := transport == "mailbox"
-				if mailbox && !serverAuthoredKind(m.Kind) {
+				if !serverAuthoredKind(m.Kind) {
 					if api.recheckAgentMessageAdmission(r.Context(), *c, *m) != nil || api.externalAuthorizeMessagePeer(r.Context(), claims, c.Endpoints[m.From], false) != nil {
 						externalError(w, 409, "receipt_refused", "Incoming message is no longer authorized.")
 						return
 					}
 				}
-				if (!mailbox && m.LiveAttachment != a.Attachment.ID) || !s.shareSenderAllowed(*c, m.From, claims.UserID, time.Now().UTC()) {
-					externalError(w, 409, "receipt_refused", "The message was not offered to this exact attachment or its sender is outside this account.")
+				if !s.shareSenderAllowed(*c, m.From, claims.UserID, time.Now().UTC()) {
+					externalError(w, 409, "receipt_refused", "The sender is no longer allowed to message this account.")
 					return
 				}
 				m.Delivery = delivery

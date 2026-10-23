@@ -6,9 +6,9 @@ import "testing"
 // are resolved separately against joined directories before any write.
 func TestJoinedNetworkSelectorsAndReplyRouting(t *testing.T) {
 	primary := localBridgeKey("claude", "11111111-2222-4333-8444-555555555555")
-	own := &localSession{Attachment: AgentAttachment{AgentName: "worker"}, Offers: map[string]localOffer{}}
+	own := &localSession{Attachment: AgentAttachment{AgentName: "worker"}}
 	other := &localSession{Also: true, Network: "partner", ParentConfigPath: "/logins/partner.json", Attachment: AgentAttachment{AgentName: "worker"},
-		Offers: map[string]localOffer{"m1": {AgentLiveMessage: AgentLiveMessage{MessageID: "m1", InboxID: "inbox-partner"}}}}
+		ReadPosition: 1}
 	b := &localBridge{sessions: map[string]*localSession{primary: own, localAlsoKey(primary, other.ParentConfigPath): other}}
 	if got := b.extrasOf(primary); len(got) != 1 || got[0] != other {
 		t.Fatal("joined network not found", got)
@@ -21,7 +21,7 @@ func TestJoinedNetworkSelectorsAndReplyRouting(t *testing.T) {
 		{LocalBridgeRequest{Action: "send", Target: "reviewer@partner"}, other},
 		{LocalBridgeRequest{Action: "send", Target: "reviewer@unknown"}, own},
 		{LocalBridgeRequest{Action: "send", Target: "ops@example.com"}, own},
-		{LocalBridgeRequest{Action: "reply_inbox", InboxID: "inbox-partner"}, other},
+		{LocalBridgeRequest{Action: "reply_inbox", InboxID: "inbox-partner", Network: "partner"}, other},
 		{LocalBridgeRequest{Action: "peers", Network: "partner"}, other},
 	} {
 		if got := b.networkFor(primary, own, c.in); got != c.want {

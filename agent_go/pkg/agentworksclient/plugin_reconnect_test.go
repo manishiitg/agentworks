@@ -51,7 +51,7 @@ func TestCodexMessagingRestartsStoppedBridge(t *testing.T) {
 	session, closed := uuid.NewString(), uuid.NewString()
 	saved := map[string]*localSession{}
 	for _, id := range []string{session, closed} {
-		saved[localBridgeKey("codex", id)] = &localSession{Attachment: AgentAttachment{ID: "saved-lease", AgentID: "same-agent", AgentName: "saved-chat", Provider: "codex", SessionID: id}, HostKey: "prior-process", AccountSenders: true, Offline: true, ServerClosed: id == closed, ConfigPath: config, ParentConfigPath: config, Offers: map[string]localOffer{}}
+		saved[localBridgeKey("codex", id)] = &localSession{Attachment: AgentAttachment{ID: "saved-lease", AgentID: "same-agent", AgentName: "saved-chat", Provider: "codex", SessionID: id}, HostKey: "prior-process", AccountSenders: true, Offline: true, ServerClosed: id == closed, ConfigPath: config, ParentConfigPath: config}
 	}
 	// The closed chat is a different agent, not another holder of saved-chat.
 	saved[localBridgeKey("codex", closed)].Attachment.ID = "closed-lease"

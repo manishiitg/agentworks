@@ -62,7 +62,7 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 				}
 				json.NewEncoder(w).Encode(map[string]any{"agents": agents})
 			case "send":
-				if args["target"] != "agent:reviewer" {
+				if args["target"] != "agent:reviewer" && args["inbox_id"] != "inbox-"+network {
 					t.Error("send used the wrong target", args["target"])
 				}
 				if network == "partner" {
@@ -77,10 +77,17 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 					primarySends.Add(1)
 				}
 				json.NewEncoder(w).Encode(map[string]any{"message_id": "new-message-" + network, "accepted": true})
+			case "inbox":
+				json.NewEncoder(w).Encode(map[string]any{"messages": []map[string]any{{"attachment_id": args["attachment_id"], "message_id": id, "inbox_id": "inbox-" + network, "message": "Review", "sequence": 1}}, "next_cursor": 1, "pending": 1})
 			case "validate":
 				json.NewEncoder(w).Encode(map[string]any{"message_ids": []string{id}})
 			case "read":
 				reads.Add(1)
+				if inbox, _ := args["inbox_id"].(string); inbox != "" && inbox != "inbox-"+network {
+					w.WriteHeader(http.StatusNotFound)
+					fmt.Fprint(w, `{"error":{"code":"not_found","message":"inbox unavailable"}}`)
+					return
+				}
 				json.NewEncoder(w).Encode(map[string]any{"messages": []map[string]any{{"message_id": id, "inbox_id": "inbox-" + network, "message": "Review"}}, "next_cursor": 1})
 			case "ack":
 				json.NewEncoder(w).Encode(map[string]any{"delivery": "delivered"})
@@ -104,7 +111,7 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 		if err := SaveConfig(config, Config{Server: url, Token: "fixture"}); err != nil {
 			t.Fatal(err)
 		}
-		return &localSession{Attachment: AgentAttachment{ID: "lease-" + network, AgentID: "agent-" + network, AgentName: "receiver", Provider: "codex", SessionID: session}, HostKey: "host", AccountSenders: true, ConfigPath: config, ParentConfigPath: config, Offers: map[string]localOffer{}}
+		return &localSession{Attachment: AgentAttachment{ID: "lease-" + network, AgentID: "agent-" + network, AgentName: "receiver", Provider: "codex", SessionID: session}, HostKey: "host", AccountSenders: true, ConfigPath: config, ParentConfigPath: config}
 	}
 	own, extra := makeSession(primary.URL, "primary"), makeSession(partner.URL, "partner")
 	extra.Also, extra.Network, extra.ServerClosed = true, "partner", true
@@ -124,7 +131,7 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		out, e := CallLocalBridge(ctx, root, req)
-		if e == nil && len(out.Networks) == 1 && out.Networks[0].Online && out.Pending == 2 {
+		if e == nil && len(out.Networks) == 1 && out.Networks[0].Online {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -227,5 +234,12 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 	}
 	if primarySends.Load() != 1 || partnerSends.Load() != 4 {
 		t.Fatalf("an ambiguous/refused send was replayed on another network: primary=%d partner=%d", primarySends.Load(), partnerSends.Load())
+	}
+	refusePartner.Store(false)
+	// A reply still finds its original server after the helper's read position
+	// advances, with no local inbox/body journal and no explicit network hint.
+	resultReply, err := plugin.GetTool(PluginToolName).Handler(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "reply", "inbox_id": "inbox-partner", "message": "review completed", "submission_id": "inbox-reply"}}})
+	if err != nil || resultReply.IsError || primarySends.Load() != 1 || partnerSends.Load() != 5 {
+		t.Fatalf("inbox reply lost its server: %+v %v", resultReply, err)
 	}
 }

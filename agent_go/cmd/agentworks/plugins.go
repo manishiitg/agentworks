@@ -536,6 +536,9 @@ func postToolMessages(ctx context.Context, root string, o *options, req agentwor
 
 func pluginMessageText(out agentworksclient.LocalBridgeReply, transport string) string {
 	held := agentHeldLine(out)
+	if out.Pending > 0 {
+		held = strings.TrimSpace(held + fmt.Sprintf("\n%d more messages are waiting. Read the inbox to see them.", out.Pending))
+	}
 	if out.SetupContext != "" && len(out.Messages) == 0 {
 		return strings.TrimSpace(out.SetupContext + "\n" + held)
 	}
