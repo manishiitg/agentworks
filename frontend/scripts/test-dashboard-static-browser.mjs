@@ -27,7 +27,7 @@ const sites = new Map()
 const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j1ioAAAAASUVORK5CYII=', 'base64')
 const server = createServer(async (req,res) => {
   const url = new URL(req.url, 'http://localhost')
-  if (url.pathname === '/report-preview/') {res.setHeader('Content-Type','text/html');res.end('<html><script src="/report-preview/report-preview.js"></script></html>');return}
+  if (url.pathname === '/report-preview/') {res.setHeader('Content-Type','text/html');res.end('<html><body><script src="/report-preview/report-preview.js"></script></body></html>');return}
   if (url.pathname === '/report-preview/report-preview.js' || names.some(name => url.pathname === '/'+name)) {res.setHeader('Content-Type', url.pathname.endsWith('.css')?'text/css':'text/javascript');res.end(runtimes[path.basename(url.pathname)]);return}
   if (url.pathname.startsWith('/api/')) {
     reads++
