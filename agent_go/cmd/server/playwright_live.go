@@ -354,7 +354,7 @@ func (api *StreamingAPI) handlePlaywrightViewer(w http.ResponseWriter, r *http.R
 // the authenticated session bridge, so sandboxed tests need no host-path grants.
 func (api *StreamingAPI) handlePlaywrightPackage(w http.ResponseWriter, r *http.Request) {
 	user, workspace := api.playwrightWorkflowOwner(mux.Vars(r)["session_id"])
-	allowed := user != "" && strings.HasPrefix(workspace, "Workflow/")
+	allowed := user != "" && (strings.HasPrefix(workspace, "Workflow/") || isProjectWorkspacePath(workspace))
 	if !allowed {
 		http.NotFound(w, r)
 		return

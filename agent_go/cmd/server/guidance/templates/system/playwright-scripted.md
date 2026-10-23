@@ -118,8 +118,8 @@ wait methods instead of long time.sleep calls so live events are dispatched.
 - Retries and parallel tests have separate registrations. The fixture stops streaming
   at teardown. Registration failures fail setup; a later disconnect leaves tests
   running and records a warning. Do not hide failed registration by claiming success.
-- Without workflow credentials, or with `AGENTWORKS_LIVE_VIEW=off`, the Node/pytest
-  fixtures run tests without live viewing. Explicit helpers require credentials only when live viewing is enabled. Firefox/WebKit remain ordinary tests; live viewing supports Chromium.
+- Without workflow credentials the Node/pytest
+  fixtures run tests without live viewing. Explicit helpers require credentials. Firefox/WebKit remain ordinary tests; live viewing supports Chromium.
 
 ### Existing suites and custom fixtures
 
@@ -199,12 +199,8 @@ capacity or encoding fails, the panel reports it; do not claim a replay exists u
 it is ready. Report-owned evidence is not deleted by closing the Browser panel.
 
 
-### Execution context and unattended runs
+### Unattended runs
 
-The platform injects `AGENTWORKS_EXECUTION_CONTEXT`; do not set or guess it in saved
-scripts. The shared Node and Python helpers automatically skip live registration
-for schedule, webhook, bot, pulse and notification runs. Explicit attach calls are
-safe no-ops there, so the same scripts work in Builder and unattended execution.
-No live-stream recording is created when registration is skipped. Keep runner
-video/trace/screenshot settings and assertions unchanged; they are independent of
-live viewing. Builder live viewing and stream recording remain available.
+Live viewing is always on, in Builder chats and in schedules, function calls,
+webhooks and bots alike; there is no switch to turn it off. It is watch-only:
+keep runner video/trace/screenshot settings and assertions unchanged.

@@ -48,8 +48,7 @@ pytest_plugins = ["agentworks_playwright.pytest_plugin"]
 Existing tests using `page` or `context` are attached automatically. Custom contexts
 created with `new_context()` need an explicit helper for each context. Tests without
 browser fixtures are untouched. In offline environments the plugin runs tests
-without live viewing and records a test property; set AGENTWORKS_LIVE_VIEW=off to
-explicitly disable viewing. Partial credentials or failed registration fail setup.
+without live viewing and records a test property. Partial credentials or failed registration fail setup.
 Firefox/WebKit remain normal tests, annotated as unsupported for live viewing.
 
 The plugin uses sync pytest-playwright fixtures. Use the async helper in your own
@@ -97,13 +96,8 @@ A bounded recording that reaches the size limit is labeled partial. If recording
 capacity or encoding fails, the panel reports it; do not claim a replay exists until
 it is ready. Report-owned evidence is not deleted by closing the Browser panel.
 
-### Unattended execution
+### Unattended runs
 
-The platform sets `AGENTWORKS_EXECUTION_CONTEXT` for shell tools and saved scripts.
-In `schedule`, `webhook`, `bot`, `pulse`, or `notification` contexts, fixtures skip
-live registration and explicit attach helpers return a no-op handle (empty session
-ID, empty warning, safe repeated stop/context-manager cleanup). Builder behavior
-is unchanged. `AGENTWORKS_LIVE_VIEW=off` also disables explicit attachment.
-No live-stream recording is created in unattended mode. Playwright's own video,
-trace and screenshot configuration is unchanged; the Node test wrapper still
-uses its existing video-on default. Do not change assertions based on live status.
+Live viewing is always on: schedules, function calls, webhooks and bots stream
+to the Browser panel the same way Builder runs do. It is watch-only and never
+changes video, trace, screenshot settings or assertions.

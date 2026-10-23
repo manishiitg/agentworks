@@ -2,14 +2,8 @@ const { test: base, expect } = require('@playwright/test')
 const WebSocket = require('ws')
 
 
-function liveViewDisabled() {
-  return process.env.AGENTWORKS_LIVE_VIEW === 'off' ||
-    ['schedule', 'webhook', 'bot', 'pulse', 'notification'].includes(process.env.AGENTWORKS_EXECUTION_CONTEXT)
-}
-
 /** Attach a user-owned Chromium context. Closing the stream never closes it. */
 async function attachLiveBrowser(context, options = {}) {
-  if (liveViewDisabled()) return { sessionID: '', warning: '', stop: async () => {} }
   const apiURL = options.apiURL ?? process.env.MCP_API_URL
   const token = options.token ?? process.env.MCP_API_TOKEN
   if (!apiURL || !token) throw new Error('Live view needs MCP_API_URL and MCP_API_TOKEN from an AgentWorks workflow session.')
@@ -138,7 +132,7 @@ async function attachLiveBrowser(context, options = {}) {
 const test = base.extend({
   video: ['on', { option: true, scope: 'worker' }],
   _agentworksLive: [async ({ context, browserName }, use, testInfo) => {
-    if (liveViewDisabled() || (!process.env.MCP_API_URL && !process.env.MCP_API_TOKEN)) {
+    if (!process.env.MCP_API_URL && !process.env.MCP_API_TOKEN) {
       testInfo.annotations.push({ type: 'live-view', description: 'Not connected to an AgentWorks workflow.' })
       await use(); return
     }

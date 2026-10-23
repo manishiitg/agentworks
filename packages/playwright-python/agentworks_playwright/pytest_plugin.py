@@ -5,7 +5,6 @@ import warnings
 import pytest
 
 from . import attach_live_browser
-from .live import live_view_disabled
 
 
 @pytest.fixture(autouse=True)
@@ -14,7 +13,7 @@ def agentworks_live_browser(request):
     if not {"page", "context"}.intersection(request.fixturenames):
         yield None
         return
-    if live_view_disabled() or not (os.environ.get("MCP_API_URL") or os.environ.get("MCP_API_TOKEN")):
+    if not (os.environ.get("MCP_API_URL") or os.environ.get("MCP_API_TOKEN")):
         request.node.user_properties.append(("live-view", "Not connected to an AgentWorks workflow."))
         yield None
         return

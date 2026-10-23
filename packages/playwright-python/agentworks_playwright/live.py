@@ -10,40 +10,6 @@ from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 import websocket
 
 
-def live_view_disabled():
-    return os.environ.get("AGENTWORKS_LIVE_VIEW") == "off" or os.environ.get("AGENTWORKS_EXECUTION_CONTEXT") in {
-        "schedule", "webhook", "bot", "pulse", "notification"
-    }
-
-
-class _DisabledLive:
-    session_id = ""
-    warning = ""
-
-    def stop(self):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_):
-        self.stop()
-
-
-class _DisabledAsyncLive:
-    session_id = ""
-    warning = ""
-
-    async def stop(self):
-        pass
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *_):
-        await self.stop()
-
-
 def _endpoint(api_url=None, token=None, session_id=None, label=None):
     api_url = api_url if api_url is not None else os.environ.get("MCP_API_URL")
     token = token if token is not None else os.environ.get("MCP_API_TOKEN")
@@ -317,15 +283,11 @@ class _AsyncLive(_LiveBase):
 
 def attach_live_browser(context, **options):
     """Attach on the sync Playwright thread; stop() never closes the context."""
-    if live_view_disabled():
-        return _DisabledLive()
     return _SyncLive(context, options).start()
 
 
 async def attach_live_browser_async(context, **options):
     """Attach on the caller's asyncio loop; await stop() before context teardown."""
-    if live_view_disabled():
-        return _DisabledAsyncLive()
     # Registration only uses networking, but context inspection stays on its loop.
     live = _AsyncLive(context, options)
     return await live.start()

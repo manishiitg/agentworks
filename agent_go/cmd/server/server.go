@@ -5124,7 +5124,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			secretEnvVars["SECRET_"+s.Name] = s.Value
 		}
 		sessionAwareExecutors, workspaceEnv := virtualtools.CreateWorkspaceAdvancedToolExecutorsWithSessionAndEnv(currentUserID, sessionID, secretEnvVars)
-		api.setPlaywrightExecutionContext(workspaceEnv, sessionID, req)
 		virtualtools.SetGenerateTextWorkflowTierConfig(sessionAwareExecutors, getWorkspaceAPIURL(), generateTextWorkflowTiers(presetLLMConfig), workflowKeys)
 		if mode := validatedWorkflowExecutionMode(req.ExecutionOptions); mode != "" {
 			workspaceEnv["WORKFLOW_EXECUTION_MODE"] = mode
@@ -6448,7 +6447,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// before live mutation support was deployed become usable without a
 			// new chat.
 			virtualtools.ReplaceSessionShellSecrets(sessionID, chatAgentSecretEnv)
-			api.setPlaywrightExecutionContext(workspaceEnv, sessionID, req)
 			toolCategories := workspaceRegistry.Categories
 			logfWithContext(queryLogCtx, "[USER_ID_DEBUGGING] Main agent workspace executors: created with explicit userID=%q sessionID=%q", currentUserID, sessionID)
 			// Inject LLM config fallback for read_image HTTP calls (e.g., from claude CLI subprocess)
@@ -12496,7 +12494,6 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		secretEnvVars["SECRET_"+s.Name] = s.Value
 	}
 	sessionAwareExecutors, workspaceEnv := virtualtools.CreateWorkspaceAdvancedToolExecutorsWithSessionAndEnv(currentUserID, sessionID, secretEnvVars)
-	api.setPlaywrightExecutionContext(workspaceEnv, sessionID, req)
 	virtualtools.SetGenerateTextWorkflowTierConfig(sessionAwareExecutors, getWorkspaceAPIURL(), generateTextWorkflowTiersFromResolved(cfg.TieredConfig), workshopAPIKeys)
 	if mode := validatedWorkflowExecutionMode(req.ExecutionOptions); mode != "" {
 		workspaceEnv["WORKFLOW_EXECUTION_MODE"] = mode

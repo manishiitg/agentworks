@@ -224,7 +224,7 @@ func testPlaywrightFixtureLive(t *testing.T, runtime string) {
 		}
 	}
 	cmd.Dir = pkg
-	cmd.Env = append(os.Environ(), "MCP_API_URL="+server.URL+"/s/run", "MCP_API_TOKEN=producer-secret", "AGENTWORKS_TEST_OUTPUT="+output, "AGENTWORKS_LIVE_VIEW=on")
+	cmd.Env = append(os.Environ(), "MCP_API_URL="+server.URL+"/s/run", "MCP_API_TOKEN=producer-secret", "AGENTWORKS_TEST_OUTPUT="+output)
 	if runtime == "pytest-failure" {
 		cmd.Env = append(cmd.Env, "AGENTWORKS_TEST_FAILURE=1")
 	}

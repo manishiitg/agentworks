@@ -53,8 +53,7 @@ attaches recordings to its report. Override with `test.use({ video: 'off' })` or
 HTML dashboard; that dashboard can link to the runner's saved artifacts.
 
 Outside AgentWorks, tests still run and record video without live view; the report
-contains a `live-view` annotation. Set `AGENTWORKS_LIVE_VIEW=off` to disable it
-explicitly. If credentials are supplied but registration fails, setup fails
+contains a `live-view` annotation. If credentials are supplied but registration fails, setup fails
 clearly. If the stream disconnects after setup, the test continues and the report
 records a warning. Firefox and WebKit run normally but are annotated as not
 supported for live viewing. Retries and parallel tests register separate sessions.
@@ -103,13 +102,8 @@ A bounded recording that reaches the size limit is labeled partial. If recording
 capacity or encoding fails, the panel reports it; do not claim a replay exists until
 it is ready. Report-owned evidence is not deleted by closing the Browser panel.
 
-### Unattended execution
+### Unattended runs
 
-The platform sets `AGENTWORKS_EXECUTION_CONTEXT` for shell tools and saved scripts.
-In `schedule`, `webhook`, `bot`, `pulse`, or `notification` contexts, fixtures skip
-live registration and explicit attach helpers return a no-op handle (empty session
-ID, empty warning, safe repeated stop/context-manager cleanup). Builder behavior
-is unchanged. `AGENTWORKS_LIVE_VIEW=off` also disables explicit attachment.
-No live-stream recording is created in unattended mode. Playwright's own video,
-trace and screenshot configuration is unchanged; the Node test wrapper still
-uses its existing video-on default. Do not change assertions based on live status.
+Live viewing is always on: schedules, function calls, webhooks and bots stream
+to the Browser panel the same way Builder runs do. It is watch-only and never
+changes video, trace, screenshot settings or assertions.
