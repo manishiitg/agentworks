@@ -107,7 +107,12 @@ export const componentRenderers = {
     AskButton: AskButtonRenderer, ChatPanel: ChatPanelRenderer, MotionControls: MotionControlsRenderer,
     FunctionButton: ({ props }: any) => <button type="button" className={props.className ?? 'dashboard-button'} data-report-action={props.name} data-report-action-label={props.label} data-report-action-defaults={JSON.stringify(props.defaults ?? {})}>{props.label}</button>,
 }
-export const { registry } = defineRegistry(catalog, { components: componentRenderers })
+export const { registry } = defineRegistry(catalog, {
+  components: componentRenderers,
+  // Registry schemas require the catalog action declaration. Its live handler
+  // is supplied by DashboardProviders for both TSX and JSON, not captured here.
+  actions: { refreshData: async () => {} },
+})
 
 // Direct TSX props use the very same renderers as JSON. `on` maps catalog event
 // names (press/change/submit/...) to callbacks; bindings and slots remain usable.
