@@ -121,7 +121,7 @@ func TestCodexMessagingRestartsStoppedBridge(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		_, _ = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "shutdown"})
+		_, _ = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "shutdown", ShutdownReason: "stop"})
 		select {
 		case e := <-helpers[len(helpers)-1]:
 			helpers[len(helpers)-1] = nil

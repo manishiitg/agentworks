@@ -28,9 +28,10 @@ import (
 // LocalBridgeRequest is the adapter boundary. Attachment/configuration is a
 // person-only CLI or prompt-submit action, never exposed as an MCP tool.
 type LocalBridgeRequest struct {
-	WorkspaceDir string `json:"workspace_dir,omitempty"`
-	Activity     string `json:"activity,omitempty"`
-	OwnAttach    bool   `json:"own_attach,omitempty"`
+	ShutdownReason string `json:"shutdown_reason,omitempty"`
+	WorkspaceDir   string `json:"workspace_dir,omitempty"`
+	Activity       string `json:"activity,omitempty"`
+	OwnAttach      bool   `json:"own_attach,omitempty"`
 	// RefreshRoute says something that can create a native route just happened (a chat starting), so the
 	// next lookup runs at once instead of waiting out the retry interval.
 	RefreshRoute bool `json:"refresh_route,omitempty"`
@@ -578,8 +579,13 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 				return
 			}
 			if in.Action == "shutdown" {
-				log.Printf("[BRIDGE] shutdown requested pid=%d build=%s", os.Getpid(), b.options.ClientBuild)
-				shutdownOnce.Do(func() { close(shutdown) })
+				if !slices.Contains([]string{"stop", "update", "sign_out"}, in.ShutdownReason) {
+					out.Error = "AgentWorks stays connected during ordinary commands. Use agentworks stop to stop messaging."
+					log.Printf("[BRIDGE] ignored shutdown without explicit command pid=%d build=%s", os.Getpid(), b.options.ClientBuild)
+				} else {
+					log.Printf("[BRIDGE] shutdown requested reason=%s pid=%d build=%s", in.ShutdownReason, os.Getpid(), b.options.ClientBuild)
+					shutdownOnce.Do(func() { close(shutdown) })
+				}
 			} else {
 				callCtx := r.Context()
 				if in.Action == "attach" || in.Action == "detach" || in.Action == "offline" || in.Action == "detach_person" || in.Action == "detach_own" {

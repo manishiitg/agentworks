@@ -1073,20 +1073,26 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 
 // stop pauses delivery without deleting attachment identities or revoking the
 // person's child connections. start/update restore only existing approvals.
-func stopAgentBridge(ctx context.Context) error {
+func stopAgentBridge(ctx context.Context, reason string) error {
 	root, err := agentworksclient.DefaultLocalBridgeRoot()
 	if err != nil {
 		return err
 	}
-	return stopLocalBridgeAt(ctx, root)
+	return stopLocalBridgeAt(ctx, root, reason)
 }
 
-func stopLocalBridgeAt(ctx context.Context, root string) error {
+func stopLocalBridgeAt(ctx context.Context, root, reason string) error {
 	var err error
 	if _, err = agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err != nil {
 		return nil
 	}
-	_, _ = agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "shutdown"})
+	reply, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "shutdown", ShutdownReason: reason})
+	if err != nil {
+		return err
+	}
+	if reply.Error != "" {
+		return errors.New(reply.Error)
+	}
 	// The HTTP reply may race shutdown. Completion is observed through the socket.
 	wait, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

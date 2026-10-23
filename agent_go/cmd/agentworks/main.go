@@ -519,7 +519,7 @@ func logoutCommand(o *options) *cobra.Command {
 		if err := stopLaptopConnections(o); err != nil {
 			return err
 		}
-		if err := stopAgentBridge(cmd.Context()); err != nil {
+		if err := stopAgentBridge(cmd.Context(), "sign_out"); err != nil {
 			return err
 		}
 		return o.output(map[string]any{"logged_out": true, "environment_token_active": o.getenv("AGENTWORKS_TOKEN") != ""})

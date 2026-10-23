@@ -31,12 +31,21 @@ func TestHookKeepsResponsiveHelperAcrossBuilds(t *testing.T) {
 			t.Fatal("helper did not start")
 		}
 	}
+	// A retained MCP executable must not stop every chat while checking a
+	// version mismatch. Explicit update/stop commands still work below.
+	refused, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "shutdown"})
+	if err != nil || refused.Error == "" {
+		t.Fatalf("unrequested helper replacement: %+v %v", refused, err)
+	}
 	if err := ensureLocalBridge(ctx, root, &options{}); err != nil {
 		t.Fatal(err)
 	}
 	out, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"})
 	if err != nil || out.Version != "retained-build" {
 		t.Fatalf("ordinary hook replaced helper: %+v %v", out, err)
+	}
+	if _, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "shutdown", ShutdownReason: "stop"}); err != nil {
+		t.Fatal(err)
 	}
 }
 

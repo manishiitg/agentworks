@@ -445,7 +445,7 @@ func stopLaptopConnections(o *options) error {
 
 func stopCommand(o *options) *cobra.Command {
 	cmd := &cobra.Command{Use: "stop", Args: cobra.NoArgs, Short: "Stop folder sharing and pause messaging (retaining attached identities)", RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := stopAgentBridge(cmd.Context()); err != nil {
+		if err := stopAgentBridge(cmd.Context(), "stop"); err != nil {
 			return err
 		}
 		if err := o.useShareConfig(); err != nil {

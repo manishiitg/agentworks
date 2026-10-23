@@ -219,7 +219,7 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 		return err
 	}
 	updateStep(progress, "Reconnecting AgentWorks...")
-	if err = stopAgentBridge(context.Background()); err != nil {
+	if err = stopAgentBridge(context.Background(), "update"); err != nil {
 		return err
 	}
 	if err = restoreAgentBridge(context.Background(), o, target); err != nil {
