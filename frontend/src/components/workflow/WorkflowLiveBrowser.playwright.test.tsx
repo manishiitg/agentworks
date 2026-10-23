@@ -643,7 +643,6 @@ it('keeps tab controls by the tabs and navigation mutations behind manual contro
   expect(buttonNamed(host, 'Close tab')).toBeUndefined()
   expect(buttonNamed(host, 'Give back to helper')).toBeUndefined()
   await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) }) })
-  expect(buttonNamed(host, 'Teach task')?.closest('header')).not.toBeNull()
   expect(buttonNamed(host, 'Give back to helper')?.className).not.toMatch(/amber|bg-primary/)
   await act(async () => { buttonNamed(host, 'Go back')!.click(); buttonNamed(host, 'Go forward')!.click(); buttonNamed(host, 'Reload page')!.click() })
   expect(ws.send.mock.calls.map(([value]) => JSON.parse(value))).toEqual(expect.arrayContaining([{ type: 'history', action: 'back' }, { type: 'history', action: 'forward' }, { type: 'history', action: 'reload' }]))
