@@ -36,18 +36,25 @@ export function staticAssetDataApi(api: ReportDataApi): ReportDataApi {
 export function staticDataApi(snapshot: StaticSnapshot, renderMarkdown: ReportDataApi['renderMarkdown']): ReportDataApi {
   const records = new Map(snapshot.data.map(entry => [JSON.stringify([entry.method, entry.args]), entry.value]))
   const unavailable = () => Promise.reject(new Error('This data is not included in the published snapshot. Open the live dashboard.'))
-  const api = {
+  function read<T>(method: string, args: unknown[]): Promise<T> {
+    const key = JSON.stringify([method, args])
+    return records.has(key) ? Promise.resolve(structuredClone(records.get(key)) as T) : unavailable()
+  }
+  const api: ReportDataApi = {
     workspacePath: '', renderMarkdown,
+    query: (...args) => read('query', args),
+    get: (...args) => read('get', args),
+    getText: (...args) => read('getText', args),
+    getHtml: (...args) => read('getHtml', args),
+    getRelayRuns: (...args) => read('getRelayRuns', args),
+    getCosts: (...args) => read('getCosts', args),
+    run: (...args) => read('run', args),
+    fileUrl: (...args) => read('fileUrl', args),
+    mediaUrl: (...args) => read('mediaUrl', args),
     openFile: () => { if (snapshot.live_url) window.open(snapshot.live_url, '_blank', 'noopener,noreferrer') },
     sendChatMessage: async () => { throw new Error('Open the live dashboard to ask its agent.') },
     updateField: async () => { throw new Error('Open the live dashboard to edit data.') },
     updateFields: async () => { throw new Error('Open the live dashboard to edit data.') },
-  } as ReportDataApi
-  for (const method of ['query', 'get', 'getText', 'getHtml', 'getRelayRuns', 'getCosts', 'run', 'fileUrl', 'mediaUrl']) {
-    Object.assign(api, { [method]: (...args: unknown[]) => {
-      const key = JSON.stringify([method, args])
-      return records.has(key) ? Promise.resolve(structuredClone(records.get(key))) : unavailable()
-    } })
   }
   return api
 }

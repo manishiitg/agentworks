@@ -303,6 +303,7 @@ async function start() {
   exportCapture = captureReportData(staticCapture ? staticAssetDataApi(liveApi) : liveApi, params.get('export') === '1', staticCapture)
   const dataApi = staticSnapshot ? staticDataApi(staticSnapshot, markdown => renderReportMarkdown(markdown)) : exportCapture.api
   if (staticSnapshot) {
+    shell.style.maxWidth = 'none'
     const notice = document.createElement('div')
     notice.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid hsl(var(--border));font:12px system-ui'
     const date = document.createElement('span')

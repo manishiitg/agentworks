@@ -80,6 +80,7 @@ func (api *StreamingAPI) dashboardStaticExport(w http.ResponseWriter, r *http.Re
 	ctx = context.WithValue(ctx, common.UserIDKey, claims.UserID)
 	ctx = context.WithValue(ctx, common.ChatSessionIDKey, session)
 	ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, session)
+	ctx = context.WithValue(ctx, common.BrowserDownloadsPathKey, target.Root)
 	executor := browser.NewExecutor(browser.NewClient(getWorkspaceAPIURL()), browser.WithBrowserRuntimeConfig(browser.NewBrowserRuntimeConfig("headless", nil)))
 	run := func(command string, args ...string) (string, error) {
 		return executor.HandleAgentBrowser(ctx, map[string]interface{}{"command": command, "args": args, "session": session})
@@ -126,6 +127,10 @@ func (api *StreamingAPI) dashboardStaticExport(w http.ResponseWriter, r *http.Re
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(claims.UserID))
 	total := 0
 	for name, content := range files {
+		if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows(path.Join(output, name), true) {
+			externalError(w, 403, "protected_path", "This connection cannot save every static export file.")
+			return
+		}
 		total += len(content)
 		if total > 64<<20 {
 			externalError(w, 422, "export_too_large", "The static dashboard exceeds the 64 MB export limit.")
