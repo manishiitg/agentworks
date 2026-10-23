@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -20,6 +21,7 @@ func TestWorkflowOwnerTabsShareProjectAndKeepControl(t *testing.T) {
 			defer srv.Close()
 			t.Setenv("WORKSPACE_API_URL", srv.URL)
 			api := lifecycleTestAPI()
+			api.eventStore = storeevents.NewEventStore(1000)
 			scope := workflowBuilderScope{PresetID: "wf", Workspace: "Workflow/demo"}
 			ctx := func(user string) context.Context {
 				return context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user})

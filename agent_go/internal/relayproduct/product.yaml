@@ -15,7 +15,7 @@ chat:
   builder:
     # Platform MCP uses the same Builder operation lifecycle. Direct Flow
     # calls test the draft or run an immutable version without Run chat.
-    external_tools: [create_relay, update_relay, builder_chat, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, get_relay_releases, relay_owners, publish_relay, test_relay, run_relay, get_relay_run, list_relay_runs]
+    external_tools: [create_relay, update_relay, builder_chat, builder_tabs, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, get_relay_releases, relay_owners, publish_relay, test_relay, run_relay, get_relay_run, list_relay_runs]
     prompt:
       file: prompts/builder.md
     skills: [relay-builder, panel-dashboard, panel-functions, panel-skills, panel-files, panel-browser, panel-chat-history, panel-watchers, panel-webhooks, panel-mcp-access, panel-mcp-connections, panel-secrets, panel-brain, panel-linked-folders, panel-google-apps, panel-slack-account, panel-whatsapp, panel-agentbridge, panel-sharing, panel-settings, panel-models, panel-costs, panel-relay-code, panel-relay-runs]
@@ -23,6 +23,7 @@ chat:
       # MCP Builder turns use the shared guarded revision/audit file tools.
       - settings
       - manage_project
+      - manage_builder_chats
       - browser_connections
       - manage_messaging
       - list_agents

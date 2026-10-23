@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
@@ -565,4 +566,33 @@ func TestExternalBuilderChatWaitReturnsTheAnswer(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"completed"`) || !strings.Contains(w.Body.String(), "Plan updated.") {
 		t.Fatalf("builder_chat did not return the answer: %s", w.Body)
 	}
+}
+
+func TestExternalBuilderTabsShareNativeAndWebsiteControl(t *testing.T) {
+	f := newBuilderOperationFixture(t)
+	f.api.eventStore = storeevents.NewEventStore(1000)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner","outsider"],"readers":["reader"]}}`)
+	_, owner := f.issue(t, "owner")
+	_, other := f.issue(t, "outsider")
+	f.call(t, owner, "builder_tabs", map[string]any{"tab_action": "list"}, 200)
+	w := f.call(t, owner, "builder_tabs", map[string]any{"tab_action": "open", "name": "Review"}, 200)
+	var opened struct {
+		Chat goalOwnerTab `json:"chat"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &opened); err != nil || opened.Chat.ID == "" {
+		t.Fatal(w.Body.String(), err)
+	}
+	f.call(t, other, "builder_tabs", map[string]any{"tab_action": "read", "chat_id": opened.Chat.ID}, 200)
+	f.call(t, other, "builder_tabs", map[string]any{"tab_action": "rename", "chat_id": opened.Chat.ID, "name": "Taken"}, 403)
+	reg := &recordingRegistrar{}
+	if err := f.api.registerGoalOwnerTabTools(reg, "outsider", "Workflow/invoices"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.tools["manage_builder_chats"].exec(context.Background(), map[string]any{"action": "read", "chat_id": opened.Chat.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.tools["manage_builder_chats"].exec(context.Background(), map[string]any{"action": "close", "chat_id": opened.Chat.ID}); err == nil {
+		t.Fatal("native Builder closed another owner's tab")
+	}
+	f.call(t, owner, "builder_tabs", map[string]any{"tab_action": "rename", "chat_id": opened.Chat.ID, "name": "Review changes"}, 200)
 }

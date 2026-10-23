@@ -209,7 +209,7 @@ pulse:
 # the entry file chooses which definitions to render. Runtime values stay in Go.
 chat:
   builder:
-    external_tools: [create_workflow, plan, workflow_upgrade, workflow_crews, workflow_google_account, workflow_slack_account, workflow_slack_bot, builder_chat, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, builder_pulse_chat, builder_pulse_status]
+    external_tools: [create_workflow, plan, workflow_upgrade, workflow_crews, workflow_google_account, workflow_slack_account, workflow_slack_bot, builder_chat, builder_tabs, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, builder_pulse_chat, builder_pulse_status]
     # Default workflow phase tools; integration tests compare real registration.
     tools:
       - brain_browse
@@ -222,6 +222,7 @@ chat:
       - settings
       - workflow_team
       - manage_project
+      - manage_builder_chats
       - browser_connections
       - manage_messaging
       - manage_pulse

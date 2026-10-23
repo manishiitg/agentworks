@@ -307,6 +307,15 @@ func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Requ
 		externalError(w, status, "forbidden", "Builder access required.")
 		return
 	}
+	if args.Action == "list" || args.Action == "" {
+		summary, err := api.goalOwnerTabSummary(r.Context(), scope, false)
+		if err != nil {
+			externalError(w, 503, "chats_unavailable", err.Error())
+			return
+		}
+		externalJSON(w, map[string]any{"chats": summary.Tabs})
+		return
+	}
 	if args.Action == "open" {
 		tab, err := api.createGoalOwnerTab(r.Context(), scope, args.Name, false, "")
 		if err != nil {
@@ -320,10 +329,6 @@ func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Requ
 	tabs, err := api.goalOwnerTabs(r.Context(), scope)
 	if err != nil {
 		externalError(w, 400, "chat_failed", err.Error())
-		return
-	}
-	if args.Action == "list" || args.Action == "" {
-		externalJSON(w, map[string]any{"chats": tabs})
 		return
 	}
 	var tab goalOwnerTab
