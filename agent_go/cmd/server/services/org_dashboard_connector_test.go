@@ -15,7 +15,7 @@ func TestOrgDashboardConnectorPersistsClassifiedSummary(t *testing.T) {
 		WorkspacePath: "Workflow/demo",
 		Content: &NotificationContent{Summary: &NotificationSummary{
 			Kind:   "pulse_summary",
-			Title:  "Pulse complete",
+			Title:  "Autopilot complete",
 			Status: "waiting_for_user",
 			Route:  "publish-reddit",
 			Fields: []NotificationSummaryField{{Label: "Fixed", Value: "2"}},
@@ -32,7 +32,7 @@ func TestOrgDashboardConnectorPersistsClassifiedSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListOrgDashboardNotifications: %v", err)
 	}
-	if got.PulseSummary == nil || got.PulseSummary.Title != "Pulse complete" || got.PulseSummary.Status != "waiting_for_user" {
+	if got.PulseSummary == nil || got.PulseSummary.Title != "Autopilot complete" || got.PulseSummary.Status != "waiting_for_user" {
 		t.Fatalf("unexpected pulse summary: %#v", got.PulseSummary)
 	}
 	if got.PulseSummary.Route != "publish-reddit" {
@@ -107,7 +107,7 @@ func TestOrgDashboardLatestKindsDoNotDependOnRecentHistoryLimit(t *testing.T) {
 			t.Fatalf("send %s: %v", kind, err)
 		}
 	}
-	send("pulse_summary", "Pulse retained")
+	send("pulse_summary", "Autopilot retained")
 	for i := 0; i < 5; i++ {
 		send("run_summary", fmt.Sprintf("Run %d", i))
 	}
@@ -116,7 +116,7 @@ func TestOrgDashboardLatestKindsDoNotDependOnRecentHistoryLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListOrgDashboardNotifications: %v", err)
 	}
-	if got.PulseSummary == nil || got.PulseSummary.Title != "Pulse retained" {
+	if got.PulseSummary == nil || got.PulseSummary.Title != "Autopilot retained" {
 		t.Fatalf("pulse summary was hidden by recent limit: %#v", got.PulseSummary)
 	}
 	if got.RunSummary == nil || got.RunSummary.Title != "Run 4" {

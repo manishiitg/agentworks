@@ -26,7 +26,7 @@ type ReportHumanInputWithdrawal struct {
 func createHumanInputWithdrawalTool() llmtypes.Tool {
 	return llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name:        "withdraw_human_input_request",
-		Description: "Builder may withdraw an obsolete, still-unanswered agent-issued proposal in its own workflow. First read the request and verify why it is no longer needed: for completed work, cite the actual repair and the authority that allowed it. Supply a reason and evidence references. Preserves the question, options, approval contract and history as withdrawn; never answers, approves or authorizes work. Do not withdraw a still-needed approval to bypass it. Human-created requests, suggestions, answered/claimed requests and other workflows are refused. Pulse should discuss withdrawal with Builder.",
+		Description: "Builder may withdraw an obsolete, still-unanswered agent-issued proposal in its own workflow. First read the request and verify why it is no longer needed: for completed work, cite the actual repair and the authority that allowed it. Supply a reason and evidence references. Preserves the question, options, approval contract and history as withdrawn; never answers, approves or authorizes work. Do not withdraw a still-needed approval to bypass it. Human-created requests, suggestions, answered/claimed requests and other workflows are refused. Autopilot should discuss withdrawal with Builder.",
 		Parameters: llmtypes.NewParameters(map[string]interface{}{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]interface{}{

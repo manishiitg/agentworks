@@ -66,7 +66,7 @@ func TestWorkshopResolveLLMConfigExpandsCodingAgentMode(t *testing.T) {
 		defaults.Medium.ModelID != "claude-haiku-5-5" ||
 		defaults.Low.ModelID != "claude-haiku-5-5" ||
 		defaults.Pulse.ModelID != defaults.High.ModelID {
-		t.Fatalf("Sonnet 5.5 should back Claude Builder/High/Pulse and Haiku 5.5 Medium/Low, got defaults: %+v", defaults)
+		t.Fatalf("Sonnet 5.5 should back Claude Builder/High/Autopilot and Haiku 5.5 Medium/Low, got defaults: %+v", defaults)
 	}
 
 	builder, tiered := workshopResolveLLMConfig(&workflowtypes.PresetLLMConfig{
@@ -90,10 +90,10 @@ func TestWorkshopResolveLLMConfigExpandsCodingAgentMode(t *testing.T) {
 		Provider:      "claude-code",
 	})
 	if pulse == nil {
-		t.Fatal("expected coding agent Pulse LLM")
+		t.Fatal("expected coding agent Autopilot LLM")
 	}
 	if pulse.Provider != defaults.Pulse.Provider || pulse.ModelID != defaults.Pulse.ModelID {
-		t.Fatalf("unexpected Pulse config: %+v", pulse)
+		t.Fatalf("unexpected Autopilot config: %+v", pulse)
 	}
 	if tiered == nil || tiered.Tier1 == nil || tiered.Tier2 == nil || tiered.Tier3 == nil {
 		t.Fatalf("expected full tiered config, got %+v", tiered)

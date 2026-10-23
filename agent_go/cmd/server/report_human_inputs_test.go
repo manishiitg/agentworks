@@ -204,7 +204,7 @@ func TestDecisionsStoreDoesNotCreatePulseTables(t *testing.T) {
 		}
 		_ = db.Close()
 		if n != 0 {
-			t.Fatalf("%s: %d Pulse tables, want none from decisions", path, n)
+			t.Fatalf("%s: %d Autopilot tables, want none from decisions", path, n)
 		}
 	}
 }
@@ -429,7 +429,7 @@ func TestAnsweredGoalAdvisorPlanProposalCarriesContext(t *testing.T) {
 		Context:  proposalContext,
 		Evidence: "runs/iteration-0/group-1/logs/deliver-offer/execution/execution-attempt-1-iteration-0.json",
 		Options: []ReportHumanInputOption{
-			{ID: "approve", Title: "Approve", Description: "Apply this plan change in the next Pulse pass."},
+			{ID: "approve", Title: "Approve", Description: "Apply this plan change in the next Autopilot pass."},
 			{ID: "reject", Title: "Reject", Description: "Keep the current plan."},
 			{ID: "defer", Title: "Defer", Description: "Wait for more evidence."},
 		},

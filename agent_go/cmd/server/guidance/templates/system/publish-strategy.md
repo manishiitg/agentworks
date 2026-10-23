@@ -14,9 +14,9 @@ password rules below for reports deployed to an external static host.
 
 ## What you publish
 
-For a **workflow**, publish **BOTH** artifacts — the dashboard **and** the Pulse log. This is
+For a **workflow**, publish **BOTH** artifacts — the dashboard **and** the Autopilot log. This is
 **mandatory** unless the user explicitly says "dashboard only" (or "pulse only"). Do not skip
-the Pulse log just because the saved `publish.targets` only lists the dashboard — if both
+the Autopilot log just because the saved `publish.targets` only lists the dashboard — if both
 should go out, **update `targets` to include both** before you build. Deploy `dashboard.html`
 AND `pulse.html`; if only one file ends up on the host, you did it wrong.
 
@@ -28,11 +28,11 @@ Use the same workflow-style config/status split:
   (and may call `updateField`/`updateFields` to write a field) against `db/db.sqlite` inside
   the app, which doesn't exist on a static host — reads AND writes both need it. **Generate a
   static snapshot** first (next section) → `dashboard.html`.
-- **Pulse state** — remains in SQLite and is shown in the application Pulse popup.
+- **Autopilot state** — remains in SQLite and is shown in the application Autopilot popup.
   It is not a static publish artifact.
 
 For workflow publish, deploy three files: `dashboard.html`, `pulse.html`, and an
-**`index.html` wrapper** with a **top nav** (Dashboard | Pulse) over a single iframe —
+**`index.html` wrapper** with a **top nav** (Dashboard | Autopilot) over a single iframe —
 clicking a tab swaps the iframe's source. This gives each view full width, avoids
 the double-scroll / collapse problems of a side-by-side embed, and never modifies the two
 inner pages:
@@ -52,7 +52,7 @@ inner pages:
 </head><body>
   <nav>
     <button data-src="dashboard.html" class="active">Dashboard</button>
-    <button data-src="pulse.html">Pulse</button>
+    <button data-src="pulse.html">Autopilot</button>
   </nav>
   <iframe id="view" src="dashboard.html" title="view"></iframe>
   <script>
@@ -119,12 +119,12 @@ The output must be **dark only**, matching the app. Match exactly what the app s
 - The app themes via **Tailwind's `dark` class** (`ThemeContext` does `classList.add('dark')`).
 - Report/dashboard widgets honor **both** — `HtmlWidgetFrame` sets `class="dark"` **and**
   `data-theme="dark"`.
-- The Pulse-log skeleton keys on **`data-theme="dark"`**.
+- The Autopilot-log skeleton keys on **`data-theme="dark"`**.
 
 So set **both** hooks, hard-coded to dark. Do **NOT** use `prefers-color-scheme` (it follows
 the viewer's OS, usually light) and do **NOT** add a light/auto toggle — dark only.
 
-For **every** published HTML file (the Pulse log AND the report snapshot), inject this in
+For **every** published HTML file (the Autopilot log AND the report snapshot), inject this in
 `<head>` BEFORE the page's own styles/scripts:
 
 ```html
@@ -132,7 +132,7 @@ For **every** published HTML file (the Pulse log AND the report snapshot), injec
 <script>
   var de = document.documentElement;
   de.classList.add('dark');   // Tailwind / :root.dark report widgets + app parity
-  de.dataset.theme = 'dark';  // data-theme="dark" widgets + the Pulse-log skeleton
+  de.dataset.theme = 'dark';  // data-theme="dark" widgets + the Autopilot-log skeleton
 </script>
 ```
 
@@ -325,7 +325,7 @@ inline the two views into the single nav page and encrypt just that one file.
 
 **Store the password as a named secret — never in plaintext.** For workflow publish, put it in
 the workflow's secret store (e.g. `PUBLISH_PASSWORD`) and read it as `$SECRET_PUBLISH_PASSWORD`,
-so the **auto-republish (Pulse)** step can re-encrypt without the user. Record only
+so the **auto-republish (Autopilot)** step can re-encrypt without the user. Record only
 `visibility: "private"` and the `secret_name` in `workflow.json.publish` / `publish/status.json`.
 **Never the password itself.**
 
@@ -453,7 +453,7 @@ Follow the same set-up-then-prove flow as backup:
 2. **Verify** — on the first real publish, deploy, fetch the returned URL to confirm it loads,
    and only then mark `published`. Record the URL in both the destination and the top-level
    `url`.
-3. Auto-republish (the post-run Pulse step) runs against a **verified** destination on **every**
+3. Auto-republish (the post-run Autopilot step) runs against a **verified** destination on **every**
    run — the source artifacts (`db/db.sqlite` + reports) can change every run, so
    publishing must use the current verified source set.
 
@@ -485,11 +485,11 @@ others.
 (a sha256 over `db/db.sqlite` and `reports/`) and reports it as
 `current_source_hash` in the workflow publish status. Set `last_source_hash` to the current source hash you just
 published. If you write any other string, a successful publish immediately reads as
-**`stale`** (amber) and Pulse will keep re-publishing. If you genuinely can't obtain it,
+**`stale`** (amber) and Autopilot will keep re-publishing. If you genuinely can't obtain it,
 leave `last_source_hash` empty — the dot stays green `published`, only change-detection is
 disabled. The two states this controls:
 - `published` (green) = config enabled + status `published` + hash matches.
-- `stale` (amber) = published but the source changed since (it changes every run) — the next Pulse fire re-publishes and returns it to green.
+- `stale` (amber) = published but the source changed since (it changes every run) — the next Autopilot fire re-publishes and returns it to green.
 
 ## Discipline
 

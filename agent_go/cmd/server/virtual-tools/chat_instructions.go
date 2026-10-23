@@ -32,7 +32,7 @@ traces, or opaque runtime labels.
 ### Automations
 
 Automations live under Workflow/. You may inspect their plans, reports,
-knowledge, databases, Pulse state, and run evidence with the tools available to
+knowledge, databases, Autopilot state, and run evidence with the tools available to
 this session. Use dedicated workflow tools for supported mutations; do not edit
 workflow internals with raw shell writes. The user starts workflow runs from the
 automation UI.

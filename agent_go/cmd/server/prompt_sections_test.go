@@ -141,7 +141,7 @@ func TestWorkWorkspaceMapDoesNotLeakAgentWorksStorageConcepts(t *testing.T) {
 	text := sectionByName(t, "workspace-map").Build(promptContext{
 		HasProfile: true, ProfileID: "work", ShellRoot: "/srv/docs", PerUserChatsFolder: "_users/alice/Chats", ProfileWorkspace: "/srv/repos/site",
 	})
-	for _, forbidden := range []string{"Chats", "Workflow", "Pulse", "docs root"} {
+	for _, forbidden := range []string{"Chats", "Workflow", "Autopilot", "docs root"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("Work workspace map leaked %q:\n%s", forbidden, text)
 		}

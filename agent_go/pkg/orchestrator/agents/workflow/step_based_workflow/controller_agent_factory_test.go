@@ -200,7 +200,7 @@ func TestSelectPulseLLMUsesPulseConfigInsteadOfPhaseConfig(t *testing.T) {
 		t.Fatalf("review selected %s/%s, want pulse-provider/pulse-model", got.Primary.Provider, got.Primary.ModelID)
 	}
 	if got.Primary.Options["reasoning_effort"] != "high" {
-		t.Fatalf("review lost Pulse options: %+v", got.Primary.Options)
+		t.Fatalf("review lost Autopilot options: %+v", got.Primary.Options)
 	}
 }
 
@@ -1064,7 +1064,7 @@ func TestUnattendedWorkshopClaudeCodeUsesStructuredTransport(t *testing.T) {
 			Provider: string(mcpllm.ProviderClaudeCode),
 			ModelID:  "claude-opus-5",
 		},
-	}, "Pulse reviewer")
+	}, "Autopilot reviewer")
 
 	if !config.ForceStructuredCodingAgent {
 		t.Fatal("ForceStructuredCodingAgent = false, want true")

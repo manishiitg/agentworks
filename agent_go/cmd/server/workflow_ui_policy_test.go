@@ -25,14 +25,14 @@ func TestWorkflowUIRegistrationFollowsCallerNotSharedBuilderPhase(t *testing.T) 
 		{name: "stored cron origin survives missing request metadata", session: "opaque-session", active: &ActiveSessionInfo{TriggeredBy: "cron"}},
 		{name: "scheduled native process retained", session: "schedule-digest_123", req: QueryRequest{KeepNativeSessionAlive: true}},
 		{name: "scheduled trigger variant", session: "opaque-session", req: QueryRequest{TriggeredBy: "workflow_schedule"}},
-		{name: "Pulse child", session: "child", req: QueryRequest{ParentSessionID: "chat-1", SessionKind: "pulse_reviewer"}},
+		{name: "Autopilot child", session: "child", req: QueryRequest{ParentSessionID: "chat-1", SessionKind: "pulse_reviewer"}},
 		{name: "restored child", session: "child", active: &ActiveSessionInfo{ParentSessionID: "chat-1"}},
 		{name: "bot", session: "bot", req: QueryRequest{BotPlatform: "slack"}},
 		{name: "product", session: "product", req: QueryRequest{AgentProfileID: "video-studio"}},
 		{name: "auto notification", session: "chat-1", req: QueryRequest{IsAutoNotification: true}},
 		{name: "non builder phase", session: "chat-1", phase: "execution"},
 		{name: "explicit promotion", session: "schedule-digest_123", req: QueryRequest{UserInteractiveContinuation: true}, active: &ActiveSessionInfo{TriggeredBy: "cron"}, want: true},
-		{name: "promotion cannot elevate Pulse child", session: "child", req: QueryRequest{UserInteractiveContinuation: true, SessionKind: "pulse_reviewer"}},
+		{name: "promotion cannot elevate Autopilot child", session: "child", req: QueryRequest{UserInteractiveContinuation: true, SessionKind: "pulse_reviewer"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			phase := tc.phase

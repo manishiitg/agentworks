@@ -243,7 +243,7 @@ func TestWorkshopExecutionNotifierQueuesReviewerCompletionForParent(t *testing.T
 	)
 	agent := &BackgroundAgent{
 		ID:        execID,
-		Name:      "Pulse reviewer: learning health",
+		Name:      "Autopilot reviewer: learning health",
 		SessionID: sessionID,
 		Status:    BGAgentRunning,
 		CreatedAt: time.Now(),
@@ -279,7 +279,7 @@ func TestWorkshopCompletionDisplayResultUsesPulseReviewArtifact(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(filepath.Join(workspacePath, resultPath)), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspacePath, resultPath), []byte(`# Pulse reviewer result
+	if err := os.WriteFile(filepath.Join(workspacePath, resultPath), []byte(`# Autopilot reviewer result
 
 - Module: eval_health
 

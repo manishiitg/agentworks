@@ -101,8 +101,8 @@ func (api *StreamingAPI) askBuilder(ctx context.Context, req pulseBuilderAskRequ
 		return map[string]interface{}{"status": "no_builder_chat", "note": "The selected team member has no Builder chat for this workflow yet. Read shared plan changes and run records, or request that they open a Builder chat."}, nil
 	}
 	label := firstNonEmptyTrimmed(manifest.Label, req.WorkspacePath)
-	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}, Label: label + " Pulse", Path: req.WorkspacePath,
-		Chat: &codeChat{Key: pulseBuilderChatKey, ID: pulseBuilderChatKey, Name: label + " Pulse", SessionID: req.PulseSession}}
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}, Label: label + " Autopilot", Path: req.WorkspacePath,
+		Chat: &codeChat{Key: pulseBuilderChatKey, ID: pulseBuilderChatKey, Name: label + " Autopilot", SessionID: req.PulseSession}}
 	target := triggerTarget{Kind: triggerCallerWorkflow, Path: req.WorkspacePath, Label: label + " Builder chat", Manifest: manifest, TeamRecipientID: recipient,
 		Chat: &codeChat{Key: "session:" + builderSession, ID: builderSession, Name: label + " Builder chat", SessionID: builderSession}}
 	out, err := api.sendAgentMessage(ctx, req.UserID, caller, target, req.Message, req.InboxID, req.SubmissionID)
@@ -165,7 +165,7 @@ func recentPulseBuilderAsks(ctx context.Context, workspacePath string, since tim
 func createPulseBuilderAskTool() (llmtypes.Tool, func(context.Context, map[string]interface{}) (string, error)) {
 	tool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name:        pulseBuilderAskToolName,
-		Description: "Send an explicit message to this workflow's Builder chat (the Leader's most recent one, or the assigned Contributor's for route work). Ask what changed or request a change within your current Pulse permissions. Returns an inbox/reply address and an acknowledgement. The Builder chooses whether and when to send a reply; final chat text is not forwarded. Read explicit replies with read_agent_messages(inbox_id), assess their evidence and record goal work yourself. Busy Builder chats receive the message after their current turn.",
+		Description: "Send an explicit message to this workflow's Builder chat (the Leader's most recent one, or the assigned Contributor's for route work). Ask what changed or request a change within your current Autopilot permissions. Returns an inbox/reply address and an acknowledgement. The Builder chooses whether and when to send a reply; final chat text is not forwarded. Read explicit replies with read_agent_messages(inbox_id), assess their evidence and record goal work yourself. Busy Builder chats receive the message after their current turn.",
 		Parameters: llmtypes.NewParameters(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -189,7 +189,7 @@ func createPulseBuilderAskTool() (llmtypes.Tool, func(context.Context, map[strin
 			sessionID, _ = ctx.Value(common.ChatSessionIDKey).(string)
 		}
 		if !isGoalLeadSessionID(sessionID) {
-			return "", fmt.Errorf("%s is the Pulse's tool; a chat asks the Pulse with ask_pulse", pulseBuilderAskToolName)
+			return "", fmt.Errorf("%s is the Autopilot's tool; a chat asks the Autopilot with ask_pulse", pulseBuilderAskToolName)
 		}
 		workspacePath, claims, err := api.pulseToolScope(ctx, "", false)
 		if err != nil {

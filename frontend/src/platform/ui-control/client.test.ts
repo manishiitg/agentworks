@@ -13,7 +13,7 @@ describe('closed semantic UI control contract', () => {
       expect(supportedAction({ ...base, view: id, action: 'refresh' })).toBe(true)
     }
   })
-  it('opens the restored Pulse sections without advertising extra operations', () => {
+  it('opens the restored Autopilot sections without advertising extra operations', () => {
     for (const target of ['goals', 'metrics', 'decisions', 'settings', 'chat']) expect(supportedAction({ ...base, view: 'pulse', action: 'open', target })).toBe(true)
     expect(supportedAction({ ...base, view: 'pulse', action: 'open', target: 'activity' })).toBe(false)
   })

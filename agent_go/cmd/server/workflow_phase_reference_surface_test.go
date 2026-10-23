@@ -63,7 +63,7 @@ func TestReferenceSurfaceAttachesOutsideWorkshopSessionGuard(t *testing.T) {
 		}
 	}
 	if len(attachLines) == 0 {
-		t.Fatal("AttachReferenceSurface is no longer called: Pulse steps would silently run without their procedures")
+		t.Fatal("AttachReferenceSurface is no longer called: Autopilot steps would silently run without their procedures")
 	}
 	for _, at := range attachLines {
 		if at > guardLine && at < guardEnd {

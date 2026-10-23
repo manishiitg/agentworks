@@ -202,7 +202,7 @@ func TestAttachCostObserverRecordsBackgroundAgentSpend(t *testing.T) {
 		ctx,
 		sink,
 		stageAgentConfig(agentSessionID, "codex-cli", "auto"),
-		"Background: Pulse reviewer - stores-health-review",
+		"Background: Autopilot reviewer - stores-health-review",
 		"pulse-reviewer-pulse-stores-health-review-1785694058048462000-4",
 		"pulse-review:stores-health-review",
 	); err != nil {

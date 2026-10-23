@@ -251,7 +251,7 @@ func planDependencyCoverageProblems(entry PlanChangelogEntry) []string {
 			problems = append(problems, surface+": evidence is missing")
 		}
 		if (review.Disposition == "blocked" || review.Disposition == "broken") && len(normalizedEvidenceStrings(review.IssueIDs)) == 0 {
-			problems = append(problems, surface+": blocked/broken disposition lacks a durable Pulse issue")
+			problems = append(problems, surface+": blocked/broken disposition lacks a durable Autopilot issue")
 		}
 	}
 	return problems

@@ -203,7 +203,7 @@ func planDependencySurfaceReviewSchema() map[string]interface{} {
 				"issue_ids": map[string]interface{}{
 					"type": "array", "minItems": 1,
 					"items":       map[string]interface{}{"type": "string", "minLength": 1},
-					"description": "Required for blocked or broken dispositions; durable Pulse issue ids that own the unresolved repair.",
+					"description": "Required for blocked or broken dispositions; durable Autopilot issue ids that own the unresolved repair.",
 				},
 			},
 			"required": []string{"disposition", "evidence"},
@@ -259,7 +259,7 @@ func parsePlanDependencySurfaceReviews(raw interface{}) (map[string]PlanDependen
 		}
 		issueIDs = normalizedEvidenceStrings(issueIDs)
 		if (disposition == "blocked" || disposition == "broken") && len(issueIDs) == 0 {
-			return nil, fmt.Errorf("surface_reviews.%s.issue_ids requires at least one durable Pulse issue for %s", surface, disposition)
+			return nil, fmt.Errorf("surface_reviews.%s.issue_ids requires at least one durable Autopilot issue for %s", surface, disposition)
 		}
 		reviews[surface] = PlanDependencySurfaceReview{Disposition: disposition, Evidence: evidence, IssueIDs: issueIDs}
 	}

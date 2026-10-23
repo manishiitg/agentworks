@@ -111,7 +111,7 @@ func TestMergeRuntimeStatePreservesRunningPulseForSameSession(t *testing.T) {
 	}}, true, "")
 
 	if got.LastStatus != "running" {
-		t.Fatalf("LastStatus = %q, want running while Pulse owns the session", got.LastStatus)
+		t.Fatalf("LastStatus = %q, want running while Autopilot owns the session", got.LastStatus)
 	}
 	if got.LastSessionID != "session-1" {
 		t.Fatalf("LastSessionID = %q, want session-1", got.LastSessionID)
@@ -193,7 +193,7 @@ func TestScheduleStateLockKeyFromRuntimeKey(t *testing.T) {
 	pulseKey := workflowScheduleRuntimeKey("/tmp/Workflow/demo", manualWorkflowPulseScheduleID)
 	wantPulse := strings.Join([]string{"workflow-pulse", "/tmp/Workflow/demo"}, scheduleScopeSeparator)
 	if got := scheduleStateLockKeyFromRuntimeKey(pulseKey); got != wantPulse {
-		t.Fatalf("Pulse lock key = %q, want %q", got, wantPulse)
+		t.Fatalf("Autopilot lock key = %q, want %q", got, wantPulse)
 	}
 }
 
@@ -258,7 +258,7 @@ func TestParallelScheduleOverlapsOnlyTrustedScheduleExecutions(t *testing.T) {
 
 	api.scheduleInvocations.Delete("schedule-cron--measurement_1")
 	if got := svc.findActiveExecutionBlockingSchedule(workspace, true); got == nil {
-		t.Fatal("parallel schedule ignored unbound scheduled/Pulse-like execution")
+		t.Fatal("parallel schedule ignored unbound scheduled/Autopilot-like execution")
 	}
 }
 
@@ -391,10 +391,10 @@ func TestPulseAndWorkflowScheduleUseSeparateDurableLanes(t *testing.T) {
 	now := time.Now().UTC()
 
 	if err := svc.claimScheduleRun(context.Background(), pulse, "pulse-run", now); err != nil {
-		t.Fatalf("claim Pulse lane: %v", err)
+		t.Fatalf("claim Autopilot lane: %v", err)
 	}
 	if err := svc.claimScheduleRun(context.Background(), daily, "daily-run", now); err != nil {
-		t.Fatalf("workflow schedule should coexist with Pulse/chat lane: %v", err)
+		t.Fatalf("workflow schedule should coexist with Autopilot/chat lane: %v", err)
 	}
 	if err := svc.claimScheduleRun(context.Background(), daily, "second-daily-run", now); err == nil {
 		t.Fatal("second workflow schedule unexpectedly acquired the workflow lane")
@@ -1146,16 +1146,16 @@ func TestDesignPlanGuidanceSupportsReadOnlyPulseChecklist(t *testing.T) {
 	}
 	guidance := string(raw)
 	for _, want := range []string{
-		"parent Pulse prompt",
+		"parent Autopilot prompt",
 		"read-only checklist",
 		"overrides persistence",
 		"do not edit any workspace file",
-		"parent Pulse Fixer remains the only writer",
+		"parent Autopilot Fixer remains the only writer",
 		"technical_review",
 		"is this checklist's automated owner",
 	} {
 		if !strings.Contains(guidance, want) {
-			t.Fatalf("design-plan guidance missing Pulse read-only contract %q:\n%s", want, guidance)
+			t.Fatalf("design-plan guidance missing Autopilot read-only contract %q:\n%s", want, guidance)
 		}
 	}
 }
@@ -1345,10 +1345,10 @@ func TestPulseLifecycleTurnKeepsBuilderLLMAndTagsTheTurn(t *testing.T) {
 	}
 	execOpts, ok := reqMap["execution_options"].(map[string]interface{})
 	if !ok || execOpts["workshop_mode"] != "workshop" {
-		t.Fatalf("Pulse execution_options = %#v, want workshop mode", reqMap["execution_options"])
+		t.Fatalf("Autopilot execution_options = %#v, want workshop mode", reqMap["execution_options"])
 	}
 	if _, set := reqMap["llm_config_source"]; set {
-		t.Fatalf("a Pulse turn must not override the manifest LLM, got llm_config_source=%#v", reqMap["llm_config_source"])
+		t.Fatalf("an Autopilot turn must not override the manifest LLM, got llm_config_source=%#v", reqMap["llm_config_source"])
 	}
 	llmConfig, ok := reqMap["llm_config"].(map[string]interface{})
 	if !ok {
@@ -1359,7 +1359,7 @@ func TestPulseLifecycleTurnKeepsBuilderLLMAndTagsTheTurn(t *testing.T) {
 		t.Fatalf("llm_config.primary missing or wrong type: %#v", llmConfig["primary"])
 	}
 	if primary["provider"] != "claude-code" || primary["model_id"] != "claude-sonnet-5-5" {
-		t.Fatalf("Pulse turn llm_config = %#v, want the workflow Builder model, never pulse_llm", primary)
+		t.Fatalf("Autopilot turn llm_config = %#v, want the workflow Builder model, never pulse_llm", primary)
 	}
 	markPulseLifecycleTurn(nil) // nil-safe
 }
@@ -1434,10 +1434,10 @@ func TestRequestWithWorkshopModeDoesNotLeakElevationAcrossTurns(t *testing.T) {
 
 	markPulseLifecycleTurn(normal)
 	if got := normal["execution_options"].(map[string]interface{})["workshop_mode"]; got != "workshop" {
-		t.Fatalf("Pulse mode = %#v, want workshop", got)
+		t.Fatalf("Autopilot mode = %#v, want workshop", got)
 	}
 	if got := base["execution_options"].(map[string]interface{})["workshop_mode"]; got != "workshop" {
-		t.Fatalf("Pulse elevation leaked into base request: %#v", got)
+		t.Fatalf("Autopilot elevation leaked into base request: %#v", got)
 	}
 }
 
@@ -1537,7 +1537,7 @@ func TestPulseMissingManifestCannotAct(t *testing.T) {
 	if perms.Run || perms.Outward || perms.Change || perms.Reshape {
 		t.Fatalf("missing workflow granted authority: %+v", perms)
 	}
-	if !strings.Contains(text, "Pulse is off") || !strings.Contains(text, "No checks, reports or messages run") {
+	if !strings.Contains(text, "Autopilot is off") || !strings.Contains(text, "No checks, reports or messages run") {
 		t.Fatalf("OFF instructions missing: %s", text)
 	}
 }
@@ -1995,7 +1995,7 @@ func TestScheduledWorkflowExecutionProducedEvidenceUsesLinkedReceipts(t *testing
 	})
 	service := &SchedulerService{api: &StreamingAPI{bgAgentRegistry: registry}}
 	if !service.scheduledWorkflowExecutionProducedEvidence("schedule-session", since) {
-		t.Fatal("run_full_workflow's session-linked full-run receipt must be Pulse evidence even when a capped folder listing omits its reused run folder")
+		t.Fatal("run_full_workflow's session-linked full-run receipt must be Autopilot evidence even when a capped folder listing omits its reused run folder")
 	}
 
 	registry.Register("schedule-session", &BackgroundAgent{
@@ -2007,7 +2007,7 @@ func TestScheduledWorkflowExecutionProducedEvidenceUsesLinkedReceipts(t *testing
 		Metadata:  map[string]string{"execution_type": "workflow-step"},
 	})
 	if !service.scheduledWorkflowExecutionProducedEvidence("schedule-session", since) {
-		t.Fatal("a workflow step launched by this schedule must be Pulse evidence")
+		t.Fatal("a workflow step launched by this schedule must be Autopilot evidence")
 	}
 
 	registry.Register("schedule-session", &BackgroundAgent{

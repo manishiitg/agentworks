@@ -115,7 +115,7 @@ func TestRelayManifestKindValidation(t *testing.T) {
 		t.Fatalf("relay manifest rejected: %v", err)
 	}
 	if manifest.PulseEnabled() || manifest.EffectivePulseMode(WorkflowSchedule{}) != schedulePulseModeOff {
-		t.Fatal("Relay enabled Pulse")
+		t.Fatal("Relay enabled Autopilot")
 	}
 	manifest.Capabilities.SlackConnectionID = "slack-app"
 	if err := ValidateManifest(manifest); err == nil {

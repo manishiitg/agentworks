@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { humanReadableAgentResult } from './eventDisplayUtils'
 
 describe('humanReadableAgentResult', () => {
-  it('removes the Pulse reviewer protocol marker but keeps findings', () => {
+  it('removes the Autopilot reviewer protocol marker but keeps findings', () => {
     expect(humanReadableAgentResult([
       '## Findings',
       '',

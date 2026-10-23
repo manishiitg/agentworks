@@ -6,7 +6,7 @@ model — use it to investigate.
 
 ## Workshop investigation workflow
 
-1. Read real outputs, logs and validation evidence to identify the failing contract. Investigate and repair it in the current Builder conversation. Pulse sends evidence and the expected result to Builder; there is no Bug Review/Fixer handoff.
+1. Read real outputs, logs and validation evidence to identify the failing contract. Investigate and repair it in the current Builder conversation. Autopilot sends evidence and the expected result to Builder; there is no Bug Review/Fixer handoff.
 2. Use the matching step/plan/configuration tool for a justified repair within current permissions. For a strategy gap, agree the intended goal outcome before changing the approach.
 3. Verify the affected scope with a targeted run when it would resolve uncertainty. Continue useful independent work while an admitted background run finishes.
 
@@ -67,10 +67,10 @@ The fix should be one of:
 - Update `validation_schema`.
 - Fix context dependencies.
 - Correct workflow skills.
-- Ask Builder to apply a Pulse repair with its evidence.
+- Ask Builder to apply an Autopilot repair with its evidence.
 - Make an authorized goal-aligned plan change.
 
-**Act on the evidence.** Builder applies authorized changes with its normal tools and verifies them. Pulse records the actual result and follows through on goal effects; sending the request alone is not completion.
+**Act on the evidence.** Builder applies authorized changes with its normal tools and verifies them. Autopilot records the actual result and follows through on goal effects; sending the request alone is not completion.
 
 ## Run mode fix options
 

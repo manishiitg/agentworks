@@ -37,15 +37,15 @@ const scope = (relay = false, project = 'example') => projectMenuHistoryScope(st
 
 it.each([false, true])('uses Crew category order and keeps every product destination (%s)', async relay => {
   await render(relay)
-  expect([...host.querySelectorAll('summary:not([aria-label="Pulse"])')].map(node => node.textContent)).toEqual(['Build', 'Use', 'Share', 'Integrations', 'Setup'])
-  expect([...host.querySelectorAll<HTMLDetailsElement>('details:not([aria-label="Pulse menu"])')].map(node => node.open)).toEqual([true, false, false, false, false])
+  expect([...host.querySelectorAll('summary:not([aria-label="Autopilot"])')].map(node => node.textContent)).toEqual(['Build', 'Use', 'Share', 'Integrations', 'Setup'])
+  expect([...host.querySelectorAll<HTMLDetailsElement>('details:not([aria-label="Autopilot menu"])')].map(node => node.open)).toEqual([true, false, false, false, false])
   for (const label of ['Dashboards', 'Files', 'Skills', 'Chat history', 'People & access', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
   if (relay) {
     for (const label of ['Flow', 'Runs', 'Code']) expect(button(label)).toBeDefined()
-    for (const label of ['Pulse', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database']) expect(button(label)).toBeUndefined()
+    for (const label of ['Autopilot', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database']) expect(button(label)).toBeUndefined()
   } else {
-    for (const label of ['Talk to Pulse', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database', 'Knowledge base']) expect(button(label)).toBeDefined()
-    expect(host.querySelector('[aria-label="Pulse menu"]')).not.toBeNull()
+    for (const label of ['Talk to Autopilot', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database', 'Knowledge base']) expect(button(label)).toBeDefined()
+    expect(host.querySelector('[aria-label="Autopilot menu"]')).not.toBeNull()
     for (const label of ['Workflow playbooks', 'Publish', 'Notify', 'Backup']) {
       expect(button(label).closest('details')?.querySelector('summary')?.textContent).toBe('Setup')
     }
@@ -116,25 +116,25 @@ it.each([false, true])('groups named dashboards once and preserves selection in 
   expect(host.querySelector('[aria-label="Project dashboards"]')?.closest('section')?.querySelector('h2')?.textContent).toBe('Recent')
 })
 
-it('opens the full Pulse panel from its name, expands subpanels separately and preserves OFF', async () => {
+it('opens the full Autopilot panel from its name, expands subpanels separately and preserves OFF', async () => {
   useProjectMenuHistoryStore.getState().visit(scope(), 'pulse')
   useProjectMenuHistoryStore.getState().visit(scope(), 'human-actions')
   await render()
-  const menu = host.querySelector<HTMLElement>('[aria-label="Pulse menu"]')!
+  const menu = host.querySelector<HTMLElement>('[aria-label="Autopilot menu"]')!
   const full = menu.querySelector('button')!
-  const panels = menu.querySelector<HTMLElement>('[aria-label="Pulse panels"]')!
+  const panels = menu.querySelector<HTMLElement>('[aria-label="Autopilot panels"]')!
   expect(full.textContent).toBe('PulseOn')
   expect(panels.hidden).toBe(false)
-  expect([...panels.querySelectorAll('button')].map(row => row.textContent)).toEqual(['Goals & metrics', 'Talk to Pulse', 'Decisions2 waiting', 'Pulse settings'])
+  expect([...panels.querySelectorAll('button')].map(row => row.textContent)).toEqual(['Goals & metrics', 'Talk to Autopilot', 'Decisions2 waiting', 'Autopilot settings'])
   await act(async () => full.click())
   expect(state.open).toHaveBeenLastCalledWith('pulse', undefined)
-  const toggle = menu.querySelector<HTMLButtonElement>('[aria-label="Hide Pulse panels"]')!
+  const toggle = menu.querySelector<HTMLButtonElement>('[aria-label="Hide Autopilot panels"]')!
   await act(async () => toggle.click())
   expect(panels.hidden).toBe(true)
   expect(state.open).toHaveBeenCalledTimes(1)
   await act(async () => toggle.click())
   expect(panels.hidden).toBe(false)
-  expect(host.querySelectorAll('[aria-label="Pulse panels"]')).toHaveLength(1)
+  expect(host.querySelectorAll('[aria-label="Autopilot panels"]')).toHaveLength(1)
   expect([...host.querySelectorAll('h2')].some(node => node.textContent === 'Recent')).toBe(false)
   await act(async () => panels.querySelectorAll('button')[0].click())
   expect(state.open).toHaveBeenLastCalledWith('pulse', 'goals')
@@ -151,5 +151,5 @@ it('opens the full Pulse panel from its name, expands subpanels separately and p
   expect(state.open).toHaveBeenLastCalledWith('pulse', undefined)
   expect(state.enabled).toBe(false)
   await render(true)
-  expect(host.querySelector('[aria-label="Pulse menu"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Autopilot menu"]')).toBeNull()
 })

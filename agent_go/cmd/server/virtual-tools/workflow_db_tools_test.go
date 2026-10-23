@@ -131,7 +131,7 @@ func TestWorkflowDBBackupSnapshotExecutorRejectsWorkflowStep(t *testing.T) {
 
 	registry := CreateWorkflowDBToolRegistry("http://127.0.0.1:1", "", sessionID)
 	_, err := registry.Executors["create_workflow_database_snapshot"](context.Background(), map[string]any{})
-	if err == nil || !strings.Contains(err.Error(), "restricted to the parent Builder/Pulse session") {
+	if err == nil || !strings.Contains(err.Error(), "restricted to the parent Builder/Autopilot session") {
 		t.Fatalf("step snapshot error=%v", err)
 	}
 }

@@ -61,7 +61,7 @@ func TestGoalWorkflowPassHasNoReviewTurnsAndAFailedRunWakesPulseOnce(t *testing.
 	mu.Lock()
 	defer mu.Unlock()
 	if len(queries) != 1 {
-		t.Fatalf("Pulse turns = %d, want exactly one for the one failed run", len(queries))
+		t.Fatalf("Autopilot turns = %d, want exactly one for the one failed run", len(queries))
 	}
 	for _, want := range []string{"a run of this workflow failed", "run run-failed", "step publish: API returned 401", "ask_builder", "same current permissions as other ON turns", "outward actions still follow the workflow's ask-or-allow setting"} {
 		if !strings.Contains(queries[0], want) {
@@ -69,7 +69,7 @@ func TestGoalWorkflowPassHasNoReviewTurnsAndAFailedRunWakesPulseOnce(t *testing.
 		}
 	}
 	if strings.Contains(queries[0], "pulse-1") {
-		t.Fatalf("a Pulse pass's own failure is not a workflow run failure:\n%s", queries[0])
+		t.Fatalf("an Autopilot pass's own failure is not a workflow run failure:\n%s", queries[0])
 	}
 	if strings.Contains(queries[0], "Do not rerun the workflow, edit it or notify anyone in this turn") {
 		t.Fatalf("a failed run must not impose a separate read-only repair phase:\n%s", queries[0])

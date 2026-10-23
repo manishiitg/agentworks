@@ -19,10 +19,10 @@ beforeEach(() => {
   state.tabs.pulse = { tabId: 'pulse', sessionId: session.session_id, name: 'Scheduled run', metadata: { mode: 'workflow', presetQueryId: 'goal', isViewOnly: true, isScheduledRun: true, isExecutionRun: true }, config: { inputText: 'Keep my draft' } } as ChatTab
  })
 })
-it('opens the exact Pulse conversation as interactive and sends contextual questions there while keeping its draft', async () => {
+it('opens the exact Autopilot conversation as interactive and sends contextual questions there while keeping its draft', async () => {
  expect(await openWorkflowPulseChatTab('Workflow/example')).toBe('pulse')
  expect(state.open.mock.calls[0][0].status).toBe('completed')
- expect(state.tabs.pulse).toMatchObject({ sessionId: 'schedule-goallead--goal-g1', name: 'Pulse', metadata: { isViewOnly: false, isScheduledRun: false, isExecutionRun: true }, config: { inputText: 'Keep my draft' } })
+ expect(state.tabs.pulse).toMatchObject({ sessionId: 'schedule-goallead--goal-g1', name: 'Autopilot', metadata: { isViewOnly: false, isScheduledRun: false, isExecutionRun: true }, config: { inputText: 'Keep my draft' } })
  await askWorkflowPulse('Workflow/example', 'Why did revenue fall?')
  expect(state.send).toHaveBeenCalledWith({ tabId: 'pulse', message: 'Why did revenue fall?' })
  expect(state.open).toHaveBeenCalledTimes(1)
@@ -30,7 +30,7 @@ it('opens the exact Pulse conversation as interactive and sends contextual quest
 })
 it('surfaces OFF/no-goal and lookup errors without opening or sending; account changes cancel the result', async () => {
  state.getLead.mockResolvedValueOnce({ success: true, conversation: { has_goal: false } })
- await expect(askWorkflowPulse('Workflow/example', 'Progress?')).rejects.toThrow('Turn Pulse on')
+ await expect(askWorkflowPulse('Workflow/example', 'Progress?')).rejects.toThrow('Turn Autopilot on')
  state.getLead.mockRejectedValueOnce(new Error('Connection unavailable'))
  await expect(openWorkflowPulseChatTab('Workflow/example')).rejects.toThrow('Connection unavailable')
  state.getLead.mockImplementationOnce(async () => { state.identity++; return { success: true, conversation: { has_goal: true, session_id: 'wrong-account' } } })

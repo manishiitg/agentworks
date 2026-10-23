@@ -70,7 +70,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     if (!item.view) return
     if (item.reportPath) selectReportDocument(workspacePath, item.reportPath)
     if (item.id === 'pulse' && item.target === 'chat') {
-      void openWorkflowPulseChatTab(workspacePath).catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not open Pulse chat.', 'error'))
+      void openWorkflowPulseChatTab(workspacePath).catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not open Autopilot chat.', 'error'))
       return
     }
     openView(item.view, item.target)
@@ -87,21 +87,21 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} attention={item.id === 'human-actions' && decisions.loaded && decisions.count > 0} onClick={() => open(item)}>{item.label}</Row>
   }
   return <WorkspaceContextCard>
-    {pulse && <div key={scope} role="group" aria-label="Pulse menu">
+    {pulse && <div key={scope} role="group" aria-label="Autopilot menu">
       <div className="grid grid-cols-[minmax(0,1fr)_24px] items-center rounded-md bg-primary/5">
-        <Row icon={PulseIcon} hint="Open the full Pulse panel"
+        <Row icon={PulseIcon} hint="Open the full Autopilot panel"
           detail={<span className={menuOptions.pulseEnabled ? 'text-emerald-600 dark:text-emerald-400' : undefined}>{menuOptions.pulseEnabled ? 'On' : 'Off'}</span>}
-          onClick={() => open(pulse)}>Pulse</Row>
-        <button type="button" aria-label={pulseMenuOpen ? 'Hide Pulse panels' : 'Show Pulse panels'} aria-expanded={pulseMenuOpen} aria-controls={pulseMenuId}
+          onClick={() => open(pulse)}>Autopilot</Row>
+        <button type="button" aria-label={pulseMenuOpen ? 'Hide Autopilot panels' : 'Show Autopilot panels'} aria-expanded={pulseMenuOpen} aria-controls={pulseMenuId}
           onClick={() => setPulseMenuOpen(value => !value)} className="flex h-8 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${pulseMenuOpen ? 'rotate-90' : ''}`} />
         </button>
       </div>
-      <div id={pulseMenuId} hidden={!pulseMenuOpen} role="group" aria-label="Pulse panels" className="ml-2.5 mt-1 space-y-0.5 border-l border-border pl-3">
+      <div id={pulseMenuId} hidden={!pulseMenuOpen} role="group" aria-label="Autopilot panels" className="ml-2.5 mt-1 space-y-0.5 border-l border-border pl-3">
         <Row icon={PulseIcon} onClick={() => open({ ...pulse, target: 'goals' })}>Goals &amp; metrics</Row>
-        <Row icon={MessageSquareText} onClick={() => open({ ...pulse, target: 'chat' })}>Talk to Pulse</Row>
+        <Row icon={MessageSquareText} onClick={() => open({ ...pulse, target: 'chat' })}>Talk to Autopilot</Row>
         {pulseDecisions && renderItem(pulseDecisions)}
-        <Row icon={Settings2} onClick={() => open({ ...pulse, target: 'settings' })}>Pulse settings</Row>
+        <Row icon={Settings2} onClick={() => open({ ...pulse, target: 'settings' })}>Autopilot settings</Row>
       </div>
     </div>}
     {recent.length > 0 && <Group title="Recent">{recent.map(renderItem)}</Group>}

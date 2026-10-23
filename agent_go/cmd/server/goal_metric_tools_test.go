@@ -72,6 +72,6 @@ func TestGoalMetricToolsRoundTripMultipleOutcomes(t *testing.T) {
 	}
 	measurements, ok := page["measurements"].(*step.GoalMeasurementLedger)
 	if !ok || len(measurements.Metrics) != 3 || len(measurements.Observations) != 1 {
-		t.Fatalf("Pulse overview lost saved measurements: %v", page)
+		t.Fatalf("Autopilot overview lost saved measurements: %v", page)
 	}
 }

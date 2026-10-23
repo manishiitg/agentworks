@@ -25,7 +25,7 @@ edit, move, merge, rename, compact, or delete files. Do not update _index.json.
 Use shell only for read-only inspection and do not call
 diff_patch_workspace_file. Treat every later mutation instruction as an audit
 criterion. Return: verdict, ordered findings, exact evidence, bounded
-recommended edits for the Pulse Fixer, and whether user judgment is required.
+recommended edits for the Autopilot Fixer, and whether user judgment is required.
 
 ## Role
 Apply a user-provided transformation to the workspace knowledgebase. You own reads and writes to the per-topic narrative files under `+"`"+`{{.NotesFolderPath}}/`+"`"+` and to `+"`"+`{{.NotesIndexPath}}`+"`"+` for this one operation.
@@ -106,7 +106,7 @@ var kbReorganizeUserMessageTemplate = MustRegisterTemplate("kbReorganizeUserMess
 ## Your task
 1. Read `+"`"+`{{.NotesIndexPath}}`+"`"+` and `+"`"+`cat`+"`"+` only the topic files the instruction names — never glob `+"`"+`notes/*.md`+"`"+`.
 2. Decide what changes the instruction implies. State the plan briefly.
-3. Describe the exact transformation the Pulse Fixer should apply. Do not apply it.
+3. Describe the exact transformation the Autopilot Fixer should apply. Do not apply it.
 4. Resync `+"`"+`{{.NotesIndexPath}}`+"`"+` for every touched topic.
 5. Print the structured review result.
 `)
@@ -174,7 +174,7 @@ create, edit, move, merge, canonicalize, or delete files. Do not update
 _index.json. Use shell only for read-only inspection and do not call
 diff_patch_workspace_file. Treat every later write instruction as an audit
 criterion. Return: verdict, ordered findings, exact evidence, bounded
-recommended edits for the Pulse Fixer, contradictions requiring user judgment,
+recommended edits for the Autopilot Fixer, contradictions requiring user judgment,
 and deferred items.
 
 ## Role

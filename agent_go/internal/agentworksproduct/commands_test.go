@@ -61,7 +61,7 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 		t.Fatal("command pulse must stay a hardcoded builtin, not a yaml prompt")
 	}
 	if !hidden["run-plan-drift"] {
-		t.Fatal("run-plan-drift must be hidden from the slash menu: the Pulse tab starts it")
+		t.Fatal("run-plan-drift must be hidden from the slash menu: the Autopilot tab starts it")
 	}
 	// Owner 2026-10-08: one Pulse, no separate reviewers. The old reviewer
 	// commands and their aliases are gone; #pulse in the Builder chat asks Pulse.

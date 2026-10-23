@@ -258,7 +258,7 @@ func TestRealClaudeStructuredToolCallPersistsNonZeroTimingToDisk(t *testing.T) {
 	// production file for the real 10-minute step read total_duration_ms=0
 	// across 4 successful calls.
 	if persisted.Tools.TotalDurationMs <= 0 {
-		t.Errorf("persisted tools.total_duration_ms = %d, want > 0 (this is the field a Pulse cost/time review reads)", persisted.Tools.TotalDurationMs)
+		t.Errorf("persisted tools.total_duration_ms = %d, want > 0 (this is the field an Autopilot cost/time review reads)", persisted.Tools.TotalDurationMs)
 	}
 	if len(persisted.Tools.Calls) != 1 {
 		t.Fatalf("persisted tools.calls length = %d, want 1", len(persisted.Tools.Calls))

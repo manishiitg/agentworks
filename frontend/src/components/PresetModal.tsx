@@ -411,7 +411,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
           };
         } else {
           if (!effectiveBuilderLLM || !effectiveMaintenanceLLM || !effectivePulseLLM || !explicitTieredConfig) {
-            alert('Builder, Maintenance, Pulse, and all three execution tiers are required');
+            alert('Builder, Maintenance, Autopilot, and all three execution tiers are required');
             return;
           }
           finalLLMConfig = {

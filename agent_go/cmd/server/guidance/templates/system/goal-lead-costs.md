@@ -1,4 +1,4 @@
-## Pulse skill: check costs
+## Autopilot skill: check costs
 
 Read-only. Use it on the goal check's `spend` facts, a cost spike, or when
 judging whether work is worth what it costs.

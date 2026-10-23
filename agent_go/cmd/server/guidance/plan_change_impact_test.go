@@ -12,7 +12,7 @@ func TestInteractivePlanEditsDoNotRequireFullDriftAudit(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, want := range []string{"one combined compatibility check", "current agent", "scheduled Pulse or an explicit user request"} {
+			for _, want := range []string{"one combined compatibility check", "current agent", "scheduled Autopilot or an explicit user request"} {
 				if !strings.Contains(rendered, want) {
 					t.Errorf("%s lacks interactive edit policy %q", kind, want)
 				}

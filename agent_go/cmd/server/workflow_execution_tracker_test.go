@@ -303,7 +303,7 @@ func TestOnlyFullWorkflowExecutionBlocksSchedule(t *testing.T) {
 			exec: &TrackedWorkflowExecution{Status: trackedExecutionStatusRunning, Kind: "workflow_builder_task"},
 			want: false,
 		},
-		"Pulse reviewer": {
+		"Autopilot reviewer": {
 			exec: &TrackedWorkflowExecution{Status: trackedExecutionStatusRunning, Kind: "background_task", PhaseID: "strategy-auditor"},
 			want: false,
 		},

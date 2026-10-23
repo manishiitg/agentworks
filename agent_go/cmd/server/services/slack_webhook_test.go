@@ -178,7 +178,7 @@ func TestSendSlackIncomingWebhookDoesNotLeakSecretURL(t *testing.T) {
 }
 
 func TestSlackWebhookHasOneVisibleSummary(t *testing.T) {
-	const message = "project-a AWS Pulse: security failed; cost OK."
+	const message = "project-a AWS Autopilot: security failed; cost OK."
 	payload, err := buildSlackWebhookPayload(message, SlackWebhookContent{})
 	if err != nil {
 		t.Fatal(err)

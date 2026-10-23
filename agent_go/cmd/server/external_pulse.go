@@ -11,7 +11,7 @@ import (
 func (api *StreamingAPI) externalPulseCall(w http.ResponseWriter, r *http.Request, name string, args map[string]interface{}, workflow DiscoveredWorkflow) {
 	ctx := r.Context()
 	if !workflowHasGoal(ctx, workflow.WorkspacePath) {
-		reason := "Pulse needs a written goal. Add it in the Builder chat before using Pulse."
+		reason := "Autopilot needs a written goal. Add it in the Builder chat before using Autopilot."
 		if !workflow.Manifest.PulseEnabled() {
 			reason = errPulseOff.Error()
 		}
@@ -29,7 +29,7 @@ func (api *StreamingAPI) externalPulseCall(w http.ResponseWriter, r *http.Reques
 			externalError(w, http.StatusServiceUnavailable, "pulse_unavailable", err.Error())
 			return
 		}
-		externalJSON(w, map[string]interface{}{"status": "started", "next": "Poll builder action=pulse_status until busy is false; Pulse's reply is the newest message."})
+		externalJSON(w, map[string]interface{}{"status": "started", "next": "Poll builder action=pulse_status until busy is false; Autopilot's reply is the newest message."})
 	case "builder_pulse_status":
 		limit := 10
 		if v, ok := args["limit"].(float64); ok && v >= 1 && v <= 40 {

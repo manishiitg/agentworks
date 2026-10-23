@@ -1,4 +1,4 @@
-## Pulse skill: inspect runs, iterations and steps
+## Autopilot skill: inspect runs, iterations and steps
 
 Read-only. Use it to see what a run did, whether a step worked, and why one
 failed. You find and diagnose; the Builder chat fixes (`ask_builder`).

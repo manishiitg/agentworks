@@ -1101,7 +1101,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) selectPulseLLM(agentPurpose string) *
 	if hcpo.presetPulseLLM == nil || hcpo.presetPulseLLM.Provider == "" || hcpo.presetPulseLLM.ModelID == "" {
 		return hcpo.selectPhaseLLM(agentPurpose)
 	}
-	hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using Pulse LLM for %s: %s/%s",
+	hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using Autopilot LLM for %s: %s/%s",
 		agentPurpose, hcpo.presetPulseLLM.Provider, hcpo.presetPulseLLM.ModelID))
 	return &orchestrator.LLMConfig{
 		Primary: orchestrator.LLMModel{
@@ -1121,7 +1121,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) selectPulseLLM(agentPurpose string) *
 func (hcpo *StepBasedWorkflowOrchestrator) selectPulseUpkeepLLM(agentPurpose string) *orchestrator.LLMConfig {
 	if hcpo.tierResolver != nil {
 		if cfg := hcpo.tierResolver.ResolveTier(TierMedium); cfg != nil {
-			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using Medium tier for Pulse upkeep %s: %s/%s",
+			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using Medium tier for Autopilot upkeep %s: %s/%s",
 				agentPurpose, cfg.Primary.Provider, cfg.Primary.ModelID))
 			return cfg
 		}

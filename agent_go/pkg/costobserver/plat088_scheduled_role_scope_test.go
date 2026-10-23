@@ -31,7 +31,7 @@ func TestScopeForScheduledLLMRoleNamesPulse(t *testing.T) {
 
 func TestScopeForScheduledTurnUsesLifecycleFlagWithoutModelOverride(t *testing.T) {
 	if got := ScopeForScheduledTurn(true, ""); got != ScopePulse {
-		t.Fatalf("Pulse lifecycle turn scope = %q, want %q", got, ScopePulse)
+		t.Fatalf("Autopilot lifecycle turn scope = %q, want %q", got, ScopePulse)
 	}
 	if got := ScopeForScheduledTurn(false, "scheduled_pulse"); got != ScopePulse {
 		t.Fatalf("legacy scheduled_pulse scope = %q, want %q", got, ScopePulse)

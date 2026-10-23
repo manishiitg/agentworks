@@ -199,7 +199,7 @@ func TestStepPromptsRespectExplicitPermissionsAndScriptedDBHelpers(t *testing.T)
 		system := renderer.executionOnlySystemPromptProcessor(vars)
 		// An ordinary step is not a decision handler: the saved-decision lifecycle and Builder/optimizer
 		// process text belong to the agents that hold those tools, not to every step's system prompt.
-		for _, leak := range []string{"mark_human_input_consumed", "outcome_evidence", "apply_workflow_db_migration", "optimizer", "Unmigrated", "Pulse"} {
+		for _, leak := range []string{"mark_human_input_consumed", "outcome_evidence", "apply_workflow_db_migration", "optimizer", "Unmigrated", "Autopilot"} {
 			if strings.Contains(system, leak) {
 				t.Fatalf("ordinary step prompt carries platform process text %q", leak)
 			}

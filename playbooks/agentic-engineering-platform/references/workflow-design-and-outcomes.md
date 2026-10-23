@@ -43,9 +43,9 @@ Do not assume a reviewer is present while a workflow runs. For consequential cha
 
 The reviewer may approve, reject, or defer from the supported durable decision surface after the preparation run finishes. A dashboard refresh never constitutes approval and does not execute the action route. Use a blocking human branch only when the customer explicitly chooses a bounded attended run; do not use it as the default for scheduled, webhook, long-running, or variable-duration work.
 
-## Pulse review focus
+## Autopilot review focus
 
-Read the playbook manifest's `pulse_focus` recommendation for Strategic Review. Compare it with current Pulse configuration and retained review coverage. Recommend it only when it answers a useful goal or product question:
+Read the playbook manifest's `pulse_focus` recommendation for Strategic Review. Compare it with current Autopilot configuration and retained review coverage. Recommend it only when it answers a useful goal or product question:
 
 - Strategic Review checks whether the capability and measurements advance the customer's goals and whether a materially different approach deserves consideration.
 

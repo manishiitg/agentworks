@@ -12,7 +12,7 @@ import { sendWorkspacePaneMessageToChat } from './workspacePaneChat'
 export async function openPulseChatTab(workspacePath: string, sessionId: string, busy = false): Promise<string> {
   const identity = captureChatIdentity()
   const id = sessionId.trim()
-  if (!id) throw new Error('Pulse chat is not available. Refresh Pulse and try again.')
+  if (!id) throw new Error('Autopilot chat is not available. Refresh Autopilot and try again.')
   let tab = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === id)
   if (!tab) {
     const now = new Date().toISOString()
@@ -24,7 +24,7 @@ export async function openPulseChatTab(workspacePath: string, sessionId: string,
     assertChatIdentityCurrent(identity)
     tab = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === id)
   }
-  if (!tab) throw new Error('Could not open Pulse chat. Refresh Pulse and try again.')
+  if (!tab) throw new Error('Could not open Autopilot chat. Refresh Autopilot and try again.')
   // The shared activity opener observes schedule sessions. Talking to Pulse is
   // the existing interactive-continuation action on that exact conversation.
   const tabId = tab.tabId
@@ -32,9 +32,9 @@ export async function openPulseChatTab(workspacePath: string, sessionId: string,
     const current = state.chatTabs[tabId]
     if (!current) return state
     const interactive = convertObservedWorkflowTabToInteractive(current)
-    return { chatTabs: { ...state.chatTabs, [tabId]: { ...interactive, name: 'Pulse', metadata: { ...interactive.metadata, isExecutionRun: true, phaseName: 'Pulse' } } } }
+    return { chatTabs: { ...state.chatTabs, [tabId]: { ...interactive, name: 'Autopilot', metadata: { ...interactive.metadata, isExecutionRun: true, phaseName: 'Autopilot' } } } }
   })
-  if (!activateTab(tabId)) throw new Error('Could not open Pulse chat. Refresh Pulse and try again.')
+  if (!activateTab(tabId)) throw new Error('Could not open Autopilot chat. Refresh Autopilot and try again.')
   const workflow = useWorkflowStore.getState()
   workflow.setShowChatArea(true)
   workflow.setFocusedPane('chat')
@@ -47,11 +47,11 @@ export async function openWorkflowPulseChatTab(workspacePath: string): Promise<s
   const lead = await agentApi.getGoalLead(workspacePath)
   assertChatIdentityCurrent(identity)
   if (!lead.success || lead.error || lead.conversation?.error) {
-    throw new Error(lead.error || lead.conversation?.error || 'Could not open Pulse chat.')
+    throw new Error(lead.error || lead.conversation?.error || 'Could not open Autopilot chat.')
   }
   const sessionId = lead.conversation?.session_id?.trim()
   if (!lead.conversation?.has_goal || !sessionId) {
-    throw new Error('Turn Pulse on and set a goal with Builder before opening its chat.')
+    throw new Error('Turn Autopilot on and set a goal with Builder before opening its chat.')
   }
   return openPulseChatTab(workspacePath, sessionId, lead.conversation.busy)
 }

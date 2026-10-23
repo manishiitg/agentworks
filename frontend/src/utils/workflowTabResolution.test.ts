@@ -15,7 +15,7 @@ describe('scheduleLaneKey', () => {
     expect(scheduleLaneKey('schedule-cron--42eca39a_100')).not.toBe(scheduleLaneKey('schedule-cron--86683998_100'))
   })
 
-  it("gives the toolbar's one-off Pulse its own lane", () => {
+  it("gives the toolbar's one-off Autopilot its own lane", () => {
     expect(scheduleLaneKey('schedule-manual--manual-p_100')).toBe('manual-p')
   })
 
@@ -54,7 +54,7 @@ describe('reusableScheduleTabId', () => {
       .toBeNull()
   })
 
-  it("never lets a one-off Pulse take a named schedule's tab (the title-flip bug)", () => {
+  it("never lets a one-off Autopilot take a named schedule's tab (the title-flip bug)", () => {
     expect(reusableScheduleTabId({ a: finishedDailyTab }, 'workflow-upwork', 'schedule-manual--manual-p_2'))
       .toBeNull()
   })
@@ -125,7 +125,7 @@ describe('resolveWorkflowTabForSession', () => {
     expect(createChatTab).not.toHaveBeenCalled()
   })
 
-  it("opens a new tab for a Pulse run rather than taking a named schedule's", async () => {
+  it("opens a new tab for an Autopilot run rather than taking a named schedule's", async () => {
     const { result, createChatTab } = run([tab({})], 'schedule-manual--manual-p_2', scheduled)
     expect(await result).toEqual({ tabId: 'new-tab', via: 'created' })
     expect(createChatTab).toHaveBeenCalledTimes(1)
@@ -137,8 +137,8 @@ describe('resolveWorkflowTabForSession', () => {
     expect(updateTabSessionId).not.toHaveBeenCalled()
   })
 
-  it('never rebinds an interactive Pulse conversation as the persistent Builder', async () => {
-    const pulse = tab({ tabId: 'pulse', name: 'Pulse', sessionId: 'schedule-goallead--goal-g1', metadata: { ...builder, isViewOnly: false, isScheduledRun: false, isExecutionRun: true } })
+  it('never rebinds an interactive Autopilot conversation as the persistent Builder', async () => {
+    const pulse = tab({ tabId: 'pulse', name: 'Autopilot', sessionId: 'schedule-goallead--goal-g1', metadata: { ...builder, isViewOnly: false, isScheduledRun: false, isExecutionRun: true } })
     const { result, updateTabSessionId } = run([pulse], 'builder-session', builder)
     expect(await result).toEqual({ tabId: 'new-tab', via: 'created' })
     expect(updateTabSessionId).not.toHaveBeenCalled()

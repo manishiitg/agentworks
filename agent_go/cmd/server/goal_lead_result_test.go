@@ -48,10 +48,10 @@ func TestPulseResultDoesNotReviveDisabledOrRotatedConversation(t *testing.T) {
 		}
 	}
 	if turns.Load() != 0 {
-		t.Fatal("ineligible completion ran Pulse")
+		t.Fatal("ineligible completion ran Autopilot")
 	}
 	env.api.stoppedSessions = map[string]bool{conv.SessionID: true}
 	if env.api.executeSyntheticTurnWithOutcome(conv.SessionID, "saved result", "", nil) {
-		t.Fatal("result revived a stopped Pulse")
+		t.Fatal("result revived a stopped Autopilot")
 	}
 }

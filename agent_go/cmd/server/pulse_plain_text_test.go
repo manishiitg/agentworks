@@ -50,6 +50,6 @@ func TestPulseDecisionSourcesAreTheReviewModules(t *testing.T) {
 		}
 	}
 	if isPulseDecisionSource("workflow_step") || isPulseDecisionSource("") {
-		t.Error("non-Pulse decisions must not be checked")
+		t.Error("non-Autopilot decisions must not be checked")
 	}
 }

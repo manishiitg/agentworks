@@ -28,7 +28,7 @@ describe('transcript Ask AI rows', () => {
       data: {
         data: {
           content: buildAskAIMessage({
-            view: 'Pulse',
+            view: 'Autopilot',
             summary: 'Help me understand my check-ups.',
             instructions: 'First read the guide with read_skill(skills=[{"name":"builder-reference"}]).',
           }),
@@ -38,7 +38,7 @@ describe('transcript Ask AI rows', () => {
     await act(async () => { root.render(<TerminalEventTranscript events={[event]} terminal={null} />) })
     cleanups.push(() => { act(() => root.unmount()); host.remove() })
 
-    expect(host.textContent).toContain('Ask AI · Pulse — Help me understand my check-ups.')
+    expect(host.textContent).toContain('Ask AI · Autopilot — Help me understand my check-ups.')
     expect(host.textContent).not.toContain('read_skill')
     expect(host.textContent).toContain('Show full message')
   })

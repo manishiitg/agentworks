@@ -1,4 +1,4 @@
-## Pulse skill: check the measurement
+## Autopilot skill: check the measurement
 
 Use this skill when there is no useful goal metric, or a reading looks wrong,
 flat or missing. A broken measure is not a stuck goal. Prefer measured evidence and set up a missing meaningful measurement with
@@ -13,7 +13,7 @@ cadence. No declaration of which execution drives the metric is required.
 Saved metric `route` metadata must match observations when present; it is not
 proof of executable work or goal contribution. Work with Builder to choose the
 best measurement for the goal and verify actual DB readings and
-history after implementation. Ask for a bounded repair within the current Pulse permissions;
+history after implementation. Ask for a bounded repair within the current Autopilot permissions;
 definitions alone do not establish that measurement works.
 
 1. **What is measured.** `get_goal_metrics`: the primary metric, its unit,

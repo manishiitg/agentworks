@@ -71,7 +71,7 @@ func TestReconcileOrphanedProgressChildrenReleasesTheSession(t *testing.T) {
 	parent.mu.Unlock()
 
 	if registry.HasRunningAgents("sess") {
-		t.Fatal("session still reports live child work; Pulse would stall until the 3h ceiling")
+		t.Fatal("session still reports live child work; Autopilot would stall until the 3h ceiling")
 	}
 }
 

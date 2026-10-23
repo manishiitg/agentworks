@@ -11,7 +11,7 @@ import (
 func notificationRoutesSchema(fields, sections interface{}) map[string]interface{} {
 	return map[string]interface{}{
 		"type": "array", "maxItems": 20,
-		"description": "Route-specific Run or Pulse summaries in one notification. Use exact routing_step_id plus route_id from major routing steps, never branch choices. Include only routes whose run/review evidence you inspected; a route not reviewed is not clean. Keep shared work in the top-level message/sections. Do not repeat these route bodies in message_for_user: the backend adds them to the channel-neutral delivery text. When supplying a custom rich-channel body, render each intended fact exactly once. Prefer this over legacy summary_route even for one route.",
+		"description": "Route-specific Run or Autopilot summaries in one notification. Use exact routing_step_id plus route_id from major routing steps, never branch choices. Include only routes whose run/review evidence you inspected; a route not reviewed is not clean. Keep shared work in the top-level message/sections. Do not repeat these route bodies in message_for_user: the backend adds them to the channel-neutral delivery text. When supplying a custom rich-channel body, render each intended fact exactly once. Prefer this over legacy summary_route even for one route.",
 		"items": map[string]interface{}{
 			"type": "object", "additionalProperties": false,
 			"required": []string{"routing_step_id", "route_id", "title", "status", "message"},

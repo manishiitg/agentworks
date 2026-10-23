@@ -44,7 +44,7 @@ func TestRouteSummariesKeepIndependentHistoryAndIdentity(t *testing.T) {
 			}
 		case "router-b":
 			if route.RunSummary == nil || route.RunSummary.Title != "Busy run 54" || route.PulseSummary != nil {
-				t.Fatalf("invented Pulse coverage or lost latest run: %+v", route)
+				t.Fatalf("invented Autopilot coverage or lost latest run: %+v", route)
 			}
 		default:
 			t.Fatalf("unexpected route: %+v", route)
@@ -64,7 +64,7 @@ func TestRouteSummariesKeepIndependentHistoryAndIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	if count != 52 {
-		t.Fatalf("retention should keep 50 busy runs, the quiet digest, and quiet Pulse; got %d", count)
+		t.Fatalf("retention should keep 50 busy runs, the quiet digest, and quiet Autopilot; got %d", count)
 	}
 	other, err := ListOrgDashboardNotifications(ctx, "Workflow/other", 10)
 	if err != nil || len(other.ByRoute) != 0 {
@@ -94,7 +94,7 @@ func TestLegacyRouteLabelsAreNotGuessedIntoCanonicalRoutes(t *testing.T) {
 	}
 	for _, group := range got.ByRoute {
 		if group.PulseSummary != nil {
-			t.Fatalf("workflow-wide Pulse must not imply route coverage: %+v", group)
+			t.Fatalf("workflow-wide Autopilot must not imply route coverage: %+v", group)
 		}
 	}
 }

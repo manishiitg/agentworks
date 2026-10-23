@@ -26,7 +26,7 @@ Workshop; executing a workflow does not authorize changing its plan.
 | A report action should hand a specific task to the agent now | Report `sendChatMessage` | The action queues its message directly in an existing workflow chat, creating one only if none exists. Save an existing business approval first when the request depends on it. |
 | The user corrects an execution already running | `send_step_message` | Forward to the exact active execution, live or at the next safe agent boundary. This does not start, restart, or resume completed work. |
 
-Recorded run summaries, Daily Actions, and Pulse summaries are notifications/evidence,
+Recorded run summaries, Daily Actions, and Autopilot summaries are notifications/evidence,
 not response or approval mechanisms. A notification delivery receipt does not
 mean the human agreed. Route selection is also not blanket authorization for
 every side effect on that route.
@@ -73,9 +73,9 @@ poll a file, or ask the user to send another message after answering. A shell
 timeout must cover the requested wait. Cursor CLI's silent-call limit requires
 `timeout_seconds <= 45`.
 
-### Durable Pulse/review decisions
+### Durable Autopilot/review decisions
 
-Use the existing question lifecycle, not a parallel approval table, for Pulse
+Use the existing question lifecycle, not a parallel approval table, for Autopilot
 coordination and technical/strategic review decisions. Attribute the request
 to its real source (`technical_review`, `strategic_review`, or generic `pulse`).
 For an authorized workflow change, supply the tool's structured `apply_contract`;
@@ -86,7 +86,7 @@ An obsolete agent-issued pending proposal can be withdrawn by Builder using
 question, options and approval contract stay in history. This is agent judgment,
 not an owner answer or permission to perform the proposal. Human-created requests,
 suggestions and answered/claimed decisions are not eligible; provenance that is
-unknown stays unknown. Pulse discusses withdrawal with Builder rather than
+unknown stays unknown. Autopilot discusses withdrawal with Builder rather than
 answering or withdrawing the owner's decisions itself.
 
 The native card's controls have distinct meanings:
@@ -118,7 +118,7 @@ Do not write platform decision rows through a report's business-field API.
 
 Keep an existing business approval in the domain's existing record: for
 example, WebsiteAEO's `audit_findings` status. Do not convert every business
-item into a Pulse decision just to support a dashboard button.
+item into an Autopilot decision just to support a dashboard button.
 
 Choose the button's behavior explicitly:
 

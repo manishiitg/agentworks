@@ -39,7 +39,7 @@ func TestRunLifecycleAndEvents(t *testing.T) {
 	transitions := []Transition{
 		{RunID: run.RunID, To: StateWorkflowRunning, SessionID: "session-1", SessionKind: "workflow", Reason: "session started"},
 		{RunID: run.RunID, To: StateWorkflowFinished, SessionID: "session-1", RunFolder: "iteration-0", Reason: "workflow finished"},
-		{RunID: run.RunID, To: StatePulseRunning, SessionID: "session-1", SessionKind: "pulse", Reason: "Pulse enabled"},
+		{RunID: run.RunID, To: StatePulseRunning, SessionID: "session-1", SessionKind: "pulse", Reason: "Autopilot enabled"},
 		{RunID: run.RunID, To: StateCompleted, SessionID: "recovery-session", SessionKind: "pulse_recovery", Reason: "done"},
 	}
 	for _, transition := range transitions {
@@ -581,7 +581,7 @@ func TestRetiredPulseStagesReleaseLocksOnOpen(t *testing.T) {
 	}
 	run.RunID = "overlap"
 	if err := store.BeginRun(ctx, run); !errors.Is(err, ErrRunAlreadyActive) {
-		t.Fatalf("Pulse active index lost: %v", err)
+		t.Fatalf("Autopilot active index lost: %v", err)
 	}
 }
 

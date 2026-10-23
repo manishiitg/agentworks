@@ -20,7 +20,7 @@ func TestMaintenanceSpecialistSystemPromptsAreReadOnly(t *testing.T) {
 		"kb_consolidate": kbConsolidate,
 	}
 	for name, prompt := range cases {
-		for _, want := range []string{"READ-ONLY REVIEW OVERRIDE", "Pulse Fixer", "Do not"} {
+		for _, want := range []string{"READ-ONLY REVIEW OVERRIDE", "Autopilot Fixer", "Do not"} {
 			if !strings.Contains(prompt, want) {
 				t.Fatalf("%s reviewer prompt missing %q:\n%s", name, want, prompt)
 			}

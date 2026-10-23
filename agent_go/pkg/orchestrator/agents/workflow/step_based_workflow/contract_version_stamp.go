@@ -161,7 +161,7 @@ func CheckContractStamp(version, workflowDir string, manifestJSON []byte, readPl
 		return fmt.Errorf("parse workflow.json: %w", err)
 	}
 	if err := schedulepolicy.ValidatePulseStamp(manifestJSON, version); err != nil {
-		return fmt.Errorf("the schedule Pulse migration is incomplete: %w", err)
+		return fmt.Errorf("the schedule Autopilot migration is incomplete: %w", err)
 	}
 	if err := validateContractVersionStampPrerequisites(version, manifest); err != nil {
 		return fmt.Errorf("the nested Agent artifact migration is incomplete: %w", err)

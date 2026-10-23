@@ -12,13 +12,13 @@ import (
 
 func TestManualPulseScheduleContract(t *testing.T) {
 	if manualWorkflowPulseScheduleID == "" {
-		t.Fatal("manual workflow Pulse schedule id must not be empty")
+		t.Fatal("manual workflow Autopilot schedule id must not be empty")
 	}
 
 	manifest := &WorkflowManifest{ID: "workflow-id", Label: "Workflow", Pulse: &WorkflowPulseConfig{Enabled: true}}
 	sched := WorkflowSchedule{
 		ID:           manualWorkflowPulseScheduleID,
-		Name:         "Run Pulse",
+		Name:         "Run Autopilot",
 		Mode:         "workshop",
 		WorkshopMode: "run",
 	}
@@ -30,31 +30,31 @@ func TestManualPulseScheduleContract(t *testing.T) {
 	sctx.PulseEvidenceRunStatus = "error"
 
 	if sctx.Schedule.Mode != "workshop" || sctx.Schedule.WorkshopMode != "run" {
-		t.Fatalf("manual Pulse must use the workshop preflight path: %+v", sctx.Schedule)
+		t.Fatalf("manual Autopilot must use the workshop preflight path: %+v", sctx.Schedule)
 	}
 	if !sctx.ForcePulseReview {
-		t.Fatal("manual Pulse must force Pulse without changing recurring schedules")
+		t.Fatal("manual Autopilot must force Autopilot without changing recurring schedules")
 	}
 	if !sctx.PulseOnly {
-		t.Fatal("manual toolbar action must be marked Pulse-only")
+		t.Fatal("manual toolbar action must be marked Autopilot-only")
 	}
 	if messages := scheduledWorkshopMessages(sctx); len(messages) != 0 {
-		t.Fatalf("Pulse-only action must not enqueue a workflow message: %v", messages)
+		t.Fatalf("Autopilot-only action must not enqueue a workflow message: %v", messages)
 	}
 	turns, err := manualWorkflowUpgradeTurns(manifest, scheduledWorkshopMessages(sctx), sctx.WorkspacePath)
 	if err != nil {
-		t.Fatalf("build Pulse preflight turns: %v", err)
+		t.Fatalf("build Autopilot preflight turns: %v", err)
 	}
 	if len(turns) == 0 {
 		t.Fatal("an unversioned workflow must still receive version preflight turns")
 	}
 	for _, turn := range turns {
 		if turn.upgradeTarget == "" || strings.HasPrefix(turn.label, "schedule-message-") {
-			t.Fatalf("Pulse-only action queued a non-upgrade turn: %+v", turn)
+			t.Fatalf("Autopilot-only action queued a non-upgrade turn: %+v", turn)
 		}
 	}
 	if !shouldRunPulseLifecycle(sctx, manifest) {
-		t.Fatal("one-off Pulse must execute without a recurring Pulse schedule")
+		t.Fatal("one-off Autopilot must execute without a recurring Autopilot schedule")
 	}
 
 	normalCtx := buildScheduleContext("/tmp/workflow", manifest, WorkflowSchedule{Mode: "workshop", WorkshopMode: "run", AfterRun: &ScheduleAfterRun{Backup: true}})
@@ -65,15 +65,15 @@ func TestManualPulseScheduleContract(t *testing.T) {
 
 	manifest.Pulse.Enabled = false
 	if shouldRunPulseLifecycle(sctx, manifest) {
-		t.Fatal("forced/manual Pulse bypassed OFF")
+		t.Fatal("forced/manual Autopilot bypassed OFF")
 	}
 	sctx.ForcePulseReview = false
 	if shouldRunPulseLifecycle(sctx, manifest) {
-		t.Fatal("ordinary run must not run Pulse when pulse.enabled is false")
+		t.Fatal("ordinary run must not run Autopilot when pulse.enabled is false")
 	}
 	manifest.Pulse = &WorkflowPulseConfig{Enabled: true}
 	if !shouldRunPulseLifecycle(normalCtx, manifest) {
-		t.Fatal("ordinary scheduled run must run Pulse when pulse.enabled is true")
+		t.Fatal("ordinary scheduled run must run Autopilot when pulse.enabled is true")
 	}
 }
 
@@ -109,6 +109,6 @@ func TestPulseOnlyDoesNotReadExecutionFolders(t *testing.T) {
 	s := &SchedulerService{}
 	session, folder, err := s.executeJob(context.Background(), &ScheduleContext{PulseOnly: true, WorkspacePath: "Workflow/example", Schedule: WorkflowSchedule{ID: manualWorkflowPulseScheduleID}}, "check-1")
 	if err != nil || session == "" || folder != "" || requests.Load() != 0 {
-		t.Fatalf("Pulse-only used execution preflight: session=%s folder=%s requests=%d err=%v", session, folder, requests.Load(), err)
+		t.Fatalf("Autopilot-only used execution preflight: session=%s folder=%s requests=%d err=%v", session, folder, requests.Load(), err)
 	}
 }

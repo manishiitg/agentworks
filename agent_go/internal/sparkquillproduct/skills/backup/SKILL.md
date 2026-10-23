@@ -34,13 +34,13 @@ Never write status fields into `backup.json`.
 
 3. **First backup is ATTENDED — same rule as `publish`.** Never do the first
    (repo-creating) backup unattended: if this turn wasn't started by the parent
-   directly asking (e.g. it's an automated Pulse check-in), do NOT ask questions
+   directly asking (e.g. it's an automated Autopilot check-in), do NOT ask questions
    into the void — just note ONCE that backup isn't set up yet ("ask your parent
    to say 'back up the workspace' to set it up"), don't repeat that note every
    cycle, and stop. If the parent IS present, ask for their HF username + a repo
    name (don't invent one), write `backup.json` with `enabled: true` and that
    `repo_id`, then continue below. Once `backup/status.json` shows `state:
-   "verified"` from a real prior success, later backups (including Pulse's own
+   "verified"` from a real prior success, later backups (including Autopilot's own
    automated ones) may run without asking again.
 
 4. **Skip if unchanged.** Compute a source hash, e.g.

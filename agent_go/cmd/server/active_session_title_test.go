@@ -33,7 +33,7 @@ func TestTrackActiveSessionPreservesInternalParentMetadata(t *testing.T) {
 	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{}}
 	const sessionID = "pulse-reviewer-1"
 
-	api.trackActiveSession(sessionID, "workflow_phase", "review", "default", "", "cron", "Pulse review", "pulse-root-1", "pulse_reviewer")
+	api.trackActiveSession(sessionID, "workflow_phase", "review", "default", "", "cron", "Autopilot review", "pulse-root-1", "pulse_reviewer")
 	api.trackActiveSession(sessionID, "workflow_phase", "follow-up", "default", "", "cron", "", "", "")
 
 	got := api.activeSessions[sessionID]

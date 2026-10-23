@@ -131,7 +131,7 @@ func (s *SchedulerService) afterRunWorkDue(ctx context.Context, sctx *ScheduleCo
 		case manifest == nil || manifest.Publish == nil || !manifest.Publish.Enabled:
 			work.Notes = append(work.Notes, "publish skipped: publishing is not set up")
 		case !publishHasReportTarget(manifest.Publish):
-			work.Notes = append(work.Notes, "publish skipped: only the Pulse page is published")
+			work.Notes = append(work.Notes, "publish skipped: only the Autopilot page is published")
 		default:
 			hash := computeWorkflowPublishSourceHash(ctx, sctx.WorkspacePath)
 			status, _, _ := readWorkflowPublishStatus(ctx, sctx.WorkspacePath)

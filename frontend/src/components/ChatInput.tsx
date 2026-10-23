@@ -2464,7 +2464,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     const beforeHash = inputText.substring(0, hashPosition)
     const afterSearch = inputText.substring(hashPosition + 1 + workflowSearchQuery.length)
-    // #pulse is plain text the Builder reads as "ask Pulse"; it adds no context.
+    // #pulse is plain text the Builder reads as "ask Autopilot"; it adds no context.
     if (workflow.presetId === 'pulse') {
       writeComposerText(beforeHash + '#pulse ' + afterSearch)
       setShowWorkflowDialog(false)

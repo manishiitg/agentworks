@@ -10,7 +10,7 @@ function observedTab(overrides: Partial<ChatTab> = {}): ChatTab {
   return {
     tabId: 'tab-scheduled',
     sessionId: 'schedule-cron--42eca39a_1785810615371091000',
-    name: 'Daily Pulse',
+    name: 'Daily Autopilot',
     isStreaming: false,
     isCompleted: true,
     hasRunningBgAgents: false,
@@ -25,11 +25,11 @@ function observedTab(overrides: Partial<ChatTab> = {}): ChatTab {
     metadata: {
       mode: 'workflow',
       phaseId: 'workflow-builder',
-      phaseName: 'Daily Pulse',
+      phaseName: 'Daily Autopilot',
       presetQueryId: 'latency-report',
       isViewOnly: true,
       isScheduledRun: true,
-      scheduledJobName: 'Daily Pulse',
+      scheduledJobName: 'Daily Autopilot',
       readOnlyRestoredAt: 123,
     },
     ...overrides,

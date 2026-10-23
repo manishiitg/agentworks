@@ -28,7 +28,7 @@ it('backup summary wording follows hosting', () => {
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => vi.clearAllMocks())
 
-const LONG_BACKEND_SUMMARY = 'Pulse finalizer backup: committed and pushed 34 files with mirrors, ledgers, notes, learnings, and logs.'
+const LONG_BACKEND_SUMMARY = 'Autopilot finalizer backup: committed and pushed 34 files with mirrors, ledgers, notes, learnings, and logs.'
 
 it('shows one short line instead of the backend paragraph', async () => {
   vi.mocked(agentApi.getWorkflowBackup).mockResolvedValue({

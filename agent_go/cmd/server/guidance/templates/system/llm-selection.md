@@ -10,7 +10,7 @@ A workflow always resolves these roles:
 - **High execution**: first-time, ambiguous or difficult step work.
 - **Medium execution**: established work with useful context and skills.
 - **Low execution**: deterministic validation and mature routine work.
-- **Pulse** (`pulse_llm`): the single continuing goal-owning Pulse conversation, including checks and Goal Work. It asks Builder to implement changes; there are no separate review agents or model roles for Gate/fixer/finalizer stages.
+- **Autopilot** (`pulse_llm`): the single continuing goal-owning Autopilot conversation, including checks and Goal Work. It asks Builder to implement changes; there are no separate review agents or model roles for Gate/fixer/finalizer stages.
 
 The config has two modes:
 
@@ -19,7 +19,7 @@ The config has two modes:
 
 Each call uses one selected model and coding-agent provider. Transient errors may
 retry that same model; failures never trigger automatic model/provider switching.
-Pulse reviews actual failures and must not recommend backup chains or flag their
+Autopilot reviews actual failures and must not recommend backup chains or flag their
 absence as a configuration issue.
 
 Saved configurations are reusable shortcuts for exact provider/model/options combinations. They are not required before a provider or model can be selected.
@@ -34,7 +34,7 @@ Saved configurations are reusable shortcuts for exact provider/model/options com
 
 ### Per-step overrides (use sparingly)
 
-Pulse and Builder agree evidence-based persistent tier/model improvements. Runtime does
+Autopilot and Builder agree evidence-based persistent tier/model improvements. Runtime does
 not switch tiers from successful-run counts, learning changes, or failures.
 Unconfigured execution steps default to High; evaluation steps default to Medium.
 Existing explicit settings and one-run caller overrides keep their precedence.

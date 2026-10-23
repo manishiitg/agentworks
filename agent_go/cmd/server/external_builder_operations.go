@@ -26,9 +26,9 @@ func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]
 	// The workflow's Pulse, from MCP (never from Slack). Same grant as
 	// builder_chat: talking to Pulse can make the Builder act within Pulse's
 	// autonomy levels.
-	add("builder_pulse_chat", "Send a message to the selected workflow's Pulse (the agent that owns its goal) and start its turn. Use for the goal: how it is doing, what Pulse is working on, direction for it. Poll builder action=pulse_status for the reply. Requires builder:chat and write access; the workflow's Pulse must be on with a goal in soul.md.", true, true,
+	add("builder_pulse_chat", "Send a message to the selected workflow's Autopilot (the agent that owns its goal) and start its turn. Use for the goal: how it is doing, what Autopilot is working on, direction for it. Poll builder action=pulse_status for the reply. Requires builder:chat and write access; the workflow's Autopilot must be on with a goal in soul.md.", true, true,
 		map[string]any{"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 4000}}, "message")
-	add("builder_pulse_status", "Read the selected workflow's Pulse conversation: whether it is busy, its latest messages (newest last), the latest goal check and pending decisions. Use after builder action=pulse_chat.", false, true,
+	add("builder_pulse_status", "Read the selected workflow's Autopilot conversation: whether it is busy, its latest messages (newest last), the latest goal check and pending decisions. Use after builder action=pulse_chat.", false, true,
 		map[string]any{"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 40}})
 	for _, name := range []string{"builder_status", "builder_reply_input", "builder_cancel"} {
 		props := map[string]any{"operation_id": externalString("Operation ID returned by builder action=chat.")}

@@ -49,14 +49,14 @@ describe('isExternalReadOnlyWorkflowSession', () => {
 })
 
 describe('isInternalChildSession', () => {
-  it('recognizes an explicitly parented Pulse reviewer', () => {
+  it('recognizes an explicitly parented Autopilot reviewer', () => {
     expect(isInternalChildSession({
       parentSessionId: 'pulse-root-1',
       sessionKind: 'pulse_reviewer',
     })).toBe(true)
   })
 
-  it('does not hide a top-level Pulse or workflow session', () => {
+  it('does not hide a top-level Autopilot or workflow session', () => {
     expect(isInternalChildSession({ sessionKind: 'pulse' })).toBe(false)
   })
 })

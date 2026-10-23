@@ -25,7 +25,7 @@ export function workflowTabDisplayName(
   // longer pass through live runtime reconciliation. Normalize an older
   // one-off Pulse lane from its durable session identity too.
   if (tab.metadata?.isScheduledRun && isManualPulseSession(tab.sessionId)) {
-    return 'Manual Pulse'
+    return 'Manual Autopilot'
   }
   if (
     tab.metadata?.phaseId === 'workflow-builder' &&
@@ -194,7 +194,7 @@ export function workflowRuntimeTabProjection(
 
   if (scheduled) {
     const scheduledJobName = isManualPulseSession(running.session_id)
-      ? 'Manual Pulse'
+      ? 'Manual Autopilot'
       : running.title || running.preset_name || running.phase_name || 'Schedule'
     return {
       // The tab label shows the actual schedule's name (e.g. "Daily

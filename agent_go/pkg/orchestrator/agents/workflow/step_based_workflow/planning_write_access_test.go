@@ -175,7 +175,7 @@ func TestParsePlanDependencySurfaceReviewsRequiresIssueForUnresolvedSurface(t *t
 		"disposition": "broken",
 		"evidence":    []interface{}{"dashboard still reads the retired field"},
 	}
-	if _, err := parsePlanDependencySurfaceReviews(complete); err == nil || !strings.Contains(err.Error(), "durable Pulse issue") {
+	if _, err := parsePlanDependencySurfaceReviews(complete); err == nil || !strings.Contains(err.Error(), "durable Autopilot issue") {
 		t.Fatalf("broken surface without lifecycle issue was accepted: %v", err)
 	}
 	complete["reporting"].(map[string]interface{})["issue_ids"] = []interface{}{"PUL-1234ABCD"}

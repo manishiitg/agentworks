@@ -1,6 +1,6 @@
 ---
 name: read-file
-description: Extract the actual text/content from a file of ANY format — PDF, Word, PowerPoint, Excel, images, scans, archives. The canonical "how do I read this file" reference, reused by process-file, Pulse ingestion, and browser downloads.
+description: Extract the actual text/content from a file of ANY format — PDF, Word, PowerPoint, Excel, images, scans, archives. The canonical "how do I read this file" reference, reused by process-file, Autopilot ingestion, and browser downloads.
 ---
 
 # Read any file

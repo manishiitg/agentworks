@@ -121,7 +121,7 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
   if (normalizedCode === 'pulse_unavailable') {
     return {
       code: 'pulse_unavailable',
-      title: 'Pulse is unavailable',
+      title: 'Autopilot is unavailable',
       message: raw,
       retryable: false,
       technicalDetails,

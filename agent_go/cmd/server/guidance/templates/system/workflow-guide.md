@@ -36,7 +36,7 @@ or tool names.
 | your results page | dashboard, report, HTML report |
 | scheduled job (runs on its own at set times) | schedule, scheduled run |
 | automatic trigger from another app | webhook, trigger |
-| regular check-up with findings and decisions | Pulse, Pulse review |
+| regular check-up with findings and decisions | Autopilot, Autopilot review |
 | business goals and numbers you're tracking | goals, metrics, KPIs |
 | what your helper has learned from experience | learnings |
 | background info and notes it can use | knowledgebase |
@@ -87,8 +87,8 @@ or tool names.
   costs describe what actually happened.
 - **Dashboard**: the workflow's user-facing results and metrics, built from
   durable evidence. Explain data source and freshness when known.
-- **Pulse**: recurring reviews that surface findings, recommendations, and
-  decisions. A Pulse review is separate from executing the main plan.
+- **Autopilot**: recurring reviews that surface findings, recommendations, and
+  decisions. An Autopilot review is separate from executing the main plan.
 - **Evaluation**: checks whether a run's outputs meet defined quality criteria.
 - **Knowledgebase**: user-provided context and workflow findings. **Learnings**
   capture reusable operating know-how. **Database** stores structured durable
@@ -100,7 +100,7 @@ or tool names.
   and the difference between editing the blueprint and running it.
 - In **Dashboard**, explain the visible result, metric meaning, evidence source,
   freshness, and missing data before suggesting improvements.
-- In **Pulse**, explain the selected review area, current findings, review
+- In **Autopilot**, explain the selected review area, current findings, review
   history, and pending decisions. Discussion does not approve a decision.
 - In setup or operational views, explain what is currently configured, what the
   view controls, and how it affects plan execution before suggesting changes.

@@ -79,7 +79,7 @@ describe('WorkspaceViewHeader', () => {
   })
 
   it('keeps the title for screen readers only and draws no icon tile', () => {
-    const html = renderToStaticMarkup(<WorkspaceViewHeader icon={Activity} title="Pulse" />)
+    const html = renderToStaticMarkup(<WorkspaceViewHeader icon={Activity} title="Autopilot" />)
     expect(html).toContain('sr-only')
     expect(html).not.toContain('h-9 w-9')
   })

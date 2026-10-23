@@ -512,7 +512,7 @@ export async function renderReportActivity(
     for (const row of rows) {
       const kind =
         row.notification_kind === "pulse_summary"
-          ? "Pulse review"
+          ? "Autopilot review"
           : "Run summary";
       const card = el("article");
       const header = el("header");

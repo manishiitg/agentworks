@@ -126,7 +126,7 @@ it('uses readable display labels while preserving custom titles and original ses
   const row = { id: 'schedule-cron--workflow_123', title: 'WORKFLOW REVIEW BEFORE A RUN. workspace_path="Workflow/trading", pulse_run_id="one"', surface: 'agentworks', group: 'Open', time: 1, waiting: false, scheduled: true } as SidebarChat
   expect(sidebarChatDisplayTitle(row, 'Trading')).toBe('Scheduled review')
   expect(row.title).toContain('workspace_path=')
-  expect(sidebarChatDisplayTitle({ ...row, title: 'Pulse' })).toBe('Automatic review')
+  expect(sidebarChatDisplayTitle({ ...row, title: 'Autopilot' })).toBe('Automatic review')
   expect(sidebarChatDisplayTitle({ ...row, title: 'Morning review (Mon-Fri 8 AM)' })).toBe('Morning review')
   expect(sidebarChatDisplayTitle({ ...row, scheduled: false, builder: true, title: 'Trading' }, 'Trading', 2)).toBe('Builder 2')
   expect(sidebarChatDisplayTitle({ ...row, scheduled: false, builder: true, title: 'Quarterly planning' }, 'Trading')).toBe('Quarterly planning')
@@ -254,7 +254,7 @@ it('uses the saved scheduled run time instead of the restored tab creation time'
   expect(rows[0].runTime).toBe(Date.parse(createdAt))
 })
 
-it('resolves real schedule names for distinct runs, refuses ambiguous prefixes and identifies Pulse', () => {
+it('resolves real schedule names for distinct runs, refuses ambiguous prefixes and identifies Autopilot', () => {
   const id = 'schedule-cron--9db4dc39_1785164105108836000'
   const job = { id: '9db4dc39-a', name: 'News Briefing', workspace_path: 'Workflow/trading', preset_query_id: 'wf' } as any
   const input = {
@@ -266,7 +266,7 @@ it('resolves real schedule names for distinct runs, refuses ambiguous prefixes a
   const rows = sidebarChats({ ...input, jobs: [job] })
   expect(rows.find((row) => row.id === id)?.title).toBe('News Briefing')
   expect(rows.find((row) => row.id === id)?.runTime).toBe(1785164105108)
-  expect(rows.find((row) => row.id.includes('goallead'))?.title).toBe('Pulse')
+  expect(rows.find((row) => row.id.includes('goallead'))?.title).toBe('Autopilot')
   expect(sidebarChats({ ...input, jobs: [job, { ...job, id: '9db4dc39-b', name: 'Different job' }] }).find((row) => row.id === id)?.title).toBe('Trading · Scheduled run')
 })
 

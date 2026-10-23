@@ -36,7 +36,7 @@ afterEach(() => {
   setProductCommands([])
 })
 
-describe('Pulse slash commands', () => {
+describe('Autopilot slash commands', () => {
   it('uses one setup flow for new and existing goal setup names', () => {
     const setup = findCommand('setup-goals', 'workflow', 'workshop')
     expect(setup).toBeDefined()
@@ -48,7 +48,7 @@ describe('Pulse slash commands', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.stringContaining('Keep my existing targets'))
   })
 
-  it('runs the complete manual Pulse lifecycle through the scheduler backend', async () => {
+  it('runs the complete manual Autopilot lifecycle through the scheduler backend', async () => {
     runPulseMock.mockResolvedValueOnce({ run_id: 'manual-pulse-1' })
     const addToast = vi.fn()
     const command = findCommand('pulse', 'workflow')
@@ -63,7 +63,7 @@ describe('Pulse slash commands', () => {
     } as unknown as CommandContext)
 
     expect(runPulseMock).toHaveBeenCalledWith('Workflow/social-media')
-    expect(addToast).toHaveBeenCalledWith('Pulse started', 'success')
+    expect(addToast).toHaveBeenCalledWith('Autopilot started', 'success')
   })
 
   it('uses the chat workflow even when the file browser points elsewhere', async () => {
@@ -76,7 +76,7 @@ describe('Pulse slash commands', () => {
     expect(runPulseMock).toHaveBeenCalledExactlyOnceWith('Workflow/latency-report')
   })
 
-  it('does not run Pulse against a file browser folder when no workflow is open', async () => {
+  it('does not run Autopilot against a file browser folder when no workflow is open', async () => {
     runPulseMock.mockClear()
     const addToast = vi.fn()
     await findCommand('pulse', 'workflow')?.execute({
@@ -84,10 +84,10 @@ describe('Pulse slash commands', () => {
       addToast,
     } as unknown as CommandContext)
     expect(runPulseMock).not.toHaveBeenCalled()
-    expect(addToast).toHaveBeenCalledWith('Open a workflow before running Pulse', 'error')
+    expect(addToast).toHaveBeenCalledWith('Open a workflow before running Autopilot', 'error')
   })
 
-  it('has no slash command for recurring Pulse setup — it is a toolbar/popup toggle', () => {
+  it('has no slash command for recurring Autopilot setup — it is a toolbar/popup toggle', () => {
     const workflowCommand = findCommand('pulse-setup', 'workflow')
     const orgCommand = findCommand('pulse-setup', 'multi-agent')
 

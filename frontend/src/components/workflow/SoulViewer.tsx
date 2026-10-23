@@ -90,7 +90,7 @@ export function SoulViewer({ workspacePath, embedded = false, pulseSummary = fal
       <div className={`flex items-center justify-center p-6 text-center ${embedded ? 'min-h-40' : 'h-full'}`}>
         <div className="max-w-md text-sm text-muted-foreground">
           No soul yet — the workflow's north star. Run <code className="rounded bg-muted px-1">/setup-goals</code> to
-          confirm the <code className="rounded bg-muted px-1">## Objective</code> and <code className="rounded bg-muted px-1">## Success Criteria</code>. Then turn on Pulse from the toolbar if you want recurring review.
+          confirm the <code className="rounded bg-muted px-1">## Objective</code> and <code className="rounded bg-muted px-1">## Success Criteria</code>. Then turn on Autopilot from the toolbar if you want recurring review.
         </div>
       </div>
     )

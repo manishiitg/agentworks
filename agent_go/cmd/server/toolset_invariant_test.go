@@ -209,7 +209,7 @@ func TestToolSetInvariants(t *testing.T) {
 	//    runtime with "not callable in this chat session".
 	for _, n := range []string{"get_pulse_state", "resolve_run_concern"} {
 		if !pool[n] || cats[n] != "workflow" {
-			t.Fatalf("workflow pool missing Pulse state tool %q (in_pool=%v cat=%q)", n, pool[n], cats[n])
+			t.Fatalf("workflow pool missing Autopilot state tool %q (in_pool=%v cat=%q)", n, pool[n], cats[n])
 		}
 	}
 
@@ -250,7 +250,7 @@ func TestToolSetInvariants(t *testing.T) {
 	}
 	for _, n := range []string{"get_pulse_state", "resolve_run_concern", "mark_changelog_artifact_reviewed", "preview_step_runtime"} {
 		if run[n] {
-			t.Fatalf("run allow-list must not expose Builder/Pulse-only tool %q", n)
+			t.Fatalf("run allow-list must not expose Builder/Autopilot-only tool %q", n)
 		}
 	}
 }

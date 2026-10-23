@@ -110,7 +110,7 @@ Resources specify intent, not access grants: state one line each for
 or records and why, or `none`. The resource-intent validator accepts the old
 `Learnings:` label while existing workflows upgrade. Contract 1.0.51 copies old
 guides into workflow-local skills and repoints live references. Steps consume
-skills; Builder/Pulse maintain them. Configure knowledge-base grants and
+skills; Builder/Autopilot maintain them. Configure knowledge-base grants and
 `enabled_skills` consistently with the task.
 
 Write the Resources lines in plain words for the workflow's owner (AGENTS.md
@@ -151,7 +151,7 @@ knowledgebase as a decision or to a skill as a verified technique, or are
 deleted once the fix is in place. A repair after a failed run changes the rule,
 the item or the guide it concerns; it does not append a story to the charter.
 
-Put reusable methods in workflow-local skills: tool usage, selectors, API/authentication sequences, troubleshooting and verified techniques. Select the relevant skill through `enabled_skills` and name the needed reference. Do not assume a guide exists. Builder/Pulse maintain guides; no step learning phase runs.
+Put reusable methods in workflow-local skills: tool usage, selectors, API/authentication sequences, troubleshooting and verified techniques. Select the relevant skill through `enabled_skills` and name the needed reference. Do not assume a guide exists. Builder/Autopilot maintain guides; no step learning phase runs.
 
 For browser-test steps, describe the test outcome and any required live visibility.
 Keep library imports, setup, and lifecycle in the accessible
@@ -235,6 +235,6 @@ run summary and workflow notifications. The baseline includes send_email and
 send_slack_message for task-required sends, subject to actual connection/access
 gates; use human_feedback for a needed answer.
 Schema changes belong to Builder; external function-service work belongs to Crew.
-Goal metrics require a real soul objective, and Pulse questions also require Pulse
+Goal metrics require a real soul objective, and Autopilot questions also require Autopilot
 on. The runtime supplies bounded goal/position/parent context separately; do not
 repeat it in each sequence instruction.

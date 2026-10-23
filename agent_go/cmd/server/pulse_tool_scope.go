@@ -54,7 +54,7 @@ func (api *StreamingAPI) pulseToolScope(ctx context.Context, requestedWorkspace 
 		return "", nil, fmt.Errorf("this session has no workflow to act for")
 	}
 	if requested := strings.Trim(strings.TrimSpace(requestedWorkspace), "/"); requested != "" && path.Clean(requested) != workspacePath {
-		return "", nil, fmt.Errorf("workspace_path must be this workflow (%s); a Pulse tool cannot act for another workflow", workspacePath)
+		return "", nil, fmt.Errorf("workspace_path must be this workflow (%s); an Autopilot tool cannot act for another workflow", workspacePath)
 	}
 
 	userID := ""

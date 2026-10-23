@@ -446,7 +446,7 @@ type WorkflowNotificationConfig struct {
 
 const defaultRunSummaryInstructions = "Before external delivery, read prior run summaries with get_notification_history. Always record the current run summary in Activity. Send Slack, Gmail, or WhatsApp only when the current run contains a new materially important outcome, failure, recovery, blocker, decision, or threshold crossing compared with prior summaries. Ignore timestamps, routine counts, and wording-only differences. If nothing important changed, call record_summary with delivery=record_only."
 
-const defaultPulseSummaryInstructions = "Before external delivery, read prior Pulse summaries with get_notification_history and exclude the current pulse_run_id. The current Pulse reviewer results are already recorded in Activity. Send Slack, Gmail, or WhatsApp only for a new materially important finding, fix, recovery, blocker, unsafe backup/publish state, or decision requiring the user. Ignore timestamps and wording-only differences. When external delivery is warranted, call record_summary with kind=pulse_summary and delivery=deliver_only; otherwise do not send a Pulse notification."
+const defaultPulseSummaryInstructions = "Before external delivery, read prior Autopilot summaries with get_notification_history and exclude the current pulse_run_id. The current Autopilot reviewer results are already recorded in Activity. Send Slack, Gmail, or WhatsApp only for a new materially important finding, fix, recovery, blocker, unsafe backup/publish state, or decision requiring the user. Ignore timestamps and wording-only differences. When external delivery is warranted, call record_summary with kind=pulse_summary and delivery=deliver_only; otherwise do not send an Autopilot notification."
 
 func (c *WorkflowNotificationConfig) EffectiveRunSummaryInstructions() string {
 	if c == nil {
@@ -724,7 +724,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 		return fmt.Errorf("relay_output_step_id requires kind relay")
 	}
 	if m.Kind == "relay" && m.Pulse != nil && m.Pulse.Enabled {
-		return fmt.Errorf("Flows do not support Pulse")
+		return fmt.Errorf("Flows do not support Autopilot")
 	}
 	if m.Kind == "relay" && strings.TrimSpace(m.Capabilities.SlackConnectionID) != "" {
 		return fmt.Errorf("Flows do not support Slack connections")

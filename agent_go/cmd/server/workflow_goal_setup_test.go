@@ -109,21 +109,21 @@ func TestGoalSetupEndsWithPulse(t *testing.T) {
 	off := buildWorkflowGoalSetupStatus(ctx, ws, &WorkflowManifest{})
 	last := off.Checks[len(off.Checks)-1]
 	if last.ID != "pulse" || last.Done || last.Command != "" {
-		t.Fatalf("Pulse is the last, pending, chat-free check, got %+v", last)
+		t.Fatalf("Autopilot is the last, pending, chat-free check, got %+v", last)
 	}
 	if off.Complete || off.Next == nil || off.Next.ID == "pulse" {
-		t.Fatalf("Pulse must not come before the steps it follows (metrics are not set): %+v", off)
+		t.Fatalf("Autopilot must not come before the steps it follows (metrics are not set): %+v", off)
 	}
 
 	on := buildWorkflowGoalSetupStatus(ctx, ws, &WorkflowManifest{Pulse: &WorkflowPulseConfig{Enabled: true}})
 	if !on.Checks[len(on.Checks)-1].Done {
-		t.Fatalf("an enabled Pulse counts as done: %+v", on.Checks)
+		t.Fatalf("an enabled Autopilot counts as done: %+v", on.Checks)
 	}
 
 	relay := buildWorkflowGoalSetupStatus(ctx, ws, &WorkflowManifest{Kind: "relay"})
 	for _, check := range relay.Checks {
 		if check.ID == "pulse" {
-			t.Fatal("a Relay has no Pulse step")
+			t.Fatal("a Relay has no Autopilot step")
 		}
 	}
 }

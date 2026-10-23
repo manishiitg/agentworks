@@ -74,7 +74,7 @@ func GoalLeadSlackTarget(base SlackTarget) SlackTarget {
 	target := base
 	target.Ref.Agent = SlackGoalLeadAgent
 	target.Slug = base.Slug + SlackGoalLeadSlugSuffix
-	target.Label = strings.TrimSpace(firstNonEmptyString(base.Label, base.Slug) + " Pulse")
+	target.Label = strings.TrimSpace(firstNonEmptyString(base.Label, base.Slug) + " Autopilot")
 	target.Legacy = false
 	return target
 }

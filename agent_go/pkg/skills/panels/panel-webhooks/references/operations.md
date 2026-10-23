@@ -12,5 +12,5 @@
   secret or raw delivery payload into `workflow.json`, chat instructions, logs,
   or source files.
 - project triggers do not select or execute AgentWorks routes, steps, phases,
-  Pulse, or workflow runs. Use an AgentWorks workflow webhook when those
+  Autopilot, or workflow runs. Use an AgentWorks workflow webhook when those
   orchestration semantics are required.

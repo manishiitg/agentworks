@@ -39,13 +39,13 @@ func TestPulsePermissionsIsEnforcedAtToolDispatch(t *testing.T) {
 
 	// run=ask: execute_step is refused and points at a decision request.
 	_, err := inTurn(`{"pulse":{"enabled":false}}`, "execute_step")
-	if err == nil || !strings.Contains(err.Error(), "Pulse is off") {
+	if err == nil || !strings.Contains(err.Error(), "Autopilot is off") {
 		t.Fatalf("execute_step with run=ask must be refused with a decision-request hint, got %v", err)
 	}
 	// Delegating an execution is also a run, including a typed function.
 	for _, tool := range []string{"call_function", "run_project_workflow"} {
 		if _, err := inTurn(`{"pulse":{"enabled":false}}`, tool); err == nil {
-			t.Fatalf("%s bypassed Pulse run authority", tool)
+			t.Fatalf("%s bypassed Autopilot run authority", tool)
 		}
 	}
 	// run=auto (also the default): allowed.
@@ -65,7 +65,7 @@ func TestPulsePermissionsIsEnforcedAtToolDispatch(t *testing.T) {
 		t.Fatalf("outward=ask must reach the tool as held, err=%v", err)
 	}
 	for _, tool := range []string{"send_message", "ask_builder", "schedule_message_wakeup", "create_human_input_request", "record_goal_observations", "send_email", "delete_schedule", "execute_shell_command", "brain_access", "new_future_write_tool"} {
-		if _, err := inTurn(`{"pulse":{"enabled":false}}`, tool); err == nil || !strings.Contains(err.Error(), "Pulse is off") {
+		if _, err := inTurn(`{"pulse":{"enabled":false}}`, tool); err == nil || !strings.Contains(err.Error(), "Autopilot is off") {
 			t.Fatalf("OFF tool %s escaped: %v", tool, err)
 		}
 	}
@@ -124,7 +124,7 @@ func TestPulsePermissionsHoldsOnTheSessionHTTPToolRoute(t *testing.T) {
 	if _, err := updateStep(context.Background(), map[string]interface{}{}); err == nil {
 		t.Fatal("change=ask: a direct update_step must be refused")
 	}
-	if out := viaHTTP(); out.Success || !strings.Contains(out.Error, "Pulse is off") {
+	if out := viaHTTP(); out.Success || !strings.Contains(out.Error, "Autopilot is off") {
 		t.Fatalf("change=ask: update_step over the HTTP tool route must be refused, got %+v", out)
 	}
 	release()

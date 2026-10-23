@@ -96,7 +96,7 @@
     },
     {
       "id": "pulse",
-      "label": "Pulse",
+      "label": "Autopilot",
       "actions": [
         "open",
         "refresh"

@@ -2,19 +2,19 @@
 
 Outcome measurement is produced by ordinary workflow steps, not a mandated
 route or table. Any normal step may produce a
-run-scoped, evidence-backed measurement. Pulse does not depend on which step
+run-scoped, evidence-backed measurement. Autopilot does not depend on which step
 or route produced it.
 
-### Builder and Pulse share the measurement
+### Builder and Autopilot share the measurement
 
 Builder chooses a meaningful primary outcome and implements its measurement;
-Pulse checks whether that choice actually represents `soul.md`, inspects DB
+Autopilot checks whether that choice actually represents `soul.md`, inspects DB
 history and challenges weak sources, missing readings or incompatible comparisons.
 Use `get_goal_metrics` together. Agree the formula/definition, source method,
 unit, fixed dimension/environment scope, point-in-time or period window,
 collection cadence, freshness and evidence needed to verify the number.
-Builder asks Pulse for goal context when uncertain; Pulse uses `ask_builder`
-for implementation or repair when Pulse is ON and within its outward-action setting. Verify the
+Builder asks Autopilot for goal context when uncertain; Autopilot uses `ask_builder`
+for implementation or repair when Autopilot is ON and within its outward-action setting. Verify the
 result through real source-backed DB readings and history, then record the
 agreed meaning, baseline and remaining gaps in goal memory. Setup alone is not
 verified measurement. Do not invent a target or silently change goal meaning.
@@ -47,7 +47,7 @@ verified measurement. Do not invent a target or silently change goal meaning.
   Existing workflow tables stay the source of truth; do not copy their values
   into a second metrics store.
 - Add `record_goal_observations` to that producer only when the value should
-  enter Pulse's generic goal-progress history (definitions via
+  enter Autopilot's generic goal-progress history (definitions via
   `configure_goal_metrics`, reads via `get_goal_metrics`).
 - Put route-specific measurements in existing route-local steps.
 - Use a shared convergence step only when multiple routes genuinely require
@@ -77,15 +77,15 @@ as are retired `costs/evaluation/` ledgers and retired `eval_results` rows,
 unless a separate cleanup migration is approved. Never write to them; never let
 a new measurement depend on them.
 
-### Pulse-enabled workflows only
+### Autopilot-enabled workflows only
 
-Automatic measurement upgrades apply only when this workflow's Pulse is enabled.
+Automatic measurement upgrades apply only when this workflow's Autopilot is enabled.
 The backend exposes `measurement_upgrade` only for enabled workflows. On the next
-Pulse check, Builder and Pulse review the indicated gaps, migrate the necessary
-ordinary producing steps within current Pulse permissions, preserve history and verify
+Autopilot check, Builder and Autopilot review the indicated gaps, migrate the necessary
+ordinary producing steps within current Autopilot permissions, preserve history and verify
 new DB readings. Reuse any pending migration conversation/work; do not start
 duplicate repair runs. Disabled workflows keep their steps and metric definitions
-untouched. Enabling Pulse later makes this check eligible then; a prior disabled
+untouched. Enabling Autopilot later makes this check eligible then; a prior disabled
 state is not a completed measurement migration. This is a targeted measurement
 migration, not a global workflow-version bump or a reason to block normal runs.
 A valid unavailable outcome needs source recovery, not a format rewrite.

@@ -1535,8 +1535,8 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource stri
 	}
 	sched := WorkflowSchedule{
 		ID:             manualWorkflowPulseScheduleID,
-		Name:           "Run Pulse",
-		Description:    "One-off Pulse review of the latest retained run; not persisted as a schedule",
+		Name:           "Run Autopilot",
+		Description:    "One-off Autopilot review of the latest retained run; not persisted as a schedule",
 		ScheduleType:   "cron",
 		CronExpression: "",
 		Timezone:       "UTC",
@@ -1574,7 +1574,7 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource stri
 	state := s.getRuntimeStateLocked(runtimeKey)
 	if state.LastStatus == "running" {
 		s.runtimeStatesMu.Unlock()
-		return "", fmt.Errorf("Pulse run is already active (session: %s)", state.LastSessionID)
+		return "", fmt.Errorf("Autopilot run is already active (session: %s)", state.LastSessionID)
 	}
 	if _, otherSession := runningScheduleInSetLocked(s.runtimeStates, workflowRuntimeKeys, runtimeKey); otherSession != "" {
 		s.runtimeStatesMu.Unlock()
@@ -1600,7 +1600,7 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource stri
 	go func() {
 		defer s.cleanupRemovedScheduleRuntimeState(runtimeKey)
 		if _, runErr := s.runJob(runCtx, sctx, runID); runErr != nil {
-			scheduleLogf("[SCHEDULER] Pulse-only run (%s) failed for %s: %v", triggerSource, workspacePath, runErr)
+			scheduleLogf("[SCHEDULER] Autopilot-only run (%s) failed for %s: %v", triggerSource, workspacePath, runErr)
 		}
 	}()
 
@@ -2529,7 +2529,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	}
 	startReason := "workflow execution starting"
 	if sctx.PulseOnly {
-		startReason = "Pulse cycle starting; workflow execution is skipped"
+		startReason = "Autopilot cycle starting; workflow execution is skipped"
 	}
 	s.transitionScheduleRun(ctx, sctx, schedulerstate.Transition{
 		RunID:  runID,
@@ -2597,7 +2597,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	finishedReason := "workflow execution finished with status " + status
 	finishedSessionKind := "workflow"
 	if sctx.PulseOnly {
-		finishedReason = "Pulse cycle prepared with status " + status + "; workflow execution was skipped"
+		finishedReason = "Autopilot cycle prepared with status " + status + "; workflow execution was skipped"
 		finishedSessionKind = "pulse"
 	}
 	s.transitionScheduleRun(persistenceCtx, sctx, schedulerstate.Transition{
@@ -2655,7 +2655,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 						pulseEvidenceStatus = sctx.PulseEvidenceRunStatus
 					}
 					s.transitionScheduleRun(ctx, sctx, schedulerstate.Transition{
-						RunID: runID, To: schedulerstate.StatePulseRunning, Reason: "continuing Pulse goal check started", SessionID: sessionID, SessionKind: "pulse", At: time.Now().UTC(),
+						RunID: runID, To: schedulerstate.StatePulseRunning, Reason: "continuing Autopilot goal check started", SessionID: sessionID, SessionKind: "pulse", At: time.Now().UTC(),
 					})
 					pulseResult = s.runPulseLifecycle(ctx, sctx, effectiveSchedulePulseMode(sctx, manifest), pulseEvidenceStatus, runFolder, sessionID, runID, errMsg)
 				}
@@ -2689,7 +2689,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	} else if terminalState == schedulerstate.StatePartial {
 		overallStatus = "partial"
 		if overallError == "" {
-			overallError = "Pulse completed partially"
+			overallError = "Autopilot completed partially"
 		}
 	}
 	// Runtime state measures the complete scheduled job, including post-run
@@ -2716,7 +2716,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	})
 	terminalReason := "scheduled run finished with status " + overallStatus
 	if sctx.PulseOnly {
-		terminalReason = "one-off Pulse finished with status " + overallStatus + "; workflow execution was skipped"
+		terminalReason = "one-off Autopilot finished with status " + overallStatus + "; workflow execution was skipped"
 	}
 	s.transitionScheduleRun(persistenceCtx, sctx, schedulerstate.Transition{
 		RunID: runID, To: terminalState, Reason: terminalReason,
@@ -2771,7 +2771,7 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 	for _, step := range afterRunHousekeepingSteps(scheduleRunID, sctx.AfterRunBackup, sctx.AfterRunPublish) {
 		req := cloneStringInterfaceMap(s.buildWorkshopRequest(ctx, sctx, scheduleRunID))
 		markPulseLifecycleTurn(req)
-		req["query"] = pulseLifecycleIntro("A run finished; do only its selected backup and publish. This is not a Pulse pass", sctx.WorkspacePath, sessionID, runStatus, runFolder) + "\n\n" + step.query + s.prepareWorkflowDatabaseBackupSnapshot(ctx, sctx)
+		req["query"] = pulseLifecycleIntro("A run finished; do only its selected backup and publish. This is not an Autopilot pass", sctx.WorkspacePath, sessionID, runStatus, runFolder) + "\n\n" + step.query + s.prepareWorkflowDatabaseBackupSnapshot(ctx, sctx)
 		if err := s.api.startSessionInternal(ctx, req, sessionID, sctx.OwnerUserID, nil); err != nil {
 			s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping unfinished: %v", err)
 			if errors.Is(err, context.Canceled) || errors.Is(err, errWorkshopSequenceInterrupted) {
@@ -2860,7 +2860,7 @@ type pulseLifecycleStepRunResult struct {
 }
 
 func pulseLifecycleIntro(contextSummary, workspacePath, pulseRunID, runStatus, runFolder string) string {
-	return fmt.Sprintf("PULSE RUN CONTEXT. %s. workspace_path=%q, pulse_run_id=%q, evidence_status=%q, run_folder=%q. This is one continuing Pulse conversation. Do only the selected after-run housekeeping, keep statuses truthful and then stop. Goal checks and improvements belong to the continuing Pulse conversation, not this turn.",
+	return fmt.Sprintf("PULSE RUN CONTEXT. %s. workspace_path=%q, pulse_run_id=%q, evidence_status=%q, run_folder=%q. This is one continuing Autopilot conversation. Do only the selected after-run housekeeping, keep statuses truthful and then stop. Goal checks and improvements belong to the continuing Autopilot conversation, not this turn.",
 		contextSummary, workspacePath, pulseRunID, runStatus, runFolder)
 }
 
@@ -2918,7 +2918,7 @@ func afterRunHousekeepingSteps(runID string, backup, publish bool) []pulseLifecy
 		actions = append(actions, "(publish) independently of whether backup succeeded, publish workflow.json's publish.targets other than \"pulse\" (the run's own report) following publish-strategy.md, exactly as an ordinary run would, and report its actual result in the run chat. Never suppress a valid report publish merely because backup was partial or failed")
 	}
 	return []pulseLifecycleStep{{label: "finalize", query: fmt.Sprintf(
-		"AFTER-RUN HOUSEKEEPING. run_id=%q. This run's after-run options asked for this, and the platform found something to do. This is not a Pulse pass: do not run Gate, reviewers or Fixer, do not present old Pulse findings, do not notify (the platform sends the run summary itself), and do not write builder/improve.html.\n\n"+
+		"AFTER-RUN HOUSEKEEPING. run_id=%q. This run's after-run options asked for this, and the platform found something to do. This is not an Autopilot pass: do not run Gate, reviewers or Fixer, do not present old Autopilot findings, do not notify (the platform sends the run summary itself), and do not write builder/improve.html.\n\n"+
 			"Do only these, in order: %s. Report what actually happened, including any failure and what could not be verified, in the run chat. Then stop.",
 		runID, strings.Join(actions, "; "),
 	)}}
@@ -3041,7 +3041,7 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	}
 	messages := scheduledWorkshopMessages(sctx)
 	if sctx.WebhookInput != nil {
-		messages[0] += " " + webhookRunInputInstruction(webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)) + " This is an isolated webhook invocation. Execute only the saved workflow binding. Do not run Pulse, reviewers, post-run backup, publish, or maintenance. Stop after reporting the run result."
+		messages[0] += " " + webhookRunInputInstruction(webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)) + " This is an isolated webhook invocation. Execute only the saved workflow binding. Do not run Autopilot, reviewers, post-run backup, publish, or maintenance. Stop after reporting the run result."
 	}
 	runFolder := "iteration-0"
 	if strings.TrimSpace(sctx.ScheduledRunFolder) != "" {
@@ -3274,10 +3274,10 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	sctx.ProducedRunEvidence = workshopRunProducedEvidence(preRunFolderNames, postRunFolders, invocationStartedAt)
 	if !sctx.ProducedRunEvidence && s.scheduledWorkflowExecutionProducedEvidence(sessionID, invocationStartedAt) {
 		sctx.ProducedRunEvidence = true
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] the schedule's linked workflow execution receipt is this invocation's authoritative Pulse evidence")
+		s.sessionLogf(sctx, sessionID, "[SCHEDULER] the schedule's linked workflow execution receipt is this invocation's authoritative Autopilot evidence")
 	}
 	if !sctx.ProducedRunEvidence {
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] no run folder was created or restarted during this invocation for %s; Pulse evidence-dependent stages will be skipped", sctx.Schedule.ID)
+		s.sessionLogf(sctx, sessionID, "[SCHEDULER] no run folder was created or restarted during this invocation for %s; Autopilot evidence-dependent stages will be skipped", sctx.Schedule.ID)
 		// A plain workflow schedule exists to run the workflow; finishing its
 		// turns without starting a run is a failure, not a success (for example
 		// the agent refused or misread the scheduled message). Schedules with
@@ -3372,13 +3372,13 @@ func (s *SchedulerService) preserveRunEvidenceAfterFailedTurn(ctx context.Contex
 		folders = scheduleInvocationFolders(folders, sctx.ScheduledRunFolder, sctx.ScheduledRunFolder != "")
 		if workshopRunStartedDuringInvocation(folders, since) {
 			sctx.ProducedRunEvidence = true
-			s.sessionLogf(sctx, sessionID, "[SCHEDULER] turn failed for %s, but a full workflow run started during this invocation and its own metadata is the authority; preserving run evidence for Pulse", sctx.Schedule.ID)
+			s.sessionLogf(sctx, sessionID, "[SCHEDULER] turn failed for %s, but a full workflow run started during this invocation and its own metadata is the authority; preserving run evidence for Autopilot", sctx.Schedule.ID)
 			return
 		}
 	}
 	if s.scheduledWorkflowExecutionProducedEvidence(sessionID, since) {
 		sctx.ProducedRunEvidence = true
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] turn failed for %s, but a linked workflow execution started during this invocation; preserving run evidence for Pulse", sctx.Schedule.ID)
+		s.sessionLogf(sctx, sessionID, "[SCHEDULER] turn failed for %s, but a linked workflow execution started during this invocation; preserving run evidence for Autopilot", sctx.Schedule.ID)
 	}
 }
 

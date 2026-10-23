@@ -68,7 +68,7 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 
 	mu.Lock()
 	if len(sessions) != 2 || sessions[0] != sessions[1] || !isGoalLeadSessionID(sessions[0]) {
-		t.Fatalf("sessions = %v, want one Pulse conversation on both days", sessions)
+		t.Fatalf("sessions = %v, want one Autopilot conversation on both days", sessions)
 	}
 	if requests[1]["restored_conversation_session_id"] != sessions[0] || requests[1]["pulse_lifecycle_turn"] != true {
 		t.Fatalf("day 2 must resume the conversation: %v", requests[1])
@@ -97,7 +97,7 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 	// Call the same send boundary used by explicit replies, not ask_pulse's gate.
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerUser, ID: "owner"}, Label: "External agent"}
 	target := triggerTarget{Kind: triggerCallerWorkflow, Path: ws, Manifest: manifest, Chat: &codeChat{Key: pulseBuilderChatKey, SessionID: sessions[0]}}
-	if receipt, err := env.api.sendAgentMessage(internalBotRequestContext(ctx, "owner"), "owner", caller, target, "Do not deliver", "", "pulse-off-send"); err == nil || receipt != nil || !strings.Contains(err.Error(), "Pulse is off") {
+	if receipt, err := env.api.sendAgentMessage(internalBotRequestContext(ctx, "owner"), "owner", caller, target, "Do not deliver", "", "pulse-off-send"); err == nil || receipt != nil || !strings.Contains(err.Error(), "Autopilot is off") {
 		t.Fatalf("OFF accepted inbox mail: %v %v", receipt, err)
 	}
 

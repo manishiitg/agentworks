@@ -21,5 +21,5 @@ export const panelSearchAliases: Record<string, string> = {
   context: 'Context overview', identity: 'Identity settings purpose instructions',
   mcp: 'Connections Use & share sharing people channels Integrations MCP apps tools secrets tools & secrets Apps & tools MCPs & secrets', memory: 'Memory skills',
   workshop: 'Automation schedules webhooks watchers bots chats', schedules: 'Automation',
-  pulse: 'Pulse automatic reviews', 'execution-logs': 'Execution logs run history',
+  pulse: 'Autopilot automatic reviews', 'execution-logs': 'Execution logs run history',
 }

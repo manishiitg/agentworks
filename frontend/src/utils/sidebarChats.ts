@@ -352,7 +352,7 @@ export function sidebarChats({
     const match = row.id.match(/^schedule-[^-]+--([^_]+)_(\d+)$/)
     const pulse = pulseTurnDisplayText(row.history?.query || row.activity?.query || '')
     if (/^schedule-goallead--/.test(row.id) || pulse) {
-      row.title = pulse && pulse !== 'Pulse turn' ? pulse.replace(/^Pulse:/, 'Pulse ·') : 'Pulse'
+      row.title = pulse && pulse !== 'Autopilot turn' ? pulse.replace(/^Pulse:/, 'Autopilot ·') : 'Autopilot'
       row.scheduled = true
       if (!row.runTime && match && match[2].length >= 16)
         row.runTime = Math.floor(Number(match[2]) / 1e6)

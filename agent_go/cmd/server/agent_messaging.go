@@ -983,7 +983,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 					return dest.Session, fmt.Errorf("message participant no longer has team access")
 				}
 				if endpoint.ChatKey == pulseBuilderChatKey && endpoint.UserID != current.Team.LeaderID {
-					return dest.Session, fmt.Errorf("Pulse ownership changed; create a new contact")
+					return dest.Session, fmt.Errorf("Autopilot ownership changed; create a new contact")
 				}
 			}
 		}
@@ -1143,11 +1143,11 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		ctx = context.WithValue(ctx, agentMessageAdmissionKey{}, func(receivingSession string) (func(), error) {
 			manifest, found, readErr := ReadWorkflowManifest(ctx, source.Path)
 			if readErr != nil || !found || manifest == nil || manifest.ID != source.ID || !manifest.PulseEnabled() {
-				return nil, fmt.Errorf("sending Pulse is disabled")
+				return nil, fmt.Errorf("sending Autopilot is disabled")
 			}
 			current, readErr := ensureGoalLeadConversation(ctx, source.Path, manifest.ID, time.Now().UTC(), false, nil)
 			if readErr != nil || current.SessionID != source.Session {
-				return nil, fmt.Errorf("sending Pulse conversation was replaced")
+				return nil, fmt.Errorf("sending Autopilot conversation was replaced")
 			}
 			// The sending workflow owns this authority, including when it
 			// delegates to a Crew with a different workspace.

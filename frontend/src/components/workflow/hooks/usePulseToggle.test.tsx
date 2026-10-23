@@ -13,7 +13,7 @@ it('enables reviews without goal setup and reports save failures', async () => {
   await act(async()=>root.render(<Probe />))
   await act(async()=>state.toggleMonitor())
   expect(update).toHaveBeenCalledExactlyOnceWith('Workflow/example',{pulse_enabled:true})
-  expect(notify).toHaveBeenLastCalledWith('Pulse turned on','success')
+  expect(notify).toHaveBeenLastCalledWith('Autopilot turned on','success')
   expect(state.monitorSaving).toBe(false)
   update.mockRejectedValueOnce(new Error('Owner access required'))
   await act(async()=>state.toggleMonitor())

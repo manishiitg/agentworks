@@ -4,7 +4,7 @@
 
 ## FIRST — would you build this from scratch?
 
-For a targeted Pulse check, use only the relevant parts; do not repeat a full design review.
+For a targeted Autopilot check, use only the relevant parts; do not repeat a full design review.
 
 Before the detailed review, read soul/soul.md, the plan and what the workflow has produced, and answer in plain words, knowing what the owner wants today: *would you build this workflow this way from scratch?* Give the person:
 1. What the workflow is for, in one line.
@@ -25,7 +25,7 @@ List evidence-backed findings by severity, with the affected step or artifact, e
 
 Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumption-audit.md"}])` and apply its plan/design lens. Challenge inferred architecture, channels, thresholds, cadence, routes and step boundaries that cap the goal; preserve explicit user constraints. Use the existing owner-decision tools only when a real decision is required.
 
-{{if eq .WorkshopMode "run"}}Run mode returns the review in chat; workflow design changes belong with Builder.{{else}}Record useful unresolved recommendations through existing typed Pulse finding tools, reusing matching findings. Propose changes without applying them during this review.{{end}} Canonical detail lives in the step-types / plan-design reference and `read_skill(skills=[{"name":"builder-reference","path":"references/stores.md"}])`; cite them instead of repeating them.{{if .Focus}} Focus especially on: {{.Focus}}.{{end}}
+{{if eq .WorkshopMode "run"}}Run mode returns the review in chat; workflow design changes belong with Builder.{{else}}Record useful unresolved recommendations through existing typed Autopilot finding tools, reusing matching findings. Propose changes without applying them during this review.{{end}} Canonical detail lives in the step-types / plan-design reference and `read_skill(skills=[{"name":"builder-reference","path":"references/stores.md"}])`; cite them instead of repeating them.{{if .Focus}} Focus especially on: {{.Focus}}.{{end}}
 
 ## The mental model to design against (current)
 
@@ -77,7 +77,7 @@ Wrong-store usage is the most common silent design error. Check each step's acce
 
 - **db/db.sqlite — WHAT this run produced.** State, results, rows, plus durable assets under `db/assets/` (with a metadata row). Every workflow step receives managed read-write access: agentic steps use `query_workflow_db` / `mutate_workflow_db`, while saved scripted code uses `$DB_PATH`. This is the source of truth — results go here, not into files.
 - **knowledgebase/ — reusable DOMAIN knowledge across runs.** Business facts, product/catalog info, portal quirks-as-notes, and user-supplied runtime context/preferences/rules (put those in `knowledgebase/context/context.md`). `knowledgebase_access` defaults to `read`; writing is the opt-in — set write access and put any required notes contribution in the task itself. No automatic closing turn runs. NOT for run results (db) and NOT for execution mechanics (skills).
-- **skills/<name>/ — target-specific HOW to do the task.** Reusable methods live behind a short skill index and targeted references. Builder/Pulse maintain these files; steps consume selected `enabled_skills`. Shared AgentWorks mechanics belong only to platform guidance/tool schemas. Existing workflow guides migrate explicitly through contract 1.0.51, with preserved contents and history. No separate learning store or post-run learning turn remains.
+- **skills/<name>/ — target-specific HOW to do the task.** Reusable methods live behind a short skill index and targeted references. Builder/Autopilot maintain these files; steps consume selected `enabled_skills`. Shared AgentWorks mechanics belong only to platform guidance/tool schemas. Existing workflow guides migrate explicitly through contract 1.0.51, with preserved contents and history. No separate learning store or post-run learning turn remains.
 - **soul.md** — the workflow's long-term purpose/persona (Workshop-maintained). Reference it for "what is this workflow for."
 
 Decision rule to surface to the user: *results/state → db; cross-run business knowledge → kb; cross-run execution mechanics → skills.* If a step writes results into kb/skills, or tries to keep "how to log in" in the db, flag it.
@@ -112,4 +112,4 @@ For each recommendation give: **what's there now** (one quoted sentence), **what
 PART 7 — PRIORITIES
 Close with a severity-ordered priority list across both the critical review and design synthesis. Include every evidence-backed finding; distinguish `now`, `next`, and `watch` so the user can act without losing lower-priority evidence. Also include a short "decisions that look sound" list so the user knows what not to churn.
 
-{{if eq .WorkshopMode "run"}}Return the combined review in chat. Ask Builder for any workflow design changes.{{else}}Record unresolved recommendations through existing typed Pulse finding tools, reusing matching findings. Include the evidence, priority and proposed fix; do not apply recommendations during the review.{{end}}
+{{if eq .WorkshopMode "run"}}Return the combined review in chat. Ask Builder for any workflow design changes.{{else}}Record unresolved recommendations through existing typed Autopilot finding tools, reusing matching findings. Include the evidence, priority and proposed fix; do not apply recommendations during the review.{{end}}

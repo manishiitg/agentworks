@@ -99,7 +99,7 @@ func buildWorkflowGoalSetupStatus(ctx context.Context, workspacePath string, man
 	// Pulse is the last step: it takes over the goal once the rest exists.
 	if manifest != nil && manifest.Kind != "relay" {
 		pulseDone := manifest.PulseEnabled()
-		checks = append(checks, workflowGoalSetupCheck{ID: "pulse", Label: "Pulse", Done: pulseDone})
+		checks = append(checks, workflowGoalSetupCheck{ID: "pulse", Label: "Autopilot", Done: pulseDone})
 		complete = complete && pulseDone
 	}
 	status := workflowGoalSetupStatus{Checks: checks, Playbooks: playbooks, Complete: complete}

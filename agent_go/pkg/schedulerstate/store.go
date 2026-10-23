@@ -201,7 +201,7 @@ func (s *Store) init(ctx context.Context) error {
 		)`,
 		// Retired stages cannot resume. Keep their history, release their locks,
 		// and replace the old partial index so current Pulse rows are covered.
-		`UPDATE schedule_runs SET state='interrupted',completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),error_message='Retired Pulse stage interrupted during upgrade' WHERE state IN ('pulse_gate','pulse_modules','pulse_finalizing')`,
+		`UPDATE schedule_runs SET state='interrupted',completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),error_message='Retired Autopilot stage interrupted during upgrade' WHERE state IN ('pulse_gate','pulse_modules','pulse_finalizing')`,
 		`DROP INDEX IF EXISTS idx_schedule_runs_active_lock`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_runs_active_lock
 			ON schedule_runs(lock_key)

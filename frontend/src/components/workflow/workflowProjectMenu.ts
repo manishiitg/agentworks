@@ -33,7 +33,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   }
   if (relayMode) add('flow', 'Use', 'Runs', History, 'calls')
   else {
-    add('pulse', 'Use', pulseEnabled ? 'Pulse' : 'Turn Pulse on', PulseIcon)
+    add('pulse', 'Use', pulseEnabled ? 'Autopilot' : 'Turn Autopilot on', PulseIcon)
     add('human-actions', 'Use', 'Decisions', Hand)
     add('browser', 'Use', 'Browser', Monitor)
   }

@@ -34,8 +34,8 @@ profile:
   commands:
     # The old reviewer commands (/run-goal-work, /strategy-auditor,
     # /goal-advisor, /run-technical-review, /pulse-review*, /run-architecture-review)
-    # are gone: the Pulse agent owns the goal and there are no separate
-    # reviewers (owner, 2026-10-08). Ask Pulse with #pulse in the Builder chat.
+    # are gone: the Autopilot agent owns the goal and there are no separate
+    # reviewers (owner, 2026-10-08). Ask Autopilot with #pulse in the Builder chat.
     - name: design-plan
       description: Would you build this again today? Review the plan and suggest a simpler one
       icon: git-branch
@@ -134,7 +134,7 @@ chat_policy:
     # The owner (or an editor) over MCP is the same Builder as on the website.
     external_builder: *builder_capabilities
     interactive: *builder_capabilities
-    # Unattended execution and post-run Pulse share the same authority.
+    # Unattended execution and post-run Autopilot share the same authority.
     # Neither stage admits connection/user/bot management or live workspace UI.
     scheduled: &scheduled_capabilities [plan_authoring, report_authoring, secret_management, knowledgebase_maintenance, improvement_proposals, workflow_suggestions]
     pulse: *scheduled_capabilities
@@ -143,13 +143,13 @@ chat_policy:
     notification: *builder_capabilities
   read_only: [workspace_ui, bot_management, workflow_suggestions, mcp_inspection]
 
-# The workflow Pulse agent (PLAT-697): it reads the workflow, keeps its own
+# The workflow Autopilot agent (PLAT-697): it reads the workflow, keeps its own
 # records and talks to the Builder chat (ask_builder), which runs and changes
-# things within Pulse's permission levels. These are the only tools it gets,
+# things within Autopilot's permission levels. These are the only tools it gets,
 # and the only workflow folders it may write; the rest is read-only to it.
 # execute_shell_command stays because a coding CLI reaches its tools through it.
 pulse:
-  # Pulse's own skill pack ("pulse"), loaded with read_skill(name="pulse").
+  # Autopilot's own skill pack ("pulse"), loaded with read_skill(name="pulse").
   skills:
     - goal-lead-inspect
     - goal-lead-measure
@@ -157,7 +157,7 @@ pulse:
     - goal-lead-experiment
     - goal-lead-costs
     - goal-lead-architecture
-    # The Builder's design guides, read-only knowledge so Pulse judges the
+    # The Builder's design guides, read-only knowledge so Autopilot judges the
     # plan and directs the Builder precisely (owner, 2026-10-08).
     - measurement-plan
     - plan-design

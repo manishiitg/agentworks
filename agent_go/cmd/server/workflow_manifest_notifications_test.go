@@ -111,7 +111,7 @@ func TestNotificationInstructionsDefaultToMaterialTransitions(t *testing.T) {
 		t.Fatalf("run default does not require history-aware quiet delivery: %q", got)
 	}
 	if got := pulseSummaryInstructionsOrDefault(config); !strings.Contains(got, "get_notification_history") || !strings.Contains(got, "deliver_only") {
-		t.Fatalf("Pulse default does not require history-aware external delivery: %q", got)
+		t.Fatalf("Autopilot default does not require history-aware external delivery: %q", got)
 	}
 
 	custom := &WorkflowNotificationConfig{
@@ -122,6 +122,6 @@ func TestNotificationInstructionsDefaultToMaterialTransitions(t *testing.T) {
 		t.Fatalf("run custom instruction = %q", got)
 	}
 	if got := custom.EffectivePulseSummaryInstructions(); got != "Never send externally." {
-		t.Fatalf("Pulse custom instruction = %q", got)
+		t.Fatalf("Autopilot custom instruction = %q", got)
 	}
 }

@@ -71,7 +71,7 @@ func externalTools() ([]externalTool, error) {
 		}
 		p := page()
 		p["query"] = externalString("Filter workflow labels and IDs.")
-		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and Pulse state only. Pass false for every workflow's full manifest (tens of thousands of characters); get_workflow returns one manifest."}
+		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and Autopilot state only. Pass false for every workflow's full manifest (tens of thousands of characters); get_workflow returns one manifest."}
 		externalAgentMessageDefinition(add)
 		externalServerProductDefinitions(add)
 		add("list_workflows", "List workflows visible to the signed-in user (compact by default; compact: false adds every manifest).", false, false, p)

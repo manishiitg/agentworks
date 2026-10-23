@@ -3,10 +3,10 @@ package events
 import "testing"
 
 func TestDeliveredAgentAttributionIsScopedAndDurable(t *testing.T) {
-	const session, text = "chat-delivery", "[Agent message from Pulse] a request"
+	const session, text = "chat-delivery", "[Agent message from Autopilot] a request"
 	store := openClientMessageTestStore(t, session)
 	clear := store.ExpectAgentMessageSender(session, text, map[string]interface{}{
-		"source": "agent_message", "sender_label": "Pulse", "display_content": "a request",
+		"source": "agent_message", "sender_label": "Autopilot", "display_content": "a request",
 		"agent_message_inbox": "inbox-test", "message_id": "msg-test",
 	})
 	child := journalTestEvent("child", text)

@@ -30,7 +30,7 @@ type stepConfigToolRuntime interface {
 const updateStepConfigToolDescription = "Update planning/step_config.json for a specific workflow step. Changes take effect on the next execute_step or run_full_workflow call. To REMOVE a field (so the step falls back to preset/default behavior where that field has a fallback, or removes the explicit setting otherwise), list its name in clear_fields — sending null in a value field does NOT clear; it's ignored."
 
 func getUpdateStepConfigParameters() map[string]interface{} {
-	lockCodeDescription := "If true, the Builder's own execute_step also stops rewriting the saved main.py (no repair loop). Runs never rewrite a script whatever this says: a run executes the saved main.py and fails on its error, which Pulse reports. Only applies to scripted steps."
+	lockCodeDescription := "If true, the Builder's own execute_step also stops rewriting the saved main.py (no repair loop). Runs never rewrite a script whatever this says: a run executes the saved main.py and fails on its error, which Autopilot reports. Only applies to scripted steps."
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
@@ -100,7 +100,7 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 			},
 			"review_notes": map[string]interface{}{
 				"type":        "string",
-				"description": "Free-form rationale covering why the config, locks, learning/KB choices, or description review state are justified. Cite concrete evidence — e.g., 'description is clear and secret-free; passed 3 groups with eval >= 9; learnings stable; pre-validation catches format regressions'. Persisted so later Pulse, plan-change, and review passes see the context.",
+				"description": "Free-form rationale covering why the config, locks, learning/KB choices, or description review state are justified. Cite concrete evidence — e.g., 'description is clear and secret-free; passed 3 groups with eval >= 9; learnings stable; pre-validation catches format regressions'. Persisted so later Autopilot, plan-change, and review passes see the context.",
 			},
 			"execution_llm": map[string]interface{}{
 				"type":        "object",
@@ -115,7 +115,7 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 			"execution_tier": map[string]interface{}{
 				"type":        "string",
 				"enum":        []interface{}{"high", "medium", "low"},
-				"description": "Persistent execution tier override for this workflow step in tiered mode. Use high for subjective/ambiguous judgment, medium for normal checks, low for deterministic/file-shape checks. execution_llm still takes precedence, and execute_step(..., tier=...) can still override step tier for a single run. REQUIRES execution_tier_reason. Pulse Architecture reviews model quality, cost, latency and retries to propose measured tier trials. Successful-run counts never change tiers. Unset execution steps default to high. Preserve user pins and apply changes through the existing approval contract.",
+				"description": "Persistent execution tier override for this workflow step in tiered mode. Use high for subjective/ambiguous judgment, medium for normal checks, low for deterministic/file-shape checks. execution_llm still takes precedence, and execute_step(..., tier=...) can still override step tier for a single run. REQUIRES execution_tier_reason. Autopilot Architecture reviews model quality, cost, latency and retries to propose measured tier trials. Successful-run counts never change tiers. Unset execution steps default to high. Preserve user pins and apply changes through the existing approval contract.",
 			},
 			"execution_tier_reason": map[string]interface{}{
 				"type":        "string",

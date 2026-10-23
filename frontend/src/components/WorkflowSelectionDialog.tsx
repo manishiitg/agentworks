@@ -122,7 +122,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   const allReferences = useMemo(() => {
     const items = isOpen && referenceResult?.userID === userID ? referenceResult?.items || [] : []
     if (!isOpen || !includePulse) return items
-    return [{ presetId: 'pulse', label: 'pulse', secondaryLabel: 'Ask this workflow\'s Pulse', workspacePath: '', kind: 'pulse' as const }, ...items]
+    return [{ presetId: 'pulse', label: 'pulse', secondaryLabel: 'Ask this workflow\'s Autopilot', workspacePath: '', kind: 'pulse' as const }, ...items]
   }, [includePulse, isOpen, referenceResult, userID])
 
   const query = localQuery.toLowerCase().trim()

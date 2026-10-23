@@ -1284,7 +1284,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     saved => {
       setShowChatArea(saved.chat_open); setShowWorkspacePane(saved.panel_open)
       // This flag controls the Files sidebar, not the workspace panel. Opening
-      // it for Human actions/Pulse/etc. makes Files-view sync replace that view.
+      // it for Human actions/Autopilot/etc. makes Files-view sync replace that view.
       setWorkspaceMinimized(!saved.panel_open || useWorkflowStore.getState().workflowWorkspaceView !== 'files')
       if (saved.focused_pane) setFocusedPane(saved.focused_pane)
       const device = saved.preview_device ?? reportPreviewPreference

@@ -16,7 +16,7 @@ import (
 // send_email addresses named people through Gmail. Summary delivery uses the
 // workflow's saved notification settings independently.
 
-const sendEmailDescription = "Send one email to the recipients you name, by Gmail only. `to` is required (at least one address); `subject` is required; give a plain `body` or an email-safe `html` body (INLINE styles only; Gmail strips <style>, <head> and class CSS). Attach existing server files with `attachments` (absolute paths). The workflow's blocked-recipients list and the account's disallowed-recipients list still apply. This sends to the named recipients. Workflow run and Pulse summaries use the saved notification settings automatically. Refused when the Outward permission is ask for this turn."
+const sendEmailDescription = "Send one email to the recipients you name, by Gmail only. `to` is required (at least one address); `subject` is required; give a plain `body` or an email-safe `html` body (INLINE styles only; Gmail strips <style>, <head> and class CSS). Attach existing server files with `attachments` (absolute paths). The workflow's blocked-recipients list and the account's disallowed-recipients list still apply. This sends to the named recipients. Workflow run and Autopilot summaries use the saved notification settings automatically. Refused when the Outward permission is ask for this turn."
 
 func createSendEmailTool() llmtypes.Tool {
 	list := func(description string) map[string]interface{} {

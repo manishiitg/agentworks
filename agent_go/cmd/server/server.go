@@ -1001,7 +1001,7 @@ func buildWorkflowNotificationInstructionsPrompt(runInstructions, pulseInstructi
 		prompt += "\n### Workflow run summary\n<workflow_run_summary_preferences>\n" + runInstructions + "\n</workflow_run_summary_preferences>\n"
 	}
 	if pulseInstructions != "" {
-		prompt += "\n### Pulse review summary\n<pulse_review_summary_preferences>\n" + pulseInstructions + "\n</pulse_review_summary_preferences>\n"
+		prompt += "\n### Autopilot review summary\n<pulse_review_summary_preferences>\n" + pulseInstructions + "\n</pulse_review_summary_preferences>\n"
 	}
 	return prompt
 }
@@ -4053,7 +4053,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if workflowPulseTagIsOff(r.Context(), req) || isGoalLeadSessionID(sessionID) && !workflowHasGoal(r.Context(), req.SelectedFolder) {
-		logfWithContext(queryLogCtx, "[PULSE] Refused Pulse message while unavailable; nothing delivered")
+		logfWithContext(queryLogCtx, "[PULSE] Refused Autopilot message while unavailable; nothing delivered")
 		externalError(w, http.StatusConflict, "pulse_unavailable", errPulseOff.Error())
 		return
 	}

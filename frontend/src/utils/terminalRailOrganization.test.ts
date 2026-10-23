@@ -237,7 +237,7 @@ describe('terminal rail organization', () => {
     }))).toBe('evaluation')
     expect(terminalRailVisualKind(terminal('reviewer', {
       execution_kind: 'background_agent',
-      agent_name: 'Pulse review: bug review',
+      agent_name: 'Autopilot review: bug review',
       step_id: 'pulse-review-bug-review',
     }))).toBe('reviewer')
     expect(terminalRailVisualKind(terminal('tmux'))).toBe('terminal')
@@ -384,24 +384,24 @@ describe('terminal rail organization', () => {
     expect(groups.some(group => group.title === 'Review bundle')).toBe(true)
   })
 
-  it('groups Pulse reviewer retries while excluding raw turn companions from attempt counts', () => {
+  it('groups Autopilot reviewer retries while excluding raw turn companions from attempt counts', () => {
     const firstRoot = terminal('session-1:pulse-review-bug-1', {
       execution_kind: 'background_agent',
       execution_id: 'pulse-review-bug-1',
-      agent_name: 'Pulse reviewer: pulse review bug_review 2026 07 26',
-      display_title: 'linkedin -> Pulse reviewer: pulse review bug_review 2026 07 26',
+      agent_name: 'Autopilot reviewer: pulse review bug_review 2026 07 26',
+      display_title: 'linkedin -> Autopilot reviewer: pulse review bug_review 2026 07 26',
     })
     const firstTurn = terminal('session-1:pulse-review-bug-1:turn-1', {
       execution_kind: 'background_agent',
       execution_id: 'pulse-review-bug-1',
-      display_title: 'linkedin -> Pulse review pulse review bug review 2026 07 26 123',
+      display_title: 'linkedin -> Autopilot review pulse review bug review 2026 07 26 123',
     })
     const retryRoot = terminal('session-1:pulse-review-bug-2', {
       active: true,
       state: 'running',
       execution_kind: 'background_agent',
       execution_id: 'pulse-review-bug-2',
-      display_title: 'linkedin -> Pulse review pulse review bug review 2026 07 26 456',
+      display_title: 'linkedin -> Autopilot review pulse review bug review 2026 07 26 456',
       updated_at: '2026-07-14T00:03:00Z',
     })
     const retryTurn = terminal('session-1:pulse-review-bug-2:turn-2', {
@@ -409,7 +409,7 @@ describe('terminal rail organization', () => {
       state: 'running',
       execution_kind: 'background_agent',
       execution_id: 'pulse-review-bug-2',
-      display_title: 'linkedin -> Pulse review pulse review bug review 2026 07 26 456',
+      display_title: 'linkedin -> Autopilot review pulse review bug review 2026 07 26 456',
       updated_at: '2026-07-14T00:03:00Z',
     })
 
@@ -423,12 +423,12 @@ describe('terminal rail organization', () => {
     expect(groups[0].representative.terminal_id).toBe(retryRoot.terminal_id)
   })
 
-  it('uses the owning Pulse module when a nested reviewer has the wrong child label', () => {
+  it('uses the owning Autopilot module when a nested reviewer has the wrong child label', () => {
     const lifecycle = terminal('session-1:pulse-review-pulse-review-eval-health-2026-07-26-123', {
       execution_kind: 'background_agent',
       execution_id: 'pulse-review-pulse-review-eval-health-2026-07-26-123',
-      agent_name: 'Pulse review: evaluation health',
-      display_title: 'linkedin -> Pulse review: evaluation health',
+      agent_name: 'Autopilot review: evaluation health',
+      display_title: 'linkedin -> Autopilot review: evaluation health',
       updated_at: '2026-07-14T00:03:00Z',
     })
     const transcript = terminal(
@@ -439,8 +439,8 @@ describe('terminal rail organization', () => {
         owner_id: 'workflow-step:pulse-review-pulse-review-eval-health-2026-07-26-123:pulse-reviewer-pulse-review-bug-review-456',
         parent_step_id: 'pulse-review-pulse-review-eval-health-2026-07-26-123',
         step_id: 'pulse-reviewer-pulse-review-bug-review-456',
-        agent_name: 'Pulse reviewer: pulse review bug review 2026 07 26',
-        display_title: 'linkedin -> Pulse reviewer: pulse review bug review 2026 07 26',
+        agent_name: 'Autopilot reviewer: pulse review bug review 2026 07 26',
+        display_title: 'linkedin -> Autopilot reviewer: pulse review bug review 2026 07 26',
         content: 'Evaluation findings',
         rows: [{ kind: 'assistant', text: 'Evaluation findings' }],
         updated_at: '2026-07-14T00:02:00Z',

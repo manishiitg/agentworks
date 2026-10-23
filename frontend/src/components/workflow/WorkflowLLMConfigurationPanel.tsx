@@ -35,7 +35,7 @@ const ROLE_ROWS: RoleRow[] = [
   { key: 'tier_2', label: 'Medium reasoning', description: 'Routine runs and upkeep', group: 'Execution' },
   { key: 'tier_3', label: 'Low reasoning', description: 'Quick checks', group: 'Execution' },
   { key: 'builder_llm', label: 'Builder', description: 'Chat, planning and scheduled runs', group: 'Workflow agents' },
-  { key: 'pulse_llm', label: 'Pulse Goal Work', description: 'Goal Work: your strongest model, working toward your goals', group: 'Workflow agents' },
+  { key: 'pulse_llm', label: 'Autopilot Goal Work', description: 'Goal Work: your strongest model, working toward your goals', group: 'Workflow agents' },
 ]
 
 const CODING_AGENT_PROVIDER_ORDER = ['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli']

@@ -19,7 +19,7 @@ func TestWorkflowGuideIsDiscoverableAndKeepsHelpNonMutating(t *testing.T) {
 				"Do not edit, configure, approve, or run anything unless the user asks",
 				"**Plan**",
 				"**Dashboard**",
-				"**Pulse**",
+				"**Autopilot**",
 			} {
 				if !strings.Contains(content, required) {
 					t.Errorf("workflow guide is missing %q", required)

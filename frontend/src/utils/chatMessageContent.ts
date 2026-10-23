@@ -5,9 +5,9 @@ const TRANSPORT_CONTEXT_MARKERS = [
 
 const PULSE_TURN_MARKER = 'PULSE TURN:'
 const PULSE_TURN_LABELS: Array<[string, string]> = [
-  ['PULSE TURN: daily goal check', 'Pulse: daily goal check'],
-  ['PULSE TURN: Goal Work', 'Pulse: Goal Work'],
-  ['PULSE TURN: a run of this workflow failed', 'Pulse: a run failed'],
+  ['PULSE TURN: daily goal check', 'Autopilot: daily goal check'],
+  ['PULSE TURN: Goal Work', 'Autopilot: Goal Work'],
+  ['PULSE TURN: a run of this workflow failed', 'Autopilot: a run failed'],
 ]
 
 /** Pulse's automatic turns (goal check, Goal Work, a failed run) carry their
@@ -20,7 +20,7 @@ export function pulseTurnDisplayText(content: string): string | null {
   for (const [prefix, label] of PULSE_TURN_LABELS) {
     if (turn.startsWith(prefix)) return label
   }
-  return 'Pulse turn'
+  return 'Autopilot turn'
 }
 
 const FILES_IN_CONTEXT_MARKER = '\n\n📁 Files in context:'

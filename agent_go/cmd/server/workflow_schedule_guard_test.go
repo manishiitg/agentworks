@@ -68,7 +68,7 @@ func TestScheduleCollisionGuardIgnoresPulseTurns(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := check(ctx, "execute_step", nil); err != nil {
-		t.Fatalf("a Pulse turn blocked the Builder's run: %v", err)
+		t.Fatalf("an Autopilot turn blocked the Builder's run: %v", err)
 	}
 	daily := schedulerstate.Run{RunID: "r1", ScopeType: "workflow", ScopeID: "Workflow/demo", LockKey: "workflow:demo", ScheduleID: "daily"}
 	if err := s.BeginRun(ctx, daily); err != nil {

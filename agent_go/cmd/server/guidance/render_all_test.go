@@ -178,7 +178,7 @@ func TestMeasurementPlanGuidanceCoversFlexibleContract(t *testing.T) {
 		"get_goal_metrics",
 		"no topology change",
 		"read-only history",
-		"Builder and Pulse share the measurement",
+		"Builder and Autopilot share the measurement",
 		"window_start",
 		"window_end",
 		"an iteration folder is not required",
@@ -313,7 +313,7 @@ func TestPulseCardsKeepTechnicalEvidenceOutOfUserTimeline(t *testing.T) {
 		rendered string
 		wants    []string
 	}{
-		"post-run-monitor": {monitor, []string{"SQLite-backed reviewer records", "structured Pulse state", "must not update `builder/improve.html`", "dedicated Dashboard"}},
+		"post-run-monitor": {monitor, []string{"SQLite-backed reviewer records", "structured Autopilot state", "must not update `builder/improve.html`", "dedicated Dashboard"}},
 	}
 	for label, check := range checks {
 		for _, want := range check.wants {
@@ -387,7 +387,7 @@ func TestImprovementAndPlanGuidanceIncludesAssumptionAudit(t *testing.T) {
 		"Verified external constraint",
 		"Current design choice",
 		"Agent-inferred assumption",
-		"SQLite-backed Pulse lifecycle",
+		"SQLite-backed Autopilot lifecycle",
 		"Do not turn targeted maintenance into a full audit",
 	} {
 		if !strings.Contains(audit, want) {
@@ -704,7 +704,7 @@ func TestNoTemplateNamesARemovedPulseTool(t *testing.T) {
 		visited++
 		for _, name := range removed {
 			if strings.Contains(string(body), name) {
-				t.Errorf("%s still instructs agents to call removed Pulse tool %q; "+
+				t.Errorf("%s still instructs agents to call removed Autopilot tool %q; "+
 					"use get_pulse_state(view=...), current goal records and canonical issue writes",
 					path, name)
 			}

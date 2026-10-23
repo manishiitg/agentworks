@@ -14,4 +14,4 @@ metadata:
 
 # Notify
 
-Read builder-reference/references/reporting-policy.md. Use get_workflow_config/update_workflow_config or settings notifications for saved run/Pulse instructions and selected channel secret names; never embed a webhook value in configuration. Use get_notification_history for actual delivery evidence. Setting a destination is not sending, and a stored notification job is not proof of delivery.
+Read builder-reference/references/reporting-policy.md. Use get_workflow_config/update_workflow_config or settings notifications for saved run/Autopilot instructions and selected channel secret names; never embed a webhook value in configuration. Use get_notification_history for actual delivery evidence. Setting a destination is not sending, and a stored notification job is not proof of delivery.

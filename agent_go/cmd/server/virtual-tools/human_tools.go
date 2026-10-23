@@ -71,7 +71,7 @@ func CreateHumanTools() []llmtypes.Tool {
 		"slack_title": map[string]interface{}{
 			"type":        "string",
 			"maxLength":   150,
-			"description": "Optional Block Kit header. Use by default for workflow, Pulse, Goal Advisor, and other structured summaries. The backend owns the webhook URL and renders this safely; never post to a webhook directly.",
+			"description": "Optional Block Kit header. Use by default for workflow, Autopilot, Goal Advisor, and other structured summaries. The backend owns the webhook URL and renders this safely; never post to a webhook directly.",
 		},
 		"slack_color": map[string]interface{}{
 			"type":        "string",
@@ -119,12 +119,12 @@ func CreateHumanTools() []llmtypes.Tool {
 		"delivery_mode": map[string]interface{}{
 			"type":        "string",
 			"enum":        []string{"all", "dashboard_only", "external_only"},
-			"description": "Delivery scope for classified summaries. Use dashboard_only to record an unchanged run summary in Activity without Slack/Gmail/WhatsApp or an in-app alert. Use external_only for a material Pulse update whose current review results are already projected into Activity. Omit or use all when both Activity and configured external channels should receive the summary. Custom notification instructions may explicitly choose a different mode.",
+			"description": "Delivery scope for classified summaries. Use dashboard_only to record an unchanged run summary in Activity without Slack/Gmail/WhatsApp or an in-app alert. Use external_only for a material Autopilot update whose current review results are already projected into Activity. Omit or use all when both Activity and configured external channels should receive the summary. Custom notification instructions may explicitly choose a different mode.",
 		},
 		"notification_kind": map[string]interface{}{
 			"type":        "string",
 			"enum":        []string{"general", "run_summary", "pulse_summary"},
-			"description": "Classifies this notification so the backend can enforce its workflow-configured channel routing. Pulse finalizers use run_summary for the execution outcome and pulse_summary for Pulse review/fix activity. Use general for ordinary notifications.",
+			"description": "Classifies this notification so the backend can enforce its workflow-configured channel routing. Autopilot finalizers use run_summary for the execution outcome and pulse_summary for Autopilot review/fix activity. Use general for ordinary notifications.",
 		},
 		"summary_title": map[string]interface{}{
 			"type":        "string",
@@ -139,7 +139,7 @@ func CreateHumanTools() []llmtypes.Tool {
 		"summary_route": map[string]interface{}{
 			"type":        "string",
 			"maxLength":   200,
-			"description": "Legacy single route label; prefer summary_routes with exact routing_step_id/route_id identities. Omit for shared workflow work. Only run_summary may inherit a scheduled selection; Pulse review scope must be explicit. Do not combine with summary_routes.",
+			"description": "Legacy single route label; prefer summary_routes with exact routing_step_id/route_id identities. Omit for shared workflow work. Only run_summary may inherit a scheduled selection; Autopilot review scope must be explicit. Do not combine with summary_routes.",
 		},
 		"summary_fields": map[string]interface{}{
 			"type":     "array",
@@ -187,7 +187,7 @@ func CreateHumanTools() []llmtypes.Tool {
 	}
 	summaryContentProps["email_html"] = map[string]interface{}{
 		"type":        "string",
-		"description": "The single rich email body (Gmail only). For workflow/Pulse/Goal Advisor notifications, supply this by default unless the user explicitly asked not to email. MUST be EMAIL-SAFE: use INLINE styles only (a style attribute on each element). Gmail strips <style> blocks, <head>, <script>, and class-based CSS, so a full browser HTML document or a generated *.html report (e.g. pulse/org-pulse.html) arrives UNSTYLED — build a compact inline-styled summary and link to the full report instead of pasting it. Do not create a separate plain email version; message_for_user is the automatic fallback. Other channels ignore this.",
+		"description": "The single rich email body (Gmail only). For workflow/Autopilot/Goal Advisor notifications, supply this by default unless the user explicitly asked not to email. MUST be EMAIL-SAFE: use INLINE styles only (a style attribute on each element). Gmail strips <style> blocks, <head>, <script>, and class-based CSS, so a full browser HTML document or a generated *.html report (e.g. pulse/org-pulse.html) arrives UNSTYLED — build a compact inline-styled summary and link to the full report instead of pasting it. Do not create a separate plain email version; message_for_user is the automatic fallback. Other channels ignore this.",
 	}
 	summaryContentProps["email_html_file"] = map[string]interface{}{
 		"type":        "string",
@@ -199,7 +199,7 @@ func CreateHumanTools() []llmtypes.Tool {
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "get_notification_history",
-			Description: "Read prior channel-neutral run or Pulse summaries for the current workflow before deciding whether an external notification is new and important. This is read-only and uses the same durable Activity history shown in the Org Dashboard. Records prove that a summary was created; they are not per-provider Slack/Gmail delivery receipts.",
+			Description: "Read prior channel-neutral run or Autopilot summaries for the current workflow before deciding whether an external notification is new and important. This is read-only and uses the same durable Activity history shown in the Org Dashboard. Records prove that a summary was created; they are not per-provider Slack/Gmail delivery receipts.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

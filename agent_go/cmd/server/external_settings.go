@@ -65,7 +65,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		"after_manual_run": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only: what runs after a full run you start yourself (schedules have their own after_run in manage_schedules). Backup and publish need to be set up first (in the app's Builder: /backup, /publish).", "properties": map[string]any{
 			"backup": map[string]any{"type": "boolean"}, "publish": map[string]any{"type": "boolean"}, "notify": map[string]any{"type": "boolean"},
 		}},
-		"pulse": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only. Pulse owns the goal when enabled (it needs soul/soul.md; until then it waits for a goal). OFF starts no checks, reports or messages; turn it on before using Pulse. Outward actions are ask first or allowed within existing limits.", "properties": map[string]any{
+		"pulse": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only. Autopilot owns the goal when enabled (it needs soul/soul.md; until then it waits for a goal). OFF starts no checks, reports or messages; turn it on before using Autopilot. Outward actions are ask first or allowed within existing limits.", "properties": map[string]any{
 			"enabled":         map[string]any{"type": "boolean"},
 			"outward_actions": map[string]any{"type": "string", "enum": []any{"ask", "allow"}},
 		}},

@@ -104,6 +104,6 @@ func TestProductScheduleTurnRecordsScheduleCostScope(t *testing.T) {
 	}
 	pulseReq.PulseLifecycleTurn = true
 	if got := chatTurnCostScope(pulseReq, pulseReq.AgentMode, ""); got != "pulse" {
-		t.Fatalf("scheduled Pulse scope = %q, want pulse", got)
+		t.Fatalf("scheduled Autopilot scope = %q, want pulse", got)
 	}
 }

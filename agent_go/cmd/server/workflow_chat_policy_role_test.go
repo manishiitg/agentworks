@@ -42,14 +42,14 @@ func TestScheduledPulseTransitionKeepsNativeConversation(t *testing.T) {
 			t.Fatal("stage provenance must remain distinct")
 		}
 		if chatPolicyRoleRequiresReconnect(true, scheduled.sessionKey(), pulse.sessionKey(), true, nil) {
-			t.Fatal("same-permission scheduled -> Pulse transition restarted native conversation")
+			t.Fatal("same-permission scheduled -> Autopilot transition restarted native conversation")
 		}
 		saved := &ChatHistoryAgentRuntime{ExternalSessionID: "native-1", ChatPolicyRoleKey: scheduled.sessionKey()}
 		if chatPolicyRoleRequiresReconnect(true, "", pulse.sessionKey(), false, saved) {
-			t.Fatal("restored scheduled runtime cannot continue into Pulse")
+			t.Fatal("restored scheduled runtime cannot continue into Autopilot")
 		}
 		if chatPolicyRequiresReconnect(true, api.chatPolicySessionKey(scheduled), api.chatPolicySessionKey(pulse), true, nil) {
-			t.Fatal("same-definition scheduled -> Pulse transition still reconnects Muse")
+			t.Fatal("same-definition scheduled -> Autopilot transition still reconnects Muse")
 		}
 		interactive := resolveWorkflowChatPolicy("schedule-digest_123", QueryRequest{UserInteractiveContinuation: true}, nil, readOnly)
 		if !chatPolicyRoleRequiresReconnect(true, scheduled.sessionKey(), interactive.sessionKey(), true, nil) {
@@ -57,7 +57,7 @@ func TestScheduledPulseTransitionKeepsNativeConversation(t *testing.T) {
 		}
 		pulse.Capabilities["mcp_management"] = true
 		if !chatPolicyRoleRequiresReconnect(true, scheduled.sessionKey(), pulse.sessionKey(), true, nil) {
-			t.Fatal("a real Pulse capability change must still reconnect")
+			t.Fatal("a real Autopilot capability change must still reconnect")
 		}
 	}
 }
@@ -134,10 +134,10 @@ func TestAutoNotificationKeepsThePulseAndExternalBuilderRole(t *testing.T) {
 	pulse := resolveWorkflowChatPolicy("schedule-goallead--round2-g1", QueryRequest{TriggeredBy: "cron", PulseLifecycleTurn: true}, nil, false)
 	notice := resolveWorkflowChatPolicy("schedule-goallead--round2-g1", QueryRequest{TriggeredBy: "cron", IsAutoNotification: true}, nil, false)
 	if notice.Origin != "notification" || notice.Capabilities["mcp_management"] || notice.Capabilities["user_management"] {
-		t.Fatalf("a notification into a Pulse chat must keep Pulse's capabilities and its own origin: %+v", notice)
+		t.Fatalf("a notification into an Autopilot chat must keep Autopilot's capabilities and its own origin: %+v", notice)
 	}
 	if chatPolicyRoleRequiresReconnect(true, pulse.sessionKey(), notice.sessionKey(), true, nil) {
-		t.Fatal("a notification into a Pulse chat restarted its native session")
+		t.Fatal("a notification into an Autopilot chat restarted its native session")
 	}
 	external := resolveWorkflowChatPolicy("wfmsg-round2", QueryRequest{ExternalBuilderOperationID: "op-1"}, nil, false)
 	if next := resolveWorkflowChatPolicy("wfmsg-round2", QueryRequest{ExternalBuilderOperationID: "op-2"}, nil, false); next.sessionKey() != external.sessionKey() {

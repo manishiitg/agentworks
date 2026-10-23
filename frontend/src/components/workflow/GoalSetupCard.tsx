@@ -6,7 +6,7 @@ const GOAL_SETUP_ACTION_LABEL: Record<string, string> = {
   plan: 'Design the plan in chat',
   metrics: 'Add metrics in chat',
   dashboard: 'Design the dashboard in chat',
-  pulse: 'Turn on Pulse',
+  pulse: 'Turn on Autopilot',
 }
 
 // Hover text for each step: what the user gets from it.

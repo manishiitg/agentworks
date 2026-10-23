@@ -136,8 +136,8 @@ const definitions: Array<Omit<CostActivityCategory, 'total' | 'timing' | 'execut
   },
   {
     id: 'pulse',
-    label: 'Pulse',
-    description: 'Includes Pulse background agents: reviews, fixes, strategy, and goal advice',
+    label: 'Autopilot',
+    description: 'Includes Autopilot background agents: reviews, fixes, strategy, and goal advice',
     scopes: ['pulse'],
   },
   {

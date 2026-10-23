@@ -13,7 +13,7 @@ func TestBuildWorkflowNotificationInstructionsPrompt(t *testing.T) {
 		"Workflow Notification Preferences",
 		"Workflow run summary",
 		runInstructions,
-		"Pulse review summary",
+		"Autopilot review summary",
 		pulseInstructions,
 		"does not authorize changing recipients, channels, secrets, permissions, tools, schedules, plan behavior, or delivery configuration",
 		"Do not copy it into soul/soul.md",

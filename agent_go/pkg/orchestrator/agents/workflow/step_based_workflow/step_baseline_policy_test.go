@@ -48,8 +48,8 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 		goal, pulse          bool
 	}{
 		{"no goal", `{}`, "", false, false},
-		{"goal without Pulse", `{}`, "## Objective\nProduce verified research.\n## Success Criteria\nEvidence checked.", true, false},
-		{"goal with Pulse", `{"pulse":{"enabled":true}}`, "## Objective\nProduce verified research.", true, true},
+		{"goal without Autopilot", `{}`, "## Objective\nProduce verified research.\n## Success Criteria\nEvidence checked.", true, false},
+		{"goal with Autopilot", `{"pulse":{"enabled":true}}`, "## Objective\nProduce verified research.", true, true},
 		{"Relay", `{"kind":"relay","pulse":{"enabled":true}}`, "## Objective\nTransform input.", false, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -82,7 +82,7 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 				}
 			}
 			if slices.Contains(got, "get_goal_metrics") != test.goal || slices.Contains(got, "record_goal_observations") != test.goal || slices.Contains(got, "ask_pulse") != test.pulse || slices.Contains(got, "ask_goal_lead") != test.pulse {
-				t.Fatalf("wrong goal/Pulse surface: %v", got)
+				t.Fatalf("wrong goal/Autopilot surface: %v", got)
 			}
 		})
 	}

@@ -275,7 +275,7 @@ func TestHumanInteractionGuidanceReachesBothWorkflowPromptTransports(t *testing.
 						t.Errorf("rendered prompt lost human-interaction contract %q", required)
 					}
 				}
-				if strings.Contains(prompt, "scheduled Pulse renders them in `builder/improve.html`") {
+				if strings.Contains(prompt, "scheduled Autopilot renders them in `builder/improve.html`") {
 					t.Error("rendered prompt still points decisions to the retired HTML page")
 				}
 				operations, err := guidance.RenderReferenceKindForTest("workflow-chat", mode)
@@ -365,7 +365,7 @@ func TestWorkshopModeIsMergedSuperset(t *testing.T) {
 		t.Fatalf("render workflow-tools reference: %v", err)
 	}
 	if !strings.Contains(workflowTools, "pulse-review-fixer") || strings.Contains(workflowTools, "goal-advisor") {
-		t.Error("projected workflow-tools reference must describe the current Pulse review lifecycle")
+		t.Error("projected workflow-tools reference must describe the current Autopilot review lifecycle")
 	}
 }
 

@@ -21,7 +21,7 @@ func externalNeedsYouDefinitions(add func(string, string, bool, bool, map[string
 		"workflow_id": externalString("Optional: only this workflow or Flow."),
 		"crew_id":     externalString("Optional: only this Crew."),
 	}
-	add("list_needs_you", "List what needs your attention, including the latest failed or blocked run to review in its run logs. Run review items are informational; do not answer them. List what is waiting on you across workflows, Flows and Crews: live agent questions (a paused chat, run, scheduled run or function call, with when it expires) and open decisions (with Pulse's recommendation when there is one) and suggestions sent to you as owner. Urgent first. Answer with answer_needs_you.", false, false, filter)
+	add("list_needs_you", "List what needs your attention, including the latest failed or blocked run to review in its run logs. Run review items are informational; do not answer them. List what is waiting on you across workflows, Flows and Crews: live agent questions (a paused chat, run, scheduled run or function call, with when it expires) and open decisions (with Autopilot's recommendation when there is one) and suggestions sent to you as owner. Urgent first. Answer with answer_needs_you.", false, false, filter)
 	add("answer_needs_you", "Answer or dismiss one item from list_needs_you. For apply_decision items, send the returned apply_message to the Builder chat; answering again is rejected. Pass option (an option id or title) or answer (free text), or dismiss=true for a decision. A live question goes back to the paused chat or run, which continues; a decision is recorded as answered by you via MCP and applied by the Builder as from the app. If someone already answered, says so.", true, false, map[string]any{
 		"id":      externalString("Item id from needs_you action=list."),
 		"option":  externalString("Chosen option id or title, or your own choice when allow_free_text is true."),
@@ -231,7 +231,7 @@ func (api *StreamingAPI) needsYouRespond(w http.ResponseWriter, r *http.Request,
 		if !dismiss && input != nil {
 			if message := decisionApplyChatMessage(*input); message != "" {
 				out["apply_message"] = message
-				out["next"] = "To apply it now, send apply_message to the workflow's Builder with builder action=chat; otherwise the Builder or Pulse applies it on its next turn."
+				out["next"] = "To apply it now, send apply_message to the workflow's Builder with builder action=chat; otherwise the Builder or Autopilot applies it on its next turn."
 			}
 		}
 		externalJSON(w, out)

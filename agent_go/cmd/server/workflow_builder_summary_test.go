@@ -189,7 +189,7 @@ func TestWorkflowBuilderSummaryKeepsOneOwnChatAndHistory(t *testing.T) {
 		t.Fatalf("pointer listed as personal history: %+v %v", personalHistory, err)
 	}
 	if fresh.Sessions["pulse-marker"].Kind != "run" {
-		t.Fatal("Pulse provenance was mistaken for a Builder")
+		t.Fatal("Autopilot provenance was mistaken for a Builder")
 	}
 	if fresh.Sessions["current-saved"].IsBuilder || fresh.Sessions["current-saved"].Kind != "history" {
 		t.Fatal("New chat did not archive old Builder projection")

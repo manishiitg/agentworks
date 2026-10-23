@@ -114,7 +114,7 @@ func TestToolExecutionContextAdmitsRegisteredWorkflowChildSession(t *testing.T) 
 		t.Fatalf("registered workflow child was rejected: %v", err)
 	}
 	if common.OutwardHeld(ctx) {
-		t.Fatal("ordinary workflow child inherited Pulse outward hold")
+		t.Fatal("ordinary workflow child inherited Autopilot outward hold")
 	}
 	if got := executor.SessionIDFromContext(ctx); got != parentSession {
 		t.Fatalf("bound execution session = %q, want authenticated parent %q", got, parentSession)

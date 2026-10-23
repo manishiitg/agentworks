@@ -253,7 +253,7 @@ func NewStepBasedWorkflowOrchestrator(
 			logger.Info("🏷️ WARNING: No Phase LLM configured - phase agents will fail")
 		}
 		if hcpo.presetPulseLLM != nil {
-			logger.Info(fmt.Sprintf("🏷️ Pulse LLM (independent): %s/%s", hcpo.presetPulseLLM.Provider, hcpo.presetPulseLLM.ModelID))
+			logger.Info(fmt.Sprintf("🏷️ Autopilot LLM (independent): %s/%s", hcpo.presetPulseLLM.Provider, hcpo.presetPulseLLM.ModelID))
 		}
 		logger.Info(fmt.Sprintf("🏷️ Tiered LLM allocation mode enabled - Tier1: %s, Tier2: %s, Tier3: %s",
 			formatTierAgentLLM(tieredConfig.Tier1),

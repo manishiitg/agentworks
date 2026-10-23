@@ -476,7 +476,7 @@ func TestBuilderPulseOffNormalizesLegacySettingsBeforeEditing(t *testing.T) {
 	RegisterWorkshopChatTools(agent, session, workshopToolTestLogger{})
 	tool := agent.tools["update_workflow_config"]
 	result, err := tool.Execute(context.Background(), map[string]interface{}{"pulse_enabled": false})
-	if err != nil || !strings.Contains(result, "Pulse is off") {
+	if err != nil || !strings.Contains(result, "Autopilot is off") {
 		t.Fatalf("OFF update = %q, %v", result, err)
 	}
 	read := func() map[string]interface{} {
@@ -503,6 +503,6 @@ func TestBuilderPulseOffNormalizesLegacySettingsBeforeEditing(t *testing.T) {
 	}
 	pulse = read()
 	if pulse["enabled"] != false || pulse["outward_actions"] != "ask" {
-		t.Fatalf("second setting resurrected Pulse: %+v", pulse)
+		t.Fatalf("second setting resurrected Autopilot: %+v", pulse)
 	}
 }

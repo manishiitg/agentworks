@@ -218,7 +218,7 @@ Direct shell execution is not a platform test and does not verify triggers, agen
 credentials or publication; report that distinction and the exact failing tool error.
 A failed run is terminal. Testing again creates a new invocation and may repeat effects;
 use safe sample data. No run_full_workflow, execute_step, plans, groups, prevalidation,
-DB/KB/learnings closing turns or Pulse apply to Python Flows.
+DB/KB/learnings closing turns or Autopilot apply to Python Flows.
 Optional dashboard database migrations are authoring actions, separate from execution.
 
 Use get_relay_releases and publish_relay when the user asks. Published source, helpers,

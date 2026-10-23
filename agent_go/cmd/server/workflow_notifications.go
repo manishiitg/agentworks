@@ -125,7 +125,7 @@ func resolveSlackNotificationState(id, label string, capabilities WorkflowCapabi
 	}
 
 	destination.State = workflowNotificationStateReady
-	destination.Summary = "Run and Pulse summaries are delivered here automatically."
+	destination.Summary = "Run and Autopilot summaries are delivered here automatically."
 	return destination
 }
 

@@ -20,7 +20,7 @@ func TestWorkflowPulseOffTagRefusedBeforeBuilderDelivery(t *testing.T) {
 		want                int
 	}{
 		{"off", "alice", "#pulse Are you available?", "", false, http.StatusConflict},
-		{"whitespace and case", "alice", " \n#Pulse\tAre you available?", "", false, http.StatusConflict},
+		{"whitespace and case", "alice", " \n#Autopilot\tAre you available?", "", false, http.StatusConflict},
 		{"colon", "alice", "#pulse: Are you available?", "", false, http.StatusConflict},
 		{"comma", "alice", "#pulse, Are you available?", "", false, http.StatusConflict},
 		{"period", "alice", "#pulse. Are you available?", "", false, http.StatusConflict},
@@ -29,7 +29,7 @@ func TestWorkflowPulseOffTagRefusedBeforeBuilderDelivery(t *testing.T) {
 		{"discussing the tag", "alice", "What does #pulse mean?", "", false, http.StatusNoContent},
 		{"different tag", "alice", "#pulseboard report", "", false, http.StatusNoContent},
 		{"no workflow access", "carol", "#pulse Are you available?", "", false, http.StatusForbidden},
-		{"direct Pulse off", "alice", "How are we doing?", "schedule-goallead--example-g1", false, http.StatusConflict},
+		{"direct Autopilot off", "alice", "How are we doing?", "schedule-goallead--example-g1", false, http.StatusConflict},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			enabled := "false"

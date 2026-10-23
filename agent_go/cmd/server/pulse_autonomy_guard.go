@@ -90,7 +90,7 @@ var goalWorkOutwardTools = map[string]bool{"send_slack_message": true, "send_ema
 func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) error {
 	tool = strings.TrimSpace(tool)
 	if !perms.Run {
-		return fmt.Errorf("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it (%s)", tool)
+		return fmt.Errorf("Autopilot is off for this workflow. Turn it on in the workflow's Autopilot settings to use it (%s)", tool)
 	}
 
 	switch {

@@ -240,10 +240,10 @@ func TestPulseWorkflowBuilderFollowUpKeepsTheRunningTurn(t *testing.T) {
 	api := &StreamingAPI{lastChatPolicyBySession: map[string]string{}}
 	suffix := pulsePolicyKeySuffix("chat", req.PhaseID, req.SelectedFolder)
 	if suffix == "" {
-		t.Fatal("a Pulse workflow's Builder chat must carry the Pulse part of the key")
+		t.Fatal("an Autopilot workflow's Builder chat must carry the Autopilot part of the key")
 	}
 	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", req, nil, false)) + suffix
 	if compatible, err := api.workflowRetainedPolicyCompatible(ctx, "chat", req); err != nil || !compatible {
-		t.Fatal("an unchanged Pulse workflow's follow-up was treated as a policy change", compatible, err)
+		t.Fatal("an unchanged Autopilot workflow's follow-up was treated as a policy change", compatible, err)
 	}
 }

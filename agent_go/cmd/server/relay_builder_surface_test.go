@@ -22,7 +22,7 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 			t.Fatalf("Relay prompt missing %q", required)
 		}
 	}
-	for _, absent := range []string{"## CURRENT MODE:", "## CURRENT STATE", "Pulse step"} {
+	for _, absent := range []string{"## CURRENT MODE:", "## CURRENT STATE", "Autopilot step"} {
 		if strings.Contains(prompt, absent) {
 			t.Fatalf("Relay inherited AgentWorks instructions %q", absent)
 		}

@@ -108,7 +108,7 @@ The builder consumes a playbook progressively:
 4. Map the requested outcome to existing goals and metrics; recommend missing definitions without inventing customer targets.
 5. Default to extending one small-team workflow with a route. Recommend a separate workflow only for incompatible access, ownership, trigger, deployment, retention, or failure lifecycles, with concrete reasons and tradeoffs.
 6. Recommend how it starts: manual action, workflow handoff, webhook or event, release gate, or schedule. Define scope, cadence and timezone or event filters, concurrency, retries, budget, notification behavior, and proof of completion without enabling an unapproved trigger.
-7. Compare the playbook's Strategic Pulse focus with existing review coverage. Recommend it only when useful; keep Plan Drift generic and leave Technical and Architecture scope evidence-driven.
+7. Compare the playbook's Strategic Autopilot focus with existing review coverage. Recommend it only when useful; keep Plan Drift generic and leave Technical and Architecture scope evidence-driven.
 8. Load only the references relevant to the current operation.
 9. Map the guidance onto the chosen workflow using supported AgentWorks plan/config tools. Reuse or revise compatible steps before adding new ones.
 10. Show concrete human decisions only after the draft, evidence, or proposed change is ready for review.

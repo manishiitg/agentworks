@@ -97,7 +97,7 @@ export const UI_CONTROL_CONTRACT = {
     },
     {
       "id": "pulse",
-      "label": "Pulse",
+      "label": "Autopilot",
       "actions": [
         "open",
         "refresh"

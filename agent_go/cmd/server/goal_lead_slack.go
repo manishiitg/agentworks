@@ -27,7 +27,7 @@ func (api *StreamingAPI) handleGoalLeadSlack(ctx context.Context, msg services.B
 		}
 	}
 	if accountID == "" || !api.slackCanReach(ctx, accountID, *route) {
-		reply("Only people with access to this workflow can talk to its Pulse. Ask its owner for access.")
+		reply("Only people with access to this workflow can talk to its Autopilot. Ask its owner for access.")
 		return
 	}
 	workspacePath := strings.Trim(strings.TrimSpace(route.WorkspacePath), "/")
@@ -52,12 +52,12 @@ func (api *StreamingAPI) handleGoalLeadSlack(ctx context.Context, msg services.B
 		if errors.Is(err, errPulseOff) {
 			reply(err.Error())
 		} else {
-			reply("The Pulse could not answer just now: " + err.Error())
+			reply("The Autopilot could not answer just now: " + err.Error())
 		}
 		return
 	}
 	if strings.TrimSpace(answer) == "" {
-		answer = "Done. The Pulse's notes are in the workflow's Pulse tab."
+		answer = "Done. The Autopilot's notes are in the workflow's Autopilot tab."
 	}
 	reply(answer)
 }

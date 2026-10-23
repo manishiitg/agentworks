@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import NotificationInstructions from './NotificationInstructions'
 
 describe('NotificationInstructions', () => {
-  it.each(['Run summary', 'Pulse review'])('exposes the complete %s instructions in a native disclosure', title => {
+  it.each(['Run summary', 'Autopilot review'])('exposes the complete %s instructions in a native disclosure', title => {
     const instructions = 'First line\n' + 'Detailed instruction. '.repeat(100) + '\nLast line'
     const html = renderToStaticMarkup(<NotificationInstructions title={title} instructions={instructions} />)
     expect(html).toContain('<details')

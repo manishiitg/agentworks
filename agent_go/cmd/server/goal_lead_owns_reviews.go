@@ -115,7 +115,7 @@ func (s *SchedulerService) wakeGoalLeadOnRunFailures(ctx context.Context, worksp
 			log.Printf("[PULSE] run-failure turn for %s failed: %v", workspacePath, err)
 		}
 	})
-	scheduleLogf("[PULSE] %d failed run(s) of %s sent to its Pulse conversation", len(claimed), workspacePath)
+	scheduleLogf("[PULSE] %d failed run(s) of %s sent to its Autopilot conversation", len(claimed), workspacePath)
 	return true
 }
 
@@ -137,9 +137,9 @@ Inspect the relevant run evidence with your ordinary tools and decide whether th
 // goalLeadRunFailureMessage is the conversation log line for the wake-up.
 func goalLeadRunFailureMessage(runs int) string {
 	if runs == 1 {
-		return "A run failed; Pulse is looking at it."
+		return "A run failed; Autopilot is looking at it."
 	}
-	return fmt.Sprintf("%d runs failed; Pulse is looking at them.", runs)
+	return fmt.Sprintf("%d runs failed; Autopilot is looking at them.", runs)
 }
 
 func isFailedWorkflowRunStatus(status string) bool {

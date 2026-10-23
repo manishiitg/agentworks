@@ -27,8 +27,8 @@ func TestMCPManagementRegistrationFollowsChatPolicy(t *testing.T) {
 		{name: "restored origin", active: &ActiveSessionInfo{TriggeredBy: "cron"}},
 		{name: "read only Builder", readOnly: true, list: true},
 		{name: "Slack channel turn (Run)", req: QueryRequest{BotPlatform: "slack"}, readOnly: true, list: true},
-		{name: "Pulse maintenance", req: QueryRequest{TriggeredBy: "cron", PulseLifecycleTurn: true}},
-		{name: "Pulse reviewer", req: QueryRequest{SessionKind: "pulse_reviewer", ParentSessionID: "parent"}},
+		{name: "Autopilot maintenance", req: QueryRequest{TriggeredBy: "cron", PulseLifecycleTurn: true}},
+		{name: "Autopilot reviewer", req: QueryRequest{SessionKind: "pulse_reviewer", ParentSessionID: "parent"}},
 		{name: "restored child", active: &ActiveSessionInfo{ParentSessionID: "parent"}},
 		{name: "notification", req: QueryRequest{IsAutoNotification: true}, want: true},
 		{name: "owner bot", req: QueryRequest{BotPlatform: "whatsapp"}, want: true},
@@ -65,7 +65,7 @@ func TestMCPManagementRegistrationFollowsChatPolicy(t *testing.T) {
 func TestPulseMaintenanceRetainsApprovedImprovementAuthority(t *testing.T) {
 	p := resolveWorkflowChatPolicy("schedule-pulse_123", QueryRequest{TriggeredBy: "cron", PulseLifecycleTurn: true}, nil, false)
 	if p.Origin != "pulse" || !p.allows("plan_authoring") || p.allows("mcp_management") || p.allows("workspace_ui") {
-		t.Fatalf("Pulse authority changed: %+v", p)
+		t.Fatalf("Autopilot authority changed: %+v", p)
 	}
 }
 

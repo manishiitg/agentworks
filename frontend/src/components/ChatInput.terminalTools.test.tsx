@@ -258,7 +258,7 @@ describe('terminal toolbar shared tools', () => {
   }
 
 
-  it('uses the Relay catalog for both command picker and typed commands, excluding Pulse', async () => {
+  it('uses the Relay catalog for both command picker and typed commands, excluding Autopilot', async () => {
     await act(async () => {
       useProductSurfaceStore.setState({ productSurface: 'relays' })
       setProductCommands([{ command: 'publish', description: 'Publish Relay API version', modes: ['workflow'], requiredWorkshopMode: 'workshop', icon: null, source: 'product', execute: ctx => ctx.onSubmit('Publish Relay version') }])
@@ -276,8 +276,8 @@ describe('terminal toolbar shared tools', () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea(), '/pulse')
       textarea().dispatchEvent(new Event('input', { bubbles: true }))
     })
-    // Pulse may be sent as ordinary user text, but cannot execute its API action.
-    expect(document.body.textContent).not.toContain('Run one complete Pulse')
+    // Autopilot may be sent as ordinary user text, but cannot execute its API action.
+    expect(document.body.textContent).not.toContain('Run one complete Autopilot')
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea(), '/publish')
       textarea().dispatchEvent(new Event('input', { bubbles: true }))

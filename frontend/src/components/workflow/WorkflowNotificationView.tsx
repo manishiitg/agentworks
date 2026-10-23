@@ -134,7 +134,7 @@ export default function WorkflowNotificationView({
     },
     {
       key: 'pulse',
-      title: 'Pulse review',
+      title: 'Autopilot review',
       instructions: info.pulseSummaryInstructions.trim(),
       channels: info.pulseSummaryChannels,
       senders: info.pulseSummaryGmailConnectionIds.map(senderLabel),
@@ -240,7 +240,7 @@ export default function WorkflowNotificationView({
                         className="min-w-0 max-w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="">Use account default{gmailSender ? ` — ${gmailSender}` : ' — none configured'}</option>
-                        {hasLegacySenders && <option value="__legacy__" disabled>Older Run/Pulse sender settings</option>}
+                        {hasLegacySenders && <option value="__legacy__" disabled>Older Run/Autopilot sender settings</option>}
                         {senderSelection && senderSelection !== '__legacy__' && !gmailSenderChoices.some(choice => choice.id === senderSelection) &&
                           <option value={senderSelection} disabled>Unavailable: {senderSelection}</option>}
                         {gmailSenderChoices.map(choice => (
@@ -251,7 +251,7 @@ export default function WorkflowNotificationView({
                       </select>
                       {senderSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Saving sender" />}
                       <span className="text-xs text-muted-foreground">One account for Notify. Workflow and Builder Gmail actions choose independently.</span>
-                      {hasLegacySenders && <span className={chipWarn}>Older Run/Pulse sender overrides are active; choose one account to replace them.</span>}
+                      {hasLegacySenders && <span className={chipWarn}>Older Run/Autopilot sender overrides are active; choose one account to replace them.</span>}
                       {senderError && <span role="alert" className="text-xs text-destructive">{senderError}</span>}
                     </div>
                     {overrides.length > 0 && (

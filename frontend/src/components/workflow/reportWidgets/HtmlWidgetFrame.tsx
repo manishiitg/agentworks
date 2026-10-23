@@ -363,6 +363,6 @@ function HtmlReportFrameComponent({
 }
 
 // Report frames contain independently-running HTML. Keep their document stable
-// while terminal, Pulse, and human-input polling updates the outer React tree.
+// while terminal, Autopilot, and human-input polling updates the outer React tree.
 // The owner passes refreshToken when a deliberate data refresh is wanted.
 export const HtmlReportFrame = memo(HtmlReportFrameComponent)

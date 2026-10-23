@@ -350,7 +350,7 @@ func TestPlanEditNoticesUseTargetedChecks(t *testing.T) {
 				"one combined compatibility check in the current agent",
 				"before the targeted test",
 				"Do not launch a separate drift reviewer for each edit or test retry",
-				"scheduled Pulse or an explicit user request",
+				"scheduled Autopilot or an explicit user request",
 			} {
 				if !strings.Contains(notice, want) {
 					t.Errorf("missing %q: %s", want, notice)

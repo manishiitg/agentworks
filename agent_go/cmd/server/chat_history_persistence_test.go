@@ -507,8 +507,8 @@ func TestMergeModeChangedChatHistoryRetainsTurnsAndDropsTransportPointer(t *test
 	}
 	current := []llmtypes.MessageContent{
 		message(llmtypes.ChatMessageTypeHuman, "synthetic conversation-file pointer"),
-		message(llmtypes.ChatMessageTypeHuman, "start Pulse"),
-		message(llmtypes.ChatMessageTypeAI, "Pulse complete"),
+		message(llmtypes.ChatMessageTypeHuman, "start Autopilot"),
+		message(llmtypes.ChatMessageTypeAI, "Autopilot complete"),
 	}
 
 	merged := mergeModeChangedChatHistory(previous, current)
@@ -522,8 +522,8 @@ func TestMergeModeChangedChatHistoryRetainsTurnsAndDropsTransportPointer(t *test
 			}
 		}
 	}
-	if got := chatHistoryPartText(merged[3].Parts[0]); got != "start Pulse" {
-		t.Fatalf("first post-switch user turn = %q, want start Pulse", got)
+	if got := chatHistoryPartText(merged[3].Parts[0]); got != "start Autopilot" {
+		t.Fatalf("first post-switch user turn = %q, want start Autopilot", got)
 	}
 	if got := mergeModeChangedChatHistory(previous, nil); len(got) != len(previous) {
 		t.Fatalf("empty current history discarded prior turns: got %d want %d", len(got), len(previous))
@@ -572,11 +572,11 @@ func TestPhaseUsageCountsFullFirstSnapshotAfterModeRelaunch(t *testing.T) {
 	)
 
 	if pulseDelta.InputTokens != 1500 || pulseDelta.OutputTokens != 150 {
-		t.Fatalf("first Pulse snapshot after relaunch was reduced to %+v", pulseDelta)
+		t.Fatalf("first Autopilot snapshot after relaunch was reduced to %+v", pulseDelta)
 	}
 	total := file.ByModel["gpt-test"]
 	if total.InputTokens != 2500 || total.OutputTokens != 250 || total.LLMCallCount != 2 {
-		t.Fatalf("combined Run+Pulse usage = %+v, want 2500 input / 250 output / 2 calls", total)
+		t.Fatalf("combined Run+Autopilot usage = %+v, want 2500 input / 250 output / 2 calls", total)
 	}
 }
 

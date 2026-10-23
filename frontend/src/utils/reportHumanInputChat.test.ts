@@ -38,7 +38,7 @@ function tab(tabId: string, overrides: Partial<ChatTab> = {}): ChatTab {
   }
 }
 
-describe('Pulse decision chat routing', () => {
+describe('Autopilot decision chat routing', () => {
   it('keeps a running schedule separate and chooses the interactive workflow chat', () => {
     const schedule = tab('schedule', {
       isStreaming: true,
@@ -114,7 +114,7 @@ describe('Pulse decision chat routing', () => {
 
     const message = buildReportHumanInputDelegatedActionMessage(input, 'Workflow/example')
 
-    expect(message).toContain('I delegate this pending Pulse decision to you.')
+    expect(message).toContain('I delegate this pending Autopilot decision to you.')
     expect(message).toContain('choose the best supported option')
     expect(message).toContain('do not invent one or take an unsafe action')
     expect(message).toContain('call answer_human_input_request')

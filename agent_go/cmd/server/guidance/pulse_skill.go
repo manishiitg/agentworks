@@ -21,7 +21,7 @@ func MaterializePulseSkill(names []string) (*llmtypes.Skill, error) {
 	skill := buildMegaSkill(buildMegaSkillSpec{
 		Registry:         referenceKinds,
 		Name:             "pulse",
-		DescriptionIntro: "Pulse's skills for owning a workflow's goal.",
+		DescriptionIntro: "Autopilot's skills for owning a workflow's goal.",
 		Intro:            "Load the matching skill before the work it covers. You read; the Builder chat acts.",
 		Render:           renderReferenceKind,
 		Select:           func(kind string, _ kindMeta) bool { return want[kind] },

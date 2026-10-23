@@ -180,7 +180,7 @@ func TestInferWorkflowScope(t *testing.T) {
 		{
 			name:        "pulse reviewer stage",
 			agentMode:   "simple",
-			identifiers: []string{"pulse-reviewer-stores-health-1785", "Background: Pulse reviewer - stores-health", ""},
+			identifiers: []string{"pulse-reviewer-stores-health-1785", "Background: Autopilot reviewer - stores-health", ""},
 			want:        ScopePulse,
 		},
 		{

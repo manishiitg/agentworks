@@ -15,7 +15,7 @@ function sourceName(source: string): string {
   if (source === 'user_suggestion') return 'User suggestion'
   if (source === 'architecture_review') return 'Architecture Review'
   if (source === 'plan_drift_review') return 'Workflow Review'
-  return 'Pulse'
+  return 'Autopilot'
 }
 
 export function buildReportHumanInputChatMessage(

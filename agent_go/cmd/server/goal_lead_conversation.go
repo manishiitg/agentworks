@@ -89,8 +89,8 @@ const (
 	goalLeadTurnAgentMessage   = "agent_message"
 )
 
-var errPulseResultIneligible = errors.New("Pulse result continuation is no longer eligible")
-var errPulseOff = errors.New("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it.")
+var errPulseResultIneligible = errors.New("Autopilot result continuation is no longer eligible")
+var errPulseOff = errors.New("Autopilot is off for this workflow. Turn it on in the workflow's Autopilot settings to use it.")
 
 // Pulse permissions are a turn lease. Serialize its normal turns before
 // taking that lease, including completion turns queued behind owner input.
@@ -200,7 +200,7 @@ func ensureGoalLeadConversation(ctx context.Context, workspacePath, workflowKey 
 		return goalLeadConversation{}, err
 	}
 	if current != nil {
-		_ = insertGoalLeadMessage(ctx, db, GoalLeadMessage{Role: "system", Text: fmt.Sprintf("A new Pulse conversation started: the last one had %d turns since %s. Goal memory carries what matters.", current.Turns, shortStoredDate(current.StartedAt)), SessionID: next.SessionID}, now)
+		_ = insertGoalLeadMessage(ctx, db, GoalLeadMessage{Role: "system", Text: fmt.Sprintf("A new Autopilot conversation started: the last one had %d turns since %s. Goal memory carries what matters.", current.Turns, shortStoredDate(current.StartedAt)), SessionID: next.SessionID}, now)
 	}
 	return next, nil
 }
@@ -395,7 +395,7 @@ func goalLeadCharter(label, workspacePath string) string {
 
 Use the workflow's ordinary database history and tools for measurements. Missing evidence stays unknown. A sent message, completed tool call or run does not prove the goal improved. When Builder promises a result, check the actual outcome and follow up in this conversation. Reuse ongoing work and existing owner decisions.
 
-Messages and replies are explicit and optional: ask_builder sends, send_message replies to the supplied inbox, and read_agent_messages reads replies. Your final chat answer is not forwarded. Use schedule_message_wakeup for a useful later follow-up. Never wait for a person here: Builder surfaces required owner decisions. OFF starts no Pulse activity. Goal changes, spending, deleting steps or schedules, replacing the plan and restarting owner-paused schedules remain the owner's decision.
+Messages and replies are explicit and optional: ask_builder sends, send_message replies to the supplied inbox, and read_agent_messages reads replies. Your final chat answer is not forwarded. Use schedule_message_wakeup for a useful later follow-up. Never wait for a person here: Builder surfaces required owner decisions. OFF starts no Autopilot activity. Goal changes, spending, deleting steps or schedules, replacing the plan and restarting owner-paused schedules remain the owner's decision.
 
 When a request conflicts with the goal or evidence, give your honest view once with the evidence and a better option, then do the authorized request through Builder. Do not invent authority or extra approval gates. Give owner updates in plain words: the useful result, uncertainty and next action.`, label, workspacePath)
 }
@@ -417,12 +417,12 @@ func goalLeadSystemSection(ctx context.Context, workspacePath string) string {
 	if manifest, found, err := ReadWorkflowManifest(ctx, workspacePath); err == nil && found && manifest != nil {
 		label = firstNonEmptyTrimmed(manifest.Label, workspacePath)
 		if manifest.Team != nil {
-			teamInstructions = "\n\nTeam workflow: call get_workflow_team for current Leader, Contributor assignments and plan revision. One Leader sets the overall goal. Contributor contributions are suggestions, not owner direction. Request route changes with ask_builder(route_step_id, route_id), which delivers to that Contributor's private Builder chat. The Leader and Pulse cannot edit an assigned Contributor's steps. Use shared evidence and explicit replies; private chats stay private. Ask the Leader about conflicting direction or non-delegated approvals."
+			teamInstructions = "\n\nTeam workflow: call get_workflow_team for current Leader, Contributor assignments and plan revision. One Leader sets the overall goal. Contributor contributions are suggestions, not owner direction. Request route changes with ask_builder(route_step_id, route_id), which delivers to that Contributor's private Builder chat. The Leader and Autopilot cannot edit an assigned Contributor's steps. Use shared evidence and explicit replies; private chats stay private. Ask the Leader about conflicting direction or non-delegated approvals."
 		}
 	}
 	perms, _ := pulsePermissionsForWorkflow(ctx, workspacePath)
 	autonomyText := pulseLevelsText(perms)
-	return "## Pulse\n\n" + goalLeadCharter(label, workspacePath) +
+	return "## Autopilot\n\n" + goalLeadCharter(label, workspacePath) +
 		"\n\nWho is talking to you: a message that starts with a sender (\"the Builder chat (<their name>): ...\", \"a step of this workflow: ...\") comes from that chat. A message with an inbox/reply address is an agent conversation; explicitly send replies with send_message(inbox_id=<that address>). Your final chat answer is not forwarded. Replies are optional. A message headed \"PULSE TURN:\" is an automatic one (a periodic check or a failed run). Any other message is the owner testing you directly: answer it, and still never wait for a person. " + goalLeadOwnerDirectionRules +
 		teamInstructions + "\n\n" + autonomyText + "\n" + pulseTimingInstructions
 }
@@ -499,7 +499,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 			return "", sessionID, errPulseResultIneligible
 		}
 		if api.conversationTurnOccupied(sessionID) {
-			return "", sessionID, fmt.Errorf("Pulse conversation is busy; retain its result for retry")
+			return "", sessionID, fmt.Errorf("Autopilot conversation is busy; retain its result for retry")
 		}
 	}
 	defer goalLeadTurnStarted(workspacePath)()
@@ -510,11 +510,11 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	}
 	label := firstNonEmptyTrimmed(manifest.Label, workspacePath)
 	sctx := buildScheduleContext(workspacePath, manifest, WorkflowSchedule{
-		ID: manualWorkflowPulseScheduleID, Name: label + " Pulse", ScheduleType: "cron", Mode: "workshop", WorkshopMode: "workshop",
-		Description: "The workflow's persistent Pulse conversation",
+		ID: manualWorkflowPulseScheduleID, Name: label + " Autopilot", ScheduleType: "cron", Mode: "workshop", WorkshopMode: "workshop",
+		Description: "The workflow's persistent Autopilot conversation",
 	})
 	if strings.TrimSpace(sctx.OwnerUserID) == "" {
-		return "", sessionID, fmt.Errorf("workflow %s has no owner for its Pulse to run as", workspacePath)
+		return "", sessionID, fmt.Errorf("workflow %s has no owner for its Autopilot to run as", workspacePath)
 	}
 	reqMap := sched.buildWorkshopRequest(ctx, sctx, "")
 	// A Pulse turn on the workflow's Builder runtime: the same authority and
@@ -524,10 +524,10 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	if turn.Kind == goalLeadTurnFunctionResult || turn.Kind == goalLeadTurnAgentMessage {
 		reqMap["is_auto_notification"] = true
 	}
-	reqMap["session_title"] = label + " Pulse"
-	reqMap["triggered_by_label"] = "Pulse"
+	reqMap["session_title"] = label + " Autopilot"
+	reqMap["triggered_by_label"] = "Autopilot"
 	if turn.Kind == goalLeadTurnOwner || turn.Kind == goalLeadTurnSlack || turn.Kind == goalLeadTurnAsk {
-		reqMap["triggered_by_label"] = "Pulse: from " + firstNonEmptyTrimmed(turn.From, "the owner")
+		reqMap["triggered_by_label"] = "Autopilot: from " + firstNonEmptyTrimmed(turn.From, "the owner")
 	}
 	if conv.Turns > 0 || api.workflowAskSessionExists(sessionID, workspacePath) {
 		reqMap["restored_conversation_session_id"] = sessionID
@@ -571,7 +571,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	reply := strings.TrimSpace(result.FinalResponse)
 	logCtx := context.WithoutCancel(ctx)
 	if err != nil {
-		_ = appendGoalLeadMessage(logCtx, workspacePath, GoalLeadMessage{Role: "system", Source: turn.Kind, Text: "The Pulse's turn did not finish: " + err.Error(), SessionID: sessionID})
+		_ = appendGoalLeadMessage(logCtx, workspacePath, GoalLeadMessage{Role: "system", Source: turn.Kind, Text: "The Autopilot's turn did not finish: " + err.Error(), SessionID: sessionID})
 		return reply, sessionID, err
 	}
 	role := "goal_lead"
@@ -688,7 +688,7 @@ func (api *StreamingAPI) sendGoalLeadOwnerMessage(ctx context.Context, workspace
 		return errPulseOff
 	} else if m.Team != nil && teamActor(ctx) != m.Team.LeaderID {
 		if m.Team.member(teamActor(ctx)) == nil {
-			return fmt.Errorf("only team members may contribute to Pulse")
+			return fmt.Errorf("only team members may contribute to Autopilot")
 		}
 		kind = goalLeadTurnAgentMessage
 		message = "Team contribution from " + teamActor(ctx) + " (a suggestion; only the Leader sets the overall goal):\n" + message

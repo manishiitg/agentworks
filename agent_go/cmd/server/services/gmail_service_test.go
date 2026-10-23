@@ -356,7 +356,7 @@ func TestAuthStatusCachedPrefersStaleOverPending(t *testing.T) {
 }
 
 func TestGmailRichBodyContainsOnlyHTML(t *testing.T) {
-	raw, err := buildGmailMIME("user@example.com", nil, "Pulse", "PLAIN_ONLY fallback", "<p>RICH_ONLY summary</p>", nil)
+	raw, err := buildGmailMIME("user@example.com", nil, "Autopilot", "PLAIN_ONLY fallback", "<p>RICH_ONLY summary</p>", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

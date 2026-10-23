@@ -20,14 +20,14 @@ func TestPulseHoldsAStepTheWorkflowIsRunning(t *testing.T) {
 	}
 	releaseOwn := stepworkflow.RegisterRunningWorkflowStep(ws, step, "exec-own", pulse)
 	if busy := check(context.Background(), ws, step); busy != "" {
-		t.Fatalf("Pulse's own run of the step must not block it, got %q", busy)
+		t.Fatalf("Autopilot's own run of the step must not block it, got %q", busy)
 	}
 	releaseOwn()
 
 	release := stepworkflow.RegisterRunningWorkflowStep(ws, step, "exec-sched", "schedule-cron--688df853_1790500000000000000")
 	busy := check(context.Background(), ws, step)
 	if !strings.Contains(busy, "688df853") {
-		t.Fatalf("the workflow's scheduled run of the step must hold Pulse, got %q", busy)
+		t.Fatalf("the workflow's scheduled run of the step must hold Autopilot, got %q", busy)
 	}
 	if other := check(context.Background(), ws, "step-check-email-replies"); other != "" {
 		t.Fatalf("another step is not busy, got %q", other)

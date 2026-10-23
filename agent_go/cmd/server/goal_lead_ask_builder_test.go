@@ -43,7 +43,7 @@ func TestPulseMessagesBuilderUnderCurrentAuthorityWithoutCapturedReply(t *testin
 	finished := make(chan error, 1)
 	agentMessageTurn = func(_ *StreamingAPI, turnCtx context.Context, request map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
 		if _, held := goalWorkTurnPermissions(session); held {
-			finished <- fmt.Errorf("Pulse authority applied before receiving turn admission")
+			finished <- fmt.Errorf("Autopilot authority applied before receiving turn admission")
 			return internalSessionTurnResult{}, nil
 		}
 		releaseAuthority, admissionErr := acquireAgentMessageAuthority(turnCtx, session)

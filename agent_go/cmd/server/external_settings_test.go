@@ -46,7 +46,7 @@ func TestExternalPulseSettingsAndRunNeedEditAccess(t *testing.T) {
 	}
 	f.api.chatStore = store
 	if w := f.call(t, "reader", "manage_pulse", map[string]any{"workflow_id": "invoices", "action": "run_now"}); w.Code != 403 {
-		t.Fatalf("reader ran Pulse: %d %s", w.Code, w.Body)
+		t.Fatalf("reader ran Autopilot: %d %s", w.Code, w.Body)
 	}
 	if w := f.call(t, "reader", "run_after_run", map[string]any{"workflow_id": "invoices", "option": "backup"}); w.Code != 403 {
 		t.Fatalf("reader started a backup: %d %s", w.Code, w.Body)
@@ -87,7 +87,7 @@ func TestExternalPulseStatusUsesCurrentScreenWhileOff(t *testing.T) {
 	}
 	conversation, _ := page["conversation"].(map[string]any)
 	if page["goal_status"] != nil || page["workflow_id"] != "invoices" || page["records"] != nil || conversation["busy"] != false || conversation["has_goal"] != false || page["next_pulse"] != nil {
-		t.Fatalf("not the inactive current Pulse view: %s", w.Body)
+		t.Fatalf("not the inactive current Autopilot view: %s", w.Body)
 	}
 	_, db, err := openPulseStoreDB(t.Context(), "Workflow/invoices", false)
 	if err != nil {

@@ -295,7 +295,7 @@ func TestWorkflowChatNativeAgentToolsScope(t *testing.T) {
 		"scheduled run": func() QueryRequest { r := chat; r.TriggeredBy = "cron"; return r }(),
 		"bot":           func() QueryRequest { r := chat; r.BotPlatform = "slack"; return r }(),
 		"notification":  func() QueryRequest { r := chat; r.IsAutoNotification = true; return r }(),
-		"Pulse reviewer child": func() QueryRequest {
+		"Autopilot reviewer child": func() QueryRequest {
 			r := chat
 			r.ParentSessionID = "parent"
 			r.SessionKind = "pulse_reviewer"

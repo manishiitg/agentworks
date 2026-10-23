@@ -110,16 +110,16 @@ const AGENTWORKS_GUIDES: Record<string, GuideCopy> = {
     howTo: 'Review the available options, then change the selection when a project needs different capabilities or cost.',
   },
   Publish: {
-    purpose: 'Share this automation’s dashboard and Pulse log at a public URL.',
+    purpose: 'Share this automation’s dashboard and Autopilot log at a public URL.',
     howTo: 'Check the publishing destination and status. Ask AI to help set up a host or update what gets published.',
   },
   Pulse: {
     purpose: 'See your goals, measurements and progress.',
-    howTo: 'Review your goals, metrics and evidence. Ask Pulse about a specific goal or measurement, send your own question, or open its full chat. Use Decisions for pending answers and Pulse settings for On/Off and outward actions.',
+    howTo: 'Review your goals, metrics and evidence. Ask Autopilot about a specific goal or measurement, send your own question, or open its full chat. Use Decisions for pending answers and Autopilot settings for On/Off and outward actions.',
   },
-  'Pulse settings': {
-    purpose: 'Choose whether Pulse is on and how it handles outward actions.',
-    howTo: 'Turn Pulse on or fully off. Choose whether posts and messages ask first or use existing limits. Review progress in Goals & metrics and pending answers in Decisions.',
+  'Autopilot settings': {
+    purpose: 'Choose whether Autopilot is on and how it handles outward actions.',
+    howTo: 'Turn Autopilot on or fully off. Choose whether posts and messages ask first or use existing limits. Review progress in Goals & metrics and pending answers in Decisions.',
   },
   Schedules: {
     purpose: 'Run work automatically at chosen times.',
@@ -342,7 +342,7 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
 
 const GROUPS: Record<Exclude<WorkspacePanelSurface, 'relay'>, Record<WorkspacePanelGroup, readonly string[]>> = {
   agentworks: {
-    'Main toolbar': ['Automation', 'Automation Schedules', 'Browser', 'Dashboard', 'Pulse', 'Schedules', 'Webhooks'],
+    'Main toolbar': ['Automation', 'Automation Schedules', 'Browser', 'Dashboard', 'Autopilot', 'Schedules', 'Webhooks'],
     Ops: ['Plan', 'Cost Analysis', 'Database', 'Execution Logs', 'File', 'Files', 'Knowledge', 'Knowledgebase', 'Workspace'],
     Setup: ['Backup', 'Notify', 'Publish', 'Access', 'Attached folders', 'Browser automation', 'Identity', 'Integrations', 'Project agent configuration', 'Workflow playbooks'],
   },

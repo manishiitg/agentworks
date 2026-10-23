@@ -2,7 +2,7 @@
 
 ## Recommending and updating a Playbook
 
-Call `search_playbooks` when the user's intent may match a playbook. Recommend the best fit from its setup areas, deliverables, and Strategic Pulse focus; if it is not installed, ask the user to install it and open the Playbooks view. For an available update, report the installed and latest versions and summarize only the authored changelog; never infer changes from a version number. When configuring an installed playbook, recommend its Strategic lens and activation model when useful. Keep Plan Drift generic; Technical scope comes from operational evidence and Architecture scope from structural risk. Searching never installs or changes the workflow.
+Call `search_playbooks` when the user's intent may match a playbook. Recommend the best fit from its setup areas, deliverables, and Strategic Autopilot focus; if it is not installed, ask the user to install it and open the Playbooks view. For an available update, report the installed and latest versions and summarize only the authored changelog; never infer changes from a version number. When configuring an installed playbook, recommend its Strategic lens and activation model when useful. Keep Plan Drift generic; Technical scope comes from operational evidence and Architecture scope from structural risk. Searching never installs or changes the workflow.
 
 ## Setting up an installed multi-Crew Playbook
 

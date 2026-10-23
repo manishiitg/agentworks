@@ -13,8 +13,8 @@ export function usePulseToggle(
     // Goal setup is available separately; missing observations must not block
     // the user's explicit request to enable reviews.
     void update(workspacePath, { pulse_enabled: !monitorOn })
-      .then(() => notify(monitorOn ? 'Pulse turned off' : 'Pulse turned on', 'success'))
-      .catch(error => notify(error instanceof Error ? error.message : 'Could not update Pulse', 'error'))
+      .then(() => notify(monitorOn ? 'Autopilot turned off' : 'Autopilot turned on', 'success'))
+      .catch(error => notify(error instanceof Error ? error.message : 'Could not update Autopilot', 'error'))
       .finally(() => setMonitorSaving(false))
   }, [workspacePath, monitorOn, monitorSaving, update, notify])
   return { monitorSaving, toggleMonitor }

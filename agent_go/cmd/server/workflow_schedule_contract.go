@@ -70,7 +70,7 @@ func scheduleMessagesNeedExplicitReason(messages []string) (bool, string) {
 func validateScheduleMessages(messages []string, directMessagesReason string) error {
 	needsReason, signal := scheduleMessagesNeedExplicitReason(messages)
 	if needsReason && strings.TrimSpace(directMessagesReason) == "" {
-		return fmt.Errorf("direct schedule messages are supported, but this queue needs direct_messages_reason because %s; explain why this work is genuinely schedule-specific and acknowledge that it lacks canonical step-level learnings, validation/retry, and Pulse attribution, or move the durable procedure into a planned route", signal)
+		return fmt.Errorf("direct schedule messages are supported, but this queue needs direct_messages_reason because %s; explain why this work is genuinely schedule-specific and acknowledge that it lacks canonical step-level learnings, validation/retry, and Autopilot attribution, or move the durable procedure into a planned route", signal)
 	}
 	return nil
 }
@@ -110,5 +110,5 @@ func scheduleMessagesAdvisory(messages []string, directMessagesReason string) st
 	if !needsReason {
 		return ""
 	}
-	return fmt.Sprintf("Direct schedule sequence retained intentionally (%s). It runs as workshop conversation turns, not canonical plan steps, so step-level learnings, validation/retry, and Pulse attribution are not automatic.", strings.TrimSpace(directMessagesReason))
+	return fmt.Sprintf("Direct schedule sequence retained intentionally (%s). It runs as workshop conversation turns, not canonical plan steps, so step-level learnings, validation/retry, and Autopilot attribution are not automatic.", strings.TrimSpace(directMessagesReason))
 }

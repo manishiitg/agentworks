@@ -85,7 +85,7 @@ payload='{"kind":"run_summary","message":"Workflow completed successfully.","sla
 curl --fail-with-body -sS --json "$payload" -H "$MCP_AUTH" "$MCP_CUSTOM/record_summary"
 ```
 
-When `record_summary` is listed for this session, it records a run/Pulse summary;
+When `record_summary` is listed for this session, it records a run/Autopilot summary;
 the backend applies saved destinations and renders Slack Block Kit. For structured
 summaries, use `slack_title`, `slack_color`, `slack_fields`, `slack_sections`, and
 `slack_footer`; never read a webhook secret or post to a webhook with shell commands.

@@ -10,7 +10,7 @@ import type { CommandDefinition } from './types'
 export const builtinCommands: CommandDefinition[] = [
   {
     command: 'pulse',
-    description: 'Run one complete Pulse now against the latest retained run',
+    description: 'Run one complete Autopilot now against the latest retained run',
     icon: <Activity className="w-4 h-4" />,
     modes: ['workflow'],
     requiredWorkflowMode: 'plan',
@@ -19,7 +19,7 @@ export const builtinCommands: CommandDefinition[] = [
     execute: async (ctx) => {
       const workspacePath = ctx.workflowWorkspacePath?.trim()
       if (!workspacePath) {
-        ctx.addToast('Open a workflow before running Pulse', 'error')
+        ctx.addToast('Open a workflow before running Autopilot', 'error')
         return
       }
       try {
@@ -27,15 +27,15 @@ export const builtinCommands: CommandDefinition[] = [
         // it depends on workspace stores that also import command metadata.
         const { schedulerApi } = await import('../api/scheduler')
         await schedulerApi.runPulse(workspacePath)
-        ctx.addToast('Pulse started', 'success')
+        ctx.addToast('Autopilot started', 'success')
       } catch (error) {
         const responseData = (error as { response?: { data?: unknown } })?.response?.data
         const detail = typeof responseData === 'string'
           ? responseData
           : error instanceof Error
             ? error.message
-            : 'Unable to start Pulse'
-        ctx.addToast(detail.trim() || 'Unable to start Pulse', 'error')
+            : 'Unable to start Autopilot'
+        ctx.addToast(detail.trim() || 'Unable to start Autopilot', 'error')
       }
     }
   },

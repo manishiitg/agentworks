@@ -113,7 +113,7 @@ export function AfterRunActions({ options, scope, disabled, saving, onChange }: 
             <span aria-hidden="true" className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${options[key] ? 'bg-primary' : 'bg-muted-foreground/25'}`}><span className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${options[key] ? 'translate-x-4' : ''}`} /></span>
           </button>)}
         </div>
-        <p className="border-t border-border px-4 py-2.5 text-[11px] leading-5 text-muted-foreground">{disabled ? 'You can run these settings, not change them.' : saving || updating ? 'Saving…' : 'Changes save automatically. These actions also work with Pulse off.'}</p>
+        <p className="border-t border-border px-4 py-2.5 text-[11px] leading-5 text-muted-foreground">{disabled ? 'You can run these settings, not change them.' : saving || updating ? 'Saving…' : 'Changes save automatically. These actions also work with Autopilot off.'}</p>
       </div>
     </ModalPortal>}
   </>

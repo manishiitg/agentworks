@@ -559,7 +559,7 @@ func externalMCPErrorText(rec *externalMCPRecorder) string {
 // the menu instead of an old get_api_spec answer in its history. The
 // fingerprint changes whenever the names do.
 func externalMCPToolIndex(allowed []externalTool) (string, string) {
-	order := []string{"Goals", "Builder", "Pulse", "Flows", "Crews", "Dashboards", "Needs you", "Brain", "Vault", "Crew review", "Account", "Help"}
+	order := []string{"Goals", "Builder", "Autopilot", "Flows", "Crews", "Dashboards", "Needs you", "Brain", "Vault", "Crew review", "Account", "Help"}
 	groups := map[string][]string{}
 	names := make([]string, 0, len(allowed))
 	for _, tool := range allowed {
@@ -572,7 +572,7 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 		case name == "needs_you" || strings.HasSuffix(name, "_needs_you"):
 			group = "Needs you"
 		case strings.HasPrefix(name, "builder_pulse") || name == "manage_pulse":
-			group = "Pulse"
+			group = "Autopilot"
 		case name == "builder" || strings.HasPrefix(name, "builder_"):
 			group = "Builder"
 		case strings.Contains(name, "relay"):

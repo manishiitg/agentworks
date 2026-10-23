@@ -322,7 +322,7 @@ const TranscriptEvent: React.FC<{
   // A message another agent sent into this chat (Pulse messaging the Builder
   // chat) shows who sent it, with that agent's icon, on the agent side.
   if (metadata?.source === 'pulse') {
-    const label = typeof metadata.sender_label === 'string' && metadata.sender_label.trim() ? metadata.sender_label.trim() : 'Pulse'
+    const label = typeof metadata.sender_label === 'string' && metadata.sender_label.trim() ? metadata.sender_label.trim() : 'Autopilot'
     const text = (displayContent || content || '').replace(new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*`), '')
     return <AgentSentMessage label={label} content={text} timestamp={timestamp} />
   }

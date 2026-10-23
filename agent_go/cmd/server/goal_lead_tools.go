@@ -19,7 +19,7 @@ const pulseToolSurface = "pulse"
 // pulseLevelsText states Pulse's permissions as what the Builder chat
 // may do for it without the owner: Pulse itself changes and runs nothing.
 func pulseLevelsText(perms stepworkflow.GoalWorkPermissions) string {
-	return stepworkflow.PulsePermissionInstructions(perms) + " Pulse judges and keeps records; Builder implements. Within these permissions, act without another owner confirmation, verify the result and record it. When the owner must decide, prepare one ready decision with evidence. The Builder receives the same server-held permissions with your message."
+	return stepworkflow.PulsePermissionInstructions(perms) + " Autopilot judges and keeps records; Builder implements. Within these permissions, act without another owner confirmation, verify the result and record it. When the owner must decide, prepare one ready decision with evidence. The Builder receives the same server-held permissions with your message."
 }
 
 // builderPulseLevelsSection is the Builder chat's always-on Pulse section
@@ -38,17 +38,17 @@ func builderPulseLevelsSection(ctx context.Context, workspacePath string) string
 		return ""
 	}
 	if !manifest.PulseEnabled() {
-		return "## Pulse\n\nPulse is off: you and the owner manage this workflow. It does not run, report or receive messages, including #pulse tags. When the owner wants an agent to own the goal, turn Pulse on (update_workflow_config(pulse_enabled=true); the goal must be in soul/soul.md)."
+		return "## Autopilot\n\nAutopilot is off: you and the owner manage this workflow. It does not run, report or receive messages, including #pulse tags. When the owner wants an agent to own the goal, turn Autopilot on (update_workflow_config(pulse_enabled=true); the goal must be in soul/soul.md)."
 	}
 	if !workflowHasSoul(ctx, workspacePath) {
-		return "## Pulse\n\nPulse is on but waiting for the goal: soul/soul.md is missing. Help the owner write it (objective, the number that shows progress, a target and date); Pulse starts once it exists."
+		return "## Autopilot\n\nAutopilot is on but waiting for the goal: soul/soul.md is missing. Help the owner write it (objective, the number that shows progress, a target and date); Autopilot starts once it exists."
 	}
 	perms, _ := pulsePermissionsForWorkflow(ctx, workspacePath)
-	return "## Pulse\n\n" +
-		"This workflow's Pulse owns its goal and directs you with what is best; you act. Ask it with ask_pulse (the owner's #pulse messages go to it in their words); read the working-with-pulse skill for how.\n\n" +
-		stepworkflow.PulsePermissionInstructions(perms) + "\nIt is the owner's standing permission for work Pulse directs, whether Pulse messages you or you bring the owner's #pulse question to Pulse.\n" +
+	return "## Autopilot\n\n" +
+		"This workflow's Autopilot owns its goal and directs you with what is best; you act. Ask it with ask_pulse (the owner's #pulse messages go to it in their words); read the working-with-pulse skill for how.\n\n" +
+		stepworkflow.PulsePermissionInstructions(perms) + "\nIt is the owner's standing permission for work Autopilot directs, whether Autopilot messages you or you bring the owner's #pulse question to Autopilot.\n" +
 
-		"Within these permissions, do what Pulse directs now, without asking the owner, then report the result (to Pulse, and to the owner when they asked). Do not ask the owner for a go-ahead these permissions already give, and do not end a reply to Pulse with a question for the owner. When owner approval is required, prepare it and raise one decision for the owner (create_human_input_request) with Pulse's recommendation, and carry it out once the owner accepts. Always the owner's: spending money, deleting steps or schedules, replacing the plan, editing soul.md, new kinds of outreach, and re-enabling schedules the owner paused. When an agent-issued pending proposal is obsolete after legitimately completed work, read it and withdraw_human_input_request with reason and evidence; withdrawal never grants approval or replaces a needed owner answer. Close the loop with Pulse: after acting on its direction, report what you did, what is still pending and when, and anything you did differently from its plan and why. When Pulse messaged you, explicitly send that report with send_message(inbox_id=<the supplied reply address>); your final chat answer is not forwarded. When you acted on the owner's #pulse message, send it to Pulse with ask_pulse in one message. Read later explicit replies with read_agent_messages. Follow Pulse's intent, not just its words (\"extend the trial\" never shortens it); when unsure, say how you read it."
+		"Within these permissions, do what Autopilot directs now, without asking the owner, then report the result (to Autopilot, and to the owner when they asked). Do not ask the owner for a go-ahead these permissions already give, and do not end a reply to Autopilot with a question for the owner. When owner approval is required, prepare it and raise one decision for the owner (create_human_input_request) with Autopilot's recommendation, and carry it out once the owner accepts. Always the owner's: spending money, deleting steps or schedules, replacing the plan, editing soul.md, new kinds of outreach, and re-enabling schedules the owner paused. When an agent-issued pending proposal is obsolete after legitimately completed work, read it and withdraw_human_input_request with reason and evidence; withdrawal never grants approval or replaces a needed owner answer. Close the loop with Autopilot: after acting on its direction, report what you did, what is still pending and when, and anything you did differently from its plan and why. When Autopilot messaged you, explicitly send that report with send_message(inbox_id=<the supplied reply address>); your final chat answer is not forwarded. When you acted on the owner's #pulse message, send it to Autopilot with ask_pulse in one message. Read later explicit replies with read_agent_messages. Follow Autopilot's intent, not just its words (\"extend the trial\" never shortens it); when unsure, say how you read it."
 }
 
 // pulsePolicyKeySuffix is the Pulse part of a chat's policy key: Pulse's own

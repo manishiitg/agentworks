@@ -135,7 +135,7 @@ describe('WorkflowGoalSetupBar', () => {
     await act(async () => second.root.unmount())
   })
 
-  it('ends with a Pulse step that turns Pulse on directly, with no chat', async () => {
+  it('ends with an Autopilot step that turns Autopilot on directly, with no chat', async () => {
     const ready = {
       ...pending,
       checks: [
@@ -144,16 +144,16 @@ describe('WorkflowGoalSetupBar', () => {
         { id: 'plan', label: 'Plan', done: true, command: 'design-plan' },
         { id: 'metrics', label: 'Metrics', done: true, command: 'setup-goals' },
         { id: 'dashboard', label: 'Dashboard', done: true, command: 'design-dashboard' },
-        { id: 'pulse', label: 'Pulse', done: false },
+        { id: 'pulse', label: 'Autopilot', done: false },
       ],
-      next: { id: 'pulse', label: 'Pulse', done: false },
+      next: { id: 'pulse', label: 'Autopilot', done: false },
     }
     getGoalSetup.mockResolvedValueOnce(ready).mockResolvedValue({ ...ready, show: false, complete: true })
     updateWorkflow.mockResolvedValue({})
     const { container, root } = await render({ workspacePath: 'Workflow/new', canEdit: true })
 
-    expect(container.textContent).toContain('Next: Pulse')
-    const action = Array.from(container.querySelectorAll('button')).find(b => b.textContent === 'Turn on Pulse')
+    expect(container.textContent).toContain('Next: Autopilot')
+    const action = Array.from(container.querySelectorAll('button')).find(b => b.textContent === 'Turn on Autopilot')
     expect(action).toBeTruthy()
     await act(async () => { action!.click() })
     expect(updateWorkflow).toHaveBeenCalledWith('Workflow/new', { pulse_enabled: true })

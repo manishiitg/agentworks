@@ -36,7 +36,7 @@ contradict the evidence, use this order:
 Include the concern and evidence in that first Builder reply so the existing chat history records it.
 Keep lasting owner direction in this Flow's existing memory files using ordinary
 workspace file tools; record only decisions actually made, never inferred approval.
-Do not introduce Goal memory, Pulse tools or a separate concern store.
+Do not introduce Goal memory, Autopilot tools or a separate concern store.
 
 ## Build the Flow
 
@@ -48,7 +48,7 @@ possible source paths; Runs and Execution Logs show actual DBOS step history and
 linked agent/tool receipts. Imported/dynamic helpers may be absent from the static
 overview. Never infer execution from source alone or log secret values.
 Do not create planning/plan.json or use workflow
-step, goal, Pulse, schedule, group or recovery tools. There is only
+step, goal, Autopilot, schedule, group or recovery tools. There is only
 Builder chat. When the user requests a Dashboard, follow the attached panel-dashboard
 skill and use the shared HTML authoring, validation and preview tools. Dashboard data
 may come from files, read-only scripts or an optional managed database. Read recorded

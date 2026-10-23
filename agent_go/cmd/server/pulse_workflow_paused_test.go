@@ -11,7 +11,7 @@ func TestWorkflowSchedulesAllPaused(t *testing.T) {
 		want     bool
 	}{
 		{"nil manifest", nil, false},
-		{"no schedules at all: runs only on request, Pulse still looks after it", &WorkflowManifest{}, false},
+		{"no schedules at all: runs only on request, Autopilot still looks after it", &WorkflowManifest{}, false},
 		{"every schedule paused", &WorkflowManifest{Schedules: []WorkflowSchedule{paused, paused}}, true},
 		{"partly paused is still active", &WorkflowManifest{Schedules: []WorkflowSchedule{paused, enabled}}, false},
 		{"all enabled", &WorkflowManifest{Schedules: []WorkflowSchedule{enabled}}, false},

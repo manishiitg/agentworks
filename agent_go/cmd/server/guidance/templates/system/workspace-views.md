@@ -2,7 +2,7 @@
 
 UI-control tools belong only to supported interactive Workflow Builder chats,
 including read-only Builders. Scheduled runs, manually triggered schedules,
-Pulse/child agents, and bot conversations do not manipulate the foreground
+Autopilot/child agents, and bot conversations do not manipulate the foreground
 workspace. Observing one of those conversations does not promote it; an
 explicit supported interactive continuation is required.
 
@@ -41,11 +41,11 @@ page's current name, then choose this project's result. Do not invent old tabs.
 | `browser` | Live managed browser or watch-only Playwright test stream | Browser work begins or the user asks to watch it. The stream updates without repeated refreshes. |
 | `workshop` | Automation chats, schedules, triggers, and bots | The user should inspect automation activity or configuration; use an advertised section target. |
 
-## Pulse and delivery views
+## Autopilot and delivery views
 
 | View ID | Shows | Open it when |
 |---|---|---|
-| `pulse` | Decisions, saved answers, findings, work areas, and gate state | The user asks about a decision or what Pulse found. |
+| `pulse` | Decisions, saved answers, findings, work areas, and gate state | The user asks about a decision or what Autopilot found. |
 | `human-actions` | Everything waiting for a person: open decisions and questions, and user suggestions for the owner | The user asks what needs their decision, or about a suggestion someone left. |
 | `backup` | Backup configuration and history | You configured or ran a backup. |
 | `publish` | Published Dashboard state | You published or refreshed the public report. |

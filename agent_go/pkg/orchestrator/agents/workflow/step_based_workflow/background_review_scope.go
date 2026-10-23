@@ -35,13 +35,13 @@ func PulsePermissions(manifestJSON string) GoalWorkPermissions {
 // retired ladder instead of layering new permission advice over it.
 func PulsePermissionInstructions(perms GoalWorkPermissions) string {
 	if !perms.Run {
-		return "Pulse is off for this workflow. No checks, reports or messages run. Turn it on in the workflow's Pulse settings to use it."
+		return "Autopilot is off for this workflow. No checks, reports or messages run. Turn it on in the workflow's Autopilot settings to use it."
 	}
 	outward := "Ask the owner before new outward actions; prepare the ready action for their decision."
 	if perms.Outward {
 		outward = "Outward actions are allowed within the workflow's existing access, selected accounts and operational limits."
 	}
-	return "Pulse is on. Pursue one bounded improvement change set in this cycle through Builder, including runs, step and schedule improvements within existing access. Check plan consistency in the same turn; never hold ordinary execution for an AI review. The unreadable-input guard still applies. " + outward + " Spending money, deleting steps or schedules, replacing the plan, editing soul.md, new kinds of outreach and re-enabling owner-paused schedules remain the owner's decisions."
+	return "Autopilot is on. Pursue one bounded improvement change set in this cycle through Builder, including runs, step and schedule improvements within existing access. Check plan consistency in the same turn; never hold ordinary execution for an AI review. The unreadable-input guard still applies. " + outward + " Spending money, deleting steps or schedules, replacing the plan, editing soul.md, new kinds of outreach and re-enabling owner-paused schedules remain the owner's decisions."
 }
 
 func parseBackgroundReadOnlyAccess(args map[string]interface{}, agentType string) (bool, error) {

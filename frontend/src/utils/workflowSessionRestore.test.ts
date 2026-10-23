@@ -33,7 +33,7 @@ describe('workflow session restore classification', () => {
     expect(isScheduledWorkflowSession(session(), runningWorkflow({ triggered_by: 'manual' }))).toBe(false)
   })
 
-  it('keeps the Pulse parent selected instead of its newer internal reviewer', () => {
+  it('keeps the Autopilot parent selected instead of its newer internal reviewer', () => {
     const parent = session({
       session_id: 'pulse-root-1',
       preset_query_id: 'latency-report',

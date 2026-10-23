@@ -26,7 +26,7 @@ func TestRuntimeProjectionClearsStaleRunningButPreservesOwnedPulse(t *testing.T)
 	svc.runtimeStates[workflowScheduleRuntimeKey(ws, id)] = &ScheduleRuntimeState{ActiveRunID: "run-1", LastStatus: "running", LastSessionID: "session-1", LastRunAt: &start, LastError: "stale error"}
 	svc.registerScheduleRunContext("run-1")
 	if got := svc.GetRuntimeStateForWorkflow(ws, id); got.LastStatus != "running" {
-		t.Fatalf("active Pulse overwritten: %+v", got)
+		t.Fatalf("active Autopilot overwritten: %+v", got)
 	}
 	svc.releaseScheduleRunContext("run-1")
 	if got := svc.GetRuntimeStateForWorkflow(ws, id); got.LastStatus != "success" || got.ActiveRunID != "" || got.LastError != "" {
@@ -41,11 +41,11 @@ func TestRuntimeProjectionClearsStaleRunningButPreservesOwnedPulse(t *testing.T)
 	if err := store.BeginRun(context.Background(), schedulerstate.Run{RunID: "run-1", ScopeType: "workflow", ScopeID: ws, LockKey: ws, ScheduleID: id, StartedAt: start}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ForceTerminal(context.Background(), schedulerstate.Transition{RunID: "run-1", To: schedulerstate.StatePartial, ErrorMessage: "Pulse incomplete"}); err != nil {
+	if err := store.ForceTerminal(context.Background(), schedulerstate.Transition{RunID: "run-1", To: schedulerstate.StatePartial, ErrorMessage: "Autopilot incomplete"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := svc.GetRuntimeStateForWorkflow(ws, id); got.LastStatus != "partial" || got.LastError != "Pulse incomplete" {
-		t.Fatalf("lost durable Pulse outcome: %+v", got)
+	if got := svc.GetRuntimeStateForWorkflow(ws, id); got.LastStatus != "partial" || got.LastError != "Autopilot incomplete" {
+		t.Fatalf("lost durable Autopilot outcome: %+v", got)
 	}
 }
 
@@ -61,16 +61,16 @@ func TestRuntimeProjectionDoesNotUseSessionAsRunIdentity(t *testing.T) {
 	state.LastStatus = "partial"
 	state.LastRunAt = &now
 	if got := mergeRuntimeStateWithRuns(state, "s", runs, false, ""); got.LastStatus != "partial" {
-		t.Fatal("workflow-only history overwrote terminal Pulse outcome")
+		t.Fatal("workflow-only history overwrote terminal Autopilot outcome")
 	}
 }
 
 func TestRuntimeProjectionDurableTerminalOverridesSameRunSuccess(t *testing.T) {
 	start := time.Now().UTC()
 	state := ScheduleRuntimeState{LastStatus: "success", LastRunAt: &start, LastSessionID: "session"}
-	runs := []ScheduleRunEntry{{ID: "run", ScheduleID: "s", SessionID: "session", StartedAt: start, Status: "partial", Error: "Pulse failed"}}
+	runs := []ScheduleRunEntry{{ID: "run", ScheduleID: "s", SessionID: "session", StartedAt: start, Status: "partial", Error: "Autopilot failed"}}
 	got := mergeRuntimeStateWithRuns(state, "s", runs, false, "run")
-	if got.LastStatus != "partial" || got.LastError != "Pulse failed" {
+	if got.LastStatus != "partial" || got.LastError != "Autopilot failed" {
 		t.Fatalf("lost durable result: %+v", got)
 	}
 	// Workflow-only history cannot contradict a final whole-job result.

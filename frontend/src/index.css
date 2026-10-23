@@ -1811,7 +1811,7 @@
 }
 
 /* Git change markers in the read-only code view's gutter. */
-/* A thinner variant for compact settings rows (Pulse autonomy). */
+/* A thinner variant for compact settings rows (Autopilot autonomy). */
 .reasoning-effort-slider--compact { height: 3px; }
 .reasoning-effort-slider--compact::-moz-range-track { height: 3px; }
 .reasoning-effort-slider--compact::-webkit-slider-thumb { width: 12px; height: 12px; }

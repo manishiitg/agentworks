@@ -63,7 +63,7 @@ func MaterializeStepExecutionReferenceSkill(signals StepExecutionSignals) *llmty
 		Name:             "builder-reference",
 		DescriptionIntro: "Workflow execution reference docs — the contracts behind the tools this step actually holds.",
 		Intro: "This skill bundles reference documentation for the tools available to this step. It deliberately contains " +
-			"only topics you can act on here — workflow design, Pulse review, and platform administration are not part of " +
+			"only topics you can act on here — workflow design, Autopilot review, and platform administration are not part of " +
 			"this step's job and are not included. Read the single matching file under `references/`.",
 		Render: renderReferenceKind,
 		Select: func(kind string, meta kindMeta) bool {

@@ -169,7 +169,7 @@ func TestNotificationHistoryToolAndDeliveryModesAreExposed(t *testing.T) {
 		}
 	}
 	if !foundHistory {
-		t.Fatal("get_notification_history tool or current-Pulse exclusion is missing")
+		t.Fatal("get_notification_history tool or current-Autopilot exclusion is missing")
 	}
 	if !foundDeliveryModes {
 		t.Fatal("record_summary delivery modes are missing")
@@ -833,7 +833,7 @@ func TestHandleNotifyUserEnforcesSummaryChannelRoute(t *testing.T) {
 
 	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"email_subject":     "Notification routing test",
-		"message_for_user":  "Pulse complete",
+		"message_for_user":  "Autopilot complete",
 		"notification_kind": "pulse_summary",
 	}); err != nil {
 		t.Fatalf("pulse summary notification: %v", err)
@@ -841,11 +841,11 @@ func TestHandleNotifyUserEnforcesSummaryChannelRoute(t *testing.T) {
 	select {
 	case <-gmailCh:
 	case <-time.After(time.Second):
-		t.Fatal("expected Pulse summary on Gmail")
+		t.Fatal("expected Autopilot summary on Gmail")
 	}
 	select {
 	case <-slackCh:
-		t.Fatal("Pulse summary must not be sent to Slack")
+		t.Fatal("Autopilot summary must not be sent to Slack")
 	default:
 	}
 }
@@ -871,13 +871,13 @@ func TestHandleNotifyUserSuppressesWorkflowSlackWebhookForGmailOnlyPulse(t *test
 	})
 	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"email_subject":     "Notification routing test",
-		"message_for_user":  "Pulse complete",
+		"message_for_user":  "Autopilot complete",
 		"notification_kind": "pulse_summary",
 	}); err != nil {
 		t.Fatalf("pulse summary notification: %v", err)
 	}
 	if webhookCalled {
-		t.Fatal("Gmail-only Pulse summary must not reach the workflow Slack webhook")
+		t.Fatal("Gmail-only Autopilot summary must not reach the workflow Slack webhook")
 	}
 }
 
@@ -892,16 +892,16 @@ func TestHandleNotifyUserAddsWorkflowNameToRichEmail(t *testing.T) {
 		WorkflowName: "latency-report",
 	})
 	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
-		"message_for_user":  "Pulse completed",
+		"message_for_user":  "Autopilot completed",
 		"notification_kind": "pulse_summary",
-		"email_subject":     "Pulse summary",
+		"email_subject":     "Autopilot summary",
 		"email_html":        `<div>Three findings remain pending.</div>`,
 		"summary_routes": []interface{}{map[string]interface{}{
 			"routing_step_id": "review_router", "route_id": "security", "label": "Security",
 			"title": "Review complete", "status": "completed", "message": "route facts already rendered by the email card",
 		}},
 	}); err != nil {
-		t.Fatalf("Pulse notification: %v", err)
+		t.Fatalf("Autopilot notification: %v", err)
 	}
 
 	select {
@@ -910,7 +910,7 @@ func TestHandleNotifyUserAddsWorkflowNameToRichEmail(t *testing.T) {
 			t.Fatalf("destination = %#v, want rich Gmail content", dest)
 		}
 		gmail := dest.Content.Gmail
-		if gmail.Subject != "latency-report · Pulse summary" {
+		if gmail.Subject != "latency-report · Autopilot summary" {
 			t.Fatalf("subject = %q", gmail.Subject)
 		}
 		if !strings.Contains(gmail.HTMLBody, "Workflow: <strong") || !strings.Contains(gmail.HTMLBody, "latency-report</strong>") {
@@ -938,17 +938,17 @@ func TestHandleNotifyUserPreservesWorkflowNameThroughSessionDestination(t *testi
 	t.Cleanup(func() { DeleteSessionNotificationDestination(sessionID) })
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sessionID)
 	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
-		"message_for_user": "Pulse completed",
-		"email_subject":    "Pulse summary",
+		"message_for_user": "Autopilot completed",
+		"email_subject":    "Autopilot summary",
 		"email_html":       `<div>Complete.</div>`,
 	}); err != nil {
-		t.Fatalf("Pulse notification: %v", err)
+		t.Fatalf("Autopilot notification: %v", err)
 	}
 
 	select {
 	case dest := <-ch:
 		gmail := dest.Content.Gmail
-		if gmail.Subject != "social-media · Pulse summary" || !strings.Contains(gmail.HTMLBody, "social-media</strong>") {
+		if gmail.Subject != "social-media · Autopilot summary" || !strings.Contains(gmail.HTMLBody, "social-media</strong>") {
 			t.Fatalf("workflow identity was not preserved through session destination: %#v", gmail)
 		}
 	case <-time.After(time.Second):

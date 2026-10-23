@@ -222,14 +222,14 @@ func createMigrateGoalAgentsExecutor(workspacePath string, logger loggerv2.Logge
 			if err := writeFile(workspacepkg.WithSystemManagedWritePaths(ctx, pp), pp, after); err != nil {
 				return "", err
 			}
-			logPlanChange(ctx, workspacePath, PlanChangelogEntry{Tool: "migrate_goal_agents", Reason: "Retire automatic reflection and LLM specialists; preserve original contributions/routes in each step's goal_agent_migration audit note. Review retired routes as a Crew step through Pulse.", BeforeSnapshot: json.RawMessage(before), AfterSnapshot: json.RawMessage(after)}, readFile, withPlanMutationWriteAccess(workspacePath, writeFile), logger)
+			logPlanChange(ctx, workspacePath, PlanChangelogEntry{Tool: "migrate_goal_agents", Reason: "Retire automatic reflection and LLM specialists; preserve original contributions/routes in each step's goal_agent_migration audit note. Review retired routes as a Crew step through Autopilot.", BeforeSnapshot: json.RawMessage(before), AfterSnapshot: json.RawMessage(after)}, readFile, withPlanMutationWriteAccess(workspacePath, writeFile), logger)
 		}
 		if !configAbsent && !sameAgentJSON([]byte(cfg), []byte(ac)) {
 			if err := writeFile(workspacepkg.WithSystemManagedWritePaths(ctx, cp), cp, ac); err != nil {
 				return "", err
 			}
 		}
-		return `{"status":"migrated","next":"Read goal_agent_migration notes and the plan changelog. Preserve authored follow-up phases; move required contributions into explicit tasks. Raise a Pulse issue for retired LLM routes; do not auto-create Crew. Then stamp 1.0.50."}`, nil
+		return `{"status":"migrated","next":"Read goal_agent_migration notes and the plan changelog. Preserve authored follow-up phases; move required contributions into explicit tasks. Raise an Autopilot issue for retired LLM routes; do not auto-create Crew. Then stamp 1.0.50."}`, nil
 	}
 }
 

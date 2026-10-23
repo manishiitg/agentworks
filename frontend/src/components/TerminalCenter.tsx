@@ -4866,7 +4866,7 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
     active: 'Active',
     attention: 'Needs attention',
     workflow: isWorkflowTerminalContext ? 'Workflow steps' : 'Background tasks',
-    review: 'Pulse reviewers',
+    review: 'Autopilot reviewers',
     other: 'Other agents',
   }
 

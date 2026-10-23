@@ -636,7 +636,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
       : 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
     const routeName = data.selected_route_name || (data.use_generic_agent ? 'Generic Agent' : '')
     // An orchestrator picks a route per todo, so these arrive in long runs --
-    // eleven in a row on a real Pulse orchestrator. As a full card each one
+    // eleven in a row on a real Autopilot orchestrator. As a full card each one
     // repeated "Agent: Route Selected", the iteration chip and "Action:"
     // identically, and the only part that differed (which agent, which tier)
     // was buried three lines down. One dense row per route puts the varying

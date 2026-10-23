@@ -9,7 +9,7 @@
     {"version": "0.3.0", "summary": "Adds an explicit inspect-first discovery step, focused customer questions, recorded user direction, and a clear boundary that installation is not approval."},
     {
       "version": "0.2.1",
-      "summary": "Adds workflow goal, metric, and workflow-boundary guidance plus Technical, Architecture, and Strategic Pulse focus recommendations."
+      "summary": "Adds workflow goal, metric, and workflow-boundary guidance plus Technical, Architecture, and Strategic Autopilot focus recommendations."
     }
   ],
   "title": "Browser Performance Validation",

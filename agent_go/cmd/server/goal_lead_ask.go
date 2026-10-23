@@ -41,7 +41,7 @@ func (api *StreamingAPI) messageGoalLead(ctx context.Context, userID, workspaceP
 		return nil, fmt.Errorf("cannot read this workflow")
 	}
 	if !manifest.PulseEnabled() || !workflowHasSoul(ctx, workspacePath) {
-		return nil, fmt.Errorf("this workflow's Pulse is off or has no goal")
+		return nil, fmt.Errorf("this workflow's Autopilot is off or has no goal")
 	}
 	conv, err := ensureGoalLeadConversation(ctx, workspacePath, firstNonEmptyTrimmed(manifest.ID, workspacePath), time.Now().UTC(), false, nil)
 	if err != nil {
@@ -50,8 +50,8 @@ func (api *StreamingAPI) messageGoalLead(ctx context.Context, userID, workspaceP
 	label := firstNonEmptyTrimmed(manifest.Label, workspacePath)
 	callerChat := &codeChat{Key: "session:" + callerSession, Name: firstNonEmptyTrimmed(callerLabel, label+" chat"), SessionID: callerSession}
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}, Label: callerChat.Name, Path: workspacePath, Chat: callerChat}
-	target := triggerTarget{Kind: triggerCallerWorkflow, Path: workspacePath, Label: label + " Pulse", Manifest: manifest,
-		Chat: &codeChat{Key: "goal-lead", ID: "goal-lead", Name: label + " Pulse", SessionID: conv.SessionID}}
+	target := triggerTarget{Kind: triggerCallerWorkflow, Path: workspacePath, Label: label + " Autopilot", Manifest: manifest,
+		Chat: &codeChat{Key: "goal-lead", ID: "goal-lead", Name: label + " Autopilot", SessionID: conv.SessionID}}
 	return api.sendAgentMessage(ctx, userID, caller, target, message, inboxID, submissionID)
 }
 
@@ -80,7 +80,7 @@ func createGoalLeadAskTools() []goalLeadAskTool {
 
 // createGoalLeadAskTool is one name of the ask tool.
 func createGoalLeadAskTool(name string) (llmtypes.Tool, func(context.Context, map[string]interface{}) (string, error)) {
-	description := "Send an explicit message to this workflow's Pulse, the agent that owns its goal. Use it to discuss progress, priorities or the owner's direction. Returns an inbox/reply address and a transport acknowledgement. Pulse chooses whether and when to reply with a message; its final chat answer is not forwarded. Read replies with read_agent_messages(inbox_id). Only for workflows with Pulse enabled and a goal."
+	description := "Send an explicit message to this workflow's Autopilot, the agent that owns its goal. Use it to discuss progress, priorities or the owner's direction. Returns an inbox/reply address and a transport acknowledgement. Autopilot chooses whether and when to reply with a message; its final chat answer is not forwarded. Read replies with read_agent_messages(inbox_id). Only for workflows with Autopilot enabled and a goal."
 	if name == goalLeadAskToolAliasName {
 		description = "Old name of ask_pulse, kept for one release; use ask_pulse. " + description
 	}
@@ -90,7 +90,7 @@ func createGoalLeadAskTool(name string) (llmtypes.Tool, func(context.Context, ma
 		Parameters: llmtypes.NewParameters(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"message":       map[string]interface{}{"type": "string", "minLength": 1, "description": "Your message to Pulse, as you would write it to a colleague."},
+				"message":       map[string]interface{}{"type": "string", "minLength": 1, "description": "Your message to Autopilot, as you would write it to a colleague."},
 				"inbox_id":      map[string]interface{}{"type": "string", "description": "Existing conversation/reply address, when continuing a conversation."},
 				"submission_id": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this message; reuse it after an uncertain retry to get the original acknowledgement."},
 			},
@@ -107,19 +107,19 @@ func createGoalLeadAskTool(name string) (llmtypes.Tool, func(context.Context, ma
 			sessionID, _ = ctx.Value(common.ChatSessionIDKey).(string)
 		}
 		if isGoalLeadSessionID(sessionID) {
-			return "", fmt.Errorf("the Pulse cannot ask itself")
+			return "", fmt.Errorf("the Autopilot cannot ask itself")
 		}
 		// Pulse is talked to from the app and MCP, not from Slack or other bot
 		// conversations (owner, 2026-10-08).
 		if api.sessionIsBotConversation(sessionID) {
-			return "", fmt.Errorf("Pulse is not available from Slack or other bot conversations; tell the person to talk to Pulse from the workflow's Builder chat in AgentWorks (#pulse) or an MCP client")
+			return "", fmt.Errorf("Autopilot is not available from Slack or other bot conversations; tell the person to talk to Autopilot from the workflow's Builder chat in AgentWorks (#pulse) or an MCP client")
 		}
 		workspacePath, claims, err := api.pulseToolScope(ctx, "", false)
 		if err != nil {
 			return "", err
 		}
 		if !workflowHasGoal(ctx, workspacePath) {
-			return "", fmt.Errorf("this workflow's Pulse is off or has no goal yet (Pulse on and soul/soul.md)")
+			return "", fmt.Errorf("this workflow's Autopilot is off or has no goal yet (Autopilot on and soul/soul.md)")
 		}
 		callerLabel := api.goalLeadAskCaller(ctx, workspacePath, sessionID, claims)
 		out, err := api.messageGoalLead(ctx, claims.UserID, workspacePath, sessionID, callerLabel, stringToolArg(args, "message"), stringToolArg(args, "inbox_id"), stringToolArg(args, "submission_id"))

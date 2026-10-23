@@ -210,7 +210,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                             <div key={category.id} className="overflow-hidden rounded-md border border-border bg-card">
                                               <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
                                                 <div className="text-xs font-semibold text-foreground">
-                                                  {projectMode && category.id === 'builder' ? 'Chat' : category.id === 'pulse' ? 'Pulse (including background agents)' : category.label}
+                                                  {projectMode && category.id === 'builder' ? 'Chat' : category.id === 'pulse' ? 'Autopilot (including background agents)' : category.label}
                                                 </div>
                                                   <div className="text-right text-[10px] text-muted-foreground">
                                                     <div className="font-mono text-foreground">{recordedCost(category.total)}</div>

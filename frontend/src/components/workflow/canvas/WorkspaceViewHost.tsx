@@ -322,9 +322,9 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     void updateWorkflowManifest(workspacePath, { pulse_outward_actions: next })
       .then(manifest => {
         setPulseOutwardState(manifest.pulse?.outward_actions ?? 'ask')
-        useChatStore.getState().addToast('Pulse outward actions updated', 'success')
+        useChatStore.getState().addToast('Autopilot outward actions updated', 'success')
       })
-      .catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not update Pulse outward actions', 'error'))
+      .catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not update Autopilot outward actions', 'error'))
       .finally(() => setPulseOutwardSaving(false))
   }, [workspacePath, pulseOutwardSaving, pulseOutward, updateWorkflowManifest])
 
@@ -341,7 +341,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
       const resp = await agentApi.getPulseOverview(workspacePath)
       assertChatIdentityCurrent(identity)
       if (!resp.success) {
-        throw new Error(resp.error || 'Failed to load Pulse status')
+        throw new Error(resp.error || 'Failed to load Autopilot status')
       }
 
       setPulseOutwardState(resp.outward_actions ?? 'ask')
@@ -350,7 +350,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
       setPulseOverview({ workspacePath, identity, data: resp })
 
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load Pulse status'
+      const message = err instanceof Error ? err.message : 'Failed to load Autopilot status'
       setPulseStatusError(message)
     } finally {
       if (showLoading) setPulseStatusLoading(false)
