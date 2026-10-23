@@ -10,6 +10,7 @@ import { chromium } from 'playwright'
 const frontend = fileURLToPath(new URL('..', import.meta.url)), repo = path.dirname(frontend)
 const output = process.env.BROWSER_CHECK_ARTIFACT_DIR || await mkdtemp(path.join(os.tmpdir(), 'static-dashboard-'))
 await mkdir(output, { recursive: true })
+execFileSync('go', ['test', './cmd/server', '-run', '^TestStatic', '-count=1'], { cwd: path.join(repo, 'agent_go'), env: { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'auto' }, stdio: 'inherit' })
 const fixture = path.join(output, 'source.html')
 execFileSync('go', ['test', './dashboards', '-run', '^TestTSXDashboardLifecycle$', '-count=1'], { cwd: path.join(repo, 'workspace'), env: { ...process.env, DASHBOARD_TSX_TEST_FIXTURE: fixture }, stdio: 'inherit' })
 execFileSync('npm', ['run', 'prepare:local-assets'], { cwd: frontend, stdio: 'inherit' })

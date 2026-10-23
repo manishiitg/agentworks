@@ -30,20 +30,23 @@ func TestStaticExportKeepsAuthoringAndExecuteConsent(t *testing.T) {
 }
 
 func TestStaticPublishTracksSourcesAndNotGeneratedExports(t *testing.T) {
-	f := newExternalToolsFixture(t)
+	store := &mockWorkspaceAPI{files: map[string]string{}}
+	host := httptest.NewServer(store)
+	defer host.Close()
+	t.Setenv("WORKSPACE_API_URL", host.URL)
 	ctx := context.Background()
 	first := computeWorkflowPublishSourceHash(ctx, "Workflow/invoices")
-	f.write(t, "Workflow/invoices/code/reports/managed/overview/index.tsx", "export default ()=>null")
+	store.files["Workflow/invoices/code/reports/managed/overview/index.tsx"] = "export default ()=>null"
 	source := computeWorkflowPublishSourceHash(ctx, "Workflow/invoices")
 	if source == first {
 		t.Fatal("managed TSX source did not trigger Publish")
 	}
-	f.write(t, "Workflow/invoices/db/summary.json", `{"total":42}`)
+	store.files["Workflow/invoices/db/summary.json"] = `{"total":42}`
 	data := computeWorkflowPublishSourceHash(ctx, "Workflow/invoices")
 	if data == source {
 		t.Fatal("JSON data change did not trigger Publish")
 	}
-	f.write(t, "Workflow/invoices/publish/exports/example/index.html", "published snapshot")
+	store.files["Workflow/invoices/publish/exports/example/index.html"] = "published snapshot"
 	if current := computeWorkflowPublishSourceHash(ctx, "Workflow/invoices"); current != data {
 		t.Fatal("generated export triggered Publish loop")
 	}
