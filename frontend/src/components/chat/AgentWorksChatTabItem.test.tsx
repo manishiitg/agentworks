@@ -20,10 +20,10 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function renderTab(name: string, displayName?: string, productSurface?: ProductSurface) {
+async function renderTab(name: string, displayName?: string, productSurface?: ProductSurface, metadata?: ChatTab['metadata']) {
   const container = document.createElement("div");
   document.body.append(container);
-  const tab = { tabId: "tab-1", name } as ChatTab;
+  const tab = { tabId: "tab-1", name, metadata } as ChatTab;
   await act(async () => createRoot(container).render(
     <AgentWorksChatTabItem tab={tab} isActive={false} canClose isBlank={false} displayName={displayName} productSurface={productSurface} onTabClick={() => {}} onCloseTab={() => {}} />,
   ));
@@ -222,4 +222,17 @@ it('announces a tab changing to working and waiting without repeating idle label
     host.remove()
     useChatStore.setState(original, true)
   }
+})
+
+
+it.each([true, false])('keeps owner email in details and marks your own tab only when the server permits control (%s)', async yours => {
+  const owner = 'alex.taylor@example.com'
+  const host = await renderTab(`${owner} · Builder`, undefined, 'work', {
+    agentProfileId: 'work', agentProfileTabOwnerID: 'owner-one', agentProfileTabOwnerName: owner, agentProfileTabCanWrite: yours,
+  })
+  expect(host.textContent).toContain('Builder')
+  expect(host.textContent).not.toContain(owner)
+  expect(host.textContent?.includes('You')).toBe(yours)
+  expect(host.querySelector(`[aria-label="${yours ? 'Your tab ·' : 'Tab owned by'} ${owner}"]`)).not.toBeNull()
+  expect(host.querySelector('span[title]')?.getAttribute('title')).toContain(owner)
 })

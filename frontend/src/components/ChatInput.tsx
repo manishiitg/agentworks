@@ -1,4 +1,5 @@
 import { CodeChatConnectionStatus } from '../products/work/CodeChatConnectionStatus'
+import { ReachableAgentsMenu } from './chat/ReachableAgentsMenu'
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
 import { requestMainTerminalFocus } from '../utils/mainTerminalFocus'
@@ -3592,6 +3593,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 )}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
                 {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
+                {agentProfileId === 'work' && <ReachableAgentsMenu />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
                   || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} />

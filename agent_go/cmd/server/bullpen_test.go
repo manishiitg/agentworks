@@ -38,6 +38,8 @@ func TestBullpenAccountDirectoryOverAuthenticatedHTTP(t *testing.T) {
 	t.Cleanup(invalidateUserDirectoryCache)
 	srv := httptest.NewServer(AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/api/agent-directory":
+			env.api.handleAgentDirectory(w, r)
 		case "/api/bullpen/notices":
 			env.api.handleBullpenNotices(w, r)
 		default:
@@ -92,6 +94,15 @@ func TestBullpenAccountDirectoryOverAuthenticatedHTTP(t *testing.T) {
 	if body = get("other", http.StatusOK); !strings.Contains(body, "foreign-agent") || strings.Contains(body, "own-agent") {
 		t.Fatalf("foreign directory crossed account: %s", body)
 	}
+	// The chat picker exposes the same canonical directory, bound to the
+	// signed-in person even when a query tries to name another account.
+	for _, check := range []struct{ user, own, foreign string }{{"owner", "own-agent", "foreign-agent"}, {"other", "foreign-agent", "own-agent"}} {
+		body = getAt(check.user, "/api/agent-directory?user_id=denied", http.StatusOK)
+		if !strings.Contains(body, check.own) || strings.Contains(body, check.foreign) || strings.Contains(body, "private-connection") || strings.Contains(body, "foreign-session") {
+			t.Fatalf("reachable directory crossed account: %s", body)
+		}
+	}
+	getAt("", "/api/agent-directory", http.StatusUnauthorized)
 	get("", http.StatusUnauthorized)
 	get("denied", http.StatusForbidden)
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks")

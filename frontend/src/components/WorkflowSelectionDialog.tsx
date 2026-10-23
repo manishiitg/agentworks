@@ -14,6 +14,7 @@ interface WorkflowItem {
   kind: 'workflow' | 'crew' | 'pulse'
   icon?: string
   secondaryLabel?: string
+  shared?: boolean
 }
 
 const referenceRowKey = (item: WorkflowItem) => item.presetId
@@ -98,6 +99,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
         label: workflow.manifest.label,
         workspacePath: workflow.workspace_path,
         kind: 'workflow',
+        shared: workflow.my_access === 'read',
         icon: workflow.manifest.icon,
       }))
     }).catch(() => { workflows = []; failed() }).finally(finish)
@@ -110,6 +112,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
           secondaryLabel: identityName === crew.title ? undefined : crew.title,
           workspacePath: crew.workspacePath,
           kind: 'crew',
+          shared: !!crew.shared && crew.shared.canBuild !== true,
           icon: crew.identity?.icon,
         }
       })
@@ -268,7 +271,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
               role="option"
               aria-label={workflow.label}
               aria-selected={selectedWorkflow === workflow}
-              title={[workflow.secondaryLabel, workflow.workspacePath].filter(Boolean).join('\n') || workflow.label}
+              title={[workflow.secondaryLabel, workflow.shared ? 'Shared with you · Open from Dashboards' : '', workflow.workspacePath].filter(Boolean).join('\n') || workflow.label}
               data-reference-row
               className={`px-3 py-2 cursor-pointer flex items-center gap-2 text-sm transition-colors ${
                 selectedWorkflow === workflow
@@ -283,6 +286,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="truncate font-medium">{workflow.label}</div>
                   <span className="shrink-0 rounded border border-border px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{workflow.kind}</span>
+                  {workflow.shared && <span className="shrink-0 text-[10px] text-muted-foreground">Shared</span>}
                 </div>
               </div>
             </div>

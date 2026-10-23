@@ -2,8 +2,25 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"strings"
 )
+
+// The browser and Builder tools use the same caller-authorized directory.
+func (api *StreamingAPI) handleAgentDirectory(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserFromContext(r.Context())
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
+		externalError(w, http.StatusUnauthorized, "unauthenticated", "Sign in to see the agents you can reach.")
+		return
+	}
+	out, err := listAgentDirectory(r.Context(), claims)
+	if err != nil {
+		externalError(w, http.StatusServiceUnavailable, "directory_unavailable", "Could not load your agents. Try again.")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	externalJSON(w, out)
+}
 
 // listAgentDirectory is the one list of agents a person can use (PLAT-861-297, owner 2026-10-20: "all should be a
 // group of agents users can easily.. once shared"): every Crew, Goal and Relay they own or that is shared with them,

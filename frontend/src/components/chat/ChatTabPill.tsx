@@ -10,6 +10,7 @@ import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { PulseIcon, isPulseConversationSession } from '../workflow/pulseIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
+import { ChatTabOwner, compactOwnerChatName } from './ChatTabOwner'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -49,11 +50,14 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
   tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride, productSurface, workspaceActivity,
   onTabClick, onCloseTab, onRename, onMakeInteractive, onUnpin, readOnly = false, closeStopsSession = false,
 }) => {
-  const rawName = displayNameOverride ?? tab.name
+  const ownerName = tab.metadata?.agentProfileId === 'work' ? tab.metadata.agentProfileTabOwnerName : undefined
+  const yourTab = !!ownerName && tab.metadata?.agentProfileTabCanWrite === true
+  const rawName = compactOwnerChatName(displayNameOverride ?? tab.name, ownerName)
   const displayName = readableGeneratedChatTitle(rawName, tab.metadata?.isScheduledRun) ||
     (tab.metadata?.isScheduledRun && /^(?:Manual )?Pulse$/i.test(rawName) ? rawName === 'Manual Pulse' ? 'Manual review' : 'Automatic review' : rawName)
   const rawTooltip = titleOverride || tab.name || displayName
-  const tooltip = readableGeneratedChatTitle(rawTooltip, tab.metadata?.isScheduledRun) || rawTooltip
+  const nameTooltip = readableGeneratedChatTitle(rawTooltip, tab.metadata?.isScheduledRun) || rawTooltip
+  const tooltip = ownerName ? `${nameTooltip} · ${yourTab ? 'Your tab' : 'Owned by'} · ${ownerName}` : nameTooltip
   const workspacePickable = !!productSurface && ['agentworks', 'relays', 'work', 'code'].includes(productSurface)
   const workspaceTrigger = useRef<HTMLButtonElement | null>(null)
   const pickerOpen = useProductNavigationToolbarStore(state => state.pickerOpen)
@@ -155,7 +159,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           : 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
       }`}
     >
-      {productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
+      {ownerName ? <ChatTabOwner name={ownerName} yours={yourTab} /> : productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
       {isPulseConversationSession(tab.sessionId) && <PulseIcon className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Pulse" role="img" />}
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
@@ -188,6 +192,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           {displayName}
         </span>
       )}
+      {yourTab && <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-primary">You</span>}
       {productSurface && <>
         {workspacePickable && <button ref={registerWorkspaceTrigger} type="button" data-workspace-setup-trigger aria-label="Switch workspace" aria-haspopup="menu" aria-expanded={pickerOpen}
           title="Switch workspace or product"

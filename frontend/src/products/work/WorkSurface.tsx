@@ -69,6 +69,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 import { EntityIdentityIcon } from '../../components/ui/EntityIdentityIcon'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { AgentWorksChatTabItem } from '../../components/chat/AgentWorksChatTabItem'
+import { ChatTabOwner, compactOwnerChatName } from '../../components/chat/ChatTabOwner'
 import {
   REPORT_PREVIEW_PREFERENCE_CHANGED_EVENT,
   readReportPreviewPreference,
@@ -598,6 +599,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   const agentCount = tabs.filter(isAgentTab).length
   const sideChatKey = (tab: ChatTab) => listedFor(tab)?.conversation_key
   const sideChatName = (tab: ChatTab) => workSideChatDisplayName(listedFor(tab)?.name || tab.name)
+  const tabLabel = (tab: ChatTab) => compactOwnerChatName(tab.tabId === canonicalTabId && tab.metadata?.agentProfileTabOwnerName ? 'Builder' : tab.tabId === canonicalTabId ? projectName : sideChatName(tab), tab.metadata?.agentProfileTabOwnerName)
   const canControl = (tab: ChatTab) => tab.metadata?.agentProfileTabCanWrite !== false
   const sideChatPinned = (tab: ChatTab) => listedFor(tab)?.pinned !== false
   // The strip shows the main chat and the tabs the person pinned, as many as they pin (owner, 2026-10-20); the rest are
@@ -876,7 +878,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         isActive={tab.tabId === activeTabId}
         canClose={false}
         isBlank={false}
-        displayName={tab.tabId === canonicalTabId ? (tab.metadata?.agentProfileTabOwnerName ? `${tab.metadata.agentProfileTabOwnerName} · Builder` : projectName) : sideChatName(tab)}
+        displayName={tabLabel(tab)}
         workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
         titleOverride={tab.tabId === canonicalTabId ? projectName : key ? sideChatName(tab) : undefined}
         productSurface={tab.tabId === canonicalTabId ? 'work' : undefined}
@@ -910,7 +912,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
               <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
               {tabs.map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
-                const label = tab.tabId === canonicalTabId ? (tab.metadata?.agentProfileTabOwnerName ? `${tab.metadata.agentProfileTabOwnerName} · Builder` : projectName) : sideChatName(tab)
+                const label = tabLabel(tab)
                 const position = ownedListed.findIndex(chat => chat.conversation_key === key)
                 return <div
                   key={tab.tabId}
@@ -937,10 +939,10 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
                   /> : <button
                     type="button"
                     onClick={() => { setMoreOpen(false); selectTab(tab.tabId) }}
-                    title={label}
+                    title={[label, tab.metadata?.agentProfileTabOwnerName].filter(Boolean).join(' · ')}
                     className={`min-w-0 flex-1 rounded py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-foreground/85'}`}
                   >
-                    <span className="block truncate">{label}</span>{!canControl(tab) && <span className="block text-[10px] font-normal text-muted-foreground">{tab.metadata?.agentProfileTabOwnerName} controls this tab</span>}{!isAgentTab(tab) && <span className="block text-[10px] font-normal text-muted-foreground">Activity</span>}
+                    <span className="flex min-w-0 items-center gap-2">{tab.metadata?.agentProfileTabOwnerName && <ChatTabOwner name={tab.metadata.agentProfileTabOwnerName} yours={tab.metadata.agentProfileTabCanWrite === true} />}<span className="truncate">{label}</span>{tab.metadata?.agentProfileTabCanWrite === true && tab.metadata.agentProfileTabOwnerName && <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[9px] text-primary">You</span>}</span>{tab.metadata?.agentProfileTabOwnerName && <span className="mt-0.5 block truncate text-[10px] font-normal text-muted-foreground">{tab.metadata.agentProfileTabCanWrite === true ? 'Your tab' : tab.metadata.agentProfileTabOwnerName}</span>}{!isAgentTab(tab) && <span className="block text-[10px] font-normal text-muted-foreground">Activity</span>}
                   </button>}
                   {reordering && key ? <div className="flex shrink-0 items-center">
                     <button type="button" aria-label={`Move ${label} earlier`} disabled={position <= 0} onClick={() => { const target = ownedListed[position - 1]; if (target) void moveSideChat(key, target.conversation_key) }} className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
