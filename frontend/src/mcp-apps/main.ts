@@ -52,7 +52,7 @@ function renderDocument() {
   }
   for (const style of page.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')) {
     const href = style.getAttribute('href') || ''
-    const source = href.endsWith('/dashboard-react.css') ? runtimes['dashboard-react.css'] : dashboard.files[href.replace(dashboard.asset_prefix + '/', '')]
+    const source = href.endsWith('/dashboard.css') ? runtimes['dashboard.css'] : dashboard.files[href.replace(dashboard.asset_prefix + '/', '')]
     if (source) { const inline = element('style'); inline.textContent = source; style.replaceWith(inline) }
     else style.remove()
   }

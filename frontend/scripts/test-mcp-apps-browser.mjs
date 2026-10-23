@@ -4,7 +4,7 @@
 import { execFileSync } from 'node:child_process'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { build } from 'vite'
@@ -98,6 +98,7 @@ try {
   await page.goto(origin + '/tsx')
   await dashboardFrame.getByText('TSX dashboard', { exact: true }).waitFor()
   await dashboardFrame.locator('.dashboard-metric').filter({ hasText: '42' }).waitFor()
+  assert(parseFloat(await dashboardFrame.locator('.dashboard-stat').evaluate(element => getComputedStyle(element).paddingLeft)) >= 16, 'shared component stylesheet missing in MCP App')
   assert.equal((await mutations()).length, 0, 'JSON rendering reads data without starting work')
   await dashboardFrame.getByRole('button', { name: 'Ask TSX dashboard' }).click()
   await app.getByLabel('Message to the Crew').waitFor({ state: 'visible' })
@@ -117,6 +118,10 @@ try {
   if (process.env.BROWSER_CHECK_ARTIFACT_DIR) {
     await mkdir(process.env.BROWSER_CHECK_ARTIFACT_DIR, { recursive: true })
     await page.screenshot({ path: path.join(process.env.BROWSER_CHECK_ARTIFACT_DIR, 'mcp-dashboard.png'), fullPage: true })
+    const assets = path.join(process.env.BROWSER_CHECK_ARTIFACT_DIR, 'runtime-assets')
+    await mkdir(assets, { recursive: true })
+    await writeFile(path.join(assets, 'mcp-dashboard.js'), main)
+    await writeFile(path.join(assets, 'mcp-dashboard-document.js'), child)
   }
   assert.deepEqual(errors, [])
   console.log('PASS: MCP Apps handshake, opaque document, read data, explicit Ask/function submission, refresh without replay')
