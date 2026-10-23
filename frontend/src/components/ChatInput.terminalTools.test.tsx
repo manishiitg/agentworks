@@ -26,7 +26,10 @@ import { useLLMStore } from '../stores/useLLMStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { useModeStore } from '../stores/useModeStore'
-import { agentApi } from '../services/api'
+import { useAuthStore } from '../stores/useAuthStore'
+import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
+import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
+import api, { agentApi } from '../services/api'
 import { setProductCommands, setUserCommands } from '../commands/registry'
 import { MAIN_TERMINAL_FOCUS_EVENT } from '../utils/mainTerminalFocus'
 
@@ -77,6 +80,43 @@ describe('terminal toolbar shared tools', () => {
   afterEach(async () => {
     await act(async () => root?.unmount())
     useProductSurfaceStore.setState({ productSurface: 'agentworks' }); client?.clear(); host?.remove(); setUserCommands([]); setProductCommands([]); vi.restoreAllMocks(); send.mockClear(); stopTurn.mockClear(); newChat.mockClear()
+  })
+  it('shows the Goal Builder model under the server lock and the existing on-open agents menu', async () => {
+    const llms = useLLMStore.getState(), presets = useGlobalPresetStore.getState()
+    const workflows = useWorkflowManifestStore.getState(), auth = useAuthStore.getState()
+    const get = vi.spyOn(api, 'get').mockResolvedValue({ data: { agents: [] } })
+    try {
+      await act(async () => {
+        useAuthStore.setState({ user: { id: 'person-one', username: 'builder' } })
+        useGlobalPresetStore.setState({ activePresetIds: { ...presets.activePresetIds, workflow: 'goal-one' } })
+        useWorkflowManifestStore.setState({ workflows: [{ workspace_path: 'Workflow/project', manifest: {
+          schema_version: 1, id: 'goal-one', label: 'Goal', execution_defaults: {}, ownership: { employee_id: null }, schedules: [],
+          capabilities: { selected_servers: [], selected_tools: [], selected_skills: [], selected_secrets: [], selected_global_secret_names: [], browser_mode: 'none', use_code_execution_mode: false,
+            llm_config: { schema_version: 2, mode: 'explicit', builder_llm: { provider: 'codex-cli', model_id: 'builder-model' } } },
+        } }] })
+        useLLMStore.setState({ savedLLMs: [], availableLLMs: [{ provider: 'codex-cli', model: 'builder-model', label: 'Builder model', description: '' }] })
+        useChatStore.setState({ activeSessionsCache: [{ session_id: 'A-session', runtime: { provider: 'claude-code', model_id: 'old-model' } }] as never })
+        useChatStore.getState().setTabViewMode('A', 'formatted')
+        renderComposer('A', false)
+      })
+      expect(host.querySelector('[aria-label="Model: Builder model"]')).not.toBeNull()
+      const directoryCalls = () => get.mock.calls.filter(([url]) => url === '/api/agent-directory')
+      expect(directoryCalls()).toHaveLength(0)
+      const agents = host.querySelector<HTMLButtonElement>('[aria-label="Agents you can reach"]')!
+      expect(agents).not.toBeNull()
+      await act(async () => { agents.focus(); agents.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
+      expect(directoryCalls()).toHaveLength(1)
+      expect(document.querySelector('[aria-label="Accessible agents"]')).not.toBeNull()
+      await act(async () => useLLMStore.setState({ llmConfigLocked: true, savedLLMs: [{ id: 'company-model', provider: 'cursor-cli', model_id: 'auto', name: 'Company model' }] }))
+      expect(host.querySelector('[aria-label="Model: Company model"]')).not.toBeNull()
+      expect(host.querySelector('[aria-label="Model: Builder model"]')).toBeNull()
+      expect(directoryCalls()).toHaveLength(1)
+    } finally {
+      await act(async () => {
+        useAuthStore.setState(auth); useLLMStore.setState(llms)
+        useGlobalPresetStore.setState(presets); useWorkflowManifestStore.setState(workflows)
+      })
+    }
   })
   it('stops terminal metadata intervals in chat and resumes them in the terminal view', async () => {
     vi.useFakeTimers()
