@@ -16,7 +16,7 @@ var dashboardActions = map[string]string{"get_dashboard_catalog": "catalog", "ex
 
 func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("get_dashboard_catalog", "Read the managed React TSX authoring contract, supported runtime imports, starter source, and existing JSON-render/shadcn catalog. Use before authoring index.tsx. HTML authoring is deprecated; existing HTML and JSON dashboards remain supported. Data, Ask, functions and sharing use the existing project contracts.", false, false, map[string]any{})
+	add("get_dashboard_catalog", "Read the managed React TSX authoring contract, supported runtime imports, starter source, shared shadcn component props and Recharts imports. Use before authoring index.tsx. HTML authoring is deprecated; existing HTML remains supported; saved JSON dashboards migrate to TSX. Data, Ask, functions and sharing use the existing project contracts.", false, false, map[string]any{})
 	for _, name := range []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"} {
 		action := dashboardActions[name]
 		props := map[string]any{

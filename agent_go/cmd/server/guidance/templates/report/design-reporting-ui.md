@@ -1,5 +1,5 @@
 Create or update the workflow's Dashboard using the user's requested design.
-Use managed React TSX (index.tsx) by default. HTML is deprecated for new dashboards; preserve existing HTML and JSON unless asked to convert.
+Use managed React TSX (index.tsx) by default. HTML is deprecated for new dashboards; preserve existing HTML unless asked to convert. Saved JSON dashboards migrate to TSX.
 Load the platform usage references first:
 `read_skill(skills=[{"name":"builder-reference","path":"references/reporting-policy.md"}])`
 and
@@ -18,7 +18,7 @@ If motion is requested, also load
 Read `builder-reference/references/dashboard-authoring.md` with read_skill
 before choosing components, authoring index.tsx, previewing or publishing.
 It is the same canonical authoring procedure as panel-dashboard in Crew and
-Relay Builders. It owns the TSX contract, existing JSON schema, default theme, design workflow
+Relay Builders. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
 and shared widget/API examples. Use get_dashboard_catalog for the current
 component contracts. The sections below cover this Goal's own report data and
 runtime; a dashboard edit does not authorize plan or execution changes.
@@ -101,7 +101,7 @@ prefer `query` when the data is already stored in `db/`.
 
 ## Validation
 
-For JSON dashboards, run `validate_dashboard` and `preview_dashboard`, repair errors,
+For managed TSX dashboards, run `validate_dashboard` and `preview_dashboard`, repair errors,
 then `publish_dashboard`. For existing HTML, run `validate_report_html` for every
 changed document and repair errors.
 It checks document structure, literal SQL, referenced files and dependencies.

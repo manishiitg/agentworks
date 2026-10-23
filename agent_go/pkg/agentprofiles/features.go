@@ -203,7 +203,7 @@ var featureCatalog = map[string]featureDefinition{
 		Tools:           []string{"validate_report_html", "preview_report", "get_dashboard_catalog", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "export_dashboard_motion", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "get_dashboard_share", "share_dashboard"},
 		Skills:          []string{"panel-dashboard"},
 		UIPanels:        []string{"dashboard"},
-		PromptExtension: "A visual Dashboard is enabled. Read the attached `panel-dashboard` skill before creating or changing it. Dashboard and React-dashboard requests stay in the hosted Dashboard list, not a separate app/dev server. Follow the user's design preferences; this skill describes platform usage, not a visual style. New dashboards use React TSX; call get_dashboard_catalog, author index.tsx through the dashboard tools, validate/preview then publish. HTML authoring is deprecated; existing HTML and JSON dashboards/revisions remain supported. Read the skill for the source contract and conversions. Use the existing project data, Ask and published-function contracts.",
+		PromptExtension: "A visual Dashboard is enabled. Read the attached panel-dashboard skill before editing. Use hosted React TSX with shared shadcn/Recharts: get_dashboard_catalog, dashboard tools, validate/preview, then publish. JSON layouts are removed; existing HTML stays compatible. Use current project data, Ask, functions and sharing. Do not create a separate app/dev server unless requested.",
 	},
 	"memory": {
 		UIPanels:        []string{"memory"},

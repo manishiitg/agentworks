@@ -1,7 +1,7 @@
 ## Dashboard authoring policy
 
 New dashboards use managed React TSX (index.tsx). HTML authoring is deprecated;
-existing HTML and JSON dashboards keep their renderer and immutable revisions.
+existing HTML dashboards keep their renderer and saved revisions. JSON dashboard layouts are removed; saved JSON revisions migrate to TSX.
 Layout, styling and content follow the designer's preferences. The platform
 provides a finished default theme and task-appropriate design guidance. Authored
 layouts remain fully customizable.
@@ -15,7 +15,7 @@ The reference covers both paths using available capabilities; it prescribes no v
 Read `builder-reference/references/dashboard-authoring.md` with read_skill
 before choosing components, authoring index.tsx, previewing or publishing.
 It is the same canonical authoring procedure as panel-dashboard in Crew and
-Relay Builders. It owns the TSX contract, existing JSON schema, default theme, design workflow
+Relay Builders. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
 and shared widget/API examples. Use get_dashboard_catalog for the current
 component contracts. The sections below cover this Goal's own report data and
 runtime; a dashboard edit does not authorize plan or execution changes.
