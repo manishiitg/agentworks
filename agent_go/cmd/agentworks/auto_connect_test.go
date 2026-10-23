@@ -87,3 +87,58 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 		t.Fatal("explicit disconnect was overridden")
 	}
 }
+
+// Account moves use the existing native/hook setup. Cursor has no shared plugin
+// installer, so a real move used to fail before reaching the helper at all.
+func TestMoveCursorChatKeepsItsExistingDeliverySetup(t *testing.T) {
+	root, err := os.MkdirTemp("", "aw-move-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err = agentworksclient.PrepareLocalBridgeRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	login := filepath.Join(root, "login.json")
+	if err = agentworksclient.SaveConfig(login, agentworksclient.Config{Server: "https://example.com", Token: "fixture"}); err != nil {
+		t.Fatal(err)
+	}
+	l, err := net.Listen("unix", filepath.Join(root, "bridge.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" {
+		if err = os.Chmod(filepath.Join(root, "bridge.sock"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session := uuid.NewString()
+	attachment := agentworksclient.AgentAttachment{ID: "lease", AgentName: "cursor-agent", Provider: "cursor", SessionID: session}
+	var mu sync.Mutex
+	var moves []agentworksclient.LocalBridgeRequest
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in agentworksclient.LocalBridgeRequest
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			t.Error(err)
+			return
+		}
+		mu.Lock()
+		if in.Action == "attach" {
+			moves = append(moves, in)
+		}
+		mu.Unlock()
+		_ = json.NewEncoder(w).Encode(agentworksclient.LocalBridgeReply{Attached: true, Attachment: attachment})
+	})}
+	go srv.Serve(l)
+	defer srv.Close()
+	o := &options{configPath: login, switchPath: login, getenv: func(string) string { return "" }, stdout: io.Discard, stderr: io.Discard}
+	chats := []liveAgentSession{{provider: "cursor", session: session, host: "verified-process", name: "cursor-agent"}}
+	if err = moveAttachedChats(context.Background(), o, root, chats, "default", true); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(moves) != 1 || moves[0].Setup || !moves[0].SwitchConnection || moves[0].AgentName != "cursor-agent" || moves[0].ConfigPath != login {
+		t.Fatalf("move must keep identity without reinstalling delivery: %+v", moves)
+	}
+}

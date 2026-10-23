@@ -336,7 +336,7 @@ func attachPluginCommand(o *options) *cobra.Command {
 						if s.name == "" {
 							return errors.New("that chat is not attached; only attached chats can be moved")
 						}
-						return attachLiveAgent(cmd.Context(), o, root, s, name)
+						return attachLiveAgentWithSetup(cmd.Context(), o, root, s, name, false)
 					}
 				}
 				return errors.New("no live attached chat has that provider and session")
@@ -481,7 +481,8 @@ func moveAttachedChats(ctx context.Context, o *options, root string, sessions []
 	}
 	failed, incomplete := 0, 0
 	for _, s := range movable {
-		err := attachLiveAgent(ctx, o, root, s, "")
+		// Existing chats retain their approved delivery setup when changing login.
+		err := attachLiveAgentWithSetup(ctx, o, root, s, "", false)
 		var partial attachedButIncomplete
 		switch {
 		case errors.As(err, &partial):
@@ -569,7 +570,7 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 	if out.Warning != "" {
 		fmt.Fprintln(o.stderr, "Warning:", out.Warning)
 	}
-	if !installPlugin && !out.NativeDelivery {
+	if !installPlugin && !out.NativeDelivery && o.switchPath == "" {
 		fmt.Fprintf(o.stdout, "AgentWorks attached as agent:%s. Native delivery is unavailable; use the CLI inbox for recovery. No plugin was installed.\n", out.Attachment.AgentName)
 		if help := pluginInstallHelp(chosen.provider); help != "" {
 			fmt.Fprintf(o.stdout, "For live delivery the person installs the %s plugin: %s\n", chosen.provider, help)

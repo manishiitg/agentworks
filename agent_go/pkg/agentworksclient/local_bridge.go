@@ -1068,7 +1068,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				}
 				in.Purpose = s.Attachment.Purpose
 			}
-			if !s.Offline && s.AccountSenders && s.HostKey == in.HostKey && s.NativeRemote == in.NativeRemote && s.Attachment.AgentName == in.AgentName && s.ParentConfigPath == in.ConfigPath {
+			if !in.SwitchConnection && !s.Offline && s.AccountSenders && s.HostKey == in.HostKey && s.NativeRemote == in.NativeRemote && s.Attachment.AgentName == in.AgentName && s.ParentConfigPath == in.ConfigPath {
 				known, att := s.client, s.Attachment
 				var validateErr error
 				b.unlocked(func() {
@@ -1103,8 +1103,8 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				break
 			}
 		}
-		if previous != nil && (previous.Attachment.Provider != in.Provider || previous.Attachment.SessionID != in.SessionID) {
-			connectionPath = "" // a new chat derives its connection from the current login
+		if previous != nil && (in.SwitchConnection || previous.Attachment.Provider != in.Provider || previous.Attachment.SessionID != in.SessionID) {
+			connectionPath = "" // an account move or a new chat derives its child from the selected login
 		}
 		if in.LabelName == "" && previous != nil {
 			in.LabelName = previous.LabelName

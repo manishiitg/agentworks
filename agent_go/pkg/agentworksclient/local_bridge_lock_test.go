@@ -849,3 +849,66 @@ func TestNativeHandoffDoesNotRepeatDuringSlowReceipt(t *testing.T) {
 		t.Fatalf("expired handoff did not retry: %+v", hook)
 	}
 }
+
+// The saved parent path can stay the same while the person signs into a different
+// account. A deliberate move must derive a new child, not reuse the old account.
+func TestAccountMoveDoesNotReuseThePreviousAccountChild(t *testing.T) {
+	var children atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Action string `json:"action"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/agents/events"):
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+		case body.Action == "connection":
+			if r.Header.Get("Authorization") != "Bearer target-parent" {
+				t.Error("child was not derived from selected parent")
+			}
+			children.Add(1)
+			_, _ = w.Write([]byte(`{"access_token":"target-child","refresh_token":"new-refresh","expires_in":3600}`))
+		case body.Action == "attach":
+			if r.Header.Get("Authorization") == "Bearer target-child" {
+				_, _ = w.Write([]byte(`{"attachment_id":"new-lease","agent_id":"target-agent","agent_name":"coding-chat","provider":"claude","native_session_id":"session"}`))
+			} else {
+				_, _ = w.Write([]byte(`{"attachment_id":"old-account-lease","agent_id":"old-agent","agent_name":"coding-chat","provider":"claude","native_session_id":"session"}`))
+			}
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	root, err := os.MkdirTemp("", "awb-move-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	parent, child := filepath.Join(root, "parent.json"), filepath.Join(root, "old-child.json")
+	if err = SaveConfig(parent, Config{Server: srv.URL, Token: "target-parent"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = SaveConfig(child, Config{Server: srv.URL, Token: "old-child"}); err != nil {
+		t.Fatal(err)
+	}
+	client, err := localConfiguredClient(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := localBridgeKey("claude", "session")
+	b := &localBridge{root: root, changed: make(chan struct{}), sessions: map[string]*localSession{key: {
+		Attachment: AgentAttachment{ID: "old-lease", AgentID: "old-agent", AgentName: "coding-chat", Provider: "claude", SessionID: "session"},
+		HostKey:    "host", AccountSenders: true, ConfigPath: child, ParentConfigPath: parent, client: client,
+	}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() { cancel(); b.workers.Wait() }()
+	reply := b.handle(ctx, ctx, LocalBridgeRequest{Action: "attach", Provider: "claude", SessionID: "session", HostKey: "host", AgentName: "coding-chat", ConfigPath: parent, SwitchConnection: true})
+	if !reply.Attached || reply.Error != "" || reply.Attachment.AgentID != "target-agent" || children.Load() != 1 {
+		t.Fatalf("move used the wrong account: children=%d reply=%+v", children.Load(), reply)
+	}
+	if b.sessions[key].ConfigPath == child {
+		t.Fatal("move retained the old account child")
+	}
+}
