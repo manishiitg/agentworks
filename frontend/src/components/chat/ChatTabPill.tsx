@@ -192,7 +192,6 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           {displayName}
         </span>
       )}
-      {yourTab && <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium leading-none text-primary">You</span>}
       {productSurface && <>
         {workspacePickable && <button ref={registerWorkspaceTrigger} type="button" data-workspace-setup-trigger aria-label="Switch workspace" aria-haspopup="menu" aria-expanded={pickerOpen}
           title="Switch workspace or product"
