@@ -56,6 +56,7 @@ try {
   const frame = page.frames().find(value => value.parentFrame())
   await frame.getByRole('heading', { name: 'Recorded overview' }).waitFor()
   assert.equal(await frame.locator('#total').textContent(), '42')
+  assert.equal(await frame.getByRole('link', { name: 'Jump to total' }).getAttribute('href'), '#total')
   assert.equal(await frame.locator('#total').evaluate(el => getComputedStyle(el).color), 'rgb(10, 120, 180)')
   await frame.getByText('SCRIPT_OK', { exact: true }).waitFor()
   assert.deepEqual([reads, queries, runs], [1, 1, 1])

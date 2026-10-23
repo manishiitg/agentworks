@@ -98,8 +98,8 @@ function MotionControlsRenderer({ props }: any) {
 export const componentRenderers = {
     ...shadcnComponents,
     Image: ImageComponent, Avatar: AvatarComponent, Grid: GridComponent,
-    // Links retain the former supported protocols; opening is always a click.
-    Link: ({ props }: any) => /^(https?:|mailto:)/i.test(props.href ?? '') ? <a href={props.href} target="_blank" rel="noopener noreferrer">{props.label}</a> : <span>{props.label}</span>,
+    // Keep ordinary authored link navigation; the host handles destinations.
+    Link: ({ props }: any) => <a href={props.href} target="_blank" rel="noopener noreferrer">{props.label}</a>,
     Metric: ({ props }: any) => <section className={`dashboard-stat ${props.className ?? ''}`}><div className="dashboard-stat-label">{props.label}</div><strong className="dashboard-metric">{props.value}</strong>{props.detail && <p className="dashboard-stat-detail">{props.detail}</p>}</section>,
     BarChart: (context: any) => <Chart {...context} />,
     LineChart: (context: any) => <Chart {...context} line />,
