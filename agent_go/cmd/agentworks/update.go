@@ -206,6 +206,13 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 	}
 	if upToDate {
 		updateStep(progress, "AgentWorks is already up to date.")
+		target, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		if err = refreshLaptopConnections(context.Background(), o, target, release.CLIBuild); err != nil {
+			return err
+		}
 		return o.output(map[string]any{"current": current, "latest": release.Version, "updated": false})
 	}
 	target := updateTargetOverride
@@ -224,6 +231,9 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 	}
 	if err = restoreAgentBridge(context.Background(), o, target); err != nil {
 		return err
+	}
+	if err = refreshLaptopConnections(context.Background(), o, target, release.CLIBuild); err != nil {
+		return fmt.Errorf("CLI updated; computer connection needs attention: %w", err)
 	}
 	updateStep(progress, "Updating installed plugins...")
 	updateInstalledPlugins(context.Background(), o, switchSource)

@@ -61,6 +61,23 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := client.WithExecutorOwner("another-owner").CheckExecutorOwner(t.Context()); err == nil {
+		t.Fatal("a changed account must be refused before reconnect")
+	}
+	client.WithExecutorOwner("owner")
+	if err := client.CheckExecutorOwner(t.Context()); err != nil || client.ExecutorOwnerID() != "owner" {
+		t.Fatalf("same-account identity: %v", err)
+	}
+	inspectRequest, _ := http.NewRequest(http.MethodGet, server.URL+"/api/external/v1/devices/connect?owner_id=another-owner", nil)
+	inspectRequest.Header.Set("Authorization", "Bearer "+token)
+	inspectResponse, err := http.DefaultClient.Do(inspectRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inspectResponse.Body.Close()
+	if inspectResponse.StatusCode != http.StatusForbidden {
+		t.Fatalf("changed account admitted to socket: %d", inspectResponse.StatusCode)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	connected := make(chan struct{})
@@ -236,6 +253,11 @@ func TestLocalDeviceBrowserAndUnscopedTokenCannotConnect(t *testing.T) {
 		api.handleLocalDeviceConnect(w, adminRequest("GET", "/api/external/v1/devices/connect", "", claims, nil))
 		if w.Code != 403 {
 			t.Fatalf("connect admitted %d", w.Code)
+		}
+		inspect := httptest.NewRecorder()
+		api.handleLocalDeviceConnect(inspect, adminRequest("GET", "/api/external/v1/devices/connect?inspect=1", "", claims, nil))
+		if inspect.Code != http.StatusForbidden {
+			t.Fatal("identity inspection bypassed device consent")
 		}
 	}
 }

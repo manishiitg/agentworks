@@ -29,6 +29,10 @@ func TestExecutorHTTPRejectionDoesNotEchoUpstreamBody(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("inspect") == "1" {
+					fmt.Fprint(w, `{"owner_id":"test-owner"}`)
+					return
+				}
 				w.WriteHeader(tc.status)
 				fmt.Fprint(w, tc.body)
 			}))
@@ -64,6 +68,10 @@ func TestExecutorShellKeepsHeartbeatAndHandlesCancellation(t *testing.T) {
 	defer executor.Close()
 	finished := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("inspect") == "1" {
+			fmt.Fprint(w, `{"owner_id":"test-owner"}`)
+			return
+		}
 		finished <- func() error {
 			conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
 			if err != nil {

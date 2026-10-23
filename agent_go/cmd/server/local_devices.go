@@ -151,6 +151,15 @@ func (api *StreamingAPI) handleLocalDeviceConnect(w http.ResponseWriter, r *http
 		externalError(w, 403, "insufficient_scope", "This connection does not have permission to share local folders. Open Settings → Laptop connection in the app and follow its setup to approve access.")
 		return
 	}
+	if r.URL.Query().Get("inspect") == "1" {
+		externalJSON(w, map[string]string{"owner_id": claims.UserID})
+		return
+	}
+	if expected := r.URL.Query().Get("owner_id"); expected != "" && expected != claims.UserID {
+		connectionEvent(http.StatusForbidden, "device_account_changed")
+		externalError(w, http.StatusForbidden, "device_account_changed", "This computer connection belongs to a different account. Sign in to its account to reconnect it.")
+		return
+	}
 	upgrader := websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096, Error: func(w http.ResponseWriter, r *http.Request, status int, _ error) {
 		connectionEvent(status, "websocket_upgrade")
 		externalError(w, status, "executor_upgrade_failed", "The local folder connection could not be opened. Check that your network allows live connections, or contact your administrator.")

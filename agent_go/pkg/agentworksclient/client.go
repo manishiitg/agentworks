@@ -59,6 +59,7 @@ type Client struct {
 	http          *http.Client
 	// executorTrace, when set, is told about every request the local executor served (agentworks start --debug).
 	executorTrace func(request localfiles.Request, response localfiles.Response, took time.Duration)
+	executorOwner string
 }
 
 // WithExecutorTrace reports each served file or shell request, for debugging a local connection.

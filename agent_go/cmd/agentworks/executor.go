@@ -15,7 +15,8 @@ import (
 // executorParams is one local connection: the folders to share and how they are guarded.
 type executorParams struct {
 	deviceID, stateDir string
-	connected          func()
+	ownerID            string
+	connected          func(string)
 	waiting            func(reason string)
 	trace              func(request localfiles.Request, response localfiles.Response, took time.Duration)
 }
@@ -44,6 +45,7 @@ func runExecutor(ctx context.Context, o *options, p executorParams) error {
 	if err != nil {
 		return err
 	}
+	client.WithExecutorOwner(p.ownerID)
 	if p.trace != nil {
 		client.WithExecutorTrace(p.trace)
 	}
@@ -53,18 +55,18 @@ func runExecutor(ctx context.Context, o *options, p executorParams) error {
 			delay = time.Second
 			fmt.Fprintf(o.stderr, "Computer %s connected. Choose folders in Crew Settings → Laptop access.\n", p.deviceID)
 			if p.connected != nil {
-				p.connected()
+				p.connected(client.ExecutorOwnerID())
 			}
 		})
 		if ctx.Err() != nil {
 			return nil
 		}
+		if p.waiting != nil {
+			p.waiting("Connection interrupted; reconnecting automatically.")
+		}
 		var apiErr *agentworksclient.APIError
 		if errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 409 && apiErr.Code != "device_busy") {
 			return err
-		}
-		if p.waiting != nil && errors.As(err, &apiErr) && apiErr.Code == "device_busy" {
-			p.waiting("This computer already has a live connection. Run agentworks stop, then start again.")
 		}
 		// Exponential backoff (1s, 2s, 4s ... 30s) plus up to a quarter of the delay at random, so many computers that lost the
 		// server at the same moment do not all retry in the same second.

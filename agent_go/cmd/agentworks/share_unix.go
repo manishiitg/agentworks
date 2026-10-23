@@ -5,6 +5,8 @@ package main
 import (
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -13,6 +15,14 @@ func detach(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true
 
 func processAlive(pid int) bool {
 	return pid > 0 && syscall.Kill(pid, 0) == nil
+}
+
+func processStartID(pid int) string {
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "lstart=").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func terminateProcess(pid int, force bool) {

@@ -32,6 +32,7 @@ var (
 	autoUpdateStopHelper    = func(ctx context.Context) error { return stopAgentBridge(ctx, "update") }
 	autoUpdateRestoreHelper = restoreAgentBridge
 	autoUpdatePlugins       = updateInstalledPlugins
+	autoUpdateLaptops       = refreshLaptopConnections
 )
 
 type autoUpdateState struct {
@@ -379,6 +380,9 @@ func autoUpdateInstall(o *options, server string, release cliRelease) (failure, 
 	pluginOptions.stderr = &plugins
 	autoUpdatePlugins(context.Background(), &pluginOptions, false)
 	note = "AgentWorks updated itself to build " + shortVersion(firstNonEmpty(release.CLIBuild, release.Version)) + "."
+	if err := autoUpdateLaptops(context.Background(), o, target, release.CLIBuild); err != nil {
+		note += " A computer connection could not reconnect; check AgentWorks status. Saved folders and permissions are unchanged."
+	}
 	// Fixed wording only: what the plugin step printed (it can contain a command) is not passed into a chat's context.
 	if extra := strings.ToLower(plugins.String()); strings.Contains(extra, "muse") {
 		note += " The Muse plugin was updated; the person must approve it and start a new Muse chat."

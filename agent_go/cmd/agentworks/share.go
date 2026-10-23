@@ -32,18 +32,22 @@ const shareAuthFailed = "sign-in"
 
 // shareState is what a running share leaves on disk so stop, status and a second start can find it.
 type shareState struct {
-	Publication bool      `json:"publication,omitempty"`
-	Blocked     []string  `json:"blocked,omitempty"`
-	PID         int       `json:"pid"`
-	Device      string    `json:"device"`
-	Alias       string    `json:"alias"`
-	Workspace   string    `json:"workspace,omitempty"`
-	Folder      string    `json:"folder"`
-	Server      string    `json:"server"`
-	Started     time.Time `json:"started"`
-	Connected   bool      `json:"connected"`
-	Error       string    `json:"error,omitempty"`
-	Log         string    `json:"log,omitempty"`
+	Publication  bool      `json:"publication,omitempty"`
+	Blocked      []string  `json:"blocked,omitempty"`
+	PID          int       `json:"pid"`
+	Device       string    `json:"device"`
+	Alias        string    `json:"alias"`
+	Workspace    string    `json:"workspace,omitempty"`
+	Folder       string    `json:"folder"`
+	Server       string    `json:"server"`
+	Started      time.Time `json:"started"`
+	Connected    bool      `json:"connected"`
+	Error        string    `json:"error,omitempty"`
+	Log          string    `json:"log,omitempty"`
+	ConfigPath   string    `json:"config_path"`
+	OwnerID      string    `json:"owner_id"`
+	CLIBuild     string    `json:"cli_build"`
+	ProcessStart string    `json:"process_start"`
 }
 
 // useShareConfig keeps the local connection's sign-in apart from remote MCP credentials, as the setup docs describe.
@@ -176,6 +180,7 @@ var openWebsite = func(link string) { openLoginBrowser(link) }
 
 type startFlags struct {
 	device                 string
+	ownerID, executable    string
 	debug                  bool
 	foreground, background bool
 	askAgain               bool
@@ -220,6 +225,11 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	if err != nil {
 		return err
 	}
+	config, err = filepath.Abs(config)
+	if err != nil {
+		return err
+	}
+	o.configPath = config
 	folder, alias, workspace := "", "", ""
 	key := shareKey(config)
 	statePath := filepath.Join(dir, key+".json")
@@ -229,7 +239,7 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 		return errors.New("first time: run `agentworks start --server https://your-agentworks.example` (the website's Crew settings show the exact command)")
 	}
 	if latest, ok := latestCLIRelease(ctx, cfg.Server); ok && cliVersion != "dev" && !cliIsCurrent(cliVersion, cliBuild, latest.Version, latest.CLIBuild) {
-		fmt.Fprintln(o.stderr, "A newer AgentWorks CLI is available on this server. Run `agentworks update`, then `agentworks stop` and `agentworks start`, and choose the connected folder again in Crew Settings.")
+		fmt.Fprintln(o.stderr, "A newer AgentWorks CLI is available on this server. Run `agentworks update`; your saved folders and permissions stay in Crew Settings.")
 	}
 	login := func() error {
 		fmt.Fprintln(o.stderr, "Signing in for AgentBridge and laptop access; choose folders in Crew Settings...")
@@ -285,7 +295,7 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 }
 
 func shareParams(f startFlags, device, alias, folder string) executorParams {
-	return executorParams{deviceID: device}
+	return executorParams{deviceID: device, ownerID: f.ownerID}
 }
 
 func runShareForeground(ctx context.Context, o *options, f startFlags, folder, device, alias, workspace, server, statePath string, openWeb bool) error {
@@ -298,12 +308,18 @@ func runShareForeground(ctx context.Context, o *options, f startFlags, folder, d
 		o = &teed
 	}
 	st := shareState{Publication: true, PID: os.Getpid(), Device: device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
+	st.ConfigPath, _ = o.path()
+	st.ConfigPath, _ = filepath.Abs(st.ConfigPath)
+	st.CLIBuild = cliBuild
+	st.ProcessStart = processStartID(st.PID)
 	writeShareState(statePath, st)
 	defer os.Remove(statePath)
 	p := shareParams(f, device, alias, folder)
 	var opened bool
-	p.connected = func() {
+	p.connected = func(owner string) {
 		st.Connected = true
+		st.Error = ""
+		st.OwnerID = owner
 		writeShareState(statePath, st)
 		if !opened {
 			printShared(o, folder, device, alias, workspace, server, os.Getpid(), false)
@@ -313,14 +329,19 @@ func runShareForeground(ctx context.Context, o *options, f startFlags, folder, d
 			openWebsite(shareWebURL(server, device, alias, workspace))
 		}
 	}
+	p.waiting = func(reason string) { st.Connected = false; st.Error = reason; writeShareState(statePath, st) }
 	p.trace = requestTrace(o) // a terminal that stays open shows what the server asks for, live
 	return runExecutor(ctx, o, p)
 }
 
 func runShareBackground(ctx context.Context, o *options, f startFlags, folder, device, alias, workspace, server, dir, key, statePath string, openWeb bool, login func() error) error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
+	exe := f.executable
+	if exe == "" {
+		var err error
+		exe, err = os.Executable()
+		if err != nil {
+			return err
+		}
 	}
 	logPath := filepath.Join(dir, key+".log")
 	crashPath := filepath.Join(dir, key+".crash") // only what the child prints outside its log (a crash before the log opens)
@@ -331,6 +352,9 @@ func runShareBackground(ctx context.Context, o *options, f startFlags, folder, d
 		}
 		_ = os.Remove(statePath)
 		args := []string{"share-serve", "--config", o.configPath, "--server", server, "--device", device, "--state", statePath, "--log", logPath}
+		if f.ownerID != "" {
+			args = append(args, "--owner", f.ownerID)
+		}
 		child := exec.Command(exe, args...)
 		child.Stdout, child.Stderr = logFile, logFile
 		detach(child)
@@ -400,9 +424,18 @@ func serveShareCommand(o *options) *cobra.Command {
 		}
 		server := o.serverURL
 		st := shareState{Publication: true, PID: os.Getpid(), Device: f.device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
+		st.ConfigPath, _ = o.path()
+		st.ConfigPath, _ = filepath.Abs(st.ConfigPath)
+		st.OwnerID, st.CLIBuild = f.ownerID, cliBuild
+		st.ProcessStart = processStartID(st.PID)
 		writeShareState(statePath, st)
 		p := shareParams(f, f.device, alias, folder)
-		p.connected = func() { st.Connected = true; writeShareState(statePath, st) }
+		p.connected = func(owner string) {
+			st.Connected = true
+			st.Error = ""
+			st.OwnerID = owner
+			writeShareState(statePath, st)
+		}
 		p.waiting = func(reason string) { st.Connected = false; st.Error = reason; writeShareState(statePath, st) }
 		p.trace = requestTrace(o) // into the log: `agentworks watch` follows it
 		err := runExecutor(cmd.Context(), o, p)
@@ -420,6 +453,7 @@ func serveShareCommand(o *options) *cobra.Command {
 		return nil
 	}}
 	cmd.Flags().StringVar(&f.device, "device", "", "")
+	cmd.Flags().StringVar(&f.ownerID, "owner", "", "")
 	cmd.Flags().StringVar(&statePath, "state", "", "")
 	cmd.Flags().StringVar(&logPath, "log", "", "")
 	return cmd

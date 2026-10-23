@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -32,6 +33,14 @@ func processAlive(pid int) bool {
 		return false
 	}
 	return code == 259 // STILL_ACTIVE
+}
+
+func processStartID(pid int) string {
+	created := winProcCreated(uint32(pid))
+	if created == 0 {
+		return ""
+	}
+	return strconv.FormatUint(created, 10)
 }
 
 // terminateProcess ends the share. Windows has no polite signal for a process without a console, so both modes terminate it;

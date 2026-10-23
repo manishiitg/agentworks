@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -15,9 +16,40 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 )
 
+// WithExecutorOwner keeps a computer connection on its original account.
+func (c *Client) WithExecutorOwner(owner string) *Client {
+	c.executorOwner = owner
+	return c
+}
+
+func (c *Client) ExecutorOwnerID() string { return c.executorOwner }
+
+// CheckExecutorOwner reads identity through the existing device permission.
+// It never opens a device connection or grants access to a folder.
+func (c *Client) CheckExecutorOwner(ctx context.Context) error {
+	raw, err := c.request(ctx, http.MethodGet, "/api/external/v1/devices/connect?inspect=1", nil, true)
+	if err != nil {
+		return err
+	}
+	var identity struct {
+		OwnerID string `json:"owner_id"`
+	}
+	if err = json.Unmarshal(raw, &identity); err != nil || identity.OwnerID == "" {
+		return errors.New("the server did not identify this computer connection; update AgentWorks on the server")
+	}
+	if c.executorOwner != "" && c.executorOwner != identity.OwnerID {
+		return &APIError{Status: http.StatusForbidden, Code: "device_account_changed", Message: "This computer connection belongs to a different account. Sign in to its account to reconnect it."}
+	}
+	c.executorOwner = identity.OwnerID
+	return nil
+}
+
 // ServeExecutor creates an authenticated outbound socket. No local listener is
 // opened, and the local executor independently checks every file and shell request.
 func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executor, connected func()) error {
+	if err := c.CheckExecutorOwner(ctx); err != nil {
+		return err
+	}
 	token, err := c.authToken(ctx)
 	if err != nil {
 		return err
@@ -25,7 +57,7 @@ func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executo
 	if strings.ContainsAny(token, "\r\n") {
 		return fmt.Errorf("invalid token")
 	}
-	address := strings.Replace(strings.Replace(c.baseURL, "https://", "wss://", 1), "http://", "ws://", 1) + "/api/external/v1/devices/connect"
+	address := strings.Replace(strings.Replace(c.baseURL, "https://", "wss://", 1), "http://", "ws://", 1) + "/api/external/v1/devices/connect?owner_id=" + url.QueryEscape(c.executorOwner)
 	dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second}
 	conn, response, err := dialer.DialContext(ctx, address, http.Header{"Authorization": []string{"Bearer " + token}})
 	if err != nil {

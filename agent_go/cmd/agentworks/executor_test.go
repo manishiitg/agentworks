@@ -22,6 +22,10 @@ func TestExecutorRetriesAStaleDeviceConnection(t *testing.T) {
 	var attempts atomic.Int32
 	connected := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("inspect") == "1" {
+			fmt.Fprint(w, `{"owner_id":"test-owner"}`)
+			return
+		}
 		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
 		if err != nil {
 			return
@@ -88,6 +92,10 @@ func TestStartConnectsComputerWithoutSharingCurrentFolder(t *testing.T) {
 	t.Chdir(project)
 	received := make(chan localfiles.Hello, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("inspect") == "1" {
+			fmt.Fprint(w, `{"owner_id":"test-owner"}`)
+			return
+		}
 		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
 		if err != nil {
 			return
@@ -246,6 +254,10 @@ func TestStartSaysWhenTheServerHasANewerCLI(t *testing.T) {
 			t.Chdir(project)
 			connected := make(chan struct{}, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("inspect") == "1" {
+					fmt.Fprint(w, `{"owner_id":"test-owner"}`)
+					return
+				}
 				if strings.HasSuffix(r.URL.Path, "/downloads/cli/version.json") {
 					fmt.Fprintf(w, `{"version":%q,"cli_build":%q}`, tc.latest, tc.latestBuild)
 					return
