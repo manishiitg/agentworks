@@ -859,7 +859,7 @@ func (b *localBridge) recoverSessionLogin(ctx context.Context, s *localSession, 
 		b.mu.Unlock()
 		return false
 	}
-	in := LocalBridgeRequest{Action: "attach", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, HostKey: s.HostKey, AgentName: s.Attachment.AgentName, NativeRemote: s.NativeRemote, ConfigPath: s.ParentConfigPath, Also: s.Also}
+	in := LocalBridgeRequest{Action: "attach", AttachmentID: s.Attachment.ID, Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, HostKey: s.HostKey, AgentName: s.Attachment.AgentName, NativeRemote: s.NativeRemote, ConfigPath: s.ParentConfigPath, Also: s.Also}
 	server := s.client.baseURL
 	b.mu.Unlock()
 	cfg, err := LoadConfig(in.ConfigPath)
@@ -892,6 +892,13 @@ func (b *localBridge) recoverSessionLogin(ctx context.Context, s *localSession, 
 	defer cancel()
 	out := b.handle(ctx, callCtx, in)
 	if !out.Attached || out.Error != "" {
+		if out.Stopped {
+			b.mu.Lock()
+			s.ServerClosed = true
+			_ = b.save()
+			b.mu.Unlock()
+			return false
+		}
 		if out.authRefused {
 			recovery.refusals++
 		}
@@ -951,10 +958,6 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	var probed map[hostProbeKey]bool
 	if in.Action == "list" {
 		probed = b.probeHosts() // process checks run before the lock, not inside it
-	}
-	var holders map[*localSession]bool
-	if in.Action == "attach" {
-		holders = b.probeNameHolders(in)
 	}
 	if serverCtx == callCtx {
 		b.mu.Lock() // the bridge's own workers wait their turn: they have no caller to answer
@@ -1151,66 +1154,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			b.unlocked(func() { b.refreshChatLabel(callCtx, s) })
 		}
-		// A lease the server closed cannot be repaired in place: the chat's plain attach under its own name starts a fresh
-		// one through the normal path below (a name another live chat holds is still refused there and by the server).
-		closedSameName := s != nil && s.ServerClosed && (in.AgentName == "" || in.AgentName == s.Attachment.AgentName)
-		if in.OwnAttach && in.Provider == "codex" && s != nil && s.client != nil && !in.SwitchConnection && !closedSameName { // no client: the chat's own connection file is gone, so it is rebuilt below from its saved login
-			if in.AgentName != "" && in.AgentName != s.Attachment.AgentName {
-				return LocalBridgeReply{Error: "This chat is attached as agent:" + s.Attachment.AgentName + ". Another name has to be chosen by the person in the app."}
-			}
-			if !s.AccountSenders || s.client == nil {
-				return LocalBridgeReply{Error: "This chat's saved connection is incomplete. Reconnect it from the app's AgentWorks attachment command."}
-			}
-			if _, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
-				return LocalBridgeReply{Error: "AgentWorks could not check this chat's connection just now. Try /agentworks attach again; if it keeps failing, reconnect from the app's AgentWorks attachment command."}
-			}
-			if in.HostKey == "" {
-				return LocalBridgeReply{Error: "own attach needs a verified process binding"}
-			}
-			// Reconnect only this identity and lease; do not upgrade person leases
-			// into own-detach authority, rotate credentials or move names.
-			if !s.Offline && s.HostKey == in.HostKey && s.NativeRemote == in.NativeRemote {
-				return LocalBridgeReply{Attached: true, Attachment: s.Attachment, NativeDelivery: s.NativeRemote != ""}
-			}
-			next := *s
-			next.routeTriedAt = time.Time{} // an attach can create a route: look at once
-			next.HostKey, next.NativeRemote, next.Offline = in.HostKey, in.NativeRemote, false
-			next.OfflineExplicit = false
-			next.LastError, next.nativeStarted, next.cancel = "", false, nil
-			b.sessions[key] = &next
-			if err := b.save(); err != nil {
-				b.sessions[key] = s
-				return LocalBridgeReply{Error: err.Error()}
-			}
-			if s.cancel != nil {
-				s.cancel()
-			}
-			b.start(serverCtx, &next)
-			b.wake()
-			return LocalBridgeReply{Attached: true, Attachment: next.Attachment, NativeDelivery: next.NativeRemote != ""}
-		}
-		// Bare reconnect retains this exact session's identity. An explicit
-		// name cannot silently fence another currently live chat.
-		name := in.AgentName
-		if s != nil && (in.ReuseIdentity || name == "") {
-			name = s.Attachment.AgentName
-		}
-		// Judge the collision on the login this chat will actually use: a bare
-		// reconnect keeps the chat's saved login, not the one named on the command.
-		effectiveConfig := in.ConfigPath
-		if s != nil && !in.SwitchConnection && (in.AgentName == "" || in.AgentName == s.Attachment.AgentName || in.ReuseIdentity) {
-			effectiveConfig = s.ParentConfigPath
-		}
-		var abandoned []*localSession
-		for k, other := range b.sessions {
-			if k == key || other.Attachment.AgentName != name || localDifferentNetwork(other.ParentConfigPath, effectiveConfig) {
-				continue
-			}
-			if alive, known := holders[other]; !known || alive {
-				return LocalBridgeReply{Error: "agent:" + name + " is attached to another chat; detach it there first"}
-			}
-			abandoned = append(abandoned, other)
-		}
+
 		if s != nil {
 			if in.AgentName == "" || in.AgentName == s.Attachment.AgentName || in.ReuseIdentity {
 				if in.ReuseIdentity || in.AgentName == "" {
@@ -1290,17 +1234,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			client         *Client
 			fail           *LocalBridgeReply
 		}
-		for _, old := range abandoned {
-			old.Offline = true
-			if old.cancel != nil {
-				old.cancel()
-			}
-		}
 		network := func() (res attachResult) {
 			fail := func(err error) attachResult {
 				var apiErr *APIError
 				refused := errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Code == "invalid_grant")
-				return attachResult{fail: &LocalBridgeReply{Error: err.Error(), authRefused: refused}}
+				return attachResult{fail: &LocalBridgeReply{Error: err.Error(), Stopped: apiErr != nil && apiErr.Code == "agent_attachment_closed", authRefused: refused}}
 			}
 			client, err := localConfiguredClient(in.ConfigPath)
 			if err != nil {
@@ -1314,16 +1252,6 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				registration["purpose"] = in.Purpose
 			}
 			_, err = client.Call(callCtx, "messages", registration)
-			var claimErr *APIError
-			if len(abandoned) > 0 && errors.As(err, &claimErr) && (claimErr.Status == 404 || claimErr.Code == "agent_attached_elsewhere") {
-				// The cancelled old stream may still be closing on the server.
-				select {
-				case <-callCtx.Done():
-					return fail(callCtx.Err())
-				case <-time.After(100 * time.Millisecond):
-				}
-				_, err = client.Call(callCtx, "messages", registration)
-			}
 			if err != nil {
 				var apiErr *APIError
 				if errors.As(err, &apiErr) && apiErr.Code == "unknown_tool" {
@@ -1358,7 +1286,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			if b.options.ChatLabel != nil {
 				label = b.options.ChatLabel(AgentAttachment{AgentName: in.AgentName, Provider: in.Provider, SessionID: in.SessionID}, in.LabelName)
 			}
-			options := AgentAttachmentOptions{RejectLiveMove: true, AgentName: in.AgentName, Label: label, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID, ClientBuild: b.options.ClientBuild}
+			options := AgentAttachmentOptions{AttachmentID: in.AttachmentID, AgentName: in.AgentName, Label: label, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID, ClientBuild: b.options.ClientBuild}
 			a, err := client.AttachAgent(callCtx, options)
 			var apiErr *APIError
 			if err != nil && !res.newConnection && errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 400 && apiErr.Code == "invalid_grant") {
@@ -1422,13 +1350,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			undo()
 			return LocalBridgeReply{Error: "local bridge stopping"}
 		}
-		// Another chat may have taken the name while the lock was released.
-		for k, other := range b.sessions {
-			if k != key && other.Attachment.AgentName == in.AgentName && !localDifferentNetwork(other.ParentConfigPath, effectiveConfig) && !slices.Contains(abandoned, other) {
-				undo()
-				return LocalBridgeReply{Error: "agent:" + in.AgentName + " is attached to another chat; detach it there first"}
-			}
-		}
+
 		var err error
 		next := &localSession{Also: in.Also, OwnCLI: in.OwnAttach && !in.Also, SetupPending: in.Setup && !in.Also, AccountSenders: true, Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, Offers: map[string]localOffer{}, client: client}
 		next.LabelName = in.LabelName
@@ -1466,10 +1388,19 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		if b.stopped[key] {
-			delete(b.stopped, key)
-			_ = atomicLiveJSON(filepath.Join(b.root, "disconnected.json"), b.stopped)
+		// A replaced chat stays disconnected when its next hook runs. Only an
+		// explicit attach from that chat may take the name back.
+		if b.stopped == nil {
+			b.stopped = map[string]bool{}
 		}
+		for oldKey, prior := range old {
+			if oldKey != key && prior.Attachment.AgentID == a.AgentID {
+				b.stopped[oldKey] = true
+			}
+		}
+		delete(b.stopped, key)
+		_ = atomicLiveJSON(filepath.Join(b.root, "disconnected.json"), b.stopped)
+
 		warning := ""
 		var toRelease []*localSession
 		for _, v := range old {
@@ -2489,45 +2420,6 @@ func hostAliveFrom(probed map[hostProbeKey]bool, provider, host string, check fu
 		return alive
 	}
 	return check(provider, host)
-}
-
-// Only an attach's same-name candidates need native liveness discovery. It
-// runs outside the bridge lock and never slows ordinary message delivery.
-func (b *localBridge) probeNameHolders(in LocalBridgeRequest) map[*localSession]bool {
-	if !b.lockWithin(localBridgeLockBudget) {
-		return nil
-	}
-	name := in.AgentName
-	if name == "" {
-		if current := b.sessions[localBridgeKey(in.Provider, in.SessionID)]; current != nil {
-			name = current.Attachment.AgentName
-		}
-	}
-	type candidate struct {
-		original     *localSession
-		attachment   AgentAttachment
-		host, remote string
-	}
-	var candidates []candidate
-	for _, s := range b.sessions {
-		if s.Attachment.AgentName == name && (s.Attachment.Provider != in.Provider || s.Attachment.SessionID != in.SessionID) {
-			candidates = append(candidates, candidate{s, s.Attachment, s.HostKey, s.NativeRemote})
-		}
-	}
-	b.mu.Unlock()
-	out := map[*localSession]bool{}
-	for _, c := range candidates {
-		alive := true
-		if c.host != "" {
-			if b.options.ChatAlive != nil {
-				alive = b.options.ChatAlive(c.attachment, c.host, c.remote)
-			} else if b.options.HostAlive != nil {
-				alive = b.options.HostAlive(c.attachment.Provider, c.host)
-			}
-		}
-		out[c.original] = alive
-	}
-	return out
 }
 
 func (b *localBridge) housekeeping(ctx context.Context) {

@@ -306,11 +306,6 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		t.Fatal("accepted another provider's adapter")
 	}
 
-	// A simplified person NAME attach cannot displace a live chat, including
-	// when the other computer is absent from the local bridge journal.
-	if _, err := receiver.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{RejectLiveMove: true, AgentName: "reviewer", Provider: "claude", SessionID: "another-computer-session"}); err == nil || !strings.Contains(err.Error(), "detach it there first") {
-		t.Fatal("person attach displaced another computer's live chat", err)
-	}
 	// Moving a stable address revokes the old session lease immediately.
 	replacementAttachment, err := receiver.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{AgentName: "reviewer", Purpose: "New review session", Provider: "claude", SessionID: "exact-session-two"})
 	if err != nil {
@@ -325,6 +320,9 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		t.Fatal("agent tool could attach a session")
 	}
 
+	if _, err := receiver.AttachAgent(ctx, agentworksclient.AgentAttachmentOptions{AttachmentID: meta["attachment_id"].(string), AgentName: "reviewer", Provider: "claude", SessionID: "exact-session"}); err == nil {
+		t.Fatal("old automatic recovery took the name back")
+	}
 	if replacement["attachment_id"] == meta["attachment_id"] {
 		t.Fatal("attachment did not rotate")
 	}

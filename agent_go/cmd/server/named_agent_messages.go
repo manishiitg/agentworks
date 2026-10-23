@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"slices"
 	"sort"
@@ -323,45 +322,20 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 		externalError(w, 403, "agent_account_changed", "This saved login does not own the agent. Sign in to its account, or connect this chat with a different name.")
 		return
 	}
-	if index >= 0 && externalArg(args, "action") == "register" {
-		a := s.Agents[index]
-		provider, session := externalArg(args, "provider"), externalArg(args, "native_session_id")
-		if a.Attachment != nil && provider != "" && session != "" && (a.Attachment.Provider != provider || a.Attachment.SessionID != session) && namedAgentOnline(a) {
-			externalError(w, 409, "agent_attached_elsewhere", "agent:"+name+" is attached to another chat; detach it there first")
-			return
-		}
-	}
 	if index >= 0 && !namedAgentConnectionAllowed(s.Agents[index], claims) {
-		// The holding sign-in may be gone (revoked or expired); the same person then takes the name.
-		// While it is still active, say which one holds it and how to move the name.
-		holder, live := "", false
-		for _, id := range s.Agents[index].Connections {
-			if c, e := agentMessageConnectionClaims(r.Context(), id); e == nil && c.UserID == claims.UserID && c.AccessToken != nil {
-				live = true
-				if holder == "" {
-					holder = c.AccessToken.Name
-				}
-			}
-		}
-		if live && externalArg(args, "action") == "register" && !namedAgentOnline(s.Agents[index]) && claims.AccessToken != nil && claims.AccessToken.Name == "AgentWorks CLI" && claims.AccessToken.BoundAgentID == "" {
-			// An approved login can reclaim its own disconnected address.
-			// Keep its inbox and publication; an active chat is still refused.
-			if !slices.Contains(s.Agents[index].Connections, claims.AccessToken.ID) {
-				s.Agents[index].Connections = append(slices.Clone(s.Agents[index].Connections), claims.AccessToken.ID)
-			}
-			connections = s.Agents[index].Connections
-			log.Printf("[AGENT_MSG] reclaimed disconnected name: name=%s", name)
-		} else if live {
-			who := "another sign-in of yours"
-			if holder != "" {
-				who = "your sign-in \"" + holder + "\""
-			}
-			externalError(w, 404, "not_found", "The name "+name+" is already used by "+who+". To move it to this chat, run attach "+name+" from this chat (the old one stops receiving), or free it by unregistering it from that sign-in. Or pick a different name.")
+		// Names belong to the account. A full sign-in can connect its own
+		// address again; a child credential remains bound to one agent.
+		if externalArg(args, "action") != "register" || claims.AccessToken != nil && claims.AccessToken.BoundAgentID != "" {
+			externalError(w, 403, "agent_account_changed", "This connection cannot use that agent. Connect it with your own sign-in.")
 			return
+		}
+		connections = slices.Clone(s.Agents[index].Connections)
+		if claims.AccessToken != nil && !slices.Contains(connections, claims.AccessToken.ID) {
+			connections = append(connections, claims.AccessToken.ID)
 		}
 		s.Agents[index].Connections = connections
-		s.Agents[index].Attachment = nil
 	}
+
 	if externalArg(args, "action") == "unregister" {
 		if index < 0 {
 			externalError(w, 404, "not_found", "Named agent unavailable or access denied.")

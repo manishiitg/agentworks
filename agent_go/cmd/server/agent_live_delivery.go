@@ -207,7 +207,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		return
 	}
 	a := &s.Agents[index]
-	ackDelivery := ""
+	ackDelivery, previousAttachment := "", ""
 	switch externalArg(args, "action") {
 	case "attach":
 		provider, session, purpose := externalArg(args, "provider"), externalArg(args, "native_session_id"), strings.TrimSpace(externalArg(args, "purpose"))
@@ -216,9 +216,11 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			return
 		}
 		purpose = cleanAgentPurpose(purpose)
-		rejectMove, _ := args["reject_live_move"].(bool)
-		if rejectMove && a.Attachment != nil && (a.Attachment.Provider != provider || a.Attachment.SessionID != session) && namedAgentOnline(*a) {
-			externalError(w, 409, "agent_attached_elsewhere", "agent:"+name+" is attached to another chat; detach it there first")
+
+		// Automatic login recovery may renew its own lease, never reclaim one
+		// that an explicit attach has already moved to another chat.
+		if expected := externalArg(args, "attachment_id"); expected != "" && (a.Attachment == nil || a.Attachment.ID != expected) {
+			externalError(w, 409, "agent_attachment_closed", "This chat was replaced by another attachment. Connect it again if you want to move the name back.")
 			return
 		}
 		if purpose != "" {
@@ -226,6 +228,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		}
 		a.Label = cleanAgentLabel(externalArg(args, "label"))
 		a.EverAttached = true
+		if a.Attachment != nil {
+			previousAttachment = a.Attachment.ID
+		}
 		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID, ClientBuild: cleanClientBuild(externalArg(args, "client_build"))}
 	case "label":
 		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != claims.AccessToken.ID {
@@ -337,6 +342,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		return
 	}
 	out := map[string]any{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(*a), "purpose": a.Purpose, "status": externalArg(args, "action") + "ed"}
+	if externalArg(args, "action") == "attach" {
+		log.Printf("[AGENT-ATTACH] agent=%s account=%s previous=%s attachment=%s provider=%s session=%s", a.ID, a.UserID, previousAttachment, a.Attachment.ID, a.Attachment.Provider, a.Attachment.SessionID)
+	}
 	if externalArg(args, "action") == "label" {
 		log.Printf("[AGENT-LABEL] agent=%s attachment=%s route=%s status=updated", a.ID, a.Attachment.ID, a.Attachment.DeliveryRoute)
 	}

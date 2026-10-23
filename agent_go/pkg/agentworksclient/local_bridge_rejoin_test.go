@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -55,13 +54,5 @@ func TestLoginRecoveryBoundsAuthFailuresAndKeepsExplicitDetach(t *testing.T) {
 	b.recoverSessionLogin(context.Background(), s, &retry)
 	if requests.Load() != 4 {
 		t.Fatal("server-closed chat was recovered")
-	}
-}
-
-func TestNameRejoinRefusesUnknownProviderLiveness(t *testing.T) {
-	b := &localBridge{sessions: map[string]*localSession{localBridgeKey("claude", "old"): {Attachment: AgentAttachment{AgentName: "reviewer", Provider: "claude", SessionID: "old"}, ParentConfigPath: "same-login", HostKey: "old-process"}}, changed: make(chan struct{})}
-	out := b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "attach", Provider: "claude", SessionID: "new", HostKey: "new-process", AgentName: "reviewer", ConfigPath: "same-login", OwnAttach: true})
-	if !strings.Contains(out.Error, "attached to another chat") {
-		t.Fatalf("unknown liveness must not release: %+v", out)
 	}
 }

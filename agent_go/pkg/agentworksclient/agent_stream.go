@@ -56,12 +56,12 @@ type AgentLiveMessage struct {
 }
 
 type AgentAttachmentOptions struct {
-	RejectLiveMove bool   `json:"reject_live_move,omitempty"`
-	AgentName      string `json:"agent_name"`
-	Label          string `json:"label"`
-	Purpose        string `json:"purpose"`
-	Provider       string `json:"provider"`
-	SessionID      string `json:"native_session_id"`
+	AttachmentID string `json:"attachment_id,omitempty"` // reconnect only this still-current attachment
+	AgentName    string `json:"agent_name"`
+	Label        string `json:"label"`
+	Purpose      string `json:"purpose"`
+	Provider     string `json:"provider"`
+	SessionID    string `json:"native_session_id"`
 	// ClientBuild is the CLI build that makes the attachment, so the server can tell which agents run an older one.
 	ClientBuild string `json:"client_build,omitempty"`
 }

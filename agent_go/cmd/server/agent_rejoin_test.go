@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,7 +14,7 @@ import (
 )
 
 // Real OAuth families, authenticated HTTP/SSE and the private helper socket pin
-// recovery of a disconnected name and a replaced login without losing its inbox.
+// takeover of a live own name and a replaced login without losing its inbox.
 func TestAgentRejoinKeepsInboxAndReloadsLogin(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
@@ -75,11 +74,10 @@ func TestAgentRejoinKeepsInboxAndReloadsLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(root)
-	var oldDead atomic.Bool
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
-		done <- agentworksclient.ServeLocalBridge(runCtx, root, agentworksclient.LocalBridgeOptions{HostAlive: func(_ string, host string) bool { return host != "old-host" || !oldDead.Load() }})
+		done <- agentworksclient.ServeLocalBridge(runCtx, root, agentworksclient.LocalBridgeOptions{HostAlive: func(_ string, host string) bool { return true }})
 	}()
 	defer func() {
 		cancel()
@@ -122,12 +120,12 @@ func TestAgentRejoinKeepsInboxAndReloadsLogin(t *testing.T) {
 	}
 	await(func() bool { return online(attached.Attachment.AgentID) })
 	newer, _ := agentworksclient.New(srv.URL, next.Token)
-	if _, err := newer.Call(ctx, "messages", map[string]any{"action": "register", "agent_name": "reviewer"}); err == nil {
-		t.Fatal("another live chat's name was reclaimed")
+	if _, err := newer.Call(ctx, "messages", map[string]any{"action": "register", "agent_name": "reviewer"}); err != nil {
+		t.Fatal("same account could not register its live name", err)
 	}
 	prior, _ := agentworksclient.New(srv.URL, first.Token)
-	if _, err := prior.Call(ctx, "messages", map[string]any{"action": "register", "agent_name": "reviewer", "provider": "claude", "native_session_id": "different-chat", "expected_agent_id": attached.Attachment.AgentID}); err == nil {
-		t.Fatal("same login stole a live chat before child creation")
+	if _, err := prior.Call(ctx, "messages", map[string]any{"action": "register", "agent_name": "reviewer", "provider": "claude", "native_session_id": "different-chat", "expected_agent_id": attached.Attachment.AgentID}); err != nil {
+		t.Fatal("same login could not register its own live name", err)
 	}
 	if _, err := prior.Call(ctx, "messages", map[string]any{"action": "register", "agent_name": "sender"}); err != nil {
 		t.Fatal(err)
@@ -178,15 +176,24 @@ func TestAgentRejoinKeepsInboxAndReloadsLogin(t *testing.T) {
 	if err := agentworksclient.SaveConfig(path, next); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := agentworksclient.CallLocalBridge(ctx, root, replacement); err == nil {
-		t.Fatal("a locally alive chat's name was taken")
-	}
-	oldDead.Store(true)
 	recovered, err := agentworksclient.CallLocalBridge(ctx, root, replacement)
 	if err != nil || !recovered.Attached || recovered.Attachment.AgentID != attached.Attachment.AgentID {
-		t.Fatalf("dead-chat rejoin: %+v %v", recovered, err)
+		t.Fatalf("live-chat takeover: %+v %v", recovered, err)
 	}
 	await(func() bool { return online(recovered.Attachment.AgentID) })
+	if recovered.Attachment.ID == attached.Attachment.ID {
+		t.Fatal("takeover retained the old attachment")
+	}
+	old.Action = "status"
+	oldStatus, err := agentworksclient.CallLocalBridge(ctx, root, old)
+	if err != nil || oldStatus.Attached {
+		t.Fatalf("old live chat kept receiving: %+v %v", oldStatus, err)
+	}
+	old.Action, old.Automatic = "attach", true
+	oldStatus, err = agentworksclient.CallLocalBridge(ctx, root, old)
+	if err != nil || oldStatus.Attached || !oldStatus.Stopped {
+		t.Fatalf("old hook reclaimed the name: %+v %v", oldStatus, err)
+	}
 	// Replace the browser login while this exact helper and chat remain running.
 	fresh, _ := issue()
 	if err := agentworksclient.SaveConfig(path, fresh); err != nil {
