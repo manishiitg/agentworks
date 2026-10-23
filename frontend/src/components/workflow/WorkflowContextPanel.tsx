@@ -1,7 +1,7 @@
 import { openWorkflowPulseChatTab } from '../../utils/pulseChatTab'
 import { useChatStore } from '../../stores/useChatStore'
 import { useEffect, useId, useState } from 'react'
-import { ChevronRight, MessageSquareText, Settings2 } from 'lucide-react'
+import { ChevronRight, MessageSquareText, Power, Settings2, Target } from 'lucide-react'
 import { PulseIcon } from './pulseIcon'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
@@ -87,21 +87,24 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} attention={item.id === 'human-actions' && decisions.loaded && decisions.count > 0} onClick={() => open(item)}>{item.label}</Row>
   }
   return <WorkspaceContextCard>
-    {pulse && <div key={scope} role="group" aria-label="Autopilot menu">
-      <div className="grid grid-cols-[minmax(0,1fr)_24px] items-center rounded-md bg-primary/5">
-        <Row icon={PulseIcon} hint="Open the full Autopilot panel"
-          detail={<span className={menuOptions.pulseEnabled ? 'text-emerald-600 dark:text-emerald-400' : undefined}>{menuOptions.pulseEnabled ? 'On' : 'Off'}</span>}
-          onClick={() => open(pulse)}>Autopilot</Row>
-        <button type="button" aria-label={pulseMenuOpen ? 'Hide Autopilot panels' : 'Show Autopilot panels'} aria-expanded={pulseMenuOpen} aria-controls={pulseMenuId}
-          onClick={() => setPulseMenuOpen(value => !value)} className="flex h-8 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${pulseMenuOpen ? 'rotate-90' : ''}`} />
-        </button>
-      </div>
-      <div id={pulseMenuId} hidden={!pulseMenuOpen} role="group" aria-label="Autopilot panels" className="ml-2.5 mt-1 space-y-0.5 border-l border-border pl-3">
-        <Row icon={PulseIcon} onClick={() => open({ ...pulse, target: 'goals' })}>Goals &amp; metrics</Row>
-        <Row icon={MessageSquareText} onClick={() => open({ ...pulse, target: 'chat' })}>Talk to Autopilot</Row>
-        {pulseDecisions && renderItem(pulseDecisions)}
-        <Row icon={Settings2} onClick={() => open({ ...pulse, target: 'settings' })}>Autopilot settings</Row>
+    {pulse && <div key={scope}>
+      <Row icon={Target} onClick={() => open({ ...pulse, target: 'goals' })}>Goals &amp; metrics</Row>
+      {pulseDecisions && renderItem(pulseDecisions)}
+      <div role="group" aria-label="Autopilot menu" className="mt-1">
+        <div className="grid grid-cols-[minmax(0,1fr)_24px] items-center rounded-md bg-primary/5">
+          <Row icon={PulseIcon} hint="Open the full Autopilot panel"
+            detail={<span className={menuOptions.pulseEnabled ? 'text-emerald-600 dark:text-emerald-400' : undefined}>{menuOptions.pulseEnabled ? 'On' : 'Off'}</span>}
+            onClick={() => open(pulse)}>Autopilot</Row>
+          <button type="button" aria-label={pulseMenuOpen ? 'Hide Autopilot panels' : 'Show Autopilot panels'} aria-expanded={pulseMenuOpen} aria-controls={pulseMenuId}
+            onClick={() => setPulseMenuOpen(value => !value)} className="flex h-8 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${pulseMenuOpen ? 'rotate-90' : ''}`} />
+          </button>
+        </div>
+        <div id={pulseMenuId} hidden={!pulseMenuOpen} role="group" aria-label="Autopilot panels" className="ml-2.5 mt-1 space-y-0.5 border-l border-border pl-3">
+          {!menuOptions.pulseEnabled && <Row icon={Power} onClick={() => open({ ...pulse, target: 'settings' })}>Turn Autopilot on</Row>}
+          <Row icon={MessageSquareText} onClick={() => open({ ...pulse, target: 'chat' })}>Talk to Autopilot</Row>
+          <Row icon={Settings2} onClick={() => open({ ...pulse, target: 'settings' })}>Autopilot settings</Row>
+        </div>
       </div>
     </div>}
     {recent.length > 0 && <Group title="Recent">{recent.map(renderItem)}</Group>}
