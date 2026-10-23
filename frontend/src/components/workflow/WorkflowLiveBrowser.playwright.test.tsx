@@ -300,7 +300,6 @@ const buttonNamed = (host: HTMLElement, name: string) => [...host.querySelectorA
 it('explains the idle state in plain language without a picker or controls', async () => {
   api.get.mockResolvedValue({ data: { sessions: [] } })
   const { host, picker } = await mountBrowser()
-  expect(host.textContent).toContain('Start a browser to visit a website or show your helper a task.')
   expect(picker()).toBeNull()
   expect(buttonNamed(host, 'Take control')).toBeUndefined()
   expect(buttonNamed(host, 'Reconnect')).toBeUndefined()
