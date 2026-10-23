@@ -41,13 +41,12 @@ export async function hydrateWorkflowOwnerTabs(binding: WorkflowBuilderSessionRe
   // A server-closed tab disappears from the shared strip, without stopping a
   // different owner's work or changing the selection during navigation.
   const ids = new Set(binding.tabs.map(tab => tab.id))
-  useChatStore.setState(state => {
-    const chatTabs = { ...state.chatTabs }
-    for (const tab of Object.values(chatTabs)) {
-      if (tab.metadata?.presetQueryId === presetId && tab.metadata.workflowOwnerTabID && !ids.has(tab.metadata.workflowOwnerTabID)) delete chatTabs[tab.tabId]
+  for (const tab of Object.values(useChatStore.getState().chatTabs)) {
+    if (tab.metadata?.presetQueryId === presetId && tab.metadata.workflowOwnerTabID && !ids.has(tab.metadata.workflowOwnerTabID)) {
+      await useChatStore.getState().closeTab(tab.tabId, false)
+      if (!isChatIdentityCurrent(identity)) return
     }
-    return { chatTabs }
-  })
+  }
 }
 
 /** Discover/cache the server-selected Builder without changing navigation.

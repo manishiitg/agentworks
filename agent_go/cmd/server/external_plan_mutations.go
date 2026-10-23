@@ -183,7 +183,7 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 	}
 	ctx = prepareTeamEdit(teamUserContext(ctx, live.UserID), rootPath, teamRevision(plan.Content))
 	if action == "migrate_workflow_skills" {
-		if current.Team != nil && current.Team.LeaderID != live.UserID {
+		if current.Team != nil && !containsID(current.effectiveOwners(), live.UserID) {
 			externalError(w, 403, "forbidden", "Shared workflow settings require the Leader.")
 			return
 		}

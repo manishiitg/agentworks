@@ -111,7 +111,7 @@ func executeWorkflowSkillsBuilderTool(ctx context.Context, rootPath, user string
 	if !found || !workflowSkillsAuthoringAllowed(claims, manifest) {
 		return "", fmt.Errorf("ask this workflow's Builder to migrate its guides")
 	}
-	if manifest.Team != nil && manifest.Team.LeaderID != user {
+	if manifest.Team != nil && !containsID(manifest.effectiveOwners(), user) {
 		return "", fmt.Errorf("shared workflow settings require the Leader")
 	}
 	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
