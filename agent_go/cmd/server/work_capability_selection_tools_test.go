@@ -9,7 +9,15 @@ import (
 )
 
 func TestWorkSkillSelectionToolPersistsInstalledSkill(t *testing.T) {
-	const workspacePath = "_users/user-1/Chats/Work/projects/release"
+	registry := newTestRegistry(t)
+	previous := defaultProjectOwnersOverride
+	defaultProjectOwnersOverride = registry
+	t.Cleanup(func() { defaultProjectOwnersOverride = previous; resetCrewLocationCaches() })
+	const folder = "release-12345678"
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: folder, OwnerID: "user-1", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	const workspacePath = "Crew/" + folder
 	const manifestPath = workspacePath + "/workflow.json"
 	workspace := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath: `{"schema_version":1,"id":"release","capabilities":{"selected_skills":[],"selected_servers":["Linear"]}}`,
