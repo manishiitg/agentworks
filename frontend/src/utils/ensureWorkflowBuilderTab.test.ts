@@ -59,7 +59,7 @@ it('caches a discovered chat without stealing focus from a newer selection', asy
   const pending = ensureWorkflowBuilderTab('pending')
   finish({ bindings: { pending: { session_id: 'discovered-session' } } })
   expect(await pending).toBe('discovered-tab')
-  expect(create).toHaveBeenCalledWith('Automation Builder', expect.objectContaining({ presetQueryId: 'pending' }), 'discovered-session', { activate: false })
+  expect(create).toHaveBeenCalledWith('Builder', expect.objectContaining({ presetQueryId: 'pending' }), 'discovered-session', { activate: false })
   expect(useChatStore.getState().activeTabId).toBe(newer.tabId)
   expect(useGlobalPresetStore.getState().activePresetIds.workflow).toBe('newer')
 })
