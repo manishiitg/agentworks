@@ -25,7 +25,7 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
   const full = useChatArtifactText(artifact, BODY_ARTIFACT_KEYS)
   const body = full.text || message.body
   const long = body.length > PREVIEW_LIMIT
-  const Icon = message.kind === 'pulse' || /\bPulse(?: chat)?$/i.test(message.sender) ? PulseIcon : Bot
+  const Icon = message.kind === 'pulse' || /\b(?:Pulse|Autopilot)(?: chat)?$/i.test(message.sender) ? PulseIcon : Bot
   const kind = KIND_LABEL[message.kind]
   const showKind = kind && !message.sender.toLowerCase().startsWith(kind.toLowerCase())
   return (

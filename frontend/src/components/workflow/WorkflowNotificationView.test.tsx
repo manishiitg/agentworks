@@ -96,7 +96,7 @@ it('asks per channel and per summary from chat commands', async () => {
     expect(askMessages.some(message => message.includes('Slack notifications'))).toBe(true)
     expect(askMessages.some(message => message.includes('Gmail notifications'))).toBe(true)
     expect(askMessages.some(message => message.includes('run summary'))).toBe(true)
-    expect(askMessages.some(message => message.includes('pulse review'))).toBe(true)
+    expect(askMessages.some(message => message.includes('autopilot review'))).toBe(true)
   } finally {
     await unmount()
   }

@@ -86,9 +86,9 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
           <p className="mt-1 text-xs text-muted-foreground">{monitorOn ? 'Checks the goal and works with Builder on improvements.' : 'Fully off. No checks, reports, reminders or messages.'}</p></div>
           <button type="button" role="switch" aria-label="Autopilot on/off" aria-checked={monitorOn} disabled={monitorSaving} onClick={onToggleMonitor}
             className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium disabled:opacity-50 ${monitorOn ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{monitorOn ? 'On' : 'Off'}</button></div>
-        <label className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-sm"><span>Outward actions<span className="block text-xs text-muted-foreground">Posts and messages within your existing limits</span></span>
-          <select aria-label="Autopilot outward actions" value={outwardActions} disabled={outwardSaving || !onChangeOutward} onChange={event => onChangeOutward?.(event.target.value as PulseOutwardActions)} className="rounded-md border bg-background px-3 py-2 text-sm">
-            <option value="ask">Ask first</option><option value="allow">Allowed within limits</option></select></label>
+        <label className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-sm"><span>Autonomy<span className="block text-xs text-muted-foreground">{outwardActions === 'decide' ? 'Also changes the plan itself. Always asks you about spending, security and the goal.' : outwardActions === 'allow' ? "Posts and messages go out within this workflow's limits. Plan changes still ask you." : 'Asks you before anything goes out and before plan changes.'}</span></span>
+          <select aria-label="Autopilot autonomy" value={outwardActions} disabled={outwardSaving || !onChangeOutward} onChange={event => onChangeOutward?.(event.target.value as PulseOutwardActions)} className="rounded-md border bg-background px-3 py-2 text-sm">
+            <option value="ask">Ask first</option><option value="allow">Send within limits</option><option value="decide">Decide on its own</option></select></label>
         {monitorOn && !hasSoul && <p className="mt-3 text-sm text-muted-foreground">Set the goal with Builder so Autopilot knows what to pursue.</p>}
       </section>}
       {!settingsOnly && <section tabIndex={-1} aria-label="Talk to Autopilot" className="focus:outline-none rounded-xl border bg-background p-4">

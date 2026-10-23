@@ -67,7 +67,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		}},
 		"pulse": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only. Autopilot owns the goal when enabled (it needs soul/soul.md; until then it waits for a goal). OFF starts no checks, reports or messages; turn it on before using Autopilot. Outward actions are ask first or allowed within existing limits.", "properties": map[string]any{
 			"enabled":         map[string]any{"type": "boolean"},
-			"outward_actions": map[string]any{"type": "string", "enum": []any{"ask", "allow"}},
+			"outward_actions": map[string]any{"type": "string", "enum": []any{"ask", "allow", "decide"}},
 		}},
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
 			"run_instructions": map[string]any{"type": "string", "maxLength": 4000}, "pulse_instructions": map[string]any{"type": "string", "maxLength": 4000},

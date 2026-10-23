@@ -11,6 +11,8 @@ func normalizePulseOutwardActions(value string) (string, error) {
 		return "ask", nil
 	case "allow":
 		return "allow", nil
+	case "decide":
+		return "decide", nil
 	}
-	return "", fmt.Errorf("Autopilot outward actions must be ask or allow")
+	return "", fmt.Errorf("Autopilot autonomy must be ask, allow or decide")
 }

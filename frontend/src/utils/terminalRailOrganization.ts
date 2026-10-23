@@ -38,7 +38,7 @@ function normalizedReviewIdentity(values: Array<string | undefined>): string {
 }
 
 function pulseReviewTitleFromIdentity(searchable: string): string {
-  if (!searchable.includes('pulse review')) return ''
+  if (!searchable.includes('pulse review') && !searchable.includes('autopilot review')) return ''
 
   const candidates: Array<{ title: string; phrases: string[] }> = [
     { title: 'Bug review', phrases: ['bug review'] },

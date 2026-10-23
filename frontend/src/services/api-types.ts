@@ -628,7 +628,7 @@ export interface WorkflowRunSetup {
   workflow_review?: { finished_at?: string; started_at?: string; outcome?: string; reason?: string } | null
 }
 
-export type PulseOutwardActions = 'ask' | 'allow'
+export type PulseOutwardActions = 'ask' | 'allow' | 'decide'
 
 /** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
 

@@ -63,8 +63,8 @@ export function sidebarChatDisplayTitle(row: SidebarChat, workspaceTitle?: strin
   if (row.surface === 'work' && /^(?:new project|new crew|new chat)$/i.test(title)) return row.scheduled || row.workflowSessionKind === 'run' ? 'Run' : number ? `Builder ${number}` : 'Builder'
   const generated = readableGeneratedChatTitle(title, row.scheduled)
   if (generated) return generated
-  if (row.scheduled && /^schedule-manual--manual-p_/i.test(row.id) && /^Pulse\b/i.test(title)) return 'Manual review'
-  if (row.scheduled && /^Pulse(?:\s*[·:].*)?$/i.test(title)) return title.replace(/^Pulse/i, 'Automatic review')
+  if (row.scheduled && /^schedule-manual--manual-p_/i.test(row.id) && /^(?:Pulse|Autopilot)\b/i.test(title)) return 'Manual review'
+  if (row.scheduled && /^(?:Pulse|Autopilot)(?:\s*[·:].*)?$/i.test(title)) return title.replace(/^(?:Pulse|Autopilot)/i, 'Automatic review')
   const raw = title.replace(/ · Scheduled run$/i, '').replace(row.scheduled ? /\s*\((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Daily|Weekdays|Weekends|Every)\b[^)]*\)$/i : /$^/, '')
   if (row.workflowSessionKind === 'run' && !row.scheduled && !row.originLabel &&
     (raw === workspaceTitle || /^(?:Automation Builder|Builder(?: \d+)?|Main chat|Chat(?: \d+)?)$/i.test(raw)))
@@ -352,7 +352,7 @@ export function sidebarChats({
     const match = row.id.match(/^schedule-[^-]+--([^_]+)_(\d+)$/)
     const pulse = pulseTurnDisplayText(row.history?.query || row.activity?.query || '')
     if (/^schedule-goallead--/.test(row.id) || pulse) {
-      row.title = pulse && pulse !== 'Autopilot turn' ? pulse.replace(/^Pulse:/, 'Autopilot ·') : 'Autopilot'
+      row.title = pulse && pulse !== 'Autopilot turn' ? pulse.replace(/^(?:Pulse|Autopilot):/, 'Autopilot ·') : 'Autopilot'
       row.scheduled = true
       if (!row.runTime && match && match[2].length >= 16)
         row.runTime = Math.floor(Number(match[2]) / 1e6)

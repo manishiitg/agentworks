@@ -4524,8 +4524,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"description": "Email addresses the Autopilot review summary is sent TO, stored in workflow.json capabilities.notifications.pulse_summary_recipients and applied automatically to every pulse_summary send. Use when Autopilot findings should reach different people than the run outcome. Omit to leave unchanged; pass an empty array to clear it and fall back to the account default recipient. Denylists still apply on top.",
 				},
 				"pulse_outward_actions": map[string]interface{}{
-					"type": "string", "enum": []interface{}{"ask", "allow"},
-					"description": "Ask the owner before outward actions, or allow them within existing workflow limits. Change only when the owner asks.",
+					"type": "string", "enum": []interface{}{"ask", "allow", "decide"},
+					"description": "Autopilot autonomy: ask the owner before outward actions, allow them within existing workflow limits, or decide (allow, and also decide plan changes itself; spending money and security stay the owner's). Change only when the owner asks.",
 				},
 				"pulse_enabled": map[string]interface{}{
 					"type":        "boolean",
@@ -5193,8 +5193,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if raw, provided := args["pulse_outward_actions"]; provided && raw != nil {
 				outward, ok := raw.(string)
 				outward = strings.ToLower(strings.TrimSpace(outward))
-				if !ok || (outward != "ask" && outward != "allow") {
-					return "Error: pulse_outward_actions must be ask or allow.", nil
+				if !ok || (outward != "ask" && outward != "allow" && outward != "decide") {
+					return "Error: pulse_outward_actions must be ask, allow or decide.", nil
 				}
 				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
 				if readErr != nil {

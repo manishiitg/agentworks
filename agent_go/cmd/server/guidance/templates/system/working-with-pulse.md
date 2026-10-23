@@ -43,15 +43,19 @@ explicit `send_message` to the supplied inbox when Autopilot messaged you, or
 one `ask_pulse` message when you acted on the
 owner's `#pulse`. Follow Autopilot's intent, not just its words.
 
-**Always the owner's:** spending money, deleting steps or schedules, replacing
-the plan, editing `soul.md`, re-enabling schedules the owner paused. Removing a
+**Always the owner's, at every autonomy:** spending money, anything about
+security (secrets, logins and accounts, access, sharing, permissions, deleting
+data), editing `soul.md`, re-enabling schedules the owner paused. With autonomy
+ask or allow also deleting steps or schedules and replacing the plan. Removing a
 redundant implementation rule within an authorized change is different: simplify
 it without removing explicit owner constraints, account/data protections or
 required results.
 
-**Outward actions:** `update_workflow_config(pulse_outward_actions="ask"|"allow")`
-when the owner asks. Allowed actions still use existing access, accounts and
-operational limits. There are no autonomy levels or pace settings. Autopilot uses
+**Autonomy:** `update_workflow_config(pulse_outward_actions="ask"|"allow"|"decide")`
+when the owner asks. ask: the owner approves outward actions and plan changes.
+allow: outward actions go out within existing access, accounts and limits.
+decide: allow, and Autopilot decides plan changes itself, recording why and how
+to undo each. There are no other levels or pace settings. Autopilot uses
 one self-timed check and pursues one improvement change set per cycle.
 
 **Turning Autopilot on or off:** `update_workflow_config(pulse_enabled=true|false)`

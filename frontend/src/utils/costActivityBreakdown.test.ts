@@ -60,7 +60,7 @@ describe('buildCostActivityBreakdown', () => {
     expect(result.map(category => category.id)).toEqual(['builder', 'pulse', 'workflow', 'evaluation', 'schedule'])
     expect(result[0].total.total_cost_usd).toBe(3)
     expect(result[0].executions.map(execution => execution.id)).toEqual(['interactive workflow chat', 'workflow builder'])
-    expect(result[1].executions[0].label).toBe('pulse review and fix')
+    expect(result[1].executions[0].label).toBe('autopilot review and fix')
     expect(result[1].timing.duration_ms).toBe(12_000)
     expect(result[1].executions[0].timing.duration_ms).toBe(12_000)
     expect(result[1].total.llm_generation_duration_ms).toBe(1_000)

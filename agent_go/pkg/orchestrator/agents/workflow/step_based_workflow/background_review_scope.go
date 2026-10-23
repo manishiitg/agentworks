@@ -6,13 +6,17 @@ import (
 )
 
 // GoalWorkPermissions are the server-held action permissions for the current
-// Pulse turn. The workflow exposes only on/off and outward_actions; the tool
-// groups below are internal execution checks, not configurable levels.
+// Pulse turn. The workflow exposes on/off and one autonomy setting stored as
+// outward_actions (ask, allow or decide); the tool groups below are internal
+// execution checks, not configurable levels.
 type GoalWorkPermissions struct {
 	Run     bool
 	Outward bool
 	Change  bool
 	Reshape bool
+	// Decide lets Autopilot decide plan changes itself (autonomy "decide");
+	// spending money and security stay the owner's.
+	Decide bool
 }
 
 // PulsePermissions consumes the canonical manifest after saved-setting
@@ -28,7 +32,16 @@ func PulsePermissions(manifestJSON string) GoalWorkPermissions {
 	if json.Unmarshal([]byte(manifestJSON), &manifest) != nil || manifest.Pulse == nil || !manifest.Pulse.Enabled {
 		return GoalWorkPermissions{}
 	}
-	return GoalWorkPermissions{Run: true, Change: true, Reshape: true, Outward: manifest.Pulse.OutwardActions == "allow"}
+	level := manifest.Pulse.OutwardActions
+	return GoalWorkPermissions{Run: true, Change: true, Reshape: true, Outward: level == "allow" || level == "decide", Decide: level == "decide"}
+}
+
+// PulseOwnerOnlyText is the one list of what stays the owner's, by autonomy.
+func PulseOwnerOnlyText(perms GoalWorkPermissions) string {
+	if perms.Decide {
+		return "Always the owner's: spending money, anything about security (secrets, logins and accounts, access, sharing and permissions, deleting data), editing soul.md, new kinds of outreach, and re-enabling schedules the owner paused."
+	}
+	return "Always the owner's: spending money, deleting steps or schedules, replacing the plan, editing soul.md, new kinds of outreach, and re-enabling schedules the owner paused."
 }
 
 // PulsePermissionInstructions is shared by Pulse and Builder. It replaces the
@@ -41,7 +54,11 @@ func PulsePermissionInstructions(perms GoalWorkPermissions) string {
 	if perms.Outward {
 		outward = "Outward actions are allowed within the workflow's existing access, selected accounts and operational limits."
 	}
-	return "Autopilot is on. Pursue one bounded improvement change set in this cycle through Builder, including runs, step and schedule improvements within existing access. Check plan consistency in the same turn; never hold ordinary execution for an AI review. The unreadable-input guard still applies. " + outward + " Spending money, deleting steps or schedules, replacing the plan, editing soul.md, new kinds of outreach and re-enabling owner-paused schedules remain the owner's decisions."
+	decide := ""
+	if perms.Decide {
+		decide = " Decide plan changes yourself: replace or restructure the plan and delete steps or schedules when the evidence supports it, record why and how to undo it, and do not raise a decision for them. Withdraw earlier decisions your own work made obsolete."
+	}
+	return "Autopilot is on. Pursue one bounded improvement change set in this cycle through Builder, including runs, step and schedule improvements within existing access. Check plan consistency in the same turn; never hold ordinary execution for an AI review. The unreadable-input guard still applies. " + outward + decide + " " + PulseOwnerOnlyText(perms)
 }
 
 func parseBackgroundReadOnlyAccess(args map[string]interface{}, agentType string) (bool, error) {

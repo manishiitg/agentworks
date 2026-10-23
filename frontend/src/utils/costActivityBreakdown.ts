@@ -117,10 +117,10 @@ const executionGroup = (category: CostActivityCategory['id'], scope: string, id:
   if (category === 'pulse') {
     // Historical executions retain the engineering-review ID, but the product
     // presents this consolidated technical pass as Pulse Review.
-    if (/engineering-review|workflow-review/i.test(id)) return 'pulse review and fix'
+    if (/engineering-review|workflow-review/i.test(id)) return 'autopilot review and fix'
     if (/strategy-auditor/i.test(id)) return 'strategy auditor'
     if (/goal-advisor/i.test(id)) return 'goal advisor'
-    if (/pulse-fixer|fixer/i.test(id)) return 'pulse fixer'
+    if (/pulse-fixer|fixer/i.test(id)) return 'autopilot fixer'
     if (/stores-health/i.test(id)) return 'stores health'
     if (/^query[_-]/i.test(id)) return 'pulse main turn'
   }

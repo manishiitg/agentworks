@@ -54,7 +54,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
   const yourTab = !!ownerName && tab.metadata?.agentProfileTabCanWrite === true
   const rawName = compactOwnerChatName(displayNameOverride ?? tab.name, ownerName)
   const displayName = readableGeneratedChatTitle(rawName, tab.metadata?.isScheduledRun) ||
-    (tab.metadata?.isScheduledRun && /^(?:Manual )?Pulse$/i.test(rawName) ? rawName === 'Manual Autopilot' ? 'Manual review' : 'Automatic review' : rawName)
+    (tab.metadata?.isScheduledRun && /^(?:Manual )?(?:Pulse|Autopilot)$/i.test(rawName) ? /^Manual /i.test(rawName) ? 'Manual review' : 'Automatic review' : rawName)
   const rawTooltip = titleOverride || tab.name || displayName
   const nameTooltip = readableGeneratedChatTitle(rawTooltip, tab.metadata?.isScheduledRun) || rawTooltip
   const tooltip = ownerName ? `${nameTooltip} · ${yourTab ? 'Your tab' : 'Owned by'} · ${ownerName}` : nameTooltip
