@@ -115,7 +115,6 @@ func Run(docs string) (int, string, error) {
 		if err != nil {
 			return err
 		}
-		changes = append(changes, change{path, body, info.Mode().Perm(), false})
 		id := filepath.Base(filepath.Dir(path))
 		rev := strings.TrimSuffix(entry.Name(), ".json")
 		reports := filepath.Dir(filepath.Dir(filepath.Dir(path)))
@@ -130,6 +129,7 @@ func Run(docs string) (int, string, error) {
 			}
 		}
 		changes = append(changes, change{path: filepath.Join(render, "index.json"), remove: true})
+		changes = append(changes, change{path, body, info.Mode().Perm(), false})
 		count++
 		return nil
 	})

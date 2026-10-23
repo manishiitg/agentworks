@@ -7,6 +7,8 @@ import './style.css'
 import * as platform from './components'
 import * as Recharts from 'recharts'
 
+declare global { interface Window { report: any } }
+
 type DashboardModule = {
   default: React.ComponentType<{ data: unknown; report: any }>
   loadData?: (report: any) => unknown | Promise<unknown>

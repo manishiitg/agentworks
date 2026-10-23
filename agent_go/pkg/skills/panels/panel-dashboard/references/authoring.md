@@ -116,7 +116,7 @@ Choose an editable starting composition, then adapt or combine it:
 | Use an assistant or service | The actual purpose, Card components for the available published functions, and AskButton or a placed ChatPanel. Explain each action in ordinary words; no invented metrics or decorative charts. |
 
 These are examples for the agent, not user-facing modes or required sections.
-For existing JSON pages, use only components and props returned by the pinned catalog. TSX pages use React and the runtime imports returned by get_dashboard_catalog. For a broad page,
+Use shared components and props returned by get_dashboard_catalog, with React and its supplied runtime imports. For a broad page,
 a vertical Stack with `align: "stretch"` avoids narrow child cards. A Grid of
 Metric components gives a compact summary; a Grid of Card components can pair a
 chart with its breakdown. Card already supplies its surface and heading; avoid
@@ -164,7 +164,7 @@ business page with fictional values to make it look complete.
    below640px, then its requested columns. Override it through supported
    className/CSS when the user's layout needs different behavior. Check long
    labels, dense tables, keyboard focus and names for icon-only controls.
-4. Keep everything customizable. Imported CSS (or existing JSON top-level `styles`) is normal authored CSS and
+4. Keep everything customizable. Imported CSS is normal authored CSS and
    takes precedence over the default CSS layers. `#dashboard-root` is the page
    surface. Override `--dashboard-page-width`, `--dashboard-page-padding`,
    `--dashboard-font-family`, `--dashboard-card-padding`,
@@ -236,7 +236,7 @@ workflow_id or other project selector exactly as returned; do not infer a new ro
 Use `{{dashboard_assets}}` and `{{dashboard_scripts}}` for immutable bundle paths.
 For example a data declaration can run `{{dashboard_scripts}}/summary.py`; the
 script contract below still applies. The HTML widget/API examples below are
-references for existing HTML pages, not instructions to replace JSON source.
+references for existing HTML pages, not instructions for new dashboard authoring.
 
 External connections need `dashboards:read` for discovery, source reads and links.
 Drafts and publication use existing product authoring consent: `builder:chat` for
