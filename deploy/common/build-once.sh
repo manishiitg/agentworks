@@ -31,7 +31,6 @@ build_release_remote() {
   local branch="${DEPLOY_BRANCH:-main}" repo url sha args=() out name
   for repo in $BUILD_REPOS; do
     url="$(to_https_url "$(git -C "$(repo_dir "$repo")" remote get-url origin)")" || return 1
-    sha="$(git ls-remote "$url" "refs/heads/$branch" | awk '{print $1}')"
     # DEPLOY_SHA_<REPO> (REPO upper-case, - as _) builds that commit instead of the branch head, so a release can leave out work still landing on main.
     # It must already be on main of that repository.
     local pin_var="DEPLOY_SHA_$(printf '%s' "$repo" | tr 'a-z-' 'A-Z_')" pinned
@@ -41,6 +40,8 @@ build_release_remote() {
       git -C "$(repo_dir "$repo")" merge-base --is-ancestor "$pinned" origin/main 2>/dev/null \
         || { echo "$pin_var ${pinned:0:10} is not an ancestor of origin/main of $repo; refusing." >&2; return 1; }
       sha="$pinned"
+    else
+      sha="$(git ls-remote "$url" "refs/heads/$branch" | awk '{print $1}')"
     fi
     [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Cannot resolve $branch of $url" >&2; return 1; }
     echo "  $repo $branch = ${sha:0:10}${pinned:+ (pinned)}" >&2
