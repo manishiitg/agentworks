@@ -743,3 +743,36 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		t.Fatal("an unavailable chat was attached")
 	}
 }
+
+// A wake hint for message21 must not skip it after a bounded20-message page.
+func TestPendingReadPositionKeepsTheNextBatch(t *testing.T) {
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			After int `json:"after"`
+		}
+		json.NewDecoder(r.Body).Decode(&request)
+		messages := []AgentLiveMessage{}
+		end := min(request.After+20, 21)
+		for sequence := request.After + 1; sequence <= end; sequence++ {
+			messages = append(messages, AgentLiveMessage{AttachmentID: "lease", MessageID: fmt.Sprint(sequence), InboxID: "inbox", Sequence: sequence})
+		}
+		json.NewEncoder(w).Encode(map[string]any{"messages": messages, "next_cursor": end, "pending": 21 - request.After})
+	}))
+	defer remote.Close()
+	client, err := New(remote.URL, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &localSession{Attachment: AgentAttachment{ID: "lease"}, client: client, latestSequence: 21}
+	b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{"chat": s}}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	messages, _, _, more, err := b.readPending(context.Background(), s, "codex_desktop", 20, false)
+	if err != nil || len(messages) != 20 || more != 1 || s.ReadPosition != 20 {
+		t.Fatalf("first page skipped pending: count=%d more=%d position=%d error=%v", len(messages), more, s.ReadPosition, err)
+	}
+	messages, _, _, more, err = b.readPending(context.Background(), s, "codex_desktop", 20, false)
+	if err != nil || len(messages) != 1 || messages[0].Sequence != 21 || more != 0 || s.ReadPosition != 21 {
+		t.Fatalf("next page lost: %+v more=%d position=%d error=%v", messages, more, s.ReadPosition, err)
+	}
+}

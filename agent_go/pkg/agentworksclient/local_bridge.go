@@ -2565,7 +2565,13 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 	if json.Unmarshal(raw, &page) != nil || len(page.Messages) > limit {
 		return nil, 0, nil, 0, errors.New("invalid bounded inbox response")
 	}
-	s.ReadPosition = max(s.ReadPosition, page.Next, observedLatest)
+	next := page.Next
+	if len(page.Messages) == 0 {
+		// An empty page can consume wake hints for held/already-received mail.
+		// A full page must leave later pending messages for the next batch.
+		next = max(next, observedLatest)
+	}
+	s.ReadPosition = max(s.ReadPosition, next)
 	if err = b.save(); err != nil {
 		return nil, 0, nil, 0, err
 	}
