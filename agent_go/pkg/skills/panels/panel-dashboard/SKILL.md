@@ -38,7 +38,6 @@ metadata:
     - get_dashboard_link
     - restore_dashboard
     - get_dashboard_catalog
-    - export_dashboard_static
   external-tools:
   - '*dashboard*'
   - get_report_link
