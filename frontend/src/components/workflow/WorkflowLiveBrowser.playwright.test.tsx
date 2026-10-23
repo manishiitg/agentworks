@@ -232,9 +232,10 @@ it('leaves an active capture running when its viewer closes', async () => {
 
 it('continues following live tests when an older completed replay remains', async () => {
   api.get.mockResolvedValue({ data: { sessions: [testBrowser('pw-first')] } })
-  const { selector } = await mountBrowser()
+  const { picker } = await mountBrowser()
+  expect(picker()).toBeNull()
   await pollBrowsers([{ ...testBrowser('pw-first'), state: 'completed', recording_state: 'saving' }, testBrowser('pw-next')])
-  expect(selector.value).toBe('playwright-tests')
+  expect(picker().value).toBe('playwright-tests')
   expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/pw-next/stream')
 })
 
@@ -383,7 +384,7 @@ it('hides the browser picker for one browser and shows it for several', async ()
   expect([...picker().options].map(option => option.value)).toEqual(['playwright-tests', 'shared-browser', 'crew-browser'])
   await pollBrowsers([crew])
   expect(picker()).toBeNull()
-  expect(host.textContent).toContain('Crew browser')
+  expect(host.querySelector('[role="status"]')?.getAttribute('title')).toBe('Crew browser')
 })
 
 it('keeps recording and page size in an overflow menu that closes on Escape', async () => {
