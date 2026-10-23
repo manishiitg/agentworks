@@ -13,15 +13,15 @@ class MailboxPositionConversion(unittest.TestCase):
         original = {
             'next_agent_sequence': 40,
             'conversations': [{
-                'id': 'inbox-fixture',
+                'inbox_id': 'inbox-fixture',
                 'endpoints': [{'named_agent_id': 'agent-fixture'}, {}],
                 'messages': [
-                    {'id': 'old-stored', 'from': 1, 'text': 'keep pending', 'delivery': 'stored'},
-                    {'id': 'old-delivered', 'from': 1, 'text': 'keep history',
+                    {'message_id': 'old-stored', 'from': 1, 'message': 'keep pending', 'delivery': 'stored'},
+                    {'message_id': 'old-delivered', 'from': 1, 'message': 'keep history',
                      'delivery': 'delivered', 'delivered_at': '2026-10-01T00:00:00Z', 'agent_sequence': 0},
-                    {'id': 'current', 'from': 1, 'text': 'keep position', 'delivery': 'stored',
+                    {'message_id': 'current', 'from': 1, 'message': 'keep position', 'delivery': 'stored',
                      'agent_sequence': 45},
-                    {'id': 'internal', 'from': 0, 'text': 'internal conversation', 'delivery': 'stored'},
+                    {'message_id': 'internal', 'from': 0, 'message': 'internal conversation', 'delivery': 'stored'},
                 ],
             }],
         }
