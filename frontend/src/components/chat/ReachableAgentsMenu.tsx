@@ -52,16 +52,16 @@ export function ReachableAgentsMenu() {
   const agents = (data?.agents || []).filter(agent => [agentName(agent), agent.name, agent.agent_name, agentKind(agent), agent.provider, agent.purpose, agent.description].some(text => text?.toLocaleLowerCase().includes(search)))
     .sort((a, b) => Number(b.online === true) - Number(a.online === true) || agentName(a).localeCompare(agentName(b)))
   return <Menu.Root open={open} onOpenChange={setOpen} modal={false}>
-    <Menu.Trigger title="Agents you can reach" aria-label="Agents you can reach" className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded px-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Menu.Trigger aria-haspopup="dialog" title="Agents you can reach" aria-label="Agents you can reach" className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded px-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <Network className="h-3.5 w-3.5" aria-hidden="true" /><span>Agents{data && !data.loading && !data.error ? ` · ${data.agents.length}` : ''}</span>
     </Menu.Trigger>
-    <Menu.Portal><Menu.Content aria-label="Accessible agents" side="top" align="start" sideOffset={8} collisionPadding={12}
-      onEntryFocus={event => { event.preventDefault(); input.current?.focus() }}
+    <Menu.Portal><Menu.Content role="dialog" aria-label="Accessible agents" side="top" align="start" sideOffset={8} collisionPadding={12}
+      onFocusCapture={event => { if (event.target === event.currentTarget) input.current?.focus() }}
       className="z-[100] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg">
       <Menu.Label className="px-3 pb-2 pt-3 text-sm font-medium">Agents you can reach</Menu.Label>
       <div className="mx-2 mb-2 flex items-center gap-2 rounded-lg border border-border bg-background px-2.5">
         <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <input ref={input} aria-label="Search accessible agents" placeholder="Search agents…" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (!['ArrowDown', 'ArrowUp', 'Escape', 'Tab'].includes(event.key)) event.stopPropagation() }} className="h-8 min-w-0 flex-1 bg-transparent text-xs outline-none" />
+        <input autoFocus ref={input} aria-label="Search accessible agents" placeholder="Search agents…" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (!['ArrowDown', 'ArrowUp', 'Escape', 'Tab'].includes(event.key)) event.stopPropagation() }} className="h-8 min-w-0 flex-1 bg-transparent text-xs outline-none" />
       </div>
       <div role="list" aria-label="Reachable agents" className="max-h-[min(22rem,50dvh)] overflow-y-auto p-1.5">
         {(!data || data.loading) ? <p role="status" className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading agents…</p>
