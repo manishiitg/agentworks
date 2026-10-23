@@ -268,6 +268,16 @@ https://your-server/api/external/v1/mcp
   plugin contains the remote MCP connector and the AgentWorks skill. It
   contains no credential. The manual alternative is Customize → Connectors
   → Add custom connector with the URL above and OAuth authentication.
+- Grok: open Connectors → New Connector → Custom on grok.com and enter
+  the hosted URL. See [Grok’s connector guide](https://docs.x.ai/grok/connectors).
+- Grok Bot: use its own Connect apps setup, or ask the Bot to add the
+  hosted MCP URL. After sign-in, attach the connection with `@` in chat.
+  This app’s account setup has not been tested here. See
+  [Grok Bot’s app guide](https://docs.x.ai/grok-bot/computer-and-apps).
+- Muse personal agent: look in Settings → Connectors. Meta reviews
+  connectors before listing them; AgentWorks acceptance in this app remains
+  unverified. Muse Code has a separate terminal setup. See
+  [Meta’s connector process](https://platform.muse.ai/docs).
 
 The assistant discovers AgentWorks OAuth metadata from the server. Sign in to
 AgentWorks when prompted, review the requested permissions, and allow access.

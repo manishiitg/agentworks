@@ -1,6 +1,6 @@
 import { ArrowLeft, Check, ChevronRight, CircleDot, Plug, Sparkles } from 'lucide-react'
 
-export type HostedAiApp = 'chatgpt' | 'cowork' | 'grok' | 'dots' | 'muse-personal'
+export type HostedAiApp = 'chatgpt' | 'cowork' | 'grok' | 'grok-bot' | 'dots' | 'muse-personal'
 export type AiApp = HostedAiApp | 'claude-code' | 'codex' | 'cursor' | 'muse' | 'json-client'
 
 type AiAppChoice<ID extends string> = { id: ID; name: string; icon?: string; description: string; hosted?: boolean }
@@ -9,8 +9,9 @@ export const AI_APPS: AiAppChoice<AiApp>[] = [
   { id: 'chatgpt', name: 'ChatGPT', icon: '/provider-icons/codex.png', description: 'ChatGPT.com', hosted: true },
   { id: 'cowork', name: 'Claude Cowork', icon: '/provider-icons/claude.ico', description: 'Your Claude desktop assistant', hosted: true },
   { id: 'grok', name: 'Grok', description: 'Grok.com', hosted: true },
+  { id: 'grok-bot', name: 'Grok Bot', description: 'Your Bot’s own app', hosted: true },
   { id: 'dots', name: 'OpenAI dots', description: 'Through supported ChatGPT plugins', hosted: true },
-  { id: 'muse-personal', name: 'Muse personal agent', icon: '/provider-icons/muse.ico', description: 'Setup not yet verified', hosted: true },
+  { id: 'muse-personal', name: 'Muse personal agent', icon: '/provider-icons/muse.ico', description: 'Requires an available Muse connector', hosted: true },
   { id: 'claude-code', name: 'Claude Code', icon: '/provider-icons/claude.ico', description: 'In your terminal' },
   { id: 'codex', name: 'Codex', icon: '/provider-icons/codex.png', description: 'Desktop app or terminal' },
   { id: 'cursor', name: 'Cursor', icon: '/provider-icons/cursor.svg', description: 'In your editor' },
