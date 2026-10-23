@@ -136,6 +136,9 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		// root controller. A child may not invent a different browser owner.
 		ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, authoritySession)
 		ctx = executor.WithSessionID(ctx, toolSession)
+		if goalWorkHeld {
+			ctx = common.WithGoalWorkHeld(ctx)
+		}
 		if goalWorkHeld && !goalWorkPerms.Outward {
 			ctx = common.WithOutwardHeld(ctx)
 		}

@@ -496,6 +496,10 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		}
 		manifest.WorkflowContextPaths = normalized
 	}
+	if (req.PulseEnabled != nil || req.PulseOutwardActions != nil) && common.GoalWorkHeld(r.Context()) {
+		http.Error(w, "Autopilot cannot change its own settings (on/off or autonomy); they stay with the owner", http.StatusForbidden)
+		return
+	}
 	if req.PulseEnabled != nil {
 		setWorkflowPulseEnabled(manifest, *req.PulseEnabled)
 	}

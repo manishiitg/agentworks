@@ -161,9 +161,18 @@ func TestGoalWorkDecideUnlocksPlanToolsButNotSecrets(t *testing.T) {
 			t.Fatalf("%s must run at decide: %v", tool, err)
 		}
 	}
-	for _, tool := range []string{"set_workflow_secret", "delete_workflow_secret", "manage_user_access", "migrate_agent_steps"} {
+	for _, tool := range []string{"set_workflow_secret", "delete_workflow_secret", "manage_user_access", "migrate_agent_steps",
+		"manage_vault_access", "manage_vault_secret_access", "rotate_secret", "manage_laptop_access", "share_dashboard", "publish_relay", "mutate_vault_db"} {
 		if goalWorkToolRefusal(tool, decide) == nil {
 			t.Fatalf("%s must stay with the owner at decide", tool)
 		}
+	}
+	for _, tool := range []string{"list_secrets", "get_secret_sources", "get_dashboard_share", "send_slack_message"} {
+		if goalWorkNeverByName(tool) {
+			t.Fatalf("%s is a read tool and must not be held by name", tool)
+		}
+	}
+	if !common.GoalWorkHeld(common.WithGoalWorkHeld(context.Background())) || common.GoalWorkHeld(context.Background()) {
+		t.Fatal("GoalWorkHeld must be set only by WithGoalWorkHeld")
 	}
 }

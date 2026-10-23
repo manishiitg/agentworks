@@ -80,6 +80,26 @@ var goalWorkNeverTools = map[string]bool{
 	"set_workflow_secret": true, "delete_workflow_secret": true, "manage_user_access": true, "manage_workflow_webhook": true,
 }
 
+// goalWorkNeverWords catch security tools by name so a new tool is held by
+// default (reviewer, 2026-10-23): secrets, the vault, access and sharing,
+// publishing, webhooks and laptop access stay with the owner. Reading tools
+// (list_, get_, read_) stay available.
+var goalWorkNeverWords = []string{"secret", "vault", "access", "share", "publish", "webhook", "laptop"}
+
+func goalWorkNeverByName(tool string) bool {
+	for _, read := range []string{"list_", "get_", "read_"} {
+		if strings.HasPrefix(tool, read) {
+			return false
+		}
+	}
+	for _, word := range goalWorkNeverWords {
+		if strings.Contains(tool, word) {
+			return true
+		}
+	}
+	return false
+}
+
 // goalWorkPlanTools replace the plan or delete steps and schedules. Autonomy
 // "decide" lets Autopilot direct them; below it they stay with the user.
 var goalWorkPlanTools = map[string]bool{
@@ -102,7 +122,7 @@ func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) er
 	}
 
 	switch {
-	case goalWorkNeverTools[tool]:
+	case goalWorkNeverTools[tool] || goalWorkNeverByName(tool):
 		return fmt.Errorf("%s is not available to Autopilot work: migrations, secrets and access stay with the owner. Create a decision request (create_human_input_request) with the exact change instead", tool)
 	case goalWorkPlanTools[tool]:
 		if !perms.Decide {

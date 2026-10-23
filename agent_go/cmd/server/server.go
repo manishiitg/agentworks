@@ -6438,6 +6438,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// workflow.json carries the access record and created_by (whom
 				// schedules run as): only an owner's session may write it, so an
 				// editor cannot have the agent promote them or change run-as.
+				if isGoalLeadSessionID(sessionID) {
+					// Autopilot's own settings live in workflow.json: it never writes it raw.
+					fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, effectiveWorkflowPhaseFolderForWrites+"/workflow.json")
+				}
 				if blockedManifest := workflowManifestBlockedWriteForNonOwner(context.WithoutCancel(r.Context()), GetUserFromContext(r.Context()), effectiveWorkflowPhaseFolderForWrites); blockedManifest != "" {
 					fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedManifest)
 					log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Non-owner session: blocked writes to %s", blockedManifest)

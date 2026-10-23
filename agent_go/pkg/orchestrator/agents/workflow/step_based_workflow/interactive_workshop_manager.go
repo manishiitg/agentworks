@@ -5190,6 +5190,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			// --- Pulse outward actions ---
+			if _, ok := args["pulse_outward_actions"]; ok && common.GoalWorkHeld(ctx) {
+				return "Error: Autopilot cannot change its own autonomy; it stays with the owner. Create a decision request (create_human_input_request) if you think it should change.", nil
+			}
 			if raw, provided := args["pulse_outward_actions"]; provided && raw != nil {
 				outward, ok := raw.(string)
 				outward = strings.ToLower(strings.TrimSpace(outward))
@@ -5226,6 +5229,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			// --- Pulse on or off (owner, 2026-10-08) ---
+			if _, ok := args["pulse_enabled"]; ok && common.GoalWorkHeld(ctx) {
+				return "Error: Autopilot cannot turn itself on or off; that stays with the owner.", nil
+			}
 			if raw, provided := args["pulse_enabled"]; provided && raw != nil {
 				enabled, ok := raw.(bool)
 				if !ok {
