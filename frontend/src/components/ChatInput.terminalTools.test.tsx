@@ -127,7 +127,7 @@ describe('terminal toolbar shared tools', () => {
     const flush = async () => act(async () => { await new Promise(resolve => setTimeout(resolve, 40)) })
     await flush()
     const input = host.querySelector<HTMLTextAreaElement>('[data-testid="chat-input-textarea"]')!
-    const edit = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Edit')!
+    const edit = host.querySelector<HTMLButtonElement>('[aria-label="Edit queued message"]')!
     expect(edit).toBeTruthy()
     await act(async () => edit.click())
     await flush()
