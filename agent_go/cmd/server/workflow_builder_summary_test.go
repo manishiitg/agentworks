@@ -34,6 +34,19 @@ func TestWorkflowOwnerTabsShareProjectAndKeepControl(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if kind == "relay" {
+				var m WorkflowManifest
+				_ = json.Unmarshal([]byte(manifest), &m)
+				if !flowOwnersStateFor(&m, "bob").CanManage {
+					t.Fatal("Relay co-owner lost the shared owner control")
+				}
+				r := httptest.NewRequest("PUT", "/api/workflow/access", strings.NewReader(`{"workspace_path":"Workflow/demo","owners":["bob"],"readers":[]}`)).WithContext(ctx("bob"))
+				w := httptest.NewRecorder()
+				api.handleSetWorkflowAccess(w, r)
+				if w.Code != 400 {
+					t.Fatal("owner edit changed Relay execution identity", w.Code, w.Body.String())
+				}
+			}
 			bob, err := api.goalOwnerTabSummary(ctx("bob"), scope, false)
 			if err != nil || len(bob.Tabs) != 3 {
 				t.Fatalf("shared tabs: %+v %v", bob, err)

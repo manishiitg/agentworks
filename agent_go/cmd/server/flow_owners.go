@@ -10,14 +10,14 @@ import (
 
 // Flow co-owners (owner, 2026-10-16). A Flow's owners are the manifest's access.owners list: all of them build it (edit,
 // test, publish; workflowAccessForManifest), the main owner (relayBuilder: the creator while still listed, else the first
-// listed) is who it runs as, and only the main owner adds or removes owners. A Flow has one shared draft in version 1 and no
+// listed) is who it runs as, and owners manage the shared owner list. A Flow has one shared draft in version 1 and no
 // Builder lock; a publish says whose version it replaced.
 
 // flowOwnersStateFor lists a Flow's owners for callerID.
 func flowOwnersStateFor(manifest *WorkflowManifest, callerID string) crewOwnersState {
 	dir, _ := readUserDirectoryFile()
 	main := manifest.relayBuilder()
-	state := crewOwnersState{CanManage: main != "" && sanitizeUserIDForPath(main) == sanitizeUserIDForPath(callerID), CoOwners: []runSharePerson{}}
+	state := crewOwnersState{CanManage: containsID(manifest.effectiveOwners(), callerID), CoOwners: []runSharePerson{}}
 	if people := peopleForIDs(dir, []string{main}); len(people) == 1 {
 		state.Owner = people[0]
 	}
@@ -31,11 +31,11 @@ func flowOwnersStateFor(manifest *WorkflowManifest, callerID string) crewOwnersS
 	return state
 }
 
-// changeFlowOwners applies one add or remove by the main owner. It returns the new state, or a refusal (status, code, message).
+// changeFlowOwners applies one add or remove by a project owner. It returns the new state, or a refusal (status, code, message).
 func (api *StreamingAPI) changeFlowOwners(ctx context.Context, claims *UserClaims, root string, manifest *WorkflowManifest, action, email string) (crewOwnersState, int, string, string) {
 	main := manifest.relayBuilder()
-	if main == "" || sanitizeUserIDForPath(main) != sanitizeUserIDForPath(claims.UserID) {
-		return crewOwnersState{}, http.StatusForbidden, "forbidden", "Only the main owner of this Flow can add or remove owners."
+	if main == "" || !containsID(manifest.effectiveOwners(), claims.UserID) {
+		return crewOwnersState{}, http.StatusForbidden, "forbidden", "Only an owner of this Flow can add or remove owners."
 	}
 	if email == "" {
 		return crewOwnersState{}, http.StatusBadRequest, "invalid_arguments", "Give the person's email."

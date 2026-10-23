@@ -43,8 +43,13 @@ export async function hydrateWorkflowOwnerTabs(binding: WorkflowBuilderSessionRe
   const ids = new Set(binding.tabs.map(tab => tab.id))
   for (const tab of Object.values(useChatStore.getState().chatTabs)) {
     if (tab.metadata?.presetQueryId === presetId && tab.metadata.workflowOwnerTabID && !ids.has(tab.metadata.workflowOwnerTabID)) {
+      const selected = useChatStore.getState().activeTabId === tab.tabId
       await useChatStore.getState().closeTab(tab.tabId, false)
       if (!isChatIdentityCurrent(identity)) return
+      if (selected) {
+        const main = Object.values(useChatStore.getState().chatTabs).find(item => item.sessionId === binding.session_id)
+        if (main) useChatStore.getState().switchTab(main.tabId)
+      }
     }
   }
 }

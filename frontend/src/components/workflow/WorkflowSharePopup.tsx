@@ -54,7 +54,7 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
   const canEdit = !readOnly && (source?.canEdit
     ? !!info && source.canEdit(info)
     : (!!me?.is_admin || info?.my_access === 'owner' || (info?.my_access === 'write' && !!info?.legacy)))
-  const lockedIds = useMemo(() => (info && source?.lockedIds ? source.lockedIds(info) : []), [info, source])
+  const lockedIds = useMemo(() => (info && source?.lockedIds ? source.lockedIds(info) : relay && info?.owners[0] ? [info.owners[0].id] : []), [info, source, relay])
   const locked = !canEdit
 
   const load = useCallback(async () => {

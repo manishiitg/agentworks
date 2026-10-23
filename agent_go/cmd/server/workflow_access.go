@@ -542,6 +542,10 @@ func (api *StreamingAPI) handleSetWorkflowAccess(w http.ResponseWriter, r *http.
 			filtered = append(filtered, id)
 		}
 	}
+	if manifestIsRelay(manifest) && !containsID(owners, manifest.relayBuilder()) {
+		writeUsersError(w, http.StatusBadRequest, "Keep the Flow's execution owner in its owner list.")
+		return
+	}
 	if manifest.Team != nil && !containsID(owners, manifest.Team.LeaderID) {
 		writeUsersError(w, http.StatusBadRequest, "Keep the Goal's execution owner in its owner list.")
 		return
