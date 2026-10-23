@@ -90,7 +90,7 @@ describe('selectWorkflowTabsForStrip', () => {
 })
 
 
-test('keeps every registered owner tab beside function and schedule history', () => {
+it('keeps every registered owner tab beside function and schedule history', () => {
   const own = { tabId: 'own', sessionId: 's-own', name: 'Builder', createdAt: 1, metadata: { mode: 'workflow', presetQueryId: 'wf', phaseId: 'workflow-builder', workflowOwnerTabID: 'wf:chat:own', agentProfileTabCanWrite: true } } as ChatTab
   const other = { ...own, tabId: 'other', sessionId: 's-other', metadata: { ...own.metadata, workflowOwnerTabID: 'wf:chat:other', agentProfileTabCanWrite: false } } as ChatTab
   const run = { ...own, tabId: 'run', sessionId: 's-run', metadata: { mode: 'workflow', presetQueryId: 'wf', isViewOnly: true, isExecutionRun: true } } as ChatTab
