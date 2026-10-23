@@ -2,31 +2,38 @@ package server
 
 import "testing"
 
-// Crew Playwright tests are filed under the owner-qualified crew path so the
-// owner's logical path and the physical path name the same crew, and another
-// user's same-named crew never sees them.
+// Crew browser scope uses the registered shared-root project identity.
 func TestPlaywrightCrewScopeAndVisibility(t *testing.T) {
+	registry := withProjectOwnerRegistry(t)
+	for _, rec := range []projectOwnerRecord{
+		{Product: "work", Folder: "qa-a1", OwnerID: "alice", Shared: true},
+		{Product: "work", Folder: "qa-b2", OwnerID: "bob", Shared: true},
+	} {
+		if err := registry.Register(rec); err != nil {
+			t.Fatal(err)
+		}
+	}
 	api := &StreamingAPI{}
 	alice := &UserClaims{UserID: "alice"}
 	bob := &UserClaims{UserID: "bob"}
-	scope := playwrightScope("alice", "Chats/Work/projects/qa/")
-	if scope != "_users/alice/Chats/Work/projects/qa" {
+	scope := playwrightScope("alice", "Crew/qa-a1/")
+	if scope != "Crew/qa-a1" {
 		t.Fatalf("crew scope = %q", scope)
 	}
-	if got := playwrightScope("alice", "_users/alice/Chats/Work/projects/qa"); got != scope {
-		t.Fatalf("physical crew path scope = %q, want %q", got, scope)
+	if got := playwrightScope("bob", "Crew/qa-a1"); got != scope {
+		t.Fatalf("shared crew scope = %q, want %q", got, scope)
 	}
-	if !api.playwrightVisible(alice, "Chats/Work/projects/qa", "alice", scope) {
-		t.Fatal("crew owner must see the crew's Playwright test via the logical path")
+	if !api.playwrightVisible(alice, "Crew/qa-a1", "alice", scope) {
+		t.Fatal("crew owner must see the crew's Playwright test")
 	}
-	if !api.playwrightVisible(alice, "_users/alice/Chats/Work/projects/qa", "alice", scope) {
-		t.Fatal("crew owner must see the crew's Playwright test via the physical path")
+	if api.playwrightVisible(bob, "Crew/qa-b2", "alice", scope) {
+		t.Fatal("another owner's same-named crew must not see it")
 	}
-	if api.playwrightVisible(bob, "Chats/Work/projects/qa", "alice", scope) {
-		t.Fatal("another user's same-named crew must not see it")
-	}
-	if api.playwrightVisible(alice, "Chats/Work/projects/other", "alice", scope) {
+	if api.playwrightVisible(alice, "Crew/qa-other", "alice", scope) {
 		t.Fatal("a different crew must not see it")
+	}
+	if api.playwrightVisible(nil, "Crew/qa-a1", "alice", scope) {
+		t.Fatal("an anonymous caller must not see it")
 	}
 	// Workflows are unchanged: private to the user who ran the test.
 	if playwrightScope("alice", "Workflow/test/") != "Workflow/test" ||
