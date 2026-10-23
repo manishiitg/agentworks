@@ -131,7 +131,9 @@ type LocalBridgeReply struct {
 	Version           string                `json:"version,omitempty"`
 	Pending           int                   `json:"pending"`
 	// Held counts stored messages the server has left out of this chat's checks so far (they are retried).
-	Held int `json:"held,omitempty"`
+	Held        int                 `json:"held,omitempty"`
+	HeldNotice  bool                `json:"held_notice,omitempty"`
+	HeldDetails []HeldMessageDetail `json:"held_details,omitempty"`
 	// HeldReasons says why, by class (e.g. sender_authorization_failed), as the server reported at the last check.
 	HeldReasons        map[string]int `json:"held_reasons,omitempty"`
 	previousGuidanceAt time.Time
@@ -142,15 +144,16 @@ type LocalBridgeReply struct {
 }
 
 type localSession struct {
-	WorkspaceDir    string    `json:"workspace_dir,omitempty"`
-	Activity        string    `json:"activity,omitempty"`
-	ActivityAt      time.Time `json:"activity_at,omitempty"`
-	LabelName       string    `json:"label_name,omitempty"`
-	HookTransport   string    `json:"hook_transport,omitempty"`
-	lateNotice      string    // set when an attach finished after its command had given up; said once on the next prompt
-	museWatch       *museWatchState
-	OfflineExplicit bool `json:"offline_explicit,omitempty"`
-	OwnCLI          bool `json:"own_cli,omitempty"`
+	lastHeldRevision string    // notice fingerprint only; never saved, no message bodies or IDs
+	WorkspaceDir     string    `json:"workspace_dir,omitempty"`
+	Activity         string    `json:"activity,omitempty"`
+	ActivityAt       time.Time `json:"activity_at,omitempty"`
+	LabelName        string    `json:"label_name,omitempty"`
+	HookTransport    string    `json:"hook_transport,omitempty"`
+	lateNotice       string    // set when an attach finished after its command had given up; said once on the next prompt
+	museWatch        *museWatchState
+	OfflineExplicit  bool `json:"offline_explicit,omitempty"`
+	OwnCLI           bool `json:"own_cli,omitempty"`
 	// Also marks an extra network this chat joined next to its own (--also);
 	// Network is that login's name. The chat's own attachment has neither.
 	Also             bool            `json:"also,omitempty"`
@@ -1733,9 +1736,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			return out
 		}
-		taken, held, reasons, moreWaiting, err := b.readPending(callCtx, s, in.Transport, 20, in.Action == "drain")
+		taken, held, moreWaiting, err := b.readPending(callCtx, s, in.Transport, 20, in.Action == "drain")
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
+		}
+		if held.Reasons == nil {
+			held.Reasons = map[string]int{}
 		}
 		if !s.Also {
 			// Messages from the other networks this chat joined ride along, each labelled
@@ -1744,7 +1750,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				if x.Offline || x.client == nil || len(taken) >= 20 {
 					continue
 				}
-				more, xheld, _, xwaiting, xerr := b.readPending(callCtx, x, in.Transport, 20-len(taken), in.Action == "drain")
+				more, xheld, xwaiting, xerr := b.readPending(callCtx, x, in.Transport, 20-len(taken), in.Action == "drain")
 				if xerr != nil {
 					log.Printf("[BRIDGE] network=%s deliver failed: %v", x.Network, xerr)
 					continue
@@ -1757,11 +1763,17 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 					log.Printf("[BRIDGE] network=%s deliver count=%d chat=%s", x.Network, len(more), boundedMuseHint(s.Attachment.SessionID))
 				}
 				taken = append(taken, more...)
-				held += xheld
+				held.Count += xheld.Count
+				held.Notice = held.Notice || xheld.Notice
+				held.Details = append(held.Details, xheld.Details...)
+				for reason, count := range xheld.Reasons {
+					held.Reasons[reason] += count
+				}
 				moreWaiting += xwaiting
 			}
 		}
-		out.Messages, out.Held, out.HeldReasons, out.Pending = taken, held, reasons, moreWaiting
+		out.Messages, out.Held, out.HeldReasons, out.Pending = taken, held.Count, held.Reasons, moreWaiting
+		out.HeldNotice, out.HeldDetails = held.Notice, held.Details[:min(len(held.Details), 20)]
 		out.previousGuidanceAt = s.LastGuidanceAt
 		if in.Transport != "claude_channel" && len(out.Messages) > 0 && (s.LastGuidanceAt.IsZero() || time.Since(s.LastGuidanceAt) >= 24*time.Hour) {
 			out.IncludeGuidance = true
@@ -2506,11 +2518,23 @@ func authorizedReplyInbox(ctx context.Context, client *Client, att AgentAttachme
 	return checked.Inboxes[id], nil
 }
 
-// readPending fetches bodies only for this delivery. The server owns pending,
-// expiry, permissions and receipts; the helper saves only a read position.
-func (b *localBridge) readPending(ctx context.Context, s *localSession, transport string, limit int, boundary bool) ([]AgentLiveMessage, int, map[string]int, int, error) {
+type HeldMessageDetail struct {
+	Sender string `json:"sender"`
+	Reason string `json:"reason"`
+	Next   string `json:"next"`
+}
+
+type heldInboxNotice struct {
+	Count   int
+	Reasons map[string]int
+	Details []HeldMessageDetail
+	Notice  bool
+}
+
+// readPending fetches bodies only for this delivery; notice metadata is never saved.
+func (b *localBridge) readPending(ctx context.Context, s *localSession, transport string, limit int, boundary bool) ([]AgentLiveMessage, heldInboxNotice, int, error) {
 	if s.reading {
-		return nil, 0, nil, 0, nil
+		return nil, heldInboxNotice{}, 0, nil
 	}
 	s.reading = true
 	defer func() { s.reading = false }()
@@ -2526,20 +2550,22 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 		raw, err = client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "inbox", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "after": after, "limit": limit}, true)
 	})
 	if err != nil {
-		return nil, 0, nil, 0, attachmentValidationError("inbox", attachment.ID, err)
+		return nil, heldInboxNotice{}, 0, attachmentValidationError("inbox", attachment.ID, err)
 	}
 	if s.Attachment.ID != attachment.ID || s.Offline {
-		return nil, 0, nil, 0, nil
+		return nil, heldInboxNotice{}, 0, nil
 	}
 	var page struct {
-		Messages []AgentLiveMessage `json:"messages"`
-		Next     int                `json:"next_cursor"`
-		Pending  int                `json:"pending"`
-		Held     int                `json:"held"`
-		Reasons  map[string]int     `json:"held_reasons"`
+		Messages []AgentLiveMessage  `json:"messages"`
+		Next     int                 `json:"next_cursor"`
+		Pending  int                 `json:"pending"`
+		Held     int                 `json:"held"`
+		Reasons  map[string]int      `json:"held_reasons"`
+		Details  []HeldMessageDetail `json:"held_details"`
+		Revision string              `json:"held_revision"`
 	}
 	if json.Unmarshal(raw, &page) != nil || len(page.Messages) > limit {
-		return nil, 0, nil, 0, errors.New("invalid bounded inbox response")
+		return nil, heldInboxNotice{}, 0, errors.New("invalid bounded inbox response")
 	}
 	next := page.Next
 	if len(page.Messages) == 0 {
@@ -2549,7 +2575,7 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 	}
 	s.ReadPosition = max(s.ReadPosition, next)
 	if err = b.save(); err != nil {
-		return nil, 0, nil, 0, err
+		return nil, heldInboxNotice{}, 0, err
 	}
 	shown := []AgentLiveMessage{}
 	primary := b.sessions[localBridgeKey(attachment.Provider, attachment.SessionID)]
@@ -2564,7 +2590,7 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 	}
 	for _, message := range page.Messages {
 		if message.AttachmentID != attachment.ID || message.MessageID == "" || message.InboxID == "" {
-			return nil, 0, nil, 0, errors.New("inbox response changed attachment")
+			return nil, heldInboxNotice{}, 0, errors.New("inbox response changed attachment")
 		}
 		if now.Before(primary.handedOff[message.MessageID]) {
 			log.Printf("[BRIDGE-NATIVE] outcome=native_handoff_in_flight attachment=%s message=%s route=%s", attachment.ID, message.MessageID, transport)
@@ -2581,7 +2607,15 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 	}
 	remaining := max(0, page.Pending-len(page.Messages)-page.Held)
 
-	return shown, page.Held, page.Reasons, remaining, nil
+	notice := heldInboxNotice{Count: page.Held, Reasons: page.Reasons, Details: page.Details}
+	if notice.Reasons == nil {
+		notice.Reasons = map[string]int{}
+	}
+	if boundary {
+		notice.Notice = page.Held > 0 && page.Revision != s.lastHeldRevision
+		s.lastHeldRevision = page.Revision
+	}
+	return shown, notice, remaining, nil
 }
 
 // extrasPending is whether any network the chat joined with --also has a message waiting.

@@ -446,8 +446,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("person ping was not signalled")
 	}
-	// Old submissions stay blocked after their sending grant is revoked, but
-	// an exact current recipient can resolve reply context and send new mail.
+	// Own named-agent mail follows current access after a CLI login replacement.
 	if err = store.RevokeFamily(context.Background(), strings.TrimPrefix(senderConnection, "oauth-"), "owner"); err != nil {
 		t.Fatal(err)
 	}
@@ -469,8 +468,8 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		return result
 	}
 	replyContext := validateContext(receiver, receiverToken, attachment)
-	if ids, ok := replyContext["message_ids"].([]any); ok && len(ids) != 0 {
-		t.Fatal("revoked submission was admitted", replyContext)
+	if ids, ok := replyContext["message_ids"].([]any); !ok || len(ids) != 1 || ids[0] != first["message_id"] {
+		t.Fatal("own message was held only because its CLI login was replaced", replyContext)
 	}
 	if replyContext["inbox_ids"].(map[string]any)[first["message_id"].(string)] != first["inbox_id"] {
 		t.Fatal("current recipient lost reply context", replyContext)
@@ -487,6 +486,30 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	}
 	call(receiver, map[string]any{"action": "send", "agent_name": attachment.AgentName, "inbox_id": first["inbox_id"], "message": "new reply after old grant revoked", "submission_id": "current-reply"})
 	sender, _, _ = issue()
+	call(sender, map[string]any{"action": "register", "agent_name": "sender"})
+	call(sender, map[string]any{"action": "unregister", "agent_name": "sender"})
+	removedContext := validateContext(receiver, receiverToken, attachment)
+	if ids, ok := removedContext["message_ids"].([]any); ok && len(ids) != 0 {
+		t.Fatal("removed sender retained delivery access", removedContext)
+	}
+	body, _ = json.Marshal(map[string]any{"action": "inbox", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "after": 0, "limit": 20})
+	heldRequest, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", strings.NewReader(string(body)))
+	heldRequest.Header.Set("Authorization", "Bearer "+receiverToken)
+	heldRequest.Header.Set("Content-Type", "application/json")
+	heldResponse, err := http.DefaultClient.Do(heldRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var heldPage map[string]any
+	err = json.NewDecoder(heldResponse.Body).Decode(&heldPage)
+	heldResponse.Body.Close()
+	if err != nil || heldResponse.StatusCode != 200 || heldPage["held"].(float64) == 0 || heldPage["held_revision"] == "" {
+		t.Fatal("removed sender did not remain held", heldPage, err)
+	}
+	detail := heldPage["held_details"].([]any)[0].(map[string]any)
+	if detail["sender"] == "" || detail["reason"] == "" || detail["next"] == "" || detail["message"] != nil {
+		t.Fatal("held notice omitted useful metadata or leaked a body", detail)
+	}
 	call(sender, map[string]any{"action": "register", "agent_name": "sender"})
 	if err = store.RevokeFamily(context.Background(), strings.TrimPrefix(receiverConnection, "oauth-"), "owner"); err != nil {
 		t.Fatal(err)

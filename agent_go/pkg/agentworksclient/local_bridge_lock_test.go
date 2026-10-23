@@ -767,11 +767,11 @@ func TestPendingReadPositionKeepsTheNextBatch(t *testing.T) {
 	b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{"chat": s}}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	messages, _, _, more, err := b.readPending(context.Background(), s, "codex_desktop", 20, false)
+	messages, _, more, err := b.readPending(context.Background(), s, "codex_desktop", 20, false)
 	if err != nil || len(messages) != 20 || more != 1 || s.ReadPosition != 20 {
 		t.Fatalf("first page skipped pending: count=%d more=%d position=%d error=%v", len(messages), more, s.ReadPosition, err)
 	}
-	messages, _, _, more, err = b.readPending(context.Background(), s, "codex_desktop", 20, false)
+	messages, _, more, err = b.readPending(context.Background(), s, "codex_desktop", 20, false)
 	if err != nil || len(messages) != 1 || messages[0].Sequence != 21 || more != 0 || s.ReadPosition != 21 {
 		t.Fatalf("next page lost: %+v more=%d position=%d error=%v", messages, more, s.ReadPosition, err)
 	}
@@ -967,5 +967,59 @@ func TestInboxReplyUsesCurrentServerMembership(t *testing.T) {
 	}
 	if reads.Load() != 0 || sends.Load() != 2 || leases.Load() != 3 {
 		t.Fatalf("reply repeated old admission or skipped current authority: reads=%d sends=%d leases=%d", reads.Load(), sends.Load(), leases.Load())
+	}
+}
+
+func TestHeldNoticeChangesWithoutRepeatingAtEveryBoundary(t *testing.T) {
+	revision := "set-one"
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			After int `json:"after"`
+		}
+		json.NewDecoder(r.Body).Decode(&request)
+		held, current := 1, revision
+		if request.After > 0 {
+			held, current = 0, ""
+		}
+		json.NewEncoder(w).Encode(map[string]any{"messages": []any{}, "pending": held, "held": held, "held_revision": current, "held_reasons": map[string]int{"sender_authorization_failed": held}, "held_details": []HeldMessageDetail{{Sender: "sender", Reason: "Sharing has ended.", Next: "Ask the sender to send again after access is restored."}}})
+	}))
+	defer remote.Close()
+	client, err := New(remote.URL, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &localSession{Attachment: AgentAttachment{ID: "lease"}, client: client, latestSequence: 1}
+	b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{"chat": s}}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	read := func(boundary bool) heldInboxNotice {
+		t.Helper()
+		_, held, _, err := b.readPending(context.Background(), s, "claude_hook", 20, boundary)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return held
+	}
+	first := read(true)
+	if !first.Notice || first.Count != 1 || first.Details[0].Sender != "sender" {
+		t.Fatal("first held set lacked its notice", first)
+	}
+	if again := read(true); again.Notice || again.Count != 1 {
+		t.Fatal("unchanged held set repeated or lost diagnostic count", again)
+	}
+	read(false)
+	if read(true).Notice {
+		t.Fatal("background cursor read reset the held notice")
+	}
+	revision = "different-message-same-count"
+	if !read(true).Notice {
+		t.Fatal("changed held set with the same count was hidden")
+	}
+	saved, err := os.ReadFile(filepath.Join(b.root, "sessions.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(saved), revision) || strings.Contains(string(saved), "Sharing has ended") {
+		t.Fatal("helper persisted notice metadata")
 	}
 }

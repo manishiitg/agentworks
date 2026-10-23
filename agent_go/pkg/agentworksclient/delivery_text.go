@@ -191,30 +191,17 @@ func agentWaitingAge(d time.Duration) string {
 
 // HeldLine tells the chat about messages the server has not released, by reason class. Their text is never shown.
 func HeldLine(out LocalBridgeReply) string {
-	if out.Held <= 0 {
+	if out.Held <= 0 || !out.HeldNotice {
 		return ""
-	}
-	classes := map[string]bool{}
-	for reason := range out.HeldReasons {
-		switch reason {
-		case "sender_authorization_failed", "share_check_failed", "admission_recheck_failed":
-			classes["a check on the sender did not pass"] = true
-		default:
-			classes["the server did not release them"] = true
-		}
-	}
-	why := "the server did not release them"
-	if len(classes) > 0 {
-		list := make([]string, 0, len(classes))
-		for c := range classes {
-			list = append(list, c)
-		}
-		sort.Strings(list)
-		why = strings.Join(list, "; ")
 	}
 	noun := "messages"
 	if out.Held == 1 {
 		noun = "message"
 	}
-	return fmt.Sprintf("AgentWorks is holding %d %s for this chat that it cannot release yet (%s). Their text is not shown. Tell your person to ask the AgentWorks admin.", out.Held, noun, why)
+	var text strings.Builder
+	fmt.Fprintf(&text, "AgentWorks: %d %s waiting for an access check.", out.Held, noun)
+	for _, detail := range out.HeldDetails {
+		fmt.Fprintf(&text, "\nFrom %s: %s %s", detail.Sender, detail.Reason, detail.Next)
+	}
+	return text.String()
 }

@@ -1,9 +1,12 @@
 package server
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"log"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -46,20 +49,34 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 	slices.SortFunc(waiting, func(a, b incoming) int { return a.message.AgentSequence - b.message.AgentSequence })
 	messages := []map[string]any{}
 	held := map[string]int{}
+	heldIDs := []string{}
+	details := []map[string]string{}
+	hold := func(message agentMessage, source agentMessageEndpoint, reason, why string) {
+		held[reason]++
+		heldIDs = append(heldIDs, message.ID+":"+reason)
+		if len(details) < 20 {
+			details = append(details, map[string]string{"sender": endpointDisplayLabel(source, agent.UserID), "reason": why,
+				"next": "Ask the sender to send it again once access is restored. It stops waiting 24 hours after it was sent; its history is kept."})
+		}
+	}
 	for _, pending := range waiting {
 		conversation, message := pending.conversation, pending.message
 		source := conversation.Endpoints[message.From]
 		if !serverAuthoredKind(message.Kind) {
 			if !store.shareSenderAllowed(conversation, message.From, agent.UserID, now) {
-				held["share_check_failed"]++
+				hold(message, source, "share_check_failed", "Sharing with this chat has ended.")
 				continue
 			}
-			if api.recheckAgentMessageAdmission(r.Context(), conversation, message) != nil {
-				held["admission_recheck_failed"]++
+			if err := api.recheckAgentMessageAdmission(r.Context(), conversation, message); err != nil {
+				why := "The sender or its sign-in no longer has access to this chat."
+				if strings.Contains(err.Error(), "connection is no longer authorized") {
+					why = "The sign-in that sent it is no longer connected."
+				}
+				hold(message, source, "admission_recheck_failed", why)
 				continue
 			}
 			if api.externalAuthorizeMessagePeer(r.Context(), live, source, false) != nil {
-				held["sender_authorization_failed"]++
+				hold(message, source, "sender_authorization_failed", "This sender no longer has access to this chat.")
 				continue
 			}
 		}
@@ -94,5 +111,9 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		count += n
 	}
 	log.Printf("[AGENT-INBOX] agent=%s attachment=%s after=%d messages=%d held=%d next=%d", agent.ID, id, after, len(messages), count, next)
-	externalJSON(w, map[string]any{"messages": messages, "next_cursor": next, "pending": len(waiting), "held": count, "held_reasons": held})
+	revision := ""
+	if len(heldIDs) > 0 {
+		revision = fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(heldIDs, "\n"))))
+	}
+	externalJSON(w, map[string]any{"messages": messages, "next_cursor": next, "pending": len(waiting), "held": count, "held_reasons": held, "held_details": details, "held_revision": revision})
 }

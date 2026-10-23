@@ -11,8 +11,9 @@ import (
 )
 
 // Resolve authority again immediately before a queued delivery enters a turn.
-// Persist only the connection ID, never its bearer token; a reconnect can still
-// continue an account inbox, but cannot revive an old revoked submission.
+// Persist only the connection ID, never its bearer token. Own named-agent mail
+// follows current account access across CLI sign-in replacement; narrowed keys,
+// other people and project callers retain their original grant checks.
 func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) error {
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
 	if source.ConditionJob != "" {
@@ -61,6 +62,24 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 	}
 	if m.SenderConnectionID != "" {
 		claims, err := agentMessageConnectionClaims(ctx, m.SenderConnectionID)
+		if err != nil && source.External && source.NamedAgentID != "" && source.UserID == dest.UserID && strings.HasPrefix(m.SenderConnectionID, "oauth-") {
+			// The historical CLI grant proves provenance only. It is never made
+			// live again and gives no authority to a different account or agent.
+			store, e := openMCPOAuthStore()
+			if e == nil {
+				var user, client string
+				e = store.db.QueryRowContext(ctx, `SELECT user_id,client_id FROM tokens WHERE family_id=? LIMIT 1`, strings.TrimPrefix(m.SenderConnectionID, "oauth-")).Scan(&user, &client)
+				store.Close()
+				if e == nil && user == source.UserID && client == cliOAuthClientID {
+					person := &UserClaims{UserID: source.UserID}
+					access := userAccessForClaims(person)
+					if !access.Disabled && (IsMultiUserMode() && access.Known || !IsMultiUserMode() && user == GetDefaultUserID()) {
+						claims = person
+						err = nil
+					}
+				}
+			}
+		}
 		if err != nil || claims.UserID != source.UserID {
 			return fmt.Errorf("sending connection is no longer authorized")
 		}
