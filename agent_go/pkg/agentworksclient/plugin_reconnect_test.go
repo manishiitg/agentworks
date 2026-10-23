@@ -129,8 +129,8 @@ func TestCodexMessagingRestartsStoppedBridge(t *testing.T) {
 			t.Fatalf("read-only connection discovery refused: %+v %v", state, e)
 		}
 		other.Action = "peers"
-		if _, e := CallLocalBridge(ctx, root, other); e == nil {
-			t.Fatal("connection discovery changed the saved provider fence")
+		if denied, e := CallLocalBridge(ctx, root, other); e != nil || denied.Attached || denied.Attachment.ID != "" || len(denied.Result) != 0 {
+			t.Fatalf("connection discovery changed the saved provider fence: %+v %v", denied, e)
 		}
 		if round == 1 {
 			_, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "detach", Provider: "codex", SessionID: session, HostKey: "current-process"})
