@@ -250,6 +250,13 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 		return triggerTarget{}, fmt.Errorf("no single accessible Crew, workflow or agent matches; use agent:NAME for an agent, or choose a Crew or workflow by ID")
 	}
 	target := targets[0]
+	if chatID := externalArg(args, "chat_id"); chatID != "" {
+		var err error
+		target, err = api.resolveAgentChatTarget(ctx, target, chatID)
+		if err != nil {
+			return triggerTarget{}, err
+		}
+	}
 	if err := api.externalAuthorizeMessagePeer(ctx, claims, targetMessageEndpoint(claims.UserID, target), send); err != nil {
 		return triggerTarget{}, err
 	}
