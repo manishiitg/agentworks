@@ -97,3 +97,67 @@ func TestCodexDesktopAmbiguousOfferDoesNotStartTurn(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+// A real unavailable desktop thread caused update/start discovery to stall
+// before reaching the open chat. It must not delay independent live ownership.
+func TestCodexDiscoverySkipsUnresponsiveThread(t *testing.T) {
+	root := t.TempDir()
+	socket := filepath.Join(root, "discovery.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	live := "00000000-0000-0000-0000-000000000001"
+	dead := "00000000-0000-0000-0000-000000000002"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for {
+			c, e := listener.Accept()
+			if e != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				for {
+					header := make([]byte, 4)
+					if _, e := io.ReadFull(c, header); e != nil {
+						return
+					}
+					b := make([]byte, binary.LittleEndian.Uint32(header))
+					if _, e := io.ReadFull(c, b); e != nil {
+						return
+					}
+					var req struct {
+						ID     string `json:"requestId"`
+						Method string `json:"method"`
+						Params struct {
+							Conversation string `json:"conversationId"`
+						} `json:"params"`
+					}
+					if json.Unmarshal(b, &req) != nil {
+						return
+					}
+					if req.Method == "thread-owner-discovery" && req.Params.Conversation == dead {
+						<-ctx.Done()
+						return
+					}
+					result := map[string]any{"clientId": "observer"}
+					if req.Method == "thread-owner-discovery" {
+						result = map[string]any{"supportsUntrustedAppInput": true}
+					}
+					b, _ = json.Marshal(map[string]any{"type": "response", "requestId": req.ID, "result": result, "handledByClientId": "live-owner"})
+					binary.LittleEndian.PutUint32(header, uint32(len(b)))
+					if _, e := c.Write(append(header, b...)); e != nil {
+						return
+					}
+				}
+			}()
+		}
+	}()
+	found := discoverCodexDesktopSessions(ctx, "desktop+unix://"+socket, "verified-host", []string{dead, live}, map[string]string{live: "/work"}, map[string]string{})
+	if len(found) != 1 || found[0].session != live || found[0].host != "verified-host" || found[0].cwd != "/work" {
+		t.Fatalf("live thread lost behind an unresponsive thread: %+v", found)
+	}
+}

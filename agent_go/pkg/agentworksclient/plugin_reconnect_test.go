@@ -122,6 +122,16 @@ func TestCodexMessagingRestartsStoppedBridge(t *testing.T) {
 		if failed || !out.Attached || out.Attachment.AgentID != "same-agent" || out.Attachment.AgentName != "saved-chat" || starts != round+1 {
 			t.Fatalf("saved chat did not recover after helper stop: %+v, starts=%d", out, starts)
 		}
+		// Another discovery process can see that the chat is connected, but
+		// cannot use that metadata query to change the saved action fence.
+		other := LocalBridgeRequest{Action: "connection", Provider: "codex", SessionID: session, HostKey: "another-process"}
+		if state, e := CallLocalBridge(ctx, root, other); e != nil || !state.Attached {
+			t.Fatalf("read-only connection discovery refused: %+v %v", state, e)
+		}
+		other.Action = "peers"
+		if _, e := CallLocalBridge(ctx, root, other); e == nil {
+			t.Fatal("connection discovery changed the saved provider fence")
+		}
 		if round == 1 {
 			_, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "detach", Provider: "codex", SessionID: session, HostKey: "current-process"})
 			if err != nil {

@@ -1028,42 +1028,7 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 		}
 		probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		conn, call, e := openCodexDesktop(probeCtx, remote)
-		if e == nil {
-			defer conn.Close()
-			failures := 0
-			ids := codexProbeOrder(leased, candidates, recent)
-			for _, id := range ids {
-				if probeCtx.Err() != nil {
-					fmt.Fprintln(o.stderr, "Desktop discovery did not complete. Open the intended chat and type /agentworks attach if it is missing.")
-					break
-				}
-				if _, e = uuid.Parse(id); e != nil {
-					continue
-				}
-				reply, e := call("thread-owner-discovery", map[string]any{"hostId": "local", "conversationId": id}, 1, "")
-				if e != nil {
-					// One thread failing is not the end of discovery; a dead desktop
-					// connection fails every probe, so stop after a few in a row.
-					failures++
-					if failures >= 5 || probeCtx.Err() != nil {
-						fmt.Fprintln(o.stderr, "Desktop discovery did not complete. Open the intended chat and type /agentworks attach if it is missing.")
-						break
-					}
-					continue
-				}
-				failures = 0
-				var owner string
-				var support struct {
-					Untrusted bool `json:"supportsUntrustedAppInput"`
-				}
-				_ = json.Unmarshal(reply["handledByClientId"], &owner)
-				_ = json.Unmarshal(reply["result"], &support)
-				if owner != "" && support.Untrusted {
-					found = append(found, liveAgentSession{provider: "codex", session: id, host: desktopHost, remote: remote, cwd: candidates[id], name: names["codex:"+id]})
-				}
-			}
-		}
+		found = append(found, discoverCodexDesktopSessions(probeCtx, remote, desktopHost, codexProbeOrder(leased, candidates, recent), candidates, names)...)
 	}
 	if observations, err := cursorLiveObservations(root); err == nil {
 		for _, observation := range observations {
@@ -1074,6 +1039,62 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 
 	sort.Slice(found, func(i, j int) bool { return found[i].provider+found[i].session < found[j].provider+found[j].session })
 	return found, nil
+}
+
+// A closed catalog thread may never answer owner discovery. Probe independently
+// so that it cannot delay a live chat or turn an ordinary update into an attach
+// request. These are bounded read-only native metadata queries, not inbox polls.
+func discoverCodexDesktopSessions(ctx context.Context, remote, host string, ids []string, folders, names map[string]string) []liveAgentSession {
+	jobs := make(chan string)
+	var mu sync.Mutex
+	var found []liveAgentSession
+	var workers sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for id := range jobs {
+				if _, err := uuid.Parse(id); err != nil || ctx.Err() != nil {
+					continue
+				}
+				probe, cancel := context.WithTimeout(ctx, time.Second)
+				conn, call, err := openCodexDesktop(probe, remote)
+				if err != nil {
+					cancel()
+					continue
+				}
+				reply, err := call("thread-owner-discovery", map[string]any{"hostId": "local", "conversationId": id}, 1, "")
+				conn.Close()
+				cancel()
+				if err != nil {
+					continue
+				}
+				var owner string
+				var support struct {
+					Untrusted bool `json:"supportsUntrustedAppInput"`
+				}
+				_ = json.Unmarshal(reply["handledByClientId"], &owner)
+				_ = json.Unmarshal(reply["result"], &support)
+				if owner != "" && support.Untrusted {
+					mu.Lock()
+					found = append(found, liveAgentSession{provider: "codex", session: id, host: host, remote: remote, cwd: folders[id], name: names["codex:"+id]})
+					mu.Unlock()
+				}
+			}
+		}()
+	}
+	for _, id := range ids {
+		select {
+		case jobs <- id:
+		case <-ctx.Done():
+			close(jobs)
+			workers.Wait()
+			return found
+		}
+	}
+	close(jobs)
+	workers.Wait()
+	return found
 }
 
 // stop pauses delivery without deleting attachment identities or revoking the

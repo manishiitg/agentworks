@@ -1026,9 +1026,8 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if s == nil {
 			return LocalBridgeReply{Stopped: b.stopped[key]}
 		}
-		if !s.Offline && in.HostKey != s.HostKey {
-			return LocalBridgeReply{Error: "This chat's saved provider process is still connected. Try again after its restart completes."}
-		}
+		// Discovery only asks whether this exact chat already has a connection.
+		// It neither changes the saved process nor authorizes delivery/actions.
 		return LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Stopped: s.ServerClosed, Attachment: s.Attachment}
 	}
 	if in.Action == "list" {
