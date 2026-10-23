@@ -12,7 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-var dashboardActions = map[string]string{"get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
+var dashboardActions = map[string]string{"get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "export_dashboard_static": "export_static", "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
 
 func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
@@ -77,6 +77,15 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		}
 		add(name, descriptions[action], dashboardMutation(action), false, props, required...)
 	}
+	add("export_dashboard_static", "Export the same published dashboard and current authorized data as a portable static site for Surge, Vercel, Netlify, Cloudflare Pages, GitHub Pages or any file host. Packages the platform React/CSS runtime and captures real report data calls; no SQL extraction, npm app, database or login token is shipped. Returns a folder under publish/exports to deploy in full. Use on every Publish pass to refresh the snapshot. Builder only; existing authoring, dashboards:read, runs:execute and folder grants apply. Ask/functions lead back to the authenticated live dashboard. This exports files only; it does not change sharing or deploy to a host.", true, false, map[string]any{
+		"workflow_id":    externalString("Goal or Flow ID. Pass exactly one project selector."),
+		"crew_id":        externalString("Crew ID."),
+		"workspace":      externalString("Existing project root."),
+		"dashboard_id":   externalString("Published dashboard slug. May be omitted when the project has one published dashboard."),
+		"revision":       externalString("Exact published revision. Omit for the current publication."),
+		"theme":          map[string]any{"type": "string", "enum": []any{"dark", "light"}},
+		"viewport_width": externalInteger(320, 3840),
+	})
 	add("export_dashboard_motion", "Export a published dashboard as an MP4 with its layout, selected theme and frozen data. Native dashboard motion is seeked through its final state; a page without a shared motion clock exports as a still video with a note. A separate explainer is optional via composition_path. Use a unique submission_id to start; retrying returns the original snapshot. Poll with export_id. Builder only; existing authoring and runs:execute consent. Returns the saved video path under db/assets for playback/download. Never runs on page load.", true, false, map[string]any{
 		"workflow_id":      externalString("Workflow or Flow ID. Pass exactly one of workflow_id, crew_id or workspace."),
 		"crew_id":          externalString("Crew ID."),

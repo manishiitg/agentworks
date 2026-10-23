@@ -87,6 +87,7 @@ func workflowPublishStatusPath(workspacePath string) string {
 // NOT an enum. Any static host works; the deploy logic lives in publish-strategy.md.
 func supportedWorkflowPublishStrategies() []WorkflowPublishStrategyInfo {
 	return []WorkflowPublishStrategyInfo{
+		{ID: "surge", Label: "Surge", Method: "cli", Description: "surge <export-dir> <site>.surge.sh."},
 		{ID: "netlify", Label: "Netlify", Method: "cli", Description: "netlify deploy --prod; default URL *.netlify.app."},
 		{ID: "vercel", Label: "Vercel", Method: "cli", Description: "vercel deploy --prod; default URL *.vercel.app."},
 		{ID: "cloudflare-pages", Label: "Cloudflare Pages", Method: "cli", Description: "wrangler pages deploy; default URL *.pages.dev."},
@@ -125,14 +126,14 @@ func workflowPublishEffectiveState(config *WorkflowPublishConfig, status *Workfl
 	return strings.TrimSpace(status.State)
 }
 
-// The artifacts whose change should trigger a re-publish: report HTML and
-// db.sqlite (the dashboard snapshot is baked from it). Pulse is in-app only.
+// Publish follows dashboard source and data changes. Generated static exports
+// are excluded so exporting does not schedule another publish.
 var publishHashFiles = []string{
 	"db/db.sqlite",
 }
 
 var publishHashFolders = []string{
-	"reports",
+	"reports", "db", "code",
 }
 
 func computeWorkflowPublishSourceHash(ctx context.Context, workspacePath string) string {

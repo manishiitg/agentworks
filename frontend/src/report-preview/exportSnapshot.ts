@@ -2,12 +2,12 @@ import type { ReportDataApi } from '../components/workflow/reportWidgets/reportE
 
 // Record semantic data results, never credentials or signed media/file URLs.
 // The same captured result is reused throughout frame seeking.
-export function captureReportData(api: ReportDataApi, enabled: boolean) {
+export function captureReportData(api: ReportDataApi, enabled: boolean, includeAssets = false) {
   let frozen = false
   const results = new Map<string, { method: string; args: unknown[]; value?: unknown; pending: Promise<unknown> }>()
   const recorded = { ...api }
   if (enabled) {
-    for (const method of ['query', 'get', 'getText', 'getHtml', 'getRelayRuns', 'getCosts', 'run'] as const) {
+    for (const method of [...(['query', 'get', 'getText', 'getHtml', 'getRelayRuns', 'getCosts', 'run'] as const), ...(includeAssets ? ['fileUrl', 'mediaUrl'] as const : [])]) {
       const original = api[method] as (...args: unknown[]) => Promise<unknown>
       Object.assign(recorded, { [method]: (...args: unknown[]) => {
         const key = JSON.stringify([method, args])

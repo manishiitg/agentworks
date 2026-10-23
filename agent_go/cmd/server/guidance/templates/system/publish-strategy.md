@@ -1,156 +1,64 @@
-# Publish strategy — share HTML artifacts at a public URL
+# Publish strategy — publish a dashboard on any static host
 
-You publish a workflow's **HTML artifacts** to a **public URL** on a static
-host. This is the share-twin of backup: backup keeps things safe; publish makes them visible.
-You are **provider-agnostic** — you deploy to whatever static host the config names, using its
-CLI / git / file-sync, and you record the resulting URL. Never invent a destination; the
-config is the contract.
+Publish the saved dashboard to the destination in `workflow.json.publish`, using
+that provider's CLI, git or file-sync. The same portable export works on Surge,
+Vercel, Netlify, Cloudflare Pages, GitHub Pages, Firebase and object storage.
+The destination and existing public/private settings are the contract.
 
-This publish flow is only for separately hosted static reports. An internal
-AgentWorks live report URL created with `get_report_link` already uses the app's
-SSO and workflow authorization; it is not a publish target and must not receive
-a second StatiCrypt/password/login gate. Keep the private/public visibility and
-password rules below for reports deployed to an external static host.
+An AgentWorks live link already uses sign-in and project access. It is not a
+static export and must not receive a second password gate. External publishing
+exposes the publishing Builder's frozen data under the saved Publish visibility.
+Never publish other people's private chats, secret values, account credentials
+or the raw database. The person's request to publish authorizes the export;
+do not add another confirmation for the same destination and audience.
 
-## What you publish
+## Build the static site from the same dashboard
 
-For a **workflow**, publish **BOTH** artifacts — the dashboard **and** the Autopilot log. This is
-**mandatory** unless the user explicitly says "dashboard only" (or "pulse only"). Do not skip
-the Autopilot log just because the saved `publish.targets` only lists the dashboard — if both
-should go out, **update `targets` to include both** before you build. Deploy `dashboard.html`
-AND `pulse.html`; if only one file ends up on the host, you did it wrong.
+1. Use list_dashboards and choose the saved published dashboard(s). Do not build
+   a separate React/Vite app, extract literal SQL, parse minified JavaScript,
+   convert TSX back to hand-written HTML, or copy the live index.html alone.
+2. Call **export_dashboard_static** with dashboard_id and the selected theme
+   (dark by default). It renders the exact publication in the Builder's scoped
+   preview, captures real query/get/run results and authorized media bytes, and
+   packages the shared React, shadcn, Recharts, CSS and report runtime. Existing
+   HTML publications also use this path. A failed export is not a publish.
+3. Copy **every returned file** from its `path` into the scratch staging directory.
+   `index.html` includes the authored page and captured data. `report-preview.js`,
+   `dashboard-react.js` and `dashboard.css` are shared runtime assets and must
+   accompany it. All URLs are relative, so roots and subfolders both work.
+   Do not upload scripts/, the raw DB, workspace files or preview tokens.
+4. Keep the generated Updated-at notice and Open live dashboard link. Charts,
+   tabs, filters and animations remain interactive with captured data. Ask,
+   functions and writes use the signed-in live dashboard; a static site never
+   gains backend access. Refresh replays captured data; a new Publish updates it.
+5. If several dashboards are configured, export each into its own subfolder and
+   make a simple index linking them. Keep their original names and views. Do not
+   expose Autopilot's private conversation: it remains in the application.
+   Separately authored public pages may be included only when selected by the
+   person; do not manufacture an Autopilot transcript or force a second page.
+6. Apply the saved visibility/password procedure below to **all data-bearing
+   HTML pages**, then deploy the whole staged folder with the existing provider
+   adapter. Encrypting index.html covers its source/data; shared JS/CSS has no
+   snapshot payload. Never leave an unencrypted copy or separate data JSON beside
+   an encrypted page. Do not encrypt or edit the platform runtime files.
 
-Use the same workflow-style config/status split:
+Put initial data for every view in TSX `loadData(report)`, including file/media
+calls whose results the static page needs. Local filters/conditions can use that
+returned data without a backend. An interaction needing a previously unread
+query or file reports that it needs the live dashboard; gather that data in
+loadData when the person wants it available in the static snapshot too.
 
-- workflow publish config/status: `workflow.json.publish` + `publish/status.json`
+## Refresh through Publish automation
 
-- **Reporting dashboard** (`reports/`) — **live** HTML: it calls `window.report.query(sql)`
-  (and may call `updateField`/`updateFields` to write a field) against `db/db.sqlite` inside
-  the app, which doesn't exist on a static host — reads AND writes both need it. **Generate a
-  static snapshot** first (next section) → `dashboard.html`.
-- **Autopilot state** — remains in SQLite and is shown in the application Autopilot popup.
-  It is not a static publish artifact.
-
-For workflow publish, deploy three files: `dashboard.html`, `pulse.html`, and an
-**`index.html` wrapper** with a **top nav** (Dashboard | Autopilot) over a single iframe —
-clicking a tab swaps the iframe's source. This gives each view full width, avoids
-the double-scroll / collapse problems of a side-by-side embed, and never modifies the two
-inner pages:
-
-```html
-<!doctype html><html class="dark" data-theme="dark"><head>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <style>
-    html,body{margin:0;height:100%;font-family:system-ui,-apple-system,sans-serif;background:#141413;color:#e8e7e2}
-    nav{display:flex;align-items:center;gap:.25rem;padding:.5rem .75rem;border-bottom:1px solid #2c2b28}
-    nav button{border:0;background:transparent;padding:.4rem .85rem;border-radius:.4rem;
-      cursor:pointer;font:inherit;color:inherit;opacity:.65}
-    nav button.active{background:#ffffff22;opacity:1;font-weight:600}
-    iframe{border:0;width:100%;height:calc(100vh - 49px);display:block}
-  </style>
-</head><body>
-  <nav>
-    <button data-src="dashboard.html" class="active">Dashboard</button>
-    <button data-src="pulse.html">Autopilot</button>
-  </nav>
-  <iframe id="view" src="dashboard.html" title="view"></iframe>
-  <script>
-    var view=document.getElementById('view');
-    // Inner pages already force dark; re-assert both hooks on each load as a backstop.
-    view.addEventListener('load',function(){try{var d=view.contentDocument.documentElement;d.classList.add('dark');d.dataset.theme='dark';}catch(e){}});
-    document.querySelectorAll('nav button[data-src]').forEach(function(b){
-      b.onclick=function(){view.src=b.dataset.src;document.querySelectorAll('nav button[data-src]').forEach(function(x){x.classList.toggle('active',x===b)});};
-    });
-  </script>
-</body></html>
-```
-
-(Prefer a **left sidebar** instead of a top nav if the user asks — same idea, nav on the
-left, iframe filling the rest.) The wrapper above is **dark only** and re-asserts dark on the
-iframe each load; apply the matching dark shim (below) to `dashboard.html` and `pulse.html` so
-they force dark too. Never
-publish secrets, `db/db.sqlite` raw, credentials, or `.env`/key files.
-
-## Generating the static dashboard snapshot (the report)
-
-A live report won't work on static hosting. Bake it to static HTML at publish time:
-
-1. **Find the queries.** Read `db/reports/index.html`, including each internal view, and collect
-   every `window.report.query("…")` SQL string it runs.
-2. **Run them** through `query_workflow_db`, capturing each result set as JSON.
-   Use the managed DB boundary; do not open the live database with `sqlite3` or
-   Python while authoring/publishing the snapshot.
-3. **Inline the data + a shim** into a copy of the report HTML, so the page reads baked data
-   instead of the live bridge:
-   ```html
-   <script>
-     window.__REPORT_DATA__ = { /* normalized-sql -> rows */ };
-     var deniedWrite = function () { return Promise.reject(new Error('Editing is not available on this published snapshot.')); };
-     window.report = {
-       query: function (sql) { return window.__REPORT_DATA__[normalize(sql)] || []; },
-       updateField: deniedWrite, updateFields: deniedWrite,
-       run: function (path) { var runs = window.__REPORT_RUNS__ || {}; return path in runs ? Promise.resolve(runs[path]) : Promise.reject(new Error('Live data is only available in the app.')); },
-       sendChatMessage: function () { return Promise.reject(new Error('Agent chat is only available in the live app.')); }
-     };
-   </script>
-   ```
-   Put this **before** the report's own scripts so the shim wins. Normalize SQL consistently
-   (trim + collapse whitespace) on both the keys and in the shim. If the live report uses
-   `window.report.updateField`/`updateFields` (an inline Approve/edit action — see
-   `reporting-policy.md`), the shim's rejection is the only thing standing between a static
-   viewer and a raw "not a function" error on click; there is no live backend on a static host
-   for either function to reach, so a published snapshot is always read-only regardless of what
-   the live report can do.
-   A `window.report.run(path, args)` call has no server behind a static page:
-   run the script once at publish time (same `REPORT_ARGS` the page sends)
-   and bake its output into `window.__REPORT_RUNS__[path]`, or hide that panel.
-   Hide or disable live chat/action controls on published snapshots; never embed
-   app credentials or invent a public endpoint to emulate `sendChatMessage`.
-4. The result is a self-contained static file. The data is a **snapshot as of now** — that's
-   expected; auto-republish after each run keeps it current.
-
-(Do not ship `db.sqlite` to the client or stand up a server — snapshot only.)
-
-## Force the published HTML to DARK (both artifacts)
-
-The output must be **dark only**, matching the app. Match exactly what the app sets on `<html>`:
-
-- The app themes via **Tailwind's `dark` class** (`ThemeContext` does `classList.add('dark')`).
-- Report/dashboard widgets honor **both** — `HtmlWidgetFrame` sets `class="dark"` **and**
-  `data-theme="dark"`.
-- The Autopilot-log skeleton keys on **`data-theme="dark"`**.
-
-So set **both** hooks, hard-coded to dark. Do **NOT** use `prefers-color-scheme` (it follows
-the viewer's OS, usually light) and do **NOT** add a light/auto toggle — dark only.
-
-For **every** published HTML file (the Autopilot log AND the report snapshot), inject this in
-`<head>` BEFORE the page's own styles/scripts:
-
-```html
-<meta name="color-scheme" content="dark">
-<script>
-  var de = document.documentElement;
-  de.classList.add('dark');   // Tailwind / :root.dark report widgets + app parity
-  de.dataset.theme = 'dark';  // data-theme="dark" widgets + the Autopilot-log skeleton
-</script>
-```
-
-Setting both is exactly what the in-app `HtmlWidgetFrame` does, so the page reuses the existing
-dark CSS. (If a widget has no dark styling at all, add a minimal dark palette under
-`html.dark, html[data-theme="dark"]`.)
-
-## Every publish rebuilds from source — never redeploy a stale file
-
-A publish (including a **re-publish** and the auto-republish) ALWAYS regenerates the
-artifacts fresh, then deploys:
-- **Re-snapshot** the dashboard (re-run the queries → current data), **re-inject the theme
-  shim**, and **rebuild the `index.html` wrapper**. Do NOT redeploy a previously-baked
-  `dashboard.html` — stale data, a missing theme, and the old layout persist otherwise.
-- **Honor "publish both."** If the existing `publish.targets` lists only one artifact but
-  both should go out (the default), update `targets` to include both before rebuilding — a
-  re-publish must not silently stay single-artifact just because the old config did.
-- After deploy, open the URL and confirm BOTH panes render and the page respects dark mode.
+Every Publish pass, including after-run auto-publish, calls export_dashboard_static
+again before deploying. Keep `auto_after_run` and the existing schedule/manual
+choices; do not create a second publisher or a new schedule. Source change checks
+include managed dashboard revisions and db/code files; generated publish/exports
+folders are excluded. Do not redeploy an older export when current data changed.
+Record the actual destination URL and current source hash in publish/status.json
+and workflow.json.publish only after the provider confirms the deploy. Open the
+hosted URL and check its views, timestamp and assets. Never report an internal
+preview as successful external publishing.
 
 ## Private by default — a simple password gate
 
@@ -167,7 +75,7 @@ AgentWorks dark gate styling below every time.
 
 ```
 cd /tmp/publish-<workflow>
-npx staticrypt dashboard.html pulse.html index.html \
+npx staticrypt index.html \
   -p "$SECRET_PUBLISH_PASSWORD" --remember --salt <fixed-32-hex> -d . \
   --template-title "AgentWorks Private Report" \
   --template-instructions "Enter the publish password to open this report." \
@@ -296,8 +204,8 @@ CSS
 python3 - <<'PY'
 from pathlib import Path
 css = Path("agentworks-staticrypt-gate.css").read_text()
-for name in ("dashboard.html", "pulse.html", "index.html"):
-    path = Path(name)
+for path in Path(".").rglob("*.html"):
+    name = str(path)
     if not path.exists():
         continue
     html = path.read_text()
@@ -353,7 +261,7 @@ Whatever the choice, before the first publish of a destination:
 
 **Stage outside the workspace first.** The workspace folder is write-guarded, so deploy CLIs
 that write working files into it (`.netlify/`, build output, lock files) will fail. Copy the
-finished static files — `dashboard.html`, `pulse.html`, `index.html` — into a scratch dir
+complete returned export folder — into a scratch dir
 **outside** the workspace (e.g. `/tmp/publish-<workflow>/`), and run the deploy CLI from there
 with an explicit `--dir`, skipping any build step (the files are already built). Don't try to
 `cd` inside the workspace or let the CLI build in place.

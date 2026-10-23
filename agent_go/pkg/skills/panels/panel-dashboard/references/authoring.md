@@ -371,3 +371,7 @@ and `snapshot.json`. Export needs current authoring access and server
 rendering tools; it is never triggered by dashboard load/refresh. The returned
 video is a snapshot, played via `window.report.mediaUrl(path)`. Design, layout
 and whether to include motion or export controls belong to the user.
+
+## External static publishing
+
+Use export_dashboard_static for Surge, Vercel, Netlify, Cloudflare Pages, GitHub Pages or any static host. It exports the same saved dashboard, shared platform runtimes and real authorized data calls. Deploy every returned file; do not copy managed index.html alone or reverse-engineer SQL from TSX/minified JavaScript. Put data needed by all views, images and files in loadData. Local interactions use the frozen results; new backend reads require the signed-in live dashboard. The export includes an Updated-at notice and live link; native Ask/function/write authority remains in AgentWorks. Each existing Publish automation pass exports afresh and applies the saved provider/visibility/encryption policy. No extra npm app, service, raw DB, preview token or private chat is published.

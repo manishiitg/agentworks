@@ -73,7 +73,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if claims == nil || userAccessForClaims(claims).Disabled {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || action == "export_motion") && !userAccessForClaims(claims).CanEdit {
+	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || action == "export_motion" || action == "export_static") && !userAccessForClaims(claims).CanEdit {
 		return false
 	}
 	if claims.AccessToken == nil {
@@ -82,10 +82,10 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if !claims.AccessToken.Allows("dashboards:read") {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || action == "export_motion") && !dashboardAuthoringAllowed(claims, nil) {
+	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || action == "export_motion" || action == "export_static") && !dashboardAuthoringAllowed(claims, nil) {
 		return false
 	}
-	if (action == "preview" || action == "export_motion") && !claims.AccessToken.Allows("runs:execute") {
+	if (action == "preview" || action == "export_motion" || action == "export_static") && !claims.AccessToken.Allows("runs:execute") {
 		return false
 	}
 	return true
@@ -278,7 +278,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		if args.Action == "share" {
 			logDashboardShareRefusal(claims, dashboardTarget{Root: args.Workspace}, args.Mode, "scope", dashboardFailure(403, "dashboard access and project authoring consent required"), nil)
 		}
-		externalError(w, 403, "insufficient_scope", "dashboard access or explicit dashboard consent required; preview and animation export additionally require runs:execute")
+		externalError(w, 403, "insufficient_scope", "dashboard access or explicit dashboard consent required; preview and exports additionally require runs:execute")
 		return
 	}
 	if args.Action == "catalog" {
@@ -309,6 +309,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	if dashboardShareAction(args.Action) {
 		api.handleDashboardShare(w, r, claims, target, args.Action, args.Mode, args.Emails)
+		return
+	}
+	if args.Action == "export_static" {
+		api.dashboardStaticExport(w, r, target, dashboardExportOptions{Dashboard: args.ID, Revision: args.Revision, Theme: args.Theme, Width: args.ExportWidth})
 		return
 	}
 	if args.Action == "export_motion" {

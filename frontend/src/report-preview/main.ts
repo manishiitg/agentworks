@@ -19,6 +19,7 @@ import type { WorkflowCostsResponse } from '../services/api-types'
 import type { ReportDataApi } from '../components/workflow/reportWidgets/reportEmbedContext'
 import { reportMotionCapture } from '../components/workflow/reportWidgets/reportMotion'
 import { captureReportData } from './exportSnapshot'
+import { staticAssetDataApi, staticDataApi, staticIndex, type StaticSnapshot } from './staticSnapshot'
 import { inspectReportUI } from './uiChecks'
 import {
   applyReportTheme,
@@ -58,14 +59,18 @@ interface PreviewSnapshot {
   fetchErrors: string[]
 }
 
+const savedSnapshot = document.getElementById('agentworks-static-snapshot')?.textContent
+const staticSnapshot: StaticSnapshot | null = savedSnapshot ? JSON.parse(savedSnapshot) : null
 const params = new URLSearchParams(window.location.search)
+const staticCapture = params.get('static') === '1'
+let sourceHTML = ''
 const workspace = (params.get('workspace') || '').replace(/^\/+|\/+$/g, '')
 const token = params.get('token') || ''
 const requestedDocument = params.get('document') || 'db/reports/index.html'
 const documentPath = /^db\/reports\/(?!.*(?:^|\/)\.\.(?:\/|$))[^\\]+\.html$/i.test(requestedDocument)
   ? requestedDocument
   : 'db/reports/index.html'
-const initialTheme: ReportHostTheme = params.get('theme') === 'light' ? 'light' : 'dark'
+const initialTheme: ReportHostTheme = staticSnapshot?.theme ?? (params.get('theme') === 'light' ? 'light' : 'dark')
 const initialWidth = Math.max(320, Number(params.get('width')) || 1280)
 const requestedHeight = Number(params.get('height'))
 const exportHeight = params.get('export') === '1' && Number.isFinite(requestedHeight) && requestedHeight > 0 ? requestedHeight : 0
@@ -258,6 +263,12 @@ async function start() {
   window.addEventListener('unhandledrejection', (e) => consoleErrors.push(String((e as PromiseRejectionEvent).reason?.message || e.reason || 'rejection')))
   ;(window as unknown as { __reportPreview: unknown }).__reportPreview = {
     getState: snapshot, setTheme, setWidth,
+    exportStatic: async (liveURL: string) => {
+      if (!staticCapture || snapshot().previewState !== 'ready') throw new Error('Load the dashboard successfully before exporting.')
+      const data = await exportCapture!.freeze()
+      const html = sourceHTML.replaceAll('/dashboard-react.js', './dashboard-react.js').replaceAll('/dashboard.css', './dashboard.css')
+      return staticIndex({ version: 1, html, data, as_of: new Date().toISOString(), theme: currentTheme, live_url: liveURL })
+    },
     getUIChecks: () => frame?.contentDocument ? inspectReportUI(frame.contentDocument, window.innerWidth) : { error: 'Dashboard document is unavailable.' },
     motion: () => frame?.contentDocument ? reportMotionCapture(frame.contentDocument) : [],
     seek: (seconds: number) => frame?.contentDocument ? reportMotionCapture(frame.contentDocument, seconds) : [],
@@ -267,13 +278,14 @@ async function start() {
     },
   }
 
-  if (!workspace || !token) {
+  if (!staticSnapshot && (!workspace || !token)) {
     setStatus('Missing workspace or token.')
     setPreviewState('failed')
     return
   }
 
-  const report = await fetchFile(documentPath)
+  const report = staticSnapshot ? { ok: true, status: 200, text: staticSnapshot.html } : await fetchFile(documentPath)
+  sourceHTML = report.text
   if (!report.ok) {
     setStatus(report.status === 404 ? `No ${documentPath} in this workspace.` : `Could not load the report (HTTP ${report.status}).`)
     setPreviewState(report.status === 404 ? 'missing' : 'failed')
@@ -287,8 +299,25 @@ async function start() {
   frame.title = 'Dashboard preview'
   if (exportHeight) frame.style.height = `${exportHeight}px`
   frame.setAttribute('sandbox', 'allow-same-origin allow-scripts')
-  exportCapture = captureReportData(createPreviewDataApi(), params.get('export') === '1')
-  const dataApi = exportCapture.api
+  const liveApi = createPreviewDataApi()
+  exportCapture = captureReportData(staticCapture ? staticAssetDataApi(liveApi) : liveApi, params.get('export') === '1', staticCapture)
+  const dataApi = staticSnapshot ? staticDataApi(staticSnapshot, markdown => renderReportMarkdown(markdown)) : exportCapture.api
+  if (staticSnapshot) {
+    const notice = document.createElement('div')
+    notice.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid hsl(var(--border));font:12px system-ui'
+    const date = document.createElement('span')
+    date.textContent = 'Updated ' + new Date(staticSnapshot.as_of).toLocaleString() + ' · Published snapshot'
+    notice.append(date)
+    if (/^https?:\/\//.test(staticSnapshot.live_url)) {
+      const link = document.createElement('a')
+      link.textContent = 'Open live dashboard'
+      link.href = staticSnapshot.live_url
+      link.target = '_blank'; link.rel = 'noopener noreferrer'; link.style.color = 'hsl(var(--primary))'
+      notice.append(link)
+    }
+    shell.before(notice)
+    document.title = 'Published dashboard'
+  }
   frame.addEventListener('load', () => {
     if (!frame) return
     installReportHost(frame, {
@@ -306,6 +335,12 @@ async function start() {
         new ResizeObserver(resizeFrame).observe(doc.documentElement)
       } catch { /* observers unavailable */ }
     }
+    if (staticSnapshot && doc) doc.addEventListener('click', event => {
+      const control = (event.target as Element | null)?.closest('[data-report-action]')
+      if (!control) return
+      event.preventDefault(); event.stopImmediatePropagation()
+      if (staticSnapshot.live_url) window.open(staticSnapshot.live_url, '_blank', 'noopener,noreferrer')
+    }, true)
     mirrorLifecycle()
     resizeFrame()
   })
