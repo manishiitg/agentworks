@@ -339,6 +339,7 @@ chat:
       - validate_dashboard
       - preview_dashboard
       - export_dashboard_motion
+      - export_dashboard_static
       - publish_dashboard
       - restore_dashboard
       - get_dashboard_link
@@ -516,6 +517,7 @@ chat:
       - validate_dashboard
       - preview_dashboard
       - export_dashboard_motion
+      - export_dashboard_static
       - publish_dashboard
       - restore_dashboard
       - get_dashboard_link
