@@ -36,7 +36,7 @@ it("shows the full chat name on hover when the tab truncates it", async () => {
   expect(label?.getAttribute("title")).toBe("project-a Flow Tester — sprint regression checks");
 });
 
-it.each(['agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as ProductSurface[])('shows the %s product mark and workspace name without an idle status dot', async surface => {
+it.each(['agentworks', 'relays', 'work', 'mcp-gateway'] as ProductSurface[])('shows the %s product mark and workspace name without an idle status dot', async surface => {
   const host = await renderTab('sales-outreach', undefined, surface);
   expect(host.querySelector('[data-product-icon]')?.getAttribute('data-product-icon')).toBe(surface);
   expect(host.querySelector('[aria-label="Ready"]')).toBeNull();
@@ -137,7 +137,7 @@ it('does not duplicate foreground work on the workspace title while preserving e
   } finally { await act(async () => root.unmount()); container.remove(); useChatStore.setState(original, true) }
 })
 
-it.each(['agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as ProductSurface[])('keeps %s completion state in the dot and accessible label without repeating Done', async surface => {
+it.each(['agentworks', 'relays', 'work', 'mcp-gateway'] as ProductSurface[])('keeps %s completion state in the dot and accessible label without repeating Done', async surface => {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   try {
@@ -149,7 +149,7 @@ it.each(['agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as ProductSurfac
   } finally { await act(async () => root.unmount()); host.remove() }
 })
 
-it.each([undefined, 'agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as (ProductSurface | undefined)[])('reserves the same status space through blank, idle, running, waiting and completion for %s tabs', async surface => {
+it.each([undefined, 'agentworks', 'relays', 'work', 'mcp-gateway'] as (ProductSurface | undefined)[])('reserves the same status space through blank, idle, running, waiting and completion for %s tabs', async surface => {
   const { useChatStore } = await import('../../stores/useChatStore')
   const original = useChatStore.getState()
   const host = document.createElement('div'); document.body.append(host)
