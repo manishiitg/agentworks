@@ -20,7 +20,7 @@ func TestDefaultDashboardHTMLShowsOnlyDeclaredThings(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := files["index.html"]
-	for _, want := range []string{"FunctionButton", "AskButton", "Ask about this dashboard", "Answers customer questions.", "Support &lt;b&gt;desk&lt;/b&gt;", "dashboard-react.js", "dashboard-react.css"} {
+	for _, want := range []string{"FunctionButton", "AskButton", "Ask about this dashboard", "Answers customer questions.", "Support &lt;b&gt;desk&lt;/b&gt;", "dashboard-react.js", "dashboard.css"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("missing %q in generated page", want)
 		}

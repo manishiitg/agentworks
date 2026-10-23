@@ -175,7 +175,7 @@ func dashboardAppResource() (string, error) {
 	assets := map[string]string{"document": string(child), "frame_url": strings.TrimRight(effectiveShareBaseURL(), "/") + dashboardAppFramePath}
 	// The independent renderer package is bundled when installed. Existing HTML
 	// does not need the React runtime; no remote credential fetch is introduced.
-	for _, name := range []string{"dashboard-react.js", "dashboard-react.css"} {
+	for _, name := range []string{"dashboard-react.js", "dashboard.css"} {
 		if data, err := os.ReadFile(filepath.Join(root, name)); err == nil {
 			assets[name] = string(data)
 		}

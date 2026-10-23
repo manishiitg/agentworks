@@ -12,7 +12,7 @@ let total = 42, queries = 0, scripts = 0
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost')
   if (url.pathname === '/report-preview/') { res.setHeader('Content-Type', 'text/html'); res.end('<html><body><script src="/report-preview/report-preview.js"></script></body></html>'); return }
-  if (url.pathname === '/report-preview/report-preview.js' || /^\/dashboard-react\.(js|css)$/.test(url.pathname)) { res.setHeader('Content-Type', url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript'); res.end(await readFile(path.join('dist', path.basename(url.pathname)))); return }
+  if (url.pathname === '/report-preview/report-preview.js' || /^\/(dashboard-react\.js|dashboard\.css)$/.test(url.pathname)) { res.setHeader('Content-Type', url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript'); res.end(await readFile(path.join('dist', path.basename(url.pathname)))); return }
   if (url.pathname.endsWith('/file')) {
     const file = url.searchParams.get('path')
     if (file === 'db/summary.json') { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ total })); return }

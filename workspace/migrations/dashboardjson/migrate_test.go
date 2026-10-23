@@ -40,7 +40,7 @@ func TestSavedJSONMigrationPreservesIdentityAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldFiles["index.html"] = strings.ReplaceAll(oldFiles["index.html"], "/dashboard-react.css", "/dashboard-json.css")
+	oldFiles["index.html"] = strings.ReplaceAll(oldFiles["index.html"], "/dashboard.css", "/dashboard-json.css")
 	oldSnapshot, _ := json.Marshal(dashboards.Snapshot{Title: "Previous TSX", Files: oldFiles})
 	if err := os.WriteFile(filepath.Join(stateDir, oldTSXRev+".json"), oldSnapshot, 0600); err != nil {
 		t.Fatal(err)

@@ -3231,7 +3231,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	router.HandleFunc(reportPreviewPagePath, api.reportPreviewPageHandler).Methods("GET")
 	router.HandleFunc(reportPreviewPagePath+"report-preview.js", api.reportPreviewScriptHandler).Methods("GET")
 	router.HandleFunc("/dashboard-react.js", api.dashboardRuntimeAssetHandler).Methods("GET")
-	router.HandleFunc("/dashboard-react.css", api.dashboardRuntimeAssetHandler).Methods("GET")
+	router.HandleFunc("/dashboard.css", api.dashboardRuntimeAssetHandler).Methods("GET")
 
 	// Static file serving (for frontend). Unknown GET/HEAD routes fall back to
 	// index.html so dedicated SPA URLs like /report, /file, and /folder work

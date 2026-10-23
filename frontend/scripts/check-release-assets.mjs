@@ -20,7 +20,7 @@ async function rejectStandaloneGatewayLogin(root) {
 }
 
 export async function checkReleaseAssets(root) {
-  for (const name of ['index.html', 'report-preview.js', 'dashboard-react.js', 'dashboard-react.css', 'mcp-dashboard.js', 'mcp-dashboard-document.js']) {
+  for (const name of ['index.html', 'report-preview.js', 'dashboard-react.js', 'dashboard.css', 'mcp-dashboard.js', 'mcp-dashboard-document.js']) {
     const asset = path.join(root, name)
     let info
     try { info = await stat(asset) } catch { /* diagnosed below */ }

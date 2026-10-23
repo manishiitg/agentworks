@@ -242,7 +242,7 @@ func TestTSXDashboardAssetsUseThePackagedFrontend(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("STATIC_DIR", dir)
 	api := &StreamingAPI{}
-	for _, name := range []string{"dashboard-react.js", "dashboard-react.css"} {
+	for _, name := range []string{"dashboard-react.js", "dashboard.css"} {
 		body := "/* trusted renderer " + name + " */"
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0644); err != nil {
 			t.Fatal(err)
@@ -258,7 +258,7 @@ func TestTSXDashboardAssetsUseThePackagedFrontend(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := files["index.html"]
-	if !strings.Contains(page, `src="/dashboard-react.js"`) || !strings.Contains(page, `href="/dashboard-react.css"`) || !strings.Contains(page, "Dashboard renderer unavailable") {
+	if !strings.Contains(page, `src="/dashboard-react.js"`) || !strings.Contains(page, `href="/dashboard.css"`) || !strings.Contains(page, "Dashboard renderer unavailable") {
 		t.Fatal("missing runtime assets or error state")
 	}
 }

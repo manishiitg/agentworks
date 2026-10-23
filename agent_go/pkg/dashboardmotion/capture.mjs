@@ -70,7 +70,7 @@ async function prepareDashboard(page) {
   fs.mkdirSync(path.join(config.project, '.runtime'), { recursive: true })
   fs.writeFileSync(path.join(config.project, '.runtime/report-preview.js'), await runtime.text())
   if (captured.renderer === 'tsx') {
-    for (const name of ['dashboard-react.js', 'dashboard-react.css']) {
+    for (const name of ['dashboard-react.js', 'dashboard.css']) {
       const asset = await fetch(new URL('/' + name, origin))
       if (!asset.ok) throw new Error('The dashboard rendering assets are unavailable.')
       fs.writeFileSync(path.join(config.project, '.runtime', name), Buffer.from(await asset.arrayBuffer()))

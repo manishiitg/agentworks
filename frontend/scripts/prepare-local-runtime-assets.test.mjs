@@ -17,7 +17,7 @@ test('local launch prepares missing runtimes, reuses current builds and repairs 
     const calls = []
     const build = async script => {
       calls.push(script)
-      for (const name of script === 'build:dashboard' ? ['dashboard-react.js', 'dashboard-react.css'] : ['report-preview.js']) await writeFile(path.join(frontendDir, 'dist', name), 'compiled ' + name)
+      for (const name of script === 'build:dashboard' ? ['dashboard-react.js', 'dashboard.css'] : ['report-preview.js']) await writeFile(path.join(frontendDir, 'dist', name), 'compiled ' + name)
     }
     const options = { frontendDir, staticDir: 'custom-static', build }
     await prepareLocalRuntimeAssets(options)
@@ -30,7 +30,7 @@ test('local launch prepares missing runtimes, reuses current builds and repairs 
     await prepareLocalRuntimeAssets(options)
     expect(calls).toHaveLength(2)
     expect(await readFile(native, 'utf8')).toBe('compiled dashboard-react.js')
-    await writeFile(path.join(frontendDir, 'dist/dashboard-react.css'), '')
+    await writeFile(path.join(frontendDir, 'dist/dashboard.css'), '')
     await prepareLocalRuntimeAssets(options)
     expect(calls).toEqual(['build:dashboard', 'build:report-preview', 'build:dashboard'])
   } finally { await rm(repo, { recursive: true, force: true }) }

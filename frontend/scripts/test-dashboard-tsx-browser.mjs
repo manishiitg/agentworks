@@ -18,16 +18,16 @@ const fixture = path.join(output, 'tsx.html')
 execFileSync('go', ['test', './dashboards', '-run', '^TestTSXDashboardLifecycle$', '-count=1'], { cwd: path.join(repo, 'workspace'), env: { ...process.env, DASHBOARD_TSX_TEST_FIXTURE: fixture }, stdio: 'inherit' })
 execFileSync('npm', ['run', 'prepare:local-assets'], { cwd: frontend, stdio: 'inherit' })
 for (const root of ['agent_go/static', 'agent_go/cmd/server/static', 'frontend/dist']) {
-  for (const name of ['dashboard-react.js', 'dashboard-react.css', 'report-preview.js']) assert((await readFile(path.join(repo, root, name))).length > 0, `missing native asset: ${root}/${name}`)
+  for (const name of ['dashboard-react.js', 'dashboard.css', 'report-preview.js']) assert((await readFile(path.join(repo, root, name))).length > 0, `missing native asset: ${root}/${name}`)
 }
 await mkdir(path.join(output, 'runtime-assets'), { recursive: true })
-for (const name of ['dashboard-react.js', 'dashboard-react.css']) await copyFile(path.join(frontend, 'dist', name), path.join(output, 'runtime-assets', name))
+for (const name of ['dashboard-react.js', 'dashboard.css']) await copyFile(path.join(frontend, 'dist', name), path.join(output, 'runtime-assets', name))
 const html = await readFile(fixture, 'utf8')
 let total = 42, reads = 0, queries = 0, runs = 0, rejectData = false
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost')
   if (url.pathname === '/report-preview/') { res.setHeader('Content-Type', 'text/html'); res.end('<html><body><script src="/report-preview/report-preview.js"></script></body></html>'); return }
-  if (url.pathname === '/report-preview/report-preview.js' || /^\/dashboard-react\.(js|css)$/.test(url.pathname)) {
+  if (url.pathname === '/report-preview/report-preview.js' || /^\/(dashboard-react\.js|dashboard\.css)$/.test(url.pathname)) {
     res.setHeader('Content-Type', url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript')
     res.end(await readFile(path.join(frontend, 'dist', path.basename(url.pathname)))); return
   }
@@ -64,7 +64,7 @@ try {
   assert.equal(await frame.getByRole('button', { name: 'Ask', exact: true }).count(), 0)
   assert.equal(await frame.locator('.dashboard-stat').count(), 1)
   await frame.locator('.recharts-line-curve').waitFor()
-  assert.equal(await frame.getByRole('table').count(), 2)
+  assert.equal(await frame.locator('table').count(), 2)
   assert.equal(await frame.locator('[data-report-action="lookup"]').count(), 1)
   total = 84
   await frame.evaluate(() => Promise.all(window.__reportQueuedCallbacks.map(callback => window.__runReportCallback(callback))))
