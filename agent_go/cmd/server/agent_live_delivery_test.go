@@ -396,8 +396,8 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("channel did not stop")
 	}
-	// Reconnect catches up stored approved mail, oldest first; acknowledged mail
-	// is not replayed. No directory or inbox poll is required by the receiver.
+	// Reconnect receives one body-free wake signal; one authorized inbox read
+	// catches up approved mail, oldest first, without a polling loop.
 	first := send(sender, "sender", "offline first")
 	second := send(sender, "sender", "offline second")
 	var attachment agentworksclient.AgentAttachment
@@ -412,15 +412,39 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	go func() {
 		ended <- receiver.StreamAgentMessages(catchCtx, attachment, func(m agentworksclient.AgentLiveMessage) error { caught <- m; return nil })
 	}()
-	for _, expected := range []any{first["message_id"], second["message_id"]} {
-		select {
-		case m := <-caught:
-			if m.MessageID != expected {
-				t.Fatalf("out of order or replayed: %v", m)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("reconnect failed")
+	select {
+	case signal := <-caught:
+		if signal.Sequence <= 0 || signal.Message != "" || signal.MessageID != "" || signal.InboxID != "" || signal.Sender != "" {
+			t.Fatalf("stream released more than a wake hint: %+v", signal)
 		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("reconnect failed")
+	}
+	body, _ = json.Marshal(map[string]any{"action": "inbox", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "after": 0, "limit": 20})
+	request, _ = http.NewRequestWithContext(catchCtx, http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", strings.NewReader(string(body)))
+	request.Header.Set("Authorization", "Bearer "+receiverToken)
+	request.Header.Set("Content-Type", "application/json")
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var backlog struct {
+		Messages []agentworksclient.AgentLiveMessage `json:"messages"`
+	}
+	err = json.NewDecoder(response.Body).Decode(&backlog)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusOK || len(backlog.Messages) != 2 || backlog.Messages[0].MessageID != first["message_id"] || backlog.Messages[1].MessageID != second["message_id"] {
+		t.Fatalf("authorized inbox did not catch up in order: %+v %v", backlog, err)
+	}
+	call(sender, map[string]any{"action": "ping_person", "agent_name": "sender", "message_id": first["message_id"]})
+	select {
+	case ping := <-caught:
+		if ping.Kind != "ping" || ping.MessageID == "" || !strings.Contains(ping.Message, "waiting for a reply") {
+			t.Fatalf("explicit person ping lost its notice: %+v", ping)
+		}
+		call(receiver, map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": ping.MessageID, "delivery": "delivered", "transport": "mailbox"})
+	case <-time.After(5 * time.Second):
+		t.Fatal("person ping was not signalled")
 	}
 	if err = store.RevokeFamily(context.Background(), strings.TrimPrefix(receiverConnection, "oauth-"), "owner"); err != nil {
 		t.Fatal(err)
@@ -428,7 +452,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	send(sender, "sender", "after revoke")
 	select {
 	case m := <-caught:
-		t.Fatalf("revoked receiver got body: %v", m)
+		t.Fatalf("revoked receiver got a signal: %v", m)
 	case e := <-ended:
 		if e == nil {
 			t.Fatal("revoked stream returned success")

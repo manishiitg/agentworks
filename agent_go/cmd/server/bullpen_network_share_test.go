@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -229,10 +230,10 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 	listedHelper(carol, false) // an attachment alone is not a live listener
 	liveCtx, disconnect := context.WithCancel(ctx)
 	defer disconnect()
-	connected, streamed, finished := make(chan struct{}), make(chan string, 20), make(chan error, 1)
+	connected, streamed, finished := make(chan struct{}), make(chan agentworksclient.AgentLiveMessage, 20), make(chan error, 1)
 	go func() {
 		finished <- alice.StreamAgentMessages(liveCtx, attachment, func(m agentworksclient.AgentLiveMessage) error {
-			streamed <- m.MessageID
+			streamed <- m
 			return nil
 		}, func() { close(connected) })
 	}()
@@ -243,19 +244,20 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 	}
 	listedHelper(alice, true)
 	listedHelper(carol, true)
-	for {
-		select {
-		case id := <-streamed:
-			if id == queued["message_id"] {
-				disconnect()
-				<-finished
-				goto restored
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("reconnected agent did not receive mail stored while hidden")
+	select {
+	case signal := <-streamed:
+		if signal.Sequence <= 0 || signal.Message != "" || signal.Sender != "" || signal.MessageID != "" {
+			t.Fatalf("stream leaked a message body: %+v", signal)
 		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("reconnected agent did not receive an inbox signal")
 	}
-restored:
+	disconnect()
+	<-finished
+	restored, err := try(alice, map[string]any{"action": "read", "agent_name": "helper"})
+	if err != nil || !strings.Contains(fmt.Sprint(restored["messages"]), queued["message_id"].(string)) {
+		t.Fatalf("reconnected agent lost mail stored while hidden: %v %v", restored, err)
+	}
 	// Unpublishing ends access at once, in both directions.
 	if _, err = alice.ShareAgent(ctx, "unshare", "helper"); err != nil {
 		t.Fatal(err)

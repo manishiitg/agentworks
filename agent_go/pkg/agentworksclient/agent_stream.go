@@ -96,9 +96,8 @@ func (c *Client) UpdateAgentLabel(ctx context.Context, a AgentAttachment, label 
 // streamIdleLimit is how long a live stream may stay silent before it is dropped and reopened; tests shorten it.
 var streamIdleLimit = 45 * time.Second
 
-// StreamAgentMessages keeps one authenticated connection open. The server
-// pushes on durable writes; this never polls the messages tool. Reconnect and
-// adapter de-duplication belong to the caller, which owns its native session.
+// StreamAgentMessages carries inbox wake hints and explicit person pings on one
+// authenticated connection. Peer bodies come only from the bounded inbox read.
 func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttachment, receive func(AgentLiveMessage) error, connected ...func()) error {
 	token, err := c.authToken(ctx)
 	if err != nil {
@@ -161,7 +160,16 @@ func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttach
 		if frame.Type == "closed" {
 			return &APIError{Status: 403, Code: "agent_attachment_closed", Message: "The attachment or its connection is no longer authorized."}
 		}
-		if frame.Type != "message" {
+		if frame.Type == "inbox_changed" {
+			if frame.AttachmentID != attachment.ID || frame.Sequence <= 0 {
+				return errors.New("inbox signal does not match this attachment")
+			}
+			if err = receive(AgentLiveMessage{AttachmentID: frame.AttachmentID, Sequence: frame.Sequence}); err != nil {
+				return err
+			}
+			continue
+		}
+		if frame.Type != "message" || frame.Kind != "ping" {
 			continue
 		}
 		if frame.AttachmentID != attachment.ID || frame.MessageID == "" || frame.InboxID == "" {

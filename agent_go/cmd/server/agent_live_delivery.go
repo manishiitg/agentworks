@@ -403,11 +403,6 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 	defer cancel()
 	r = r.WithContext(streamCtx)
 	stream := &agentLiveStream{attachmentID: id, cancel: cancel}
-	type admissionRetry struct {
-		next  time.Time
-		delay time.Duration
-	}
-	admissionRetries := map[string]admissionRetry{}
 	agentLiveEvents.Lock()
 	if previous := agentLiveEvents.online[a.ID]; previous != nil && previous.cancel != nil {
 		previous.cancel()
@@ -444,10 +439,11 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 	}
 	heartbeat := time.NewTicker(10 * time.Second)
 	defer heartbeat.Stop()
-	sent := map[string]bool{}
+	sentPings := map[string]bool{}
+	lastHint := 0
 	for {
 		changed := agentLiveChanged()
-		_, live, e := currentAgentAttachment(r.Context(), claims, name, id)
+		_, _, e := currentAgentAttachment(r.Context(), claims, name, id)
 		if e != nil {
 			kind := "closed"
 			if errors.Is(e, errAgentLoginUnavailable) {
@@ -460,82 +456,48 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 		if e != nil {
 			return
 		}
-		type pending struct {
-			conversation agentConversation
-			message      agentMessage
+		type personPing struct {
+			inbox   string
+			message agentMessage
 		}
-		var waiting []pending
-		for _, c := range store.Conversations {
-			for _, m := range c.Messages {
-				if m.InboxRemovedAt.IsZero() && m.Delivery == "stored" && !agentMessagePendingExpired(m, time.Now().UTC()) && !sent[m.ID] && c.Endpoints[1-m.From].NamedAgentID == a.ID {
-					waiting = append(waiting, pending{c, m})
-				}
-			}
-		}
-		slices.SortFunc(waiting, func(x, y pending) int {
-			if x.message.AgentSequence < y.message.AgentSequence {
-				return -1
-			}
-			if x.message.AgentSequence > y.message.AgentSequence {
-				return 1
-			}
-			return 0
-		})
-		for _, p := range waiting {
-			c, m := p.conversation, p.message
-			if !m.InboxRemovedAt.IsZero() || m.Delivery != "stored" || sent[m.ID] {
-				continue
-			}
-			dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
-			status := serverAuthoredKind(m.Kind) // written by the server for this agent: no sender to check
-			if dest.NamedAgentID != a.ID || dest.UserID != claims.UserID || !status && !store.shareSenderAllowed(c, m.From, claims.UserID, time.Now().UTC()) {
-				continue
-			}
-			if !status {
-				if time.Now().Before(admissionRetries[m.ID].next) {
+		pings := []personPing{}
+		latest := 0
+		now := time.Now().UTC()
+		for _, conversation := range store.Conversations {
+			for _, message := range conversation.Messages {
+				dest := conversation.Endpoints[1-message.From]
+				if dest.NamedAgentID != a.ID || dest.UserID != claims.UserID ||
+					!message.InboxRemovedAt.IsZero() || message.Delivery != "stored" || agentMessagePendingExpired(message, now) {
 					continue
 				}
-				if e = api.recheckAgentMessageAdmission(r.Context(), c, m); e != nil {
-					retry := admissionRetries[m.ID]
-					retry.delay = min(30*time.Second, max(time.Second, retry.delay*2))
-					retry.next = time.Now().Add(retry.delay)
-					admissionRetries[m.ID] = retry
-					if validateLogDue(m.ID, "stream_admission_refused", time.Now()) {
-						log.Printf("[AGENT-STREAM] held message=%s attachment=%s reason=admission_recheck_failed class=%s", m.ID, id, agentDeliveryErrorClass(e))
+				if message.Kind == "ping" {
+					if !sentPings[message.ID] {
+						pings = append(pings, personPing{conversation.ID, message})
 					}
 					continue
 				}
-				delete(admissionRetries, m.ID)
-				if e = api.externalAuthorizeMessagePeer(r.Context(), live, source, false); e != nil {
-					if validateLogDue(m.ID, "stream_sender_refused", time.Now()) {
-						log.Printf("[AGENT-STREAM] held message=%s attachment=%s reason=sender_authorization_failed", m.ID, id)
-					}
-					continue
-				}
+				latest = max(latest, message.AgentSequence)
 			}
-			// Resolve the exact generation once more immediately before release.
-			_, _, e = currentAgentAttachment(r.Context(), claims, name, id)
-			if e != nil {
-				_ = write(map[string]any{"type": "closed"})
+		}
+		// The wake signal contains no peer body or sender details. The inbox
+		// is the sole place that checks sender access and releases message text.
+		if _, _, e = currentAgentAttachment(r.Context(), claims, name, id); e != nil {
+			_ = write(map[string]any{"type": "closed"})
+			return
+		}
+		for _, ping := range pings {
+			message := ping.message
+			if write(map[string]any{"type": "message", "kind": "ping", "attachment_id": id, "message_id": message.ID, "inbox_id": ping.inbox, "message": message.Text, "sequence": message.AgentSequence}) != nil {
 				return
 			}
-			log.Printf("[AGENT-STREAM] offered message=%s attachment=%s", m.ID, id)
-			frame := map[string]any{"type": "message", "attachment_id": id, "message_id": m.ID, "inbox_id": c.ID, "sender": endpointDisplayLabel(source, dest.UserID), "sender_id": source.NamedAgentID, "message": m.Text, "sequence": m.AgentSequence, "delivery": m.Delivery, "sent_at": m.SentAt}
-			offered := m
-			offered.LiveAttachment = id
-			for k, v := range messageArrivalFields(offered) {
-				frame[k] = v
-			}
-			if status {
-				frame["sender"], frame["sender_id"], frame["kind"] = "AgentWorks", "", m.Kind
-			}
-			if person := crossPersonOwner(source, dest.UserID); person != "" && !status {
-				frame["from_person"], frame["untrusted"] = person, true
-			}
-			if write(frame) != nil {
+			sentPings[message.ID] = true
+		}
+		if latest > lastHint {
+			if write(map[string]any{"type": "inbox_changed", "attachment_id": id, "sequence": latest}) != nil {
 				return
 			}
-			sent[m.ID] = true
+			lastHint = latest
+			log.Printf("[AGENT-STREAM] inbox_changed agent=%s attachment=%s sequence=%d", a.ID, id, latest)
 		}
 		select {
 		case <-r.Context().Done():

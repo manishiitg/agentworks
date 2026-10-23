@@ -35,7 +35,7 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 			if r.Method == http.MethodGet {
 				w.Header().Set("Content-Type", "text/event-stream")
 				fmt.Fprintf(w, "data: {\"type\":\"connected\",\"attachment_id\":%q}\n\n", r.URL.Query().Get("attachment_id"))
-				fmt.Fprintf(w, "data: {\"type\":\"message\",\"attachment_id\":%q,\"message_id\":%q,\"inbox_id\":%q,\"sequence\":1,\"message\":\"Review\",\"sent_at\":%q}\n\n", r.URL.Query().Get("attachment_id"), id, "inbox-"+network, time.Now().UTC().Format(time.RFC3339Nano))
+				fmt.Fprintf(w, "data: {\"type\":\"inbox_changed\",\"attachment_id\":%q,\"sequence\":1}\n\n", r.URL.Query().Get("attachment_id"))
 				w.(http.Flusher).Flush()
 				<-r.Context().Done()
 				return
