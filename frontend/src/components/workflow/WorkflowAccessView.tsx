@@ -91,7 +91,7 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
           <div key={`${activeTab}:${tabNonce}`} className="p-4">
             {activeTab === 'workflow' && workspacePath ? (
               isRelay
-                ? <WorkflowSharePopup workspacePath={workspacePath} readOnly={workflowReadOnly} />
+                ? <WorkflowSharePopup workspacePath={workspacePath} readOnly={workflowReadOnly} relay />
                 : <WorkflowTeamView workspacePath={workspacePath} readOnly={workflowReadOnly} />
             ) : activeTab === 'users' ? (
               <UsersAdminPanel />

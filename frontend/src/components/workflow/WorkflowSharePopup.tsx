@@ -27,6 +27,7 @@ interface WorkflowSharePopupProps {
   /** Readers may inspect membership but cannot change grants. */
   readOnly?: boolean
   source?: ShareSource
+  relay?: boolean
 }
 
 /**
@@ -37,7 +38,7 @@ interface WorkflowSharePopupProps {
  * docs/design/user_accounts_and_workflow_sharing.md, phase 3.
  */
 type ShareTier = 'owner' | 'editor' | 'reader'
-const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, readOnly = false, source }) => {
+const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, readOnly = false, source, relay = false }) => {
   const me = useAuthStore((s) => s.user)
   const refreshWorkflows = useWorkflowManifestStore((s) => s.refreshWorkflows)
   const [info, setInfo] = useState<WorkflowAccessInfo | null>(null)
@@ -152,7 +153,7 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
               <Label>As</Label>
               <select value={pickRole} onChange={(e) => setPickRole(e.target.value as ShareTier)} className="w-full mt-1 px-2 py-1.5 text-sm bg-muted/40 border border-border rounded disabled:cursor-not-allowed disabled:opacity-50">
                 <option value="reader">Run</option>
-                <option value="editor">Editor</option>
+                {!relay && <option value="editor">Editor</option>}
                 <option value="owner">Owner</option>
               </select>
             </div>
@@ -172,7 +173,7 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
               { tier: 'owner' as ShareTier, title: 'Owners', empty: 'No owner recorded.', users: info.owners },
               { tier: 'editor' as ShareTier, title: 'Editors', empty: 'Nobody yet.', users: info.editors ?? [] },
               { tier: 'reader' as ShareTier, title: 'Run', empty: 'Nobody yet.', users: info.readers },
-            ]).map((section) => (
+            ]).filter(section => !relay || section.tier !== 'editor').map((section) => (
               <div key={section.tier}>
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mt-4 mb-1">{section.title}</p>
                 {section.users.length === 0 && <SettingsEmpty>{section.empty}</SettingsEmpty>}
@@ -190,7 +191,7 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
                             className="px-2 py-1 text-xs bg-muted/40 border border-border rounded disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <option value="owner">Owner</option>
-                            <option value="editor">Editor</option>
+                            {!relay && <option value="editor">Editor</option>}
                             <option value="reader">Run</option>
                           </select>
 

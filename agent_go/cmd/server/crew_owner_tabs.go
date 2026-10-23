@@ -155,8 +155,11 @@ func (api *StreamingAPI) crewSessionTabView(r *http.Request, session string) boo
 }
 
 func (api *StreamingAPI) crewSessionCanControl(r *http.Request, session string) bool {
-	if tab, _, ok := api.goalTabForSession(r.Context(), session); ok {
+	if tab, _, allowed := api.goalTabForSession(r.Context(), session); allowed {
 		return tab.CanWrite
+	}
+	if _, _, registered := api.goalSessionRecord(r.Context(), session); registered {
+		return false
 	}
 	if active, ok := api.getActiveSession(session); ok && isCrewProjectPath(active.WorkspacePath) {
 		return active.UserID == GetUserIDFromContext(r.Context())

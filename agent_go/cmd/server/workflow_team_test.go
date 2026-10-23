@@ -258,7 +258,7 @@ func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
 	if _, e := answerReportHumanInput(teamTestContext("leader"), teamTestRoot, "approve-route", ReportHumanInputAnswerRequest{Note: "replace accepted answer"}); e == nil {
 		t.Fatal("competing answer silently replaced approval")
 	}
-	// Transfer changes one canonical owner and keeps history / outgoing member.
+	// Transfer changes the execution leader; existing project owners retain access.
 	m.Team.LeaderID = "second"
 	m.Team.Contributors = []WorkflowContributor{{UserID: "leader"}, {UserID: "first"}}
 	m.Team.Routes = []WorkflowRouteAssignment{{StepID: "parent", RouteID: "first-route", ContributorID: "first"}}
@@ -266,8 +266,8 @@ func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
 		t.Fatalf("transfer: %d %s", w.Code, w.Body.String())
 	}
 	transferred, _, e := ReadWorkflowManifest(context.Background(), teamTestRoot)
-	if e != nil || workflowExecutionOwnerUserID(transferred) != "second" || len(transferred.effectiveOwners()) != 1 {
-		t.Fatalf("not one new owner: %+v %v", transferred, e)
+	if e != nil || workflowExecutionOwnerUserID(transferred) != "second" || len(transferred.effectiveOwners()) != 2 || workflowAccessForManifest(&UserClaims{UserID: "leader"}, transferred) != WorkflowAccessOwner {
+		t.Fatalf("execution identity or co-owner access lost: %+v %v", transferred, e)
 	}
 	if !f.hasHistory("write_workflow_manifest", "leader") {
 		t.Fatal("ownership transfer lost its authenticated change history")

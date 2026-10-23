@@ -180,7 +180,7 @@ func (api *StreamingAPI) createGoalOwnerTab(ctx context.Context, scope workflowB
 	return tab, err
 }
 
-func (api *StreamingAPI) goalTabForSession(ctx context.Context, session string) (goalOwnerTab, string, bool) {
+func (api *StreamingAPI) goalSessionRecord(ctx context.Context, session string) (ProductConversationRecord, string, bool) {
 	owner := ""
 	if active, ok := api.getActiveSession(session); ok {
 		owner = active.UserID
@@ -192,29 +192,36 @@ func (api *StreamingAPI) goalTabForSession(ctx context.Context, session string) 
 		}
 	}
 	if owner == "" {
+		return ProductConversationRecord{}, "", false
+	}
+	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(owner))
+	if err != nil {
+		return ProductConversationRecord{}, "", false
+	}
+	for _, record := range doc.Entries {
+		if record.ProfileID == goalChatProfile && record.SessionID == session {
+			return record, owner, true
+		}
+	}
+	return ProductConversationRecord{}, "", false
+}
+
+func (api *StreamingAPI) goalTabForSession(ctx context.Context, session string) (goalOwnerTab, string, bool) {
+	record, owner, found := api.goalSessionRecord(ctx, session)
+	if !found {
 		return goalOwnerTab{}, "", false
 	}
 	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil && !claims.AccessToken.Allows("builder:chat") {
 		return goalOwnerTab{}, "", false
 	}
-	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(owner))
-	if err != nil {
+
+	access, m := workflowAccessForWorkspacePath(ctx, GetUserFromContext(ctx), record.WorkspacePath)
+	if m == nil || m.ID != record.ResourceID || (!goalHasMember(m, owner) && owner != GetUserIDFromContext(ctx)) ||
+		(!goalHasMember(m, GetUserIDFromContext(ctx)) && owner != GetUserIDFromContext(ctx)) || (access != WorkflowAccessOwner && access != WorkflowAccessWrite) || !userAllowedWorkflowID(GetUserFromContext(ctx), m.ID) {
 		return goalOwnerTab{}, "", false
 	}
-	for _, record := range doc.Entries {
-		if record.ProfileID != goalChatProfile || record.SessionID != session {
-			continue
-		}
-		access, m := workflowAccessForWorkspacePath(ctx, GetUserFromContext(ctx), record.WorkspacePath)
-		if m == nil || m.ID != record.ResourceID || (!goalHasMember(m, owner) && owner != GetUserIDFromContext(ctx)) ||
-			(!goalHasMember(m, GetUserIDFromContext(ctx)) && owner != GetUserIDFromContext(ctx)) || (access != WorkflowAccessOwner && access != WorkflowAccessWrite) || !userAllowedWorkflowID(GetUserFromContext(ctx), m.ID) {
-			return goalOwnerTab{}, "", false
-		}
-		identity := doc.Agents[productConversationRegistryEntryKey(goalChatProfile, record.ConversationKey)]
-		return goalOwnerTab{ID: record.ConversationKey, Name: firstNonEmptyTrimmed(identity.Name, record.Title, "Builder"), OwnerID: owner,
-			OwnerName: crewOwnerDisplayName(owner), SessionID: session, IsMain: record.ConversationKey == crewOwnerDefaultChatKey(m.ID, owner), CanWrite: owner == GetUserIDFromContext(ctx)}, record.WorkspacePath, true
-	}
-	return goalOwnerTab{}, "", false
+	return goalOwnerTab{ID: record.ConversationKey, Name: firstNonEmptyTrimmed(record.Title, "Builder"), OwnerID: owner,
+		OwnerName: crewOwnerDisplayName(owner), SessionID: session, IsMain: record.ConversationKey == crewOwnerDefaultChatKey(m.ID, owner), CanWrite: owner == GetUserIDFromContext(ctx)}, record.WorkspacePath, true
 }
 
 func (api *StreamingAPI) goalOwnerTabSummary(ctx context.Context, scope workflowBuilderScope, fresh bool) (*workflowBuilderSessionResponse, error) {

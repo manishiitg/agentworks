@@ -79,6 +79,9 @@ func TestWorkflowOwnerTabsShareProjectAndKeepControl(t *testing.T) {
 			workspace.mu.Lock()
 			workspace.files["Workflow/demo/workflow.json"] = strings.Replace(manifest, `"alice","bob"`, `"alice"`, 1)
 			workspace.mu.Unlock()
+			if api.crewSessionCanControl(httptest.NewRequest("POST", "/", nil).WithContext(ctx("bob")), bob.SessionID) {
+				t.Fatal("removed owner retained terminal control")
+			}
 			if w := request("bob", "read", main.Tabs[0].ID, ""); w.Code != 403 {
 				t.Fatal("removed owner kept access", w.Code)
 			}

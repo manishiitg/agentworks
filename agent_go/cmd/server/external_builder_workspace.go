@@ -95,8 +95,8 @@ func externalBuilderFilePath(input string, write bool) (string, error) {
 }
 
 // Revision validation and replacement are serialized for MCP file edits. The
-// normal Builder single-runner boundary prevents parallel Builder turns; a
-// browser's independent direct file editor should reread after a conflict.
+// per-file revision is authoritative across owner chats and direct editors;
+// every caller rereads after a conflict.
 func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expected string) (wf.Result, error) {
 	if err := ctx.Err(); err != nil {
 		return wf.Result{}, err
@@ -120,7 +120,9 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 		return wf.Result{}, lockErr
 	}
 	defer release()
-	if err := teamExternalSourceAuthority(ctx,rootPath,p); err != nil {return wf.Result{},err}
+	if err := teamExternalSourceAuthority(ctx, rootPath, p); err != nil {
+		return wf.Result{}, err
+	}
 	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
 	if err != nil {
 		return wf.Result{}, fmt.Errorf("external Builder file writes require the local workspace mount: %w", err)
@@ -272,7 +274,9 @@ func externalBuilderRemoveFile(ctx context.Context, workspace, p, expected strin
 		return wf.Result{}, lockErr
 	}
 	defer release()
-	if err := teamExternalSourceAuthority(ctx,rootPath,p); err != nil {return wf.Result{},err}
+	if err := teamExternalSourceAuthority(ctx, rootPath, p); err != nil {
+		return wf.Result{}, err
+	}
 	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
 	if err != nil {
 		return wf.Result{}, err
