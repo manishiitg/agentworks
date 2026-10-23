@@ -200,7 +200,7 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 	server := serveExternalMCP(t, f.api, crewWriter("owner"))
 	cli := dialExternalMCP(t, ctx, server.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
-	for _, name := range []string{"list_ui_capabilities", "get_ui_state", "list_agents"} {
+	for _, name := range []string{"list_ui_capabilities", "get_ui_state", "list_background_agents"} {
 		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{"workspace_id": "work:team", "chat_id": "main", "action": "chat_tool", "tool_name": name, "arguments": map[string]any{}}})
 		requireRemoteSuccess(t, result, name)
 		raw, _ := json.Marshal(result)
@@ -236,7 +236,7 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 	if err = audit.db.QueryRow(`SELECT COUNT(*) FROM external_crew_execution_audit WHERE crew_id='team' AND tool_group='crew_session' AND action IN ('query_agent','terminate_agent') AND status='completed'`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("session actions not audited: %d, %v", count, err)
 	}
-	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "another-person-session", "tool_name": "list_agents"}, 404)
+	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "another-person-session", "tool_name": "list_background_agents"}, 404)
 	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "main", "tool_name": "run_in_background", "arguments": map[string]any{"name": "task", "instruction": "do work"}}, 403)
 	call(crewWriter("other"), map[string]any{"action": "tools", "chat_id": "own-session"}, 404)
 	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "main", "tool_name": "get_ui_state", "arguments": map[string]any{"session_id": "another-person-session"}}, 400)

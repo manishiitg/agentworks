@@ -135,7 +135,7 @@ profile:
     #
     # Not listed, deliberately: AgentWorks provider/model, skill and MCP-server
     # administration; media-generation tools; sub-agent orchestration (delegate,
-    # query_agent, list_agents, terminate_agent); every schedule tool; and
+    # query_agent, list_background_agents, terminate_agent); every schedule tool; and
     # human_feedback / summary delivery. Read-only image inspection and web research
     # are product capabilities, so they are explicitly admitted below.
     #

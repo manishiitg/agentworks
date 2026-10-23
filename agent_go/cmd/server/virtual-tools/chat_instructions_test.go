@@ -21,7 +21,7 @@ func TestAgentWorksChatInstructionsAreDirectAndDoNotAdvertiseOrchestration(t *te
 		"delegate(",
 		"query_agent",
 		"terminate_agent",
-		"list_agents",
+		"list_background_agents",
 		"create_workflow_schedule",
 	} {
 		if strings.Contains(prompt, forbidden) {

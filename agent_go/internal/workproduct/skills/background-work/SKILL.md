@@ -9,4 +9,4 @@ Use `run_in_background` when a self-contained task can continue independently wh
 
 After the tool returns, tell the user the task is running and end the turn. Do not poll with `query_agent` or sleep loops. {{product}} automatically sends an `[AUTO-NOTIFICATION]` into this same chat when the child completes or fails; then summarize the result and continue only if more work is required.
 
-Use `query_agent` only when the user explicitly asks for live status, `list_agents` to identify running work, and `terminate_agent` when the user asks to stop it.
+Use `query_agent` only when the user explicitly asks for live status, `list_background_agents` to identify running work, and `terminate_agent` when the user asks to stop it.

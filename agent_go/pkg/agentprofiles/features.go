@@ -214,7 +214,7 @@ var featureCatalog = map[string]featureDefinition{
 		UIPanels: []string{"costs"},
 	},
 	"background-work": {
-		Tools:           []string{"run_in_background", "query_agent", "list_agents", "terminate_agent"},
+		Tools:           []string{"run_in_background", "query_agent", "list_background_agents", "terminate_agent"},
 		Skills:          []string{"background-work"},
 		PromptExtension: "Background work is enabled. Read the attached `background-work` skill before delegating. Delegate only bounded independent tasks, rely on automatic completion notifications, and do not poll unless the user asks for status.",
 	},

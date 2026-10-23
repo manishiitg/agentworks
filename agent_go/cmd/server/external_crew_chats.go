@@ -138,7 +138,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 		}
 		if action == "tool" {
 			switch externalArg(args, "tool_name") {
-			case "list_ui_capabilities", "get_ui_state", "query_agent", "list_agents":
+			case "list_ui_capabilities", "get_ui_state", "query_agent", "list_background_agents":
 				scope = "crews:read"
 			case "run_in_background":
 				scope = "crews:write"

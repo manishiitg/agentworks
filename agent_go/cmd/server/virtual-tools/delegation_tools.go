@@ -350,11 +350,11 @@ func CreateDelegationTools(tierConfig *DelegationTierConfig, requireReasoningLev
 	}
 	tools = append(tools, terminateAgentTool)
 
-	// list_agents - List all background agents in the session
+	// list_background_agents - List all background agents in the session
 	listAgentsTool := llmtypes.Tool{
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
-			Name:        "list_agents",
+			Name:        "list_background_agents",
 			Description: "List all background agents in the current session with their name, status, and elapsed time.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type":       "object",
@@ -375,7 +375,7 @@ func CreateDelegationToolExecutors() map[string]func(ctx context.Context, args m
 	executors["delegate"] = handleDelegate
 	executors["query_agent"] = handleQueryAgent
 	executors["terminate_agent"] = handleTerminateAgent
-	executors["list_agents"] = handleListAgents
+	executors["list_background_agents"] = handleListAgents
 
 	return executors
 }
@@ -660,7 +660,7 @@ Whenever the instructions above mention ` + "`execute_shell_command(...)`" + `, 
 ### Calling Custom Tools via HTTP API
 The following tools are NOT available as direct function calls — call them via curl through ` + "`" + executeTool + "`" + `:
 
-- **Delegation tools**: delegate, query_agent, terminate_agent, list_agents
+- **Delegation tools**: delegate, query_agent, terminate_agent, list_background_agents
 - **Human tools**: record_summary, send_email, send_slack_message
 - **LLM config tools**: list_published_llms, list_provider_models, test_llm, save_published_llm, set_provider_auth, list_llm_capabilities
 

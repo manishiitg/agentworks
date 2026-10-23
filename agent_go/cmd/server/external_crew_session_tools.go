@@ -75,7 +75,7 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 	}
 	if action == "tools" {
 		inventory := []map[string]any{}
-		for _, name := range []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action", "run_in_background", "query_agent", "list_agents", "terminate_agent"} {
+		for _, name := range []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action", "run_in_background", "query_agent", "list_background_agents", "terminate_agent"} {
 			if tool, ok := reg[name]; ok {
 				inventory = append(inventory, map[string]any{"name": name, "description": tool.description, "input_schema": tool.schema})
 			}
