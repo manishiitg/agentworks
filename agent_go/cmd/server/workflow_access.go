@@ -546,8 +546,15 @@ func (api *StreamingAPI) handleSetWorkflowAccess(w http.ResponseWriter, r *http.
 		writeUsersError(w, http.StatusBadRequest, "Keep the Goal's execution owner in its owner list.")
 		return
 	}
-	manifest.Access = &WorkflowAccess{Owners: owners, Editors: keptEditors, Readers: filtered}
-	if err := WriteWorkflowManifest(r.Context(), req.WorkspacePath, manifest); err != nil {
+	if manifest.Access == nil {
+		manifest.Access = &WorkflowAccess{}
+	}
+	manifest.Access.Owners, manifest.Access.Editors, manifest.Access.Readers = owners, keptEditors, filtered
+	writeCtx := r.Context()
+	if manifest.Team != nil {
+		writeCtx = context.WithValue(writeCtx, teamManifestPermitKey{}, true)
+	}
+	if err := WriteWorkflowManifest(writeCtx, req.WorkspacePath, manifest); err != nil {
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

@@ -409,3 +409,27 @@ func TestWorkflowTeamItemIDsDoNotGrantStepAuthority(t *testing.T) {
 		t.Fatal("item ID granted authority over another Contributor's route")
 	}
 }
+
+func TestWorkflowTeamOwnerTabsKeepExecutionAndSharedGrants(t *testing.T) {
+	f := newTeamTestFixture(t)
+	m, _, err := ReadWorkflowManifest(context.Background(), teamTestRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Access.AllowedKBWriters = []string{"research"}
+	m.Access.RunEveryone = true
+	f.manifest(t, m)
+	req := httptest.NewRequest(http.MethodPut, "/api/workflow/access", strings.NewReader(`{"workspace_path":"Workflow/team-example","owners":["leader","second"],"editors":[],"readers":[]}`)).WithContext(teamTestContext("leader"))
+	w := httptest.NewRecorder()
+	f.api.handleSetWorkflowAccess(w, req)
+	if w.Code != 200 {
+		t.Fatalf("add project owner: %d %s", w.Code, w.Body.String())
+	}
+	saved, _, err := ReadWorkflowManifest(context.Background(), teamTestRoot)
+	if err != nil || workflowAccessForManifest(&UserClaims{UserID: "second"}, saved) != WorkflowAccessOwner || workflowExecutionOwnerUserID(saved) != "leader" || !saved.Access.RunEveryone || !containsID(saved.Access.AllowedKBWriters, "research") {
+		t.Fatalf("owner update changed execution or grants: %+v %v", saved, err)
+	}
+	if err := validateTeamQuery(teamTestContext("second"), QueryRequest{AgentMode: "workflow", SelectedFolder: teamTestRoot}); err != nil {
+		t.Fatal("project owner lost shared execution access", err)
+	}
+}

@@ -3,17 +3,16 @@ package server
 import (
 	"bytes"
 	"context"
-	"net/http/httptest"
-
 	"encoding/json"
 	"fmt"
-	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 )
 
 const goalChatProfile = "agentworks"
