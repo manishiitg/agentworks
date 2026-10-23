@@ -211,7 +211,8 @@ func (api *StreamingAPI) staleCodingAgentTmuxCleanupCandidates(now time.Time, id
 			})
 		case codingAgentTmuxSessionStatusUsesIdleBackstop(state.status) &&
 			lease.Policy == terminalleases.PolicyPersistent &&
-			codingAgentTmuxSnapshotIdleFor(snapshot, now, idleTimeout):
+			codingAgentTmuxSnapshotIdleFor(snapshot, now, idleTimeout) &&
+			!api.sessionAwaitsBackgroundResults(lease.SessionID):
 			candidates = append(candidates, codingAgentTmuxCleanupCandidate{
 				snapshot: snapshot,
 				lease:    lease,
@@ -220,6 +221,28 @@ func (api *StreamingAPI) staleCodingAgentTmuxCleanupCandidates(now time.Time, id
 		}
 	}
 	return candidates
+}
+
+// sessionAwaitsBackgroundResults keeps an idle chat's CLI while work it started
+// is still running or its results wait for delivery. Reaping it made every
+// delivery turn fail with "session is closed" until the person wrote again
+// (server A 2026-10-23: a workflow Builder chat idle 16 min during its full run).
+func (api *StreamingAPI) sessionAwaitsBackgroundResults(sessionID string) bool {
+	if api == nil || sessionID == "" {
+		return false
+	}
+	api.pendingMu.RLock()
+	pending := len(api.pendingCompletions[sessionID]) > 0
+	api.pendingMu.RUnlock()
+	if pending || api.bgAgentRegistry == nil {
+		return pending
+	}
+	for _, agent := range api.bgAgentRegistry.GetAll(sessionID) {
+		if agent != nil && agent.GetSnapshot().Status == BGAgentRunning {
+			return true
+		}
+	}
+	return false
 }
 
 func (api *StreamingAPI) codingAgentTmuxActiveSessionStates() map[string]codingAgentTmuxSessionState {

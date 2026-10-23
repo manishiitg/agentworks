@@ -17,11 +17,35 @@ import (
 )
 
 const turnQuietAfter = 2 * time.Minute
-const turnInactiveAfter = 10 * time.Minute
+const turnInactiveAfter = 15 * time.Minute
 
 var turnInactivityCheckInterval = 15 * time.Second
 
-var errTurnInactive = errors.New("Reply ended after 10 minutes without agent output or tool activity.")
+var errTurnInactive = errors.New("Reply ended after 15 minutes without agent output or tool activity.")
+
+// mainCLIPaneChanging reports whether the chat's main coding CLI screen changes
+// between two captures a few seconds apart. Events can stop reaching the server
+// while the CLI keeps working; the screen is what the person sees, so a changing
+// pane keeps the reply instead of interrupting it. A var so tests can stub tmux.
+var mainCLIPaneChanging = func(api *StreamingAPI, sessionID string) bool {
+	snapshot, live := api.liveMainCodingTmuxSnapshot(sessionID)
+	if !live || strings.TrimSpace(snapshot.TmuxSession) == "" {
+		return false
+	}
+	capture := func() (string, bool) {
+		ctx, cancel := context.WithTimeout(context.Background(), terminalTmuxActionTimeout)
+		defer cancel()
+		pane, err := runTerminalTmuxOutputCommand(ctx, "capture-pane", "-p", "-J", "-t", snapshot.TmuxSession)
+		return pane, err == nil
+	}
+	first, ok := capture()
+	if !ok {
+		return false
+	}
+	time.Sleep(3 * time.Second)
+	second, ok := capture()
+	return ok && second != first
+}
 
 type idleTool struct {
 	name string
@@ -273,6 +297,14 @@ func (api *StreamingAPI) watchTurnInactivityMode(ctx context.Context, sessionID,
 						stillQuiet = false
 					}
 					api.turnInactivityMu.Unlock()
+					if stillQuiet && mainCLIPaneChanging(api, sessionID) {
+						api.turnInactivityMu.Lock()
+						state.lastOutputAt = time.Now()
+						state.ending = false
+						api.turnInactivityMu.Unlock()
+						log.Printf("[TURN IDLE] kept session=%s turn=%s idle=%s: no events reached the server but the CLI screen is still changing", sessionID, executionID, idle.Round(time.Second))
+						continue
+					}
 					if stillQuiet && onIdle(errTurnInactive) {
 						log.Printf("[TURN IDLE] ended session=%s turn=%s idle=%s", sessionID, executionID, idle.Round(time.Second))
 						return
