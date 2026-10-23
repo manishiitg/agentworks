@@ -44,3 +44,14 @@ func TestAgentChatTargetDefaultsToCanonicalCrewMain(t *testing.T) {
 		t.Fatal("recipient attribution lost", endpoint)
 	}
 }
+
+func TestAgentChatTargetRunSharingDoesNotAdoptBuilderHistory(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	root := crewOwnerTabsFixture(t, env)
+	ctx := internalBotRequestContext(context.Background(), "other")
+	target := triggerTarget{Kind: triggerCallerCrew, Path: root, CrewID: "beta", CrewProfile: "work", CrewOwner: "owner", Label: "Project"}
+	resolved, err := env.api.resolveAgentChatTarget(ctx, target, "")
+	if err != nil || resolved.Chat != nil {
+		t.Fatalf("Run caller adopted owner history: %+v %v", resolved, err)
+	}
+}

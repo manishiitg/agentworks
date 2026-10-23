@@ -421,7 +421,7 @@ func goalOwnerTabSchema(external bool) map[string]interface{} {
 		action = "tab_action"
 	}
 	return map[string]interface{}{"type": "object", "required": []string{action}, "properties": map[string]interface{}{
-		action:    map[string]interface{}{"type": "string", "enum": []string{"list", "open", "read", "rename", "close"}},
+		action:    map[string]interface{}{"type": "string", "enum": []any{"list", "open", "read", "rename", "close"}},
 		"chat_id": externalString("Tab id or session_id from list."), "name": externalString("Short tab name for open or rename."),
 	}}
 }

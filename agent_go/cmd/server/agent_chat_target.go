@@ -32,6 +32,14 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 			}
 			return target, fmt.Errorf("Choose a chat_id from list_agents for this Crew")
 		}
+		// Run sharing does not share an owner's Builder history. These
+		// callers keep the existing caller-bound ask conversation.
+		if !crewProjectOwnedByCaller(caller, target.Path) {
+			return target, nil
+		}
+		if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil && !externalOwnerAuthority(claims, target) {
+			return target, nil
+		}
 		registry := api.agentProfiles
 		if registry == nil && api.productSchedules != nil {
 			registry = api.productSchedules.registry
