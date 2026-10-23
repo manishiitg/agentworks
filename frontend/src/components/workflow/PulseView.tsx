@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { PulseIcon } from './pulseIcon'
 import { SoulViewer, WORKFLOW_SOUL_REFRESH_EVENT } from './SoulViewer'
@@ -9,6 +9,12 @@ import { askWorkflowPulse, openWorkflowPulseChatTab } from '../../utils/pulseCha
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
 import type { PulseOutwardActions, PulseOverviewResponse } from '../../services/api-types'
+
+const AUTONOMY_LEVELS: { id: PulseOutwardActions; label: string; description: string }[] = [
+  { id: 'ask', label: 'Ask first', description: 'Asks you before posts or messages go out and before any plan change.' },
+  { id: 'allow', label: 'Send within limits', description: "Posts and messages go out on their own, within this workflow's limits and accounts. Plan changes still ask you." },
+  { id: 'decide', label: 'Decide on its own', description: 'Also changes the plan, steps and schedules itself, and records why and how to undo each change.' },
+]
 
 export interface PulseViewProps {
   workspacePath: string | null
@@ -37,6 +43,7 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
     const current = useWorkflowStore.getState().workspaceViewTarget
     return current?.view === 'pulse' ? current.target : 'goals'
   })
+  const autonomyGroup = useId()
   const settingsOnly = target === 'settings'
   const [question, setQuestion] = useState('')
   const [sending, setSending] = useState(false)
@@ -86,9 +93,18 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
           <p className="mt-1 text-xs text-muted-foreground">{monitorOn ? 'Checks the goal and works with Builder on improvements.' : 'Fully off. No checks, reports, reminders or messages.'}</p></div>
           <button type="button" role="switch" aria-label="Autopilot on/off" aria-checked={monitorOn} disabled={monitorSaving} onClick={onToggleMonitor}
             className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium disabled:opacity-50 ${monitorOn ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{monitorOn ? 'On' : 'Off'}</button></div>
-        <label className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-sm"><span>Autonomy<span className="block text-xs text-muted-foreground">{outwardActions === 'decide' ? 'Also changes the plan itself. Always asks you about spending, security and the goal.' : outwardActions === 'allow' ? "Posts and messages go out within this workflow's limits. Plan changes still ask you." : 'Asks you before anything goes out and before plan changes.'}</span></span>
-          <select aria-label="Autopilot autonomy" value={outwardActions} disabled={outwardSaving || !onChangeOutward} onChange={event => onChangeOutward?.(event.target.value as PulseOutwardActions)} className="rounded-md border bg-background px-3 py-2 text-sm">
-            <option value="ask">Ask first</option><option value="allow">Send within limits</option><option value="decide">Decide on its own</option></select></label>
+        <div className="mt-4 border-t pt-4 text-sm">
+          <p className="font-medium">Autonomy</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">What Autopilot may do without asking you.</p>
+          <div role="radiogroup" aria-label="Autopilot autonomy" className="mt-3 space-y-2">
+            {AUTONOMY_LEVELS.map(level => <label key={level.id} className={`flex gap-3 rounded-lg border p-3 ${outwardActions === level.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'} ${outwardSaving || !onChangeOutward ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+              <input type="radio" name={autonomyGroup} value={level.id} checked={outwardActions === level.id} disabled={outwardSaving || !onChangeOutward} onChange={() => onChangeOutward?.(level.id)} className="mt-0.5" />
+              <span><span className="block font-medium">{level.label}</span><span className="block text-xs text-muted-foreground">{level.description}</span></span>
+            </label>)}
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">Always asks you, at every level: spending money, security (secrets, logins, access, sharing, deleting data), the goal, new kinds of outreach and schedules you paused.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Rules written in this workflow&apos;s goal can ask you about more.</p>
+        </div>
         {monitorOn && !hasSoul && <p className="mt-3 text-sm text-muted-foreground">Set the goal with Builder so Autopilot knows what to pursue.</p>}
       </section>}
       {!settingsOnly && <section tabIndex={-1} aria-label="Talk to Autopilot" className="focus:outline-none rounded-xl border bg-background p-4">

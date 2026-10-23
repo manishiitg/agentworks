@@ -115,11 +115,11 @@ const AGENTWORKS_GUIDES: Record<string, GuideCopy> = {
   },
   Pulse: {
     purpose: 'See your goals, measurements and progress.',
-    howTo: 'Review your goals, metrics and evidence. Ask Autopilot about a specific goal or measurement, send your own question, or open its full chat. Use Decisions for pending answers and Autopilot settings for On/Off and outward actions.',
+    howTo: 'Review your goals, metrics and evidence. Ask Autopilot about a specific goal or measurement, send your own question, or open its full chat. Use Decisions for pending answers and Autopilot settings for On/Off and autonomy.',
   },
   'Autopilot settings': {
-    purpose: 'Choose whether Autopilot is on and how it handles outward actions.',
-    howTo: 'Turn Autopilot on or fully off. Choose whether posts and messages ask first or use existing limits. Review progress in Goals & metrics and pending answers in Decisions.',
+    purpose: 'Choose whether Autopilot is on and how much it may do without asking you.',
+    howTo: 'Turn Autopilot on or fully off. Pick its autonomy: Ask first (asks before anything goes out and before plan changes), Send within limits (posts and messages go out within the workflow\'s limits; plan changes still ask) or Decide on its own (also changes the plan, steps and schedules itself). Spending, security, the goal, new kinds of outreach and paused schedules always ask you. Review progress in Goals & metrics and pending answers in Decisions.',
   },
   Schedules: {
     purpose: 'Run work automatically at chosen times.',

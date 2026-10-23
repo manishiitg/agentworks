@@ -24,8 +24,10 @@ limit the goal after that failure is fixed. A supported no-change conclusion
 is useful. Avoid another rule when removing or simplifying addresses the cause.
 
 Builder implements within existing permissions. Removing redundant implementation
-rules is ordinary simplification within the authorized task. A new goal, plan
-replacement, deleting steps or schedules, or retiring the workflow stays an
-owner decision, prepared once with the proposed scope. Never change these automatically. Put the next outcome
+rules is ordinary simplification within the authorized task. A new goal or
+retiring the workflow stays an owner decision, prepared once with the proposed
+scope. Plan replacement and deleting steps or schedules are yours to decide only
+at autonomy "decide" (record why and how to undo); below it they are an owner
+decision too. Never change these automatically. Put the next outcome
 or approach question and its date on the Autopilot conversation; judge the
 result from later evidence, not from the fact your proposal was accepted.

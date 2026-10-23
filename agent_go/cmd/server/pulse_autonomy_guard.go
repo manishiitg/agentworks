@@ -71,12 +71,20 @@ func goalWorkTurnPermissions(sessionID string) (stepworkflow.GoalWorkPermissions
 	return hold.perms, true
 }
 
-// goalWorkNeverTools stay with the user whatever the Pulse setting: deleting steps or
-// schedules, replacing the plan, migrations and the contract version.
+// goalWorkNeverTools stay with the user whatever the autonomy: migrations, the
+// contract version, secrets and access (owner, 2026-10-23: "not like spending
+// money or security issues").
 var goalWorkNeverTools = map[string]bool{
-	"delete_plan_steps": true, "delete_schedule": true, "create_plan": true, "cleanup_orphan_step_configs": true,
-	"convert_routing_branch_step_type": true, "set_workflow_contract_version": true, "migrate_agent_code_items": true,
+	"set_workflow_contract_version": true, "migrate_agent_code_items": true,
 	"migrate_agent_steps": true, "migrate_goal_agents": true, "migrate_workflow_skills": true,
+	"set_workflow_secret": true, "delete_workflow_secret": true, "manage_user_access": true, "manage_workflow_webhook": true,
+}
+
+// goalWorkPlanTools replace the plan or delete steps and schedules. Autonomy
+// "decide" lets Autopilot direct them; below it they stay with the user.
+var goalWorkPlanTools = map[string]bool{
+	"delete_plan_steps": true, "delete_schedule": true, "create_plan": true, "cleanup_orphan_step_configs": true,
+	"convert_routing_branch_step_type": true,
 }
 
 // goalWorkOutwardTools post or send beyond the workflow by name alone. Tools
@@ -95,7 +103,11 @@ func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) er
 
 	switch {
 	case goalWorkNeverTools[tool]:
-		return fmt.Errorf("%s is not available to Goal Work: deleting steps or schedules, replacing the plan and migrations stay with the user. Create a decision request (create_human_input_request) with the exact change instead", tool)
+		return fmt.Errorf("%s is not available to Autopilot work: migrations, secrets and access stay with the owner. Create a decision request (create_human_input_request) with the exact change instead", tool)
+	case goalWorkPlanTools[tool]:
+		if !perms.Decide {
+			return fmt.Errorf("%s needs the owner: deleting steps or schedules and replacing the plan need autonomy \"decide\". Create a decision request (create_human_input_request) with the exact change instead", tool)
+		}
 	case goalWorkOutwardTools[tool]:
 		if !perms.Outward {
 			return fmt.Errorf("%s needs the owner's approval for an outward action. Prepare the action and ask through the existing decision flow", tool)

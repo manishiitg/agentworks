@@ -144,3 +144,26 @@ func TestPulsePermissionsHoldsOnTheSessionHTTPToolRoute(t *testing.T) {
 		t.Fatalf("edits = %d, want 2", edits)
 	}
 }
+
+// Owner, 2026-10-23: autonomy "decide" lets Autopilot direct plan replacement and
+// deleting steps or schedules; secrets, access and migrations stay with the owner.
+func TestGoalWorkDecideUnlocksPlanToolsButNotSecrets(t *testing.T) {
+	allow := stepworkflow.PulsePermissions(`{"pulse":{"enabled":true,"outward_actions":"allow"}}`)
+	decide := stepworkflow.PulsePermissions(`{"pulse":{"enabled":true,"outward_actions":"decide"}}`)
+	if !decide.Outward || !decide.Decide || allow.Decide {
+		t.Fatalf("decide must include outward and plan decisions, allow must not: allow=%+v decide=%+v", allow, decide)
+	}
+	for _, tool := range []string{"delete_plan_steps", "delete_schedule", "create_plan"} {
+		if goalWorkToolRefusal(tool, allow) == nil {
+			t.Fatalf("%s must need the owner at allow", tool)
+		}
+		if err := goalWorkToolRefusal(tool, decide); err != nil {
+			t.Fatalf("%s must run at decide: %v", tool, err)
+		}
+	}
+	for _, tool := range []string{"set_workflow_secret", "delete_workflow_secret", "manage_user_access", "migrate_agent_steps"} {
+		if goalWorkToolRefusal(tool, decide) == nil {
+			t.Fatalf("%s must stay with the owner at decide", tool)
+		}
+	}
+}
