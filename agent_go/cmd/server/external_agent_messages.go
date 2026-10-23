@@ -158,6 +158,15 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		return nil
 	}
 	if peer.Kind == triggerCallerWorkflow {
+		if strings.Contains(peer.ChatKey, codeChatSideMarker) {
+			if token != nil && (!token.AllowsWorkflow(peer.ID) || !token.Allows("builder:chat")) {
+				return denied
+			}
+			if api.authorizeGoalMessageTab(ctx, peer) {
+				return nil
+			}
+			return denied
+		}
 		if token != nil && (!token.AllowsWorkflow(peer.ID) || !(token.Allows("runs:execute") || !send && token.Allows("workflows:read"))) {
 			return denied
 		}
@@ -166,7 +175,7 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 			return denied
 		}
 		for _, workflow := range filterWorkflowManifestsForUser(claims, workflows) {
-			if workflow.Manifest != nil && workflow.Manifest.ID == peer.ID && workflow.Manifest.Kind != "relay" && normalizeTrackedWorkspacePath(workflow.WorkspacePath) == normalizeTrackedWorkspacePath(peer.Path) {
+			if workflow.Manifest != nil && workflow.Manifest.ID == peer.ID && (workflow.Manifest.Kind != "relay" || api.authorizeGoalMessageTab(ctx, peer)) && normalizeTrackedWorkspacePath(workflow.WorkspacePath) == normalizeTrackedWorkspacePath(peer.Path) {
 				return nil
 			}
 		}
@@ -206,7 +215,7 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 		}
 		for _, summary := range crews {
 			id, label := fmt.Sprint(summary["id"]), fmt.Sprint(summary["name"])
-			if crewID != id && !(crewID == "" && name != "" && (strings.EqualFold(name, label) || strings.EqualFold(name, id) || strings.EqualFold(name, "crew:"+id))) {
+			if crewID != id && !(crewID == "" && name != "" && (strings.EqualFold(name, label) || strings.EqualFold(name, id) || strings.EqualFold(name, "crew:"+id) || strings.EqualFold(name, "workspace:work:"+id))) {
 				continue
 			}
 			crew, manifest, _, ok := api.externalCrewResolve(ctx, claims, id)
@@ -222,7 +231,7 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 		}
 		for _, workflow := range filterWorkflowManifestsForUser(claims, workflows) {
 			m := workflow.Manifest
-			if m == nil || m.Kind == "relay" || claims.AccessToken != nil && !claims.AccessToken.AllowsWorkflow(m.ID) {
+			if m == nil || m.Kind == "relay" && externalArg(args, "chat_id") == "" || claims.AccessToken != nil && !claims.AccessToken.AllowsWorkflow(m.ID) {
 				continue
 			}
 			if workflowID != m.ID && !(workflowID == "" && name != "" && (strings.EqualFold(name, m.ID) || strings.EqualFold(name, m.Label) || strings.EqualFold(name, "workflow:"+m.ID))) {
@@ -264,6 +273,14 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 	if target.NamedAgentID != "" {
 		if err := authorizeAgentMailRequest(r, map[string]any{"action": "send", "target": "agent:resolved"}); err != nil {
 			externalError(w, 403, "cli_required", err.Error())
+			return
+		}
+	}
+	if externalArg(args, "inbox_id") == "" && target.Kind != "" {
+		var err error
+		target, err = api.resolveAgentChatTarget(r.Context(), target, externalArg(args, "chat_id"))
+		if err != nil {
+			externalCommunicationError(w, 404, "chat_unavailable", err)
 			return
 		}
 	}
@@ -440,6 +457,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. Register an agent_name; list_agents lists every agent you can use (Crews, Goals and Relays you own or that are shared with you, with their functions and ids, and your AgentBridge agents); send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox count/delete/clear use the same owner and connection checks. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Read/send product conversations through their existing access. Read results use non-destructive cursors; wait_seconds is at most 25. State inspects only owned product delivery metadata. Count reports incoming totals/unread/pending and filter matches without paging. Delete removes one incoming message_id; clear removes filtered incoming messages from your own agent inbox. Count with the same filters before clear to show how many match. Other participants keep their history and receipts.", false, false, map[string]any{
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
+		"chat_id":                externalString("Optional registered project chat_id from list_agents. Omit for the Crew main Builder."),
 		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}},
 		"older_than":             externalString("Inbox cleanup filter: age such as 24h or 7d."),
 		"from_agent":             externalString("Inbox cleanup filter: sender's registered agent name or agent ID."),

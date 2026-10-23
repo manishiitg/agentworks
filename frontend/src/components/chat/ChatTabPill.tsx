@@ -50,7 +50,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
   tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride, productSurface, workspaceActivity,
   onTabClick, onCloseTab, onRename, onMakeInteractive, onUnpin, readOnly = false, closeStopsSession = false,
 }) => {
-  const ownerName = tab.metadata?.agentProfileId === 'work' ? tab.metadata.agentProfileTabOwnerName : undefined
+  const ownerName = tab.metadata?.agentProfileTabOwnerName
   const yourTab = !!ownerName && tab.metadata?.agentProfileTabCanWrite === true
   const rawName = compactOwnerChatName(displayNameOverride ?? tab.name, ownerName)
   const displayName = readableGeneratedChatTitle(rawName, tab.metadata?.isScheduledRun) ||

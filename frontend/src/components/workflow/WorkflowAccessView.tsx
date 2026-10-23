@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ShieldCheck } from 'lucide-react'
+import WorkflowSharePopup from './WorkflowSharePopup'
 import WorkflowTeamView from './WorkflowTeamView'
 import UsersAdminPanel from '../admin/UsersAdminPanel'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -68,7 +69,7 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
         subtitle={activeTab === 'users'
           ? 'Accounts and roles for this deployment.'
             : isRelay
-              ? `${scopeName} · one owner builds it; everyone else runs it.`
+              ? `${scopeName} · owners share the project and control their own chat tabs.`
               : `${scopeName} · one Leader owns the goal; Contributors work through assigned routes.`}
         actions={
           activeTab ? (
@@ -90,7 +91,7 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
           <div key={`${activeTab}:${tabNonce}`} className="p-4">
             {activeTab === 'workflow' && workspacePath ? (
               isRelay
-                ? <p className="text-sm text-muted-foreground">A Flow has one owner, who builds it. To let others use it, share its dashboard with the Share button there.</p>
+                ? <WorkflowSharePopup workspacePath={workspacePath} readOnly={workflowReadOnly} />
                 : <WorkflowTeamView workspacePath={workspacePath} readOnly={workflowReadOnly} />
             ) : activeTab === 'users' ? (
               <UsersAdminPanel />

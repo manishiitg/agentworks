@@ -63,7 +63,7 @@ var externalToolMerges = []externalToolMerge{
 		{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"status", "run_status"}, {"reply_input", "run_reply_input"},
 	}},
 	{"builder", "Edit a workflow or Flow through its Builder model in your existing workflow chat, and talk to its Autopilot. Submit with action=chat, then poll status; answer a question with reply_input; cancel an operation; read and restore file edits.", [][2]string{
-		{"chat", "builder_chat"}, {"status", "builder_status"}, {"reply_input", "builder_reply_input"}, {"cancel", "builder_cancel"},
+		{"tabs", "builder_tabs"}, {"chat", "builder_chat"}, {"status", "builder_status"}, {"reply_input", "builder_reply_input"}, {"cancel", "builder_cancel"},
 		{"file_history", "builder_file_history"}, {"restore_file", "builder_restore_file"},
 		{"pulse_chat", "builder_pulse_chat"}, {"pulse_status", "builder_pulse_status"},
 	}},

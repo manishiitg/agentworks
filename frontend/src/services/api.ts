@@ -1107,13 +1107,15 @@ export const agentApi = {
     presetQueryId?: string,
     workspacePath?: string,
     summaryOnly = false,
+    sessionId?: string,
   ): Promise<WorkflowBuilderSessionResponse> => {
     const params: Record<string, string> = {}
     if (presetQueryId) params.preset_query_id = presetQueryId
     if (workspacePath) params.workspace_path = workspacePath
     if (summaryOnly) params.summary_only = 'true'
+    if (sessionId) params.session_id = sessionId
     return dedupedGet(
-      `workflow-builder-session:${captureChatIdentity()}:${presetQueryId || ''}:${workspacePath || ''}:${summaryOnly}`,
+      `workflow-builder-session:${captureChatIdentity()}:${presetQueryId || ''}:${workspacePath || ''}:${summaryOnly}:${sessionId || ''}`,
       async () => {
         const response = await api.get('/api/workflow/builder-session', { params })
         return response.data
@@ -1125,6 +1127,14 @@ export const agentApi = {
     const sorted = [...workflows].sort((a, b) => a.preset_query_id.localeCompare(b.preset_query_id))
     return dedupedGet(`workflow-builder-batch:${captureChatIdentity()}:${JSON.stringify(sorted)}`,
       async () => (await api.post('/api/workflow/builder-sessions', { workflows: sorted })).data)
+  },
+
+  manageWorkflowChats: async (presetId: string, workspacePath: string, action: string, chatId?: string, name?: string): Promise<{ chats?: import('./api-types').WorkflowOwnerTab[]; chat?: import('./api-types').WorkflowOwnerTab }> => {
+    const identity = captureChatIdentity()
+    const response = await api.post('/api/workflow/chats', { preset_query_id: presetId, workspace_path: workspacePath, action, chat_id: chatId, name }, { chatIdentityGeneration: identity })
+    assertChatIdentityCurrent(identity)
+    invalidateDedupedGetPrefix('workflow-builder-batch:')
+    return response.data
   },
 
   startNewWorkflowBuilderSession: async (presetId: string, workspacePath: string): Promise<WorkflowBuilderSessionResponse> => {

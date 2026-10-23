@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -18,7 +21,8 @@ import (
 // External authoring is always available; connection consent and current roles authorize each operation.
 func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("builder_chat", "Ask the configured Builder model to edit a selected workflow in your existing workflow chat (the owner's main chat). Requires builder:chat and current write access. Use a unique submission_id; retries with the same payload return the same operation. Pass wait_seconds to get the answer (or a pending question) in the same call; otherwise poll builder action=status. It has the same tools as the website Builder.", true, true, map[string]any{
-		"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 32000}, "submission_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128}, "session_id": externalString("Optional existing chat belonging to you in this workflow; omit to continue the main/latest chat."), "wait_seconds": externalBuilderWaitSchema}, "message", "submission_id")
+		"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 32000}, "submission_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128}, "session_id": externalString("Optional existing chat belonging to you in this workflow; omit to continue the your main Builder tab."), "wait_seconds": externalBuilderWaitSchema}, "message", "submission_id")
+	add("builder_tabs", "Named Builder tabs for a Goal or Relay. Same actions and access as the website: list, open, read, rename, close. All people with Builder access see project tabs; only the tab's owner controls it. Run records remain separate. Use tab_action, chat_id and name. Use session_id from list for builder action=chat.", true, true, goalOwnerTabSchema(true)["properties"].(map[string]interface{}), "tab_action")
 	add("builder_file_history", "List your audited Builder file edits for one workflow-relative path, including revisions and restore IDs. Previous credentials from the same account remain recoverable.", false, true,
 		map[string]any{"path": externalString("Workflow-relative source file path, such as code/task.py.")}, "path")
 	add("builder_restore_file", "Restore the content that preceded one audited Builder file edit. Requires the file's current revision to prevent overwriting newer work.", true, true,
@@ -254,6 +258,13 @@ func (api *StreamingAPI) externalBuilderOperationCall(w http.ResponseWriter, r *
 		externalError(w, 403, "builder_not_authorized", err.Error())
 		return
 	}
+	if name == "builder_tabs" {
+		body, _ := json.Marshal(map[string]any{"preset_query_id": workflow.Manifest.ID, "workspace_path": workflow.WorkspacePath, "action": args["tab_action"], "chat_id": args["chat_id"], "name": args["name"]})
+		forwarded := r.Clone(context.WithValue(r.Context(), UserContextKey, claims))
+		forwarded.Body = io.NopCloser(bytes.NewReader(body))
+		api.handleGoalOwnerTabs(w, forwarded)
+		return
+	}
 	if name == "builder_chat" {
 		api.submitExternalBuilder(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), args, workflow)
 		return
@@ -455,33 +466,12 @@ func (api *StreamingAPI) submitExternalBuilderOperation(w http.ResponseWriter, r
 			return externalBuilderOperation{}, false
 		}
 	} else {
-		if live := api.findLiveWorkflowBuilderSession(r.Context(), workflow.Manifest.ID, workflow.WorkspacePath); live != nil {
-			session = live.SessionID
+		binding, resolveErr := api.goalOwnerTabSummary(r.Context(), workflowBuilderScope{PresetID: workflow.Manifest.ID, Workspace: workflow.WorkspacePath}, false)
+		if resolveErr != nil {
+			externalError(w, 503, "chat_unavailable", resolveErr.Error())
+			return externalBuilderOperation{}, false
 		}
-		if session == "" {
-			restored, restoreErr := api.restoreLatestBuilderConversation(r.Context(), workflow.Manifest.ID, workflow.WorkspacePath)
-			if restoreErr != nil {
-				externalError(w, 503, "history_unavailable", restoreErr.Error())
-				return externalBuilderOperation{}, false
-			}
-			if restored != nil {
-				session = restored.SessionID
-			}
-		}
-		if session != "" {
-			if _, _, err = api.externalBuilderSession(r, workflow.WorkspacePath, session); err != nil {
-				externalError(w, 409, "session_unavailable", "The current workflow chat cannot be safely resumed")
-				return externalBuilderOperation{}, false
-			}
-		}
-		// Before the queued first turn materializes history, a second connection
-		// must use that same conversation rather than create a duplicate.
-		if session == "" {
-			_ = s.db.QueryRowContext(r.Context(), `SELECT session_id FROM external_builder_operations WHERE user_id=? AND workspace=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1`, claims.UserID, workflow.WorkspacePath).Scan(&session)
-		}
-		if session == "" {
-			session = uuid.NewString()
-		}
+		session = binding.SessionID
 	}
 	op := externalBuilderOperation{ID: uuid.NewString(), UserID: claims.UserID, GrantID: claims.AccessToken.ID, WorkflowID: workflow.Manifest.ID, Workspace: workflow.WorkspacePath, SessionID: session, SubmissionID: submission, Message: message, Status: "queued", CreatedAt: time.Now()}
 	_, err = s.db.ExecContext(r.Context(), `INSERT INTO external_builder_operations (id,user_id,grant_id,workflow_id,workspace,session_id,submission_id,message,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`, op.ID, op.UserID, op.GrantID, op.WorkflowID, op.Workspace, op.SessionID, op.SubmissionID, op.Message, op.Status, op.CreatedAt.UnixNano())

@@ -171,40 +171,6 @@ func trackedExecutionBlocksNewWorkflowBuilderChat(exec *TrackedWorkflowExecution
 	return true
 }
 
-// workflowBuilderHeldByOther is the name of the person whose Builder chat on this workflow is running, when that is
-// someone other than the caller and this request would otherwise be refused by the Builder lock; "" otherwise.
-func (api *StreamingAPI) workflowBuilderHeldByOther(sessionID, currentUserID string, req QueryRequest) string {
-	if api == nil || !workflowBusyGuardApplies(sessionID, req) || workflowTeamAllowsConcurrent(req.SelectedFolder) {
-		return ""
-	}
-	running := api.findRunningTrackedExecutionForWorkspaceWhere(req.SelectedFolder, trackedExecutionBlocksNewWorkflowBuilderChat)
-	if running == nil || running.SessionID == sessionID {
-		return ""
-	}
-	name, _ := workflowBusyMessage(running, currentUserID)
-	return name
-}
-
-// workflowBusyMessage tells the person who was refused who holds the workflow's Builder lock and what to do.
-func workflowBusyMessage(running *TrackedWorkflowExecution, currentUserID string) (string, string) {
-	since := ""
-	if running != nil && !running.StartedAt.IsZero() {
-		since = " (since " + running.StartedAt.UTC().Format("15:04") + " UTC)"
-	}
-	holder := ""
-	if running != nil {
-		holder = strings.TrimSpace(running.UserID)
-	}
-	if holder == "" || sanitizeUserIDForPath(holder) == sanitizeUserIDForPath(currentUserID) {
-		return "", "You are already using the Builder on this workflow in another chat" + since + ". Wait for it to finish, or stop it, then try again."
-	}
-	name := holder
-	if rec := directoryUserFor(holder, "", ""); rec != nil && strings.TrimSpace(rec.Username) != "" {
-		name = strings.TrimSpace(rec.Username)
-	}
-	return name, name + " is using the Builder on this workflow right now" + since + ", and only one person can use it at a time. Try again when " + name + " is done, or switch to Run mode to run steps and ask questions now."
-}
-
 // trackedExecutionBlocksScheduledWorkflow distinguishes producing workflow
 // executions from interactive chats and Pulse/reviewer stages. A schedule has
 // its own durable single-run lock, so only another actual full-workflow run

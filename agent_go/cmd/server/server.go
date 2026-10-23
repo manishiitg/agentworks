@@ -980,9 +980,6 @@ type QueryRequest struct {
 	// Internal: the owner a Slack channel turn's shared-account tokens count
 	// toward (botRouteTokenOwner); sub-agents bill the same person.
 	tokenOwner string `json:"-"`
-	// builderHeldBy names the person using the Builder on this workflow when this turn was moved to Run mode because
-	// of it (PLAT-766). Empty otherwise.
-	builderHeldBy string `json:"-"`
 }
 
 func buildWorkflowNotificationInstructionsPrompt(runInstructions, pulseInstructions string) string {
@@ -1436,8 +1433,6 @@ type QueryResponse struct {
 	SessionID string `json:"session_id"` // The actual session ID used for conversation history
 	Status    string `json:"status"`
 	Message   string `json:"message,omitempty"`
-	// BuilderHeldBy is set when someone else was using the Builder on this workflow, so the turn ran in Run mode.
-	BuilderHeldBy string `json:"builder_held_by,omitempty"`
 	// OmittedContext counts attached workflows or projects left out of this turn because the sender cannot open them.
 	OmittedContext int `json:"omitted_context,omitempty"`
 	// DeliveryStatus/Provider are populated only when handleQuery short-circuits a
@@ -3096,6 +3091,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/builder-session", api.handleGetWorkflowBuilderSession).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/builder-session", api.handleNewWorkflowBuilderSession).Methods("POST")
 	apiRouter.HandleFunc("/workflow/builder-sessions", api.handleWorkflowBuilderBindings).Methods("POST")
+	apiRouter.HandleFunc("/workflow/chats", api.handleGoalOwnerTabs).Methods("POST")
 	apiRouter.HandleFunc("/dashboards", api.handleDashboards).Methods("POST")
 	api.registerDashboardQuestionRoutes(apiRouter)
 	api.registerDashboardFunctionRoutes(apiRouter)
@@ -4065,16 +4061,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// One person at a time uses the Builder on a workflow. When someone else has it, this turn runs in Run mode instead
-	// of being refused, and is told who has it (PLAT-766). Your own other Builder chat still gets the 409 below.
-	if !currentUserIsReadOnly {
-		if holder := api.workflowBuilderHeldByOther(sessionID, currentUserID, req); holder != "" {
-			req.PinRunMode = true
-			req.builderHeldBy = holder
-			currentUserIsReadOnly = true
-			logfWithContext(queryLogCtx, "[WORKFLOW_BUSY] %s is using the Builder on %q: session %s runs this turn in Run mode", holder, req.SelectedFolder, sessionID)
-		}
-	}
 	// Provider accounts: every turn re-checks that this principal may use the
 	// account the turn names here, before any retained CLI gets the message.
 	// A denied account fails the turn; it never falls back to another one.
@@ -4452,46 +4438,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if releaseLane != nil {
 				releaseLane()
 			}
-		}
-	}
-
-	// Builder-chat single-runner constraint: only one workflow-builder chat
-	// session per workflow folder may run at a time. Phase executions
-	// (cron, bot, manual phase runs) are NOT subject to this — they have
-	// their own concurrency handling. The rejection fires only when both
-	// the incoming request AND the currently-running execution are
-	// workflow-builder chats on the same workspace; same-session sends
-	// (follow-up messages on the already-running builder session) pass
-	// through. Frontend "+ new chat" pre-checks /api/workflow/running and
-	// offers a kill-and-start dialog; this 409 is the backend guard
-	// against races.
-	if workflowBusyGuardApplies(sessionID, req) && !workflowTeamAllowsConcurrent(req.SelectedFolder) {
-		if running := api.findRunningTrackedExecutionForWorkspaceWhere(req.SelectedFolder, func(exec *TrackedWorkflowExecution) bool {
-			return trackedExecutionBlocksNewWorkflowBuilderChat(exec)
-		}); running != nil && running.SessionID != sessionID {
-			logfWithContext(queryLogCtx, "[WORKFLOW_BUSY] Rejected workflow_builder chat for workspace %q: running session %s started %s (triggered_by=%s)", req.SelectedFolder, running.SessionID, running.StartedAt.Format(time.RFC3339), running.TriggeredBy)
-			holderName, busyMessage := workflowBusyMessage(running, currentUserID)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusConflict)
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"error":   "workflow_busy",
-				"message": busyMessage,
-				// Shown as the error's details too, in place of "Request failed with status code 409".
-				"technical_details": busyMessage,
-				"workspace_path":    running.WorkspacePath,
-				"running": map[string]interface{}{
-					"holder":       holderName,
-					"session_id":   running.SessionID,
-					"execution_id": running.ExecutionID,
-					"triggered_by": running.TriggeredBy,
-					"source":       running.Source,
-					"started_at":   running.StartedAt,
-					"phase_id":     running.PhaseID,
-					"phase_name":   running.PhaseName,
-					"title":        running.Title,
-				},
-			})
-			return
 		}
 	}
 
@@ -5211,11 +5157,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Return immediate response with query ID
 		response := QueryResponse{
-			QueryID:       queryID,
-			SessionID:     sessionID, // Include the actual session ID used for conversation history
-			Status:        "started",
-			Message:       "Query processing started. Use polling API to get real-time updates.",
-			BuilderHeldBy: req.builderHeldBy,
+			QueryID:   queryID,
+			SessionID: sessionID, // Include the actual session ID used for conversation history
+			Status:    "started",
+			Message:   "Query processing started. Use polling API to get real-time updates.",
 		}
 
 		if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -5672,7 +5617,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		SessionID:      sessionID, // Include the actual session ID used for conversation history
 		Status:         "started",
 		Message:        "Query processing started. Use polling API to get real-time updates.",
-		BuilderHeldBy:  req.builderHeldBy,
 		OmittedContext: req.omittedWorkflowContextCount,
 	}
 
@@ -9013,23 +8957,6 @@ func scheduledRequestBypassesWorkflowBusy(sessionID, triggeredBy string) bool {
 	return isScheduledSessionIdentity(sessionID, triggeredBy)
 }
 
-func workflowBusyGuardApplies(sessionID string, req QueryRequest) bool {
-	if req.AgentMode != "workflow_phase" ||
-		req.PhaseID != workflowtypes.WorkflowStatusWorkflowBuilder ||
-		strings.TrimSpace(req.SelectedFolder) == "" ||
-		scheduledRequestBypassesWorkflowBusy(sessionID, req.TriggeredBy) {
-		return false
-	}
-	mode := ""
-	if req.ExecutionOptions != nil {
-		mode = normalizeChatHistoryWorkshopMode(req.ExecutionOptions.WorkshopMode)
-	}
-	// Bot and scheduled workflow traffic use the workflow-builder phase as a
-	// conversational runtime in run mode. The exclusive lock is only for
-	// authoring modes that can mutate workflow design state.
-	return mode != "run"
-}
-
 func isScheduledSessionIdentity(sessionID, triggeredBy string) bool {
 	trigger := strings.ToLower(strings.TrimSpace(triggeredBy))
 	id := strings.ToLower(strings.TrimSpace(sessionID))
@@ -11924,36 +11851,6 @@ func (api *StreamingAPI) startNextTurnFromLiveInput(w http.ResponseWriter, r *ht
 	baseReq.Message = message
 	baseReq.IsAutoNotification = false
 	baseReq.userID = GetUserIDFromContext(r.Context())
-
-	if workflowBusyGuardApplies(sessionID, baseReq) && !workflowTeamAllowsConcurrent(baseReq.SelectedFolder) {
-		if running := api.findRunningTrackedExecutionForWorkspaceWhere(baseReq.SelectedFolder, func(exec *TrackedWorkflowExecution) bool {
-			return trackedExecutionBlocksNewWorkflowBuilderChat(exec)
-		}); running != nil && running.SessionID != sessionID {
-			log.Printf("[LIVE INPUT] Refusing queued next turn for session %s: workflow builder is busy with session %s", sessionID, running.SessionID)
-			holderName, busyMessage := workflowBusyMessage(running, baseReq.userID)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusConflict)
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"error":   "workflow_busy",
-				"message": busyMessage,
-				// Shown as the error's details too, in place of "Request failed with status code 409".
-				"technical_details": busyMessage,
-				"workspace_path":    running.WorkspacePath,
-				"running": map[string]interface{}{
-					"holder":       holderName,
-					"session_id":   running.SessionID,
-					"execution_id": running.ExecutionID,
-					"triggered_by": running.TriggeredBy,
-					"source":       running.Source,
-					"started_at":   running.StartedAt,
-					"phase_id":     running.PhaseID,
-					"phase_name":   running.PhaseName,
-					"title":        running.Title,
-				},
-			})
-			return true
-		}
-	}
 
 	payload, err := json.Marshal(baseReq)
 	if err != nil {

@@ -14,9 +14,6 @@ func TestWorkflowConversationModeFollowsAccess(t *testing.T) {
 		if req.ExecutionOptions.WorkshopMode != want || workflowCLIMode(&req, readOnly) != want {
 			t.Fatalf("readOnly=%v: metadata/CLI mode=%q", readOnly, req.ExecutionOptions.WorkshopMode)
 		}
-		if workflowBusyGuardApplies("chat", req) == readOnly {
-			t.Fatal("authoring guard disagrees with resolved mode")
-		}
 		if req.ExecutionOptions.SelectedRunFolder != "iteration-85" || req.ExecutionOptions.ResumeFromStep != 3 || old.WorkshopMode != "run" {
 			t.Fatal("changed execution options or retained request")
 		}

@@ -57,6 +57,12 @@ export function publishWorkflowBuilderBinding(binding: WorkflowBuilderSessionRes
   } }))
 }
 
+/** Read the existing shared snapshot; this selector adds no polling. */
+export function useWorkflowBuilderBinding(id: string | null): WorkflowBuilderSessionResponse | undefined {
+  const identity = captureChatIdentity()
+  return useBindings(state => state.identity === identity && id ? state.bindings[id] : undefined)
+}
+
 export function useWorkflowBuilderBindings(presets: (CustomPreset | PredefinedPreset)[], sessions: Record<string, string[]> = {}): WorkflowBuilderBindings {
   const userId = useAuthStore(state => state.user?.id)
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)

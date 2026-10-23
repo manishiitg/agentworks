@@ -65,21 +65,22 @@ func currentSkillBuilder(ctx context.Context, workspace, requested string) (sess
 	if readErr != nil || !exists {
 		return "", "", "", 404, fmt.Errorf("workflow unavailable")
 	}
-	content, exists, readErr := readFileFromWorkspace(ctx, workflowBuilderBindingPath(claims.UserID, manifest.ID))
+	records, readErr := defaultProductConversationRegistryStore().projectChats(ctx, claims.UserID, goalChatProfile, manifest.ID)
 	if readErr != nil {
 		return "", "", "", 500, readErr
 	}
-	if !exists {
+	for _, record := range records {
+		if record.WorkspacePath != workspace {
+			continue
+		}
+		if requested == record.SessionID || requested == "" && record.ConversationKey == crewOwnerDefaultChatKey(manifest.ID, claims.UserID) {
+			return record.SessionID, record.Provider, "workshop", 0, nil
+		}
+	}
+	if requested == "" {
 		return "", "", "workshop", 0, nil
 	}
-	var binding workflowBuilderBinding
-	if json.Unmarshal([]byte(content), &binding) != nil || binding.UserID != claims.UserID || binding.SessionID == "" {
-		return "", "", "", 500, fmt.Errorf("invalid current Builder binding")
-	}
-	if requested != "" && binding.SessionID != requested {
-		return "", "", "", 409, fmt.Errorf("the current Builder changed; reload its skills")
-	}
-	return binding.SessionID, "", "workshop", 0, nil
+	return "", "", "", 409, fmt.Errorf("this Builder tab is unavailable; reopen your tab")
 }
 
 func (api *StreamingAPI) runtimeSkillsHandler(w http.ResponseWriter, r *http.Request) {

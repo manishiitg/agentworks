@@ -2872,7 +2872,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               ? `Scheduled run — view only${jobName ? ` (${jobName})` : ''}`
               : isBotRun
                 ? `${botPlatform || 'Bot'} run — view only`
-              : 'View only — restored conversation'}
+              : activeTab?.metadata?.isExecutionRun ? 'Run history — use Builder to chat' : 'View only — restored conversation'}
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-1">
             {backgroundWorkPill}

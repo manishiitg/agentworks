@@ -1,4 +1,9 @@
 import { closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
+import { Plus } from 'lucide-react'
+import { agentApi } from '../../services/api'
+import { useWorkflowBuilderBinding, publishWorkflowBuilderBinding } from '../../hooks/useWorkflowBuilderBindings'
+import { hydrateWorkflowOwnerTabs } from '../../utils/ensureWorkflowBuilderTab'
+import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import React, { useMemo, useEffect, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -48,6 +53,28 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
   const activePresetId = useGlobalPresetStore(state => state.activePresetIds.workflow)
   const workflowPresets = useGlobalPresetStore(state => state.workflowPresets)
   const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
+
+  const binding = useWorkflowBuilderBinding(activePresetId)
+  useEffect(() => {
+    if (binding) void hydrateWorkflowOwnerTabs(binding).catch(() => {})
+  }, [binding])
+  const mutateTab = useCallback(async (action: string, chatId?: string, name?: string) => {
+    const preset = workflowPresets.find(item => item.id === activePresetId)
+    if (!preset?.selectedFolder?.filepath) return
+    const identity = captureChatIdentity()
+    const changed = await agentApi.manageWorkflowChats(preset.id, preset.selectedFolder.filepath, action, chatId, name)
+    const response = await agentApi.getWorkflowBuilderSessions([{ preset_query_id: preset.id, workspace_path: preset.selectedFolder.filepath }])
+    if (!isChatIdentityCurrent(identity)) return
+    const next = response.bindings[preset.id]
+    if (next) {
+      publishWorkflowBuilderBinding(next, identity, true)
+      await hydrateWorkflowOwnerTabs(next)
+    }
+    if (changed.chat) {
+      const tab = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === changed.chat?.session_id)
+      if (tab) { activateTab(tab.tabId); setShowChatArea(true); onSelectChat?.() }
+    }
+  }, [activePresetId, workflowPresets, setShowChatArea, onSelectChat])
 
   // Repair tabs already corrupted by the old Restore path. The durable
   // restoredConversationPath marker proves this is an interactive restore,
@@ -121,10 +148,12 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
   }, [showTab])
 
   const handleCloseTab = useCallback((tabId: string) => {
-    void closeWorkspaceChatTab(tabId).catch(() => {
+    const tab = useChatStore.getState().getTab(tabId)
+    const close = tab?.metadata?.workflowOwnerTabID ? mutateTab('close', tab.metadata.workflowOwnerTabID) : closeWorkspaceChatTab(tabId)
+    void close.catch(() => {
       useChatStore.getState().addToast('Could not close this chat. Try again.', 'error')
     })
-  }, [])
+  }, [mutateTab])
 
   // Make the scheduled/bot conversation interactive without changing its
   // identity. The backend routes the next message to this session's retained
@@ -203,11 +232,12 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
                 tab={tab}
                 isActive={tab.tabId === activeTabId && !stepInspectionState(tab).selected}
                 // The persistent Chat is never closeable.
-                canClose={!isPersistentChat && activeWorkflowTabs.length > 1}
+                canClose={tab.metadata?.workflowOwnerTabID ? tab.metadata.agentProfileTabCanWrite === true && !tab.metadata.workflowOwnerTabIsMain : !isPersistentChat && activeWorkflowTabs.length > 1}
                 isBlank={false}
-                displayName={isPersistentChat ? workflowName : workflowTabDisplayName(tab, isBlank)}
-                titleOverride={isPersistentChat ? workflowName : undefined}
-                productSurface={isPersistentChat ? (isRelaySurface ? 'relays' : 'agentworks') : undefined}
+                displayName={tab.metadata?.workflowOwnerTabID ? tab.name : isPersistentChat ? workflowName : workflowTabDisplayName(tab, isBlank)}
+                titleOverride={tab.metadata?.workflowOwnerTabID ? tab.name : isPersistentChat ? workflowName : undefined}
+                productSurface={isPersistentChat && (!tab.metadata?.workflowOwnerTabID || tab.metadata.workflowOwnerTabIsMain && tab.metadata.agentProfileTabCanWrite) ? (isRelaySurface ? 'relays' : 'agentworks') : undefined}
+                onRenameTab={tab.metadata?.workflowOwnerTabID && tab.metadata.agentProfileTabCanWrite ? async (tab, name) => { await mutateTab('rename', tab.metadata!.workflowOwnerTabID, name) } : undefined}
                 onTabClick={handleTabClick}
                 onCloseTab={handleCloseTab}
                 closeStopsSession={tab.metadata?.isViewOnly !== true}
@@ -218,6 +248,7 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
             )
           })}
         </div>
+        {binding?.tabs && <button type="button" title="New agent" aria-label="New agent" className="shrink-0 p-2 text-muted-foreground hover:text-foreground" onClick={() => void mutateTab('open', undefined, 'New agent').catch(() => useChatStore.getState().addToast('Could not open a tab. Try again.', 'error'))}><Plus className="h-4 w-4" /></button>}
       </div>
     </div>
     </>

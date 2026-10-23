@@ -73,6 +73,6 @@ export default function WorkflowTeamView({ workspacePath, readOnly }: { workspac
         {canManage && <><p className="text-xs text-muted-foreground">Saving team permissions refreshes Builder access. Existing schedules need review and saving before they run under the new permissions.</p><Button disabled={saving} onClick={save}>{saving ? 'Saving…' : info.team ? 'Save team permissions' : 'Enable team collaboration'}</Button></>}
       </>}
     </section>
-    {!info?.team && <WorkflowSharePopup workspacePath={workspacePath} readOnly={readOnly} />}
+    <WorkflowSharePopup workspacePath={workspacePath} readOnly={readOnly} />
   </div>
 }

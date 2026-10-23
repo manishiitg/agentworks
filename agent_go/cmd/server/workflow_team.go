@@ -402,7 +402,7 @@ func (api *StreamingAPI) handleWorkflowTeam(w http.ResponseWriter, r *http.Reque
 		}
 		actor := teamActor(r.Context())
 		if m.Team != nil {
-			if actor != m.Team.LeaderID && !userAccessForClaims(GetUserFromContext(r.Context())).Admin {
+			if !containsID(m.effectiveOwners(), actor) && !userAccessForClaims(GetUserFromContext(r.Context())).Admin {
 				writeUsersError(w, 403, "only the Leader can manage the team")
 				return
 			}
@@ -455,8 +455,13 @@ func (api *StreamingAPI) handleWorkflowTeam(w http.ResponseWriter, r *http.Reque
 		if m.Access != nil {
 			kb = m.Access.AllowedKBWriters
 		}
+		owners := append([]string{}, m.effectiveOwners()...)
+		if !containsID(owners, body.Team.LeaderID) {
+			owners = append(owners, body.Team.LeaderID)
+		}
+		readers := append([]string{}, m.effectiveReaders()...)
 		m.Team = body.Team
-		m.Access = &WorkflowAccess{Owners: []string{m.Team.LeaderID}, Editors: teamContributorIDs(m.Team), AllowedKBWriters: kb}
+		m.Access = &WorkflowAccess{Owners: owners, Editors: teamContributorIDs(m.Team), Readers: readers, AllowedKBWriters: kb}
 		if e := WriteWorkflowManifest(context.WithValue(context.WithValue(r.Context(), teamLockHeldKey{}, root), teamManifestPermitKey{}, true), root, m); e != nil {
 			writeUsersError(w, 500, e.Error())
 			return
@@ -464,7 +469,7 @@ func (api *StreamingAPI) handleWorkflowTeam(w http.ResponseWriter, r *http.Reque
 		// Invalidate retained native filesystem grants and policy context on reassignment.
 		api.invalidateWorkflowTeamSessions(root)
 	}
-	writeUsersJSON(w, 200, map[string]interface{}{"team": m.Team, "routes": teamRoutes(plan), "my_user_id": teamActor(r.Context()), "plan_revision": teamRevision(raw), "can_manage": userAccessForClaims(GetUserFromContext(r.Context())).CanEdit && (m.Team != nil && (teamActor(r.Context()) == m.Team.LeaderID || userAccessForClaims(GetUserFromContext(r.Context())).Admin) || m.Team == nil && level == WorkflowAccessOwner)})
+	writeUsersJSON(w, 200, map[string]interface{}{"team": m.Team, "routes": teamRoutes(plan), "my_user_id": teamActor(r.Context()), "plan_revision": teamRevision(raw), "can_manage": userAccessForClaims(GetUserFromContext(r.Context())).CanEdit && (m.Team != nil && (containsID(m.effectiveOwners(), teamActor(r.Context())) || userAccessForClaims(GetUserFromContext(r.Context())).Admin) || m.Team == nil && level == WorkflowAccessOwner)})
 }
 func teamContributorIDs(t *WorkflowTeam) []string {
 	out := []string{}
@@ -594,7 +599,7 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 	if e != nil || !ok || m.Team == nil {
 		return fail(fmt.Errorf("workflow team policy changed; retry"))
 	}
-	if actor != m.Team.LeaderID && m.Team.member(actor) == nil {
+	if !containsID(m.effectiveOwners(), actor) && m.Team.member(actor) == nil {
 		return fail(fmt.Errorf("no current team membership"))
 	}
 	if access := userAccessForClaims(&UserClaims{UserID: actor}); access.Disabled || !access.CanEdit || IsMultiUserMode() && !access.Known {
@@ -631,7 +636,7 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 		if err != nil {
 			return fail(err)
 		}
-		if err := teamSourceAuthority(m.Team, actor, plan, rel); err != nil {
+		if err := teamSourceAuthority(m.Team, workflowTeamAuthorityActor(m, actor), plan, rel); err != nil {
 			return fail(err)
 		}
 		return release, nil
@@ -647,7 +652,7 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 		return fail(fmt.Errorf("plan conflict: saved content changed or was not read; reread and reconcile"))
 	}
 	if rel == "planning/plan.json" {
-		if e := validateTeamPlanChange(m.Team, actor, current, content); e != nil {
+		if e := validateTeamPlanChange(m.Team, workflowTeamAuthorityActor(m, actor), current, content); e != nil {
 			return fail(e)
 		}
 	} else {
@@ -662,7 +667,7 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 		if e != nil {
 			return fail(e)
 		}
-		if e := validateTeamStepConfig(m.Team, actor, plan, current, content); e != nil {
+		if e := validateTeamStepConfig(m.Team, workflowTeamAuthorityActor(m, actor), plan, current, content); e != nil {
 			return fail(e)
 		}
 	}
@@ -803,7 +808,7 @@ func validateTeamManifestUpdate(ctx context.Context, prior, next *WorkflowManife
 	if next.UpdatedAt != prior.UpdatedAt {
 		return fmt.Errorf("workflow settings conflict: reload before saving")
 	}
-	if actor == prior.Team.LeaderID {
+	if containsID(prior.effectiveOwners(), actor) {
 		return nil
 	}
 	member := prior.Team.member(actor)
@@ -1081,7 +1086,7 @@ func reauthorizeWorkflowTeamSchedule(ctx context.Context, root string, m *Workfl
 		if current != expectedSchedule {
 			return fmt.Errorf("schedule changed; reread before authorizing")
 		}
-		if err := teamScheduleAuthority(m.Team, actor, m.Schedules[i]); err != nil {
+		if err := teamScheduleAuthority(m.Team, workflowTeamAuthorityActor(m, actor), m.Schedules[i]); err != nil {
 			return err
 		}
 		m.Schedules[i].TeamAuthorizedBy = actor
@@ -1113,7 +1118,7 @@ func validateTeamScheduleFire(ctx context.Context, root string, s WorkflowSchedu
 	if s.TeamPolicyRevision != m.Team.Revision || s.TeamAuthorizedBy == "" {
 		return fmt.Errorf("team schedule authorization changed; the Leader must review and save this schedule")
 	}
-	return teamScheduleAuthority(m.Team, s.TeamAuthorizedBy, s)
+	return teamScheduleAuthority(m.Team, workflowTeamAuthorityActor(m, s.TeamAuthorizedBy), s)
 }
 
 func teamPlanSaved(ctx context.Context, path, content string) {
@@ -1163,7 +1168,7 @@ func teamExternalSourceAuthority(ctx context.Context, root, rel string) error {
 	if a := userAccessForClaims(&UserClaims{UserID: actor}); a.Disabled || !a.CanEdit || IsMultiUserMode() && !a.Known {
 		return fmt.Errorf("account does not allow edits")
 	}
-	if actor != m.Team.LeaderID && m.Team.member(actor) == nil {
+	if !containsID(m.effectiveOwners(), actor) && m.Team.member(actor) == nil {
 		return fmt.Errorf("no current team membership")
 	}
 	raw, _, e := readFileFromWorkspace(ctx, root+"/planning/plan.json")
@@ -1174,7 +1179,7 @@ func teamExternalSourceAuthority(ctx context.Context, root, rel string) error {
 	if e != nil {
 		return e
 	}
-	return teamSourceAuthority(m.Team, actor, plan, rel)
+	return teamSourceAuthority(m.Team, workflowTeamAuthorityActor(m, actor), plan, rel)
 }
 
 func teamEffectiveAssignments(plan map[string]interface{}, t *WorkflowTeam) []WorkflowRouteAssignment {
@@ -1208,10 +1213,10 @@ func workflowTeamInstructions(ctx context.Context, root, user string) string {
 		return ""
 	}
 	role := "Contributor"
-	if user == m.Team.LeaderID {
+	if containsID(m.effectiveOwners(), user) {
 		role = "Leader"
 	}
-	return "## Goal team\n\nYou act for " + role + " " + user + ". Call get_workflow_team for current assignments and plan_revision before proposing a change. Use that revision as expected_plan_revision with native plan/config tools; conflicts require rereading and reconciling. Only an assigned Contributor edits its route's steps; the Leader must explicitly reassign or take back the route first. Source edits use read_team_source then edit_team_source with expected_revision. Raw source writes, moves and deletes cannot bypass this. Only the Leader changes the overall goal and shared settings. Execution, schedule management, Backup, Publish, Notify and named decision approvals are separate grants. Share relevant results with Autopilot through explicit messages; private Builder chat transcripts remain private. Separate Builder chats may run concurrently, but never overwrite a conflicting saved edit."
+	return "## Goal team\n\nYou act for " + role + " " + user + ". Call get_workflow_team for current assignments and plan_revision before proposing a change. Use that revision as expected_plan_revision with native plan/config tools; conflicts require rereading and reconciling. Only an assigned Contributor edits its route's steps; the Leader must explicitly reassign or take back the route first. Source edits use read_team_source then edit_team_source with expected_revision. Raw source writes, moves and deletes cannot bypass this. Only the Leader changes the overall goal and shared settings. Execution, schedule management, Backup, Publish, Notify and named decision approvals are separate grants. Share relevant results with Autopilot through explicit messages; Project owners share registered named Builder tabs and control only their own; earlier private history stays private. Separate Builder chats may run concurrently, but never overwrite a conflicting saved edit."
 }
 
 // Compare executable plan shapes, including the same default/canonical fields
@@ -1238,4 +1243,14 @@ func canonicalTeamPlan(raw string) (map[string]interface{}, error) {
 		original[key] = canonical[key]
 	}
 	return original, nil
+}
+
+// Co-owners have the same project authority as its execution leader. Keep the
+// real actor for audit, cost and chat ownership; only Team permission checks
+// use this projection. Contributor assignments retain their existing rules.
+func workflowTeamAuthorityActor(m *WorkflowManifest, actor string) string {
+	if m != nil && m.Team != nil && containsID(m.effectiveOwners(), actor) {
+		return m.Team.LeaderID
+	}
+	return actor
 }

@@ -133,6 +133,10 @@ func runPulsePlatformOperation(ctx context.Context, args map[string]interface{},
 		}
 		caller.Chat = &codeChat{Key: key, SessionID: sessionID, Name: caller.Label}
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: firstNonEmptyTrimmed(manifest.Title, manifest.ID), CrewID: manifest.ID, CrewProfile: crewProfileID, CrewOwner: crew.OwnerID}
+		target, err = api.resolveAgentChatTarget(ctx, target, externalArg(callArgs, "chat_id"))
+		if err != nil {
+			return "", err
+		}
 		out, err := api.sendAgentMessage(ctx, claims.UserID, caller, target, externalArg(callArgs, "message"), externalArg(callArgs, "inbox_id"), externalArg(callArgs, "submission_id"))
 		if err != nil {
 			return "", err

@@ -55,7 +55,15 @@ func (m *WorkflowManifest) effectiveOwners() []string {
 		return nil
 	}
 	if m.Team != nil {
-		return []string{m.Team.LeaderID}
+		owners := []string{m.Team.LeaderID}
+		if m.Access != nil {
+			for _, id := range m.Access.Owners {
+				if id != "" && !containsID(owners, id) {
+					owners = append(owners, id)
+				}
+			}
+		}
+		return owners
 	}
 	if m.Access != nil && len(m.Access.Owners) > 0 {
 		return m.Access.Owners
@@ -180,12 +188,12 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 			return WorkflowAccessOwner
 		}
 		if !userAccessForClaims(claims).CanEdit {
-			if claims.UserID == m.Team.LeaderID || m.Team.member(claims.UserID) != nil {
+			if containsID(m.effectiveOwners(), claims.UserID) || m.Team.member(claims.UserID) != nil {
 				return WorkflowAccessRead
 			}
 			return WorkflowAccessNone
 		}
-		if claims.UserID == m.Team.LeaderID {
+		if containsID(m.effectiveOwners(), claims.UserID) {
 			return WorkflowAccessOwner
 		}
 		if m.Team.member(claims.UserID) != nil {
@@ -442,11 +450,6 @@ func (api *StreamingAPI) handleSetWorkflowAccess(w http.ResponseWriter, r *http.
 		writeUsersError(w, http.StatusNotFound, "no workflow at that path")
 		return
 	}
-	// A Flow has one owner and is shared by sharing its dashboard (PLAT-750).
-	if manifest.Kind == "relay" {
-		writeUsersError(w, http.StatusConflict, "Share this Flow from its dashboard: open the dashboard and press Share.")
-		return
-	}
 	// Only owners share a claimed workflow. Account-tier writers may still
 	// share a legacy manifest with no ownership record — that save is what
 	// claims it and ends the legacy openness.
@@ -539,8 +542,8 @@ func (api *StreamingAPI) handleSetWorkflowAccess(w http.ResponseWriter, r *http.
 			filtered = append(filtered, id)
 		}
 	}
-	if manifest.Team != nil {
-		writeUsersError(w, http.StatusConflict, "use team settings to manage the single Leader and Contributors")
+	if manifest.Team != nil && !containsID(owners, manifest.Team.LeaderID) {
+		writeUsersError(w, http.StatusBadRequest, "Keep the Goal's execution owner in its owner list.")
 		return
 	}
 	manifest.Access = &WorkflowAccess{Owners: owners, Editors: keptEditors, Readers: filtered}

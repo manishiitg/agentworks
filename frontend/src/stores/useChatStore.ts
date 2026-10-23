@@ -481,6 +481,8 @@ export interface ChatTab {
     // Singleton products omit it; keyed products use a project/resource id.
     agentProfileConversationKey?: string
     // Project main is a role pointer; the physical conversation key stays fixed.
+    workflowOwnerTabID?: string
+    workflowOwnerTabIsMain?: boolean
     agentProfileTabOwnerID?: string
     agentProfileTabOwnerName?: string
     agentProfileTabCanWrite?: boolean

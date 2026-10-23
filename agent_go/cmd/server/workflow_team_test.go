@@ -178,7 +178,7 @@ func TestWorkflowTeamNativeEditsRejectOtherEditorsAndStaleRevisions(t *testing.T
 	if !f.hasHistory("edit_team_source", "first") {
 		t.Fatal("source edit lost its authenticated change history")
 	}
-	if f.api.workflowBuilderHeldByOther("second-chat", "second", QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: teamTestRoot}) != "" || !workflowTeamAllowsConcurrent(teamTestRoot) {
+	if !workflowTeamAllowsConcurrent(teamTestRoot) {
 		t.Fatal("team Builder still reserves whole workflow")
 	}
 	m, _, _ := ReadWorkflowManifest(context.Background(), teamTestRoot)

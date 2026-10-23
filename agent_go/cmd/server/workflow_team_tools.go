@@ -53,7 +53,7 @@ func (r workflowTeamRegistrar) RegisterCustomToolWithTimeout(n, d string, p map[
 				ctx = workspacepkg.WithSystemManagedWritePaths(ctx, r.root+"/variables/variables.json")
 			}
 			member := m.Team.member(r.user)
-			if r.user != m.Team.LeaderID {
+			if !containsID(m.effectiveOwners(), r.user) {
 				if teamRunTool(n) {
 					if member == nil || !member.Run {
 						return "", fmt.Errorf("route run permission is required")

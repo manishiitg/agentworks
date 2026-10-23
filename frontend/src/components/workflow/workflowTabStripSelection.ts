@@ -19,8 +19,9 @@ export function selectWorkflowTabsForStrip(
   const scopedCandidates = activePresetId
     ? candidates.filter(tab => !tab.metadata?.presetQueryId || tab.metadata.presetQueryId === activePresetId)
     : candidates
+  const named = scopedCandidates.filter(tab => !!tab.metadata?.workflowOwnerTabID)
   const interactive = scopedCandidates
-    .filter(tab => tab.metadata?.isViewOnly !== true && tab.metadata?.phaseId === 'workflow-builder')
+    .filter(tab => !tab.metadata?.workflowOwnerTabID && tab.metadata?.isViewOnly !== true && tab.metadata?.phaseId === 'workflow-builder')
     .sort((a, b) => {
       // The active Chat always wins, blank or not. New chat leaves the active
       // tab blank on purpose; preferring a hidden non-blank duplicate here made
@@ -37,7 +38,7 @@ export function selectWorkflowTabsForStrip(
     .filter(tab => tab.metadata?.isViewOnly === true)
     .sort((a, b) => a.createdAt - b.createdAt)
 
-  return [interactive, ...runTabs]
+  return [...named, ...(named.length ? [] : [interactive]), ...runTabs]
     .filter((tab): tab is ChatTab => Boolean(tab))
     .filter((tab, index, tabs) => tabs.findIndex(item => item.tabId === tab.tabId) === index)
 }

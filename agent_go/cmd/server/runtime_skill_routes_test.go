@@ -65,7 +65,10 @@ func TestRuntimeSkillsUseCurrentBuilderFilesAndKeepAccessBoundaries(t *testing.T
 			t.Fatal("old runtime substituted", w.Body.String())
 		}
 	}
-	workspace.files[workflowBuilderBindingPath("alice", "wf")] = `{"session_id":"current","user_id":"alice"}`
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice"})
+	if _, err := api.createGoalOwnerTab(ctx, workflowBuilderScope{PresetID: "wf", Workspace: "Workflow/demo"}, "Builder", true, "current"); err != nil {
+		t.Fatal(err)
+	}
 	w := call("alice", "")
 	var got runtimeSkillsResponse
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || !got.Prepared || got.SessionID != "current" || len(got.Skills) != 1 || got.Skills[0].FolderName != "current" {
@@ -103,8 +106,10 @@ func TestRuntimeSkillsUseCurrentBuilderFilesAndKeepAccessBoundaries(t *testing.T
 	if w := call("alice", "&file=../../workflow.json"); w.Code != 400 {
 		t.Fatal("non-skill file admitted", w.Code, w.Body.String())
 	}
-	workspace.files[workflowBuilderBindingPath("alice", "wf")] = `{"session_id":"new-unprepared","user_id":"alice"}`
-	if w := call("alice", ""); w.Code != 200 {
+	if _, err := api.createGoalOwnerTab(ctx, workflowBuilderScope{PresetID: "wf", Workspace: "Workflow/demo"}, "Fresh", false, "new-unprepared"); err != nil {
+		t.Fatal(err)
+	}
+	if w := call("alice", "&session_id=new-unprepared"); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	} else {
 		var own runtimeSkillsResponse

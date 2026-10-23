@@ -93,6 +93,9 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return fmt.Errorf("message participant account is disabled")
 		}
 		if e.Kind == triggerCallerWorkflow {
+			if strings.Contains(e.ChatKey, codeChatSideMarker) && !api.authorizeGoalMessageTab(context.WithValue(ctx, UserContextKey, claims), e) {
+				return fmt.Errorf("project chat was closed or ownership changed")
+			}
 			manifest, found, err := ReadWorkflowManifest(ctx, e.Path)
 			if err != nil || !found || manifest == nil || manifest.ID != e.ID {
 				return fmt.Errorf("message workflow is unavailable or was replaced")

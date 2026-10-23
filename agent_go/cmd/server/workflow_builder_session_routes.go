@@ -38,6 +38,7 @@ func externalRunSessionID(sessionID string) bool {
 const externalRunSessionMarker = "run-"
 
 type workflowBuilderSessionResponse struct {
+	Tabs               []goalOwnerTab                    `json:"tabs,omitempty"`
 	IsBuilder          bool                              `json:"is_builder"`
 	Sessions           map[string]workflowSidebarSession `json:"sessions,omitempty"`
 	Revision           uint64                            `json:"revision,omitempty"`
@@ -159,31 +160,36 @@ func (api *StreamingAPI) handleGetWorkflowBuilderSession(w http.ResponseWriter, 
 		return
 	}
 
-	if live := api.findLiveWorkflowBuilderSession(r.Context(), presetQueryID, workspacePath); live != nil {
-		_ = json.NewEncoder(w).Encode(live)
+	scope, status := authorizeWorkflowBuilderScope(r.Context(), workflowBuilderScope{PresetID: presetQueryID, Workspace: workspacePath}, true)
+	if status != 0 {
+		http.Error(w, "Builder access required", status)
 		return
 	}
-
-	restored, err := api.restoreLatestBuilderConversation(r.Context(), presetQueryID, workspacePath)
+	summary, err := api.goalOwnerTabSummary(r.Context(), scope, false)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to restore builder conversation: %v", err), http.StatusInternalServerError)
+		http.Error(w, "Could not open Builder", 503)
 		return
 	}
-	if restored != nil {
-		_ = json.NewEncoder(w).Encode(restored)
+	wanted := firstNonEmptyTrimmed(r.URL.Query().Get("session_id"), summary.SessionID)
+	for _, tab := range summary.Tabs {
+		if tab.SessionID != wanted && tab.ID != wanted {
+			continue
+		}
+		summary.SessionID = tab.SessionID
+		summary.Events, summary.ConversationPath, summary.Revision, err = api.goalTabEvents(r.Context(), tab, scope.Workspace)
+		if err != nil {
+			http.Error(w, "Could not read this chat", 503)
+			return
+		}
+		summary.Total = len(summary.Events)
+		summary.LastProcessedIndex = len(summary.Events) - 1
+		if len(summary.Events) > 0 && summary.Source == "none" {
+			summary.Source = "workspace"
+		}
+		_ = json.NewEncoder(w).Encode(summary)
 		return
 	}
-
-	_ = json.NewEncoder(w).Encode(workflowBuilderSessionResponse{
-		Success:            true,
-		Source:             "none",
-		Status:             "idle",
-		PresetQueryID:      presetQueryID,
-		WorkspacePath:      workspacePath,
-		WorkflowName:       workflowNameFromWorkspacePath(workspacePath),
-		Events:             []json.RawMessage{},
-		LastProcessedIndex: -1,
-	})
+	http.Error(w, "Chat unavailable", 404)
 }
 
 func (api *StreamingAPI) findLiveWorkflowBuilderSession(ctx context.Context, presetQueryID, workspacePath string) *workflowBuilderSessionResponse {

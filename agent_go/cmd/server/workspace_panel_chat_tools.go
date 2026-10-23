@@ -49,12 +49,7 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 		props := schema["properties"].(map[string]any)
 		delete(props, "workflow_id")
 		delete(props, "crew_id")
-		if product == "relays" && name == "manage_project" {
-			props["action"] = map[string]any{"type": "string", "enum": []string{"rename", "duplicate", "delete"}}
-			delete(props, "owners")
-			delete(props, "editors")
-			delete(props, "readers")
-		}
+
 		if required, ok := schema["required"].([]any); ok {
 			kept := []any{}
 			for _, field := range required {
@@ -116,12 +111,7 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 				}
 				clean["workflow_id"] = manifest.ID
 			}
-			if product == "relays" && name == "manage_project" {
-				action := externalArg(clean, "action")
-				if action != "rename" && action != "duplicate" && action != "delete" {
-					return "", errors.New("Use dashboard Share for this Flow: Only me, Chosen people or Everyone. Owner/editor member lists are not supported.")
-				}
-			}
+
 			data, err := json.Marshal(map[string]any{"name": name, "arguments": clean})
 			if err != nil {
 				return "", err

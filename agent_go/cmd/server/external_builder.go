@@ -254,6 +254,25 @@ func externalPersistedBuilderMatches(raw []byte, userID, workspacePath, sessionI
 
 func (api *StreamingAPI) externalBuilderSession(r *http.Request, workspacePath, sessionID string) (*ActiveSessionInfo, bool, error) {
 	userID := strings.TrimSpace(GetUserIDFromContext(r.Context()))
+	access, m := workflowAccessForWorkspacePath(r.Context(), GetUserFromContext(r.Context()), workspacePath)
+	if m != nil && (access == WorkflowAccessOwner || access == WorkflowAccessWrite) {
+		tabs, err := api.goalOwnerTabs(r.Context(), workflowBuilderScope{PresetID: m.ID, Workspace: workspacePath})
+		if err != nil {
+			return nil, false, err
+		}
+		for _, tab := range tabs {
+			if tab.SessionID == sessionID {
+				if !tab.CanWrite {
+					return nil, false, fmt.Errorf("another person controls this tab")
+				}
+				if active, ok := api.getActiveSession(sessionID); ok {
+					return active, false, nil
+				}
+				return nil, true, nil
+			}
+		}
+	}
+
 	if active, ok := api.getActiveSession(sessionID); ok {
 		if externalActiveBuilderMatches(active, userID, workspacePath) {
 			return active, false, nil

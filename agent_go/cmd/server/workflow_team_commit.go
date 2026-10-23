@@ -131,7 +131,7 @@ func commitTeamEditWithFiles(ctx context.Context, result string,
 		if claims == nil || claims.UserID != actor {
 			return fmt.Errorf("workflow Builder identity changed; reopen this workflow chat")
 		}
-		if actor == "" || !workflowSkillsAuthoringAllowed(claims, &current) || current.Team != nil && current.Team.LeaderID != actor {
+		if actor == "" || !workflowSkillsAuthoringAllowed(claims, &current) || current.Team != nil && !containsID(current.effectiveOwners(), actor) {
 			return fmt.Errorf("ask the current workflow Builder to migrate its guides")
 		}
 		access := userAccessForClaims(&UserClaims{UserID: actor})
@@ -236,7 +236,7 @@ func validateTeamQuery(ctx context.Context, req QueryRequest) error {
 		return nil
 	}
 	actor := teamActor(ctx)
-	if actor == m.Team.LeaderID {
+	if containsID(m.effectiveOwners(), actor) {
 		return nil
 	}
 	if req.AgentMode == "workflow" || req.AgentMode == "workflow_phase" && req.PhaseID != "workflow-builder" {
@@ -281,7 +281,7 @@ func authorizeTeamScheduleTrigger(ctx context.Context, root, id string) error {
 		return nil
 	}
 	actor := teamActor(ctx)
-	if actor == m.Team.LeaderID {
+	if containsID(m.effectiveOwners(), actor) {
 		return nil
 	}
 	member := m.Team.member(actor)
@@ -326,7 +326,7 @@ func authorizeTeamAction(ctx context.Context, root, action string) error {
 	if access.Disabled || !access.CanEdit || IsMultiUserMode() && !access.Known {
 		return fmt.Errorf("account cannot perform this action")
 	}
-	if actor == m.Team.LeaderID {
+	if containsID(m.effectiveOwners(), actor) {
 		return nil
 	}
 	member := m.Team.member(actor)

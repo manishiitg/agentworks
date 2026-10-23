@@ -2,15 +2,11 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type workflowSidebarSession struct {
@@ -20,31 +16,8 @@ type workflowSidebarSession struct {
 	live      bool
 }
 
-// This is a pointer, not a second conversation store. Old transcripts keep
-// their existing paths, permissions and history entries.
-type workflowBuilderBinding struct {
-	SessionID string `json:"session_id"`
-	UserID    string `json:"user_id"`
-	UpdatedAt string `json:"updated_at"`
-}
-
-func workflowBuilderBindingPath(user, manifestID string) string {
-	// Keep the server-owned pointer outside the native Builder's workflow root.
-	return chatHistoryRoot(user) + fmt.Sprintf("/workflow-builders/%x.json", sha256.Sum256([]byte(manifestID)))
-}
-
-// This pool must be separate from history index locks: discovery reads the
-// index while holding the pointer lock, and the two paths can hash identically.
-var workflowBuilderPointerLocks [64]sync.Mutex
-
-func workflowBuilderPointerMutex(path string) *sync.Mutex {
-	key := sha256.Sum256([]byte(path))
-	return &workflowBuilderPointerLocks[int(key[0])%len(workflowBuilderPointerLocks)]
-}
-
 func workflowBuilderHistoryKind(id, mode, bot, origin string) string {
-	// Interactive and MCP Builder conversations are candidates for the one
-	// Builder. Automated provenance, including Pulse without a scheduler ID,
+	// Interactive and MCP Builder conversations can become owner tabs. Automated provenance, including Pulse without a scheduler ID,
 	// stays a run; explicit Run mode and channel identities still win below.
 	if origin != "" && origin != "interactive" && origin != "notification" && origin != "external_builder" {
 		return "run"
@@ -103,71 +76,7 @@ func (api *StreamingAPI) workflowBuilderSidebarSessions(ctx context.Context, wor
 }
 
 func (api *StreamingAPI) resolveWorkflowBuilderBinding(ctx context.Context, presetID, workspace string, fresh bool) (*workflowBuilderSessionResponse, error) {
-	user := GetUserIDFromContext(ctx)
-	path := workflowBuilderBindingPath(user, presetID)
-	lock := workflowBuilderPointerMutex(path)
-	lock.Lock()
-	defer lock.Unlock()
-	roles, err := api.workflowBuilderSidebarSessions(ctx, workspace)
-	if err != nil {
-		return nil, err
-	}
-	content, exists, err := readFileFromWorkspace(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-	var binding workflowBuilderBinding
-	if exists && (json.Unmarshal([]byte(content), &binding) != nil || binding.UserID != user || binding.SessionID == "") {
-		return nil, fmt.Errorf("invalid Builder binding")
-	}
-	if fresh || !exists {
-		binding = workflowBuilderBinding{UserID: user, UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
-		if !fresh {
-			var chosen workflowSidebarSession
-			for id, role := range roles {
-				if role.Kind != "history" {
-					continue
-				}
-				if binding.SessionID == "" || (role.live && !chosen.live) || (role.live == chosen.live && (role.updated.After(chosen.updated) || (role.updated.Equal(chosen.updated) && id > binding.SessionID))) {
-					binding.SessionID, chosen = id, role
-				}
-			}
-		}
-		if fresh {
-			binding.SessionID = uuid.NewString()
-		}
-		if fresh {
-			data, err := json.Marshal(binding)
-			if err != nil {
-				return nil, err
-			}
-			if err := writeFileToWorkspace(ctx, path, string(data)); err != nil {
-				return nil, err
-			}
-		}
-	}
-	response := &workflowBuilderSessionResponse{Success: true, IsBuilder: binding.SessionID != "", Source: "none", SessionID: binding.SessionID,
-		PhaseID: "workflow-builder", Status: "completed", PresetQueryID: presetID, WorkspacePath: workspace,
-		WorkflowName: workflowNameFromWorkspacePath(workspace), UpdatedAt: binding.UpdatedAt,
-		Events: []json.RawMessage{}, LastProcessedIndex: -1, Sessions: roles}
-	role, knownConversation := roles[binding.SessionID]
-	// Pointer creation/lookup is not conversation activity. Expose the saved
-	// transcript or live session timestamp separately for sidebar recency.
-	if !role.updated.IsZero() {
-		response.ActivityUpdatedAt = role.updated.UTC().Format(time.RFC3339Nano)
-	}
-	if binding.SessionID != "" {
-		roles[binding.SessionID] = workflowSidebarSession{IsBuilder: true, Kind: "builder"}
-	}
-	api.activeSessionsMux.RLock()
-	if current := api.activeSessions[binding.SessionID]; current != nil && current.UserID == user {
-		response.Source = "live"
-		response.Status = current.Status
-	} else if knownConversation {
-		response.Source = "workspace"
-	}
-	api.activeSessionsMux.RUnlock()
-	return response, nil
+	return api.goalOwnerTabSummary(ctx, workflowBuilderScope{PresetID: presetID, Workspace: workspace}, fresh)
 }
 
 func (api *StreamingAPI) currentWorkflowBuilderSummary(ctx context.Context, presetID, workspace string) (*workflowBuilderSessionResponse, error) {
@@ -249,37 +158,30 @@ func (api *StreamingAPI) handleWorkflowBuilderBindings(w http.ResponseWriter, r 
 	_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "bindings": bindings})
 }
 
-// Called only after query ownership, workflow access and the single-Builder
-// busy guard have admitted a real interactive send. Notifications/runs never
-// reclaim the pointer from a newer New chat.
+// Register only an admitted interactive Builder session. Automated runs and
+// notifications never become owner-controlled tabs.
 func recordWorkflowBuilderSend(ctx context.Context, scope workflowBuilderScope, session string) error {
 	scope, status := authorizeWorkflowBuilderScope(ctx, scope, true)
 	if status != 0 {
 		return fmt.Errorf("Builder binding access denied")
 	}
 	user := GetUserIDFromContext(ctx)
-	path := workflowBuilderBindingPath(user, scope.PresetID)
-	lock := workflowBuilderPointerMutex(path)
-	lock.Lock()
-	defer lock.Unlock()
-	content, exists, err := readFileFromWorkspace(ctx, path)
+	store := defaultProductConversationRegistryStore()
+	tabs, err := store.projectChats(ctx, user, goalChatProfile, scope.PresetID)
 	if err != nil {
 		return err
 	}
-	var previous workflowBuilderBinding
-	if exists {
-		if json.Unmarshal([]byte(content), &previous) != nil || previous.UserID != user {
-			return fmt.Errorf("invalid Builder binding")
-		}
-		if previous.SessionID == session {
+	main := true
+	for _, tab := range tabs {
+		if tab.WorkspacePath == scope.Workspace && tab.SessionID == session {
 			return nil
 		}
+		if tab.ConversationKey == crewOwnerDefaultChatKey(scope.PresetID, user) {
+			main = false
+		}
 	}
-	data, err := json.Marshal(workflowBuilderBinding{UserID: user, SessionID: session, UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano)})
-	if err != nil {
-		return err
-	}
-	return writeFileToWorkspace(ctx, path, string(data))
+	_, err = storeGoalOwnerTab(ctx, scope, "Builder", main, session)
+	return err
 }
 
 func (api *StreamingAPI) handleNewWorkflowBuilderSession(w http.ResponseWriter, r *http.Request) {

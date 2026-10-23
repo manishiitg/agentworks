@@ -117,6 +117,9 @@ func crewConversationTabAccess(ctx context.Context, caller string, profile agent
 // Session views use the same owner roster as the tab list, including after a
 // restart. Only actual Builder tabs qualify; unrelated private chats stay out.
 func (api *StreamingAPI) crewSessionTabView(r *http.Request, session string) bool {
+	if tab, _, ok := api.goalTabForSession(r.Context(), session); ok {
+		return !tab.CanWrite
+	}
 	caller := GetUserIDFromContext(r.Context())
 	owner := ""
 	if active, ok := api.getActiveSession(session); ok {
@@ -152,6 +155,9 @@ func (api *StreamingAPI) crewSessionTabView(r *http.Request, session string) boo
 }
 
 func (api *StreamingAPI) crewSessionCanControl(r *http.Request, session string) bool {
+	if tab, _, ok := api.goalTabForSession(r.Context(), session); ok {
+		return tab.CanWrite
+	}
 	if active, ok := api.getActiveSession(session); ok && isCrewProjectPath(active.WorkspacePath) {
 		return active.UserID == GetUserIDFromContext(r.Context())
 	}

@@ -1,4 +1,4 @@
-import { ensureWorkflowBuilderTab } from '../../utils/ensureWorkflowBuilderTab'
+import { hydrateWorkflowOwnerTabs, ensureWorkflowBuilderTab } from '../../utils/ensureWorkflowBuilderTab'
 import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { useWorkflowFilesViewSync } from './hooks/useWorkflowFilesViewSync'
 import { currentWorkflowBuilderBinding, publishWorkflowBuilderBinding, useWorkflowBuilderBindings, workflowBuilderMutation } from '../../hooks/useWorkflowBuilderBindings'
@@ -1329,11 +1329,11 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       if (cancelled || !isChatIdentityCurrent(bindingIdentity)) return
       const serverBuilder = bindingMutation === workflowBuilderMutation()
         ? builderResponse?.bindings[activePresetId] || currentWorkflowBuilderBinding(activePresetId) : currentWorkflowBuilderBinding(activePresetId)
-      if (serverBuilder) publishWorkflowBuilderBinding(serverBuilder, bindingIdentity)
+      if (serverBuilder) { publishWorkflowBuilderBinding(serverBuilder, bindingIdentity); await hydrateWorkflowOwnerTabs(serverBuilder) }
       const returningStore = useChatStore.getState()
       const returningTab = returningStore.activeTabId ? returningStore.chatTabs[returningStore.activeTabId] : undefined
       if (isRecentWorkspaceReturnTab(returningTab, activePresetId) &&
-          (returningTab.metadata?.isViewOnly || returningTab.sessionId === serverBuilder?.session_id)) {
+          (returningTab.metadata?.isViewOnly || serverBuilder?.tabs?.some(tab => tab.session_id === returningTab.sessionId) || returningTab.sessionId === serverBuilder?.session_id)) {
         resolvedWorkflowConversationKeyRef.current = reconnectKey
         setResolvedWorkflowConversationKey(reconnectKey)
         return
@@ -1621,7 +1621,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         })
         const newSessions = sessionsToRestore.filter(s => !existingTabsBySession.has(s.sessionId))
         const existingWorkflowTabs = getExistingWorkflowTabsForPreset().filter(tab =>
-          tab.sessionId === serverBuilder?.session_id || tab.metadata?.isViewOnly || serverBuilder?.sessions?.[tab.sessionId || '']?.kind === 'run')
+          tab.metadata?.workflowOwnerTabID || tab.sessionId === serverBuilder?.session_id || tab.metadata?.isViewOnly || serverBuilder?.sessions?.[tab.sessionId || '']?.kind === 'run')
         const chatStoreForViewMode = useChatStore.getState()
         const activeWorkflowViewMode = normalizeEventViewMode(
           (chatStoreForViewMode.activeTabId ? chatStoreForViewMode.chatTabs[chatStoreForViewMode.activeTabId]?.viewMode : undefined) ||
@@ -1806,7 +1806,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
           const selected = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
           const canonical = Object.values(state.chatTabs).find(tab => tab.sessionId === serverBuilder.session_id &&
             tab.metadata?.presetQueryId === activePresetId && !tab.metadata?.isViewOnly)
-          if (canonical && !selected?.metadata?.isViewOnly) {
+          if (canonical && !selected?.metadata?.isViewOnly && !(selected?.metadata?.workflowOwnerTabID && selected.metadata.presetQueryId === activePresetId)) {
             activateTab(canonical.tabId)
             setShowChatArea(true)
             return
@@ -1817,7 +1817,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         // Explicitly opened runs keep their existing panels and permissions.
         const selected = useChatStore.getState().activeTabId
         const selectedTab = selected ? useChatStore.getState().chatTabs[selected] : undefined
-        if (selectedTab?.metadata?.presetQueryId === activePresetId && selectedTab.metadata.isViewOnly) {
+        if (selectedTab?.metadata?.presetQueryId === activePresetId && (selectedTab.metadata.isViewOnly || selectedTab.metadata.workflowOwnerTabID)) {
           setShowChatArea(true)
         } else if (serverBuilder) {
           const tabId = await ensureWorkflowBuilderTab(activePresetId)

@@ -201,7 +201,6 @@ export interface AgentQueryResponse {
   // Populated when status === 'live_input_delivered' or 'accepted'.
   delivery_status?: 'sent_to_cli' | 'queued_for_injection' | 'queued_for_turn' | 'next_turn_started'
   /** Set when someone else was using the Builder on this workflow, so this turn ran in Run mode (PLAT-766). */
-  builder_held_by?: string
   /** Attached workflows or projects left out of this turn because the sender cannot open them. */
   omitted_context?: number
   provider?: string
@@ -1436,7 +1435,13 @@ export interface GetSessionEventsResponse {
   offset: number;
 }
 
+export interface WorkflowOwnerTab {
+  id: string; name: string; owner_id: string; owner_name: string; session_id: string;
+  is_main: boolean; can_write: boolean; working: boolean; updated_at?: string;
+}
+
 export interface WorkflowBuilderSessionResponse {
+  tabs?: WorkflowOwnerTab[];
   is_builder?: boolean;
   sessions?: Record<string, { is_builder: boolean; kind: 'builder' | 'history' | 'run' }>;
   success: boolean;

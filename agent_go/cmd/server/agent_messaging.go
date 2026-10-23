@@ -270,6 +270,9 @@ func targetMessageEndpoint(userID string, t triggerTarget) agentMessageEndpoint 
 	if t.Kind == triggerCallerCrew {
 		e.UserID = t.ownerOr(userID)
 	}
+	if t.Kind == triggerCallerWorkflow && t.Chat != nil && t.Chat.OwnerID != "" {
+		e.UserID = t.Chat.OwnerID
+	}
 	if t.Kind == triggerCallerWorkflow && t.TeamRecipientID != "" {
 		e.UserID = t.TeamRecipientID
 	}
@@ -323,6 +326,13 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 // sendAgentMessage creates an address for a contact, or sends in a previously
 // authorized conversation. Only the two exact endpoints can use that address.
 func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, message, inboxID, submissionID string, files ...*agentMessageFile) (map[string]interface{}, error) {
+	if inboxID == "" {
+		var err error
+		target, err = api.resolveAgentChatTarget(ctx, target, "")
+		if err != nil {
+			return nil, err
+		}
+	}
 	message = strings.TrimSpace(message)
 	var file *agentMessageFile
 	if len(files) > 0 {
@@ -1022,8 +1032,14 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		if err != nil || !exists || manifest == nil || manifest.ID != dest.ID {
 			return session, fmt.Errorf("workflow unavailable")
 		}
+		if strings.Contains(dest.ChatKey, codeChatSideMarker) {
+			view := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: dest.UserID})
+			if !api.authorizeGoalMessageTab(view, dest) {
+				return session, fmt.Errorf("receiving chat is unavailable or ownership changed")
+			}
+		}
 		access := workflowAccessForManifest(GetUserFromContext(ctx), manifest)
-		builder := strings.HasPrefix(dest.ChatKey, "session:")
+		builder := strings.HasPrefix(dest.ChatKey, "session:") || strings.Contains(dest.ChatKey, codeChatSideMarker)
 		if access != WorkflowAccessOwner && access != WorkflowAccessWrite && (builder || access != WorkflowAccessRead) {
 			return session, fmt.Errorf("workflow unavailable or access denied")
 		}
@@ -1194,7 +1210,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. Replies are optional; final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"target": map[string]interface{}{"type": "string"}, "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		{"send_message", "Send an explicit conversational message to an authorized agent, or to an existing inbox/reply address. Replies are optional; final chat text is not forwarded. No function call is created.", map[string]interface{}{"type": "object", "required": []string{"message"}, "properties": map[string]interface{}{"target": map[string]interface{}{"type": "string"}, "chat_id": externalString("Optional registered chat id from list_agents; omitted Crew chat means its main Builder."), "inbox_id": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"}, "submission_id": map[string]interface{}{"type": "string"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			ctx = internalBotRequestContext(ctx, userID)
 			caller, err := callerFor(ctx)
 			if err != nil {
@@ -1209,6 +1225,12 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				} else {
 					target, err = resolveFunctionTarget(ctx, GetUserFromContext(ctx), caller, raw)
 				}
+				if err != nil {
+					return "", err
+				}
+			}
+			if id == "" {
+				target, err = api.resolveAgentChatTarget(ctx, target, stringToolArg(args, "chat_id"))
 				if err != nil {
 					return "", err
 				}
