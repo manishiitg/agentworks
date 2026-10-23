@@ -182,12 +182,12 @@ func (api *StreamingAPI) externalMailboxAck(w http.ResponseWriter, r *http.Reque
 			}
 			if m.DeliveredAt.IsZero() {
 				m.LiveTransport = "mailbox"
-			}
-			m.Delivery = delivery
-			stampReceipt(m, delivery, time.Now().UTC())
-			if err := saveAgentMessageStore(r.Context(), s); err != nil {
-				externalFailure(w, err)
-				return
+				m.Delivery = delivery
+				stampReceipt(m, delivery, time.Now().UTC())
+				if err := saveAgentMessageStore(r.Context(), s); err != nil {
+					externalFailure(w, err)
+					return
+				}
 			}
 			externalJSON(w, map[string]any{"agent_name": a.Name, "message_id": m.ID, "status": delivery, "delivery_mode": "inbox", "message": "Your acknowledgement was saved. No live chat was attached."})
 			return

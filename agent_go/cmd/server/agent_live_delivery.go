@@ -73,7 +73,7 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if externalArg(args, "action") == "validate" {
-		api.validateAgentOffers(w, r, args)
+		api.validateAgentInboxMessages(w, r, args)
 		return
 	}
 	api.externalAgentAttachment(w, r, args)
@@ -212,6 +212,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	}
 	a := &s.Agents[index]
 	ackDelivery, previousAttachment := "", ""
+	receiptUnchanged := false
 	switch externalArg(args, "action") {
 	case "attach":
 		provider, session, purpose := externalArg(args, "provider"), externalArg(args, "native_session_id"), strings.TrimSpace(externalArg(args, "purpose"))
@@ -314,11 +315,6 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 					externalError(w, 409, "receipt_refused", "The sender is no longer allowed to message this account.")
 					return
 				}
-				m.Delivery = delivery
-				stampReceipt(m, delivery, time.Now().UTC())
-				m.LiveAttachment = a.Attachment.ID
-				m.LiveTransport = transport
-				m.LiveSession = a.Attachment.SessionID
 				providerForTransport := map[string]string{"claude_session": "claude", "claude_channel": "claude", "claude_hook": "claude", "codex_queue": "codex", "codex_desktop": "codex", "codex_hook": "codex", "cursor_hook": "cursor", "muse_session": "muse", "muse_hook": "muse", "agy_hook": "agy", "pi_hook": "pi", "pi_extension": "pi"}
 				if providerForTransport[transport] != "" && a.Attachment.Provider != providerForTransport[transport] {
 					externalError(w, 400, "invalid_arguments", "Receipt transport does not match the attached provider.")
@@ -326,6 +322,14 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				}
 				found = true
 				ackDelivery = delivery
+				receiptUnchanged = !m.DeliveredAt.IsZero()
+				if !receiptUnchanged {
+					m.Delivery = delivery
+					stampReceipt(m, delivery, time.Now().UTC())
+					m.LiveAttachment = a.Attachment.ID
+					m.LiveTransport = transport
+					m.LiveSession = a.Attachment.SessionID
+				}
 			}
 		}
 		if !found {
@@ -333,9 +337,11 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			return
 		}
 	}
-	if err = saveAgentMessageStore(r.Context(), s); err != nil {
-		externalCommunicationError(w, 400, "attachment_refused", err)
-		return
+	if !receiptUnchanged {
+		if err = saveAgentMessageStore(r.Context(), s); err != nil {
+			externalCommunicationError(w, 400, "attachment_refused", err)
+			return
+		}
 	}
 	out := map[string]any{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(*a), "purpose": a.Purpose, "status": externalArg(args, "action") + "ed"}
 	if externalArg(args, "action") == "attach" {
@@ -347,7 +353,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	if externalArg(args, "action") == "ack" {
 		out["delivery"] = ackDelivery
 		out["message_id"] = externalArg(args, "message_id")
-		log.Printf("[AGENT-MESSAGE-ACK] message=%s agent=%s attachment=%s delivery=%s transport=%s", externalArg(args, "message_id"), a.Name, a.Attachment.ID, ackDelivery, externalArg(args, "transport"))
+		log.Printf("[AGENT-MESSAGE-ACK] message=%s agent=%s attachment=%s delivery=%s transport=%s repeated=%t", externalArg(args, "message_id"), a.Name, a.Attachment.ID, ackDelivery, externalArg(args, "transport"), receiptUnchanged)
 	}
 	if a.Attachment != nil {
 		out["attachment_id"] = a.Attachment.ID
@@ -513,9 +519,6 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 				_ = write(map[string]any{"type": "closed"})
 				return
 			}
-			if e = recordAgentMessageOffer(r.Context(), a.ID, id, m.ID); e != nil {
-				return
-			}
 			log.Printf("[AGENT-STREAM] offered message=%s attachment=%s", m.ID, id)
 			frame := map[string]any{"type": "message", "attachment_id": id, "message_id": m.ID, "inbox_id": c.ID, "sender": endpointDisplayLabel(source, dest.UserID), "sender_id": source.NamedAgentID, "message": m.Text, "sequence": m.AgentSequence, "delivery": m.Delivery, "sent_at": m.SentAt}
 			offered := m
@@ -547,41 +550,9 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// Offering bytes is not an admission receipt. The receiving agent must
-// explicitly acknowledge them; the lease prevents another session claiming it.
-func recordAgentMessageOffer(ctx context.Context, agentID, attachmentID, messageID string) error {
-	agentMessageMu.Lock()
-	defer agentMessageMu.Unlock()
-	s, err := readAgentMessageStore(ctx)
-	if err != nil {
-		return err
-	}
-	current := false
-	for _, a := range s.Agents {
-		if a.ID == agentID && a.Attachment != nil && a.Attachment.ID == attachmentID {
-			current = true
-			break
-		}
-	}
-	if !current {
-		return fmt.Errorf("attachment changed")
-	}
-	for ci := range s.Conversations {
-		c := &s.Conversations[ci]
-		for mi := range c.Messages {
-			m := &c.Messages[mi]
-			if m.ID == messageID && m.InboxRemovedAt.IsZero() && c.Endpoints[1-m.From].NamedAgentID == agentID && m.Delivery == "stored" {
-				m.LiveAttachment = attachmentID
-				return saveAgentMessageStore(ctx, s)
-			}
-		}
-	}
-	return fmt.Errorf("message changed")
-}
-
-// Recheck durable offers immediately before releasing a local cached body. This
-// reads current authority without fabricating delivery receipts.
-func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Request, args map[string]any) {
+// Validate explicit inbox reads and replies against the current attachment and
+// sender authority. Pending delivery is owned by readAttachedAgentInbox.
+func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	a, live, err := currentAgentAttachment(r.Context(), GetUserFromContext(r.Context()), externalArg(args, "agent_name"), externalArg(args, "attachment_id"))
 	if err != nil {
 		externalError(w, 403, "attachment_refused", "Exact attachment unavailable or access denied.")
@@ -598,39 +569,21 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 		externalError(w, 500, "store_unavailable", "Cannot validate pending messages.")
 		return
 	}
-	history, _ := args["history"].(bool)
 	permitted := []string{}
-	cleared := []string{}
 	inboxes := map[string]string{}
 	reasons := map[string]string{} // message id -> why it was left out (logged; counted for the client)
-	offeredAttachments := map[string]string{}
 	for _, id := range ids {
 		for _, c := range s.Conversations {
 			for _, m := range c.Messages {
 				if m.ID != id {
 					continue
 				}
-				offeredAttachments[id] = m.LiveAttachment
 				switch {
 				case c.Endpoints[1-m.From].NamedAgentID != a.ID || c.Endpoints[1-m.From].UserID != a.UserID:
 					reasons[id] = "not_addressed_to_this_agent"
-					if !history {
-						cleared = append(cleared, id)
-					}
 					continue
 				case !m.InboxRemovedAt.IsZero():
-					cleared = append(cleared, id)
 					reasons[id] = "removed_from_inbox"
-					continue
-				case !history && (m.Delivery == "expired" || agentMessagePendingExpired(m, time.Now().UTC())):
-					cleared = append(cleared, id)
-					reasons[id] = "expired_pending"
-					continue
-				case !history && m.LiveAttachment != a.Attachment.ID:
-					reasons[id] = "offered_to_another_lease"
-					continue
-				case !history && m.Delivery != "stored":
-					reasons[id] = "already_" + m.Delivery
 					continue
 				}
 				src := c.Endpoints[m.From]
@@ -664,23 +617,17 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 		}
 		if !left {
 			reason = "not_found"
-			if !history {
-				cleared = append(cleared, id)
-			}
 		}
 		held[reason]++
-		if strings.HasPrefix(reason, "already_") {
-			continue // a normal re-check of a message the chat already took
-		}
 		if validateLogDue(id, reason, time.Now()) {
-			log.Printf("[AGENT-MESSAGE-VALIDATE] left out message=%s agent=%s attachment=%s message_attachment=%s reason=%s request_id=%q", id, a.Name, a.Attachment.ID, offeredAttachments[id], reason, r.Header.Get("X-Request-ID"))
+			log.Printf("[AGENT-MESSAGE-VALIDATE] left out message=%s agent=%s attachment=%s reason=%s request_id=%q", id, a.Name, a.Attachment.ID, reason, r.Header.Get("X-Request-ID"))
 		}
 	}
 	if _, _, err = currentAgentAttachment(r.Context(), live, a.Name, a.Attachment.ID); err != nil {
 		externalError(w, 403, "attachment_refused", "Attachment changed.")
 		return
 	}
-	externalJSON(w, map[string]any{"message_ids": permitted, "cleared_message_ids": cleared, "inbox_ids": inboxes, "held_reasons": held})
+	externalJSON(w, map[string]any{"message_ids": permitted, "inbox_ids": inboxes, "held_reasons": held})
 }
 
 // validateLogged remembers when each (message, reason) was last written: a held message is checked every few seconds, so a

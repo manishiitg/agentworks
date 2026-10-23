@@ -231,6 +231,24 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 			}
 		}
 	}
+	// An explicit retry from another adapter keeps the first handoff evidence
+	// and makes no second durable write or stream wakeup.
+	agentMessageMu.Lock()
+	beforeRetry, retryErr := readAgentMessageStore(context.Background())
+	agentMessageMu.Unlock()
+	if retryErr != nil {
+		t.Fatal(retryErr)
+	}
+	beforeJSON, _ := json.Marshal(beforeRetry)
+	beforeWake := agentLiveChanged()
+	call(receiver, map[string]any{"action": "ack", "agent_name": "reviewer", "attachment_id": meta["attachment_id"], "message_id": receipt["message_id"], "delivery": "delivered", "transport": "mailbox"})
+	agentMessageMu.Lock()
+	afterRetry, retryErr := readAgentMessageStore(context.Background())
+	agentMessageMu.Unlock()
+	afterJSON, _ := json.Marshal(afterRetry)
+	if retryErr != nil || string(beforeJSON) != string(afterJSON) || beforeWake != agentLiveChanged() {
+		t.Fatalf("retry changed the first receipt or rewrote the mailbox: %v", retryErr)
+	}
 	page = call(receiver, map[string]any{"action": "read", "agent_name": "reviewer"})
 	for _, item := range page["messages"].([]any) {
 		m := item.(map[string]any)

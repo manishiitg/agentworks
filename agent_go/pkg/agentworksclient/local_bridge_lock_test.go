@@ -776,3 +776,71 @@ func TestPendingReadPositionKeepsTheNextBatch(t *testing.T) {
 		t.Fatalf("next page lost: %+v more=%d position=%d error=%v", messages, more, s.ReadPosition, err)
 	}
 }
+
+// A native message starts a prompt before its remote delivered write finishes.
+// The whole native batch stays out of that hook, without a second mailbox.
+func TestNativeHandoffDoesNotRepeatDuringSlowReceipt(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ackStarted, releaseAck := make(chan struct{}), make(chan struct{})
+	defer close(releaseAck)
+	var once sync.Once
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/external/v1/call" {
+			once.Do(func() { close(ackStarted) })
+			select {
+			case <-releaseAck:
+			case <-r.Context().Done():
+			}
+			json.NewEncoder(w).Encode(map[string]any{"delivery": "delivered"})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"messages": []AgentLiveMessage{
+			{AttachmentID: "lease", MessageID: "first", InboxID: "inbox", Message: "private native body"},
+			{AttachmentID: "lease", MessageID: "second", InboxID: "inbox"},
+		}, "next_cursor": 2, "pending": 2})
+	}))
+	defer remote.Close()
+	client, err := New(remote.URL, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &localSession{Attachment: AgentAttachment{ID: "lease", Provider: "claude", SessionID: "chat", AgentName: "reviewer"}, HostKey: "host", client: client, latestSequence: 2, NativeRemote: "claude+session://fixture"}
+	b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{localBridgeKey("claude", "chat"): s}, changed: make(chan struct{}), options: LocalBridgeOptions{NativeOffer: func(_ context.Context, _ string, reply LocalBridgeReply) error {
+		if len(reply.Messages) != 2 {
+			t.Errorf("native batch: %+v", reply)
+		}
+		return nil
+	}}}
+	done := make(chan struct{})
+	go func() { defer close(done); b.nativeLoop(ctx, s, "host") }()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Error("native worker did not stop")
+		}
+	}()
+	select {
+	case <-ackStarted:
+	case <-time.After(time.Second):
+		t.Fatal("native receipt did not start")
+	}
+	hook := b.handle(ctx, ctx, LocalBridgeRequest{Action: "drain", Provider: "claude", SessionID: "chat", HostKey: "host", Transport: "claude_hook"})
+	if hook.Error != "" || len(hook.Messages) != 0 || hook.Pending != 0 {
+		t.Fatalf("prompt repeated native handoff: %+v", hook)
+	}
+	raw, err := os.ReadFile(filepath.Join(b.root, "sessions.json"))
+	if err != nil || strings.Contains(string(raw), "private native body") || strings.Contains(string(raw), "handedOff") || strings.Contains(string(raw), "\"first\"") {
+		t.Fatalf("helper persisted native delivery data: %s %v", raw, err)
+	}
+	// A failed receipt must not hide mail forever; only just-handed-off ids skip.
+	b.mu.Lock()
+	s.handedOff["first"] = time.Now().Add(-time.Second)
+	b.mu.Unlock()
+	hook = b.handle(ctx, ctx, LocalBridgeRequest{Action: "drain", Provider: "claude", SessionID: "chat", HostKey: "host", Transport: "claude_hook"})
+	if hook.Error != "" || len(hook.Messages) != 1 || hook.Messages[0].MessageID != "first" {
+		t.Fatalf("expired handoff did not retry: %+v", hook)
+	}
+}

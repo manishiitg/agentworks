@@ -199,8 +199,6 @@ func HeldLine(out LocalBridgeReply) string {
 		switch reason {
 		case "sender_authorization_failed", "share_check_failed", "admission_recheck_failed":
 			classes["a check on the sender did not pass"] = true
-		case "offered_to_another_lease":
-			classes["they were offered to an earlier connection of this chat"] = true
 		default:
 			classes["the server did not release them"] = true
 		}

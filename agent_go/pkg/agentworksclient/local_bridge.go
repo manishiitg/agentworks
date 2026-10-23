@@ -169,8 +169,9 @@ type localSession struct {
 	ConfigPath       string          `json:"config_path"`
 	client           *Client
 	streamOnline     bool
-	latestSequence   int  // wake hint only; bodies remain on the server
-	reading          bool // one bounded server read at a time for this chat
+	latestSequence   int                  // wake hint only; bodies remain on the server
+	handedOff        map[string]time.Time // transient native handoffs while server receipts save; never persisted
+	reading          bool                 // one bounded server read at a time for this chat
 	cancel           context.CancelFunc
 	deliveryCtx      context.Context
 	nativeStarted    bool
@@ -1880,6 +1881,16 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		}
 		if err == nil || errors.Is(err, ErrNativeOfferUnconfirmed) {
 			b.mu.Lock()
+			if err == nil {
+				// Mark the whole batch before any remote receipt: native input can
+				// start a prompt hook while the first receipt is still saving.
+				if s.handedOff == nil {
+					s.handedOff = map[string]time.Time{}
+				}
+				for _, message := range out.Messages {
+					s.handedOff[message.MessageID] = time.Now().Add(30 * time.Second)
+				}
+			}
 			if s.LastError != "" {
 				s.LastError = ""
 				_ = b.save()
@@ -2074,7 +2085,7 @@ func filterAttachedMailbox(ctx context.Context, s *localSession, raw json.RawMes
 		}
 		ids = append(ids, value.ID)
 	}
-	validated, err := s.client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": ids, "history": true}, true)
+	validated, err := s.client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": ids}, true)
 	if err != nil {
 		return nil, attachmentValidationError("read_history", s.Attachment.ID, err)
 	}
@@ -2487,7 +2498,7 @@ func (b *localBridge) replyToMessage(ctx context.Context, key string, s *localSe
 // The server returns an inbox only for an incoming message addressed to this
 // exact attached agent and owner, after rechecking the sender's current access.
 func authorizedReplyInbox(ctx context.Context, client *Client, att AgentAttachment, id string) (string, error) {
-	raw, err := client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{id}, "history": true}, true)
+	raw, err := client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{id}}, true)
 	if err != nil {
 		return "", err
 	}
@@ -2550,9 +2561,22 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 		return nil, 0, nil, 0, err
 	}
 	shown := []AgentLiveMessage{}
+	primary := b.sessions[localBridgeKey(attachment.Provider, attachment.SessionID)]
+	if primary == nil {
+		primary = s
+	}
+	now := time.Now()
+	for id, until := range primary.handedOff {
+		if !now.Before(until) {
+			delete(primary.handedOff, id)
+		}
+	}
 	for _, message := range page.Messages {
 		if message.AttachmentID != attachment.ID || message.MessageID == "" || message.InboxID == "" {
 			return nil, 0, nil, 0, errors.New("inbox response changed attachment")
+		}
+		if now.Before(primary.handedOff[message.MessageID]) {
+			continue
 		}
 		if message.Kind == "ping" {
 			if b.options.Ping != nil {
