@@ -48,9 +48,15 @@ const origin=`http://127.0.0.1:${server.address().port}`, live='https://app.exam
 const browser=await chromium.launch({headless:true})
 try {
   const page=await browser.newPage({viewport:{width:1280,height:900}})
+  const pageErrors=[]; page.on('pageerror', error=>pageErrors.push(error.message))
+  const settle=async()=>{
+    await page.waitForFunction(()=>['ready','error','missing','failed'].includes(document.documentElement.dataset.previewState))
+    const state=await page.evaluate(()=>window.__reportPreview?.getState())
+    assert.equal(state?.previewState,'ready',JSON.stringify({state,pageErrors}))
+  }
   const preview=origin+'/report-preview/?workspace=Crew/example&token=PREVIEW_ONLY_FIXTURE&document=db/reports/index.html&theme=dark&export=1&static=1'
   for(const [name,value] of [['first',42],['fresh',84]]){
-    total=value;await page.goto(preview);await page.waitForFunction(()=>document.documentElement.dataset.previewState==='ready')
+    total=value;await page.goto(preview);await settle()
     const result=await page.evaluate(url=>window.__reportPreview.exportStatic(url),live)
     assert(!result.includes('PREVIEW_ONLY_FIXTURE'),'preview credential escaped')
     assert(result.includes('data:image/png;base64,'),'authorized image was not embedded')
@@ -60,7 +66,7 @@ try {
   await page.route('https://app.example.com/**',route=>route.fulfill({body:'Sign in to AgentWorks',contentType:'text/html'}))
   for(const [name,value] of [['first',42],['fresh',84]]){
     await page.goto(origin+'/sites/'+name+'/index.html')
-    await page.waitForFunction(()=>document.documentElement.dataset.previewState==='ready')
+    await settle()
     const frame=page.frames().find(frame=>frame.parentFrame())
     assert.equal(await frame.locator('#total').textContent(),String(value))
     await frame.getByRole('button',{name:'Details',exact:true}).click()
