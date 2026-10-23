@@ -1,4 +1,4 @@
-package main
+package agentworksclient
 
 import (
 	"fmt"
@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
 
 // Shared readable delivery text for agent messages (PLAT-861). Every hook
@@ -83,13 +81,13 @@ func sanitizeAgentMessageBody(s string) (string, bool) {
 	return string(runes), false
 }
 
-func crossPersonMessage(m agentworksclient.AgentLiveMessage) bool {
+func crossPersonMessage(m AgentLiveMessage) bool {
 	return m.Untrusted || m.FromPerson != ""
 }
 
 // agentMessageSenderLine renders the per-message first line. The ownership
 // line fails closed: any untrusted marker warns even with a missing owner.
-func agentMessageSenderLine(m agentworksclient.AgentLiveMessage) string {
+func agentMessageSenderLine(m AgentLiveMessage) string {
 	sender := sanitizeAgentMessageToken(m.Sender)
 	if crossPersonMessage(m) {
 		owner := sanitizeAgentMessageToken(m.FromPerson)
@@ -105,9 +103,9 @@ func agentMessageSenderLine(m agentworksclient.AgentLiveMessage) string {
 	return fmt.Sprintf("AgentWorks message from %s.", sender)
 }
 
-// agentMessageBlock renders one message: sender line, fenced body, and the
+// MessageBlock renders one message: sender line, fenced body, and the
 // ack/reply addressing line.
-func agentMessageBlock(m agentworksclient.AgentLiveMessage, attachmentID string) string {
+func MessageBlock(m AgentLiveMessage, attachmentID string) string {
 	if m.Kind == "status" {
 		// Written by the server, not a peer: a plain status for the chat to pass on. It asks for nothing.
 		body, _ := sanitizeAgentMessageBody(m.Message)
@@ -136,9 +134,9 @@ func agentMessageBlock(m agentworksclient.AgentLiveMessage, attachmentID string)
 	return b.String()
 }
 
-// agentWaitingLine opens a prompt's delivery text: how many peer messages are being handed over and from whom, so the
+// WaitingLine opens a prompt's delivery text: how many peer messages are being handed over and from whom, so the
 // chat (and its person) sees the backlog at a glance. Server status lines are not messages and are not counted.
-func agentWaitingLine(messages []agentworksclient.AgentLiveMessage, now time.Time) string {
+func WaitingLine(messages []AgentLiveMessage, now time.Time) string {
 	count := 0
 	senders := map[string]bool{}
 	var oldest time.Time
@@ -191,8 +189,8 @@ func agentWaitingAge(d time.Duration) string {
 	return fmt.Sprintf("%d days", int(d.Hours()/24))
 }
 
-// agentHeldLine tells the chat about messages the server has not released, by reason class. Their text is never shown.
-func agentHeldLine(out agentworksclient.LocalBridgeReply) string {
+// HeldLine tells the chat about messages the server has not released, by reason class. Their text is never shown.
+func HeldLine(out LocalBridgeReply) string {
 	if out.Held <= 0 {
 		return ""
 	}

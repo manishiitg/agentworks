@@ -196,7 +196,7 @@ type localBridge struct {
 	closed      bool
 }
 
-var ErrNativeOfferUnconfirmed = errors.New("native offer has no admission receipt")
+var ErrNativeOfferUnconfirmed = errors.New("native delivery is unconfirmed")
 
 // ErrNativeOfferRejected means no message content reached the provider.
 // A disconnect after a delivery write must never be classified as rejected.
@@ -739,19 +739,14 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 			if !loginFailure && errors.As(err, &apiErr) && apiErr.Code != "agent_attachment_closed" && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 404) {
 				return
 			}
-			timer := time.NewTimer(backoff)
+			timer := time.NewTimer(backoff + time.Duration(rand.Intn(251))*time.Millisecond)
 			select {
 			case <-streamCtx.Done():
 				timer.Stop()
 				return
 			case <-timer.C:
 			}
-			if backoff < 30*time.Second {
-				backoff *= 2
-				if backoff > 30*time.Second {
-					backoff = 30 * time.Second
-				}
-			}
+			backoff = min(5*time.Second, backoff*2)
 		}
 	}()
 }
@@ -1905,7 +1900,7 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 			}
 			_ = b.save()
 			b.mu.Unlock()
-			continue // Persisted offer prevents a duplicate turn on an ambiguous failure.
+			continue // A later hook can read this still-pending message from the server.
 		}
 		for _, m := range out.Messages {
 			_ = b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: "delivered", Transport: nativeCodexTransport(offeredRemote)})

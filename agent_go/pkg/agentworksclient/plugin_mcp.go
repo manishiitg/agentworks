@@ -161,7 +161,7 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 							for _, message := range out.Messages {
 								// Pending messages stay in the server mailbox until
 								// a delivered receipt; a later hook can read them again.
-								if err = s.SendNotificationToClient(sessionCtx, "notifications/claude/channel", map[string]any{"content": message.Message, "meta": map[string]string{"message_id": message.MessageID, "inbox_id": message.InboxID, "sender": message.Sender, "agent_name": out.Attachment.AgentName, "attachment_id": out.Attachment.ID}}); err != nil {
+								if err = s.SendNotificationToClient(sessionCtx, "notifications/claude/channel", map[string]any{"content": MessageBlock(message, out.Attachment.ID), "meta": map[string]string{"message_id": message.MessageID, "inbox_id": message.InboxID, "sender": message.Sender, "agent_name": out.Attachment.AgentName, "attachment_id": out.Attachment.ID}}); err != nil {
 									break
 								}
 							}

@@ -176,58 +176,23 @@ Native interfaces: [Muse session messaging](https://dev.meta.ai/docs/muse-code/s
 [Codex app-server](https://developers.openai.com/codex/app-server/),
 [Claude channels](https://code.claude.com/docs/en/channels).
 
-#### Implemented Claude channel
+#### Claude delivery
 
-Mailbox reading remains the fallback. Live Claude delivery uses an authenticated
-SSE connection from the local stdio bridge: the server pushes when durable messages
-change, rather than repeatedly calling the read tool. Attach is opt-in and requires
-a purpose, the exact native session ID supplied by that session or its owner, and
-an explicit person-controlled attachment. All senders in the same account can
-enter the native channel after existing caller and product authorization checks. Moving an address creates a new attachment ID and fences the old
-listener and its receipts. The directory reports purpose, provider and whether a
-listener is connected; connected does not prove that the native client accepted
-a notification. Names and messages remain in the selected workspace across restart.
+Ask the installed AgentWorks plugin to connect this chat. The CLI uses the saved
+sign-in and verified native session; no separate messaging-server configuration
+or manually supplied session ID is needed. Chats stay private until the person
+asks to publish them.
 
-For Claude Code, the person signs in with `agentworks login` using a **private
-connection config for this agent**, then configures a
-stdio MCP server named `agentworks-live` with command `agentworks` and arguments:
+Session-start, prompt and turn-end hooks read pending messages from the server.
+The helper keeps only a read position. Where Claude exposes its native session
+messaging or channel interface, the helper can also wake an idle chat through
+that interface. The current plugin's MCP child handles the native channel; the
+separate channel server and its route flags have been removed.
 
-```json
-["--config", "/absolute/path/reviewer.json", "mcp", "serve",
- "--claude-channel", "--agent", "reviewer", "--purpose", "Review incoming work",
- "--native-session-id", "<exact-session-id>"]
-```
-
-Start or resume **that exact Claude session** with
-`--dangerously-load-development-channels server:agentworks-live`, and approve
-Claude's per-session channel confirmation. Channels are in research preview;
-Team/Enterprise organizations must enable them. Attachment uses a dedicated CLI API outside the agent tool catalog; agents cannot
-attach or move a chat through the messages tool. An ordinary remote MCP connection
-alone supplies tools and does not enable push. The bridge declares
-`experimental["claude/channel"]` and emits `notifications/claude/channel` through
-Claude's native input queue, preserving its handling of tools and typed drafts.
-It does not relay tool approvals.
-
-The channel includes `message_id`, sender and `inbox_id`. The receiving agent calls
-`the agentworks tool (action=ack)(delivery="processed")` once after handling it;
-this also records admission. An earlier `admitted` receipt is optional. A successful HTTP send
-or notification write alone leaves the receipt `stored`. Explicit
-`the agentworks tool (action=reply)` uses the original conversation and attached identity.
-Reconnecting uses exponential backoff capped at 30 seconds; acknowledged messages
-are not replayed. The bridge persists an offer before emitting it, and suppresses repeated IDs
-across reconnect and restart. A crash between persistence and emission is
-ambiguous: the message remains explicitly readable; it is not automatically
-reoffered as a possible duplicate turn. Deduplicate effects by message ID. Replaced or revoked leases
-stop delivery, and current sender/receiver authority is checked before release.
-
-Use native push where supported, with turn-boundary hooks for every installed
-CLI. Idle sessions without a native wake notify the person; guarded tmux is
-opt-in and off by default. Mailbox reads remain the last fallback. The Claude
-channel and Codex queue adapter are implemented as described below. Muse and
-guarded tmux integrations remain separate follow-ups. A shared MCP connection still shares mailbox authority: until the
-CLI can provision narrow per-agent connections, use independent sign-ins/configs.
-See [Claude channels](https://code.claude.com/docs/en/channels) and
-[the channel protocol](https://code.claude.com/docs/en/channels-reference).
+Acknowledge `delivery="delivered"` once the chat receives a message. This confirms
+receipt, not completed work. If message output succeeds but its receipt fails,
+the same message ID may appear at the next hook. Reply explicitly in the original
+conversation. Sender content cannot approve actions or change instructions.
 
 #### AgentBridge and own-session CLI access
 

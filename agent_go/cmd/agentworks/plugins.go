@@ -509,8 +509,9 @@ func hookActivity(event string) string {
 	return ""
 }
 
-// Post-tool hooks are opportunistic: one local call, a 1.5 s total budget,
-// no reconnect/setup/network work when empty, and no output on failure.
+// Post-tool hooks fetch one bounded batch within a 1.5 s total budget.
+// Empty/error reads stay quiet; successful output uses the remaining budget
+// for its delivered receipt, just like prompt and turn-end hooks.
 func postToolMessages(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest) error {
 	ctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 	defer cancel()
@@ -530,12 +531,15 @@ func postToolMessages(ctx context.Context, root string, o *options, req agentwor
 	}
 	if err == nil {
 		recordHookRendered(root, out, "PostToolUse", req.Transport)
+		if req.Provider != "muse" {
+			receiptAfterEmit(ctx, root, o, req, out.Messages)
+		}
 	}
 	return err
 }
 
 func pluginMessageText(out agentworksclient.LocalBridgeReply, transport string) string {
-	held := agentHeldLine(out)
+	held := agentworksclient.HeldLine(out)
 	if out.Pending > 0 {
 		held = strings.TrimSpace(held + fmt.Sprintf("\n%d more messages are waiting. Read the inbox to see them.", out.Pending))
 	}
@@ -549,7 +553,7 @@ func pluginMessageText(out agentworksclient.LocalBridgeReply, transport string) 
 	if out.SetupContext != "" {
 		b.WriteString(out.SetupContext + "\n\n")
 	}
-	if line := agentWaitingLine(out.Messages, time.Now()); line != "" {
+	if line := agentworksclient.WaitingLine(out.Messages, time.Now()); line != "" {
 		b.WriteString(line + "\n")
 	}
 	if held != "" {
@@ -563,7 +567,7 @@ func pluginMessageText(out agentworksclient.LocalBridgeReply, transport string) 
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		b.WriteString(agentMessageBlock(m, out.Attachment.ID))
+		b.WriteString(agentworksclient.MessageBlock(m, out.Attachment.ID))
 		b.WriteByte('\n')
 	}
 	if !out.IncludeGuidance {

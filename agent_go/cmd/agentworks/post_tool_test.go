@@ -31,10 +31,23 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	var mode atomic.Int32
+	var receipts atomic.Int32
 	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in agentworksclient.LocalBridgeRequest
-		if json.NewDecoder(r.Body).Decode(&in) != nil || in.Action != "post_tool" {
-			t.Error("not a single post-tool local call")
+		if json.NewDecoder(r.Body).Decode(&in) != nil {
+			t.Error("invalid post-tool request")
+			return
+		}
+		if in.Action == "ack" {
+			if in.Delivery != "delivered" || in.MessageID != "message" || in.SessionID != cursorTestSession || in.HostKey != "fixture-host" || in.Transport != in.Provider+"_hook" {
+				t.Error("wrong delivered receipt", in.Action, in.Delivery, in.Transport)
+			}
+			receipts.Add(1)
+			_ = json.NewEncoder(w).Encode(agentworksclient.LocalBridgeReply{Attached: true})
+			return
+		}
+		if in.Action != "post_tool" {
+			t.Error("unexpected hook action", in.Action)
 			return
 		}
 		if mode.Load() == 2 {
@@ -56,6 +69,7 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 			mode.Store(int32(i))
 			var output bytes.Buffer
 			before, _ := os.ReadFile(filepath.Join(root, "bridge.log"))
+			beforeReceipts := receipts.Load()
 			start := time.Now()
 			err := postToolMessages(context.Background(), root, &options{stdout: &output}, agentworksclient.LocalBridgeRequest{Provider: provider, SessionID: cursorTestSession, HostKey: "fixture-host"})
 			elapsed := time.Since(start)
@@ -65,6 +79,9 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 			}
 			after, _ := os.ReadFile(filepath.Join(root, "bridge.log"))
 			if i != 1 {
+				if receipts.Load() != beforeReceipts {
+					t.Fatal("empty/error hook acknowledged an unseen message")
+				}
 				if !bytes.Equal(before, after) {
 					t.Fatal("empty/error hook logged a render")
 				}
@@ -72,6 +89,9 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 					t.Fatal("empty/error post-tool emitted output")
 				}
 				continue
+			}
+			if receipts.Load() != beforeReceipts+1 {
+				t.Fatal("rendered post-tool message has no delivered receipt")
 			}
 			trace := string(after[len(before):])
 			if !strings.Contains(trace, "event=PostToolUse transport="+provider+"_hook outcome=rendered message=message") || !strings.Contains(trace, "rendered_at=") || strings.Contains(trace, "MID_TURN_MARKER") {
