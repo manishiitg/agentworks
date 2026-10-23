@@ -1,4 +1,3 @@
-import { UserRound } from 'lucide-react'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
 export function chatOwnerInitials(name: string): string {
@@ -8,10 +7,10 @@ export function chatOwnerInitials(name: string): string {
 
 /** Compact identity only; the server's can_write still controls every action. */
 export function ChatTabOwner({ name, yours }: { name: string; yours: boolean }) {
-  const label = yours ? `Your tab · ${name}` : `Tab owned by ${name}`
+  if (yours) return null
+  const label = `Tab owned by ${name}`
   return <span role="img" aria-label={label} title={label} className="inline-flex shrink-0 items-center">
-    {yours ? <span className="grid h-5 w-5 place-items-center rounded-full bg-primary/15 text-primary"><UserRound className="h-3 w-3" aria-hidden="true" /></span>
-      : <EntityIdentityIcon icon={chatOwnerInitials(name)} label={name} className="rounded-full" />}
+    <EntityIdentityIcon icon={chatOwnerInitials(name)} label={name} className="rounded-full" />
   </span>
 }
 

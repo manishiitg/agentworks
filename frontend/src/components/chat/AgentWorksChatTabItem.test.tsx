@@ -225,7 +225,7 @@ it('announces a tab changing to working and waiting without repeating idle label
 })
 
 
-it.each([true, false])('keeps owner email in details and marks your own tab only when the server permits control (%s)', async yours => {
+it.each([true, false])('shows an owner icon only for another owner and keeps You on your own tab (%s)', async yours => {
   const owner = 'alex.taylor@example.com'
   const host = await renderTab(`${owner} · Builder`, undefined, 'work', {
     agentProfileId: 'work', agentProfileTabOwnerID: 'owner-one', agentProfileTabOwnerName: owner, agentProfileTabCanWrite: yours,
@@ -233,6 +233,7 @@ it.each([true, false])('keeps owner email in details and marks your own tab only
   expect(host.textContent).toContain('Builder')
   expect(host.textContent).not.toContain(owner)
   expect(host.textContent?.includes('You')).toBe(yours)
-  expect(host.querySelector(`[aria-label="${yours ? 'Your tab ·' : 'Tab owned by'} ${owner}"]`)).not.toBeNull()
+  expect(host.querySelector(`[aria-label="Tab owned by ${owner}"]`) !== null).toBe(!yours)
+  expect(host.querySelector(`[aria-label="Your tab · ${owner}"]`)).toBeNull()
   expect(host.querySelector('span[title]')?.getAttribute('title')).toContain(owner)
 })
