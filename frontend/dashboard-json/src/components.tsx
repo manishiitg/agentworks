@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import React, { createContext, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
 import { createStateStore, type Spec } from '@json-render/core'
 import { Renderer, StateProvider, VisibilityProvider, ActionProvider, ValidationProvider, defineRegistry, useStateStore } from '@json-render/react'
 import { shadcnComponents } from '@json-render/shadcn'
@@ -85,7 +85,8 @@ function Chart({ props, line = false }: any) {
 
 function MotionControlsRenderer({ props }: any) {
   useStateStore()
-  const { clock } = useContext(Environment)
+  const { clock: environmentClock } = useContext(Environment)
+  const clock = props.clock ?? environmentClock
   const state = clock?.getState()
   return <div className={props.className ?? 'dashboard-motion'} aria-label={props.label || 'Playback'}>
     <button type="button" className="dashboard-button" disabled={!clock} onClick={() => state?.playing ? clock.pause() : clock.play()}>{state?.playing ? 'Pause' : 'Play'}</button>
@@ -132,5 +133,12 @@ export function RefreshButton({ label = 'Refresh data', ...props }: DirectProps)
 }
 // Optional JSON composition inside a TSX page; this is the platform registry,
 // never an authored switch statement or a second set of charts and controls.
-export function DashboardUI({ spec }: { spec: Spec }) { return <Renderer spec={spec} registry={registry} /> }
+export function DashboardUI({ spec }: { spec: Spec }) {
+  const environment = useContext(Environment)
+  const [store] = useState(() => createStateStore(spec.state ?? {}))
+  useLayoutEffect(() => {
+    store.update(Object.fromEntries(Object.entries(spec.state ?? {}).map(([key, value]) => ['/' + key.replace(/~/g, '~0').replace(/\//g, '~1'), value])))
+  }, [spec.state, store])
+  return <DashboardProviders store={store} {...environment}><Renderer spec={spec} registry={registry} /></DashboardProviders>
+}
 export { useStateStore as useDashboardStore, useStateBinding as useDashboardBinding } from '@json-render/react'

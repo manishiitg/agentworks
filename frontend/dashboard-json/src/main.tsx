@@ -2,7 +2,8 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { createStateStore, type Spec } from '@json-render/core'
-import { DashboardProviders, DashboardUI, components } from './components'
+import { Renderer } from '@json-render/react'
+import { DashboardProviders, registry, components } from './components'
 import './style.css'
 
 type DataBinding = { statePath: string; method: 'query' | 'get' | 'run'; sql?: string; path?: string; params?: unknown[]; args?: unknown }
@@ -34,7 +35,7 @@ function resolve(value: any): any {
 async function main() {
   const root = createRoot(document.getElementById('dashboard-root')!)
   const authored = document.createElement('style'); authored.textContent = spec.styles ?? ''; document.head.append(authored)
-  const render = () => flushSync(() => root.render(<DashboardError><DashboardProviders store={store} refresh={() => refreshData()} clock={clock}><DashboardUI spec={spec} /></DashboardProviders></DashboardError>))
+  const render = () => flushSync(() => root.render(<DashboardError><DashboardProviders store={store} refresh={() => refreshData()} clock={clock}><Renderer spec={spec} registry={registry} /></DashboardProviders></DashboardError>))
   refreshData = async () => {
     const sequence = ++refreshSequence
     const values = await Promise.all((spec.data ?? []).map(async binding => {
