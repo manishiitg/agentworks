@@ -2491,6 +2491,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/oauth/cli/token", api.handleCLIOAuthToken).Methods("POST")
 	apiRouter.HandleFunc("/oauth/cli/revoke", api.handleCLIOAuthRevoke).Methods("POST")
 	// Per-workflow ownership and sharing (workflow_access.go).
+	apiRouter.HandleFunc("/workflow/laptop", api.handleGoalLaptopSettings).Methods("GET", "PUT")
+	apiRouter.HandleFunc("/workflow/laptop/folders", api.handleGoalLaptopBrowse).Methods("GET")
 	apiRouter.HandleFunc("/workflow/access", api.handleGetWorkflowAccess).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/access", api.handleSetWorkflowAccess).Methods("PUT", "POST")
 	apiRouter.HandleFunc("/users/directory", api.handleUserDirectory).Methods("GET", "OPTIONS")
@@ -7116,6 +7118,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 
 			}
+			if resolvedProfile == nil && laptopBuilderTurn(req, nil) {
+				if err := api.registerLaptopAccessChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
+					sendError(fmt.Sprintf("Failed to register laptop setup tool: %v", err), true)
+					return
+				}
+			}
 			// Local folder grants belong to the owner's interactive website turn;
 			// scheduled, connector and unattended/background adapters need separate consent.
 			if laptopConnectionTurn(req, resolvedProfile) {
@@ -8031,7 +8039,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind) +
 				pulsePolicyKeySuffix(sessionID, req.PhaseID, req.SelectedFolder)
-			policyRoleKey := currentPolicy.sessionKey()
+			laptopPolicy := ""
+			if resolvedProfile == nil && req.admittedWorkflowPhase && req.PhaseID == "workflow-builder" {
+				laptopPolicy = api.goalLaptopPolicyKey(GetUserFromContext(r.Context()), req.SelectedFolder, currentUserIsReadOnly)
+			}
+			policyKey += laptopPolicy
+			policyRoleKey := currentPolicy.sessionKey() + laptopPolicy
 			codingProvider := common.IsCLIProvider(finalProvider)
 			api.conversationMux.RLock()
 			_, knownInMemory := api.lastChatPolicyBySession[sessionID]
@@ -14103,28 +14116,6 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	if isRetiredGeneralChat(req, resolvedProfile, sessionID) {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: errRetiredGeneralChat, invalidProfile: true}
 	}
-	// Laptop grants are server-owned, never granted by browser query fields or editable project files.
-	req.LaptopConnection = nil
-	if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && websiteDeviceClaims(GetUserFromContext(ctx)) && crewProjectOwnedByCaller(currentUserID, agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)) {
-		settings, err := readLaptopSettings(currentUserID, req.SelectedFolder)
-		if err == nil && (&laptopConnectionTarget{DeviceID: settings.DeviceID}).valid() && len(settings.Folders) > 0 {
-			req.LaptopConnection = &laptopConnectionTarget{DeviceID: settings.DeviceID}
-		}
-	}
-	// Automated and Run callers keep server capabilities, never an inherited laptop grant.
-	if req.LaptopConnection != nil && (!laptopConnectionTurn(*req, resolvedProfile) || !websiteDeviceClaims(GetUserFromContext(ctx))) {
-		log.Printf("[LAPTOP_TOOL] session=%s caller=%s operation=exclude reason=interactive_owner_only", sessionID, currentUserID)
-		req.LaptopConnection = nil
-	}
-	if req.LaptopConnection != nil {
-		if !laptopConnectionTurn(*req, resolvedProfile) || !req.LaptopConnection.valid() || !crewProjectOwnedByCaller(currentUserID, agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)) {
-			return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("Laptop tools require your interactive Crew Builder chat"), invalidProfile: true}
-		}
-		if err := api.validateLaptopConnection(GetUserFromContext(ctx), req.LaptopConnection); err != nil {
-			return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
-		}
-		resolvedProfile.LaptopConnection = req.LaptopConnection
-	}
 	// Workflow-phase payloads identify the workspace through their preset,
 	// not selected_folder (the client never sends it for these chats).
 	// Resolve it BEFORE access: otherwise conversationTargetAccess skips the
@@ -14152,8 +14143,25 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 		}
 	}
 	crewReadOnly := readOnlyForRequest(access, *req) || crewGuestCallerForTurn(*req, currentUserID) != ""
-	if req.LaptopConnection != nil {
-		resolvedProfile.LaptopConnectionPolicy = api.laptopConnectionPolicyKey(GetUserFromContext(ctx), req.LaptopConnection, crewReadOnly, req.SelectedFolder)
+	// The server selects grants only after resolving and authorizing the project.
+	// Browser hints and automated callers never add a laptop connection.
+	req.LaptopConnection = nil
+	caller := GetUserFromContext(ctx)
+	if !crewReadOnly && websiteDeviceClaims(caller) && laptopBuilderTurn(*req, resolvedProfile) && laptopProjectAllowed(ctx, caller, req.SelectedFolder) {
+		settings, err := readLaptopSettings(currentUserID, req.SelectedFolder)
+		if err == nil && (&laptopConnectionTarget{DeviceID: settings.DeviceID}).valid() && len(settings.Folders) > 0 {
+			req.LaptopConnection = &laptopConnectionTarget{DeviceID: settings.DeviceID}
+			if err := api.validateLaptopConnection(caller, req.LaptopConnection); err != nil {
+				return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
+			}
+			if resolvedProfile != nil {
+				resolvedProfile.LaptopConnection = req.LaptopConnection
+				resolvedProfile.LaptopConnectionPolicy = api.laptopConnectionPolicyKey(caller, req.LaptopConnection, crewReadOnly, req.SelectedFolder)
+			}
+		}
+	}
+	if req.AgentMode == "workflow_phase" || req.admittedWorkflowPhase || resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+		log.Printf("[LAPTOP_ACCESS] session=%s actor=%s project=%q local_tools=%t", sessionID, currentUserID, req.SelectedFolder, req.LaptopConnection != nil)
 	}
 	if err := applyCrewChatMode(resolvedProfile, req, crewReadOnly); err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}

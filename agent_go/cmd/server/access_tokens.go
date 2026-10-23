@@ -390,7 +390,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return false
 	}
 	if tool.Name == "manage_laptop_access" || isExternalLaptopFileTool(tool.Name) {
-		return personalLaptopSettingsClaims(c) && externalWorkspaceAllowed(c)
+		return personalLaptopSettingsClaims(c) && (externalWorkspaceAllowed(c) || externalFileAuthoringAllowed(c, nil))
 	}
 	if tool.Name == "workspace" {
 		return externalWorkspaceAllowed(c)

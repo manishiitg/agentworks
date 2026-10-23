@@ -27,7 +27,7 @@ func (api *StreamingAPI) registerLaptopAccessChatTool(registrar definitionToolRe
 			caller = claims
 		}
 		if !websiteDeviceClaims(caller) || caller.UserID != claims.UserID {
-			return nil, errors.New("Laptop settings belong to the Crew owner's own chat")
+			return nil, errors.New("Laptop settings belong to your project's Builder chat")
 		}
 		current, err := accessTokenClaims(accesstokens.Token{UserID: caller.UserID, Username: caller.Username, Email: caller.Email, Provider: caller.Provider})
 		if err != nil || !userAccessForClaims(current).CanEdit {
@@ -36,24 +36,24 @@ func (api *StreamingAPI) registerLaptopAccessChatTool(registrar definitionToolRe
 		api.lastQueryMu.RLock()
 		req := api.lastQueryRequests[sessionID]
 		api.lastQueryMu.RUnlock()
-		if req.userID != caller.UserID || api.isSyntheticTurn(sessionID) {
+		if req.userID != caller.UserID || api.isSyntheticTurn(sessionID) || !laptopBuilderTurn(req, laptopProfileForRequest(req)) {
 			return nil, errors.New("Laptop settings need your own interactive chat turn")
 		}
-		if !crewProjectOwnedByCaller(caller.UserID, agentProfileRuntimeWorkspace(caller.UserID, req.SelectedFolder)) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
-			return nil, errors.New("Only a Crew owner can change its laptop settings")
+		if !laptopProjectAllowed(ctx, caller, req.SelectedFolder) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
+			return nil, errors.New("Only a project Builder can change its laptop settings")
 		}
 		return caller, nil
 	}
 	gate.Declare("manage_laptop_access")
 	return registrar.RegisterCustomToolWithTimeout("manage_laptop_access",
-		"Connect your own computer to this Crew, the same as the Local laptop panel. action=devices lists your connected computers (when none is connected it also returns the install and connect commands for this server); get shows the saved computer, folders and whether terminal commands are on; browse lists the folder names on a computer to pick from; set saves the complete choice: device_id, folders (each Read or Read & write; Read lets the agent list and copy files, Read & write also write files) and commands (true gives the agent a full terminal on that computer, exactly as if you typed in your own terminal: your files, keys and logins, not limited to the folders; only turn it on when the person asks for it); remove disconnects the Crew. set replaces the whole folder list, so include every folder to keep. The new access applies from the next message. Nothing is shared automatically; change it only when the person asks.",
+		"Connect your own computer to this project, the same as the Local laptop panel. action=devices lists your connected computers (when none is connected it also returns the install and connect commands for this server); get shows the saved computer, folders and whether terminal commands are on; browse lists the folder names on a computer to pick from; set saves the complete choice: device_id, folders (each Read or Read & write; Read lets the agent list and copy files, Read & write also write files) and commands (true gives the agent a full terminal on that computer, exactly as if you typed in your own terminal: your files, keys and logins, not limited to the folders; only turn it on when the person asks for it); remove disconnects the project. set replaces the whole folder list, so include every folder to keep. The new access applies from the next message. Nothing is shared automatically; change it only when the person asks.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"action":    map[string]interface{}{"type": "string", "enum": []string{"get", "devices", "browse", "set", "remove"}},
 				"device_id": map[string]interface{}{"type": "string", "description": "A connected computer from action=devices; required for browse, and for set with folders"},
 				"path":      map[string]interface{}{"type": "string", "description": "Folder to browse on the computer; omit to start from its home folder"},
-				"folders": map[string]interface{}{"type": "array", "maxItems": 32, "description": "The complete selection for this Crew; omitted folders lose access. Keep a saved folder's id when changing it; omit the id for a new one",
+				"folders": map[string]interface{}{"type": "array", "maxItems": 32, "description": "The complete selection for this project; omitted folders lose access. Keep a saved folder's id when changing it; omit the id for a new one",
 					"items": map[string]interface{}{"type": "object", "properties": map[string]interface{}{
 						"id":     map[string]interface{}{"type": "string"},
 						"path":   map[string]interface{}{"type": "string", "description": "Absolute folder path returned by browse"},

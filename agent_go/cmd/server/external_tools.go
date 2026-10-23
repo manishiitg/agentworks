@@ -238,6 +238,11 @@ func externalTools() ([]externalTool, error) {
 		externalAgentEmailDefinitions(add)
 		externalWorkspaceDefinitions(add)
 		externalLaptopAccessDefinition(add)
+		for i := range defined {
+			if defined[i].Name == "manage_laptop_access" || isExternalLaptopFileTool(defined[i].Name) {
+				defined[i].InputSchema["oneOf"] = []any{map[string]any{"required": []any{"workspace_id"}}, map[string]any{"required": []any{"workflow_id"}}}
+			}
+		}
 		// Shared-account token limits (get: crews:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
 		externalUsersDefinition(add)

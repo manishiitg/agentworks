@@ -111,7 +111,7 @@ export function getIntegrationTabAskAIMessage(tab: IntegrationTabId): string {
 
 // The Identity view holds five tabs, so its header Ask AI follows the
 // active tab instead of the view.
-export type IdentityTabId = 'general' | 'secrets' | 'llm' | 'upgrades'
+export type IdentityTabId = 'general' | 'secrets' | 'llm' | 'laptop' | 'upgrades'
 
 const IDENTITY_TAB_ASK_AI_MESSAGE: Record<IdentityTabId, { label: string; summary: string; instructions?: string }> = {
   general: {
@@ -126,6 +126,10 @@ const IDENTITY_TAB_ASK_AI_MESSAGE: Record<IdentityTabId, { label: string; summar
   llm: {
     label: 'Identity · Models',
     summary: "Help me choose or configure the LLMs for this workflow. Explain the current setup and ask about quality, speed, and cost requirements.",
+  },
+  laptop: {
+    label: 'Settings · Local laptop',
+    summary: 'Help me connect my computer to this Goal with manage_laptop_access. Check the current connection, explain its folders and terminal commands switch, and change only what I ask. Steps, schedules and Autopilot stay on the server.',
   },
   upgrades: {
     label: 'Identity · Upgrades',

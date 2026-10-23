@@ -47,15 +47,28 @@ func (target *laptopConnectionTarget) valid() bool {
 }
 
 // A connection is extra authority for one person's live Builder turn. It never
-// follows the Crew into Run callers, schedules, child agents or synthetic turns.
-func laptopConnectionTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
-	return req.LaptopConnection != nil && profile != nil && isProjectProfileID(profile.Definition.ID) &&
-		!req.PinRunMode && req.BotPlatform == "" && (strings.TrimSpace(req.TriggeredBy) == "" || req.TriggeredBy == "interactive") &&
+// follows the project into Run callers, schedules, child agents or synthetic turns.
+func laptopBuilderTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
+	crew := profile != nil && isProjectProfileID(profile.Definition.ID)
+	goal := profile == nil && (req.AgentMode == "workflow_phase" || req.admittedWorkflowPhase) && req.PhaseID == "workflow-builder" && req.WorkshopMode != "run"
+	return (crew || goal) && !req.PinRunMode && req.BotPlatform == "" &&
+		(strings.TrimSpace(req.TriggeredBy) == "" || req.TriggeredBy == "interactive") &&
 		req.ParentSessionID == "" && req.SessionKind == "" && !req.IsAutoNotification && !req.PulseLifecycleTurn
 }
 
+func laptopProfileForRequest(req QueryRequest) *resolvedAgentProfile {
+	if req.AgentProfileID == "" {
+		return nil
+	}
+	return &resolvedAgentProfile{Definition: agentprofiles.Profile{ID: req.AgentProfileID}}
+}
+
+func laptopConnectionTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
+	return req.LaptopConnection != nil && laptopBuilderTurn(req, profile)
+}
+
 func laptopConnectionInstructions() string {
-	return "\nThis Crew runs on the server. Ordinary shell, files, skills, connections, secrets, functions and background work use the server. The owner may allow laptop folders in Crew Settings. Read folders provide list_local_files and copy_local_file_to_crew; Read & write folders also provide write_local_file; execute_local_shell_command needs the owner's Run terminal commands switch as well. Each tool lists the allowed folders and their IDs. Use the local shell only when work needs that connected computer; paths are relative to its granted folder. Copy local files explicitly into the Crew when needed; there is no automatic sync. Local output and copied files reach this server and the model and may be saved in chat history. Never put server secrets, SECRET_* values, AGENTWORKS_* environment values or login data into a laptop command. If the laptop is not connected, explain that the local action is unavailable and continue server work; never retry an uncertain command blindly.\n"
+	return "\nThis project runs on the server. Ordinary shell, files, skills, connections, secrets, functions and background work use the server. Choose a computer from My Vault and allow folders in the project’s Local laptop settings. Read folders provide list_local_files and copy_local_file_to_project; Read & write folders also provide write_local_file; execute_local_shell_command needs the owner's Run terminal commands switch as well. Each tool lists the allowed folders and their IDs. Use the local shell only when work needs that connected computer; paths are relative to its granted folder. Copy local files explicitly into the project when needed; there is no automatic sync. Local output and copied files reach this server and the model and may be saved in chat history. Never put server secrets, SECRET_* values, AGENTWORKS_* environment values or login data into a laptop command. If the laptop is not connected, explain that the local action is unavailable and continue server work; never retry an uncertain command blindly.\n"
 }
 
 // Retained tool callbacks are reused between turns. Check the live turn and
@@ -67,7 +80,7 @@ func (api *StreamingAPI) laptopTurnAllowed(sessionID, owner string, target lapto
 	if !ok || req.userID != owner || req.LaptopConnection == nil || *req.LaptopConnection != target || api.isSyntheticTurn(sessionID) {
 		return false
 	}
-	return laptopConnectionTurn(req, &resolvedAgentProfile{Definition: agentprofiles.Profile{ID: req.AgentProfileID}})
+	return laptopConnectionTurn(req, laptopProfileForRequest(req))
 }
 
 func (api *StreamingAPI) validateLaptopConnection(claims *UserClaims, target *laptopConnectionTarget) error {
@@ -299,7 +312,7 @@ func (api *StreamingAPI) localDeviceCallForOwner(ctx context.Context, claims *Us
 	if (request.Operation == "write" || request.Operation == "shell" || request.Operation == "patch") && !userAccessForClaims(current).CanEdit {
 		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Account is read-only"}
 	}
-	value, ok := api.localDevices.Load(api.crewLaptopDeviceOwner(claims.UserID, request.CrewID, deviceID) + "/" + deviceID)
+	value, ok := api.localDevices.Load(api.laptopDeviceOwner(ctx, claims, request.CrewID, deviceID) + "/" + deviceID)
 	if !ok {
 		return localfiles.Response{}, &wf.FileError{Status: 404, Message: "Your laptop is not connected. Start AgentWorks on that computer to use laptop tools; server work remains available."}
 	}
@@ -323,7 +336,7 @@ func (api *StreamingAPI) localDeviceCallForOwner(ctx context.Context, claims *Us
 	var resource *localfiles.Resource
 	control := request.Operation == "browse_folders" || request.Operation == "validate_folders"
 	if !device.hello.SettingsManaged {
-		return localfiles.Response{}, &wf.FileError{Status: 409, Message: "Update the CLI, run agentworks stop then agentworks start, and choose folders in Crew Settings."}
+		return localfiles.Response{}, &wf.FileError{Status: 409, Message: "Update the CLI, run agentworks stop then agentworks start, and choose folders in project settings."}
 	}
 	if !control {
 		// Callers supply only the folder ID; authority is loaded from server-owned Crew settings now.
@@ -345,7 +358,7 @@ func (api *StreamingAPI) localDeviceCallForOwner(ctx context.Context, claims *Us
 			}
 		}
 		if resource == nil {
-			return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Folder is not allowed for this Crew"}
+			return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Folder is not allowed for this project"}
 		}
 	}
 	if control {
@@ -447,11 +460,11 @@ func (api *StreamingAPI) handleLocalDevices(w http.ResponseWriter, r *http.Reque
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	if root := r.URL.Query().Get("workspace"); root != "" {
-		if !crewProjectOwnedByCaller(claims.UserID, root) {
-			externalError(w, 403, "forbidden", "Only Crew owners can view its connected laptop")
+		if !laptopProjectAllowed(r.Context(), claims, root) {
+			externalError(w, 403, "forbidden", "Only project Builders can view its connected laptop")
 			return
 		}
-		externalJSON(w, map[string]any{"devices": api.localDeviceListForCrew(claims, root)})
+		externalJSON(w, map[string]any{"devices": api.localDeviceListForProject(r.Context(), claims, root)})
 		return
 	}
 	externalJSON(w, map[string]any{"devices": api.localDeviceList(claims)})
@@ -486,12 +499,12 @@ func (api *StreamingAPI) registerLaptopTools(registrar definitionToolRegistrar, 
 		api.lastQueryMu.RLock()
 		req := api.lastQueryRequests[sessionID]
 		api.lastQueryMu.RUnlock()
-		if !crewProjectOwnedByCaller(caller.UserID, agentProfileRuntimeWorkspace(caller.UserID, req.SelectedFolder)) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
-			return nil, errors.New("Laptop tools require your own Crew's Builder chat")
+		if !laptopProjectAllowed(ctx, caller, req.SelectedFolder) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
+			return nil, errors.New("Laptop tools require this project's Builder chat")
 		}
 		settings, err := readLaptopSettings(caller.UserID, root)
 		if err != nil || settings.DeviceID != selected.DeviceID || len(settings.Folders) == 0 {
-			return nil, errors.New("Laptop access was removed from this Crew")
+			return nil, errors.New("Laptop access was removed from this project")
 		}
 		return caller, nil
 	}
@@ -508,7 +521,7 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 	// The tools are built once per chat and reused, so the allowed folders are not written into their descriptions (a folder
 	// added later would stay invisible); list_local_files with no folder returns the live list.
 	const allowedFolders = " Call list_local_files with no folder to see the allowed folders and their IDs."
-	gate.Declare("copy_local_file_to_crew")
+	gate.Declare("copy_local_file_to_project")
 	hasWrite := false
 	for _, folder := range settings.Folders {
 		if folder.Access == "write" {
@@ -518,7 +531,7 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 	gate.Declare("list_local_files")
 	if err := registrar.RegisterCustomToolWithTimeout("list_local_files",
 		"List the files and folders inside one folder of your connected computer's shared folder, one level, in name order, a page at a time (200 by default; the reply says total and, when more follow, truncated and next_offset). In a big folder such as Downloads, find a file with query (part of its name) instead of reading every page. path is relative to the granted folder; omit it for the folder itself. Works for Read and Read & write folders. An error is not an empty folder: report what it says."+allowedFolders,
-		map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your Crew Laptop access settings; optional when only one is allowed"}, "path": map[string]interface{}{"type": "string", "description": "Folder inside the granted folder, relative to it; omit for the granted folder itself"}, "query": map[string]interface{}{"type": "string", "description": "Only names containing this text (not case-sensitive), for finding a file in a big folder"}, "limit": map[string]interface{}{"type": "integer", "description": "Entries per page; default 200, at most 1000"}, "offset": map[string]interface{}{"type": "integer", "description": "Where the page starts, from next_offset of the previous page"}}},
+		map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your project Laptop access settings; optional when only one is allowed"}, "path": map[string]interface{}{"type": "string", "description": "Folder inside the granted folder, relative to it; omit for the granted folder itself"}, "query": map[string]interface{}{"type": "string", "description": "Only names containing this text (not case-sensitive), for finding a file in a big folder"}, "limit": map[string]interface{}{"type": "integer", "description": "Entries per page; default 200, at most 1000"}, "offset": map[string]interface{}{"type": "integer", "description": "Where the page starts, from next_offset of the previous page"}}},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
 			caller, err := check(ctx)
 			if err != nil {
@@ -532,7 +545,7 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 			if folder == "" {
 				current, err := readLaptopSettings(caller.UserID, root)
 				if err != nil || current.DeviceID != selected.DeviceID {
-					return "", errors.New("Laptop access was removed from this Crew")
+					return "", errors.New("Laptop access was removed from this project")
 				}
 				if len(current.Folders) != 1 {
 					// Several folders (or none): say which exist now, with their access, so the next call can name one.
@@ -565,8 +578,8 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 	if hasWrite {
 		gate.Declare("write_local_file")
 		if err := registrar.RegisterCustomToolWithTimeout("write_local_file",
-			"Create or replace one text file in a Read & write folder of your connected computer. path is relative to the granted folder; folders on the way are created. Replaces the whole file, so read it first (copy_local_file_to_crew) when you only want to change part of it. Text only, at most 11 MiB; for other files ask the person to copy them."+allowedFolders,
-			map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your Crew Laptop access settings; optional when only one is writable"}, "path": map[string]interface{}{"type": "string", "description": "File path relative to the granted folder"}, "content": map[string]interface{}{"type": "string", "description": "The complete new text of the file"}}, "required": []string{"path", "content"}},
+			"Create or replace one text file in a Read & write folder of your connected computer. path is relative to the granted folder; folders on the way are created. Replaces the whole file, so read it first (copy_local_file_to_project) when you only want to change part of it. Text only, at most 11 MiB; for other files ask the person to copy them."+allowedFolders,
+			map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your project Laptop access settings; optional when only one is writable"}, "path": map[string]interface{}{"type": "string", "description": "File path relative to the granted folder"}, "content": map[string]interface{}{"type": "string", "description": "The complete new text of the file"}}, "required": []string{"path", "content"}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				caller, err := check(ctx)
 				if err != nil {
@@ -606,7 +619,7 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 		gate.Declare("execute_local_shell_command")
 		if err := registrar.RegisterCustomToolWithTimeout("execute_local_shell_command",
 			"Run a command on your connected computer in its selected shared folder. Ordinary execute_shell_command runs on the server. Use this tool for local files, programs, builds, tests and git. Commands need the Run terminal commands switch on and a Read & write folder, and run as you on this computer, with the existing operating-system permissions. Output reaches the server/model. No server environment or secrets are forwarded. Paths start in the granted folder. timeout defaults to 60 seconds, maximum 300. If the laptop is disconnected, server work remains available."+allowedFolders,
-			map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your Crew Laptop access settings; optional when only one is allowed"}, "command": map[string]interface{}{"type": "string"}, "timeout": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 300}}, "required": []string{"command"}},
+			map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your project Laptop access settings; optional when only one is allowed"}, "command": map[string]interface{}{"type": "string"}, "timeout": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 300}}, "required": []string{"command"}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				caller, err := check(ctx)
 				if err != nil {
@@ -644,20 +657,25 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 			return err
 		}
 	}
-	return registrar.RegisterCustomToolWithTimeout("copy_local_file_to_crew",
-		"Copy one file from your connected computer's shared folder into this server Crew. local_path and crew_path are relative to their respective project folders. Supports text and binary files up to 11 MiB. Copies bytes directly, without sending file content through the model. Existing destination files are replaced through the Crew's normal guarded writer. Private files and protected Crew paths are excluded. No automatic sync; the original laptop file is unchanged."+allowedFolders,
-		map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your Crew Laptop access settings; optional when only one is allowed"}, "local_path": map[string]interface{}{"type": "string"}, "crew_path": map[string]interface{}{"type": "string"}}, "required": []string{"local_path", "crew_path"}},
+	return registrar.RegisterCustomToolWithTimeout("copy_local_file_to_project",
+		"Copy one file from your connected computer's shared folder into this server project. local_path and project_path are relative to their respective project folders. Supports text and binary files up to 11 MiB. Copies bytes directly, without sending file content through the model. Existing destination files are replaced through the project's normal guarded writer. Private files and protected project paths are excluded. No automatic sync; the original laptop file is unchanged."+allowedFolders,
+		map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your project Laptop access settings; optional when only one is allowed"}, "local_path": map[string]interface{}{"type": "string"}, "project_path": map[string]interface{}{"type": "string"}}, "required": []string{"local_path", "project_path"}},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
 			caller, err := check(ctx)
 			if err != nil {
 				return "", err
 			}
-			destination, err := wf.CleanRelative(externalArg(args, "crew_path"))
+			destination, err := wf.CleanRelative(externalArg(args, "project_path"))
 			if err != nil || destination == "." || wf.ProtectedWrite(destination) {
-				return "", errors.New("Choose an editable file path inside this Crew")
+				return "", errors.New("Choose an editable file path inside this project")
 			}
-			if _, err := crewSpecFilePath(root, destination); err != nil {
-				return "", err
+			if isCrewProjectPath(root) {
+				if _, err := crewSpecFilePath(root, destination); err != nil {
+					return "", err
+				}
+			}
+			if caller.AccessToken != nil && !caller.AccessToken.FileGuard.Allows(destination, true) {
+				return "", errors.New("File is outside this connection's write grants")
 			}
 			ctx = context.WithValue(ctx, common.ChatSessionIDKey, sessionID)
 			client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(caller.UserID))
@@ -691,32 +709,36 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 				return "", err
 			}
 			request := wf.WriteRequest{Root: root, Path: destination, ContentBase64: base64.StdEncoding.EncodeToString(response.Bytes), ExpectedRevision: expected, RequestID: id, Actor: caller.UserID, Identity: wf.EditIdentity{UserID: caller.UserID, Username: caller.Username, Source: "laptop_copy"}}
+			if caller.AccessToken != nil {
+				request.Guard = caller.AccessToken.FileGuard
+				request.Identity.ConnectionID = caller.AccessToken.ID
+			}
 			recorder := httptest.NewRecorder()
 			externalPostSharedFileWrite(recorder, httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx), request)
 			if recorder.Code != http.StatusOK {
-				return "", fmt.Errorf("Crew file copy rejected: %s", strings.TrimSpace(recorder.Body.String()))
+				return "", fmt.Errorf("Project file copy rejected: %s", strings.TrimSpace(recorder.Body.String()))
 			}
 			log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=copy_in request=%s destination=%q bytes=%d", activity, caller.UserID, id, destination, len(response.Bytes))
 			return recorder.Body.String(), nil
 		}, 180*time.Second, "workspace_advanced")
 }
 
-// Device identity is stored with the Crew's shared grant; the actor remains the
+// Device identity is stored with the project's shared grant; the actor remains the
 // current owner for access checks and audit attribution.
-func (api *StreamingAPI) crewLaptopDeviceOwner(caller, root, device string) string {
-	if !crewProjectOwnedByCaller(caller, root) {
-		return caller
+func (api *StreamingAPI) laptopDeviceOwner(ctx context.Context, caller *UserClaims, root, device string) string {
+	if !laptopProjectAllowed(ctx, caller, root) {
+		return caller.UserID
 	}
-	settings, err := readLaptopSettings(caller, root)
+	settings, err := readLaptopSettings(caller.UserID, root)
 	if err == nil && settings.DeviceID == device && settings.DeviceOwnerID != "" {
 		return settings.DeviceOwnerID
 	}
-	return caller
+	return caller.UserID
 }
 
-func (api *StreamingAPI) localDeviceListForCrew(caller *UserClaims, root string) []localfiles.Hello {
+func (api *StreamingAPI) localDeviceListForProject(ctx context.Context, caller *UserClaims, root string) []localfiles.Hello {
 	devices := api.localDeviceListForOwner(caller)
-	if !crewProjectOwnedByCaller(caller.UserID, root) {
+	if !laptopProjectAllowed(ctx, caller, root) {
 		return devices
 	}
 	settings, err := readLaptopSettings(caller.UserID, root)

@@ -61,7 +61,7 @@ func (api *StreamingAPI) vaultActorCanManage(ctx context.Context, person, connec
 
 const manageMyVaultsDescription = "Create vaults and share MCP connections through them. A vault is a bundle of MCP connections that you own and other people can use. " +
 	"You can own at most 5. Only an owner (a vault can have several) adds, removes or updates its connections and decides who may use it; members use it and cannot re-share. " +
-	"Operations: list (your vaults, with members' emails and connection IDs); apps (the apps Vault can connect, by catalog name); create {name, description}; inspect {vault_id}; " +
+	"Operations: laptops (your connected computers and one-time setup steps; choose where to use them with manage_laptop_access); list (your vaults, with members' emails and connection IDs); apps (the apps Vault can connect, by catalog name); create {name, description}; inspect {vault_id}; " +
 	"add_member / remove_member {vault_id, email}; add_owner / remove_owner {vault_id, email}; " +
 	"connect {vault_id, provider, label} for a server in the Vault catalog (returns the sign-in link for you to open); " +
 	"sign_in {vault_id, connection_id, client_id?, client_secret?} to finish or renew sign-in in chat; " +
@@ -78,7 +78,7 @@ func manageMyVaultsParameters() map[string]interface{} {
 		"type": "object", "additionalProperties": false,
 		"required": []string{"operation"},
 		"properties": map[string]interface{}{
-			"operation":      map[string]interface{}{"type": "string", "enum": []string{"list", "apps", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote_secret", "set_secret", "remove_secret", "sync", "remove_connection", "delete"}},
+			"operation":      map[string]interface{}{"type": "string", "enum": []string{"list", "laptops", "apps", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote_secret", "set_secret", "remove_secret", "sync", "remove_connection", "delete"}},
 			"vault_id":       str("The vault's ID from list."),
 			"name":           str("create: the vault's name. promote: the exact connection name from list_mcp_servers. promote_secret / remove_secret: the secret's name."),
 			"description":    str("create: what the vault is for."),
@@ -121,6 +121,14 @@ func argString(args map[string]interface{}, key string) string {
 }
 
 func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, args map[string]interface{}) (string, error) {
+	if argString(args, "operation") == "laptops" {
+		if !personVaultActive(person) {
+			return "", errors.New("Your account cannot manage My Vault")
+		}
+		devices := api.localDeviceListForOwner(&UserClaims{UserID: person})
+		data, err := json.Marshal(map[string]any{"devices": devices, "setup": laptopSetupSteps(len(devices) == 0), "next": "Connect your computer once in My Vault, then select it with manage_laptop_access in any Goal or Crew you build. Each project chooses folders and terminal commands. Steps, schedules and Autopilot never inherit laptop access."})
+		return string(data), err
+	}
 	if _, _, err := capLayerServiceConfig(); err != nil {
 		return "", errors.New("Vault is not set up on this server")
 	}

@@ -3597,7 +3597,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" title={activeTab.metadata.agentProfileChatModelLabel}>{activeTab.metadata.agentProfileChatModelLabel}</span>
                 )}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
-                {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
+                {(agentProfileId === 'work' || isGoalBuilderChat) && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} workflowPath={isGoalBuilderChat ? workflowPhaseWorkspacePath : undefined} />}
                 {(agentProfileId === 'work' || isGoalBuilderChat) && <ReachableAgentsMenu />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID

@@ -38,6 +38,7 @@ import { WorkspaceViewActions } from './WorkspaceViewActions'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { getIdentityTabAskAIMessage, getIntegrationTabAskAIMessage, getWorkspaceAskAIMessage, type IdentityTabId, type IntegrationTabId } from './workspaceAskAI'
 import WorkflowIdentityPanel from './WorkflowIdentityPanel'
+import { CodeLocalFilesSettings } from '../../products/work/CodeFilesPanel'
 import WorkflowFolderAccessView from './WorkflowFolderAccessView'
 import WorkflowUpdatesView from './WorkflowUpdatesView'
 
@@ -53,6 +54,7 @@ type IdentityTab = IdentityTabId
 const IDENTITY_TABS: Array<{ value: IdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'llm', label: 'Models' },
+  { value: 'laptop', label: 'Local laptop' },
   { value: 'upgrades', label: 'Upgrades' },
 ]
 const RELAY_IDENTITY_TABS = IDENTITY_TABS.filter(option => option.value === 'general' || option.value === 'llm')
@@ -449,6 +451,9 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                       void persist(next)
                     }}
                   />
+                )}
+                {!relayMode && activeIdentityTab === 'laptop' && workspacePath && (
+                  canWriteWorkflow ? <CodeLocalFilesSettings workflowPath={workspacePath} /> : <p className="text-xs text-muted-foreground">Build access is needed to manage this Goal’s laptop connection.</p>
                 )}
                 {!relayMode && activeIdentityTab === 'upgrades' && (
                   <WorkflowUpdatesView workspacePath={workspacePath} />

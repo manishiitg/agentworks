@@ -50,7 +50,7 @@ the computer is offline.
   the folder is their starting location. Server environment and secrets are
   never forwarded. If a connection or timeout leaves the outcome uncertain,
   inspect the result before retrying a command with effects.
-- `copy_local_file_to_crew` copies a local file into the Crew’s normal writable
+- `copy_local_file_to_project` copies a local file into the Crew’s normal writable
   areas, including binary files up to 11 MiB. It replaces the destination
   through the normal guarded writer. Bytes do not pass through the model.
 
@@ -824,7 +824,7 @@ The owner's interactive Builder chat gets these extra tools:
   a Read & write folder.
 - `execute_local_shell_command`: run a command in the connected folder on the
   laptop (needs the commands switch). Normal `execute_shell_command` continues to run on the server.
-- `copy_local_file_to_crew`: copy a relative local file into an editable relative
+- `copy_local_file_to_project`: copy a relative local file into an editable relative
   Crew path. Text and binary files up to 11 MiB are copied as bytes through the
   normal guarded Crew writer. The model receives a receipt, not the file bytes.
 

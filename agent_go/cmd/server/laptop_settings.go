@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,7 +31,9 @@ type crewLaptopSettings struct {
 var laptopSettingsMu sync.Mutex
 
 func laptopSettingsPath(owner, root string) (string, error) {
-	if projectOwner, ok := crewProjectOwnerID(root); ok && crewProjectOwnedByCaller(owner, root) {
+	if strings.HasPrefix(root, "Workflow/") {
+		owner = "" // All Builders of this Goal share the saved selection.
+	} else if projectOwner, ok := crewProjectOwnerID(root); ok && crewProjectOwnedByCaller(owner, root) {
 		owner = projectOwner
 	}
 	state, err := workflowCLIStateRoot()
@@ -175,6 +178,10 @@ func (api *StreamingAPI) handleLaptopBrowse(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
+	api.serveLaptopBrowse(w, r, root)
+}
+
+func (api *StreamingAPI) serveLaptopBrowse(w http.ResponseWriter, r *http.Request, root string) {
 	w.Header().Set("Cache-Control", "no-store")
 	ctx, cancel := contextWithLaptopTimeout(r)
 	defer cancel()
@@ -189,7 +196,7 @@ func (api *StreamingAPI) handleLaptopBrowse(w http.ResponseWriter, r *http.Reque
 func currentLaptopFolder(owner, root, device, id string, write bool) ([]localfiles.FolderSelection, error) {
 	settings, err := readLaptopSettings(owner, root)
 	if err != nil || settings.DeviceID != device {
-		return nil, fmt.Errorf("This laptop is no longer connected to this Crew. Check Settings → Laptop access.")
+		return nil, fmt.Errorf("This laptop is no longer connected to this project. Check Settings → Laptop access.")
 	}
 	if id == "" && len(settings.Folders) == 1 {
 		id = settings.Folders[0].ID
@@ -197,12 +204,12 @@ func currentLaptopFolder(owner, root, device, id string, write bool) ([]localfil
 	for _, folder := range settings.Folders {
 		if folder.ID == id {
 			if write && folder.Access != "write" {
-				return nil, fmt.Errorf("Read access does not allow commands. Choose Read & write for this folder in Crew Settings.")
+				return nil, fmt.Errorf("Read access does not allow commands. Choose Read & write for this folder in project settings.")
 			}
 			return settings.Folders, nil
 		}
 	}
-	return nil, fmt.Errorf("Choose a folder listed in this Crew's Laptop access settings")
+	return nil, fmt.Errorf("Choose a folder listed in this project's Laptop access settings")
 }
 
 // The browser cannot keep an unbounded request open while the laptop is offline.

@@ -168,6 +168,9 @@ func boundUI(t *testing.T) (*uiControlBroker, *uiBinding) {
 	return b, c
 }
 func TestUIControlOnlyAdvertisesActualActions(t *testing.T) {
+	if err := validateUIAction("identity", "open", "laptop"); err != nil {
+		t.Fatalf("Goal laptop panel cannot be opened from Builder: %v", err)
+	}
 	// 25 views before the knowledge/bots/llm consolidation; 18 after it, with
 	// workflow upgrades inside Identity rather than a standalone view; 19 with
 	// the Human actions view; 20 with compact context.

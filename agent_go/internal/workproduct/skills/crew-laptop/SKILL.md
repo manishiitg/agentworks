@@ -5,7 +5,7 @@ description: Read when the person mentions their laptop or computer, a folder on
 
 # Laptop connection
 
-The Crew runs on the server. Every current owner shares its selected laptop, folders and commands switch; each keeps their own chat tabs. People only shared with use the dashboard and do not get laptop tools. A connected laptop adds two separate things. Files: `list_local_files` and `copy_local_file_to_crew` for a Read folder, and also `write_local_file` for a Read & write folder. Commands: `execute_local_shell_command` runs a command in a Read & write folder as the person, only when the person has turned on "Run terminal commands" for this Crew. Nothing syncs.
+The Crew runs on the server. Every current owner shares its selected laptop, folders and commands switch; each keeps their own chat tabs. People only shared with use the dashboard and do not get laptop tools. A connected laptop adds two separate things. Files: `list_local_files` and `copy_local_file_to_project` for a Read folder, and also `write_local_file` for a Read & write folder. Commands: `execute_local_shell_command` runs a command in a Read & write folder as the person, only when the person has turned on "Run terminal commands" for this Crew. Nothing syncs.
 
 ## Check first (read-only)
 
@@ -39,3 +39,5 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 
 - Server secrets are never sent to the laptop. What you read there reaches the server and the chat history, so say so before opening anything personal.
 - Change the saved folders only when the person asks.
+
+Connect the computer once in My Vault (manage_my_vaults operation=laptops lists your computers and setup steps), then choose it in this project. Goals use the same optional connection for Builder chats; their steps, schedules and Autopilot stay on the server. copy_local_file_to_project takes local_path and project_path.

@@ -167,7 +167,13 @@ export const UI_CONTROL_CONTRACT = {
         "open",
         "refresh"
       ],
-      "targets": []
+      "targets": [
+        "general",
+        "llm",
+        "laptop",
+        "upgrades"
+      ],
+      "target_kind": "view_section"
     },
     {
       "id": "mcp",

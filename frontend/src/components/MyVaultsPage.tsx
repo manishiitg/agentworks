@@ -7,6 +7,7 @@ import { agentApi } from '../services/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import PersonalAccountsPanel from './integrations/PersonalAccountsPanel'
 import { VaultSlackBots } from './integrations/VaultSlackBots'
+import { LaptopAccountsPanel } from './integrations/LaptopAccountsPanel'
 import SlackAdminPanel from './admin/SlackAdminPanel'
 import { useVaultSetupDraft } from './integrations/useVaultSetupDraft'
 interface VaultView { group:{ID:string;Name:string;Description?:string;ProjectRoot?:string};role:'owner'|'member';members:string[];connections?:{id:string;label:string;provider:string;status:string;sign_in_error?:string}[];secret_names:string[] }
@@ -29,7 +30,7 @@ export default function MyVaultsPage({embedded=false}:{embedded?:boolean}={}){
      {vault.secret_names.map(name=><p key={name} className="flex items-center gap-2 break-all px-4 py-3 font-mono text-xs"><KeyRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground"/>{name.split('__').slice(1).join('__')||name}</p>)}
      {!vault.connections?.length&&!vault.secret_names.length&&<p className="px-4 py-3 text-xs text-muted-foreground">No accounts or secrets yet.</p>}
     </div></section>)}
-   <PersonalAccountsPanel/><VaultSlackBots/>
+   <PersonalAccountsPanel/><VaultSlackBots/><LaptopAccountsPanel/>
    {isAdmin&&<details className="rounded-lg border border-border p-4"><summary className="cursor-pointer font-medium">Company sign-in apps</summary><p className="mt-2 text-xs text-muted-foreground">Register or update a provider's shared OAuth app through Vault chat.</p><Button size="sm" variant="outline" className="mt-3" onClick={()=>void setup.open('Configure a company OAuth sign-in app through manage_vault_access configure_sign_in_app. Inspect the provider app keys, ask for the required client ID and secret, store them encrypted and never repeat secret values. Preserve existing accounts and grants.')}>Configure in chat</Button></details>}
    {isAdmin&&<details className="rounded-lg border border-border p-4"><summary className="cursor-pointer font-medium">Company Slack bot</summary><div className="mt-3"><SlackAdminPanel/></div></details>}
   </WorkspacePageContent></div>
