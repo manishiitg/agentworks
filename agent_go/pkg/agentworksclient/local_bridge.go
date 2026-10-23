@@ -2576,6 +2576,7 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 			return nil, 0, nil, 0, errors.New("inbox response changed attachment")
 		}
 		if now.Before(primary.handedOff[message.MessageID]) {
+			log.Printf("[BRIDGE-NATIVE] outcome=already_handed_off attachment=%s message=%s route=%s", attachment.ID, message.MessageID, transport)
 			continue
 		}
 		if message.Kind == "ping" {
