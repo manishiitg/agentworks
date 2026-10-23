@@ -8,6 +8,7 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { WorkBrowserPanel } from './WorkWorkspacePane'
 import { CREW_PRODUCT, ProjectProductProvider } from './projectProduct'
 
+vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
 const browser = vi.hoisted(() => ({ prepare: undefined as undefined | ((message: string) => Promise<void>) }))
 vi.mock('../../components/workflow/BrowserWorkspacePanel', () => ({
   BrowserWorkspacePanel: ({ assistantControl }: { assistantControl: React.ReactElement<{ onAsk: typeof browser.prepare }> }) => {
