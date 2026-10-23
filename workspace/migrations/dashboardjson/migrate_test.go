@@ -34,6 +34,11 @@ func TestSavedJSONMigrationPreservesIdentityAndHistory(t *testing.T) {
 	if err := os.WriteFile(snapshotPath, original, 0600); err != nil {
 		t.Fatal(err)
 	}
+	// One corrupt historical record must not prevent valid pages or startup.
+	broken := filepath.Join(stateDir, strings.Repeat("b", 64)+".json")
+	if err := os.WriteFile(broken, []byte("truncated old record"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	count, backup, err := Run(docs)
 	if err != nil || count != 1 {
 		t.Fatalf("migration count=%d err=%v", count, err)

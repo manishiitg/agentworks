@@ -64,7 +64,7 @@ try {
   assert.equal(await frame.getByRole('button', { name: 'Ask', exact: true }).count(), 0)
   assert.equal(await frame.locator('.dashboard-stat').count(), 1)
   await frame.locator('.recharts-line-curve').waitFor()
-  assert.equal(await frame.getByRole('table').count(), 1)
+  assert.equal(await frame.getByRole('table').count(), 2)
   assert.equal(await frame.locator('[data-report-action="lookup"]').count(), 1)
   total = 84
   await frame.evaluate(() => Promise.all(window.__reportQueuedCallbacks.map(callback => window.__runReportCallback(callback))))

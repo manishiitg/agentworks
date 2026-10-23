@@ -67,8 +67,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// One-off source migration, before any workspace requests or processes.
 	// Remove this package after every server has moved to TSX.
 	if count, backup, err := dashboardjson.Run(docsDir); err != nil {
-		fmt.Printf("Dashboard TSX migration failed: %v\n", err)
-		os.Exit(1)
+		fmt.Printf("[DASHBOARD_MIGRATION] incomplete; workspace remains available: %v\n", err)
 	} else if count > 0 {
 		fmt.Printf("[DASHBOARD_MIGRATION] converted %d saved JSON revisions to TSX; backup=%s\n", count, backup)
 	}

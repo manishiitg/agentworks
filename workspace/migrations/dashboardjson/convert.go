@@ -71,11 +71,17 @@ func expression(value any, at scope, action bool) string {
 		}
 		if p, ok := v["$item"].(string); ok {
 			if action {
+				if p == "" {
+					return at.path
+				}
 				return at.path + "+" + literal("/"+p)
 			}
 			return field(at.item, p)
 		}
 		if p, ok := v["$bindItem"].(string); ok {
+			if p == "" {
+				return "store.get(" + at.path + ")"
+			}
 			return "store.get(" + at.path + "+" + literal("/"+p) + ")"
 		}
 		if _, ok := v["$index"]; ok {
@@ -117,6 +123,9 @@ func condition(v any, at scope) string {
 	case bool:
 		return literal(c)
 	case []any:
+		if len(c) == 0 {
+			return "true"
+		}
 		out := []string{}
 		for _, x := range c {
 			out = append(out, condition(x, at))
@@ -186,7 +195,7 @@ func actionCode(raw any, at scope) (string, error) {
 	}
 	p, _ := a["params"].(map[string]any)
 	path := expression(p["statePath"], at, true)
-	value := expression(p["value"], at, false)
+	value := expression(p["value"], at, true)
 	var code string
 	switch a["action"] {
 	case "setState":
@@ -333,11 +342,19 @@ func Convert(source string) (string, error) {
 		call := ""
 		switch method {
 		case "query":
-			call = "report.query(" + literal(binding["sql"]) + "," + expression(binding["params"], at, false) + ")"
+			params := binding["params"]
+			if params == nil {
+				params = []any{}
+			}
+			call = "report.query(" + literal(binding["sql"]) + "," + expression(params, at, false) + ")"
 		case "get":
 			call = "report.get(" + literal(binding["path"]) + ")"
 		case "run":
-			call = "report.run(" + literal(binding["path"]) + "," + expression(binding["args"], at, false) + ")"
+			args := binding["args"]
+			if args == nil {
+				args = map[string]any{}
+			}
+			call = "report.run(" + literal(binding["path"]) + "," + expression(args, at, false) + ")"
 		default:
 			return "", fmt.Errorf("unknown saved data method %q", method)
 		}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,7 +26,8 @@ type change struct {
 	remove bool
 }
 
-// Run converts only saved managed JSON revisions, before the workspace starts.
+// Run converts saved managed JSON revisions and rebundles old TSX CSS references,
+// before the workspace starts.
 // IDs, saved revision paths, draft/published pointers, history, sharing, grants,
 // scripts, data and project settings stay in place. A private backup holds the
 // exact original bytes. No dashboard code, query, script or function is run.
@@ -56,10 +58,7 @@ func Run(docs string) (int, string, error) {
 	}
 	var changes []change
 	count := 0
-	err = filepath.WalkDir(docs, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
+	prepare := func(path string, entry fs.DirEntry) error {
 		if entry.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
@@ -80,17 +79,20 @@ func Run(docs string) (int, string, error) {
 		if err = json.Unmarshal(raw, &snap); err != nil {
 			return fmt.Errorf("dashboard migration: invalid saved revision %s: %w", path, err)
 		}
-		source, ok := snap.Files["index.json"]
-		if !ok {
+		source, jsonEntry := snap.Files["index.json"]
+		_, tsxEntry := snap.Files["index.tsx"]
+		oldHTML := snap.Files["index.html"]
+		if !jsonEntry && !(tsxEntry && strings.Contains(oldHTML, "/dashboard-json.css")) {
 			return nil
 		}
-		tsx, err := Convert(source)
-		if err != nil {
-			return fmt.Errorf("dashboard migration %s: %w", path, err)
+		if jsonEntry {
+			tsx, err := Convert(source)
+			if err != nil {
+				return fmt.Errorf("dashboard migration %s: %w", path, err)
+			}
+			delete(snap.Files, "index.json")
+			snap.Files["index.tsx"] = tsx
 		}
-		oldHTML := snap.Files["index.html"]
-		delete(snap.Files, "index.json")
-		snap.Files["index.tsx"] = tsx
 		snap.Files, err = dashboards.CompileTSX(snap.Title, snap.Files)
 		if err != nil {
 			return fmt.Errorf("dashboard migration %s: %w", path, err)
@@ -131,6 +133,19 @@ func Run(docs string) (int, string, error) {
 		changes = append(changes, change{path: filepath.Join(render, "index.json"), remove: true})
 		changes = append(changes, change{path, body, info.Mode().Perm(), false})
 		count++
+		return nil
+	}
+	err = filepath.WalkDir(docs, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			log.Printf("[DASHBOARD_MIGRATION] skipped inaccessible path=%s error=%v", path, walkErr)
+			return nil
+		}
+		if err := prepare(path, entry); err != nil {
+			if err == filepath.SkipDir {
+				return err
+			}
+			log.Printf("[DASHBOARD_MIGRATION] skipped saved revision path=%s error=%v", path, err)
+		}
 		return nil
 	})
 	if err != nil || count == 0 {
@@ -179,9 +194,30 @@ func Run(docs string) (int, string, error) {
 		}
 		// Existing file ownership and access bits remain; these are the same files,
 		// not a second source registry or a new publication/access boundary.
-		if err = os.WriteFile(change.path, change.body, mode); err != nil {
+		if err = replaceFile(change.path, change.body, mode); err != nil {
 			return 0, backup, err
 		}
 	}
 	return count, backup, nil
+}
+
+func replaceFile(path string, body []byte, mode fs.FileMode) error {
+	file, err := os.CreateTemp(filepath.Dir(path), ".dashboard-tsx-*")
+	if err != nil {
+		return err
+	}
+	tmp := file.Name()
+	defer os.Remove(tmp)
+	if err = file.Chmod(mode); err != nil {
+		file.Close()
+		return err
+	}
+	if _, err = file.Write(body); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
