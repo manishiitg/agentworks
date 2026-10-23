@@ -783,7 +783,6 @@ func TestNativeHandoffDoesNotRepeatDuringSlowReceipt(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ackStarted, releaseAck := make(chan struct{}), make(chan struct{})
-	defer close(releaseAck)
 	var once sync.Once
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/external/v1/call" {
@@ -800,7 +799,7 @@ func TestNativeHandoffDoesNotRepeatDuringSlowReceipt(t *testing.T) {
 			{AttachmentID: "lease", MessageID: "second", InboxID: "inbox"},
 		}, "next_cursor": 2, "pending": 2})
 	}))
-	defer remote.Close()
+	defer func() { close(releaseAck); remote.Close() }()
 	client, err := New(remote.URL, "fixture")
 	if err != nil {
 		t.Fatal(err)
