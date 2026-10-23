@@ -54,7 +54,7 @@ func TestGoalBuilderLaptopUsesSharedGrantsOnlyInInteractiveTurns(t *testing.T) {
 	if req.LaptopConnection == nil || req.LaptopConnection.DeviceID != "laptop" {
 		t.Fatal("interactive Goal did not load its saved computer")
 	}
-	f.api.lastQueryRequests["goal-session"] = req
+	f.api.lastQueryRequests = map[string]QueryRequest{"goal-session": req}
 	reg := &recordingRegistrar{}
 	if err := f.api.registerLaptopTools(reg, newProductToolGate(nil), owner, false, "goal-session", root, req.LaptopConnection); err != nil {
 		t.Fatal(err)
