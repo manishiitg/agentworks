@@ -106,7 +106,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const chatSessionId = useChatStore(state => presetQueryId ? selectWorkspacePaneWorkflowTab(state.chatTabs, presetQueryId, state.activeTabId)?.sessionId ?? undefined : undefined)
   const vaultTabId = useChatStore(state => {
     const active = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
-    return active?.metadata?.presetQueryId === presetQueryId && active.metadata.phaseId === 'workflow-builder' ? active.tabId : ''
+    return active && active.metadata && active.metadata.presetQueryId === presetQueryId && active.metadata.phaseId === 'workflow-builder' ? active.tabId : ''
   })
   const canWriteWorkflow = useCanWriteWorkflow(workspacePath)
   const [capabilities, setCapabilities] = useState<WorkflowCapabilities>(EMPTY_CAPABILITIES)
