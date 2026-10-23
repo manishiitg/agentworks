@@ -211,6 +211,9 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	if !strings.Contains(params["content"].(string), "native push proof") || !strings.Contains(params["content"].(string), "<<<BEGIN "+receipt["message_id"].(string)+">>>") || meta["message_id"] != receipt["message_id"] {
 		t.Fatalf("wrong sender/identity: %v", incoming)
 	}
+	if strings.Contains(params["content"].(string), "Read from the inbox") {
+		t.Fatal("pending native delivery inherited a mailbox history label")
+	}
 	close(busyRelease)
 	if finished := next(); finished["id"] != float64(50) {
 		t.Fatalf("busy tool was interrupted: %v", finished)

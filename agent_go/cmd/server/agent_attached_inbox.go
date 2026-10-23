@@ -66,9 +66,6 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		row := map[string]any{"attachment_id": id, "message_id": message.ID, "inbox_id": conversation.ID,
 			"sender": endpointDisplayLabel(source, agent.UserID), "sender_id": source.NamedAgentID,
 			"message": message.Text, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt}
-		for key, value := range messageArrivalFields(message) {
-			row[key] = value
-		}
 		if serverAuthoredKind(message.Kind) {
 			row["sender"], row["sender_id"], row["kind"] = "AgentWorks", "", message.Kind
 		}
