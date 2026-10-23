@@ -1086,10 +1086,7 @@ func stopLocalBridgeAt(ctx context.Context, root, reason string) error {
 	if _, err = agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err != nil {
 		return nil
 	}
-	reply, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "shutdown", ShutdownReason: reason})
-	if err != nil {
-		return err
-	}
+	reply, _ := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "shutdown", ShutdownReason: reason})
 	if reply.Error != "" {
 		return errors.New(reply.Error)
 	}
