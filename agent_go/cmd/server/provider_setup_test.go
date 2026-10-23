@@ -322,10 +322,13 @@ printf '\r\nNo,exit\r\n❯Yes,Itrustthisfolder'
 confirm=$(dd bs=1 count=1 2>/dev/null)
 [ "$confirm" = "$(printf '\r')" ] || exit 1
 stty sane -echo
+# The real CLI draws a prompt before its usage command is ready.
+(sleep 1; : > provider-ready) &
 printf '\ntrust-accepted\n❯ '
 IFS= read -r command
 [ "$command" = /usage ] || exit 1
 printf '\nLoading usage data...\n'
+[ -f provider-ready ] || exit 1
 sleep 2.5
 printf '\nCurrent session: 42%% used\n'`}}}}
 	t.Cleanup(func() { providerSetupCommands = original })

@@ -643,6 +643,14 @@ func driveProviderUsage(ctx context.Context, session *providerSetupSession) {
 				continue
 			}
 			session.mu.Lock()
+			updated := session.updatedAt
+			session.mu.Unlock()
+			// Claude can draw its first prompt while startup is still settling.
+			// An immediate /usage can stay on its loading screen indefinitely.
+			if session.provider == "claude-code" && time.Since(updated) < providerUsageSettle {
+				continue
+			}
+			session.mu.Lock()
 			session.usageOutputOffset = len(session.output)
 			session.mu.Unlock()
 			if err := session.write(command + "\r"); err != nil {
