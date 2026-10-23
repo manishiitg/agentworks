@@ -17,5 +17,5 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fmt.Printf("Migrated %d JSON dashboard revisions to TSX; backup: %s\n", count, backup)
+	fmt.Printf("Migrated %d saved dashboard revisions to TSX; backup: %s\n", count, backup)
 }

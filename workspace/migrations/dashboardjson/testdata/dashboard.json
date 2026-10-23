@@ -18,7 +18,10 @@
         "script",
         "ask",
         "function",
-        "refresh"
+        "refresh",
+        "filter-value",
+        "filter-watch",
+        "records"
       ]
     },
     "title": {
@@ -64,9 +67,24 @@
         "name": "filter",
         "value": {
           "$bindState": "/filter"
-        }
+        },
+        "checks": [
+          {
+            "type": "required",
+            "message": "Enter a filter"
+          }
+        ]
       },
-      "children": []
+      "children": [],
+      "watch": {
+        "/filter": {
+          "action": "setState",
+          "params": {
+            "statePath": "/filterTouched",
+            "value": true
+          }
+        }
+      }
     },
     "details-button": {
       "type": "Button",
@@ -129,6 +147,77 @@
           "action": "refreshData",
           "params": {}
         }
+      },
+      "children": []
+    },
+    "filter-value": {
+      "type": "Text",
+      "props": {
+        "text": {
+          "$template": "Filter: ${/filter}"
+        }
+      },
+      "children": []
+    },
+    "filter-watch": {
+      "type": "Text",
+      "props": {
+        "text": "Filter changed"
+      },
+      "visible": {
+        "$state": "/filterTouched",
+        "eq": true
+      },
+      "children": []
+    },
+    "records": {
+      "type": "Stack",
+      "props": {
+        "gap": "sm"
+      },
+      "repeat": {
+        "statePath": "/series"
+      },
+      "children": [
+        "record-label",
+        "record-select",
+        "record-selected"
+      ]
+    },
+    "record-label": {
+      "type": "Text",
+      "props": {
+        "text": {
+          "$template": "${label}: ${value}"
+        }
+      },
+      "children": []
+    },
+    "record-select": {
+      "type": "Checkbox",
+      "props": {
+        "label": {
+          "$template": "Select ${label}"
+        },
+        "name": {
+          "$template": "selected-${label}"
+        },
+        "checked": {
+          "$bindItem": "selected"
+        }
+      },
+      "children": []
+    },
+    "record-selected": {
+      "type": "Text",
+      "props": {
+        "text": {
+          "$template": "Selected ${label}"
+        }
+      },
+      "visible": {
+        "$item": "selected",
+        "eq": true
       },
       "children": []
     }

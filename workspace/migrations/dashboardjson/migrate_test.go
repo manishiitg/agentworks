@@ -16,7 +16,8 @@ func TestSavedJSONMigrationPreservesIdentityAndHistory(t *testing.T) {
 	docs := filepath.Join(t.TempDir(), "workspace-docs")
 	project := filepath.Join(docs, "Crew/example")
 	rev := strings.Repeat("a", 64)
-	state := `{"id":"overview","draft":"` + rev + `","published":"` + rev + `","history":["` + rev + `"]}`
+	oldTSXRev := strings.Repeat("c", 64)
+	state := `{"id":"overview","draft":"` + rev + `","published":"` + rev + `","history":["` + rev + `","` + oldTSXRev + `"]}`
 	stateDir := filepath.Join(project, "db/reports/.dashboard-state/overview")
 	if err := os.MkdirAll(stateDir, 0700); err != nil {
 		t.Fatal(err)
@@ -34,13 +35,23 @@ func TestSavedJSONMigrationPreservesIdentityAndHistory(t *testing.T) {
 	if err := os.WriteFile(snapshotPath, original, 0600); err != nil {
 		t.Fatal(err)
 	}
+	oldTSX := `export default function Dashboard(){return <h1>Previous TSX</h1>}`
+	oldFiles, err := dashboards.CompileTSX("Previous TSX", map[string]string{"index.tsx": oldTSX})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldFiles["index.html"] = strings.ReplaceAll(oldFiles["index.html"], "/dashboard-react.css", "/dashboard-json.css")
+	oldSnapshot, _ := json.Marshal(dashboards.Snapshot{Title: "Previous TSX", Files: oldFiles})
+	if err := os.WriteFile(filepath.Join(stateDir, oldTSXRev+".json"), oldSnapshot, 0600); err != nil {
+		t.Fatal(err)
+	}
 	// One corrupt historical record must not prevent valid pages or startup.
 	broken := filepath.Join(stateDir, strings.Repeat("b", 64)+".json")
 	if err := os.WriteFile(broken, []byte("truncated old record"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	count, backup, err := Run(docs)
-	if err != nil || count != 1 {
+	if err != nil || count != 2 {
 		t.Fatalf("migration count=%d err=%v", count, err)
 	}
 	after, err := os.ReadFile(filepath.Join(stateDir, "state.json"))
@@ -60,6 +71,10 @@ func TestSavedJSONMigrationPreservesIdentityAndHistory(t *testing.T) {
 	}
 	if !strings.Contains(out.Snapshot.Files["index.tsx"], "<C.LineChart") || out.Snapshot.Files["scripts/summary.py"] != "print('unchanged')" {
 		t.Fatal("components or script changed")
+	}
+	previous, err := dashboards.Execute(context.Background(), docs, dashboards.Request{Root: "Crew/example", Action: "get", ID: "overview", Revision: oldTSXRev})
+	if err != nil || previous.Snapshot.Files["index.tsx"] != oldTSX || strings.Contains(previous.Snapshot.Files["index.html"], "/dashboard-json.css") {
+		t.Fatal("prior TSX lost source or stylesheet")
 	}
 	if _, err := dashboards.Execute(context.Background(), docs, dashboards.Request{Root: "Crew/example", Action: "restore", ID: "overview", ExpectedRevision: rev, Revision: rev, IncludeDraft: true}); err != nil {
 		t.Fatal(err)

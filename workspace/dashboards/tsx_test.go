@@ -40,6 +40,10 @@ export default function Dashboard({data,report}) { const [open,setOpen]=useState
 	if !strings.Contains(updated.Snapshot.Files["index.html"], `data-report-renderer="tsx"`) || !strings.Contains(updated.Snapshot.Files["dashboard-app.js"], "__agentworksDashboard") || !strings.Contains(updated.Snapshot.Files["dashboard-app.css"], "rgb(10, 120, 180)") {
 		t.Fatal("managed compiled output missing")
 	}
+	_, jsonErr := Execute(context.Background(), docs, Request{Root: root, Action: "update", ID: "overview", ExpectedRevision: rev, IncludeDraft: true, Files: map[string]string{"index.json": "{}"}})
+	if wf.StatusCode(jsonErr) != 400 {
+		t.Fatal("JSON dashboard entry was accepted")
+	}
 	for _, broken := range []string{`export default function Broken(){return <main>}`, `import x from '../../private.ts'; export default ()=><p>{x}</p>`, `import x from 'node:fs'; export default ()=><p>{x}</p>`, `export const noDefault = 1`} {
 		_, err := Execute(context.Background(), docs, Request{Root: root, Action: "update", ID: "overview", ExpectedRevision: rev, IncludeDraft: true, Files: map[string]string{"index.tsx": broken}})
 		if wf.StatusCode(err) != 400 {

@@ -202,10 +202,13 @@ func actionCode(raw any, at scope) (string, error) {
 		code = "store.set(" + path + "," + value + ");"
 	case "pushState":
 		code = "store.set(" + path + ",[...(store.get(" + path + ")??[])," + value + "]);"
+		if clear, ok := p["clearStatePath"]; ok {
+			code += "store.set(" + expression(clear, at, true) + ",'');"
+		}
 	case "removeState":
 		code = "store.set(" + path + ",(store.get(" + path + ")??[]).filter((_,i)=>i!==" + expression(p["index"], at, false) + "));"
 	case "validateForm":
-		code = "store.validateAll();"
+		code = "store.set((" + path + "||'/formValidation'),{valid:store.validateAll(),errors:Object.fromEntries([...store.validationErrors].filter(([,errors])=>errors.length))});"
 	case "refreshData":
 		code = "await refresh();"
 	default:

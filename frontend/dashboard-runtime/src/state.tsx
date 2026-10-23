@@ -20,6 +20,7 @@ export function createDashboardStore(initial: Record<string, any> = {}) {
   let state = initial
   const listeners = new Set<() => void>()
   const fields = new Map<string, Validation>()
+  const validationErrors = new Map<string, string[]>()
   const validations = new Map<string, (value?: any) => boolean>()
   const store = {
     getSnapshot: () => state,
@@ -27,7 +28,7 @@ export function createDashboardStore(initial: Record<string, any> = {}) {
     set(path: string, value: any) { state = assign(state, parts(path), value); listeners.forEach(listener => listener()) },
     update(values: Record<string, any>) { for (const [path, value] of Object.entries(values)) state = assign(state, parts(path), value); listeners.forEach(listener => listener()) },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
-    fields, validations,
+    fields, validations, validationErrors,
     validateAll() { let valid = true; for (const validate of validations.values()) valid = validate() && valid; return valid },
   }
   return store
@@ -81,12 +82,12 @@ export function useFieldValidation(path: string, config?: Validation) {
       const args = Object.fromEntries(Object.entries(check.args ?? {}).map(([key, value]) => [key, value && typeof value === 'object' && '$state' in value ? store.get(value.$state) : value]))
       return !checkValue(store.get(path), check.type, args)
     }).map(check => check.message)
-    setErrors(errors); return errors.length === 0
+    store.validationErrors.set(path, errors); setErrors(errors); return errors.length === 0
   }, [path, store])
   useEffect(() => {
     if (!path || !config) return
     store.fields.set(path, config); store.validations.set(path, validate)
-    return () => { store.fields.delete(path); store.validations.delete(path) }
+    return () => { store.fields.delete(path); store.validations.delete(path); store.validationErrors.delete(path) }
   }, [path, Boolean(config), store, validate])
   return { errors, validate }
 }

@@ -37,7 +37,7 @@ func TestDefaultDashboardHTMLShowsOnlyDeclaredThings(t *testing.T) {
 		}
 	}
 
-	if strings.Contains(page, `<script>alert`) || strings.Contains(page, `x"><`) {
+	if strings.Count(page, "</script>") != 2 {
 		t.Fatal("a function name or title must be escaped and only the trusted renderer script may run")
 	}
 	if !unmodifiedDefaultDashboard(page) {

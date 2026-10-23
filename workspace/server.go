@@ -69,7 +69,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	if count, backup, err := dashboardjson.Run(docsDir); err != nil {
 		fmt.Printf("[DASHBOARD_MIGRATION] incomplete; workspace remains available: %v\n", err)
 	} else if count > 0 {
-		fmt.Printf("[DASHBOARD_MIGRATION] converted %d saved JSON revisions to TSX; backup=%s\n", count, backup)
+		fmt.Printf("[DASHBOARD_MIGRATION] migrated %d saved dashboard revisions to TSX; backup=%s\n", count, backup)
 	}
 
 	// Create default workspace subdirectories.
