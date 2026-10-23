@@ -46,6 +46,9 @@ it.each([false, true])('uses Crew category order and keeps every product destina
   } else {
     for (const label of ['Talk to Pulse', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database', 'Knowledge base']) expect(button(label)).toBeDefined()
     expect(host.querySelector('[aria-label="Pulse menu"]')).not.toBeNull()
+    for (const label of ['Workflow playbooks', 'Publish', 'Notify', 'Backup']) {
+      expect(button(label).closest('details')?.querySelector('summary')?.textContent).toBe('Setup')
+    }
   }
   await act(async () => button('Webhooks').click())
   expect(state.open).toHaveBeenLastCalledWith('workshop', 'triggers')

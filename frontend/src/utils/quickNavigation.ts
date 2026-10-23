@@ -9,7 +9,7 @@ import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { openProductWorkspace } from './productWorkspaceNavigation'
 
 export type QuickNavigationScope = 'active' | 'workflows' | 'relays' | 'crew' | 'chats' | 'products' | 'panels' | 'create'
-export type NavigationAction = 'active' | 'browse' | 'activity' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vault-audit' | 'vault-connect' | 'create'
+export type NavigationAction = 'active' | 'browse' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vault-audit' | 'vault-connect' | 'create'
 export type QuickNavigationItem = {
   type: 'product' | 'menu'
   id: string
@@ -76,7 +76,6 @@ export function quickNavigationItems(
       subtitle: `Create · ${PRODUCT_SURFACE_LABELS[surface]} · open the creation form`, isActive: false, action: 'create', surface,
       projectDescription: PROJECT_CREATION_DESCRIPTIONS[surface] })
   }
-  if (products.includes('agentworks')) menu('activity', 'Goal activity', 'Goals · updates, decisions and recent runs')
   if (products.some(surface => surface === 'agentworks' || surface === 'work')) {
     menu('schedules', 'Schedules and triggers', 'Scheduled work and automation triggers')
   }
@@ -118,8 +117,7 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
     return true
   }
   const products = visibleProductSurfaceIDs(user?.allowed_products)
-  const destinations = item.action === 'activity' ? ['agentworks']
-    : item.action === 'schedules' ? ['agentworks', 'work'] : GLOBAL_PAGE_SURFACES
+  const destinations = item.action === 'schedules' ? ['agentworks', 'work'] : GLOBAL_PAGE_SURFACES
   const destination = destinations.includes(current) && products.includes(current) ? current
     : products.find(surface => destinations.includes(surface))
   if (!destination) return false
@@ -127,7 +125,6 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
   const app = useAppStore.getState()
   if (item.action === 'providers') useLLMStore.getState().setShowLLMModal(true)
   else if (item.action === 'users' || item.action === 'mcp') app.setAdminPage(item.action)
-  else if (item.action === 'activity') { app.setActivityWorkflowPath(null); app.setShowWorkflowsOverview(true) }
   else if (item.action === 'schedules') app.setShowSchedulesOverview(true)
   return true
 }

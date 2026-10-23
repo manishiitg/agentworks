@@ -26,7 +26,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   if (!relayMode) {
     add('knowledge', 'Build', 'Knowledge base', BookOpen, 'knowledgebase')
     add('knowledge', 'Build', 'Database', Database, 'database')
-    add('playbooks', 'Build', 'Workflow playbooks', BookOpen)
+    add('playbooks', 'Setup', 'Workflow playbooks', BookOpen)
   } else add('flow', 'Build', 'Code', Code2, 'source', 'Advanced')
   for (const item of projectAutomationSections({ relay: relayMode, incomingEmail })) {
     add('workshop', item.id === 'functions' ? 'Build' : 'Use', item.id === 'email' ? 'Email inbox' : item.label, item.icon, item.id, item.id === 'functions' ? undefined : item.id === 'email' ? 'Use from other apps' : 'Run automatically')
@@ -48,8 +48,8 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   if (canShare) add('mcp', 'Share', 'People & access', ShieldCheck, 'share')
   if (isMultiUser && !relayMode) add('access', 'Share', 'Team', ShieldCheck, 'workflow')
   if (!relayMode) {
-    add('publish', 'Share', 'Publish', Globe)
-    add('notify', 'Share', 'Notify', BellRing)
+    add('publish', 'Setup', 'Publish', Globe)
+    add('notify', 'Setup', 'Notify', BellRing)
   }
   for (const item of projectConnectionSections({ allowedProducts, relayMode, onOpen: () => {} })) {
     add('mcp', 'Integrations', item.label, item.icon, item.id.slice(4), item.subgroup)

@@ -105,7 +105,6 @@ export const UI_CONTROL_CONTRACT = {
       "targets": [
         "goals",
         "metrics",
-        "activity",
         "decisions",
         "settings",
         "chat"

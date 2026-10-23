@@ -3,7 +3,7 @@ import { WorkspaceSetupMenu } from './workspace/WorkspaceSetupMenu'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
-import { Settings, Copy, Eye, CalendarClock, Inbox } from 'lucide-react'
+import { Settings, Copy, Eye, CalendarClock } from 'lucide-react'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useProductCreateRequest } from '../hooks/useProductCreateRequest'
 import { hasProductCreateAccess, isWorkflowReadOnly } from '../utils/workflowPermissions'
@@ -22,7 +22,6 @@ import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { dedupeServerNames } from '../utils/mcpServerAlias'
-import { GlobalActivityButton } from './topbar/GlobalActivityButton'
 import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
@@ -91,7 +90,6 @@ interface ModePresetBarProps {
 export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, reduced = false, activityMonitorInWorkspace = false, walkthroughSurface: productWalkthroughSurface, walkthroughReady = true, walkthroughPaused = false }) => {
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const isRelaySurface = productSurface === 'relays'
-  const hasProductActivity = productSurface === 'agentworks'
   const hasProductSchedules = ['agentworks', 'work'].includes(productSurface)
   const { selectedModeCategory, setModeCategory, getAgentModeFromCategory } = useModeStore(useShallow(state => ({
     selectedModeCategory: state.selectedModeCategory,
@@ -177,7 +175,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const setShowSchedulesOverview = useAppStore(s => s.setShowSchedulesOverview)
   const adminPage = useAppStore(s => s.adminPage)
   const setAdminPage = useAppStore(s => s.setAdminPage)
-  const setActivityWorkflowPath = useAppStore(s => s.setActivityWorkflowPath)
   const setSelectedFile = useWorkspaceStore(state => state.setSelectedFile)
   const setShowFileContent = useWorkspaceStore(state => state.setShowFileContent)
   const showProviders = useLLMStore(state => state.showLLMModal)
@@ -692,16 +689,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                               </div>
                             )}
 
-                            {hasProductActivity && <button type="button" aria-label="Goal activity"
-                              onClick={() => {
-                                setShowPresetDropdown(false)
-                                useLLMStore.getState().setShowLLMModal(false)
-                                setAdminPage(null); setShowSchedulesOverview(false); setActivityWorkflowPath(null); setShowWorkflowsOverview(true)
-                              }}
-                              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
-                              <Inbox className="h-4 w-4" aria-hidden="true" /><span>Goal activity</span>
-                            </button>}
-
                             {/* Loading state */}
                             {presetsLoading && (
                               <div className="p-2 text-sm text-gray-500 dark:text-gray-400 text-center">
@@ -782,10 +769,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
           {/* Shared actions stay at the top right in every product. */}
           <TooltipProvider delayDuration={400}>
             <ProductTopBarActions>
-              {hasProductActivity && <GlobalActivityButton workspacePaths={presetsForMode.flatMap(preset => preset.selectedFolder?.filepath ? [preset.selectedFolder.filepath.replace(/\/+$/, '')] : [])} active={showWorkflowsOverview} onOpen={() => {
-                useLLMStore.getState().setShowLLMModal(false)
-                setAdminPage(null); setShowSchedulesOverview(false); setActivityWorkflowPath(null); setShowWorkflowsOverview(true)
-              }} />}
               <WorkspaceSetupMenu onOpenWalkthrough={isRelaySurface ? undefined : openWorkflowWalkthrough} onOpenShortcuts={() => setShowShortcuts(true)} />
 
             </ProductTopBarActions>

@@ -29,7 +29,8 @@ it.each([true, false])('separates goals from settings and decisions and keeps on
    <PulseView workspacePath="Workflow/example" monitorOn={on} hasSoul monitorSaving={false} onToggleMonitor={() => {}}
     statusError={null} statusLoading={false} onRefresh={() => {}} headerAction={<AskAIButton workspacePath="Workflow/example" message="Explain Pulse" iconOnly />} />
   </WorkspacePanelNavigationProvider>))
-  for (const label of ['Goals', 'Metrics', 'Pulse activity', 'Talk to Pulse']) expect(host.querySelector(`section[aria-label="${label}"]`)).not.toBeNull()
+  for (const label of ['Goals', 'Metrics', 'Talk to Pulse']) expect(host.querySelector(`section[aria-label="${label}"]`)).not.toBeNull()
+  expect(host.querySelector('section[aria-label="Pulse activity"]')).toBeNull()
   expect(host.querySelector('section[aria-label="Decisions"]')).toBeNull()
   expect(host.querySelector('section[aria-label="Pulse settings"]')).toBeNull()
   expect(host.querySelectorAll('[aria-label="Help with this page"]')).toHaveLength(1)
@@ -41,7 +42,7 @@ it.each([true, false])('separates goals from settings and decisions and keeps on
   expect(host.querySelectorAll('section[aria-label="Pulse settings"]')).toHaveLength(1)
   expect(host.querySelector('[aria-label="Pulse on/off"]')?.getAttribute('aria-checked')).toBe(String(on))
   expect(host.querySelectorAll('[aria-label="Help with this page"]')).toHaveLength(1)
-  for (const [target, label] of [['goals', 'Goals'], ['metrics', 'Metrics'], ['activity', 'Pulse activity']]) {
+  for (const [target, label] of [['goals', 'Goals'], ['metrics', 'Metrics']]) {
    await act(async () => navigation.apply?.(target))
    expect(document.activeElement).toBe(host.querySelector(`section[aria-label="${label}"]`))
    expect(host.querySelector('section[aria-label="Pulse settings"]')).toBeNull()
@@ -51,7 +52,7 @@ it.each([true, false])('separates goals from settings and decisions and keeps on
  } finally { await act(async () => root.unmount()); host.remove() }
 })
 
-it.each([true, false])('restores saved metrics/history and routes goal, metric and update questions to Pulse (on=%s)', async on => {
+it.each([true, false])('restores saved metrics/history and routes goal and metric questions to Pulse (on=%s)', async on => {
  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
  vi.mocked(askWorkflowPulse).mockClear()
  const overview: PulseOverviewResponse = { success: true, measurements: {
@@ -64,17 +65,16 @@ it.each([true, false])('restores saved metrics/history and routes goal, metric a
   expect(host.textContent).toContain('Grow revenue')
   expect(host.textContent).toContain('120')
   expect(host.textContent).toContain('db/invoices.csv')
-  expect(host.textContent).toContain('Invoices are collecting.')
-  for (const label of ['Ask Pulse about this goal', 'Ask Pulse about this metric', 'Ask Pulse about this update']) {
+  expect(host.textContent).not.toContain('Invoices are collecting.')
+  for (const label of ['Ask Pulse about this goal', 'Ask Pulse about this metric']) {
    const button = [...host.querySelectorAll('button')].find(button => button.textContent === label)!
    expect(button.disabled).toBe(!on)
    await act(async () => button.click())
   }
   if (on) {
-   expect(askWorkflowPulse).toHaveBeenCalledTimes(3)
+   expect(askWorkflowPulse).toHaveBeenCalledTimes(2)
    expect(vi.mocked(askWorkflowPulse).mock.calls[0]).toEqual(['Workflow/example', expect.stringContaining('Grow revenue')])
    expect(vi.mocked(askWorkflowPulse).mock.calls[1]).toEqual(['Workflow/example', expect.stringContaining('metric revenue')])
-   expect(vi.mocked(askWorkflowPulse).mock.calls[2]).toEqual(['Workflow/example', expect.stringContaining('Invoices are collecting.')])
   } else expect(askWorkflowPulse).not.toHaveBeenCalled()
  } finally { await act(async () => root.unmount()); host.remove() }
 })

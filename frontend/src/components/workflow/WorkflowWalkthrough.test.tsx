@@ -53,8 +53,7 @@ describe('Context walkthroughs', () => {
     }
   })
 
-  it('guides first-run users through the controls visible on Activity', async () => {
-    addTarget('activity-feed')
+  it('guides first-run users through the available Goal controls', async () => {
     addTarget('workflow-add-edit')
     addTarget('workspace-picker')
     addTarget('global-schedules')
@@ -65,13 +64,13 @@ describe('Context walkthroughs', () => {
     try {
       await act(async () => root.render(<WorkflowWalkthrough isOpen surface="overview" onClose={() => {}} />))
       const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
-      expect(dialog.textContent).toContain('1 of 6')
+      expect(dialog.textContent).toContain('1 of 4')
       expect(dialog.textContent).toContain('What are Goals for?')
       expect(dialog.textContent).toContain('repeatable work with a measurable result')
       expect(dialog.textContent).toContain('Example:')
       await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
       expect(dialog.textContent).toContain('Open or create an automation')
-      for (const title of ['Activity', 'Goal activity', 'Schedules', 'Providers']) {
+      for (const title of ['Schedules', 'Providers']) {
         await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
         expect(dialog.textContent).toContain(title)
       }

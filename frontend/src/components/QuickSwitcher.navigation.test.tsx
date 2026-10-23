@@ -193,13 +193,12 @@ it.each([
   expect(onClose).toHaveBeenCalled()
 })
 
-it.each(['activity', 'schedules'])('opens %s from the scrollable navigation rows', async action => {
+it.each(['schedules'])('opens %s from the scrollable navigation rows', async action => {
   const { host, onClose } = await renderNavigation('')
   useAppStore.setState({ showWorkflowsOverview: false, showSchedulesOverview: false, activityWorkflowPath: 'Workflow/previous-filter' })
   await act(async () => host.querySelector(`[data-navigation-id="menu:${action}"]`)!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
   expect(useProductSurfaceStore.getState().productSurface).toBe('agentworks')
-  expect(action === 'activity' ? useAppStore.getState().showWorkflowsOverview : useAppStore.getState().showSchedulesOverview).toBe(true)
-  if (action === 'activity') expect(useAppStore.getState().activityWorkflowPath).toBeNull()
+  expect(useAppStore.getState().showSchedulesOverview).toBe(true)
   expect(onClose).toHaveBeenCalled()
 })
 
@@ -458,5 +457,12 @@ it('distinguishes saved Crew side-chat names and activates the existing tab', as
     expect(useChatStore.getState().activeTabId).toBe(name)
     expect(useAppStore.getState().adminPage).toBeNull()
     expect(Object.keys(useChatStore.getState().chatTabs)).toHaveLength(3)
+  }
+})
+
+it('omits global Goal activity from navigation and search', async () => {
+  for (const query of ['', 'Goal activity']) {
+    const { host } = await renderNavigation(query)
+    expect(host.querySelector('[data-navigation-id="menu:activity"]')).toBeNull()
   }
 })

@@ -1,7 +1,7 @@
 import { panelSearchAliases } from './workspace/workspacePanelGroups'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { isWorkSideChatTab } from '../products/work/workTabs'
-import { Activity, CalendarClock, Cpu, Layers, LayoutGrid, MessageSquare, NotebookText, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
+import { Activity, CalendarClock, Cpu, Layers, LayoutGrid, MessageSquare, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useChatStore } from '../stores'
@@ -235,7 +235,7 @@ function QuickNavigationIcon({ item }: { item: QuickNavigationItem }) {
   if (surface) return <ProductSurfaceIcon surface={surface} />
   const Icon = item.scope === 'panels' ? PanelRight : item.scope === 'products' ? LayoutGrid : item.scope === 'chats' ? MessageSquare
     : item.action === 'providers' ? Cpu : item.action === 'users' ? Users : item.action === 'mcp' ? Plug
-    : item.action === 'schedules' ? CalendarClock : item.action === 'activity' ? NotebookText
+    : item.action === 'schedules' ? CalendarClock
     : item.action === 'vault-audit' ? ScrollText : item.action === 'vault-connect' ? PlugZap : Activity
   return <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
 }

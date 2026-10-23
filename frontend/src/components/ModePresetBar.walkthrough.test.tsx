@@ -44,7 +44,6 @@ vi.mock('./branding/RuntimeBrandLogo', () => ({ RuntimeBrandLogo: () => null }))
 vi.mock('./topbar/McpControl', () => ({ default: () => null }))
 vi.mock('./topbar/UsersControl', () => ({ default: () => null }))
 vi.mock('./topbar/ProvidersControl', () => ({ default: () => null }))
-vi.mock('./topbar/GlobalActivityButton', () => ({ GlobalActivityButton: () => <button aria-label="Activity" /> }))
 vi.mock('../stores/useProductSurfaceStore', () => ({ useProductSurfaceStore: mocks.store }))
 vi.mock('./workflow/WorkflowWalkthrough', () => ({ default: ({ isOpen, surface, onClose }: any) => {
   if (!isOpen) return null
@@ -177,4 +176,10 @@ it.each(['agentworks', 'work'] as const)('keeps global schedules in the %s heade
   expect(host.querySelector('[data-product-settings] [data-product-picker-menu]')).not.toBeNull()
   await act(async () => schedule.click())
   expect(showSchedules).toHaveBeenCalledWith(true)
+})
+
+it('omits global Goal activity from the header and automation picker', async () => {
+  await render()
+  expect(host.querySelector('[aria-label="Goal activity"]')).toBeNull()
+  expect(host.querySelector('[aria-label^="Needs you:"]')).toBeNull()
 })

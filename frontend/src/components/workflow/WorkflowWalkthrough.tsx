@@ -42,16 +42,6 @@ const OVERVIEW_STEPS: WalkthroughStep[] = [
     body: 'Choose an automation from the name menu, or use the plus button to create one. Its workspace walkthrough will start when you open it.',
   },
   {
-    selector: '[aria-label="Switch workspace"]',
-    title: 'Activity',
-    body: 'Open this menu and choose Goal activity for updates and pending decisions.',
-  },
-  {
-    selector: '[data-tour="activity-feed"]',
-    title: 'Goal activity',
-    body: 'Find updates and decisions from all your automations here.',
-  },
-  {
     selector: '[data-tour="global-schedules"]',
     title: 'Schedules',
     body: 'Open the project name menu and choose Schedules & triggers to review scheduled runs across your projects.',
@@ -107,17 +97,17 @@ const AUTOMATION_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="workflow-views"]',
     title: 'Views',
-    body: 'Open Pulse, the actions waiting on you, recent activity, and Browser from this group.',
+    body: 'Open Pulse, the actions waiting on you, and Browser from this group.',
   },
   {
     selector: '[data-tour="workflow-operations"]',
     title: 'Operations',
-    body: 'Find the plan, files, costs, execution logs, backup, publishing, and notifications here.',
+    body: 'Find the plan, files, costs, and execution logs here.',
   },
   {
     selector: '[data-tour="workflow-setup"]',
     title: 'Setup',
-    body: 'Manage the automation’s identity, integrations, playbooks, and access here.',
+    body: 'Manage the automation’s settings, playbooks, publishing, notifications, and backup here.',
   },
   {
     selector: '[data-tour="workflow-canvas-pane"]',
@@ -142,11 +132,6 @@ const EMPTY_AUTOMATION_STEPS: WalkthroughStep[] = [
     selector: '[data-tour="workflow-add-edit"]',
     title: 'Choose or create',
     body: 'Open the name menu to choose an automation. Use the plus button beside it to create one. Its own workspace guide will start when you open it.',
-  },
-  {
-    selector: '[aria-label="Switch workspace"]',
-    title: 'Activity',
-    body: 'Choose Goal activity from this menu for updates and pending decisions.',
   },
   {
     selector: '[data-tour="global-providers"]',

@@ -114,8 +114,8 @@ const AGENTWORKS_GUIDES: Record<string, GuideCopy> = {
     howTo: 'Check the publishing destination and status. Ask AI to help set up a host or update what gets published.',
   },
   Pulse: {
-    purpose: 'See your goals, measurements and saved Pulse activity.',
-    howTo: 'Review your goals, metrics, evidence and saved Pulse activity. Ask Pulse about a specific goal, measurement or update, send your own question, or open its chat directly. Use Decisions for pending answers and Pulse settings for On/Off and outward actions.',
+    purpose: 'See your goals, measurements and progress.',
+    howTo: 'Review your goals, metrics and evidence. Ask Pulse about a specific goal or measurement, send your own question, or open its full chat. Use Decisions for pending answers and Pulse settings for On/Off and outward actions.',
   },
   'Pulse settings': {
     purpose: 'Choose whether Pulse is on and how it handles outward actions.',
@@ -343,8 +343,8 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
 const GROUPS: Record<Exclude<WorkspacePanelSurface, 'relay'>, Record<WorkspacePanelGroup, readonly string[]>> = {
   agentworks: {
     'Main toolbar': ['Automation', 'Automation Schedules', 'Browser', 'Dashboard', 'Pulse', 'Schedules', 'Webhooks'],
-    Ops: ['Backup', 'Plan', 'Cost Analysis', 'Database', 'Execution Logs', 'File', 'Files', 'Knowledge', 'Knowledgebase', 'Notify', 'Publish', 'Workspace'],
-    Setup: ['Access', 'Attached folders', 'Browser automation', 'Identity', 'Integrations', 'Project agent configuration', 'Workflow playbooks'],
+    Ops: ['Plan', 'Cost Analysis', 'Database', 'Execution Logs', 'File', 'Files', 'Knowledge', 'Knowledgebase', 'Workspace'],
+    Setup: ['Backup', 'Notify', 'Publish', 'Access', 'Attached folders', 'Browser automation', 'Identity', 'Integrations', 'Project agent configuration', 'Workflow playbooks'],
   },
   crew: {
     'Main toolbar': ['Automation', 'Browser', 'Dashboard', 'Plan', 'Memory', 'Schedules', 'Webhooks'],

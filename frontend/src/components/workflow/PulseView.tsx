@@ -3,7 +3,6 @@ import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { PulseIcon } from './pulseIcon'
 import { SoulViewer, WORKFLOW_SOUL_REFRESH_EVENT } from './SoulViewer'
 import { GoalProgress } from './GoalProgress'
-import { PlainMarkdown } from '../ui/PlainMarkdown'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { askWorkflowPulse, openWorkflowPulseChatTab } from '../../utils/pulseChatTab'
@@ -34,7 +33,6 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
   const settingsSection = useRef<HTMLElement>(null)
   const goalSection = useRef<HTMLElement>(null)
   const metricsSection = useRef<HTMLElement>(null)
-  const activitySection = useRef<HTMLElement>(null)
   const [target, setTarget] = useState(() => {
     const current = useWorkflowStore.getState().workspaceViewTarget
     return current?.view === 'pulse' ? current.target : 'goals'
@@ -60,12 +58,10 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
     setTarget(next)
   })
   useEffect(() => {
-    const section = settingsOnly ? settingsSection.current : target === 'metrics' ? metricsSection.current
-      : target === 'activity' ? activitySection.current : goalSection.current
+    const section = settingsOnly ? settingsSection.current : target === 'metrics' ? metricsSection.current : goalSection.current
     section?.scrollIntoView({ block: 'start' })
     section?.focus({ preventScroll: true })
   }, [target, settingsOnly])
-  const messages = overview?.conversation?.messages || []
   return <div className="flex h-full min-h-0 w-full flex-col bg-background">
     <WorkspaceViewHeader icon={PulseIcon} title={settingsOnly ? 'Pulse settings' : 'Goals & metrics'} helpTopic={settingsOnly ? 'Pulse settings' : 'Pulse'} subtitle={settingsOnly ? 'Choose when Pulse works and how it handles outward actions.' : 'Pulse works with Builder on your goal.'}
       actions={<>{headerAction}<WorkspaceViewIconButton label="Refresh Pulse" disabled={statusLoading} spinning={statusLoading}
@@ -83,20 +79,6 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
         {overview?.measurements_error ? <p role="alert" className="rounded-lg border p-4 text-sm text-destructive">{overview.measurements_error}</p>
           : overview?.measurements && workspacePath ? <GoalProgress impact={overview.measurements} workspacePath={workspacePath} onAskPulse={canTalk && !sending ? message => { void ask(message) } : undefined} />
             : <p className="text-sm text-muted-foreground">{statusLoading ? 'Loading saved goal measurements…' : 'Refresh Pulse to load goal measurements.'}</p>}
-      </section>
-      <section ref={activitySection} tabIndex={-1} aria-label="Pulse activity" className="space-y-3 rounded-xl border p-4 focus:outline-none">
-        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">Pulse activity</h2>
-          <span className="text-xs text-muted-foreground">{!monitorOn ? 'Off' : overview?.conversation?.busy ? 'Working' : 'On'}</span></div>
-        {overview?.conversation?.error ? <p role="alert" className="text-sm text-destructive">Could not load saved Pulse activity. Refresh to try again.</p>
-          : messages.length ? <details><summary className="cursor-pointer text-sm text-muted-foreground">Recent conversation · {messages.length} saved messages</summary>
-            <ol className="mt-3 space-y-3">{messages.map(message => <li key={message.id} className="rounded-lg bg-muted/30 p-3">
-              <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-muted-foreground"><span>{message.role === 'owner' ? 'You' : message.role === 'goal_lead' ? 'Pulse' : message.source || 'Pulse activity'}</span>
-                <time dateTime={message.at}>{new Date(message.at).toLocaleString()}</time></div>
-              <PlainMarkdown content={message.text} />
-              <button type="button" disabled={!canTalk || sending} onClick={() => void ask(`About this Pulse update from ${message.at}:\n\n${message.text}\n\nExplain its effect on our goals, the supporting evidence and the next action.`)}
-                className="mt-2 text-xs font-medium text-primary disabled:opacity-50">Ask Pulse about this update</button>
-            </li>)}</ol></details>
-            : <p className="text-sm text-muted-foreground">{statusLoading ? 'Loading saved Pulse activity…' : 'No saved Pulse conversation yet.'}</p>}
       </section>
       </>}
       {settingsOnly && <section ref={settingsSection} tabIndex={-1} aria-label="Pulse settings" className="focus:outline-none rounded-xl border bg-background p-4">

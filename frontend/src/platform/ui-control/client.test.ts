@@ -14,8 +14,8 @@ describe('closed semantic UI control contract', () => {
     }
   })
   it('opens the restored Pulse sections without advertising extra operations', () => {
-    for (const target of ['goals', 'metrics', 'activity', 'decisions', 'settings', 'chat']) expect(supportedAction({ ...base, view: 'pulse', action: 'open', target })).toBe(true)
-    expect(supportedAction({ ...base, view: 'pulse', action: 'open', target: 'enable' })).toBe(false)
+    for (const target of ['goals', 'metrics', 'decisions', 'settings', 'chat']) expect(supportedAction({ ...base, view: 'pulse', action: 'open', target })).toBe(true)
+    expect(supportedAction({ ...base, view: 'pulse', action: 'open', target: 'activity' })).toBe(false)
   })
   it('allows a bounded report tab target', () => {
     expect(supportedAction({ ...base, view: 'report', action: 'open', target: 'Suites' })).toBe(true)
