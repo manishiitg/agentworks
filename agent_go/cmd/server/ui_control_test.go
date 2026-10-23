@@ -202,7 +202,7 @@ func TestUIControlOnlyAdvertisesActualActions(t *testing.T) {
 	if validateUIAction("schedules", "open", "guessed") == nil {
 		t.Fatal("unknown schedule section accepted")
 	}
-	for _, section := range []string{"chats", "schedules", "triggers", "bots"} {
+	for _, section := range []string{"chats", "schedules", "conditions", "triggers", "functions", "email"} {
 		if validateUIAction("workshop", "open", section) != nil {
 			t.Fatalf("automation section missing: %q", section)
 		}
