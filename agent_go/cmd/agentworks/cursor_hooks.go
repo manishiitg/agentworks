@@ -296,14 +296,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 			return json.NewEncoder(o.stdout).Encode(map[string]any{"additional_context": "AgentWorks identity is offline. Type /agentworks attach in this chat to reconnect it."})
 		}
 	}
-	if err == nil && input.Event == "SessionStart" && !state.Offline && !cursorAttached(state, req.SessionID, "") {
-		ctxAuto, cancelAuto := context.WithTimeout(cmd.Context(), 8*time.Second)
-		line := autoAttachOnStart(ctxAuto, root, o, req, cursorFolder(input))
-		cancelAuto()
-		if line != "" {
-			return json.NewEncoder(o.stdout).Encode(map[string]any{"additional_context": line})
-		}
-	}
+
 	if err != nil || !cursorAttached(state, req.SessionID, "") {
 		return nil
 	}

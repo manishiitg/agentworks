@@ -84,9 +84,7 @@ func TestBareAttachTakesMostRecentFreeAgent(t *testing.T) {
 	if len(free) != 1 || free[0].Name != "a" {
 		t.Fatalf("c is online on the server and b is held by a live chat; only a is free: %+v", free)
 	}
-	if line := autoAttachOnStart(context.Background(), dir, &options{}, req, folder); !strings.Contains(line, "agent:a (most recent)") {
-		t.Fatalf("the hint must name the agent a bare attach would take: %q", line)
-	}
+
 	serverOnline["c"] = false
 	if free = freeAutoAttachRecords(context.Background(), dir, req, folder); len(free) != 2 || free[0].Name != "c" {
 		t.Fatalf("with c free again the most recent free agent comes first: %+v", free)
