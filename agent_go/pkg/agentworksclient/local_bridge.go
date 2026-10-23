@@ -1903,7 +1903,10 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 			continue // A later hook can read this still-pending message from the server.
 		}
 		for _, m := range out.Messages {
-			_ = b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: "delivered", Transport: nativeCodexTransport(offeredRemote)})
+			receipt := b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: "delivered", Transport: nativeCodexTransport(offeredRemote)})
+			if receipt.Error != "" || len(receipt.Result) == 0 {
+				log.Printf("[BRIDGE-NATIVE] outcome=receipt_pending agent=%s attachment=%s message=%s route=%s", s.Attachment.AgentName, s.Attachment.ID, m.MessageID, nativeCodexTransport(offeredRemote))
+			}
 		}
 	}
 }

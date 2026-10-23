@@ -109,9 +109,9 @@ func claudeSessionOffer(ctx context.Context, remote string, out agentworksclient
 	if err = encoder.Encode(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": text}}); err != nil {
 		return err
 	}
-	// This version of Claude does not return an admission receipt. A successful
-	// socket write remains an offer; the receiving agent explicitly acknowledges.
-	return agentworksclient.ErrNativeOfferUnconfirmed
+	// The authenticated native handoff completed, the same receipt boundary as
+	// a successful hook write. It confirms transport delivery, not model work.
+	return nil
 }
 
 // MCP startup needs only its own process registration, not whole-app discovery.
