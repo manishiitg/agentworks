@@ -663,13 +663,6 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			req.BrowserMode = "auto"
 		}
 	}
-	if browserRequirement != agentprofiles.CapabilityDisabled {
-		physical := agentProfileRuntimeWorkspace(userID, workspacePath)
-		index := physical + "/browser-demonstrations/INDEX.md"
-		if content, found, err := readFileFromWorkspace(ctx, index); err == nil && found && strings.TrimSpace(content) != "" {
-			rendered += "\n\nSaved browser procedures for this workspace: " + index + ". When the user asks for a previously taught browser task, read this index and the matching tested procedure before acting. Resolve fresh page targets, supply the requested inputs and check the reviewed outcome. A saved procedure does not grant additional tool or website permissions.\n"
-		}
-	}
 	projectInstructions := ""
 	if !isGlobalScope && isProjectProfileID(profile.ID) {
 		file := agentProfileRuntimeWorkspace(userID, workspacePath) + "/" + projectinstructions.FileName
