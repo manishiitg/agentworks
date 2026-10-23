@@ -1,4 +1,4 @@
-import { ArrowUpCircle, BookOpen, Cable, Cloud, Code2, Cpu, Database, DollarSign, Laptop, Files, FileText, Globe, Hand, History, LayoutDashboard, MessageSquareText, Monitor, Route, Settings, BellRing, ShieldCheck, Sparkles, type LucideIcon } from 'lucide-react'
+import { ArrowUpCircle, BookOpen, Cable, Cloud, Code2, Cpu, Database, DollarSign, Laptop, Files, FileText, Globe, Hand, History, LayoutDashboard, MessageSquareText, Monitor, Route, Settings, BellRing, ShieldCheck, Sparkles, Vault, type LucideIcon } from 'lucide-react'
 import { projectAutomationSections, projectConnectionSections } from '../workspace/WorkspaceProjectNavigation'
 import { PROJECT_MENU_GROUPS, type ProjectMenuGroup } from '../workspace/projectMenuGroups'
 import type { WorkspaceViewId } from './workspaceViews'
@@ -51,14 +51,15 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
     add('publish', 'Setup', 'Publish', Globe)
     add('notify', 'Setup', 'Notify', BellRing)
   }
+  if (!relayMode) add('mcp', 'Integrations', 'Vault', Vault, 'vault')
   for (const item of projectConnectionSections({ allowedProducts, relayMode, onOpen: () => {} })) {
+    if (!relayMode && ['mcp:connected', 'mcp:secrets', 'mcp:gmail'].includes(item.id)) continue
     add('mcp', 'Integrations', item.label, item.icon, item.id.slice(4), item.subgroup)
   }
-  add('mcp', 'Integrations', 'Slack account', MessageSquareText, 'slack')
+  if (relayMode) add('mcp', 'Integrations', 'Slack account', MessageSquareText, 'slack')
   if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) items.push({ id: 'product:bullpen', label: 'AgentBridge', icon: Cable, group: 'Integrations', external: 'bullpen' })
   add('identity', 'Setup', 'Settings', Settings, 'general')
   add('identity', 'Setup', 'Models', Cpu, 'llm')
-  if (!relayMode) add('identity', 'Setup', 'Local laptop', Laptop, 'laptop')
   add('costs', 'Setup', 'Costs and usage', DollarSign)
   add('execution-logs', 'Setup', 'Run logs', FileText)
   if (!relayMode) {

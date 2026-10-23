@@ -1,10 +1,10 @@
+import { openMyVaults } from '../../utils/projectVaultNavigation'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Check, Copy, Laptop, RefreshCw, Terminal, Folder, ArrowUp, X } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { SettingsCard } from '../../components/ui/SettingsCard'
 import api, { getApiBaseUrl } from '../../services/api'
 import { laptopSettingsEndpoint, laptopFoldersEndpoint } from '../../components/workspace/laptopAccess'
-import { useAppStore } from '../../stores/useAppStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { cliUpdateNeeded, localFileError, useLatestCliVersion, useLocalFileDevices, type LocalFileDevice } from './codeLocalFiles'
 
@@ -131,7 +131,7 @@ export function CodeLocalFilesSettings({ sessionId, workflowPath }: { sessionId?
   return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Laptop access" description="Choose a computer from My Vault and the folders this project can use.">
     <div className="space-y-4">
       <p className="text-xs leading-5 text-muted-foreground">This project runs on the server. Builders share its laptop connection and can use it in their own interactive chat while AgentWorks is connected. Steps, schedules, Autopilot and people using the shared dashboard stay on the server. AgentBridge uses the same connection.</p>
-      <Button size="sm" variant="outline" onClick={() => useAppStore.getState().setAdminPage('vaults')}>Connect a computer in My Vault</Button>
+      <Button size="sm" variant="outline" onClick={() => openMyVaults()}>Connect a computer in My Vault</Button>
       <label htmlFor="crew-laptop-device" className="block text-xs font-medium">Your computer</label>
       <select id="crew-laptop-device" value={settings.device_id} disabled={busy || !loaded} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => { setDirectory(undefined); void save({ device_id: event.target.value, folders: [], commands: false }) }}>
         <option value="">No laptop access</option>

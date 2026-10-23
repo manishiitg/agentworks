@@ -2,12 +2,11 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 describe('identity section layout', () => {
-  it('separates general, secrets, folders, llm, and upgrades into header tabs with general first', () => {
+  it('keeps general, models and upgrades while Vault owns accounts and computers', () => {
     const panel = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
 
     expect(panel).toContain("relayMode ? 'relays.tab.workflow-identity' : 'agentworks.tab.workflow-identity', 'general'")
-    expect(panel).toMatch(/IDENTITY_TABS[^=]*=[\s\S]*?'general'[\s\S]*?'secrets'[\s\S]*?'folders'[\s\S]*?'llm'[\s\S]*?'upgrades'/)
-    expect(panel).toContain("ariaLabel: 'Identity'")
+    expect(panel).toMatch(/IDENTITY_TABS[^=]*=[\s\S]*?'general'[\s\S]*?'llm'[\s\S]*?'upgrades'/)
     expect(panel).toContain('getIdentityTabAskAIMessage(activeIdentityTab)')
     expect(panel).toContain("const RELAY_IDENTITY_TABS = IDENTITY_TABS.filter(option => option.value === 'general' || option.value === 'llm')")
     expect(panel).toContain('builderOnly={relayMode}')

@@ -1,8 +1,8 @@
+import { openMyVaults } from '../../utils/projectVaultNavigation'
 import { useCallback, useEffect, useState } from 'react'
 import api, { getApiBaseUrl } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import type { GmailConnection } from '../../services/api-types'
-import { useAppStore } from '../../stores/useAppStore'
 import { Button } from '../ui/Button'
 import ConnectionIcon from '../connectors/ConnectionIcon'
 import { GoogleAccountConnect } from '../../products/work/GoogleAccountConnect'
@@ -25,11 +25,10 @@ const errorText = (cause: unknown) => {
 /** Personal records stay in their existing stores. Products only select those records. */
 export default function PersonalAccountsPanel({ workspacePath, provider, onChanged }: { workspacePath?: string; provider?: Provider; onChanged?: () => void }) {
   const actor = useAuthStore(state => state.user?.id)
-  const openVault = useAppStore(state => state.setAdminPage)
   return <section aria-label={workspacePath ? 'Saved personal accounts' : 'Your connected accounts'} className="space-y-4">
     {!workspacePath && <div><h2 className="text-base font-semibold">Your connected accounts</h2><p className="mt-1 text-xs text-muted-foreground">Sign in once. Choose Use here in each product that should use an account. These accounts stay separate from your shared vaults.</p></div>}
     {(['google', 'slack'] as Provider[]).filter(item => !provider || item === provider).map(item => <ProviderAccounts key={`${getApiBaseUrl()}:${actor}:${item}:${workspacePath || ''}`} provider={item} workspacePath={workspacePath} onChanged={onChanged} />)}
-    {workspacePath && <Button variant="outline" size="sm" onClick={() => openVault('vaults')}>Manage accounts in My Vault</Button>}
+    {workspacePath && <Button variant="outline" size="sm" onClick={() => openMyVaults()}>Manage accounts in My Vault</Button>}
   </section>
 }
 

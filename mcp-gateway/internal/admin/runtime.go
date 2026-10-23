@@ -80,6 +80,8 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 				Tools    []tool `json:"tools"`
 			}
 			type group struct {
+				MemberCount int                    `json:"member_count"`
+				ProjectRoot string                 `json:"project_root,omitempty"`
 				ID          string                 `json:"id"`
 				Name        string                 `json:"name"`
 				Description string                 `json:"description"`
@@ -104,7 +106,7 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 			for _, gid := range memberships {
 				g, ok := a.Store.GetGroup(gid)
 				if ok && g.WorkspaceID == a.WorkspaceID {
-					groups = append(groups, group{ID: g.ID, Name: g.Name, Description: g.Description, Servers: []row{}, Secrets: a.Store.ListSecrets(a.WorkspaceID, actor, gid, false)})
+					groups = append(groups, group{ID: g.ID, Name: g.Name, Description: g.Description, MemberCount: len(a.Store.MembersOf(g.ID)), ProjectRoot: g.ProjectRoot, Servers: []row{}, Secrets: a.Store.ListSecrets(a.WorkspaceID, actor, gid, false)})
 				}
 			}
 			rows := []row{}

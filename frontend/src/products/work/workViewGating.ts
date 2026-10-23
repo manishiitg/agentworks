@@ -1,4 +1,3 @@
-import type { WorkIntegrationTab } from './WorkIntegrationsPanel'
 import type { WorkIdentityTab } from './WorkIdentityPanel'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
@@ -25,11 +24,9 @@ export function isWorkIdentityTabEnabled(tab: WorkIdentityTab, enabledPanels?: S
   return enabledPanels.has(tab)
 }
 
-export function isWorkIntegrationTabEnabled(tab: WorkIntegrationTab, enabledPanels?: Set<string>): boolean {
+export function isWorkIntegrationTabEnabled(tab: string, enabledPanels?: Set<string>): boolean {
   if (!enabledPanels) return true
-  if (tab === 'secrets') return enabledPanels.has('secrets')
-  if (tab === 'apps') return enabledPanels.has('mcp') || enabledPanels.has('secrets') || enabledPanels.has('skills')
-  if (tab === 'skills') return enabledPanels.has('skills')
+  if (tab === 'vault' || tab === 'apps') return enabledPanels.has('mcp') || enabledPanels.has('secrets') || enabledPanels.has('skills')
   if (tab === 'cli') return true
   if (tab === 'folders') return enabledPanels.has('folders')
   if (tab === 'brain') return true

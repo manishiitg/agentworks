@@ -41,7 +41,7 @@ export const WORK_PANELS: Record<'views' | 'ops' | 'setup', ProductPanel<WorkWor
   ],
   setup: [
     { id: 'identity', label: 'Settings', icon: Fingerprint },
-    { id: 'mcp', label: 'Connections', icon: Server },
+    { id: 'mcp', label: 'Vault', icon: Server },
   ],
 }
 
@@ -63,7 +63,6 @@ export const VAULT_PANELS = [
   { id: 'available-mcps', label: 'Available MCPs', icon: Plus },
   { id: 'secrets', label: 'Secrets', icon: KeyRound },
   { id: 'people', label: 'People', icon: UsersRound },
-  { id: 'models', label: 'Models', icon: BrainCircuit },
 ] as const
 
 /** A tab inside a panel. The panel opens on it from ⌘/Ctrl+K. */
@@ -112,11 +111,11 @@ export const VAULT_PEOPLE_SECTIONS: PanelSection[] = [
 
 /** Sections by panel id, per product. */
 export const WORKFLOW_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = {
-  mcp: INTEGRATION_SECTIONS, identity: WORKFLOW_IDENTITY_SECTIONS, workshop: AUTOMATION_SECTIONS,
+  mcp: [{ id: 'vault', label: 'Vault', keywords: 'apps secrets computers accounts laptop share' }, ...INTEGRATION_SECTIONS.filter(section => !['connected', 'available', 'secrets', 'gmail'].includes(section.id))], identity: WORKFLOW_IDENTITY_SECTIONS, workshop: AUTOMATION_SECTIONS,
   knowledge: KNOWLEDGE_SECTIONS, access: ACCESS_SECTIONS,
 }
 export const WORK_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = {
-  mcp: INTEGRATION_SECTIONS.filter(section => section.id !== 'skills'), identity: WORK_IDENTITY_SECTIONS, schedules: AUTOMATION_SECTIONS.filter(section => section.id !== 'bots' && section.id !== 'chats'),
+  mcp: [{ id: 'vault', label: 'Vault', keywords: 'apps secrets computers accounts laptop share' }, ...INTEGRATION_SECTIONS.filter(section => !['skills', 'connected', 'available', 'secrets', 'gmail'].includes(section.id))], identity: WORK_IDENTITY_SECTIONS, schedules: AUTOMATION_SECTIONS.filter(section => section.id !== 'bots' && section.id !== 'chats'),
   memory: [{ id: 'memory', label: 'Memory' }, { id: 'skills', label: 'Skills' }],
 }
 export const VAULT_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = { people: VAULT_PEOPLE_SECTIONS }

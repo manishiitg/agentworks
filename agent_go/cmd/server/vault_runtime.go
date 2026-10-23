@@ -204,6 +204,8 @@ type vaultSecretMetadata struct {
 	Name string `json:"name"`
 }
 type vaultAccessGroup struct {
+	MemberCount int                   `json:"member_count"`
+	ProjectRoot string                `json:"project_root,omitempty"`
 	ID          string                `json:"id"`
 	Name        string                `json:"name"`
 	Description string                `json:"description"`

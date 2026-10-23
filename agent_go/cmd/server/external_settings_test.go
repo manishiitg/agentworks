@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -18,6 +20,37 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 		t.Fatal(err)
 	}
 	f.api.chatStore = store
+	// Project secrets now live in Vault; the old fixture supplied only the
+	// retired per-workflow store and could never exercise a successful write.
+	managedGlobalsMu.Lock()
+	previous := managedGlobals
+	managedGlobals = map[string]string{}
+	managedGlobalsMu.Unlock()
+	t.Cleanup(func() { managedGlobalsMu.Lock(); managedGlobals = previous; managedGlobalsMu.Unlock() })
+	names := []string{}
+	vault := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-CapLayer-Actor") != "owner" {
+			w.WriteHeader(403)
+			return
+		}
+		switch r.URL.Path {
+		case "/api/project-vaults":
+			w.Write([]byte(`{"id":"v-123456"}`))
+		case "/api/vaults/v-123456/secrets":
+			var in struct{ Name string }
+			_ = json.NewDecoder(r.Body).Decode(&in)
+			names = append(names, in.Name)
+			w.Write([]byte(`{}`))
+		case "/api/vaults/v-123456":
+			_ = json.NewEncoder(w).Encode(map[string]any{"secret_names": names})
+		default:
+			w.Write([]byte(`{"vaults":[],"servers":[],"groups":[],"secrets":[]}`))
+		}
+	}))
+	defer vault.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", vault.URL)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	const value = "sk-settings-test-value-0042"
 
 	if w := f.call(t, "reader", "update_settings", map[string]any{"workflow_id": "invoices", "browser_mode": "headless"}); w.Code != 403 {

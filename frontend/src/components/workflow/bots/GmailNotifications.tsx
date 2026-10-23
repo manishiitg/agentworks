@@ -1,4 +1,4 @@
-import { useAppStore } from '../../../stores/useAppStore'
+import { openMyVaults } from '../../../utils/projectVaultNavigation'
 import { Loader2, Mail } from 'lucide-react'
 import { agentApi } from '../../../services/api'
 import { Button } from '../../ui/Button'
@@ -37,7 +37,6 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
   scopeNoun?: 'workflow' | 'project' | 'relay'
   onAsk?: (message: string) => void | Promise<void>
 }) {
-  const openVault = useAppStore(state => state.setAdminPage)
   const {
     gmailConnectionsReadOnly: readOnly, gmailSettingsReadOnly, canRemoveGmailConnection,
     gmailConfig, setGmailConfig, gmailBlockedText, setGmailBlockedText,
@@ -86,7 +85,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 onSendTest={conn => runGmailConnectionAction(conn.id, () => agentApi.testGmailConnectionById(conn.id, gmailConfig.default_to || undefined))}
                 onSetDefault={conn => runGmailConnectionAction(conn.id, () => agentApi.setDefaultGmailConnection(conn.id))}
                 onToggle={conn => runGmailConnectionAction(conn.id, () => agentApi.updateGmailConnection(conn.id, { enabled: !conn.enabled }))}
-                onReconnect={() => openVault('vaults')} onRemove={handleRemoveMailbox} onChangeAccess={() => openVault('vaults')}
+                onReconnect={() => openMyVaults()} onRemove={handleRemoveMailbox} onChangeAccess={() => openMyVaults()}
               /></div>}
           </FormSection>
           <FormSection

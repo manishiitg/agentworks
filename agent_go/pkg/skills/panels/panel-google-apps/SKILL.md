@@ -21,6 +21,10 @@ metadata:
 
 # Google apps
 
+In Crew and Goal chats these resources live together in the Vault panel.
+Use panel-vault for the panel inventory, project-use ticks and chat routing;
+this procedure covers the underlying operation.
+
 Use manage_google_account action=list_saved first. attach/detach is Use here/Remove here; connect/reconnect returns the real sign-in link. Only the owner completes Google sign-in. Respect observed read/write grants; do not add another login when one already exists. For older owned private accounts, the existing attach operation records the personal selection before set_inbox_account; do not edit flags in files. Use list_gmail_connections to verify. google_workspace_cli performs authorized service work, not account setup.
 
 For personal-account selection, old private-account adoption and grants, Read [the detailed procedure](references/connected-accounts.md).

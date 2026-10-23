@@ -1,4 +1,4 @@
-import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Sparkles, Terminal, UsersRound, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -37,9 +37,10 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   if (has('mcp')) {
     for (const item of projectChannelSections(bots, bots)) {
       add('mcp', 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, 'Use from other apps')
-      if (item.id === 'slack') add('mcp', 'Integrations', 'Slack account', item.icon, 'slack-account')
     }
+    add('mcp', 'Integrations', 'Vault', Vault, 'vault')
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
+      if (['mcp:connected', 'mcp:secrets', 'mcp:gmail'].includes(item.id)) continue
       add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.subgroup)
     }
     if (projectId) add('mcp', 'Integrations', 'Chats from your computer', Laptop, 'agents')
@@ -54,9 +55,8 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   if (isWorkIdentityTabEnabled('models', enabledPanels)) add('identity', 'Setup', 'Models', Cpu, 'models')
   if (!enabledPanels || enabledPanels.has('memory')) add('memory', 'Setup', 'Memory', BookOpen, 'memory')
   add('costs', 'Setup', 'Costs & usage', DollarSign)
-  if (has('mcp')) add('identity', 'Setup', 'Local laptop', Laptop, 'location')
   add('shell', 'Setup', 'Terminal', Terminal, undefined, 'Advanced')
-  const integrationOrder = ['mcp:connected', 'mcp:secrets', 'mcp:brain', 'mcp:gmail', 'mcp:slack-account', 'mcp:folders', 'mcp:agents', 'product:bullpen']
+  const integrationOrder = ['mcp:vault', 'mcp:brain', 'mcp:folders', 'mcp:agents', 'product:bullpen']
   return items.sort((a, b) => CREW_MENU_GROUPS.indexOf(a.group) - CREW_MENU_GROUPS.indexOf(b.group) || (a.group === 'Integrations' ? integrationOrder.indexOf(a.id) - integrationOrder.indexOf(b.id) : 0))
 }
 

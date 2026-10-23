@@ -1,6 +1,6 @@
+import { useVaultSetupDraft } from './useVaultSetupDraft'
 import { useCallback, useEffect, useState } from 'react'
 import api, { agentApi } from '../../services/api'
-import { useAppStore } from '../../stores/useAppStore'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import type { SlackTargetSettings } from '../../services/api-types'
@@ -32,11 +32,11 @@ export function ProductSlackPanel({ workspacePath, noun = 'Crew', allowBots = tr
 }
 
 export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath: string; noun?: string }) {
+ const setup = useVaultSetupDraft()
  const [data,setData]=useState<SlackBotState|null>(null)
  const [error,setError]=useState('')
  const [busy,setBusy]=useState(false)
  const [slug,setSlug]=useState('')
- const openVault=useAppStore(state=>state.setAdminPage)
  const refresh=useCallback(async()=>{try{const next=await slackBotsApi.list(workspacePath);setData(next);setSlug(next.settings?.slug||'');setError('')}catch(cause){setError(slackErrorText(cause,'Could not load Slack bots.'))}},[workspacePath])
  useEffect(()=>{void refresh()},[refresh])
  useEffect(()=>{const focus=()=>void refresh();window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus)},[refresh])
@@ -46,7 +46,7 @@ export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath
  return <section aria-label={`Let people talk to this ${noun}`} className="w-full max-w-3xl space-y-5 text-sm">
   <div className="space-y-2"><h3 className="text-base font-semibold">Talk to this {noun} in Slack</h3>
   <p className="text-sm leading-6 text-muted-foreground">Choose a bot from My Vault. People can message it in Slack to reach this {noun}, with their existing access.</p></div>
-  {error&&<p role="alert" className="text-destructive">{error} <button className="underline" onClick={()=>void refresh()}>Retry</button></p>}
+  {(error||setup.error)&&<p role="alert" className="text-destructive">{error||setup.error} <button className="underline" onClick={()=>void refresh()}>Retry</button></p>}
   {!data&&!error?<p role="status">Loading bots…</p>:data&&<>
    <div className="space-y-3 rounded-lg border border-border p-4"><label className="flex flex-col gap-2 font-medium">Slack bot<select aria-label="Slack bot from My Vault" className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm font-normal" disabled={!data.can_select||busy} value={data.selected_id} onChange={event=>void select(event.target.value)}>
     <option value="" disabled>Choose a bot from My Vault</option>
@@ -55,7 +55,7 @@ export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath
    <p className="text-xs leading-5 text-muted-foreground">One bot can serve several Crews and Goals.</p>
    {!data.can_select&&<p className="text-xs text-muted-foreground">Only an owner can change which bot this {noun} uses.</p>}
    </div>
-   {!data.bots.length&&<p className="text-muted-foreground">You have no Slack bot yet. Add one in My Vault, then return here.</p>}
+   {!data.bots.length&&<p className="text-muted-foreground">You have no Slack bot yet. Ask this chat to connect one.</p>}
    {chosen&&data.settings&&data.target&&<>
     <p className="text-muted-foreground">{chosen.configured&&chosen.enabled?'Connected':'Check this bot in My Vault'}</p>
     <div className="flex flex-wrap items-end gap-2"><label className="min-w-0 flex-1">Name to use in Slack<Input aria-label="Slack slug" value={slug} onChange={event=>setSlug(event.target.value)} disabled={!data.can_select||busy}/></label><Button size="sm" variant="outline" disabled={!data.can_select||busy||slug===data.settings.slug||!slug} onClick={async()=>{setBusy(true);try{await agentApi.updateSlackTargetSettings(data.target!,{slug});await refresh()}catch(cause){setError(slackErrorText(cause,'Could not save the Slack name.'))}finally{setBusy(false)}}}>Save name</Button></div>
@@ -63,6 +63,6 @@ export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath
     <p className="break-words text-muted-foreground">{data.settings.dm_only?`In a direct message to ${chosen.name}, start with “${slug}” to reach this ${noun}, for example: ${slug} your question`:`@${chosen.name} ${slug} your question`}</p>
    </>}
   </>}
-  <WorkspacePanelActions><Button size="sm" variant="outline" onClick={()=>openVault('vaults')}>Manage bots in My Vault</Button></WorkspacePanelActions>
+  <WorkspacePanelActions><Button size="sm" variant="outline" onClick={()=>void setup.open("Help me add, reconnect or manage my Slack bot through the existing bot tools. Inspect saved bots first, ask what I want to change, and never repeat token values.")}>Manage bots in chat</Button></WorkspacePanelActions>
  </section>
 }

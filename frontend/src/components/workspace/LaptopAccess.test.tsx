@@ -13,7 +13,6 @@ vi.hoisted(() => {
 })
 import api, { agentApi } from '../../services/api'
 import { CodeLocalFilesSettings } from '../../products/work/CodeFilesPanel'
-import { LaptopAccountsPanel } from '../integrations/LaptopAccountsPanel'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let host: HTMLDivElement, root: Root
@@ -21,17 +20,6 @@ beforeEach(() => {
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks() })
-
-it('connects once in My Vault and refreshes personal computers without an interval', async () => {
-  const list = vi.spyOn(agentApi, 'myVaultsOp').mockResolvedValue(JSON.stringify({ devices: [{ device_id: 'my-laptop' }] }))
-  const interval = vi.spyOn(window, 'setInterval')
-  await act(async () => root.render(<LaptopAccountsPanel />))
-  expect(list).toHaveBeenCalledWith({ operation: 'laptops' })
-  expect(host.textContent).toContain('my-laptop')
-  expect(interval).not.toHaveBeenCalled()
-  await act(async () => Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Check connection'))!.click())
-  expect(list).toHaveBeenCalledTimes(2)
-})
 
 it('uses the shared panel to select and browse a Vault computer for this Goal', async () => {
   const get = vi.spyOn(api, 'get').mockImplementation(async url => ({ data: url === '/api/devices'

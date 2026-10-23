@@ -24,7 +24,7 @@ still require the person's provider login or phone.
 | Dashboard; People & access; Owners | `panel-dashboard`, `panel-sharing`, `panel-owners` |
 | Functions; Schedules; Watchers; Webhooks | `panel-functions`, `panel-schedules`, `panel-watchers`, `panel-webhooks` |
 | Inbox; Google; Slack; WhatsApp | `panel-inbox`, `panel-google-apps`, `panel-slack-account`, `panel-slack-bot`, `panel-whatsapp` |
-| Skills; Secrets; Models; Browser; Linked folders; Costs | The matching `panel-skills`, `panel-secrets`, `panel-models`, `panel-browser`, `panel-linked-folders`, `panel-costs` skill |
+| Skills; Vault; Models; Browser; Linked folders; Costs | The matching `panel-skills`, `panel-vault`, `panel-models`, `panel-browser`, `panel-linked-folders`, `panel-costs` skill |
 | MCP connections and Vault access | `panel-mcp-connections`, `panel-mcp-access` |
 
 Use `work-ui-control` and the advertised targets when showing a panel helps.

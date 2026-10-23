@@ -111,10 +111,10 @@ func TestWorkUIOnlyRegistersForInteractiveWorkChat(t *testing.T) {
 	}
 }
 
-func TestWorkUISecretsUsesConnectionsSection(t *testing.T) {
+func TestWorkUIVaultUsesSharedPanel(t *testing.T) {
 	for _, contract := range []uiContract{workUIControlContract} {
-		if err := validateUIActionForContract(contract, "mcp", "open", "secrets"); err != nil {
-			t.Fatalf("%s Connections Secrets refused: %v", contract.Product, err)
+		if err := validateUIActionForContract(contract, "mcp", "open", "vault"); err != nil {
+			t.Fatalf("%s Vault refused: %v", contract.Product, err)
 		}
 		if err := validateUIActionForContract(contract, "secrets", "open", ""); err == nil {
 			t.Fatalf("%s retained standalone Secrets alias", contract.Product)
@@ -126,13 +126,18 @@ func TestWorkUISecretsUsesConnectionsSection(t *testing.T) {
 }
 
 func TestProjectUIScopeUsesSameSectionsOnServer(t *testing.T) {
-	for _, scope := range []string{"Chats/Work/projects/demo", "Chats/Code/projects/demo"} {
+	for _, scope := range []string{"Crew/demo"} {
 		contract := uiContractForScope(scope)
 		if err := validateUIActionForContract(contract, "memory", "open", "skills"); err != nil {
 			t.Fatalf("%s refused its Skills section: %v", scope, err)
 		}
 		if err := validateUIActionForContract(contract, "memory", "open", "guessed"); err == nil {
 			t.Fatalf("%s accepted a guessed section", scope)
+		}
+	}
+	for _, scope := range []string{"Crew/demo", "Workflow/example"} {
+		if err := validateUIActionForContract(uiContractForScope(scope), "mcp", "open", "vault"); err != nil {
+			t.Fatalf("%s refused Vault: %v", scope, err)
 		}
 	}
 	if err := validateUIActionForContract(uiContractForScope("Workflow/example"), "memory", "open", "skills"); err == nil {

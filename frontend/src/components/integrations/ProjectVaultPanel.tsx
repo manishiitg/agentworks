@@ -1,93 +1,93 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { KeyRound, Users, RefreshCw } from 'lucide-react'
-import api from '../../services/api'
-import { Button } from '../ui/Button'
+import { KeyRound, Laptop, Plug } from 'lucide-react'
+import { loadProjectVault, selectProjectVaultItem, type ProjectVaultInventory, type ProjectVaultItem } from '../../api/projectVault'
+import { useChatStore } from '../../stores/useChatStore'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { Checkbox } from '../ui/checkbox'
-import { McpConnectionCard } from './McpConnectionsPanel'
-import { OpenVaultButton } from './OpenVaultButton'
-import type { VaultMcpServer } from './useVaultMcpConnections'
+import { useVaultSetupDraft } from './useVaultSetupDraft'
 
-type Secret = { name: string }
-type Group = { id: string; name: string; description: string; servers: VaultMcpServer[]; secrets: Secret[] }
-type Inventory = { groups: Group[]; servers: VaultMcpServer[]; secrets: Secret[] }
+type Props = { workspacePath: string; tabId?: string; disabled?: boolean }
 
-/** Caller-authorized metadata only; project selection never grants Vault permission. */
-// MCPs come from Vault (owner, 2026-10-20). A project that ticks no Vault MCP keeps all of them as its default; once it
-// ticks some, its chats get only those (the server decides, scopeAgentMCP).
-export function ProjectVaultPanel({ selectedSecrets, onSelectedSecretsChange, selectedServers, onSelectedServersChange, disabled = false }: {
-  selectedSecrets: string[]; onSelectedSecretsChange: (names: string[]) => Promise<unknown> | void; disabled?: boolean
-  selectedServers?: string[]; onSelectedServersChange?: (names: string[]) => Promise<unknown> | void
-}) {
-  const [inventory, setInventory] = useState<Inventory>({ groups: [], servers: [], secrets: [] })
-  const [loading, setLoading] = useState(true)
+export function vaultItemDraft(item: ProjectVaultItem, vaultName: string): string {
+  const name = item.name || item.provider || 'this app'
+  if (item.kind === 'computer') return `Help me ${item.status === 'offline' ? 'reconnect' : 'use'} my computer “${name}” for this project. Check its connection and help me choose the folders and commands it can use.`
+  if (item.kind === 'project_secret' || item.kind === 'shared_secret') return `Help me manage the secret “${name}” in “${vaultName}”. Ask what I want to change, store any value securely and never repeat it.`
+  return `${item.status === 'needs_attention' ? 'Reconnect' : 'Help me manage'} ${item.provider || 'the app'} “${name}” in “${vaultName}”. Use the existing saved account and verify its status. Keep project selections unless I ask to change them.`
+}
+
+/** One metadata view; its only settings controls are project-use checkboxes. */
+export function ProjectVaultPanel({ workspacePath, tabId, disabled = false }: Props) {
+  const actor = useAuthStore(state => state.user?.id)
+  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const scope = `${server}:${actor}:${workspacePath}`
+  const [result, setResult] = useState<{ scope: string; inventory: ProjectVaultInventory }>()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
-  const refresh = useCallback(async (background = false) => {
+  const setup = useVaultSetupDraft(tabId)
+  const streaming = useChatStore(state => Boolean(tabId && state.chatTabs[tabId]?.isStreaming))
+  const wasStreaming = useRef(false)
+  const data = result?.scope === scope ? result.inventory : undefined
+  const refresh = useCallback(async () => {
     const version = ++generation.current
-    if (!background) setLoading(true)
     try {
-      const response = await api.get<Inventory>('/api/me/mcp/vault')
-      if (version !== generation.current) return
-      setInventory({ groups: response.data.groups ?? [], servers: response.data.servers ?? [], secrets: response.data.secrets ?? [] })
-      setError('')
-    } catch {
-      if (version === generation.current) { setInventory({ groups: [], servers: [], secrets: [] }); setError('Could not load your Vault access.') }
-    } finally { if (version === generation.current) setLoading(false) }
-  }, [])
+      const inventory = await loadProjectVault(workspacePath)
+      if (generation.current === version) { setResult({ scope, inventory }); setError('') }
+    } catch { if (generation.current === version) setError('Your Vault could not be loaded. Ask in chat to check the connection.') }
+  }, [scope, workspacePath])
   useEffect(() => {
     void refresh()
-    const onFocus = () => { void refresh(true) }
-    window.addEventListener('focus', onFocus)
-    return () => { generation.current++; window.removeEventListener('focus', onFocus) }
+    const focus = () => { void refresh() }
+    window.addEventListener('focus', focus)
+    return () => { generation.current++; window.removeEventListener('focus', focus) }
   }, [refresh])
-  const change = async (name: string) => {
-    setBusy(true); setError('')
-    const selected = selectedSecrets
-    const next = selected.includes(name) ? selected.filter(item => item !== name) : [...selected, name]
-    try { await onSelectedSecretsChange(next) }
-    catch { setError('Could not save Vault selection.') }
-    finally { setBusy(false) }
+  useEffect(() => {
+    if (wasStreaming.current && !streaming) void refresh()
+    wasStreaming.current = streaming
+  }, [streaming, refresh])
+  useLiveRefetch(() => { void refresh() }, { kinds: ['plan'], workflow: workspacePath, fallbackMs: 0, safetyMs: 0, minIntervalMs: 1000 })
+
+  const toggle = async (item: ProjectVaultItem) => {
+    if (!data || busy || disabled || !item.can_select) return
+    const identity = scope
+    generation.current++; setBusy(true); setError('')
+    try {
+      const inventory = await selectProjectVaultItem(workspacePath, item)
+      if (identity === `${useWorkspaceConnectionStore.getState().activeWorkspaceId}:${useAuthStore.getState().user?.id}:${workspacePath}`) {
+        generation.current++
+        setResult({ scope, inventory })
+        if (item.kind === 'computer') window.dispatchEvent(new Event('crew-laptop-settings-changed'))
+      }
+    } catch (cause) {
+      const response = (cause as { response?: { data?: { error?: string } } })?.response?.data
+      setError(response?.error || (cause instanceof Error ? cause.message : 'This selection could not be saved.'))
+    } finally { setBusy(false) }
   }
-  const pickedVault = (selectedServers ?? []).filter(name => name.startsWith('vault_'))
-  const toggleServer = async (id: string) => {
-    if (!onSelectedServersChange) return
-    setBusy(true); setError('')
-    const name = `vault_${id}`
-    const others = (selectedServers ?? []).filter(item => !item.startsWith('vault_') && item !== 'NO_SERVERS')
-    const nextVault = pickedVault.includes(name) ? pickedVault.filter(item => item !== name) : [...pickedVault, name]
-    try { await onSelectedServersChange([...others, ...nextVault]) }
-    catch { setError('Could not save Vault selection.') }
-    finally { setBusy(false) }
-  }
-  const groupedServers = new Set(inventory.groups.flatMap(group => group.servers.map(server => server.id)))
-  const groupedSecrets = new Set(inventory.groups.flatMap(group => group.secrets.map(secret => secret.name)))
-  const extraServers = inventory.servers.filter(server => !groupedServers.has(server.id))
-  const extraSecrets = inventory.secrets.filter(secret => !groupedSecrets.has(secret.name))
-  const groups = [...inventory.groups, ...(extraServers.length || extraSecrets.length ? [{ id: 'other-access', name: 'Other access', description: '', servers: extraServers, secrets: extraSecrets }] : [])]
-  const availableSecrets = new Set(inventory.secrets.map(secret => secret.name))
-  const missingSecrets = selectedSecrets.filter(name => !availableSecrets.has(name))
-  return <div className="space-y-3 text-xs">
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-muted-foreground">{onSelectedServersChange ? (pickedVault.length ? `${pickedVault.length} Vault ${pickedVault.length === 1 ? 'MCP' : 'MCPs'} picked for this project` : 'All Vault MCPs are used · tick some to use only those') : 'MCPs available automatically'} · select secrets for this project</span>
-      <div className="flex items-center gap-1"><OpenVaultButton panel="servers"/><Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Refresh Vault access" disabled={loading} onClick={() => void refresh()}><RefreshCw className={loading ? 'animate-spin' : ''}/></Button></div>
-    </div>
-    <p className="text-muted-foreground">Everyone who uses this project gets the MCPs and secrets picked here, from your Vault. Their runs can read the secret values, so pick only what you are happy to share.</p>
-    {error && <p role="alert" className="text-destructive">{error}</p>}
-    {loading ? <p className="text-muted-foreground">Loading your access…</p> : <>
-      {groups.length === 0 && <p className="py-4 text-muted-foreground">No Vault groups or shared resources available.</p>}
-      {groups.map(group => <details key={group.id} open className="rounded-md border border-border" aria-label={group.name}>
-        <summary className="flex cursor-pointer items-center gap-2 p-3"><Users className="h-3.5 w-3.5 text-primary"/><span className="font-medium">{group.name}</span><span className="ml-auto text-muted-foreground">{group.servers.length} {group.servers.length === 1 ? 'connection' : 'connections'} · {group.secrets.length} {group.secrets.length === 1 ? 'secret' : 'secrets'}</span></summary>
-        <div className="space-y-2 border-t border-border p-3">
-          {group.description && <p className="text-muted-foreground">{group.description}</p>}
-          {group.servers.map(server => onSelectedServersChange
-            ? <label key={server.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2"><Checkbox aria-label={`Use ${server.label} from ${group.name}`} checked={pickedVault.includes(`vault_${server.id}`)} disabled={disabled || busy} onCheckedChange={() => void toggleServer(server.id)}/><span className="font-medium">{server.label}</span><span className="ml-auto text-muted-foreground">{pickedVault.length === 0 ? 'Used (all)' : pickedVault.includes(`vault_${server.id}`) ? 'Used' : 'Not used'}</span></label>
-            : <McpConnectionCard key={server.id} showTools={false} server={{ id: `vault_${server.id}`, name: server.label, source: 'Vault', status: 'Available automatically' }}/>) }
-          {group.secrets.map(secret => <label key={secret.name} className="flex items-center gap-2 rounded-md border border-border px-3 py-2"><Checkbox aria-label={`Use ${secret.name} from ${group.name}`} checked={selectedSecrets.includes(secret.name)} disabled={disabled || busy} onCheckedChange={() => void change(secret.name)}/><KeyRound className="h-3.5 w-3.5 text-primary"/><span className="font-mono">{secret.name}</span></label>)}
-          {!group.servers.length && !group.secrets.length && <p className="text-muted-foreground">No resources assigned.</p>}
-        </div>
-      </details>)}
-      {missingSecrets.length > 0 && <div className="space-y-1 border-t border-border pt-3"><p className="text-muted-foreground">No longer available</p>{missingSecrets.map(name => <div key={name} className="flex items-center justify-between gap-2"><span>{name}</span><Button variant="ghost" size="xs" disabled={disabled || busy} onClick={() => void change(name)}>Remove selection</Button></div>)}</div>}
-    </>}
-  </div>
+
+  return <section aria-label="Project Vault" className="space-y-4 text-sm">
+    <p className="text-xs text-muted-foreground">Tick what this project uses. Ask in chat to connect apps, add secrets or share a vault.</p>
+    {(error || setup.error) && <p role="alert" className="text-xs text-destructive">{error || setup.error}</p>}
+    {!data && !error && <p role="status" className="text-muted-foreground">Loading your vaults…</p>}
+    {data?.notices.map(notice => <p key={notice} role="status" className="text-xs text-muted-foreground">{notice}</p>)}
+    {data?.vaults.length === 0 && <p className="py-4 text-muted-foreground">No accounts or secrets yet. Ask this chat to connect your first app or create a vault.</p>}
+    {data?.vaults.map(vault => <details key={`${scope}:${vault.id}`} open={!vault.project} className="overflow-hidden rounded-lg border border-border">
+      <summary className="cursor-pointer px-3 py-2.5"><span className="font-medium">{vault.name}</span><span className="ml-2 text-xs text-muted-foreground">{vault.sharing}</span></summary>
+      <div className="divide-y divide-border border-t border-border">
+        {vault.items.map(item => {
+          const secret = item.kind === 'project_secret' || item.kind === 'shared_secret'
+          const Icon = secret ? KeyRound : item.kind === 'computer' ? Laptop : Plug
+          const healthy = item.status === 'connected' || item.status === 'online'
+          const status = item.kind === 'computer' ? healthy ? 'Online' : 'Offline' : healthy ? 'Connected' : 'Needs attention'
+          return <div key={`${item.kind}:${item.id}`} className="flex min-h-12 items-center gap-3 px-3 py-2">
+            <Checkbox aria-label={`Use ${item.name || item.provider} from ${vault.name}`} checked={item.selected} disabled={disabled || busy || !item.can_select} onCheckedChange={() => { void toggle(item) }} />
+            <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <button type="button" disabled={disabled} onClick={() => { void setup.open(vaultItemDraft(item, vault.name)) }} className={`min-w-0 flex-1 truncate text-left hover:underline ${secret ? 'font-mono text-xs' : ''}`} title={item.name || item.provider}>{item.name || item.provider}</button>
+            {!secret && <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={status}><span aria-label={status} className={`h-2 w-2 rounded-full ${healthy ? 'bg-emerald-500' : 'bg-red-500'}`} />{item.kind === 'computer' && status}</span>}
+          </div>
+        })}
+      </div>
+    </details>)}
+  </section>
 }

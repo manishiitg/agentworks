@@ -210,6 +210,7 @@ func (api *StreamingAPI) handleLocalDeviceConnect(w http.ResponseWriter, r *http
 		connectionEvent(http.StatusBadGateway, "connection_ack")
 		return
 	}
+	rememberVaultComputer(claims.UserID, hello.DeviceID)
 	connectionEvent(http.StatusSwitchingProtocols, "connected")
 	close(device.ready)
 	conn.SetReadDeadline(time.Now().Add(75 * time.Second))

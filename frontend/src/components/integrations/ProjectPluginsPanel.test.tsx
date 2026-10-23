@@ -3,7 +3,6 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ProjectPluginsPanel } from './ProjectPluginsPanel'
-import { ProjectVaultPanel } from './ProjectVaultPanel'
 import { TooltipProvider } from '../ui/tooltip'
 const get = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ default: { get } }))
@@ -36,36 +35,6 @@ it('puts Connected MCPs, Available MCPs, Secrets, Skills and Vault in one row', 
   await act(async () => { host.querySelector<HTMLButtonElement>('[title="Vault & secrets"]')!.click() })
   expect(host.textContent).toContain('My groups')
 })
-it('uses the authenticated inventory, shows groups and selects exact resource references', async () => {
-  get.mockResolvedValue({ data: inventory })
-  const secrets = vi.fn(async () => {})
-  const host = await mount(<ProjectVaultPanel selectedSecrets={[]} onSelectedSecretsChange={secrets}/>)
-  expect(get).toHaveBeenCalledWith('/api/me/mcp/vault')
-  expect(host.textContent).toContain('Engineering')
-  expect(host.textContent).toContain('TEAM_KEY')
-  expect(host.textContent).not.toContain('tools')
-  expect(host.querySelector('[aria-label="Use Notion · Engineering from Engineering"]')).toBeNull()
-  expect(host.textContent).toContain('Available automatically')
-  await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Use TEAM_KEY from Engineering"]')!.click() })
-  expect(secrets).toHaveBeenCalledWith(['TEAM_KEY'])
-})
-it('clears stale access on refresh and lets a project remove revoked selections', async () => {
-  get.mockResolvedValueOnce({ data: inventory }).mockResolvedValueOnce({ data: { groups: [], servers: [], secrets: [] } })
-  const secrets = vi.fn(async () => {})
-  const host = await mount(<ProjectVaultPanel selectedSecrets={['TEAM_KEY']} onSelectedSecretsChange={secrets}/>)
-  await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Refresh Vault access"]')!.click() })
-  expect(host.textContent).not.toContain('Notion · Engineering')
-  expect(host.textContent).toContain('No longer available')
-  const remove = [...host.querySelectorAll('button')].filter(button => button.textContent === 'Remove selection')
-  await act(async () => { remove[0].click() })
-  expect(secrets).toHaveBeenCalledWith([])
-})
-it('disables all resource selection for a project viewer', async () => {
-  get.mockResolvedValue({ data: inventory })
-  const host = await mount(<ProjectVaultPanel disabled selectedSecrets={[]} onSelectedSecretsChange={() => {}}/>)
-  expect([...host.querySelectorAll<HTMLButtonElement>('[role=checkbox]')].every(checkbox => checkbox.disabled)).toBe(true)
-})
-
 it('renders only content when the shared header owns the selected tab', async () => {
   const host = await mount(<ProjectPluginsPanel tab="secrets" connections={view => <p>{view}</p>} secrets={<p>Secrets editor</p>} vault={<p>Authorized groups</p>}/>)
   expect(host.querySelector('[role=tablist]')).toBeNull()

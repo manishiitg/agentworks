@@ -38,92 +38,32 @@ afterEach(() => { cleanup.splice(0).forEach(fn => fn()); delete window.__APP_RUN
 async function mount(product = CREW_PRODUCT, enabledPanels?: Set<string>, canEdit = true) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host); cleanup.push(() => { act(() => root.unmount()); host.remove() })
-  await act(async () => root.render(<ProjectProductProvider value={product}><WorkIntegrationsPanel canEdit={canEdit} workspacePath="Crew/example" projectId="example" projectTitle="Example" projectTemplates={[]} tabId="tab" onAsk={state.ask} onSelectedServersChange={state.save} workflowContextPaths={[]} onWorkflowContextPathsChange={state.save} enabledPanels={enabledPanels} /></ProjectProductProvider>))
+  await act(async () => root.render(<ProjectProductProvider value={product}><WorkIntegrationsPanel canEdit={canEdit} workspacePath="Crew/example" projectId="example" projectTitle="Example" tabId="tab" onAsk={state.ask} workflowContextPaths={[]} onWorkflowContextPathsChange={state.save} enabledPanels={enabledPanels} /></ProjectProductProvider>))
   return host
 }
 
-it.each([CREW_PRODUCT])('opens current connections for origin $profileId and preserves deep links to Secrets and Skills', async product => {
-  const host = await mount(product)
-  expect(host.querySelector('[data-content="mcp"]')?.textContent).toBe('connected MCP content')
-  expect(host.querySelector('[aria-label="Integration sections"]')).toBeNull()
-  expect(host.querySelector('nav')).toBeNull()
-  expect(host.textContent).not.toContain('Accounts used here')
-  expect(host.textContent).not.toContain('Chats from your computer')
-  expect(host.querySelector('[aria-label="MCP servers"]')).toBeNull()
-  await act(async () => state.target('secrets')); expect(host.querySelector('[data-content="secrets"]')).not.toBeNull()
-  expect(host.querySelector('[data-content="mcp"]')).toBeNull()
-  await act(async () => state.target('overview')); expect(host.querySelector('[data-content="mcp"]')).not.toBeNull()
-  await act(async () => state.target('secrets'))
-  await act(async () => state.target('apps')); expect(host.querySelector('[data-content="mcp"]')).not.toBeNull()
-  expect(state.ask).not.toHaveBeenCalled(); expect(state.save).not.toHaveBeenCalled()
-})
-
-it('keeps shortcut/search section IDs and only mounts the selected destination', async () => {
+it('uses one Vault destination and keeps setup in the existing project chat', async () => {
   const host = await mount()
-  for (const target of ['secrets', 'brain', 'folders', 'slack', 'whatsapp', 'gmail', 'cli', 'available']) {
+  expect(host.querySelector('[data-content="vault"]')).not.toBeNull()
+  expect(host.querySelector('nav, [aria-label="Integration sections"]')).toBeNull()
+  for (const target of ['brain', 'folders', 'whatsapp', 'cli', 'agents', 'vault']) {
     await act(async () => state.target(target))
-    expect([...host.querySelectorAll('[data-content]')].map(el => el.getAttribute('data-content'))).toEqual(target === 'secrets' ? ['secrets', 'vault'] : [target === 'available' ? 'mcp' : target === 'slack' ? 'slack' : target])
+    expect([...host.querySelectorAll('[data-content]')].map(el => el.getAttribute('data-content'))).toEqual([target])
   }
   expect(state.ask).not.toHaveBeenCalled(); expect(state.save).not.toHaveBeenCalled()
 })
-
-it('keeps MCP and Skills hidden for a secrets-only project and rejects their targets', async () => {
-  state.allowed_products = ['work']
-  const host = await mount(CREW_PRODUCT, new Set(['secrets']))
-  expect(host.querySelector('[data-content="secrets"]')).not.toBeNull()
-  expect(host.querySelector('nav')).toBeNull()
-  for (const target of ['connected', 'available', 'skills', 'vault', 'brain']) await act(async () => state.target(target))
-  expect(host.querySelector('[data-content="secrets"]')).not.toBeNull()
-  for (const target of ['mcp', 'skills', 'vault', 'brain']) expect(host.querySelector(`[data-content="${target}"]`)).toBeNull()
-})
-
-it.each([CREW_PRODUCT])('uses one Slack page for origin $profileId', async product => {
- const host = await mount(product)
- await act(async () => state.target('slack'))
- expect(host.querySelector('[data-content="slack"]')?.textContent).toContain('Act in Slack')
- expect(host.querySelector('[data-content="slack"]')?.textContent).toContain('Talk to this Crew')
- expect(host.querySelector('[data-content="slack-account"]')).toBeNull()
- await act(async () => state.target('overview'))
- expect(host.querySelector('[data-content="slack"]')).toBeNull()
- expect(state.ask).not.toHaveBeenCalled(); expect(state.save).not.toHaveBeenCalled()
-})
-
-it('does not expose disabled bot channels through Use & share or direct targets', async () => {
-  const host = await mount(CREW_PRODUCT, new Set(['secrets']))
-  expect(host.textContent).not.toContain('Slack')
-  expect(host.textContent).not.toContain('WhatsApp')
-  for (const target of ['slack', 'slack-account', 'slack-bot', 'whatsapp']) await act(async () => state.target(target))
-  expect(host.querySelector('[data-content="slack"]')).toBeNull()
-  expect(host.querySelector('[data-content="whatsapp"]')).toBeNull()
-  expect(host.querySelector('[data-content="secrets"]')).not.toBeNull()
-})
-
-it('opens the new menu destinations without changing sharing or account permissions', async () => {
+it('keeps bot channels and sharing separate from personal Vault accounts', async () => {
   const host = await mount()
-  for (const [target, content, section] of [['slack-account', 'slack', 'account'], ['slack-bot', 'slack', 'bot'], ['share', 'sharing', 'people'], ['share-owners', 'sharing', 'owners']]) {
+  for (const [target, content, section] of [['slack-bot', 'slack', 'bot'], ['share', 'sharing', 'people'], ['share-owners', 'sharing', 'owners']]) {
     await act(async () => state.target(target))
     expect(host.querySelector(`[data-content="${content}"]`)?.getAttribute('data-section')).toBe(section)
     expect(host.querySelectorAll('[data-content]')).toHaveLength(1)
   }
-  expect(state.ask).not.toHaveBeenCalled(); expect(state.save).not.toHaveBeenCalled()
+  await act(async () => state.target('vault'))
+  expect(host.querySelector('[data-content="vault"]')).not.toBeNull()
 })
-
-
-it('keeps computer chats in their dedicated destination and mounts only that list', async () => {
-  const host = await mount()
-  expect(host.querySelector('[data-content="agents"]')).toBeNull()
-  await act(async () => state.target('agents'))
-  expect(host.querySelector('[data-content="agents"]')).not.toBeNull()
-  expect(host.querySelector('[data-content="mcp"]')).toBeNull()
-  await act(async () => state.target('overview'))
-  expect(host.querySelector('[data-content="agents"]')).toBeNull()
-  expect(host.querySelector('[data-content="mcp"]')).not.toBeNull()
-  expect(state.ask).not.toHaveBeenCalled(); expect(state.save).not.toHaveBeenCalled()
-})
-
-it('does not expose private published agents to a viewer or through a direct section target', async () => {
-  const host = await mount(CREW_PRODUCT, undefined, false)
-  expect(host.textContent).not.toContain('Chats from your computer')
-  await act(async () => state.target('agents'))
-  expect(host.querySelector('[data-content="agents"]')).toBeNull()
+it('retains feature and Builder access checks for direct targets', async () => {
+  const host = await mount(CREW_PRODUCT, new Set(['secrets']), false)
+  for (const target of ['slack', 'slack-bot', 'whatsapp', 'agents']) await act(async () => state.target(target))
+  expect([...host.querySelectorAll('[data-content]')].map(el => el.getAttribute('data-content'))).toEqual(['vault'])
 })

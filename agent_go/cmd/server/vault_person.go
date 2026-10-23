@@ -61,7 +61,7 @@ func (api *StreamingAPI) vaultActorCanManage(ctx context.Context, person, connec
 
 const manageMyVaultsDescription = "Create vaults and share MCP connections through them. A vault is a bundle of MCP connections that you own and other people can use. " +
 	"You can own at most 5. Only an owner (a vault can have several) adds, removes or updates its connections and decides who may use it; members use it and cannot re-share. " +
-	"Operations: laptops (your connected computers and one-time setup steps; choose where to use them with manage_laptop_access); list (your vaults, with members' emails and connection IDs); apps (the apps Vault can connect, by catalog name); create {name, description}; inspect {vault_id}; " +
+	"Operations: project_select {workspace_path, kind, item_id, selected} (tick one app, secret or computer for the project); project {workspace_path} (the Vault panel: accessible apps, secret names and computers with actual project selections; no values); laptops (your connected computers and one-time setup steps; choose where to use them with manage_laptop_access); list (your vaults, with members' emails and connection IDs); apps (the apps Vault can connect, by catalog name); create {name, description}; inspect {vault_id}; " +
 	"add_member / remove_member {vault_id, email}; add_owner / remove_owner {vault_id, email}; " +
 	"connect {vault_id, provider, label} for a server in the Vault catalog (returns the sign-in link for you to open); " +
 	"sign_in {vault_id, connection_id, client_id?, client_secret?} to finish or renew sign-in in chat; " +
@@ -78,7 +78,11 @@ func manageMyVaultsParameters() map[string]interface{} {
 		"type": "object", "additionalProperties": false,
 		"required": []string{"operation"},
 		"properties": map[string]interface{}{
-			"operation":      map[string]interface{}{"type": "string", "enum": []string{"list", "laptops", "apps", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote_secret", "set_secret", "remove_secret", "sync", "remove_connection", "delete"}},
+			"operation":      map[string]interface{}{"type": "string", "enum": []string{"list", "project", "project_select", "laptops", "apps", "create", "inspect", "add_member", "remove_member", "add_owner", "remove_owner", "connect", "sign_in", "promote_secret", "set_secret", "remove_secret", "sync", "remove_connection", "delete"}},
+			"kind":           str("project_select: mcp, project_secret, shared_secret, google, slack or computer."),
+			"item_id":        str("project_select: exact item ID from project inventory."),
+			"selected":       map[string]interface{}{"type": "boolean", "description": "project_select: whether this project uses the item."},
+			"workspace_path": str("project: the active Crew or Goal folder, from this chat; access is rechecked."),
 			"vault_id":       str("The vault's ID from list."),
 			"name":           str("create: the vault's name. promote: the exact connection name from list_mcp_servers. promote_secret / remove_secret: the secret's name."),
 			"description":    str("create: what the vault is for."),
@@ -121,6 +125,26 @@ func argString(args map[string]interface{}, key string) string {
 }
 
 func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, args map[string]interface{}) (string, error) {
+	if argString(args, "operation") == "project_select" {
+		selected, ok := args["selected"].(bool)
+		if !ok {
+			return "", errors.New("selected must say whether the project uses this item")
+		}
+		data, err := api.selectProjectVaultItem(ctx, person, argString(args, "workspace_path"), argString(args, "kind"), argString(args, "item_id"), selected)
+		if err != nil {
+			return "", err
+		}
+		raw, err := json.Marshal(data)
+		return string(raw), err
+	}
+	if argString(args, "operation") == "project" {
+		data, err := api.projectVaultInventory(ctx, person, argString(args, "workspace_path"))
+		if err != nil {
+			return "", err
+		}
+		raw, err := json.Marshal(data)
+		return string(raw), err
+	}
 	if argString(args, "operation") == "laptops" {
 		if !personVaultActive(person) {
 			return "", errors.New("Your account cannot manage My Vault")

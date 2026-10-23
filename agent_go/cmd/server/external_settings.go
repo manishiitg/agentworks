@@ -43,14 +43,14 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
 		}
 	}
-	add("get_settings", "Read a workflow's, Flow's or Crew's settings: models per role, MCP servers and tools, skills, secrets (names and whether a value is stored; never values), browser mode, notifications (workflows and Flows), plus a version for update_settings.", false, false, target())
+	add("get_settings", "Read a workflow's, Flow's or Crew's settings: models per role, MCP servers and tools, skills, secrets (names and whether a value is stored; never values), browser mode, notifications (workflows and Flows), plus a version for update_settings. Builders also receive the names-only project Vault panel inventory under vault.", false, false, target())
 	sourceTarget := target()
 	add("get_secret_sources", "Explain this product's saved secret choices by name: its own copy, the company Vault copy and which takes priority. Values, token validity and account identities are not checked. Does not change selections or stored copies. Pass workflow_id or crew_id.", false, false, sourceTarget)
 	props := target()
 	for key, value := range map[string]any{
 		"expected_version": externalString("Version from settings action=get; the update is refused if the settings changed since."),
 		"models":           map[string]any{"type": "object", "description": "The models object from get_settings with your changes. Replaces it whole; every account (connection_id) must be one you may use."},
-		"mcp_servers":      addRemove("MCP servers to attach or detach, by name."),
+		"mcp_servers":      map[string]any{"type": "object", "additionalProperties": false, "description": "Attach/detach MCP servers, or replace the complete selection. NO_SERVERS explicitly turns off automatic Vault connections.", "properties": map[string]any{"add": names, "remove": names, "replace": names}},
 		"tools":            addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),
 		"skills":           addRemove("Installed or built-in skills to use or stop using."),
 		"secrets": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
@@ -218,6 +218,51 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 		changed = append(changed, "models")
 	}
 
+	if raw, ok := args["mcp_servers"].(map[string]any); ok && raw["replace"] != nil {
+		if raw["add"] != nil || raw["remove"] != nil {
+			return nil, nil, settingsInvalid("Use replace by itself for the complete MCP selection")
+		}
+		names := externalSettingsList(args, "mcp_servers", "replace")
+		next := []string{}
+		for _, name := range names {
+			if name == "NO_SERVERS" || slices.Contains(s.Servers, name) {
+				next = settingsWith(next, name)
+				continue
+			}
+			if strings.HasPrefix(name, "vault_") {
+				access, err := vaultAccessFor(ctx, api.projectSecretsOwner(userID, t.path))
+				if err != nil {
+					return nil, nil, settingsInvalid("Project Vault access could not be checked")
+				}
+				if !slices.ContainsFunc(access.Servers, func(row vaultRuntimeServer) bool { return vaultServerName(row.ID) == name }) {
+					connection, e := vaultSavedConnection(ctx, strings.TrimPrefix(name, "vault_"))
+					if api.projectSecretsOwner(userID, t.path) != userID || e != nil || !vaultOwnerOf(ctx, userID, connection.VaultID) {
+						return nil, nil, settingsInvalid("This project cannot use that Vault app. Ask in chat to share the app with the project's owner first")
+					}
+				}
+				next = settingsWith(next, name)
+				continue
+			}
+			if api.productSchedules == nil {
+				return nil, nil, settingsInvalid("MCP configuration is unavailable")
+			}
+			canonical, waiting, err := api.productSchedules.validateCrewCreationServers(ctx, userID, []string{name})
+			if err != nil {
+				return nil, nil, settingsInvalid("mcp_servers: %v", err)
+			}
+			next = settingsWith(next, canonical...)
+			pending = append(pending, waiting...)
+		}
+		if len(next) == 0 {
+			next = []string{"NO_SERVERS"}
+		}
+		s.Servers = next
+		s.Tools = slices.DeleteFunc(s.Tools, func(tool string) bool {
+			server, _, ok := strings.Cut(tool, ":")
+			return ok && !slices.Contains(s.Servers, server)
+		})
+		changed = append(changed, "mcp_servers")
+	}
 	if adds := externalSettingsList(args, "mcp_servers", "add"); len(adds) > 0 {
 		if api.productSchedules == nil {
 			return nil, nil, &externalSettingsError{503, "mcp_unavailable", "MCP configuration is unavailable."}
@@ -420,6 +465,11 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	}
 	if name == "get_settings" {
 		view := api.externalSettingsView(ctx, claims.UserID, target, state, notifications(caps))
+		if target.kind == "workflow" && (access == WorkflowAccessOwner || access == WorkflowAccessWrite) {
+			if vault, err := api.projectVaultInventory(ctx, claims.UserID, target.path); err == nil {
+				view["vault"] = vault
+			}
+		}
 		view["pulse"] = pulseView(manifest)
 		view["after_manual_run"] = manifest.EffectiveManualAfterRun()
 		// Backup, publish and notify status, as the app's views show them.
@@ -565,7 +615,13 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 			return checkCrewSkillsAvailable(ctx, root, names, nil)
 		}}
 	if name == "get_settings" {
-		externalJSON(w, api.externalSettingsView(ctx, claims.UserID, target, state, nil))
+		view := api.externalSettingsView(ctx, claims.UserID, target, state, nil)
+		if crew.OwnedByCaller {
+			if vault, err := api.projectVaultInventory(ctx, claims.UserID, root); err == nil {
+				view["vault"] = vault
+			}
+		}
+		externalJSON(w, view)
 		return
 	}
 	if !crew.OwnedByCaller {

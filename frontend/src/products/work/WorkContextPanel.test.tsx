@@ -39,7 +39,7 @@ it('uses the five category groups, opens Build for a new Crew and preserves ever
   await render(async host => {
     expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build', 'Use', 'Share', 'Integrations', 'Setup'])
     expect([...host.querySelectorAll('details')].map(node => node.open)).toEqual([true, false, false, false, false])
-    for (const label of ['Dashboards', 'Functions', 'Skills', 'Files', 'Database', 'Plan', 'Schedules', 'Watchers', 'Webhooks', 'Browser', 'Chat history', 'Slack bot', 'Slack account', 'People & access', 'Owners & collaborators', 'Memory', 'Models', 'Instructions & identity', 'Terminal']) {
+    for (const label of ['Dashboards', 'Functions', 'Skills', 'Files', 'Database', 'Plan', 'Schedules', 'Watchers', 'Webhooks', 'Browser', 'Chat history', 'Slack bot', 'Vault', 'People & access', 'Owners & collaborators', 'Memory', 'Models', 'Instructions & identity', 'Terminal']) {
       expect([...host.querySelectorAll('button')].filter(node => node.textContent === label), label).toHaveLength(1)
     }
     await act(async () => button(host, 'Webhooks').click())
@@ -138,7 +138,7 @@ it('applies feature and sharing admission to starting shortcuts and drops stale 
 it('shows configured counts and laptop connection state beside their existing destinations', async () => {
   mocks.status = { skills: 32, googleApps: 1, secrets: 0, owners: 2, laptop: 'Not connected' }
   await render(async host => {
-    for (const [label, detail] of [['Skills', '32'], ['Google apps', '1'], ['Secrets', 'None'], ['Owners & collaborators', '2'], ['Local laptop', 'Not connected']]) {
+    for (const [label, detail] of [['Skills', '32'], ['Owners & collaborators', '2']]) {
       const row = [...host.querySelectorAll('button')].find(node => node.textContent?.startsWith(label))!
       expect(row.textContent).toBe(label + detail)
     }

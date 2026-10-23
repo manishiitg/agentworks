@@ -358,18 +358,12 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         {view === 'mcp' && <WorkIntegrationsPanel
           canEdit={canEditConnections}
           key={workspacePath}
-          selectedSecrets={selectedSecrets}
-          selectedGlobalSecrets={selectedGlobalSecrets}
-          onSelectedSecretsChange={updateSecretSelection}
-          onSelectedGlobalSecretsChange={onSelectedGlobalSecretsChange}
           workspacePath={workspacePath}
           projectId={projectId}
           projectTitle={projectTitle}
-          projectTemplates={projectTemplates}
           tabId={tabId}
           enabledPanels={enabledPanels}
           onAsk={async message => { await ask(message) }}
-          onSelectedServersChange={onSelectedServersChange}
           workflowContextPaths={workflowContextPaths}
           onWorkflowContextPathsChange={onWorkflowContextPathsChange}
         />}

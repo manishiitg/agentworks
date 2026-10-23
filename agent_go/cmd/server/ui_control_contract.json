@@ -176,12 +176,13 @@
     },
     {
       "id": "mcp",
-      "label": "Connections",
+      "label": "Vault",
       "actions": [
         "open",
         "refresh"
       ],
       "targets": [
+        "vault",
         "connected",
         "available",
         "secrets",

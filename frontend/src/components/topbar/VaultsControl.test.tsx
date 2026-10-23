@@ -9,7 +9,8 @@ vi.hoisted(() => {
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: vi.fn() }))
 import { useAuthStore } from '../../stores/useAuthStore'
 import { TooltipProvider } from '../ui/tooltip'
-import { useAppStore } from '../../stores/useAppStore'
+const navigation = vi.hoisted(() => ({ open: vi.fn(async () => 'own-chat') }))
+vi.mock('../../utils/projectVaultNavigation', () => ({ openLastProjectVaultChat: navigation.open }))
 import VaultsControl from './VaultsControl'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -36,8 +37,8 @@ describe('My vaults entry', () => {
   })
 })
 
-it('opens personal vaults directly when the account has no shared Vault role', async () => {
+it('opens the last real project chat instead of a separate Vault page', async () => {
   const host = await render({ id: 'personal', can_create: true, allowed_products: ['mcp-gateway'] })
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="My vaults"]')!.click())
-  expect(useAppStore.getState().adminPage).toBe('vaults')
+  expect(navigation.open).toHaveBeenCalledOnce()
 })

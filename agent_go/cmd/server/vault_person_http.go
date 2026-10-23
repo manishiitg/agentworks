@@ -8,12 +8,12 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Browser endpoints for the "My vaults" screen (PLAT-507). They reuse the tool's operations, so the screen and the agent
-// can do exactly the same things and the Vault service checks the same owner rules. The promotes need a Crew, Code or
-// workflow chat and stay tool-only. A secret's value is typed here and nowhere else; this handler never logs the body.
+// Project panel and personal Vault endpoints reuse native operations. The
+// caller's current project/Vault authority is rechecked; bodies can carry secret
+// values and must never be logged.
 
 var myVaultScreenOperations = map[string]bool{
-	"list": true, "apps": true, "create": true, "inspect": true, "add_member": true, "remove_member": true, "add_owner": true,
+	"list": true, "project": true, "project_select": true, "laptops": true, "apps": true, "create": true, "inspect": true, "add_member": true, "remove_member": true, "add_owner": true,
 	"remove_owner": true, "connect": true, "sign_in": true, "sync": true, "remove_connection": true, "remove_secret": true, "delete": true,
 }
 
@@ -32,16 +32,27 @@ func (api *StreamingAPI) handleMyVaultsOp(w http.ResponseWriter, r *http.Request
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	person, ok := api.myVaultsPerson(w, r)
-	if !ok {
-		return
-	}
 	args := map[string]interface{}{}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&args); err != nil {
 		writeUsersError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 	operation, _ := args["operation"].(string)
+	person := ""
+	if operation == "project" || operation == "project_select" {
+		caller := GetUserFromContext(r.Context())
+		if caller == nil || !activeMCPPerson(caller.UserID) {
+			writeUsersError(w, http.StatusForbidden, "Open a project you can build to manage Vault")
+			return
+		}
+		person = caller.UserID
+	} else {
+		var ok bool
+		person, ok = api.myVaultsPerson(w, r)
+		if !ok {
+			return
+		}
+	}
 	if !myVaultScreenOperations[operation] {
 		writeUsersError(w, http.StatusBadRequest, "that operation is not available here")
 		return

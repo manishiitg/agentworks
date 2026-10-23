@@ -38,7 +38,6 @@ import { WorkspaceViewActions } from './WorkspaceViewActions'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { getIdentityTabAskAIMessage, getIntegrationTabAskAIMessage, getWorkspaceAskAIMessage, type IdentityTabId, type IntegrationTabId } from './workspaceAskAI'
 import WorkflowIdentityPanel from './WorkflowIdentityPanel'
-import { CodeLocalFilesSettings } from '../../products/work/CodeFilesPanel'
 import WorkflowFolderAccessView from './WorkflowFolderAccessView'
 import WorkflowUpdatesView from './WorkflowUpdatesView'
 
@@ -54,7 +53,6 @@ type IdentityTab = IdentityTabId
 const IDENTITY_TABS: Array<{ value: IdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'llm', label: 'Models' },
-  { value: 'laptop', label: 'Local laptop' },
   { value: 'upgrades', label: 'Upgrades' },
 ]
 const RELAY_IDENTITY_TABS = IDENTITY_TABS.filter(option => option.value === 'general' || option.value === 'llm')
@@ -106,6 +104,10 @@ const SECTION_COPY: Record<WorkflowCapabilitySection, { title: string; descripti
 
 export default function WorkflowCapabilitiesPanel({ section, workspacePath, presetQueryId, relayMode = false }: WorkflowCapabilitiesPanelProps) {
   const chatSessionId = useChatStore(state => presetQueryId ? selectWorkspacePaneWorkflowTab(state.chatTabs, presetQueryId, state.activeTabId)?.sessionId ?? undefined : undefined)
+  const vaultTabId = useChatStore(state => {
+    const active = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
+    return active?.metadata?.presetQueryId === presetQueryId && active.metadata.phaseId === 'workflow-builder' ? active.tabId : ''
+  })
   const canWriteWorkflow = useCanWriteWorkflow(workspacePath)
   const [capabilities, setCapabilities] = useState<WorkflowCapabilities>(EMPTY_CAPABILITIES)
   // What the manifest last held, so the footer can tell "edited" from "saved".
@@ -134,6 +136,8 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
   const navigationOptions = integrationNavigationOptions(mcpTabs, pluginTabs)
   const selectConnection = (target: string) => {
+    if (target === 'vault') { setSharing(false); setTab('apps'); setPluginTab('connected'); return }
+    if (!relayMode && ['connected', 'available', 'secrets', 'gmail'].includes(target)) return
     if (target === 'share' || target === 'cli' || (target === 'slack' && mcpTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && mcpTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
     if (target === 'overview' || target === 'apps') { setSharing(false); setTab('apps'); setPluginTab(pluginTabs.some(option => option.value === 'connected') ? 'connected' : pluginTabs[0].value); return }
     if (!mcpTabs.some(option => option.value === target) && !pluginTabs.some(option => option.value === target)) return
@@ -142,7 +146,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
     else if (pluginTabs.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab) }
   }
   const activeConnection = activeMcpTab === 'apps' ? pluginTab : activeMcpTab
-  const connectionLabel = navigationOptions.find(option => option.value === (activeConnection === 'available' ? 'connected' : activeConnection))?.label ?? 'MCPs'
+  const connectionLabel = !relayMode && activeMcpTab === 'apps' && pluginTab !== 'skills' ? 'Vault' : navigationOptions.find(option => option.value === (activeConnection === 'available' ? 'connected' : activeConnection))?.label ?? 'MCPs'
   const serverTabs = pluginTabs.filter(option => option.value === 'connected' || option.value === 'available').map(option => ({ ...option, label: option.value === 'connected' ? 'Connected' : 'Available' }))
   // Existing bubble and Ctrl+K targets open their resource directly.
   useWorkspaceViewTarget('mcp', selectConnection, section === 'mcp')
@@ -217,7 +221,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   // Agent tools (and shell edits) can change this configuration while the panel
   // stays open. Refresh both sources, only for the visible MCP panel.
   useEffect(() => {
-    if (section !== 'mcp' || !workspacePath) return
+    if (section !== 'mcp' || !workspacePath || !relayMode) return
     let refreshing = false
     const refresh = async () => {
       if (document.hidden || refreshing || latest.current.saving) return
@@ -232,7 +236,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
       window.removeEventListener('focus', onFocus)
       ++loadVersion.current
     }
-  }, [section, workspacePath, handleRefreshServers])
+  }, [relayMode, section, workspacePath, handleRefreshServers])
 
   useEffect(() => {
     void load()
@@ -321,7 +325,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
             : section === 'identity'
               ? `Identity · ${identityTabs.find(option => option.value === activeIdentityTab)?.label ?? 'General'}`
               : undefined}
-          actions={(
+          actions={section === 'mcp' && !relayMode && !sharing && activeMcpTab === 'apps' && pluginTab !== 'skills' ? undefined : (
             <WorkspaceViewActions
               workspacePath={workspacePath}
               message={section === 'mcp'
@@ -345,7 +349,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
               refreshing={section === 'mcp' && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available') && refreshingServers}
               refreshLabel={section === 'mcp' ? sharing ? 'Refresh sharing and channels' : mcpRefreshLabel : section === 'identity' ? identityRefreshLabel : `Refresh ${copy.title}`}
             >
-              {section === 'mcp' && !sharing && activeMcpTab === 'apps' && pluginTab === 'connected' && canWriteWorkflow && <button type="button" onClick={() => selectConnection('available')} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-3.5 w-3.5" aria-hidden="true" />Add an MCP</button>}
+              {section === 'mcp' && relayMode && !sharing && activeMcpTab === 'apps' && pluginTab === 'connected' && canWriteWorkflow && <button type="button" onClick={() => selectConnection('available')} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-3.5 w-3.5" aria-hidden="true" />Add an MCP</button>}
             </WorkspaceViewActions>
           )}
           tabs={section === 'mcp'
@@ -372,7 +376,8 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 {sharing ? <>
                   {workspacePath && (shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun={relayMode ? 'Flow' : 'Goal'} allowBots={!relayMode} /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" />}</>)}
                 </> : <>
-                {activeMcpTab === 'apps' && workspacePath && <ProjectPluginsPanel tab={pluginTab}
+                {!relayMode && activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <ProjectVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} />}
+                {activeMcpTab === 'apps' && workspacePath && (relayMode || pluginTab === 'skills') && <ProjectPluginsPanel tab={pluginTab}
                   connections={view => <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun={relayMode ? 'Flow' : 'workflow'} canEdit={canWriteWorkflow}
                       selectedServers={capabilities.selected_servers}
                       onSelectedServersChange={async selected_servers => { const next = { ...latest.current.capabilities, selected_servers }; await persist(next, true); setCapabilities(next) }} />}
@@ -414,10 +419,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                         })
                       }}
                     />}
-                  vault={<ProjectVaultPanel disabled={!canWriteWorkflow} selectedSecrets={capabilities.selected_global_secret_names ?? []}
-                    selectedServers={capabilities.selected_servers}
-                    onSelectedServersChange={async selected_servers => { const next = { ...latest.current.capabilities, selected_servers }; await persist(next, true); setCapabilities(next) }}
-                    onSelectedSecretsChange={async selected_global_secret_names => { const next = { ...latest.current.capabilities, selected_global_secret_names }; await persist(next, true); setCapabilities(next) }} />}
+                  vault={<ProjectVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} />}
                 />}
                 {!relayMode && activeMcpTab === 'brain' && workspacePath && (
                   <ProjectKnowledgebasePanel workspacePath={workspacePath} disabled={!canWriteWorkflow} />
@@ -452,9 +454,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                     }}
                   />
                 )}
-                {!relayMode && activeIdentityTab === 'laptop' && workspacePath && (
-                  canWriteWorkflow ? <CodeLocalFilesSettings workflowPath={workspacePath} /> : <p className="text-xs text-muted-foreground">Build access is needed to manage this Goal’s laptop connection.</p>
-                )}
+
                 {!relayMode && activeIdentityTab === 'upgrades' && (
                   <WorkflowUpdatesView workspacePath={workspacePath} />
                 )}
