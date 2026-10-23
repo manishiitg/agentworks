@@ -154,31 +154,30 @@ type localSession struct {
 	OwnCLI          bool `json:"own_cli,omitempty"`
 	// Also marks an extra network this chat joined next to its own (--also);
 	// Network is that login's name. The chat's own attachment has neither.
-	Also              bool            `json:"also,omitempty"`
-	Network           string          `json:"network,omitempty"`
-	MissingHostNotice bool            `json:"missing_host_notice,omitempty"`
-	SetupPending      bool            `json:"setup_pending,omitempty"`
-	AccountSenders    bool            `json:"account_senders,omitempty"`
-	ReadPosition      int             `json:"read_position,omitempty"`
-	LastGuidanceAt    time.Time       `json:"last_guidance_at,omitempty"`
-	Offline           bool            `json:"offline,omitempty"`
-	ParentConfigPath  string          `json:"parent_config_path,omitempty"`
-	Attachment        AgentAttachment `json:"attachment"`
-	HostKey           string          `json:"host_key,omitempty"`
-	NativeRemote      string          `json:"native_remote,omitempty"`
-	LastError         string          `json:"last_error,omitempty"`
-	ConfigPath        string          `json:"config_path"`
-	client            *Client
-	streamOnline      bool
-	latestSequence    int  // wake hint only; bodies remain on the server
-	reading           bool // one bounded server read at a time for this chat
-	cancel            context.CancelFunc
-	deliveryCtx       context.Context
-	nativeStarted     bool
-	nativeCalls       int
-	piNextAt          time.Time // Observed SDK consumer, not persisted authority.
-	ServerClosed      bool      `json:"server_closed,omitempty"` // The server ended this lease (an administrator, or another chat took the name); only the person's attach restores it.
-	routeTriedAt      time.Time // Last native-route discovery for this chat; it can run many process checks.
+	Also             bool            `json:"also,omitempty"`
+	Network          string          `json:"network,omitempty"`
+	SetupPending     bool            `json:"setup_pending,omitempty"`
+	AccountSenders   bool            `json:"account_senders,omitempty"`
+	ReadPosition     int             `json:"read_position,omitempty"`
+	LastGuidanceAt   time.Time       `json:"last_guidance_at,omitempty"`
+	Offline          bool            `json:"offline,omitempty"`
+	ParentConfigPath string          `json:"parent_config_path,omitempty"`
+	Attachment       AgentAttachment `json:"attachment"`
+	HostKey          string          `json:"host_key,omitempty"`
+	NativeRemote     string          `json:"native_remote,omitempty"`
+	LastError        string          `json:"last_error,omitempty"`
+	ConfigPath       string          `json:"config_path"`
+	client           *Client
+	streamOnline     bool
+	latestSequence   int  // wake hint only; bodies remain on the server
+	reading          bool // one bounded server read at a time for this chat
+	cancel           context.CancelFunc
+	deliveryCtx      context.Context
+	nativeStarted    bool
+	nativeCalls      int
+	piNextAt         time.Time // Observed SDK consumer, not persisted authority.
+	ServerClosed     bool      `json:"server_closed,omitempty"` // The server ended this lease (an administrator, or another chat took the name); only the person's attach restores it.
+	routeTriedAt     time.Time // Last native-route discovery for this chat; it can run many process checks.
 }
 
 type localBridge struct {
@@ -211,21 +210,17 @@ type LocalBridgeOptions struct {
 	UsageNow    func() time.Time
 	UsageRead   func(context.Context, AgentAttachment, string, int64) (agentusage.Native, error)
 	HostAlive   func(provider, hostKey string) bool
-	// ChatAlive checks a name holder without sending it content; unknown is alive.
-	ChatAlive   func(AgentAttachment, string, string) bool
 	NativeOffer func(context.Context, string, LocalBridgeReply) error
 	NativeRoute func(provider, session, hostKey, remote string) string
-	Notify      func(AgentAttachment, string)
 	// Ping shows a person ping (another agent waiting for this agent's reply) as a desktop notification.
 	Ping func(AgentAttachment, string)
 	// RouteRetry is how long a chat whose native-route lookup failed waits before the bridge looks again
 	// (5 s when zero). Attaching, re-attaching and a chat starting look at once.
 	RouteRetry time.Duration
 	// AutoUpdate, when set, is called about two minutes after the helper starts and then every six hours (plus up to
-	// half an hour of jitter), but only while no chat is being delivered to; a busy bridge retries in ten minutes, six
-	// times, then waits for the next round. The three intervals can be shortened for tests.
-	AutoUpdate                                        func(context.Context)
-	AutoUpdateFirst, AutoUpdateEvery, AutoUpdateRetry time.Duration
+	// half an hour of jitter). Tests can shorten the two scheduling intervals.
+	AutoUpdate                       func(context.Context)
+	AutoUpdateFirst, AutoUpdateEvery time.Duration
 	// Version is the build that runs the bridge. A newer CLI replaces a bridge
 	// that reports another version, so hooks never talk to an older helper.
 	Version string
@@ -512,23 +507,8 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 			continue
 		}
 	}
-	var missingHostNotices []AgentAttachment
-	for _, s := range b.sessions {
-		if s.HostKey == "" && !s.OfflineExplicit {
-			s.Offline = true
-			s.LastError = "Legacy attachment has no verified process binding. Ask this chat to run agentworks attach to reconnect."
-			if !s.MissingHostNotice && b.options.Notify != nil {
-				s.MissingHostNotice = true
-				missingHostNotices = append(missingHostNotices, s.Attachment)
-			}
-		}
-	}
 	if err = b.save(); err != nil {
 		return err
-	}
-	// Persist before notification: an uncertain notification must not replay.
-	for _, a := range missingHostNotices {
-		b.options.Notify(a, "Legacy attachment is offline. Ask this chat to run agentworks attach to reconnect; its process binding must be verified.")
 	}
 	shutdown := make(chan struct{})
 	var shutdownOnce sync.Once
@@ -1923,12 +1903,8 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 			if errors.Is(err, ErrNativeOfferRejected) {
 				s.LastError = "Message not delivered; ask the agent to read the mailbox."
 			}
-			notice := s.LastError
 			_ = b.save()
 			b.mu.Unlock()
-			if b.options.Notify != nil {
-				b.options.Notify(s.Attachment, notice)
-			}
 			continue // Persisted offer prevents a duplicate turn on an ambiguous failure.
 		}
 		for _, m := range out.Messages {

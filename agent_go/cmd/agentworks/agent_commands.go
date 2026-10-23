@@ -825,51 +825,6 @@ func cachedPS(env []string, args ...string) ([]byte, error) {
 	return out, err
 }
 
-// A desktop app hosts many chats. Its process being alive does not prove
-// that the particular conversation still has an owner.
-func attachedChatAlive(a agentworksclient.AgentAttachment, host, remote string) bool {
-	if a.Provider != "codex" || !(strings.HasPrefix(remote, "desktop+unix://") || strings.HasPrefix(host, codexDesktopHostPrefix)) {
-		return cursorAwareHostAlive(a.Provider, host)
-	}
-	out, err := runPS(nil, "-axo", "pid=,args=")
-	if err != nil {
-		return true
-	}
-	appAlive := false
-	for _, line := range strings.Split(string(out), "\n") {
-		if codexDesktopHost(line) && strings.Contains(line, "app-server") {
-			appAlive = true
-			break
-		}
-	}
-	if !appAlive {
-		return false
-	}
-	if remote == "" {
-		remote, err = codexDesktopSocket()
-		if err != nil {
-			return true
-		}
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	conn, call, err := openCodexDesktop(ctx, remote)
-	if err != nil {
-		return true
-	}
-	defer conn.Close()
-	reply, err := call("thread-owner-discovery", map[string]any{"hostId": "local", "conversationId": a.SessionID}, 1, "")
-	if err != nil {
-		return true
-	}
-	raw, present := reply["handledByClientId"]
-	var owner string
-	if !present || json.Unmarshal(raw, &owner) != nil {
-		return true
-	}
-	return owner != ""
-}
-
 func providerHostAlive(provider, host string) bool {
 	return providerHostAliveWith(provider, host, runPS)
 }
