@@ -1,0 +1,2 @@
+UI primitives and component adapters derived from Vercel json-render shadcn package v0.21.1, https://github.com/vercel-labs/json-render/tree/main/packages/shadcn, Apache-2.0.
+Modified by AgentWorks: local React state bindings, direct TSX interfaces and Recharts. No JSON rendering runtime is included.

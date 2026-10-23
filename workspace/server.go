@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"github.com/manishiitg/coding-agent-loop/workspace/migrations/dashboardjson"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 
@@ -61,6 +62,15 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := os.MkdirAll(docsDir, 0755); err != nil {
 		fmt.Printf("Failed to create docs directory: %v\n", err)
 		os.Exit(1)
+	}
+
+	// One-off source migration, before any workspace requests or processes.
+	// Remove this package after every server has moved to TSX.
+	if count, backup, err := dashboardjson.Run(docsDir); err != nil {
+		fmt.Printf("Dashboard TSX migration failed: %v\n", err)
+		os.Exit(1)
+	} else if count > 0 {
+		fmt.Printf("[DASHBOARD_MIGRATION] converted %d saved JSON revisions to TSX; backup=%s\n", count, backup)
 	}
 
 	// Create default workspace subdirectories.

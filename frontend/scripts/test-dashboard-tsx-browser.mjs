@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, mkdir, copyFile, symlink, unlink } from 'node:fs/promises'
+import { mkdtemp, readFile, mkdir, copyFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,16 +18,16 @@ const fixture = path.join(output, 'tsx.html')
 execFileSync('go', ['test', './dashboards', '-run', '^TestTSXDashboardLifecycle$', '-count=1'], { cwd: path.join(repo, 'workspace'), env: { ...process.env, DASHBOARD_TSX_TEST_FIXTURE: fixture }, stdio: 'inherit' })
 execFileSync('npm', ['run', 'prepare:local-assets'], { cwd: frontend, stdio: 'inherit' })
 for (const root of ['agent_go/static', 'agent_go/cmd/server/static', 'frontend/dist']) {
-  for (const name of ['dashboard-json.js', 'dashboard-json.css', 'dashboard-react.js', 'report-preview.js']) assert((await readFile(path.join(repo, root, name))).length > 0, `missing native asset: ${root}/${name}`)
+  for (const name of ['dashboard-react.js', 'dashboard-react.css', 'report-preview.js']) assert((await readFile(path.join(repo, root, name))).length > 0, `missing native asset: ${root}/${name}`)
 }
 await mkdir(path.join(output, 'runtime-assets'), { recursive: true })
-for (const name of ['dashboard-json.js', 'dashboard-json.css', 'dashboard-react.js']) await copyFile(path.join(frontend, 'dist', name), path.join(output, 'runtime-assets', name))
+for (const name of ['dashboard-react.js', 'dashboard-react.css']) await copyFile(path.join(frontend, 'dist', name), path.join(output, 'runtime-assets', name))
 const html = await readFile(fixture, 'utf8')
 let total = 42, reads = 0, queries = 0, runs = 0, rejectData = false
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost')
   if (url.pathname === '/report-preview/') { res.setHeader('Content-Type', 'text/html'); res.end('<html><body><script src="/report-preview/report-preview.js"></script></body></html>'); return }
-  if (url.pathname === '/report-preview/report-preview.js' || /^\/dashboard-(json\.(js|css)|react\.js)$/.test(url.pathname)) {
+  if (url.pathname === '/report-preview/report-preview.js' || /^\/dashboard-react\.(js|css)$/.test(url.pathname)) {
     res.setHeader('Content-Type', url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript')
     res.end(await readFile(path.join(frontend, 'dist', path.basename(url.pathname)))); return
   }
@@ -62,8 +62,8 @@ try {
   await frame.getByRole('button', { name: 'Details', exact: true }).click()
   await frame.getByText('Recorded details', { exact: true }).waitFor()
   assert.equal(await frame.getByRole('button', { name: 'Ask', exact: true }).count(), 0)
-  assert.equal(await frame.locator('.dashboard-stat').count(), 2)
-  await frame.getByText('Optional JSON', { exact: true }).waitFor()
+  assert.equal(await frame.locator('.dashboard-stat').count(), 1)
+  await frame.locator('.recharts-line-curve').waitFor()
   assert.equal(await frame.getByRole('table').count(), 1)
   assert.equal(await frame.locator('[data-report-action="lookup"]').count(), 1)
   total = 84
@@ -99,13 +99,7 @@ try {
   console.log('TSX managed compile, data, React interaction, CSS, refresh, mobile, preview refusal and frozen export PASS')
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)) }
 
-// Existing JSON and HTML still use the unchanged real browser renderer.
-execFileSync('go', ['test', './dashboards', '-run', '^TestJSONDashboardPublicationRetainsHTMLRevisions$', '-count=1'], { cwd: path.join(repo, 'workspace'), env: { ...process.env, DASHBOARD_JSON_TEST_FIXTURE: path.join(output, 'fixture.html') }, stdio: 'inherit' })
-await copyFile(path.join(frontend, 'dist/report-preview.js'), path.join(output, 'report-preview.js'))
-await symlink(frontend, path.join(output, 'frontend'))
-try {
-  execFileSync('node', ['scripts/test-dashboard-json-browser.mjs'], { cwd: frontend, env: { ...process.env, DASHBOARD_JSON_QA_DIR: output, CHROME_PATH: chromium.executablePath() }, stdio: 'inherit' })
-} finally {
-  // Artifact upload follows symlinks; retain screenshots, not node_modules.
-  await unlink(path.join(output, 'frontend'))
-}
+// Migrate a saved JSON publication, then prove the same controls in TSX.
+execFileSync('go', ['test', './migrations/dashboardjson', '-run', '^TestSavedJSONMigrationPreservesIdentityAndHistory$', '-count=1'], { cwd: path.join(repo, 'workspace'), env: { ...process.env, DASHBOARD_MIGRATION_TEST_FIXTURE: path.join(output, 'migrated.html') }, stdio: 'inherit' })
+execFileSync('go', ['test', './cmd/server', '-run', '^TestDefaultDashboardHTMLShowsOnlyDeclaredThings$', '-count=1'], { cwd: path.join(repo, 'agent_go'), env: { ...process.env, GOWORK: 'off', DASHBOARD_DEFAULT_TEST_FIXTURE: path.join(output, 'default.html') }, stdio: 'inherit' })
+execFileSync('node', ['scripts/test-dashboard-migration-browser.mjs'], { cwd: frontend, env: { ...process.env, DASHBOARD_MIGRATION_QA_DIR: output }, stdio: 'inherit' })

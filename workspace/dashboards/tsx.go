@@ -1,6 +1,9 @@
 package dashboards
 
 import (
+	"crypto/sha256"
+	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -14,14 +17,15 @@ import (
 // TSX is compiled from the submitted bundle only. No host files, npm installs,
 // package scripts or authored server code execute while saving a dashboard.
 func prepareTSXSnapshot(snap *Snapshot) error {
-	if _, ok := snap.Files["index.tsx"]; !ok {
-		return prepareJSONSnapshot(snap)
-	}
 	if _, ok := snap.Files["index.json"]; ok {
-		return fail(400, "choose one dashboard entry: index.tsx or index.json; remove the previous entry when converting")
+		return fail(400, "JSON dashboards have been removed. Supply index.tsx and remove index.json in the same update; use the saved-dashboard migration for existing pages.")
 	}
+	if _, ok := snap.Files["index.tsx"]; !ok {
+		return nil // Existing HTML dashboards retain their established path.
+	}
+	previousHTML := snap.Files["index.html"]
 	const entry = `import Dashboard, * as dashboard from './index.tsx'; import { mount } from '@agentworks/dashboard'; mount({...dashboard, default: Dashboard});`
-	modules := map[string]bool{"react": true, "react-dom": true, "react-dom/client": true, "react/jsx-runtime": true, "react/jsx-dev-runtime": true, "@agentworks/dashboard": true}
+	modules := map[string]bool{"react": true, "react-dom": true, "react-dom/client": true, "react/jsx-runtime": true, "react/jsx-dev-runtime": true, "@agentworks/dashboard": true, "recharts": true}
 	result := api.Build(api.BuildOptions{
 		EntryPoints: []string{"aw:entry"}, Bundle: true, Write: false,
 		Outfile: "dashboard-app.js", Format: api.FormatIIFE, Platform: api.PlatformBrowser,
@@ -97,17 +101,42 @@ func prepareTSXSnapshot(snap *Snapshot) error {
 	// retain separate generated files for inspection and exact-revision reads.
 	js, _ := json.Marshal(snap.Files["dashboard-app.js"])
 	styles, _ := json.Marshal(css)
-	snap.Files["index.html"] = `<!doctype html><html lang="en" data-report-renderer="tsx"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>` + html.EscapeString(snap.Title) + `</title><link rel="stylesheet" href="/dashboard-json.css"></head><body><div id="dashboard-root"><p role="status">Loading dashboard…</p></div><script defer src="/dashboard-react.js" onerror="document.documentElement.dataset.reportState='error';document.getElementById('dashboard-root').textContent='Dashboard renderer unavailable.'"></script><script>document.addEventListener('DOMContentLoaded',function(){var css=document.createElement('style');css.textContent=` + string(styles) + `;document.head.append(css);var app=document.createElement('script');app.textContent=` + string(js) + `;document.body.append(app)},{once:true});</script></body></html>`
+	snap.Files["index.html"] = `<!doctype html><html lang="en" data-report-renderer="tsx"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>` + html.EscapeString(snap.Title) + `</title><link rel="stylesheet" href="/dashboard-react.css"></head><body><div id="dashboard-root"><p role="status">Loading dashboard…</p></div><script defer src="/dashboard-react.js" onerror="document.documentElement.dataset.reportState='error';document.getElementById('dashboard-root').textContent='Dashboard renderer unavailable.'"></script><script>document.addEventListener('DOMContentLoaded',function(){var css=document.createElement('style');css.textContent=` + string(styles) + `;document.head.append(css);var app=document.createElement('script');app.textContent=` + string(js) + `;document.body.append(app)},{once:true});</script></body></html>`
+	// A source edit removes the automatic-page marker. Only the exact generated
+	// source/body pair can retain live platform updates.
+	body := snap.Files["index.html"]
+	sum := sha256.Sum256([]byte(body))
+	marked := body + "<!-- agentworks-default-dashboard:" + hex.EncodeToString(sum[:8]) + " -->\n"
+	if previousHTML == marked {
+		snap.Files["index.html"] = marked
+	}
 	return nil
+}
+
+// CompileTSX uses the same restricted compiler for defaults and the one-off
+// saved-page migration. It does not execute authored code or change access.
+func CompileTSX(title string, files map[string]string) (map[string]string, error) {
+	copy := make(map[string]string, len(files))
+	for name, source := range files {
+		copy[name] = source
+	}
+	snap := Snapshot{Title: title, Files: copy}
+	if err := prepareTSXSnapshot(&snap); err != nil {
+		return nil, err
+	}
+	return snap.Files, nil
 }
 
 func stringPtr(value string) *string { return &value }
 
-// Preserve the JSON catalog's fields for existing clients while making the
-// current source contract discoverable through the same app and MCP operation.
+// ComponentCatalog describes the actual shared TSX props for app and MCP.
+//
+//go:embed components-catalog.json
+var ComponentCatalog []byte
+
 func AuthoringCatalog() map[string]any {
 	var catalog map[string]any
-	_ = json.Unmarshal(JSONCatalog, &catalog)
+	_ = json.Unmarshal(ComponentCatalog, &catalog)
 	catalog["default_format"] = "tsx"
 	var names []string
 	if components, ok := catalog["components"].(map[string]any); ok {
@@ -116,13 +145,12 @@ func AuthoringCatalog() map[string]any {
 		}
 	}
 	sort.Strings(names)
-	catalog["tsx_components"] = map[string]any{"module": "@agentworks/dashboard", "components": names, "exports": []string{"components", "DashboardUI", "RefreshButton", "useDashboardStore", "useDashboardBinding"}, "contract": "Import shared components from @agentworks/dashboard. Common components have named exports; the complete catalog is available as components.Name. Use direct props and children, onPress for Button, on={{event: callback}} for catalog events, bindings for state. The props match this catalog (nullable props may be omitted in TSX). DashboardUI optionally renders a JSON spec through the same registry; do not reimplement a JSON renderer. AskButton and ChatPanel render only in shared Run dashboards. The host provides state/action/visibility/validation providers."}
+	catalog["tsx_components"] = map[string]any{"module": "@agentworks/dashboard", "components": names, "exports": []string{"components", "RefreshButton", "createDashboardStore", "useDashboardStore", "useDashboardBinding"}, "contract": "Import shared shadcn components from @agentworks/dashboard. Common components have named exports; the complete catalog is available as components.Name. Use direct props and children, onPress for Button, on={{event: callback}} for component events, and bindings for optional shared state. Props match this catalog; nullable props may be omitted. Use React for conditions, loops, state and layout. Charts use Recharts; import recharts directly for bespoke charts. AskButton and ChatPanel render only for shared Run users."}
 	catalog["formats"] = map[string]any{
-		"tsx": map[string]any{"entry": "index.tsx", "runtime_modules": []string{"react", "react-dom", "react-dom/client", "react/jsx-runtime", "@agentworks/dashboard"},
-			"contract": "Default-export a React component receiving {data, report}. Use shared platform components from @agentworks/dashboard, including components.Name for the full catalog; JSON is optional. Optionally export async loadData(report) for initial data and refresh. Relative TSX/TS/JS/JSON/CSS/assets are bundled by the server. TypeScript is transpiled; type checking is the author's responsibility. No separate npm app or server. Use ordinary CSS; arbitrary Tailwind classes are not generated. Generated index.html/dashboard-app.js/dashboard-app.css are replaced on every save. Imports outside the runtime modules and submitted files are unsupported.",
+		"tsx": map[string]any{"entry": "index.tsx", "runtime_modules": []string{"react", "react-dom", "react-dom/client", "react/jsx-runtime", "@agentworks/dashboard", "recharts"},
+			"contract": "Default-export a React component receiving {data, report}. Use shared platform components from @agentworks/dashboard, including components.Name for the full catalog. Use React composition; JSON dashboard specifications are not supported. Optionally export async loadData(report) for initial data and refresh. Relative TSX/TS/JS/JSON/CSS/assets are bundled by the server. TypeScript is transpiled; type checking is the author's responsibility. No separate npm app or server. Use ordinary CSS; arbitrary Tailwind classes are not generated. Generated index.html/dashboard-app.js/dashboard-app.css are replaced on every save. Imports outside the runtime modules and submitted files are unsupported.",
 			"example":  "import { Card, Table, AskButton, RefreshButton } from '@agentworks/dashboard';\nexport async function loadData(report) { return report.query('SELECT name FROM sqlite_master WHERE type = ?', ['table']); }\nexport default function Dashboard({data}) { return <Card title=\"Project records\"><Table columns={['Name']} rows={data.map(row => [row.name])}/><RefreshButton/><AskButton label=\"Ask about this dashboard\"/></Card>; }"},
-		"json-render": map[string]any{"entry": "index.json", "supported": true, "optional": true},
-		"html":        map[string]any{"entry": "index.html", "deprecated": true, "compatibility": "Existing HTML dashboards and saved revisions continue to render, edit, publish, share and export. Use TSX for new dashboards; convert existing pages only when requested."},
+		"html": map[string]any{"entry": "index.html", "deprecated": true, "compatibility": "Existing HTML dashboards and saved revisions continue to render, edit, publish, share and export. Use TSX for new dashboards; convert existing pages only when requested."},
 	}
 	return catalog
 }

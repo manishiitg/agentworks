@@ -346,9 +346,9 @@ func (api *StreamingAPI) reportPreviewScriptHandler(w http.ResponseWriter, r *ht
 
 // Trusted renderer assets carry no user data or authority. Project data still
 // comes through the authenticated report host and its current caller checks.
-func (api *StreamingAPI) dashboardJSONAssetHandler(w http.ResponseWriter, r *http.Request) {
+func (api *StreamingAPI) dashboardRuntimeAssetHandler(w http.ResponseWriter, r *http.Request) {
 	name := filepath.Base(r.URL.Path)
-	if name != "dashboard-json.js" && name != "dashboard-json.css" && name != "dashboard-react.js" {
+	if name != "dashboard-react.js" && name != "dashboard-react.css" {
 		http.NotFound(w, r)
 		return
 	}

@@ -5,36 +5,38 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+	"os"
 )
 
 // The generated default dashboard shows only what the product declares: a
 // button per published function (names escaped), an Ask button, a marker the
-// server uses to refresh it, and no script of its own.
+// server uses to refresh it, and shared TSX source that never invokes a function on load.
 func TestDefaultDashboardHTMLShowsOnlyDeclaredThings(t *testing.T) {
-	page, err := defaultDashboardHTML(defaultDashboardInfo{
+	files, err := defaultDashboardFiles(defaultDashboardInfo{
 		Kind: "crew", Title: `Support <b>desk</b>`, Description: "Answers  customer\nquestions.",
 		Functions: []defaultDashboardFunction{{Name: "find_order", Description: "Finds an order"}, {Name: `x"><script>`, Description: ""}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"type":"FunctionButton"`, `"type":"AskButton"`, "Ask about this dashboard", "Answers customer questions.", "Support &lt;b&gt;desk&lt;/b&gt;"} {
+	page := files["index.html"]
+	for _, want := range []string{"FunctionButton", "AskButton", "Ask about this dashboard", "Answers customer questions.", "Support &lt;b&gt;desk&lt;/b&gt;", "dashboard-react.js", "dashboard-react.css"} {
 		if !strings.Contains(page, want) {
-			t.Fatalf("missing %q in the generated page", want)
+			t.Fatalf("missing %q in generated page", want)
 		}
 	}
-	spec, _, err := dashboards.JSONSpecFromHTML(page)
-	if err != nil {
-		t.Fatal(err)
+	if _, ok := files["index.json"]; ok {
+		t.Fatal("automatic page retained JSON entry")
 	}
-	if spec.Styles != "" || spec.Elements[spec.Root].Props["align"] != "stretch" || spec.Elements["function-0-card"].Type != "Card" || spec.Elements["function-0"].Props["name"] != "find_order" {
-		t.Fatal("the automatic composition uses the shared theme, full-width action cards and unchanged callable identities")
+	if source := files["index.tsx"]; !strings.Contains(source, "@agentworks/dashboard") || !strings.Contains(source, "report.chat?.available") || strings.Contains(source, "ChatPanel") || strings.Contains(source, "report.run(") {
+		t.Fatal("starting page lost shared components or shared-only Ask")
 	}
-	children := spec.Elements[spec.Root].Children
-	if strings.Contains(page, `"type":"ChatPanel"`) || len(children) == 0 || children[len(children)-1] != "ask" {
-		t.Fatal("the automatic page must show its content and actions before Ask, without a second inline chat")
+	if fixture := os.Getenv("DASHBOARD_DEFAULT_TEST_FIXTURE"); fixture != "" {
+		if err := os.WriteFile(fixture, []byte(page), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
+
 	if strings.Contains(page, `<script>alert`) || strings.Contains(page, `x"><`) {
 		t.Fatal("a function name or title must be escaped and only the trusted renderer script may run")
 	}
@@ -45,8 +47,8 @@ func TestDefaultDashboardHTMLShowsOnlyDeclaredThings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(relay, "What it can do") || strings.Contains(relay, `"type":"FunctionButton"`) {
-		t.Fatal("a product with no functions shows no buttons")
+	if !strings.Contains(relay, `data-report-renderer="tsx"`) {
+		t.Fatal("a product with no functions still uses the shared TSX page")
 	}
 	again, err := defaultDashboardHTML(defaultDashboardInfo{Kind: "relay", Title: "Invoices"})
 	if err != nil || again != relay {

@@ -34,7 +34,7 @@ export async function prepareLocalRuntimeAssets({ frontendDir, staticDir, build 
   try { stamps = JSON.parse(await readFile(stampPath, 'utf8')) } catch { /* first launch */ }
   const shared = ['package.json', 'package-lock.json', 'scripts/prepare-local-runtime-assets.mjs'].map(file => path.join(frontendDir, file))
   const groups = [
-    { script: 'build:dashboard-json', files: ['dashboard-json.js', 'dashboard-json.css', 'dashboard-react.js'], inputs: [path.join(frontendDir, 'dashboard-json'), path.join(repo, 'workspace/dashboards/json-render-catalog.json')] },
+    { script: 'build:dashboard', files: ['dashboard-react.js', 'dashboard-react.css'], inputs: [path.join(frontendDir, 'dashboard-runtime'), path.join(repo, 'workspace/dashboards/components-catalog.json')] },
     { script: 'build:report-preview', files: ['report-preview.js'], inputs: [path.join(frontendDir, 'src'), path.join(frontendDir, 'vite.report-preview.config.ts')] },
   ]
   const roots = new Set([path.join(repo, 'agent_go/static'), path.join(repo, 'agent_go/cmd/server/static'), path.join(frontendDir, 'public')])

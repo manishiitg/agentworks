@@ -225,29 +225,7 @@ func (api *StreamingAPI) dashboardValidation(ctx context.Context, claims *UserCl
 			return false, err
 		},
 	}
-	if spec, isJSON, err := dashboards.JSONSpecFromHTML(string(data)); isJSON {
-		if err != nil {
-			return "", err
-		}
-		issues := []string{}
-		for _, binding := range spec.Data {
-			if binding.Method == "query" {
-				if err := hooks.ExplainSQL(ctx, binding.SQL); err != nil {
-					issues = append(issues, err.Error())
-				}
-			} else {
-				ok, err := hooks.FileExists(ctx, binding.Path)
-				if err != nil {
-					return "", err
-				}
-				if !ok {
-					issues = append(issues, "Dashboard source is missing: "+binding.Path)
-				}
-			}
-		}
-		out, err := json.Marshal(map[string]any{"valid": len(issues) == 0, "format": "json-render", "document_path": p, "errors": issues, "warnings": []string{}})
-		return string(out), err
-	}
+
 	return workshop.ValidateDashboardHTML(ctx, p, string(data), hooks)
 }
 func dashboardError(w http.ResponseWriter, err error) {

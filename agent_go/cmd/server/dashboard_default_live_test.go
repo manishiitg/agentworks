@@ -66,7 +66,7 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 			created := op("get", nil)
 			// Seed historical platform output through the same workspace writer
 			// as automatic creation, without the authored-page HTML validator.
-			old, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "update", ID: defaultDashboardID, ExpectedRevision: created.Dashboard.Revision, Files: map[string]string{"index.html": string(oldPage)}, Remove: []string{"index.json"}, IncludeDraft: true})
+			old, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "update", ID: defaultDashboardID, ExpectedRevision: created.Dashboard.Revision, Files: map[string]string{"index.html": string(oldPage)}, Remove: []string{"index.tsx"}, IncludeDraft: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -98,7 +98,7 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 					t.Fatalf("browser view lacks the server's automatic page: %d %v", status, out)
 				}
 				html := page["html"].(string)
-				if !strings.Contains(html, `"type":"AskButton"`) || strings.Contains(html, `"type":"ChatPanel"`) {
+				if !strings.Contains(html, `AskButton`) || strings.Contains(html, `ChatPanel`) {
 					t.Fatal("the old automatic snapshot must receive the new live button layout")
 				}
 				return html

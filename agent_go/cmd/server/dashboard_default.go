@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -73,50 +72,48 @@ func defaultDashboardText(s string, limit int) string {
 	return s
 }
 
-// defaultDashboardHTML is the generated page: pure markup, no scripts that run
-// anything. The Ask button and function buttons are the host's own widgets.
+// The starting page is ordinary editable TSX, using the same shared shadcn
+// controls as authored dashboards. Preparing it never executes a function.
+func defaultDashboardFiles(info defaultDashboardInfo) (map[string]string, error) {
+	type action struct {
+		Name        string `json:"name"`
+		Label       string `json:"label"`
+		Description string `json:"description"`
+	}
+	actions := []action{}
+	for _, fn := range info.Functions {
+		actions = append(actions, action{Name: fn.Name, Label: strings.NewReplacer("_", " ", "-", " ").Replace(fn.Name), Description: defaultDashboardText(fn.Description, 200)})
+	}
+	content, err := json.Marshal(map[string]any{"title": info.Title, "description": defaultDashboardText(info.Description, 600), "actions": actions})
+	if err != nil {
+		return nil, err
+	}
+	source := `import { Stack, Grid, Heading, Text, Card, FunctionButton, AskButton } from '@agentworks/dashboard';
+const page = ` + string(content) + `;
+export default function Dashboard({report}) {
+  return <Stack gap="xl" align="stretch">
+    <Stack gap="sm" align="stretch"><Heading text={page.title} level="h1"/>{page.description && <Text text={page.description} variant="lead"/>}</Stack>
+    {page.actions.length > 0 && <><Heading text="What it can do" level="h2"/><Grid columns={2} gap="md">{page.actions.map(action => <Card key={action.name} title={action.label} description={action.description} maxWidth="full"><FunctionButton name={action.name} label={'Open ' + action.label}/></Card>)}</Grid></>}
+    {report.chat?.available && <Card title="Have a question?" description="Ask about this dashboard or get help with its actions." maxWidth="full"><AskButton label="Ask about this dashboard"/></Card>}
+  </Stack>;
+}
+`
+	files, err := dashboards.CompileTSX(info.Title, map[string]string{"index.tsx": source})
+	if err != nil {
+		return nil, err
+	}
+	body := files["index.html"]
+	sum := sha256.Sum256([]byte(body))
+	files["index.html"] = body + "<!-- agentworks-default-dashboard:" + hex.EncodeToString(sum[:8]) + " -->\n"
+	return files, nil
+}
+
 func defaultDashboardHTML(info defaultDashboardInfo) (string, error) {
-	elements := map[string]dashboards.JSONElement{
-		"page":   {Type: "Stack", Props: map[string]any{"gap": "xl", "align": "stretch"}, Children: []string{}},
-		"header": {Type: "Stack", Props: map[string]any{"gap": "sm", "align": "stretch"}, Children: []string{"title"}},
-		"title":  {Type: "Heading", Props: map[string]any{"text": info.Title, "level": "h1"}, Children: []string{}},
-	}
-	children := []string{"header"}
-	if info.Description != "" {
-		elements["purpose"] = dashboards.JSONElement{Type: "Text", Props: map[string]any{"text": defaultDashboardText(info.Description, 600), "variant": "lead"}, Children: []string{}}
-		header := elements["header"]
-		header.Children = append(header.Children, "purpose")
-		elements["header"] = header
-	}
-	if len(info.Functions) > 0 {
-		elements["actions-title"] = dashboards.JSONElement{Type: "Heading", Props: map[string]any{"text": "What it can do", "level": "h2"}, Children: []string{}}
-		actions := []string{}
-		for i, fn := range info.Functions {
-			id := fmt.Sprintf("function-%d", i)
-			card := id + "-card"
-			actions = append(actions, card)
-			// The visible title is readable; the callable identity is unchanged.
-			label := strings.NewReplacer("_", " ", "-", " ").Replace(fn.Name)
-			elements[id] = dashboards.JSONElement{Type: "FunctionButton", Props: map[string]any{"name": fn.Name, "label": "Open " + label, "className": "dashboard-button"}, Children: []string{}}
-			elements[card] = dashboards.JSONElement{Type: "Card", Props: map[string]any{"title": label, "description": defaultDashboardText(fn.Description, 200), "maxWidth": "full"}, Children: []string{id}}
-		}
-		elements["actions"] = dashboards.JSONElement{Type: "Grid", Props: map[string]any{"columns": 2, "gap": "md"}, Children: actions}
-		children = append(children, "actions-title", "actions")
-	}
-	elements["ask-button"] = dashboards.JSONElement{Type: "AskButton", Props: map[string]any{"label": "Ask about this dashboard"}, Children: []string{}}
-	elements["ask"] = dashboards.JSONElement{Type: "Card", Props: map[string]any{"title": "Have a question?", "description": "Ask about this dashboard or get help with its actions.", "maxWidth": "full"}, Children: []string{"ask-button"}}
-	children = append(children, "ask")
-	root := elements["page"]
-	root.Children = children
-	elements["page"] = root
-	spec := dashboards.JSONSpec{Root: "page", Elements: elements}
-	data, _ := json.Marshal(spec)
-	body, err := dashboards.JSONHTML(info.Title, data)
+	files, err := defaultDashboardFiles(info)
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256([]byte(body))
-	return body + "<!-- agentworks-default-dashboard:" + hex.EncodeToString(sum[:8]) + " -->\n", nil
+	return files["index.html"], nil
 }
 
 func (api *StreamingAPI) defaultDashboardInfoFor(ctx context.Context, claims *UserClaims, target dashboardTarget) (defaultDashboardInfo, error) {
@@ -222,19 +219,11 @@ func (api *StreamingAPI) ensureDefaultDashboard(ctx context.Context, claims *Use
 	if err != nil {
 		return "", false, err
 	}
-	page, err := defaultDashboardHTML(info)
+	files, err := defaultDashboardFiles(info)
 	if err != nil {
 		return "", false, err
 	}
-	spec, _, err := dashboards.JSONSpecFromHTML(page)
-	if err != nil {
-		return "", false, err
-	}
-	source, err := json.Marshal(spec)
-	if err != nil {
-		return "", false, err
-	}
-	files := map[string]string{"index.json": string(source), "index.html": page}
+	page := files["index.html"]
 	if existing != nil {
 		current, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
 		if err != nil {
@@ -254,7 +243,7 @@ func (api *StreamingAPI) ensureDefaultDashboard(ctx context.Context, claims *Use
 		if old == page && existing.Published != "" {
 			return defaultDashboardID, false, nil
 		}
-		updated, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, Action: "update", ID: defaultDashboardID, Title: target.Title, Files: files, ExpectedRevision: existing.Revision, IncludeDraft: true})
+		updated, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, Action: "update", ID: defaultDashboardID, Title: target.Title, Files: files, Remove: []string{"index.json"}, ExpectedRevision: existing.Revision, IncludeDraft: true})
 		if err != nil {
 			return "", false, err
 		}

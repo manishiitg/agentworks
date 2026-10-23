@@ -218,7 +218,6 @@ transcript.txt
 !agent_go/pkg/skills/panels/panel-secrets/references/configuration.md
 
 # Generated local dashboard runtimes served by Vite public/ (prepared at launch).
-/frontend/public/dashboard-json.js
-/frontend/public/dashboard-json.css
+/frontend/public/dashboard-react.css
 /frontend/public/dashboard-react.js
 /frontend/public/report-preview.js

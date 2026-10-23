@@ -238,27 +238,28 @@ func TestReportPreviewScriptHandlerServesTheBuiltBundle(t *testing.T) {
 	}
 }
 
-func TestJSONDashboardAssetsUseThePackagedFrontend(t *testing.T) {
+func TestTSXDashboardAssetsUseThePackagedFrontend(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("STATIC_DIR", dir)
 	api := &StreamingAPI{}
-	for _, name := range []string{"dashboard-json.js", "dashboard-json.css", "dashboard-react.js"} {
+	for _, name := range []string{"dashboard-react.js", "dashboard-react.css"} {
 		body := "/* trusted renderer " + name + " */"
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0644); err != nil {
 			t.Fatal(err)
 		}
 		rec := httptest.NewRecorder()
-		api.dashboardJSONAssetHandler(rec, httptest.NewRequest(http.MethodGet, "/"+name, nil))
+		api.dashboardRuntimeAssetHandler(rec, httptest.NewRequest(http.MethodGet, "/"+name, nil))
 		if rec.Code != http.StatusOK || rec.Body.String() != body {
 			t.Fatalf("asset %s: status=%d body=%q", name, rec.Code, rec.Body.String())
 		}
 	}
-	page, err := dashboards.JSONHTML("Example", []byte(`{"root":"title","elements":{"title":{"type":"Heading","props":{"text":"Example"},"children":[]}}}`))
+	files, err := dashboards.CompileTSX("Example", map[string]string{"index.tsx": `export default function Dashboard(){return <h1>Example</h1>}`})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(page, `src="/dashboard-json.js"`) || !strings.Contains(page, `href="/dashboard-json.css"`) || !strings.Contains(page, "Loading dashboard") || !strings.Contains(page, "Dashboard renderer unavailable") {
-		t.Fatalf("missing canonical assets/load failure state: %s", page)
+	page := files["index.html"]
+	if !strings.Contains(page, `src="/dashboard-react.js"`) || !strings.Contains(page, `href="/dashboard-react.css"`) || !strings.Contains(page, "Dashboard renderer unavailable") {
+		t.Fatal("missing runtime assets or error state")
 	}
 }
 

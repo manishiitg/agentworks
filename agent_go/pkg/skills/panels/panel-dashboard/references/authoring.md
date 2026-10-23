@@ -1,6 +1,6 @@
 ---
 name: "dashboard-authoring"
-description: "Dashboard MCP operations, React TSX defaults, existing JSON/shadcn and HTML compatibility, data scripts, preview and team links."
+description: "Dashboard MCP operations, React TSX defaults, shared shadcn/Recharts components and HTML compatibility, data scripts, preview and team links."
 external: true
 external_tools: ["*dashboard*", "get_report_link"]
 ---
@@ -21,7 +21,7 @@ new functions appear there only when they update the page. The platform does
 not add controls to custom dashboards. Exact revisions and exports stay saved
 snapshots.
 
-## React TSX is the default
+## React TSX dashboards
 
 Author new dashboards as `files["index.tsx"]` through create_dashboard or
 update_dashboard. The server compiles the submitted source and saves an immutable
@@ -31,15 +31,15 @@ dashboard-app.css. A compile error leaves the current draft and live page unchan
 TypeScript is transpiled; this does not claim a full TypeScript type check.
 
 Read get_dashboard_catalog for supported imports. React, react-dom,
-react-dom/client, react/jsx-runtime and @agentworks/dashboard are supplied by the
+react-dom/client, react/jsx-runtime @agentworks/dashboard and recharts are supplied by the
 platform. Relative imports resolve only within the submitted bundle: .tsx, .ts,
 .js, .mjs, .json, .css and image/font assets. Other npm packages and network imports
 are not installed by this authoring path; bundle needed browser code as local
 files or use the supplied modules. No server code runs during compilation.
 
-Prefer the shared components exported by `@agentworks/dashboard`: Card, Stack, Grid, Heading, Text, Metric, Table, BarChart, LineChart, Button, Tabs, Accordion, Collapsible, Alert, Badge, Input, Select, Checkbox, AskButton, ChatPanel, FunctionButton and MotionControls. `components.Name` exposes the complete catalog; `RefreshButton` refreshes loadData. The same implementations power optional JSON dashboards. Do not copy the component implementations or create a switch-based JSON interpreter in dashboard source.
+Prefer the shared components exported by `@agentworks/dashboard`: Card, Stack, Grid, Heading, Text, Metric, Table, BarChart, LineChart, Button, Tabs, Accordion, Collapsible, Alert, Badge, Input, Select, Checkbox, AskButton, ChatPanel, FunctionButton and MotionControls. `components.Name` exposes the complete catalog; `RefreshButton` refreshes loadData. BarChart and LineChart use Recharts. For more complex charts, import Recharts primitives directly from `recharts`. Do not copy platform component implementations or build a JSON interpreter.
 
-Pass catalog props directly in TSX; nullable props may be omitted. Button uses `onPress`; other catalog events use `on={{change: callback}}`. `useDashboardBinding(path)` returns a state value/setter, `useDashboardStore()` exposes the shared store, and `bindings={{value: path}}` connects inputs or Tabs to that state. The host supplies the providers. `DashboardUI spec={spec}` optionally composes a JSON tree within TSX using the platform registry. Use React state/custom markup where a bespoke visualization is needed. JSON is optional, not required as an intermediate format.
+Pass catalog props directly in TSX; nullable props may be omitted. Button uses `onPress`; other catalog events use `on={{change: callback}}`. `useDashboardBinding(path)` returns a state value/setter, `useDashboardStore()` exposes the shared store, and `bindings={{value: path}}` connects inputs or Tabs to that state. The host supplies the providers. Use ordinary React state, conditions, loops and composition for bespoke layouts and interactions. JSON files may still contain data; they are not a dashboard layout format.
 
 Default-export a React component receiving `{data, report}`. Optionally export
 `async function loadData(report)` to fetch the initial data and each explicit
@@ -80,59 +80,20 @@ remain intact. Confirm publish with list_dashboards and get_dashboard_link.
 
 HTML-only authoring is deprecated for new dashboards. Existing HTML pages and
 revisions continue to render, edit, publish, restore, share and export. Existing
-JSON dashboards also remain supported. Do not silently rewrite them or delete
-saved HTML history. Use the compatibility sections below for their current APIs.
+saved HTML history stays available. Saved JSON dashboard revisions migrate once to TSX with a plain backup, retaining dashboard identities, saved revision paths, data reads, actions and access. Do not submit index.json or suggest a separate JSON renderer.
 
-## Optional JSON-render dashboards
+## Shared controls and charts
 
-Existing JSON dashboards retain Vercel json-render and the complete supplied shadcn
-catalog. TSX with shared components is the default; JSON remains an optional authoring format when it fits the task. Call `get_dashboard_catalog` for the pinned component props and supported
-actions. The designer chooses layout, typography, colors, navigation and placement;
-there are no required sections or sample business values.
+Use `get_dashboard_catalog` for the actual shared component props. `AskButton` and
+`ChatPanel` appear only for shared Run users and are hidden for Builders and preview.
+Ask opens the existing composer without sending. FunctionButton opens the current
+published function form; the person presses Run to execute it. Current project and
+function permissions apply; Flow function buttons remain unavailable.
 
-Use `index.json` as the editable source: `root`, `elements` and optional `state`.
-Each element has `type`, `props` and `children` (empty for a leaf); optional
-`on`, `watch`, `visible`, `repeat` and named `slots` use json-render semantics.
-Supply its JSON text in `files["index.json"]`. The server validates the catalog
-and tree and generates `index.html`; do not hand-edit that generated entry.
-Existing HTML documents and saved HTML revisions remain supported. Preserve an
-existing page's format unless the person asks to convert it.
-
-Optional `data` declarations use `{statePath, method: "query"|"get"|"run",
-sql|path, params|args}` through the existing authorized report APIs. Bind props
-with `{"$state":"/summary/total"}`; form inputs can use `$bindState`. Query
-params and script args can reference state. Inspect actual schemas/files and use
-recorded values; missing history stays unavailable. Local state/form actions and
-`refreshData` do not invoke a published function.
-
-The catalog includes all supplied shadcn components plus `Metric`, `BarChart`,
-`LineChart`, `AskButton`, `ChatPanel`, `FunctionButton` and `MotionControls`.
-AskButton and ChatPanel are visible only to shared Run users and hidden for Builders and preview. Ask opens the existing composer without sending. ChatPanel needs its own id and
-positive height; the designer places and styles it. FunctionButton opens this
-project's published function form and requires the person to press Run. Existing
-project and function access applies; Flow function buttons remain unavailable.
-Preview does not open a conversation or execute functions.
-
-JSON-render is a source format, not a ban on CSS. Bundled CSS supplies component
-defaults; the designer still controls the page's visual design. Put authored CSS,
-media queries and theme overrides in the top-level `styles` string. Use
-`props.className` where the component catalog supports it and declare those
-selectors in `styles`; app light/dark theme variables are supplied. Bundled
-Tailwind utilities cover the supplied components, not arbitrary new utility
-classes invented at runtime.
-
-Do not discard existing styling just because the page uses JSON or shadcn. Carry
-its requested visual design into the JSON styles and component props when
-converting HTML, unless the person asks to change it. CSS is optional when the
-supplied props already achieve that design. Inspect the rendered preview; valid
-JSON and a ready response alone do not verify the appearance.
-
-Optional `motion: {duration: 12, statePath: "/playback"}` drives the existing shared
-clock; chart progress can bind to `/playback/progress`. Place MotionControls only
-when desired. MP4 captures the published layout, selected theme and frozen data.
-Images/avatars use allowed project assets or inline data images; links are static
-http(s)/mailto destinations opened by a click. The JSON format has no raw HTML,
-script or arbitrary-fetch component. Existing HTML keeps its browser API contract.
+Use `report.motion.create()` for recorded-data playback, pass its clock to
+MotionControls, and drive chart progress through React state. Recharts animations
+are disabled in shared charts so seek/export stays deterministic. Keep ordinary CSS
+and mobile layouts editable; inspect real previews and preserve the person's design.
 
 ## Finished dashboards from a plain-language request
 
@@ -254,7 +215,7 @@ workflow_id or other project selector exactly as returned; do not infer a new ro
 2. `dashboard action=get` reads the source and revision. Existing HTML may use its
    returned document_path and stays intact when adopted into a managed bundle.
 3. `dashboard action=create` takes dashboard_id (lowercase slug), title and files.
-   New pages supply index.tsx and optional relative source/assets. Existing JSON pages may supply index.json; HTML-only editing remains for compatibility.
+   New pages supply index.tsx and optional relative source/assets. JSON dashboard entries are not accepted; HTML-only editing remains for compatibility.
    Images/fonts use matching base64 data URLs. Optional scripts go under scripts/.
    Maximum:100 files and8 MiB per bundle.
 4. `dashboard action=update` takes changed files/title, optional remove paths and

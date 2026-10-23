@@ -1,4 +1,4 @@
-For new Dashboards, use json-render with the complete supplied shadcn catalog;
+For Dashboards, use managed TSX with shared shadcn components and Recharts;
 read reporting-policy.md and get_dashboard_catalog for usage. This reference
 continues to describe existing HTML Dashboards and separately requested HTML
 artifacts. Existing HTML source and revisions stay supported.
@@ -14,7 +14,8 @@ navigation. This reference describes how the platform displays HTML.
 | Destination | Format |
 |---|---|
 | Structured data for a downstream step | JSON |
-| Dashboard documents, org pages (`pulse/*.html`), published pages | HTML |
+| Managed dashboards | TSX (platform generates HTML) |
+| Existing HTML dashboards, org pages (`pulse/*.html`), HTML artifacts | HTML |
 | Human-readable step reports, notes, KB entries and learnings | Markdown by default; HTML when requested or needed for the artifact |
 | Downloadable raw data | JSON or CSV |
 

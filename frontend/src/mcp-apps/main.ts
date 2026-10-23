@@ -37,7 +37,7 @@ function renderDocument() {
   // an authorization token or fetches the app's authenticated static routes.
   for (const script of page.querySelectorAll<HTMLScriptElement>('script[src]')) {
     const src = script.getAttribute('src') || ''
-    const name = src.endsWith('/dashboard-json.js') ? 'dashboard-json.js' : src.endsWith('/dashboard-react.js') ? 'dashboard-react.js' : ''
+    const name = src.endsWith('/dashboard-react.js') ? 'dashboard-react.js' : ''
     const source = name ? runtimes[name] : dashboard.files[src.replace(dashboard.asset_prefix + '/', '')]
     if (source) {
       script.removeAttribute('src')
@@ -52,7 +52,7 @@ function renderDocument() {
   }
   for (const style of page.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')) {
     const href = style.getAttribute('href') || ''
-    const source = href.endsWith('/dashboard-json.css') ? runtimes['dashboard-json.css'] : dashboard.files[href.replace(dashboard.asset_prefix + '/', '')]
+    const source = href.endsWith('/dashboard-react.css') ? runtimes['dashboard-react.css'] : dashboard.files[href.replace(dashboard.asset_prefix + '/', '')]
     if (source) { const inline = element('style'); inline.textContent = source; style.replaceWith(inline) }
     else style.remove()
   }

@@ -495,10 +495,8 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 		if e != nil {
 			return out, e
 		}
-		if source, ok := snap.Files["index.json"]; ok {
-			if _, e := ValidateJSONSpec([]byte(source)); e != nil {
-				return out, e
-			}
+		if _, ok := snap.Files["index.json"]; ok {
+			return out, fail(400, "Migrate this saved JSON dashboard to TSX before publishing or restoring it.")
 		}
 		for p := range snap.Files {
 			if req.Guard != nil && !req.Guard.Allows(renderFile(req.ID, rev, p), true) {

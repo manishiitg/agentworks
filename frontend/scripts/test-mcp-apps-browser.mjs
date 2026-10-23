@@ -20,12 +20,11 @@ try {
   }
   const main = await readFile(path.join(directory, 'mcp-dashboard.js'), 'utf8')
   const child = await readFile(path.join(directory, 'mcp-dashboard-document.js'), 'utf8')
-  execFileSync('npm', ['run', 'build:dashboard-json'], { stdio: 'inherit' })
-  const jsonAssets = { 'dashboard-json.js': await readFile('dist/dashboard-json.js', 'utf8'), 'dashboard-json.css': await readFile('dist/dashboard-json.css', 'utf8') }
-  const spec = { root: 'page', elements: { page: { type: 'Stack', props: { gap: 'lg' }, children: ['title', 'metric', 'ask'] }, title: { type: 'Heading', props: { text: 'JSON dashboard', level: 'h1' }, children: [] }, metric: { type: 'Metric', props: { label: 'Query result', value: { $state: '/rows/0/n' } }, children: [] }, ask: { type: 'AskButton', props: { label: 'Ask JSON dashboard' }, children: [] } }, state: {}, data: [{ statePath: '/rows', method: 'query', sql: 'select 42 as n' }] }
-  const jsonHTML = `<html data-report-renderer="json-render"><head><link rel="stylesheet" href="/report-preview/dashboard-json.css"><script id="__dashboard_spec" type="application/json">${JSON.stringify(spec)}</script><script defer src="/report-preview/dashboard-json.js"></script></head><body><div id="dashboard-root"></div></body></html>`
+  execFileSync('npm', ['run', 'build:dashboard'], { stdio: 'inherit' })
+  const tsxAssets = { 'dashboard-react.js': await readFile('dist/dashboard-react.js', 'utf8'), 'dashboard-react.css': await readFile('dist/dashboard-react.css', 'utf8') }
+  const tsxHTML = `<html data-report-renderer="tsx"><head><link rel="stylesheet" href="/dashboard-react.css"><script defer src="/dashboard-react.js"></script><script>document.addEventListener('DOMContentLoaded',()=>{const {mount,Heading,Metric,AskButton}=window.__agentworksDashboard.modules['@agentworks/dashboard'];const React=window.__agentworksDashboard.modules.react;mount({loadData:report=>report.query('select 42 as n'),default:({data})=>React.createElement(React.Fragment,null,React.createElement(Heading,{text:'TSX dashboard',level:'h1'}),React.createElement(Metric,{label:'Query result',value:data[0].n}),React.createElement(AskButton,{label:'Ask TSX dashboard'}))})})</script></head><body><div id="dashboard-root"></div></body></html>`
   const frame = await readFile('../agent_go/cmd/server/mcp_apps/frame.html', 'utf8')
-  const dashboard = { resource_id: '00000000-0000-4000-8000-000000000001', workspace_id: 'work:00000000-0000-4000-8000-000000000002', revision: 'published', title: 'Sales', url: 'https://example.com/d/shared', asset_prefix: 'db/reports/managed/sales/published', files: {}, capability: { can_ask: true },
+  const dashboard = { resource_id: '00000000-0000-4000-8000-000000000001', workspace_id: 'work:00000000-0000-4000-8000-000000000002', revision: 'published', title: 'Sales', url: 'https://example.com/d/shared', asset_prefix: 'db/reports/managed/sales/published', files: {}, capability: { can_ask: true, mode: 'question_only' },
     html: `<h1>Sales</h1><p id="total">Loading</p><button data-report-action="count_items">Count items</button><button onclick="window.report.chat.open()">Ask about this dashboard</button><script>window.report.ready(async()=>{document.querySelector('#total').textContent='Total '+(await window.report.query('select 42 as n'))[0].n;try{parent.document.body.dataset.compromised='yes'}catch{document.body.dataset.isolated='yes'}})</script>` }
   const result = { content: [{ type: 'text', text: 'Sales dashboard. https://example.com/d/shared' }], structuredContent: { resource_id: dashboard.resource_id }, _meta: { dashboard } }
   let origin = ''
@@ -38,11 +37,11 @@ try {
     if (request.url === '/app') {
       // Same resource structure as Go: trusted runtime bytes, no bearer token.
       response.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src ${origin}`)
-      const runtimes = JSON.stringify({ document: child, frame_url: origin + '/api/mcp-apps/frame', ...jsonAssets }).replaceAll('<', '\\u003c')
+      const runtimes = JSON.stringify({ document: child, frame_url: origin + '/api/mcp-apps/frame', ...tsxAssets }).replaceAll('<', '\\u003c')
       response.end(`<main id="app"></main><script id="aw-runtimes" type="application/json">${runtimes}</script><script>${main.replaceAll('</script', '<\\/script')}</script>`); return
     }
     response.end(`<iframe id="app" src="/app" style="width:800px;height:1200px"></iframe><script>
-      window.calls=[]; const app=document.querySelector('#app'); const view=${JSON.stringify(request.url === '/json' ? { ...result, _meta: { dashboard: { ...dashboard, html: jsonHTML } } } : result).replaceAll('<', '\\u003c')};
+      window.calls=[]; const app=document.querySelector('#app'); const view=${JSON.stringify(request.url === '/tsx' ? { ...result, _meta: { dashboard: { ...dashboard, html: tsxHTML } } } : result).replaceAll('<', '\\u003c')};
       addEventListener('message',event=>{
         if(event.source!==app.contentWindow||event.data?.jsonrpc!=='2.0')return;
         const {id,method,params}=event.data;
@@ -96,11 +95,11 @@ try {
   await app.getByRole('button', { name: 'Refresh', exact: true }).click()
   await dashboardFrame.getByText('Total 42', { exact: true }).waitFor()
   assert.equal((await mutations()).length, count, 'refresh must not repeat messages or function calls')
-  await page.goto(origin + '/json')
-  await dashboardFrame.getByText('JSON dashboard', { exact: true }).waitFor()
+  await page.goto(origin + '/tsx')
+  await dashboardFrame.getByText('TSX dashboard', { exact: true }).waitFor()
   await dashboardFrame.locator('.dashboard-metric').filter({ hasText: '42' }).waitFor()
   assert.equal((await mutations()).length, 0, 'JSON rendering reads data without starting work')
-  await dashboardFrame.getByRole('button', { name: 'Ask JSON dashboard' }).click()
+  await dashboardFrame.getByRole('button', { name: 'Ask TSX dashboard' }).click()
   await app.getByLabel('Message to the Crew').waitFor({ state: 'visible' })
   await app.getByRole('button', { name: 'Close', exact: true }).click()
   // Even a hostile embedding page that omits iframe sandbox flags cannot
