@@ -131,18 +131,33 @@ func (f elicitationFamily) replyArgs(state functionElicitationState, answer stri
 // ClientCanElicit reports whether this request's client accepts form
 // elicitation. Modern (2026-07-28+) requests carry capabilities per request.
 func (h FunctionElicitationHost) ClientCanElicit(ctx context.Context) bool {
+	capability := h.clientElicitation(ctx)
+	// An empty object is the protocol's shorthand for form support. A
+	// URL-only client must never receive a form.
+	return capability != nil && (capability.Form != nil || capability.URL == nil)
+}
+
+func (h FunctionElicitationHost) clientElicitation(ctx context.Context) *mcp.ElicitationCapability {
 	if info := server.RequestProtocolInfoFromContext(ctx); info != nil && info.Modern {
-		return info.ClientCapabilities != nil && info.ClientCapabilities.Elicitation != nil
+		if info.ClientCapabilities != nil {
+			return info.ClientCapabilities.Elicitation
+		}
+		return nil
 	}
 	if !h.AllowLegacySession {
-		return false
+		return nil
 	}
 	if session := server.ClientSessionFromContext(ctx); session != nil {
 		if capable, ok := session.(interface{ GetClientCapabilities() mcp.ClientCapabilities }); ok {
-			return capable.GetClientCapabilities().Elicitation != nil
+			return capable.GetClientCapabilities().Elicitation
 		}
 	}
-	return false
+	return nil
+}
+
+func ClientURLCapability(ctx context.Context, legacy bool) bool {
+	capability := (FunctionElicitationHost{AllowLegacySession: legacy}).clientElicitation(ctx)
+	return capability != nil && capability.URL != nil
 }
 
 // MaybeElicit returns an input_required result for the first pending,
@@ -279,6 +294,9 @@ func SecretQuestion(message string) bool {
 }
 
 func callMCPBridgeTool(ctx context.Context, client ToolCaller, target string, args map[string]any, available map[string]bool, request mcp.CallToolRequest) *mcp.CallToolResult {
+	if input, ok := client.(MCPInputService); ok && ClientURLCapability(ctx, true) && MCPURLSignInCandidate(target, args) {
+		return input.MCPInputCall(ctx, target, args, request, (FunctionElicitationHost{AllowLegacySession: true}).clientElicitation(ctx))
+	}
 	host := FunctionElicitationHost{
 		Available: func(tool string) bool { return available[tool] },
 		Call: func(ctx context.Context, tool string, args map[string]any) (json.RawMessage, *mcp.CallToolResult) {

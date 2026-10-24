@@ -10,6 +10,8 @@ A marketing lead might ask for campaign reviews, a support lead for policy-based
 
 Within shared work, current product access covers its runs, results, execution logs and token usage, plus permitted MCP file reads. Secret values, private logs and personal provider logins stay protected. Shared runs use the product's selected accounts under their existing grants. Use current tool evidence to distinguish a created project from a completed example or a working shared link. A five-minute first version is an aim to verify, not a guarantee for every process or missing connection.
 
+Supporting AI apps can follow long function calls and Builder work as MCP Tasks, and show an elicitation form when work needs an ordinary answer. Account sign-in opens a browser flow. These use the same project and account permissions; client support varies, so discover current capabilities and inspect actual completion.
+
 | Product | Choose it for |
 |---|---|
 <!-- product:agentworks -->| Goals | Ongoing outcomes that need a plan, measurements, scheduled work and follow-up. |

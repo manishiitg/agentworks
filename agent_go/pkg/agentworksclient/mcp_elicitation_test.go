@@ -18,6 +18,29 @@ type functionCaller struct {
 
 type acceptingElicitation struct{}
 
+func TestElicitationRespectsClientFormMode(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		capability *mcp.ElicitationCapability
+		want       bool
+	}{
+		{"absent", nil, false},
+		{"empty means form", &mcp.ElicitationCapability{}, true},
+		{"URL only", &mcp.ElicitationCapability{URL: &struct{}{}}, false},
+		{"form and URL", &mcp.ElicitationCapability{Form: &struct{}{}, URL: &struct{}{}}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := server.WithRequestProtocolInfo(context.Background(), &server.RequestProtocolInfo{
+				Modern: true, ProtocolVersion: mcp.ProtocolVersion20260728,
+				ClientCapabilities: &mcp.ClientCapabilities{Elicitation: tc.capability},
+			})
+			if got := (FunctionElicitationHost{}).ClientCanElicit(ctx); got != tc.want {
+				t.Fatalf("form supported = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 func (acceptingElicitation) Elicit(_ context.Context, _ mcp.ElicitationRequest) (*mcp.ElicitationResult, error) {
 	return &mcp.ElicitationResult{ElicitationResponse: mcp.ElicitationResponse{
 		Action: mcp.ElicitationResponseActionAccept, Content: map[string]any{"response": "main"},

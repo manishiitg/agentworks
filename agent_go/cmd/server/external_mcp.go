@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -111,6 +112,9 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	// Header-less MCP clients pass the token in ?token=; never let responses cache.
 	w.Header().Set("Cache-Control", "no-store")
+	if api.externalMCPTaskHTTP(w, r) {
+		return
+	}
 	catalog, err := externalTools()
 	if err != nil {
 		externalError(w, http.StatusInternalServerError, "schema_error", err.Error())
@@ -204,6 +208,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		server.WithToolCapabilities(false),
 		server.WithResourceCapabilities(false, false),
 		server.WithElicitation(),
+		server.WithExtensions(map[string]any{agentworksclient.MCPTasksExtension: map[string]any{}}),
 		server.WithInstructions(instructions),
 	)
 	api.registerExternalDashboardApp(mcpServer, r)
@@ -397,6 +402,9 @@ func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Reques
 	}
 	// A function call with a pending question may come back as an MCP form
 	// for clients that declare elicitation (docs/design/mcp_elicitation.md).
+	if result := api.externalMCPURLCall(r.WithContext(ctx), target, callArgs, request); result != nil {
+		return result
+	}
 	elicitation := api.externalMCPElicitation(r, byName)
 	if request.Params.RequestState != "" {
 		return elicitation.Resume(ctx, target, callArgs, request)

@@ -262,6 +262,7 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			if err := syncErr; err != nil {
 				return errors.New(vaultSyncProblem(name, err))
 			}
+			completeMCPURLSignIn(flow.State, id)
 			return nil
 		},
 		Notify: func(success bool, detail string) {

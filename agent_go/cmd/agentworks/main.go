@@ -21,7 +21,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
-	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 )
 
@@ -230,7 +229,7 @@ func newCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return server.NewStdioServer(bridge).Listen(listenCtx, o.stdin, o.stdout)
+		return agentworksclient.ServeMCPStdio(listenCtx, bridge, client, o.stdin, o.stdout)
 	}}
 	mcpCmd.AddCommand(serveMCP)
 	root.AddCommand(mcpCmd)

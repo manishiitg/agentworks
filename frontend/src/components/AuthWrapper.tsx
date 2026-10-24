@@ -16,6 +16,7 @@ import { DashboardsPageContext } from '../contexts/DashboardsPageContext';
 
 const ProductRouteBoundary = lazy(() => import("./ProductRouteBoundary").then(module => ({ default: module.ProductRouteBoundary })));
 const AgentBridgeApp = lazy(() => import('../products/bullpen/AgentBridgeApp'));
+const MCPAccountSignIn = lazy(() => import('../pages/MCPAccountSignIn'));
 
 interface AuthWrapperProps {
   children: React.ReactNode;
@@ -248,6 +249,8 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
 
   if (isMcpConsent && isAuthenticated) return <MCPOAuthConsent />;
   if (isCliConsent && isAuthenticated) return <CLIOAuthConsent />;
+	const mcpSignIn = window.location.pathname.match(/^\/mcp\/elicitation\/([a-f0-9-]{36})$/);
+	if (mcpSignIn && isAuthenticated) return <Suspense fallback={<p>Opening sign-in…</p>}><MCPAccountSignIn requestId={mcpSignIn[1]} /></Suspense>;
 
   // Single-user mode: no auth required, render children directly
   if (!isMultiUserMode) {

@@ -60,6 +60,9 @@ func NewMCPServer(ctx context.Context, client ToolCaller, extra ...server.Server
 	}
 	instructions += " Prepare relevant skills with selected tool schemas or help action=skills. Retain guidance_session_id per conversation and pass it on later tools. Related tools reuse one topic/version; explicit full Crew/project SKILL.md reads and Brain skill-package fetches also record delivery. Reload full skills after context loss (omit known_versions); metadata alone does not count. Advisory receipts record delivery, not reading, and grant no permissions."
 	opts := []server.ServerOption{server.WithToolCapabilities(false), server.WithElicitation(), server.WithInstructions(instructions)}
+	if _, ok := client.(MCPTaskService); ok {
+		opts = append(opts, server.WithExtensions(map[string]any{MCPTasksExtension: map[string]any{}}))
+	}
 	s := server.NewMCPServer("AgentWorks", "1.0.0", append(opts, extra...)...)
 	available := make(map[string]bool, len(definitions))
 	for _, definition := range definitions {

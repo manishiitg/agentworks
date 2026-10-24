@@ -151,6 +151,7 @@ func gmailOAuthCallbackHandler(api *StreamingAPI) http.HandlerFunc {
 			writeGmailOAuthPage(w, false, "Sign-in failed", html.EscapeString(err.Error()))
 			return
 		}
+		completeMCPURLSignIn(state, connectionID)
 
 		// Signing the same Google account in again in this Code (to change its access) replaces
 		// the older connection instead of listing the account twice.

@@ -19,6 +19,7 @@ export function cliConsentReturnPath(value: string | null): string | null {
 }
 
 export function connectionConsentReturnPath(value: string | null): string | null {
+	if (value && /^\/mcp\/elicitation\/[a-f0-9-]{36}$/.test(value)) return value
   return mcpConsentReturnPath(value) || cliConsentReturnPath(value)
 }
 
