@@ -9,7 +9,7 @@ import (
 // Conversation messages address registered project tabs. Function execution
 // never passes through here and keeps its own declared run conversation.
 func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target triggerTarget, chatID string) (triggerTarget, error) {
-	if target.Remote != nil || target.Chat != nil || target.NamedAgentID != "" {
+	if target.Chat != nil || target.NamedAgentID != "" {
 		return target, nil
 	}
 	caller := GetUserIDFromContext(ctx)

@@ -103,7 +103,7 @@ func accessTokenClaims(t accesstokens.Token) (*UserClaims, error) {
 	// of user"); what was picked when the token was made no longer narrows it.
 	// Service accounts, device links, agent-bound and project connections keep
 	// their own grant.
-	if t.KnowledgebaseIdentityID == "" && t.BoundAgentID == "" && t.ProjectKind == "" && t.ProjectIdentity == "" && !t.Allows("devices:connect") && !isAgentServerLinkClient(t.OAuthClientID) {
+	if t.KnowledgebaseIdentityID == "" && t.BoundAgentID == "" && t.ProjectKind == "" && t.ProjectIdentity == "" && !t.Allows("devices:connect") {
 		t.Scopes = mcpOAuthPersonScopes(c)
 		t.AllWorkflows, t.AllCrews = true, true
 		t.WorkflowIDs, t.CrewIDs = nil, nil
@@ -403,9 +403,6 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	}
 	if tool.Name == "costs" {
 		return externalCostsAllowed(c)
-	}
-	if tool.Name == "agent_servers" {
-		return personalAgentServerLinkClaims(c)
 	}
 	if tool.Name == "agent_inbox" {
 		return !IsLocalMode() && c != nil

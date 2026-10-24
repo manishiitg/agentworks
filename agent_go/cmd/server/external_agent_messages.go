@@ -88,13 +88,6 @@ func messagePeerView(claims *UserClaims, send bool) *UserClaims {
 }
 
 func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claims *UserClaims, peer agentMessageEndpoint, send bool) error {
-	if peer.Remote != nil {
-		if peer.UserID != claims.UserID || !namedAgentOperationAllowed(claims, send) {
-			return fmt.Errorf("Linked-server conversation unavailable or access denied")
-		}
-		_, err := ownAgentServerLink(ctx, claims.UserID, peer.Remote.LinkID)
-		return err
-	}
 	token := claims.AccessToken
 	denied := fmt.Errorf("conversation unavailable or access denied")
 	if peer.External {
@@ -209,15 +202,7 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 				senderAgentID = a.ID
 			}
 		}
-
-		target, err := resolveNamedMessageAgent(ctx, claims.UserID, agentName, senderAgentID)
-		if err == nil {
-			return target, nil
-		}
-		if target, qualified, e := resolveLinkedAgentTarget(ctx, claims.UserID, agentName); qualified {
-			return target, e
-		}
-		return target, err
+		return resolveNamedMessageAgent(ctx, claims.UserID, agentName, senderAgentID)
 	}
 	if strings.HasPrefix(strings.ToLower(name), "agent:") {
 		return agentTarget(name[len("agent:"):])
@@ -436,34 +421,6 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		}
 		if _, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, false); err != nil {
 			externalCommunicationError(w, 404, "not_found", err)
-			return
-		}
-
-		if requested := externalArg(args, "message_id"); requested != "" {
-			store, err := readAgentMessageSnapshot(r.Context())
-			if err != nil {
-				externalFailure(w, err)
-				return
-			}
-			for _, conversation := range store.Conversations {
-				if conversation.ID != inbox {
-					continue
-				}
-				for side := 0; side < 2; side++ {
-					if !messageEndpointMatches(conversation.Endpoints[side], claims.UserID, caller) {
-						continue
-					}
-					for _, m := range conversation.Messages {
-						if m.ID == requested && m.From == side && !serverAuthoredKind(m.Kind) {
-							row := store.receiptFields(m, conversation.Endpoints[1-side])
-							row["message_id"] = m.ID
-							externalJSON(w, map[string]any{"sent": []map[string]any{row}})
-							return
-						}
-					}
-				}
-			}
-			externalError(w, 404, "not_found", "Sent message unavailable or access denied.")
 			return
 		}
 		wait := time.Duration(externalInt(args, "wait_seconds", 0)) * time.Second

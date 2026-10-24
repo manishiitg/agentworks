@@ -223,7 +223,6 @@ chat:
       - workflow_team
       - manage_project
       - manage_builder_chats
-      - agent_servers
       - browser_connections
       - manage_messaging
       - manage_pulse
@@ -622,7 +621,6 @@ chat:
       # breakdown/detail with opaque source references, under current sharing and consent.
       - costs
       - users
-      - agent_servers
       - sign_in_apps
       - agent_inbox
     prompt:

@@ -17,8 +17,7 @@ var backupBlockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("2001:db8::/32"),
 }
 
-// PublicNetworkAddress excludes private and special-use network destinations.
-func PublicNetworkAddress(addr netip.Addr) bool {
+func backupPublicAddress(addr netip.Addr) bool {
 	addr = addr.Unmap()
 	if !addr.IsValid() || !addr.IsGlobalUnicast() || addr.IsPrivate() || addr.IsLoopback() || addr.IsLinkLocalUnicast() || addr.Zone() != "" {
 		return false
@@ -42,7 +41,7 @@ func validateBackupLiteralHost(remote string, allowPrivate bool) error {
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return badArg("Backup hosts must use public network addresses.")
 	}
-	if addr, err := netip.ParseAddr(host); err == nil && !PublicNetworkAddress(addr) {
+	if addr, err := netip.ParseAddr(host); err == nil && !backupPublicAddress(addr) {
 		return badArg("Backup hosts must use public network addresses.")
 	}
 	return nil
@@ -82,7 +81,7 @@ func backupNetworkResolve(ctx context.Context, cred backupGitCredential, lookup 
 		}
 	}
 	for _, addr := range addresses {
-		if !addr.IsValid() || addr.Zone() != "" || !cred.allowPrivate && !PublicNetworkAddress(addr) {
+		if !addr.IsValid() || addr.Zone() != "" || !cred.allowPrivate && !backupPublicAddress(addr) {
 			return "", badArg("Backup host resolves to a private or special-use address.")
 		}
 	}

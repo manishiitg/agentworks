@@ -16,9 +16,6 @@ import (
 // other people and project callers retain their original grant checks.
 func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) error {
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
-	if err := api.validateRelayMessage(ctx, source, m); err != nil {
-		return err
-	}
 	if source.ConditionJob != "" {
 		if api.productSchedules == nil {
 			return fmt.Errorf("watcher caller unavailable")
@@ -65,11 +62,6 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 	}
 	if m.SenderConnectionID != "" {
 		claims, err := agentMessageConnectionClaims(ctx, m.SenderConnectionID)
-		if err != nil && source.External && source.NamedAgentID != "" {
-			if current, e := currentRelaySenderClaims(ctx, source, m.SenderConnectionID); e == nil {
-				claims, err = current, nil
-			}
-		}
 		if err != nil && source.External && source.NamedAgentID != "" && source.UserID == dest.UserID && strings.HasPrefix(m.SenderConnectionID, "oauth-") {
 			// The historical CLI grant proves provenance only. It is never made
 			// live again and gives no authority to a different account or agent.

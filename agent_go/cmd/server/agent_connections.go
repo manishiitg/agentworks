@@ -36,7 +36,7 @@ func bindAgentConnection(ctx context.Context, q agentConnectionQuerier, grant mc
 		return grant, err
 	}
 	claims, err := accessTokenClaims(mcpOAuthTokenForGrant(p))
-	if err != nil || nested != 0 || (p.ClientID != cliOAuthClientID && !isAgentServerLinkClient(p.ClientID)) || p.UserID != grant.UserID || p.Resource != grant.Resource || !namedAgentOperationAllowed(claims, true) {
+	if err != nil || nested != 0 || p.ClientID != cliOAuthClientID || p.UserID != grant.UserID || p.Resource != grant.Resource || !namedAgentOperationAllowed(claims, true) {
 		return grant, errors.New("agent connection parent is no longer authorized")
 	}
 	grant.BoundAgentName, grant.BoundAgentID = name, id
@@ -57,13 +57,6 @@ func (api *StreamingAPI) createAgentConnection(w http.ResponseWriter, r *http.Re
 		externalFailure(w, err)
 		return
 	}
-	if isAgentServerLinkClient(claims.AccessToken.OAuthClientID) {
-		origin, e := agentServerLinkOrigin(r.Context(), claims)
-		if e != nil || agent.Relay == nil || agent.Relay.Origin != origin {
-			externalError(w, 403, "attachment_refused", "A linked server can connect only its own relayed agents.")
-			return
-		}
-	}
 	store, err := openMCPOAuthStore()
 	if err != nil {
 		externalFailure(w, err)
@@ -71,7 +64,7 @@ func (api *StreamingAPI) createAgentConnection(w http.ResponseWriter, r *http.Re
 	}
 	defer store.Close()
 	parent, err := store.ActiveFamily(r.Context(), strings.TrimPrefix(claims.AccessToken.ID, "oauth-"))
-	if err != nil || parent.ClientID != cliOAuthClientID && !isAgentServerLinkClient(parent.ClientID) {
+	if err != nil || parent.ClientID != cliOAuthClientID {
 		externalError(w, 403, "attachment_refused", "CLI login expired or revoked.")
 		return
 	}

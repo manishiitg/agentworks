@@ -23,7 +23,7 @@ func hostedAgentMailbox(claims *UserClaims) bool {
 func cliAgentMailRequest(r *http.Request) bool {
 	claims := GetUserFromContext(r.Context())
 	return r.URL.Path != externalMCPPath && claims != nil &&
-		(claims.AccessToken == nil || claims.AccessToken.OAuthClientID == cliOAuthClientID || isAgentServerLinkClient(claims.AccessToken.OAuthClientID))
+		(claims.AccessToken == nil || claims.AccessToken.OAuthClientID == cliOAuthClientID)
 }
 
 func authorizeAgentMailRequest(r *http.Request, args map[string]any) error {
@@ -75,15 +75,6 @@ func externalMessageToolForRequest(r *http.Request, tool externalTool) externalT
 }
 
 func agentDeliveryMode(a namedMessageAgent) string {
-	if a.Relay != nil {
-		if !namedAgentConnected(a) {
-			return "offline"
-		}
-		if a.Relay.DeliveryMode == "inbox" || a.Relay.Online {
-			return a.Relay.DeliveryMode
-		}
-		return "offline"
-	}
 	if !namedAgentOnline(a) {
 		if a.Attachment != nil || a.EverAttached {
 			return "offline"
@@ -127,13 +118,6 @@ func addAgentPresence(out map[string]any, a namedMessageAgent) {
 	}
 	if !a.LastOnlineAt.IsZero() {
 		out["last_seen_at"] = a.LastOnlineAt
-	}
-	if a.Relay != nil {
-		out["kind"], out["via"] = "relay", a.Relay.Origin
-		out["provider"] = a.Relay.Provider
-		if a.Relay.Provider == "" {
-			out["type"] = "Hosted agent"
-		}
 	}
 }
 

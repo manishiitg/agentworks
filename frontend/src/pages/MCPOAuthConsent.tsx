@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react'
 import api from '../services/api'
 import { Button } from '../components/ui/Button'
 
-type Consent = { client_name: string; redirect_uri: string; scopes: string[]; messaging_only?: boolean; link_origin?: string; project?: { id: string; title: string; kind: string; access: 'view' | 'use' } | null }
+type Consent = { client_name: string; redirect_uri: string; scopes: string[]; project?: { id: string; title: string; kind: string; access: 'view' | 'use' } | null }
 
 const scopeDescriptions: Record<string, string> = {
-  'messages:read': 'Receive messages addressed to your linked agents',
-  'messages:send': 'Send agent messages as you on this server',
   'vault:manage': 'Manage Vault MCP connections, groups, tool and regex permissions, and secret access as an administrator. Secret values are not returned',
   'vault:read': 'See Vault connections, tools, groups, who can reach what, the audit log, and run SQL that changes nothing',
   'vault:mcp': 'Use MCP tools allowed by your current Vault groups',
@@ -79,10 +77,10 @@ export function MCPOAuthConsent() {
     <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
       <div>
         <h1 className="text-xl font-semibold text-foreground">Connect to {vault ? 'Vault' : 'AgentWorks'}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{consent ? (consent.messaging_only ? `${consent.link_origin} wants to exchange agent messages as you.` : consent.project ? `${consent.client_name} wants access to ${consent.project.title} only.` : vault ? `${consent.client_name} wants access to your permitted MCP tools.` : consent.scopes.includes('vault:manage') ? `${consent.client_name} wants platform access, including Vault administration.` : consent.scopes.some(scope => scope.startsWith('crews:')) ? `${consent.client_name} wants access to your workflows and Crews.` : `${consent.client_name} wants access to your workflows.`) : 'Loading connection request…'}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{consent ? (consent.project ? `${consent.client_name} wants access to ${consent.project.title} only.` : vault ? `${consent.client_name} wants access to your permitted MCP tools.` : consent.scopes.includes('vault:manage') ? `${consent.client_name} wants platform access, including Vault administration.` : consent.scopes.some(scope => scope.startsWith('crews:')) ? `${consent.client_name} wants access to your workflows and Crews.` : `${consent.client_name} wants access to your workflows.`) : 'Loading connection request…'}</p>
       </div>
       {consent && <>
-        {consent.messaging_only ? <p className="rounded-md bg-muted p-3 text-sm text-foreground">Connect your agents between these servers. This connection can send and receive agent messages. Your files, projects, tools and Vault stay outside this connection.</p> : vault
+        {vault
           ? <ul className="space-y-2 text-sm text-foreground">{scopeGroups.filter(group => group.scopes.some(scope => consent.scopes.includes(scope))).map(group => <li key={group.summary} className="rounded-md bg-muted p-3">{group.summary}</li>)}</ul>
           : consent.project ? <div className="rounded-md bg-muted p-3 text-sm text-foreground"><p className="font-medium">{consent.project.title} only</p><p className="mt-1">{consent.project.access === 'use' ? 'View and use this project within your current permissions.' : 'View this project within your current permissions.'} Other projects and project settings are excluded. Removing your project access ends this connection’s access.</p></div>
           : <p className="rounded-md bg-muted p-3 text-sm text-foreground">This app can do what you can do on the website, and nothing more. Your role on each Crew, workflow or project still decides what it may change.</p>}

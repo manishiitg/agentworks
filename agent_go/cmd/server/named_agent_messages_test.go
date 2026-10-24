@@ -137,6 +137,15 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	if e != nil || len(saved.Agents) != 2 || saved.NextAgentSequence != 3 {
 		t.Fatalf("durable registration/cursor: %+v %v", saved, e)
 	}
+	// Other conversations advance the same mailbox position. An inbox filter
+	// must not reinterpret it as this conversation's much smaller sequence.
+	agentMessageMu.Lock()
+	saved.NextAgentSequence = 300
+	e = saveAgentMessageStore(context.Background(), saved)
+	agentMessageMu.Unlock()
+	if e != nil {
+		t.Fatal(e)
+	}
 	// Active review conversations must continue beyond the former shared
 	// forty-message hourly budget, retaining the original inbox and receipts.
 	for i := 0; i < 45; i++ {
@@ -151,6 +160,18 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 		}
 		if retry := call(client, args, true); retry["message_id"] != accepted["message_id"] {
 			t.Fatal("burst retry changed the receipt")
+		}
+	}
+	mailbox := call(owner, map[string]any{"action": "read", "agent_name": "reviewer", "after": 271, "limit": 100}, true)
+	thread := call(owner, map[string]any{"action": "read", "agent_name": "reviewer", "after": 271, "limit": 100, "inbox_id": inbox}, true)
+	mailRows, threadRows := mailbox["messages"].([]any), thread["messages"].([]any)
+	if len(mailRows) == 0 || len(threadRows) != len(mailRows) || thread["next_cursor"] != mailbox["next_cursor"] {
+		t.Fatal("inbox filter changed the mailbox cursor", mailbox, thread)
+	}
+	for i, raw := range mailRows {
+		mail, filtered := raw.(map[string]any), threadRows[i].(map[string]any)
+		if mail["message_id"] != filtered["message_id"] || mail["sequence"] != filtered["sequence"] || filtered["conversation_sequence"].(float64) >= filtered["sequence"].(float64) {
+			t.Fatal("inbox filter changed message ordering", mail, filtered)
 		}
 	}
 	retained := call(owner, map[string]any{"action": "read", "agent_name": "reviewer", "inbox_id": inbox}, true)["messages"].([]any)

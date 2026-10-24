@@ -180,11 +180,7 @@ func mcpOAuthHash(raw string) string {
 }
 
 func (s *mcpOAuthStore) RegisterClient(ctx context.Context, name string, redirects []string) (mcpOAuthClient, error) {
-	return s.registerClient(ctx, name, redirects, "mcp_client_")
-}
-
-func (s *mcpOAuthStore) registerClient(ctx context.Context, name string, redirects []string, prefix string) (mcpOAuthClient, error) {
-	id, err := mcpOAuthRandom(prefix)
+	id, err := mcpOAuthRandom("mcp_client_")
 	if err != nil {
 		return mcpOAuthClient{}, err
 	}
@@ -248,13 +244,6 @@ func (s *mcpOAuthStore) decide(ctx context.Context, raw string, user *UserClaims
 		workflowIDs = slices.Clone(selected[0])
 	}
 	granted := mcpOAuthPersonScopes(user)
-	if isAgentServerLinkClient(req.ClientID) {
-		_, resource, ok := mcpOAuthURLs()
-		if !ok || req.Resource != resource {
-			return req, "", &mcpOAuthRefusal{errors.New("Linked servers support agent messages only.")}
-		}
-		granted = slices.Clone(agentServerLinkScopes)
-	}
 	if audience, bound := projectMCPAudienceForResource(req.Resource); bound {
 		granted = audience.scopes()
 		if approve && projectIdentity == "" {
@@ -343,13 +332,6 @@ func (s *mcpOAuthStore) ExchangeCode(ctx context.Context, raw, clientID, redirec
 	grant.FamilyID, err = mcpOAuthRandom("")
 	if err != nil {
 		return grant, "", "", err
-	}
-	if isAgentServerLinkClient(clientID) {
-		// A fresh browser approval replaces this person's prior grant to the
-		// same home server, including every child derived from that grant.
-		if _, err = tx.ExecContext(ctx, `UPDATE tokens SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND client_id IN (SELECT id FROM clients WHERE id GLOB 'agent_link_*' AND redirect_uris=(SELECT redirect_uris FROM clients WHERE id=?))`, time.Now().Unix(), grant.UserID, clientID); err != nil {
-			return grant, "", "", err
-		}
 	}
 	access, refresh, err := issueMCPOAuthPair(ctx, tx, &grant)
 	if err != nil {

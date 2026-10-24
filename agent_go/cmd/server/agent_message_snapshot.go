@@ -160,10 +160,6 @@ func fetchAgentMessageSnapshot(ctx context.Context, key agentSnapshotKey, prior 
 }
 
 func cloneNamedAgent(a namedMessageAgent) namedMessageAgent {
-	if a.Relay != nil {
-		copy := *a.Relay
-		a.Relay = &copy
-	}
 	a.Connections = append([]string(nil), a.Connections...)
 	if a.Attachment != nil {
 		copy := *a.Attachment
