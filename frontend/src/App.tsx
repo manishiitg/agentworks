@@ -728,7 +728,7 @@ function AppWorkspace() {
         {returnNote && <div role="status" className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-lg"><span>{returnNote}</span><button type="button" aria-label="Dismiss workspace notice" onClick={() => useWorkspaceReturnStore.setState({ note: '', saveError: '' })}>×</button></div>}
         {dashboardsOpen ? (
           <div className="flex h-screen min-h-0 bg-background">
-            <ProductTopBar />
+            <ProductTopBar>{null}</ProductTopBar>
             <div className="min-h-0 min-w-0 flex-1">
               {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<FileSurfaceFallback />}><AdminPages /></Suspense> : null}
               <div hidden={showProviders || Boolean(adminPage)} className="h-full">
