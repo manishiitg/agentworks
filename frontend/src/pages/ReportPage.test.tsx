@@ -35,7 +35,7 @@ describe("standalone report page", () => {
       // Managed publications resolve their own server-authorized project Ask.
       expect(view.host.querySelector('[data-project-conversation]')?.getAttribute('data-project-conversation')).toBe('true');
       expect(view.host.textContent).not.toContain("Live Dashboard");
-      expect(view.host.querySelector('nav a')?.textContent).toBe('Back to dashboards');
+      expect(view.host.querySelector('nav')).toBeNull();
       // The return bar does not restore help, refresh or close overlays on the dashboard.
       expect(view.host.querySelector('[data-toolbar-hidden]')?.getAttribute('data-toolbar-hidden')).toBe('true');
     } finally {
@@ -43,25 +43,41 @@ describe("standalone report page", () => {
     }
   });
 
-  it.each(['Workflow/example', 'invalid'])('returns from dashboard path %s to the library through in-app navigation', async path => {
-    const previous = window.location.href;
-    window.history.replaceState({}, '', `/report?path=${btoa(path)}`);
-    const popstate = vi.fn();
-    window.addEventListener('popstate', popstate);
-    const view = await renderReport(path);
+  it.each([true, false])('shows dashboard return navigation only in Electron (desktop=%s)', async desktop => {
+    const previousBridge = window.electronAPI;
+    if (desktop) window.electronAPI = {};
+    else delete window.electronAPI;
     try {
-      const link = view.host.querySelector<HTMLAnchorElement>('a[href="/dashboards"]')!;
-      expect(link.textContent).toBe('Back to dashboards');
-      const event = new MouseEvent('click', { button: 0, bubbles: true, cancelable: true });
-      await act(async () => { link.dispatchEvent(event) });
-      expect(event.defaultPrevented).toBe(true);
-      expect(window.location.pathname).toBe('/dashboards');
-      expect(window.location.search).toBe('');
-      expect(popstate).toHaveBeenCalledOnce();
+      for (const path of ['Workflow/example', 'invalid']) {
+        const previous = window.location.href;
+        window.history.replaceState({}, '', `/report?path=${btoa(path)}`);
+        const popstate = vi.fn();
+        window.addEventListener('popstate', popstate);
+        const view = await renderReport(path);
+        try {
+          const link = view.host.querySelector<HTMLAnchorElement>('a[href="/dashboards"]');
+          if (desktop) {
+            expect(link?.textContent).toBe('Back to dashboards');
+            const event = new MouseEvent('click', { button: 0, bubbles: true, cancelable: true });
+            await act(async () => { link!.dispatchEvent(event) });
+            expect(event.defaultPrevented).toBe(true);
+            expect(window.location.pathname).toBe('/dashboards');
+            expect(window.location.search).toBe('');
+            expect(popstate).toHaveBeenCalledOnce();
+          } else {
+            expect(link).toBeNull();
+            expect(view.host.querySelector('nav')).toBeNull();
+            expect(popstate).not.toHaveBeenCalled();
+          }
+        } finally {
+          await act(async () => view.root.unmount());
+          window.removeEventListener('popstate', popstate);
+          window.history.replaceState({}, '', previous);
+        }
+      }
     } finally {
-      await act(async () => view.root.unmount());
-      window.removeEventListener('popstate', popstate);
-      window.history.replaceState({}, '', previous);
+      if (previousBridge) window.electronAPI = previousBridge;
+      else delete window.electronAPI;
     }
   });
 

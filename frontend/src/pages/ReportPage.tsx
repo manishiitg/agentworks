@@ -32,7 +32,7 @@ export function ReportPage({ encodedPath, ownerUid }: ReportPageProps) {
   const documentPath = /^db\/reports\/(?!.*(?:^|\/)\.\.(?:\/|$))[^\\]+\.html$/i.test(requestedDocument)
     ? requestedDocument
     : "db/reports/index.html";
-  const backLink = <a href="/dashboards" onClick={followAppLink} className="inline-flex min-h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to dashboards</a>;
+  const backLink = window.electronAPI ? <a href="/dashboards" onClick={followAppLink} className="inline-flex min-h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to dashboards</a> : null;
 
   if (!isValidPath) {
     return (
@@ -49,7 +49,7 @@ export function ReportPage({ encodedPath, ownerUid }: ReportPageProps) {
 
   return (
     <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
-      <nav aria-label="Dashboard navigation" className="flex h-10 shrink-0 items-center border-b border-border px-3">{backLink}</nav>
+      {backLink && <nav aria-label="Dashboard navigation" className="flex h-10 shrink-0 items-center border-b border-border px-3">{backLink}</nav>}
       <div className="min-h-0 flex-1">
         <SharedCrewWorkspace key={workspacePath} workspacePath={workspacePath!} enabled>
           <ReportView workspacePath={workspacePath!} documentPath={documentPath} allowContentQuestions={false} dashboardConversation hideToolbar />
