@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   setMetadata: vi.fn(),
   openActivity: vi.fn(),
   openProduct: vi.fn(),
+  openSettings: vi.fn(),
   resume: vi.fn(),
   close: vi.fn(async () => {}),
   selectCode: vi.fn(),
@@ -73,6 +74,7 @@ vi.mock('../../utils/globalProductNavigation', () => ({
   openGlobalTab: mocks.openTab,
   openGlobalActivitySession: mocks.openActivity,
 }))
+vi.mock('../../utils/workspaceSettingsNavigation', () => ({ openWorkspaceSettings: mocks.openSettings }))
 vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: mocks.openProduct }))
 vi.mock('../../products/work/workSessions', () => ({ loadWorkSessionsIncludingShared: async () => [] }))
 vi.mock('../../products/work/projectProduct', () => ({ CREW_PRODUCT: { profileId: 'work' } }))
@@ -363,6 +365,10 @@ it('keeps Brain and Vault available without chats while respecting product acces
     expect(mocks.openProduct).toHaveBeenLastCalledWith('knowledgebase')
     await act(async () => vault.click())
     expect(mocks.openProduct).toHaveBeenLastCalledWith('mcp-gateway')
+    const cli = host.querySelector<HTMLButtonElement>('[aria-label="AgentWorks CLI & MCP"]')!
+    expect(cli.textContent).toBe('CLI/MCP')
+    await act(async () => cli.click())
+    expect(mocks.openSettings).toHaveBeenCalledWith('mcp')
     expect(mocks.openTab).not.toHaveBeenCalled()
     mocks.user.allowed_products = ['knowledgebase']
     await rerender()
