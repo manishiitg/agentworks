@@ -29,7 +29,7 @@ try {
     const trigger = page.getByRole('button', { name: 'Share', exact: true })
     await trigger.click()
     const dialog = page.getByRole('dialog', { name: 'Share', exact: true })
-    await dialog.getByText('colleague@example.com', { exact: true }).waitFor()
+    await dialog.locator('[aria-label="Current owners"]').getByText('colleague@example.com', { exact: true }).waitFor()
     const bounds = await dialog.boundingBox()
     assert.ok(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width && bounds.y + bounds.height <= height, name + ': popup stays within viewport ' + JSON.stringify(bounds))
     const save = dialog.getByRole('button', { name: 'Save', exact: true })
