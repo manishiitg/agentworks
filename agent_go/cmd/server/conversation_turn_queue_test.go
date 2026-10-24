@@ -155,7 +155,8 @@ func (api *StreamingAPI) mustReadTurnQueueForTest(t *testing.T, userID string) [
 	return turns
 }
 
-func TestPendingQueuedMessagesListOnlyUnstartedKeyedTurnsOfTheSession(t *testing.T) {
+// A started turn stays listed as started so its chat bubble does not vanish between the queue and the chat.
+func TestPendingQueuedMessagesListKeyedTurnsOfTheSessionWithStartedOnesMarked(t *testing.T) {
 	started := time.Now()
 	document := conversationTurnQueueDocument{Version: conversationTurnQueueVersion, Turns: []queuedConversationTurn{
 		{ID: "t1", UserID: "alice", SessionID: "chat", SubmissionID: "sub-running", Request: QueryRequest{Query: "running"}, StartedAt: &started},
@@ -170,10 +171,13 @@ func TestPendingQueuedMessagesListOnlyUnstartedKeyedTurnsOfTheSession(t *testing
 	}
 	api := newConversationTurnQueueTestAPI(map[string]string{conversationTurnQueuePath("alice"): string(raw)})
 	pending := api.pendingQueuedMessages(context.Background(), "alice", "chat")
-	if len(pending) != 2 || pending[0].ClientMessageID != "sub-next" || pending[1].ClientMessageID != "sub-later" {
-		t.Fatalf("pending = %+v, want sub-next then sub-later", pending)
+	if len(pending) != 3 || pending[0].ClientMessageID != "sub-running" || pending[1].ClientMessageID != "sub-next" || pending[2].ClientMessageID != "sub-later" {
+		t.Fatalf("pending = %+v, want sub-running then sub-next then sub-later", pending)
 	}
-	if pending[0].Content != "queued one" || pending[0].QueuePosition != 1 || pending[1].QueuePosition != 2 {
+	if !pending[0].Started || pending[0].QueuePosition != 0 || pending[0].CanSteer {
+		t.Fatalf("started turn = %+v, want started, no position, no steer", pending[0])
+	}
+	if pending[1].Started || pending[1].Content != "queued one" || pending[1].QueuePosition != 1 || pending[2].QueuePosition != 2 {
 		t.Fatalf("pending details = %+v", pending)
 	}
 	if other := api.pendingQueuedMessages(context.Background(), "bob", "chat"); len(other) != 0 {

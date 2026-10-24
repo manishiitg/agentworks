@@ -542,6 +542,8 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 		}
 		return
 	}
+	// Paired with the turn's user row timestamp, this shows how long a message sat between the queue and the chat.
+	logTurnQueue("handing queued message %s to its turn in session %s after %s in the queue", turn.ID, sessionID, time.Since(turn.CreatedAt).Round(time.Millisecond))
 	go api.executeQueuedConversationTurn(turn)
 }
 
@@ -987,6 +989,9 @@ type PendingQueuedMessage struct {
 	Refreshing  bool   `json:"refreshing,omitempty"`
 	QueueReason string `json:"queue_reason"`
 	CanSteer    bool   `json:"can_steer"`
+	// Started: the queue handed this message to its turn, which has not finished. The chat keeps showing it as being sent
+	// until the turn's own user row arrives, instead of it vanishing between the queue and the chat.
+	Started bool `json:"started,omitempty"`
 }
 
 // markRefreshingQueuedMessages flags a chat's waiting messages when its runtime is waiting to be replaced.
@@ -1022,23 +1027,29 @@ func (api *StreamingAPI) pendingQueuedMessages(ctx context.Context, userID, sess
 
 func pendingQueuedMessagesFromTurns(turns []queuedConversationTurn, userID, sessionID string) []PendingQueuedMessage {
 	var pending []PendingQueuedMessage
+	waiting := 0
 	for _, turn := range turns {
-		if turn.UserID != userID || turn.SessionID != sessionID || (turn.StartedAt != nil && !turn.Steering) {
+		if turn.UserID != userID || turn.SessionID != sessionID {
 			continue
 		}
 		clientMessageID := sanitizeClientMessageID(turn.SubmissionID)
 		if clientMessageID == "" {
 			continue
 		}
-		pending = append(pending, PendingQueuedMessage{
+		message := PendingQueuedMessage{
 			MessageID:       turn.ID,
 			Steering:        turn.Steering,
 			DeliveryError:   turn.DeliveryError,
 			ClientMessageID: clientMessageID,
 			Content:         turn.Request.Query,
 			QueuedAt:        turn.CreatedAt,
-			QueuePosition:   len(pending) + 1,
-		})
+			Started:         turn.StartedAt != nil && !turn.Steering,
+		}
+		if !message.Started {
+			waiting++
+			message.QueuePosition = waiting
+		}
+		pending = append(pending, message)
 	}
 	return pending
 }

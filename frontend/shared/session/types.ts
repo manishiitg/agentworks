@@ -97,6 +97,8 @@ export interface PendingQueuedMessage {
   refreshing?: boolean
   queue_reason?: 'starting' | 'running' | 'waiting' | 'refreshing'
   can_steer?: boolean
+  /** Handed to its turn; the chat shows it as being sent until the turn's user row arrives. */
+  started?: boolean
 }
 
 export interface TerminalEventsResponse {

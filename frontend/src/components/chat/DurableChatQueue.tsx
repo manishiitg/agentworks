@@ -11,6 +11,21 @@ import type { PendingQueuedMessage } from '../../../shared/session/types'
 
 export interface DurableChatQueueHandle { recallLatest: () => boolean }
 
+/** A queued bubble the server has handed to the agent stays visible as being sent until its durable user row replaces it. */
+function markDelivering(sessionId: string, ids: Set<string>) {
+  const store = useChatStore.getState()
+  const events = store.getTabEvents(sessionId)
+  let changed = false
+  const next = events.map(event => {
+    if (!ids.has(event.id) || !isProvisionalUserMessage(event) || userMessageMetadata(event).delivery_status === 'delivering') return event
+    changed = true
+    const outer = event.data as unknown as Record<string, unknown>
+    const inner = (outer.data ?? {}) as Record<string, unknown>
+    return { ...event, data: { ...outer, data: { ...inner, metadata: { ...userMessageMetadata(event), confirmation: undefined, delivery_status: 'delivering' } } } } as typeof event
+  })
+  if (changed) store.setTabEvents(sessionId, next)
+}
+
 /** This is the server queue, never a second browser dispatch worker. */
 export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   sessionId: string; tabId: string; busy: boolean
@@ -40,11 +55,13 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
     const removedIds = new Set(previous.current.filter(message => !message.steering && !currentIds.has(message.client_message_id))
       .map(message => clientMessageEventId(message.client_message_id)))
     previous.current = query.data
+    const startedIds = new Set(query.data.filter(message => message.started).map(message => clientMessageEventId(message.client_message_id)))
+    if (startedIds.size) markDelivering(sessionId, startedIds)
     if (removedIds.size) {
       const store = useChatStore.getState()
       const events = store.getTabEvents(sessionId)
-      // A removed/started queue row can no longer remain a queued provisional
-      // bubble. A durable user echo is always retained.
+      // A removed queue row can no longer remain a queued provisional bubble.
+      // A durable user echo is always retained.
       store.setTabEvents(sessionId, events.filter(event => !removedIds.has(event.id) || !isProvisionalUserMessage(event) || userMessageMetadata(event).delivery_status !== 'queued_for_turn' || userMessageMetadata(event).confirmation === 'failed'))
     }
   }, [query.data, sessionId, owns])
@@ -59,14 +76,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
       else await agentApi.removeQueuedMessage(sessionId, message.message_id)
       if (!owns()) return
       if (steer) {
-        const store = useChatStore.getState()
-        const id = clientMessageEventId(message.client_message_id)
-        store.setTabEvents(sessionId, store.getTabEvents(sessionId).map(event => {
-          if (event.id !== id || !isProvisionalUserMessage(event)) return event
-          const outer = event.data as unknown as Record<string, unknown>
-          const inner = (outer.data ?? {}) as Record<string, unknown>
-          return { ...event, data: { ...outer, data: { ...inner, metadata: { ...userMessageMetadata(event), confirmation: undefined, delivery_status: 'delivering' } } } } as typeof event
-        }))
+        markDelivering(sessionId, new Set([clientMessageEventId(message.client_message_id)]))
       } else if (!retry) {
         const store = useChatStore.getState()
         const id = clientMessageEventId(message.client_message_id)
@@ -83,7 +93,8 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
       if (owns()) setAction(null)
     }
   }
-  const messages = query.data ?? []
+  // A started message already sits in the chat as a sending bubble until its turn's user row replaces it.
+  const messages = (query.data ?? []).filter(message => !message.started)
   useImperativeHandle(ref, () => ({ recallLatest: () => {
     if (!canEdit || !onEdit || !owns()) return false
     const message = [...messages].reverse().find(message => message.message_id && !message.steering && !message.delivery_error)

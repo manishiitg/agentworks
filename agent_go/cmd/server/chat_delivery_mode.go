@@ -92,7 +92,7 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 		message.Refreshing = message.QueueReason == "refreshing"
 		// Steer now is only for a message the person queued on purpose (queue mode). In steer mode the server hands the
 		// message in by itself as soon as it can, so offering the button there only adds a choice.
-		if message.Steering || message.DeliveryError != "" || turn.Request.DeliveryMode != "queue" {
+		if message.Started || message.Steering || message.DeliveryError != "" || turn.Request.DeliveryMode != "queue" {
 			message.CanSteer = false
 		}
 	}
