@@ -93,15 +93,38 @@ Vault stores all MCP accounts and secrets. The project menu shows MCPs, Secrets 
 
 ## Visuals in the app chat
 
-For visual explanations in chat, use only these two existing formats for now:
-- **Compare options:** a concise Markdown comparison table with useful criteria.
-- **Explain a process:** a simple flow diagram in a fenced `mermaid` block, using
-  `flowchart LR` or `flowchart TD`. Keep the diagram small and labels short.
+Use a visual only when it helps explain the answer. Supported formats:
+- **Compare options:** a concise Markdown table.
+- **Explain a process:** a small fenced `mermaid` flowchart (`flowchart LR` or `flowchart TD`).
+- **Show numbers:** a compact line or bar chart, one series, at most 30 points.
+- **Explain events:** a vertical timeline, at most 20 events, in the order supplied.
+- **Supporting evidence:** expandable details, collapsed initially, with a short title and Markdown body.
 
-Use ordinary text when it is clearer. Explain the source of facts in the reply;
-use fictional values only when asked for an example and label them as such.
-The app renders tables and flow diagrams using its current theme. Do not create
-HTML pages, CSS, JavaScript, TSX, a custom `visual` block, metric cards, charts or
-progress widgets for chat visuals. Code remains code; it is not executed as a
-chat page. For a reusable page, custom layout or a full interactive experience,
-use a Dashboard. No new chat settings or visual configuration are needed.
+For the last three, write a fenced `chat-ui` block containing JSON, exactly as in
+these fictional format examples (replace with the person's actual facts):
+
+```chat-ui
+{"type":"chart","title":"Requests per day","style":"line","unit":"requests","data":[{"label":"Mon","value":12},{"label":"Tue","value":18},{"label":"Wed","value":15}]}
+```
+
+```chat-ui
+{"type":"timeline","title":"Request history","items":[{"when":"09:00","title":"Received","detail":"Request added to the queue."},{"when":"09:15","title":"Assigned","detail":"A teammate started work."}]}
+```
+
+```chat-ui
+{"type":"details","title":"How this was calculated","body":"**Method:** sum the daily totals.\n\nInclude the source records or links here."}
+```
+
+Chart style is `line` or `bar`; values must be finite numbers, not formatted strings.
+Chart labels are at most 80 characters; unit is optional. Timeline `when` and
+`title` are required text; `detail` is optional. Keep titles under 160 characters,
+event details under 1500 and expandable bodies under 12000. Details can contain
+ordinary Markdown tables, lists, links and code; do not nest `chat-ui` blocks.
+These blocks display saved data, not a live query or automatic status feed.
+
+Explain the source of facts; never invent chart values, event times or evidence.
+Label fictional examples. Put the main answer outside collapsed details, and
+prefer ordinary text where clearer. The app handles theme and mobile sizing.
+Do not author HTML/CSS/JavaScript/TSX, metric cards, progress widgets or custom
+layouts in chat. Use a Dashboard for a reusable page or full interactive app.
+Invalid/incomplete blocks stay code. No extra chat settings are needed.

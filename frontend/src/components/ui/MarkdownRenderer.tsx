@@ -11,6 +11,8 @@ import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { workspaceApi, agentApi } from '../../services/api'
 import { CodeCopyButton, codeBlockText } from './CodeCopyButton'
+import { ChatElement } from './ChatElement'
+import { parseChatElement } from './chatElement'
 
 const SyntaxHighlightedCode = lazy(() => import('./SyntaxHighlightedCode'))
 
@@ -33,6 +35,8 @@ interface MarkdownRendererProps {
   compactImages?: boolean
   // Chat replies: a Copy button on each fenced code block (commands the agent suggests to run by hand).
   copyableCode?: boolean
+  // Native conversation presentation; ordinary file/tool Markdown stays code.
+  chatElements?: boolean
   basePath?: string
   onLinkClick?: (filepath: string) => void
   workspaceLinkHref?: (filepath: string) => string
@@ -596,6 +600,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
   untrustedContent = false,
   compactImages = false,
   copyableCode = false,
+  chatElements = false,
   basePath,
   onLinkClick,
   workspaceLinkHref,
@@ -1243,6 +1248,17 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
             )
           },
           pre: ({ children }) => {
+            const codeClass = React.isValidElement<{ className?: string }>(children) ? children.props.className ?? '' : ''
+            const text = codeBlockText(children).replace(/\n$/, '')
+            if (chatElements && codeClass.split(/\s+/).includes('language-chat-ui')) {
+              const spec = parseChatElement(text)
+              if (spec) return <ChatElement spec={spec} renderMarkdown={body => (
+                <MarkdownRenderer content={body} className={className} untrustedContent={untrustedContent}
+                  disablePathLinking={disablePathLinking} compactImages={compactImages} copyableCode={copyableCode}
+                  basePath={basePath} onLinkClick={onLinkClick} workspaceLinkHref={workspaceLinkHref}
+                  onWorkspaceLinkResolve={onWorkspaceLinkResolve} onWorkspaceLinkClick={onWorkspaceLinkClick} />
+              )} />
+            }
             // Pre tag is handled by the code component above
             // This is a fallback for any pre tags that don't contain code
             const block = (
@@ -1252,8 +1268,6 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
             )
             if (!copyableCode) return block
             // Diagrams, widgets and tool definitions are not commands to copy.
-            const codeClass = React.isValidElement<{ className?: string }>(children) ? children.props.className ?? '' : ''
-            const text = codeBlockText(children).replace(/\n$/, '')
             if (!text.trim() || /language-(mermaid|report-widget|tool-definition)/.test(codeClass)) return block
             return <div className="relative min-w-0">{block}<CodeCopyButton text={text} /></div>
           },
@@ -1416,7 +1430,7 @@ export const ConversationMarkdownRenderer: React.FC<{ content: string; maxHeight
     style={{ maxHeight }}
   >
     <div className={`${framed ? 'p-3' : 'p-0'} min-w-0`}>
-      <MarkdownRenderer content={content} className="conversation-markdown" disablePathLinking={disablePathLinking} compactImages copyableCode={copyableCode} />
+      <MarkdownRenderer content={content} className="conversation-markdown" disablePathLinking={disablePathLinking} compactImages copyableCode={copyableCode} chatElements />
     </div>
   </div>
 ))
