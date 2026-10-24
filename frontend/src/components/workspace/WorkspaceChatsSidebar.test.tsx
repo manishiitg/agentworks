@@ -366,7 +366,7 @@ it('keeps Brain and Vault available without chats while respecting product acces
     await act(async () => vault.click())
     expect(mocks.openProduct).toHaveBeenLastCalledWith('mcp-gateway')
     const cli = host.querySelector<HTMLButtonElement>('[aria-label="AgentWorks CLI & MCP"]')!
-    expect(cli.textContent).toBe('CLI/MCP')
+    expect(cli.textContent).toBe('')
     await act(async () => cli.click())
     expect(mocks.openSettings).toHaveBeenCalledWith('mcp')
     expect(mocks.openTab).not.toHaveBeenCalled()
