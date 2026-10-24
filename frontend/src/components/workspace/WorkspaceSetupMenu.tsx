@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { ProductSettingsMenu } from './ProductSettingsMenu'
 import ProvidersControl from '../topbar/ProvidersControl'
-import McpControl from '../topbar/McpControl'
 import UsersControl from '../topbar/UsersControl'
 import AccountControl from '../topbar/AccountControl'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -39,7 +38,6 @@ export function WorkspaceAccountMenu() {
     <AccountControl menuOnly onOpenWalkthrough={onOpenWalkthrough} onOpenShortcuts={onOpenShortcuts}>
       <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Workspace</p>
       <ProvidersControl />
-      <McpControl />
       <UsersControl />
     </AccountControl>
   </ProductSettingsMenu>
