@@ -18,6 +18,7 @@ import (
 // turn replaced. Pin the shared-tab decision across native chat, website and MCP.
 func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	f.api.productSchedules = NewProductScheduleService(f.api, f.api.agentProfiles)
 	t.Setenv("AUTH_SECRET", "shared-agent-fixture-signing-key")
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
