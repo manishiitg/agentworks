@@ -64,9 +64,12 @@ func alertOwnerWorkStopped(ctx context.Context, input *ReportHumanInput) {
 		"email_subject":     title,
 	}
 	nctx := api.workflowSummaryContext(context.WithoutCancel(ctx), input.WorkspacePath, workflowExecutionOwnerUserID(manifest), manifest)
-	if _, err := virtualtools.DeliverWorkflowNotification(nctx, args); err != nil {
-		log.Printf("[OWNER_ALERT] work-stopped decision %s in %s not sent: %v", input.ID, input.WorkspacePath, err)
-	}
+	// A slow mail or Slack send must not hold up the Builder turn that raised it.
+	go func() {
+		if _, err := virtualtools.DeliverWorkflowNotification(nctx, args); err != nil {
+			log.Printf("[OWNER_ALERT] work-stopped decision %s in %s not sent: %v", input.ID, input.WorkspacePath, err)
+		}
+	}()
 }
 
 // dailyDigestHour is the local hour (in the workflow's schedule timezone) after
@@ -98,6 +101,10 @@ func dailyDigestArgs(workflowName, day string, runs []dailyDigestRun) map[string
 	}
 	failed := counts["failed"] + counts["blocked"]
 	headline := fmt.Sprintf("%s today: %d runs", workflowName, len(runs))
+	if len(runs) >= 50 {
+		// The activity feed keeps the latest 50 summaries per kind.
+		headline = fmt.Sprintf("%s today: latest %d runs", workflowName, len(runs))
+	}
 	if failed > 0 {
 		headline += fmt.Sprintf(", %d failed or blocked", failed)
 	}
@@ -160,9 +167,11 @@ func dailyDigestRuns(ctx context.Context, workspacePath, day string, loc *time.L
 	return runs, rows.Err()
 }
 
-// dailyDigestStampPath records the last day a workflow's digest was sent.
+// dailyDigestStampPath records the last day a workflow's digest was sent. It is
+// server state, not workflow content, so it never travels with exports or copies.
 func dailyDigestStampPath(workspacePath string) string {
-	return filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath), "config", "daily-digest-sent.txt")
+	name := strings.NewReplacer("/", "__", "\\", "__").Replace(strings.Trim(filepath.ToSlash(workspacePath), "/"))
+	return filepath.Join(fsutil.WorkspaceDocsRoot(), "_system", "daily-digest", name+".txt")
 }
 
 var dailyDigestMu sync.Mutex
