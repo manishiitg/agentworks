@@ -10,7 +10,7 @@ import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { PulseIcon, isPulseConversationSession } from '../workflow/pulseIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
-import { compactOwnerChatName } from './chatTabName'
+import { compactOwnerChatName, ownerInitials } from './chatTabName'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -186,12 +186,15 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           className="h-5 w-36 rounded border border-primary/50 bg-background px-1.5 text-xs text-foreground outline-none ring-1 ring-primary/20"
         />
       ) : (
-        <span
-          className={`min-w-0 truncate whitespace-nowrap ${productSurface ? 'max-w-[18rem] font-semibold' : 'max-w-[14rem]'}`}
-          title={tooltip}
-        >
-          {displayName}
-        </span>
+        <>
+          {ownerName && !yourTab && <span aria-hidden="true" title={`Owned by ${ownerName}`} className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold leading-4 text-primary">{ownerInitials(ownerName) || '·'}</span>}
+          <span
+            className={`min-w-0 truncate whitespace-nowrap ${productSurface ? 'max-w-[18rem] font-semibold' : 'max-w-[14rem]'}`}
+            title={tooltip}
+          >
+            {displayName}
+          </span>
+        </>
       )}
       {productSurface && <>
         {workspacePickable && <button ref={registerWorkspaceTrigger} type="button" data-workspace-setup-trigger aria-label="Switch workspace" aria-haspopup="menu" aria-expanded={pickerOpen}
