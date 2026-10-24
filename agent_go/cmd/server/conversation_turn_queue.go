@@ -124,6 +124,7 @@ func sanitizedQueuedConversationRequest(ctx context.Context, req QueryRequest) Q
 // attributes needed to reconstruct and revalidate a delayed turn. It never
 // stores a bearer token or an execution principal.
 type queuedConversationPrincipal struct {
+	CrewAskInput               *crewAskInputScope     `json:"crew_ask_input,omitempty"`
 	CostAttribution            costledger.Attribution `json:"cost_attribution,omitempty"`
 	ExternalBuilderOperationID string                 `json:"external_builder_operation_id,omitempty"`
 	FeedbackOperationID        string                 `json:"feedback_operation_id,omitempty"`
@@ -170,6 +171,7 @@ func queuedPrincipalFromContext(ctx context.Context) queuedConversationPrincipal
 		return queuedConversationPrincipal{}
 	}
 	principal := queuedConversationPrincipal{
+		CrewAskInput:               crewAskInputFromContext(ctx),
 		CostAttribution:            costobserver.AttributionFromContext(ctx),
 		ExternalBuilderOperationID: claims.ExternalBuilderOperationID,
 		FeedbackOperationID:        virtualtools.FeedbackOperationFromContext(ctx),
@@ -223,6 +225,9 @@ func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, se
 	turn := queuedConversationTurn{
 		ID: uuid.NewString(), UserID: userID, SessionID: sessionID, Request: sanitizedQueuedConversationRequest(ctx, req),
 		Principal: queuedPrincipalFromContext(ctx), CreatedAt: time.Now().UTC(),
+	}
+	if ask := crewAskInputFromContext(ctx); ask != nil {
+		turn.ID = ask.Query
 	}
 	if submission, ok := ctx.Value(chatSubmissionContextKey{}).(chatSubmissionContext); ok {
 		turn.SubmissionID = submission.ID
@@ -856,6 +861,12 @@ func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTu
 			return nil, errors.New("queued grant owner does not match the conversation")
 		}
 		copy = *tokenClaims
+	}
+	if ask := turn.Principal.CrewAskInput; ask != nil {
+		if ask.User != turn.UserID || ask.Session != turn.SessionID || ask.Query != turn.ID {
+			return nil, errors.New("queued Ask identity no longer matches")
+		}
+		ctx = context.WithValue(ctx, crewAskInputKey{}, ask)
 	}
 	copy.ExternalBuilderOperationID = turn.Principal.ExternalBuilderOperationID
 	ctx = context.WithValue(ctx, UserContextKey, &copy)

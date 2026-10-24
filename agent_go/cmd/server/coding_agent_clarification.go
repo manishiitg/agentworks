@@ -28,7 +28,8 @@ type pendingCodingAgentClarification struct {
 	answers   chan []unifiedevents.CodingAgentQuestionAnswer
 	ctx       context.Context
 	askedAt   time.Time
-	askedTurn string // the turn that asked, as clarificationTurnToken saw it
+	ask       *crewAskInputScope // Non-nil only for an external, attended Crew Ask.
+	askedTurn string             // the turn that asked, as clarificationTurnToken saw it
 }
 
 func codingAgentClarificationSchema() map[string]interface{} {
@@ -126,6 +127,9 @@ func clarificationSelectionBounds(q unifiedevents.CodingAgentQuestionPrompt) (in
 }
 
 func (api *StreamingAPI) emitCodingAgentClarification(p *pendingCodingAgentClarification, kind, outcome string, answers []unifiedevents.CodingAgentQuestionAnswer) error {
+	if p.ask != nil {
+		return nil // External questions belong only to their asking connection.
+	}
 	now := time.Now()
 	data := &unifiedevents.CodingAgentQuestionEvent{
 		BaseEventData: unifiedevents.BaseEventData{Timestamp: now, SessionID: p.sessionID},
@@ -145,7 +149,16 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 	if err != nil {
 		return "", err
 	}
-	p := &pendingCodingAgentClarification{sessionID: sessionID, provider: provider, promptID: clarificationPromptPrefix + uuid.NewString(), questions: questions, answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1), ctx: ctx, askedAt: time.Now(), askedTurn: api.clarificationTurnToken(sessionID)}
+	ask := crewAskInputFromContext(ctx)
+	if ask != nil {
+		if ask.Session != sessionID || api.currentConversationTurnExecutionID(sessionID) != ask.Query {
+			return "", fmt.Errorf("this Ask turn has ended; read your chat for its current status")
+		}
+		if err := validateCrewAskQuestions(args); err != nil {
+			return "", err
+		}
+	}
+	p := &pendingCodingAgentClarification{sessionID: sessionID, provider: provider, promptID: clarificationPromptPrefix + uuid.NewString(), questions: questions, answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1), ctx: ctx, askedAt: time.Now(), ask: ask, askedTurn: api.clarificationTurnToken(sessionID)}
 	api.codingAgentClarificationsMu.Lock()
 	if api.codingAgentClarifications == nil {
 		api.codingAgentClarifications = map[string]*pendingCodingAgentClarification{}
@@ -155,6 +168,9 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 		return "", fmt.Errorf("answer the pending clarification before asking another")
 	}
 	api.codingAgentClarifications[sessionID] = p
+	if ask != nil {
+		log.Printf("[CREW_ASK_INPUT] session=%s query=%s prompt=%s status=pending", sessionID, ask.Query, p.promptID)
+	}
 	err = api.emitCodingAgentClarification(p, "requested", "", nil)
 	if err != nil {
 		delete(api.codingAgentClarifications, sessionID)
@@ -257,15 +273,16 @@ func (api *StreamingAPI) submitCodingAgentClarificationOutcome(sessionID, provid
 	if p == nil || p.promptID != promptID || p.provider != provider || p.ctx.Err() != nil {
 		return clarificationOutcome{}, fmt.Errorf("clarification is no longer pending")
 	}
+	if p.ask != nil {
+		return clarificationOutcome{}, fmt.Errorf("answer this question through the Crew Ask connection that started it")
+	}
 	answers, err := clarificationAnswers(p.questions, auto, input)
 	if err != nil {
 		return clarificationOutcome{}, err
 	}
-	if err := api.emitCodingAgentClarification(p, "settled", "answered", answers); err != nil {
+	if err := api.settleCodingAgentClarificationLocked(p, auto, input); err != nil {
 		return clarificationOutcome{}, err
 	}
-	delete(api.codingAgentClarifications, sessionID)
-	p.answers <- answers
 	// One line per answer, ids and numbers only: was the agent's turn still running when the person answered?
 	// An answer that arrives after its turn ended reaches a waiter nobody is reading (PLAT-825-35).
 	current := api.clarificationTurnToken(sessionID)
@@ -372,4 +389,19 @@ func (api *StreamingAPI) startClarificationFollowUp(r *http.Request, sessionID, 
 		api.handleQuery(recorder, request)
 		log.Printf("[HUMAN_INPUT] prompt=%s session=%s followup=started status=%d", promptID, sessionID, recorder.Code)
 	}()
+}
+
+// Caller holds codingAgentClarificationsMu. Choice validation and consuming the
+// waiter are shared by native UI cards and scoped external Ask answers.
+func (api *StreamingAPI) settleCodingAgentClarificationLocked(p *pendingCodingAgentClarification, auto bool, input []codingAgentQuestionAnswerInput) error {
+	answers, err := clarificationAnswers(p.questions, auto, input)
+	if err != nil {
+		return err
+	}
+	if err := api.emitCodingAgentClarification(p, "settled", "answered", answers); err != nil {
+		return err
+	}
+	delete(api.codingAgentClarifications, p.sessionID)
+	p.answers <- answers
+	return nil
 }

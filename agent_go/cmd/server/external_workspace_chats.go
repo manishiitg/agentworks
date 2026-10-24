@@ -2,7 +2,9 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,7 +20,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	claims := GetUserFromContext(r.Context())
 	if token := claims.AccessToken; token != nil {
 		scope := "crews:read"
-		if action == "ask" {
+		if action == "ask" || action == "reply_input" {
 			scope = "crews:run"
 		}
 		if !token.Allows(scope) {
@@ -54,13 +56,18 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		externalError(w, 404, "chat_not_found", "Choose one of your chats with action=chats, or ask without a chat_id to open your caller's own tab.")
 		return
 	}
-	if action == "ask" && chat.OwnerID != "" && chat.OwnerID != claims.UserID {
+	if (action == "ask" || action == "reply_input") && chat.OwnerID != "" && chat.OwnerID != claims.UserID {
 		externalError(w, 403, "tab_owner", crewOwnerDisplayName(chat.OwnerID)+" controls this tab. Use your own tab, or message_chat to communicate with its agent.")
 		return
 	}
 	after := externalInt(args, "after", 0)
 	out := map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "chat_id": chat.ID}
-	queryID := ""
+	queryID := strings.TrimSpace(externalArg(args, "query_id"))
+	workspaceID := manifest.Product + ":" + manifest.ID
+	if action == "reply_input" {
+		api.replyCrewAskInput(w, r, args, workspaceID, chat.ID, chat.SessionID, queryID)
+		return
+	}
 	if action == "ask" {
 		message := strings.TrimSpace(externalArg(args, "message"))
 		if message == "" || len([]rune(message)) > codeChatMessageMaxRune {
@@ -69,7 +76,10 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		}
 		_, after, _ = codeChatTranscript(r.Context(), claims.UserID, chat.SessionID, project.Binding.WorkspacePath, 0, 0)
 		body, _ := json.Marshal(AgentProfileChatRequest{Message: message, ConversationKey: chat.Key})
-		req := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/"+manifest.Product+"/query", bytes.NewReader(body)).WithContext(r.Context())
+		user, connection := mcpTaskPrincipal(r)
+		scope := &crewAskInputScope{User: user, Connection: connection, Workspace: workspaceID, Chat: chat.ID, Session: chat.SessionID, Query: fmt.Sprintf("query_%d", time.Now().UnixNano())}
+		askContext := context.WithValue(r.Context(), crewAskInputKey{}, scope)
+		req := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/"+manifest.Product+"/query", bytes.NewReader(body)).WithContext(askContext)
 		req = mux.SetURLVars(req, map[string]string{"id": manifest.Product})
 		req.Header.Set("Content-Type", "application/json")
 		if submission := externalArg(args, "submission_id"); submission != "" {
@@ -93,6 +103,24 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	for {
 		items, last, readErr := codeChatTranscript(r.Context(), claims.UserID, chat.SessionID, project.Binding.WorkspacePath, after, 100)
 		execution := api.externalWorkspaceTurnExecution(chat.SessionID, queryID)
+		if execution != nil && queryID == "" {
+			queryID = execution.ExecutionID
+		}
+		out["query_id"] = queryID
+		out["pending_inputs"] = []map[string]any{}
+		out["can_reply"] = false
+		if chat.OwnerID == claims.UserID {
+			pending := api.externalCrewAskPending(r, workspaceID, chat.ID, chat.SessionID, queryID)
+			out["pending_inputs"] = pending
+			out["can_reply"] = len(pending) > 0
+			if len(pending) > 0 {
+				out["status"], out["working"] = "waiting_for_input", true
+				out["messages"], out["next_after"] = items, max(after, last)
+				out["next"] = "Answer with workspace action=reply_input using this workspace_id, chat_id, query_id, request_id and answers; then read_chat with the same query_id."
+				externalJSON(w, out)
+				return
+			}
+		}
 		working := api.sessionTurnRunning(chat.SessionID) || execution != nil && execution.Status == trackedExecutionStatusRunning
 		if !working {
 			if failure := execution; failure != nil && failure.Status == trackedExecutionStatusFailed {
@@ -121,7 +149,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 			if action == "ask" && answered {
 				out["status"] = "answered"
 			}
-			out["next"] = "Read more with workspace action=read_chat, this workspace_id and chat_id, after=next_after and wait_seconds=25."
+			out["next"] = "Read more with workspace action=read_chat, this workspace_id, chat_id and query_id, after=next_after and wait_seconds=25."
 			externalJSON(w, out)
 			return
 		}

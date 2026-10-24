@@ -45,12 +45,33 @@ the hosted endpoint and the stdio bridge, so the capability, scope, reader,
 secret-wording and requestState checks cannot drift apart. A retried
 `call_*` request with `requestState` never starts a second call.
 
-The Crew (Work) product does not currently enable `human_feedback`, so its
-ordinary function executions cannot raise these questions. Typed workflow
-functions can expose a runtime agent's pending `human_feedback` question.
-Conversational `ask` aliases now use message inboxes; they do not create a
-function `call_id` or function-call elicitation. Other explicitly enabled
-function runtimes use their own admitted human-input tools.
+Crew `workspace action=ask` uses the native project conversation, not the
+legacy `ask_crew` agent-message inbox. External attended Ask turns admit the
+existing `request_clarification` tool, for both Builder and Run. Functions,
+schedules and bot messages do not gain that tool. Its ordinary questions use
+the native clarification waiter and choice validator; `human_feedback` remains
+excluded from the Crew product.
+
+Ask receipts and `workspace action=read_chat` return `query_id`, `can_reply`
+and `pending_inputs`. Poll with the original `workspace_id`, `chat_id` and
+`query_id`. `workspace action=reply_input` takes that exact identity plus the
+pending `request_id` and ordered `answers` (`id`, `selected_labels`, optional
+`other_text`). The server stamps person, connection family, project, chat,
+session and query at dispatch, preserving them through the turn queue. A
+question is returned only to that person and connection, never broadcast as a
+question card to other owners. Current project/tab and connection restrictions
+still apply on every poll and answer. Ended turns, wrong questions and duplicate
+answers are refused. The website question endpoint cannot answer an external
+Ask prompt on behalf of another connection.
+
+The shared MCP adapter presents related questions as one flat form, including
+single or multiple selections and custom text when offered. It re-reads the
+native pending prompt before translating an accepted answer and never repeats
+the original Ask. Decline/cancel returns status without answering. Clients
+without forms use the same polling and reply actions. Credential wording in
+question text or choices is refused with an Accounts/Vault alternative; secrets
+are not collected through these forms. Crew chat sessions are reusable and are
+not enrolled into MCP Tasks.
 
 Focused tests cover capability gating, Crew and workflow answers, a question
 arriving after an initial poll, choice validation, declined input, cross-user

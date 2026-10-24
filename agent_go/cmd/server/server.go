@@ -3965,6 +3965,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	// Generate query ID
 	queryID := fmt.Sprintf("query_%d", time.Now().UnixNano())
+	if ask := crewAskInputFromContext(r.Context()); ask != nil {
+		queryID = ask.Query
+	}
 
 	// Initialize Langfuse tracing - single trace for entire conversation
 	// Read tracing provider from environment variable, default to "noop"
@@ -6121,7 +6124,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			useCodeExecutionMode, platformBridgeTools = externalProjectTransport(claims, toolGate)
 		}
 		log.Printf("[CODE_EXECUTION] session=%s code_execution=%v browser_mode=%s direct_bridge_tools=%v", sessionID, useCodeExecutionMode, req.BrowserMode, platformBridgeTools)
-		clarificationAvailable := requestFromAttendedChat(r) && codingAgentRequestHasAttendingUser(&req, sessionID) &&
+		crewAskClarification := crewAskInputFromContext(r.Context()) != nil && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && !req.IsAutoNotification && req.ParentSessionID == "" && req.SessionKind == "" && req.BotPlatform == ""
+		if crewAskClarification {
+			toolGate.Declare("request_clarification")
+		}
+		clarificationAvailable := crewAskClarification || requestFromAttendedChat(r) && codingAgentRequestHasAttendingUser(&req, sessionID) &&
 			!currentUserIsReadOnly && (!isWorkflowPhase || isWorkflowBuilderPhase) && !relayChat &&
 			req.ExternalBuilderOperationID == "" && isCodingAgentProvider(finalProvider, finalModelID) && toolGate.Admit("request_clarification")
 		if clarificationAvailable {
