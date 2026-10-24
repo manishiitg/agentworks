@@ -136,13 +136,13 @@
   "agent_slots": [
     {
       "id": "funnel",
-      "agent_playbook_id": "funnel-analyst",
+      "procedure": "growth-work/references/funnel-analyst.md",
       "required": true,
       "output": "funnel-observation/v1"
     },
     {
       "id": "experiment",
-      "agent_playbook_id": "growth-experiment-planner",
+      "procedure": "growth-work/references/growth-experiment-planner.md",
       "required": true,
       "output": "funnel-experiment-plan/v1"
     }

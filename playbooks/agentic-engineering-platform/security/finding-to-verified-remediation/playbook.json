@@ -42,8 +42,8 @@
     "Manual case evidence and activation choice"
   ],
   "agent_slots": [
-    {"id": "finding", "agent_playbook_id": "security-findings-analyst", "required": true, "output": "security-finding/v1"},
-    {"id": "remediation", "agent_playbook_id": "security-remediation-coordinator", "required": true, "output": "security-remediation-ledger/v1"}
+    {"id": "finding", "procedure": "software-work/references/security-findings-analyst.md", "required": true, "output": "security-finding/v1"},
+    {"id": "remediation", "procedure": "software-work/references/security-remediation-coordinator.md", "required": true, "output": "security-remediation-ledger/v1"}
   ],
   "handoffs": [
     {"id": "finding-to-remediation", "from": "finding", "to": "remediation", "artifact_type": "security-finding/v1", "required": true}

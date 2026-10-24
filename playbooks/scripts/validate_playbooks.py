@@ -168,15 +168,15 @@ def validate_package(package: Path, errors: list[str]) -> dict[str, object] | No
     slot_outputs: dict[str, str] = {}
     slot_required: dict[str, bool] = {}
     for index, slot in enumerate(slots):
-        if not isinstance(slot, dict) or not {"id", "agent_playbook_id", "required", "output"}.issubset(slot):
+        if not isinstance(slot, dict) or not {"id", "procedure", "required", "output"}.issubset(slot):
             fail(errors, manifest_path, f"agent_slots[{index}] is incomplete")
             continue
         slot_id = slot["id"]
         if not isinstance(slot_id, str) or not slot_id or slot_id in slot_outputs:
             fail(errors, manifest_path, f"agent_slots[{index}] has an invalid or duplicate id")
             continue
-        if not isinstance(slot.get("agent_playbook_id"), str) or not KEBAB_CASE.fullmatch(slot["agent_playbook_id"]):
-            fail(errors, manifest_path, f"agent_slots[{index}] needs a canonical Crew template id")
+        if not isinstance(slot.get("procedure"), str) or not slot["procedure"].endswith(".md"):
+            fail(errors, manifest_path, f"agent_slots[{index}] needs a skill procedure reference")
         if type(slot.get("required")) is not bool:
             fail(errors, manifest_path, f"agent_slots[{index}].required must be a boolean")
         if not isinstance(slot["output"], str) or not ARTIFACT_TYPE.fullmatch(slot["output"]):
@@ -322,38 +322,17 @@ def validate_package(package: Path, errors: list[str]) -> dict[str, object] | No
     return manifest
 
 
-def validate_crew_bindings(path: Path, manifest: dict[str, object], crew_ids: set[str], errors: list[str]) -> None:
-    slots = manifest.get("agent_slots", [])
-    for index, slot in enumerate(slots if isinstance(slots, list) else []):
-        agent_id = slot.get("agent_playbook_id") if isinstance(slot, dict) else None
-        if isinstance(agent_id, str) and agent_id not in crew_ids:
-            fail(errors, path, f"agent_slots[{index}] references an uninstalled Crew template {agent_id!r}")
+def validate_crew_bindings(path: Path, manifest: dict[str, object], errors: list[str]) -> None:
+    skill_root = ROOT.parent / "agent_go/internal/workproduct/skills"
+    for index, slot in enumerate(manifest.get("agent_slots", [])):
+        for procedure in [slot.get("procedure", ""), *slot.get("accepts", [])]:
+            parts = Path(procedure).parts
+            if len(parts) != 3 or parts[1] != "references" or not (skill_root / procedure).is_file():
+                fail(errors, path, f"agent_slots[{index}] references a missing skill procedure {procedure!r}")
 
 
 def main() -> int:
     errors: list[str] = []
-    crew_catalogs = sorted((ROOT / "crew-agents").glob("*/catalog.json"))
-    crew_templates: dict[str, Path] = {}
-    if not crew_catalogs:
-        errors.append("playbooks/crew-agents: no Crew catalogs found")
-    for catalog_path in crew_catalogs:
-        try:
-            catalog = json.loads(catalog_path.read_text())
-            agents = catalog["agents"]
-        except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
-            fail(errors, catalog_path, f"invalid Crew catalog: {exc}")
-            continue
-        if catalog.get("schema_version") != 1 or not isinstance(agents, list):
-            fail(errors, catalog_path, "Crew catalog needs schema_version 1 and an agents list")
-            continue
-        for index, agent in enumerate(agents):
-            agent_id = agent.get("id") if isinstance(agent, dict) else None
-            if not isinstance(agent_id, str) or not KEBAB_CASE.fullmatch(agent_id):
-                fail(errors, catalog_path, f"agents[{index}] needs a canonical id")
-            elif agent_id in crew_templates:
-                fail(errors, catalog_path, f"duplicate Crew id {agent_id} also used by {crew_templates[agent_id].relative_to(ROOT.parent)}")
-            else:
-                crew_templates[agent_id] = catalog_path
     packages = sorted(
         path.parent
         for path in ROOT.rglob("playbook.json")
@@ -387,7 +366,7 @@ def main() -> int:
 
     known_ids = set(by_id)
     for path, manifest in manifests:
-        validate_crew_bindings(path, manifest, set(crew_templates), errors)
+        validate_crew_bindings(path, manifest, errors)
         relations: list[object] = []
         if manifest.get("setup_playbook"):
             relations.append(manifest["setup_playbook"])

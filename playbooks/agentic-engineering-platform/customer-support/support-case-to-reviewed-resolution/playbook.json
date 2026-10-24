@@ -42,9 +42,9 @@
     "Manual route evidence, action ledger, and activation choice"
   ],
   "agent_slots": [
-    {"id": "triage", "agent_playbook_id": "support-triage-assistant", "required": true, "output": "support-case-triage/v1"},
-    {"id": "reply", "agent_playbook_id": "support-reply-drafter", "required": true, "output": "support-reply-draft/v1"},
-    {"id": "escalation", "agent_playbook_id": "escalation-coordinator", "required": false, "output": "support-escalation-brief/v1"}
+    {"id": "triage", "procedure": "customer-work/references/support-triage-assistant.md", "required": true, "output": "support-case-triage/v1"},
+    {"id": "reply", "procedure": "customer-work/references/support-reply-drafter.md", "required": true, "output": "support-reply-draft/v1"},
+    {"id": "escalation", "procedure": "customer-work/references/escalation-coordinator.md", "required": false, "output": "support-escalation-brief/v1"}
   ],
   "handoffs": [
     {"id": "triage-to-reply", "from": "triage", "to": "reply", "artifact_type": "support-case-triage/v1", "required": true},

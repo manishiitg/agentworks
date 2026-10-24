@@ -1380,20 +1380,6 @@ export const agentApi = {
     return response.data
   },
 
-  changeProjectTemplate: async (profileId: string, projectId: string, action: 'install_template' | 'remove_template', templateId: string): Promise<{ templates: { id: string; version: number }[]; selected_skills: string[] }> => {
-    try {
-      const response = await api.post(
-        `/api/agent-profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}/templates`,
-        { action, template_id: templateId },
-      )
-      return response.data
-    } catch (cause) {
-      const message = (cause as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
-      if (typeof message === 'string' && message) throw new Error(message)
-      throw cause
-    }
-  },
-
   deleteAgentProfileProject: async (profileId: string, projectId: string): Promise<{ success: boolean }> => {
     const response = await api.delete(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}`,

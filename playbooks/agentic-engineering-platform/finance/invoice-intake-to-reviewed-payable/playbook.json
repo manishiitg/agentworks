@@ -40,8 +40,8 @@
     "One manual invoice review, action ledger and activation choice"
   ],
   "agent_slots": [
-    {"id": "intake", "agent_playbook_id": "document-intake-assistant", "required": true, "output": "document-intake-record/v1"},
-    {"id": "payables", "agent_playbook_id": "spend-payables-coordinator", "required": true, "output": "payable-review/v1"}
+    {"id": "intake", "procedure": "team-work/references/document-intake-assistant.md", "required": true, "output": "document-intake-record/v1"},
+    {"id": "payables", "procedure": "finance-work/references/spend-payables-coordinator.md", "required": true, "output": "payable-review/v1"}
   ],
   "handoffs": [
     {"id": "intake-to-payables", "from": "intake", "to": "payables", "artifact_type": "document-intake-record/v1", "required": true}

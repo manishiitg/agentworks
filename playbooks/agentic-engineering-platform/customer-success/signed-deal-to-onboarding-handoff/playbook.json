@@ -31,8 +31,8 @@
   "pulse_focus": [{"module":"strategic_review","label":"Signed deal handoff","focus_areas":["Signed accounts waiting for exact CS acceptance","Scope, entitlement or first-value conflicts before onboarding"],"review_when":["A contract revision, entitlement or owner changes, or an accepted account has no onboarding route"]}],
   "outputs": ["Reviewed Sales and CS Crew roster with source map", "Validated sales-cs-handoff/v1", "Validated onboarding-acceptance/v1 with receiving-owner decision", "Manual case, blockers and activation choice"],
   "agent_slots": [
-    {"id":"sales","agent_playbook_id":"deal-follow-through-coordinator","required":true,"output":"sales-cs-handoff/v1"},
-    {"id":"onboarding","agent_playbook_id":"customer-onboarding-coordinator","required":true,"output":"onboarding-acceptance/v1"}
+    {"id":"sales","procedure": "sales-work/references/deal-follow-through-coordinator.md","required":true,"output":"sales-cs-handoff/v1"},
+    {"id":"onboarding","procedure": "customer-work/references/customer-onboarding-coordinator.md","required":true,"output":"onboarding-acceptance/v1"}
   ],
   "handoffs": [{"id":"sales-to-onboarding","from":"sales","to":"onboarding","artifact_type":"sales-cs-handoff/v1","required":true}],
   "next_playbooks": ["new-customer-to-first-value"],

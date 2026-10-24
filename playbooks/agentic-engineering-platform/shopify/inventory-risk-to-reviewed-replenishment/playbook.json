@@ -30,8 +30,8 @@
   "pulse_focus": [{"module":"strategic_review","label":"Supplier replenishment review","focus_areas":["Whether item/location stock risks have a justified reorder quantity and owner","Whether ordered units and actual received units remain separate"],"review_when":["Demand, available, incoming or supplier terms change; a proposed PO lacks owner decision; ordered units miss expected receipt"]}],
   "outputs": ["Reviewed Crew roster and inventory/supplier authority map", "Validated item/location stock signal", "Recomputable reorder or defer review with unknowns", "Separate approved PO and transfer receipt when later executed", "Manual route and activation choice"],
   "agent_slots": [
-    {"id":"catalog","agent_playbook_id":"catalog-merchandising-analyst","required":true,"output":"inventory-availability-exception/v1"},
-    {"id":"procurement","agent_playbook_id":"replenishment-planner","required":true,"output":"replenishment-review/v1"}
+    {"id":"catalog","procedure": "store-work/references/catalog-merchandising-analyst.md","required":true,"output":"inventory-availability-exception/v1"},
+    {"id":"procurement","procedure": "store-work/references/replenishment-planner.md","required":true,"output":"replenishment-review/v1"}
   ],
   "handoffs": [{"id":"inventory-to-replenishment","from":"catalog","to":"procurement","artifact_type":"inventory-availability-exception/v1","required":true}],
   "setup_checks": ["goal_owner", "item_location_scope", "inventory_demand_policy", "supplier_terms", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]

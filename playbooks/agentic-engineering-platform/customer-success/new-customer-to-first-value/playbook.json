@@ -36,9 +36,9 @@
   ],
   "outputs": ["Reviewed Customer Success Crew roster and source map", "Validated onboarding milestone register", "Evidence-linked first-value readout", "Optional account health brief", "Manual route and activation decision"],
   "agent_slots": [
-    { "id": "onboarding", "agent_playbook_id": "customer-onboarding-coordinator", "required": true, "output": "onboarding-milestone-register/v1" },
-    { "id": "adoption", "agent_playbook_id": "product-adoption-analyst", "required": true, "output": "first-value-readout/v1" },
-    { "id": "health", "agent_playbook_id": "customer-health-coordinator", "required": false, "output": "customer-health-brief/v1" }
+    { "id": "onboarding", "procedure": "customer-work/references/customer-onboarding-coordinator.md", "required": true, "output": "onboarding-milestone-register/v1" },
+    { "id": "adoption", "procedure": "customer-work/references/product-adoption-analyst.md", "required": true, "output": "first-value-readout/v1" },
+    { "id": "health", "procedure": "customer-work/references/customer-health-coordinator.md", "required": false, "output": "customer-health-brief/v1" }
   ],
   "handoffs": [
     { "id": "onboarding-to-adoption", "from": "onboarding", "to": "adoption", "artifact_type": "onboarding-milestone-register/v1", "required": true },

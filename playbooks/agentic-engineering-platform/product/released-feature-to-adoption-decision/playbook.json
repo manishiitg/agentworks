@@ -31,8 +31,8 @@
   "pulse_focus": [{"module":"strategic_review","label":"Released feature adoption","focus_areas":["Eligible versus exposed versus using account counts and source coverage", "Owner decisions on released features without unsupported causal claims"],"review_when":["A complete comparable window arrives, instrumentation or flag revision changes, or an owner decision remains pending"]}],
   "outputs": ["Reviewed Crew roster and source/rule map", "Validated feature-adoption-observation/v1", "Validated feature-adoption-decision/v1 with current issue read", "Manual case, owner state and activation choice"],
   "agent_slots": [
-    {"id":"adoption","agent_playbook_id":"product-adoption-analyst","required":true,"output":"feature-adoption-observation/v1"},
-    {"id":"product","agent_playbook_id":"product-feedback-coordinator","required":true,"output":"feature-adoption-decision/v1"}
+    {"id":"adoption","procedure": "customer-work/references/product-adoption-analyst.md","required":true,"output":"feature-adoption-observation/v1"},
+    {"id":"product","procedure": "team-work/references/product-feedback-coordinator.md","required":true,"output":"feature-adoption-decision/v1"}
   ],
   "handoffs": [{"id":"adoption-to-product","from":"adoption","to":"product","artifact_type":"feature-adoption-observation/v1","required":true}],
   "setup_checks": ["goal_owner", "release_scope", "measurement_rule", "target_sample", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]

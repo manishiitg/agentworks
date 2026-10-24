@@ -32,8 +32,8 @@
   "pulse_focus": [{"module": "strategic_review", "label": "Access exception follow-through", "focus_areas": ["Whether a claimed permission mismatch is supported by approved policy and direct server evidence", "Whether a reviewed fix reached the affected build and an independent same-cell retest supports closure"], "review_when": ["Policy or build changes, an exception remains unowned, a deployment lands, or a retest completes"]}],
   "outputs": ["Reviewed Security Crew roster and written test scope", "Validated access-review-matrix/v1 with exact policy cell and direct server observation", "Validated access-remediation-ledger/v1 with change, deployment and independent same-cell retest state", "Manual case, owner disposition and activation choice"],
   "agent_slots": [
-    {"id": "access", "agent_playbook_id": "access-review-analyst", "required": true, "output": "access-review-matrix/v1"},
-    {"id": "remediation", "agent_playbook_id": "security-remediation-coordinator", "required": true, "output": "access-remediation-ledger/v1"}
+    {"id": "access", "procedure": "software-work/references/access-review-analyst.md", "required": true, "output": "access-review-matrix/v1"},
+    {"id": "remediation", "procedure": "software-work/references/security-remediation-coordinator.md", "required": true, "output": "access-remediation-ledger/v1"}
   ],
   "handoffs": [{"id": "access-to-remediation", "from": "access", "to": "remediation", "artifact_type": "access-review-matrix/v1", "required": true}],
   "setup_checks": ["scope_owner", "policy_matrix", "isolated_identity", "direct_observation", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]

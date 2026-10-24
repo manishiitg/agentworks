@@ -124,13 +124,13 @@
   "agent_slots": [
     {
       "id": "launch",
-      "agent_playbook_id": "launch-coordinator",
+      "procedure": "growth-work/references/launch-coordinator.md",
       "required": true,
       "output": "launch-signal-register/v1"
     },
     {
       "id": "revenue",
-      "agent_playbook_id": "revenue-operations-analyst",
+      "procedure": "growth-work/references/revenue-operations-analyst.md",
       "required": true,
       "output": "gtm-funnel-reconciliation/v1"
     }

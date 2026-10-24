@@ -124,13 +124,13 @@
   "agent_slots": [
     {
       "id": "release",
-      "agent_playbook_id": "product-release-coordinator",
+      "procedure": "team-work/references/product-release-coordinator.md",
       "required": true,
       "output": "product-release-readiness/v1"
     },
     {
       "id": "adoption",
-      "agent_playbook_id": "product-adoption-analyst",
+      "procedure": "customer-work/references/product-adoption-analyst.md",
       "required": true,
       "output": "feature-adoption-observation/v1"
     }

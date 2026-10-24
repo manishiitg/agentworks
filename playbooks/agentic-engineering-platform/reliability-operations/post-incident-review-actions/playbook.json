@@ -142,13 +142,13 @@
   "agent_slots": [
     {
       "id": "review",
-      "agent_playbook_id": "post-incident-reviewer",
+      "procedure": "software-work/references/post-incident-reviewer.md",
       "required": true,
       "output": "post-incident-review/v1"
     },
     {
       "id": "follow_through",
-      "agent_playbook_id": "improvement-follow-through-coordinator",
+      "procedure": "software-work/references/improvement-follow-through-coordinator.md",
       "required": true,
       "output": "incident-improvement-register/v1"
     }

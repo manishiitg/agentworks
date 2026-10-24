@@ -36,14 +36,14 @@
   "pulse_focus": [{ "module": "strategic_review", "label": "Website growth progress", "focus_areas": ["Whether shipped work serves the target buyer and useful visitor action", "Evidence quality and comparability of traffic signals"], "review_when": ["The site or offer changes, an action ships, or comparable data becomes available"] }],
   "outputs": ["Reviewed Crew roster and access map", "Versioned growth brief and search opportunity handoff", "Manual two-Crew test run", "Optional approved draft, verified shipped change, distribution plan and traffic readout", "Website Growth dashboard with evidence and open questions", "Paused recurrence proposal"],
   "agent_slots": [
-    { "id": "strategist", "agent_playbook_id": "website-growth-starter", "required": true, "output": "growth-priority-brief/v1" },
-    { "id": "search", "agent_playbook_id": "search-opportunity-mapper", "required": true, "output": "search-opportunity-list/v1" },
-    { "id": "technical_seo", "agent_playbook_id": "seo-analyst", "required": false, "output": "seo-issue-list/v1" },
-    { "id": "content", "agent_playbook_id": "content-brief-writer", "required": false, "output": "content-brief/v1" },
-    { "id": "page", "agent_playbook_id": "content-page-builder", "required": false, "output": "reviewable-page-draft/v1" },
-    { "id": "publication", "agent_playbook_id": "website-publishing-coordinator", "required": false, "output": "shipped-change/v1" },
-    { "id": "distribution", "agent_playbook_id": "content-distribution-coordinator", "required": false, "output": "distribution-plan/v1" },
-    { "id": "measurement", "agent_playbook_id": "traffic-engagement-analyst", "required": false, "output": "traffic-readout/v1" }
+    { "id": "strategist", "procedure": "growth-work/references/website-growth-starter.md", "required": true, "output": "growth-priority-brief/v1" },
+    { "id": "search", "procedure": "growth-work/references/search-opportunity-mapper.md", "required": true, "output": "search-opportunity-list/v1" },
+    { "id": "technical_seo", "procedure": "growth-work/references/seo-analyst.md", "required": false, "output": "seo-issue-list/v1" },
+    { "id": "content", "procedure": "growth-work/references/content-brief-writer.md", "required": false, "output": "content-brief/v1" },
+    { "id": "page", "procedure": "growth-work/references/content-page-builder.md", "required": false, "output": "reviewable-page-draft/v1" },
+    { "id": "publication", "procedure": "growth-work/references/website-publishing-coordinator.md", "required": false, "output": "shipped-change/v1" },
+    { "id": "distribution", "procedure": "growth-work/references/content-distribution-coordinator.md", "required": false, "output": "distribution-plan/v1" },
+    { "id": "measurement", "procedure": "growth-work/references/traffic-engagement-analyst.md", "required": false, "output": "traffic-readout/v1" }
   ],
   "handoffs": [
     { "id": "strategy-to-search", "from": "strategist", "to": "search", "artifact_type": "growth-priority-brief/v1", "required": true },

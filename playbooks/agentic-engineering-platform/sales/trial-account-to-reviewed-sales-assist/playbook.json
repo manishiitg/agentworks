@@ -42,8 +42,8 @@
     "Manual case, owner decision, action ledger and activation choice"
   ],
   "agent_slots": [
-    {"id": "adoption", "agent_playbook_id": "product-adoption-analyst", "required": true, "output": "trial-usage-observation/v1"},
-    {"id": "sales", "agent_playbook_id": "sales-followup-coordinator", "required": true, "output": "trial-sales-assist/v1"}
+    {"id": "adoption", "procedure": "customer-work/references/product-adoption-analyst.md", "required": true, "output": "trial-usage-observation/v1"},
+    {"id": "sales", "procedure": "sales-work/references/sales-followup-coordinator.md", "required": true, "output": "trial-sales-assist/v1"}
   ],
   "handoffs": [
     {"id": "adoption-to-sales", "from": "adoption", "to": "sales", "artifact_type": "trial-usage-observation/v1", "required": true}

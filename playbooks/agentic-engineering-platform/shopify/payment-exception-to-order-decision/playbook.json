@@ -30,8 +30,8 @@
   "pulse_focus": [{"module":"strategic_review","label":"Payment exception follow-through","focus_areas":["Whether payment exceptions reach the correct owner before fulfillment","Whether release or customer action is based on successful transaction and provider evidence"],"review_when":["An authorization nears expiry, a transaction changes state, or an approved release lacks a receipt"]}],
   "outputs": ["Reviewed Crew roster and transaction source map", "Validated payment exception", "Owner-safe hold or release review", "Provider-confirmed action and later order/fulfillment check when executed", "Manual route and activation choice"],
   "agent_slots": [
-    {"id":"payments","agent_playbook_id":"payment-operations-investigator","required":true,"output":"payment-exception/v1"},
-    {"id":"operations","agent_playbook_id":"store-operations-coordinator","required":true,"output":"payment-order-decision/v1"}
+    {"id":"payments","procedure": "store-work/references/payment-operations-investigator.md","required":true,"output":"payment-exception/v1"},
+    {"id":"operations","procedure": "store-work/references/store-operations-coordinator.md","required":true,"output":"payment-order-decision/v1"}
   ],
   "handoffs": [{"id":"payment-to-operations","from":"payments","to":"operations","artifact_type":"payment-exception/v1","required":true}],
   "setup_checks": ["goal_owner", "order_transaction_scope", "payment_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "action_ledger", "activation_choice"]

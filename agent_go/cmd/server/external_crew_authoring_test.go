@@ -98,6 +98,10 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 		t.Fatalf("refused update must not change the role: %v", got["role"])
 	}
 
+	// Removing the template feature must not uninstall existing local skills or user files.
+	env.mock.mu.Lock()
+	env.mock.files[root+"/templates/old/SETUP.md"] = "User notes from an existing Crew"
+	env.mock.mu.Unlock()
 	code, out = externalCrewRequest(t, env, owner, "update_crew", map[string]any{
 		"crew_id": crewID, "role": "Escalation lead", "purpose": "Escalate the hard tickets.",
 		"functions": map[string]any{"upsert": []any{map[string]any{"name": "escalate", "description": "Escalate a ticket.", "instructions": "Page the on-call owner."}}},
@@ -117,6 +121,12 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	schedules = out["schedules"].([]any)
 	if len(schedules) != 2 || schedules[0].(map[string]any)["enabled"] != false || schedules[0].(map[string]any)["run_destination"] != "isolated" {
 		t.Fatalf("schedules after update = %v", schedules)
+	}
+	if crewAuthoringFile(t, env, root+"/templates/old/SETUP.md") != "User notes from an existing Crew" || !strings.Contains(crewAuthoringFile(t, env, root+"/skills/triage/SKILL.md"), "Sort tickets by severity.") {
+		t.Fatal("updating a Crew removed installed skills or existing user files")
+	}
+	if _, exists := out["templates"]; exists {
+		t.Fatal("get_crew advertises retired template metadata")
 	}
 	if crewAuthoringFile(t, env, root+"/notes/runbook.md") != "Escalation runbook" {
 		t.Fatal("update_crew must write project files")
@@ -285,5 +295,12 @@ func TestWriteCrewFileOwnerAnywhereOthersOnlyTheirSharedFolder(t *testing.T) {
 	}
 	if externalTokenAllows(&UserClaims{AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}, tool) {
 		t.Fatal("crews:read alone must not reach write_crew_file")
+	}
+}
+
+func TestCrewAuthoringUsesSkillsWithoutTemplateSchema(t *testing.T) {
+	props, _, _ := externalCrewSpecSchemas()
+	if props["templates"] != nil || props["selected_skills"] == nil || props["files"] == nil {
+		t.Fatal("Crew spec must expose ordinary skills and files without a separate template mechanism")
 	}
 }

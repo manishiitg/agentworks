@@ -125,19 +125,19 @@
   "agent_slots": [
     {
       "id": "pricing",
-      "agent_playbook_id": "pricing-packaging-analyst",
+      "procedure": "growth-work/references/pricing-packaging-analyst.md",
       "required": true,
       "output": "gtm-offer-decision/v1"
     },
     {
       "id": "strategy",
-      "agent_playbook_id": "gtm-strategy-analyst",
+      "procedure": "growth-work/references/gtm-strategy-analyst.md",
       "required": true,
       "output": "gtm-strategy-brief/v1"
     },
     {
       "id": "launch",
-      "agent_playbook_id": "launch-coordinator",
+      "procedure": "growth-work/references/launch-coordinator.md",
       "required": true,
       "output": "gtm-launch-readiness/v1"
     }

@@ -46,11 +46,11 @@ type playbookCatalogItem struct {
 }
 
 type playbookAgentSlot struct {
-	ID              string   `json:"id"`
-	AgentPlaybookID string   `json:"agent_playbook_id"`
-	Accepts         []string `json:"accepts,omitempty"`
-	Required        bool     `json:"required"`
-	Output          string   `json:"output"`
+	ID        string   `json:"id"`
+	Procedure string   `json:"procedure"`
+	Accepts   []string `json:"accepts,omitempty"`
+	Required  bool     `json:"required"`
+	Output    string   `json:"output"`
 }
 
 type playbookHandoff struct {

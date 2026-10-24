@@ -60,7 +60,7 @@ def validate(package: Path, artifacts: list[dict]) -> None:
         label = slot['id']
         if not isinstance(artifact, dict) or artifact.get('artifact_type') != slot['output']:
             raise ValueError(f'{label} has the wrong artifact type')
-        if artifact.get('producer_id') != slot['agent_playbook_id']:
+        if artifact.get('producer_id') != slot['procedure'].rsplit('/', 1)[-1].removesuffix('.md'):
             raise ValueError(f'{label} has the wrong Crew producer')
         for field in ('artifact_id', 'tenant_id', 'subject_id', 'source_revision', *identity):
             text(artifact.get(field), f'{label}.{field}')

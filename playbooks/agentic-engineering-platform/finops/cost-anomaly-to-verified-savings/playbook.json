@@ -153,19 +153,19 @@
   "agent_slots": [
     {
       "id": "cost",
-      "agent_playbook_id": "cloud-cost-analyst",
+      "procedure": "software-work/references/cloud-cost-analyst.md",
       "required": true,
       "output": "cloud-cost-review/v1"
     },
     {
       "id": "delivery",
-      "agent_playbook_id": "engineering-delivery-coordinator",
+      "procedure": "software-work/references/engineering-delivery-coordinator.md",
       "required": true,
       "output": "cloud-change-review/v1"
     },
     {
       "id": "finance",
-      "agent_playbook_id": "finance-analyst",
+      "procedure": "finance-work/references/finance-analyst.md",
       "required": true,
       "output": "cloud-savings-readout/v1"
     }

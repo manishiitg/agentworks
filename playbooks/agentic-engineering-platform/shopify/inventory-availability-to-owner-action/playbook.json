@@ -30,8 +30,8 @@
   "pulse_focus": [{"module":"strategic_review","label":"Inventory exception follow-through","focus_areas":["Whether high-impact variant/location mismatches reach a named owner","Whether approved corrections are confirmed in source and storefront"],"review_when":["An inventory mismatch repeats, a stock deadline approaches, or an approved action lacks retest evidence"]}],
   "outputs": ["Reviewed Crew roster and source authority map", "Validated variant/location exception", "Owner-reviewed action and optional provider receipt", "Verified inventory/storefront state or unresolved case", "Manual route and activation choice"],
   "agent_slots": [
-    {"id":"catalog","agent_playbook_id":"catalog-merchandising-analyst","required":true,"output":"inventory-availability-exception/v1"},
-    {"id":"operations","agent_playbook_id":"store-operations-coordinator","required":true,"output":"inventory-action-review/v1"}
+    {"id":"catalog","procedure": "store-work/references/catalog-merchandising-analyst.md","required":true,"output":"inventory-availability-exception/v1"},
+    {"id":"operations","procedure": "store-work/references/store-operations-coordinator.md","required":true,"output":"inventory-action-review/v1"}
   ],
   "handoffs": [{"id":"catalog-to-operations","from":"catalog","to":"operations","artifact_type":"inventory-availability-exception/v1","required":true}],
   "setup_checks": ["goal_owner", "variant_location_scope", "inventory_authority", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "action_ledger", "activation_choice"]

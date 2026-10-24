@@ -31,8 +31,8 @@
   "pulse_focus": [{"module":"strategic_review","label":"Vendor purchase decisions","focus_areas":["Requirement and quote evidence for the exact plan", "Current duplicate, security, privacy, budget and owner review state"],"review_when":["A quote expires, a vendor or requirement changes, a gate is unresolved, or approval is pending"]}],
   "outputs": ["Reviewed Crew and source map", "Validated vendor-comparison/v1 with cost assumptions and criterion evidence", "Validated vendor-purchase-review/v1 with current gates and owner state", "Manual case, blockers and activation choice"],
   "agent_slots": [
-    {"id":"research","agent_playbook_id":"vendor-researcher","required":true,"output":"vendor-comparison/v1"},
-    {"id":"payables","agent_playbook_id":"spend-payables-coordinator","required":true,"output":"vendor-purchase-review/v1"}
+    {"id":"research","procedure": "team-work/references/vendor-researcher.md","required":true,"output":"vendor-comparison/v1"},
+    {"id":"payables","procedure": "finance-work/references/spend-payables-coordinator.md","required":true,"output":"vendor-purchase-review/v1"}
   ],
   "handoffs": [{"id":"research-to-payables","from":"research","to":"payables","artifact_type":"vendor-comparison/v1","required":true}],
   "setup_checks": ["goal_owner", "request_scope", "requirements_rule", "commercial_rule", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]

@@ -77,7 +77,7 @@ func searchPlaybooks(items []playbookCatalogItem, installed []InstalledPlaybook,
 		searchable = append(searchable, item.RequiredCapabilities...)
 		searchable = append(searchable, item.Outputs...)
 		for _, slot := range item.AgentSlots {
-			searchable = append(searchable, slot.ID, slot.AgentPlaybookID)
+			searchable = append(searchable, slot.ID, slot.Procedure)
 			searchable = append(searchable, slot.Accepts...)
 		}
 		for _, tool := range item.RecommendedTools {

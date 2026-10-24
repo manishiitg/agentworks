@@ -34,8 +34,8 @@
   ],
   "outputs": ["Reviewed Engineering Crew roster and source map", "Validated incident investigation", "Owner-reviewed delivery blocker ledger", "Service recovery evidence and closure decision", "Manual route and activation decision"],
   "agent_slots": [
-    { "id": "investigation", "agent_playbook_id": "incident-investigator", "required": true, "output": "incident-investigation/v1" },
-    { "id": "delivery", "agent_playbook_id": "engineering-delivery-coordinator", "required": true, "output": "engineering-blocker-ledger/v1" }
+    { "id": "investigation", "procedure": "software-work/references/incident-investigator.md", "required": true, "output": "incident-investigation/v1" },
+    { "id": "delivery", "procedure": "software-work/references/engineering-delivery-coordinator.md", "required": true, "output": "engineering-blocker-ledger/v1" }
   ],
   "handoffs": [
     { "id": "investigation-to-delivery", "from": "investigation", "to": "delivery", "artifact_type": "incident-investigation/v1", "required": true }

@@ -125,19 +125,19 @@
   "agent_slots": [
     {
       "id": "discovery",
-      "agent_playbook_id": "product-discovery-researcher",
+      "procedure": "team-work/references/product-discovery-researcher.md",
       "required": true,
       "output": "product-opportunity-brief/v1"
     },
     {
       "id": "priority",
-      "agent_playbook_id": "roadmap-prioritization-analyst",
+      "procedure": "team-work/references/roadmap-prioritization-analyst.md",
       "required": true,
       "output": "product-priority-decision/v1"
     },
     {
       "id": "requirements",
-      "agent_playbook_id": "product-requirements-coordinator",
+      "procedure": "team-work/references/product-requirements-coordinator.md",
       "required": true,
       "output": "product-requirements-brief/v1"
     }

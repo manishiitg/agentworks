@@ -124,13 +124,13 @@
   "agent_slots": [
     {
       "id": "pricing",
-      "agent_playbook_id": "pricing-packaging-analyst",
+      "procedure": "growth-work/references/pricing-packaging-analyst.md",
       "required": true,
       "output": "gtm-offer-decision/v1"
     },
     {
       "id": "enablement",
-      "agent_playbook_id": "sales-enablement-coordinator",
+      "procedure": "growth-work/references/sales-enablement-coordinator.md",
       "required": true,
       "output": "gtm-enablement-brief/v1"
     }

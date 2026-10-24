@@ -30,8 +30,8 @@
   "pulse_focus": [{"module":"strategic_review","label":"Checkout recovery review","focus_areas":["Eligible checkouts with owner-reviewed next action","Duplicate contacts, suppressed checkouts, and provider-confirmed outcomes"],"review_when":["Checkout or consent state changes, an existing automation schedules a send, or an approved message lacks a provider receipt"]}],
   "outputs": ["Reviewed Crew roster, source and contact-policy map", "Validated checkout recovery signal", "Suppressed, unknown, or owner-reviewed unsent draft", "Separate provider send and linked-order evidence if later executed", "Manual route and activation choice"],
   "agent_slots": [
-    {"id":"growth","agent_playbook_id":"shopify-growth-analyst","required":true,"output":"checkout-recovery-signal/v1"},
-    {"id":"recovery","agent_playbook_id":"checkout-recovery-coordinator","required":true,"output":"checkout-recovery-review/v1"}
+    {"id":"growth","procedure": "store-work/references/shopify-growth-analyst.md","required":true,"output":"checkout-recovery-signal/v1"},
+    {"id":"recovery","procedure": "store-work/references/checkout-recovery-coordinator.md","required":true,"output":"checkout-recovery-review/v1"}
   ],
   "handoffs": [{"id":"signal-to-recovery","from":"growth","to":"recovery","artifact_type":"checkout-recovery-signal/v1","required":true}],
   "setup_checks": ["goal_owner", "checkout_scope", "contact_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "contact_ledger", "activation_choice"]

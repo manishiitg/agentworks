@@ -32,10 +32,10 @@
   "pulse_focus": [{ "module": "strategic_review", "label": "Finance exception progress", "focus_areas": ["Whether open exceptions are resolved without duplicate or unauthorized actions", "Whether billed, collected, and recognized amounts stay distinct and source-linked"], "review_when": ["A billing policy changes, exceptions age past the owner's threshold, or a close period completes"] }],
   "outputs": ["Reviewed Crew roster and source map", "Validated billing exception queue", "Source-linked finance impact readout", "Manual two-Crew test run and review decisions", "Paused or manual recurrence policy"],
   "agent_slots": [
-    { "id": "billing", "agent_playbook_id": "billing-operations-coordinator", "required": true, "output": "billing-exception-queue/v1" },
-    { "id": "finance", "agent_playbook_id": "finance-analyst", "required": true, "output": "finance-impact-readout/v1" },
-    { "id": "close", "agent_playbook_id": "revenue-close-analyst", "required": false, "output": "revenue-close-exceptions/v1" },
-    { "id": "payables", "agent_playbook_id": "spend-payables-coordinator", "required": false, "output": "payables-exception-queue/v1" }
+    { "id": "billing", "procedure": "finance-work/references/billing-operations-coordinator.md", "required": true, "output": "billing-exception-queue/v1" },
+    { "id": "finance", "procedure": "finance-work/references/finance-analyst.md", "required": true, "output": "finance-impact-readout/v1" },
+    { "id": "close", "procedure": "finance-work/references/revenue-close-analyst.md", "required": false, "output": "revenue-close-exceptions/v1" },
+    { "id": "payables", "procedure": "finance-work/references/spend-payables-coordinator.md", "required": false, "output": "payables-exception-queue/v1" }
   ],
   "handoffs": [
     { "id": "billing-to-finance", "from": "billing", "to": "finance", "artifact_type": "billing-exception-queue/v1", "required": true }

@@ -124,13 +124,13 @@
   "agent_slots": [
     {
       "id": "billing",
-      "agent_playbook_id": "billing-operations-coordinator",
+      "procedure": "finance-work/references/billing-operations-coordinator.md",
       "required": true,
       "output": "refund-decision/v1"
     },
     {
       "id": "close",
-      "agent_playbook_id": "revenue-close-analyst",
+      "procedure": "finance-work/references/revenue-close-analyst.md",
       "required": true,
       "output": "refund-reconciliation/v1"
     }

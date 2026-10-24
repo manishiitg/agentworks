@@ -67,7 +67,7 @@ it('lists Crew projects with identity and selects their guarded workspace path',
     title: 'Release operations',
     description: '',
     identity: { name: 'Harbor', icon: '⚓' },
-    templates: [],
+
     sessionId: 'work:project:crew-1',
     workspacePath: 'Chats/Work/projects/release-operations-crew-1',
     createdAt: '2026-09-18T00:00:00Z',
@@ -153,7 +153,7 @@ it('keeps the highlighted Crew when a slow workflow list inserts rows ahead of i
   let finishWorkflows!: (result: Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>) => void
   vi.mocked(workflowManifestApi.listWorkflowManifests).mockReturnValueOnce(new Promise(resolve => { finishWorkflows = resolve }))
   vi.mocked(loadProductProjects).mockResolvedValueOnce(['alpha', 'beta'].map(id => ({
-    schemaVersion: 1, product: 'work', id, title: id, description: '', templates: [],
+    schemaVersion: 1, product: 'work', id, title: id, description: '',
     sessionId: `work:${id}`, workspacePath: `Chats/Work/projects/${id}`,
     createdAt: '', updatedAt: '', selectedServers: [], selectedSkills: [],
     selectedSecrets: [], selectedGlobalSecrets: [], workflowContextPaths: [],

@@ -34,8 +34,8 @@
   "pulse_focus": [{"module": "strategic_review", "label": "Order exception follow-through", "focus_areas": ["Whether source states and customer-facing claims still agree", "Whether an exception has an owner and a safe next check"], "review_when": ["The order, payment, carrier or case revision changes, or the promised time passes"]}],
   "outputs": ["Reviewed Operations and Support Crew bindings", "Validated exact-order exception", "Current case-linked unsent customer update or explicit no-message decision", "Owner review and manual run evidence", "Action ledger and activation choice"],
   "agent_slots": [
-    {"id": "operations", "agent_playbook_id": "order-operations-coordinator", "required": true, "output": "order-exception/v1"},
-    {"id": "support", "agent_playbook_id": "support-reply-drafter", "required": true, "output": "order-customer-update-review/v1"}
+    {"id": "operations", "procedure": "team-work/references/order-operations-coordinator.md", "required": true, "output": "order-exception/v1"},
+    {"id": "support", "procedure": "customer-work/references/support-reply-drafter.md", "required": true, "output": "order-customer-update-review/v1"}
   ],
   "handoffs": [{"id": "operations-to-support", "from": "operations", "to": "support", "artifact_type": "order-exception/v1", "required": true}],
   "setup_checks": ["goal_owner", "order_scope", "case_scope", "state_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]

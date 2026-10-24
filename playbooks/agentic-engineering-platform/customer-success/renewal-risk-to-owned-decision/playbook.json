@@ -31,8 +31,8 @@
   "pulse_focus": [{"module":"strategic_review","label":"Renewal decision readiness","focus_areas":["Contracts approaching notice with current owner decisions", "Accounts with source gaps, unresolved billing or health questions"],"review_when":["A notice deadline approaches, agreement changes, prior notice arrives, invoice state changes or health evidence is corrected"]}],
   "outputs": ["Reviewed Crew roster and contract, health and billing source map", "Validated renewal-health-brief/v1", "Validated renewal-decision-register/v1 with notice timing and owner state", "Manual case, blockers and activation choice"],
   "agent_slots": [
-    {"id":"health","agent_playbook_id":"customer-health-coordinator","required":true,"output":"renewal-health-brief/v1"},
-    {"id":"renewal","agent_playbook_id":"renewal-coordinator","required":true,"output":"renewal-decision-register/v1"}
+    {"id":"health","procedure": "customer-work/references/customer-health-coordinator.md","required":true,"output":"renewal-health-brief/v1"},
+    {"id":"renewal","procedure": "customer-work/references/renewal-coordinator.md","required":true,"output":"renewal-decision-register/v1"}
   ],
   "handoffs": [{"id":"health-to-renewal","from":"health","to":"renewal","artifact_type":"renewal-health-brief/v1","required":true}],
   "setup_checks": ["goal_owner", "account_scope", "contract_policy", "health_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]

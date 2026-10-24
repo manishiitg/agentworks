@@ -187,6 +187,13 @@ func RegisterProductSkills() error {
 				{Name: "crew-builder", Path: "skills/crew-builder/SKILL.md"},
 				{Name: "crew-agents", Path: "skills/crew-agents/SKILL.md"},
 				{Name: "crew-laptop", Path: "skills/crew-laptop/SKILL.md"},
+				{Name: "finance-work", Path: "skills/finance-work/SKILL.md"},
+				{Name: "customer-work", Path: "skills/customer-work/SKILL.md"},
+				{Name: "growth-work", Path: "skills/growth-work/SKILL.md"},
+				{Name: "sales-work", Path: "skills/sales-work/SKILL.md"},
+				{Name: "team-work", Path: "skills/team-work/SKILL.md"},
+				{Name: "software-work", Path: "skills/software-work/SKILL.md"},
+				{Name: "store-work", Path: "skills/store-work/SKILL.md"},
 				// Cowork (a Code project in Cowork mode): the playbook for a private business assistant.
 				{Name: "cowork-assistant", Path: "skills/cowork-assistant/SKILL.md"},
 				{Name: "cowork-browser-tasks", Path: "skills/cowork-browser-tasks/SKILL.md"},

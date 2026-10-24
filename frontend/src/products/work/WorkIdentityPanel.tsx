@@ -24,8 +24,6 @@ import { useProjectProduct } from './projectProduct'
 import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
 import { ProjectInstructionsCard } from './ProjectInstructionsCard'
-import type { CrewTemplateId } from './crewTemplates'
-import { CrewTemplatePicker } from './CrewTemplatePicker'
 import type { WorkRuntimeSelection } from './workTabs'
 import { useChatStore } from '../../stores/useChatStore'
 
@@ -54,7 +52,7 @@ function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<Wor
   }
 }
 
-// Code has a name only: rename and delete, no identity, purpose or templates.
+// Code has a name only: rename and delete, no identity or purpose.
 /** The mode this project was created in. It cannot change yet: "Switch mode" says so and offers a new project. */
 function ModeRow({ sessionId }: { sessionId: string }) {
   const mode = useProjectMode(sessionId)
@@ -78,12 +76,10 @@ function ModeRow({ sessionId }: { sessionId: string }) {
 }
 
 
-function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, projectTemplates, onInstallTemplate, onUpdateIdentity, onDeleteRequest }: {
+function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
   projectTitle: string
   projectPurpose: string
   projectIdentity?: ProductIdentity
-  projectTemplates: Array<{ id: string; version: number }>
-  onInstallTemplate: (id: CrewTemplateId) => Promise<void>
   onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
   onDeleteRequest: () => void
 }) {
@@ -189,7 +185,6 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, proje
         </div>
       </SettingsCard>
 
-      <CrewTemplatePicker projectTemplates={projectTemplates} onInstallTemplate={onInstallTemplate} onError={setError} />
 
       <SettingsCard
         icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}
@@ -334,7 +329,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
+export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectDescription, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
   workspacePath: string
   /** A Crew opened by a reader: the project instructions editor is the owner's. */
   shared?: boolean
@@ -343,8 +338,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
   projectTitle: string
   projectDescription: string
   projectIdentity?: ProductIdentity
-  projectTemplates: Array<{ id: string; version: number }>
-  onInstallTemplate: (id: CrewTemplateId) => Promise<void>
   tabId: string
   modelsOnly?: boolean
   openLocalFilesSettings?: boolean
@@ -401,8 +394,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           projectTitle={projectTitle}
           projectPurpose={projectDescription}
           projectIdentity={projectIdentity}
-          projectTemplates={projectTemplates}
-          onInstallTemplate={onInstallTemplate}
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}

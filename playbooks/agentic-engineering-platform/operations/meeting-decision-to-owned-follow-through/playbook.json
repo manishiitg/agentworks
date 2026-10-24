@@ -42,9 +42,9 @@
     "Manual route evidence, action ledger and activation choice"
   ],
   "agent_slots": [
-    {"id": "meeting", "agent_playbook_id": "meeting-actions-coordinator", "required": true, "output": "meeting-action-register/v1"},
-    {"id": "status", "agent_playbook_id": "project-status-reporter", "required": true, "output": "project-action-status/v1"},
-    {"id": "review", "agent_playbook_id": "chief-of-staff", "required": false, "output": "operations-review-brief/v1"}
+    {"id": "meeting", "procedure": "team-work/references/meeting-actions-coordinator.md", "required": true, "output": "meeting-action-register/v1"},
+    {"id": "status", "procedure": "team-work/references/project-status-reporter.md", "required": true, "output": "project-action-status/v1"},
+    {"id": "review", "procedure": "team-work/references/chief-of-staff.md", "required": false, "output": "operations-review-brief/v1"}
   ],
   "handoffs": [
     {"id": "meeting-to-status", "from": "meeting", "to": "status", "artifact_type": "meeting-action-register/v1", "required": true},

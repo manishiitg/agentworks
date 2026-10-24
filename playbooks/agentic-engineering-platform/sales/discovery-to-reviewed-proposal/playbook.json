@@ -133,19 +133,19 @@
   "agent_slots": [
     {
       "id": "briefing",
-      "agent_playbook_id": "sales-call-briefing",
+      "procedure": "sales-work/references/sales-call-briefing.md",
       "required": true,
       "output": "sales-call-brief/v1"
     },
     {
       "id": "proposal",
-      "agent_playbook_id": "proposal-drafter",
+      "procedure": "sales-work/references/proposal-drafter.md",
       "required": true,
       "output": "sales-proposal-draft/v1"
     },
     {
       "id": "research",
-      "agent_playbook_id": "account-researcher",
+      "procedure": "sales-work/references/account-researcher.md",
       "required": false,
       "output": "account-research-brief/v1"
     }

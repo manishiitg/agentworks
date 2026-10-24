@@ -37,11 +37,11 @@ class LibraryContractTests(unittest.TestCase):
         self.manifest["agent_slots"][0]["required"] = False
         self.assertTrue(any("cannot require an optional slot" in error for error in self.check_manifest()))
 
-    def test_rejects_uninstalled_crew_template(self):
+    def test_rejects_missing_skill_procedure(self):
         errors = []
-        self.manifest["agent_slots"][0]["agent_playbook_id"] = "missing-specialist"
-        validate_crew_bindings(self.manifest_path, self.manifest, {"deal-follow-through-coordinator"}, errors)
-        self.assertTrue(any("uninstalled Crew template 'missing-specialist'" in error for error in errors))
+        self.manifest["agent_slots"][0]["procedure"] = "software-work/references/missing.md"
+        validate_crew_bindings(self.manifest_path, self.manifest, errors)
+        self.assertTrue(any("missing skill procedure" in error for error in errors))
 
     def test_rejects_team_route_without_rejected_example(self):
         for example in (self.package / "examples").glob("invalid-*.json"):

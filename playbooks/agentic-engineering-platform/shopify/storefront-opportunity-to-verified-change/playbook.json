@@ -32,8 +32,8 @@
   ],
   "outputs": ["Reviewed Shopify Crew roster and source map", "Validated growth opportunity", "Catalog correction brief with pending merchant decision", "Verified publish evidence and comparable measurement or inconclusive result", "Manual route and activation decision"],
   "agent_slots": [
-    { "id": "growth", "agent_playbook_id": "shopify-growth-analyst", "required": true, "output": "shopify-growth-opportunity/v1" },
-    { "id": "catalog", "agent_playbook_id": "catalog-merchandising-analyst", "required": true, "output": "catalog-change-review/v1" }
+    { "id": "growth", "procedure": "store-work/references/shopify-growth-analyst.md", "required": true, "output": "shopify-growth-opportunity/v1" },
+    { "id": "catalog", "procedure": "store-work/references/catalog-merchandising-analyst.md", "required": true, "output": "catalog-change-review/v1" }
   ],
   "handoffs": [{ "id": "growth-to-catalog", "from": "growth", "to": "catalog", "artifact_type": "shopify-growth-opportunity/v1", "required": true }],
   "setup_checks": ["goal_owner", "store_market_scope", "metric_rule", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "change_ledger", "activation_choice"]

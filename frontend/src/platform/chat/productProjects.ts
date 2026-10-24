@@ -15,7 +15,6 @@ export type ProductProject<P extends string = string> = {
   title: string
   description: string
   identity?: ProductIdentity
-  templates: Array<{ id: string; version: number }>
   sessionId: string
   workspacePath: string
   createdAt: string
@@ -64,8 +63,6 @@ type ProductManifest = {
   title?: unknown
   description?: unknown
   identity?: unknown
-  template?: unknown
-  templates?: unknown
   session_id?: unknown
   created_at?: unknown
   updated_at?: unknown
@@ -87,15 +84,6 @@ function parseProductIdentity(value: unknown): ProductIdentity | undefined {
   return Object.values(identity).some(Boolean) ? identity : undefined
 }
 
-function parseProductTemplate(value: unknown): { id: string; version: number } | undefined {
-  if (!value || typeof value !== 'object') return undefined
-  const raw = value as Record<string, unknown>
-  const id = asString(raw.id)
-  return id && Number.isInteger(raw.version) && (raw.version as number) > 0
-    ? { id, version: raw.version as number }
-    : undefined
-}
-
 const localFileId = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 
 
@@ -106,12 +94,6 @@ function manifestMode(raw: ProductManifest): ProductMode | undefined {
 /** The server mode a project works in. */
 export function productMode(project: Pick<ProductProject, 'mode'>): ProductMode {
   return project.mode ?? 'dev'
-}
-
-function parseProductTemplates(raw: ProductManifest): Array<{ id: string; version: number }> {
-  const values = Array.isArray(raw.templates) ? raw.templates : raw.template ? [raw.template] : []
-  const parsed = values.map(parseProductTemplate).filter((item): item is { id: string; version: number } => Boolean(item))
-  return parsed.filter((item, index) => parsed.findIndex(other => other.id === item.id) === index)
 }
 
 function parseProductLLMConfig(value: unknown): PresetLLMConfig | undefined {
@@ -179,7 +161,6 @@ export function parseProductProjectManifest<P extends string>(
     title,
     description: asString(raw.description),
     identity: parseProductIdentity(raw.identity),
-    templates: parseProductTemplates(raw),
     sessionId,
     workspacePath,
     createdAt,
@@ -281,7 +262,6 @@ export async function createProductProject<P extends string>(options: {
   commitLabel: string
   llmConfig?: PresetLLMConfig
   identity?: ProductIdentity
-  templates?: readonly { id: string; version: number }[]
   selectedSkills?: readonly string[]
   initialFiles?: Readonly<Record<string, string>>
   runtimeManifestName?: string
@@ -292,7 +272,7 @@ export async function createProductProject<P extends string>(options: {
   if (options.product === 'work' || options.product === 'code') {
     const created = await agentApi.createProductProject(options.product, {
       name: title, purpose: description, icon: options.identity?.icon, role: options.identity?.role,
-      mode: options.mode, llm_config: options.llmConfig, templates: options.templates,
+      mode: options.mode, llm_config: options.llmConfig,
       selected_skills: options.selectedSkills, files: options.initialFiles,
     })
     const project = parseProductProjectManifest(JSON.stringify(created.product_manifest), created.workspace_path, options.product)
@@ -332,7 +312,6 @@ export async function createProductProject<P extends string>(options: {
     created_at: now,
     updated_at: now,
     ...(options.identity ? { identity: options.identity } : {}),
-    ...(options.templates?.length ? { templates: options.templates } : {}),
     ...(options.mode ? { mode: options.mode } : {}),
   }
   if (!options.runtimeManifestName) manifest.capabilities = capabilities
@@ -376,7 +355,6 @@ export async function createProductProject<P extends string>(options: {
     title,
     description,
     identity: options.identity,
-    templates: [...(options.templates || [])],
     sessionId,
     workspacePath,
     createdAt: now,

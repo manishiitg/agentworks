@@ -35,8 +35,8 @@
   ],
   "outputs": ["Reviewed Shopify Crew roster and source map", "Validated order exception record", "Return or refund decision brief and unsent customer draft", "Owner-approved action and provider receipt when executed", "Manual route and activation decision"],
   "agent_slots": [
-    { "id": "store_operations", "agent_playbook_id": "store-operations-coordinator", "required": true, "output": "store-order-exception/v1" },
-    { "id": "returns_refunds", "agent_playbook_id": "returns-refunds-coordinator", "required": true, "output": "return-resolution-review/v1" }
+    { "id": "store_operations", "procedure": "store-work/references/store-operations-coordinator.md", "required": true, "output": "store-order-exception/v1" },
+    { "id": "returns_refunds", "procedure": "store-work/references/returns-refunds-coordinator.md", "required": true, "output": "return-resolution-review/v1" }
   ],
   "handoffs": [
     { "id": "order-to-returns", "from": "store_operations", "to": "returns_refunds", "artifact_type": "store-order-exception/v1", "required": true }

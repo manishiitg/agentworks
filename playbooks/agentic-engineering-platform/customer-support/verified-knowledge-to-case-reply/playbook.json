@@ -124,13 +124,13 @@
   "agent_slots": [
     {
       "id": "knowledge",
-      "agent_playbook_id": "support-knowledge-curator",
+      "procedure": "customer-work/references/support-knowledge-curator.md",
       "required": true,
       "output": "support-knowledge-publication/v1"
     },
     {
       "id": "reply",
-      "agent_playbook_id": "support-reply-drafter",
+      "procedure": "customer-work/references/support-reply-drafter.md",
       "required": true,
       "output": "support-reply-draft/v1"
     }

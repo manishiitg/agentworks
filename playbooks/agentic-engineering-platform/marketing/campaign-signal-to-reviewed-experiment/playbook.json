@@ -42,9 +42,9 @@
     "Manual route evidence, action ledger and activation choice"
   ],
   "agent_slots": [
-    {"id": "performance", "agent_playbook_id": "campaign-performance-analyst", "required": true, "output": "campaign-performance-brief/v1"},
-    {"id": "competitor", "agent_playbook_id": "competitor-intelligence-analyst", "required": false, "output": "competitor-context/v1"},
-    {"id": "experiment", "agent_playbook_id": "growth-experiment-planner", "required": true, "output": "growth-experiment-plan/v1"}
+    {"id": "performance", "procedure": "growth-work/references/campaign-performance-analyst.md", "required": true, "output": "campaign-performance-brief/v1"},
+    {"id": "competitor", "procedure": "growth-work/references/competitor-intelligence-analyst.md", "required": false, "output": "competitor-context/v1"},
+    {"id": "experiment", "procedure": "growth-work/references/growth-experiment-planner.md", "required": true, "output": "growth-experiment-plan/v1"}
   ],
   "handoffs": [
     {"id": "performance-to-experiment", "from": "performance", "to": "experiment", "artifact_type": "campaign-performance-brief/v1", "required": true},

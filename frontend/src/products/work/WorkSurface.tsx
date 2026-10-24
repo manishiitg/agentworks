@@ -30,7 +30,6 @@ import { useModeStore } from '../../stores/useModeStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { activateTab } from '../../utils/activateTab'
-import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
 import { workProjectActivity } from './workProjectPresentation'
@@ -41,7 +40,7 @@ import type { CrewOnboarding } from './crewStarterTypes'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
-import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, removeWorkSessionTemplate, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
+import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
@@ -56,8 +55,6 @@ import { belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, m
 import { productMode, updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode } from '../../platform/chat/productProjects'
 import { type RunsOnSelection } from './RunsOnPicker'
 import { rememberRunsOn } from './runsOnMemory'
-import { crewTemplates, type CrewTemplateId } from './crewTemplates'
-import { WorkTemplateSetup } from './WorkTemplateSetup'
 import { useWorkspaceUIControl, type WorkspaceUIControlAdapter } from '../../platform/ui-control/useWorkspaceUIControl'
 import { usePresentationEvents } from '../../platform/presentations/usePresentationEvents'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
@@ -238,39 +235,13 @@ function useWorkSessions(product: ProjectProductConfig) {
     return () => { cancelled = true }
   }, [product, allowedProducts, setSelectedId, updateSessions])
 
-  const create = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection, mode?: ProductMode) => {
-    const session = await createWorkSession(title, description, icon, templateId, product, runsOn, mode)
+  const create = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, mode?: ProductMode) => {
+    const session = await createWorkSession(title, description, icon, product, runsOn, mode)
     if (runsOn?.provider) rememberRunsOn(product.profileId, runsOn.provider)
     updateSessions((current) => [session, ...current])
     setSelectedId(session.id)
     return session
   }, [product, allowedProducts, setSelectedId, updateSessions])
-
-  const applyTemplateUpdate = useCallback((projectId: string, updated: WorkSession) => {
-    updateSessions(current => current.map(item => item.product === updated.product && item.id === projectId ? updated : item))
-    for (const tab of Object.values(useChatStore.getState().chatTabs)) {
-      if (tab.metadata?.agentProfileId !== updated.product || !belongsToWorkProject(tab, projectId)) continue
-      useChatStore.getState().setTabConfig(tab.tabId, { selectedSkills: updated.selectedSkills })
-      useChatStore.getState().setTabMetadata(tab.tabId, { agentProfileRuntimeDirty: true })
-    }
-    markWorkProjectRuntimeDirty(projectId)
-  }, [updateSessions])
-
-  const installTemplate = useCallback(async (projectId: string, templateId: CrewTemplateId) => {
-    const session = sessions.find(item => item.product === product.profileId && item.id === projectId)
-    if (!session) throw new Error(`This ${product.itemNoun} is no longer available.`)
-    const updated = await installWorkSessionTemplate(session, templateId)
-    applyTemplateUpdate(projectId, updated)
-    return updated
-  }, [product, sessions, applyTemplateUpdate])
-
-  const removeTemplate = useCallback(async (projectId: string, templateId: CrewTemplateId) => {
-    const session = sessions.find(item => item.product === product.profileId && item.id === projectId)
-    if (!session) throw new Error(`This ${product.itemNoun} is no longer available.`)
-    const updated = await removeWorkSessionTemplate(session, templateId)
-    applyTemplateUpdate(projectId, updated)
-    return updated
-  }, [product, sessions, applyTemplateUpdate])
 
   const remove = useCallback(async (projectId: string, origin: WorkSession['product'] = product.profileId) => {
     const project = sessions.find(item => item.product === origin && item.id === projectId)
@@ -354,8 +325,6 @@ function useWorkSessions(product: ProjectProductConfig) {
     selected: sessions.find((session) => session.product === product.profileId && session.id === selectedId) ?? null,
     select: setSelectedId,
     create,
-    installTemplate,
-    removeTemplate,
     remove,
     updateLLMConfig,
     updateNativeAgentTools,
@@ -899,8 +868,7 @@ function WorkTopBarControl({
 }
 
 function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
-  const { sessions, selected, select, create, installTemplate, removeTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
-  const selectedTemplates = !product.hasTemplates ? [] : crewTemplates.filter(template => selected?.templates.some(installed => installed.id === template.id && installed.version === template.version))
+  const { sessions, selected, select, create, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
   const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
   const persistLegacyRuntime = useCallback(async (selection: WorkRuntimeSelection) => {
     if (!selected || isWorkSessionRun(selected)) return
@@ -1116,13 +1084,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   // Keep the workspace's inputs stable while chat state changes. The pane is
   // memoized, and each callback only changes when its project or action changes.
   const workspaceProjectId = selected?.id
-  const selectedProjectId = selected?.id
   // Stable, so the memoized workspace pane never re-renders because of it.
-  const installSelectedTemplate = useCallback(async (templateId: CrewTemplateId) => {
-    if (!selectedProjectId) return
-    await installTemplate(selectedProjectId, templateId)
-    setChatOpen(true)
-  }, [installTemplate, selectedProjectId])
   const sharedWorkspaceOwner = useMemo(() => isWorkSessionRun(selected) && selected?.shared
     ? { ownerId: selected.shared.ownerId, ownerUsername: selected.shared.ownerUsername }
     : undefined, [selected?.shared])
@@ -1264,7 +1226,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (persist) writeWorkSplitRatio(selected?.id, ratio)
   }, [selected?.id])
 
-  const createProject = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection, mode?: ProductMode, onboarding?: CrewOnboarding) => {
+  const createProject = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, mode?: ProductMode, onboarding?: CrewOnboarding) => {
     if (creating) return
     const user = useAuthStore.getState().user
     const server = useWorkspaceConnectionStore.getState().activeWorkspaceId
@@ -1273,7 +1235,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setCreating(true)
     setCreateError(null)
     try {
-      const created = await create(title, description, icon, templateId, runsOn, mode)
+      const created = await create(title, description, icon, runsOn, mode)
       if (!isCurrent()) return
       if (created.creationWarnings?.length) useChatStore.getState().addToast(created.creationWarnings.join(' '), 'warning')
       if (onboarding) {
@@ -1288,10 +1250,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         setPanelOpen(true)
         setWorkspaceView(view)
         writeWorkWorkspaceView(created.id, product.profileId, view)
-      } else if (templateId) {
-        setPanelOpen(true)
-        setWorkspaceView('files')
-        writeWorkWorkspaceView(created.id, product.profileId, 'files')
       }
       setCreateOpen(false)
     } catch (cause) {
@@ -1386,7 +1344,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       {createOpen ? (
         <CreateCrewWizard
           onClose={() => { if (!creating) setCreateOpen(false) }}
-          onCreate={(title, purpose, runsOn, mode, onboarding) => createProject(title, purpose, undefined, undefined, runsOn, mode, onboarding)}
+          onCreate={(title, purpose, runsOn, mode, onboarding) => createProject(title, purpose, undefined, runsOn, mode, onboarding)}
           initialMode={createMode}
           profileVersion={product.profileVersion}
           submitting={creating}
@@ -1456,28 +1414,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>
-                  {!isWorkSessionRun(selected) && selectedTemplates.length > 0 ? (
-                    // Many templates used to stack their setup rows and push the chat off the screen. The rows share one
-                    // capped area that scrolls, so the chat always keeps most of the height.
-                    <div className="max-h-[min(8rem,25vh)] shrink-0 overflow-y-auto overscroll-contain" data-testid="template-setup-list">
-                  {selectedTemplates.map(template => (
-                    <WorkTemplateSetup
-                      key={`${selected.id}:${template.id}`}
-                      template={template}
-                      workspacePath={selected.workspacePath}
-                      chatReady={Boolean(tabId)}
-                      onRemove={async () => {
-                        await removeTemplate(selected.id, template.id)
-                        useChatStore.getState().addToast(`${template.name} removed.`, 'success')
-                      }}
-                      onStartSetup={async () => {
-                        setChatOpen(true)
-                        await sendWorkspacePaneMessageToChat({ profileId: product.profileId, conversationKey: selected.id, message: `Help me set up the ${template.name} template in this ${product.noun}. Read ${template.setupPath} and ${template.setupGuidePath} in this project's files. Work through the pending checks, ask me for missing decisions or access, and add a check ID to completed_steps only after you verify it. Preserve the checklist and earlier progress. Keep this ${product.noun}'s identity and other templates intact. Tell me what remains and when setup is complete.` })
-                      }}
-                    />
-                  ))}
-                    </div>
-                  ) : null}
                   {tabId ? (
                       <div className="min-h-0 flex-1">
                         <ChatArea
@@ -1520,8 +1456,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         projectTitle={selected.title}
                         projectDescription={selected.description}
                         projectIdentity={selected.identity}
-                        projectTemplates={selected.templates}
-                        onInstallTemplate={installSelectedTemplate}
                         tabId={tabId ?? ''}
                         onOpenChat={() => setChatOpen(true)}
                         view={workspaceView}

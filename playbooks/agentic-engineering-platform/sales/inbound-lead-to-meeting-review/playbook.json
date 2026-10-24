@@ -144,19 +144,19 @@
   "agent_slots": [
     {
       "id": "qualification",
-      "agent_playbook_id": "lead-intake-qualifier",
+      "procedure": "sales-work/references/lead-intake-qualifier.md",
       "required": true,
       "output": "lead-qualification-brief/v1"
     },
     {
       "id": "research",
-      "agent_playbook_id": "account-researcher",
+      "procedure": "sales-work/references/account-researcher.md",
       "required": false,
       "output": "account-research-brief/v1"
     },
     {
       "id": "followup",
-      "agent_playbook_id": "sales-followup-coordinator",
+      "procedure": "sales-work/references/sales-followup-coordinator.md",
       "required": true,
       "output": "sales-followup-draft/v1"
     }

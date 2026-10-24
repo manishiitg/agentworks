@@ -34,7 +34,6 @@ import { PreviousChatHistoryPanel } from '../../components/PreviousChatHistoryPa
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
 import { WorkIdentityPanel } from './WorkIdentityPanel'
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
-import type { CrewTemplateId } from './crewTemplates'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { useProjectMode } from './codeLocalFiles'
 import { WorkSkillsPanel } from './WorkSkillsPanel'
@@ -203,7 +202,7 @@ export function WorkBrowserPanel({ tabId, workspacePath, onAsk }: { tabId: strin
   )
 }
 
-export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, onOpenChat, showShell = false }: { showShell?: boolean; workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; projectTemplates: Array<{ id: string; version: number }>; onInstallTemplate: (id: CrewTemplateId) => Promise<void>; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; onOpenChat?: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
+export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, onOpenChat, showShell = false }: { showShell?: boolean; workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; onOpenChat?: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
   const readOnly = Boolean(shared)
   const accountKey = useAuthStore(state => `${state.user?.id || ''}:${state.user?.can_edit}`)
   const serverKey = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
@@ -326,8 +325,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectTitle={projectTitle}
           projectDescription={projectDescription}
           projectIdentity={projectIdentity}
-          projectTemplates={projectTemplates}
-          onInstallTemplate={onInstallTemplate}
           tabId={tabId}
           openLocalFilesSettings={openLocalFilesSettings}
           onLocalFilesSettingsOpened={() => setOpenLocalFilesSettings(false)}

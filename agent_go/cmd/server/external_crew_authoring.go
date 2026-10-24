@@ -24,7 +24,7 @@ import (
 // edit everything about it, and move it between accounts and servers as a
 // portable spec. Every write reuses the path the app already uses for that
 // part of a Crew: the server-side creation layout (writeCrewCreationManifests),
-// the playbook template installer, the capability selection writer, the
+// the capability selection writer, the
 // functions.json writer with define_function's checks, and the project
 // schedule service.
 //
@@ -46,9 +46,7 @@ const (
 )
 
 // crewSpec is the portable Crew definition: create_crew's input, export_crew's
-// output and import_crew's input. Its core fields (name, role, purpose,
-// selected_skills, files) are the Crew Agent Playbook catalog entry fields
-// (crewAgentTemplate), so a catalog agent entry imports as-is.
+// output and import_crew's input: identity, selected skills and project files.
 type crewSpec struct {
 	SchemaVersion  int                            `json:"schema_version,omitempty"`
 	Kind           string                         `json:"kind,omitempty"`
@@ -60,15 +58,8 @@ type crewSpec struct {
 	Files          map[string]string              `json:"files,omitempty"`
 	Functions      []crewFunctionSpec             `json:"functions,omitempty"`
 	Schedules      []crewScheduleSpec             `json:"schedules,omitempty"`
-	Templates      []crewTemplateRef              `json:"templates,omitempty"`
 	Mode           string                         `json:"mode,omitempty"`
 	LLMConfig      *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
-}
-
-// crewTemplateRef names an installed first-party Crew Agent Playbook.
-type crewTemplateRef struct {
-	ID      string `json:"id"`
-	Version int    `json:"version,omitempty"`
 }
 
 // crewScheduleSpec is a project schedule as authors send it; omitted fields
@@ -267,70 +258,60 @@ func checkCrewSkillsAvailable(ctx context.Context, root string, names []string, 
 
 // normalizeCrewSpec trims and checks a whole spec without touching storage
 // (skill availability aside), so a bad spec never leaves a half-made Crew.
-func normalizeCrewSpec(spec crewSpec) (crewSpec, []*crewAgentTemplate, error) {
+func normalizeCrewSpec(spec crewSpec) (crewSpec, error) {
 	spec.Name, spec.Icon = strings.TrimSpace(spec.Name), strings.TrimSpace(spec.Icon)
 	spec.Role, spec.Purpose = strings.TrimSpace(spec.Role), strings.TrimSpace(spec.Purpose)
 	spec.Mode = strings.TrimSpace(spec.Mode)
 	switch spec.Mode {
 	case "", "dev", "cowork":
 	default:
-		return spec, nil, fmt.Errorf("choose Dev or Cowork for this Crew")
+		return spec, fmt.Errorf("choose Dev or Cowork for this Crew")
 	}
 	if config := spec.LLMConfig; config != nil {
 		if config.SchemaVersion != 2 || config.Mode != workflowtypes.LLMConfigModeExplicit && config.Mode != workflowtypes.LLMConfigModeProviderProfile {
-			return spec, nil, fmt.Errorf("choose an existing model configuration")
+			return spec, fmt.Errorf("choose an existing model configuration")
 		}
 		if config.Mode == workflowtypes.LLMConfigModeExplicit && (config.BuilderLLM == nil || strings.TrimSpace(config.BuilderLLM.Provider) == "" || strings.TrimSpace(config.BuilderLLM.ModelID) == "") || config.Mode == workflowtypes.LLMConfigModeProviderProfile && strings.TrimSpace(config.Provider) == "" {
-			return spec, nil, fmt.Errorf("choose a provider and model for this Crew")
+			return spec, fmt.Errorf("choose a provider and model for this Crew")
 		}
 	}
 	if spec.Kind != "" && spec.Kind != crewSpecKind {
-		return spec, nil, fmt.Errorf("spec kind must be %q", crewSpecKind)
+		return spec, fmt.Errorf("spec kind must be %q", crewSpecKind)
 	}
 	if spec.SchemaVersion > crewSpecSchemaVersion {
-		return spec, nil, fmt.Errorf("spec schema_version %d is newer than this server supports (%d)", spec.SchemaVersion, crewSpecSchemaVersion)
+		return spec, fmt.Errorf("spec schema_version %d is newer than this server supports (%d)", spec.SchemaVersion, crewSpecSchemaVersion)
 	}
 	if err := crewIdentityChecks(spec.Name, spec.Icon, spec.Role, spec.Purpose); err != nil {
-		return spec, nil, err
+		return spec, err
 	}
 	names, err := validateCrewCreationNames("skill", spec.SelectedSkills)
 	if err != nil {
-		return spec, nil, err
+		return spec, err
 	}
 	spec.SelectedSkills = names
 	if err := checkCrewSpecFiles(spec.Files); err != nil {
-		return spec, nil, err
+		return spec, err
 	}
 	if len(spec.Functions) > crewSpecMaxFunctions || len(spec.Schedules) > crewSpecMaxSchedules {
-		return spec, nil, fmt.Errorf("at most %d functions and %d schedules", crewSpecMaxFunctions, crewSpecMaxSchedules)
+		return spec, fmt.Errorf("at most %d functions and %d schedules", crewSpecMaxFunctions, crewSpecMaxSchedules)
 	}
 	seen := map[string]bool{}
 	for i := range spec.Functions {
 		spec.Functions[i] = spec.Functions[i].normalized()
 		if err := spec.Functions[i].validate(); err != nil {
-			return spec, nil, fmt.Errorf("function %q: %w", spec.Functions[i].Name, err)
+			return spec, fmt.Errorf("function %q: %w", spec.Functions[i].Name, err)
 		}
 		if seen[spec.Functions[i].Name] {
-			return spec, nil, fmt.Errorf("function %q is declared twice", spec.Functions[i].Name)
+			return spec, fmt.Errorf("function %q is declared twice", spec.Functions[i].Name)
 		}
 		seen[spec.Functions[i].Name] = true
 	}
 	for i, schedule := range spec.Schedules {
 		if _, err := schedule.newSchedule(); err != nil {
-			return spec, nil, fmt.Errorf("schedule %d: %w", i+1, err)
+			return spec, fmt.Errorf("schedule %d: %w", i+1, err)
 		}
 	}
-	var templates []*crewAgentTemplate
-	for _, ref := range spec.Templates {
-		template, err := loadCrewAgentTemplate(strings.TrimSpace(ref.ID))
-		if err != nil {
-			return spec, nil, err
-		}
-		if template != nil {
-			templates = append(templates, template)
-		}
-	}
-	return spec, templates, nil
+	return spec, nil
 }
 
 // externalCrewAuthorGate is the account-level half of every Crew write:
@@ -482,7 +463,7 @@ func remarshalExternalArgs(raw any, out any) error {
 }
 
 // createCrewFromSpec creates a Crew in the caller's own tree with the UI
-// creation layout, then applies templates, files, skills, functions and
+// creation layout, then applies files, skills, functions and
 // schedules. The spec is fully checked first; a later storage failure
 // returns the new Crew's ID so the author can finish it with update_crew.
 func (api *StreamingAPI) createCrewFromSpec(ctx context.Context, claims *UserClaims, spec crewSpec, enableSchedules bool) (string, error) {
@@ -493,23 +474,14 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 	if status, message := projectCreationGate(claims, profileID); status != 0 {
 		return "", fmt.Errorf("%s", message)
 	}
-	spec, templates, err := normalizeCrewSpec(spec)
+	spec, err := normalizeCrewSpec(spec)
 	if err != nil {
 		return "", err
 	}
 	if spec.Mode != "" && spec.Mode != "dev" && spec.Mode != "cowork" {
 		return "", fmt.Errorf("Choose Dev or Cowork for this Crew")
 	}
-	incoming := map[string]string{}
-	for _, template := range templates {
-		for rel, content := range template.Files {
-			incoming[rel] = content
-		}
-	}
-	for rel, content := range spec.Files {
-		incoming[rel] = content
-	}
-	if err := checkCrewSkillsAvailable(ctx, "", spec.SelectedSkills, incoming); err != nil {
+	if err := checkCrewSkillsAvailable(ctx, "", spec.SelectedSkills, spec.Files); err != nil {
 		return "", err
 	}
 	if len(spec.Schedules) > 0 && api.productSchedules == nil {
@@ -544,11 +516,6 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 	}
 	if folder, shared := workspaceref.MustParse(workspacePath).SharedProject(); shared {
 		defer ensureSharedCrewFolderAccess(folder, userID)
-	}
-	for _, template := range templates {
-		if err := applyCrewAgentTemplate(ctx, workspacePath, template); err != nil {
-			return crewID, err
-		}
 	}
 	if err := writeCrewSpecFiles(ctx, workspacePath, spec.Files); err != nil {
 		return crewID, err
@@ -849,25 +816,9 @@ func updateCrewIdentity(ctx context.Context, root string, name, icon, role, purp
 	return writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n")
 }
 
-// crewInstalledTemplates reads product.json's installed-template receipts.
-func crewInstalledTemplates(ctx context.Context, root string) []crewTemplateRef {
-	raw, found, err := readFileFromWorkspace(ctx, root+"/product.json")
-	if err != nil || !found {
-		return nil
-	}
-	var document map[string]interface{}
-	if json.Unmarshal([]byte(raw), &document) != nil {
-		return nil
-	}
-	rows, _ := json.Marshal(crewTemplateReceiptRows(document))
-	var templates []crewTemplateRef
-	_ = json.Unmarshal(rows, &templates)
-	return templates
-}
-
 // exportCrewSpec renders a Crew as a portable spec: identity, skills with
 // the project-local skill files they need, declared functions, schedules
-// (without IDs) and installed template references. Private areas (chats,
+// (without IDs). Private areas (chats,
 // databases, MEMORY.md, secrets, model connections) are never exported.
 func exportCrewSpec(ctx context.Context, crew crewProjectBinding, manifest productProjectManifest) (crewSpec, error) {
 	root := crew.Binding.WorkspacePath
@@ -876,7 +827,6 @@ func exportCrewSpec(ctx context.Context, crew crewProjectBinding, manifest produ
 		Name: manifest.displayTitle(), Icon: strings.TrimSpace(manifest.Identity.Icon),
 		Role: strings.TrimSpace(manifest.Identity.Role), Purpose: strings.TrimSpace(manifest.Description),
 		SelectedSkills: append([]string(nil), manifest.Capabilities.SelectedSkills...),
-		Templates:      crewInstalledTemplates(ctx, root),
 	}
 	files := map[string]string{}
 	for _, name := range spec.SelectedSkills {
@@ -938,7 +888,6 @@ func externalCrewDescription(ctx context.Context, crew crewProjectBinding, manif
 		"owner":     summary["owner"],
 		"skills":    append([]string{}, manifest.Capabilities.SelectedSkills...),
 		"schedules": schedules,
-		"templates": crewInstalledTemplates(ctx, crew.Binding.WorkspacePath),
 		"functions": externalCrewFunctionSummaries(ctx, crew, manifest, label),
 		"access": map[string]any{
 			"owner": summary["owner"], "your_access": yourAccess, "can_edit": crew.OwnedByCaller,
@@ -991,9 +940,6 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"files":           map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Crew-relative text files (path -> content), e.g. skills/<name>/SKILL.md. Manifests, functions.json, builder/ and db/ are refused."},
 		"functions":       map[string]any{"type": "array", "items": fnSpec},
 		"schedules":       map[string]any{"type": "array", "items": scheduleSpec},
-		"templates": map[string]any{"type": "array", "description": "First-party Crew Agent Playbook templates to install.", "items": map[string]any{"type": "object", "required": []any{"id"}, "properties": map[string]any{
-			"id": map[string]any{"type": "string"}, "version": map[string]any{"type": "integer"},
-		}}},
 	}
 	return props, fnSpec, scheduleSpec
 }

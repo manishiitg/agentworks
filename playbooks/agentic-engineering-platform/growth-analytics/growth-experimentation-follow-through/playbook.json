@@ -138,13 +138,13 @@
   "agent_slots": [
     {
       "id": "run",
-      "agent_playbook_id": "experiment-run-coordinator",
+      "procedure": "growth-work/references/experiment-run-coordinator.md",
       "required": true,
       "output": "experiment-execution-record/v1"
     },
     {
       "id": "outcome",
-      "agent_playbook_id": "growth-outcome-analyst",
+      "procedure": "growth-work/references/growth-outcome-analyst.md",
       "required": true,
       "output": "experiment-outcome-readout/v1"
     }

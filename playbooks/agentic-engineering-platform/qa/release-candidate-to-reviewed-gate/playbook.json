@@ -42,9 +42,9 @@
     "Provider-confirmed status when separately authorized and manual route evidence"
   ],
   "agent_slots": [
-    {"id": "journey", "agent_playbook_id": "browser-journey-qa-analyst", "required": true, "output": "journey-result/v1"},
-    {"id": "flake", "agent_playbook_id": "flaky-test-investigator", "required": false, "output": "flake-investigation/v1"},
-    {"id": "gate", "agent_playbook_id": "release-quality-assistant", "required": true, "output": "release-quality-brief/v1"}
+    {"id": "journey", "procedure": "software-work/references/browser-journey-qa-analyst.md", "required": true, "output": "journey-result/v1"},
+    {"id": "flake", "procedure": "software-work/references/flaky-test-investigator.md", "required": false, "output": "flake-investigation/v1"},
+    {"id": "gate", "procedure": "software-work/references/release-quality-assistant.md", "required": true, "output": "release-quality-brief/v1"}
   ],
   "handoffs": [
     {"id": "journey-to-gate", "from": "journey", "to": "gate", "artifact_type": "journey-result/v1", "required": true},

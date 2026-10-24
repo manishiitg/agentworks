@@ -9,7 +9,7 @@ export const CODE_MODE_CHOICES: Array<{ mode: ProductMode; title: string; text: 
   { mode: 'dev', title: 'Dev', text: 'Build and change code with an AI agent: files, terminal and chat on the server.', icon: Code2 },
 ]
 
-// Creation needs only a name; identity details and templates are optional later.
+// Creation needs only a name; identity details can be added later.
 export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error, profileId = 'work', initialMode = 'dev', noun = 'Crew' }: {
   onClose: () => void
   onCreate: (title: string, runsOn?: RunsOnSelection, mode?: ProductMode) => void | Promise<void>

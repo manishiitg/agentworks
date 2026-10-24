@@ -6,7 +6,6 @@ import { slugifyTitle } from '../../utils/plannerFiles'
 import { loadAgentProfileProviderOptions } from '../../utils/agentProfileCapabilities'
 import { llmConfigService } from '../../services/llm-config-api'
 import { CREW_PRODUCT, projectProductConfig, type ProjectProductConfig, type ProjectProductId } from './projectProduct'
-import { getCrewTemplate, type CrewTemplateId } from './crewTemplates'
 
 export type WorkSession = ProductProject<ProjectProductId>
 
@@ -52,8 +51,7 @@ export async function loadWorkSessions(product: ProjectProductConfig = CREW_PROD
   return sessions
 }
 
-export async function createWorkSession(title: string, description: string, icon?: string, templateId?: CrewTemplateId, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection, mode?: ProductMode): Promise<WorkSession> {
-  const template = templateId && product.hasTemplates ? getCrewTemplate(templateId) : undefined
+export async function createWorkSession(title: string, description: string, icon?: string, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection, mode?: ProductMode): Promise<WorkSession> {
   const options = await loadAgentProfileProviderOptions(product.profileId)
   // The product default, unless this person cannot use it here (Claude Code and Codex are admins-only on some servers):
   // then the first coding agent they may run, so a new project does not start on a refused account (server B
@@ -87,33 +85,13 @@ export async function createWorkSession(title: string, description: string, icon
       identity: {
         name: title.trim(),
         icon: icon?.trim() || Array.from(title.trim())[0]?.toLocaleUpperCase() || 'C',
-        ...(template ? { role: template.role } : {}),
       },
-    } : {}),
-    ...(template ? {
-      templates: [{ id: template.id, version: template.version }],
-      selectedSkills: template.selectedSkills,
-      initialFiles: template.files,
     } : {}),
     llmConfig,
     runtimeManifestName: 'workflow.json',
     ...(mode ? { mode } : {}),
   })
   return project
-}
-
-export async function installWorkSessionTemplate(session: WorkSession, templateId: CrewTemplateId): Promise<WorkSession> {
-  if (isWorkSessionRun(session)) throw new Error('Only the Crew owner can install templates.')
-  getCrewTemplate(templateId)
-  const saved = await agentApi.changeProjectTemplate(session.product, session.id, 'install_template', templateId)
-  return { ...session, templates: saved.templates, selectedSkills: saved.selected_skills }
-}
-
-export async function removeWorkSessionTemplate(session: WorkSession, templateId: CrewTemplateId): Promise<WorkSession> {
-  if (isWorkSessionRun(session)) throw new Error('Only the Crew owner can remove templates.')
-  getCrewTemplate(templateId)
-  const saved = await agentApi.changeProjectTemplate(session.product, session.id, 'remove_template', templateId)
-  return { ...session, templates: saved.templates, selectedSkills: saved.selected_skills }
 }
 
 export async function deleteWorkSession(session: WorkSession): Promise<void> {
@@ -145,7 +123,6 @@ export function sharedProjectToWorkSession(row: SharedProjectSummary, product: P
     id: row.id,
     title: row.title || `Untitled ${product.noun}`,
     description: row.description || '',
-    templates: [],
     identity: row.icon || row.name || row.role ? { icon: row.icon || undefined, name: row.name || undefined, ...(row.role ? { role: row.role } : {}) } : undefined,
     // No session binding: opening a shared Crew resolves the reader's own
     // conversation server-side, never the owner's live session.

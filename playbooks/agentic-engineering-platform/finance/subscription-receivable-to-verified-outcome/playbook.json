@@ -31,8 +31,8 @@
   "pulse_focus": [{"module": "strategic_review", "label": "Subscription receivable recovery", "focus_areas": ["Open balance and retry or contact state for the exact invoice", "Collected amount versus deposited and reconciled amount"], "review_when": ["An attempt fails, a due date passes, a payment is observed, or a payout settles"]}],
   "outputs": ["Reviewed Crew and source map", "Validated exact-invoice recovery review", "Validated finance outcome with collection and settlement limits", "Manual case run and owner decision", "Paused or manual recurrence policy"],
   "agent_slots": [
-    {"id": "billing", "agent_playbook_id": "billing-operations-coordinator", "required": true, "output": "receivable-review/v1"},
-    {"id": "finance", "agent_playbook_id": "finance-analyst", "required": true, "output": "receivable-outcome/v1"}
+    {"id": "billing", "procedure": "finance-work/references/billing-operations-coordinator.md", "required": true, "output": "receivable-review/v1"},
+    {"id": "finance", "procedure": "finance-work/references/finance-analyst.md", "required": true, "output": "receivable-outcome/v1"}
   ],
   "handoffs": [{"id": "billing-to-finance", "from": "billing", "to": "finance", "artifact_type": "receivable-review/v1", "required": true}],
   "setup_checks": ["goal_owner", "invoice_scope", "balance_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "action_ledger", "activation_choice"]

@@ -42,8 +42,8 @@
     "Manual case evidence, owner decisions, action ledger and activation choice"
   ],
   "agent_slots": [
-    {"id": "dispute", "agent_playbook_id": "billing-operations-coordinator", "required": true, "output": "dispute-case/v1"},
-    {"id": "finance", "agent_playbook_id": "revenue-close-analyst", "required": true, "output": "dispute-finance-review/v1"}
+    {"id": "dispute", "procedure": "finance-work/references/billing-operations-coordinator.md", "required": true, "output": "dispute-case/v1"},
+    {"id": "finance", "procedure": "finance-work/references/revenue-close-analyst.md", "required": true, "output": "dispute-finance-review/v1"}
   ],
   "handoffs": [
     {"id": "dispute-to-finance", "from": "dispute", "to": "finance", "artifact_type": "dispute-case/v1", "required": true}

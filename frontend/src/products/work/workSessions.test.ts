@@ -9,10 +9,9 @@ const createPlannerFolder = vi.hoisted(() => vi.fn().mockResolvedValue({}))
 const deleteAgentProfileProject = vi.hoisted(() => vi.fn().mockResolvedValue({ success: true }))
 const listSharedProjects = vi.hoisted(() => vi.fn())
 const loadProductProjects = vi.hoisted(() => vi.fn())
-const changeProjectTemplate = vi.hoisted(() => vi.fn())
 
 vi.mock('../../services/api', () => ({
-  agentApi: { changeProjectTemplate, createProductProject: createServerProject, createPlannerFolder, deleteAgentProfileProject, getPlannerFileContent, listSharedProjects, updatePlannerFile },
+  agentApi: { createProductProject: createServerProject, createPlannerFolder, deleteAgentProfileProject, getPlannerFileContent, listSharedProjects, updatePlannerFile },
   getApiBaseUrl: () => '',
   getAuthToken: () => null,
 }))
@@ -39,14 +38,14 @@ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
 
 import { updateProductProjectLLMConfig, updateProductProjectSelections } from '../../platform/chat/productProjects'
 import type { SharedProjectSummary } from '../../services/api-types'
-import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, isWorkSessionRun, loadWorkSessionsIncludingShared, parseSessionManifest, sessionSlug, sharedProjectToWorkSession, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
+import { createWorkSession, deleteWorkSession, isWorkSessionRun, loadWorkSessionsIncludingShared, parseSessionManifest, sessionSlug, sharedProjectToWorkSession, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 
 // The backend owns creation. This response fixture lets consumer tests keep
-// testing selection forwarding and later template edits without a browser writer.
-createServerProject.mockImplementation(async (product: string, spec: { name: string; purpose: string; icon?: string; role?: string; mode?: string; templates?: { id: string; version: number }[]; selected_skills?: string[]; llm_config?: unknown; files?: Record<string, string> }) => {
+// testing selection forwarding without a browser writer.
+createServerProject.mockImplementation(async (product: string, spec: { name: string; purpose: string; icon?: string; role?: string; mode?: string; selected_skills?: string[]; llm_config?: unknown; files?: Record<string, string> }) => {
   const id = 'server-project'
   const root = 'Crew/server-project'
-  const manifest = { schema_version: 1, product, id, title: spec.name, description: spec.purpose, identity: { name: spec.name, icon: spec.icon, role: spec.role }, templates: spec.templates, mode: spec.mode, session_id: `${product}:project:${id}` }
+  const manifest = { schema_version: 1, product, id, title: spec.name, description: spec.purpose, identity: { name: spec.name, icon: spec.icon, role: spec.role }, mode: spec.mode, session_id: `${product}:project:${id}` }
   const runtime = { capabilities: { selected_servers: [], selected_skills: spec.selected_skills || [], selected_secrets: [], selected_global_secret_names: [], llm_config: spec.llm_config }, workflow_context_paths: [] }
   serverFiles.set(`${root}/product.json`, JSON.stringify(manifest))
   serverFiles.set(`${root}/workflow.json`, JSON.stringify(runtime))
@@ -99,24 +98,29 @@ describe('parseSessionManifest', () => {
     expect(session?.workflowContextPaths).toEqual(['Workflow/reference'])
   })
 
+  it('keeps installed skills when retired setup metadata is present', () => {
+    const existing = { ...JSON.parse(manifest), templates: [{ id: 'finance-analyst', version: 1 }] }
+    const project = parseSessionManifest(JSON.stringify(existing), 'Crew/finance-1234')!
+    expect(project.selectedSkills).toEqual(['code-reviewer'])
+    expect(project).not.toHaveProperty('templates')
+    expect(project.identity).toBeUndefined()
+  })
+
   it('rejects other products and incomplete manifests', () => {
     expect(parseSessionManifest('not json', 'w')).toBeNull()
     expect(parseSessionManifest(JSON.stringify({ ...JSON.parse(manifest), product: 'video-studio' }), 'w')).toBeNull()
     expect(parseSessionManifest(JSON.stringify({ ...JSON.parse(manifest), session_id: '' }), 'w')).toBeNull()
   })
 
-  it('reads a legacy single-template Crew as one installed pack', () => {
-    const legacy = { ...JSON.parse(manifest), template: { id: 'finance-analyst', version: 1 } }
-    expect(parseSessionManifest(JSON.stringify(legacy), 'w')?.templates).toEqual([{ id: 'finance-analyst', version: 1 }])
-  })
+
 })
 
 describe('createWorkSession', () => {
-  it('forwards model, mode, identity and a selected template to server creation', async () => {
+  it('forwards model, mode and identity to server creation', async () => {
     updatePlannerFile.mockClear()
     createPlannerFolder.mockClear()
-    const session = await createWorkSession('Finance desk', 'Review records.', '📊', 'finance-analyst', CREW_PRODUCT, { provider: 'codex-cli', modelId: 'gpt-6-luna', connectionId: 'company-account' }, 'cowork')
-    expect(createServerProject).toHaveBeenLastCalledWith('work', expect.objectContaining({ name: 'Finance desk', purpose: 'Review records.', icon: '📊', mode: 'cowork', templates: [{ id: 'finance-analyst', version: 1 }], selected_skills: ['finance-analyst'], llm_config: expect.objectContaining({ builder_llm: expect.objectContaining({ provider: 'codex-cli', model_id: 'gpt-6-luna', connection_id: 'company-account' }) }) }))
+    const session = await createWorkSession('Finance desk', 'Review records.', '📊', CREW_PRODUCT, { provider: 'codex-cli', modelId: 'gpt-6-luna', connectionId: 'company-account' }, 'cowork')
+    expect(createServerProject).toHaveBeenLastCalledWith('work', expect.objectContaining({ name: 'Finance desk', purpose: 'Review records.', icon: '📊', mode: 'cowork', llm_config: expect.objectContaining({ builder_llm: expect.objectContaining({ provider: 'codex-cli', model_id: 'gpt-6-luna', connection_id: 'company-account' }) }) }))
     expect(session.workspacePath).toBe('Crew/server-project')
     expect(session.product).toBe('work')
     expect(session.mode).toBe('cowork')
@@ -124,24 +128,6 @@ describe('createWorkSession', () => {
     expect(createPlannerFolder).not.toHaveBeenCalled()
   })
 
-  it('installs a template through the server while keeping the local project identity', async () => {
-    const original = await createWorkSession('My Finance Analyst', 'Review finances.', '📊', 'finance-analyst')
-    changeProjectTemplate.mockResolvedValueOnce({ templates:[{id:'finance-analyst', version:1}, {id:'tax-export', version:1}], selected_skills:['finance-analyst','tax-export'] })
-    updatePlannerFile.mockClear()
-    const updated = await installWorkSessionTemplate(original, 'tax-export')
-    expect(changeProjectTemplate).toHaveBeenLastCalledWith(original.product, original.id, 'install_template', 'tax-export')
-    expect(updated).toMatchObject({ ...original, templates:[{id:'finance-analyst',version:1},{id:'tax-export',version:1}], selectedSkills:['finance-analyst','tax-export'] })
-    expect(updatePlannerFile).not.toHaveBeenCalled()
-  })
-
-  it('keeps server template refusal visible instead of writing around it', async () => {
-    const original = await createWorkSession('Billing Desk', 'Review billing.', '💳', 'billing-operations-coordinator')
-    const refusal = { response:{status:403} }
-    changeProjectTemplate.mockRejectedValueOnce(refusal)
-    updatePlannerFile.mockClear()
-    await expect(installWorkSessionTemplate(original, 'invoice-chasing')).rejects.toBe(refusal)
-    expect(updatePlannerFile).not.toHaveBeenCalled()
-  })
 
 })
 
@@ -208,7 +194,6 @@ function ownedSession(overrides: Partial<WorkSession> = {}): WorkSession {
     id: 'crew-owned',
     title: 'Owned',
     description: '',
-    templates: [],
     sessionId: 'work:project:crew-owned',
     workspacePath: 'Chats/Work/projects/owned-crew-owned',
     createdAt: '',

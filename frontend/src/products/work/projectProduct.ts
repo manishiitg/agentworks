@@ -17,8 +17,6 @@ export type ProjectProductConfig = {
   itemNoun: string
   /** Agent identity (role, purpose, icon) and its setup prompts. */
   hasIdentity: boolean
-  /** Crew templates, playbooks and role installs. */
-  hasTemplates: boolean
   /** Existing owner working tools; independent of legacy route/storage IDs. */
   hasTerminal: boolean
   /**
@@ -43,7 +41,6 @@ export const CREW_PRODUCT: ProjectProductConfig = {
   noun: 'Crew',
   itemNoun: 'Crew',
   hasIdentity: true,
-  hasTemplates: true,
   hasTerminal: true,
   listsSharedProjects: true,
   // No switch (owner decision 2026-09-29): native agent tools are always on.

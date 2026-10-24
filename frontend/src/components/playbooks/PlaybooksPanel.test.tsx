@@ -156,8 +156,8 @@ it('shows Website Growth as a team proposal whose setup continues in Builder cha
     version: '0.2.0', category: 'Website Growth', order: 1, inputCount: 4, toolCount: 2,
     setupPrompt: 'Inspect existing Crews and propose a team before creating agents.',
     agentSlots: [
-      { id: 'strategist', agent_playbook_id: 'website-growth-starter', required: true, output: 'growth-priority-brief/v1' },
-      { id: 'search', agent_playbook_id: 'search-opportunity-mapper', required: true, output: 'search-opportunity-list/v1' },
+      { id: 'strategist', procedure: 'growth-work/references/website-growth-starter.md', required: true, output: 'growth-priority-brief/v1' },
+      { id: 'search', procedure: 'growth-work/references/search-opportunity-mapper.md', required: true, output: 'search-opportunity-list/v1' },
     ],
     handoffs: [{ id: 'strategy-to-search', from: 'strategist', to: 'search', artifact_type: 'growth-priority-brief/v1', required: true }],
     setupChecks: ['goal_owner', 'team_bindings', 'test_run'],
@@ -205,8 +205,8 @@ it('shows Finance proposal progress from its own installed setup record', async 
     version: '0.1.0', category: 'Finance', order: 1, inputCount: 6, toolCount: 4,
     setupPrompt: 'Inspect current finance Crews and propose a manual first route.',
     agentSlots: [
-      { id: 'billing', agent_playbook_id: 'billing-operations-coordinator', required: true, output: 'billing-exception-queue/v1' },
-      { id: 'finance', agent_playbook_id: 'finance-analyst', required: true, output: 'finance-impact-readout/v1' },
+      { id: 'billing', procedure: 'finance-work/references/billing-operations-coordinator.md', required: true, output: 'billing-exception-queue/v1' },
+      { id: 'finance', procedure: 'finance-work/references/finance-analyst.md', required: true, output: 'finance-impact-readout/v1' },
     ],
     handoffs: [{ id: 'billing-to-finance', from: 'billing', to: 'finance', artifact_type: 'billing-exception-queue/v1', required: true }],
     setupChecks: ['goal_owner', 'team_bindings', 'test_run'],

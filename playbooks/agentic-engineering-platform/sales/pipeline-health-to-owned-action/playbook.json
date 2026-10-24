@@ -31,8 +31,8 @@
   "pulse_focus": [{"module": "strategic_review", "label": "Pipeline exceptions to seller decisions", "focus_areas": ["Whether stale and movement claims use comparable CRM snapshots and current records", "Whether owner decisions and action outcomes remain separate and traceable"], "review_when": ["A new comparable snapshot arrives, opportunity activity changes, or an owner review is due"]}],
   "outputs": ["Reviewed Sales Crew roster and CRM source map", "Validated pipeline-exception-brief/v1", "Validated deal-action-register/v1 with current-state read", "Manual case, seller decision, action ledger and activation choice"],
   "agent_slots": [
-    {"id": "pipeline", "agent_playbook_id": "pipeline-analyst", "required": true, "output": "pipeline-exception-brief/v1"},
-    {"id": "deal", "agent_playbook_id": "deal-follow-through-coordinator", "required": true, "output": "deal-action-register/v1"}
+    {"id": "pipeline", "procedure": "sales-work/references/pipeline-analyst.md", "required": true, "output": "pipeline-exception-brief/v1"},
+    {"id": "deal", "procedure": "sales-work/references/deal-follow-through-coordinator.md", "required": true, "output": "deal-action-register/v1"}
   ],
   "handoffs": [{"id": "pipeline-to-deal", "from": "pipeline", "to": "deal", "artifact_type": "pipeline-exception-brief/v1", "required": true}],
   "setup_checks": ["goal_owner", "pipeline_scope", "pipeline_policy", "team_bindings", "snapshot_access", "current_state_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
