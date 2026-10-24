@@ -268,7 +268,7 @@ rm -f "$OUT/go.work" "$OUT/go.work.sum"
 step "Validating playbooks"
 scratch="$(mktemp -d)"
 cp -R "$REPO_ROOT/playbooks/." "$scratch/"
-PYTHONDONTWRITEBYTECODE=1 python3 "$scratch/scripts/validate_playbooks.py"
+PYTHONDONTWRITEBYTECODE=1 python3 "$scratch/scripts/validate_playbooks.py" --skills-root "$REPO_ROOT/agent_go/internal/workproduct/skills"
 rm -rf "$scratch"
 chmod -R u+rwX,go+rX,go-w "$OUT"
 

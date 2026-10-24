@@ -212,7 +212,7 @@ if [[ "${COPY_PLAYBOOKS:-false}" == "true" ]]; then
   # (build-release.sh); the release's own writable copy is validated below.
   mkdir -p "$BUILD_DIR/playbooks"
   cp -R "$REPO_ROOT/playbooks/." "$BUILD_DIR/playbooks/"
-  python3 "$BUILD_DIR/playbooks/scripts/validate_playbooks.py"
+  python3 "$BUILD_DIR/playbooks/scripts/validate_playbooks.py" --skills-root "$REPO_ROOT/agent_go/internal/workproduct/skills"
   if [[ -n "${PLAYBOOK_SMOKE_PATH:-}" ]]; then
     test -f "$BUILD_DIR/playbooks/$PLAYBOOK_SMOKE_PATH"
   fi

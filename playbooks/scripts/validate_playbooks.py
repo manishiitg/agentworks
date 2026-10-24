@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import subprocess
@@ -322,8 +323,7 @@ def validate_package(package: Path, errors: list[str]) -> dict[str, object] | No
     return manifest
 
 
-def validate_crew_bindings(path: Path, manifest: dict[str, object], errors: list[str]) -> None:
-    skill_root = ROOT.parent / "agent_go/internal/workproduct/skills"
+def validate_crew_bindings(path: Path, manifest: dict[str, object], errors: list[str], skill_root: Path = ROOT.parent / "agent_go/internal/workproduct/skills") -> None:
     for index, slot in enumerate(manifest.get("agent_slots", [])):
         for procedure in [slot.get("procedure", ""), *slot.get("accepts", [])]:
             parts = Path(procedure).parts
@@ -332,6 +332,9 @@ def validate_crew_bindings(path: Path, manifest: dict[str, object], errors: list
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--skills-root", type=Path, default=ROOT.parent / "agent_go/internal/workproduct/skills", help="Source of the built-in skill procedures when validating a copied playbook package")
+    args = parser.parse_args()
     errors: list[str] = []
     packages = sorted(
         path.parent
@@ -366,7 +369,7 @@ def main() -> int:
 
     known_ids = set(by_id)
     for path, manifest in manifests:
-        validate_crew_bindings(path, manifest, errors)
+        validate_crew_bindings(path, manifest, errors, args.skills_root)
         relations: list[object] = []
         if manifest.get("setup_playbook"):
             relations.append(manifest["setup_playbook"])
