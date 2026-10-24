@@ -138,7 +138,7 @@ export function reportMotionFor(doc: Document, onError: (error: unknown) => void
           paint()
         },
         getState,
-        subscribe(listener) {
+        subscribe(listener: (state: Readonly<ReportMotionState>) => void) {
           if (destroyed) return () => {}
           listeners.add(listener)
           try { listener(getState()) } catch (error) { onError(error) }
