@@ -163,7 +163,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if tool.Name == externalUsersTool {
-			instructions += " Administrator account access: users action=list/get inspects safe account metadata; update changes existing roles, products and create permissions under users:manage using the app's rules. Use a stable request_id and confirm=user_id for changes to administrator access. Account provisioning and credentials are separate."
+			instructions += " Administrator accounts: People & access is an overview with basic role, product and on/off updates. Use users list/get/update/delete for detailed admin changes; its schema defines request_id and existing confirmation rules. Passwords must be person-supplied and never repeated or logged. Use account for usage, limits and model rules. Account provisioning remains separate."
 			break
 		}
 	}

@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2, Mail, ChevronDown, ChevronRight, Search } from 'lucide-react'
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Loader2, AlertCircle, Users, Ban, ChevronDown, ChevronRight, Search, Copy, Plug } from 'lucide-react'
 import { authApi, type AdminUser, type AdminUserWrite } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { SettingsCard, SettingsEmpty } from '../ui/SettingsCard'
@@ -8,14 +8,12 @@ import { Checkbox } from '../ui/checkbox'
 import { Badge } from '../ui/badge'
 import { Input } from '../ui/Input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
-import { SecretField } from '../ui/SecretField'
-import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { enabledProductSurfaces, PRODUCT_SURFACE_LABELS, isProductSurface } from '../../products/productSurfaceConfig'
 import { selectableProducts } from './selectableProducts'
-import { TOKEN_LIMIT_UNLIMITED, formatTokens, parseOverrideAmount, parseTokenAmount, sharedAccountLabel, shownOverrideLimit } from '../../utils/tokenLimits'
-import { llmConfigService } from '../../services/llm-config-api'
-import AllowedModelsEditor from '../providers/AllowedModelsEditor'
+import { formatTokens, sharedAccountLabel } from '../../utils/tokenLimits'
 import { allowedModelsText } from '../../utils/allowedModels'
+
+const McpConnectDialog = lazy(() => import('../integrations/McpConnectDialog'))
 
 // One role per account. The server stamps `role` and dual-writes the legacy
 // booleans; both are sent so older servers (which ignore `role`) enforce
@@ -57,575 +55,113 @@ const roleFields = (r: Role): Pick<AdminUserWrite, 'role' | 'admin' | 'can_creat
   can_edit: r !== 'viewer',
 })
 
-// The exact stored value, so a blur without an edit never rounds and saves it.
-const shownLimit = (n?: number) => (n ? String(n) : '')
-
-// How a person signs in, in plain words: the identity service behind single sign-on is not something admins act on.
-// Only a password account has a password to set; an SSO person signs in through the company's identity provider.
-const usesSSO = (u: { invited?: boolean; provider?: string }) => Boolean(u.invited || (u.provider && u.provider !== 'password' && u.provider !== 'simple'))
-const signInLabel = (u: { invited?: boolean; provider?: string; has_password?: boolean }) => {
-  if (usesSSO(u)) return 'signs in with SSO'
-  return u.has_password ? 'signs in with a password' : 'no password set'
-}
-
-/**
- * One person's limits on the shared server accounts, with their use today and
- * this week. Saved on blur or Enter; empty is unlimited.
- */
-function TokenLimitsCell({ user, disabled, onSave, accountProviders, onSaveAccount, accountModels, onSaveModels }: {
-  user: AdminUser; disabled: boolean; onSave: (limits: { daily: number; weekly: number }) => void
-  /** Providers with a shared server account, for adding a per-person override. */
-  accountProviders: string[]
-  onSaveAccount: (provider: string, limits: { daily: number; weekly: number }) => void
-  /** Each shared account's own model list (absent or empty = all models). */
-  accountModels: Record<string, string[] | undefined>
-  onSaveModels: (provider: string, models: string[] | null) => void
-}) {
-  const limits = user.token_limits
-  const usage = user.token_usage
-  const [daily, setDaily] = useState(shownLimit(limits?.daily))
-  const [weekly, setWeekly] = useState(shownLimit(limits?.weekly))
-  useEffect(() => { setDaily(shownLimit(limits?.daily)); setWeekly(shownLimit(limits?.weekly)) }, [limits?.daily, limits?.weekly])
-  const parsedDaily = parseTokenAmount(daily)
-  const parsedWeekly = parseTokenAmount(weekly)
-  const invalid = parsedDaily === null || parsedWeekly === null
-  const save = () => {
-    if (invalid) return
-    if (parsedDaily === (limits?.daily || 0) && parsedWeekly === (limits?.weekly || 0)) return
-    onSave({ daily: parsedDaily, weekly: parsedWeekly })
-  }
-  const used = (n: number | undefined, limit: number | undefined) => `${formatTokens(n)}${limit ? ` / ${formatTokens(limit)}` : ''}`
-  const tone = usage?.state === 'over' ? 'text-destructive' : usage?.state === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
-  const field = (label: string, value: string, set: (v: string) => void) => (
-    <label className="flex items-center gap-1.5">
-      <span className="w-12 text-muted-foreground">{label}</span>
-      <Input
-        value={value}
-        onChange={(e) => set(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => { if (e.key === 'Enter') save() }}
-        disabled={disabled}
-        placeholder="Unlimited"
-        aria-label={`${label} token limit for ${user.username}`}
-        className="h-7 w-24 text-xs"
-      />
-    </label>
-  )
-  return (
-    <div className="space-y-1 text-xs">
-      {field('Daily', daily, setDaily)}
-      {field('Weekly', weekly, setWeekly)}
-      {invalid && <p className="text-destructive">Use a number like 500k or 5M.</p>}
-      {usage && (
-        <p className={tone} title={['Overall usage toward limits on all shared server accounts together. Day and week are UTC; weeks start Monday.', usage.counting_note, usage.counting_note ? `Raw cache reads: ${formatTokens(usage.daily_cache_read_tokens)} today; ${formatTokens(usage.weekly_cache_read_tokens)} this week.` : ''].filter(Boolean).join(' ')}>
-          All: today {used(usage.daily_used, usage.daily_limit)} · week {used(usage.weekly_used, usage.weekly_limit)}
-        </p>
-      )}
-      <AccountLimitsList user={user} disabled={disabled} accountProviders={accountProviders} onSave={onSaveAccount} />
-      <AccountModelsList user={user} disabled={disabled} accountProviders={accountProviders} accountModels={accountModels} onSave={onSaveModels} />
-    </div>
-  )
-}
-
-/**
- * This person's models on each shared account where an admin gave them their
- * own list (PLAT-714); every other account uses its own list (Providers →
- * the account → Models). A list replaces the account's for them, "All
- * models" lifts the account's limit for them, "Account default" removes it.
- */
-function AccountModelsList({ user, disabled, accountProviders, accountModels, onSave }: {
-  user: AdminUser; disabled: boolean; accountProviders: string[]
-  accountModels: Record<string, string[] | undefined>
-  onSave: (provider: string, models: string[] | null) => void
-}) {
-  const overrides = user.account_allowed_models || {}
-  const [editing, setEditing] = useState<string | null>(null)
-  const shown = Object.keys(overrides).sort()
-  const addable = accountProviders.filter((p) => !shown.includes(p))
-  const rows = editing && !shown.includes(editing) ? [...shown, editing] : shown
-  return (
-    <div className="space-y-0.5">
-      {rows.map((provider) => {
-        const label = sharedAccountLabel(provider)
-        if (editing === provider) {
-          return (
-            <AllowedModelsEditor key={provider} provider={provider} value={overrides[provider]} disabled={disabled}
-              person={{ name: user.username, accountText: allowedModelsText(accountModels[provider]) }}
-              onSave={(models) => { onSave(provider, models); setEditing(null) }} onCancel={() => setEditing(null)} />
-          )
-        }
-        return (
-          <p key={provider} className="text-muted-foreground">
-            <Button type="button" variant="link" size="xs" disabled={disabled} onClick={() => setEditing(provider)} className="h-auto p-0 font-normal text-inherit underline-offset-2 disabled:no-underline"
-              title={`Edit ${user.username}'s models on the shared ${label} account. Account default: ${allowedModelsText(accountModels[provider])}.`}>
-              {label} models
-            </Button>
-            {': '}{allowedModelsText(overrides[provider])} (own)
-          </p>
-        )
-      })}
-      {addable.length > 0 && !editing && (
-        <select aria-label={`Set models on an account for ${user.username}`} disabled={disabled} value=""
-          onChange={(e) => { if (e.target.value) setEditing(e.target.value) }}
-          className="h-6 rounded border border-border bg-background px-1 text-xs text-muted-foreground">
-          <option value="">+ Models on an account…</option>
-          {addable.map((p) => <option key={p} value={p}>{sharedAccountLabel(p)}{accountModels[p]?.length ? ` (${allowedModelsText(accountModels[p])})` : ''}</option>)}
-        </select>
-      )}
-    </div>
-  )
-}
-
-/**
- * One line per shared account (PLAT-693): this person's use against the
- * account's limit, which is the account default (Providers → Limits) unless
- * an override is set here. Edit sets the override; empty fields fall back to
- * the default, and "Unlimited" (-1) removes the limit for this person even
- * when the account has a default.
- */
-function AccountLimitsList({ user, disabled, accountProviders, onSave }: {
-  user: AdminUser; disabled: boolean; accountProviders: string[]
-  onSave: (provider: string, limits: { daily: number; weekly: number }) => void
-}) {
-  const accounts = user.token_usage?.accounts || {}
-  const overrides = user.account_token_limits || {}
-  const [editing, setEditing] = useState<string | null>(null)
-  const [draft, setDraft] = useState({ daily: '', weekly: '' })
-  const shown = [...new Set([...Object.keys(accounts), ...Object.keys(overrides)])].sort()
-  const addable = accountProviders.filter((p) => !shown.includes(p))
-  const startEdit = (provider: string) => {
-    const o = overrides[provider]
-    setDraft({ daily: shownOverrideLimit(o?.daily), weekly: shownOverrideLimit(o?.weekly) })
-    setEditing(provider)
-  }
-  const save = (provider: string) => {
-    const daily = parseOverrideAmount(draft.daily)
-    const weekly = parseOverrideAmount(draft.weekly)
-    if (daily === null || weekly === null) return
-    onSave(provider, { daily, weekly })
-    setEditing(null)
-  }
-  const part = (n: number | undefined, limit: number | undefined) => `${formatTokens(n)}${limit ? `/${formatTokens(limit)}` : ''}`
-  const rows = editing && !shown.includes(editing) ? [...shown, editing] : shown
-  return (
-    <div className="space-y-0.5">
-      {rows.map((provider) => {
-        const a = accounts[provider]
-        const o = overrides[provider]
-        const def = a?.default_limits
-        const tone = a?.state === 'over' ? 'text-destructive' : a?.state === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
-        const label = a?.label || sharedAccountLabel(provider)
-        if (editing === provider) {
-          const invalid = parseOverrideAmount(draft.daily) === null || parseOverrideAmount(draft.weekly) === null
-          return (
-            <div key={provider} className="flex flex-wrap items-center gap-1">
-              <span className="w-16 truncate">{label}</span>
-              {(['daily', 'weekly'] as const).map((field) => (
-                <Input key={field} value={draft[field]} disabled={disabled}
-                  onChange={(e) => setDraft({ ...draft, [field]: e.target.value })}
-                  onKeyDown={(e) => { if (e.key === 'Enter') save(provider); if (e.key === 'Escape') setEditing(null) }}
-                  placeholder={def?.[field] ? `Default ${formatTokens(def[field])}` : 'Unlimited'}
-                  title='A number like 500k or 5M; empty uses the default; "Unlimited" means no limit even with a default'
-                  aria-label={`${label} ${field} token limit for ${user.username}`} className="h-6 w-20 text-xs" />
-              ))}
-              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" disabled={disabled}
-                title={`No limit for ${user.username} on the shared ${label} account, even when it has a default`}
-                onClick={() => setDraft({ daily: 'Unlimited', weekly: 'Unlimited' })}>Unlimited</Button>
-              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" disabled={disabled || invalid} onClick={() => save(provider)}>Save</Button>
-              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" onClick={() => setEditing(null)}>Cancel</Button>
-            </div>
-          )
-        }
-        const hasLimit = Boolean(a?.daily_limit || a?.weekly_limit)
-        return (
-          <p key={provider} className={tone} title={[user.token_usage?.counting_note, user.token_usage?.counting_note && a ? `Raw cache reads: ${formatTokens(a.daily_cache_read_tokens)} today; ${formatTokens(a.weekly_cache_read_tokens)} this week.` : ''].filter(Boolean).join(' ')}>
-            <Button type="button" variant="link" size="xs" disabled={disabled} onClick={() => startEdit(provider)} className="h-auto p-0 font-normal text-inherit underline-offset-2 disabled:no-underline"
-              title={`Edit ${user.username}'s limit on the shared ${label} account. Default: ${def?.daily || def?.weekly ? [def?.daily ? `${formatTokens(def.daily)} a day` : '', def?.weekly ? `${formatTokens(def.weekly)} a week` : ''].filter(Boolean).join(', ') : 'none'}.`}>
-              {label}{o ? (o.daily === TOKEN_LIMIT_UNLIMITED && o.weekly === TOKEN_LIMIT_UNLIMITED ? ' (unlimited)' : ' (own limit)') : ''}
-            </Button>
-            {': '}
-            {a ? <>today {part(a.daily_used, a.daily_limit)} · week {part(a.weekly_used, a.weekly_limit)}</> : 'no use'}
-            {!hasLimit && a && ' · no limit'}
-          </p>
-        )
-      })}
-      {addable.length > 0 && !editing && (
-        <select aria-label={`Set an account limit for ${user.username}`} disabled={disabled} value=""
-          onChange={(e) => { if (e.target.value) startEdit(e.target.value) }}
-          className="h-6 rounded border border-border bg-background px-1 text-xs text-muted-foreground">
-          <option value="">+ Limit on an account…</option>
-          {addable.map((p) => <option key={p} value={p}>{sharedAccountLabel(p)}</option>)}
-        </select>
-      )}
-    </div>
-  )
-}
-
-// Products in which an account creates something (a workflow, Flow, Crew, Code project, video).
 const CREATABLE_PRODUCTS = ['agentworks', 'relays', 'work', 'code', 'video-studio', 'sparkquill']
-
 const productLabel = (id: string) => isProductSurface(id) ? PRODUCT_SURFACE_LABELS[id] : id === 'finance' ? 'Finance' : id
+const limitLabel = (n?: number) => n && n > 0 ? formatTokens(n) : 'Unlimited'
+const overrideLabel = (n?: number) => n && n < 0 ? 'Unlimited' : n ? formatTokens(n) : 'Account default'
+const signInLabel = (u: AdminUser) => u.invited || (u.provider && u.provider !== 'password' && u.provider !== 'simple') ? 'Company sign-in' : u.has_password ? 'Password sign-in' : 'No password set'
 
-interface UsersAdminPanelProps {
-  /** Vault adds MCP consumers; platform roles/products are managed outside this view. */
-  vaultOnly?: boolean
-}
-
-/**
- * Users & access: the admin page for the user directory. Set each account's
- * role and which products they may open, reset passwords, disable or delete.
- */
-const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) => {
-  const me = useAuthStore((s) => s.user)
+/** Account overview. Detailed updates belong to the existing administrator MCP tools. */
+const UsersAdminPanel: React.FC<{ vaultOnly?: boolean }> = ({ vaultOnly = false }) => {
+  const me = useAuthStore(s => s.user)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [products, setProducts] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
-  // Providers with a shared server account, for per-person account overrides (PLAT-693).
-  const [accountProviders, setAccountProviders] = useState<string[]>([])
-  // Each shared account's own model list, for the per-person model overrides (PLAT-714).
-  const [accountModels, setAccountModels] = useState<Record<string, string[] | undefined>>({})
-  useEffect(() => {
-    if (vaultOnly) return
-    let cancelled = false
-    void Promise.resolve().then(() => llmConfigService.getProviderConnections())
-      .then((records) => {
-        if (cancelled) return
-        const servers = records.filter((r) => r.relation === 'server' || r.id.startsWith('global:'))
-        setAccountProviders([...new Set(servers.map((r) => r.provider))])
-        setAccountModels(Object.fromEntries(servers.map((r) => [r.provider, (r.default_allowed_models !== undefined ? r.default_allowed_models : r.allowed_models) ?? undefined])))
-      })
-      .catch(() => undefined)
-    return () => { cancelled = true }
-  }, [vaultOnly])
-
-  const [resetFor, setResetFor] = useState<AdminUser | null>(null)
-  const [resetPassword, setResetPassword] = useState('')
-  const [deleteFor, setDeleteFor] = useState<AdminUser | null>(null)
-
-  // Only the latest load may change the screen, so an overlapping or slow earlier load can never leave the spinner on.
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [copied, setCopied] = useState<string | null>(null)
+  const [connectOpen, setConnectOpen] = useState(false)
   const loadSeq = useRef(0)
   const refresh = useCallback(async () => {
     const seq = ++loadSeq.current
-    setLoading(true)
-    setError(null)
+    setLoading(true); setError(null)
     try {
-      const resp = await authApi.listAdminUsers()
+      const response = await authApi.listAdminUsers()
       if (seq !== loadSeq.current) return
-      setUsers(resp.users || [])
-      setProducts(selectableProducts(resp.products || [], enabledProductSurfaces()))
+      setUsers(response.users || [])
+      setProducts(selectableProducts(response.products || [], enabledProductSurfaces()))
     } catch (err) {
       if (seq !== loadSeq.current) return
       const message = err instanceof Error ? err.message : String(err)
       setError(/timeout/i.test(message) ? 'Loading the accounts took longer than 15 seconds. Check your connection and try again.' : message)
-    } finally {
-      if (seq === loadSeq.current) setLoading(false)
-    }
+    } finally { if (seq === loadSeq.current) setLoading(false) }
   }, [])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
-
-  const run = useCallback(async (id: string | null, action: () => Promise<unknown>) => {
-    setBusyId(id)
-    setError(null)
-    try {
-      await action()
-      await refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusyId(null)
-    }
-  }, [refresh])
-
-  const toggleProduct = (list: string[], id: string) => (list.includes(id) ? list.filter((p) => p !== id) : [...list, id])
-  // Per-product create permission (PLAT-767): the products an account may open that have something to create, and
-  // where it may create now (no list yet: a creator everywhere it may open, an editor nowhere).
-  const creatableFor = (u: AdminUser, role: Role) => products.filter((p) => CREATABLE_PRODUCTS.includes(p) && (u.products.includes(p) || (role === 'creator' && u.products.length === 0)))
-  const createListFor = (u: AdminUser, role: Role) => u.create_products ?? (role === 'creator' ? creatableFor(u, role) : [])
-
-  // Turning Crew review on also opens the Crew product (the inspector lives
-  // there) for an account whose products are a restricted list.
-  const codeReviewerPatch = (u: AdminUser, role: Role, next: boolean): AdminUserWrite => {
-    const patch: AdminUserWrite = { crew_reviewer: next }
-    const restricted = role === 'viewer' || role === 'editor' || u.products.length > 0
-    if (next && role !== 'admin' && restricted && products.includes('code') && !u.products.includes('code')) {
-      patch.products = [...u.products, 'code']
-    }
-    return patch
+  useEffect(() => { void refresh(); return () => { loadSeq.current++ } }, [refresh])
+  const run = async (id: string, patch: AdminUserWrite) => {
+    setBusyId(id); setError(null)
+    try { await authApi.updateAdminUser(id, patch); await refresh() }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { setBusyId(null) }
   }
-
-  // Vault reader also opens the Vault product for a restricted account.
-  const vaultReaderPatch = (u: AdminUser, role: Role, next: boolean): AdminUserWrite => {
-    const patch: AdminUserWrite = { vault_reader: next }
-    const restricted = role === 'viewer' || role === 'editor' || u.products.length > 0
-    if (next && restricted && products.includes('mcp-gateway') && !u.products.includes('mcp-gateway')) {
-      patch.products = [...u.products, 'mcp-gateway']
-    }
-    return patch
-  }
-
   const sorted = useMemo(() => [...users].sort((a, b) => a.username.localeCompare(b.username)), [users])
-  const [query, setQuery] = useState('')
-  const [expanded, setExpanded] = useState<string | null>(null)
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return q ? sorted.filter((u) => `${u.username} ${u.email || ''}`.toLowerCase().includes(q)) : sorted
+    return q ? sorted.filter(u => `${u.username} ${u.email || ''}`.toLowerCase().includes(q)) : sorted
   }, [sorted, query])
-  const productsSummary = (u: AdminUser, role: Role) => (
-    role === 'admin' || (role === 'creator' && u.products.length === 0) ? 'All products' : u.products.map(productLabel).join(', ') || 'No products'
-  )
-
-  return (
-    <div className="[container-type:inline-size] space-y-5">
-      <SettingsCard
-        icon={<Users className="h-4 w-4 text-primary" />}
-        title="Accounts"
-        count={`${sorted.length} ${sorted.length === 1 ? 'account' : 'accounts'}`}
-        description={vaultOnly ? undefined : 'Manage roles and product access. New people are added by your server administrator.'}
-      >
-        {error && (
-          <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
-            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <span className="flex-1">{error}</span>
-            <Button size="sm" variant="outline" onClick={() => void refresh()}>Retry</Button>
-          </div>
-        )}
-        {loading ? (
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Loading accounts…</span>
-          </div>
-        ) : sorted.length === 0 ? (
-          <SettingsEmpty>No accounts yet. New people are added by your server administrator.</SettingsEmpty>
-        ) : (
-          <div className="space-y-3">
-            <div className="relative max-w-sm">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search people" aria-label="Search people" className="h-8 pl-8 text-sm" />
-            </div>
-            <ul className="divide-y divide-border rounded-md border border-border">
-              {shown.map((u) => {
-                const isMe = u.id === me?.id
-                const busy = busyId === u.id
-                const role = roleOf(u)
-                const open = !vaultOnly && expanded === u.id
-                const status = u.disabled
-                  ? <Badge variant="outline" className="text-destructive"><Ban className="mr-1 h-3 w-3" />Turned off</Badge>
-                  : u.invited
-                    ? <Badge variant="outline" title="Added by an administrator; not signed in yet"><Mail className="mr-1 h-3 w-3" />Added</Badge>
-                    : null
-                return (
-                  <li key={u.id} className={u.disabled ? 'opacity-60' : ''}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      disabled={vaultOnly}
-                      onClick={() => setExpanded(open ? null : u.id)}
-                      aria-expanded={open}
-                      aria-label={`${open ? 'Close' : 'Edit'} ${u.username}`}
-                      className="h-auto w-full justify-start gap-3 rounded-none px-3 py-2.5 text-left font-normal hover:bg-muted/40 disabled:cursor-default disabled:opacity-100 disabled:hover:bg-transparent"
-                    >
-                      {!vaultOnly && (open ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />)}
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">{u.username}{isMe && <span className="ml-1 text-[11px] text-muted-foreground">(you)</span>}</span>
-                        <span className="block truncate text-[11px] text-muted-foreground">{u.email && u.email !== u.username ? `${u.email} · ` : ''}{signInLabel(u)}</span>
-                      </span>
-                      <span className="hidden min-w-0 max-w-[40%] truncate text-xs text-muted-foreground sm:block">{productsSummary(u, role)}</span>
-                      <Badge variant="secondary" className="shrink-0">{ROLES.find(r => r.value === role)?.label}</Badge>
-                      {status}
-                      {busy && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
-                    </Button>
-                    {open && (
-                      <div className="grid gap-5 border-t border-border bg-muted/20 px-4 py-4 text-sm sm:grid-cols-2">
-                        <section className="space-y-1.5">
-                          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Role</h4>
-                          {vaultOnly ? <span className="text-xs text-muted-foreground">{ROLES.find(r => r.value === role)?.label}</span> : <RolePicker
-                            value={role}
-                            label={`Role for ${u.username}`}
-                            disabled={busy || (isMe && role === 'admin')}
-                            title={isMe && role === 'admin' ? 'You cannot remove your own admin access' : undefined}
-                            onChange={(next) => { void run(u.id, () => authApi.updateAdminUser(u.id, roleFields(next))) }}
-                          />}
-                          {!vaultOnly && role !== 'admin' && (
-                            <label
-                              className="mt-1.5 flex items-center gap-1.5 text-xs"
-                              title="Sees every Crew project's cost, chats and files without changing them. Every view is recorded in the audit log."
-                            >
-                              <Checkbox
-                                disabled={busy}
-                                checked={u.crew_reviewer === true}
-                                onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, codeReviewerPatch(u, role, u.crew_reviewer !== true))) }}
-                                aria-label={`Crew reviewer for ${u.username}`}
-                              />
-                              Crew reviewer
-                            </label>
-                          )}
-                          {!vaultOnly && role !== 'admin' && products.includes('mcp-gateway') && (
-                            <label
-                              className="mt-1.5 flex items-center gap-1.5 text-xs"
-                              title="Sees Vault connections, tools, groups, who can reach what and the audit log. Changes nothing."
-                            >
-                              <Checkbox
-                                disabled={busy}
-                                checked={u.vault_reader === true}
-                                onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, vaultReaderPatch(u, role, u.vault_reader !== true))) }}
-                                aria-label={`Vault audit for ${u.username}`}
-                              />
-                              Vault audit
-                            </label>
-                          )}
-                        </section>
-                        <section className="space-y-1.5">
-                          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Products</h4>
-                          {vaultOnly ? <span className="text-xs text-muted-foreground">{role === 'admin' || (role === 'creator' && u.products.length === 0) ? 'All products' : u.products.map(productLabel).join(', ') || 'None'}</span> : role === 'admin' ? (
-                            <span className="text-xs text-muted-foreground">all</span>
-                          ) : (
-                            products.length === 1 ? (
-                              <span className="text-xs text-muted-foreground">{productLabel(products[0])}</span>
-                            ) : (
-                            <div className="flex flex-wrap gap-2 text-xs">
-                              {products.map((p) => (
-                                <label key={p} className="inline-flex items-center gap-1.5">
-                                  <Checkbox
-                                    disabled={busy}
-                                    checked={u.products.includes(p)}
-                                    onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, { products: toggleProduct(u.products, p) })) }}
-                                    aria-label={`${productLabel(p)} for ${u.username}`}
-                                  />
-                                  {productLabel(p)}
-                                </label>
-                              ))}
-                              {role === 'creator' && u.products.length === 0 && <span className="text-muted-foreground">(all)</span>}
-                              {(role === 'viewer' || role === 'editor') && u.products.length === 0 && <span className="text-muted-foreground">(none)</span>}
-                            </div>
-                            )
-                          )}
-                          {!vaultOnly && (role === 'creator' || role === 'editor') && creatableFor(u, role).length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs" title="Where this account may create new workflows, Flows, Crews or projects. Editing what already exists is not affected.">
-                              <span className="text-muted-foreground">May create in:</span>
-                              {creatableFor(u, role).map((p) => (
-                                <label key={p} className="inline-flex items-center gap-1.5">
-                                  <Checkbox
-                                    disabled={busy}
-                                    checked={createListFor(u, role).includes(p)}
-                                    onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, { create_products: toggleProduct(createListFor(u, role), p) })) }}
-                                    aria-label={`May create in ${productLabel(p)} for ${u.username}`}
-                                  />
-                                  {productLabel(p)}
-                                </label>
-                              ))}
-                            </div>
-                          )}
-                        </section>
-                        <section className="space-y-1.5">
-                          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" title="Tokens on the shared server accounts, per UTC day and Monday-start week. Own accounts are never limited.">Token limits on shared accounts</h4>
-                          <TokenLimitsCell
-                              user={u}
-                              disabled={busy}
-                              onSave={(limits) => { void run(u.id, () => authApi.updateAdminUser(u.id, { token_limits: limits })) }}
-                              accountProviders={accountProviders}
-                              onSaveAccount={(provider, limits) => { void run(u.id, () => authApi.updateAdminUser(u.id, { account_token_limits: { [provider]: limits } })) }}
-                              accountModels={accountModels}
-                              onSaveModels={(provider, models) => { void run(u.id, () => authApi.updateAdminUser(u.id, { account_allowed_models: { [provider]: models } })) }}
-                            />
-                        </section>
-                        <section className="space-y-1.5">
-                          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Account</h4>
-                          <div className="flex flex-wrap items-center gap-1">
-                            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-                            {!usesSSO(u) && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                title="Set a new password"
-                                disabled={busy}
-                                onClick={() => { setResetFor(u); setResetPassword('') }}
-                              >
-                                <KeyRound className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            {!isMe && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                title={u.disabled ? 'Turn account on' : 'Turn account off'}
-                                disabled={busy}
-                                onClick={() => { void run(u.id, () => authApi.updateAdminUser(u.id, { disabled: !u.disabled })) }}
-                              >
-                                {u.disabled ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Ban className="h-3.5 h-3.5" />}
-                              </Button>
-                            )}
-                            {!isMe && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-destructive hover:bg-destructive/10"
-                                title="Delete account (their files are kept)"
-                                disabled={busy}
-                                onClick={() => setDeleteFor(u)}
-                              >
-                                <Trash2 className="h-3.5 h-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        </section>
-                      </div>
-                    )}
-                  </li>
-                )
-              })}
-              {shown.length === 0 && <li className="px-3 py-4 text-xs text-muted-foreground">No one matches “{query}”.</li>}
-            </ul>
-          </div>
-        )}
-      </SettingsCard>
-
-      {resetFor && (
-        <SettingsCard
-          icon={<KeyRound className="h-4 w-4 text-primary" />}
-          title={`New password for ${resetFor.username}`}
-          description="At least 8 characters. The old password stops working immediately."
-        >
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <div className="flex-1">
-              <SecretField
-                label="New password"
-                value={resetPassword}
-                onChange={setResetPassword}
-                placeholder="min 8 characters"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button
-                disabled={resetPassword.length < 8 || busyId === resetFor.id}
-                onClick={() => { const target = resetFor; void run(target.id, async () => { await authApi.updateAdminUser(target.id, { password: resetPassword }); setResetFor(null) }) }}
-              >
-                Save password
+  const accessible = (u: AdminUser, role: Role) => role === 'admin' || role === 'creator' && u.products.length === 0 ? products : u.products
+  const copyAdminRequest = async (u: AdminUser) => {
+    try {
+      await navigator.clipboard.writeText(`Manage the AgentWorks account ${u.username}${u.email ? ` (${u.email})` : ''}, user_id ${u.id}. Use the admin MCP tools to inspect its access and AI usage, then help me update its detailed settings. Use the currently available admin MCP tools for access, password resets, deletion, AI usage, token limits and model restrictions. Keep unrelated settings unchanged.`)
+      setCopied(u.id)
+    } catch { setError('Could not copy the request. Open your connected AI app and ask it to manage this account.') }
+  }
+  return <div className="space-y-4">
+    <SettingsCard icon={<Users className="h-4 w-4 text-primary" />} title="People" count={`${sorted.length} ${sorted.length === 1 ? 'account' : 'accounts'}`}
+      description={vaultOnly ? undefined : 'Review access here. Update detailed permissions, AI limits and account settings through your connected AI app.'}>
+      {!vaultOnly && <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <p>Basic updates are available below. New people are added by your server administrator.</p>
+        <Button size="sm" variant="outline" onClick={() => setConnectOpen(true)}><Plug className="mr-1.5 h-3.5 w-3.5" />Connect AI app</Button>
+      </div>}
+      {error && <div role="alert" className="mb-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span className="flex-1">{error}</span><Button size="sm" variant="outline" onClick={() => void refresh()}>Retry</Button>
+      </div>}
+      {loading ? <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading accounts…</div>
+        : !sorted.length ? <SettingsEmpty>No accounts yet. New people are added by your server administrator.</SettingsEmpty>
+        : <div className="space-y-3">
+          <div className="relative max-w-sm"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search people" aria-label="Search people" className="h-8 pl-8 text-sm" /></div>
+          <ul className="divide-y divide-border rounded-lg border border-border">{shown.map(u => {
+            const role = roleOf(u), isMe = u.id === me?.id, busy = busyId === u.id, open = expanded === u.id && !vaultOnly
+            const apps = accessible(u, role)
+            const create = role === 'admin' ? products.filter(p => CREATABLE_PRODUCTS.includes(p)) : (u.create_products ?? (role === 'creator' ? apps.filter(p => CREATABLE_PRODUCTS.includes(p)) : [])).filter(p => apps.includes(p))
+            const extras = [u.crew_reviewer && 'Crew reviewer', u.vault_reader && 'Vault audit'].filter(Boolean)
+            return <li key={u.id} className={u.disabled ? 'opacity-60' : ''}>
+              <Button type="button" variant="ghost" disabled={vaultOnly} onClick={() => setExpanded(open ? null : u.id)} aria-expanded={open} aria-label={`${open ? 'Close' : 'Details for'} ${u.username}`}
+                className="h-auto w-full justify-start gap-3 rounded-none px-3 py-3 text-left font-normal hover:bg-muted/40 disabled:cursor-default disabled:opacity-100">
+                {!vaultOnly && (open ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />)}
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{u.username}{isMe && <span className="ml-1 text-[11px] text-muted-foreground">(you)</span>}</span><span className="block truncate text-xs text-muted-foreground">{u.email || signInLabel(u)}</span></span>
+                <span className="hidden max-w-[35%] truncate text-xs text-muted-foreground sm:block">{role === 'admin' || role === 'creator' && !u.products.length ? 'All products' : apps.map(productLabel).join(', ') || 'No products'}</span>
+                <Badge variant="secondary">{ROLES.find(r => r.value === role)?.label}</Badge>
+                {u.disabled ? <Badge variant="outline" className="text-destructive"><Ban className="mr-1 h-3 w-3" />Off</Badge> : u.invited ? <span className="hidden text-xs text-muted-foreground sm:inline">Not signed in</span> : null}
               </Button>
-              <Button variant="outline" onClick={() => setResetFor(null)}>Cancel</Button>
-            </div>
-          </div>
-        </SettingsCard>
-      )}
-
-      <ConfirmationDialog
-        isOpen={deleteFor !== null}
-        onClose={() => setDeleteFor(null)}
-        onConfirm={() => { const target = deleteFor; setDeleteFor(null); if (target) void run(target.id, () => authApi.deleteAdminUser(target.id)) }}
-        title={`Delete ${deleteFor?.username ?? 'account'}?`}
-        message={deleteFor ? `Delete the account ${deleteFor.username}? Their files stay on disk. This cannot be undone.` : ''}
-        confirmText="Delete account"
-        type="danger"
-        requireText={deleteFor?.username}
-      />
-    </div>
-  )
+              {open && <div className="space-y-4 border-t border-border bg-muted/10 p-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">Role<RolePicker value={role} label={`Role for ${u.username}`} disabled={busy || isMe && role === 'admin'} title={isMe && role === 'admin' ? 'You cannot remove your own admin access' : undefined} onChange={next => { void run(u.id, roleFields(next)) }} /></label>
+                  {!isMe && <Button size="sm" variant="outline" disabled={busy} onClick={() => { void run(u.id, { disabled: !u.disabled }) }}>{u.disabled ? 'Enable account' : 'Disable account'}</Button>}
+                  <Button size="sm" variant="ghost" className="sm:ml-auto" onClick={() => { void copyAdminRequest(u) }}><Copy className="mr-1.5 h-3.5 w-3.5" />{copied === u.id ? 'Copied' : 'Copy admin request'}</Button>
+                  {busy && <Loader2 role="status" className="h-4 w-4 animate-spin" aria-label="Saving account" />}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs"><span className="text-muted-foreground">Product access</span>{role === 'admin' ? <span>All products</span> : products.map(product => <label key={product} className="inline-flex items-center gap-1.5"><Checkbox disabled={busy} checked={apps.includes(product)} aria-label={`${productLabel(product)} for ${u.username}`} onCheckedChange={() => { void run(u.id, { products: apps.includes(product) ? apps.filter(p => p !== product) : [...apps, product] }) }} />{productLabel(product)}</label>)}</div>
+                <details className="border-t border-border pt-3"><summary className="cursor-pointer text-xs text-muted-foreground">Access and AI usage</summary>
+                  <dl className="mt-3 grid gap-x-5 gap-y-2 text-xs sm:grid-cols-2" aria-label={`Access summary for ${u.username}`}>
+                    <div><dt className="text-muted-foreground">Can create in</dt><dd>{create.map(productLabel).join(', ') || 'No products'}</dd></div>
+                    <div><dt className="text-muted-foreground">Additional access</dt><dd>{extras.join(', ') || 'None'}</dd></div>
+                    <div><dt className="text-muted-foreground">AI limits on shared accounts</dt><dd>Daily {limitLabel(u.token_limits?.daily)} · Weekly {limitLabel(u.token_limits?.weekly)}</dd></div>
+                    <div><dt className="text-muted-foreground">AI usage</dt><dd>{u.token_usage ? `Today ${formatTokens(u.token_usage.daily_used)} · This week ${formatTokens(u.token_usage.weekly_used)}` : 'Not available'}</dd></div>
+                    <div><dt className="text-muted-foreground">Sign-in</dt><dd>{signInLabel(u)}</dd></div>
+                    {Object.entries(u.account_token_limits || {}).map(([provider, limits]) => <div key={`limits:${provider}`}><dt className="text-muted-foreground">{sharedAccountLabel(provider)} limits</dt><dd>Daily {overrideLabel(limits?.daily)} · Weekly {overrideLabel(limits?.weekly)}</dd></div>)}
+                    {Object.entries(u.account_allowed_models || {}).map(([provider, models]) => <div key={`models:${provider}`}><dt className="text-muted-foreground">{sharedAccountLabel(provider)} models</dt><dd>{allowedModelsText(models)}</dd></div>)}
+                  </dl>
+                  <p className="mt-3 text-xs text-muted-foreground">Use admin MCP to change these settings, reset a password or delete an account.</p>
+                </details>
+              </div>}
+            </li>
+          })}{!shown.length && <li className="px-3 py-4 text-xs text-muted-foreground">No one matches “{query}”.</li>}</ul>
+        </div>}
+    </SettingsCard>
+    {connectOpen && <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">Loading connection setup…</p>}><McpConnectDialog onClose={() => setConnectOpen(false)} onNavigate={() => setConnectOpen(false)} /></Suspense>}
+  </div>
 }
 
 export default UsersAdminPanel

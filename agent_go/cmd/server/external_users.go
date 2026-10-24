@@ -20,17 +20,18 @@ func externalUsersAllowed(c *UserClaims) bool {
 
 func externalUsersDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	products := map[string]any{"type": "array", "maxItems": 100, "items": externalString("Existing product ID, as on the Users page.")}
-	add(externalUsersTool, "Administrator account access management, using the Users page's current rules and existing users:manage consent. list/get return account identity, sign-in method, role, products, create permissions, status and review flags; never credentials. update changes only existing account access through the app's handler. Omitted fields stay unchanged; clear_create_products restores role defaults. Changing administrator access requires confirm=user_id. Self-demotion, self-disable and removing the last active administrator are refused. update requires a stable request_id: for 7 days an identical retry returns the recorded result and different arguments with the same ID are refused. After 7 days the ID is a new update; inspect current access before resending. Every new change is audited with its caller. Builder/Run product access continues to follow existing roles. Accounts are provisioned separately.", false, false, map[string]any{
-		"action":   map[string]any{"type": "string", "enum": []any{"list", "get", "update"}},
-		"user_id":  externalString("Existing account ID; required for get/update."),
+	add(externalUsersTool, "Administrator account access management, using the Users page's current rules and existing users:manage consent. list/get return account identity, sign-in method, role, products, create permissions, status and review flags; never credentials. update changes existing access or sets a person-supplied password through the app handler. delete removes the account while preserving its files. Use the account tool for AI usage, token limits and allowed models. Omitted fields stay unchanged; clear_create_products restores role defaults. Changing administrator access requires confirm=user_id. Self-demotion, self-disable and removing the last active administrator are refused. update/delete require a stable request_id: for 7 days an identical retry returns the recorded result and different arguments with the same ID are refused. After 7 days the ID is a new update; inspect current access before resending. Every new change is audited with its caller. Builder/Run product access continues to follow existing roles. Accounts are provisioned separately.", false, false, map[string]any{
+		"action":   map[string]any{"type": "string", "enum": []any{"list", "get", "update", "delete"}},
+		"user_id":  externalString("Existing account ID; required for get/update/delete."),
 		"role":     map[string]any{"type": "string", "enum": []any{"admin", "creator", "editor", "viewer"}, "description": "Existing account role ID."},
 		"products": products, "create_products": products,
 		"clear_create_products": map[string]any{"type": "boolean"},
 		"disabled":              map[string]any{"type": "boolean"},
 		"crew_reviewer":         map[string]any{"type": "boolean", "description": "May inspect Code through the existing audited review access."},
 		"vault_reader":          map[string]any{"type": "boolean", "description": "May inspect Vault through its existing access rules."},
+		"password":              map[string]any{"type": "string", "minLength": 8, "description": "For update: a new password supplied by the person. Never repeat or log it; only its hash is stored."},
 		"confirm":               externalString("Repeat user_id to confirm a change to administrator access."),
-		"request_id":            map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable update retry ID; reuse only with identical arguments within 7 days. After expiration it is a new update."},
+		"request_id":            map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable mutation retry ID; reuse only with identical arguments within 7 days. After expiration it is a new update."},
 	}, "action")
 }
 
@@ -122,33 +123,49 @@ func (api *StreamingAPI) externalUsersCall(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
-	if action != "update" {
-		externalError(w, 400, "invalid_arguments", "action must be list, get or update.")
+	if action != "update" && action != "delete" {
+		externalError(w, 400, "invalid_arguments", "action must be list, get, update or delete.")
 		return
 	}
 	requestID := externalArg(args, "request_id")
 	if id == "" || requestID == "" || len(requestID) > 128 || strings.TrimSpace(requestID) != requestID {
-		externalError(w, 400, "invalid_arguments", "update requires user_id and a stable request_id (at most 128 characters).")
+		externalError(w, 400, "invalid_arguments", "update/delete require user_id and a stable request_id (at most 128 characters).")
 		return
 	}
 	payload := map[string]any{}
 	fields := []string{}
-	for _, field := range []string{"role", "products", "create_products", "clear_create_products", "disabled", "crew_reviewer", "vault_reader"} {
+	for _, field := range []string{"role", "products", "create_products", "clear_create_products", "disabled", "crew_reviewer", "vault_reader", "password"} {
 		if value, exists := args[field]; exists {
 			payload[field] = value
 			fields = append(fields, field)
 		}
 	}
-	if len(fields) == 0 || args["create_products"] != nil && args["clear_create_products"] == true {
+	if action == "delete" {
+		for key := range args {
+			if key != "action" && key != "user_id" && key != "request_id" && key != "confirm" {
+				externalError(w, 400, "invalid_arguments", "delete accepts only user_id, request_id and confirm.")
+				return
+			}
+		}
+		fields = []string{"account"}
+	} else if len(fields) == 0 || args["create_products"] != nil && args["clear_create_products"] == true {
 		externalError(w, 400, "invalid_arguments", "Supply access fields; create_products and clear_create_products cannot both be set.")
 		return
 	}
 	sort.Strings(fields)
 	mutation := &userAccessMutation{Key: userAccessHash([]string{claims.UserID, requestID}), Hash: userAccessHash(args), Confirm: externalArg(args, "confirm"), RequestID: requestID, Fields: strings.Join(fields, ",")}
 	r = r.WithContext(context.WithValue(r.Context(), userAccessMutationKey{}, mutation))
-	status, body := api.externalForward(r, http.MethodPut, "/api/admin/users/"+url.PathEscape(id), map[string]string{"id": id}, payload, requireAdmin(api.handleAdminUpdateUser))
+	method, handler := http.MethodPut, api.handleAdminUpdateUser
+	if action == "delete" {
+		method, handler = http.MethodDelete, api.handleAdminDeleteUser
+	}
+	status, body := api.externalForward(r, method, "/api/admin/users/"+url.PathEscape(id), map[string]string{"id": id}, payload, requireAdmin(handler))
 	if status != http.StatusOK {
 		externalError(w, status, "users_failed", body)
+		return
+	}
+	if action == "delete" {
+		externalJSON(w, map[string]any{"user_id": id, "deleted": true, "request_id": requestID})
 		return
 	}
 	var user userAdminView

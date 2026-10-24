@@ -19,7 +19,7 @@ func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
 	}
 	owner, reader, admin := register("a1"), register("c3"), register("admin")
 	ctx := context.Background()
-	for _, action := range []string{"get_workflow_access", "set_workflow_access", "list_users", "update_user"} {
+	for _, action := range []string{"get_workflow_access", "set_workflow_access", "list_users", "update_user", "delete_user"} {
 		if _, err := reader.exec(ctx, map[string]interface{}{"action": action}); err == nil {
 			t.Fatalf("reader allowed %s", action)
 		}
@@ -58,6 +58,9 @@ func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
 	output, err := admin.exec(ctx, map[string]interface{}{"action": "update_user", "user_id": userIDForUsername("newreader"), "can_create": true})
 	if err != nil || !strings.Contains(output, `"can_create":true`) {
 		t.Fatalf("account update: %v", err)
+	}
+	if output, err := admin.exec(ctx, map[string]interface{}{"action": "delete_user", "user_id": userIDForUsername("newreader")}); err != nil || !strings.Contains(output, `"status":"deleted"`) {
+		t.Fatalf("native account delete: %v", err)
 	}
 	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","can_create":true,"products":[]},{"id":"a1","username":"owner","can_create":true,"products":[]}]}`)
 	if _, err := admin.exec(ctx, map[string]interface{}{"action": "list_users"}); err == nil {

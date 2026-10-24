@@ -33,7 +33,7 @@ describe('Shared user roles and product access', () => {
     await render()
     // One line per person; the editor opens on click. No "viewer" wording (Builder and Run only).
     expect(host.querySelector('[aria-label="Role for creator@example.com"]')).toBeNull()
-    await act(async () => (host.querySelector('[aria-label="Edit creator@example.com"]') as HTMLElement).click())
+    await act(async () => (host.querySelector('[aria-label="Details for creator@example.com"]') as HTMLElement).click())
     await openRole('Role for creator@example.com')
     expect(Array.from(document.querySelectorAll('[role="option"]')).map(option => option.querySelector('span.block')?.textContent)).toEqual(['Member', 'Editor', 'Creator', 'Admin'])
     await act(async () => (document.querySelector('[role="option"]') as HTMLElement).click())
@@ -42,27 +42,34 @@ describe('Shared user roles and product access', () => {
     expect(host.querySelector('[aria-label="Email"]')).toBeNull()
     // An SSO account has no password to set, and the identity service behind SSO is not named.
     expect(host.querySelector('button[title="Set a new password"]')).toBeNull()
-    expect(host.textContent).toContain('signs in with SSO')
+    expect(host.textContent).toContain('Company sign-in')
   })
-  it('labels the Vault checkbox as its visible label and credits the server administrator', async () => {
+  it('shows advanced permissions as a summary and directs updates through admin MCP', async () => {
     api.listAdminUsers.mockResolvedValue({ products: ['mcp-gateway'], users: [{
-      id: 'gw', username: 'gw@example.com', email: 'gw@example.com', role: 'viewer', admin: false, can_create: false, can_edit: true, products: ['mcp-gateway'], provider: 'google',
+      id: 'gw', username: 'gw@example.com', email: 'gw@example.com', role: 'viewer', admin: false, can_create: false, can_edit: true, products: ['mcp-gateway'], provider: 'google', vault_reader: true, token_limits: { daily: 1000 },
     }] })
     await render()
     expect(host.textContent).toContain('New people are added by your server administrator.')
     expect(host.textContent).not.toContain('DevOps')
-    await act(async () => (host.querySelector('[aria-label="Edit gw@example.com"]') as HTMLElement).click())
-    expect(host.querySelector('[aria-label="Vault audit for gw@example.com"]')).not.toBeNull()
+    await act(async () => (host.querySelector('[aria-label="Details for gw@example.com"]') as HTMLElement).click())
+    expect(host.querySelector('[aria-label="Vault audit for gw@example.com"]')).toBeNull()
+    expect(host.textContent).toContain('Vault audit')
+    expect(host.textContent).toContain('Daily 1,000')
+    expect(host.textContent).toContain('Use admin MCP')
+    expect(host.querySelector('input[aria-label*="token limit"]')).toBeNull()
     expect(host.querySelector('[aria-label="Vault reader for gw@example.com"]')).toBeNull()
   })
-  it('keeps the password reset for a password account', async () => {
+  it('keeps password status visible while password resets and deletion use MCP', async () => {
     api.listAdminUsers.mockResolvedValue({ products: ['code'], users: [{
       id: 'pw', username: 'pw@example.com', email: 'pw@example.com', role: 'creator', admin: false, can_create: true, can_edit: true, products: ['code'], provider: 'password', has_password: true,
     }] })
     await render()
-    expect(host.textContent).toContain('signs in with a password')
-    await act(async () => (host.querySelector('[aria-label="Edit pw@example.com"]') as HTMLElement).click())
-    expect(host.querySelector('button[title="Set a new password"]')).not.toBeNull()
+    await act(async () => (host.querySelector('[aria-label="Details for pw@example.com"]') as HTMLElement).click())
+    expect(host.textContent).toContain('Password sign-in')
+    expect(host.querySelector('button[title="Set a new password"]')).toBeNull()
+    expect(host.querySelector('input[type="password"]')).toBeNull()
+    expect(host.textContent).toContain('Copy admin request')
+    expect(host.textContent).toContain('Disable account')
   })
   it('exposes no platform role/product grants in Vault', async () => {
     await render(true)

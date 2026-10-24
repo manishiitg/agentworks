@@ -1149,6 +1149,18 @@ func (api *StreamingAPI) handleAdminDeleteUser(w http.ResponseWriter, r *http.Re
 		writeUsersError(w, http.StatusForbidden, "administrator access is required")
 		return
 	}
+	mcp, _ := r.Context().Value(userAccessMutationKey{}).(*userAccessMutation)
+	if mcp != nil {
+		pruneUserAccessReceipts(dir, time.Now().UTC())
+		if receipt, found := dir.AccessRequests[mcp.Key]; found {
+			if receipt.Hash != mcp.Hash {
+				writeUsersError(w, http.StatusConflict, "request_id was already used for a different update")
+				return
+			}
+			writeUsersJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+			return
+		}
+	}
 	kept := dir.Users[:0]
 	var removed *UserRecord
 	for i := range dir.Users {
@@ -1163,12 +1175,31 @@ func (api *StreamingAPI) handleAdminDeleteUser(w http.ResponseWriter, r *http.Re
 		writeUsersError(w, http.StatusNotFound, "user not found")
 		return
 	}
+	if mcp != nil && accessForRecord(removed).Admin && mcp.Confirm != id {
+		writeUsersError(w, http.StatusBadRequest, "changing administrator access requires confirm=user_id")
+		return
+	}
 	dir.Users = kept
 	if activeDirectoryAdmin(removed) && !directoryHasActiveAdmin(dir) {
 		writeUsersError(w, http.StatusBadRequest, "the last active administrator cannot be removed or disabled")
 		return
 	}
+	if mcp != nil {
+		if err := recordCodeAdminView(r.Context(), GetUserFromContext(r.Context()), "delete_user_attempt", id, "", "request_id="+mcp.RequestID); err != nil {
+			writeUsersError(w, http.StatusServiceUnavailable, "the account change could not be audited")
+			return
+		}
+		if dir.AccessRequests == nil {
+			dir.AccessRequests = map[string]userAccessReceipt{}
+		}
+		dir.AccessRequests[mcp.Key] = userAccessReceipt{Hash: mcp.Hash, CreatedAt: time.Now().UTC(), Result: viewOf(*removed)}
+	}
 	if err := saveUserDirectory(dir); err != nil {
+		if mcp != nil {
+			if auditErr := recordCodeAdminView(r.Context(), GetUserFromContext(r.Context()), "delete_user_failed", id, "", "request_id="+mcp.RequestID); auditErr != nil {
+				log.Printf("[USERS] could not audit failed account delete: %v", auditErr)
+			}
+		}
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

@@ -33,7 +33,7 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(docs, "config"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	initial := `{"users":[{"id":"boss","username":"boss","role":"admin"},{"id":"second","username":"second","role":"admin"},{"id":"member","username":"member","email":"member@example.com","role":"viewer","products":["code"],"password_hash":"private-password-hash-canary","sso":{"provider":"oidc","external_id":"private-login-id-canary"}}]}`
+	initial := `{"users":[{"id":"remove-me","username":"remove-me","role":"viewer"},{"id":"boss","username":"boss","role":"admin"},{"id":"second","username":"second","role":"admin"},{"id":"member","username":"member","email":"member@example.com","role":"viewer","products":["code"],"password_hash":"private-password-hash-canary","sso":{"provider":"oidc","external_id":"private-login-id-canary"}}]}`
 	if err := os.WriteFile(filepath.Join(docs, "config", "users.json"), []byte(initial), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 		t.Fatal("safe account metadata incomplete", listed)
 	}
 	for _, claims := range []*UserClaims{codeReviewToken("member", "users:manage"), codeReviewToken("boss", "crews:review")} {
-		for _, action := range []string{"list", "get", "update"} {
+		for _, action := range []string{"list", "get", "update", "delete"} {
 			args := map[string]any{"action": action}
 			if action != "list" {
 				args["user_id"] = "member"
@@ -114,6 +114,19 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 				t.Fatal("unauthorized connection discovers users")
 			}
 		}
+	}
+	const newPassword = "fixture-password-8472"
+	passwordResult := call(map[string]any{"action": "update", "user_id": "second", "password": newPassword, "request_id": "password-reset"}, false)
+	if strings.Contains(passwordResult, newPassword) || !verifyPassword(directoryUserFor("second", "", "").PasswordHash, newPassword) {
+		t.Fatal("password reset did not use hashed storage and safe response")
+	}
+	deletion := map[string]any{"action": "delete", "user_id": "remove-me", "request_id": "delete-fixture"}
+	deleted := call(deletion, false)
+	if call(deletion, false) != deleted || directoryUserFor("remove-me", "", "") != nil {
+		t.Fatal("delete did not persist or replay its receipt")
+	}
+	if !strings.Contains(call(map[string]any{"action": "delete", "user_id": "boss", "request_id": "self-delete"}, true), "your own account") {
+		t.Fatal("MCP allowed self-deletion")
 	}
 	grant := map[string]any{"action": "update", "user_id": "member", "role": "creator", "products": []any{"relays", "code"}, "create_products": []any{"code"}, "request_id": "grant-code"}
 	first := call(grant, false)
@@ -200,6 +213,9 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	audit, err := os.ReadFile(filepath.Join(docs, filepath.FromSlash(codeAdminAuditPath(time.Now()))))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if strings.Contains(string(audit), newPassword) || strings.Count(string(audit), `request_id=delete-fixture`) != 1 {
+		t.Fatal("password leaked to audit or delete retry duplicated audit")
 	}
 	if strings.Count(string(audit), `request_id=grant-code `) != 1 || !strings.Contains(string(audit), `"admin_id":"boss"`) || !strings.Contains(string(audit), `"via":"token:tok-boss"`) {
 		t.Fatal("caller audit missing or retry duplicated it", string(audit))

@@ -35,3 +35,15 @@ For CLI installation, sign-in, updates or connecting this coding chat, read [the
 
 
 Read current server guidance after a version change. For developers, `agentworks guidance context/topics/topic/skills` is the CLI equivalent. A reference never adds permissions or makes an unlisted tool available.
+
+
+For administrators managing people, the website is an account overview with basic
+role, product and on/off updates. Use the current `users` MCP schema to inspect
+accounts and change detailed creation/review permissions, reset a password the
+person supplies, or delete an account while retaining its files. Inspect first;
+change only what the person requests. Reuse the required request ID for retries,
+and follow the existing administrator-access confirmation and scope rules.
+Never repeat or log a password. Use `account` with `action=usage`, `action=set_limits` or
+`action=set_allowed_models` for shared-account usage, limits and model restrictions.
+If these tools are absent, explain that the connection needs admin access and
+ask the person to connect an admin account; never bypass it through files.
