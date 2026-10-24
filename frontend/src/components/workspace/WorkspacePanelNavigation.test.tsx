@@ -95,7 +95,7 @@ it('isolates workspace, view, account and server scopes and cleans up on unmount
 
 it('permits nested read navigation without granting a read-only viewer the edit context', async () => {
   const back = vi.fn(), context = vi.fn()
-  const pane = (reader: boolean) => <><WorkspaceContextButton workspacePath="Workflow/example" view="mcp" inContext={false} contextAllowed={false} onClick={context} />
+  const pane = (reader: boolean) => <><WorkspacePanelHeader workspacePath="Workflow/example" view="mcp" title="Connected apps" contextAllowed={false} onBack={context} />
     <WorkspacePanelNavigationProvider workspacePath="Workflow/example" view="mcp">
       {reader && <WorkspacePanelBack label="Back to Skills" onBack={back} />}
     </WorkspacePanelNavigationProvider></>
@@ -106,14 +106,17 @@ it('permits nested read navigation without granting a read-only viewer the edit 
   expect(host.querySelector('button')).toBeNull()
 })
 
-it('retains contextual chat drafts in the panel header without Help or a general Back arrow', async () => {
-  const reveal = vi.fn()
+it('retains the panel Back arrow and contextual chat drafts without Help', async () => {
+  const reveal = vi.fn(), back = vi.fn()
   await render(<WorkspacePanelNavigationProvider workspacePath="Crew/example" view="skills" chatTarget={{ tabId: 'named-chat' }} onOpenChat={reveal}>
-    <WorkspacePanelHeader workspacePath="Crew/example" view="skills" title="Skills" onBack={vi.fn()} />
+    <WorkspacePanelHeader workspacePath="Crew/example" view="skills" title="Skills" onBack={back} />
     <WorkspaceViewHeader title="Skills" actions={<WorkspaceViewActions workspacePath="Crew/example" message="Explain these installed skills" onRefresh={vi.fn()}><button>Page action</button></WorkspaceViewActions>} />
   </WorkspacePanelNavigationProvider>)
   expect(host.querySelector('[aria-label="Help with this page"]')).toBeNull()
-  expect(host.querySelector('[aria-label="Back to context"]')).toBeNull()
+  const returnButton = host.querySelector<HTMLButtonElement>('[aria-label="Back to context"]')!
+  expect(returnButton).not.toBeNull()
+  await act(async () => returnButton.click())
+  expect(back).toHaveBeenCalledOnce()
   expect(host.textContent).toContain('Page action')
   const ask = host.querySelector<HTMLButtonElement>('[aria-label="Ask AI about this page"]')!
   expect(ask.closest('header')).not.toBeNull()
@@ -142,7 +145,7 @@ it.each(['Crew/example', 'Workflow/example', 'Workflow/relay'])('keeps live pane
   await render(pane('browser'))
   const header = host.querySelector('header[data-testid="workspace-panel-header"]')!
   expect(header.textContent).toContain('Chrome or Edge extension')
-  expect([...header.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Settings', 'Share 0'])
+  expect([...header.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Settings', 'Share 0', ''])
   await act(async () => header.querySelectorAll('button')[1].click())
   expect(header.textContent).toContain('Share 1')
   expect(host.querySelector('[data-testid="panel-content"] [aria-label="Browser tabs"]')).not.toBeNull()

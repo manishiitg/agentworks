@@ -3,11 +3,12 @@ import { WorkspacePanelAssistantButton } from './WorkspacePanelNavigation'
 import { useWorkspacePanelHeaderSlots } from './WorkspacePanelHeaderSlots'
 
 /** Page navigation stays inside the panel it controls, above its scroll area. */
-export function WorkspacePanelHeader({ workspacePath, view, title, onBack }: {
+export function WorkspacePanelHeader({ workspacePath, view, title, onBack, contextAllowed = true }: {
   workspacePath?: string | null
   view: string
   title: string
   onBack: () => void
+  contextAllowed?: boolean
 }) {
   const slots = useWorkspacePanelHeaderSlots()
   // The landing menu is already the navigation; it has no page actions or title bar.
@@ -20,7 +21,7 @@ export function WorkspacePanelHeader({ workspacePath, view, title, onBack }: {
     <div className="ml-auto flex max-w-full items-center justify-end gap-1">
       <div ref={slots?.setActions} data-testid="workspace-panel-actions" className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 empty:hidden [&>div]:flex-wrap" />
       <WorkspacePanelAssistantButton workspacePath={workspacePath} view={view} />
-      <WorkspaceContextButton workspacePath={workspacePath} view={view} inContext={view === 'context'} contextAllowed={false} onClick={onBack} />
+      <WorkspaceContextButton workspacePath={workspacePath} view={view} inContext={view === 'context'} contextAllowed={contextAllowed} onClick={onBack} />
     </div>
   </header>
 }

@@ -639,7 +639,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
         >
           <WorkspacePanelNavigationProvider workspacePath={workspacePath} view={effectiveView} chatTarget={workspacePath ? { workspacePath } : undefined}>
             {workspacePath && effectiveView !== 'context' && <WorkspacePanelAssistant workspacePath={workspacePath} message={getWorkspaceAskAIMessage(effectiveView)} />}
-            {!embeddedPlanOnly && !toolbarOnly && <WorkspacePanelHeader workspacePath={workspacePath} view={effectiveView} title={getWorkspaceView(effectiveView).label} onBack={() => useWorkflowStore.getState().openWorkspaceView('context')} />}
+            {!embeddedPlanOnly && !toolbarOnly && <WorkspacePanelHeader workspacePath={workspacePath} view={effectiveView} title={getWorkspaceView(effectiveView).label} contextAllowed={canWrite} onBack={() => useWorkflowStore.getState().openWorkspaceView('context')} />}
             <div className={`min-h-0 flex-1 ${effectiveView === 'workshop' ? 'flex overflow-hidden' : ''}`}>{body}</div>
           </WorkspacePanelNavigationProvider>
           {!isInspectorKind && !toolbarOnly && <span hidden data-ui-view-mounted />}
