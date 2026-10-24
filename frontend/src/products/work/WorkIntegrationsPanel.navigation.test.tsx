@@ -55,7 +55,7 @@ it('uses one Vault destination and keeps setup in the existing project chat', as
 })
 it('keeps bot channels and sharing separate from personal Vault accounts', async () => {
   const host = await mount()
-  for (const [target, content, section] of [['slack-bot', 'slack', 'bot'], ['share', 'sharing', null]]) {
+  for (const [target, content, section] of [['slack-bot', 'slack', 'bot'], ['share', 'sharing', null]] as const) {
     await act(async () => state.target(target))
     expect(host.querySelector(`[data-content="${content}"]`)?.getAttribute('data-section')).toBe(section)
     expect(host.querySelectorAll('[data-content]')).toHaveLength(1)

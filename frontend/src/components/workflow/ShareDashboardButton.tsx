@@ -82,7 +82,7 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
   }
   if (!state) return isPanel ? <div className="text-sm">{error ? <p role="alert">{error} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p> : <p role="status" className="text-muted-foreground">Loading access…</p>}</div> : null
   if (!state.can_share) return isPanel ? <p className="text-sm text-muted-foreground">Ask a project owner to change access.</p> : null
-  if (variant === 'row') return <Row icon={Users} detail={audience(state)} onClick={onOpen}>{label}</Row>
+  if (variant === 'row') return <Row icon={Users} detail={audience(state)} onClick={() => onOpen?.()}>{label}</Row>
   const selected = (state.agents || []).filter(agent => agent.selected)
   const content = <div className="space-y-6 text-sm">
     <section aria-label="Who can build" className="space-y-3">
