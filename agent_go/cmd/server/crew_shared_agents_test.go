@@ -231,5 +231,12 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if got := f.read(t, externalCommandCrewRoot+"/builder/conversation/2026-10-24/session-"+coach.SessionID+"-conversation.json"); !strings.Contains(got, "Private earlier context") {
 		t.Fatal("sharing changed the original agent context")
 	}
+	// A saved dashboard URL does not retain access after its Crew becomes private.
+	if err := defaultProjectOwners().SetAudience("work", "test-team", true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if w := call("read_chat", map[string]any{"workspace": externalCommandCrewRoot, "chat_id": coach.ConversationKey}, true); w.Code < 400 {
+		t.Fatalf("dashboard URL retained private Crew access: %s", w.Body.String())
+	}
 
 }
