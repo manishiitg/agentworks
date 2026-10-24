@@ -60,6 +60,12 @@ const click = async (element: Element | null) => {
   await act(async () => element.click())
 }
 
+// Installed playbooks are the default view; the catalog is one click away.
+const openCatalog = async (container: HTMLElement) => {
+  await click([...container.querySelectorAll('button')].find(button => button.textContent?.includes('Add from catalog')) || null)
+  for (const group of [...container.querySelectorAll('[aria-expanded="false"]')]) await click(group)
+}
+
 it('opens a catalog playbook and installs it for Builder setup', async () => {
   const container = document.createElement('div')
   const root = createRoot(container)
@@ -68,7 +74,8 @@ it('opens a catalog playbook and installs it for Builder setup', async () => {
       root.render(<PlaybooksPanel workspacePath="Workflow/demo" />)
       await Promise.resolve()
     })
-    expect(container.textContent).toContain('Catalog 1')
+    await openCatalog(container)
+    expect(container.textContent).toContain('Catalog · 1')
     expect(container.textContent).toContain('Basic Browser Setup')
     expect(container.textContent).toContain('Workflow guide')
     expect(container.textContent).toContain('AgentWorks')
@@ -108,7 +115,7 @@ it('opens a catalog playbook and installs it for Builder setup', async () => {
     expect(setupButton?.getAttribute('data-message')).toContain('record the answers as customer direction')
 
     await click([...container.querySelectorAll('button')].find(button => button.textContent?.includes('Back to catalog')) || null)
-    await click([...container.querySelectorAll('[role="tab"]')].find(button => button.textContent?.includes('Installed')) || null)
+    await click([...container.querySelectorAll('button')].find(button => button.textContent?.includes('← Installed')) || null)
     expect(container.textContent).toContain('Basic Browser Setup')
     expect(container.textContent).toContain('Engineering / Browser QA · v0.6.0 · draft')
   } finally {
@@ -128,7 +135,8 @@ it('shows an available version and refreshes the installed playbook without clai
       root.render(<PlaybooksPanel workspacePath="Workflow/demo" />)
       await Promise.resolve()
     })
-    await click([...container.querySelectorAll('[role="tab"]')].find(button => button.textContent?.includes('Installed')) || null)
+    // The current panel opens on installed playbooks.
+
     expect(container.textContent).toContain('Update available')
     expect(container.textContent).toContain('latest v0.6.0')
     await click([...container.querySelectorAll('button')].find(button => button.textContent?.includes('Basic Browser Setup')) || null)
@@ -169,6 +177,7 @@ it('shows Website Growth as a team proposal whose setup continues in Builder cha
       root.render(<PlaybooksPanel workspacePath="Workflow/growth" />)
       await Promise.resolve()
     })
+    await openCatalog(container)
     await click(container.querySelector('[aria-label="Open Website Growth Loop details"]'))
     expect(container.textContent).toContain('Crew automation proposal')
     expect(container.textContent).toContain('Proposed Crew team')
@@ -223,6 +232,7 @@ it('shows Finance proposal progress from its own installed setup record', async 
       root.render(<PlaybooksPanel workspacePath="Workflow/finance" />)
       await Promise.resolve()
     })
+    await openCatalog(container)
     await click(container.querySelector('[aria-label="Open Finance Operations Review details"]'))
     expect(container.textContent).toContain('billing operations coordinator')
     expect(container.textContent).toContain('finance analyst')
