@@ -32,14 +32,16 @@ func ownerEmailHTML(title, lead string, fields [][2]string, lines []ownerEmailLi
 	if len(lines) > 0 {
 		b.WriteString(`<table style="border-collapse:collapse;width:100%;font-size:13px;margin:0 0 14px 0">`)
 		for _, line := range lines {
-			color, label := "#15803d", "Done"
+			color, label := "#475569", line.status
 			switch line.status {
+			case "completed", "succeeded":
+				color, label = "#15803d", "Done"
 			case "failed":
 				color, label = "#b91c1c", "Failed"
 			case "blocked":
 				color, label = "#b45309", "Blocked"
 			case "informational":
-				color, label = "#475569", "Stopped"
+				label = "Info"
 			}
 			b.WriteString(`<tr><td style="padding:6px 10px 6px 0;border-top:1px solid #e2e8f0;vertical-align:top;white-space:nowrap"><span style="color:` + color + `;font-weight:bold">` + label + `</span></td>`)
 			b.WriteString(`<td style="padding:6px 0;border-top:1px solid #e2e8f0">` + html.EscapeString(line.text) + `</td></tr>`)

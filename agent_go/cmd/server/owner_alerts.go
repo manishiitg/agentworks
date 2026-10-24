@@ -277,6 +277,14 @@ func recordGmailSendingFailure(ctx context.Context, workspacePath, errText strin
 	if strings.Contains(lower, "invalid_grant") || strings.Contains(lower, "expired or revoked") || strings.Contains(lower, "auth add") {
 		reason = "the Google sign-in of the sending Gmail account has expired"
 	}
+	// The account-wide sender is the server's, which most Goal owners cannot
+	// reconnect themselves; a Goal's own selected sender is theirs to fix.
+	fix := "Reconnect the Gmail account this Goal sends from"
+	if manifest, exists, err := ReadWorkflowManifest(ctx, workspacePath); err == nil && exists && manifest != nil {
+		if n := manifest.Capabilities.Notifications; n == nil || strings.TrimSpace(n.GmailConnectionID) == "" {
+			fix = "The server's notification email account needs reconnecting; ask your administrator"
+		}
+	}
 	id := gmailSendingInputID + "-" + time.Now().UTC().Format("20060102-150405")
 	if open := pendingGmailSendingInputs(ctx, workspacePath); len(open) > 0 {
 		id = open[0]
@@ -286,8 +294,8 @@ func recordGmailSendingFailure(ctx context.Context, workspacePath, errText strin
 		InputID:       id,
 		Source:        "pulse",
 		Priority:      "high",
-		Question:      "Email notifications from this Goal are failing. Can you reconnect its Gmail account?",
-		Context:       "Run summaries, daily digests and alerts are not reaching your inbox because " + reason + ". They are still recorded in the app. Reconnect the Gmail account used for notifications; this notice clears itself after the next email is sent.",
+		Question:      "Email notifications from this Goal are failing. Can you get its Gmail sender reconnected?",
+		Context:       "Run summaries, daily digests and alerts are not reaching your inbox because " + reason + ". They are still recorded in the app. " + fix + "; this notice clears itself after the next email is sent.",
 		AllowFreeText: true,
 		CreatedBy:     "platform",
 		CreatedByKind: "system",
