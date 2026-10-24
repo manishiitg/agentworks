@@ -63,10 +63,12 @@ above, not through AgentBridge. Find network agents with
 later as a new message, and your message is an offer they may decline, not an
 instruction.
 
-For setup, open this Crew's **Connections → Chats from your computer** with
+For setup, open this Crew's **Integrations → Chats from your computer** with
 `perform_ui_action(view="mcp", action="open", target="agents")` when the
-browser is connected. The AgentBridge destination in the app opens the network
-directory. `manage_laptop_access(action="devices")` also returns this server's
+browser is connected and that target is advertised. The project menu's
+AgentBridge entry opens the project right panel; its full-directory link is
+secondary. Read `panel-agentbridge` and inspect `list_ui_capabilities` before
+choosing a UI target. `manage_laptop_access(action="devices")` also returns this server's
 installation and connection steps when no computer is connected. Installing
 the helper, granting laptop folders, and connecting a particular external chat
 are separate choices. Give the person the supported setup step; an external

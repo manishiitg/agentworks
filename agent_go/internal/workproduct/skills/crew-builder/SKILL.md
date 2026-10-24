@@ -1,6 +1,6 @@
 ---
 name: crew-builder
-description: Read before Crew setup, creating another Crew, looking up earlier conversation history, or coding/repository work; follow authorized project boundaries.
+description: Read for Crew panel or Ask AI guidance, project setup, creating another Crew, earlier conversation history, or coding/repository work; follow authorized project boundaries.
 ---
 
 Use the Crew's existing role and purpose. Change setup only within the user's
@@ -19,13 +19,56 @@ not invent website-only restrictions from a tool error. Report the exact
 failure and what is missing; Google/provider sign-in and phone QR consent
 still require the person's provider login or phone.
 
-| Panel or task | Guidance and tools |
+| Panel or task | Read |
 |---|---|
-| Dashboard; Access (sharing and owners) | `panel-dashboard`, `panel-sharing`, `panel-owners` |
+| Dashboards, TSX conversion, data/actions, motion or static export | `panel-dashboard` and its relevant authoring/motion reference |
+| Plan; Files; Database | `panel-crew-plan`, `panel-files`, `panel-database` |
+| Memory; Skills | `panel-memory`, `panel-skills` |
+| Chat history; named agents and their owners, models, pins or ordering | `panel-chat-history`, `crew-agents`, `panel-models` |
+| Access: owners, audience and selected shared agents | `panel-sharing`, `panel-owners` |
+| Suggestions from people using this Crew | `panel-suggestions` |
 | Functions; Schedules; Watchers; Webhooks | `panel-functions`, `panel-schedules`, `panel-watchers`, `panel-webhooks` |
-| Inbox; Google; Slack; WhatsApp | `panel-inbox`, `panel-google-apps`, `panel-slack-account`, `panel-slack-bot`, `panel-whatsapp` |
-| Skills; Vault; Models; Browser; Linked folders; Costs | The matching `panel-skills`, `panel-vault`, `panel-models`, `panel-browser`, `panel-linked-folders`, `panel-costs` skill |
-| MCP connections and Vault access | `panel-mcp-connections`, `panel-mcp-access` |
+| Email inbox or personal Gmail monitoring | `panel-inbox`, `panel-google-apps`, `panel-watchers` |
+| Vault: apps, saved accounts, secret names and computers used here | `panel-vault`; then `panel-mcp-connections`, `panel-secrets`, `panel-google-apps`, `panel-slack-account` or `panel-local-laptop` as needed |
+| Shared Brain; Linked projects & folders | `panel-brain`, `panel-linked-folders` |
+| Browser and saving a reusable browser procedure | `panel-browser` |
+| Slack bot; WhatsApp; MCP access for external AI apps | `panel-slack-bot`, `panel-whatsapp`, `panel-mcp-access` |
+| AgentBridge or Chats from your computer | `panel-agentbridge`, `crew-agents` |
+| Instructions & identity; Models; Costs & usage; Terminal | `panel-settings`, `panel-models`, `panel-costs`, `panel-terminal` |
+
+## Answering Ask AI and panel questions
+
+Answer in plain words using the current project and named panel. An Ask AI
+click prepares a question in the person's current project chat; it does not
+send automatically or copy all screen data. Read the relevant saved state and
+load the matching attached panel procedure before explaining a specific setting.
+Distinguish what is available from what is selected, saved from successfully
+run, and a stored message from a completed answer. Ask only for a missing
+material choice; an explicit request already authorizes its bounded change.
+
+The project name stays visible beside Home, with Builder and named chats in
+one row. Ownership details are on hover; only the tab's owner controls it.
+The project menu groups Recent, Build, Use, Share, Integrations and Setup;
+recent destinations are not duplicated below. Dashboards are grouped under
+this Crew; Skills is in Build, Memory in Setup, and Access in Share. Back
+returns to the project menu or the parent list of nested details. Help popups
+and tours are removed; give the explanation directly in chat.
+
+New dashboards are managed TSX using shared shadcn/Recharts components, kept
+in this project's dashboard list. Read `panel-dashboard` before authoring;
+JSON layouts are removed and existing HTML can still be inspected. Dashboard
+Ask/Chat widgets are for shared Run users; Builders use their existing chat.
+Static export packages the same saved dashboard and its authorized snapshot,
+without live private tools or credentials. Use the current detailed procedure,
+not a separate Vite app or a new local server.
+
+Crew Plan is a working artifact, not Goal steps or a Flow graph. Goal-only
+Autopilot, Decisions, execution Team, Publish/Notify/Backup automation and
+platform upgrades are not extra Crew panels. Use this project's admitted
+features and tools; an attached shared skill never enables another product's
+execution or changes its permissions. Brain access is Off, Read or Read & write
+within existing folder roles. A computer connection and its folder/command
+grants remain separate, and apply only to authorized interactive work.
 
 Use `work-ui-control` and the advertised targets when showing a panel helps.
 If a requested control has no admitted management tool, state that concrete
@@ -107,7 +150,7 @@ Avoid choosing a different output path based on who called the Crew.
 
 Every agent you can use is in `list_agents`: Crews, Goals and Relays you own or that are shared with you (with their functions), and your agents connected through AgentBridge such as local Claude Code. Nothing has to be linked first. Call a function with `call_function(target=<id>, ...)`; message an agent with `send_message(target=<id>)`. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.
 
-Expose a function for everything others may make the Crew do: everyone else uses the Crew in Run mode (it understands the Crew and runs what you published, and changes nothing), and a function call is how they act. Your own chat is Builder mode, with full access.
+People using the shared Crew may use its Ask, published functions and selected shared agents under the saved Share grant. Run work can have real effects through the existing resources lent to it; it does not grant Builder setup or another person’s tab controls. Owner and co-owner chats keep their current Builder authority. Read `panel-functions` and `panel-sharing` for the applicable entry point.
 
 ## Watchers
 

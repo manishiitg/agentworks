@@ -1,104 +1,95 @@
-## WORKFLOW UI CONTROL
+## Workflow UI control
 
-UI-control tools belong only to supported interactive Workflow Builder chats,
-including read-only Builders. Scheduled runs, manually triggered schedules,
-Autopilot/child agents, and bot conversations do not manipulate the foreground
-workspace. Observing one of those conversations does not promote it; an
-explicit supported interactive continuation is required.
+Use `list_ui_capabilities`, `get_ui_state` and `perform_ui_action` only in a
+supported interactive Goal or Flow chat that exposes them. Scheduled, bot,
+Autopilot and background turns must not manipulate the foreground workspace.
+Use the calling product's live contract; a skill never adds a view or access.
 
-The right-hand pane shows one Goal or Flow view at a time.
-`perform_ui_action(view, action="open")` requests a view and
-`perform_ui_action(view, action="refresh")` invokes that view's reload. Only an
-`applied` receipt confirms that the visible shell acknowledged the action; it
-does not prove every data request inside the view completed or that the user
-read it. Prefer one open per reply and do not repeatedly override a view the
-user selected.
+`perform_ui_action(view, action="open")` requests a destination; `refresh`
+reloads it. Only an `applied` receipt confirms the visible shell acknowledged
+the action. It does not prove every data request completed or the user read it.
+Prefer one relevant open per reply and respect a view the person selected.
 
-## Current menu and finding a page
+## Menu and panel guidance
 
-Goals, Flows and Crew use Recent, Build, Use, Share, Integrations and Setup;
-Recent entries are not duplicated below. MCP setup belongs in chat (see
-`integration-discovery` and `workflow-tools`); UI navigation is optional inspection.
-**MCPs** holds app connections; **MCP access** is for external AI clients.
-Check `list_ui_capabilities`: use advertised `mcp` target `connected` for saved
-accounts or `available` for Add an MCP, and require an `applied` receipt.
-If UI control is unavailable, explain **Ctrl+K** (**Cmd+K** on Mac), search the
-page's current name, then choose this project's result. Do not invent old tabs.
+The project name is separate from its Builder/agent tabs. The project menu
+uses Recent, Build, Use, Share, Integrations and Setup; recent destinations are
+not repeated below. Dashboards are collected by project. Autopilot has its own
+Goal menu and starts collapsed when Off. Skills is in Build; Workflow playbooks,
+Publish, Notify and Backup are in Setup. Access summarizes ownership, audience
+and shared agents; requested changes happen in the visible project chat.
 
-## Workflow views
+Panel Back returns to the project menu or a nested detail's parent list.
+Ask AI prepares a contextual question in the current project's chat. There
+are no Help popups or tours. Explain directly and load the relevant attached
+`panel-*` skill for an action; opening a panel is not completing that action.
 
-| View ID | Shows | Open it when |
-|---|---|---|
-| `context` | The project's navigation menu | Return to Recent and the grouped project views. |
-| `report` | The workflow's live HTML Dashboard | You built or edited the report, or the user asks to see results or metrics. |
-| `flow` | The workflow plan canvas | You changed steps or routes, or the user asks how the workflow is structured. |
-| `costs` | Token and cost usage by run, group, and step | The user asks what a run cost or which step is expensive. |
-| `execution-logs` | Outputs, validation, and timing for the selected run | A step failed or the user asks what happened during execution. |
-| `knowledge` | Consolidated Learnings, Knowledgebase, and Database inspector | You changed or need to inspect one of those stores; use an advertised section target. |
-| `webhooks` | Authenticated workflow webhook endpoints | You created or changed a webhook. |
-| `schedules` | Scheduled runs and compatibility access to webhooks | You created or changed a schedule; use an advertised section target. |
-| `files` | Workflow files | The user should inspect a file or folder. |
-| `browser` | Live managed browser or interactive Playwright test stream | Browser work begins or the user asks to watch it. The stream updates without repeated refreshes. |
-| `workshop` | Automation chats, schedules, triggers, and bots | The user should inspect automation activity or configuration; use an advertised section target. |
+## Goal destinations
 
-## Autopilot and delivery views
+| View ID | Current content |
+|---|---|
+| `context` | Project menu and grouped destinations. |
+| `report` | Hosted TSX Dashboard and saved published pages; existing HTML is still readable. |
+| `flow` | Plan & progress: the saved steps and their dependencies. |
+| `knowledge` | Knowledge base or Database, selected by target; no separate Learnings panel. |
+| `files` | This workflow's files and file previews. |
+| `browser` | Live browser interaction and recordings; it streams without repeated refresh. |
+| `workshop` | Chat history, Schedules, Watchers, Webhooks, Functions and supported Inbox sources. |
+| `schedules`, `webhooks` | Their advertised schedule/webhook presentation. Prefer the current menu destination and live contract. |
+| `pulse` | Goals & metrics, Autopilot settings and its full continuing chat. |
+| `human-actions` | Decisions and questions waiting for a person; do not duplicate them in Goals & metrics. |
+| `mcp` | Vault, Brain, Linked work, Skills, channel setup, Access and AgentBridge through advertised targets. |
+| `access` | Goal execution Team and its existing access policy; product Share is in Access at `mcp/share`. |
+| `identity` | Settings, Models and Upgrades. Computers and their grants live in Vault. |
+| `costs`, `execution-logs` | Recorded Costs and usage, or Run logs for real work. |
+| `playbooks`, `publish`, `notify`, `backup` | The corresponding Setup page. |
 
-| View ID | Shows | Open it when |
-|---|---|---|
-| `pulse` | Decisions, saved answers, findings, work areas, and gate state | The user asks about a decision or what Autopilot found. |
-| `human-actions` | Everything waiting for a person: open decisions and questions, and user suggestions for the owner | The user asks what needs their decision, or about a suggestion someone left. |
-| `backup` | Backup configuration and history | You configured or ran a backup. |
-| `publish` | Published Dashboard state | You published or refreshed the public report. |
-| `notify` | Notification settings and recent deliveries | You changed notification behavior; `expand` may expose an advertised instruction section. |
-
-“Needs your decision” belongs to `human-actions` (and `pulse`); it is not part of the HTML Dashboard.
-Read the current request before explaining it. Discussion alone does not choose
-an option. Once the user gives a clear final answer, save it with the dedicated
-decision tool; saving means answered, not applied or consumed.
-
-## Workflow setup views
-
-| View ID | Shows | Open it when |
-|---|---|---|
-| `access` | Workflow sharing and user access | You changed or need to explain who can access the workflow. |
-| `identity` | Workflow identity and identity-owned setup | You changed the workflow's identity or related settings. |
-| `mcp` | Consolidated Integrations surface | You changed MCP, skills, secrets, provider connections, bots, email, or attached integrations represented there. |
-| `playbooks` | Workflow playbook catalog and installed playbooks | The user wants to inspect, install, or update a playbook. |
+Use `panel-goal-plan`/`panel-goal-execution` for Goal execution,
+`panel-pulse`/`panel-decisions` for Autopilot and decisions, and the matching
+shared panel skill for other tasks. Inspect the actual question before answering
+a decision. Discussion alone does not select an option; saving an answer and
+implementing the chosen change are separate results.
 
 ## Targets
 
-Use a target only where the live capability contract advertises one:
+These describe destinations, not an exhaustive allowlist. Use a target only
+when `list_ui_capabilities` advertises it for this chat and product.
 
-| View/action | Target meaning |
+| View | Target meaning |
 |---|---|
-| `report` open/refresh | Top-level tab label from the report itself. |
-| `flow` open/refresh | Exact plan step ID. |
-| `files` open/refresh | Safe workflow-relative file path. |
-| `knowledge` open/refresh | `learnings`, `knowledgebase`, or `database`. |
-| `schedules` open/refresh | `schedules` or `webhooks`. |
-| `workshop` open/refresh | `chats`, `schedules`, `triggers`, or `bots`. |
-| `notify` expand | `run_summary` or `pulse_review`. |
+| `report` | A real dashboard tab label, when offered. |
+| `flow` | A saved Goal step ID; Flow graph/code/run targets use the Flow contract. |
+| `files` | Safe workflow-relative file path. |
+| `knowledge` | `knowledgebase` or `database`; these are separate menu items. |
+| `workshop` | `chats`, `schedules`, `conditions` (Watchers), `triggers` (Webhooks), `functions`, or supported `email`. |
+| `pulse` | `goals`, `metrics`, `settings` or `chat`. Decisions use the existing Decisions destination. |
+| `mcp` | `vault`, `skills`, `brain`, `folders`, `slack`, `whatsapp`, `cli` (MCP access), `share` (Access), or `agentbridge`, when offered. |
+| `identity` | Advertised General, Models or Upgrades section. |
+| `notify` expand | Advertised run-summary or Autopilot notification section. |
 
-Do not use retired direct view IDs such as `learnings`, `knowledgebase`,
-`database`, `skills`, `secrets`, `llm`, `bots`, `email`, or `folders` unless a
-future live contract advertises them again. Do not use Crew-only `memory` or
-Crew's direct `database` panel; Workflow database content is
-`view="knowledge", target="database"`.
+The website can offer a destination before a running server advertises its
+UI target. Do not invent support or retry a rejected target under another name.
+Explain the concrete limitation and use the project's visible menu if useful.
+Vault holds app/Google/Slack account selections, secret names and computers;
+MCP access connects an external AI app to AgentWorks. Read `panel-vault` and
+`panel-mcp-access` for those distinct jobs. Do not send people to retired
+Connected/Available/Secrets tab rows merely because an older target still exists.
 
-## Safe operation
+## Flows and boundaries
 
-- Call `list_ui_capabilities` when the available action or target is uncertain;
-  never infer support from this document alone.
-- `accepted`, `applying`, `expired`, `browser_disconnected`, and other failures
-  are not success. Report the bounded receipt.
+Flows use `relay-builder`, `panel-relay-code` and `panel-relay-runs`: a Python/DBOS
+graph, source code and versioned calls, not a Goal step plan or Autopilot.
+Only the Flow's advertised inventory is available. Crew navigation belongs
+to the separate `work-ui-control` skill and its own panel IDs.
+
+- Opening or refreshing a panel changes presentation only. Use the existing
+  authorized management tool for configuration, files, data or execution.
+- `accepted`, `applying`, `expired`, `browser_disconnected` and other outcomes
+  are not an `applied` receipt. Report the actual result.
 - Reuse an idempotency key only for the exact same action after an uncertain
-  result; never blindly replay with a new key.
-- Opening a view changes no workflow state. Use the relevant workflow tool for
-  mutations and UI control only to present the result.
-- When starting managed browser work, open `browser` once. For Playwright
-  fixture rules, read
-  `builder-reference/references/playwright-scripted.md`. Playwright sessions
-  allow Builders to interact while the script continues; shared Run users watch.
-
-Crew uses the same protocol through its separate `work-ui-control` skill and a
-different view contract.
+  result; do not blindly replay with a new key.
+- Builder and Run visibility, personal accounts, unshared chats and tab control
+  remain governed by existing server checks. An open view is no access grant.
+- Open Browser once for actual browser work. Read `panel-browser` and its
+  relevant browser procedure; Builders can interact while work continues,
+  and shared Run users keep their existing watch-only presentation.

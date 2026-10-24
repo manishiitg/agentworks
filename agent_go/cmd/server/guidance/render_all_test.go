@@ -38,24 +38,6 @@ func readPulseDesignSpec(t *testing.T) string {
 	return ""
 }
 
-func TestWorkflowGuideSmallBusinessAudience(t *testing.T) {
-	rendered, err := renderFromRegistry("workflow-guide", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render workflow-guide: %v", err)
-	}
-	for _, want := range []string{
-		"## Audience: non-technical small-business owners",
-		"## Word translations (use the left column with users)",
-		"your results page",
-		"regular check-up with findings and decisions",
-		"Never show file paths, table names, IDs, status codes",
-	} {
-		if !strings.Contains(rendered, want) {
-			t.Fatalf("workflow-guide missing small-business audience contract %q", want)
-		}
-	}
-}
-
 func containsNormalizedText(haystack, needle string) bool {
 	return strings.Contains(
 		strings.Join(strings.Fields(haystack), " "),

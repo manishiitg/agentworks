@@ -1,114 +1,119 @@
-# WORKFLOW HELP GUIDE
+# Workflow help guide
 
-Use this guide when a user asks what a workflow concept or workspace view means,
-or when an **Ask AI** action opens a conversation from a view. It is an
-explanation guide, not authority to edit configuration or run work.
+Use this guide for questions about a Goal panel or an **Ask AI** request.
+Read the matching attached `panel-*` skill for the detailed procedure. This
+reference explains the product; it grants no tools, access or permission to run work.
 
-## Audience: non-technical small-business owners
+## Plain language and current evidence
 
-Assume the reader runs a small business and is not technical. They care
-about customers, money, time, and "did it work" — not systems, files,
-or tool names.
+- Answer the user's question first. Use the panel's visible name and explain
+  unfamiliar terms once. People may be doing personal, creative, team or business work.
+- Lead with the relevant outcome and what is actually configured or observed.
+  Use this project's saved state, records and tools; distinguish missing data
+  from zero and a saved setting from successful execution or delivery.
+- Keep the answer short. Show paths, IDs, tool names and technical details only
+  when requested or needed to explain a concrete problem. Never show secret values.
+- Ask a focused question only when a material choice is missing. Do not make
+  every explanation end in a question or ask for approval already given.
+- Do not edit, configure, approve, or run anything unless the user asks. A clear
+  Builder request authorizes that bounded action through the existing tools and
+  server checks. Read the saved result before reporting completion.
 
-1. Lead with the business outcome in one short sentence ("Your daily
-   price check ran this morning and found 2 changes"), then explain
-   what it means for them.
-2. Translate every internal term into business words on first use (see
-   below). Never use the internal word alone.
-3. Never show file paths, table names, IDs, status codes, tool names,
-   or settings keys. If the detail matters, say what it means ("saved
-   in the workflow's records") and offer to show more.
-4. Keep replies short: one idea per paragraph. End with the single most
-   useful next step as a plain question.
-5. If they ask "how does this work", explain what happens for their
-   business step by step — not how the software is built.
+## Core concepts
 
-## Word translations (use the left column with users)
+- **Goal**: the outcome and success measures, together with the work intended to
+  achieve them. A workflow is its saved plan, configuration and execution.
+- **Plan**: the blueprint of steps, dependencies and any actual groups or paths.
+  Explain the saved plan rather than inventing missing steps or routes. The plan
+  and a run's history are different things.
+- **Step**: one bounded task in that plan. Use the current plan tools and step
+  contract. Retired LLM sub-agent legs and `call_sub_agent`/
+  `get_route_description` are not a setup the user needs to restore.
+- **Group**: a configured unit of work, such as an account or region. A path or
+  branch is a choice that exists in this plan; it is not an additional agent.
+- **Run**: real execution of requested work. Read its output, status, logs and
+  costs; opening a view or receiving a tool acknowledgment does not prove success.
+- **Dashboard**: the project's published visual results and actions. Use current
+  data and say what is missing or stale. New dashboards are hosted React TSX with
+  shared shadcn/Recharts components; JSON dashboard layouts are removed. Existing
+  HTML pages can still be inspected. Keep all views and actions when converting.
+- **Autopilot**: the Goal's continuing agent for progress and follow-through.
+  Goals & metrics shows the goal, measurements and evidence; Talk to Autopilot
+  opens its full saved chat. Decisions and settings have their own destinations.
+  Reading a panel does not start a check, answer a decision or change On/Off.
+- **Knowledge**: Goal-local background notes and structured database records are
+  separate from shared **Brain**. Crew **Memory** holds durable project facts;
+  **Skills** hold reusable procedures. Do not restore a retired Learnings panel.
+- **Build, Share, Use**: build in the website or MCP, share through the existing
+  audience, then use the dashboard, selected agents and published entry points.
+  Builder and Run access remain the server's decision.
 
-| Say this | Never lead with |
+## Choose the relevant panel procedure
+
+Read only the procedures needed for the current question or requested action.
+Use attached skills and live schemas, including product-specific differences.
+
+| Panel or task | Read |
 |---|---|
-| your automated helper / task | workflow, agent |
-| the plan: what it does, in what order | plan, canvas, flow |
-| one finished job ("this morning's check") | run, execution, iteration |
-| one step in the plan | step, sub-agent |
-| a choice between paths | route, branch |
-| one customer / account / item it handles | group |
-| your results page | dashboard, report, HTML report |
-| scheduled job (runs on its own at set times) | schedule, scheduled run |
-| automatic trigger from another app | webhook, trigger |
-| regular check-up with findings and decisions | Autopilot, Autopilot review |
-| business goals and numbers you're tracking | goals, metrics, KPIs |
-| what your helper has learned from experience | learnings |
-| background info and notes it can use | knowledgebase |
-| its stored records | database, tables |
-| connection to another app (Gmail, Slack…) | integration, MCP server |
-| reusable know-how it can call on | skill |
-| saved passwords and keys (never their values) | secrets |
-| how much each job costs to run | costs, tokens, ledger |
-| quality check on a job's work | evaluation |
-| backup copy | backup |
-| shareable web page | publish |
-| alerts by message or email | notifications, notify |
-| who can see and change this | access, permissions |
-| its web browser (for sites that need one) | browser, CDP, Playwright |
-| its files | workspace, files |
-| a folder on your computer it can use | attached folder |
-| chat apps it talks in (Slack, WhatsApp) | bots, connectors, routes |
+| Dashboards, TSX conversion, live data, actions, motion or video | `panel-dashboard` and its relevant authoring/motion reference |
+| Plan & progress; starting, stopping or investigating Goal work | `panel-goal-plan`, `panel-goal-execution`, `panel-run-logs` |
+| Goals & metrics, Autopilot settings or its continuing chat | `panel-pulse`; `references/working-with-pulse.md` for Builder coordination |
+| Pending Decisions | `panel-decisions` |
+| Functions; schedules; Watchers; webhooks | `panel-functions`, `panel-schedules`, `panel-watchers`, `panel-webhooks` |
+| Email inbox or personal Gmail monitoring, when offered | `panel-inbox`, `panel-google-apps`, `panel-watchers`; respect each product's supported source |
+| Files, Database or the Goal's Knowledge base | `panel-files`, `panel-database`, `panel-knowledgebase` |
+| Chat history and named agent tabs | `panel-chat-history` |
+| Vault: apps, saved accounts, secrets and computers used here | `panel-vault`; then `panel-mcp-connections`, `panel-secrets`, `panel-google-apps` or `panel-slack-account` as needed; computer grants use `panel-vault` and the admitted `manage_laptop_access` schema |
+| Brain, Linked work, or reusable Skills | `panel-brain`, `panel-linked-folders`, `panel-skills` |
+| Browser, live interaction or saving a reusable browser procedure | `panel-browser` |
+| Access: owners, audience and selected shared Crew agents | `panel-sharing`; shared agents keep the existing product's supported contract |
+| Goal execution Team | `panel-team`; execution assignments are separate from Share |
+| AgentBridge or Chats from your computer | `panel-agentbridge`; messages and computer connection grants remain separate |
+| Slack bot, WhatsApp or connecting an external AI app | `panel-slack-bot`, `panel-whatsapp`, `panel-mcp-access` |
+| Settings, instructions, Models, Costs and usage | `panel-settings`, `panel-models`, `panel-costs` |
+| Workflow playbooks, Publish, Notify, Backup, Upgrades | `panel-playbooks`, `panel-publish`, `panel-notify`, `panel-backup`, `panel-upgrades` |
 
-## How to help
+## Current navigation and assistance
 
-1. Answer the user's question first in plain language. Define unfamiliar terms
-   once and avoid internal implementation names unless they clarify the answer.
-2. Use the named view and current workflow as context. Read only the artifacts
-   or state needed to distinguish what is configured from what is merely
-   possible. Never invent a status, result, metric, or recommendation.
-3. Explain in this order: what this area is for, what the user is seeing, how it
-   relates to the workflow, and the most relevant next action.
-4. Ask a focused question only when the user's desired outcome is unclear.
-   Otherwise answer directly and offer up to three useful next actions.
-5. Do not edit, configure, approve, or run anything unless the user asks. If
-   they do, load the specific reference for that action before changing it.
+The project name stays beside Home; Builder is a chat tab. Ownership details
+are on hover. The project menu groups Recent, Build, Use, Share, Integrations
+and Setup; recent items can move without changing their identity. Dashboards
+are collected under the project. Autopilot has its own Goal menu; when Off,
+its submenu starts collapsed. Workflow playbooks, Publish, Notify and Backup
+are in Setup. Access summarizes owners, audience and shared agents; changes
+are made through the visible project chat with the existing management tools.
 
-## Core mental model
+Panel **Ask AI** prepares a question in the current project's chat. It uses the
+view/topic and the normal project context; it does not automatically send a
+message or include every displayed row. Inspect the relevant current state before
+answering about it. Preserve the person's named chat and existing unsent draft.
+Panel Back returns to the project menu, or to the parent list for nested details.
+Help popups and tours are removed. Give useful guidance directly in the answer.
 
-- **Workflow**: a reusable system that coordinates instructions, tools, data,
-  and execution toward an outcome.
-- **Plan**: the workflow blueprint. It shows what should happen and in what
-  order; it is not the history of what already ran.
-- **Group**: one unit of context, such as an account, region, product, or test
-  target. Selected plan steps run for each selected group.
-- **Step**: one bounded unit of work. It may use an agent conversation, a saved
-  deterministic script, an agent (with optional specialist
-  routes), a route or branch,
-  or a human decision.
-- **Route**: a major choice between sub-workflows. A **branch** is a smaller
-  choice inside a flow. Both must make their selection explicit.
-- **Run**: one execution of the plan. Its status, outputs, evidence, logs, and
-  costs describe what actually happened.
-- **Dashboard**: the workflow's user-facing results and metrics, built from
-  durable evidence. Explain data source and freshness when known.
-- **Autopilot**: recurring reviews that surface findings, recommendations, and
-  decisions. An Autopilot review is separate from executing the main plan.
-- **Evaluation**: checks whether a run's outputs meet defined quality criteria.
-- **Knowledgebase**: user-provided context and workflow findings. **Learnings**
-  capture reusable operating know-how. **Database** stores structured durable
-  records. **Files** show the underlying workspace artifacts.
+For UI presentation, read the attached `workflow-ui-control` skill. Inspect
+`list_ui_capabilities`, use only advertised views/targets, and require an
+`applied` receipt before claiming the switch. A menu item is not proof that its
+UI-control target or management tool is available. If a capability is absent,
+state the exact limitation and give the current menu destination when useful.
 
-## View-specific emphasis
+## Product and permission boundaries
 
-- In **Plan**, explain the goal, groups, sequence, selected step, dependencies,
-  and the difference between editing the blueprint and running it.
-- In **Dashboard**, explain the visible result, metric meaning, evidence source,
-  freshness, and missing data before suggesting improvements.
-- In **Autopilot**, explain the selected review area, current findings, review
-  history, and pending decisions. Discussion does not approve a decision.
-- In setup or operational views, explain what is currently configured, what the
-  view controls, and how it affects plan execution before suggesting changes.
-
-For the exact purpose of each workspace view or to open one for the user, load
-`references/workspace-views.md`. For design or mutation, load the relevant
-specialist reference rather than expanding this guide.
-
-## Slack bot setup and channel routes
-
-For requests to connect Slack, add a channel route, change a bot grant, block senders, or configure Slack triggers, load `builder-reference/references/slack-bot-routing.md`. Use `get_slack_bot_settings` to inspect the current workflow before proposing or changing configuration. The route tools are scoped to this workflow, and `configure_slack_bot` configures this workflow's own app; the platform default app is managed in the settings UI. Explain setup directly when asked and use the route tools when the user requests a change. Manage bot/app credentials through Vault chat; store them encrypted and never repeat token values.
+- Goals have executable plans, steps and Autopilot. Crew is an agentic project
+  with an artifact plan, Memory and Skills; use `crew-builder` there. Flows
+  (Relays internally) use their Python/DBOS graph, code and versioned runs; use
+  `relay-builder`, `panel-relay-code` and `panel-relay-runs`. Do not turn one
+  product's plan, run or view contract into another's.
+- Run callers use shared entry points. They do not gain Builder setup, another
+  person's tab controls, private unshared chats or personal accounts. Selected
+  shared agents expose only the conversation covered by the saved Share grant.
+- Vault selections and Brain folder roles remain the existing access gates.
+  Brain project access is Off, Read or Read & write; it is not folder binding.
+  A selected computer is for authorized interactive work, not Goal steps,
+  schedules or Autopilot. Read the relevant skill before changing any grant.
+- Publishing to Surge, Vercel or another static host uses the existing Publish
+  automation and `export_dashboard_static` for the same saved dashboard and
+  authorized snapshot. It does not create a second app or export live private
+  chat/tools/credentials. Inspect its saved visibility and actual publish status.
+- Slack account, Slack bot and WhatsApp are distinct channels. Inspect their
+  saved connection and supported actions; never substitute a different account
+  or send a test message merely to explain setup.

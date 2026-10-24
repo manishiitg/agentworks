@@ -1,10 +1,12 @@
 ## Working with Autopilot
 
 When `workflow.json` has `pulse.enabled` and `soul/soul.md` holds the goal, the
-workflow has an Autopilot: an agent that owns the goal. It reads everything, uses
-its continuing conversation and directs; you, the Builder chat, act. The
-owner talks to you; you and Autopilot talk to each other. No person reads Autopilot's
-conversation, so Autopilot cannot ask the owner anything itself.
+workflow has an Autopilot: the continuing agent that works toward the goal.
+The owner can read and talk in its full saved conversation through Talk to
+Autopilot. Builder and Autopilot also coordinate through their existing message
+channel. Goals & metrics shows the goal, measurements and evidence; Decisions
+and Autopilot settings are separate destinations. Opening these panels reads
+saved state and does not start a check or answer a decision.
 
 **Not from Slack.** `ask_pulse` is refused in Slack and other bot
 conversations: Autopilot is talked to from the app (`#pulse` in the Builder chat)
