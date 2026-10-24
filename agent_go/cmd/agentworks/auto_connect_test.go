@@ -43,6 +43,8 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 	var mu sync.Mutex
 	var attached agentworksclient.AgentAttachment
 	var first agentworksclient.LocalBridgeRequest
+	var resumeFence string
+	var networkRejoins int
 	attaches, resumes, stopped, offline, replaced := 0, 0, false, false, false
 	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -53,7 +55,19 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 			return
 		}
 		out := agentworksclient.LocalBridgeReply{Stopped: stopped, Offline: offline, Attached: attached.ID != "" && !offline, Attachment: attached}
-		if in.Action == "attach" {
+		if in.Action == "status" && in.AttachmentID != "" && in.AttachmentID != attached.ID {
+			_ = json.NewEncoder(w).Encode(agentworksclient.LocalBridgeReply{})
+			return
+		}
+		if in.Action == "status" {
+			out.Networks = []agentworksclient.LocalNetworkState{{Network: "partner", AgentName: "saved-alias", ConfigPath: filepath.Join(root, "partner.json")}}
+		}
+		if in.Action == "attach" && in.Also {
+			networkRejoins++
+			if in.AttachmentID != "" || !in.Automatic || in.AgentName != "saved-alias" {
+				t.Error("joined recovery leaked the primary fence or changed the saved alias")
+			}
+		} else if in.Action == "attach" {
 			attaches++
 			first = in
 			attached = agentworksclient.AgentAttachment{ID: "lease", AgentName: in.AgentName, Provider: in.Provider, SessionID: in.SessionID}
@@ -61,14 +75,14 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 		}
 		if in.Action == "resume" && !stopped {
 			resumes++
-			if in.AttachmentID != attached.ID {
-				t.Error("background recovery omitted the saved attachment fence")
-			}
+			resumeFence = in.AttachmentID
 			if replaced {
 				stopped = true
 				out.Stopped, out.Attached, out.Offline = true, false, true
 				out.Error = "This chat was replaced by another attachment"
 			} else {
+				attached.ID = "renewed-lease"
+				out.Attachment = attached
 				offline = false
 				out.Offline, out.Attached = false, true
 			}
@@ -109,9 +123,10 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 	available = append(available, liveAgentSession{provider: "codex", session: req.SessionID, host: "restarted-process", cwd: folder})
 	reconnect(context.Background(), []agentworksclient.AgentAttachment{saved})
 	mu.Lock()
-	if resumes != 1 || offline || attached.AgentName != saved.AgentName || attaches != 1 {
+	if resumes != 1 || offline || attached.AgentName != saved.AgentName || attaches != 1 || resumeFence != saved.ID || networkRejoins != 1 {
 		t.Fatalf("recovery did not retain the exact saved chat: resumes=%d offline=%v attached=%+v", resumes, offline, attached)
 	}
+	saved = attached
 	offline, replaced = true, true
 	mu.Unlock()
 	reconnect(context.Background(), []agentworksclient.AgentAttachment{saved})

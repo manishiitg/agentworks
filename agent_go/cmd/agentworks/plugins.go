@@ -1281,6 +1281,10 @@ func reconnectOffline(ctx context.Context, root string, req agentworksclient.Loc
 	if reply, e := agentworksclient.CallLocalBridge(ctx, root, resume); e != nil || !reply.Attached {
 		return "This chat could not reconnect by itself. Type /agentworks attach in it, then try again."
 	}
+	// The old primary fence applied to that resume only. Each joined network
+	// has its own saved attachment; never send the primary id to another server.
+	req.Automatic = req.Automatic || req.AttachmentID != ""
+	req.AttachmentID = ""
 	rejoinNetworks(ctx, root, req)
 	return ""
 }

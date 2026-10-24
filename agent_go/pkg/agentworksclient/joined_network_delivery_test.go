@@ -26,6 +26,7 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 	defer cancel()
 	var primaryReads, partnerReads atomic.Int32
 	var primarySends, partnerSends atomic.Int32
+	var partnerAttaches atomic.Int32
 	var duplicateName, refusePartner, failPrimaryDirectory atomic.Bool
 	var invalidPrimaryDirectory atomic.Int32
 	incompleteDirectories := []string{`{}`, `null`, `{"agents":null}`}
@@ -47,6 +48,14 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 				args = in
 			}
 			switch args["action"] {
+			case "attach":
+				if network == "partner" {
+					partnerAttaches.Add(1)
+				}
+				if args["attachment_id"] != "lease-"+network {
+					t.Error("joined recovery used another network's attachment fence")
+				}
+				json.NewEncoder(w).Encode(AgentAttachment{ID: "lease-" + network, AgentID: "agent-" + network, AgentName: "receiver", Provider: "codex", SessionID: "11111111-2222-4333-8444-555555555555"})
 			case "list_agents":
 				if mode := invalidPrimaryDirectory.Load(); network == "primary" && mode > 0 {
 					fmt.Fprint(w, incompleteDirectories[mode-1])
@@ -174,6 +183,15 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 	}
 	if json.Unmarshal(reply.Result, &result) != nil || result.Network != "partner" {
 		t.Fatal("read response did not identify its network")
+	}
+	// Background recovery must replace a copied primary fence with the joined
+	// network's own saved fence before its actual HTTP attachment request.
+	if _, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "offline", Provider: "codex", SessionID: session, HostKey: "host", Network: "partner"}); err != nil {
+		t.Fatal(err)
+	}
+	joined := LocalBridgeRequest{Action: "attach", Provider: "codex", SessionID: session, HostKey: "host", Also: true, Automatic: true, ConfigPath: extra.ParentConfigPath, AgentName: extra.Attachment.AgentName, AttachmentID: "stale-primary-lease"}
+	if out, err := CallLocalBridge(ctx, root, joined); err != nil || !out.Attached || partnerAttaches.Load() != 1 {
+		t.Fatalf("joined automatic recovery failed: %+v %v", out, err)
 	}
 	// New conversations must reach the same joined directory that lists the
 	// agent, including the network argument of the single exposed MCP tool.

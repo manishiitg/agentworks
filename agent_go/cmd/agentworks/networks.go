@@ -31,6 +31,7 @@ func joinNetwork(ctx context.Context, root string, o *options, req agentworkscli
 	status.Action = "status"
 	own, _ := agentworksclient.CallLocalBridge(ctx, root, status)
 	req.Action, req.Also, req.ConfigPath, req.AgentName = "attach", true, path, name
+	req.AttachmentID = "" // the person's join is independent of the primary network's lease
 	out, err := bridgeCall(ctx, root, o, req)
 	if err != nil {
 		return "", err

@@ -933,6 +933,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 	}
 	s := b.sessions[key]
+	if in.Action == "attach" && in.Also && in.Automatic {
+		if s == nil {
+			return LocalBridgeReply{Stopped: true}
+		}
+		in.AttachmentID = s.Attachment.ID
+	}
 	if in.Action == "attach" && in.Automatic && (b.stopped[key] || s != nil && s.ServerClosed) {
 		return LocalBridgeReply{Stopped: true, Error: "This chat was disconnected. Ask to connect it again when you want messages."}
 	}
