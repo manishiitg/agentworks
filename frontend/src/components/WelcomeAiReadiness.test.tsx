@@ -45,6 +45,9 @@ it.each(['server', 'own', 'shared_with_you'] as const)('recognizes a ready %s ac
   await render()
   expect(host.textContent).toContain('Your AI account is ready')
   expect(host.textContent).toContain('Available for Crew.')
+  const summary = host.querySelector('[aria-label="Available AI accounts"]')!
+  expect(summary.textContent).toContain(relation === 'server' ? 'Company' : relation === 'own' ? 'Personal' : 'Shared with you')
+  expect(summary.textContent).toContain('Codex')
   expect(host.textContent).not.toContain('Available for Crew, Goals')
   expect(open).not.toHaveBeenCalled()
 })
@@ -116,4 +119,20 @@ it('rechecks live account changes without installing or signing in automatically
   await act(async () => window.dispatchEvent(new Event('provider-connections-changed')))
   expect(host.textContent).toContain('Your AI account is ready')
   expect(open).not.toHaveBeenCalled()
+})
+
+
+it('shows distinct ready Personal and Company providers once across products and hides unavailable accounts', async () => {
+  vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider(), provider({ id: 'claude-code', display_name: 'Claude Code' }), provider({ id: 'muse-cli', display_name: 'Muse' })], provider_order: [], integration_kinds: {} })
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([
+    account({ id: 'personal', relation: 'own', scope: 'user', configured: true }),
+    account({ id: 'company', provider: 'claude-code', relation: 'server', configured: true }),
+    account({ id: 'admin-only', provider: 'muse-cli', relation: 'admin_view', configured: true }),
+    account({ id: 'not-ready', provider: 'muse-cli', relation: 'own', configured: false }),
+  ])
+  await render()
+  const summary = host.querySelector('[aria-label="Available AI accounts"]')!
+  expect([...summary.querySelectorAll('dt')].map(item => item.textContent)).toEqual(['Personal', 'Company'])
+  expect([...summary.querySelectorAll('dd')].map(item => item.textContent)).toEqual(['Codex', 'Claude Code'])
+  expect(summary.textContent).not.toContain('Muse')
 })

@@ -56,6 +56,23 @@ export default function WelcomeAiReadiness({ products, setupOpen, onSetup, onClo
   const runtime = (account: ProviderConnection) => inventory?.providers.find(provider => provider.id === account.provider)
   const readyProducts = inventory?.accounts.filter(group => group.connections.some(account => eligible(account) && account.configured === true && runtime(account)?.runtime_available === true)) ?? []
   const ready = readyProducts.length > 0
+  const accountSummary = [
+    { label: 'Personal', relations: ['own'] },
+    { label: 'Company', relations: ['server'] },
+    { label: 'Shared with you', relations: ['shared_with_you', 'shared_with_workflow', 'shared_with_crew'] },
+  ].map(group => {
+    const providers = new Map<string, string>()
+    for (const { connections } of readyProducts) {
+      for (const account of connections) {
+        const provider = runtime(account)
+        const relation = account.relation ?? (account.scope === 'global' ? 'server' : 'own')
+        if (group.relations.includes(relation) && eligible(account) && account.configured === true && provider?.runtime_available === true) {
+          providers.set(provider.id, provider.display_name)
+        }
+      }
+    }
+    return { label: group.label, providers: [...providers.values()] }
+  }).filter(group => group.providers.length > 0)
   const unknown = inventory?.accounts.some(group => group.connections.some(account => eligible(account) && account.configured !== false && runtime(account) && (account.configured === undefined || runtime(account)?.runtime_available === undefined)))
   const connections = inventory?.accounts.flatMap(group => group.connections) ?? []
   const canAddPersonal = (provider: ProviderManifestEntry) => connections.some(account => account.provider === provider.id && account.scope === 'global' && account.personal_accounts_allowed === true)
@@ -74,7 +91,13 @@ export default function WelcomeAiReadiness({ products, setupOpen, onSetup, onClo
           <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${ready ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-primary/10 text-primary'}`}>{ready ? <CheckCircle2 className="h-5 w-5" aria-hidden="true" /> : <KeyRound className="h-5 w-5" aria-hidden="true" />}</span>
           <div>
             <h2 className="text-sm font-semibold">{state.status === 'error' ? 'Check your AI setup' : ready ? 'Your AI account is ready' : unknown ? 'Check your AI account' : 'First, connect an AI account'}</h2>
-            <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">{state.status === 'error' ? 'Account status could not be checked. Retry or open setup to review it.' : ready ? `Available for ${readyProducts.map(group => PRODUCT_SURFACE_LABELS[group.product]).join(', ')}. Choose the account under “Runs on” when you start work.` : unknown ? 'Sign-in status is not confirmed yet. Open setup to check your account.' : 'Running agents needs an AI account. No ready account is available to you for new work yet.'}</p>
+            <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">{state.status === 'error' ? 'Account status could not be checked. Retry or open setup to review it.' : ready ? `Available for ${readyProducts.map(group => PRODUCT_SURFACE_LABELS[group.product]).join(', ')}. Switch accounts under “Runs on”.` : unknown ? 'Sign-in status is not confirmed yet. Open setup to check your account.' : 'Running agents needs an AI account. No ready account is available to you for new work yet.'}</p>
+            {ready && <dl aria-label="Available AI accounts" className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+              {accountSummary.map(group => <div key={group.label} className="flex flex-wrap items-baseline gap-x-1.5 rounded-md bg-muted/60 px-2 py-1">
+                <dt className="text-muted-foreground">{group.label}</dt>
+                <dd className="font-medium text-foreground">{group.providers.join(', ')}</dd>
+              </div>)}
+            </dl>}
             {state.status === 'loaded' && !ready && !unknown && <p className="mt-1 text-xs leading-5 text-muted-foreground">{personalAllowed ? 'Add your own login or model key, or ask your administrator for a shared account.' : 'Ask your administrator to provide a shared account or enable personal accounts.'}</p>}
           </div>
         </div>
