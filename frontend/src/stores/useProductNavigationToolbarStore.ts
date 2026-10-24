@@ -9,5 +9,6 @@ export const useProductNavigationToolbarStore = create<{
   settingsTarget: HTMLDivElement | null
   sidebarSettingsTarget: HTMLDivElement | null
   compactSettingsTarget: HTMLDivElement | null
+  sidebarWidth: number
   pickerOpen: boolean
-}>(() => ({ target: null, targetKind: null, leadingTarget: null, workspaceTrigger: null, settingsTarget: null, sidebarSettingsTarget: null, compactSettingsTarget: null, pickerOpen: false }))
+}>(() => ({ target: null, targetKind: null, leadingTarget: null, workspaceTrigger: null, settingsTarget: null, sidebarSettingsTarget: null, compactSettingsTarget: null, sidebarWidth: 0, pickerOpen: false }))

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { ArrowRight, KeyRound, Plug, Terminal, X } from 'lucide-react'
 import { Button } from './ui/Button'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
@@ -13,6 +13,7 @@ import { getRuntimeAppName, runtimeBrandAsset, runtimeBrandingConfig } from '../
 import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import WelcomeAiReadiness from './WelcomeAiReadiness'
+import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 
 const McpConnectDialog = lazy(() => import('./integrations/McpConnectDialog'))
 
@@ -35,6 +36,9 @@ const SERVICE_DESCRIPTIONS: Partial<Record<ProductSurface, string>> = {
 export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   // Single-product accounts go straight to their workspace; Getting started can still open this page.
   const [open, setOpen] = useState(() => autoOpen && !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && navigationProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).length !== 1)
+  const [manualOpen, setManualOpen] = useState(false)
+  const sidebarWidth = useProductNavigationToolbarStore(state => state.sidebarWidth)
+  const guide = useRef<HTMLDivElement>(null)
   const [connectOpen, setConnectOpen] = useState(false)
   const [providerSetupOpen, setProviderSetupOpen] = useState(false)
   const user = useAuthStore(state => state.user)
@@ -53,7 +57,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   }, [])
 
   useEffect(() => {
-    const show = () => { setConnectOpen(false); setProviderSetupOpen(false); setOpen(true) }
+    const show = () => { setManualOpen(true); setConnectOpen(false); setProviderSetupOpen(false); setOpen(true) }
     const leaveForNavigation = () => { if (open) close() }
     window.addEventListener(OPEN_WELCOME_HOME_EVENT, show)
     // Global navigation must be able to leave Welcome, just as it leaves a settings page.
@@ -67,6 +71,15 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   useEffect(() => {
     if (autoOpen && !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && products.length > 1) setOpen(true)
   }, [autoOpen, products.length])
+
+  useEffect(() => {
+    if (!open || !manualOpen || !sidebarWidth) return
+    const leaveForSidebar = (event: MouseEvent) => {
+      if (event.target instanceof Element && !guide.current?.contains(event.target) && event.target.closest('[data-product-navigation-mode]')) close()
+    }
+    document.addEventListener('click', leaveForSidebar, true)
+    return () => document.removeEventListener('click', leaveForSidebar, true)
+  }, [close, manualOpen, open, sidebarWidth])
 
   if (!open) return null
 
@@ -96,7 +109,9 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={`Welcome to ${appName}`} className="fixed inset-0 z-[60] overflow-y-auto bg-background">
+    <div ref={guide} role="dialog" aria-modal={!manualOpen || !sidebarWidth} aria-label={`Welcome to ${appName}`}
+      style={{ '--welcome-sidebar-width': `${manualOpen ? sidebarWidth : 0}px` } as CSSProperties}
+      className="fixed inset-0 z-[60] overflow-y-auto bg-background md:left-[var(--welcome-sidebar-width)]">
       <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-5 py-8 sm:px-8 sm:py-10">
         <header className="flex items-start justify-between gap-4">
           <div>

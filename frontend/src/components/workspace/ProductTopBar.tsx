@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Home, PanelLeftClose } from 'lucide-react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
 import { ProductNavigationContext, CompactProductNavigationContext, useCompactProductNavigation, useProductSettingsMenu, useProductSetupTiles } from './productNavigationContexts'
@@ -33,6 +33,11 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
   useEffect(() => { if (restoreNavigation) setNavigationMode(restoreNavigation) }, [restoreNavigation, setNavigationMode])
   useEffect(() => { useWorkspaceReturnStore.setState({ navigationMode }) }, [navigationMode])
   const open = navigationMode === 'fixed'
+  useEffect(() => {
+    const showHome = () => setNavigationMode('fixed')
+    window.addEventListener('open-welcome-home', showHome)
+    return () => window.removeEventListener('open-welcome-home', showHome)
+  }, [setNavigationMode])
   const ownSidebarSettings = useRef<HTMLDivElement | null>(null)
   const registerSidebarSettings = useCallback((node: HTMLDivElement | null) => {
     const previous = ownSidebarSettings.current
@@ -55,6 +60,10 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
   const widthKey = `product_sidebar_width:${server || 'local'}:${userId || 'pending'}`
   const [sizing, setSizing] = useState(() => ({ key: widthKey, width: readWidth(widthKey) }))
   const width = sizing.key === widthKey ? sizing.width : readWidth(widthKey)
+  useEffect(() => {
+    useProductNavigationToolbarStore.setState({ sidebarWidth: sidebar && open ? width : 0 })
+    return () => useProductNavigationToolbarStore.setState({ sidebarWidth: 0 })
+  }, [sidebar, open, width])
   const drag = usePointerDrag()
   useEffect(() => { drag.stop(); setSizing({ key: widthKey, width: readWidth(widthKey) }) }, [widthKey, drag.stop])
   const resize = (next: number) => {
@@ -65,13 +74,16 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
   const target = useProductNavigationToolbarStore(state => state.target)
   const leadingTarget = useProductNavigationToolbarStore(state => state.leadingTarget)
   const toggle = sidebar && <button type="button" data-navigation-toggle
-    aria-label={open ? 'Close sidebar' : 'Open sidebar'} aria-expanded={open}
-    title={open ? 'Close your work list' : 'Open your work list'}
-    onClick={() => setNavigationMode(open ? 'auto-hide' : 'fixed')}
+    aria-label={open ? 'Close sidebar' : 'Home'} aria-expanded={open}
+    title={open ? 'Close your work list' : 'Getting started'}
+    onClick={() => {
+      if (open) setNavigationMode('auto-hide')
+      else window.dispatchEvent(new Event('open-welcome-home'))
+    }}
     className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-    {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />}
+    {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <Home className="h-4 w-4" aria-hidden="true" />}
   </button>
-  // Branding stays in the open sidebar; the collapsed toolbar needs only its toggle.
+  // Branding stays in the open sidebar; Home also opens Getting started.
   const leading = <div className="flex shrink-0 items-center gap-2 md:hidden">{toggle}</div>
   const controls = <nav aria-label="Product navigation" data-product-navigation="topbar" data-terminal-focus-chrome="header" data-tour-products={visibleProductSurfaceIDs(allowedProducts).join(' ')}
     className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">

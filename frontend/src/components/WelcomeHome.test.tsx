@@ -20,6 +20,7 @@ import { useLLMStore } from '../stores/useLLMStore'
 import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
+import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
@@ -50,6 +51,7 @@ describe('WelcomeHome', () => {
     useCommandDialogStore.getState().closeAll()
     useAppStore.setState({ adminPage: null })
     useLLMStore.setState({ showLLMModal: false })
+    useProductNavigationToolbarStore.setState({ sidebarWidth: 0 })
     vi.clearAllMocks()
   })
 
@@ -165,6 +167,17 @@ describe('WelcomeHome', () => {
     expect(host.querySelector('[role="dialog"]')).toBeNull()
     await act(async () => window.dispatchEvent(new Event('open-welcome-home')))
     expect(host.querySelector('[role="dialog"]')).not.toBeNull()
+    await act(async () => useProductNavigationToolbarStore.setState({ sidebarWidth: 300 }))
+    const guide = host.querySelector<HTMLElement>('[role="dialog"]')!
+    expect(guide.style.getPropertyValue('--welcome-sidebar-width')).toBe('300px')
+    expect(guide.getAttribute('aria-modal')).toBe('false')
+    const sidebar = document.createElement('div')
+    sidebar.setAttribute('data-product-navigation-mode', 'fixed')
+    const project = document.createElement('button')
+    sidebar.append(project); document.body.append(sidebar)
+    await act(async () => project.click())
+    sidebar.remove()
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
   })
 
   it('updates visible choices when permissions change while open', async () => {
