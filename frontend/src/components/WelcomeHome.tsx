@@ -21,9 +21,9 @@ const PERSONAL_PRODUCTS = new Set<string>(['video-studio', 'sparkquill'])
 const WORK_PRODUCT_ORDER: ProductSurface[] = ['work', 'agentworks', 'relays']
 const SERVICE_ORDER: ProductSurface[] = ['knowledgebase', 'mcp-gateway', 'bullpen']
 const STARTING_POINTS: Partial<Record<ProductSurface, { heading: string; example: string; createLabel: string; openLabel: string }>> = {
-  work: { heading: 'Work with an AI teammate', example: 'Research, write and organize your work.', createLabel: 'Create a Crew', openLabel: 'Open existing Crews' },
-  agentworks: { heading: 'Work toward a goal', example: 'Set a target. Track progress and results.', createLabel: 'Create a Goal', openLabel: 'Open existing Goals' },
-  relays: { heading: 'Run a repeatable process', example: 'Connect clear steps, AI decisions and actions.', createLabel: 'Create a Flow', openLabel: 'Open existing Flows' },
+  work: { heading: 'Delegate a business job', example: 'Create agents for customer support, sales follow-ups or finance. Give them your tools and instructions to handle everyday work for your team.', createLabel: 'Create a Crew', openLabel: 'Open existing Crews' },
+  agentworks: { heading: 'Put agents to work toward a business target', example: 'Set a target, like 20 qualified leads a week or fewer overdue invoices. Agents carry out the work and track progress toward that result.', createLabel: 'Create a Goal', openLabel: 'Open existing Goals' },
+  relays: { heading: 'Automate a process from start to finish', example: 'Turn your business process into connected steps: new order → invoice → confirmation, or every Monday → sales report.', createLabel: 'Create a Flow', openLabel: 'Open existing Flows' },
 }
 const SERVICE_DESCRIPTIONS: Partial<Record<ProductSurface, string>> = {
   knowledgebase: 'Knowledge your agents can reuse',
@@ -106,8 +106,8 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
               {mark && <img src={mark} alt="" className="h-6 w-6 rounded-md" />}
               Welcome to {appName}
             </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">What would you like to do?</h1>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">Choose a starting point. We’ll help you set it up.</p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Automate your business with AI agents</h1>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">Connect your apps, describe the work, and choose how it should run.</p>
           </div>
           <button type="button" aria-label="Open navigation" onClick={() => window.dispatchEvent(new Event('open-app-sidebar'))}
             className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"><Menu className="h-5 w-5" aria-hidden="true" /></button>
