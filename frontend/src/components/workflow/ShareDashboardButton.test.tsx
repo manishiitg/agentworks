@@ -17,7 +17,7 @@ it('shows the server message when a share is refused with a structured error', a
   try {
     await act(async () => root.render(<ShareDashboardButton workspacePath="Workflow/invoices" />))
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Share"]')!.click())
-    await act(async () => [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === 'Save')!.click())
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button => button.textContent === 'Save')!.click())
     expect(document.querySelector('[role="dialog"] [role="status"]')?.textContent).toBe('Publish your unfinished dashboard, then share it.')
     expect(host.textContent).not.toContain('[object Object]')
   } finally {
