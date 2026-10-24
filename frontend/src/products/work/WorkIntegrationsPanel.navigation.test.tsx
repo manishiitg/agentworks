@@ -32,7 +32,7 @@ const cleanup: (() => void)[] = []
 beforeEach(() => {
   vi.stubEnv('VITE_DEPLOYMENT_MODE', 'server')
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
-  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'code', 'knowledgebase', 'mcp-gateway'], gatewayUrl: 'https://example.com' }
+  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'code', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'https://example.com' }
   state.allowed_products = null
 })
 afterEach(() => { cleanup.splice(0).forEach(fn => fn()); delete window.__APP_RUNTIME_CONFIG__; vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.clearAllMocks() })
