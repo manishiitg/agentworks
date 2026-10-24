@@ -61,7 +61,7 @@ describe('Crew native tab dragging', () => {
     try {
       await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
       expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
-      expect(host.querySelector('[data-project-title]')?.textContent).toBe('Crew')
+      expect(host.querySelector('[data-project-title]')?.getAttribute('title')).toBe('Crew')
       expect(host.querySelector('[data-chat-tab-id="research"] [role="button"]')?.getAttribute('aria-label')).toContain('alex.taylor@example.com')
       expect(host.textContent).not.toContain('me@example.com')
       await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())

@@ -99,7 +99,7 @@ it.each(['agentworks', 'relays'] as const)('keeps the project name visible witho
     } })
   })
   expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
-  expect(host.querySelector('[data-project-title]')?.textContent).toBe('Example')
+  expect(host.querySelector('[data-project-title]')?.getAttribute('title')).toBe('Example')
   expect(host.querySelector('[data-chat-owner-group="me"]')).toBeNull()
   await act(async () => button(host, 'Review').click())
   expect(useChatStore.getState().activeTabId).toBe('review')

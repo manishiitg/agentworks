@@ -49,48 +49,14 @@ async function renderView() {
   return container;
 }
 
-function tabByName(host: HTMLElement, name: string) {
-  const tabs = Array.from(host.querySelectorAll('[role="tab"]'));
-  const tab = tabs.find(candidate => candidate.textContent === name);
-  if (!tab) throw new Error(`missing tab ${name}`);
-  return tab as HTMLElement;
-}
-
-function inlineAskMessage(host: HTMLElement) {
-  return host.querySelector('[data-testid="ask-ai"]')?.getAttribute("data-message");
-}
-
-it("renders background knowledge and database tabs without a separate learnings feature", async () => {
+it.each(['knowledgebase', 'database'] as const)('opens the targeted %s page with its contextual chat action and no duplicate tabs', async tab => {
+  storeState.workspaceViewTarget = { view: "knowledge", target: tab, token: 1 };
   const host = await renderView();
-  expect(host.querySelector("h2")?.textContent).toBe("Knowledge");
-  expect(Array.from(host.querySelectorAll('[role="tab"]')).map(tab => tab.textContent))
-    .toEqual(["Knowledgebase", "Database"]);
-  expect(tabByName(host, "Knowledgebase").getAttribute("aria-selected")).toBe("true");
-  // Embedded views hide their own headers; only the active tab's content shows.
-  expect(host.querySelector('[data-testid="knowledgebase"]')?.getAttribute("data-hide-header")).toBe("true");
-  expect(host.textContent).not.toContain('Learnings');
-  expect(host.querySelector('[data-testid="database"]')).toBeNull();
-  expect(host.querySelector('[aria-label="Refresh Knowledgebase"]')).not.toBeNull();
+  expect(host.querySelector(`[data-testid="${tab}"]`)).not.toBeNull();
+  expect(host.querySelector(`[data-testid="${tab === 'database' ? 'knowledgebase' : 'database'}"]`)).toBeNull();
+  expect(host.querySelector('[role="tablist"]')).toBeNull();
   expect(host.querySelector('[aria-label^="Walkthrough:"]')).toBeNull();
-  expect(inlineAskMessage(host)).toContain("Knowledge · Knowledgebase");
-});
-
-it("switches content, Ask AI, and refresh per tab", async () => {
-  const host = await renderView();
-  await act(async () => {
-    tabByName(host, "Database").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  expect(tabByName(host, "Database").getAttribute("aria-selected")).toBe("true");
-  expect(host.querySelector('[data-testid="database"]')).not.toBeNull();
-  expect(host.querySelector('[data-testid="learnings"]')).toBeNull();
-  expect(host.querySelector('[aria-label="Refresh Database"]')).not.toBeNull();
-  expect(inlineAskMessage(host)).toContain("Knowledge · Database");
-  expect(openWorkspaceView).toHaveBeenCalledWith("knowledge", "database");
-});
-
-it("opens on the targeted tab", async () => {
-  storeState.workspaceViewTarget = { view: "knowledge", target: "knowledgebase", token: 1 };
-  const host = await renderView();
-  expect(tabByName(host, "Knowledgebase").getAttribute("aria-selected")).toBe("true");
-  expect(host.querySelector('[data-testid="knowledgebase"]')).not.toBeNull();
+  expect(host.textContent).not.toContain('Learnings');
+  const message = host.querySelector('[data-testid="ask-ai"]')?.getAttribute('data-message');
+  expect(message).toContain(tab === 'database' ? 'Knowledge · Database' : 'Knowledge · Knowledgebase');
 });
