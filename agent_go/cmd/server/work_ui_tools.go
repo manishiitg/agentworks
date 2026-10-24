@@ -20,7 +20,7 @@ var workUIControlContract = uiContract{
 		{ID: "schedules", Label: "Schedules", TargetKind: "view_section", Actions: []string{"open", "refresh"}, Targets: []string{"schedules", "webhooks"}},
 		{ID: "files", Label: "Files", Actions: []string{"open", "refresh"}},
 		{ID: "identity", Label: "Settings", Actions: []string{"open", "refresh"}},
-		{ID: "mcp", Label: "Vault", TargetKind: "view_section", Actions: []string{"open", "refresh"}, Targets: []string{"vault", "brain", "folders", "slack", "slack-bot", "whatsapp", "cli", "agents", "share", "share-owners"}},
+		{ID: "mcp", Label: "Vault", TargetKind: "view_section", Actions: []string{"open", "refresh"}, Targets: []string{"vault", "brain", "folders", "slack", "slack-bot", "whatsapp", "cli", "agents", "share", "agentbridge"}},
 		{ID: "llm", Label: "Models", Actions: []string{"open", "refresh"}},
 		{ID: "folders", Label: "Attached folders", Actions: []string{"open", "refresh"}},
 	},

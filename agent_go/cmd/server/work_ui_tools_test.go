@@ -9,7 +9,7 @@ import (
 func TestWorkUIRegistersSamePresentationToolFamilyWithWorkViews(t *testing.T) {
 	api := &StreamingAPI{}
 	reg := &recordingRegistrar{}
-	if err := api.registerOpenWorkWorkspaceViewTool(reg, "user-1", "work-chat", "Chats/Work/projects/demo"); err != nil {
+	if err := api.registerOpenWorkWorkspaceViewTool(reg, "user-1", "work-chat", "Crew/demo"); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action"} {
@@ -56,8 +56,19 @@ func TestWorkUIRegistersSamePresentationToolFamilyWithWorkViews(t *testing.T) {
 	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "schedules", "action": "open", "target": "webhooks"}); err != nil || !strings.Contains(out, "browser_disconnected") {
 		t.Fatalf("webhooks open=%s err=%v", out, err)
 	}
-	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "mcp", "action": "open", "target": "slack"}); err != nil || !strings.Contains(out, "browser_disconnected") {
-		t.Fatalf("Slack channel open=%s err=%v", out, err)
+	for _, target := range []string{"slack", "share", "agentbridge"} {
+		if !strings.Contains(capabilities, `"`+target+`"`) {
+			t.Fatalf("Crew panel %s missing from advertised capabilities: %s", target, capabilities)
+		}
+		if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "mcp", "action": "open", "target": target}); err != nil || !strings.Contains(out, "browser_disconnected") {
+			t.Fatalf("panel %s open=%s err=%v", target, out, err)
+		}
+	}
+	if strings.Contains(capabilities, `"share-owners"`) {
+		t.Fatalf("Crew advertised the retired separate Owners panel: %s", capabilities)
+	}
+	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "mcp", "action": "open", "target": "share-owners"}); err != nil || !strings.Contains(out, "unsupported_target") {
+		t.Fatalf("retired Owners target was accepted: %s err=%v", out, err)
 	}
 	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "flow", "action": "open"}); err != nil || !strings.Contains(out, "unsupported_view") {
 		t.Fatalf("workflow-only view was accepted: %s err=%v", out, err)
