@@ -82,6 +82,7 @@ type Request struct {
 	Action           string            `json:"action"`
 	ID               string            `json:"id,omitempty"`
 	Title            string            `json:"title,omitempty"`
+	Motion           *bool             `json:"motion,omitempty"`
 	Files            map[string]string `json:"files,omitempty"`
 	Remove           []string          `json:"remove,omitempty"`
 	ExpectedRevision string            `json:"expected_revision,omitempty"`
@@ -91,12 +92,14 @@ type Request struct {
 	Guard            *wf.FolderGuard   `json:"guard,omitempty"`
 }
 type Snapshot struct {
-	Title string            `json:"title"`
-	Files map[string]string `json:"files"`
+	Title  string            `json:"title"`
+	Motion bool              `json:"motion,omitempty"`
+	Files  map[string]string `json:"files"`
 }
 type Dashboard struct {
 	ID           string   `json:"id"`
 	Title        string   `json:"title"`
+	Motion       bool     `json:"motion"`
 	Revision     string   `json:"revision"`
 	Published    string   `json:"published_revision,omitempty"`
 	History      []string `json:"history,omitempty"`
@@ -249,7 +252,7 @@ func summary(s state, snap Snapshot, draft bool) Dashboard {
 	if draft {
 		rev = s.Draft
 	}
-	d := Dashboard{ID: s.ID, Title: snap.Title, Revision: rev, Published: s.Published, DocumentPath: Document(s.ID, ""), Managed: true}
+	d := Dashboard{ID: s.ID, Title: snap.Title, Motion: snap.Motion, Revision: rev, Published: s.Published, DocumentPath: Document(s.ID, ""), Managed: true}
 	if draft {
 		d.History = s.History
 	}
@@ -535,6 +538,9 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 		if req.Title != "" {
 			snap.Title = req.Title
 		}
+	}
+	if req.Motion != nil {
+		snap.Motion = *req.Motion
 	}
 	if len(snap.Title) > 200 || strings.TrimSpace(snap.Title) == "" {
 		return out, fail(400, "dashboard title required (at most 200 characters)")

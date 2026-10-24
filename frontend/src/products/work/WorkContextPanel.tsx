@@ -4,6 +4,7 @@ import { useProjectStatus } from '../../components/workspace/useProjectStatus'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
 import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
+import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import api, { agentApi } from '../../services/api'
@@ -18,12 +19,13 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
 const EMPTY_RECENT: string[] = []
 
-export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels }: {
+export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget }: {
   workspacePath: string
   projectId?: string
   profileId?: 'work'
   panels: ProductPanel<WorkWorkspaceView>[]
   onOpen: (view: WorkWorkspaceView) => void
+  dashboardChatTarget?: DashboardChatTarget
   enabledPanels?: Set<string>
 }) {
   const user = useAuthStore(state => state.user)
@@ -80,7 +82,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     onOpen(item.view)
   }
   const renderItem = (item: CrewMenuItem) => {
-    if (item.id === 'dashboard') return <WorkspaceDashboardMenu key={scope + item.id} documents={documents} onSelect={path => open({ ...item, reportPath: path })} />
+    if (item.id === 'dashboard') return <WorkspaceDashboardMenu key={scope + item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })} />
     if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} onClick={() => open(item)} />
     const automation = item.id.startsWith('schedules:') ? item.target : undefined
     const total = item.id === 'memory:skills' ? status.skills : item.id === 'mcp:gmail' ? status.googleApps : item.id === 'mcp:secrets' ? status.secrets : item.id === 'mcp:share-owners' ? status.owners : automation === 'schedules' ? status.schedules : automation === 'conditions' ? status.conditions : automation === 'triggers' ? status.triggers : automation === 'functions' ? status.functions : item.id === 'mcp:connected' ? status.mcps : item.id === 'mcp:agents' ? status.computerChats : undefined

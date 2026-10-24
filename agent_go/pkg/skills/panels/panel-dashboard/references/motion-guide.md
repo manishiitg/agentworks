@@ -11,6 +11,30 @@ Use motion when the person requests it. They choose the layout, appearance,
 charts, controls, pacing and animation style; the platform supplies playback
 and export mechanics. Do not add a standard motion layout or required palette.
 
+### Make motion easy to find
+
+For an interactive playback page, set `motion: true` with create_dashboard or
+update_dashboard (MCP: dashboard action=create/update), then publish the revision.
+This puts it under **Motion dashboards** in the project menu. It is the same
+dashboard and live link, with the same Share and access rules. The flag is a
+label; it does not create animation or a video. Omit it on ordinary updates to
+keep the saved label; use false and publish to move the page back. For an
+existing managed motion page, update only this flag with its expected_revision;
+keep its files, design and data intact. Never classify a page from its title.
+
+Explain it as “Play and explore changes over time, or follow a visual explanation
+one step at a time.” Examples: monthly sales, spending over time, project
+progress and process walkthroughs. Offer a small first version using available
+dated data. Ask only for missing data or business meaning; use fictional data
+only when the person requests a demo, and label it clearly. Keep appearance and
+layout editable. New TSX pages can use the shared MotionControls component,
+passing the report.motion clock and updating chart state onChange.
+
+Interactive playback is a browser clock, not a HyperFrames video. HyperFrames
+is used on the server for optional MP4 rendering. Playback does not run Python
+or query data on each frame. Export freezes the loaded data and seeks the same
+authored page frame by frame; a separate explainer is an explicit choice.
+
 ### Use real dated data
 
 A dashboard does not automatically keep the history of every number. Query

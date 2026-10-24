@@ -76,7 +76,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     openView(item.view, item.target)
   }
   const renderItem = (item: WorkflowMenuItem) => {
-    if (item.id === 'report') return <WorkspaceDashboardMenu key={scope + item.id} documents={documents} onSelect={path => open({ ...item, reportPath: path })} />
+    if (item.id === 'report') return <WorkspaceDashboardMenu key={scope + item.id} documents={documents} createTarget={{ workspacePath }} onSelect={path => open({ ...item, reportPath: path })} />
     if (item.external) return <WorkspaceAgentBridgeRows key={item.id} onOpen={() => open(item)} />
     if (item.id === 'mcp:share') return <ShareDashboardButton key={item.id} workspacePath={workspacePath} label={item.label} variant="row" onOpen={() => open(item)} />
     if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId="workflow" onClick={() => open(item)} />

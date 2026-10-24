@@ -37,8 +37,8 @@ const scope = (relay = false, project = 'example') => projectMenuHistoryScope(st
 
 it.each([false, true])('uses Crew category order and keeps every product destination (%s)', async relay => {
   await render(relay)
-  expect([...host.querySelectorAll('summary:not([aria-label="Autopilot"])')].map(node => node.textContent)).toEqual(['Build', 'Use', 'Share', 'Integrations', 'Setup'])
-  expect([...host.querySelectorAll<HTMLDetailsElement>('details:not([aria-label="Autopilot menu"])')].map(node => node.open)).toEqual([true, false, false, false, false])
+  expect([...host.querySelectorAll('summary:not([aria-label="Autopilot"])')].map(node => node.textContent)).toEqual(['Build', 'Motion dashboards0', 'Use', 'Share', 'Integrations', 'Setup'])
+  expect([...host.querySelectorAll<HTMLDetailsElement>('details:not([aria-label="Autopilot menu"])')].map(node => node.open)).toEqual([true, false, false, false, false, false])
   for (const label of ['Dashboards', 'Files', 'Skills', 'Chat history', 'People & access', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
   if (relay) {
     for (const label of ['Flow', 'Runs', 'Code']) expect(button(label)).toBeDefined()
@@ -68,7 +68,7 @@ it.each([false, true])('shows up to ten recent items once and keeps their correc
   await act(async () => destinations.forEach(id => useProjectMenuHistoryStore.getState().visit(scope(relay), id)))
   expect(useProjectMenuHistoryStore.getState().recent[scope(relay)]).toHaveLength(10)
   const recent = [...host.querySelectorAll('section')].find(node => node.querySelector('h2')?.textContent === 'Recent')!
-  expect(recent.querySelectorAll('button')).toHaveLength(10)
+  expect([...recent.querySelectorAll('button')].filter(row => row.textContent !== 'Create motion dashboard')).toHaveLength(10)
   for (const row of recent.querySelectorAll('button')) expect([...host.querySelectorAll('button')].filter(node => node.textContent === row.textContent)).toHaveLength(1)
 })
 

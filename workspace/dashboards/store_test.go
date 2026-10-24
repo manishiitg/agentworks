@@ -130,3 +130,51 @@ func TestDashboardScriptsStayPrivate(t *testing.T) {
 		t.Fatalf("script must stay 0600: %v %v", script, err)
 	}
 }
+
+func TestMotionLabelFollowsPublishedRevision(t *testing.T) {
+	docs := t.TempDir()
+	root := "Crew/example"
+	if err := os.MkdirAll(filepath.Join(docs, root), 0755); err != nil {
+		t.Fatal(err)
+	}
+	call := func(req Request) Result {
+		t.Helper()
+		req.Root = root
+		out, err := Execute(context.Background(), docs, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	first := call(Request{Action: "create", ID: "playback", Title: "Playback", IncludeDraft: true, Files: map[string]string{"index.html": "<title>Playback</title>"}})
+	if first.Dashboard.Motion {
+		t.Fatal("ordinary dashboard classified as motion")
+	}
+	rev1 := first.Dashboard.Revision
+	call(Request{Action: "publish", ID: "playback", ExpectedRevision: rev1, IncludeDraft: true})
+	yes, no := true, false
+	draft := call(Request{Action: "update", ID: "playback", ExpectedRevision: rev1, IncludeDraft: true, Motion: &yes})
+	rev2 := draft.Dashboard.Revision
+	if !draft.Dashboard.Motion || rev1 == rev2 {
+		t.Fatal("motion label must create a revision")
+	}
+	if call(Request{Action: "get", ID: "playback"}).Dashboard.Motion || call(Request{Action: "list"}).Dashboards[0].Motion {
+		t.Fatal("draft label leaked into publication")
+	}
+	call(Request{Action: "publish", ID: "playback", ExpectedRevision: rev2, IncludeDraft: true})
+	if !call(Request{Action: "list"}).Dashboards[0].Motion {
+		t.Fatal("published motion label missing")
+	}
+	unchanged := call(Request{Action: "update", ID: "playback", ExpectedRevision: rev2, IncludeDraft: true, Title: "Spending history"})
+	if !unchanged.Dashboard.Motion {
+		t.Fatal("omitted motion must preserve label")
+	}
+	ordinary := call(Request{Action: "update", ID: "playback", ExpectedRevision: unchanged.Dashboard.Revision, IncludeDraft: true, Motion: &no})
+	if ordinary.Dashboard.Motion {
+		t.Fatal("explicit false ignored")
+	}
+	restored := call(Request{Action: "restore", ID: "playback", ExpectedRevision: ordinary.Dashboard.Revision, Revision: rev2, IncludeDraft: true})
+	if !restored.Dashboard.Motion {
+		t.Fatal("restore lost revisioned motion metadata")
+	}
+}

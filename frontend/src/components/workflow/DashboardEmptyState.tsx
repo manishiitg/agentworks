@@ -14,10 +14,10 @@ export function DashboardEmptyState({ description = 'Live data, forms, agent act
   </div>
 }
 
-type DashboardChatTarget = { workspacePath: string } | { tabId: string } | { profileId: string; conversationKey: string }
+export type DashboardChatTarget = { workspacePath: string } | { tabId: string } | { profileId: string; conversationKey: string }
 
 /** The parent admits authoring; this control only prepares a user-reviewed draft. */
-export function DashboardCreateDraftButton({ target }: { target: DashboardChatTarget }) {
+export function DashboardCreateDraftButton({ target, motion = false, compact = false }: { target: DashboardChatTarget; motion?: boolean; compact?: boolean }) {
   const pending = useRef(false)
   const [busy, setBusy] = useState(false)
   const createDraft = async () => {
@@ -25,7 +25,7 @@ export function DashboardCreateDraftButton({ target }: { target: DashboardChatTa
     pending.current = true
     setBusy(true)
     try {
-      await openWorkspacePaneChatWithDraft({ ...target, message: 'Help me create a dashboard for this project. Ask me what to include before building it.' })
+      await openWorkspacePaneChatWithDraft({ ...target, message: motion ? 'Help me create a motion dashboard for this project: an interactive chart or visual explanation with Play, Pause and a timeline I can scrub. Help me choose which real data or process to show. Keep the design editable, and offer MP4 export if I need a video.' : 'Help me create a dashboard for this project. Ask me what to include before building it.' })
     } catch (error) {
       useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not open project chat.', 'error')
     } finally {
@@ -33,7 +33,7 @@ export function DashboardCreateDraftButton({ target }: { target: DashboardChatTa
       setBusy(false)
     }
   }
-  return <button type="button" disabled={busy} onClick={() => { void createDraft() }} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50">
-    {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Plus aria-hidden="true" className="h-4 w-4" />}Create dashboard
+  return <button type="button" disabled={busy} onClick={() => { void createDraft() }} className={compact ? "inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1.5 text-xs text-foreground hover:bg-background/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50" : "inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"}>
+    {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Plus aria-hidden="true" className="h-4 w-4" />}{motion ? 'Create motion dashboard' : 'Create dashboard'}
   </button>
 }

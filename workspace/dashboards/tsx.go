@@ -138,6 +138,7 @@ func AuthoringCatalog() map[string]any {
 	var catalog map[string]any
 	_ = json.Unmarshal(ComponentCatalog, &catalog)
 	catalog["default_format"] = "tsx"
+	catalog["motion"] = map[string]any{"discovery": "Set motion=true with create_dashboard or update_dashboard to list an interactive playback page under Motion dashboards. This is revisioned metadata on the same dashboard, not a separate product or access rule. Publish the new revision to update its live category. Existing pages can be labelled without replacing their files.", "playback": "Use report.motion.create with a stable id, duration and synchronous seekable render callback. Pass the clock to MotionControls; drive charts and values through React state. Load real dated data before playback; never invent history. Layout, charts and controls stay customizable.", "export": "Optional export_dashboard_motion renders the published layout, selected theme and frozen data to MP4 with pinned HyperFrames. A page without seekable motion produces a still video; motion=true alone does not animate it."}
 	var names []string
 	if components, ok := catalog["components"].(map[string]any); ok {
 		for name := range components {

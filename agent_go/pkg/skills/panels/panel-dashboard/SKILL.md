@@ -51,4 +51,4 @@ Dashboard work stays in the project's dashboard list. “Move this dashboard to 
 
 Before authoring a dashboard, Read [the detailed procedure](references/authoring.md).
 
-When playback or a video export is requested, Read [the detailed procedure](references/motion-guide.md).
+When playback, a motion dashboard or a video export is requested, Read [the detailed procedure](references/motion-guide.md). Set motion=true through create/update for interactive playback pages and publish to list them under Motion dashboards. The label alone does not animate a page. Keep the existing layout customizable; MP4 export is optional.
