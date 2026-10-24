@@ -28,6 +28,8 @@ Servers (each one's host, domain and settings live in the private deployments re
   build [--force]       build a release of the current main of the three repositories on the build host; deploys nothing
   builds                list the builds on the build host (name, age, the three revisions, pinned) and the builds on GitHub
   publish [build]       upload a build (default: the newest) to github.com/manishiitg/agentworks-builds from the build host
+  verify [name]         build, vet and test the commit you are on (HEAD) on the build host with the Verify-Test / Verify-Vitest /
+                        Verify-Frontend-Build lines of its commit message, like scripts/verify-remote.sh but faster; deploys nothing
   pin|unpin <build>     keep a known-good build from being pruned (old builds are removed after every deploy; only the newest is kept otherwise)
   prune-builds          remove old builds on the build host now (all but the newest, pinned ones and anything younger than 15 minutes)
 
@@ -516,6 +518,11 @@ if [[ "$SERVER" == builds ]]; then
   echo "On GitHub (github.com/manishiitg/agentworks-builds; a tag is build-<builder8>-<mcpagent8>-<provider8>):"
   bash "$REPO_ROOT/deploy/common/publish-build.sh" --list || echo "(GitHub could not be read)" >&2
   exit 0
+fi
+if [[ "$SERVER" == verify ]]; then
+  [[ $# -le 1 ]] || { echo "Usage: ./deploy.sh verify [name]" >&2; exit 2; }
+  verify_change_remote "$@"
+  exit $?
 fi
 if [[ "$SERVER" == publish ]]; then
   [[ $# -le 1 ]] || { echo "Usage: ./deploy.sh publish [build name or sha]" >&2; exit 2; }

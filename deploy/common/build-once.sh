@@ -59,6 +59,25 @@ build_release_remote() {
   printf '%s\n' "$name"
 }
 
+# Verifies HEAD on the build host (deploy/common/verify-change.sh): the same build, vet and Verify-* tests as GitHub, faster.
+# The commit must be pushed for the host to fetch it, so it goes to a throwaway branch hetzner-verify/<name> (not verify/*, which
+# would also start the GitHub workflow) that is deleted afterwards.
+verify_change_remote() {
+  local name="${1:-$(git -C "$REPO_ROOT" rev-parse --short HEAD)}" sha url branch rc
+  sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  branch="hetzner-verify/$name"
+  url="$(to_https_url "$(git -C "$REPO_ROOT" remote get-url origin)")" || return 1
+  git -C "$REPO_ROOT" push -q -f origin "HEAD:refs/heads/$branch" || { echo "Could not push $branch" >&2; return 1; }
+  echo "==> Verifying ${sha:0:10} on ${BUILD_HOST:-the build host}" >&2
+  build_ssh "install -d -m 0755 '$BUILDS_DIR' && cat > '$BUILDS_DIR/.verify-change.sh' && chmod 0755 '$BUILDS_DIR/.verify-change.sh'" < "$REPO_ROOT/deploy/common/verify-change.sh" \
+    || { git -C "$REPO_ROOT" push -q origin --delete "$branch" >/dev/null 2>&1; echo "Cannot reach the build host" >&2; return 1; }
+  # Lower limits than a build so a verification never starves a deploy build that runs at the same time.
+  rc=0
+  build_ssh "systemd-run --quiet --wait --pipe --collect --setenv=HOME=/root --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${VERIFY_CPU_QUOTA:-400%} -p MemoryMax=${VERIFY_MEMORY_MAX:-8G} -p Nice=15 bash '$BUILDS_DIR/.verify-change.sh' --url '$url' --sha '$sha' --builds-dir '$BUILDS_DIR'" || rc=$?
+  git -C "$REPO_ROOT" push -q origin --delete "$branch" >/dev/null 2>&1 || true
+  return $rc
+}
+
 # Removes old builds on the build host: all but the newest BUILD_KEEP (default 1), never a pinned one or one younger than 15 minutes. Run after every
 # successful deploy; a pruning problem never fails a deploy.
 prune_builds_remote() {
