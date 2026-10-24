@@ -1,11 +1,13 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import '../../src/index.css'
+import { ProjectAgentBridgePanel } from '../../src/components/workspace/ProjectAgentBridgePanel'
 import { SharedCrewWorkspace } from '../../src/products/work/SharedCrewWorkspace'
 import { ShareDashboardButton } from '../../src/components/workflow/ShareDashboardButton'
 
 const params = new URLSearchParams(location.search)
 document.documentElement.classList.toggle('dark', params.get('theme') !== 'light')
-createRoot(document.getElementById('root')!).render(<main className="h-screen min-h-0 bg-background text-foreground">
-  {params.get('popup') === 'true' ? <div className="flex justify-end p-4"><ShareDashboardButton workspacePath="Crew/example-team" /></div> : params.get('owner') === 'true' ? <div className="mx-auto max-w-xl p-4"><ShareDashboardButton workspacePath="Crew/example-team" variant="panel" section="people" /></div> : <SharedCrewWorkspace {...(params.get('standalone') === 'true' ? { workspacePath: 'Crew/example-team' } : { projectId: 'example-team' })} enabled><div className="p-6"><h1 className="text-xl font-semibold">Team dashboard</h1><p className="mt-2 text-muted-foreground">Shared work and published actions.</p></div></SharedCrewWorkspace>}
-</main>)
+function Fixture() { const [request, setRequest] = useState(''); const onAsk = async (message: string) => { setRequest(message) }; return <><output data-testid="chat-request" className="sr-only">{request}</output><main className="h-screen min-h-0 bg-background text-foreground">
+  {params.get('bridge') === 'true' ? <div className="mx-auto max-w-xl p-4"><ProjectAgentBridgePanel target={params.get('target') || 'workspace:work:example-team'} onAsk={onAsk} /></div> : params.get('popup') === 'true' ? <div className="flex justify-end p-4"><ShareDashboardButton workspacePath="Crew/example-team" onAsk={onAsk} /></div> : params.get('owner') === 'true' ? <div className="mx-auto max-w-xl p-4"><ShareDashboardButton workspacePath="Crew/example-team" variant="panel" onAsk={onAsk} /></div> : <SharedCrewWorkspace {...(params.get('standalone') === 'true' ? { workspacePath: 'Crew/example-team' } : { projectId: 'example-team' })} enabled><div className="p-6"><h1 className="text-xl font-semibold">Team dashboard</h1><p className="mt-2 text-muted-foreground">Shared work and published actions.</p></div></SharedCrewWorkspace>}
+</main></> }
+createRoot(document.getElementById('root')!).render(<Fixture />)

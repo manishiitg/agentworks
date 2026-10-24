@@ -21,7 +21,7 @@ still require the person's provider login or phone.
 
 | Panel or task | Guidance and tools |
 |---|---|
-| Dashboard; People & access; Owners | `panel-dashboard`, `panel-sharing`, `panel-owners` |
+| Dashboard; Access (sharing and owners) | `panel-dashboard`, `panel-sharing`, `panel-owners` |
 | Functions; Schedules; Watchers; Webhooks | `panel-functions`, `panel-schedules`, `panel-watchers`, `panel-webhooks` |
 | Inbox; Google; Slack; WhatsApp | `panel-inbox`, `panel-google-apps`, `panel-slack-account`, `panel-slack-bot`, `panel-whatsapp` |
 | Skills; Vault; Models; Browser; Linked folders; Costs | The matching `panel-skills`, `panel-vault`, `panel-models`, `panel-browser`, `panel-linked-folders`, `panel-costs` skill |

@@ -44,10 +44,9 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
       add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.subgroup)
     }
     if (projectId) add('mcp', 'Integrations', 'Chats from your computer', Laptop, 'agents')
-    if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) items.push({ id: 'product:bullpen', label: 'AgentBridge', group: 'Integrations', icon: Cable, external: 'bullpen' })
+    if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Integrations', 'AgentBridge', Cable, 'agentbridge')
     if (has('dashboard') && canShare) {
-      add('mcp', 'Share', 'People & access', UsersRound, 'share')
-      add('mcp', 'Share', 'Owners & collaborators', UsersRound, 'share-owners')
+      add('mcp', 'Share', 'Access', UsersRound, 'share')
     }
   }
   add('suggestions', 'Share', 'Suggestions', Hand)
@@ -56,7 +55,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   if (!enabledPanels || enabledPanels.has('memory')) add('memory', 'Setup', 'Memory', BookOpen, 'memory')
   add('costs', 'Setup', 'Costs & usage', DollarSign)
   add('shell', 'Setup', 'Terminal', Terminal, undefined, 'Advanced')
-  const integrationOrder = ['mcp:vault', 'mcp:brain', 'mcp:folders', 'mcp:agents', 'product:bullpen']
+  const integrationOrder = ['mcp:vault', 'mcp:brain', 'mcp:folders', 'mcp:agents', 'mcp:agentbridge']
   return items.sort((a, b) => CREW_MENU_GROUPS.indexOf(a.group) - CREW_MENU_GROUPS.indexOf(b.group) || (a.group === 'Integrations' ? integrationOrder.indexOf(a.id) - integrationOrder.indexOf(b.id) : 0))
 }
 

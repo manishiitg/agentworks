@@ -10,7 +10,8 @@ vi.mock('../../components/workflow/WorkspaceViewHeader', () => ({ WorkspaceViewH
 vi.mock('../../components/workflow/WorkspaceViewActions', () => ({ WorkspaceViewActions: () => null }))
 vi.mock('../../components/integrations/SlackAccountsPanel', () => ({ default: () => <div data-content="slack-account">Existing Slack account permissions</div> }))
 vi.mock('../../components/integrations/ProductSlackPanel', () => ({ ProductSlackPanel: ({ section }: any) => <div data-content="slack" data-section={section}>Act in Slack · Talk to this Crew</div> }))
-vi.mock('../../components/workflow/ShareDashboardButton', () => ({ ShareDashboardButton: ({ section }: any) => <div data-content="sharing" data-section={section}>Existing server-gated sharing</div> }))
+vi.mock('../../components/workspace/ProjectAgentBridgePanel', () => ({ ProjectAgentBridgePanel: ({ target, onAsk }: any) => <button data-content="agentbridge" onClick={() => onAsk(target)}>Contact an agent</button> }))
+vi.mock('../../components/workflow/ShareDashboardButton', () => ({ ShareDashboardButton: () => <div data-content="sharing">Existing server-gated sharing</div> }))
 vi.mock('../../components/integrations/ProjectMcpPanel', () => ({ ProjectMcpPanel: ({ view }: any) => <div data-content="mcp">{view} MCP content</div> }))
 vi.mock('../../components/integrations/ProjectSecretsPanel', () => ({ ProjectSecretsPanel: () => <div data-content="secrets">Existing secrets</div> }))
 vi.mock('../../components/skills/SkillsManagerPanel', () => ({ default: () => <div data-content="skills">Existing skills</div> }))
@@ -46,7 +47,7 @@ it('uses one Vault destination and keeps setup in the existing project chat', as
   const host = await mount()
   expect(host.querySelector('[data-content="vault"]')).not.toBeNull()
   expect(host.querySelector('nav, [aria-label="Integration sections"]')).toBeNull()
-  for (const target of ['brain', 'folders', 'whatsapp', 'cli', 'agents', 'vault']) {
+  for (const target of ['brain', 'folders', 'whatsapp', 'cli', 'agents', 'agentbridge', 'vault']) {
     await act(async () => state.target(target))
     expect([...host.querySelectorAll('[data-content]')].map(el => el.getAttribute('data-content'))).toEqual([target])
   }
@@ -54,7 +55,7 @@ it('uses one Vault destination and keeps setup in the existing project chat', as
 })
 it('keeps bot channels and sharing separate from personal Vault accounts', async () => {
   const host = await mount()
-  for (const [target, content, section] of [['slack-bot', 'slack', 'bot'], ['share', 'sharing', 'people'], ['share-owners', 'sharing', 'owners']]) {
+  for (const [target, content, section] of [['slack-bot', 'slack', 'bot'], ['share', 'sharing', null]]) {
     await act(async () => state.target(target))
     expect(host.querySelector(`[data-content="${content}"]`)?.getAttribute('data-section')).toBe(section)
     expect(host.querySelectorAll('[data-content]')).toHaveLength(1)

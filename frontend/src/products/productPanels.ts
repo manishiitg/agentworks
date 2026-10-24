@@ -70,11 +70,13 @@ export interface PanelSection { id: string; label: string; keywords?: string }
 
 /** Existing integration target IDs, flattened by MCPs & secrets navigation. */
 export const INTEGRATION_SECTIONS: PanelSection[] = [
+  { id: 'share', label: 'Access', keywords: 'owners share people agents' },
+  { id: 'agentbridge', label: 'AgentBridge', keywords: 'agents computer network messages' },
   ...PROJECT_INTEGRATION_SECTIONS.filter(section => section.value !== 'apps').map(section => ({ id: section.value, label: section.value === 'apps' ? 'Connection overview' : section.value === 'cli' ? 'MCP access' : section.label, keywords: section.value === 'apps' ? `${section.description} Tools & secrets Apps & tools` : section.description })),
   ...projectPluginTabs().map(tab => ({ id: tab.value, label: tab.label, keywords: 'mcp tools' })),
 ]
 /** Integrations sections a Relay offers (its panel shows only these). */
-export const RELAY_INTEGRATION_SECTION_IDS = new Set(['cli', 'apps', 'gmail', 'slack', 'whatsapp', ...projectPluginTabs().map(tab => tab.value)])
+export const RELAY_INTEGRATION_SECTION_IDS = new Set(['share', 'agentbridge', 'cli', 'apps', 'gmail', 'slack', 'whatsapp', ...projectPluginTabs().map(tab => tab.value)])
 
 export const WORKFLOW_IDENTITY_SECTIONS: PanelSection[] = [
   { id: 'general', label: 'General', keywords: 'name soul persona identity' },

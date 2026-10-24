@@ -13,8 +13,10 @@ import WorkflowEmailPanel from './WorkflowEmailPanel'
 import { ProjectMcpSetupPanel } from '../integrations/ProjectMcpSetupPanel'
 import { integrationNavigationOptions } from '../integrations/IntegrationNavigation'
 import { projectChannelLabel, type ProjectChannel } from '../integrations/projectChannels'
+import { ProjectAgentBridgePanel } from '../workspace/ProjectAgentBridgePanel'
+import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { ShareDashboardButton } from './ShareDashboardButton'
-import { projectIntegrationSections } from '../integrations/integrationSections'
+import { integrationProductAvailable, projectIntegrationSections } from '../integrations/integrationSections'
 import { ProjectPluginsPanel, projectPluginTabs, type PluginTab } from '../integrations/ProjectPluginsPanel'
 import { ProjectVaultPanel } from '../integrations/ProjectVaultPanel'
 import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
@@ -128,7 +130,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const activeMcpTab = mcpTabs.some(option => option.value === tab) ? tab : mcpTabs[0].value
   const [preferredPluginTab, setPluginTab] = useState<PluginTab>('connected')
   const [sharing, setSharing] = useState(false)
-  const [shareChannel, setShareChannel] = useState<ProjectChannel>('cli')
+  const [shareChannel, setShareChannel] = useState<ProjectChannel | 'agentbridge'>('cli')
   const pluginTabs = projectPluginTabs(allowedProducts)
   const pluginTab = pluginTabs.some(option => option.value === preferredPluginTab) ? preferredPluginTab : pluginTabs[0].value
   const identityTabs = relayMode ? RELAY_IDENTITY_TABS : IDENTITY_TABS
@@ -138,12 +140,16 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const selectConnection = (target: string) => {
     if (target === 'vault') { setSharing(false); setTab('apps'); setPluginTab('connected'); return }
     if (!relayMode && ['connected', 'available', 'secrets', 'gmail'].includes(target)) return
-    if (target === 'share' || target === 'cli' || (target === 'slack' && mcpTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && mcpTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
+    if (target === 'share' || target === 'agentbridge' && integrationProductAvailable('bullpen', allowedProducts) || target === 'cli' || (target === 'slack' && mcpTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && mcpTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel | 'agentbridge'); return }
     if (target === 'overview' || target === 'apps') { setSharing(false); setTab('apps'); setPluginTab(pluginTabs.some(option => option.value === 'connected') ? 'connected' : pluginTabs[0].value); return }
     if (!mcpTabs.some(option => option.value === target) && !pluginTabs.some(option => option.value === target)) return
     setSharing(false)
     if (mcpTabs.some(option => option.value === target)) setTab(target as McpTab)
     else if (pluginTabs.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab) }
+  }
+  const askInCurrentChat = async (message: string) => {
+    if (!vaultTabId) throw new Error('Open your own project chat to make this change.')
+    await openWorkspacePaneChatWithDraft({ tabId: vaultTabId, message })
   }
   const activeConnection = activeMcpTab === 'apps' ? pluginTab : activeMcpTab
   const connectionLabel = !relayMode && activeMcpTab === 'apps' && pluginTab !== 'skills' ? 'Vault' : navigationOptions.find(option => option.value === (activeConnection === 'available' ? 'connected' : activeConnection))?.label ?? 'MCPs'
@@ -319,12 +325,13 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
         <WorkspaceViewHeader
           hideHeader={skillsView}
           icon={section === 'mcp' && sharing ? Users : SectionIcon}
-          title={section === 'mcp' && sharing ? projectChannelLabel(shareChannel) : section === 'mcp' ? connectionLabel : copy.title}
+          title={section === 'mcp' && sharing ? shareChannel === 'agentbridge' ? 'AgentBridge' : projectChannelLabel(shareChannel) : section === 'mcp' ? connectionLabel : copy.title}
           actions={section === 'mcp' && !relayMode && !sharing && activeMcpTab === 'apps' && pluginTab !== 'skills' ? undefined : (
             <WorkspaceViewActions
               workspacePath={workspacePath}
+              onAsk={section === 'mcp' && sharing && (shareChannel === 'share' || shareChannel === 'agentbridge') ? askInCurrentChat : undefined}
               message={section === 'mcp'
-                ? sharing ? 'Help me share this project with people or make it available through its existing channels. Explain current access before changing sharing, routes or permissions.' : relayMode && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available')
+                ? sharing ? shareChannel === 'agentbridge' ? 'Show the agents this project can reach, its own named agents and recent AgentBridge messages. Help me contact an agent.' : 'Help me share this project with people or make it available through its existing channels. Explain current access before changing sharing, routes or permissions.' : relayMode && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available')
                   ? 'Help me choose from the MCP servers and tools already connected to this platform for this Flow. Explain what each agent can use before changing the selection.'
                   : relayMode && activeMcpTab === 'gmail'
                     ? 'Help me connect Google apps to this Flow, including Drive, Sheets, Calendar or Gmail. Inspect the authorized connections and service grants, explain what its agents can use, and ask which access is needed. Plan creation needs no Google credentials.'
@@ -369,7 +376,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
               <div>
                 <div data-ui-view-section={sharing ? shareChannel : activeConnection} key={`${workspacePath}:${sharing ? shareChannel : activeMcpTab}:${tabNonce}`}>
                 {sharing ? <>
-                  {workspacePath && (shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun={relayMode ? 'Flow' : 'Goal'} allowBots={!relayMode} /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" />}</>)}
+                  {workspacePath && (shareChannel === 'agentbridge' ? <ProjectAgentBridgePanel target={`workflow:${presetQueryId}`} tabId={vaultTabId} onAsk={askInCurrentChat} /> : shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={vaultTabId} onAsk={askInCurrentChat} /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun={relayMode ? 'Flow' : 'Goal'} allowBots={!relayMode} /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" />}</>)}
                 </> : <>
                 {!relayMode && activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <ProjectVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} />}
                 {activeMcpTab === 'apps' && workspacePath && (relayMode || pluginTab === 'skills') && <ProjectPluginsPanel tab={pluginTab}

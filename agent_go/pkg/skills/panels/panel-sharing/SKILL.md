@@ -19,9 +19,11 @@ metadata:
   - share_dashboard
 ---
 
-# People and access
+# Access
 
-Use get_dashboard_share/share_dashboard for this product’s Share selection (Only me, Chosen people, Everyone). Goal owner/editor lists use manage_project get_access/set_access under existing owner checks. Share only the requested product with the requested people; a URL itself grants nothing. Crew has one main owner; using a Crew is through its shared dashboard. Read back the saved audience/access before reporting completion.
+Use get_dashboard_share/share_dashboard for this product’s Share selection (Only me, Chosen people, Everyone). Goal owner/editor lists use manage_project get_access/set_access under existing owner checks. Share only the requested product with the requested people; a URL itself grants nothing. Crew has a main owner and may have co-owners. Owners build the whole project and control their own tabs; other people use what is shared. Read back the saved audience/access before reporting completion.
+
+Use `ui_control` view=mcp target=share to show Access. The website's Access panel summarizes owners, who can use the project, and shared existing agents. Changes happen in the visible project chat. Use `crew_owners` for Crew owners and `manage_project get_access/set_access` for Goal and Relay ownership, after reading `panel-owners`. Goal execution-team assignments remain separate from Share. There is no separate Crew owners form or purpose form to send the person to.
 
 ## Shared Crew agents
 

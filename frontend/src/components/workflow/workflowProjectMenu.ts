@@ -45,7 +45,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   }
   add('mcp', 'Use', 'WhatsApp', MessageSquareText, 'whatsapp', 'Use from other apps')
   add('mcp', 'Use', 'MCP access', Cable, 'cli', 'Use from other apps')
-  if (canShare) add('mcp', 'Share', 'People & access', ShieldCheck, 'share')
+  if (canShare) add('mcp', 'Share', 'Access', ShieldCheck, 'share')
   if (isMultiUser && !relayMode) add('access', 'Share', 'Team', ShieldCheck, 'workflow')
   if (!relayMode) {
     add('publish', 'Setup', 'Publish', Globe)
@@ -57,7 +57,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
     add('mcp', 'Integrations', item.label, item.icon, item.id.slice(4), item.subgroup)
   }
   if (relayMode) add('mcp', 'Integrations', 'Slack account', MessageSquareText, 'slack')
-  if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) items.push({ id: 'product:bullpen', label: 'AgentBridge', icon: Cable, group: 'Integrations', external: 'bullpen' })
+  if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Integrations', 'AgentBridge', Cable, 'agentbridge')
   add('identity', 'Setup', 'Settings', Settings, 'general')
   add('identity', 'Setup', 'Models', Cpu, 'llm')
   add('costs', 'Setup', 'Costs and usage', DollarSign)

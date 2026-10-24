@@ -177,12 +177,13 @@ export const UI_CONTROL_CONTRACT = {
     },
     {
       "id": "mcp",
-      "label": "Connections",
+      "label": "Vault",
       "actions": [
         "open",
         "refresh"
       ],
       "targets": [
+        "vault",
         "connected",
         "available",
         "secrets",
@@ -192,7 +193,9 @@ export const UI_CONTROL_CONTRACT = {
         "slack",
         "gmail",
         "whatsapp",
-        "cli"
+        "cli",
+        "share",
+        "agentbridge"
       ],
       "target_kind": "view_section"
     },

@@ -22,7 +22,7 @@ function Fixture() {
   const [calls, setCalls] = useState<unknown[]>([])
   const tabs = useChatStore(state => state.chatTabs)
   const record = (action: string, data: unknown) => setCalls(previous => [...previous, { action, data }])
-  return <main className="min-h-screen bg-background p-3 text-foreground"><header className="flex w-full border-b border-border pb-2">
+  return <main className="min-h-screen bg-background p-3 text-foreground"><header className="flex h-10 w-full overflow-hidden border-b border-border pb-2">
     <ProjectAgentTabs tabs={rows.map(row => tabs[row.conversation_key])} listed={rows.slice(1)} canonicalTabId="chat-0" projectName="Example" surface={surface} allowSideChats opening={false}
       onSelectTab={id => useChatStore.getState().switchTab(id)}
       onOpen={async name => { record('open', name); const row = { ...initial[1], conversation_key: 'created', session_id: 'created-session', name }; useChatStore.setState(state => ({ chatTabs: { ...state.chatTabs, created: makeTab(row) }, activeTabId: 'created' })); setRows(previous => [...previous, row]) }}

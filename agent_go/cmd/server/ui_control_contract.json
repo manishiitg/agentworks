@@ -192,7 +192,9 @@
         "slack",
         "gmail",
         "whatsapp",
-        "cli"
+        "cli",
+        "share",
+        "agentbridge"
       ],
       "target_kind": "view_section"
     },

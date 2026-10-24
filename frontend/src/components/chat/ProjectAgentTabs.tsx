@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -59,9 +60,25 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const moreRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, maxHeight: 400 })
+  useLayoutEffect(() => {
+    if (!moreOpen) return
+    const position = () => {
+      const rect = moreRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const top = Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - 120))
+      setMenuPosition({ top, left: Math.max(8, Math.min(rect.right - 320, window.innerWidth - Math.min(320, window.innerWidth - 16) - 8)), maxHeight: Math.min(416, window.innerHeight - top - 8) })
+    }
+    position()
+    menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    window.addEventListener('resize', position)
+    window.addEventListener('scroll', position, true)
+    return () => { window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true) }
+  }, [moreOpen])
   useEffect(() => {
     if (!moreOpen) return
-    const close = (event: MouseEvent) => { if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false) }
+    const close = (event: MouseEvent) => { if (!moreRef.current?.contains(event.target as Node) && !menuRef.current?.contains(event.target as Node)) setMoreOpen(false) }
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setMoreOpen(false); moreRef.current?.querySelector<HTMLButtonElement>('button')?.focus() } }
     document.addEventListener('mousedown', close)
     document.addEventListener('keydown', escape)
@@ -201,8 +218,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
           >
             <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
-          {moreOpen && (
-            <div className="absolute right-0 top-8 z-50 flex max-h-[min(26rem,70dvh)] w-80 max-w-[calc(100vw-2rem)] flex-col rounded-xl border border-border bg-popover p-1.5 shadow-lg" role="dialog" aria-label="Agents">
+          {moreOpen && createPortal(
+            <div ref={menuRef} style={menuPosition} className="fixed z-[100] flex w-80 max-w-[calc(100vw-1rem)] flex-col rounded-xl border border-border bg-popover p-1.5 shadow-lg" role="dialog" aria-label="Agents">
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-2 pb-2 pt-1">
                 <h2 className="text-xs font-semibold">Agents & activity</h2>
                 {canReorderInMenu && <button type="button" aria-pressed={reordering} onClick={() => setReordering(value => !value)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{reordering ? 'Done' : 'Reorder'}</button>}
@@ -265,7 +282,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
                 </div>
               })}
               </div>
-            </div>
+            </div>, document.body
           )}
         </div>
       )}
