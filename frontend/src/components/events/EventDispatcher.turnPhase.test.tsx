@@ -16,13 +16,19 @@ const turnPhase = {
 let container: HTMLDivElement | null = null
 afterEach(() => { container?.remove(); container = null })
 
-describe('turn_phase in the detailed view', () => {
-  it('renders nothing, not the raw event', async () => {
+describe('internal events in chat', () => {
+  it.each(['turn_phase', 'future_transport_status'])('never dumps %s as a chat card, live or restored', async type => {
     container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<EventDispatcher event={turnPhase} />) })
-    expect(container.textContent || '').toBe('')
+    for (const restored of [false, true]) {
+      const event = {
+        ...turnPhase, type,
+        data: { data: { phase: 'running', metadata: { restored_persisted_trace: restored } } },
+      } as unknown as PollingEvent
+      await act(async () => { root.render(<EventDispatcher event={event} />) })
+      expect(container.textContent || '').toBe('')
+    }
     await act(async () => { root.unmount() })
   })
 })

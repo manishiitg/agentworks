@@ -2,7 +2,10 @@ package server
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
@@ -123,4 +126,30 @@ func staticFrontendDir() string {
 		return override
 	}
 	return "./static/"
+}
+
+// The source launcher already selects the current browser frontend for CLI
+// approval. Use that same origin for app pages instead of a stale static build.
+// Packaged apps and deployed servers continue serving their bundled frontend.
+func localFrontendRedirect(r *http.Request) string {
+	if !IsLocalMode() || (r.Method != http.MethodGet && r.Method != http.MethodHead) {
+		return ""
+	}
+	if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") ||
+		(filepath.Ext(r.URL.Path) != "" && r.URL.Path != "/index.html") {
+		return ""
+	}
+	origin := "http://" + r.Host
+	browser := cliOAuthBrowserOrigin(origin)
+	if browser == origin {
+		return ""
+	}
+	serverURL, _ := url.Parse(origin)
+	browserURL, _ := url.Parse(browser)
+	// localhost and numeric loopback addresses on the same port are the same
+	// server. Redirecting between those aliases would loop forever.
+	if browserURL.Port() == serverURL.Port() {
+		return ""
+	}
+	return browser + r.URL.RequestURI()
 }

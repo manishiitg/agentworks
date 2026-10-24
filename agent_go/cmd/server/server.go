@@ -727,6 +727,12 @@ func spaStaticFileHandler(root string) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if target := localFrontendRedirect(r); target != "" {
+			w.Header().Set("Cache-Control", "no-store")
+			log.Printf("[FRONTEND] App navigation uses current local frontend %s", strings.TrimRight(strings.TrimSpace(os.Getenv("AGENTWORKS_CLI_BROWSER_URL")), "/"))
+			http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+			return
+		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			fileServer.ServeHTTP(w, r)
 			return
@@ -3237,7 +3243,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Static file serving (for frontend). Unknown GET/HEAD routes fall back to
 	// index.html so dedicated SPA URLs like /report, /file, and /folder work
 	// when opened directly in a browser. Defaults to cwd-relative "./static/"
-	// (unchanged); STATIC_DIR overrides it, see staticFrontendDir.
+	// STATIC_DIR overrides it, see staticFrontendDir. Source development sends
+	// app navigation to the launcher's current frontend instead of old assets.
+	log.Printf("[FRONTEND] Bundled static directory: %s", staticFrontendDir())
 	router.PathPrefix("/").Handler(spaStaticFileHandler(staticFrontendDir()))
 
 	// Create HTTP server

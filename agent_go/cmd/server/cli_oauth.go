@@ -69,8 +69,8 @@ func cliOAuthLoopback(host string) bool {
 }
 
 func cliOAuthBrowserOrigin(serverOrigin string) string {
-	// Local development uses the current Vite app for approval; the API server
-	// may serve an older static build. Never use this override for public URLs.
+	// The local launcher selects the current Vite app. Reused by app navigation
+	// and CLI approval; never use this override for public URLs.
 	serverURL, err := url.Parse(serverOrigin)
 	if err != nil || serverURL.Scheme != "http" || !cliOAuthLoopback(serverURL.Hostname()) {
 		return serverOrigin

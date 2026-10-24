@@ -1389,21 +1389,13 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     )
   }
 
-  // Events the chat never shows as a row (the server's turn_phase feeds the Working line only) stay out of the detailed
-  // view as well, instead of falling into the "Unknown Event Type" JSON dump below.
+  // The server's turn_phase feeds the Working line only.
   if (HIDDEN_EVENTS.has(event.type)) return null
 
-  // Default case for unknown event types
-  return (
-    <div className={`bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-800 rounded-md ${compact ? 'p-2' : 'p-3'}`}>
-      <div className={`${compact ? 'text-xs' : 'text-sm'} text-gray-700 dark:text-gray-300`}>
-        <div className="font-medium">Unknown Event Type: {event.type}</div>
-        <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-gray-500 dark:text-gray-400 mt-1`}>
-          Event data: {JSON.stringify(event.data, null, 2)}
-        </div>
-      </div>
-    </div>
-  )
+  // New transport/status packets must never become raw JSON chat cards. All
+  // content-bearing events above have explicit message, tool, error or question
+  // renderers. Keep the original packet in the event store for its consumers.
+  return null
 }, (prevProps, nextProps) => {
   // An event card is a pure function of its event plus the few display flags
   // below. The comparator used to also diff the tree view's node/stat props;
