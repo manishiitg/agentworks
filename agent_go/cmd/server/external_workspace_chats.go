@@ -18,6 +18,9 @@ import (
 // no messaging inbox or separate execution policy is created here.
 func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r *http.Request, action string, args map[string]any, project crewProjectBinding, manifest productProjectManifest) {
 	claims := GetUserFromContext(r.Context())
+	if api.externalSharedCrewConversation(w, r, action, args, project, manifest) {
+		return
+	}
 	if token := claims.AccessToken; token != nil {
 		scope := "crews:read"
 		if action == "ask" || action == "reply_input" {

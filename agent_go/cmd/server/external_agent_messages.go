@@ -116,6 +116,14 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		claims = view
 	}
 	token = claims.AccessToken
+	if peer.Kind == triggerCallerCrew && sharedCrewAgentPeer(ctx, claims.UserID, peer) {
+		if token != nil && !(token.Allows("crews:run") || !send && token.Allows("crews:read")) {
+			return denied
+		}
+		if _, _, _, ok := api.externalCrewResolve(ctx, claims, peer.ID); ok {
+			return nil
+		}
+	}
 	if peer.Kind == triggerCallerCrew && peer.ChatKey != "" && isSideChatConversationKey(peer.ChatKey) {
 		crew, manifest, _, ok := api.externalCrewResolve(ctx, claims, peer.ID)
 		if ok && crew.OwnedByCaller {
@@ -189,6 +197,13 @@ func (api *StreamingAPI) externalMessageTarget(ctx context.Context, claims *User
 
 func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, claims *UserClaims, args map[string]any, send bool) (triggerTarget, error) {
 	crewID, workflowID, name := externalArg(args, "crew_id"), externalArg(args, "workflow_id"), strings.TrimSpace(externalArg(args, "target"))
+	if base, key, ok := strings.Cut(name, "/agent/"); ok && strings.HasPrefix(base, "workspace:work:") {
+		if explicit := externalArg(args, "chat_id"); explicit != "" && explicit != key {
+			return triggerTarget{}, fmt.Errorf("target and chat_id name different agents")
+		}
+		name = base
+		args["chat_id"] = key
+	}
 	if (crewID != "" && workflowID != "") || (name != "" && (crewID != "" || workflowID != "")) {
 		return triggerTarget{}, fmt.Errorf("choose exactly one of crew_id, workflow_id or target")
 	}

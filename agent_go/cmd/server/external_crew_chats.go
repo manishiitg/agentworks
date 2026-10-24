@@ -68,6 +68,8 @@ type externalCrewChat struct {
 	OwnerID   string `json:"owner_id,omitempty"`
 	OwnerName string `json:"owner_name,omitempty"`
 	CanWrite  bool   `json:"can_write"`
+	Purpose   string `json:"purpose,omitempty"`
+	Shared    bool   `json:"shared,omitempty"`
 	IsMain    bool   `json:"is_main"`
 	ChatID    string `json:"chat_id"`
 	Name      string `json:"name"`
@@ -87,6 +89,15 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 		return nil
 	}
 	chats := []externalCrewChat{}
+	if !crewProjectOwnedByCaller(userID, workspace) {
+		agents, err := crewShareAgents(r.Context(), userID, workspace, false)
+		if err != nil {
+			return nil
+		}
+		for _, agent := range agents {
+			chats = append(chats, externalCrewChat{OwnerID: agent.tab.OwnerID, OwnerName: agent.OwnerName, ChatID: agent.ChatID, Name: agent.Name, Purpose: agent.Purpose, Shared: true, SessionID: agent.tab.Record.SessionID, UpdatedAt: agent.tab.Record.UpdatedAt, key: agent.ChatID})
+		}
+	}
 	for _, tab := range owned {
 		record := tab.Record
 		ownMain := tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(crewID, userID))
@@ -104,6 +115,7 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 		default:
 			continue
 		}
+		chat.Purpose = tab.Identity.Purpose
 		if tab.Identity.Name != "" {
 			chat.Name = tab.Identity.Name
 		}
@@ -182,6 +194,10 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 	}
 	switch action {
 	case "list":
+		if !crew.OwnedByCaller {
+			externalJSON(w, map[string]any{"crew_id": crewID, "chats": chats})
+			return
+		}
 		var models struct {
 			ChatModels []AgentProfileChatModel `json:"chat_models"`
 		}

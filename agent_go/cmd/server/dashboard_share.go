@@ -26,7 +26,7 @@ import (
 // reads of product files, runs and logs. Secret values and private logs remain
 // excluded. Nothing becomes visible to more people unless its owner shares it.
 
-const runShareAccessDescription = "People you share with open its dashboard, can ask it, use its published functions and read its files, runs and logs through MCP. Secret values and private logs stay excluded."
+const runShareAccessDescription = "People you share with open its dashboard, can ask it, use its published functions, read and message selected existing agents, and read its files, runs and logs through MCP. Secret values and private logs stay excluded."
 
 const (
 	runShareEveryone = "everyone"
@@ -56,7 +56,8 @@ type runShareState struct {
 	// CanShare tells the screen whether to offer sharing: only the project's owner can.
 	CanShare bool `json:"can_share"`
 	// Note says anything the owner should know about what the share did.
-	Note string `json:"note,omitempty"`
+	Note   string            `json:"note,omitempty"`
+	Agents []sharedCrewAgent `json:"agents,omitempty"`
 }
 
 func dashboardShareAction(action string) bool { return action == "share" || action == "share_status" }
@@ -150,6 +151,13 @@ func (api *StreamingAPI) readRunShare(ctx context.Context, claims *UserClaims, t
 	default:
 		return state, dashboardFailure(404, "sharing is not available for this kind of project")
 	}
+	if target.Kind == "crew" {
+		var err error
+		state.Agents, err = crewShareAgents(ctx, claims.UserID, target.Root, crewProjectOwnedByCaller(claims.UserID, target.Root))
+		if err != nil {
+			return state, err
+		}
+	}
 	if (target.Kind == "crew") && api.dashboardShareOwner(ctx, claims, target) {
 		state.Accounts = api.workspaceShareAccounts(ctx, target)
 	}
@@ -167,7 +175,7 @@ func logDashboardShareRefusal(claims *UserClaims, target dashboardTarget, mode, 
 	log.Printf("[RUN_SHARE] refused user_id=%q kind=%q target=%q root=%q mode=%q stage=%q status=%d cause_status=%d reason=%q", user, target.Kind, target.ID, target.Root, mode, stage, wf.StatusCode(err), wf.StatusCode(cause), cause.Error())
 }
 
-func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string) (state runShareState, err error) {
+func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string, changes ...crewAgentShareChange) (state runShareState, err error) {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	stage := "mode"
 	var cause error
@@ -197,7 +205,7 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 	}
 	before, _ := api.readRunShare(ctx, claims, target)
 	stage = "save"
-	state, err = api.applyRunShareChange(ctx, claims, target, mode, emails)
+	state, err = api.applyRunShareChange(ctx, claims, target, mode, emails, changes...)
 	if err == nil {
 		state.Previous = &before
 		if madeDefault {
@@ -207,7 +215,7 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 	return state, err
 }
 
-func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string) (runShareState, error) {
+func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string, changes ...crewAgentShareChange) (runShareState, error) {
 	switch target.Kind {
 	case "crew":
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
@@ -231,8 +239,16 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 				ids = append(ids, person.ID)
 			}
 		}
+		keys := crewSharedAgentKeys(target.Root)
+		if len(changes) > 0 && (changes[0].Agents != nil || len(changes[0].Purposes) > 0) {
+			var err error
+			keys, err = validateCrewAgentShare(ctx, claims.UserID, target.Root, changes[0])
+			if err != nil {
+				return runShareState{}, dashboardFailure(400, err.Error())
+			}
+		}
 		registry := defaultProjectOwners()
-		if err := registry.SetAudience(id.Product, id.Folder, mode != runShareEveryone, ids); err != nil {
+		if err := registry.SetAudience(id.Product, id.Folder, mode != runShareEveryone, ids, keys); err != nil {
 			return runShareState{}, dashboardFailure(500, "could not save the sharing choice")
 		}
 		log.Printf("[RUN_SHARE] %s set Crew %s/%s share=%s", sanitizeUserIDForPath(claims.UserID), id.Product, id.Folder, mode)
@@ -300,7 +316,7 @@ func unknownSuffix(unknown []string) string {
 	return fmt.Sprintf(" (no account: %s)", strings.Join(unknown, ", "))
 }
 
-func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action, mode string, emails []string) {
+func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action, mode string, emails []string, changes ...crewAgentShareChange) {
 	var (
 		state runShareState
 		err   error
@@ -311,7 +327,7 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 			externalError(w, 403, "insufficient_scope", "Sharing needs the project's owner and existing authoring consent for this project.")
 			return
 		}
-		state, err = api.applyRunShare(r.Context(), claims, target, mode, emails)
+		state, err = api.applyRunShare(r.Context(), claims, target, mode, emails, changes...)
 	} else {
 		state, err = api.readRunShare(r.Context(), claims, target)
 	}

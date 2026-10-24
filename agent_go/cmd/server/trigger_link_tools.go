@@ -91,6 +91,13 @@ type triggerLinkCaller struct {
 // A "crew:" / "workflow:" prefix (as inserted by #crew:/#workflow: tags)
 // restricts the kind. Ambiguous names fail with the candidates listed.
 func resolveTriggerTarget(ctx context.Context, claims *UserClaims, raw string) (triggerTarget, error) {
+	if base, key, ok := strings.Cut(raw, "/agent/"); ok && strings.HasPrefix(base, "workspace:work:") {
+		target, err := resolveTriggerTarget(ctx, claims, base)
+		if err != nil {
+			return target, err
+		}
+		return (&StreamingAPI{}).resolveAgentChatTarget(ctx, target, key)
+	}
 	query := strings.TrimSpace(raw)
 	query = strings.TrimPrefix(query, "#")
 	wantKind, wantProfile := "", ""

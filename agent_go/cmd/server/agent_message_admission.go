@@ -16,6 +16,9 @@ import (
 // other people and project callers retain their original grant checks.
 func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) error {
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
+	if err := recheckSharedCrewAgentContact(ctx, source, dest); err != nil {
+		return err
+	}
 	if source.ConditionJob != "" {
 		if api.productSchedules == nil {
 			return fmt.Errorf("watcher caller unavailable")

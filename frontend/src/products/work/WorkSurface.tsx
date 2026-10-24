@@ -36,6 +36,7 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
 import { workProjectActivity, workSideChatDisplayName } from './workProjectPresentation'
+import { SharedCrewWorkspace } from './SharedCrewWorkspace'
 import { CreateCrewWizard } from './CreateCrewWizard'
 import { prepareCrewOnboarding } from './crewOnboarding'
 import type { CrewOnboarding } from './crewStarterTypes'
@@ -1783,7 +1784,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                 onToggleChat={() => setChatOpen(value => !value)}
               /> : null}><>
                   {tabId || isWorkSessionRun(selected) ? (
-                    <><span hidden data-ui-view-mounted /><WorkWorkspacePane
+                    <SharedCrewWorkspace key={selected.id} projectId={selected.id} enabled={isShared}><span hidden data-ui-view-mounted /><WorkWorkspacePane
                         key={`${selected.id}:${workspaceViewRefresh}`}
                         workspacePath={selected.workspacePath}
                         projectId={selected.id}
@@ -1813,7 +1814,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         onWorkflowContextPathsChange={changeWorkflowContextPaths}
                         onUpdateIdentity={changeProjectIdentity}
                         onDeleteRequest={requestDeleteProject}
-                      /></>
+                      /></SharedCrewWorkspace>
                   ) : (
                     <div className="grid h-full place-items-center text-sm text-muted-foreground">Opening workspace…</div>
                   )}

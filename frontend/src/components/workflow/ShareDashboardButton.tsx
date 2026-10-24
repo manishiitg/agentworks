@@ -12,6 +12,7 @@ type ShareState = {
   can_share: boolean
   accounts?: { kind: string; name: string; use: string }[]
   note?: string
+  agents?: { chat_id: string; name: string; purpose: string; selected: boolean; can_edit_purpose: boolean; owner_name?: string }[]
 }
 
 type OwnersState = {
@@ -38,6 +39,8 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<ShareState['mode']>('private')
   const [emails, setEmails] = useState('')
+  const [sharedAgents, setSharedAgents] = useState<string[]>([])
+  const [agentPurposes, setAgentPurposes] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [owners, setOwners] = useState<OwnersState | null>(null)
@@ -86,6 +89,8 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
       const { data } = await api.post<ShareState>('/api/dashboards', { workspace: workspacePath, action: 'share_status' })
       setState(data)
       setMode(data.mode)
+      setSharedAgents((data.agents || []).filter(agent => agent.selected).map(agent => agent.chat_id))
+      setAgentPurposes(Object.fromEntries((data.agents || []).map(agent => [agent.chat_id, agent.purpose])))
       setEmails((data.people ?? []).map(p => p.email || p.username || p.id).join('\n'))
     } catch {
       setState(null)
@@ -112,6 +117,7 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
         action: 'share',
         mode,
         emails: emails.split(/[\s,;]+/).filter(Boolean),
+        ...(state.agents ? { shared_agents: sharedAgents, agent_purposes: Object.fromEntries(state.agents.filter(agent => agent.can_edit_purpose && agentPurposes[agent.chat_id] !== agent.purpose).map(agent => [agent.chat_id, agentPurposes[agent.chat_id] || ''])) } : {}),
       })
       setState(data)
       setMessage(data.unknown_emails?.length ? `Saved. No account for: ${data.unknown_emails.join(', ')}` : data.note || 'Saved.')
@@ -128,7 +134,7 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
   const content = <>
           {section !== 'owners' && <>
           {isPanel && !hosted && <h3 className="text-base font-semibold">People &amp; access</h3>}
-          <p className="text-sm leading-6 text-muted-foreground">People you share with open its dashboard, can ask it, use its functions and read its files (not secrets).</p>
+          <p className="text-sm leading-6 text-muted-foreground">People you share with can use the dashboard, published functions and selected agents from the website, their own Crew or an AI connection. Existing file access stays the same.</p>
           {state.accounts && state.accounts.length > 0 && <div className="space-y-3 rounded-lg border border-border p-4" aria-label="Selected accounts">
             <p className="text-xs font-medium">Accounts this project uses</p>
             {state.accounts.map((account, index) => <div key={`${account.kind}:${index}`} className="text-xs">
@@ -147,6 +153,16 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
             <textarea value={emails} onChange={event => setEmails(event.target.value)} rows={4} aria-label="Emails to share with" placeholder="name@example.com"
               className="w-full rounded-md border border-border bg-background p-2 text-xs" />
           )}
+          {state.agents && <fieldset className="space-y-3 rounded-lg border border-border p-4" disabled={busy}>
+            <legend className="px-1 text-sm font-medium">Agents to share</legend>
+            <p className="text-xs leading-5 text-muted-foreground">Selected agents use their existing conversation and tools. People in this audience can read the earlier messages and send requests as themselves. The tab's owner keeps its controls.</p>
+            {state.agents.length === 0 && <p className="text-xs text-muted-foreground">Open a named agent tab to share it here.</p>}
+            {state.agents.map(agent => <div key={agent.chat_id} className="space-y-2 border-t border-border pt-3">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium"><input type="checkbox" checked={sharedAgents.includes(agent.chat_id)} onChange={event => setSharedAgents(ids => event.target.checked ? [...ids, agent.chat_id] : ids.filter(id => id !== agent.chat_id))} />{agent.name}</label>
+              {agent.can_edit_purpose ? <input aria-label={`Purpose of ${agent.name}`} value={agentPurposes[agent.chat_id] || ''} onChange={event => setAgentPurposes(values => ({ ...values, [agent.chat_id]: event.target.value }))} maxLength={300} placeholder="What does this agent help with?" className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+                : <p className="text-xs text-muted-foreground">{agent.purpose || `${agent.owner_name || 'The tab owner'} can add its purpose in chat.`}</p>}
+            </div>)}
+          </fieldset>}
           </>}
           {section !== 'people' && (section === 'owners' || owners || ownersLoading) && <section className={`space-y-5 ${section === 'owners' ? '' : 'border-t border-border pt-4'}`} aria-label="Owners">
               <div className="space-y-2">{(!hosted || section !== 'owners') && <h3 className="text-base font-semibold">Owners &amp; collaborators</h3>}

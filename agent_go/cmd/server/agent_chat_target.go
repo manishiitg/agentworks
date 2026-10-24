@@ -16,6 +16,15 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 	chatID = strings.TrimSpace(chatID)
 	if target.Kind == triggerCallerCrew {
 		if chatID != "" && chatID != "main" {
+			if !crewProjectOwnedByCaller(caller, target.Path) {
+				chat, ok := sharedCrewAgentChat(ctx, caller, target.Path, chatID)
+				if !ok {
+					return target, fmt.Errorf("shared agent unavailable or access denied")
+				}
+				target.Chat, target.CrewOwner = chat, chat.OwnerID
+				target.Label += " · " + chat.Name
+				return target, nil
+			}
 			tabs, err := crewOwnerChatRecords(ctx, caller, target.CrewProfile, target.CrewID, target.Path)
 			if err != nil {
 				return target, err

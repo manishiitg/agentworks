@@ -57,19 +57,31 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			"your_access": crew["access"], "description": crew["description"], "functions": agentDirectoryFunctions(functions),
 			"reach": "call_function(target=<id>, function=<name>) for a function; send_message(target=<id>) to ask it",
 		}
-		if crewProjectOwnedByCaller(claims.UserID, crewPath) {
+		owned := crewProjectOwnedByCaller(claims.UserID, crewPath)
+		if owned {
 			tabs, err := crewOwnerChatRecords(ctx, claims.UserID, profileID, id, crewPath)
 			if err != nil {
 				return nil, err
 			}
 			chats := []map[string]interface{}{}
 			for _, tab := range tabs {
-				chats = append(chats, map[string]interface{}{"chat_id": tab.Record.ConversationKey, "name": firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), "owner_name": crewOwnerDisplayName(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat})
+				chats = append(chats, map[string]interface{}{"chat_id": tab.Record.ConversationKey, "name": firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), "purpose": tab.Identity.Purpose, "owner_name": crewOwnerDisplayName(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat})
 			}
 			row["chats"] = chats
+		} else {
+			selected, err := crewShareAgents(ctx, claims.UserID, crewPath, false)
+			if err != nil {
+				return nil, err
+			}
+			row["chats"] = selected
 		}
-		row["reach"] = "send_message(target=<id>, chat_id=<optional chat_id>); omit chat_id for the Crew's main Builder. Functions use call_function."
+		row["reach"] = "send_message(target=<id>, chat_id=<chat_id from chats>) messages that existing agent. Functions use call_function; omit chat_id for the Crew ask."
 		agents = append(agents, row)
+		if !owned {
+			for _, agent := range row["chats"].([]sharedCrewAgent) {
+				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": "workspace:" + profileID + ":" + id + "/agent/" + agent.ChatID, "target": "workspace:" + profileID + ":" + id, "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "purpose": agent.Purpose, "presence": "Runs when called", "your_access": "run", "reach": "send_message(target=<target>, chat_id=<chat_id>); same existing tab on the website and MCP"})
+			}
+		}
 	}
 	discovered, err := DiscoverWorkflowManifests(ctx)
 	if err != nil {

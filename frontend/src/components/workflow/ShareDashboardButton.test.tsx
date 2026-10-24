@@ -97,3 +97,17 @@ it('replaces a blank owner page with a retry when loading fails', async () => {
     expect(host.querySelector('[aria-label="Add an owner by email"]')).toBeNull()
   } finally { await act(async () => root.unmount()) }
 })
+
+it('saves selected existing agents with the same Share audience', async () => {
+  post.mockReset()
+  post.mockResolvedValue({ data: { mode: 'private', can_share: true, agents: [{ chat_id: 'team:chat:coach', name: 'Coach', purpose: 'Review feedback', selected: false, can_edit_purpose: true }] } })
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  try {
+    await act(async () => root.render(<ShareDashboardButton workspacePath="Crew/team" variant="panel" section="people" />))
+    expect(host.textContent).toContain('earlier messages')
+    await act(async () => host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click())
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Save')!.click())
+    expect(post).toHaveBeenLastCalledWith('/api/dashboards', expect.objectContaining({ workspace: 'Crew/team', action: 'share', mode: 'private', shared_agents: ['team:chat:coach'], agent_purposes: {} }))
+  } finally { await act(async () => root.unmount()) }
+})

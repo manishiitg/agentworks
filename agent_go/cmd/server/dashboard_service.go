@@ -266,6 +266,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		SharedWithMe  bool              `json:"shared_with_me"`
 		PublishedOnly bool              `json:"published_only"`
 		Emails        []string          `json:"emails"`
+		crewAgentShareChange
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20))
 	decoder.DisallowUnknownFields()
@@ -309,7 +310,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if dashboardShareAction(args.Action) {
-		api.handleDashboardShare(w, r, claims, target, args.Action, args.Mode, args.Emails)
+		api.handleDashboardShare(w, r, claims, target, args.Action, args.Mode, args.Emails, args.crewAgentShareChange)
 		return
 	}
 	if args.Action == "export_static" {

@@ -69,6 +69,8 @@ type projectOwnerRecord struct {
 	// RunPeople are the accounts a private Crew is shared with by name (dashboard sharing, PLAT-750). They use it as
 	// Run people do; everyone else is kept out as for any private Crew.
 	RunPeople []string `json:"run_people,omitempty"`
+	// SharedAgents are the stable existing tabs exposed to the same Run audience.
+	SharedAgents []string `json:"shared_agents,omitempty"`
 	// CoOwners are the accounts that build this Crew together with its main owner (OwnerID, the creator, who never changes
 	// and who everything runs as). Server-controlled like the rest of the record; a Crew at the shared root only.
 	CoOwners []string `json:"co_owners,omitempty"`
@@ -462,7 +464,7 @@ func registryListHas(list []string, v string) bool {
 
 // SetAudience commits the audience as one registry change; concurrent requests
 // never observe the previous selected people combined with a new mode.
-func (r *projectOwnerRegistry) SetAudience(product, folder string, private bool, people []string) error {
+func (r *projectOwnerRegistry) SetAudience(product, folder string, private bool, people []string, agents ...[]string) error {
 	return r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
 		key := projectOwnerKey(product, folder)
 		current, exists := projects[key]
@@ -471,6 +473,9 @@ func (r *projectOwnerRegistry) SetAudience(product, folder string, private bool,
 		}
 		current.Private, current.AudienceConfigured = private, true
 		current.RunPeople = append([]string(nil), people...)
+		if len(agents) > 0 {
+			current.SharedAgents = append([]string(nil), agents[0]...)
+		}
 		projects[key] = current
 		return true, nil
 	})

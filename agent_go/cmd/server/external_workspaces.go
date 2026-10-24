@@ -11,7 +11,7 @@ import (
 // The canonical action family reuses native project services. Origin IDs remain
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask and chat changes use your own conversations; update/export/import use existing Builder authority. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
+	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask can message a selected shared agent in its existing conversation; chat controls use your own tabs; update/export/import use existing Builder authority. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
 		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "costs", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "set_chat_model", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
 		"workspace_id": externalString("Crew workspace ID from workspace action=list."),
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
@@ -28,6 +28,7 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"inbox_id":         externalString("For message_chat: existing agent reply address, when continuing a conversation."),
 		"query":            externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
 		"wait_seconds": externalInteger(0, 25), "after": externalInteger(0, 1<<30),
+		"before_seq":       externalInteger(1, 1<<30),
 		"days":             externalInteger(1, 90),
 		"before":           externalString("For costs: page before this UTC day (YYYY-MM-DD)."),
 		"engine":           externalString("For set_chat_model: a provider from this Crew. Omit to use the Crew model."),

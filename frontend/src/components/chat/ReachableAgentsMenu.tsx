@@ -19,7 +19,7 @@ type ReachableAgent = {
   presence?: string
 }
 const agentName = (agent: ReachableAgent) => agent.label || agent.name || agent.agent_name || 'Agent'
-const AGENT_KINDS: Record<string, string> = { crew: 'Crew', goal: 'Goal', relay: 'Relay', connected_agent: 'AgentBridge', agent: 'AgentBridge' }
+const AGENT_KINDS: Record<string, string> = { crew: 'Crew', crew_agent: 'Crew agent', goal: 'Goal', relay: 'Relay', connected_agent: 'AgentBridge', agent: 'AgentBridge' }
 const agentKind = (agent: ReachableAgent) => AGENT_KINDS[agent.kind] || 'Agent'
 
 /** The same authorized directory as list_agents, fetched only while opened. */
