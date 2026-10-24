@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
@@ -31,6 +32,8 @@ const cliOAuthRefreshPrefix = "aw_cli_refresh_"
 const cliOAuthClientID = "agentworks-cli"
 
 type mcpOAuthStore struct{ db *sql.DB }
+
+var mcpOAuthMigrationMu sync.Mutex
 
 type mcpOAuthClient struct {
 	ID           string   `json:"client_id"`
@@ -125,7 +128,7 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 	if err = os.Chmod(path, 0600); err != nil {
 		return nil, err
 	}
-	// These transactions read a nonce before rotating/revoking it. Reserve the
+	// These transactions read a grant before issuing/revoking credentials. Reserve the
 	// writer before that read: separate live-event handlers must not invalidate
 	// its WAL snapshot between SELECT and UPDATE. No token write is retried.
 	db, err := sql.Open("sqlite", sqliteopen.DSN(path)+"&_txlock=immediate")
@@ -138,7 +141,7 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 		`CREATE TABLE IF NOT EXISTS clients (id TEXT PRIMARY KEY, name TEXT NOT NULL, redirect_uris TEXT NOT NULL, created_at INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS requests (hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, resource TEXT NOT NULL, state TEXT NOT NULL, scopes TEXT NOT NULL, challenge TEXT NOT NULL, expires_at INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS codes (hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, resource TEXT NOT NULL, scopes TEXT NOT NULL, challenge TEXT NOT NULL, user_id TEXT NOT NULL, username TEXT NOT NULL, email TEXT NOT NULL, provider TEXT NOT NULL, expires_at INTEGER NOT NULL)`,
-		`CREATE TABLE IF NOT EXISTS tokens (hash TEXT PRIMARY KEY, kind TEXT NOT NULL, family_id TEXT NOT NULL, client_id TEXT NOT NULL, resource TEXT NOT NULL, scopes TEXT NOT NULL, user_id TEXT NOT NULL, username TEXT NOT NULL, email TEXT NOT NULL, provider TEXT NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, revoked_at INTEGER)`,
+		`CREATE TABLE IF NOT EXISTS tokens (hash TEXT PRIMARY KEY, kind TEXT NOT NULL, family_id TEXT NOT NULL, client_id TEXT NOT NULL, resource TEXT NOT NULL, scopes TEXT NOT NULL, user_id TEXT NOT NULL, username TEXT NOT NULL, email TEXT NOT NULL, provider TEXT NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)`,
 		`CREATE INDEX IF NOT EXISTS tokens_family ON tokens(family_id)`,
 		`CREATE TABLE IF NOT EXISTS cli_devices (hash TEXT PRIMARY KEY, verification_hash TEXT UNIQUE NOT NULL, scopes TEXT NOT NULL, status TEXT NOT NULL, expires_at INTEGER NOT NULL, polled_at INTEGER, user_id TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', provider TEXT NOT NULL DEFAULT '')`,
 		`INSERT OR IGNORE INTO clients (id,name,redirect_uris,created_at) VALUES ('agentworks-cli','AgentWorks CLI','[]',0)`,
@@ -147,6 +150,10 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 			_ = db.Close()
 			return nil, err
 		}
+	}
+	if err = migrateStableMCPOAuthRefresh(db, path); err != nil {
+		_ = db.Close()
+		return nil, err
 	}
 	// Missing bounds preserve historical read/run access; Builder was never issued.
 	for _, table := range []string{"codes", "tokens"} {
@@ -162,6 +169,51 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 		}
 	}
 	return &mcpOAuthStore{db: db}, nil
+}
+
+// One-off migration; remove after all installations have moved to stable refresh.
+func migrateStableMCPOAuthRefresh(db *sql.DB, path string) error {
+	mcpOAuthMigrationMu.Lock()
+	defer mcpOAuthMigrationMu.Unlock()
+	var rotatingSchema bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('tokens') WHERE name='used_at')`).Scan(&rotatingSchema); err != nil || !rotatingSchema {
+		return err
+	}
+	backup := path + ".before-stable-refresh-" + time.Now().UTC().Format("20060102T150405.000000000Z")
+	file, err := os.OpenFile(backup, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	// VACUUM INTO includes committed WAL data, unlike copying the main file.
+	if _, err = db.Exec(`VACUUM INTO ?`, backup); err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	removed, err := tx.Exec(`DELETE FROM tokens WHERE kind='refresh' AND used_at IS NOT NULL`)
+	if err != nil {
+		return err
+	}
+	pruned, err := tx.Exec(`DELETE FROM tokens WHERE kind='access' AND expires_at<=?`, time.Now().Unix())
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`ALTER TABLE tokens DROP COLUMN used_at`); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	consumed, _ := removed.RowsAffected()
+	expired, _ := pruned.RowsAffected()
+	log.Printf("mcp_oauth event=%q consumed_refresh_removed=%d expired_access_removed=%d backup=%q", "stable_refresh_migrated", consumed, expired, filepath.Base(backup))
+	return nil
 }
 
 func (s *mcpOAuthStore) Close() error { return s.db.Close() }
@@ -341,33 +393,39 @@ func (s *mcpOAuthStore) ExchangeCode(ctx context.Context, raw, clientID, redirec
 }
 
 func issueMCPOAuthPair(ctx context.Context, tx *sql.Tx, grant *mcpOAuthGrant) (string, string, error) {
-	grant.Scopes = accesstokens.CurrentScopes(grant.Scopes)
-	accessPrefix, refreshPrefix := mcpOAuthAccessPrefix, mcpOAuthRefreshPrefix
-	if grant.ClientID == cliOAuthClientID {
-		accessPrefix, refreshPrefix = cliOAuthAccessPrefix, cliOAuthRefreshPrefix
-	}
-	access, err := mcpOAuthRandom(accessPrefix)
-	if err != nil {
-		return "", "", err
-	}
-	refresh, err := mcpOAuthRandom(refreshPrefix)
-	if err != nil {
-		return "", "", err
-	}
-	scopes, _ := json.Marshal(grant.Scopes)
-	bounds, _ := json.Marshal(grant.WorkflowIDs)
 	now := time.Now()
 	grant.Expires = now.Add(time.Hour)
-	for _, token := range []struct {
-		raw, kind string
-		expiry    time.Time
-	}{{access, "access", grant.Expires}, {refresh, "refresh", now.Add(30 * 24 * time.Hour)}} {
-		_, err = tx.ExecContext(ctx, `INSERT INTO tokens (hash,kind,family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,workflow_ids,project_identity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, mcpOAuthHash(token.raw), token.kind, grant.FamilyID, grant.ClientID, grant.Resource, string(scopes), grant.UserID, grant.Username, grant.Email, grant.Provider, token.expiry.Unix(), string(bounds), grant.ProjectIdentity)
-		if err != nil {
-			return "", "", err
-		}
+	access, err := issueMCPOAuthToken(ctx, tx, grant, "access", grant.Expires)
+	if err != nil {
+		return "", "", err
+	}
+	refresh, err := issueMCPOAuthToken(ctx, tx, grant, "refresh", now.Add(30*24*time.Hour))
+	if err != nil {
+		return "", "", err
 	}
 	return access, refresh, nil
+}
+
+func issueMCPOAuthToken(ctx context.Context, tx *sql.Tx, grant *mcpOAuthGrant, kind string, expiry time.Time) (string, error) {
+	prefix := mcpOAuthAccessPrefix
+	if kind == "refresh" {
+		prefix = mcpOAuthRefreshPrefix
+	}
+	if grant.ClientID == cliOAuthClientID {
+		prefix = cliOAuthAccessPrefix
+		if kind == "refresh" {
+			prefix = cliOAuthRefreshPrefix
+		}
+	}
+	raw, err := mcpOAuthRandom(prefix)
+	if err != nil {
+		return "", err
+	}
+	grant.Scopes = accesstokens.CurrentScopes(grant.Scopes)
+	scopes, _ := json.Marshal(grant.Scopes)
+	bounds, _ := json.Marshal(grant.WorkflowIDs)
+	_, err = tx.ExecContext(ctx, `INSERT INTO tokens (hash,kind,family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,workflow_ids,project_identity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, mcpOAuthHash(raw), kind, grant.FamilyID, grant.ClientID, grant.Resource, string(scopes), grant.UserID, grant.Username, grant.Email, grant.Provider, expiry.Unix(), string(bounds), grant.ProjectIdentity)
+	return raw, err
 }
 
 func scanMCPOAuthGrant(row interface{ Scan(...any) error }) (mcpOAuthGrant, error) {
@@ -430,8 +488,8 @@ func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource str
 	defer tx.Rollback()
 	var scopes, bounds string
 	var expiry int64
-	var used, revoked sql.NullInt64
-	err = tx.QueryRowContext(ctx, `SELECT family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,used_at,revoked_at,workflow_ids,project_identity FROM tokens WHERE hash=? AND kind='refresh'`, mcpOAuthHash(raw)).Scan(&grant.FamilyID, &grant.ClientID, &grant.Resource, &scopes, &grant.UserID, &grant.Username, &grant.Email, &grant.Provider, &expiry, &used, &revoked, &bounds, &grant.ProjectIdentity)
+	var revoked sql.NullInt64
+	err = tx.QueryRowContext(ctx, `SELECT family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,revoked_at,workflow_ids,project_identity FROM tokens WHERE hash=? AND kind='refresh'`, mcpOAuthHash(raw)).Scan(&grant.FamilyID, &grant.ClientID, &grant.Resource, &scopes, &grant.UserID, &grant.Username, &grant.Email, &grant.Provider, &expiry, &revoked, &bounds, &grant.ProjectIdentity)
 	if err != nil {
 		return grant, "", "", err
 	}
@@ -439,13 +497,6 @@ func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource str
 	if grant.ClientID != clientID || grant.Resource != resource || (grant.ClientID == cliOAuthClientID) != strings.HasPrefix(raw, cliOAuthRefreshPrefix) {
 		mcpOAuthAudit(grant, "refresh_refused", "client_or_resource_mismatch")
 		return grant, "", "", errors.New("invalid refresh token")
-	}
-	if used.Valid {
-		// Another client process may still hold an older copy. Refuse that
-		// request without signing out the process holding the current token.
-		now := time.Now().Unix()
-		log.Printf("mcp_oauth event=%q family=%q client=%q reason=%q refresh_used_at=%d reuse_after_seconds=%d", "refresh_refused", grant.FamilyID, grant.ClientID, "refresh_reuse_refused", used.Int64, now-used.Int64)
-		return grant, "", "", errors.New("refresh token reuse detected")
 	}
 	if revoked.Valid {
 		mcpOAuthAudit(grant, "refresh_refused", "already_revoked")
@@ -466,23 +517,21 @@ func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource str
 	if err != nil {
 		return grant, "", "", err
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE tokens SET used_at=? WHERE hash=? AND used_at IS NULL AND revoked_at IS NULL`, time.Now().Unix(), mcpOAuthHash(raw))
-	if err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM tokens WHERE kind='access' AND family_id=? AND expires_at<=?`, grant.FamilyID, time.Now().Unix()); err != nil {
 		return grant, "", "", err
 	}
-	n, _ := result.RowsAffected()
-	if n != 1 {
-		return grant, "", "", sql.ErrNoRows
-	}
-	access, refresh, err := issueMCPOAuthPair(ctx, tx, &grant)
+	// The refresh credential and its expiry stay fixed. Concurrent clients,
+	// restarts and a lost response can all retry the same credential.
+	grant.Expires = time.Now().Add(time.Hour)
+	access, err := issueMCPOAuthToken(ctx, tx, &grant, "access", grant.Expires)
 	if err != nil {
 		return grant, "", "", err
 	}
 	if err := tx.Commit(); err != nil {
 		return grant, "", "", err
 	}
-	mcpOAuthAudit(grant, "refresh_rotated", "refresh_token")
-	return grant, access, refresh, nil
+	mcpOAuthAudit(grant, "refresh_succeeded", "stable_refresh_token")
+	return grant, access, raw, nil
 }
 
 // Only server-owned connection identifiers and fixed reasons belong here.

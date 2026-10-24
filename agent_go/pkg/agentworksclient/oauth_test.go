@@ -46,7 +46,7 @@ func TestConfigTokenProviderSerializesRefreshAcrossProviders(t *testing.T) {
 		}
 		refreshes.Add(1)
 		time.Sleep(50 * time.Millisecond)
-		_, _ = w.Write([]byte(`{"access_token":"aw_cli_rotated","refresh_token":"aw_cli_refresh_rotated","expires_in":3600}`))
+		_, _ = w.Write([]byte(`{"access_token":"aw_cli_renewed","refresh_token":"aw_cli_refresh_original","expires_in":3600}`))
 	}))
 	defer s.Close()
 	path := filepath.Join(t.TempDir(), "config.json")
@@ -60,7 +60,7 @@ func TestConfigTokenProviderSerializesRefreshAcrossProviders(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			got, err := provider(context.Background())
-			if err != nil || got != "aw_cli_rotated" {
+			if err != nil || got != "aw_cli_renewed" {
 				t.Errorf("provider result %q: %v", got, err)
 			}
 		}()
@@ -68,6 +68,10 @@ func TestConfigTokenProviderSerializesRefreshAcrossProviders(t *testing.T) {
 	wg.Wait()
 	if refreshes.Load() != 1 {
 		t.Fatalf("refresh requests=%d, want 1", refreshes.Load())
+	}
+	saved, err := LoadConfig(path)
+	if err != nil || saved.RefreshToken != "aw_cli_refresh_original" || saved.Token != "aw_cli_renewed" {
+		t.Fatal("unchanged refresh credential was not saved", err)
 	}
 }
 

@@ -123,31 +123,31 @@ func TestCLIDeviceOAuthBrowserApprovalAndRestrictions(t *testing.T) {
 		t.Fatal("CLI query token accepted", query.Code)
 	}
 	refreshForm := url.Values{"grant_type": {"refresh_token"}, "client_id": {cliOAuthClientID}, "resource": {"https://agentworks.example.com/api/external/v1"}, "refresh_token": {pair.Refresh}}
-	rotated := request("POST", cliOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded")
-	if rotated.Code != 200 {
-		t.Fatal(rotated.Code, rotated.Body)
+	renewed := request("POST", cliOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded")
+	if renewed.Code != 200 {
+		t.Fatal(renewed.Code, renewed.Body)
 	}
 	var pair2 struct {
 		Access  string `json:"access_token"`
 		Refresh string `json:"refresh_token"`
 	}
-	if err := json.Unmarshal(rotated.Body.Bytes(), &pair2); err != nil {
+	if err := json.Unmarshal(renewed.Body.Bytes(), &pair2); err != nil {
 		t.Fatal(err)
 	}
-	if pair2.Access == pair.Access || pair2.Refresh == pair.Refresh {
-		t.Fatal("refresh did not rotate")
+	if pair2.Access == pair.Access || pair2.Refresh != pair.Refresh {
+		t.Fatal("refresh must keep its credential and issue a new access token")
 	}
-	// A stale login copy must not sign out the CLI holding the current pair.
-	if replay := request("POST", cliOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded"); replay.Code != 400 || !strings.Contains(replay.Body.String(), `"error":"invalid_grant"`) {
-		t.Fatal("stale CLI refresh was not refused with invalid_grant", replay.Code)
+	// Other CLI processes and retries can reuse the same saved credential.
+	if replay := request("POST", cliOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded"); replay.Code != 200 {
+		t.Fatal("stable CLI refresh retry failed", replay.Code)
 	}
 	if current := request("GET", "/api/external/v1/tools", "", pair2.Access, ""); current.Code != 200 {
-		t.Fatal("stale refresh signed out the current CLI", current.Code)
+		t.Fatal("refresh retry signed out the current CLI", current.Code)
 	}
 	refreshForm.Set("refresh_token", pair2.Refresh)
 	current := request("POST", cliOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded")
 	if current.Code != 200 {
-		t.Fatal("stale refresh revoked the current CLI refresh token", current.Code)
+		t.Fatal("stable CLI refresh failed", current.Code)
 	}
 	if err := json.Unmarshal(current.Body.Bytes(), &pair2); err != nil {
 		t.Fatal(err)

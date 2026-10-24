@@ -281,8 +281,9 @@ https://your-server/api/external/v1/mcp
 
 The assistant discovers AgentWorks OAuth metadata from the server. Sign in to
 AgentWorks when prompted, review the requested permissions, and allow access.
-The connection uses short-lived MCP-only access tokens and rotating refresh
-tokens. Revoke it under **Connect → Connected apps**. The CLI and local stdio
+The connection uses short-lived MCP-only access tokens and a refresh credential
+that stays the same until its 30-day expiry or sign-out. Reconnects do not extend
+that expiry. Revoke it under **Connect → Connected apps**. The CLI and local stdio
 MCP bridge use their own browser-approved OAuth connections.
 
 For ChatGPT, the optional **Give the assistant workflow guidance** section downloads the
