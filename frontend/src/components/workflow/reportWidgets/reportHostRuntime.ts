@@ -665,8 +665,10 @@ export function readReportHostState(frame: HTMLIFrameElement | null): ReportHost
     .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
     .filter((text, index, all) => text && text.length <= 40 && all.indexOf(text) === index)
     .slice(0, 24)
-  const loadingTexts = Array.from(doc.body?.querySelectorAll('*') ?? [])
-    .filter((el) => el.children.length === 0)
+  // Source bundles and explicitly hidden content are not rendered page text.
+  const contentLeaves = Array.from(doc.body?.querySelectorAll('*') ?? [])
+    .filter((el) => el.children.length === 0 && !el.closest('script, style, template, noscript, [hidden]'))
+  const loadingTexts = contentLeaves
     .map((el) => (el.textContent || '').trim())
     .filter((text) => /^(loading|loading…|loading\.\.\.|fetching)\b/i.test(text))
     .filter((text, index, all) => all.indexOf(text) === index)
@@ -693,8 +695,7 @@ export function readReportHostState(frame: HTMLIFrameElement | null): ReportHost
     const slice = flat.slice(start, start + 117)
     return (start > 0 ? '…' : '') + slice + (start + 117 < flat.length ? '…' : '')
   }
-  const markdownTexts = Array.from(doc.body?.querySelectorAll('*') ?? [])
-    .filter((el) => el.children.length === 0)
+  const markdownTexts = contentLeaves
     .map((el) => (el.textContent || '').trim())
     .filter((text) => text && markdownPatterns.some((pattern) => pattern.test(text)))
     .map(excerpt)

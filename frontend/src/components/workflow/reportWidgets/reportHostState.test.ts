@@ -50,6 +50,20 @@ it("returns no markdown flags for clean rendered text", () => {
   expect(state.markdownTexts).toEqual([]);
 });
 
+it("ignores source bundles and hidden text while checking rendered content", () => {
+  const frame = frameWith(
+    '<script>const __generated_bundle__ = "**source**";</script>' +
+      '<style>:root { --label: "__source__"; }</style>' +
+      '<template><p>### Template source</p></template>' +
+      '<noscript><p>**Fallback source**</p></noscript>' +
+      '<section hidden><p>### Hidden tab</p><p>Loading hidden data</p></section>' +
+      '<p>Visible **markdown**</p><p>Loading…</p>',
+  );
+  const state = readReportHostState(frame);
+  expect(state.markdownTexts).toEqual(["Visible **markdown**"]);
+  expect(state.loadingTexts).toEqual(["Loading…"]);
+});
+
 it("truncates long flagged excerpts", () => {
   const frame = frameWith(`<p>${"word ".repeat(40)}**bold** tail</p>`);
   const state = readReportHostState(frame);
