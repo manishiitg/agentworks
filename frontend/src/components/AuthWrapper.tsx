@@ -1,3 +1,4 @@
+import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { lazy, Suspense, useEffect, useState, useCallback } from "react";
 import { useAuthStore } from "../stores/useAuthStore";
 import { Login } from "../pages/Login";
@@ -14,6 +15,7 @@ import { DesktopAppOnlyGate } from "./DesktopAppOnlyGate";
 import { isDesktopAppOnlyMode } from "../services/api";
 import { DashboardsPageContext } from '../contexts/DashboardsPageContext';
 
+const AppShell = lazy(() => import('./workspace/AppShell').then(module => ({ default: module.AppShell })));
 const ProductRouteBoundary = lazy(() => import("./ProductRouteBoundary").then(module => ({ default: module.ProductRouteBoundary })));
 const AgentBridgeApp = lazy(() => import('../products/bullpen/AgentBridgeApp'));
 const MCPAccountSignIn = lazy(() => import('../pages/MCPAccountSignIn'));
@@ -54,6 +56,7 @@ function reportWorkspaceFromFileLink(encodedPath: string): string | null {
 
 export function AuthWrapper({ children }: AuthWrapperProps) {
   const { user, isAuthenticated, isMultiUserMode, isMultiUserModeChecked, isLoading, checkAuthMode, checkAuth, login } = useAuthStore();
+  const activeWorkspaceId = useWorkspaceConnectionStore(state => state.activeWorkspaceId);
   const messagingOnly = useAuthStore(state => state.messagingOnly);
 
   const [sharedFilePath, setSharedFilePath] = useState<string | null>(null);
@@ -271,7 +274,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
         />
       );
     }
-    return <DashboardsPageContext.Provider value={dashboardList}><Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening link…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense></DashboardsPageContext.Provider>;
+    return <DashboardsPageContext.Provider value={dashboardList}><Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening workspace…</div>}><AppShell key={`${activeWorkspaceId || 'local'}:${user?.id || 'local'}`}><Suspense fallback={<div role="status" className="grid h-full place-items-center">Opening page…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense></AppShell></Suspense></DashboardsPageContext.Provider>;
   }
 
   // Multi-user mode: require authentication (login only, no registration)
@@ -306,5 +309,5 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     );
   }
 
-  return <DashboardsPageContext.Provider value={dashboardList}><Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening link…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense></DashboardsPageContext.Provider>;
+  return <DashboardsPageContext.Provider value={dashboardList}><Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening workspace…</div>}><AppShell key={`${activeWorkspaceId || 'local'}:${user?.id || 'local'}`}><Suspense fallback={<div role="status" className="grid h-full place-items-center">Opening page…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense></AppShell></Suspense></DashboardsPageContext.Provider>;
 }

@@ -120,7 +120,7 @@ describe('global activity monitor dropdown', () => {
     getHeaderSummary.mockResolvedValue({ active_sessions: [workflowSession(), crewTrigger()], schedule_summary: null })
     const { host, root } = renderMonitor()
     try {
-      await act(async () => root.render(<ProductTopBar sidebar><GlobalActivityMonitor /></ProductTopBar>))
+      await act(async () => root.render(<ProductTopBar><GlobalActivityMonitor /></ProductTopBar>))
       const trigger = host.querySelector('button[data-testid="tour-active-work-switcher"]')!
       expect(trigger.getAttribute('title')).toBe('Active work · 2 running')
       expect(trigger.querySelector('svg')).not.toBeNull()

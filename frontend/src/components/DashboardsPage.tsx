@@ -1,3 +1,4 @@
+import { followAppLink } from '../utils/appNavigation'
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowUpRight, Globe2, LayoutDashboard, RefreshCw, Search, Users, X } from 'lucide-react'
 import { dashboardDisplayName as dashboardTitle, dashboardDirectoryLink, loadDashboardDirectory, type DashboardDirectoryEntry as Dashboard } from '../services/dashboardDirectory'
@@ -44,7 +45,7 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
     <WorkspaceTopToolbar navigationKind="page" navigationActive={navigationActive}>
       <ProductSurfaceSwitcher variant="header" menuTitle="Dashboards" menuContent={close => <div role="group" aria-label="Published dashboards" className="p-1">
         <button type="button" role="menuitem" aria-current="page" onClick={close} className="flex min-h-8 w-full items-center gap-2 rounded-md bg-muted/60 px-2 py-1.5 text-left text-xs"><LayoutDashboard className="h-4 w-4" />All dashboards</button>
-        {rows?.map(row => <a key={`${row.workspace}/${row.dashboard_id}`} role="menuitem" onClick={close} href={dashboardDirectoryLink(row)} className="flex min-h-8 items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Globe2 className="h-4 w-4 shrink-0" /><span className="truncate">{dashboardTitle(row)}</span></a>)}
+        {rows?.map(row => <a key={`${row.workspace}/${row.dashboard_id}`} role="menuitem" onClick={event => { close(); followAppLink(event) }} href={dashboardDirectoryLink(row)} className="flex min-h-8 items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Globe2 className="h-4 w-4 shrink-0" /><span className="truncate">{dashboardTitle(row)}</span></a>)}
         {rows === null && <p role="status" className="px-2 py-2 text-xs text-muted-foreground">{failed ? 'Dashboards could not be loaded.' : 'Loading dashboards…'}</p>}
       </div>} />
     </WorkspaceTopToolbar>
@@ -93,7 +94,7 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
               {items.map(row => {
                 const title = dashboardTitle(row)
                 return <li key={`${row.workspace}/${row.dashboard_id}`} className="min-w-0">
-                  <a href={dashboardDirectoryLink(row)} className="group flex h-full min-h-20 items-center gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <a href={dashboardDirectoryLink(row)} onClick={followAppLink} className="group flex h-full min-h-20 items-center gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <Globe2 aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 break-words text-sm font-medium leading-snug">{title}</span>
                     <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-foreground" />

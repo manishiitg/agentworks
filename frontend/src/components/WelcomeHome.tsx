@@ -1,5 +1,6 @@
+import { followAppLink } from '../utils/appNavigation'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { ArrowRight, KeyRound, Plug, Terminal } from 'lucide-react'
+import { ArrowRight, KeyRound, Plug, Terminal, Menu } from 'lucide-react'
 import { Button } from './ui/Button'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -106,7 +107,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   return (
     <main aria-label="Getting started"
       style={{ '--welcome-sidebar-width': `${sidebarWidth}px` } as CSSProperties}
-      className="fixed inset-0 z-[60] overflow-y-auto bg-background md:left-[var(--welcome-sidebar-width)]">
+      className="fixed inset-0 z-[39] overflow-y-auto bg-background md:left-[var(--welcome-sidebar-width)]">
       <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-5 py-8 sm:px-8 sm:py-10">
         <header className="flex items-start justify-between gap-4">
           <div>
@@ -117,6 +118,8 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">What would you like to do?</h1>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">Choose a starting point. We’ll help you set it up.</p>
           </div>
+          <button type="button" aria-label="Open navigation" onClick={() => window.dispatchEvent(new Event(OPEN_WELCOME_HOME_EVENT))}
+            className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"><Menu className="h-5 w-5" aria-hidden="true" /></button>
         </header>
 
         {workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} setupOpen={providerSetupOpen} onSetup={openProviders} onCloseSetup={() => setProviderSetupOpen(false)} />}
@@ -172,7 +175,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
 
         <footer className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border pt-4 text-xs text-muted-foreground">
           <button type="button" onClick={workProducts.length > 0 ? openProviders : () => { leaveHome(); useLLMStore.getState().setShowLLMModal(true) }} className="inline-flex min-h-8 items-center gap-2 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><KeyRound className="h-3.5 w-3.5" aria-hidden="true" />AI models &amp; accounts</button>
-          {agentBridgeEnabled && <a href={agentBridgeSetupUrl} onClick={leaveHome} className="inline-flex min-h-8 items-center gap-2 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Terminal className="h-3.5 w-3.5" aria-hidden="true" />CLI &amp; agent messaging</a>}
+          {agentBridgeEnabled && <a href={agentBridgeSetupUrl} onClick={followAppLink} className="inline-flex min-h-8 items-center gap-2 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Terminal className="h-3.5 w-3.5" aria-hidden="true" />CLI &amp; agent messaging</a>}
         </footer>
       </div>
       {connectOpen && <Suspense fallback={<p role="status" className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg border border-border bg-card p-3 text-sm">Loading connection setup…</p>}><McpConnectDialog onClose={() => setConnectOpen(false)} onNavigate={leaveHome} /></Suspense>}

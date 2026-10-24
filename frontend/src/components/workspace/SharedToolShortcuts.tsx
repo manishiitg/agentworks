@@ -1,3 +1,4 @@
+import { followAppLink } from '../../utils/appNavigation'
 import { type ReactElement } from 'react'
 import { LayoutDashboard } from 'lucide-react'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -28,7 +29,7 @@ export function SharedToolShortcuts({ compact = false }: { compact?: boolean }) 
   return <TooltipProvider delayDuration={250}>
     <div className={`flex shrink-0 gap-1 ${compact ? 'flex-col items-center' : 'border-t border-border/60 px-2 py-1.5'}`} data-testid="shared-tool-shortcuts" data-compact={compact}>
       <nav aria-label="Dashboards" className={compact ? '' : 'min-w-0 flex-1'}>
-        {withTooltip('Dashboards', <a href="/dashboards" aria-label="Dashboards" aria-current={dashboardPage ? 'page' : undefined} className={itemClass(dashboardPage)}>
+        {withTooltip('Dashboards', <a href="/dashboards" onClick={followAppLink} aria-label="Dashboards" aria-current={dashboardPage ? 'page' : undefined} className={itemClass(dashboardPage)}>
           <LayoutDashboard className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
           {!compact && <span>Dashboards</span>}
         </a>)}

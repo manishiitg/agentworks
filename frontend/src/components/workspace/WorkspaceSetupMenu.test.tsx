@@ -7,7 +7,7 @@ const auth = vi.hoisted(() => ({ user: { id: 'member', username: 'Member', can_c
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select?: any) => select ? select(auth) : auth, { getState: () => auth }) }))
 vi.mock('../topbar/ChangePasswordDialog', () => ({ default: () => null }))
 vi.mock('../BrowserConnectionsDialog', () => ({ default: ({ open }: { open: boolean }) => open ? createPortal(<div role="dialog" aria-label="Browser connections" />, document.body) : null }))
-import { WorkspaceSetupMenu } from './WorkspaceSetupMenu'
+import { WorkspaceSetupMenu, WorkspaceAccountMenu } from './WorkspaceSetupMenu'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { TooltipProvider } from '../ui/tooltip'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -24,7 +24,7 @@ async function render(check: (host: HTMLDivElement, destination: HTMLDivElement)
   useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: sidebar ? destination : null })
   const root = createRoot(host)
   try {
-    await act(async () => root.render(<TooltipProvider><WorkspaceSetupMenu onOpenWalkthrough={vi.fn()} onOpenShortcuts={vi.fn()} /></TooltipProvider>))
+    await act(async () => root.render(<TooltipProvider><WorkspaceSetupMenu onOpenWalkthrough={vi.fn()} onOpenShortcuts={vi.fn()} /><WorkspaceAccountMenu /></TooltipProvider>))
     await check(host, destination)
   } finally { await act(async () => root.unmount()); host.remove(); destination.remove() }
 }

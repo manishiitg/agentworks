@@ -24,7 +24,6 @@ import { loadVideoStudioSurface, loadSparkQuillSurface, loadWorkSurface, loadGat
 import { useLLMStore } from "./stores/useLLMStore";
 import { useWorkflowTabRestore } from "./hooks/useWorkflowTabRestore";
 import { useLLMDefaults } from "./hooks/useLLMDefaults";
-import { TooltipProvider } from "./components/ui/tooltip";
 import { ProductSurfaceSwitcher } from './components/ProductSurfaceSwitcher';
 import "./App.css";
 
@@ -39,11 +38,8 @@ declare global {
 }
 
 import { apiLogEntries, summarizeApiTimings } from './utils/apiTiming'
-import ToastHost from './components/ui/ToastHost'
-import QuickSwitcher, { preloadQuickSwitcher } from './components/QuickSwitcherHost'
 import { useWorkspaceReturnStore } from './stores/useWorkspaceReturnStore'
 import { WelcomeHome } from './components/WelcomeHome'
-import { markFeatureUsed } from './utils/featureUsage'
 
 const queryClient = new QueryClient();
 
@@ -70,7 +66,7 @@ const FileSurfaceFallback = () => (
 
 const ProductSurfaceFallback = ({ label }: { label: string }) => (
   <div className="flex h-screen bg-background">
-    <ProductTopBar sidebar><ProductTopBarMain><ProductSurfaceSwitcher /></ProductTopBarMain></ProductTopBar>
+    <ProductTopBar><ProductTopBarMain><ProductSurfaceSwitcher /></ProductTopBarMain></ProductTopBar>
     <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
       Opening {label}…
@@ -111,16 +107,6 @@ function AppWorkspace() {
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const mcpAccount = useAuthStore(state => state.isAuthenticated ? state.user?.id : undefined)
   useEffect(() => { if (mcpAccount) void useMCPStore.getState().refreshTools() }, [mcpAccount])
-
-  useEffect(() => {
-    const warm = () => { void preloadQuickSwitcher().catch(() => {}) }
-    if (typeof window.requestIdleCallback === 'function') {
-      const idle = window.requestIdleCallback(warm, { timeout: 1500 })
-      return () => window.cancelIdleCallback(idle)
-    }
-    const timer = window.setTimeout(warm, 1500)
-    return () => window.clearTimeout(timer)
-  }, [])
 
   // Warm the workspace layout chunk while idle so the first workspace paint
   // does not wait on it; the lazy import above fetches on demand regardless.
@@ -568,34 +554,9 @@ function AppWorkspace() {
     return () => { delete window.apiLog }
   }, [])
 
-  const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
-  const [quickSwitcherInitialQuery, setQuickSwitcherInitialQuery] = useState('')
-
-  useEffect(() => {
-    // Every entry point (Ctrl/Cmd+K, hint click, or a panel) dismisses the rail hint.
-    if (showQuickSwitcher) window.dispatchEvent(new CustomEvent('quick-switcher-opened'))
-  }, [showQuickSwitcher])
-
-  
-  // Ref to prevent duplicate default tab creation (React StrictMode runs effects twice)
-
-  
   const clearActivePreset = useGlobalPresetStore(state => state.clearActivePreset)
   const applyPreset = useGlobalPresetStore(state => state.applyPreset)
   const getActivePreset = useGlobalPresetStore(state => state.getActivePreset)
-
-  useEffect(() => {
-    const handleOpenQuickSwitcher = (event: Event) => {
-      void preloadQuickSwitcher().catch(() => {})
-      const detail = (event as CustomEvent<{ query?: string }>).detail
-      setQuickSwitcherInitialQuery(detail?.query || '')
-      setShowQuickSwitcher(true)
-    }
-
-    window.addEventListener('open-quick-switcher', handleOpenQuickSwitcher)
-    return () => window.removeEventListener('open-quick-switcher', handleOpenQuickSwitcher)
-  }, [])
-
 
   const hasInitializedRef = useRef(false)
 
@@ -717,23 +678,6 @@ function AppWorkspace() {
   }, [setSelectedPresetId, clearActivePreset, selectedModeCategory, applyPreset]);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Cmd/Ctrl+K searches work, products, toolbar panels and nested tabs. (PLAT-746)
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault()
-        void preloadQuickSwitcher().catch(() => {})
-        setQuickSwitcherInitialQuery('')
-        markFeatureUsed('quick-switcher')
-        setShowQuickSwitcher(prev => !prev)
-        return
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
-  useEffect(() => {
     if (showWorkflowsOverview) {
       setHasOpenedWorkflowsOverview(true)
     }
@@ -779,23 +723,13 @@ function AppWorkspace() {
   }, [setWorkspaceMinimizedForLayout])
 
   return (
-        <TooltipProvider>
-        {/* Mounted above the surface switch so toasts raised from the top bar
-            render on every surface, not only the ones that mount a chat. */}
-        <ToastHost />
+        <>
         {/* First visit: products, MCP and providers instead of an empty product surface. */}
         <WelcomeHome autoOpen={firstVisit} />
         {returnNote && <div role="status" className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-lg"><span>{returnNote}</span><button type="button" aria-label="Dismiss workspace notice" onClick={() => useWorkspaceReturnStore.setState({ note: '', saveError: '' })}>×</button></div>}
-        {showQuickSwitcher && (
-          <QuickSwitcher
-            isOpen
-            onClose={() => setShowQuickSwitcher(false)}
-            initialQuery={quickSwitcherInitialQuery}
-          />
-        )}
         {dashboardsOpen ? (
           <div className="flex h-screen min-h-0 bg-background">
-            <ProductTopBar sidebar><WorkspaceSetupMenu /></ProductTopBar>
+            <ProductTopBar><WorkspaceSetupMenu /></ProductTopBar>
             <div className="min-h-0 min-w-0 flex-1">
               {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<FileSurfaceFallback />}><AdminPages /></Suspense> : null}
               <div hidden={showProviders || Boolean(adminPage)} className="h-full">
@@ -865,7 +799,7 @@ function AppWorkspace() {
 
         </>
         )}
-        </TooltipProvider>
+        </>
 
   );
 }

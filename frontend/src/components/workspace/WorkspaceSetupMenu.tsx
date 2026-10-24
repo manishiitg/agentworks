@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { ProductSettingsMenu } from './ProductSettingsMenu'
 import ProvidersControl from '../topbar/ProvidersControl'
 import McpControl from '../topbar/McpControl'
@@ -11,6 +13,21 @@ export function WorkspaceSetupMenu({ onOpenWalkthrough, onOpenShortcuts }: {
   onOpenWalkthrough?: () => void
   onOpenShortcuts?: () => void
 }) {
+  const owner = useRef({})
+  useEffect(() => {
+    useProductNavigationToolbarStore.setState({ setupActions: { owner: owner.current, onOpenWalkthrough, onOpenShortcuts } })
+    return () => {
+      if (useProductNavigationToolbarStore.getState().setupActions?.owner === owner.current) useProductNavigationToolbarStore.setState({ setupActions: null })
+    }
+  }, [onOpenWalkthrough, onOpenShortcuts])
+  return null
+}
+
+/** Account entry belongs to the app, while help/shortcut actions belong to the page. */
+export function WorkspaceAccountMenu() {
+  const actions = useProductNavigationToolbarStore(state => state.setupActions)
+  const onOpenWalkthrough = actions?.onOpenWalkthrough
+  const onOpenShortcuts = actions?.onOpenShortcuts
   const user = useAuthStore(state => state.user)
   const multiUser = useAuthStore(state => state.isMultiUserMode)
   if (!user) return null

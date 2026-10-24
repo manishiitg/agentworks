@@ -22,7 +22,7 @@ beforeEach(() => {
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); delete window.__APP_RUNTIME_CONFIG__; vi.clearAllMocks() })
 afterAll(() => vi.unstubAllGlobals())
-const render = () => act(async () => root.render(<ProductTopBar sidebar><ProductSurfaceSwitcher /></ProductTopBar>))
+const render = () => act(async () => root.render(<ProductTopBar><ProductSurfaceSwitcher /></ProductTopBar>))
 describe('collapsible product navigation', () => {
   it.each([['knowledgebase', 'Brain'], ['mcp-gateway', 'Vault']] as const)('keeps %s switching compact and accessible', async (surface, label) => {
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'knowledgebase', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18163' }
@@ -37,7 +37,7 @@ describe('collapsible product navigation', () => {
   })
   it.each(['workspace', 'service', 'standard'])('uses the same permitted product grid in a %s picker', async placement => {
     auth.allowed = ['agentworks', 'work', 'code']
-    await act(async () => root.render(placement === 'standard' ? <ProductSurfaceSwitcher /> : <ProductTopBar sidebar><ProductSurfaceSwitcher menuOnly={placement === 'workspace'} /></ProductTopBar>))
+    await act(async () => root.render(placement === 'standard' ? <ProductSurfaceSwitcher /> : <ProductTopBar><ProductSurfaceSwitcher menuOnly={placement === 'workspace'} /></ProductTopBar>))
     if (placement !== 'workspace') await act(async () => host.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!.click())
     const menu = host.querySelector('[data-product-switch-menu]')!
     expect([...menu.querySelectorAll('[data-product-option]')].map(button => button.getAttribute('aria-label'))).toEqual(['Goals', 'Crew', 'Dashboards'])

@@ -3,6 +3,7 @@ import React, { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterAll, afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
+import { AppShell } from './AppShell'
 import { ProductTopBar, ProductTopBarActions } from './ProductTopBar'
 import { WorkspaceTopToolbar } from './WorkspaceTopToolbar'
 import { WorkspacePageHeader } from './WorkspacePageHeader'
@@ -12,6 +13,7 @@ import { useLLMStore } from '../../stores/useLLMStore'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
 
+vi.mock('./AppQuickSwitcher', () => ({ AppQuickSwitcher: () => null }))
 vi.mock('./WorkspaceChatsSidebar', () => ({ default: ({ toggle, footer }: { toggle?: React.ReactNode; footer?: React.ReactNode }) => <div>{toggle}My chats{footer}</div> }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const saved = new Map<string, string>()
@@ -23,6 +25,7 @@ beforeEach(() => {
   useLLMStore.setState({ showLLMModal: false })
   useProductNavigationToolbarStore.setState({ target: null, targetKind: null, leadingTarget: null, workspaceTrigger: null, pickerOpen: false, compactSettingsTarget: null, sidebarWidth: 0 })
   useWorkspaceReturnStore.setState({ restore: null })
+  window.history.replaceState({}, '', '/crew')
   Object.defineProperty(window, 'localStorage', { configurable: true, value: {
     getItem: (key: string) => saved.get(key) ?? null,
     setItem: (key: string, value: string) => saved.set(key, value),
@@ -36,7 +39,7 @@ afterEach(async () => {
 async function render(children: React.ReactNode = <ProductTopBarActions><button>Account</button></ProductTopBarActions>, toolbar = true) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host); roots.push(root)
-  await act(async () => root.render(<><ProductTopBar>{children}</ProductTopBar>{toolbar && <WorkspaceTopToolbar><span>Existing chat tabs</span></WorkspaceTopToolbar>}</>))
+  await act(async () => root.render(<AppShell><ProductTopBar>{children}</ProductTopBar>{toolbar && <WorkspaceTopToolbar><span>Existing chat tabs</span></WorkspaceTopToolbar>}</AppShell>))
   return host
 }
 it('moves controls into the existing workspace toolbar and leaves only chats on the left', async () => {
@@ -68,13 +71,13 @@ it('closes only chats, keeps top controls accessible, and restores the preferenc
   expect(toolbar.firstElementChild?.hasAttribute('data-product-navigation-leading-slot')).toBe(true)
   expect(toolbar.querySelector('[data-runtime-brand]')).toBeNull()
   const showHome = vi.fn()
-  window.addEventListener('open-welcome-home', showHome)
+  window.addEventListener('popstate', showHome)
   const first = roots.shift()!; await act(async () => first.unmount())
   const restored = await render()
   expect(restored.querySelector('[data-navigation-toggle]')?.getAttribute('aria-expanded')).toBe('false')
   await act(async () => restored.querySelector<HTMLButtonElement>('[data-navigation-toggle]')!.click())
   expect(showHome).toHaveBeenCalledTimes(1)
-  window.removeEventListener('open-welcome-home', showHome)
+  window.removeEventListener('popstate', showHome)
   expect(saved.get('product_navigation_mode')).toBe('fixed')
   expect(restored.querySelector('[aria-label="Chat navigation"]')?.className).not.toContain('hidden')
   expect(restored.querySelector('[aria-label="Product shortcuts"]')).toBeNull()
@@ -164,11 +167,11 @@ it('places global-page navigation beside the back action in the existing header'
   useAppStore.setState({ adminPage: 'mcp' })
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host); roots.push(root)
-  await act(async () => root.render(<>
+  await act(async () => root.render(<AppShell>
     <ProductTopBar><ProductTopBarActions><button>Account</button></ProductTopBarActions></ProductTopBar>
     <WorkspaceTopToolbar><span>Hidden workspace</span></WorkspaceTopToolbar>
     <header><WorkspaceTopToolbar navigationKind="page"><button>Back to Crew</button><h1>Connect AI tools</h1></WorkspaceTopToolbar></header>
-  </>))
+  </AppShell>))
   const page = host.querySelector('header')!
   expect(useProductNavigationToolbarStore.getState().targetKind).toBe('page')
   expect(page.querySelector('[data-product-navigation-slot]')!.textContent).toContain('Account')
@@ -192,7 +195,7 @@ it('keeps retained hidden pages from taking navigation away from the active head
   }
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host); roots.push(root)
-  await act(async () => root.render(<><ProductTopBar><button>Account</button></ProductTopBar><RetainedPages /></>))
+  await act(async () => root.render(<AppShell><ProductTopBar><button>Account</button></ProductTopBar><RetainedPages /></AppShell>))
   const headers = host.querySelectorAll('header')
   const ownsNavigation = (header: Element) => Boolean(header.querySelector('[aria-label="Product navigation"]'))
   expect(ownsNavigation(headers[0])).toBe(false)
@@ -221,4 +224,19 @@ it('keeps deployment branding out of the toolbar when the sidebar is closed', as
     expect(host.querySelector('[data-product-navigation-leading-slot] [data-runtime-brand]')).toBeNull()
     expect(host.querySelector('[aria-label="Product navigation"] [data-runtime-brand]')).toBeNull()
   } finally { delete window.__APP_RUNTIME_CONFIG__ }
+})
+
+
+it('keeps the left menu and its scroll position when a product header/content is replaced', async () => {
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host); roots.push(root)
+  const page = (name: string) => <AppShell><section key={name}><ProductTopBar><button>{name} actions</button></ProductTopBar><WorkspaceTopToolbar>{name}</WorkspaceTopToolbar></section></AppShell>
+  await act(async () => root.render(page('Crew')))
+  const sidebar = host.querySelector('[aria-label="Chat navigation"]')!
+  sidebar.scrollTop = 125
+  await act(async () => root.render(page('Dashboards')))
+  expect(host.querySelector('[aria-label="Chat navigation"]')).toBe(sidebar)
+  expect(sidebar.scrollTop).toBe(125)
+  expect(host.querySelectorAll('[aria-label="Chat navigation"]')).toHaveLength(1)
+  expect(host.querySelector('[data-app-main]')!.textContent).toContain('Dashboards')
 })

@@ -27,7 +27,7 @@ function Navigation() {
   const product = useProductSurfaceStore(state => state.productSurface)
   const mode = useModeStore(state => state.selectedModeCategory)
   useWorkflowTabRestore(true, product, mode)
-  return <><ProductTopBar sidebar><ProductSurfaceSwitcher /></ProductTopBar><h1>{product}</h1></>
+  return <><ProductTopBar><ProductSurfaceSwitcher /></ProductTopBar><h1>{product}</h1></>
 }
 
 it.each([false, true])('keeps Flows selected with saved Goal tabs (saved Flow tab: %s)', async hasRelayTab => {

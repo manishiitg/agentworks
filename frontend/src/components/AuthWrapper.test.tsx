@@ -2,6 +2,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
+vi.mock("./workspace/AppShell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("./ProductRouteBoundary", () => ({ ProductRouteBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("../stores/useAuthStore", () => ({ useAuthStore: vi.fn() }));
 vi.mock("../pages/Login", () => ({ Login: () => <div>App sign in</div> }));

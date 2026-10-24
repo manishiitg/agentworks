@@ -615,7 +615,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   return (
     <>
       <ProductPickerActionsContext.Provider value={pickerActions}>
-      <ProductTopBar sidebar>
+      <ProductTopBar>
           {/* Product and current automation */}
           <ProductTopBarMain>
             {/* Product-level navigation stays separate from AgentWorks modes. */}

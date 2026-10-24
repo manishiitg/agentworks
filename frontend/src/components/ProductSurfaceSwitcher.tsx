@@ -8,7 +8,7 @@ import { WorkMark } from '../products/work/WorkMark'
 import { VaultMark } from '../products/mcp-gateway/VaultMark'
 import { BrainMark } from '../products/knowledgebase/BrainMark'
 import { useProductSurfaceStore, type ProductSurface } from '../stores/useProductSurfaceStore'
-import { productRoutePath } from '../utils/productRoutes'
+import { openAppPage } from '../utils/appNavigation'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { useAuthStore } from '../stores/useAuthStore'
 import { gatewayAdminUrl, navigationProductSurfaceIDs } from '../products/productSurfaceConfig'
@@ -99,8 +99,7 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
     setOpen(false)
     onSelect?.()
     if (standalone) return
-    if (dashboardPage) window.location.assign(productRoutePath({ surface: product }))
-    else openProductWorkspace(product)
+    openProductWorkspace(product)
   }
 
   useEffect(() => {
@@ -125,14 +124,14 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
   }
   const productGrid = (popup: boolean, className = '') => <ProductSwitchMenu products={menuProducts} current={currentProduct.id} popup={false} nestedMenu={popup || (menuOnly && (inSettings || inPicker))} columns={menuColumns} className={className}
     onSelect={id => {
-      if (id === 'dashboards') { setOpen(false); onSelect?.(); window.location.assign('/dashboards'); return }
+      if (id === 'dashboards') { setOpen(false); onSelect?.(); openAppPage('/dashboards'); return }
       const product = visibleProducts.find(item => item.id === id); if (product) activateProduct(product.id)
     }}
     onEscape={closeMenu} />
   const productMenu = (popup: boolean, className = '') => popup ? <div role="menu" aria-label={`${menuTitle || currentProduct.label} navigation`}
     className={`flex max-h-[calc(100dvh-64px)] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl ${className}`}>
     <ProductPickerMenu title={menuTitle || currentProduct.label} onEscape={closeMenu} products={productGrid(true)}>
-      {menuContent ? menuContent(closeMenu) : <div className="p-1"><button type="button" role="menuitem" onClick={() => { closeMenu(); if (currentProduct.id === 'dashboards') window.location.assign('/dashboards'); else { const product = visibleProducts.find(item => item.id === currentProduct.id); if (product) activateProduct(product.id) } }} className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted"><CurrentIcon className="h-4 w-4" />{currentProduct.label}</button></div>}
+      {menuContent ? menuContent(closeMenu) : <div className="p-1"><button type="button" role="menuitem" onClick={() => { closeMenu(); if (currentProduct.id === 'dashboards') openAppPage('/dashboards'); else { const product = visibleProducts.find(item => item.id === currentProduct.id); if (product) activateProduct(product.id) } }} className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted"><CurrentIcon className="h-4 w-4" />{currentProduct.label}</button></div>}
     </ProductPickerMenu>
   </div> : productGrid(false, className)
   if (menuOnly) return productMenu(false, className)

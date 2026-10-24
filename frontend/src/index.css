@@ -1853,3 +1853,8 @@
 }
 [data-product-navigation="sidebar"] [data-product-navigation-action] > svg { flex-shrink: 0; width: 1.125rem; height: 1.125rem; }
 [data-product-navigation="sidebar"] img { max-width: 2rem; object-fit: contain; }
+
+/* Focused terminal content may fill the app while the persistent menu stays mounted. */
+[data-app-shell]:has([data-terminal-focus="true"]) > [data-app-sidebar] {
+  display: none;
+}
