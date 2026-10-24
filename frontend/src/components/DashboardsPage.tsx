@@ -89,20 +89,30 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
         {rows && <div className="space-y-8">{PRODUCT_GROUPS.map(product => {
           const productItems = visible.filter(row => row.product === product.id)
           if (!productItems.length) return null
+          const projects = new Map<string, Dashboard[]>()
+          for (const row of productItems) {
+            const items = projects.get(row.workspace)
+            if (items) items.push(row)
+            else projects.set(row.workspace, [row])
+          }
           return <section key={product.id} aria-label={product.label}>
             <div className="mb-3 flex items-center gap-2">
               <h3 className="text-base font-semibold">{product.label}</h3>
               <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">{productItems.length}</span>
             </div>
-            <div className="space-y-5">{([false, true] as const).map(shared => {
-              const items = productItems.filter(row => row.shared_with_me === shared)
-              if (!items.length) return null
-              const SectionIcon = shared ? Users : LayoutDashboard
-              return <section key={String(shared)} aria-label={shared ? 'Shared with you' : 'Yours'}>
-                <div className="mb-2 flex items-center gap-2 text-muted-foreground">
-                  <SectionIcon aria-hidden="true" className="h-3.5 w-3.5" />
-                  <h4 className="text-xs font-medium">{shared ? 'Shared with you' : 'Yours'}</h4>
-                  <span className="text-xs tabular-nums">{items.length}</span>
+            <div className="space-y-5">{Array.from(projects, ([workspace, items]) => {
+              const projectName = items[0].project_title?.trim() || 'Untitled project'
+              // Discovery assigns one audience to every dashboard in a project.
+              const shared = items[0].shared_with_me
+              const AudienceIcon = shared ? Users : LayoutDashboard
+              return <section key={workspace} aria-label={projectName} data-dashboard-project>
+                <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h4 className="text-sm font-semibold">{projectName}</h4>
+                  <span className="text-xs tabular-nums text-muted-foreground">{items.length}</span>
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <AudienceIcon aria-hidden="true" className="h-3.5 w-3.5" />
+                    {shared ? 'Shared with you' : 'Yours'}
+                  </span>
                 </div>
                 <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {items.map(row => {
