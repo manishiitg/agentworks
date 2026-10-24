@@ -44,7 +44,7 @@ func TestWorkspaceElicitationResumesTheExactAskWithoutRepeatingIt(t *testing.T) 
 		t.Fatal("no question form", form)
 	}
 	request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "workspace", Arguments: args, MultiRoundTripParams: mcp.MultiRoundTripParams{RequestState: form.RequestState, InputResponses: mcp.InputResponses{
-		"clarification:question": mcp.NewElicitationInputResponse(mcp.ElicitationResult{ElicitationResponse: mcp.ElicitationResponse{Action: mcp.ElicitationResponseActionAccept, Content: map[string]any{"q0": []any{"Email", "Chat"}, "q1_other": "Support"}}}),
+		"clarification:question": mcp.NewElicitationInputResponse(mcp.ElicitationResult{ElicitationResponse: mcp.ElicitationResponse{Action: mcp.ElicitationResponseActionAccept, Content: map[string]any{"q0": []any{"Email", "Chat"}, "q1": "Team", "q1_other": "Support"}}}),
 	}}}}
 	changed := map[string]any{"action": "ask", "workspace_id": "work:project", "chat_id": "owner-tab"}
 	if result := host.Resume(ctx, "workspace", changed, request); !result.IsError || len(calls) != 0 {
@@ -59,7 +59,7 @@ func TestWorkspaceElicitationResumesTheExactAskWithoutRepeatingIt(t *testing.T) 
 	if result := host.Resume(ctx, "workspace", args, request); result.IsError || result.NeedsInput() {
 		t.Fatal("answer failed", result)
 	}
-	if strings.Join(calls, ",") != "read_chat,reply_input,read_chat" || len(answers) != 2 || answers[1]["other_text"] != "Support" {
+	if strings.Join(calls, ",") != "read_chat,reply_input,read_chat" || len(answers) != 2 || answers[1]["other_text"] != "Support" || len(answers[1]["selected_labels"].([]string)) != 0 {
 		t.Fatal("Ask restarted or answers changed", calls, answers)
 	}
 	if result := host.Resume(ctx, "workspace", args, request); !result.IsError {

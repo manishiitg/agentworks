@@ -179,6 +179,11 @@ func (h FunctionElicitationHost) workspaceResume(ctx context.Context, args map[s
 			}
 			other = strings.TrimSpace(text)
 		}
+		// A form cannot make a listed option and another answer exclusive; for a one-answer question the typed
+		// text is the person's deliberate choice, so it replaces the option the form pre-filled.
+		if other != "" && !q.MultiSelect {
+			labels = []string{}
+		}
 		answer := map[string]any{"id": q.ID, "selected_labels": labels}
 		if other != "" {
 			answer["other_text"] = other
