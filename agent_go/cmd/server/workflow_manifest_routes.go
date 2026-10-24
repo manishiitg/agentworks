@@ -270,6 +270,8 @@ type UpdateWorkflowManifestRequest struct {
 	PulseNotificationInstructions *string   `json:"pulse_notification_instructions,omitempty"`
 	RunNotificationChannels       *[]string `json:"run_notification_channels,omitempty"`
 	PulseNotificationChannels     *[]string `json:"pulse_notification_channels,omitempty"`
+	// DailyDigest turns the evening email of the day's runs on or off.
+	DailyDigest *bool `json:"daily_digest,omitempty"`
 	// Recipient lists are pointers so an explicitly sent empty array clears them
 	// (back to the account default) while omission leaves them untouched.
 	RunNotificationRecipients   *[]string `json:"run_notification_recipients,omitempty"`
@@ -517,6 +519,13 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 			manifest.Pulse = &WorkflowPulseConfig{}
 		}
 		manifest.Pulse.OutwardActions = value
+	}
+
+	if req.DailyDigest != nil {
+		if manifest.Capabilities.Notifications == nil {
+			manifest.Capabilities.Notifications = &WorkflowNotificationConfig{}
+		}
+		manifest.Capabilities.Notifications.DailyDigestOff = !*req.DailyDigest
 	}
 
 	if req.RunNotificationInstructions != nil || req.PulseNotificationInstructions != nil ||

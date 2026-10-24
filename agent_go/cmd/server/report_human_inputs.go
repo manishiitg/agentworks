@@ -916,6 +916,7 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 					"input_id":       map[string]interface{}{"type": "string", "description": "Optional stable id. Reuse this for the same still-open question so Autopilot refreshes it instead of duplicating it."},
 					"source":         map[string]interface{}{"type": "string", "enum": []string{"pulse", "technical_review", "architecture_review", "strategic_review"}, "description": "Who is asking. Use the canonical reviewer identity; defaults to pulse only for generic Autopilot coordination."},
 					"priority":       map[string]interface{}{"type": "string", "enum": []string{"low", "medium", "high"}, "description": "How important the answer is. Defaults to medium."},
+					"work_stopped":   map[string]interface{}{"type": "boolean", "description": "True only when the Goal's main work has stopped (or keeps producing nothing, for example no emails or LinkedIn actions on consecutive runs) and cannot resume until the owner acts. The question is then also emailed to the owner once, not only listed in Needs you."},
 					"question":       map[string]interface{}{"type": "string", "description": "The exact user-facing question in ONE short plain sentence -- the kind a busy operator reads in three seconds, not an analyst's framing of the problem."},
 					"context":        map[string]interface{}{"type": "string", "description": "Short explanation of why this matters and what will happen next, for a non-technical operator, not a technical report. One to three short sentences PER SECTION, plain language, no jargon, no walked-through derivation -- state the single number or fact that matters and the conclusion, not how you got there; the full analysis belongs in the reviewer's findings file, not this question. For plan-change proposals, use newline-separated labeled sections exactly like: Proposal:\n...\nExact intended edits if approved:\n(1) ...\n(2) ...\nRationale:\n...\nExpected impact:\n...\nRisk:\n... -- each section still capped at one to three short sentences. Keep evidence paths in the separate evidence field, never inline citations or file paths in context."},
 					"options": map[string]interface{}{
@@ -1062,6 +1063,9 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 			input, err := createReportHumanInput(ctx, req.WorkspacePath, req)
 			if err != nil {
 				return "", err
+			}
+			if stopped, _ := args["work_stopped"].(bool); stopped {
+				alertOwnerWorkStopped(ctx, input)
 			}
 			return marshalReportHumanInputToolResult("created", input)
 		},

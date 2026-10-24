@@ -72,6 +72,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
 			"run_instructions": map[string]any{"type": "string", "maxLength": 4000}, "pulse_instructions": map[string]any{"type": "string", "maxLength": 4000},
 			"run_channels": names, "pulse_channels": names,
+			"daily_digest": map[string]any{"type": "boolean", "description": "One evening email (8 pm in the schedules' timezone) listing the day's runs. On unless turned off."},
 		}},
 	} {
 		props[key] = value
@@ -450,9 +451,9 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	notifications := func(c WorkflowCapabilities) map[string]any {
 		if n := c.Notifications; n != nil {
 			return map[string]any{"run_instructions": n.RunSummaryInstructions, "pulse_instructions": n.PulseSummaryInstructions,
-				"run_channels": n.RunSummaryChannels, "pulse_channels": n.PulseSummaryChannels}
+				"run_channels": n.RunSummaryChannels, "pulse_channels": n.PulseSummaryChannels, "daily_digest": !n.DailyDigestOff}
 		}
-		return map[string]any{}
+		return map[string]any{"daily_digest": true}
 	}
 	pulseView := func(m *WorkflowManifest) map[string]any {
 		view := map[string]any{"enabled": m.PulseEnabled(), "has_goal": workflowHasSoul(ctx, workflow.WorkspacePath)}
@@ -507,6 +508,9 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		if _, ok := n["pulse_channels"]; ok {
 			v := externalSettingsList(args, "notifications", "pulse_channels")
 			req.PulseNotificationChannels = &v
+		}
+		if v, ok := n["daily_digest"].(bool); ok {
+			req.DailyDigest = &v
 		}
 		changed = append(changed, "notifications")
 	}

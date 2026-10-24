@@ -401,6 +401,10 @@ type WorkflowNotificationConfig struct {
 	RunSummaryChannels       []string `json:"run_summary_channels,omitempty"`
 	PulseSummaryChannels     []string `json:"pulse_summary_channels,omitempty"`
 
+	// DailyDigestOff stops the one evening email of the day's runs
+	// (owner_alerts.go). The digest is on unless the owner turns it off.
+	DailyDigestOff bool `json:"daily_digest_off,omitempty"`
+
 	// Instructions is the legacy shared content preference. Keep it as a
 	// fallback so workflows that saved the original single field retain their
 	// behavior until the owner saves separate preferences.

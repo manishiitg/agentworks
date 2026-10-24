@@ -501,6 +501,7 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 			// schedules (PLAT-101).
 			go s.resumeDueCapacityWaits(context.Background(), t.UTC())
 			go s.resumeQueuedScheduleOccurrences(context.Background(), t.UTC())
+			go s.sendDueDailyDigests(context.Background(), t)
 			// The workflow's own Pulse schedule: the time each Pulse chose for
 			// itself, bounded by the interval guards, or earlier for a durable
 			// fast request (pulse_schedule.go).
