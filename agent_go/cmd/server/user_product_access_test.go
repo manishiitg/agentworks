@@ -179,9 +179,13 @@ func TestSharedServicesAreAvailableToEveryAccount(t *testing.T) {
 	for _, id := range []string{"member", "empty"} {
 		claims := &UserClaims{UserID: id, Username: id}
 		projected, _ := productAccessResponseFields(claims)["allowed_products"].([]string)
+		login := userInfoWithWorkflowPermissions(UserInfo{ID: id, Username: id})
 		for _, product := range []string{"bullpen", "knowledgebase", "mcp-gateway"} {
 			if !userAllowedProduct(claims, product) || !containsFold(projected, product) {
 				t.Fatalf("%s must open %s and see it in auth/me: %v", id, product, projected)
+			}
+			if !containsFold(login.AllowedProducts, product) || !userAccessAllowsProduct(userAccessForClaims(claims), product) {
+				t.Fatalf("login and schedule access must include %s for %s", product, id)
 			}
 			if containsFold(assignableUserProducts(), product) {
 				t.Fatalf("shared service %s must not be individually assignable", product)
