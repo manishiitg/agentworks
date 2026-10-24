@@ -136,6 +136,12 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if !strings.Contains(string(directoryJSON), address) || strings.Contains(string(directoryJSON), "Private planning") {
 		t.Fatalf("Builder agent directory: %s", directoryJSON)
 	}
+	privatePeer := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerCrew, ID: "team", Profile: "work", Path: externalCommandCrewRoot, ChatKey: private.ConversationKey, Session: private.SessionID}
+	for _, send := range []bool{false, true} {
+		if err := f.api.externalAuthorizeMessagePeer(context.WithValue(otherCtx, UserContextKey, reader), reader, privatePeer, send); err == nil {
+			t.Fatalf("unselected owner tab admitted send=%t", send)
+		}
+	}
 	for _, action := range []string{"stop", "close_chat", "rename_chat", "set_chat_model"} {
 		w := call(action, map[string]any{"chat_id": coach.ConversationKey, "name": "Takeover"}, false)
 		if w.Code < 400 {

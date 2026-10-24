@@ -133,6 +133,7 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 				return nil
 			}
 		}
+		return denied
 	}
 	if peer.Kind == triggerCallerCrew {
 		if token != nil && !(token.Allows("crews:run") || !send && token.Allows("crews:read")) {
