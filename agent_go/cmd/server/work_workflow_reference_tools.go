@@ -68,7 +68,7 @@ func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query s
 	}
 	access, ownerLabel := "owner", "you"
 	if sanitizeUserIDForPath(ownerID) != sanitizeUserIDForPath(userID) {
-		access, ownerLabel = "write", ownerID
+		access, ownerLabel = "run", ownerID
 		if record := directoryUserFor(ownerID, "", ""); record != nil && strings.TrimSpace(record.Username) != "" {
 			ownerLabel = record.Username
 		}

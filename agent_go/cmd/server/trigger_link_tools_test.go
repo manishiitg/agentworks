@@ -219,7 +219,7 @@ func TestTriggerLinkReachesAnotherUsersCrew(t *testing.T) {
 	}
 	var sawGamma bool
 	for _, crew := range crews {
-		if crew["workspace_path"] == linkGammaPath && crew["access"] == "write" && crew["owner"] == "other" {
+		if crew["workspace_path"] == linkGammaPath && crew["access"] == "run" && crew["owner"] == "other" {
 			sawGamma = true
 		}
 	}
