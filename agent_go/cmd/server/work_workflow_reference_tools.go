@@ -115,6 +115,11 @@ func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query s
 		if query != "" && !strings.Contains(haystack, query) {
 			continue
 		}
+		// A co-owner builds the Crew with its owner, so the word for their access is the owner's.
+		itemAccess := access
+		if access != "owner" && crewIsCoOwner(strings.TrimSuffix(candidate, "/product.json"), userID) {
+			itemAccess = "owner"
+		}
 		items = append(items, map[string]interface{}{
 			"id":   id,
 			"name": name,
@@ -125,7 +130,7 @@ func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query s
 			"profile_id":     product.ProfileID,
 			"description":    strings.TrimSpace(manifest.Description),
 			"workspace_path": workspacePath,
-			"access":         access,
+			"access":         itemAccess,
 			"owner":          ownerLabel,
 		})
 	}
