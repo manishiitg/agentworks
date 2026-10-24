@@ -3,7 +3,7 @@ import type { ChatElement as ElementSpec } from './chatElement'
 
 const frame = 'not-prose my-4 min-w-0 max-w-xl rounded-xl border border-border bg-muted/20 text-foreground'
 const summary = 'cursor-pointer break-words px-4 py-3 text-sm font-medium marker:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring'
-const number = (value: number) => new Intl.NumberFormat(undefined, { maximumSignificantDigits: 4 }).format(value)
+const number = (value: number) => new Intl.NumberFormat(undefined, { notation: 'compact', maximumSignificantDigits: 3 }).format(value)
 
 function SmallChart({ spec }: { spec: Extract<ElementSpec, { type: 'chart' }> }) {
   const { data, style, unit } = spec
@@ -48,7 +48,7 @@ function SmallChart({ spec }: { spec: Extract<ElementSpec, { type: 'chart' }> })
           <table className="w-full text-left text-xs">
             <caption className="sr-only">{spec.title}{unit ? ` (${unit})` : ''}</caption>
             <thead><tr><th scope="col" className="py-1 font-medium">Label</th><th scope="col" className="py-1 text-right font-medium">Value{unit ? ` (${unit})` : ''}</th></tr></thead>
-            <tbody>{data.map((point, index) => <tr key={index} className="border-t border-border/60"><th scope="row" className="break-words py-1 font-normal">{point.label}</th><td className="py-1 text-right tabular-nums">{point.value.toLocaleString()}</td></tr>)}</tbody>
+            <tbody>{data.map((point, index) => <tr key={index} className="border-t border-border/60"><th scope="row" className="break-words py-1 font-normal">{point.label}</th><td className="py-1 text-right tabular-nums">{String(point.value)}</td></tr>)}</tbody>
           </table>
         </div>
       </details>
