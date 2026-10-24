@@ -68,8 +68,12 @@ func (h FunctionElicitationHost) workspaceMaybeElicit(ctx context.Context, args 
 		}
 		key := fmt.Sprintf("q%d", i)
 		labels := []string{}
+		descriptions := []string{}
 		for _, option := range q.Options {
 			labels = append(labels, option.Label)
+			if option.Description != "" {
+				descriptions = append(descriptions, option.Label+": "+option.Description)
+			}
 		}
 		field := map[string]any{"type": "string", "title": q.Question, "enum": labels}
 		if q.MultiSelect {
@@ -87,6 +91,9 @@ func (h FunctionElicitationHost) workspaceMaybeElicit(ctx context.Context, args 
 				min = 0
 			}
 			field = map[string]any{"type": "array", "title": q.Question, "items": map[string]any{"type": "string", "enum": labels}, "minItems": min, "maxItems": max}
+		}
+		if len(descriptions) > 0 {
+			field["description"] = strings.Join(descriptions, "; ")
 		}
 		properties[key] = field
 		if q.AllowOther {
