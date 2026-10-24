@@ -13,8 +13,8 @@ import { DashboardsPage } from './DashboardsPage'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 it('shows every published page in its server-selected audience and refreshes after access changes', async () => {
-  post.mockResolvedValueOnce({ data: { dashboards: [{ dashboard_id: 'sales', title: 'Sales', workspace: 'Crew/sales', document_path: 'db/reports/sales.html', shared_with_me: false }], next_offset: 200, has_more: true } })
-    .mockResolvedValueOnce({ data: { dashboards: [{ dashboard_id: 'team', title: 'Team totals', workspace: 'Crew/team', document_path: 'db/reports/managed/team/index.html', short_path: '/d/23456789ab', shared_with_me: true }], next_offset: 201, has_more: false } })
+  post.mockResolvedValueOnce({ data: { dashboards: [{ dashboard_id: 'sales', title: 'Sales', product: 'crew', workspace: 'Crew/sales', document_path: 'db/reports/sales.html', shared_with_me: false }], next_offset: 200, has_more: true } })
+    .mockResolvedValueOnce({ data: { dashboards: [{ dashboard_id: 'team', title: 'Team totals', product: 'crew', workspace: 'Crew/team', document_path: 'db/reports/managed/team/index.html', short_path: '/d/23456789ab', shared_with_me: true }], next_offset: 201, has_more: false } })
     .mockResolvedValueOnce({ data: { dashboards: [], next_offset: 0, has_more: false } })
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   try {
@@ -38,11 +38,12 @@ it('shows every published page in its server-selected audience and refreshes aft
 })
 
 
-it('shows compact website names without product labels and finds them by name or project', async () => {
+it('groups by product while keeping compact names, audiences and search across all groups', async () => {
   post.mockResolvedValue({ data: { dashboards: [
     { dashboard_id: 'overview', title: 'index', project_title: 'Account research', product: 'crew', workspace: 'Crew/research', document_path: 'db/reports/index.html', shared_with_me: true },
     { dashboard_id: 'sales', title: 'Weekly sales', project_title: 'Revenue', product: 'workflow', workspace: 'Goals/revenue', document_path: 'db/reports/sales.html', shared_with_me: true },
-  ], next_offset: 2, has_more: false } })
+    { dashboard_id: 'queue', title: 'Request queue', project_title: 'Support', product: 'relay', workspace: 'Workflow/support', document_path: 'db/reports/queue.html', shared_with_me: false },
+  ], next_offset: 3, has_more: false } })
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   const search = () => host.querySelector('input')!
   const type = async (value: string) => act(async () => {
@@ -51,23 +52,26 @@ it('shows compact website names without product labels and finds them by name or
   })
   try {
     await act(async () => root.render(<DashboardsPage />))
-    const shared = host.querySelector('section[aria-label="Shared with you"]')!
-    expect(shared.querySelectorAll('a')).toHaveLength(2)
-    expect(shared.querySelector('a')!.textContent).toBe('Account research')
-    expect(shared.textContent).not.toContain('index')
-    expect(shared.textContent).not.toContain('Crew')
-    expect(shared.textContent).not.toContain('Goal')
+    const group = (label: string) => host.querySelector<HTMLElement>(`section[aria-label="${label}"]`)!
+    expect(Array.from(host.querySelectorAll('section > div > h3')).map(heading => heading.textContent)).toEqual(['Crew', 'Goals', 'Relays'])
+    expect(group('Crew').querySelector('a')!.textContent).toBe('Account research')
+    expect(group('Crew').textContent).not.toContain('index')
+    expect(group('Crew').querySelector('section[aria-label="Shared with you"]')).not.toBeNull()
+    expect(group('Crew').querySelector('section[aria-label="Yours"]')).toBeNull()
+    expect(group('Goals').querySelector('a')!.textContent).toBe('Weekly sales')
+    expect(group('Relays').querySelector('section[aria-label="Yours"] a')!.textContent).toBe('Request queue')
     expect(host.querySelector('header a')).toBeNull()
     expect(host.querySelector('header')!.textContent).toBe('Dashboards')
-    expect(host.querySelector('section[aria-label="Yours"]')).toBeNull()
     await type('  REVENUE ')
-    expect(shared.querySelectorAll('a')).toHaveLength(1)
-    expect(shared.textContent).toContain('Weekly sales')
+    expect(group('Crew')).toBeNull()
+    expect(group('Relays')).toBeNull()
+    expect(group('Goals').querySelectorAll('a')).toHaveLength(1)
+    expect(group('Goals').textContent).toContain('Weekly sales')
     await type('missing')
     expect(host.querySelector('section a')).toBeNull()
     expect(host.textContent).toContain('No matching dashboards')
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Clear search"]')!.click())
-    expect(host.querySelectorAll('section a')).toHaveLength(2)
+    expect(host.querySelectorAll('section[aria-label="Crew"] a, section[aria-label="Goals"] a, section[aria-label="Relays"] a')).toHaveLength(3)
     expect(post).toHaveBeenCalledTimes(1)
   } finally { await act(async () => root.unmount()); host.remove(); post.mockReset() }
 })

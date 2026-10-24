@@ -8,6 +8,12 @@ import { WorkspaceTopToolbar } from './workspace/WorkspaceTopToolbar'
 import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
 import { WorkspacePageContent } from './workspace/WorkspacePageContent'
 
+const PRODUCT_GROUPS = [
+  { id: 'crew', label: 'Crew' },
+  { id: 'workflow', label: 'Goals' },
+  { id: 'relay', label: 'Relays' },
+] as const
+
 /** Publication and access are decided by the same discovery service used by MCP. */
 export function DashboardsPage({ navigationActive = true }: { navigationActive?: boolean } = {}) {
   const account = useAuthStore(state => state.user?.id)
@@ -80,28 +86,38 @@ export function DashboardsPage({ navigationActive = true }: { navigationActive?:
           <h3 className="text-sm font-medium">Your dashboards will appear here</h3>
           <p className="mt-1 text-sm text-muted-foreground">Dashboards you publish or your team shares will appear here automatically.</p>
         </div>}
-        {rows && <div className="space-y-6">{([false, true] as const).map(shared => {
-          const items = visible.filter(row => row.shared_with_me === shared)
-          if (!items.length) return null
-          const SectionIcon = shared ? Users : LayoutDashboard
-          return <section key={String(shared)} aria-label={shared ? 'Shared with you' : 'Yours'}>
+        {rows && <div className="space-y-8">{PRODUCT_GROUPS.map(product => {
+          const productItems = visible.filter(row => row.product === product.id)
+          if (!productItems.length) return null
+          return <section key={product.id} aria-label={product.label}>
             <div className="mb-3 flex items-center gap-2">
-              <SectionIcon aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
-              <h3 className="text-sm font-semibold">{shared ? 'Shared with you' : 'Yours'}</h3>
-              <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">{items.length}</span>
+              <h3 className="text-base font-semibold">{product.label}</h3>
+              <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">{productItems.length}</span>
             </div>
-            {items.length > 0 && <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {items.map(row => {
-                const title = dashboardTitle(row)
-                return <li key={`${row.workspace}/${row.dashboard_id}`} className="min-w-0">
-                  <a href={dashboardDirectoryLink(row)} onClick={followAppLink} className="group flex h-full min-h-20 items-center gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <Globe2 aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 break-words text-sm font-medium leading-snug">{title}</span>
-                    <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
-                  </a>
-                </li>
-              })}
-            </ul>}
+            <div className="space-y-5">{([false, true] as const).map(shared => {
+              const items = productItems.filter(row => row.shared_with_me === shared)
+              if (!items.length) return null
+              const SectionIcon = shared ? Users : LayoutDashboard
+              return <section key={String(shared)} aria-label={shared ? 'Shared with you' : 'Yours'}>
+                <div className="mb-2 flex items-center gap-2 text-muted-foreground">
+                  <SectionIcon aria-hidden="true" className="h-3.5 w-3.5" />
+                  <h4 className="text-xs font-medium">{shared ? 'Shared with you' : 'Yours'}</h4>
+                  <span className="text-xs tabular-nums">{items.length}</span>
+                </div>
+                <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {items.map(row => {
+                    const title = dashboardTitle(row)
+                    return <li key={`${row.workspace}/${row.dashboard_id}`} className="min-w-0">
+                      <a href={dashboardDirectoryLink(row)} onClick={followAppLink} className="group flex h-full min-h-20 items-center gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <Globe2 aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 break-words text-sm font-medium leading-snug">{title}</span>
+                        <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
+                      </a>
+                    </li>
+                  })}
+                </ul>
+              </section>
+            })}</div>
           </section>
         })}</div>}
       </WorkspacePageContent>

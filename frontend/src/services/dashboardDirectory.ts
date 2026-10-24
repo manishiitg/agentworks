@@ -3,6 +3,7 @@ import { sharedReportLink } from '../utils/sharedLinks'
 
 export type DashboardDirectoryEntry = {
   dashboard_id: string
+  product: 'crew' | 'workflow' | 'relay'
   title?: string
   workspace: string
   project_title?: string
