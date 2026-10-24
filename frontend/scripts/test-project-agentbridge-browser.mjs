@@ -14,6 +14,7 @@ try {
     const errors = []; page.on('pageerror', error => errors.push(error.message))
     let reads = 0
     await page.route('**/api/**', async route => {
+      if (!new URL(route.request().url()).pathname.startsWith('/api/')) { await route.continue(); return }
       if (route.request().url().includes('/api/agent-directory')) { reads++; await route.fulfill({ json: { agents: [
         { id: target, kind: product, name: 'Example project', chats: [{ chat_id: 'review', name: 'Review', purpose: 'Review work', owner_name: 'Taylor' }] },
         { id: 'agent:computer', target: 'agent:computer', kind: 'connected_agent', name: 'My computer agent', provider: 'Codex', online: true, presence: 'Connected', purpose: 'Help with code' },
