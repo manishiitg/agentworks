@@ -57,6 +57,8 @@ interface ChatTabItem {
   isActive: boolean
   lastAccessedAt: number
   tabId: string
+  /** Parent Goal/Relay for a named Builder chat. */
+  preset?: CustomPreset | PredefinedPreset
   activeSession?: ActiveSessionInfo
   hasLocalActivity: boolean
 }
@@ -92,6 +94,7 @@ interface CrewChatItem {
   tabId?: string
   /** Crew project to open when there is no tab yet. */
   projectId?: string
+  projectLabel?: string
   activeSession?: ActiveSessionInfo
   hasLocalActivity: boolean
   icon?: string
@@ -112,6 +115,51 @@ interface PanelItem {
 }
 
 type QuickSwitcherItem = PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
+
+type QuickSwitcherRow = QuickSwitcherItem & { treeChild?: boolean; treeLastChild?: boolean; treeParentLabel?: string }
+
+const projectTreeKey = (item: QuickSwitcherItem): string | undefined =>
+  item.type === 'crew' && item.projectId ? `crew:${item.projectId}`
+    : (item.type === 'workflow' || item.type === 'chat') && item.preset ? `workflow:${item.preset.id}` : undefined
+
+/** Keep one linear keyboard list; indentation does not introduce a drill-down mode. */
+const projectChatTree = (ranked: QuickSwitcherItem[], inventory: QuickSwitcherItem[]): QuickSwitcherRow[] => {
+  const parents = new Map<string, WorkflowItem | CrewChatItem>()
+  for (const item of inventory) {
+    const key = projectTreeKey(item)
+    if (key && (item.type === 'workflow' || (item.type === 'crew' && !item.tabId))) parents.set(key, item)
+  }
+  const groups = new Map<string, QuickSwitcherItem[]>()
+  for (const item of ranked) {
+    const key = projectTreeKey(item)
+    if (key) {
+      const group = groups.get(key) ?? []
+      group.push(item); groups.set(key, group)
+    }
+  }
+  const seen = new Set<string>()
+  const rows: QuickSwitcherRow[] = []
+  for (const item of ranked) {
+    const key = projectTreeKey(item)
+    if (!key) { rows.push(item); continue }
+    if (seen.has(key)) continue
+    seen.add(key)
+    const children = groups.get(key)!.filter((child): child is CrewChatItem | ChatTabItem => (child.type === 'crew' || child.type === 'chat') && !!child.tabId)
+    let parent = parents.get(key)
+    if (!parent && item.type === 'crew') {
+      parent = { ...item, id: `crew-project:${item.projectId}`, label: item.projectLabel || item.label,
+        subtitle: 'Crew', tabId: undefined, isActive: false, activeSession: undefined, hasLocalActivity: false }
+    }
+    if (parent) {
+      const representedSession = parent.activeSession && children.some(child => itemActiveSession(child)?.session_id === parent.activeSession?.session_id)
+      rows.push(children.length ? { ...parent, isActive: false,
+        activeSession: representedSession ? undefined : parent.activeSession,
+        hasLocalActivity: children.some(child => child.hasLocalActivity) ? false : parent.hasLocalActivity } : parent)
+      rows.push(...children.map((child, index) => ({ ...child, treeChild: true, treeLastChild: index === children.length - 1, treeParentLabel: parent!.label })))
+    } else rows.push(...groups.get(key)!)
+  }
+  return rows
+}
 
 const EMPTY_CHAT_TABS: Record<string, ChatTab> = {}
 const EMPTY_ACTIVE_SESSIONS: ActiveSessionInfo[] = []
@@ -372,12 +420,15 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         const activeSession = tab.sessionId ? visibleActiveSessions.find(session => session.session_id === tab.sessionId) : undefined
         const project = tab.metadata?.agentProfileIdentityName || tab.metadata?.agentProfileProjectTitle || 'Crew'
         const role = tab.metadata?.agentProfileBuilder ? 'Builder' : isWorkSideChatTab(tab) ? tab.name : 'Builder'
+        const projectId = workProjectIdForTab(tab) || undefined
         return {
           type: 'crew' as const,
           id: `crew:${tab.tabId}`,
-          label: project,
-          subtitle: `Crew · ${role}${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
-          searchText: activeSessionSearchText(activeSession),
+          label: projectId ? role : project,
+          projectId,
+          projectLabel: project,
+          subtitle: projectId ? `${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`.replace(/^ · /, '') : `Crew · ${role}${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
+          searchText: `${project} ${role} ${activeSessionSearchText(activeSession)}`,
           isActive: productSurface === 'work' && tab.tabId === activeTabId,
           lastAccessedAt: tab.lastAccessedAt || tab.createdAt || 0,
           tabId: tab.tabId,
@@ -387,9 +438,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         }
       })
 
-    const openCrewProjects = new Set(Object.values(crewTabs).map(tab => workProjectIdForTab(tab)).filter(Boolean))
     const directoryCrewItems: CrewChatItem[] = crewDirectory
-      .filter(crew => !openCrewProjects.has(crew.id))
       .map(crew => {
         const name = crew.identity?.name?.trim() || crew.title
         const owner = crew.shared ? `shared by ${crew.shared.ownerUsername || crew.shared.ownerId}` : 'yours'
@@ -434,7 +483,22 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         }
       })
 
-    const listedTabIds = new Set([...chatItems, ...crewItems].map(item => item.tabId))
+    const workflowChatItems: ChatTabItem[] = Object.values(agentWorksTabs).flatMap(tab => {
+      const meta = tab.metadata
+      if (meta?.mode !== 'workflow' || !meta.workflowOwnerTabID || meta.isViewOnly || meta.isScheduledRun || meta.isBotRun || meta.isExecutionRun) return []
+      const preset = workflowPresets.find(candidate => candidate.id === meta.presetQueryId)
+      if (!preset) return []
+      const activeSession = tab.sessionId ? activeSessionsByID.get(tab.sessionId) : undefined
+      return [{
+        type: 'chat' as const, id: `chat:${tab.tabId}`, label: tab.name || 'Builder',
+        subtitle: `${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`.replace(/^ · /, ''),
+        searchText: `${preset.label} ${activeSessionSearchText(activeSession)}`, preset, tabId: tab.tabId,
+        isActive: productSurface === workflowSurfaceForPreset(preset.id) && tab.tabId === activeTabId,
+        lastAccessedAt: tab.lastAccessedAt || tab.createdAt || 0, activeSession, hasLocalActivity: tabHasRunningWork(tab),
+      }]
+    })
+
+    const listedTabIds = new Set([...chatItems, ...crewItems, ...workflowChatItems].map(item => item.tabId))
     const activeItems: ActiveWorkItem[] = visibleActiveSessions
       .map(session => {
         const tab = findTabForSession(allTabs, session.session_id)
@@ -470,7 +534,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       return a.label.localeCompare(b.label)
     })
 
-    const projectItems = [...activeItems, ...crewItems,  ...chatItems, ...workflowItems, ...directoryCrewItems].sort((a, b) => {
+    const projectItems = [...activeItems, ...crewItems, ...chatItems, ...workflowChatItems, ...workflowItems, ...directoryCrewItems].sort((a, b) => {
       const activityOrder = compareItemActivity(a, b)
       if (activityOrder) return activityOrder
       if (a.type !== b.type) return itemTypeRank(a) - itemTypeRank(b)
@@ -479,7 +543,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     const visibleProducts = new Set(visibleProductSurfaceIDs(user?.allowed_products))
     return [...projectItems.filter(item => {
       if (item.type === 'crew') return visibleProducts.has('work')
-      if (item.type === 'workflow') return visibleProducts.has(item.preset.workflowKind === 'relay' ? 'relays' : 'agentworks')
+      if ((item.type === 'workflow' || item.type === 'chat') && item.preset) return visibleProducts.has(item.preset.workflowKind === 'relay' ? 'relays' : 'agentworks')
       if (item.type === 'active') {
         if (isWorkProductSession(item.session)) return visibleProducts.has('work')
       }
@@ -488,7 +552,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, navigationItems, panelItems, user?.allowed_products])
 
   // Filter and sort
-  const filteredItems = useMemo<QuickSwitcherItem[]>(() => {
+  const matchingItems = useMemo<QuickSwitcherItem[]>(() => {
     const rawQuery = query.toLowerCase().trim()
     const scopeMatch = rawQuery.match(/^@(active|workflows?|relays?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/)
     const scope = scopeMatch?.[1] || scopeFilter
@@ -500,8 +564,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           const creates = (surface: string) => item.type === 'menu' && item.action === 'create' && item.surface === surface
           if (scope === 'create') return item.type === 'menu' && item.action === 'create'
           if (scope === 'active') return item.type === 'active' || (!item.activeSession && item.hasLocalActivity)
-          if (scope === 'workflow' || scope === 'workflows') return (item.type === 'workflow' && item.preset.workflowKind !== 'relay') || creates('agentworks')
-          if (scope === 'relay' || scope === 'relays') return (item.type === 'workflow' && item.preset.workflowKind === 'relay') || creates('relays')
+          if (scope === 'workflow' || scope === 'workflows') return ((item.type === 'workflow' || item.type === 'chat') && item.preset && item.preset.workflowKind !== 'relay') || creates('agentworks')
+          if (scope === 'relay' || scope === 'relays') return ((item.type === 'workflow' || item.type === 'chat') && item.preset && item.preset.workflowKind === 'relay') || creates('relays')
           if (scope === 'product' || scope === 'products') return item.type === 'product'
           if (scope === 'panel' || scope === 'panels') return item.type === 'panel'
           if (scope === 'menu' || scope === 'menus') return item.type === 'menu' || item.type === 'panel'
@@ -546,6 +610,13 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     return filtered
   }, [query, scopeFilter, allItems])
 
+  const filteredItems = useMemo<QuickSwitcherRow[]>(() => {
+    const explicitScope = query.trim().match(/^@(active|workflows?|relays?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/i)?.[1]?.toLowerCase()
+    return (explicitScope || scopeFilter) === 'active' ? matchingItems : projectChatTree(matchingItems, allItems)
+  }, [matchingItems, allItems, query, scopeFilter])
+  const firstMatchRef = useRef<string | undefined>(undefined)
+  firstMatchRef.current = matchingItems[0]?.id
+
   // Read filteredItems via a ref so this effect does NOT fire on every new
   // array reference — only on real user intent changes (query, mode, open).
   // Otherwise streaming re-renders would snap the selection back on each tick.
@@ -559,7 +630,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       const firstNonActive = items.findIndex(item => item.type !== 'menu' && item.type !== 'product' && !item.isActive)
       setSelectedIndex(runningAlternative >= 0 ? runningAlternative : firstRunning >= 0 ? firstRunning : firstNonActive >= 0 ? firstNonActive : 0)
     } else {
-      setSelectedIndex(0)
+      const match = filteredItemsRef.current.findIndex(item => item.id === firstMatchRef.current)
+      setSelectedIndex(Math.max(0, match))
     }
   }, [isOpen, isChatMode, isWorkflowMode, query, scopeFilter])
 
@@ -694,6 +766,11 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           </button>}
           <input
             ref={searchInputRef}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="quick-navigation-results"
+            aria-autocomplete="list"
+            aria-activedescendant={filteredItems[selectedIndex] ? `quick-navigation-${encodeURIComponent(filteredItems[selectedIndex].id)}` : undefined}
             type="text"
             placeholder={placeholder}
             value={query}
@@ -708,7 +785,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
 
         {/* Item list */}
-        <div ref={listRef} className="overflow-y-auto max-h-[48vh]">
+        <div ref={listRef} id="quick-navigation-results" role="listbox" aria-label="Search results" className="overflow-y-auto max-h-[48vh]">
           {filteredItems.length === 0 ? (
             <div className="px-4 py-8 text-center text-muted-foreground text-sm">
               {emptyText}
@@ -732,7 +809,12 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                 <div
                   key={item.id}
                   data-navigation-id={item.id}
-                  className={`px-4 py-2.5 cursor-pointer flex items-center gap-3 transition-colors ${
+                  data-navigation-parent={item.treeChild ? projectTreeKey(item) : undefined}
+                  id={`quick-navigation-${encodeURIComponent(item.id)}`}
+                  role="option"
+                  aria-selected={isSelected}
+                  aria-label={item.treeChild ? `${item.treeParentLabel} · ${item.label}` : undefined}
+                  className={`relative ${item.treeChild ? 'pl-10 pr-4' : 'px-4'} py-2.5 cursor-pointer flex items-center gap-3 transition-colors ${
                     isSelected
                       ? 'bg-blue-50 dark:bg-blue-900/30'
                       : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
@@ -740,7 +822,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   onMouseEnter={() => setSelectedIndex(index)}
                   onMouseDown={e => { e.preventDefault(); void handleSelect(item) }}
                 >
-                  {item.type === 'product' || item.type === 'menu'
+                  {item.treeChild && <span aria-hidden="true" className={`pointer-events-none absolute left-6 top-0 border-l border-border ${item.treeLastChild ? 'h-1/2' : 'bottom-0'}`} />}
+                  {item.treeChild && <span aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 w-3 border-t border-border" />}
+                  {item.treeChild ? <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : item.type === 'product' || item.type === 'menu'
                     ? <QuickNavigationIcon item={item} />
                     : item.type === 'crew'
                     ? <EntityIdentityIcon icon={item.icon} label={item.label} />
@@ -750,9 +834,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                       <span className={`text-sm font-medium truncate ${item.isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-100'}`}>
                         {item.label}
                       </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
+                      {!item.treeChild && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
                         {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? (item.preset.workflowKind === 'relay' ? 'Flow' : 'Goal') : item.type === 'crew' ? 'Crew' : item.type}
-                      </span>
+                      </span>}
                       {activeSession && item.type !== 'active' && (
                         runtimeNeedsUserInput(activeSession) ? (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium flex-shrink-0">
@@ -775,7 +859,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-muted-foreground truncate">{item.subtitle}</div>
+                    {item.subtitle && <div className="text-xs text-muted-foreground truncate">{item.subtitle}</div>}
                   </div>
                 </div>
               )

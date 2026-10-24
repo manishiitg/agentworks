@@ -14,7 +14,8 @@ vi.hoisted(() => {
 vi.mock('../products/work/workSessions', () => ({
   loadWorkSessionsIncludingShared: vi.fn(async () => [
     { id: 'crew-own', title: 'project-a-flow-tester', identity: { name: 'project-a Flow Tester' } },
-    { id: 'crew-shared', title: 'qa', identity: { name: 'QA Bot' }, shared: { ownerId: 'u2', ownerUsername: 'yoav' } },
+    { id: 'run-only', title: 'Run-only project', shared: { ownerId: 'u2', ownerUsername: 'teammate', canBuild: false } },
+    { id: 'crew-shared', title: 'qa', identity: { name: 'QA Bot' }, shared: { ownerId: 'u2', ownerUsername: 'teammate', canBuild: true } },
   ]),
 }))
 
@@ -33,7 +34,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()) })
 
-it('lists every accessible Crew, not only open or running ones, and opens one', async () => {
+it('lists Builder Crews including co-owned projects and opens one', async () => {
   useGlobalPresetStore.setState({ workflowPresetsLoaded: true, workflowPresets: [] })
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
@@ -43,7 +44,8 @@ it('lists every accessible Crew, not only open or running ones, and opens one', 
   await act(async () => { await Promise.resolve() })
   expect(host.textContent).toContain('project-a Flow Tester')
   expect(host.textContent).toContain('QA Bot')
-  expect(host.textContent).toContain('shared by yoav')
+  expect(host.textContent).not.toContain('Run-only project')
+  expect(host.textContent).toContain('shared by teammate')
   const row = [...host.querySelectorAll('div')].find(div => div.textContent?.startsWith('QA Bot') && div.getAttribute('class')?.includes('cursor-pointer'))
     ?? [...host.querySelectorAll('.cursor-pointer')].find(div => div.textContent?.includes('QA Bot'))
   await act(async () => { row!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })

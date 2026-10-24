@@ -45,7 +45,7 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'code', 'video-studio', 'relays', 'sparkquill', 'mcp-gateway'], admin = true, seed?: () => void) {
+async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'video-studio', 'relays', 'sparkquill', 'mcp-gateway'], admin = true, seed?: () => void) {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: allowed, gatewayUrl: 'http://localhost:99999' } as never
   useAuthStore.setState({ user: { id: 'u1', username: 'u1', is_admin: admin, allowed_products: allowed } as never })
   useGlobalPresetStore.setState({ workflowPresetsLoaded: true, workflowPresets: [] })
@@ -60,12 +60,12 @@ async function renderNavigation(query: string, allowed = ['agentworks', 'work', 
   return { host, onClose }
 }
 
-it('defaults to running workflows, Crews, Code and Relays before idle work, with browse and navigation rows at the bottom', async () => {
+it('defaults to running workflows, Crews and Relays before idle work, with browse and navigation rows at the bottom', async () => {
   const { host } = await renderNavigation('', undefined, true, () => {
     useProductSurfaceStore.setState({ productSurface: 'work' })
     useChatStore.setState({ activeTabId: 'idle', chatTabs: {
-      idle: { tabId: 'idle', name: 'Idle current', createdAt: 9000, lastAccessedAt: 9000, metadata: { agentProfileId: 'code' } },
-      code: { tabId: 'code', name: 'Running Code', createdAt: 1, isStreaming: true, metadata: { agentProfileId: 'code' } },
+      idle: { tabId: 'idle', name: 'Idle current', createdAt: 9000, lastAccessedAt: 9000, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Idle current' } },
+      code: { tabId: 'work', name: 'Running project', createdAt: 1, isStreaming: true, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Running project' } },
       crew: { tabId: 'crew', name: 'Crew', createdAt: 2, isSyntheticTurn: true, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Running Crew' } },
     } as never, activeSessionsCache: [
       { session_id: 'workflow-run', agent_mode: 'workflow', status: 'running', preset_query_id: 'workflow' },
@@ -80,7 +80,7 @@ it('defaults to running workflows, Crews, Code and Relays before idle work, with
   expect(rows.length).toBeGreaterThan(5)
   expect(rows.slice(0, 4).map(row => row.textContent)).toEqual(expect.arrayContaining([
     expect.stringContaining('Running workflow'), expect.stringContaining('Running Relay'),
-    expect.stringContaining('Running Crew'), expect.stringContaining('Running Code'),
+    expect.stringContaining('Running Crew'), expect.stringContaining('Running project'),
   ]))
   expect(rows[4].textContent).toContain('Idle current')
   expect(rows[0].className).toContain('bg-blue-50')
@@ -106,13 +106,13 @@ it('ranks exact names first, then recency before match strength and activity, wi
   const { host } = await renderNavigation('  REPORT  ', undefined, true, () => {
     useProductSurfaceStore.setState({ productSurface: 'work' })
     useChatStore.setState({ activeTabId: 'current', chatTabs: {
-      exact: { tabId: 'exact', name: 'Report', createdAt: 1, metadata: { agentProfileId: 'code' } },
-      running: { tabId: 'running', name: 'Report Z running', createdAt: 1, isStreaming: true, metadata: { agentProfileId: 'code' } },
-      current: { tabId: 'current', name: 'Report Y current', createdAt: 1, metadata: { agentProfileId: 'code' } },
-      recent: { tabId: 'recent', name: 'Report X recent', createdAt: 1, lastAccessedAt: 9000, metadata: { agentProfileId: 'code' } },
-      olderB: { tabId: 'olderB', name: 'Report B older', createdAt: 1, metadata: { agentProfileId: 'code' } },
-      olderA: { tabId: 'olderA', name: 'Report A older', createdAt: 1, metadata: { agentProfileId: 'code' } },
-      substring: { tabId: 'substring', name: 'Weekly Report', createdAt: 10000, metadata: { agentProfileId: 'code' } },
+      exact: { tabId: 'exact', name: 'Report', createdAt: 1, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Report' } },
+      running: { tabId: 'running', name: 'Report Z running', createdAt: 1, isStreaming: true, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Report Z running' } },
+      current: { tabId: 'current', name: 'Report Y current', createdAt: 1, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Report Y current' } },
+      recent: { tabId: 'recent', name: 'Report X recent', createdAt: 1, lastAccessedAt: 9000, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Report X recent' } },
+      olderB: { tabId: 'olderB', name: 'Report B older', createdAt: 1, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Report B older' } },
+      olderA: { tabId: 'olderA', name: 'Report A older', createdAt: 1, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Report A older' } },
+      substring: { tabId: 'substring', name: 'Weekly Report', createdAt: 10000, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Weekly Report' } },
     } as never })
     // The most recently opened keyword match outranks old prefix matches,
     // but even an old exact name stays first.
@@ -130,12 +130,12 @@ it('ranks exact names first, then recency before match strength and activity, wi
   })
   const rowIds = () => [...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))
   expect(rowIds()).toEqual([
-    'code:exact', 'panel:analytics:exact', 'panel:analytics:name',
-    'workflow:keyword', 'code:substring', 'code:recent',
-    'code:running', 'code:current', 'code:olderA', 'code:olderB',
+    'crew:exact', 'panel:analytics:exact', 'panel:analytics:name',
+    'workflow:keyword', 'crew:substring', 'crew:recent',
+    'crew:running', 'crew:current', 'crew:olderA', 'crew:olderB',
     'panel:analytics:keywords',
   ])
-  expect(host.querySelector('[data-navigation-id="code:exact"]')?.className).toContain('bg-blue-50')
+  expect(host.querySelector('[data-navigation-id="crew:exact"]')?.className).toContain('bg-blue-50')
 
   // Preserve the panel scope and word-order-independent search, while giving
   // words found entirely in the tab name priority over its keywords.
@@ -151,7 +151,7 @@ it('keeps named panel commands ahead of recently visited incidental matches, wit
   const { host } = await renderNavigation('sett', undefined, true, () => {
     useProductSurfaceStore.setState({ productSurface: 'work' })
     useChatStore.setState({ chatTabs: {
-      recent: { tabId: 'recent', name: 'Weekly settings report', createdAt: 9000, metadata: { agentProfileId: 'code' } },
+      recent: { tabId: 'recent', name: 'Weekly settings report', createdAt: 9000, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Weekly settings report' } },
     } as never })
     usePanelSwitcherStore.getState().register('work', { panels: [
       { id: 'z-settings', label: 'Settings' }, { id: 'a-settings', label: 'Settings' },
@@ -159,7 +159,7 @@ it('keeps named panel commands ahead of recently visited incidental matches, wit
   })
   const ids = [...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))
   expect(ids.slice(0, 2)).toEqual(['panel:a-settings', 'panel:z-settings'])
-  expect(ids).toContain('code:recent')
+  expect(ids).toContain('crew:recent')
 })
 
 it('browses all workflows or Relays from footer icons without requiring typed scopes', async () => {
@@ -220,8 +220,8 @@ it('lists every available product and opens its workspace from another product',
   expect(host.textContent).toContain('Vault')
   expect(host.textContent).toContain('SparkQuill')
   useAppStore.setState({ adminPage: 'users', showSchedulesOverview: true })
-  await act(async () => host.querySelector('[data-navigation-id="product:code"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
-  expect(useProductSurfaceStore.getState().productSurface).toBe('code')
+  await act(async () => host.querySelector('[data-navigation-id="product:work"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
+  expect(useProductSurfaceStore.getState().productSurface).toBe('work')
   expect(useAppStore.getState().adminPage).toBeNull()
   expect(useAppStore.getState().showSchedulesOverview).toBe(false)
   expect(onClose).toHaveBeenCalled()
@@ -236,21 +236,21 @@ it('opens Users via Enter from an unrelated product', async () => {
 })
 
 it('hides unavailable products and admin-only menus and opens Providers on an allowed surface', async () => {
-  const { host } = await renderNavigation('@menus ', ['code'], false)
+  const { host } = await renderNavigation('@menus ', ['work'], false)
   expect(host.textContent).toContain('AI models & accounts')
   expect(host.textContent).not.toContain('Users and access')
   expect(host.textContent).toContain('Connect AI tools') // MCP is for every signed-in person (owner, 2026-10-09)
-  expect(host.textContent).not.toContain('Schedules and triggers')
+  expect(host.textContent).toContain('Schedules and triggers')
   expect(quickNavigationItems(useAuthStore.getState().user, 'work').filter(item => item.type === 'product').map(item => item.surface)).toEqual(['work'])
   await act(async () => host.querySelector('[data-navigation-id="menu:providers"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
-  expect(useProductSurfaceStore.getState().productSurface).toBe('code')
+  expect(useProductSurfaceStore.getState().productSurface).toBe('work')
   expect(useLLMStore.getState().showLLMModal).toBe(true)
 })
 
 it('rechecks access if a menu was selected after permission changed', async () => {
   await renderNavigation('@menus ')
   const users = quickNavigationItems(useAuthStore.getState().user, 'video-studio').find(item => item.action === 'users')!
-  useAuthStore.setState({ user: { is_admin: false, allowed_products: ['code'] } as never })
+  useAuthStore.setState({ user: { is_admin: false, allowed_products: ['work'] } as never })
   expect(openQuickNavigation(users)).toBe(false)
   expect(useProductSurfaceStore.getState().productSurface).toBe('video-studio')
 })
@@ -265,7 +265,7 @@ it('browses current toolbar panels and opens a nested tab from unified search wh
       { id: 'files', label: 'Files' },
       { id: 'integrations', label: 'Integrations', sections: [{ id: 'slack', label: 'Slack', keywords: 'channels messages' }] },
     ], open })
-    usePanelSwitcherStore.getState().register('work', { panels: [{ id: 'crew-only', label: 'Crew only panel' }], open: vi.fn() })
+    usePanelSwitcherStore.getState().register('agentworks', { panels: [{ id: 'crew-only', label: 'Other product panel' }], open: vi.fn() })
   })
   expect(host.querySelector('[data-navigation-id="panel:files"]')).not.toBeNull()
   expect(host.querySelector('[data-navigation-id="panel:integrations:slack"]')).not.toBeNull()
@@ -297,7 +297,7 @@ it('opens a parent panel with @panels and refuses stale panel selections after a
   open.mockClear(); onClose.mockClear()
   const row = host.querySelector('[data-navigation-id="panel:files"]')!
   await act(async () => {
-    useAuthStore.setState({ user: { allowed_products: ['work'] } as never })
+    useAuthStore.setState({ user: { allowed_products: ['relays'] } as never })
     row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
   })
   expect(open).not.toHaveBeenCalled()
@@ -320,11 +320,11 @@ it('offers creation for every supported product and routes each action from anot
   expect(onClose).toHaveBeenCalledTimes(surfaces.length)
 })
 
-it('retains a Code creation request through lazy mounting, opens the real form once, and cancels superseded requests', async () => {
+it('retains a Crew creation request through lazy mounting, opens the real form once, and cancels superseded requests', async () => {
   const { host, onClose } = await renderNavigation('Create new Crew')
   await act(async () => host.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
   expect(onClose).toHaveBeenCalledOnce()
-  expect(useCommandDialogStore.getState().productCreateSurface).toBe('code')
+  expect(useCommandDialogStore.getState().productCreateSurface).toBe('work')
   useLLMStore.setState({ providerManifest: [], providerManifestLoaded: true })
   const opened = vi.fn()
   function CodeCreateHost() {
@@ -355,11 +355,11 @@ it('retains a Code creation request through lazy mounting, opens the real form o
 })
 
 it('hides creation for unavailable products and respects the workflow create gate at activation time', async () => {
-  // Each product has its own create permission (PLAT-767): this account may create Code projects only.
-  const { host } = await renderNavigation('@create ', ['agentworks', 'relays', 'code'], false, () => {
-    useAuthStore.setState({ isMultiUserMode: true, user: { is_admin: false, can_create: false, can_create_in: { code: true }, can_write_workflows: true, allowed_products: ['agentworks', 'relays', 'code'] } as never })
+  // Each product has its own create permission (PLAT-767): this account may create Crew projects only.
+  const { host } = await renderNavigation('@create ', ['agentworks', 'relays', 'work'], false, () => {
+    useAuthStore.setState({ isMultiUserMode: true, user: { is_admin: false, can_create: false, can_create_in: { work: true }, can_write_workflows: true, allowed_products: ['agentworks', 'relays', 'work'] } as never })
   })
-  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['create:code'])
+  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['create:work'])
   await act(async () => useAuthStore.setState({ user: { ...useAuthStore.getState().user!, can_create: true } }))
   const workflow = quickNavigationItems(useAuthStore.getState().user, 'work').find(item => item.id === 'create:agentworks')!
   expect(workflow).toBeDefined()
@@ -369,7 +369,7 @@ it('hides creation for unavailable products and respects the workflow create gat
 })
 
 
-const localProducts = ['agentworks', 'work', 'code', 'relays', 'knowledgebase', 'mcp-gateway']
+const localProducts = ['agentworks', 'work', 'relays', 'knowledgebase', 'mcp-gateway']
 
 it.each([false, true])('filters Ctrl+K products for local server-product opt-in=%s', async optIn => {
   const { host } = await renderNavigation('@products ', localProducts, true, () => {
@@ -378,20 +378,20 @@ it.each([false, true])('filters Ctrl+K products for local server-product opt-in=
   })
   const surfaces = [...host.querySelectorAll('[data-navigation-id^="product:"]')].map(row => row.getAttribute('data-navigation-id'))
   expect(surfaces).toEqual(optIn
-    ? ['product:agentworks', 'product:relays', 'product:code', 'product:mcp-gateway', 'product:knowledgebase']
+    ? ['product:agentworks', 'product:relays', 'product:work', 'product:mcp-gateway', 'product:knowledgebase']
     : ['product:agentworks', 'product:work'])
 })
 
 it('respects account entitlements within an opted-in local installation', async () => {
   const { host } = await renderNavigation('@products ', localProducts, false, () => {
     Object.assign(window.__APP_RUNTIME_CONFIG__!, { deploymentMode: 'local', localServerProducts: true })
-    useAuthStore.setState({ user: { is_admin: false, allowed_products: ['code', 'mcp-gateway'] } as never })
+    useAuthStore.setState({ user: { is_admin: false, allowed_products: ['work', 'mcp-gateway'] } as never })
   })
   expect([...host.querySelectorAll('[data-navigation-id^="product:"]')].map(row => row.getAttribute('data-navigation-id')))
-    .toEqual(['product:code', 'product:mcp-gateway'])
+    .toEqual(['product:work', 'product:mcp-gateway'])
 })
 
-it.each(['mcp-gateway', 'code'])('rejects a stale %s shortcut after local opt-in is withdrawn', async product => {
+it.each(['mcp-gateway', 'relays'])('rejects a stale %s shortcut after local opt-in is withdrawn', async product => {
   await renderNavigation('@products ', localProducts, true, () => {
     Object.assign(window.__APP_RUNTIME_CONFIG__!, { deploymentMode: 'local', localServerProducts: true })
   })
@@ -402,11 +402,11 @@ it.each(['mcp-gateway', 'code'])('rejects a stale %s shortcut after local opt-in
 })
 
 
-it('finds the Code Watchers tab and opens Automation on that section', async () => {
+it('finds the Crew Watchers tab and opens Automation on that section', async () => {
   expect(workPanelSections('schedules', false).some(section => section.id === 'conditions')).toBe(true)
   expect(WORKFLOW_PANEL_SECTIONS.workshop?.some(section => section.id === 'conditions')).toBe(true)
   const open = vi.fn()
-  const { host, onClose } = await renderNavigation('watchers', ['code'], false, () => {
+  const { host, onClose } = await renderNavigation('watchers', ['work'], false, () => {
     useProductSurfaceStore.setState({ productSurface: 'work' })
     usePanelSwitcherStore.getState().register('work', { panels: [
       { id: 'schedules', label: 'Automation', sections: workPanelSections('schedules', true) },
@@ -424,40 +424,85 @@ it('keeps the legacy Code search keyword opening the single Crew product', async
   expect(products).toHaveLength(1)
   expect(products[0].textContent).toContain('Crew')
   await act(async () => products[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
-  expect(useProductSurfaceStore.getState().productSurface).toBe('code')
+  expect(useProductSurfaceStore.getState().productSurface).toBe('work')
 })
 
 it('finds Connections through its previous Integrations name without exposing other products', async () => {
   const open = vi.fn()
-  const { host } = await renderNavigation('integrations', ['code'], false, () => {
+  const { host } = await renderNavigation('integrations', ['work'], false, () => {
     useProductSurfaceStore.setState({ productSurface: 'work' })
     usePanelSwitcherStore.getState().register('work', { panels: [{ id: 'mcp', label: 'Connections' }], open })
-    usePanelSwitcherStore.getState().register('work', { panels: [{ id: 'mcp', label: 'Hidden Crew tools' }], open: vi.fn() })
+    usePanelSwitcherStore.getState().register('agentworks', { panels: [{ id: 'mcp', label: 'Hidden Goal tools' }], open: vi.fn() })
   })
   expect(host.querySelector('[data-navigation-id="panel:mcp"]')?.textContent).toContain('Connections')
-  expect(host.textContent).not.toContain('Hidden Crew tools')
+  expect(host.textContent).not.toContain('Hidden Goal tools')
   await act(async () => host.querySelector('[data-navigation-id="panel:mcp"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
   expect(open).toHaveBeenCalledWith('mcp', undefined)
 })
 
 
-it('distinguishes saved Crew side-chat names and activates the existing tab', async () => {
-  const { host } = await renderNavigation('Shared Crew', ['work'], false, () => {
+it('groups Crew chats by project ID with one project title and linear keyboard navigation', async () => {
+  const { host, onClose } = await renderNavigation('Shared Crew', ['work'], false, () => {
     useChatStore.setState({ chatTabs: Object.fromEntries(['main', 'Finance', 'Research'].map((name, index) => [name, {
       tabId: name, name, createdAt: index + 1, config: {}, events: [],
       metadata: { mode: 'multi-agent', agentProfileId: 'work', agentProfileProjectId: 'p1', agentProfileProjectTitle: 'Shared Crew', agentProfileConversationKey: index ? `p1:chat:${name}` : 'p1' },
     }])) as never })
   })
-  expect(host.querySelector('[data-navigation-id="crew:main"]')?.textContent).toContain('Builder')
-  for (const name of ['Finance', 'Research']) {
-    const row = host.querySelector(`[data-navigation-id="crew:${name}"]`)!
-    expect(row.textContent).toContain(name)
-    useAppStore.setState({ adminPage: 'mcp' })
-    await act(async () => { row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
-    expect(useChatStore.getState().activeTabId).toBe(name)
-    expect(useAppStore.getState().adminPage).toBeNull()
-    expect(Object.keys(useChatStore.getState().chatTabs)).toHaveLength(3)
-  }
+  const rows = [...host.querySelectorAll('[role="option"]')]
+  expect(rows[0].getAttribute('data-navigation-id')).toBe('crew-project:p1')
+  expect(rows[0].textContent).toContain('Shared Crew')
+  const children = rows.slice(1)
+  expect(children).toHaveLength(3)
+  expect(children.every(row => row.getAttribute('data-navigation-parent') === 'crew:p1')).toBe(true)
+  expect(children.map(row => row.textContent)).toEqual(expect.arrayContaining(['Builder', 'Finance', 'Research']))
+  expect(children.every(row => !row.textContent?.includes('Shared Crew'))).toBe(true)
+  const input = host.querySelector('input')!
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })) })
+  expect(rows[0].getAttribute('aria-selected')).toBe('true')
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
+  expect(children[0].getAttribute('aria-selected')).toBe('true')
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })) })
+  expect(rows[0].getAttribute('aria-selected')).toBe('true')
+  await act(async () => {
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+  })
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
+  expect(useChatStore.getState().activeTabId).toBe(children[0].getAttribute('data-navigation-id')!.slice('crew:'.length))
+  expect(Object.keys(useChatStore.getState().chatTabs)).toHaveLength(3)
+  expect(onClose).toHaveBeenCalledOnce()
+})
+
+it('keeps same-named projects separate and a matching child selected beneath its project', async () => {
+  const { host } = await renderNavigation('Research', ['work'], false, () => {
+    useChatStore.setState({ chatTabs: Object.fromEntries(['p1', 'p2'].map((project, index) => [project, {
+      tabId: project, name: 'Research', createdAt: index + 1, config: {}, events: [],
+      metadata: { mode: 'multi-agent', agentProfileId: 'work', agentProfileProjectId: project, agentProfileProjectTitle: 'Same project name', agentProfileConversationKey: `${project}:chat:research` },
+    }])) as never })
+  })
+  expect(host.querySelectorAll('[data-navigation-id^="crew-project:"]')).toHaveLength(2)
+  const chosen = host.querySelector('[role="option"][aria-selected="true"]')!
+  expect(chosen.getAttribute('data-navigation-id')).toBe('crew:p2')
+  expect(chosen.getAttribute('data-navigation-parent')).toBe('crew:p2')
+  expect(host.querySelector('input')!.getAttribute('aria-activedescendant')).toBe(chosen.id)
+  await act(async () => { host.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
+  expect(useChatStore.getState().activeTabId).toBe('p2')
+})
+
+it.each(['goal', 'relay'] as const)('finds a named %s Builder chat under its project and opens that exact chat', async kind => {
+  const { host, onClose } = await renderNavigation(`@${kind === 'relay' ? 'relays' : 'workflows'} Research`, ['agentworks', 'relays'], false, () => {
+    useGlobalPresetStore.setState({ workflowPresets: [{ id: 'plan', label: 'Example project', workflowKind: kind === 'relay' ? 'relay' : undefined, selectedFolder: { filepath: 'Workflow/example' } }] as never })
+    useChatStore.setState({ chatTabs: { research: { tabId: 'research', name: 'Research', createdAt: 1, config: {}, events: [], metadata: { mode: 'workflow', presetQueryId: 'plan', phaseId: 'workflow-builder', workflowOwnerTabID: 'owner-tab' } } } as never })
+  })
+  const rows = [...host.querySelectorAll('[role="option"]')]
+  expect(rows).toHaveLength(2)
+  expect(rows[0].getAttribute('data-navigation-id')).toBe('workflow:plan')
+  expect(rows[0].textContent).toContain('Example project')
+  expect(rows[1].getAttribute('data-navigation-parent')).toBe('workflow:plan')
+  expect(rows[1].getAttribute('aria-selected')).toBe('true')
+  await act(async () => { host.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
+  expect(useChatStore.getState().activeTabId).toBe('research')
+  expect(useProductSurfaceStore.getState().productSurface).toBe(kind === 'relay' ? 'relays' : 'agentworks')
+  expect(onClose).toHaveBeenCalledOnce()
 })
 
 it('omits global Goal activity from navigation and search', async () => {
