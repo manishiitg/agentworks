@@ -1,6 +1,6 @@
 import { useId, useRef } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { ArrowUp, Check, ChevronDown, ChevronRight, Clock, Plus, Square, Wand2 } from 'lucide-react'
+import { ArrowUp, Check, ChevronDown, ChevronRight, Clock, RotateCcw, Square, Wand2 } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { BackgroundWorkList } from '../BackgroundWorkPill'
 import type { useSessionBackgroundWork } from '../../hooks/useSessionBackgroundWork'
@@ -68,9 +68,9 @@ export function ChatSendModeButton({ mode, busy, disabled, onModeChange, onSend,
             </Menu.RadioGroup>
             {(onNewChat || onOpenCommands || onStop) && <>
               <Menu.Separator className="my-1.5 h-px bg-border" />
-              {onNewChat && <Menu.Item data-testid="chat-new-chat" title={busy ? 'Stop this chat and start a new one' : 'Start a new chat'} onSelect={() => { afterClose.current = onNewChat }}
+              {onNewChat && <Menu.Item data-testid="chat-new-chat" title={busy ? 'Stop this chat and start it over' : 'Start this chat over. Earlier messages stay in history'} onSelect={() => { afterClose.current = onNewChat }}
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-accent">
-                <Plus className="h-4 w-4" aria-hidden="true" />New chat
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />Clear chat
               </Menu.Item>}
               {onOpenCommands && <Menu.Item data-testid="chat-command-menu-button" onSelect={() => { afterClose.current = onOpenCommands }}
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-accent">
