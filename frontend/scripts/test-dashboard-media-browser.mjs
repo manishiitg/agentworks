@@ -57,10 +57,12 @@ try{
  await frame.getByRole('textbox',{name:'Review note'}).fill('Keep this review draft')
  await frame.evaluate(()=>{window.savedPlayer=document.querySelector('video');window.savedPlayer.currentTime=.5})
  const initialURLs=mediaURLs
- data=[{id:'character',kind:'media.character',title:'New character',revision:1,payload:{image_path:'db/assets/host.png',spec:'Approved appearance'}},...data]
+ data=[{id:'character',kind:'media.character',title:'New character',revision:1,payload:{image_path:'db/assets/host.png',spec:'# Appearance\n\n**Approved** appearance'}},...data]
  await frame.evaluate(async()=>{await Promise.all(window.__reportQueuedCallbacks.map(callback=>window.__runReportCallback(callback)))})
  await frame.getByRole('img',{name:'New character',exact:true}).waitFor()
  await frame.waitForFunction(()=>document.querySelector('img')?.naturalWidth===16)
+ await frame.getByRole('heading',{name:'Appearance',exact:true}).waitFor()
+ assert.equal(await frame.locator('strong').filter({hasText:'Approved'}).textContent(),'Approved')
  assert.ok(await frame.getByRole('img',{name:'New character',exact:true}).evaluate(image=>image.getBoundingClientRect().height<=576),'Reference images fit an automatically sized report frame')
  assert.equal(await frame.getByRole('textbox',{name:'Review note'}).inputValue(),'Keep this review draft')
  assert.equal(await frame.evaluate(()=>window.savedPlayer===document.querySelector('video')),true)
