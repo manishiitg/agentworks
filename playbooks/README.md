@@ -90,7 +90,7 @@ AgentWorks
 
 ## Browse categories and package locations
 
-The [Crew and use-case catalog](../docs/design/crew_template_catalog.md) treats **Engineering, GTM, Shopify, Customer Support, and Product** as major browse categories, with QA and Security nested beneath Engineering. Package directories retain their canonical IDs; a browse category can link to an existing package without copying it or installing a Crew.
+Workflow playbooks use **Engineering, GTM, Shopify, Customer Support, and Product** as major browse categories, with QA and Security nested beneath Engineering. Package directories retain their canonical IDs; a browse category can link to an existing package without copying it or installing a Crew.
 
 | Browse category | Current Workflow Playbook coverage | Crew and gap status |
 | --- | --- | --- |
