@@ -36,7 +36,7 @@ it('asks for the mode (Cowork or Dev, in that order), starts on Dev, and creates
   expect(onCreate).toHaveBeenCalledWith('Sales assistant', undefined, 'cowork')
 })
 
-it('can open on another mode (the Switch mode explanation sends people here)', async () => {
+it('can open on another mode', async () => {
   const host = await render(vi.fn(), 'cowork')
   expect([...host.querySelectorAll<HTMLInputElement>('input[type="radio"]')].map(r => r.checked)).toEqual([true, false])
 })

@@ -54,7 +54,7 @@ it('uses the server creation response and never writes project manifests or fall
   updatePlannerFile.mockClear()
   reserveProject.mockClear()
   for (const mode of ['cowork'] as const) {
-    createServerProject.mockResolvedValueOnce({ id: 'new-project', workspace_path: 'Crew/assistant-new', product_manifest: { schema_version: 1, product: 'code', id: 'new-project', title: 'Assistant', session_id: 'code:project:new-project', mode }, runtime_manifest: { capabilities: { selected_servers: [], selected_skills: [], memory_enabled: true } } })
+    createServerProject.mockResolvedValueOnce({ id: 'new-project', workspace_path: 'Crew/assistant-new', product_manifest: { schema_version: 1, product: 'code', id: 'new-project', title: 'Assistant', session_id: 'code:project:new-project', mode }, runtime_manifest: { capabilities: { selected_servers: [], selected_skills: [] } } })
     const created = await createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Assistant', description: '', mode })
     expect(createServerProject).toHaveBeenLastCalledWith('code', expect.objectContaining({ name: 'Assistant', mode }))
     expect(created.workspacePath).toBe('Crew/assistant-new')

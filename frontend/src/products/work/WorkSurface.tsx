@@ -1275,22 +1275,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [canCreateProjects, refuseCreate])
   useProductCreateRequest('work', openCreateProject)
 
-  // "Switch mode" in a project's settings sends people here: a project keeps the mode it was created in, so they make a new one.
-  useEffect(() => {
-    const open = (event: Event) => {
-      if (!canCreateProjects) {
-        refuseCreate()
-        return
-      }
-      const mode = (event as CustomEvent<{ mode?: ProductMode }>).detail?.mode
-      setCreateError(null)
-      setCreateMode(mode ?? 'dev')
-      setCreateOpen(true)
-    }
-    window.addEventListener('agentworks:new-crew-project', open)
-    return () => window.removeEventListener('agentworks:new-crew-project', open)
-  }, [canCreateProjects, product.profileId, refuseCreate])
-
   const deleteProject = useCallback(async () => {
     if (!deleteCandidate || deletingProjectId) return
     setDeletingProjectId(deleteCandidate.id)

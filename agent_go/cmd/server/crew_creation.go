@@ -435,9 +435,6 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		"browser_mode":                 "auto",
 		"use_code_execution_mode":      false,
 	}
-	for key, value := range newProjectRuntimeDefaults(profileID, settings.Mode) {
-		capabilities[key] = value
-	}
 	if llmConfig := resolveCrewCreationLLMConfig(profile, inheritedLLM); llmConfig != nil {
 		capabilities["llm_config"] = llmConfig
 	}

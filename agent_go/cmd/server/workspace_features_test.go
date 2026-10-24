@@ -16,43 +16,14 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
-func TestWorkspaceMemoryDefaultsAndSwitch(t *testing.T) {
-	_, profile := newCodePrivacyFixture(t)
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	if workspaceMemoryEnabled(ctx, "code", codePrivacyOwnerRoot) || !workspaceMemoryEnabled(ctx, "work", "Crew/existing") {
-		t.Fatal("origin memory defaults changed")
-	}
-	for _, enabled := range []bool{true, false} {
-		if err := setWorkspaceMemory(ctx, "code", codePrivacyOwnerRoot, enabled); err != nil {
-			t.Fatal(err)
-		}
-		if err := applyWorkspaceMemoryFeature(ctx, &profile, codePrivacyOwnerRoot); err != nil {
-			t.Fatal(err)
-		}
-		if agentprofiles.HasFeature(profile, "memory") != enabled {
-			t.Fatal("runtime ignored saved memory setting")
-		}
-		if sectionByName(t, "project-memory").Applies(promptContext{HasProfile: true, ProjectMemoryDisabled: !agentprofiles.HasFeature(profile, "memory")}) != enabled {
-			t.Fatal("Memory instruction gate disagrees with saved setting")
-		}
-		raw, _, err := readFileFromWorkspace(ctx, codePrivacyOwnerRoot+"/workflow.json")
-		var manifest productProjectManifest
-		if err != nil || json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Capabilities.MemoryEnabled == nil || *manifest.Capabilities.MemoryEnabled != enabled {
-			t.Fatal("typed manifest lost memory setting")
-		}
-	}
-}
-
-// Creation changes only the new project's explicit value; paths with absent
-// legacy settings retain their old behavior.
-func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
+// Creating a project keeps its origin, mode, owner and selected model.
+func TestNewProjectCreationKeepsOriginModeAndOwner(t *testing.T) {
 	f := newMultiUserFixture(t, legacyIdentityLayout())
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: fixtureUserA})
 	for _, tc := range []struct {
 		origin, mode string
-		enabled      bool
 	}{
-		{"work", "dev", true}, {"code", "dev", true}, {"code", "cowork", true},
+		{"work", "dev"}, {"code", "dev"}, {"code", "cowork"},
 	} {
 		t.Run(tc.origin+"/"+tc.mode, func(t *testing.T) {
 			body := `{"name":"Memory default","purpose":"Keep project facts","icon":"M","mode":"` + tc.mode + `","llm_config":{"schema_version":2,"mode":"explicit","builder_llm":{"provider":"codex-cli","model_id":"gpt-6-luna","connection_id":"company-account","options":{"reasoning_effort":"high"}}}}`
@@ -70,8 +41,7 @@ func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
 				} `json:"product_manifest"`
 				Runtime struct {
 					Capabilities struct {
-						Memory *bool `json:"memory_enabled"`
-						LLM    *struct {
+						LLM *struct {
 							Builder *struct {
 								Model      string `json:"model_id"`
 								Connection string `json:"connection_id"`
@@ -80,7 +50,7 @@ func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
 					} `json:"capabilities"`
 				} `json:"runtime_manifest"`
 			}
-			if rec.Code != http.StatusCreated || json.Unmarshal(rec.Body.Bytes(), &result) != nil || result.Runtime.Capabilities.Memory == nil || *result.Runtime.Capabilities.Memory != tc.enabled {
+			if rec.Code != http.StatusCreated || json.Unmarshal(rec.Body.Bytes(), &result) != nil {
 				t.Fatalf("creation policy: %d %s", rec.Code, rec.Body.String())
 			}
 			if !strings.HasPrefix(result.Root, "Crew/") || result.Manifest.Product != tc.origin || result.Manifest.Mode != tc.mode || result.Manifest.Session != tc.origin+":project:"+result.ID {
@@ -93,10 +63,6 @@ func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
 			if result.Runtime.Capabilities.LLM == nil || result.Runtime.Capabilities.LLM.Builder == nil || result.Runtime.Capabilities.LLM.Builder.Model != "gpt-6-luna" || result.Runtime.Capabilities.LLM.Builder.Connection != "company-account" {
 				t.Fatal("creation lost the selected model/account")
 			}
-			if enabled := workspaceMemoryEnabled(ctx, tc.origin, result.Root); enabled != tc.enabled {
-				t.Fatalf("saved memory=%v want %v", enabled, tc.enabled)
-			}
-
 		})
 	}
 	// MCP chooses the supported origin for a Cowork request without changing
@@ -133,18 +99,6 @@ func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
 	if _, err := f.API.projectCreationTool("code", fixtureUserB, "bounded-claims", agentprofiles.ToolBinding{}, bounded)(f.Ctx(fixtureUserB), map[string]any{"name": "Refused"}); err == nil {
 		t.Fatal("native creation dropped the current token's project limit")
 	}
-	for _, profile := range []agentprofiles.Profile{f.Crew, f.Code} {
-		root := "Crew/new-" + profile.ID + "-default"
-		if profile.ID == "code" {
-			root = "_users/" + fixtureUserA + "/Chats/Code/projects/new-code-default"
-		}
-		if _, err := writeCrewCreationManifests(ctx, fixtureUserA, profile, profile.ID, "", "Memory default", "", "", "", "new-"+profile.ID, root, nil); err != nil {
-			t.Fatal(err)
-		}
-		if !workspaceMemoryEnabled(ctx, profile.ID, root) {
-			t.Fatalf("native %s creation ignored its explicit default", profile.ID)
-		}
-	}
 	// Exercise the real Code factory registration, including saved native calls.
 	if err := workproduct.RegisterAgentProfileRuntime(f.API.agentProfiles, "http://127.0.0.1:0"); err != nil {
 		t.Fatal(err)
@@ -172,9 +126,6 @@ func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
 	}
 	if _, found := reader.tools["create_crew"]; found {
 		t.Fatal("Run mode received Crew creation")
-	}
-	if workspaceMemoryEnabled(ctx, "code", f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)) || !workspaceMemoryEnabled(ctx, "work", f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)) {
-		t.Fatal("new-project default changed existing projects")
 	}
 }
 
