@@ -17,7 +17,7 @@ import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHead
 import { StatusBanner } from '../../components/workflow/bots/StatusBanner'
 import { productMode, type ProductIdentity } from '../../platform/chat/productProjects'
 import type { ProductIdentityPatch } from '../../platform/chat/productProjects'
-import api, { workFolderApi } from '../../services/api'
+import { workFolderApi } from '../../services/api'
 import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
 import { loadWorkSessions } from './workSessions'
 import { useProjectProduct } from './projectProduct'
@@ -29,7 +29,6 @@ import { useChatStore } from '../../stores/useChatStore'
 
 import { useProjectMode } from './codeLocalFiles'
 import { CODE_MODE_CHOICES } from './CreateCodeWorkspaceDialog'
-import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 
 const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
 
@@ -53,25 +52,12 @@ function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<Wor
 }
 
 // Code has a name only: rename and delete, no identity or purpose.
-/** The mode this project was created in. It cannot change yet: "Switch mode" says so and offers a new project. */
+/** The mode this project was created in. It cannot change, so it is shown as plain text. */
 function ModeRow({ sessionId }: { sessionId: string }) {
   const mode = useProjectMode(sessionId)
-  const [explain, setExplain] = useState(false)
   const choice = CODE_MODE_CHOICES.find(item => item.mode === mode) ?? CODE_MODE_CHOICES[0]
-  return <SettingsCard icon={<choice.icon aria-hidden="true" className="h-4 w-4 text-primary" />} title={`Mode: ${choice.title}`} description={choice.text}
-    actions={<Button size="sm" variant="outline" onClick={() => setExplain(true)}>Switch mode</Button>}>
+  return <SettingsCard icon={<choice.icon aria-hidden="true" className="h-4 w-4 text-primary" />} title={`Mode: ${choice.title}`} description={choice.text}>
     {null}
-    <ConfirmationDialog
-      isOpen={explain}
-      onClose={() => setExplain(false)}
-      onConfirm={() => { setExplain(false); window.dispatchEvent(new CustomEvent('agentworks:new-crew-project')) }}
-      title="Switching mode is not available yet"
-      message="A project keeps the mode it was created in. To work in another mode, create a new project and choose the mode there."
-      confirmText="Create a new project"
-      cancelText="Close"
-      type="info"
-      ignoreWorkspaceAutoCollapse
-    />
   </SettingsCard>
 }
 
@@ -384,7 +370,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           onDeleteRequest={onDeleteRequest}
         />}
         {activeTab === 'general' &&  <ModeRow sessionId={sessionId} />}
-        {activeTab === 'general' && !shared && projectId && <WorkspaceMemorySetting projectId={projectId} />}
         {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
         {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} workspaceName={projectIdentity?.name?.trim() || projectTitle} /></Suspense>}
         {activeTab === 'models' && <div className="space-y-4">
@@ -437,30 +422,3 @@ function NativeAgentToolsSetting({ enabled, onChange }: { enabled: boolean; onCh
   )
 }
 
-function WorkspaceMemorySetting({ projectId }: { projectId: string }) {
-  const product = useProjectProduct()
-  const [enabled, setEnabled] = useState<boolean | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const workspaceId = `${product.profileId}:${projectId}`
-  useEffect(() => {
-    let cancelled = false
-    void api.post<{ memory_enabled: boolean }>('/api/workspaces', { action: 'get', workspace_id: workspaceId })
-      .then(({ data }) => { if (!cancelled) setEnabled(data.memory_enabled) })
-      .catch(() => { if (!cancelled) setError('Memory settings could not be loaded.') })
-    return () => { cancelled = true }
-  }, [workspaceId])
-  return <SettingsCard title="Memory" description="Keep project notes between conversations. Sharing keeps the same notes.">
-    <ToggleRow label="Project memory" checked={enabled === true} disabled={enabled === null || busy}
-      onCheckedChange={async checked => {
-        setBusy(true); setError('')
-        try {
-          await api.post('/api/workspaces', { action: 'update', workspace_id: workspaceId, changes: { memory_enabled: checked } })
-          setEnabled(checked)
-          window.dispatchEvent(new CustomEvent('agentworks:project-settings-changed', { detail: { projectId } }))
-        } catch { setError('Could not save Memory. Try again shortly.') }
-        finally { setBusy(false) }
-      }} />
-    {error && <p role="status" className="text-xs text-destructive">{error}</p>}
-  </SettingsCard>
-}

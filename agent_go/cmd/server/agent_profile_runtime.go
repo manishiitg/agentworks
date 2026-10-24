@@ -555,7 +555,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		promptContext.Product = productVars
 		identityKey = productVars["WORK_IDENTITY_KEY"]
 	}
-	if err := applyWorkspaceMemoryFeature(ctx, &profile, workspacePath); err != nil {
+	if err := applyWorkspaceMemoryFeature(&profile); err != nil {
 		return nil, err
 	}
 	if profile.ID == workproduct.ProfileID && codeProjectMode(ctx, workspacePath) == "cowork" {

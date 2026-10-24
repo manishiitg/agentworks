@@ -215,7 +215,7 @@ func TestExternalCrewAuthoringAccess(t *testing.T) {
 	alpha := created["crew_id"].(string)
 	// A bounded token may still edit the Crew it names.
 	boundedAlpha := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:write"}, CrewIDs: []string{alpha}}}
-	if code, out := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": alpha, "purpose": "Review changes."}); code != 200 || out["purpose"] != "Review changes." {
+	if code, out := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": alpha, "purpose": "Review changes."}); code != 200 || !strings.Contains(fmt.Sprint(out["changed"]), "purpose") {
 		t.Fatalf("owner update within the bound = %d %v", code, out)
 	}
 	if code, _ := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": "beta", "purpose": "x"}); code != 404 {

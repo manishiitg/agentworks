@@ -1333,7 +1333,7 @@ export const agentApi = {
   },
 
   /** Where a new project is created: the shared root when the server has that switch on (it registers the owner), else shared=false. */
-  reserveProject: async (profileId: string, title: string, mode?: string): Promise<{ shared: boolean; id?: string; workspace_path?: string; runtime_defaults?: { memory_enabled?: boolean } }> => {
+  reserveProject: async (profileId: string, title: string, mode?: string): Promise<{ shared: boolean; id?: string; workspace_path?: string }> => {
     const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects/reserve`, { title, ...(mode ? { mode } : {}) })
     return response.data
   },

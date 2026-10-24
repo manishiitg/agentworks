@@ -173,28 +173,6 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if action == "update" {
-		if changes, ok := args["changes"].(map[string]any); ok {
-			if value, present := changes["memory_enabled"]; present {
-				enabled, valid := value.(bool)
-				if !valid || len(changes) != 1 {
-					externalError(w, 400, "invalid_arguments", "Change memory_enabled with a boolean in its own update.")
-					return
-				}
-				if !binding.OwnedByCaller || !userAccessForClaims(claims).CanEdit || claims.AccessToken != nil && !claims.AccessToken.Allows("crews:write") {
-					externalError(w, 403, "forbidden", "Only a Builder can change project memory.")
-					return
-				}
-
-				if err := setWorkspaceMemory(r.Context(), manifest.Product, binding.Binding.WorkspacePath, enabled); err != nil {
-					externalFailure(w, err)
-					return
-				}
-				externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "memory_enabled": enabled})
-				return
-			}
-		}
-	}
 	if action == "get" {
 		target, err := api.dashboardTarget(r.Context(), claims, binding.Binding.WorkspacePath)
 		if err != nil {
@@ -212,7 +190,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 			externalFailure(w, err)
 			return
 		}
-		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "published_agents": published, "id": manifest.ID, "profile_id": manifest.Product, "name": manifest.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller], "share": share, "ui_panels": panels, "identity": manifest.Identity, "purpose": manifest.Description, "memory_enabled": workspaceMemoryEnabled(r.Context(), manifest.Product, binding.Binding.WorkspacePath)})
+		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "published_agents": published, "id": manifest.ID, "profile_id": manifest.Product, "name": manifest.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller], "share": share, "ui_panels": panels, "identity": manifest.Identity, "purpose": manifest.Description})
 		return
 	}
 	memberArgs := map[string]any{}

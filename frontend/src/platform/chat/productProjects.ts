@@ -282,7 +282,7 @@ export async function createProductProject<P extends string>(options: {
   const reserved = await (async () => agentApi.reserveProject(options.product, title, options.mode))().catch((error: unknown) => {
     const response = (error as { response?: { status?: number; data?: { error?: string } } })?.response
     if (response?.status === 403) throw new Error(response.data?.error || 'This account cannot create Crews.')
-    return { shared: false } as { shared: boolean; id?: string; workspace_path?: string; runtime_defaults?: { memory_enabled?: boolean } }
+    return { shared: false } as { shared: boolean; id?: string; workspace_path?: string }
   })
   const shared = reserved.shared && !!reserved.id && !!reserved.workspace_path
   const id = shared ? reserved.id! : globalThis.crypto.randomUUID()

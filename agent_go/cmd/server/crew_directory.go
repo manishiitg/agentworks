@@ -259,7 +259,6 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 		writeAgentProfileError(w, http.StatusBadRequest, "Choose Dev or Cowork for this Crew.")
 		return
 	}
-	defaults := newProjectRuntimeDefaults(profile.ID, body.Mode)
 	if status, message := projectCreationGate(claims, profile.ID); status != 0 {
 		writeAgentProfileError(w, status, message)
 		return
@@ -274,7 +273,7 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 		writeAgentProfileError(w, http.StatusInternalServerError, externalCrewCreateError(id, err))
 		return
 	}
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": true, "id": id, "workspace_path": created["workspace_path"], "runtime_defaults": defaults})
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": true, "id": id, "workspace_path": created["workspace_path"]})
 }
 
 func listSharedProjectsForOwner(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, ownerID string) []sharedProjectSummary {

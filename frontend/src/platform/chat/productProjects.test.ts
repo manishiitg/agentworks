@@ -24,7 +24,6 @@ describe('parseProductProjectManifest', () => {
       identity: {
         icon: '🚀',
         name: 'Nova',
-        role: 'Launch partner',
       },
       capabilities: { selected_servers: [], selected_skills: [] },
     }), 'Chats/Work/projects/launch', 'work')
@@ -32,7 +31,6 @@ describe('parseProductProjectManifest', () => {
     expect(project?.identity).toEqual({
       icon: '🚀',
       name: 'Nova',
-      role: 'Launch partner',
     })
   })
 })
@@ -54,7 +52,7 @@ it('uses the server creation response and never writes project manifests or fall
   updatePlannerFile.mockClear()
   reserveProject.mockClear()
   for (const mode of ['cowork'] as const) {
-    createServerProject.mockResolvedValueOnce({ id: 'new-project', workspace_path: 'Crew/assistant-new', product_manifest: { schema_version: 1, product: 'code', id: 'new-project', title: 'Assistant', session_id: 'code:project:new-project', mode }, runtime_manifest: { capabilities: { selected_servers: [], selected_skills: [], memory_enabled: true } } })
+    createServerProject.mockResolvedValueOnce({ id: 'new-project', workspace_path: 'Crew/assistant-new', product_manifest: { schema_version: 1, product: 'code', id: 'new-project', title: 'Assistant', session_id: 'code:project:new-project', mode }, runtime_manifest: { capabilities: { selected_servers: [], selected_skills: [] } } })
     const created = await createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Assistant', description: '', mode })
     expect(createServerProject).toHaveBeenLastCalledWith('code', expect.objectContaining({ name: 'Assistant', mode }))
     expect(created.workspacePath).toBe('Crew/assistant-new')
@@ -85,22 +83,22 @@ describe('updateProductProjectIdentity', () => {
   }
 
   it('merges the patch into product.json and preserves omitted fields', async () => {
-    mockManifest({ icon: '🚀', name: 'Nova', role: 'Launch partner' })
+    mockManifest({ icon: '🚀', name: 'Nova' })
     const updated = await updateProductProjectIdentity(project, { name: '  Stella  ' }, 'Update identity')
 
     expect(agentApi.getPlannerFileContent).toHaveBeenCalledWith('Chats/Work/projects/launch/product.json')
     const written = JSON.parse(updatePlannerFile.mock.calls[0][1])
-    expect(written.identity).toEqual({ icon: '🚀', name: 'Stella', role: 'Launch partner' })
+    expect(written.identity).toEqual({ icon: '🚀', name: 'Stella' })
     expect(updated.identity?.name).toBe('Stella')
   })
 
   it('writes purpose to the top-level description', async () => {
-    mockManifest({ icon: '🚀', name: 'Nova', role: 'Launch partner' })
+    mockManifest({ icon: '🚀', name: 'Nova' })
     const updated = await updateProductProjectIdentity(project, { purpose: '  Ship the launch.  ' }, 'Update identity')
 
     const written = JSON.parse(updatePlannerFile.mock.calls[0][1])
     expect(written.description).toBe('Ship the launch.')
-    expect(written.identity).toEqual({ icon: '🚀', name: 'Nova', role: 'Launch partner' })
+    expect(written.identity).toEqual({ icon: '🚀', name: 'Nova' })
     expect(updated.description).toBe('Ship the launch.')
   })
 

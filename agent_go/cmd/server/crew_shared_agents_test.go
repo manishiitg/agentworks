@@ -151,7 +151,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	// Read/run consent can use agents but cannot edit even the caller's own project.
 	reader.UserID = "owner"
 	for _, action := range []string{"open_chat", "rename_chat", "set_chat_model", "stop", "chat_tool", "update"} {
-		w := call(action, map[string]any{"chat_id": "coach", "name": "New name", "tool_name": "perform_ui_action", "changes": map[string]any{"memory_enabled": false}}, false)
+		w := call(action, map[string]any{"chat_id": "coach", "name": "New name", "tool_name": "perform_ui_action", "changes": map[string]any{"purpose": "Changed"}}, false)
 		if w.Code < 400 {
 			t.Fatalf("run-only connection acquired owner action %s: %s", action, w.Body.String())
 		}
