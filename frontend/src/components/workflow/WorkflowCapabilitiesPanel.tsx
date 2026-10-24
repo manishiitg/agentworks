@@ -3,7 +3,7 @@ import { selectWorkspacePaneWorkflowTab } from '../../utils/workspacePaneChat'
 import { capabilitiesEqual, mergeRemoteCapabilities } from './workflowCapabilitiesSync'
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LoaderCircle, Plus, Save, Users } from 'lucide-react'
-import { WorkspacePanelBack } from '../workspace/WorkspacePanelNavigation'
+import { WorkspacePanelBack, useWorkspacePanelChatDraft } from '../workspace/WorkspacePanelNavigation'
 import SkillsManagerPanel from '../skills/SkillsManagerPanel'
 import PlaybooksPanel from '../playbooks/PlaybooksPanel'
 import { ProjectSecretsPanel } from '../integrations/ProjectSecretsPanel'
@@ -14,7 +14,6 @@ import { ProjectMcpSetupPanel } from '../integrations/ProjectMcpSetupPanel'
 import { integrationNavigationOptions } from '../integrations/IntegrationNavigation'
 import { projectChannelLabel, type ProjectChannel } from '../integrations/projectChannels'
 import { ProjectAgentBridgePanel } from '../workspace/ProjectAgentBridgePanel'
-import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { ShareDashboardButton } from './ShareDashboardButton'
 import { integrationProductAvailable, projectIntegrationSections } from '../integrations/integrationSections'
 import { ProjectPluginsPanel, projectPluginTabs, type PluginTab } from '../integrations/ProjectPluginsPanel'
@@ -147,9 +146,10 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
     if (mcpTabs.some(option => option.value === target)) setTab(target as McpTab)
     else if (pluginTabs.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab) }
   }
+  const prepareDraft = useWorkspacePanelChatDraft(vaultTabId)
   const askInCurrentChat = async (message: string) => {
     if (!vaultTabId) throw new Error('Open your own project chat to make this change.')
-    await openWorkspacePaneChatWithDraft({ tabId: vaultTabId, message })
+    await prepareDraft(message)
   }
   const activeConnection = activeMcpTab === 'apps' ? pluginTab : activeMcpTab
   const connectionLabel = !relayMode && activeMcpTab === 'apps' && pluginTab !== 'skills' ? 'Vault' : navigationOptions.find(option => option.value === (activeConnection === 'available' ? 'connected' : activeConnection))?.label ?? 'MCPs'

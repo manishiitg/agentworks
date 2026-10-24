@@ -10,6 +10,7 @@ import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { WorkFoldersSection } from './WorkIdentityPanel'
 import { CrewPublishedAgents } from './CrewPublishedAgents'
+import { useWorkspacePanelChatDraft } from '../../components/workspace/WorkspacePanelNavigation'
 import { ProjectAgentBridgePanel } from '../../components/workspace/ProjectAgentBridgePanel'
 import { useProjectProduct } from './projectProduct'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
@@ -24,6 +25,7 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
   onAsk: (message: string) => Promise<void>
   workflowContextPaths: string[]; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>
 }) {
+  const draft = useWorkspacePanelChatDraft(tabId)
   const product = useProjectProduct()
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const [tab, setTab] = useState<WorkIntegrationTab>('vault')
@@ -41,8 +43,8 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <WorkspaceViewHeader icon={shareSection ? Users : tab === 'agentbridge' ? Cable : tab === 'vault' ? Vault : Server} title={shareSection ? 'Access' : labels[tab]} />
     <div data-ui-view-section={shareSection ? 'share' : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
-      {shareSection ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /> : <>
-        {tab === 'agentbridge' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={onAsk} />}
+      {shareSection ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={draft} /> : <>
+        {tab === 'agentbridge' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} />}
         {tab === 'vault' && <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled={!canEdit} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} onAsk={onAsk} />}
         {tab === 'folders' && <WorkFoldersSection workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} onAsk={onAsk} askMessage="Help me choose the projects and folders this Crew uses." />}

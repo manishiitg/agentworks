@@ -23,6 +23,18 @@ export function useWorkspacePanelHosted() {
   return !!useContext(WorkspacePanelNavigationContext).scope
 }
 
+/** Panel actions prepare a draft in the displayed chat, without sending it. */
+export function useWorkspacePanelChatDraft(tabId?: string) {
+  const { chatTarget, onOpenChat } = useContext(WorkspacePanelNavigationContext)
+  return async (message: string) => {
+    const target = tabId ? { tabId } : chatTarget
+    if (!target) throw new Error('Open your own project chat to make this change.')
+    const { openWorkspacePaneChatWithDraft } = await import('../../utils/workspacePaneChat')
+    await openWorkspacePaneChatWithDraft({ ...target, message })
+    onOpenChat?.()
+  }
+}
+
 /** Nested details reuse the header arrow. Standalone panels get the same compact
  * control locally, so the reader remains usable without a workspace shell. */
 export function WorkspacePanelBack({ label, onBack }: { label: string; onBack: () => void }) {

@@ -22,7 +22,11 @@ try {
       await route.fulfill({ json: {} })
     })
     await page.goto(server.resolvedUrls.local[0] + 'scripts/test-fixtures/crew-share-agents-qa.html?bridge=true&target=' + encodeURIComponent(target) + '&theme=' + theme)
-    await page.getByRole('region', { name: "This project's agents" }).getByText('Review', { exact: true }).waitFor()
+    await page.getByRole('region', { name: "This project's agents" }).getByText('Review', { exact: true }).waitFor({ timeout: 10_000 }).catch(async error => {
+      await page.screenshot({ path: path.join(output, 'agentbridge-failed-' + product + '.png'), fullPage: true })
+      console.error(JSON.stringify({ product, reads, errors, page: await page.locator('body').innerText() }))
+      throw error
+    })
     await page.getByRole('button', { name: /Review Review work/ }).click()
     await page.waitForFunction(() => document.querySelector('[data-testid="chat-request"]').textContent.includes('chat_id'))
     assert.ok((await page.getByTestId('chat-request').textContent()).includes(target), 'current project target is retained')
