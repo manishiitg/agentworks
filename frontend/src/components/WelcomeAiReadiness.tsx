@@ -1,5 +1,5 @@
 import { codingProviderName } from '../utils/codingProviderName'
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ArrowRight, CheckCircle2, KeyRound, Loader2, LogIn, Terminal } from 'lucide-react'
 import { llmConfigService, type ProviderConnection, type ProviderManifestEntry } from '../services/llm-config-api'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -7,16 +7,13 @@ import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionSto
 import { PRODUCT_SURFACE_LABELS, type ProductSurface } from '../products/productSurfaceConfig'
 import { Button } from './ui/Button'
 
-const CodingProvidersPanel = lazy(() => import('./providers/CodingProvidersPanel'))
 type Inventory = { providers: ProviderManifestEntry[]; accounts: { product: ProductSurface; connections: ProviderConnection[] }[] }
 type Check = { scope: string; status: 'loading' | 'loaded' | 'error'; inventory?: Inventory }
 
 /** Check actual caller-scoped accounts, not the saved model defaults (which may exist before sign-in). */
-export default function WelcomeAiReadiness({ products, setupOpen, onSetup, onCloseSetup }: {
+export default function WelcomeAiReadiness({ products, onSetup }: {
   products: ProductSurface[]
-  setupOpen: boolean
   onSetup: () => void
-  onCloseSetup: () => void
 }) {
   const user = useAuthStore(state => state.user)
   const profile = useWorkspaceConnectionStore(state => state.profiles.find(item => item.id === state.activeWorkspaceId))
@@ -78,12 +75,6 @@ export default function WelcomeAiReadiness({ products, setupOpen, onSetup, onClo
   const connections = inventory?.accounts.flatMap(group => group.connections) ?? []
   const canAddPersonal = (provider: ProviderManifestEntry) => connections.some(account => account.provider === provider.id && account.scope === 'global' && account.personal_accounts_allowed === true)
   const personalAllowed = inventory?.providers.some(canAddPersonal)
-  const preferred = inventory?.providers.find(provider => connections.some(account => account.provider === provider.id && eligible(account) && account.configured === true) && provider.runtime_available === true)
-    ?? inventory?.providers.find(provider => provider.runtime_available === true && canAddPersonal(provider))
-    ?? inventory?.providers.find(provider => provider.install_available && canAddPersonal(provider))
-    ?? inventory?.providers[0]
-  const setupProduct = inventory?.accounts.find(group => group.connections.some(account => account.provider === preferred?.id && eligible(account)))?.product ?? products[0]
-  const closeSetup = () => { onCloseSetup(); refresh() }
 
   return <>
     <section aria-label="AI account setup" className={`rounded-2xl border p-4 sm:p-5 ${ready ? 'border-border bg-card' : 'border-primary/30 bg-primary/[0.04]'}`}>
@@ -111,6 +102,5 @@ export default function WelcomeAiReadiness({ products, setupOpen, onSetup, onClo
         {[{ icon: Terminal, label: 'Choose a CLI' }, { icon: LogIn, label: 'Sign in or add a key' }, { icon: CheckCircle2, label: 'Start your work' }].map((step, index) => <li key={step.label} className="flex items-center gap-2"><step.icon className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span><span className="sr-only">{index + 1}. </span>{step.label}</span></li>)}
       </ol>}
     </section>
-    {setupOpen && <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">Loading AI setup…</p>}><CodingProvidersPanel key={scope} isOpen welcomeSetup initialProviderId={preferred?.id} product={setupProduct} onClose={closeSetup} /></Suspense>}
   </>
 }

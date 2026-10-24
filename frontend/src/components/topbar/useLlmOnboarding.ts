@@ -1,3 +1,5 @@
+import { openWorkspaceSettings, closeWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
+import { workspaceSettingsPage } from '../../utils/workspaceSettingsRoutes'
 import { useCallback, useEffect, useState } from 'react'
 import { useLLMStore } from '../../stores'
 import {
@@ -36,16 +38,17 @@ export function useLlmOnboarding() {
     [primaryConfig, chatPrimaryConfig, workflowPrimaryConfig].some(config => Boolean(config?.provider && config?.model_id?.trim())) ||
     [agentConfig, chatAgentConfig, workflowAgentConfig].some(config => Boolean(config?.primary?.provider && config?.primary?.model_id?.trim()))
 
-  const openLLMConfigModal = useCallback(() => setShowLLMModal(true), [setShowLLMModal])
+  const openLLMConfigModal = useCallback(() => openWorkspaceSettings('providers'), [])
 
   const openLLMOnboarding = useCallback(() => {
     markLLMDiscoveryOnboardingOpen()
     setLLMOnboardingActive(true)
-    setShowLLMModal(true)
+    openWorkspaceSettings('providers')
   }, [setShowLLMModal])
 
   const closeLLMConfigurationModal = useCallback(() => {
-    setShowLLMModal(false)
+    if (workspaceSettingsPage() === 'providers') closeWorkspaceSettings()
+    else setShowLLMModal(false)
     if (llmOnboardingActive) {
       dismissLLMDiscoveryOnboarding()
       setLLMOnboardingActive(false)
@@ -69,7 +72,7 @@ export function useLlmOnboarding() {
       openLLMOnboarding()
       return
     }
-    if (!defaultsLoaded || hasConfiguredLLM) return
+    if (!defaultsLoaded || hasConfiguredLLM || workspaceSettingsPage()) return
     if (isLLMDiscoveryOnboardingDismissed()) {
       markLLMDiscoveryOnboardingCleared()
       return

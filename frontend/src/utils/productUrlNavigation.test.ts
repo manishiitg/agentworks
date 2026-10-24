@@ -71,21 +71,22 @@ it('keeps the Dashboards deep link until deliberate navigation, including return
 })
 
 
-it('keeps Home during background hydration, then opens an explicitly chosen workspace', () => {
+it.each(['/home', '/settings/people'])('keeps %s during background hydration, then opens an explicitly chosen workspace', path => {
   vi.useFakeTimers()
   useProductSurfaceStore.setState({ productSurface: 'work', selectedWorkProjectId: 'same' })
-  window.history.replaceState({}, '', '/home')
+  window.history.replaceState({}, '', path)
   const navigated = vi.fn()
-  window.addEventListener('product-navigation-changed', navigated)
+  const event = path === '/home' ? 'product-navigation-changed' : 'popstate'
+  window.addEventListener(event, navigated)
   const stop = observeProductHistory()
   try {
     replaceProductSelection(() => useProductSurfaceStore.setState({ selectedWorkProjectId: 'available' }))
     productUrlViewChanged(true)
     vi.runAllTimers()
-    expect(window.location.pathname).toBe('/home')
+    expect(window.location.pathname).toBe(path)
     productUrlViewChanged()
     vi.runAllTimers()
     expect(window.location.pathname).toBe('/crew/projects/available')
     expect(navigated).toHaveBeenCalledOnce()
-  } finally { stop(); window.removeEventListener('product-navigation-changed', navigated) }
+  } finally { stop(); window.removeEventListener(event, navigated) }
 })

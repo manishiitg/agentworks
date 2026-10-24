@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { ArrowRight, Plug, Menu } from 'lucide-react'
 import { Button } from './ui/Button'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
@@ -13,7 +14,6 @@ import { productUrlViewChanged } from '../utils/productUrlNavigation'
 import WelcomeAiReadiness from './WelcomeAiReadiness'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 
-const McpConnectDialog = lazy(() => import('./integrations/McpConnectDialog'))
 
 export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
 export const OPEN_WELCOME_HOME_EVENT = 'open-welcome-home'
@@ -35,8 +35,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   // Single-product accounts go straight to their workspace; Getting started can still open this page.
   const [open, setOpen] = useState(() => window.location.pathname === '/home' || (autoOpen && !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && navigationProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).length !== 1))
   const sidebarWidth = useProductNavigationToolbarStore(state => state.sidebarWidth)
-  const [connectOpen, setConnectOpen] = useState(false)
-  const [providerSetupOpen, setProviderSetupOpen] = useState(false)
   const user = useAuthStore(state => state.user)
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const products = useMemo(() => {
@@ -47,8 +45,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const leaveHome = useCallback(() => {
     rememberGuide(WELCOME_HOME_DISMISSED_KEY)
     useWorkspaceReturnStore.setState({ firstVisit: false })
-    setConnectOpen(false)
-    setProviderSetupOpen(false)
     setOpen(false)
     if (window.location.pathname === '/home') productUrlViewChanged()
   }, [])
@@ -56,7 +52,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   useEffect(() => {
     const show = () => {
       if (window.location.pathname !== '/home') window.history.pushState({}, '', '/home')
-      setConnectOpen(false); setProviderSetupOpen(false); setOpen(true)
+      setOpen(true)
     }
     const syncLocation = () => {
       if (window.location.pathname === '/home') show()
@@ -96,8 +92,8 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
     openProductWorkspace(surface)
     leaveHome()
   }
-  const openMcpSetup = () => setConnectOpen(true)
-  const openProviders = () => setProviderSetupOpen(true)
+  const openMcpSetup = () => openWorkspaceSettings('mcp')
+  const openProviders = () => openWorkspaceSettings('providers')
 
   return (
     <main aria-label="Getting started"
@@ -117,7 +113,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
             className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"><Menu className="h-5 w-5" aria-hidden="true" /></button>
         </header>
 
-        {workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} setupOpen={providerSetupOpen} onSetup={openProviders} onCloseSetup={() => setProviderSetupOpen(false)} />}
+        {workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} />}
 
         {workProducts.length > 0 && <section aria-labelledby="welcome-products">
           <h2 id="welcome-products" className="sr-only">Choose where to work</h2>
@@ -169,7 +165,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
         </section>
 
       </div>
-      {connectOpen && <Suspense fallback={<p role="status" className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg border border-border bg-card p-3 text-sm">Loading connection setup…</p>}><McpConnectDialog onClose={() => setConnectOpen(false)} onNavigate={leaveHome} /></Suspense>}
     </main>
   )
 }

@@ -1,4 +1,5 @@
-import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, AlertCircle, Users, Ban, ChevronDown, ChevronRight, Search, Copy, Plug } from 'lucide-react'
 import { authApi, type AdminUser, type AdminUserWrite } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -13,7 +14,6 @@ import { selectableProducts } from './selectableProducts'
 import { formatTokens, sharedAccountLabel } from '../../utils/tokenLimits'
 import { allowedModelsText } from '../../utils/allowedModels'
 
-const McpConnectDialog = lazy(() => import('../integrations/McpConnectDialog'))
 
 // One role per account. The server stamps `role` and dual-writes the legacy
 // booleans; both are sent so older servers (which ignore `role`) enforce
@@ -73,7 +73,6 @@ const UsersAdminPanel: React.FC<{ vaultOnly?: boolean }> = ({ vaultOnly = false 
   const [expanded, setExpanded] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [copied, setCopied] = useState<string | null>(null)
-  const [connectOpen, setConnectOpen] = useState(false)
   const loadSeq = useRef(0)
   const refresh = useCallback(async () => {
     const seq = ++loadSeq.current
@@ -114,7 +113,7 @@ const UsersAdminPanel: React.FC<{ vaultOnly?: boolean }> = ({ vaultOnly = false 
       description={vaultOnly ? undefined : 'Review access here. Update detailed permissions, AI limits and account settings through your connected AI app.'}>
       {!vaultOnly && <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <p>Basic updates are available below. New people are added by your server administrator.</p>
-        <Button size="sm" variant="outline" onClick={() => setConnectOpen(true)}><Plug className="mr-1.5 h-3.5 w-3.5" />Connect AI app</Button>
+        <Button size="sm" variant="outline" onClick={() => openWorkspaceSettings('mcp')}><Plug className="mr-1.5 h-3.5 w-3.5" />Connect AI app</Button>
       </div>}
       {!vaultOnly && sharedProducts.length > 0 && <p className="mb-4 text-xs text-muted-foreground">Available to everyone: {sharedProducts.map(productLabel).join(', ')}. Access to folders, connections and agents follows their sharing settings.</p>}
       {error && <div role="alert" className="mb-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
@@ -163,7 +162,6 @@ const UsersAdminPanel: React.FC<{ vaultOnly?: boolean }> = ({ vaultOnly = false 
           })}{!shown.length && <li className="px-3 py-4 text-xs text-muted-foreground">No one matches “{query}”.</li>}</ul>
         </div>}
     </SettingsCard>
-    {connectOpen && <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">Loading connection setup…</p>}><McpConnectDialog onClose={() => setConnectOpen(false)} onNavigate={() => setConnectOpen(false)} /></Suspense>}
   </div>
 }
 

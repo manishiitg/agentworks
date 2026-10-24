@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import React, { act } from 'react'
+import React, { act, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -159,4 +159,25 @@ describe('server workspace return', () => {
       expect(mocks.resolve).toHaveBeenCalledWith({ surface: 'work' }, expect.any(AbortSignal))
     } finally { await act(async () => root.unmount()); host.remove() }
   })
+})
+
+
+it('opens every account settings deep link without selecting a private workspace or mounting twice', async () => {
+  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  let mounts = 0
+  const Page = () => { useEffect(() => { mounts++ }, []); return <div>Account settings</div> }
+  try {
+    window.history.replaceState({}, '', '/settings/people')
+    await act(async () => root.render(<ProductRouteBoundary account="member" allowedProducts={[]}><Page /></ProductRouteBoundary>))
+    for (const path of ['/settings/ai-accounts', '/settings/ai-tools', '/settings/people']) {
+      window.history.pushState({}, '', path)
+      await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
+      expect(window.location.pathname).toBe(path)
+      expect(host.textContent).toBe('Account settings')
+    }
+    expect(mocks.resolve).not.toHaveBeenCalled()
+    expect(mounts).toBe(1)
+  } finally { await act(async () => root.unmount()); host.remove() }
 })

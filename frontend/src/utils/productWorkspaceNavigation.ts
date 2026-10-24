@@ -1,3 +1,4 @@
+import { workspaceSettingsPage } from './workspaceSettingsRoutes'
 import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useAppStore } from '../stores/useAppStore'
@@ -34,5 +35,5 @@ export function openProductWorkspace(surface: ProductSurface) {
     app.setAgentMode('multi-agent')
   }
   useProductSurfaceStore.getState().setProductSurface(surface)
-  if (['/dashboards', '/home'].includes(window.location.pathname)) productUrlViewChanged()
+  if (workspaceSettingsPage() || ['/dashboards', '/home'].includes(window.location.pathname)) productUrlViewChanged()
 }

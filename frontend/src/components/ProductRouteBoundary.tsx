@@ -1,3 +1,5 @@
+import { workspaceSettingsPage } from '../utils/workspaceSettingsRoutes'
+import { syncWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { enabledProductSurfaces, intersectAllowedProductSurfaces } from '../products/productSurfaceConfig'
 import { waitForChatStoreHydration } from '../stores/useChatStore'
@@ -30,15 +32,26 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
       // Store-driven pushes need no rehydration. A later Back to the initial
       // path can have the same cached URL string, but is still a new intent.
       setAttempt(value => value + 1)
-      setLocation(window.location.pathname + window.location.search)
+      const next = window.location.pathname + window.location.search
+      const settings = workspaceSettingsPage()
+      syncWorkspaceSettings(settings)
+      setLocation(next)
+      if (settings) setResolution({ location: next, account, workspace, status: 'ready', attempt: attempt + 1, permissionKey })
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
-  }, [])
+  }, [account, workspace, attempt, permissionKey])
   useEffect(() => {
     const controller = new AbortController()
     activeResolution.current = controller
     const finish = (status: Status) => { if (!controller.signal.aborted) setResolution({ location, account, workspace, status, attempt, permissionKey }) }
+    const settings = workspaceSettingsPage()
+    if (settings) {
+      syncWorkspaceSettings(settings)
+      useWorkspaceReturnStore.setState({ firstVisit: false, restore: null })
+      finish('ready')
+      return () => controller.abort()
+    }
     const homeRequested = window.location.pathname === '/home'
     // Resolve the permitted workspace normally, while Home remains the page.
     let requested = homeRequested ? '/' : window.location.pathname + window.location.search
