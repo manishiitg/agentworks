@@ -21,9 +21,9 @@ const PERSONAL_PRODUCTS = new Set<string>(['video-studio', 'sparkquill'])
 const WORK_PRODUCT_ORDER: ProductSurface[] = ['work', 'agentworks', 'relays']
 const SERVICE_ORDER: ProductSurface[] = ['knowledgebase', 'mcp-gateway', 'bullpen']
 const STARTING_POINTS: Partial<Record<ProductSurface, { heading: string; example: string; createLabel: string; openLabel: string }>> = {
-  work: { heading: 'Delegate a business job', example: 'Create agents for customer support, sales follow-ups or finance. Give them your tools and instructions to handle everyday work for your team.', createLabel: 'Create a Crew', openLabel: 'Open existing Crews' },
-  agentworks: { heading: 'Put agents to work toward a business target', example: 'Set a target, like 20 qualified leads a week or fewer overdue invoices. Agents carry out the work and track progress toward that result.', createLabel: 'Create a Goal', openLabel: 'Open existing Goals' },
-  relays: { heading: 'Automate a process from start to finish', example: 'Turn your business process into connected steps: new order → invoice → confirmation, or every Monday → sales report.', createLabel: 'Create a Flow', openLabel: 'Open existing Flows' },
+  work: { heading: 'Delegate everyday work', example: 'Create an agent to research, organize information or handle follow-ups. Connect your apps and give it instructions for the tasks you want done.', createLabel: 'Create a Crew', openLabel: 'Open existing Crews' },
+  agentworks: { heading: 'Put agents to work toward a target', example: 'Set a target, like publishing four posts a week or clearing a backlog. Agents carry out the work and track progress.', createLabel: 'Create a Goal', openLabel: 'Open existing Goals' },
+  relays: { heading: 'Automate a process from start to finish', example: 'Connect steps for tasks you repeat: meeting notes → summary → tasks, or every Monday → weekly update.', createLabel: 'Create a Flow', openLabel: 'Open existing Flows' },
 }
 const SERVICE_DESCRIPTIONS: Partial<Record<ProductSurface, string>> = {
   knowledgebase: 'Knowledge your agents can reuse',
@@ -106,7 +106,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
               {mark && <img src={mark} alt="" className="h-6 w-6 rounded-md" />}
               Welcome to {appName}
             </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Automate your business with AI agents</h1>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Automate your work with AI agents</h1>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">Connect your apps, describe the work, and choose how it should run.</p>
           </div>
           <button type="button" aria-label="Open navigation" onClick={() => window.dispatchEvent(new Event('open-app-sidebar'))}
