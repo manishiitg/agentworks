@@ -24,4 +24,7 @@ func TestDailyDigestArgsSummarisesTheDayAndSkipsEmptyDays(t *testing.T) {
 	if msg := args["message_for_user"].(string); !strings.Contains(msg, "- Sales outreach run failed: Apollo path closed") {
 		t.Fatalf("message lacks the failed run line: %q", msg)
 	}
+	if body := args["email_html"].(string); !strings.Contains(body, ">Failed<") || !strings.Contains(body, "Apollo path closed") {
+		t.Fatalf("the digest email must be HTML with the failed run marked: %q", body)
+	}
 }

@@ -244,7 +244,15 @@ func afterRunNotificationArgs(workflowName, scheduleName, status, errMsg string,
 	if duration > 0 {
 		fields = append(fields, map[string]interface{}{"label": "Duration", "value": duration.Round(time.Second).String()})
 	}
+	htmlFields := [][2]string{{"Status", verb}}
+	if strings.TrimSpace(scheduleName) != "" {
+		htmlFields = append(htmlFields, [2]string{"Schedule", scheduleName})
+	}
+	if duration > 0 {
+		htmlFields = append(htmlFields, [2]string{"Duration", duration.Round(time.Second).String()})
+	}
 	args := map[string]interface{}{
+		"email_html":        ownerEmailHTML(title, message, htmlFields, nil, ""),
 		"message_for_user":  message,
 		"notification_kind": "run_summary",
 		"summary_title":     title,

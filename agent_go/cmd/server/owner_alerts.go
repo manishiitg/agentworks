@@ -54,8 +54,11 @@ func alertOwnerWorkStopped(ctx context.Context, input *ReportHumanInput) {
 	if c := strings.TrimSpace(input.Context); c != "" {
 		message += "\n\n" + c
 	}
-	message += "\n\nAnswer it in AgentWorks: open " + name + ", then Needs you."
+	footer := "Answer it in AgentWorks: open " + name + ", then Needs you."
+	htmlBody := ownerEmailHTML(title, message, nil, nil, footer)
+	message += "\n\n" + footer
 	args := map[string]interface{}{
+		"email_html":        htmlBody,
 		"message_for_user":  message,
 		"notification_kind": "pulse_summary",
 		"delivery_mode":     "external_only",
@@ -88,16 +91,18 @@ func dailyDigestArgs(workflowName, day string, runs []dailyDigestRun) map[string
 	}
 	counts := map[string]int{}
 	lines := make([]string, 0, len(runs))
+	htmlLines := make([]ownerEmailLine, 0, len(runs))
 	for _, run := range runs {
 		counts[run.status]++
-		line := "- " + run.title
+		line := run.title
 		if msg := strings.TrimSpace(run.message); msg != "" && msg != run.title+"." {
 			if len(msg) > 200 {
 				msg = msg[:200] + "…"
 			}
 			line += ": " + msg
 		}
-		lines = append(lines, line)
+		lines = append(lines, "- "+line)
+		htmlLines = append(htmlLines, ownerEmailLine{status: run.status, text: line})
 	}
 	failed := counts["failed"] + counts["blocked"]
 	headline := fmt.Sprintf("%s today: %d runs", workflowName, len(runs))
@@ -123,6 +128,8 @@ func dailyDigestArgs(workflowName, day string, runs []dailyDigestRun) map[string
 			map[string]interface{}{"label": "Runs", "value": fmt.Sprint(len(runs))},
 		},
 		"email_subject": headline,
+		"email_html": ownerEmailHTML(headline, "", [][2]string{{"Day", day}, {"Runs", fmt.Sprint(len(runs))}}, htmlLines,
+			"Turn this daily email off in the Goal's Notify settings, or ask its chat to turn off the daily digest."),
 	}
 }
 
@@ -233,5 +240,69 @@ func (s *SchedulerService) sendDueDailyDigests(ctx context.Context, now time.Tim
 		if _, err := virtualtools.DeliverWorkflowNotification(nctx, args); err != nil {
 			log.Printf("[DAILY_DIGEST] %s not sent: %v", workspacePath, err)
 		}
+	}
+}
+
+// gmailSendingInputID prefixes the one Needs you item a workflow keeps open
+// while its Gmail notifications cannot be sent; it is refreshed, never
+// duplicated, and a later outage opens a new one.
+const gmailSendingInputID = "gmail-notifications-failing"
+
+// pendingGmailSendingInputs lists the workflow's open failing-Gmail notices.
+func pendingGmailSendingInputs(ctx context.Context, workspacePath string) []string {
+	inputs, err := listReportHumanInputs(ctx, workspacePath, "pending", "pulse")
+	if err != nil {
+		return nil
+	}
+	var ids []string
+	for _, input := range inputs {
+		if strings.HasPrefix(input.ID, gmailSendingInputID) {
+			ids = append(ids, input.ID)
+		}
+	}
+	return ids
+}
+
+func init() {
+	virtualtools.NotificationGmailFailed = recordGmailSendingFailure
+	virtualtools.NotificationGmailDelivered = clearGmailSendingFailure
+}
+
+// recordGmailSendingFailure puts failing Gmail notifications in the
+// workflow's Needs you, because the failed email cannot say so itself
+// (sends failed silently for two days on 23-24 Oct with an expired sign-in).
+func recordGmailSendingFailure(ctx context.Context, workspacePath, errText string) {
+	reason := "the email could not be sent"
+	lower := strings.ToLower(errText)
+	if strings.Contains(lower, "invalid_grant") || strings.Contains(lower, "expired or revoked") || strings.Contains(lower, "auth add") {
+		reason = "the Google sign-in of the sending Gmail account has expired"
+	}
+	id := gmailSendingInputID + "-" + time.Now().UTC().Format("20060102-150405")
+	if open := pendingGmailSendingInputs(ctx, workspacePath); len(open) > 0 {
+		id = open[0]
+	}
+	_, err := createReportHumanInput(ctx, workspacePath, ReportHumanInputCreateRequest{
+		WorkspacePath: workspacePath,
+		InputID:       id,
+		Source:        "pulse",
+		Priority:      "high",
+		Question:      "Email notifications from this Goal are failing. Can you reconnect its Gmail account?",
+		Context:       "Run summaries, daily digests and alerts are not reaching your inbox because " + reason + ". They are still recorded in the app. Reconnect the Gmail account used for notifications; this notice clears itself after the next email is sent.",
+		AllowFreeText: true,
+		CreatedBy:     "platform",
+		CreatedByKind: "system",
+		CreatedVia:    "notification_delivery",
+	})
+	if err != nil {
+		log.Printf("[OWNER_ALERT] could not record failing Gmail notifications for %s: %v", workspacePath, err)
+	}
+}
+
+// clearGmailSendingFailure dismisses the notice once an email goes through.
+func clearGmailSendingFailure(ctx context.Context, workspacePath string) {
+	for _, id := range pendingGmailSendingInputs(ctx, workspacePath) {
+		_, _ = dismissReportHumanInput(ctx, workspacePath, id, ReportHumanInputAnswerRequest{
+			Note: "Email notifications are being sent again.", AnsweredBy: "platform", AnsweredByKind: "system", AnsweredVia: "notification_delivery",
+		})
 	}
 }

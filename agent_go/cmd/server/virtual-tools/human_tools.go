@@ -223,6 +223,14 @@ func CreateHumanTools() []llmtypes.Tool {
 
 var sendRichSlackIncomingWebhook = services.SendRichSlackIncomingWebhook
 
+// NotificationGmailFailed and NotificationGmailDelivered let the server show a
+// workflow's Gmail sending trouble to its owner (owner_alerts.go): an email
+// that cannot be sent cannot report its own failure.
+var (
+	NotificationGmailFailed    func(ctx context.Context, workspacePath, errText string)
+	NotificationGmailDelivered func(ctx context.Context, workspacePath string)
+)
+
 // gmailEnabled reports whether the Gmail connector is currently an enabled
 // delivery channel.
 func gmailEnabled() bool {
@@ -635,6 +643,12 @@ func DeliverWorkflowNotification(ctx context.Context, args map[string]interface{
 		default:
 			delivered = append(delivered, r.Channel)
 		}
+	}
+
+	if errText, ok := failed["gmail"]; ok && NotificationGmailFailed != nil && strings.TrimSpace(dest.WorkspacePath) != "" {
+		NotificationGmailFailed(context.WithoutCancel(ctx), dest.WorkspacePath, errText)
+	} else if ok := containsNotificationChannel(delivered, "gmail"); ok && NotificationGmailDelivered != nil && strings.TrimSpace(dest.WorkspacePath) != "" {
+		NotificationGmailDelivered(context.WithoutCancel(ctx), dest.WorkspacePath)
 	}
 
 	var status string
