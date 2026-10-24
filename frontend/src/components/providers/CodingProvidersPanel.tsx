@@ -1,3 +1,4 @@
+import { codingProviderName } from '../../utils/codingProviderName'
 import { WorkspacePageHeader } from '../workspace/WorkspacePageHeader'
 import ProviderAccounts from './ProviderAccounts'
 import CostsOverview from './CostsOverview'
@@ -41,12 +42,6 @@ interface CodingProvidersPanelProps {
   /** Getting started keeps its place behind the existing account setup. */
   welcomeSetup?: boolean
   initialProviderId?: string
-}
-
-const PROVIDER_SIDEBAR_NAMES: Record<string, string> = {
-  'codex-cli': 'Codex',
-  'cursor-cli': 'Cursor',
-  'pi-cli': 'Pi',
 }
 
 const PROVIDER_SIDEBAR_ICONS: Record<string, string> = {
@@ -355,7 +350,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                         {PROVIDER_SIDEBAR_ICONS[provider.id] ? (
                           <img src={PROVIDER_SIDEBAR_ICONS[provider.id]} alt="" className={`h-5 w-5 shrink-0 rounded object-contain ${provider.id === 'pi-cli' ? 'bg-[#f6f6f6] p-0.5' : ''}`} />
                         ) : <Terminal aria-hidden="true" className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />}
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{PROVIDER_SIDEBAR_NAMES[provider.id] || provider.display_name}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{codingProviderName(provider)}</span>
                         <ProviderListStatus provider={provider} />
                         <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-gray-400 ${view === 'provider' && selectedProvider?.id === provider.id ? 'text-violet-500' : ''}`} />
                       </div>
@@ -435,7 +430,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   </div>
 
                   <div data-tour="provider-accounts">
-                    <ProviderAccounts key={selectedProvider.id} provider={selectedProvider.id} providerLabel={PROVIDER_SIDEBAR_NAMES[selectedProvider.id] || selectedProvider.display_name} product={product} addRequest={selectedProvider.id === 'pi-cli' ? keyRequest : 0} />
+                    <ProviderAccounts key={selectedProvider.id} provider={selectedProvider.id} providerLabel={codingProviderName(selectedProvider)} product={product} addRequest={selectedProvider.id === 'pi-cli' ? keyRequest : 0} />
                   </div>
 
                   {selectedProvider.deprecated && selectedProvider.deprecation_reason && (
@@ -485,7 +480,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                       {selectedProvider.install_available ? <>
                         <p>Install {selectedProvider.display_name} on this computer, then connect your account below.</p>
                         <button type="button" disabled={guidedStarting !== null || guidedSession?.status === 'running'} onClick={() => void startGuidedSetup('install')} className="mt-2 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">
-                          {guidedStarting === 'install' ? 'Starting installation…' : `Install ${PROVIDER_SIDEBAR_NAMES[selectedProvider.id] || selectedProvider.display_name}`}
+                          {guidedStarting === 'install' ? 'Starting installation…' : `Install ${codingProviderName(selectedProvider)}`}
                         </button>
                       </> : <p>This CLI is not installed on this server. A platform administrator must repair or update the deployment.</p>}
                       {canRunGuidedSetup && selectedProvider.install_command && (

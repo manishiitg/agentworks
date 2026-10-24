@@ -1,3 +1,4 @@
+import { codingProviderName } from '../utils/codingProviderName'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { ArrowRight, CheckCircle2, KeyRound, Loader2, LogIn, Terminal } from 'lucide-react'
 import { llmConfigService, type ProviderConnection, type ProviderManifestEntry } from '../services/llm-config-api'
@@ -67,7 +68,7 @@ export default function WelcomeAiReadiness({ products, setupOpen, onSetup, onClo
         const provider = runtime(account)
         const relation = account.relation ?? (account.scope === 'global' ? 'server' : 'own')
         if (group.relations.includes(relation) && eligible(account) && account.configured === true && provider?.runtime_available === true) {
-          providers.set(provider.id, provider.display_name)
+          providers.set(provider.id, codingProviderName(provider))
         }
       }
     }
