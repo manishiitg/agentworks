@@ -47,7 +47,7 @@ export function MotionToolbar({ clock, label = 'Playback', positionLabel, detail
         {playing ? 'Pause' : 'Play'}
       </button>
       {showReplay && <button type="button" className="dashboard-button dashboard-motion-replay"
-        disabled={!available} onClick={() => clock?.replay()}>
+        aria-label="Replay" title="Replay" disabled={!available} onClick={() => clock?.replay()}>
         <RotateCcw aria-hidden="true" size={16}/><span>Replay</span>
       </button>}
     </div>

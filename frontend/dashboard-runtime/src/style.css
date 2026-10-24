@@ -89,12 +89,16 @@
     .dashboard-motion { flex-wrap: wrap; gap: .5rem; }
     .dashboard-motion-position { flex-basis: 100%; order: -1; }
     .dashboard-motion-time { margin-inline-start: auto; }
+    .dashboard-motion-replay span { display: none; }
+    .dashboard-motion .dashboard-motion-replay { min-width: 2.75rem; }
   }
   /* Also wrap in narrow standalone pages without an authored query container. */
   @media (max-width: 640px) {
     .dashboard-motion { flex-wrap: wrap; gap: .5rem; }
     .dashboard-motion-position { flex-basis: 100%; order: -1; }
     .dashboard-motion-time { margin-inline-start: auto; }
+    .dashboard-motion-replay span { display: none; }
+    .dashboard-motion .dashboard-motion-replay { min-width: 2.75rem; }
     .dashboard-motion .dashboard-button, .dashboard-motion-speed { min-height: 2.75rem; }
   }
   .dashboard-chart { width: 100%; min-width: 0; }
