@@ -28,7 +28,15 @@ $stage = Join-Path ([IO.Path]::GetTempPath()) ("agentworks-" + [guid]::NewGuid()
 New-Item -ItemType Directory -Path $stage | Out-Null
 try {
   Write-Host "Downloading $asset ..."
-  Invoke-WebRequest -UseBasicParsing -Uri "$base/$asset" -OutFile (Join-Path $stage $asset)
+  Invoke-WebRequest -UseBasicParsing -Uri "$base/$asset.gz" -OutFile (Join-Path $stage "$asset.gz")
+  $compressed = [IO.File]::OpenRead((Join-Path $stage "$asset.gz"))
+  try {
+    $gzip = [IO.Compression.GZipStream]::new($compressed, [IO.Compression.CompressionMode]::Decompress)
+    try {
+      $unpacked = [IO.File]::Create((Join-Path $stage $asset))
+      try { $gzip.CopyTo($unpacked) } finally { $unpacked.Dispose() }
+    } finally { $gzip.Dispose() }
+  } finally { $compressed.Dispose() }
   Invoke-WebRequest -UseBasicParsing -Uri "$base/$asset.sha256" -OutFile (Join-Path $stage "$asset.sha256")
 
   Write-Host 'Verifying checksum ...'

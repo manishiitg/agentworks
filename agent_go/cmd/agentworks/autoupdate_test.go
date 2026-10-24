@@ -71,9 +71,9 @@ func newAutoUpdateFixture(t *testing.T) *autoUpdateFixture {
 		}
 		fmt.Fprintf(w, `{"version":%q,"cli_build":"build-new","compat_epoch":%q,"breaking_reason":%q,"built_at":%d}`, newSHA, epoch, reason.Load().(string), builtAt.Load())
 	})
-	mux.HandleFunc("/api/downloads/cli/"+asset, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/downloads/cli/"+asset+".gz", func(w http.ResponseWriter, r *http.Request) {
 		downloads.Add(1)
-		_, _ = w.Write([]byte(fakeBinary))
+		_, _ = w.Write(gzipUpdateFixture(t, []byte(fakeBinary)))
 	})
 	mux.HandleFunc("/api/downloads/cli/"+asset+".sha256", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s  %s\n", hex.EncodeToString(sum[:]), asset)

@@ -11,9 +11,15 @@ import (
 )
 
 // cliDownloadFiles is the exact set of CLI distribution files served from the
-// release downloads directory: darwin/linux/windows binaries, their sha256 sidecars,
+// release downloads directory: darwin/linux/windows binaries, gzip downloads, sha256 sidecars,
 // and the installers. Anything else 404s — no listing, no traversal.
 var cliDownloadFiles = map[string]string{
+	"agentworks-darwin-arm64.gz":          "application/gzip",
+	"agentworks-darwin-amd64.gz":          "application/gzip",
+	"agentworks-linux-amd64.gz":           "application/gzip",
+	"agentworks-linux-arm64.gz":           "application/gzip",
+	"agentworks-windows-amd64.exe.gz":     "application/gzip",
+	"agentworks-windows-arm64.exe.gz":     "application/gzip",
 	"agentworks-darwin-arm64":             "application/octet-stream",
 	"agentworks-darwin-amd64":             "application/octet-stream",
 	"agentworks-linux-amd64":              "application/octet-stream",
@@ -79,7 +85,7 @@ func (api *StreamingAPI) handleCliDownload(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
-	if contentType == "application/octet-stream" {
+	if contentType == "application/octet-stream" || contentType == "application/gzip" {
 		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	}
 	w.WriteHeader(http.StatusOK)

@@ -26,12 +26,13 @@ if [[ "$REVISION" != dev ]] && [[ -n "$(git -C "$REPO_ROOT" status --porcelain 2
   REVISION="${REVISION}+dirty"
 fi
 
-(cd "$REPO_ROOT/agent_go" && GOOS="$OS" GOARCH="$ARCH" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=$REVISION" -o "$STAGE/$NAME" ./cmd/agentworks)
+(cd "$REPO_ROOT/agent_go" && GOOS="$OS" GOARCH="$ARCH" CGO_ENABLED=0 go build -ldflags "-s -w -X main.cliVersion=$REVISION" -o "$STAGE/$NAME" ./cmd/agentworks)
 chmod +x "$STAGE/$NAME"
+gzip -n -9 -c "$STAGE/$NAME" > "$STAGE/$NAME.gz"
 (cd "$STAGE" && if command -v sha256sum >/dev/null 2>&1; then sha256sum "$NAME" > "$NAME.sha256"; else shasum -a 256 "$NAME" > "$NAME.sha256"; fi)
 cp "$REPO_ROOT/scripts/install-agentworks-cli.sh" "$STAGE/install-agentworks.sh"
 printf '{"version":"%s","release":"local"}\n' "$REVISION" > "$STAGE/version.json"
-for file in "$NAME" "$NAME.sha256" install-agentworks.sh version.json; do
+for file in "$NAME" "$NAME.gz" "$NAME.sha256" install-agentworks.sh version.json; do
   mv "$STAGE/$file" "$DEST/$file"
 done
 echo "Packaged local AgentWorks CLI: $DEST/$NAME"

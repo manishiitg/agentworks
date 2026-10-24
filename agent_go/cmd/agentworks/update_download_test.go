@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,28 @@ import (
 	"testing"
 	"time"
 )
+
+func TestUnpackUpdateRejectsCorruptAndOversizedDownloads(t *testing.T) {
+	for _, payload := range [][]byte{[]byte("not gzip"), {0x1f, 0x8b}} {
+		if _, err := unpackUpdate(payload); err == nil {
+			t.Fatal("invalid gzip accepted")
+		}
+	}
+	var compressed bytes.Buffer
+	w := gzip.NewWriter(&compressed)
+	chunk := make([]byte, 1<<20)
+	for range 65 {
+		if _, err := w.Write(chunk); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := unpackUpdate(compressed.Bytes()); err == nil || !strings.Contains(err.Error(), "unexpectedly large") {
+		t.Fatalf("oversized executable accepted: %v", err)
+	}
+}
 
 // Exercise the real HTTP body: a moving transfer can outlast the idle timeout,
 // unknown-length responses still show progress, and a stalled body is canceled.

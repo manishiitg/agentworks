@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -480,8 +481,8 @@ func TestUpdateCommand(t *testing.T) {
 	mux.HandleFunc("/api/downloads/cli/version.json", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"version":%q,"release":"test-release"}`, newSHA)
 	})
-	mux.HandleFunc("/api/downloads/cli/"+asset, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(fakeBinary))
+	mux.HandleFunc("/api/downloads/cli/"+asset+".gz", func(w http.ResponseWriter, r *http.Request) {
+		w.Write(gzipUpdateFixture(t, []byte(fakeBinary)))
 	})
 	mux.HandleFunc("/api/downloads/cli/"+asset+".sha256", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s  %s\n", hexSum, asset)
@@ -571,8 +572,8 @@ func TestUpdateCommand(t *testing.T) {
 		badMux.HandleFunc("/api/downloads/cli/version.json", func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, `{"version":%q,"release":"test-release"}`, newSHA)
 		})
-		badMux.HandleFunc("/api/downloads/cli/"+asset, func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("tampered-bytes"))
+		badMux.HandleFunc("/api/downloads/cli/"+asset+".gz", func(w http.ResponseWriter, r *http.Request) {
+			w.Write(gzipUpdateFixture(t, []byte("tampered-bytes")))
 		})
 		badMux.HandleFunc("/api/downloads/cli/"+asset+".sha256", func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "%s  %s\n", hexSum, asset)
@@ -591,6 +592,9 @@ func TestUpdateCommand(t *testing.T) {
 		if code == 0 {
 			t.Fatal("tampered update accepted")
 		}
+		if !strings.Contains(stderr.String(), "checksum mismatch") {
+			t.Fatalf("did not check executable checksum: %s", stderr.String())
+		}
 		if got, _ := os.ReadFile(target); string(got) != "current" {
 			t.Fatal("target modified despite checksum failure")
 		}
@@ -598,6 +602,19 @@ func TestUpdateCommand(t *testing.T) {
 			t.Fatal("backup left behind after failure")
 		}
 	})
+}
+
+func gzipUpdateFixture(t *testing.T, payload []byte) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	w := gzip.NewWriter(&out)
+	if _, err := w.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
 }
 
 func TestBarePlanAndCallShowUsage(t *testing.T) {

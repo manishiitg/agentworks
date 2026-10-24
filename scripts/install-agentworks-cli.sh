@@ -36,6 +36,7 @@ case "$SERVER" in
 esac
 case "$SERVER" in https://*|http://localhost*|http://127.0.0.1*) ;; *) echo "The server address must start with https:// (got \"$SERVER\")." >&2; exit 2 ;; esac
 command -v curl >/dev/null 2>&1 || { echo "curl is required to install the AgentWorks CLI" >&2; exit 1; }
+command -v gzip >/dev/null 2>&1 || { echo "gzip is required to install the AgentWorks CLI" >&2; exit 1; }
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -56,7 +57,8 @@ STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT INT TERM
 
 echo "Downloading $ASSET ..."
-curl -fsSL -o "$STAGE/$ASSET" "$BASE_URL/$ASSET"
+curl -fsSL -o "$STAGE/$ASSET.gz" "$BASE_URL/$ASSET.gz"
+gzip -dc "$STAGE/$ASSET.gz" > "$STAGE/$ASSET"
 curl -fsSL -o "$STAGE/$ASSET.sha256" "$BASE_URL/$ASSET.sha256"
 
 echo "Verifying checksum ..."

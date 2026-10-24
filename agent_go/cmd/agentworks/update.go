@@ -250,7 +250,11 @@ func runUpdate(o *options, check, force, switchSource bool) error {
 // `version` as a self-test (restoring the old one if that fails). With keepBackup the previous executable stays at
 // the returned path so a caller can roll back.
 func installUpdate(base, asset, target string, release cliRelease, keepBackup bool, progress io.Writer) (string, error) {
-	binary, err := downloadUpdate(base+"/"+asset, progress, time.Minute)
+	compressed, err := downloadUpdate(base+"/"+asset+".gz", progress, time.Minute)
+	if err != nil {
+		return "", err
+	}
+	binary, err := unpackUpdate(compressed)
 	if err != nil {
 		return "", err
 	}

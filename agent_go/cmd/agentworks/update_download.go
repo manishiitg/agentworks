@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -15,6 +17,25 @@ import (
 // download instead times out only when it stops receiving data, so a slow link
 // can finish without letting a stalled body read wait forever.
 var updateDownloadClient = &http.Client{}
+
+// Keep the executable under the same limit as the download, including after
+// unpacking. The checksum in installUpdate covers these executable bytes.
+func unpackUpdate(compressed []byte) ([]byte, error) {
+	r, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return nil, fmt.Errorf("unpack AgentWorks download: %w", err)
+	}
+	defer r.Close()
+	const limit = 64 << 20
+	binary, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("unpack AgentWorks download: %w", err)
+	}
+	if len(binary) > limit {
+		return nil, fmt.Errorf("server offered an unexpectedly large AgentWorks executable")
+	}
+	return binary, nil
+}
 
 func updateStep(w io.Writer, step string) {
 	if w != nil {
