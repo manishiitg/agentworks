@@ -1130,7 +1130,9 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 			return session, fmt.Errorf("receiving conversation was replaced")
 		}
 		session = conversation.SessionID
-		query, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: text}, conversation)
+		// The receiving chat runs on its own model and account, like a turn typed in it. Building the request
+		// from the project default flipped a chat on another provider and restarted it on its next message.
+		query, err := prepareProductConversationTurn(ctx, dest.UserID, profile, AgentProfileChatRequest{Message: text}, conversation)
 		if err != nil {
 			return session, err
 		}
