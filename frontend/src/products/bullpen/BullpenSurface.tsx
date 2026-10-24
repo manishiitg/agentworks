@@ -1,8 +1,8 @@
 import { currentProductRoute } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
-import { AgentUsage, BullpenUsageOverview } from './BullpenUsage'
-import { lazy, Suspense, useEffect, useState } from 'react'
-import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Terminal, UsersRound, ShieldCheck } from 'lucide-react'
+import { BullpenUsageOverview } from './BullpenUsage'
+import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { BookOpen, ChartNoAxesCombined, Check, Copy, MessagesSquare, Search, Terminal, UsersRound, ShieldCheck, X } from 'lucide-react'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import { WorkspacePageHeader } from '../../components/workspace/WorkspacePageHeader'
 import { WorkspacePageContent } from '../../components/workspace/WorkspacePageContent'
@@ -26,6 +26,22 @@ const views = [
 ]
 const providerNames: Record<string, string> = { codex: 'Codex', claude: 'Claude Code', muse: 'Muse Code', pi: 'Pi', cursor: 'Cursor', agy: 'agy' }
 
+function BridgeDialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const titleId = useId()
+  useEffect(() => {
+    const element = dialog.current!
+    element.showModal()
+    return () => element.close()
+  }, [])
+  return <dialog ref={dialog} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); onClose() }} className="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-2xl overflow-hidden rounded-xl border border-border bg-background p-0 text-foreground shadow-xl backdrop:bg-black/60">
+    <div className="flex max-h-[calc(100dvh-2rem)] flex-col">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border p-4"><h2 id={titleId} className="min-w-0 break-words text-lg font-semibold">{title}</h2><Button variant="ghost" size="icon" className="shrink-0" aria-label="Close" onClick={onClose}><X aria-hidden="true" className="h-4 w-4" /></Button></header>
+      <div className="min-h-0 overflow-y-auto p-4">{children}</div>
+    </div>
+  </dialog>
+}
+
 function AgentAddress({ target }: { target: string }) {
   const [copied, setCopied] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -33,83 +49,114 @@ function AgentAddress({ target }: { target: string }) {
     try { await navigator.clipboard.writeText(target); setCopied(true); setFailed(false) }
     catch { setFailed(true) }
   }
-  return <div className="space-y-1">
-    <Button variant="outline" size="sm" className="max-w-full" aria-label={'Copy address ' + target} onClick={() => void copy()}>
-      {copied ? <Check className="mr-2 h-3.5 w-3.5 shrink-0" /> : <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />}
-      <span className="truncate font-mono text-xs">{target}</span>
+  return <div className="space-y-2">
+    <Button variant="outline" size="sm" aria-label={'Copy address ' + target} onClick={() => void copy()}>
+      {copied ? <Check aria-hidden="true" className="mr-2 h-3.5 w-3.5" /> : <Copy aria-hidden="true" className="mr-2 h-3.5 w-3.5" />}
+      {copied ? 'Copied' : 'Copy address'}
     </Button>
-    {(copied || failed) && <p role="status" className="text-xs text-muted-foreground">{failed ? 'Select the address and copy it manually.' : 'Address copied'}</p>}
+    {(copied || failed) && <p role="status" className="max-w-sm text-sm text-muted-foreground">{failed ? <>Copy this address manually: <code className="break-all select-all">{target}</code></> : 'Ask your AI agent to message this address.'}</p>}
   </div>
 }
 
-function AgentDirectory({ onConnect }: { onConnect: () => void }) {
+function AgentDetails({ agent, onClose }: { agent: BullpenAgent; onClose: () => void }) {
+  return <BridgeDialog title={agent.label || agent.agent_name} onClose={onClose}>
+    <div className="space-y-5 text-sm">
+      {agent.purpose && <p className="break-words leading-6">{agent.purpose}</p>}
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-5 gap-y-3">
+        <dt className="text-muted-foreground">App</dt><dd>{agent.provider ? providerNames[agent.provider] || agent.provider : agent.type || 'Agent'}</dd>
+        <dt className="text-muted-foreground">Address</dt><dd className="break-all font-mono">{agent.target}</dd>
+        <dt className="text-muted-foreground">Connection</dt><dd>{agent.presence || 'Status unavailable'}</dd>
+        <dt className="text-muted-foreground">Visibility</dt><dd>{agent.shared || agent.published ? 'Published to the network' : 'Only you'}</dd>
+        <dt className="text-muted-foreground">Last seen</dt><dd>{agent.last_seen_at ? <time dateTime={agent.last_seen_at}>{new Date(agent.last_seen_at).toLocaleString()}</time> : 'Unknown'}</dd>
+        {agent.last_delivered_at && <><dt className="text-muted-foreground">Last delivered</dt><dd><time dateTime={agent.last_delivered_at}>{new Date(agent.last_delivered_at).toLocaleString()}</time></dd></>}
+        {agent.repository && <><dt className="text-muted-foreground">Repository</dt><dd className="break-all">{agent.repository}{agent.branch ? `@${agent.branch}` : ''}</dd></>}
+        {agent.activity && <><dt className="text-muted-foreground">Activity</dt><dd>{agent.activity}{agent.activity_at && <> · <time dateTime={agent.activity_at}>{new Date(agent.activity_at).toLocaleString()}</time></>}</dd></>}
+      </dl>
+      {agent.update_needed && <p className="rounded-lg bg-muted p-3">An AgentWorks update is available on this agent’s computer. Run <code>agentworks update</code> there.</p>}
+      {agent.provider === 'cursor' && <p className="text-muted-foreground">Cursor receives messages when its chat takes a step. Messages wait while the chat is idle.</p>}
+      <AgentAddress target={agent.target} />
+    </div>
+  </BridgeDialog>
+}
+
+function TokenUsage() {
   const [agents, setAgents] = useState<BullpenAgent[]>([])
   const [loading, setLoading] = useState(true)
-  const [usageLoading, setUsageLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    const controller = new AbortController()
+    setLoading(true); setError('')
+    void Promise.all([bullpenApi.agents(controller.signal), bullpenApi.agentUsage(controller.signal)]).then(([items, readings]) => {
+      if (controller.signal.aborted) return
+      const byId = new Map(readings.map(reading => [reading.agent_id, reading]))
+      setAgents(items.map(agent => agent.shared ? agent : { ...agent, ...byId.get(agent.agent_id) }))
+    }).catch(() => { if (!controller.signal.aborted) setError('Could not load token usage. Try again.') })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [attempt])
+  if (loading) return <p role="status" className="text-sm text-muted-foreground">Loading token usage…</p>
+  if (error) return <div role="alert" className="space-y-3 text-sm"><p>{error}</p><Button variant="outline" size="sm" onClick={() => setAttempt(value => value + 1)}>Try again</Button></div>
+  return <BullpenUsageOverview agents={agents} onChange={() => setAttempt(value => value + 1)} />
+}
+
+function AgentDirectory() {
+  const [agents, setAgents] = useState<BullpenAgent[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [attempt, setAttempt] = useState(0)
-  const [updated, setUpdated] = useState<Date | null>(null)
+  const [selected, setSelected] = useState<string | null>(null)
   const [notices, setNotices] = useState<BullpenNotice[]>([])
   useEffect(() => {
     const controller = new AbortController()
-    bullpenApi.notices(controller.signal).then(items => { if (!controller.signal.aborted) setNotices(items) }).catch(() => undefined)
-    return () => controller.abort()
-  }, [attempt])
-  useEffect(() => {
-    const controller = new AbortController()
-    setLoading(true); setUsageLoading(true); setError('')
-    bullpenApi.agents(controller.signal).then(items => {
-      if (controller.signal.aborted) return
-      setAgents(items); setUpdated(new Date()); setLoading(false)
-      // Usage is optional: never hold the directory behind its database request.
-      void bullpenApi.agentUsage(controller.signal).then(readings => {
-        if (controller.signal.aborted) return
-        const byId = new Map(readings.map(reading => [reading.agent_id, reading]))
-        setAgents(current => current.map(agent => agent.shared ? agent : { ...agent, ...byId.get(agent.agent_id) }))
-      }).catch(() => {
-        if (!controller.signal.aborted) setAgents(current => current.map(agent => agent.shared ? agent : { ...agent, usage_unavailable: true }))
-      }).finally(() => { if (!controller.signal.aborted) setUsageLoading(false) })
-    }).catch(reason => {
-      if (!controller.signal.aborted) { setAgents([]); setUsageLoading(false); setError(bullpenError(reason)) }
-    }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
-    return () => controller.abort()
+    let pending = false
+    const refresh = async () => {
+      if (document.hidden || pending) return
+      pending = true
+      void bullpenApi.notices(controller.signal).then(items => { if (!controller.signal.aborted) setNotices(items) }).catch(() => undefined)
+      try {
+        const items = await bullpenApi.agents(controller.signal)
+        if (!controller.signal.aborted) { setAgents(items); setError('') }
+      } catch (reason) {
+        if (!controller.signal.aborted) setError(bullpenError(reason))
+      } finally {
+        pending = false
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    }
+    void refresh()
+    const interval = window.setInterval(() => void refresh(), 30_000)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { controller.abort(); window.clearInterval(interval); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh) }
   }, [attempt])
   const search = query.trim().toLowerCase()
   const visible = agents.filter(agent => [agent.label, agent.agent_name, agent.purpose, agent.provider].some(value => value?.toLowerCase().includes(search)))
     .sort((a, b) => Number(b.online) - Number(a.online) || a.agent_name.localeCompare(b.agent_name))
-  return <section aria-label="Your agents" className="space-y-5">
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="text-lg font-semibold">Your agents</h2><p className="mt-1 text-sm text-muted-foreground">Your connected agents and published agents you can reach.</p></div>
-      <div className="flex gap-2"><Button variant="outline" size="sm" disabled={loading} onClick={() => setAttempt(value => value + 1)}><RefreshCw className="mr-2 h-3.5 w-3.5" />Refresh agents</Button><Button size="sm" onClick={onConnect}>Connect an agent</Button></div>
-    </div>
-    {notices.length > 1 ? <details className="rounded-lg border border-border bg-muted/40 p-3 text-sm"><summary className="cursor-pointer">{notices.length} notices from an administrator · Show</summary><div className="mt-3 space-y-2">{notices.map(item => <div key={item.notice_id} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm"><span className="min-w-0 break-words">{item.text}</span><Button variant="outline" size="sm" onClick={() => void bullpenApi.dismissNotice(item.notice_id).then(() => setNotices(list => list.filter(entry => entry.notice_id !== item.notice_id))).catch(() => undefined)}>Dismiss</Button></div>)}<Button variant="outline" size="sm" onClick={() => void Promise.all(notices.map(item => bullpenApi.dismissNotice(item.notice_id))).then(() => setNotices([])).catch(() => undefined)}>Dismiss all</Button></div></details> : notices.map(item => <div key={item.notice_id} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm"><span className="min-w-0 break-words">{item.text}</span><Button variant="outline" size="sm" onClick={() => void bullpenApi.dismissNotice(item.notice_id).then(() => setNotices(list => list.filter(entry => entry.notice_id !== item.notice_id))).catch(() => undefined)}>Dismiss</Button></div>)}
-    <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input aria-label="Find an agent" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search names, providers and purpose" className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-    {error ? <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p> : loading && !agents.length ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your agents…</p> : !agents.length ? <div className="rounded-xl border border-dashed border-border p-8 text-center"><MessagesSquare className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><h3 className="font-medium">Bring your first agent into AgentBridge</h3><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Connect an AI app or coding chat to exchange messages with your other agents.</p><Button className="mt-5" onClick={onConnect}>Set up messaging</Button></div> : !visible.length ? <p className="py-8 text-center text-sm text-muted-foreground">No agents match your search.</p> : <div className="grid gap-3 md:grid-cols-2">
-      {visible.map(agent => <article key={agent.agent_id} className="min-w-0 space-y-3 rounded-xl border border-border p-4">
-        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="line-clamp-2 break-words font-semibold" title={agent.label || agent.agent_name}>{agent.label || agent.agent_name}</h3><p className="mt-1 truncate font-mono text-xs text-muted-foreground" title={agent.agent_name}>{agent.agent_name} · {agent.type || 'Agent'}{agent.provider ? ` · ${providerNames[agent.provider] || agent.provider}` : ''}</p></div><span className="flex shrink-0 flex-col items-end gap-1"><span className="rounded-full bg-muted px-2 py-1 text-xs">{agent.presence || 'Status unavailable'}</span>{agent.update_needed && <span className="rounded-full border border-border px-2 py-1 text-xs" title="The AgentWorks CLI on this agent's computer is older than the server's. Run agentworks update there.">CLI update available</span>}{agent.published && <span className="rounded-full border border-border px-2 py-1 text-xs" title="Everyone on this server can find and message this agent.">Published to network</span>}</span></div>
-        {agent.purpose && agent.purpose.length <= 120 && <p className="break-words text-sm text-muted-foreground">{agent.purpose}</p>}
-        {agent.purpose && agent.purpose.length > 120 && <details className="text-sm"><summary className="cursor-pointer text-primary">Full purpose</summary><p className="mt-2 break-words text-muted-foreground">{agent.purpose}</p></details>}
+  const detail = agents.find(agent => agent.agent_id === selected)
+  return <section aria-label="Agents" className="mx-auto max-w-4xl space-y-4">
+    {notices.length > 1 ? <details className="rounded-lg border border-border bg-muted/40 p-3 text-sm"><summary className="cursor-pointer">{notices.length} notices from an administrator</summary><div className="mt-3 space-y-2">{notices.map(item => <div key={item.notice_id} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm"><span className="min-w-0 break-words">{item.text}</span><Button variant="outline" size="sm" onClick={() => void bullpenApi.dismissNotice(item.notice_id).then(() => setNotices(list => list.filter(entry => entry.notice_id !== item.notice_id))).catch(() => undefined)}>Dismiss</Button></div>)}<Button variant="outline" size="sm" onClick={() => void Promise.all(notices.map(item => bullpenApi.dismissNotice(item.notice_id))).then(() => setNotices([])).catch(() => undefined)}>Dismiss all</Button></div></details> : notices.map(item => <div key={item.notice_id} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm"><span className="min-w-0 break-words">{item.text}</span><Button variant="outline" size="sm" onClick={() => void bullpenApi.dismissNotice(item.notice_id).then(() => setNotices(list => list.filter(entry => entry.notice_id !== item.notice_id))).catch(() => undefined)}>Dismiss</Button></div>)}
+    {agents.length > 0 && <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input aria-label="Find an agent" value={query} onChange={event => setQuery(event.target.value)} placeholder="Find an agent" className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>}
+    {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-4 text-sm"><p>{error}</p><Button variant="outline" size="sm" onClick={() => setAttempt(value => value + 1)}>Try again</Button></div>}
+    {loading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your agents…</p> : !error && !agents.length ? <div className="py-16 text-center"><MessagesSquare aria-hidden="true" className="mx-auto mb-4 h-8 w-8 text-muted-foreground" /><h2 className="font-semibold">No agents connected yet</h2><p className="mt-2 text-sm text-muted-foreground">Choose Connect an agent to get started.</p></div> : visible.length ? <div className="divide-y divide-border rounded-xl border border-border">
+      {visible.map(agent => <article key={agent.agent_id} className="flex flex-wrap items-center justify-between gap-4 p-4 sm:px-5">
+        <button type="button" aria-label={'Details for ' + (agent.label || agent.agent_name)} aria-haspopup="dialog" onClick={() => setSelected(agent.agent_id)} className="min-w-0 flex-1 rounded-md text-left outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring">
+          <h2 className="break-words text-sm font-semibold">{agent.label || agent.agent_name}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{agent.provider ? providerNames[agent.provider] || agent.provider : agent.type || 'Agent'}</p>
+        </button>
+        <span className="rounded-full bg-muted px-2.5 py-1 text-xs">{agent.connection_label}{agent.availability_label && <span className="text-muted-foreground"> · {agent.availability_label}</span>}</span>
         <AgentAddress target={agent.target} />
-        {(agent.repository || agent.activity) && <p className="text-xs text-muted-foreground">{agent.repository && <span>{agent.repository}{agent.branch ? `@${agent.branch}` : ''} · </span>}{agent.activity || 'Unknown'}{agent.activity_at && <span title={new Date(agent.activity_at).toLocaleString()}> (last reported {new Date(agent.activity_at).toLocaleTimeString()})</span>}</p>}
-        <div className="space-y-1 text-xs text-muted-foreground">
-          <div>Last seen: {agent.last_seen_at ? <time dateTime={agent.last_seen_at}>{new Date(agent.last_seen_at).toLocaleString()}</time> : 'Unknown'}</div>
-          {agent.last_delivered_at && <div>Last message delivered: <time dateTime={agent.last_delivered_at}>{new Date(agent.last_delivered_at).toLocaleString()}</time></div>}
-        </div>
-        {agent.provider === 'cursor' && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer" title="Cursor picks up new messages after a tool finishes or when its current turn ends. An idle Cursor chat is not woken; messages wait safely.">Gets messages when its chat is used</summary><p className="mt-1">Cursor picks up new messages after a tool finishes or when its current turn ends. An idle Cursor chat is not woken; messages wait safely.</p></details>}
-        <AgentUsage usage={agent.usage} unavailable={agent.usage_unavailable} provider={agent.provider} />
       </article>)}
-    </div>}
-    <HowBullpenWorks collapsible />
-    {!error && <details className="rounded-xl border border-border p-4"><summary className="cursor-pointer text-sm font-medium">Optional token usage</summary><div className="mt-4">{usageLoading ? <p role="status" className="text-sm text-muted-foreground">Loading optional usage…</p> : <BullpenUsageOverview agents={agents} onChange={() => setAttempt(value => value + 1)} />}</div></details>}
-    <p className="text-xs text-muted-foreground">{updated && `Last refreshed ${updated.toLocaleTimeString()}. `}Connection status does not mean a message has been read.</p>
-    <details className="rounded-xl border border-border p-4 text-sm"><summary className="cursor-pointer font-medium">How to start a conversation</summary><p className="mt-2 leading-6 text-muted-foreground">Copy an agent address, then ask your connected agent to send it a message through AgentWorks. Replies stay in the same conversation. This directory does not show private chat transcripts.</p></details>
+    </div> : agents.length > 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No agents match your search.</p> : null}
+    {detail && <AgentDetails agent={detail} onClose={() => setSelected(null)} />}
   </section>
 }
 
 export function BullpenSurface({ messagingOnly = false }: { messagingOnly?: boolean }) {
   const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'setup', 'admin'] as const, currentProductRoute()?.surface === 'bullpen' ? (currentProductRoute()?.view === 'setup' ? 'setup' : currentProductRoute()?.view === 'admin' ? 'admin' : 'agents') : undefined)
   useProductUrlView('bullpen', { view: view === 'agents' ? undefined : view })
+  const [dialog, setDialog] = useState<'help' | 'usage' | null>(null)
   const adminPage = useAppStore(state => state.adminPage)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const user = useAuthStore(state => state.user)
@@ -119,25 +166,29 @@ export function BullpenSurface({ messagingOnly = false }: { messagingOnly?: bool
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {!messagingOnly && showProviders ? <LlmModalHost /> : !messagingOnly && adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="flex h-full min-h-0 w-full flex-col">
         {messagingOnly ? <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
-          <h1 className="flex items-center gap-2 text-base font-semibold"><MessagesSquare aria-hidden="true" className="h-5 w-5" />AgentBridge</h1>
+          <h1><button type="button" onClick={() => setView('agents')} className="flex items-center gap-2 rounded-md text-base font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><MessagesSquare aria-hidden="true" className="h-5 w-5" />AgentBridge</button></h1>
           <nav aria-label="AgentBridge" className="flex flex-wrap items-center gap-2">
-            {views.map(item => <Button key={item.id} variant={view === item.id ? 'secondary' : 'ghost'} size="sm" aria-current={view === item.id ? 'page' : undefined} onClick={() => setView(item.id)}>{item.label}</Button>)}
+            <Button size="sm" onClick={() => setView('setup')}>Connect an agent</Button>
             {user?.role === 'admin' && <Button variant={view === 'admin' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('admin')}>Administration</Button>}
-            <a className="px-2 text-sm text-muted-foreground hover:text-foreground" href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noreferrer">Help</a>
-            <AccountControl messagingOnly />
+            <Button variant="ghost" size="sm" onClick={() => setDialog('help')}>Help</Button>
+            <AccountControl messagingOnly onOpenUsage={() => setDialog('usage')} />
           </nav>
         </header> : <WorkspacePageHeader title={view === 'setup' ? 'Connect an agent' : view === 'admin' ? 'Administration' : 'AgentBridge'} icon={MessagesSquare} showBack={false} onProductHome={() => setView('agents')} productMenuItems={[
           ...views.map(item => ({ ...item, active: view === item.id, onSelect: () => setView(item.id) })),
           ...(user?.role === 'admin' ? [{ id: 'admin', label: 'Administration', icon: ShieldCheck, active: view === 'admin', onSelect: () => setView('admin') }] : []),
-          { id: 'help', label: 'AgentBridge help', icon: BookOpen, href: 'https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md', external: true },
-        ]} />}
+          { id: 'usage', label: 'Token usage', icon: ChartNoAxesCombined, onSelect: () => setDialog('usage') },
+          { id: 'help', label: 'Help', icon: BookOpen, onSelect: () => setDialog('help') },
+        ]}>{view !== 'setup' && <Button size="sm" onClick={() => setView('setup')}>Connect an agent</Button>}</WorkspacePageHeader>}
         <div className="min-h-0 flex-1 overflow-y-auto">
           <WorkspacePageContent className={view === 'setup' ? 'mx-auto w-full max-w-5xl' : undefined}>
-            {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={messagingOnly ? undefined : () => useAppStore.getState().setAdminPage('mcp')} onBack={() => setView('agents')} /> : view === 'admin' && user?.role === 'admin' ? <AdminPanel /> : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
+            {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={messagingOnly ? undefined : () => useAppStore.getState().setAdminPage('mcp')} onBack={() => setView('agents')} /> : view === 'admin' && user?.role === 'admin' ? <AdminPanel /> : user ? <AgentDirectory key={user.id} /> : <p>Sign in to see your agents.</p>}
           </WorkspacePageContent>
 
         </div>
       </div>}
     </main>
+    {dialog && <BridgeDialog title={dialog === 'help' ? 'AgentBridge help' : 'Token usage'} onClose={() => setDialog(null)}>
+      {dialog === 'help' ? <HowBullpenWorks /> : <TokenUsage />}
+    </BridgeDialog>}
   </div>
 }

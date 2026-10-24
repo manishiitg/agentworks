@@ -10,6 +10,8 @@ export interface BullpenAgent {
   purpose?: string
   provider?: string
   online: boolean
+  connection_label: string
+  availability_label?: string
   presence?: string
   repository?: string
   branch?: string

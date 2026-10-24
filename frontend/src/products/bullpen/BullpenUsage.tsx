@@ -1,24 +1,9 @@
 import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
-import { bullpenApi, type BullpenAgent, type BullpenUsage, type UsageReading } from '../../services/bullpenApi'
+import { bullpenApi, type BullpenAgent, type UsageReading } from '../../services/bullpenApi'
 
 const exact = new Intl.NumberFormat()
 const total = (c: { input_tokens: number; output_tokens: number }) => c.input_tokens + c.output_tokens
-
-export function AgentUsage({ usage, unavailable, provider }: { usage?: BullpenUsage; unavailable?: boolean; provider?: string }) {
-  if (unavailable) return <p className="text-xs text-muted-foreground">Usage could not be loaded.</p>
-  if (!usage) return provider === 'cursor' || provider === 'agy' ? <p className="text-xs text-muted-foreground">Native usage is unavailable for this CLI.</p> : null
-  const stale = Date.now() - new Date(usage.observed_at).getTime() > 2 * 60 * 60 * 1000
-  return <div className="space-y-1 border-t border-border pt-3 text-xs">
-    <p>Today’s hourly readings: <strong>{usage.available || total(usage.today) > 0 ? exact.format(total(usage.today)) : 'Not collected'}</strong> tokens</p>
-    {usage.reporting && usage.available ? <>
-      <p>This session: <strong>{exact.format(total(usage.session))}</strong> tokens · {usage.session.model || 'Model not reported'}</p>
-      <p className="text-muted-foreground">Input {exact.format(usage.session.input_tokens)} · output {exact.format(usage.session.output_tokens)} · cached {exact.format(usage.session.cached_tokens)} (part of input)</p>
-      {Boolean(usage.session.skipped_records) && <p className="text-muted-foreground">Some records skipped ({exact.format(usage.session.skipped_records!)}). Totals include identifiable recorded usage only.</p>}
-      <p className="text-muted-foreground">From {usage.session.source}. {stale ? 'Reading is stale. ' : ''}Last read {new Date(usage.observed_at).toLocaleString()}.</p>
-    </> : <p className="text-muted-foreground">{usage.reporting ? usage.reason === 'cap_reached' ? 'Native read cap reached. Check agentworks usage status.' : 'Native usage unavailable; no zero estimate is substituted.' : 'Reporting is off. Saved hourly history remains.'}</p>}
-  </div>
-}
 
 export function BullpenUsageOverview({ agents, onChange }: { agents: BullpenAgent[]; onChange: () => void }) {
   const [readings, setReadings] = useState<UsageReading[]>([])

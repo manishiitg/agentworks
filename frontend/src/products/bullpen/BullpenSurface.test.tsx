@@ -18,7 +18,7 @@ vi.mock('../../components/topbar/LlmModalHost', () => ({ default: () => null }))
 vi.mock('./AgentMessagingSetupPanel', () => ({ AgentMessagingSetupPanel: () => <p>Existing connection setup</p> }))
 vi.mock('./AdminPanel', () => ({ AdminPanel: () => <p>Existing administration</p> }))
 vi.mock('./HowBullpenWorks', () => ({ HowBullpenWorks: () => null }))
-vi.mock('./BullpenUsage', () => ({ AgentUsage: () => null, BullpenUsageOverview: () => null }))
+vi.mock('./BullpenUsage', () => ({ BullpenUsageOverview: () => null }))
 vi.mock('../../services/bullpenApi', () => ({ bullpenApi: { notices: async () => [], agents: async () => [], agentUsage: async () => [] }, bullpenError: (error: Error) => error.message }))
 import { BullpenSurface } from './BullpenSurface'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -37,9 +37,8 @@ it.each(['user', 'admin'])('uses only header navigation and preserves AgentBridg
     const pages = host.querySelector('[aria-label="Product pages"]')!
     expect(pages.textContent).toContain('Agents')
     expect(pages.textContent?.includes('Administration')).toBe(role === 'admin')
-    const help = pages.querySelector<HTMLAnchorElement>('a')!
-    expect(help.href).toBe('https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md')
-    expect(help.target).toBe('_blank')
+    expect(pages.textContent).toContain('Help')
+    expect(pages.textContent).toContain('Token usage')
     await act(async () => [...pages.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Connect an agent')!.click())
     expect(host.textContent).toContain('Existing connection setup')
     expect(host.querySelector('[data-product-picker-menu]')).toBeNull()

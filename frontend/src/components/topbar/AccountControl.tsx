@@ -1,6 +1,6 @@
 import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { HelpCircle, Keyboard, KeyRound, LogOut } from 'lucide-react'
+import { ChartNoAxesCombined, HelpCircle, Keyboard, KeyRound, LogOut } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import ChangePasswordDialog from './ChangePasswordDialog'
@@ -14,9 +14,10 @@ interface AccountControlProps {
   menuOnly?: boolean
   children?: ReactNode
   messagingOnly?: boolean
+  onOpenUsage?: () => void
 }
 
-export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, menuOnly = false, children, messagingOnly = false }: AccountControlProps) {
+export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, menuOnly = false, children, messagingOnly = false, onOpenUsage }: AccountControlProps) {
   const sidebar = useProductNavigationSidebar()
   const { user, logout, isMultiUserMode, providers } = useAuthStore()
   // A password can be changed only where people sign in with one: a server with single sign-on only (Google) has nothing to change.
@@ -66,6 +67,10 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, men
             <p className="text-xs text-gray-500 dark:text-gray-400">{`AgentWorks v${APP_VERSION}`}</p>
           </div>
           {children}
+          {onOpenUsage && <button type="button" role="menuitem" className={itemClass} onClick={() => { setOpen(false); onOpenUsage() }}>
+            <ChartNoAxesCombined className="h-4 w-4 text-muted-foreground" />
+            Token usage
+          </button>}
           {menuOnly && <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Help</p>}
           {!messagingOnly && <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => { setOpen(false); window.dispatchEvent(new Event('open-welcome-home')) }}>
             <HelpCircle className="h-4 w-4 text-muted-foreground" />

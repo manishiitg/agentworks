@@ -42,6 +42,21 @@ func (api *StreamingAPI) handleBullpenAgents(w http.ResponseWriter, r *http.Requ
 	}
 	projectStart := time.Now()
 	out := namedMessageAgentDirectory(r.Context(), claims.UserID, s, false)
+	// The browser displays this short label; full delivery evidence stays in
+	// presence and the receipt timestamps shown in agent details.
+	for _, item := range out["agents"].([]map[string]interface{}) {
+		label := "Connected"
+		if item["published"] == true || item["shared"] == true {
+			label = "Published"
+		}
+		switch item["delivery_mode"] {
+		case "offline":
+			item["availability_label"] = "Offline"
+		case "inbox", "next_step":
+			item["availability_label"] = "Replies later"
+		}
+		item["connection_label"] = label
+	}
 	stampBullpenTiming(w, start, storeTime, "directory", time.Since(projectStart))
 	w.Header().Set("Cache-Control", "no-store")
 	externalJSON(w, out)
