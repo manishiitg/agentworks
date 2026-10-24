@@ -248,6 +248,7 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 		}
 	}()
 	if r.Header.Get("Authorization") == "" || !cliOAuthAllowedPath(r.Method, r.URL.Path) {
+		log.Printf("[CLI-AUTH] event=request_refused method=%s path=%s reason=unsupported_target", r.Method, r.URL.Path)
 		mcpOAuthError(w, http.StatusForbidden, "invalid_target")
 		return nil, false
 	}
@@ -285,6 +286,9 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 }
 
 func cliOAuthAllowedPath(method, path string) bool {
+	if method == http.MethodPost && (path == "/api/external/v1/mcp/tasks" || path == "/api/external/v1/mcp/elicitation") {
+		return true // Protocol adapters redispatch native operations under the current grant.
+	}
 	if method == http.MethodPost && path == "/api/external/v1/agents/usage" {
 		return true // Numeric report handler fences the exact child connection, owner and lease.
 	}

@@ -25,6 +25,8 @@ func TestCLIDeviceOAuthBrowserApprovalAndRestrictions(t *testing.T) {
 	router.HandleFunc(cliOAuthTokenPath, api.handleCLIOAuthToken).Methods("POST")
 	router.HandleFunc(cliOAuthRevokePath, api.handleCLIOAuthRevoke).Methods("POST")
 	router.HandleFunc("/api/external/v1/tools", api.handleExternalTools).Methods("GET")
+	router.HandleFunc("/api/external/v1/mcp/tasks", api.handleExternalMCPTasks).Methods("POST")
+	router.HandleFunc("/api/external/v1/mcp/elicitation", api.handleExternalMCPInput).Methods("POST")
 	router.HandleFunc("/api/auth/access-tokens", api.handleAccessTokens).Methods("GET")
 	handler := AuthMiddleware(router)
 	request := func(method, path, body, token, contentType string) *httptest.ResponseRecorder {
@@ -103,6 +105,16 @@ func TestCLIDeviceOAuthBrowserApprovalAndRestrictions(t *testing.T) {
 	tools := request("GET", "/api/external/v1/tools", "", pair.Access, "")
 	if tools.Code != 200 || !strings.Contains(tools.Body.String(), "list_workflows") {
 		t.Fatal("CLI access failed", tools.Code, tools.Body)
+	}
+	// The actual CLI grant must reach both protocol adapters, not only /call.
+	if task := request("POST", "/api/external/v1/mcp/tasks", `{"method":"tasks/get","params":{"taskId":"missing"}}`, pair.Access, "application/json"); task.Code != 404 {
+		t.Fatal("CLI task adapter was fenced before its native access check", task.Code, task.Body)
+	}
+	if input := request("POST", "/api/external/v1/mcp/elicitation", `{`, pair.Access, "application/json"); input.Code != 400 {
+		t.Fatal("CLI input adapter was fenced before its request check", input.Code, input.Body)
+	}
+	if browser := request("POST", "/api/mcp/elicitation/request/open", `{}`, pair.Access, "application/json"); browser.Code != 403 {
+		t.Fatal("CLI grant reached website-only account opening", browser.Code)
 	}
 	if forbidden := request("GET", "/api/auth/access-tokens", "", pair.Access, ""); forbidden.Code != 403 {
 		t.Fatal("CLI token escaped external API", forbidden.Code)
