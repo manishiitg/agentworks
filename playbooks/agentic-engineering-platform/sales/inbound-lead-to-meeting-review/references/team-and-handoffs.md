@@ -2,7 +2,7 @@
 
 ## Team
 
-| Slot | Crew template | Output | Minimum source |
+| Slot | Specialist procedure | Output | Minimum source |
 | --- | --- | --- | --- |
 | Qualification, required | `lead-intake-qualifier` | `lead-qualification-brief/v1` | Authorized inbound request, fit and routing policy, duplicate scope |
 | Research, optional | `account-researcher` | `account-research-brief/v1` | Validated lead brief and approved company sources |

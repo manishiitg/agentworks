@@ -1,6 +1,6 @@
 # New Customer to First Value: team and handoffs
 
-| Slot | Crew template | Output | Minimum source |
+| Slot | Specialist procedure | Output | Minimum source |
 | --- | --- | --- | --- |
 | Onboarding, required | `customer-onboarding-coordinator` | `onboarding-milestone-register/v1` | Authorized customer handoff, account owner, first-value goal |
 | Adoption, required | `product-adoption-analyst` | `first-value-readout/v1` | Validated register, product event definition and coverage |

@@ -2,7 +2,7 @@
 
 ## Required team
 
-| Slot | Crew template | Produces | Access |
+| Slot | Specialist procedure | Produces | Access |
 | --- | --- | --- | --- |
 | Billing | `billing-operations-coordinator` | `billing-exception-queue/v1` | Authorized subscription, invoice, payment, refund, and dispute records or exports |
 | Finance | `finance-analyst` | `finance-impact-readout/v1` | Validated billing queue plus authorized ledger or finance export |

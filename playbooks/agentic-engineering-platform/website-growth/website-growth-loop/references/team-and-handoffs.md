@@ -4,7 +4,7 @@
 
 Inspect the Automation, accessible Crews, selected skills, checklist state, permissions, and a sample output. Show the owner which Crews can be reused and which must be created. The first manual route needs two distinct Crews: Website Growth Starter for the priority brief and Search Opportunity Mapper for buyer-question research. SEO Analyst produces technical issue evidence; it is a separate optional route and cannot stand in for a buyer-question map. Do not substitute based on a similar name.
 
-After the owner reviews the roster, call Builder `create_crew` for approved missing Crews with stable idempotency keys and `template_id` values `website-growth-starter` and `search-opportunity-mapper`. Do not pass a template's local skill ID as a global `skills` argument. For existing Crews, inspect their capabilities and add a specialist pack through Crew Identity only when the owner chose that extension. Record actual Crew IDs, trigger bindings, and the minimum source access each needs. Do not attach an external account merely because a Playbook recommends it.
+After the owner reviews the roster, reuse matching existing Crews or call Builder `create_crew` for approved missing Crews with stable idempotency keys and `skills: ["growth-work"]`. Read the matching `growth-work` references for Website Growth Starter and Search Opportunity Mapper, and describe each Crew's responsibility in its purpose. For existing Crews, inspect their skills and add `growth-work` only when needed. Record actual Crew IDs, trigger bindings, and the minimum source access each needs. A skill recommendation does not connect an external account.
 
 | Slot | Agent and output | Minimum first-route input |
 | --- | --- | --- |

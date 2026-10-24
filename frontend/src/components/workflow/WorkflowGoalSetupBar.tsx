@@ -9,7 +9,7 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 
 const REFRESH_MS = 30_000
 
-// Initial setup for an automation, like a Crew template's setup bar: goal,
+// Initial setup for an automation: goal,
 // then plan, metrics and dashboard, each done in the Builder chat. Goals are
 // optional, so it can be dismissed; the server stops showing it once the
 // automation has run. GoalSetupCard draws it.
