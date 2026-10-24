@@ -281,6 +281,33 @@ describe('CreateWorkProjectDialog', () => {
 
 
 describe('Crew native tab dragging', () => {
+  it('names another owner once in the Crew strip and Agents menu', async () => {
+    const owner = { agentProfileTabOwnerID: 'other', agentProfileTabOwnerName: 'alex.taylor@example.com', agentProfileTabCanWrite: false }
+    const make = (id: string, metadata: Record<string, unknown>) => ({ tabId: id, sessionId: 'session-' + id, name: id, createdAt: 1, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileConversationKey: 'crew:chat:' + id, ...metadata } } as ChatTab)
+    useChatStore.setState({ activeTabId: 'main', chatTabs: {
+      main: make('main', { agentProfileIsMainChat: true, agentProfileTabOwnerID: 'me', agentProfileTabOwnerName: 'me@example.com', agentProfileTabCanWrite: true }),
+      research: make('research', owner), review: make('review', owner),
+    } })
+    const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([
+      { conversation_key: 'crew:chat:research', session_id: 'session-research', name: 'Research', tab_owner_id: 'other', tab_owner_name: 'alex.taylor@example.com', can_write: false },
+      { conversation_key: 'crew:chat:review', session_id: 'session-review', name: 'Review', tab_owner_id: 'other', tab_owner_name: 'alex.taylor@example.com', can_write: false },
+    ])
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
+      expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(1)
+      expect(host.querySelector('[data-chat-owner-label]')?.textContent).toBe('Alex T.')
+      expect(host.textContent).not.toContain('me@example.com')
+      await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
+      const menu = host.querySelector('[aria-label="Agents"]')!
+      expect(menu.querySelectorAll('[data-chat-owner-label]')).toHaveLength(1)
+      expect(menu.querySelector('[data-chat-owner-label]')?.getAttribute('title')).toBe('alex.taylor@example.com')
+      expect(menu.querySelector('[aria-label="Rename Research"]')).toBeNull()
+      expect(menu.querySelector('[aria-label="Close Review"]')).toBeNull()
+    } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore() }
+  })
+
   it('shows exactly the server list in its order, whatever this browser remembered about a tab', async () => {
     const make = (id: string, extra: Record<string, unknown> = {}) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: 900, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew:chat:root-main' : `crew:chat:${id}`, ...extra } } as ChatTab)
     useChatStore.setState({ chatTabs: {

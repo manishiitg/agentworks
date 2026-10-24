@@ -18,6 +18,7 @@ import {
 import { shouldDisplayWorkflowTab, workflowTabDisplayName } from './workflowRuntimeTabProjection'
 import { isBlankWorkflowBuilderTab } from '../../utils/workflowTabResolution'
 import { AgentWorksChatTabItem } from '../chat/AgentWorksChatTabItem'
+import { ChatTabGroups } from '../chat/ChatTabGroups'
 import { StepInspectionTabItems } from '../chat/StepInspectionTabItems'
 import { selectStepInspection, stepInspectionState } from '../../utils/stepInspection'
 import { selectWorkflowTabsForStrip } from './workflowTabStripSelection'
@@ -221,7 +222,7 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
         ? 'flex min-w-0 items-center gap-1'
         : 'flex min-w-0 items-center gap-1 px-2 py-1'}>
         <div aria-label="Chat tabs" className="flex min-w-0 items-center gap-1 overflow-x-auto">
-          {activeWorkflowTabs.map((tab) => {
+          <ChatTabGroups tabs={activeWorkflowTabs}>{tab => {
             const isBlank = isBlankWorkflowBuilderTab(tab, activePresetId || '', tabEvents)
             const isPersistentChat = tab.metadata?.isViewOnly !== true && tab.metadata?.isExecutionRun !== true && tab.metadata?.phaseId === 'workflow-builder'
             const workflowName = workflowPresets.find(preset => preset.id === tab.metadata?.presetQueryId)?.label?.trim()
@@ -246,7 +247,7 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
               <StepInspectionTabItems tab={tab} active={tab.tabId === activeTabId} onActivate={showTab} />
               </React.Fragment>
             )
-          })}
+          }}</ChatTabGroups>
         </div>
         {binding?.tabs && <button type="button" title="New agent" aria-label="New agent" className="shrink-0 p-2 text-muted-foreground hover:text-foreground" onClick={() => void mutateTab('open', undefined, 'New agent').catch(() => useChatStore.getState().addToast('Could not open a tab. Try again.', 'error'))}><Plus className="h-4 w-4" /></button>}
       </div>

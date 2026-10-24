@@ -69,7 +69,7 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 import { EntityIdentityIcon } from '../../components/ui/EntityIdentityIcon'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { AgentWorksChatTabItem } from '../../components/chat/AgentWorksChatTabItem'
-import { ChatTabOwner, compactOwnerChatName } from '../../components/chat/ChatTabOwner'
+import { ChatTabGroups, compactOwnerChatName } from '../../components/chat/ChatTabGroups'
 import {
   REPORT_PREVIEW_PREFERENCE_CHANGED_EVENT,
   readReportPreviewPreference,
@@ -860,7 +860,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <div ref={stripRef} className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip">
-      {visibleTabs.map(tab => {
+      <ChatTabGroups tabs={visibleTabs}>{tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
         const targetKey = key || (tab.tabId === canonicalTabId ? listed?.[0]?.conversation_key : undefined)
         return <div
@@ -886,7 +886,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         onCloseTab={closeProjectTab}
         closeStopsSession={!!key}
       /></div>
-      })}
+      }}</ChatTabGroups>
       </div>
       {tabs.length > 1 && (
         <div ref={moreRef} className="relative shrink-0">
@@ -910,7 +910,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
               </div>
               {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">Drag agents or use the arrows to change their order.</p>}
               <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
-              {tabs.map(tab => {
+              <ChatTabGroups tabs={tabs} layout="menu">{tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
                 const label = tabLabel(tab)
                 const position = ownedListed.findIndex(chat => chat.conversation_key === key)
@@ -942,8 +942,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
                     title={[label, tab.metadata?.agentProfileTabOwnerName].filter(Boolean).join(' · ')}
                     className={`min-w-0 flex-1 rounded py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-foreground/85'}`}
                   >
-                    <span className="flex min-w-0 items-center gap-2">{tab.metadata?.agentProfileTabOwnerName && <ChatTabOwner name={tab.metadata.agentProfileTabOwnerName} yours={tab.metadata.agentProfileTabCanWrite === true} />}<span className="truncate">{label}</span></span>
-                    {tab.metadata?.agentProfileTabOwnerName && tab.metadata.agentProfileTabCanWrite !== true && <span className="mt-0.5 block truncate text-[10px] font-normal text-muted-foreground">{tab.metadata.agentProfileTabOwnerName}</span>}
+                    <span className="flex min-w-0 items-center gap-2"><span className="truncate">{label}</span></span>
                     {!isAgentTab(tab) && <span className="block text-[10px] font-normal text-muted-foreground">Activity</span>}
                   </button>}
                   {reordering && key ? <div className="flex shrink-0 items-center">
@@ -965,7 +964,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
                   )}
                   </>}
                 </div>
-              })}
+              }}</ChatTabGroups>
               </div>
             </div>
           )}

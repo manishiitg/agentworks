@@ -10,7 +10,7 @@ import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { PulseIcon, isPulseConversationSession } from '../workflow/pulseIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
-import { ChatTabOwner, compactOwnerChatName } from './ChatTabOwner'
+import { compactOwnerChatName } from './ChatTabGroups'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -150,7 +150,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       role="button"
       tabIndex={0}
       data-tab-active={isActive ? 'true' : undefined}
-      className={`group flex min-w-0 cursor-pointer items-center gap-1.5 border-b-2 px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-t-lg py-1.5 text-sm' : 'rounded-t-md py-1 text-xs'} ${
+      className={`group relative flex min-w-0 cursor-pointer items-center gap-1.5 border-b-2 px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-t-lg py-1.5 text-sm' : 'rounded-t-md py-1 text-xs'} ${
         // The open tab: bold text and a thin accent line under it, no filled box.
         isActive
           ? 'border-primary font-semibold text-foreground'
@@ -159,7 +159,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           : 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
       }`}
     >
-      {ownerName ? <ChatTabOwner name={ownerName} yours={yourTab} /> : productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
+      {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
       {isPulseConversationSession(tab.sessionId) && <PulseIcon className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Autopilot" role="img" />}
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
