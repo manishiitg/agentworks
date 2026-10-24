@@ -43,7 +43,7 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 	var mu sync.Mutex
 	var attached agentworksclient.AgentAttachment
 	var first agentworksclient.LocalBridgeRequest
-	attaches, resumes, stopped, offline := 0, 0, false, false
+	attaches, resumes, stopped, offline, replaced := 0, 0, false, false, false
 	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -61,8 +61,17 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 		}
 		if in.Action == "resume" && !stopped {
 			resumes++
-			offline = false
-			out.Offline, out.Attached = false, true
+			if in.AttachmentID != attached.ID {
+				t.Error("background recovery omitted the saved attachment fence")
+			}
+			if replaced {
+				stopped = true
+				out.Stopped, out.Attached, out.Offline = true, false, true
+				out.Error = "This chat was replaced by another attachment"
+			} else {
+				offline = false
+				out.Offline, out.Attached = false, true
+			}
 		}
 		_ = json.NewEncoder(w).Encode(out)
 	})}
@@ -103,6 +112,14 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 	if resumes != 1 || offline || attached.AgentName != saved.AgentName || attaches != 1 {
 		t.Fatalf("recovery did not retain the exact saved chat: resumes=%d offline=%v attached=%+v", resumes, offline, attached)
 	}
+	offline, replaced = true, true
+	mu.Unlock()
+	reconnect(context.Background(), []agentworksclient.AgentAttachment{saved})
+	reconnect(context.Background(), []agentworksclient.AgentAttachment{saved})
+	mu.Lock()
+	if resumes != 2 || !stopped {
+		t.Fatalf("replaced attachment was retried: resumes=%d stopped=%v", resumes, stopped)
+	}
 	stopped, attached = true, agentworksclient.AgentAttachment{}
 	mu.Unlock()
 	reconnect(context.Background(), []agentworksclient.AgentAttachment{saved})
@@ -111,7 +128,7 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if attaches != 1 || resumes != 1 {
+	if attaches != 1 || resumes != 2 {
 		t.Fatal("explicit disconnect was overridden")
 	}
 }

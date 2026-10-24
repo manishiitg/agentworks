@@ -1216,6 +1216,15 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		res := network()
 		b.reacquire(away)
 		if res.fail != nil {
+			if res.fail.Stopped && s != nil && b.sessions[key] == s {
+				s.ServerClosed, s.Offline = true, true
+				s.LastError = "This chat's name is connected elsewhere. Ask to connect it again if you want to move the name back."
+				if s.cancel != nil {
+					s.cancel()
+				}
+				_ = b.save()
+				log.Printf("[BRIDGE-RECOVERY] outcome=replaced agent=%s attachment=%s", s.Attachment.AgentName, s.Attachment.ID)
+			}
 			return *res.fail
 		}
 		a, connectionPath, newConnection, client := res.a, res.connectionPath, res.newConnection, res.client

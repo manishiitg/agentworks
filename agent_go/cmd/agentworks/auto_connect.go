@@ -126,7 +126,7 @@ func savedChatReconnector(root string, o *options, discover func(context.Context
 			if time.Now().Before(state.next) {
 				continue
 			}
-			req := agentworksclient.LocalBridgeRequest{Provider: found.provider, SessionID: found.session, HostKey: found.host, NativeRemote: found.remote}
+			req := agentworksclient.LocalBridgeRequest{Provider: found.provider, SessionID: found.session, HostKey: found.host, NativeRemote: found.remote, AttachmentID: attachment.ID}
 			err := autoConnectChat(ctx, root, o, req, found.cwd)
 			if err == nil {
 				req.Action = "connection"
@@ -137,6 +137,11 @@ func savedChatReconnector(root string, o *options, discover func(context.Context
 				}
 			}
 			if err != nil {
+				req.Action = "connection"
+				if status, e := agentworksclient.CallLocalBridge(ctx, root, req); e == nil && status.Stopped {
+					delete(attempts, attachment.ID)
+					continue // explicit disconnect or the server's replaced-attachment refusal
+				}
 				delay := min(max(state.delay*2, 30*time.Second), 10*time.Minute)
 				attempts[attachment.ID] = retry{next: time.Now().Add(delay), delay: delay}
 				log.Printf("[BRIDGE-RECOVERY] outcome=refused agent=%s attachment=%s retry_in=%s", attachment.AgentName, attachment.ID, delay)

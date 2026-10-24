@@ -652,6 +652,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	}
 	var attachments atomic.Int32
 	var backgroundAttachments atomic.Int32
+	var providerRestarted, nameReplaced atomic.Bool
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/agents/events") {
 			w.WriteHeader(http.StatusOK)
@@ -668,6 +669,11 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		if body.Action == "attach" {
 			if body.Session == "background" {
 				backgroundAttachments.Add(1)
+				if nameReplaced.Load() {
+					w.WriteHeader(http.StatusConflict)
+					_, _ = w.Write([]byte(`{"error":{"code":"agent_attachment_closed","message":"name moved to another chat"}}`))
+					return
+				}
 				_ = json.NewEncoder(w).Encode(AgentAttachment{ID: "background-renewed", AgentID: "agent-background", AgentName: body.Name, Provider: "codex", SessionID: body.Session})
 				return
 			}
@@ -710,7 +716,9 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	recovered := make(chan error, 1)
 	go func() {
 		done <- ServeLocalBridge(ctx, root, LocalBridgeOptions{
-			HostAlive:         func(_ string, host string) bool { return host == "current-process" },
+			HostAlive: func(_ string, host string) bool {
+				return host == "restarted-process" || host == "current-process" && !providerRestarted.Load()
+			},
 			HousekeepingEvery: 20 * time.Millisecond,
 			NativeOffer:       func(context.Context, string, LocalBridgeReply) error { return nil },
 			Reconnect: func(ctx context.Context, saved []AgentAttachment) {
@@ -721,7 +729,11 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 					}
 					return
 				}
-				_, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "resume", Provider: "codex", SessionID: "background", HostKey: "current-process", NativeRemote: background.NativeRemote})
+				host := "current-process"
+				if providerRestarted.Load() {
+					host = "restarted-process"
+				}
+				_, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "resume", Provider: "codex", SessionID: "background", HostKey: host, NativeRemote: background.NativeRemote, AttachmentID: saved[0].ID})
 				select {
 				case recovered <- err:
 				default:
@@ -760,6 +772,29 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	if s := restored[localBridgeKey("codex", "background")]; s == nil || s.ReadPosition != 7 || s.ParentConfigPath != config {
 		t.Fatalf("background recovery lost the saved login or read position: %+v", s)
 	}
+	// Another chat claimed this address while the old provider was gone.
+	// The server's existing expected-attachment refusal must end recovery.
+	nameReplaced.Store(true)
+	providerRestarted.Store(true)
+	select {
+	case err := <-recovered:
+		if err == nil {
+			t.Fatal("recovery ignored the replaced-attachment refusal")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("recovery did not observe the replaced attachment")
+	}
+	stopped, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "connection", Provider: "codex", SessionID: "background"})
+	if err != nil || !stopped.Stopped || !stopped.Offline || backgroundAttachments.Load() != 2 {
+		t.Fatalf("replacement did not stop recovery: %+v %v", stopped, err)
+	}
+	if err := readLiveJSON(filepath.Join(root, "sessions.json"), &restored); err != nil || !restored[localBridgeKey("codex", "background")].ServerClosed {
+		t.Fatal("replacement refusal was not saved")
+	}
+	if _, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "resume", Provider: "codex", SessionID: "background", HostKey: "restarted-process", AttachmentID: "background-renewed"}); err == nil || backgroundAttachments.Load() != 2 {
+		t.Fatal("server-closed recovery made another attachment request")
+	}
+	providerRestarted.Store(false)
 	request := LocalBridgeRequest{Action: "peers", Provider: "codex", SessionID: "saved", HostKey: "current-process"}
 	before, err := CallLocalBridge(ctx, root, request)
 	if err != nil || !before.Offline || before.Attached {
