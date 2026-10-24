@@ -2,6 +2,7 @@ package agentworksclient
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,7 +16,7 @@ func TestAgentStreamEndsWhenTheServerGoesSilent(t *testing.T) {
 	t.Cleanup(func() { streamIdleLimit = old })
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("data: {\"type\":\"connected\"}\n\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"connected\",\"attachment_id\":\"att\"}\n\n"))
 		w.(http.Flusher).Flush()
 		<-r.Context().Done() // then nothing: no heartbeat
 	}))
@@ -24,19 +25,28 @@ func TestAgentStreamEndsWhenTheServerGoesSilent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	connected := make(chan struct{})
+	var connectedAt time.Time
 	done := make(chan error, 1)
 	go func() {
-		done <- client.StreamAgentMessages(context.Background(), AgentAttachment{AgentName: "a", ID: "att"}, func(AgentLiveMessage) error { return nil })
+		done <- client.StreamAgentMessages(ctx, AgentAttachment{AgentName: "a", ID: "att"}, func(AgentLiveMessage) error { return nil }, func() {
+			connectedAt = time.Now()
+			close(connected)
+		})
 	}()
 	select {
 	case err := <-done:
-		if err == nil {
-			t.Fatal("a silent stream ended without an error")
+		select {
+		case <-connected:
+		default:
+			t.Fatalf("stream failed before accepting the matching attachment: %v", err)
+		}
+		if !errors.Is(err, context.Canceled) || ctx.Err() != nil || time.Since(connectedAt) < streamIdleLimit {
+			t.Fatalf("stream did not end through its idle timer: %v (parent=%v, connected=%s)", err, ctx.Err(), time.Since(connectedAt))
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("a silent stream was never dropped")
 	}
 }
-
-// An offer that was retired from the local list is remembered, so the server still holding it as stored does not make it
-// a new late arrival (a second turn); a message never seen before is accepted.
