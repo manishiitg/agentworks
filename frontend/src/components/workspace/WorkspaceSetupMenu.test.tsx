@@ -37,7 +37,7 @@ it.each([false, true])('combines account and Setup with existing admin gates (ad
     const menu = destination.querySelector<HTMLElement>('[role="menu"]')!
     expect(menu.hidden).toBe(false)
     expect(menu.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
-    expect(menu.querySelector('[aria-label="My vaults"]') !== null).toBe(true) // everyone who can create sees My vaults, admins included
+    expect(menu.querySelector('[aria-label="My vaults"]')).toBeNull()
     for (const label of ['Workspace', 'Help', 'Sign out']) expect(menu.textContent).toContain(label)
     for (const label of ['Getting started', 'Browser connections', 'Notifications & sound', 'Tips while working']) expect(menu.textContent).not.toContain(label)
     expect(menu.textContent).not.toContain('Change password')
@@ -83,18 +83,5 @@ it('keeps local identity without password and sign-out actions', async () => {
     expect(destination.textContent).toContain('Local account')
     expect(destination.textContent).not.toContain('Change password')
     expect(destination.textContent).not.toContain('Sign out')
-  })
-})
-
-it.each([
-  { allowed: ['work'], admin: true, reader: false, fallback: true },
-  { allowed: ['mcp-gateway'], admin: false, reader: true, fallback: false },
-  { allowed: ['mcp-gateway'], admin: false, reader: false, fallback: true },
-])('retains personal vault access only when shared Vault navigation is unavailable ($allowed, admin=$admin, reader=$reader)', async ({ allowed, admin, reader, fallback }) => {
-  window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['work', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
-  Object.assign(auth.user, { allowed_products: allowed, is_admin: admin, is_vault_reader: reader })
-  await render(async (_host, destination) => {
-    expect(destination.querySelector('[aria-label="My vaults"]') !== null).toBe(fallback)
-    expect(destination.querySelector('[data-product-switch-menu]')).toBeNull()
   })
 })

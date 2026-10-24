@@ -3,7 +3,6 @@ import { useProductNavigationToolbarStore } from '../../stores/useProductNavigat
 import { ProductSettingsMenu } from './ProductSettingsMenu'
 import ProvidersControl from '../topbar/ProvidersControl'
 import McpControl from '../topbar/McpControl'
-import VaultsControl from '../topbar/VaultsControl'
 import UsersControl from '../topbar/UsersControl'
 import AccountControl from '../topbar/AccountControl'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -41,7 +40,6 @@ export function WorkspaceAccountMenu() {
       <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Workspace</p>
       <ProvidersControl />
       <McpControl />
-      <VaultsControl />
       <UsersControl />
     </AccountControl>
   </ProductSettingsMenu>

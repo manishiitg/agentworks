@@ -11,7 +11,7 @@ vi.hoisted(() => {
 })
 vi.mock('../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn((surface: string) => { window.history.pushState({}, '', `/${surface === 'work' ? 'crew' : surface === 'agentworks' ? 'goals' : surface}`) }) }))
 vi.mock('./integrations/McpConnectDialog', () => ({ default: ({ onClose, onNavigate }: { onClose: () => void; onNavigate: () => void }) => <div role="dialog" aria-label="AI app setup"><button onClick={onClose}>Back to welcome</button><button onClick={onNavigate}>Open AgentBridge</button></div> }))
-vi.mock('./WelcomeAiReadiness', () => ({ default: ({ setupOpen, onCloseSetup }: { setupOpen: boolean; onCloseSetup: () => void }) => setupOpen ? <div role="dialog" aria-label="Set up your AI"><button onClick={onCloseSetup}>Back to getting started</button></div> : null }))
+vi.mock('./WelcomeAiReadiness', () => ({ default: ({ setupOpen, onCloseSetup, onSetup }: { setupOpen: boolean; onCloseSetup: () => void; onSetup: () => void }) => <><button onClick={onSetup}>Manage AI accounts</button>{setupOpen && <div role="dialog" aria-label="Set up your AI"><button onClick={onCloseSetup}>Back to getting started</button></div>}</> }))
 
 import { WelcomeHome, WELCOME_HOME_DISMISSED_KEY } from './WelcomeHome'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -124,11 +124,12 @@ describe('WelcomeHome', () => {
     expect(host.querySelector('a[href="/agentbridge/connect"]')).toBeNull()
   })
 
-  it('leads to app selection while retaining account and CLI setup routes', async () => {
+  it('uses the account card and app setup without duplicate footer links', async () => {
     configure()
     const host = await renderWelcome()
     expect(host.querySelector('code')).toBeNull()
-    expect(host.querySelector('a')?.getAttribute('href')).toBe('/agentbridge/connect')
+    expect(host.querySelector('footer')).toBeNull()
+    expect(host.textContent).not.toContain('CLI & agent messaging')
     await act(async () => button(host, 'Connect your AI app').click())
     expect(useAppStore.getState().adminPage).toBeNull()
     expect(host.querySelector('[aria-label="AI app setup"]')).not.toBeNull()
@@ -136,7 +137,7 @@ describe('WelcomeHome', () => {
     await act(async () => button(host, 'Back to welcome').click())
     expect(host.querySelector('[aria-label="AI app setup"]')).toBeNull()
     expect(host.querySelector('h1')?.textContent).toBe('What would you like to do?')
-    await act(async () => button(host, 'AI models & accounts').click())
+    await act(async () => button(host, 'Manage AI accounts').click())
     expect(host.querySelector('[aria-label="Set up your AI"]')).not.toBeNull()
     expect(useLLMStore.getState().showLLMModal).toBe(false)
     await act(async () => button(host, 'Back to getting started').click())

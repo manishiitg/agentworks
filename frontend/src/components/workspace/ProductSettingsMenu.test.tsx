@@ -16,7 +16,6 @@ import { useProductNavigationToolbarStore } from '../../stores/useProductNavigat
 import ProvidersControl from '../topbar/ProvidersControl'
 import McpControl from '../topbar/McpControl'
 import UsersControl from '../topbar/UsersControl'
-import VaultsControl from '../topbar/VaultsControl'
 import { TooltipProvider } from '../ui/tooltip'
 import { useAppStore } from '../../stores/useAppStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -30,7 +29,7 @@ it.each([false, true])('keeps existing permission gates inside the labeled menu 
   window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'work', 'code', 'relays', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   try {
-    await act(async () => root.render(<TooltipProvider><ProductSettingsMenu><ProvidersControl /><McpControl /><VaultsControl /><UsersControl /></ProductSettingsMenu></TooltipProvider>))
+    await act(async () => root.render(<TooltipProvider><ProductSettingsMenu><ProvidersControl /><McpControl /><UsersControl /></ProductSettingsMenu></TooltipProvider>))
     const menu = host.querySelector<HTMLElement>('[role="menu"]')!
     expect(menu.hidden).toBe(true)
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!.click())
@@ -38,19 +37,19 @@ it.each([false, true])('keeps existing permission gates inside the labeled menu 
     expect(menu.textContent).toContain('AI models & accounts')
     expect(menu.textContent).toContain('Connect AI tools')
     expect(menu.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
-    expect(menu.querySelector('[aria-label="My vaults"]')).not.toBeNull()
+    expect(menu.querySelector('[aria-label="My vaults"]')).toBeNull()
     await act(async () => menu.querySelector<HTMLButtonElement>('[aria-label="Connect AI tools"]')!.click())
     expect(useAppStore.getState().adminPage).toBe('mcp')
     expect(menu.hidden).toBe(true)
   } finally { await act(async () => root.unmount()); host.remove() }
 })
-it('keeps personal accounts available without shared Vault access, and supports keyboard dismissal', async () => {
+it('supports keyboard dismissal without adding a separate personal Vault entry', async () => {
   auth.user.allowed_products = ['work']
   window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'work', 'code', 'relays', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   try {
-    await act(async () => root.render(<TooltipProvider><ProductSettingsMenu><VaultsControl /><UsersControl /></ProductSettingsMenu></TooltipProvider>))
-    expect(host.querySelector('[aria-label="My vaults"]')).not.toBeNull()
+    await act(async () => root.render(<TooltipProvider><ProductSettingsMenu><UsersControl /></ProductSettingsMenu></TooltipProvider>))
+    expect(host.querySelector('[aria-label="My vaults"]')).toBeNull()
     expect(visibleProductSurfaceIDs(auth.user.allowed_products)).not.toContain('mcp-gateway')
     expect(host.querySelector('[aria-label="Users and access"]')).toBeNull()
     const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!
@@ -59,7 +58,7 @@ it('keeps personal accounts available without shared Vault access, and supports 
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
     expect(document.activeElement).toBe(trigger)
     auth.user.can_create = false
-    await act(async () => root.render(<TooltipProvider><ProductSettingsMenu><VaultsControl /><UsersControl /></ProductSettingsMenu></TooltipProvider>))
+    await act(async () => root.render(<TooltipProvider><ProductSettingsMenu><UsersControl /></ProductSettingsMenu></TooltipProvider>))
     expect(host.querySelector('[aria-label="My vaults"]')).toBeNull()
     expect(host.querySelector('[aria-label="Users and access"]')).toBeNull()
   } finally { await act(async () => root.unmount()); host.remove() }
@@ -76,7 +75,7 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
     return <TopBarEntitySelector label="Company CA" placeholder="Choose a Crew member" open={open} onToggle={() => setOpen(value => !value)} onClose={() => setOpen(false)}><div>Existing workspaces</div></TopBarEntitySelector>
   }
   try {
-    await act(async () => root.render(<TooltipProvider><ProductTopBar><Picker /><ProductSettingsMenu><ProvidersControl /><McpControl /><VaultsControl /><UsersControl /></ProductSettingsMenu></ProductTopBar><WorkspaceToolsMenu>{close => <button role="menuitem" onClick={close}>Memory</button>}</WorkspaceToolsMenu></TooltipProvider>))
+    await act(async () => root.render(<TooltipProvider><ProductTopBar><Picker /><ProductSettingsMenu><ProvidersControl /><McpControl /><UsersControl /></ProductSettingsMenu></ProductTopBar><WorkspaceToolsMenu>{close => <button role="menuitem" onClick={close}>Memory</button>}</WorkspaceToolsMenu></TooltipProvider>))
     expect(host.querySelector('button[aria-label="Settings"]')).toBeNull()
     const tools = host.querySelector<HTMLElement>('[role="menu"][aria-label="More workspace tools"]')!
     expect(tools.querySelector('[data-product-navigation-action]')).toBeNull()
@@ -86,7 +85,7 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
     expect(setup).not.toBeNull()
     const mcp = setup.querySelector<HTMLButtonElement>('[aria-label="Connect AI tools"]')!
     expect(setup.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
-    expect(setup.querySelector('[aria-label="My vaults"]')).not.toBeNull()
+    expect(setup.querySelector('[aria-label="My vaults"]')).toBeNull()
     expect(setup.querySelector('[aria-label="Setup"]')?.className).toContain('grid-cols-2')
     expect(setup.textContent).toContain('AI models & accounts')
     expect(setup.textContent).toContain('CLI, Cowork & ChatGPT')
@@ -147,10 +146,10 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
     return <TopBarEntitySelector label="My workspace" placeholder="Choose workspace" open={open} onToggle={() => setOpen(value => !value)} onClose={() => setOpen(false)}><span>Existing workspaces</span></TopBarEntitySelector>
   }
   try {
-    await act(async () => root.render(<TooltipProvider><ProductTopBar><Picker /><ProductSettingsMenu><ProvidersControl /><McpControl /><VaultsControl /><UsersControl /></ProductSettingsMenu></ProductTopBar></TooltipProvider>))
+    await act(async () => root.render(<TooltipProvider><ProductTopBar><Picker /><ProductSettingsMenu><ProvidersControl /><McpControl /><UsersControl /></ProductSettingsMenu></ProductTopBar></TooltipProvider>))
     expect(host.querySelector('[data-picker-setup]')).toBeNull()
     expect(destination.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
-    expect(destination.querySelector('[aria-label="My vaults"]')).not.toBeNull()
+    expect(destination.querySelector('[aria-label="My vaults"]')).toBeNull()
     const menu = destination.querySelector<HTMLElement>('[role="menu"]')!
     const picker = host.querySelector<HTMLElement>('.preset-dropdown')!
     await act(async () => window.dispatchEvent(new Event('open-product-settings')))

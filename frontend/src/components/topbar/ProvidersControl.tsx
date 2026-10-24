@@ -2,14 +2,13 @@ import { useProductSettingsMenu } from '../workspace/ProductSettingsMenu'
 import { ProductNavigationDescription, ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { Cpu } from 'lucide-react'
 import { useLLMStore } from '../../stores'
-import { useAppStore } from '../../stores/useAppStore'
+import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 
 export default function ProvidersControl() {
   const sidebar = useProductNavigationSidebar()
   const inSettings = useProductSettingsMenu()
   const isOpen = useLLMStore(state => state.showLLMModal)
-  const open = useLLMStore(state => state.setShowLLMModal)
 
   return (
     <Tooltip>
@@ -18,7 +17,7 @@ export default function ProvidersControl() {
           type="button"
           role={inSettings ? 'menuitem' : undefined}
           data-product-navigation-action
-          onClick={() => { useAppStore.getState().setAdminPage(null); open(true) }}
+          onClick={() => openWorkspaceSettings('providers')}
           data-tour="global-providers"
           aria-label="AI models & accounts"
           aria-pressed={isOpen}

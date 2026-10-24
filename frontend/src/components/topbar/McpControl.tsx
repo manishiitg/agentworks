@@ -4,7 +4,7 @@ import { Plug } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useAppStore } from '../../stores/useAppStore'
-import { useLLMStore } from '../../stores/useLLMStore'
+import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 
 /**
  * McpControl - top-bar icon that opens the "Connect an AI agent (MCP)" full
@@ -17,7 +17,6 @@ export default function McpControl() {
   const inSettings = useProductSettingsMenu()
   const user = useAuthStore(state => state.user)
   const active = useAppStore(state => state.adminPage === 'mcp')
-  const setAdminPage = useAppStore(state => state.setAdminPage)
   // Every signed-in person may connect an AI agent; the tools it gets follow their role (owner, 2026-10-09). The page itself shows
   // the Code-review section to admins and Code reviewers only.
   if (!user) return null
@@ -28,7 +27,7 @@ export default function McpControl() {
           type="button"
           role={inSettings ? 'menuitem' : undefined}
           data-product-navigation-action
-          onClick={() => { useLLMStore.getState().setShowLLMModal(false); setAdminPage('mcp') }}
+          onClick={() => openWorkspaceSettings('mcp')}
           aria-label="Connect AI tools"
           aria-pressed={active}
           data-tour="global-mcp"

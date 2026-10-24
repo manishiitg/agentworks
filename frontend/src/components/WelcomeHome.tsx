@@ -1,11 +1,8 @@
-import { followAppLink } from '../utils/appNavigation'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { ArrowRight, KeyRound, Plug, Terminal, Menu } from 'lucide-react'
+import { ArrowRight, Plug, Menu } from 'lucide-react'
 import { Button } from './ui/Button'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
-import { useLLMStore } from '../stores/useLLMStore'
-import { productRoutePath } from '../utils/productRoutes'
 import { navigationProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { openQuickNavigation, quickNavigationItems } from '../utils/quickNavigation'
@@ -88,8 +85,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const branding = runtimeBrandingConfig()
   const appName = getRuntimeAppName(branding) || 'AgentWorks'
   const mark = runtimeBrandAsset('markUrl', branding)
-  const agentBridgeEnabled = products.some(product => product.id === 'bullpen')
-  const agentBridgeSetupUrl = productRoutePath({ surface: 'bullpen', view: 'setup' })
   const workProducts = WORK_PRODUCT_ORDER.flatMap(id => products.filter(product => product.id === id))
   const services = products.filter(product => !WORK_PRODUCT_ORDER.includes(product.id))
     .sort((a, b) => {
@@ -173,10 +168,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
           <Button type="button" variant="outline" onClick={openMcpSetup} className="shrink-0">Connect your AI app<ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button>
         </section>
 
-        <footer className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border pt-4 text-xs text-muted-foreground">
-          <button type="button" onClick={workProducts.length > 0 ? openProviders : () => { leaveHome(); useLLMStore.getState().setShowLLMModal(true) }} className="inline-flex min-h-8 items-center gap-2 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><KeyRound className="h-3.5 w-3.5" aria-hidden="true" />AI models &amp; accounts</button>
-          {agentBridgeEnabled && <a href={agentBridgeSetupUrl} onClick={followAppLink} className="inline-flex min-h-8 items-center gap-2 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Terminal className="h-3.5 w-3.5" aria-hidden="true" />CLI &amp; agent messaging</a>}
-        </footer>
       </div>
       {connectOpen && <Suspense fallback={<p role="status" className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg border border-border bg-card p-3 text-sm">Loading connection setup…</p>}><McpConnectDialog onClose={() => setConnectOpen(false)} onNavigate={leaveHome} /></Suspense>}
     </main>

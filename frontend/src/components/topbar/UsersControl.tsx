@@ -4,7 +4,7 @@ import { Users } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useAppStore } from '../../stores/useAppStore'
-import { useLLMStore } from '../../stores/useLLMStore'
+import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 
 /**
  * Shared navigation entry for administrators in local and server installs.
@@ -15,7 +15,6 @@ export default function UsersControl() {
   const inSettings = useProductSettingsMenu()
   const user = useAuthStore(state => state.user)
   const active = useAppStore(state => state.adminPage === 'users')
-  const setAdminPage = useAppStore(state => state.setAdminPage)
   if (!user || user.is_admin !== true) return null
   return (
     <Tooltip>
@@ -24,7 +23,7 @@ export default function UsersControl() {
           type="button"
           role={inSettings ? 'menuitem' : undefined}
           data-product-navigation-action
-          onClick={() => { useLLMStore.getState().setShowLLMModal(false); setAdminPage('users') }}
+          onClick={() => openWorkspaceSettings('users')}
           aria-label="Users and access"
           aria-pressed={active}
           data-tour="global-users"

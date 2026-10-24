@@ -4,7 +4,7 @@ import { hasProductCreateAccess } from './workflowPermissions'
 import { gatewayAdminUrl, PRODUCT_SURFACE_LABELS, navigationProductSurfaceIDs, visibleProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
 import { useAppStore } from '../stores/useAppStore'
 import { useAuthStore } from '../stores/useAuthStore'
-import { useLLMStore } from '../stores/useLLMStore'
+import { openWorkspaceSettings } from './workspaceSettingsNavigation'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { openProductWorkspace } from './productWorkspaceNavigation'
 
@@ -123,8 +123,7 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
   if (!destination) return false
   openProductWorkspace(destination)
   const app = useAppStore.getState()
-  if (item.action === 'providers') useLLMStore.getState().setShowLLMModal(true)
-  else if (item.action === 'users' || item.action === 'mcp') app.setAdminPage(item.action)
+  if (item.action === 'providers' || item.action === 'users' || item.action === 'mcp') openWorkspaceSettings(item.action)
   else if (item.action === 'schedules') app.setShowSchedulesOverview(true)
   return true
 }

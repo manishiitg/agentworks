@@ -26,7 +26,6 @@ const EMPTY_RECENT: string[] = []
 
 /** Current product admission controls the inventory; recents are presentation only. */
 export function WorkflowContextPanel({ workspacePath, relayMode = false }: { workspacePath: string | null; relayMode?: boolean }) {
-  const [pulseMenuOpen, setPulseMenuOpen] = useState(true)
   const pulseMenuId = useId()
   const openView = useWorkflowStore(state => state.openWorkspaceView)
   const canWrite = useCanWriteWorkflow(workspacePath)
@@ -36,6 +35,9 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
   const manifest = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest)
   const product = relayMode ? 'relays' : 'agentworks'
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', product, manifest?.id ?? workspacePath ?? '')
+  const pulseEnabled = manifest?.pulse?.enabled === true
+  const [pulseMenuOpen, setPulseMenuOpen] = useState(pulseEnabled)
+  useEffect(() => { setPulseMenuOpen(pulseEnabled) }, [scope, pulseEnabled])
   const storedRecent = useProjectMenuHistoryStore(state => state.recent[scope] || EMPTY_RECENT)
   const incomingEmail = false
   const { documents } = useReportDocuments(workspacePath || '')
@@ -50,7 +52,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
       .catch(() => { if (!controller.signal.aborted) setSharing({ scope, allowed: false }) })
     return () => controller.abort()
   }, [scope, workspacePath, canWrite])
-  const menuOptions = { relayMode, isMultiUser: multiUser, pulseEnabled: manifest?.pulse?.enabled === true, incomingEmail, canShare: sharing?.scope === scope && sharing.allowed }
+  const menuOptions = { relayMode, isMultiUser: multiUser, pulseEnabled, incomingEmail, canShare: sharing?.scope === scope && sharing.allowed }
   const inventory = workflowProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const pulse = inventory.find(item => item.id === 'pulse')
   const pulseDecisions = pulse ? inventory.find(item => item.id === 'human-actions') : undefined

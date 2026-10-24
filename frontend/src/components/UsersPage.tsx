@@ -1,7 +1,6 @@
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { Users } from 'lucide-react'
 import UsersAdminPanel from './admin/UsersAdminPanel'
-import CrewStoragePanel from './admin/CrewStoragePanel'
 import { useAuthStore } from '../stores/useAuthStore'
 
 /**
@@ -18,7 +17,6 @@ export default function UsersPage() {
         <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
           {!multiUser && <p className="mb-4 rounded-lg border border-border p-3 text-sm text-muted-foreground">This workspace uses a local account.</p>}
           <UsersAdminPanel vaultOnly={!isAdmin} />
-          {isAdmin ? <details className="mt-5 rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-medium">Advanced: move existing projects</summary><div className="mt-3"><CrewStoragePanel /></div></details> : null}
         </div>
       </div>
     </section>

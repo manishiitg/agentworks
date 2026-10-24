@@ -44,6 +44,7 @@ it.each(['server', 'own', 'shared_with_you'] as const)('recognizes a ready %s ac
   vi.mocked(llmConfigService.getProviderConnections).mockImplementation(async scope => scope?.product === 'work' ? [account({ configured: true, relation })] : [account({ usable: false })])
   await render()
   expect(host.textContent).toContain('Your AI account is ready')
+  expect(button('Manage AI accounts')).toBeDefined()
   expect(host.textContent).toContain('Available for Crew.')
   const summary = host.querySelector('[aria-label="Available AI accounts"]')!
   expect(summary.textContent).toContain(relation === 'server' ? 'Company' : relation === 'own' ? 'Personal' : 'Shared with you')

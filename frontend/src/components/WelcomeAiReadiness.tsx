@@ -104,7 +104,7 @@ export default function WelcomeAiReadiness({ products, setupOpen, onSetup, onClo
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {state.status === 'error' && <button type="button" onClick={refresh} className="rounded-md text-xs text-muted-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Retry</button>}
-          <Button type="button" variant={ready ? 'outline' : 'default'} onClick={onSetup}>{ready || unknown || !personalAllowed ? 'Review AI setup' : 'Set up my AI'}<ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button>
+          <Button type="button" variant={ready ? 'outline' : 'default'} onClick={onSetup}>{ready ? 'Manage AI accounts' : unknown || !personalAllowed ? 'Review AI setup' : 'Set up my AI'}<ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button>
         </div>
       </div>}
       {state.status === 'loaded' && !ready && !unknown && <ol aria-label="AI setup steps" className="mt-4 grid grid-cols-3 gap-2 border-t border-primary/15 pt-3 text-xs text-muted-foreground">
