@@ -1,6 +1,7 @@
 """PLAT-426: publish-build.sh and fetch-build.sh against a local fake of the GitHub API (no network, no real token)."""
 from pathlib import Path
 import hashlib
+import gzip
 import json
 import os
 import stat
@@ -18,8 +19,8 @@ REVS = {"mcp-agent-builder-go": "a" * 40, "mcpagent": "b" * 40, "multi-llm-provi
 TAG = "build-aaaaaaaa-bbbbbbbb-cccccccc"
 
 
-def make_build(parent, revs=REVS, payload="one", arch="x86_64"):
-    name = revs["mcp-agent-builder-go"][:8] + "-20261004000000"
+def make_build(parent, revs=REVS, payload="one", arch="x86_64", timestamp="20261004000000"):
+    name = revs["mcp-agent-builder-go"][:8] + ("-arm64" if arch == "aarch64" else "") + "-" + timestamp
     d = Path(parent) / name
     (d / "bin").mkdir(parents=True)
     (d / "source/mcpagent").mkdir(parents=True)
@@ -30,7 +31,14 @@ def make_build(parent, revs=REVS, payload="one", arch="x86_64"):
     (d / "source/mcpagent/lib.go").write_text("package x")
     (d / "source/multi-llm-provider-go/p.go").write_text("package y")
     (d / "source/mcp-agent-builder-go/main.go").write_text("package z")
-    (d / "downloads/cli.tgz").write_text("cli")
+    sums = []
+    for target in ("darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64", "windows-amd64", "windows-arm64"):
+        asset = "agentworks-" + target + (".exe" if target.startswith("windows-") else "") + ".gz"
+        data = gzip.compress((payload + target).encode(), mtime=0)
+        (d / "downloads" / asset).write_bytes(data)
+        sums.append(f"{hashlib.sha256(data).hexdigest()}  {asset}\n")
+    (d / "downloads/cli-archives.sha256").write_text("".join(sums))
+    (d / "downloads/cli-download-base.txt").write_text(f"https://github.com/manishiitg/agentworks-builds/releases/download/cli-{name}\n")
     (d / "SOURCE_REVISIONS").write_text("".join(f"{k}={v}\n" for k, v in revs.items()))
     (d / "manifest.json").write_text(json.dumps({"schema": 1, "name": name, "revisions": revs, "arch": arch, "payload": payload}))
     return d
@@ -77,13 +85,19 @@ class PublishTest(Base):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(f"RELEASE_TAG={TAG}", r.stdout)
         self.assertEqual(self.names(), ["SHA256SUMS", "build-rts.tar.gz", "build.tar.gz", "manifest.json"])
-        rel = self.gh.releases[0]
+        rel = next(r for r in self.gh.releases if r["tag_name"] == TAG)
         self.assertTrue(rel["prerelease"])
+        cli_tag = "cli-" + self.build.name
+        self.assertEqual(self.names(cli_tag), sorted([p.name for p in (self.build / "downloads").glob("*.gz")] + ["SHA256SUMS"]))
+        cli_release = next(r for r in self.gh.releases if r["tag_name"] == cli_tag)
+        cli_assets = [a for a in self.gh.assets.values() if a["release"] == cli_release["id"]]
+        self.assertEqual(cli_assets[-1]["name"], "SHA256SUMS")
+        self.assertEqual(cli_assets[-1]["data"], (self.build / "downloads/cli-archives.sha256").read_bytes())
         manifest_sha = hashlib.sha256((self.build / "manifest.json").read_bytes()).hexdigest()
         self.assertIn(f"manifest-sha256: {manifest_sha}", rel["body"])
         for repo, rev in REVS.items():
             self.assertIn(f"{repo}={rev}", rel["body"])
-        data = {a["name"]: a["data"] for a in self.gh.assets.values()}
+        data = {a["name"]: a["data"] for a in self.gh.assets.values() if a["release"] == rel["id"]}
         self.assertEqual(data["manifest.json"], (self.build / "manifest.json").read_bytes())
         sums = dict(reversed(line.split("  ")) for line in data["SHA256SUMS"].decode().splitlines())
         for name in ("build.tar.gz", "build-rts.tar.gz", "manifest.json"):
@@ -103,7 +117,7 @@ class PublishTest(Base):
         full, rts = self.archive_names("build.tar.gz"), self.archive_names("build-rts.tar.gz")
         self.assertIn(f"{name}/manifest.json", full)
         self.assertIn(f"{name}/source/mcpagent/lib.go", full)
-        self.assertIn(f"{name}/downloads/cli.tgz", full)
+        self.assertIn(f"{name}/downloads/agentworks-linux-amd64.gz", full)
         self.assertIn(f"{name}/manifest.json", rts)
         self.assertIn(f"{name}/bin/agent", rts)
         self.assertIn(f"{name}/source/mcp-agent-builder-go/main.go", rts)
@@ -117,7 +131,7 @@ class PublishTest(Base):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("already published", r.stdout)
         self.assertEqual([e for e in self.gh.log if e[0] == "POST" and "/upload/" in e[1]], uploads)
-        self.assertEqual(len(self.gh.releases), 1)
+        self.assertEqual(len(self.gh.releases), 2)
 
     def test_arm_release_does_not_replace_or_prune_the_x86_release(self):
         self.env_file()
@@ -127,7 +141,7 @@ class PublishTest(Base):
         result = self.publish(arm, env={"BUILDS_KEEP_RELEASES": "1"})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"RELEASE_TAG={TAG}-arm64", result.stdout)
-        self.assertEqual({r["tag_name"] for r in self.gh.releases}, {TAG, TAG + "-arm64"})
+        self.assertEqual({r["tag_name"] for r in self.gh.releases}, {TAG, TAG + "-arm64", "cli-" + self.build.name, "cli-" + arm.name})
         self.assertTrue(all(self.gh.assets[key]["data"] == data for key, data in x86_assets.items()))
         # Downloading an ARM tag must also pass the transport's tag validation.
         fetched = self.root / "fetched-arm"
@@ -143,30 +157,42 @@ class PublishTest(Base):
         self.assertEqual(r.returncode, 0, r.stderr)           # the retry inside the run already repairs a dropped upload
         self.assertEqual(self.names(), ["SHA256SUMS", "build-rts.tar.gz", "build.tar.gz", "manifest.json"])
         # and a release left incomplete by an earlier run (an asset missing) is completed by the next run
-        rel = self.gh.releases[0]
-        victim = next(i for i, a in self.gh.assets.items() if a["name"] == "SHA256SUMS")
+        rel = next(r for r in self.gh.releases if r["tag_name"] == TAG)
+        victim = next(i for i, a in self.gh.assets.items() if a["name"] == "SHA256SUMS" and a["release"] == rel["id"])
         del self.gh.assets[victim]
         r = self.publish()
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertNotIn("already published", r.stdout)
+        self.assertNotIn(f"build {self.build.name} is already published", r.stdout)
         self.assertEqual(self.names(), ["SHA256SUMS", "build-rts.tar.gz", "build.tar.gz", "manifest.json"])
-        self.assertEqual(len(self.gh.releases), 1)
-        self.assertEqual(rel["id"], self.gh.releases[0]["id"])
+        self.assertEqual(len(self.gh.releases), 2)
+        self.assertEqual(rel["id"], next(r["id"] for r in self.gh.releases if r["tag_name"] == TAG))
+        # A missing CLI archive is repaired without replacing the server bundle.
+        cli = next(r for r in self.gh.releases if r["tag_name"] == "cli-" + self.build.name)
+        server_ids = {i for i, a in self.gh.assets.items() if a["release"] == rel["id"]}
+        victim = next(i for i, a in self.gh.assets.items() if a["release"] == cli["id"] and a["name"].endswith(".gz"))
+        del self.gh.assets[victim]
+        r = self.publish()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.names(cli["tag_name"])), 7)
+        self.assertTrue(server_ids <= self.gh.assets.keys())
 
     def test_rebuild_of_the_same_revisions_replaces_the_assets(self):
         self.env_file()
         self.publish()
-        other = make_build(self.root / "builds2", payload="two")
+        other = make_build(self.root / "builds2", payload="two", timestamp="20261004000001")
         r = self.publish(other)
         self.assertEqual(r.returncode, 0, r.stderr)
         manifest = next(a["data"] for a in self.gh.assets.values() if a["name"] == "manifest.json")
         self.assertEqual(manifest, (other / "manifest.json").read_bytes())
-        self.assertEqual(len(self.gh.releases), 1)
+        self.assertEqual(len(self.gh.releases), 3)
+        self.assertEqual(len(self.names("cli-" + self.build.name)), 7)
+        self.assertEqual(len(self.names("cli-" + other.name)), 7)
 
     def test_prunes_to_the_newest_eight_releases_and_deletes_their_tags(self):
         self.env_file()
         for i in range(10):
             self.gh.seed(f"build-{i:08x}-{i:08x}-{i:08x}", f"2026-09-{10 + i:02d}T00:00:00Z")
+        self.gh.seed("cli-00000000-20200101000000", "2020-01-01T00:00:00Z")
         self.gh.seed("not-a-build-release", "2020-01-01T00:00:00Z")
         r = self.publish()
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -176,6 +202,7 @@ class PublishTest(Base):
         self.assertNotIn("build-00000000-00000000-00000000", builds)
         self.assertNotIn("build-00000000-00000000-00000000", self.gh.tags)
         self.assertIn("not-a-build-release", [x["tag_name"] for x in self.gh.releases])
+        self.assertIn("cli-00000000-20200101000000", [x["tag_name"] for x in self.gh.releases])
 
     def test_token_file_with_loose_permissions_is_refused_and_nothing_is_called(self):
         for mode in (0o644, 0o640, 0o604):
@@ -278,7 +305,7 @@ class FetchTest(Base):
     def test_full_asset_has_the_downloads_too(self):
         r = self.fetch("build.tar.gz")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue((self.dest / "downloads/cli.tgz").is_file())
+        self.assertTrue((self.dest / "downloads/agentworks-linux-amd64.gz").is_file())
 
     def test_hash_mismatch_is_refused_and_leaves_nothing_behind(self):
         r = self.fetch(sha="0" * 64)

@@ -35,4 +35,6 @@ printf '{"version":"%s","release":"local"}\n' "$REVISION" > "$STAGE/version.json
 for file in "$NAME" "$NAME.gz" "$NAME.sha256" install-agentworks.sh version.json; do
   mv "$STAGE/$file" "$DEST/$file"
 done
+# A local development server offers the native executable it just built.
+rm -f "$DEST/cli-download-base.txt" "$DEST/cli-archives.sha256"
 echo "Packaged local AgentWorks CLI: $DEST/$NAME"

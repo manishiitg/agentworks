@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 )
@@ -71,6 +72,14 @@ func (api *StreamingAPI) handleCliDownload(w http.ResponseWriter, r *http.Reques
 	if base == "" {
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
+	}
+	// The build pins its own public release. Checksums stay on this server so
+	// replacing an asset on GitHub cannot also replace the trusted checksum.
+	if contentType == "application/gzip" {
+		if pinned, err := os.ReadFile(filepath.Join(base, "cli-download-base.txt")); err == nil {
+			http.Redirect(w, r, strings.TrimSpace(string(pinned))+"/"+name, http.StatusFound)
+			return
+		}
 	}
 	f, err := os.Open(filepath.Join(base, name))
 	if err != nil {

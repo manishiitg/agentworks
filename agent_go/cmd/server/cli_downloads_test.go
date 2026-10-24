@@ -43,6 +43,30 @@ func TestCliDownloadServesAllowlistedFiles(t *testing.T) {
 	}
 }
 
+func TestCliDownloadPinsOnlyArchivesToGithub(t *testing.T) {
+	dir := t.TempDir()
+	const pinned = "https://github.com/example/builds/releases/download/cli-aaaaaaaa-20261024000000"
+	if err := os.WriteFile(filepath.Join(dir, "cli-download-base.txt"), []byte(pinned+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for name, contentType := range cliDownloadFiles {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("local:"+name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		w := serveCliDownload(t, dir, name)
+		if contentType == "application/gzip" {
+			if w.Code != http.StatusFound || w.Header().Get("Location") != pinned+"/"+name {
+				t.Fatalf("%s: expected pinned redirect, got %d %q", name, w.Code, w.Header().Get("Location"))
+			}
+		} else if w.Code != http.StatusOK || w.Header().Get("Location") != "" || w.Body.String() != "local:"+name {
+			t.Fatalf("%s: expected server-owned file, got %d %q", name, w.Code, w.Body.String())
+		}
+	}
+	if w := serveCliDownload(t, dir, "cli-download-base.txt"); w.Code != http.StatusNotFound {
+		t.Fatalf("build metadata was exposed: %d", w.Code)
+	}
+}
+
 func TestCliDownloadRejectsUnknownAndTraversal(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "agentworks-darwin-arm64"), []byte("x"), 0o644); err != nil {

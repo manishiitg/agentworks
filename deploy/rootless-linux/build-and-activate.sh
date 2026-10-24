@@ -67,6 +67,7 @@ done
   # Nothing is compiled here: refuse the build before touching anything if it does not match this host or its files differ.
   for command in python3 file sha256sum openssl ldd; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
   prebuilt_verify "$REPO_ROOT" "$PREBUILT"
+python3 "$REPO_ROOT/deploy/common/verify-cli-release.py" "$PREBUILT/downloads"
 # gog (Gmail connector) needs its encrypted file keyring on a headless box;
 # on "auto" it uses the service user's gnome-keyring, which has no unlocked
 # default collection, and every Gmail connect fails. Generate the password

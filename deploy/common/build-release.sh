@@ -239,6 +239,10 @@ for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 wi
   actual="$(file -b "$OUT/downloads/$name")"
   [[ "$actual" == *"$expected"* ]] || { echo "Invalid $name binary: $actual" >&2; exit 1; }
 done
+# Each built executable has stamped build metadata, so pin downloads to this
+# exact build, including forced rebuilds. CLI releases outlive server bundles.
+printf 'https://github.com/%s/releases/download/cli-%s\n' "${GH_BUILDS_REPO:-manishiitg/agentworks-builds}" "$NAME" > "$OUT/downloads/cli-download-base.txt"
+(cd "$OUT/downloads" && sha256sum agentworks-*.gz > cli-archives.sha256)
 install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.sh" "$OUT/downloads/install-agentworks.sh"
 install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.ps1" "$OUT/downloads/install-agentworks.ps1"
 # The CLI compatibility epoch (deploy/cli-release.json); the deploy turns it into version.json.

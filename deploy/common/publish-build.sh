@@ -4,6 +4,7 @@
 #   publish-build.sh <build-dir>     publish (idempotent): release build-<builder8>-<mcpagent8>-<provider8> with the assets
 #                                    build.tar.gz (the whole build folder), build-rts.tar.gz (the trimmed copy server A needs),
 #                                    manifest.json, SHA256SUMS; then keep only the newest 8 build releases per architecture
+#                                    Also publish cli-<build-name>: six compressed CLI assets and archive SHA256SUMS, retained independently.
 #   publish-build.sh --list          the build releases on GitHub (anonymous, read-only)
 #
 # Runs on the build host after a build (build-release.sh, best effort; `./deploy.sh publish`). Needs only python3, tar and gzip.
@@ -22,6 +23,8 @@ UPLOAD = os.environ.get("GH_UPLOAD_URL", "https://uploads.github.com").rstrip("/
 KEEP = int(os.environ.get("BUILDS_KEEP_RELEASES", "8"))
 TAG_RE = re.compile(r"^build-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}(-arm64)?$")
 ASSETS = ("build.tar.gz", "build-rts.tar.gz", "manifest.json", "SHA256SUMS")
+CLI_ASSETS = tuple("agentworks-" + target + (".exe" if target.startswith("windows-") else "") + ".gz"
+                   for target in ("darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64", "windows-amd64", "windows-arm64")) + ("SHA256SUMS",)
 MAX_ASSET = 2 * 1024**3 - 1
 REPOS = ("mcp-agent-builder-go", "mcpagent", "multi-llm-provider-go")
 # Left out of the copy server A needs: the two library sources and the CLI downloads (server A never used them). Same as ship_build_to_rts.
@@ -183,9 +186,45 @@ def body_manifest(release):
     return m.group(1) if m else None
 
 
-def complete(release, manifest_sha):
+def complete(release, manifest_sha, assets=ASSETS):
     got = {a["name"]: a for a in release.get("assets", []) if a.get("state") == "uploaded" and a.get("size", 0) > 0}
-    return body_manifest(release) == manifest_sha and all(name in got for name in ASSETS)
+    return body_manifest(release) == manifest_sha and all(name in got for name in assets)
+
+
+def publish_cli(build, gh, revs, manifest_sha):
+    """Publish before the server bundle. The completion marker goes last; these
+    tags are not pruned with server bundles that a running server may outlive."""
+    downloads = os.path.join(build, "downloads")
+    tag = "cli-" + os.path.basename(build)
+    expected_base = f"https://github.com/{REPO}/releases/download/{tag}"
+    with open(os.path.join(downloads, "cli-download-base.txt")) as handle:
+        if handle.read().strip() != expected_base:
+            raise Fatal("the build's pinned CLI URL differs from the publishing repository")
+    sums = "".join(f"{sha256_file(os.path.join(downloads, asset))}  {asset}\n" for asset in CLI_ASSETS[:-1])
+    sums_path = os.path.join(downloads, "cli-archives.sha256")
+    with open(sums_path) as handle:
+        if handle.read() != sums:
+            raise Fatal("CLI archive checksums differ from this build")
+    status, release = gh.call("GET", f"/repos/{REPO}/releases/tags/{tag}", allow=(404,))
+    if status == 200 and complete(release, manifest_sha, CLI_ASSETS):
+        say(f"CLI {tag} is already published")
+        return False
+    preflight(gh)
+    body = release_body(os.path.basename(build), revs, manifest_sha)
+    if status == 404:
+        _, release = gh.call("POST", f"/repos/{REPO}/releases", {
+            "tag_name": tag, "name": tag, "body": body, "draft": False, "prerelease": True, "make_latest": "false"})
+    else:
+        gh.call("PATCH", f"/repos/{REPO}/releases/{release['id']}", {"body": body, "prerelease": True, "make_latest": "false"})
+    gh.drop_assets(release["id"])
+    for asset in CLI_ASSETS:
+        path = sums_path if asset == "SHA256SUMS" else os.path.join(downloads, asset)
+        gh.upload(release["id"], path, asset)
+        say(f"  uploaded {tag}/{asset} ({os.path.getsize(path) // 1024} KB)")
+    _, check = gh.call("GET", f"/repos/{REPO}/releases/{release['id']}")
+    if not complete(check, manifest_sha, CLI_ASSETS):
+        raise Fatal(f"CLI release {tag} is not complete after upload")
+    return True
 
 
 def tar_gz(parent, name, dest, excludes=()):
@@ -226,10 +265,12 @@ def publish(build):
         else:
             say(f"publish skipped: no GitHub token (put GH_TOKEN=... in {token_file()}, mode 600); servers will be sent this build the old way")
         return
+    cli_uploaded = publish_cli(build, gh, revs, manifest_sha)
     if release and complete(release, manifest_sha):
         say(f"build {name} is already published as {tag}")
     else:
-        preflight(gh)
+        if not cli_uploaded:
+            preflight(gh)
         parent = os.path.dirname(build)
         for stale in os.listdir(parent):
             if stale.startswith(".publish.") and time.time() - os.path.getmtime(os.path.join(parent, stale)) > 86400:
