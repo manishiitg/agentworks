@@ -53,7 +53,15 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
   const ownerInputId = useId()
   const shareButton = useRef<HTMLButtonElement>(null)
   const focusPopup = useCallback((node: HTMLDivElement | null) => node?.focus(), [])
-  const closePopup = () => { setOpen(false); shareButton.current?.focus() }
+  const closePopup = useCallback(() => { setOpen(false); shareButton.current?.focus() }, [])
+  useEffect(() => {
+    if (!open || variant !== 'button') return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); closePopup() }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [open, variant, closePopup])
 
   const loadOwners = useCallback(async () => {
     setOwnersLoading(true)
@@ -206,7 +214,7 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/95 px-2 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
         <Users className="h-3.5 w-3.5" /> {label}
       </button>
-      {open && createPortal(<div ref={focusPopup} tabIndex={-1} role="dialog" aria-label="Share" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); closePopup() } }} className="fixed right-4 top-4 z-50 flex max-h-[calc(100dvh-2rem)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-border bg-background text-sm shadow-xl outline-none sm:top-16 sm:max-h-[calc(100dvh-5rem)]">
+      {open && createPortal(<div ref={focusPopup} tabIndex={-1} role="dialog" aria-label="Share" className="fixed right-4 top-4 z-50 flex max-h-[calc(100dvh-2rem)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-border bg-background text-sm shadow-xl outline-none sm:top-16 sm:max-h-[calc(100dvh-5rem)]">
         <div data-share-dialog-body className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">{content}</div>
         <div className="shrink-0 border-t border-border bg-background p-3">{actions}</div>
       </div>, document.body)}
