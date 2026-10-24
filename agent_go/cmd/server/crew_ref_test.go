@@ -22,46 +22,27 @@ func stubCrewLookups(t *testing.T, owners map[string]string, aliases map[string]
 	})
 }
 
-// All three spellings of one crew parse to the same root; nothing else is a crew.
+// Only the shared root Crew/<id> names a Crew; the retired Chats/Work/projects spellings are not Crew paths.
 func TestParseCrewPathSpellings(t *testing.T) {
-	for raw, want := range map[string]crewPathRef{
-		"Chats/Work/projects/sde-1a2b":                     {Root: "_users/alice/Chats/Work/projects/sde-1a2b", OwnerID: "alice"},
-		"/Chats/Work/projects/sde-1a2b/db/reports/x.html/": {Root: "_users/alice/Chats/Work/projects/sde-1a2b", Rest: "db/reports/x.html", OwnerID: "alice"},
-		"_users/bob/Chats/Work/projects/ops-9f":            {Root: "_users/bob/Chats/Work/projects/ops-9f", OwnerID: "bob"},
-		"Crew/sde-1a2b/code/reports/x.py":                  {Root: "Crew/sde-1a2b", Rest: "code/reports/x.py", Shared: true},
-	} {
-		got, ok := parseCrewPath("alice", raw)
-		if !ok || got != want {
-			t.Fatalf("%q: got %+v %v, want %+v", raw, got, ok, want)
-		}
+	got, ok := parseCrewPath("alice", "/Crew/sde-1a2b/code/reports/x.py/")
+	if want := (crewPathRef{Root: "Crew/sde-1a2b", Rest: "code/reports/x.py", Shared: true}); !ok || got != want {
+		t.Fatalf("got %+v %v, want %+v", got, ok, want)
 	}
-	for _, raw := range []string{"", "Crew", "Crew/", "Crew/.hidden", "Workflow/x", "Chats/Work/projects", "Chats/Work/projects/.x",
-		"_users/bob/Chats/Work", "_users//Chats/Work/projects/p", "Chats/SparkQuill/activities/a", "Crew/../Workflow/x", "Chats/Work/projects/../../x"} {
+	for _, raw := range []string{"", "Crew", "Crew/", "Crew/.hidden", "Workflow/x", "Crew/../Workflow/x",
+		"Chats/Work/projects/sde-1a2b", "_users/bob/Chats/Work/projects/ops-9f", "Chats/SparkQuill/activities/a"} {
 		if ref, ok := parseCrewPath("alice", raw); ok {
 			t.Fatalf("%q parsed as %+v", raw, ref)
 		}
 	}
-	if _, ok := parseCrewPath("", "Chats/Work/projects/p"); ok {
-		t.Fatal("user-relative crew path without a caller resolved")
-	}
 }
 
-// After migration a legacy spelling follows the alias to Crew/<id>; a shared
-// root takes its owner from the manifest.
-func TestResolveCrewPathAliasAndOwner(t *testing.T) {
-	stubCrewLookups(t, map[string]string{"Crew/sde-1a2b": "alice"}, map[string]string{"_users/alice/Chats/Work/projects/sde-1a2b": "Crew/sde-1a2b"})
-	for _, raw := range []string{"Chats/Work/projects/sde-1a2b/db", "_users/alice/Chats/Work/projects/sde-1a2b/db", "Crew/sde-1a2b/db"} {
-		ref, ok := resolveCrewPath(context.Background(), "alice", raw)
-		if !ok || ref.Root != "Crew/sde-1a2b" || ref.Rest != "db" || ref.OwnerID != "alice" || !ref.Shared {
-			t.Fatalf("%q resolved to %+v", raw, ref)
-		}
+// A Crew takes its owner from the server's registry; one without an owner is nobody's.
+func TestResolveCrewPathOwner(t *testing.T) {
+	stubCrewLookups(t, map[string]string{"Crew/sde-1a2b": "alice"}, nil)
+	ref, ok := resolveCrewPath(context.Background(), "bob", "Crew/sde-1a2b/db")
+	if !ok || ref.Root != "Crew/sde-1a2b" || ref.Rest != "db" || ref.OwnerID != "alice" || !ref.Shared {
+		t.Fatalf("resolved to %+v", ref)
 	}
-	// Not migrated: stays where it is.
-	ref, _ := resolveCrewPath(context.Background(), "bob", "Chats/Work/projects/ops")
-	if ref.Root != "_users/bob/Chats/Work/projects/ops" || ref.Shared {
-		t.Fatalf("unmigrated crew moved: %+v", ref)
-	}
-	// A shared crew without a readable owner is nobody's.
 	ref, _ = resolveCrewPath(context.Background(), "alice", "Crew/orphan")
 	if ref.OwnerID != "" || crewAccessFor(&UserClaims{UserID: "alice"}, ref) != crewAccessNone {
 		t.Fatalf("orphan crew has an owner: %+v", ref)
@@ -70,6 +51,11 @@ func TestResolveCrewPathAliasAndOwner(t *testing.T) {
 
 func TestCrewAccessFor(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","products":["work"]},{"id":"bob","username":"bob","products":["work"]},{"id":"carol","username":"carol","products":["agentworks"]}]}`)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	// A Crew starts private; another user reads it only once the owner has shared it.
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "sde", OwnerID: "alice", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
 	ref := crewPathRef{Root: "Crew/sde", OwnerID: "alice", Shared: true}
 	for user, want := range map[string]crewAccessLevel{"alice": crewAccessOwner, "bob": crewAccessReader, "carol": crewAccessNone} {
 		if got := crewAccessFor(&UserClaims{UserID: user, Username: user}, ref); got != want {
@@ -110,9 +96,6 @@ func TestCleanAgentProfileWorkspaceRejectsSharedCrewRoot(t *testing.T) {
 		if _, err := cleanAgentProfileWorkspace(raw, "alice"); err == nil {
 			t.Fatalf("%q accepted as a selected folder", raw)
 		}
-	}
-	if got, err := cleanAgentProfileWorkspace("Chats/Work/projects/sde", "alice"); err != nil || got != "Chats/Work/projects/sde" {
-		t.Fatalf("legacy crew folder changed: %q %v", got, err)
 	}
 }
 
