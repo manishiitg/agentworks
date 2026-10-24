@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Users } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import api from '../../services/api'
 import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
 import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
@@ -50,6 +51,9 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const ownerInputId = useId()
+  const shareButton = useRef<HTMLButtonElement>(null)
+  const focusPopup = useCallback((node: HTMLDivElement | null) => node?.focus(), [])
+  const closePopup = () => { setOpen(false); shareButton.current?.focus() }
 
   const loadOwners = useCallback(async () => {
     setOwnersLoading(true)
@@ -190,19 +194,22 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
               </>}
             </section>}
           {message && <p className="text-xs text-muted-foreground" role="status">{message}</p>}
-          <div className="flex justify-end gap-2">
-            {!isPanel && <button type="button" onClick={() => setOpen(false)} className="rounded-md px-2 py-1 text-xs hover:bg-muted">Close</button>}
+  </>
+  const actions = <div className="flex justify-end gap-2">
+            {!isPanel && <button type="button" onClick={closePopup} className="rounded-md px-2 py-1 text-xs hover:bg-muted">Close</button>}
             {section !== 'owners' && <WorkspacePanelActions local={!isPanel}><button type="button" disabled={busy} onClick={() => void save()} className="h-8 rounded-md border border-border px-3 text-xs hover:bg-muted disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button></WorkspacePanelActions>}
           </div>
-  </>
-  if (isPanel) return <div className="w-full max-w-3xl space-y-5 text-sm">{content}</div>
+  if (isPanel) return <div className="w-full max-w-3xl space-y-5 text-sm">{content}{actions}</div>
   return (
     <div className="relative">
-      <button type="button" onClick={() => { if (!open) void loadOwners(); setOpen(v => !v) }} aria-label={label} title={label} aria-expanded={open}
+      <button ref={shareButton} type="button" onClick={() => { if (!open) void loadOwners(); setOpen(v => !v) }} aria-label={label} title={label} aria-expanded={open}
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/95 px-2 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
         <Users className="h-3.5 w-3.5" /> {label}
       </button>
-      {open && <div role="dialog" aria-label="Share" className="absolute right-0 z-50 mt-1 w-72 space-y-2 rounded-md border border-border bg-background p-3 text-sm shadow-lg">{content}</div>}
+      {open && createPortal(<div ref={focusPopup} tabIndex={-1} role="dialog" aria-label="Share" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); closePopup() } }} className="fixed right-4 top-4 z-50 flex max-h-[calc(100dvh-2rem)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-border bg-background text-sm shadow-xl outline-none sm:top-16 sm:max-h-[calc(100dvh-5rem)]">
+        <div data-share-dialog-body className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">{content}</div>
+        <div className="shrink-0 border-t border-border bg-background p-3">{actions}</div>
+      </div>, document.body)}
     </div>
   )
 }
