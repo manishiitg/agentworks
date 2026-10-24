@@ -138,6 +138,7 @@ type LocalBridgeReply struct {
 	HeldReasons        map[string]int `json:"held_reasons,omitempty"`
 	previousGuidanceAt time.Time
 	guidanceAt         time.Time
+	serverError        error               // internal mailbox failure; never sent to a provider
 	authRefused        bool                // internal attachment result; never sent to a provider
 	Networks           []LocalNetworkState `json:"networks,omitempty"`
 	OwnServer          string              `json:"own_server,omitempty"`
@@ -1555,6 +1556,21 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 		}
 		b.unlocked(func() {
+			if len(inboxNetworks) > 1 && in.Action == "reply_inbox" {
+				// Let the server authorize the reply itself. Reading historical
+				// bodies to find its network adds work unrelated to this send.
+				for _, candidate := range inboxNetworks {
+					checked := b.mailboxCall(callCtx, candidate, in, out)
+					var apiErr *APIError
+					if errors.As(checked.serverError, &apiErr) && apiErr.Status == http.StatusNotFound && apiErr.Code == "not_found" {
+						continue
+					}
+					reply, network = checked, candidate.Network
+					return // An uncertain send must never be replayed on another server.
+				}
+				reply = LocalBridgeReply{Error: "This inbox is unavailable through this chat's connected networks. Check the inbox address or choose its network."}
+				return
+			}
 			// An inbox address is resolved from the authorized server mailbox,
 			// never from a local copy of previously delivered message bodies.
 			if len(inboxNetworks) > 1 {
@@ -2046,7 +2062,7 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		raw, err = s.client.Call(callCtx, "messages", args)
 	}
 	if err != nil {
-		return LocalBridgeReply{Error: err.Error()}
+		return LocalBridgeReply{Error: err.Error(), serverError: err}
 	}
 	if in.Action == "read" {
 		raw, err = filterAttachedMailbox(callCtx, s, raw)

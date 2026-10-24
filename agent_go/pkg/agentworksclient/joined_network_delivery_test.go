@@ -28,7 +28,7 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 	var primarySends, partnerSends atomic.Int32
 	var partnerAttaches atomic.Int32
 	var duplicateName, refusePartner, failPrimaryDirectory atomic.Bool
-	var invalidPrimaryDirectory atomic.Int32
+	var invalidPrimaryDirectory, primaryReplyFailure atomic.Int32
 	incompleteDirectories := []string{`{}`, `null`, `{"agents":null}`}
 	remote := func(network string, reads *atomic.Int32) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +71,16 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 				}
 				json.NewEncoder(w).Encode(map[string]any{"agents": agents})
 			case "send":
+				if inbox, _ := args["inbox_id"].(string); inbox != "" && inbox != "inbox-"+network {
+					if network == "primary" && primaryReplyFailure.Load() != 0 {
+						w.WriteHeader(http.StatusServiceUnavailable)
+						fmt.Fprint(w, `{"error":{"code":"unavailable","message":"uncertain send"}}`)
+					} else {
+						w.WriteHeader(http.StatusNotFound)
+						fmt.Fprint(w, `{"error":{"code":"not_found","message":"inbox unavailable"}}`)
+					}
+					return
+				}
 				if args["target"] != "agent:reviewer" && args["inbox_id"] != "inbox-"+network {
 					t.Error("send used the wrong target", args["target"])
 				}
@@ -256,8 +266,22 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 	refusePartner.Store(false)
 	// A reply still finds its original server after the helper's read position
 	// advances, with no local inbox/body journal and no explicit network hint.
+	readsBeforeReply := primaryReads.Load() + partnerReads.Load()
 	resultReply, err := plugin.GetTool(PluginToolName).Handler(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "reply", "inbox_id": "inbox-partner", "message": "review completed", "submission_id": "inbox-reply"}}})
 	if err != nil || resultReply.IsError || primarySends.Load() != 1 || partnerSends.Load() != 5 {
 		t.Fatalf("inbox reply lost its server: %+v %v", resultReply, err)
+	}
+	primaryReplyFailure.Store(1)
+	uncertainReply, err := plugin.GetTool(PluginToolName).Handler(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "reply", "inbox_id": "inbox-partner", "message": "must not replay", "submission_id": "uncertain-inbox-reply"}}})
+	if err != nil || !uncertainReply.IsError || primarySends.Load() != 1 || partnerSends.Load() != 5 {
+		t.Fatalf("an uncertain reply was sent on another network: %+v %v", uncertainReply, err)
+	}
+	primaryReplyFailure.Store(0)
+	missingReply, err := plugin.GetTool(PluginToolName).Handler(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "reply", "inbox_id": "inbox-missing", "message": "must not send", "submission_id": "missing-inbox-reply"}}})
+	if err != nil || !missingReply.IsError || primarySends.Load() != 1 || partnerSends.Load() != 5 {
+		t.Fatalf("an unknown inbox accepted a reply: %+v %v", missingReply, err)
+	}
+	if primaryReads.Load()+partnerReads.Load() != readsBeforeReply {
+		t.Fatal("reply routing downloaded historical message bodies")
 	}
 }
