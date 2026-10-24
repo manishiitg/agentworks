@@ -27,7 +27,7 @@ const (
 
 var (
 	productConversationKeyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$`)
-	productConversationLocks      [64]sync.Mutex
+	productConversationLocks      sync.Map // Exact key -> *sync.Mutex, retained for the process lifetime.
 )
 
 // ProductConversationRecord is the durable identity binding for one product
@@ -666,12 +666,12 @@ func productConversationRegistryEntryKey(profileID, conversationKey string) stri
 }
 
 func productConversationRegistryMutex(path string) *sync.Mutex {
-	var hash uint64 = 1469598103934665603
-	for i := 0; i < len(path); i++ {
-		hash ^= uint64(path[i])
-		hash *= 1099511628211
-	}
-	return &productConversationLocks[hash%uint64(len(productConversationLocks))]
+	// Callers can hold a Builder reservation while reading the registry or
+	// enqueueing a turn. Distinct keys must never share a mutex: hash buckets
+	// made those nested operations deadlock against their own reservation.
+	// Never acquire another registry key lock while holding one.
+	lock, _ := productConversationLocks.LoadOrStore(path, &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }
 
 func (store productConversationRegistryStore) resolveOrCreate(

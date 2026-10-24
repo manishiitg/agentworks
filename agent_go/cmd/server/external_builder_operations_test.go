@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -121,6 +124,56 @@ func TestExternalBuilderOperationsContinueMainChatAndSeparateEditor(t *testing.T
 	_, replacement := f.issue(t, "owner")
 	f.call(t, replacement, "builder_status", map[string]any{"operation_id": first.ID}, 404)
 	f.call(t, owner, "builder_status", map[string]any{"operation_id": first.ID}, 401)
+}
+
+func TestExternalBuilderReservationDoesNotCoverChatLookupOrQueue(t *testing.T) {
+	f := newBuilderOperationFixture(t)
+	token, raw := f.issue(t, "owner")
+	claims, err := accessTokenClaims(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(t.Context(), UserContextKey, claims)
+	main, err := f.api.goalOwnerTabSummary(ctx, workflowBuilderScope{PresetID: "invoices", Workspace: "Workflow/invoices"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reservation := productConversationRegistryMutex("external-builder:owner:Workflow/invoices")
+	var nested, registryRead atomic.Bool
+	checkUnlocked := func() {
+		if !reservation.TryLock() {
+			nested.Store(true)
+			return
+		}
+		reservation.Unlock()
+	}
+	upstream, err := url.Parse(os.Getenv("WORKSPACE_API_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := httputil.NewSingleHostReverseProxy(upstream)
+	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/"+productConversationRegistryPath("owner")) {
+			registryRead.Store(true)
+			checkUnlocked()
+		}
+		proxy.ServeHTTP(w, r)
+	}))
+	t.Cleanup(probe.Close)
+	t.Setenv("WORKSPACE_API_URL", probe.URL)
+	writeQueue := f.api.internalTurnQueueWrite
+	f.api.internalTurnQueueWrite = func(ctx context.Context, path, value string) error {
+		checkUnlocked()
+		return writeQueue(ctx, path, value)
+	}
+	first := f.submit(t, raw, "lock-scope", "Update the plan")
+	retry := f.submit(t, raw, "lock-scope", "Update the plan")
+	if !registryRead.Load() || nested.Load() {
+		t.Fatal("chat lookup or queue persistence ran under the Builder reservation")
+	}
+	if first.SessionID != main.SessionID || retry.ID != first.ID || len(f.api.mustReadTurnQueueForTest(t, "owner")) != 1 {
+		t.Fatal("Builder submission did not reuse the existing chat and one queued operation")
+	}
 }
 
 func TestExternalBuilderLiveGrantHonorsWorkflowAllowlist(t *testing.T) {

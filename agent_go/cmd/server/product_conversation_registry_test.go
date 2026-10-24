@@ -38,6 +38,32 @@ func singletonConversationProfile() agentprofiles.Profile {
 	return profile
 }
 
+func TestProductConversationRegistryReadInsideBuilderReservation(t *testing.T) {
+	// These distinct keys collided in the former 64-bucket mutex pool. The
+	// Builder holds its reservation while selecting a chat from this registry.
+	const user = "owner"
+	reservationKey := "external-builder:owner:Workflow/example-61"
+	reservation := productConversationRegistryMutex(reservationKey)
+	reservation.Lock()
+	defer reservation.Unlock()
+	if reservation != productConversationRegistryMutex(reservationKey) {
+		t.Fatal("the same reservation key must keep the same mutex")
+	}
+	if reservation.TryLock() {
+		reservation.Unlock()
+		t.Fatal("a second caller can enter the held reservation")
+	}
+	registry := productConversationRegistryMutex(productConversationRegistryPath(user))
+	if !registry.TryLock() {
+		t.Fatal("a registry read deadlocks against an unrelated Builder reservation")
+	}
+	registry.Unlock()
+	store, _ := memoryProductConversationStore()
+	if _, err := store.projectChats(t.Context(), user, "agentworks", "example"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestProductConversationRegistryReusesStableIdentity(t *testing.T) {
 	store, _ := memoryProductConversationStore()
 	profile := singletonConversationProfile()

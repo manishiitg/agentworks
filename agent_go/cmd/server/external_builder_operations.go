@@ -422,46 +422,11 @@ func (api *StreamingAPI) submitExternalBuilderOperation(w http.ResponseWriter, r
 		externalError(w, 400, "invalid_arguments", "message and submission_id are required within their size limits")
 		return externalBuilderOperation{}, false
 	}
-	// Serialize selection and reservation across connections for the same person.
-	lock := productConversationRegistryMutex("external-builder:" + claims.UserID + ":" + workflow.WorkspacePath)
-	lock.Lock()
-	defer lock.Unlock()
-	s, err := openExternalBuilderStore()
-	if err != nil {
-		externalError(w, 503, "storage_unavailable", err.Error())
-		return externalBuilderOperation{}, false
-	}
-	defer s.Close()
-	old, err := scanExternalBuilder(s.db.QueryRowContext(r.Context(), `SELECT `+externalBuilderColumns+` FROM external_builder_operations WHERE user_id=? AND grant_id=? AND submission_id=?`, claims.UserID, claims.AccessToken.ID, submission))
-	if err == nil {
-		if old.Message != message || old.WorkflowID != workflow.Manifest.ID || (requestedSession != "" && old.SessionID != requestedSession) {
-			externalError(w, 409, "submission_conflict", "submission_id was already used with another payload")
-			return externalBuilderOperation{}, false
-		}
-		if old.Status == "queued" {
-			if err := api.ensureExternalBuilderQueued(r.Context(), claims, old); err != nil {
-				externalError(w, 503, "queue_unavailable", err.Error())
-				return externalBuilderOperation{}, false
-			}
-		}
-		return old, true
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		externalError(w, 503, "storage_unavailable", err.Error())
-		return externalBuilderOperation{}, false
-	}
-	var pending int
-	if err := s.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM external_builder_operations WHERE user_id=? AND status IN ('queued','running')`, claims.UserID).Scan(&pending); err != nil {
-		externalError(w, 503, "storage_unavailable", err.Error())
-		return externalBuilderOperation{}, false
-	}
-	if pending >= 16 {
-		externalError(w, 429, "builder_busy", "Finish or cancel pending Builder operations before submitting more")
-		return externalBuilderOperation{}, false
-	}
+	// Chat selection can read or create registry records. Never do it while
+	// holding the operation reservation lock.
 	session := requestedSession
 	if session != "" {
-		if _, _, err = api.externalBuilderSession(r, workflow.WorkspacePath, session); err != nil {
+		if _, _, err := api.externalBuilderSession(r, workflow.WorkspacePath, session); err != nil {
 			externalError(w, 404, "session_not_found", "Your workflow chat was not found")
 			return externalBuilderOperation{}, false
 		}
@@ -473,15 +438,56 @@ func (api *StreamingAPI) submitExternalBuilderOperation(w http.ResponseWriter, r
 		}
 		session = binding.SessionID
 	}
-	op := externalBuilderOperation{ID: uuid.NewString(), UserID: claims.UserID, GrantID: claims.AccessToken.ID, WorkflowID: workflow.Manifest.ID, Workspace: workflow.WorkspacePath, SessionID: session, SubmissionID: submission, Message: message, Status: "queued", CreatedAt: time.Now()}
-	_, err = s.db.ExecContext(r.Context(), `INSERT INTO external_builder_operations (id,user_id,grant_id,workflow_id,workspace,session_id,submission_id,message,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`, op.ID, op.UserID, op.GrantID, op.WorkflowID, op.Workspace, op.SessionID, op.SubmissionID, op.Message, op.Status, op.CreatedAt.UnixNano())
-	if err != nil {
-		externalError(w, 503, "storage_unavailable", err.Error())
+	op, ok := func() (externalBuilderOperation, bool) {
+		// Reserve the submission only; resolve chats and queue work outside this lock.
+		lock := productConversationRegistryMutex("external-builder:" + claims.UserID + ":" + workflow.WorkspacePath)
+		lock.Lock()
+		defer lock.Unlock()
+		s, err := openExternalBuilderStore()
+		if err != nil {
+			externalError(w, 503, "storage_unavailable", err.Error())
+			return externalBuilderOperation{}, false
+		}
+		defer s.Close()
+		old, err := scanExternalBuilder(s.db.QueryRowContext(r.Context(), `SELECT `+externalBuilderColumns+` FROM external_builder_operations WHERE user_id=? AND grant_id=? AND submission_id=?`, claims.UserID, claims.AccessToken.ID, submission))
+		if err == nil {
+			if old.Message != message || old.WorkflowID != workflow.Manifest.ID || (requestedSession != "" && old.SessionID != requestedSession) {
+				externalError(w, 409, "submission_conflict", "submission_id was already used with another payload")
+				return externalBuilderOperation{}, false
+			}
+			return old, true
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			externalError(w, 503, "storage_unavailable", err.Error())
+			return externalBuilderOperation{}, false
+		}
+		var pending int
+		if err := s.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM external_builder_operations WHERE user_id=? AND status IN ('queued','running')`, claims.UserID).Scan(&pending); err != nil {
+			externalError(w, 503, "storage_unavailable", err.Error())
+			return externalBuilderOperation{}, false
+		}
+		if pending >= 16 {
+			externalError(w, 429, "builder_busy", "Finish or cancel pending Builder operations before submitting more")
+			return externalBuilderOperation{}, false
+		}
+
+		op := externalBuilderOperation{ID: uuid.NewString(), UserID: claims.UserID, GrantID: claims.AccessToken.ID, WorkflowID: workflow.Manifest.ID, Workspace: workflow.WorkspacePath, SessionID: session, SubmissionID: submission, Message: message, Status: "queued", CreatedAt: time.Now()}
+		_, err = s.db.ExecContext(r.Context(), `INSERT INTO external_builder_operations (id,user_id,grant_id,workflow_id,workspace,session_id,submission_id,message,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`, op.ID, op.UserID, op.GrantID, op.WorkflowID, op.Workspace, op.SessionID, op.SubmissionID, op.Message, op.Status, op.CreatedAt.UnixNano())
+		if err != nil {
+			externalError(w, 503, "storage_unavailable", err.Error())
+			return externalBuilderOperation{}, false
+		}
+
+		return op, true
+	}()
+	if !ok {
 		return externalBuilderOperation{}, false
 	}
-	if err := api.ensureExternalBuilderQueued(r.Context(), claims, op); err != nil {
-		externalError(w, 503, "queue_unavailable", err.Error())
-		return externalBuilderOperation{}, false
+	if op.Status == "queued" {
+		if err := api.ensureExternalBuilderQueued(r.Context(), claims, op); err != nil {
+			externalError(w, 503, "queue_unavailable", err.Error())
+			return externalBuilderOperation{}, false
+		}
 	}
 	return op, true
 }
