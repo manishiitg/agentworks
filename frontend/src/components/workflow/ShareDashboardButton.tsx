@@ -155,7 +155,7 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
           )}
           {state.agents && <fieldset className="space-y-3 rounded-lg border border-border p-4" disabled={busy}>
             <legend className="px-1 text-sm font-medium">Agents to share</legend>
-            <p className="text-xs leading-5 text-muted-foreground">Selected agents use their existing conversation and tools. People in this audience can read the earlier messages and send requests as themselves. The tab's owner keeps its controls.</p>
+            <p className="text-xs leading-5 text-muted-foreground">Selected agents use their existing conversation and tools. People in this audience can read messages from sharing onward and send requests as themselves. The tab's owner keeps its controls.</p>
             {state.agents.length === 0 && <p className="text-xs text-muted-foreground">Open a named agent tab to share it here.</p>}
             {state.agents.map(agent => <div key={agent.chat_id} className="space-y-2 border-t border-border pt-3">
               <label className="flex cursor-pointer items-center gap-2 text-sm font-medium"><input type="checkbox" checked={sharedAgents.includes(agent.chat_id)} onChange={event => setSharedAgents(ids => event.target.checked ? [...ids, agent.chat_id] : ids.filter(id => id !== agent.chat_id))} />{agent.name}</label>

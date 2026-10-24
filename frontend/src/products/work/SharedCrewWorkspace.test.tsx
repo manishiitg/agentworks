@@ -16,7 +16,7 @@ it('opens only published agents and the existing attributed transcript, without 
       { chat_id: 'project:chat:coach', name: 'Coach', purpose: 'Review feedback', shared: true },
       { chat_id: 'own-caller-chat', name: 'Caller chat' },
     ] } })
-    if (body.action === 'read_chat' && !body.after) return Promise.resolve({ data: { messages: [{ seq: 1, role: 'you', sender: 'Alex', text: 'Earlier context' }, { seq: 2, role: 'assistant', text: 'Here is my feedback' }], next_after: 2 } })
+    if (body.action === 'read_chat' && !body.after) return Promise.resolve({ data: { messages: [{ seq: 1, role: 'user', sender: 'Alex', text: 'Shared context' }, { seq: 2, role: 'assistant', text: 'Here is my feedback' }], next_after: 2 } })
     return new Promise(() => {}) // one bounded long read; unmount aborts the real transport
   })
   const host = document.createElement('div')
@@ -28,7 +28,7 @@ it('opens only published agents and the existing attributed transcript, without 
     expect(host.textContent).toContain('Review feedback')
     expect(host.textContent).not.toContain('Caller chat')
     await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Coach'))!.click())
-    expect(host.querySelector('[role="log"]')?.textContent).toContain('Earlier context')
+    expect(host.querySelector('[role="log"]')?.textContent).toContain('Shared context')
     expect(host.querySelector('[role="log"]')?.textContent).toContain('Alex')
     expect(host.textContent).toContain('Here is my feedback')
     expect(post).toHaveBeenCalledWith('/api/crew-agents', expect.objectContaining({ action: 'read_chat', workspace_id: 'work:project', chat_id: 'project:chat:coach', after: 2, wait_seconds: 25 }), expect.anything())

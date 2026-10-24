@@ -71,6 +71,8 @@ type projectOwnerRecord struct {
 	RunPeople []string `json:"run_people,omitempty"`
 	// SharedAgents are the stable existing tabs exposed to the same Run audience.
 	SharedAgents []string `json:"shared_agents,omitempty"`
+	// SharedAgentSince is when each selected conversation became shared.
+	SharedAgentSince map[string]string `json:"shared_agent_since,omitempty"`
 	// CoOwners are the accounts that build this Crew together with its main owner (OwnerID, the creator, who never changes
 	// and who everything runs as). Server-controlled like the rest of the record; a Crew at the shared root only.
 	CoOwners []string `json:"co_owners,omitempty"`
@@ -476,6 +478,17 @@ func (r *projectOwnerRegistry) SetAudience(product, folder string, private bool,
 		if len(agents) > 0 {
 			current.SharedAgents = append([]string(nil), agents[0]...)
 		}
+		since := map[string]string{}
+		if !private || len(people) > 0 {
+			now := time.Now().UTC().Format(time.RFC3339Nano)
+			for _, agent := range current.SharedAgents {
+				since[agent] = current.SharedAgentSince[agent]
+				if since[agent] == "" {
+					since[agent] = now
+				}
+			}
+		}
+		current.SharedAgentSince = since
 		projects[key] = current
 		return true, nil
 	})

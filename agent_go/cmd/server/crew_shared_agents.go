@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // A shared agent is an existing owner tab, selected by stable conversation key
@@ -38,7 +39,20 @@ func crewSharedAgentKeys(root string) []string {
 	return record.SharedAgents
 }
 
+func crewSharedAgentSince(root, key string) time.Time {
+	id, ok := projectIdentityOf(root)
+	if !ok {
+		return time.Time{}
+	}
+	record, _ := defaultProjectOwners().Lookup(id.Product, id.Folder)
+	since, _ := time.Parse(time.RFC3339Nano, record.SharedAgentSince[key])
+	return since
+}
+
 func crewShareAgents(ctx context.Context, caller, root string, includeUnselected bool) ([]sharedCrewAgent, error) {
+	if id, ok := projectIdentityOf(root); !ok || id.Product != crewProfileID {
+		return nil, nil
+	}
 	owner, ok := crewProjectOwnerID(root)
 	if !ok {
 		return nil, fmt.Errorf("Crew unavailable")

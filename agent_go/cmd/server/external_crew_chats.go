@@ -173,6 +173,19 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 	crewID = manifest.ID
 	workspace := crew.Binding.WorkspacePath
 	chats := api.crewChats(r, claims.UserID, crewID, workspace)
+	if action == "read" && !crew.OwnedByCaller {
+		id := firstNonEmptyTrimmed(externalArg(args, "chat_id"), externalArg(args, "session_id"))
+		if chat, found := findCrewChat(chats, id); found && chat.Shared {
+			sharedArgs := make(map[string]any, len(args)+1)
+			for key, value := range args {
+				sharedArgs[key] = value
+			}
+			sharedArgs["chat_id"] = chat.key
+			if api.externalSharedCrewConversation(w, r, "read_chat", sharedArgs, crew, manifest) {
+				return
+			}
+		}
+	}
 	if action != "list" && action != "read" && action != "message" {
 		if chat, found := findCrewChat(chats, externalArg(args, "chat_id")); found && !chat.CanWrite {
 			externalError(w, 403, "tab_owner", crewOwnerDisplayName(chat.OwnerID)+" controls this tab. Use your own tab or send its agent a message.")

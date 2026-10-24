@@ -113,7 +113,7 @@ type codeTurnItem struct {
 	Seq    int    `json:"seq"`
 	Turn   string `json:"turn,omitempty"`
 	Role   string `json:"role"`
-	Sender string `json:"sender,omitempty"` // you, assistant or tool
+	Sender string `json:"sender,omitempty"`
 	Text   string `json:"text"`
 	At     string `json:"at,omitempty"`
 }

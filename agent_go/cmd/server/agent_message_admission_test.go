@@ -13,9 +13,9 @@ import (
 )
 
 func TestAgentMessageStateIsOwnerOnlyAndDeliveryRechecksAuthority(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
-	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
 	t.Setenv("AUTH_SECRET", "message-admission-test-signing-secret")
 	ctx := internalBotRequestContext(context.Background(), "owner")
 	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "crew:Beta")

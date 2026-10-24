@@ -65,9 +65,8 @@ func TestDashboardShareCreatesAndPublishesStandardDashboard(t *testing.T) {
 	}
 }
 
-// The canonical tool and its old names reach the same HTTP admission and owner
-// checks; a readable connection never acquires authoring consent through Share.
-func TestShareMCPKeepsExistingAliasPermissions(t *testing.T) {
+// A readable connection never acquires authoring consent through Share.
+func TestShareMCPKeepsExistingPermissions(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks"]},{"id":"editor","username":"editor","can_create":true,"products":["agentworks"]},{"id":"reader","username":"reader","email":"reader@example.com","products":["agentworks"]}]}`)
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner"],"editors":["editor"],"readers":["reader"]}}`)
@@ -80,13 +79,7 @@ func TestShareMCPKeepsExistingAliasPermissions(t *testing.T) {
 		f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(body), &UserClaims{UserID: user, Username: user, AccessToken: token}, nil))
 		return externalTestBody(t, w, status)
 	}
-	for _, name := range []string{"share", "get_dashboard_share"} {
-		args := map[string]any{"workflow_id": "invoices"}
-		if name == "share" {
-			args["action"] = "get"
-		}
-		call(name, "reader", readToken, args, 200)
-	}
+	call("share", "reader", readToken, map[string]any{"action": "get", "workflow_id": "invoices"}, 200)
 	share, ok := externalCatalogTool("share")
 	if !ok {
 		t.Fatal("canonical sharing tool missing")
@@ -99,20 +92,19 @@ func TestShareMCPKeepsExistingAliasPermissions(t *testing.T) {
 	if len(actions) != 1 || actions[0] != "get" {
 		t.Fatalf("read connection acquired a sharing mutation: %+v", actions)
 	}
-	for _, name := range []string{"share", "share_dashboard"} {
-		args := map[string]any{"workflow_id": "invoices", "mode": "private"}
-		if name == "share" {
-			args["action"] = "set"
+	for _, user := range []string{"owner", "editor"} {
+		token := writerToken
+		if user == "owner" {
+			token = readToken
 		}
-		call(name, "owner", readToken, args, 403)
-		call(name, "editor", writerToken, args, 403)
+		call("share", user, token, map[string]any{"action": "set", "workflow_id": "invoices", "mode": "private"}, 403)
 	}
 	call("share", "owner", writerToken, map[string]any{"action": "set", "workflow_id": "invoices", "flow_id": "invoices", "mode": "private"}, 400)
-	call("share_dashboard", "owner", writerToken, map[string]any{"workflow_id": "invoices", "mode": "people", "emails": []string{"reader@example.com"}}, 200)
+	call("share", "owner", writerToken, map[string]any{"action": "set", "workflow_id": "invoices", "mode": "people", "emails": []string{"reader@example.com"}}, 200)
 	call("share", "owner", writerToken, map[string]any{"action": "set", "workflow_id": "invoices", "mode": "private"}, 200)
-	state := call("get_dashboard_share", "owner", readToken, map[string]any{"workflow_id": "invoices"}, 200)
+	state := call("share", "owner", readToken, map[string]any{"action": "get", "workflow_id": "invoices"}, 200)
 	if state["mode"] != "private" {
-		t.Fatalf("legacy alias did not see canonical change: %+v", state)
+		t.Fatalf("Share did not save audience: %+v", state)
 	}
 	call("share", "reader", readToken, map[string]any{"action": "get", "workflow_id": "invoices"}, 404)
 }

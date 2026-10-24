@@ -67,16 +67,23 @@ func (api *StreamingAPI) externalSharedCrewConversation(w http.ResponseWriter, r
 			externalFailure(w, fmt.Errorf("could not read this agent's conversation"))
 			return true
 		}
+		since := crewSharedAgentSince(project.Binding.WorkspacePath, chat.Key)
 		before := externalInt(args, "before_seq", 0)
-		if before > 0 {
-			filtered := items[:0]
-			for _, item := range items {
-				if item.Seq < before {
-					filtered = append(filtered, item)
+		shared := items[:0]
+		for _, item := range items {
+			at, err := time.Parse(time.RFC3339Nano, item.At)
+			if since.IsZero() || err != nil || at.Before(since) || (before > 0 && item.Seq >= before) {
+				continue
+			}
+			if item.Role == "you" {
+				item.Role = "user"
+				if item.Sender == "" {
+					item.Sender = crewOwnerDisplayName(chat.OwnerID)
 				}
 			}
-			items = filtered
+			shared = append(shared, item)
 		}
+		items = shared
 		out["has_earlier"] = len(items) > 100
 		if len(items) > 100 {
 			items = items[len(items)-100:]

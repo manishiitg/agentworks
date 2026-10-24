@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +18,6 @@ import (
 // turn replaced. Pin the shared-tab decision across native chat, website and MCP.
 func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
-	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
 	t.Setenv("AUTH_SECRET", "shared-agent-fixture-signing-key")
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
@@ -51,7 +49,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if _, err := reg.tools["share_dashboard"].exec(ctx, map[string]any{"mode": "private", "shared_agents": []string{coach.ConversationKey}, "agent_purposes": map[string]string{coach.ConversationKey: "Review a situation and suggest practical next steps."}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := defaultProjectOwners().SetRunPeople("work", "test-team", []string{"other"}); err != nil {
+	if err := defaultProjectOwners().SetAudience("work", "test-team", true, []string{"other"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := crewSharedAgentKeys(externalCommandCrewRoot); len(got) != 1 || got[0] != coach.ConversationKey {
@@ -84,17 +82,45 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 			t.Fatalf("filtered list web=%t: %d %s", web, w.Code, w.Body.String())
 		}
 	}
-	// Both surfaces read the same pre-existing selected transcript.
-	f.write(t, externalCommandCrewRoot+"/builder/conversation/2026-10-24/session-"+coach.SessionID+"-conversation.json", `{"ui_events":[{"sequence":1,"type":"user_message","data":{"data":{"content":"Earlier shared context"}}},{"sequence":2,"type":"user_message","data":{"data":{"content":"internal envelope","metadata":{"source":"agent_message","sender_label":"Colleague","display_content":"Please review this"}}}}]}`)
+	// The agent retains old context; shared readers see only the current sharing period.
+	since := crewSharedAgentSince(externalCommandCrewRoot, coach.ConversationKey)
+	if since.IsZero() {
+		t.Fatal("sharing did not establish a history boundary")
+	}
+	if err := defaultProjectOwners().SetAudience("work", "test-team", false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := crewSharedAgentSince(externalCommandCrewRoot, coach.ConversationKey); !got.Equal(since) {
+		t.Fatal("audience edit reset the continuously shared history")
+	}
+	transcript := fmt.Sprintf(`{"ui_events":[{"sequence":1,"timestamp":%q,"type":"user_message","data":{"data":{"content":"Private earlier context"}}},{"sequence":2,"timestamp":%q,"type":"user_message","data":{"data":{"content":"Shared owner context"}}},{"sequence":3,"timestamp":%q,"type":"user_message","data":{"data":{"content":"internal envelope","metadata":{"source":"agent_message","sender_label":"Colleague","display_content":"Please review this"}}}}]}`, since.Add(-time.Hour).Format(time.RFC3339Nano), since.Format(time.RFC3339Nano), since.Format(time.RFC3339Nano))
+	f.write(t, externalCommandCrewRoot+"/builder/conversation/2026-10-24/session-"+coach.SessionID+"-conversation.json", transcript)
 	for _, web := range []bool{false, true} {
 		w := call("read_chat", map[string]any{"chat_id": coach.ConversationKey}, web)
-		if w.Code != 200 || !strings.Contains(w.Body.String(), "Earlier shared context") || !strings.Contains(w.Body.String(), `"sender":"Colleague"`) || strings.Contains(w.Body.String(), "internal envelope") {
+		if w.Code != 200 || strings.Contains(w.Body.String(), "Private earlier context") || !strings.Contains(w.Body.String(), "Shared owner context") || !strings.Contains(w.Body.String(), `"sender":"owner"`) || strings.Contains(w.Body.String(), `"role":"you"`) || !strings.Contains(w.Body.String(), `"sender":"Colleague"`) || strings.Contains(w.Body.String(), "internal envelope") {
 			t.Fatalf("shared transcript web=%t: %d %s", web, w.Code, w.Body.String())
 		}
 		w = call("read_chat", map[string]any{"chat_id": private.ConversationKey}, web)
 		if w.Code < 400 {
 			t.Fatalf("unselected history web=%t: %s", web, w.Body.String())
 		}
+	}
+	if w := call("read_chat", map[string]any{"session_id": coach.SessionID}, false); w.Code != 200 || strings.Contains(w.Body.String(), "Private earlier context") || !strings.Contains(w.Body.String(), "Shared owner context") {
+		t.Fatalf("session read must use the same shared transcript: %d %s", w.Code, w.Body.String())
+	}
+	otherCtx := internalBotRequestContext(t.Context(), "other")
+	address := "workspace:work:team/agent/" + coach.ConversationKey
+	peer, err := resolveTriggerTarget(otherCtx, GetUserFromContext(otherCtx), address)
+	if err != nil || peer.Chat == nil || peer.Chat.SessionID != coach.SessionID {
+		t.Fatalf("Builder agent address did not resolve the same existing tab: %+v %v", peer.Chat, err)
+	}
+	directory, err := listAgentDirectory(otherCtx, GetUserFromContext(otherCtx))
+	if err != nil {
+		t.Fatal(err)
+	}
+	directoryJSON, _ := json.Marshal(directory)
+	if !strings.Contains(string(directoryJSON), address) || strings.Contains(string(directoryJSON), "Private planning") {
+		t.Fatalf("Builder agent directory: %s", directoryJSON)
 	}
 	for _, action := range []string{"stop", "close_chat", "rename_chat", "set_chat_model"} {
 		w := call(action, map[string]any{"chat_id": coach.ConversationKey, "name": "Takeover"}, false)
@@ -131,6 +157,24 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 			t.Fatal("message did not reach existing owner tab")
 		}
 		_ = json.Unmarshal(w.Body.Bytes(), &receipt)
+	}
+	// A different hosted Crew reaches the same agent through the native path.
+	const callerRoot = "Crew/calling-team"
+	f.write(t, callerRoot+"/product.json", `{"schema_version":1,"product":"work","id":"calling","title":"Calling Team"}`)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "calling-team", ProjectID: "calling", OwnerID: "other", Shared: true, Private: true}); err != nil {
+		t.Fatal(err)
+	}
+	caller, err := crewTriggerLinkCaller(callerRoot)(otherCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.api.sendAgentMessage(otherCtx, "other", caller, peer, "Please review our feedback.", "", "hosted-crew-shared-agent"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-delivered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("hosted Crew did not reach the same existing tab")
 	}
 	var contact agentConversation
 	deadline := time.Now().Add(5 * time.Second)
@@ -169,4 +213,17 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if _, err := f.api.sendAgentMessage(internalBotRequestContext(ctx, "other"), "other", externalCrewCaller(&UserClaims{UserID: "other", Username: "Colleague"}), triggerTarget{}, "old inbox", contact.ID, "revoked-reply"); err == nil {
 		t.Fatal("old inbox retained selected-tab authority")
 	}
+	if err := defaultProjectOwners().SetAudience("work", "test-team", true, []string{"other"}, []string{coach.ConversationKey}); err != nil {
+		t.Fatal(err)
+	}
+	if got := crewSharedAgentSince(externalCommandCrewRoot, coach.ConversationKey); !got.After(since) {
+		t.Fatal("re-sharing did not start a fresh history boundary")
+	}
+	if w := call("read_chat", map[string]any{"chat_id": coach.ConversationKey}, true); w.Code != 200 || strings.Contains(w.Body.String(), "Shared owner context") {
+		t.Fatalf("re-shared history: %d %s", w.Code, w.Body.String())
+	}
+	if got := f.read(t, externalCommandCrewRoot+"/builder/conversation/2026-10-24/session-"+coach.SessionID+"-conversation.json"); !strings.Contains(got, "Private earlier context") {
+		t.Fatal("sharing changed the original agent context")
+	}
+
 }
