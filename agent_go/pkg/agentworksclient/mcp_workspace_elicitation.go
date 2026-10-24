@@ -179,7 +179,11 @@ func (h FunctionElicitationHost) workspaceResume(ctx context.Context, args map[s
 			}
 			other = strings.TrimSpace(text)
 		}
-		answers = append(answers, map[string]any{"id": q.ID, "selected_labels": labels, "other_text": other})
+		answer := map[string]any{"id": q.ID, "selected_labels": labels}
+		if other != "" {
+			answer["other_text"] = other
+		}
+		answers = append(answers, answer)
 	}
 	reply := state.pollArgs()
 	reply["action"], reply["request_id"], reply["answers"] = "reply_input", state.Request, answers

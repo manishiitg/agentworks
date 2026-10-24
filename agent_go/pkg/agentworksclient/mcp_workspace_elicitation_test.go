@@ -29,6 +29,9 @@ func TestWorkspaceElicitationResumesTheExactAskWithoutRepeatingIt(t *testing.T) 
 					t.Fatal("question changed")
 				}
 				answers = args["answers"].([]map[string]any)
+				if _, exists := answers[0]["other_text"]; exists {
+					t.Fatal("unanswered custom field violates native optional text schema", answers[0])
+				}
 				current = json.RawMessage(`{"workspace_id":"work:project","chat_id":"my-tab","query_id":"query","pending_inputs":[]}`)
 			}
 			return current, nil
