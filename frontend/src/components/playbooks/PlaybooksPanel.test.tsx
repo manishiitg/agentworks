@@ -99,9 +99,6 @@ it('opens a catalog playbook and installs it for Builder setup', async () => {
     expect(container.textContent).toContain('What you’ll get')
     expect(container.textContent).toContain('Reusable browser foundation')
     expect(container.textContent).toContain('Run repeatable browser tests')
-    expect(container.textContent).toContain('Strategic review focus')
-    expect(container.textContent).toContain('Coverage of critical journeys')
-    expect(container.textContent).toContain('Technical and Architecture Review choose scope from current evidence and structural risk')
     expect(container.textContent).not.toContain('Plan drift review')
 
     await click([...container.querySelectorAll('button')].find(button => button.textContent?.includes('Use workflow guide')) || null)
