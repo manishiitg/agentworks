@@ -4,7 +4,6 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { WorkspaceContextButton } from './WorkspaceContextButton'
 import { WorkspacePanelAssistant, WorkspacePanelAssistantButton, WorkspacePanelBack, WorkspacePanelNavigationProvider } from './WorkspacePanelNavigation'
-import { WorkspacePanelHelpButton } from './WorkspacePanelHelpButton'
 import { WorkspacePanelHeader } from './WorkspacePanelHeader'
 import { WorkspacePanelActions, WorkspacePanelHeaderBoundary } from './WorkspacePanelHeaderSlots'
 import { useWorkspacePanelNavigationStore } from '../../stores/useWorkspacePanelNavigationStore'
@@ -12,7 +11,6 @@ import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { WorkspaceViewActions } from '../workflow/WorkspaceViewActions'
 import { AskAIButton } from '../workflow/AskAIButton'
 import { TooltipProvider } from '../ui/tooltip'
-import { WorkspacePanelGuideContext } from '../workflow/WorkspacePanelGuideContext'
 import { openWorkspacePaneChatWithDraft, sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -32,7 +30,7 @@ let host: HTMLDivElement
 afterEach(async () => {
   if (root) await act(async () => root!.unmount())
   root = undefined; host?.remove()
-  useWorkspacePanelNavigationStore.setState({ actions: [], assistants: [], guides: [] })
+  useWorkspacePanelNavigationStore.setState({ actions: [], assistants: [] })
   useAuthStore.setState({ user: { id: 'owner' } as never })
   useWorkspaceConnectionStore.setState({ activeWorkspaceId: 'local' })
   vi.clearAllMocks()
@@ -44,16 +42,14 @@ async function render(node: React.ReactNode) {
 
 it('provides a header draft action for a view without its own page header', async () => {
   await render(<>
-    <WorkspacePanelHelpButton workspacePath="Crew/example" view="shell" />
+    <WorkspacePanelAssistantButton workspacePath="Crew/example" view="shell" />
     <WorkspacePanelNavigationProvider workspacePath="Crew/example" view="shell" chatTarget={{ tabId: 'named-chat' }}>
       <WorkspacePanelAssistant workspacePath="Crew/example" message="Explain the terminal before running anything." />
     </WorkspacePanelNavigationProvider>
   </>)
   const button = host.querySelector<HTMLButtonElement>('button')!
-  expect(button.textContent).toContain('Help')
-  expect(host.querySelector('[aria-label="Ask AI about this page"]')).toBeNull()
-  await act(async () => button.click())
-  expect(host.querySelector('[aria-label="Page guide"]')).toBeNull()
+  expect(button.textContent).toContain('Ask AI')
+  expect(host.querySelector('[aria-label="Help with this page"]')).toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Ask AI about this page"]')!.click())
   expect(openWorkspacePaneChatWithDraft).toHaveBeenCalledWith({ tabId: 'named-chat', message: 'Explain the terminal before running anything.' })
   expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
@@ -110,71 +106,21 @@ it('permits nested read navigation without granting a read-only viewer the edit 
   expect(host.querySelector('button')).toBeNull()
 })
 
-it('opens the guide directly with chat assistance inside and preserves the current named chat', async () => {
-  const send = vi.fn(), reveal = vi.fn()
-  vi.mocked(openWorkspacePaneChatWithDraft).mockResolvedValue({ tabId: 'named-chat' })
-  await render(<><nav aria-label="Panel toolbar"><WorkspacePanelHelpButton workspacePath="Crew/example" view="skills" /><WorkspaceContextButton workspacePath="Crew/example" view="skills" inContext={false} onClick={vi.fn()} /></nav><WorkspacePanelNavigationProvider workspacePath="Crew/example" view="skills" chatTarget={{ tabId: 'named-chat' }} onOpenChat={reveal}>
-    <WorkspaceViewHeader title="Skills" actions={<WorkspaceViewActions workspacePath="Crew/example" message="Explain these installed skills" onAsk={send} onRefresh={vi.fn()}><button>Specific page action</button></WorkspaceViewActions>} />
-    <AskAIButton workspacePath="Crew/example" message="Explain these installed skills" onAsk={send} />
-  </WorkspacePanelNavigationProvider></>)
-  const help = host.querySelector<HTMLButtonElement>('[aria-label="Help with this page"]')!
-  expect([...host.querySelectorAll('nav button')].map(button => button.getAttribute('aria-label'))).toEqual(['Help with this page', 'Back to context'])
-  expect(host.querySelector('[aria-label="Ask AI about this page"]')).toBeNull()
-  expect(host.querySelector('[aria-label="Walkthrough: Skills"]')).toBeNull()
-  expect(host.querySelector('footer')).toBeNull()
-  expect(host.textContent).toContain('Specific page action')
-  await act(async () => help.click())
-  expect(host.querySelector('section[aria-label="Page guide"]')?.textContent).toContain('About Skills')
+it('retains contextual chat drafts in the panel header without Help or a general Back arrow', async () => {
+  const reveal = vi.fn()
+  await render(<WorkspacePanelNavigationProvider workspacePath="Crew/example" view="skills" chatTarget={{ tabId: 'named-chat' }} onOpenChat={reveal}>
+    <WorkspacePanelHeader workspacePath="Crew/example" view="skills" title="Skills" onBack={vi.fn()} />
+    <WorkspaceViewHeader title="Skills" actions={<WorkspaceViewActions workspacePath="Crew/example" message="Explain these installed skills" onRefresh={vi.fn()}><button>Page action</button></WorkspaceViewActions>} />
+  </WorkspacePanelNavigationProvider>)
+  expect(host.querySelector('[aria-label="Help with this page"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Back to context"]')).toBeNull()
+  expect(host.textContent).toContain('Page action')
   const ask = host.querySelector<HTMLButtonElement>('[aria-label="Ask AI about this page"]')!
-  expect(ask.closest('[role="dialog"]')?.getAttribute('aria-label')).toBe('Page help')
-  expect(ask.title).toContain('Opens a draft in chat')
-  expect(host.querySelectorAll('[aria-label="Ask AI about this page"]')).toHaveLength(1)
+  expect(ask.closest('header')).not.toBeNull()
   await act(async () => ask.click())
   expect(openWorkspacePaneChatWithDraft).toHaveBeenCalledExactlyOnceWith({ tabId: 'named-chat', message: 'Explain these installed skills' })
   expect(reveal).toHaveBeenCalledOnce()
-  expect(host.querySelector('[role="dialog"]')).toBeNull()
-  expect(send).not.toHaveBeenCalled(); expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
-})
-
-it.each(['Crew/example', 'Workflow/example', 'Workflow/relay'])('keeps Help and Back inside the right panel and opens its guide directly for %s', async workspacePath => {
-  const surface = workspacePath.startsWith('Crew/') ? 'crew' : workspacePath.endsWith('/relay') ? 'relay' : 'agentworks'
-  const back = vi.fn()
-  const pane = (topic: string) => <>
-    <nav aria-label="App toolbar" />
-    <section aria-label="Right panel"><WorkspacePanelNavigationProvider workspacePath={workspacePath} view="mcp">
-      <WorkspacePanelHeader workspacePath={workspacePath} view="mcp" title="Connections" surface={surface} onBack={back} />
-      <WorkspacePanelGuideContext.Provider value={surface}><div data-testid="panel-content"><WorkspaceViewHeader title={topic} hideHeader={topic === 'Skills'} helpTopic={topic === 'Skills' ? 'Integrations · Skills' : undefined} /><p>Page content</p></div></WorkspacePanelGuideContext.Provider>
-    </WorkspacePanelNavigationProvider></section>
-  </>
-  await render(pane('Memory'))
-  const help = host.querySelector<HTMLButtonElement>('[aria-label="Help with this page"]')!
-  expect(host.querySelector('nav button')).toBeNull()
-  expect(help.closest('header')?.getAttribute('aria-label')).toBe('Panel navigation')
-  expect(help.closest('section')?.getAttribute('aria-label')).toBe('Right panel')
-  expect(host.querySelectorAll('[aria-label="Back to context"]')).toHaveLength(1)
-  expect(host.querySelector('[data-testid="panel-content"] button')).toBeNull()
-  expect(host.querySelector('[data-testid="panel-content"] h2')).toBeNull()
-  expect(host.querySelector('header [data-workspace-panel-title] h2')?.textContent).toBe('Memory')
-  await act(async () => help.click())
-  expect(host.querySelector('[role="dialog"]')?.closest('header')).not.toBeNull()
-  expect(host.querySelector('section[aria-label="Page guide"]')).not.toBeNull()
-  expect(host.querySelector('[role="dialog"]')?.textContent).toContain(`${surface === 'crew' ? 'Crew' : surface === 'relay' ? 'Flows' : 'Goals'} · Page guide`)
-  await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
-  expect(host.querySelector('[role="dialog"]')).toBeNull()
-  expect(document.activeElement).toBe(help)
-  await act(async () => help.click())
-  await render(pane('Files'))
-  expect(host.querySelector('[role="dialog"]')).toBeNull()
-  expect(host.querySelectorAll('[aria-label="Help with this page"]')).toHaveLength(1)
-  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back to context"]')!.click())
-  expect(back).toHaveBeenCalledOnce()
-  await render(pane('Skills'))
-  expect(host.querySelector('header [data-workspace-panel-title] h2')?.textContent).toBe('Skills')
-  expect(host.querySelector('[data-testid="panel-content"]')?.textContent).toBe('Page content')
-  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Help with this page"]')!.click())
-  expect(host.querySelector('section[aria-label="Page guide"]')?.textContent).toContain('custom skills')
-  await render(null)
-  expect(useWorkspacePanelNavigationStore.getState().guides).toEqual([])
+  expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
 })
 
 it.each(['Crew/example', 'Workflow/example', 'Workflow/relay'])('keeps live panel actions in one header and removes them on navigation for %s', async workspacePath => {
@@ -196,7 +142,7 @@ it.each(['Crew/example', 'Workflow/example', 'Workflow/relay'])('keeps live pane
   await render(pane('browser'))
   const header = host.querySelector('header[data-testid="workspace-panel-header"]')!
   expect(header.textContent).toContain('Chrome or Edge extension')
-  expect([...header.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Settings', 'Share 0', 'Help', ''])
+  expect([...header.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Settings', 'Share 0'])
   await act(async () => header.querySelectorAll('button')[1].click())
   expect(header.textContent).toContain('Share 1')
   expect(host.querySelector('[data-testid="panel-content"] [aria-label="Browser tabs"]')).not.toBeNull()
@@ -209,17 +155,6 @@ it.each(['Crew/example', 'Workflow/example', 'Workflow/relay'])('keeps live pane
   await render(pane('skills'))
   expect(header.querySelector('[aria-label="Back to Skills"]')).toBeNull()
   expect(header.querySelector('[data-workspace-panel-title]:last-child h2')?.textContent).toBe('Skills')
-})
-
-it('does not show another workspace’s help', async () => {
-  const pane = (path: string) => <>
-    <nav><WorkspacePanelHelpButton workspacePath={path} view="mcp" /></nav>
-    <WorkspacePanelNavigationProvider workspacePath="Crew/example" view="mcp"><WorkspaceViewHeader title="Memory" /></WorkspacePanelNavigationProvider>
-  </>
-  await render(pane('Crew/other'))
-  expect(host.querySelector('[aria-label="Help with this page"]')).toBeNull()
-  await render(pane('Crew/example'))
-  expect(host.querySelectorAll('[aria-label="Help with this page"]')).toHaveLength(1)
 })
 
 it('does not show stale draft errors or open a new page’s chat when an old operation finishes', async () => {

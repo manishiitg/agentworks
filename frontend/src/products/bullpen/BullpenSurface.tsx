@@ -2,14 +2,13 @@ import { currentProductRoute } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { BullpenUsageOverview } from './BullpenUsage'
 import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { BookOpen, ChartNoAxesCombined, Check, Copy, MessagesSquare, Search, Terminal, UsersRound, ShieldCheck, X } from 'lucide-react'
+import { ChartNoAxesCombined, Check, Copy, MessagesSquare, Search, Terminal, UsersRound, ShieldCheck, X } from 'lucide-react'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import { WorkspacePageHeader } from '../../components/workspace/WorkspacePageHeader'
 import { WorkspacePageContent } from '../../components/workspace/WorkspacePageContent'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { AgentMessagingSetupPanel } from './AgentMessagingSetupPanel'
 import { AdminPanel } from './AdminPanel'
-import { HowBullpenWorks } from './HowBullpenWorks'
 import { Button } from '../../components/ui/Button'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
@@ -156,13 +155,13 @@ function AgentDirectory() {
 export function BullpenSurface({ messagingOnly = false }: { messagingOnly?: boolean }) {
   const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'setup', 'admin'] as const, currentProductRoute()?.surface === 'bullpen' ? (currentProductRoute()?.view === 'setup' ? 'setup' : currentProductRoute()?.view === 'admin' ? 'admin' : 'agents') : undefined)
   useProductUrlView('bullpen', { view: view === 'agents' ? undefined : view })
-  const [dialog, setDialog] = useState<'help' | 'usage' | null>(null)
+  const [dialog, setDialog] = useState<'usage' | null>(null)
   const adminPage = useAppStore(state => state.adminPage)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const user = useAuthStore(state => state.user)
   useRegisterPanelSwitcher('bullpen', user?.role === 'admin' ? [...views, { id: 'admin', label: 'Administration' }] : views, id => setView(id as 'agents' | 'setup' | 'admin'))
   return <div className="flex h-dvh min-h-0 min-w-0 bg-background text-foreground" data-testid="bullpen-surface">
-    {!messagingOnly && <ModePresetBar reduced walkthroughPaused />}
+    {!messagingOnly && <ModePresetBar reduced />}
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {!messagingOnly && showProviders ? <LlmModalHost /> : !messagingOnly && adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="flex h-full min-h-0 w-full flex-col">
         {messagingOnly ? <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
@@ -170,14 +169,12 @@ export function BullpenSurface({ messagingOnly = false }: { messagingOnly?: bool
           <nav aria-label="AgentBridge" className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={() => setView('setup')}>Connect an agent</Button>
             {user?.role === 'admin' && <Button variant={view === 'admin' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('admin')}>Administration</Button>}
-            <Button variant="ghost" size="sm" onClick={() => setDialog('help')}>Help</Button>
             <AccountControl messagingOnly onOpenUsage={() => setDialog('usage')} />
           </nav>
         </header> : <WorkspacePageHeader title={view === 'setup' ? 'Connect an agent' : view === 'admin' ? 'Administration' : 'AgentBridge'} icon={MessagesSquare} showBack={false} onProductHome={() => setView('agents')} productMenuItems={[
           ...views.map(item => ({ ...item, active: view === item.id, onSelect: () => setView(item.id) })),
           ...(user?.role === 'admin' ? [{ id: 'admin', label: 'Administration', icon: ShieldCheck, active: view === 'admin', onSelect: () => setView('admin') }] : []),
           { id: 'usage', label: 'Token usage', icon: ChartNoAxesCombined, onSelect: () => setDialog('usage') },
-          { id: 'help', label: 'Help', icon: BookOpen, onSelect: () => setDialog('help') },
         ]}>{view !== 'setup' && <Button size="sm" onClick={() => setView('setup')}>Connect an agent</Button>}</WorkspacePageHeader>}
         <div className="min-h-0 flex-1 overflow-y-auto">
           <WorkspacePageContent className={view === 'setup' ? 'mx-auto w-full max-w-5xl' : undefined}>
@@ -187,8 +184,8 @@ export function BullpenSurface({ messagingOnly = false }: { messagingOnly?: bool
         </div>
       </div>}
     </main>
-    {dialog && <BridgeDialog title={dialog === 'help' ? 'AgentBridge help' : 'Token usage'} onClose={() => setDialog(null)}>
-      {dialog === 'help' ? <HowBullpenWorks /> : <TokenUsage />}
+    {dialog && <BridgeDialog title="Token usage" onClose={() => setDialog(null)}>
+      <TokenUsage />
     </BridgeDialog>}
   </div>
 }

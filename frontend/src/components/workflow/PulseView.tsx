@@ -70,7 +70,7 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
     section?.focus({ preventScroll: true })
   }, [target, settingsOnly])
   return <div className="flex h-full min-h-0 w-full flex-col bg-background">
-    <WorkspaceViewHeader icon={PulseIcon} title={settingsOnly ? 'Autopilot settings' : 'Goals & metrics'} helpTopic={settingsOnly ? 'Autopilot settings' : 'Autopilot'} subtitle={settingsOnly ? 'Choose when Autopilot works and how it handles outward actions.' : 'Autopilot works with Builder on your goal.'}
+    <WorkspaceViewHeader icon={PulseIcon} title={settingsOnly ? 'Autopilot settings' : 'Goals & metrics'} subtitle={settingsOnly ? 'Choose when Autopilot works and how it handles outward actions.' : 'Autopilot works with Builder on your goal.'}
       actions={<>{headerAction}<WorkspaceViewIconButton label="Refresh Autopilot" disabled={statusLoading} spinning={statusLoading}
         onClick={() => { window.dispatchEvent(new CustomEvent(WORKFLOW_SOUL_REFRESH_EVENT)); onRefresh() }} /></>} />
     <div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">

@@ -11,7 +11,6 @@ import {
   ChevronRight,
   CircleAlert,
   Cpu,
-  HelpCircle,
   DollarSign,
   KeyRound,
   MessageSquare,
@@ -29,7 +28,6 @@ import {
 import { CODING_PROVIDER_GUIDES, DEFAULT_CODING_PROVIDER_GUIDE } from './codingProviderGuides'
 import GuidedProviderTerminal from './GuidedProviderTerminal'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
-import WorkflowWalkthrough from '../workflow/WorkflowWalkthrough'
 import { useAuthStore } from '../../stores/useAuthStore'
 import type { ProviderSetupAction, ProviderSetupSession } from '../../services/llm-config-api'
 
@@ -144,20 +142,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [view, setView] = useState<'provider' | 'costs' | 'chats'>('provider')
   // "Use your own model key" opens Pi's add flow (PLAT-717).
   const [keyRequest, setKeyRequest] = useState(0)
-  const [showWalkthrough, setShowWalkthrough] = useState(false)
-  const [walkthroughOpenToken, setWalkthroughOpenToken] = useState(0)
-  const openWalkthrough = useCallback(() => {
-    setWalkthroughOpenToken(token => token + 1)
-    setShowWalkthrough(true)
-  }, [])
-  useEffect(() => {
-    if (!isOpen) {
-      setShowWalkthrough(false)
-      return
-    }
-    window.addEventListener('open-providers-walkthrough', openWalkthrough)
-    return () => window.removeEventListener('open-providers-walkthrough', openWalkthrough)
-  }, [isOpen, openWalkthrough])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guidedSession, setGuidedSession] = useState<ProviderSetupSession | null>(null)
@@ -205,7 +189,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !showWalkthrough) {
+      if (event.key === 'Escape') {
         if (guidedSession?.status === 'running') {
           void llmConfigService.cancelProviderSetup(guidedSession.id).catch(() => undefined)
         }
@@ -218,7 +202,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', closeOnEscape)
     }
-  }, [guidedSession, isOpen, onClose, embedded, showWalkthrough])
+  }, [guidedSession, isOpen, onClose, embedded])
 
   const orderedProviders = useMemo(() => {
     const order = new Map(providerOrder.map((id, index) => [id, index]))
@@ -276,7 +260,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
           if (!embedded && event.target === event.currentTarget) closePanel()
         }}
       >
-        <WorkflowWalkthrough isOpen={isOpen && showWalkthrough} surface="providers" openToken={walkthroughOpenToken} onClose={() => setShowWalkthrough(false)} />
         <div
           role={embedded ? 'region' : 'dialog'}
           aria-modal={embedded ? undefined : true}
@@ -307,9 +290,6 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
               <div className="mb-1 flex min-h-8 items-center justify-between gap-1 pl-2">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Available providers</span>
                 <div className="flex shrink-0 items-center gap-0.5">
-                  <button type="button" onClick={openWalkthrough} aria-label="Providers help & walkthrough" title="Help & walkthrough" className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">
-                    <HelpCircle className="h-4 w-4" />
-                  </button>
                   {view === 'provider' && <button
                     type="button"
                     onClick={refresh}

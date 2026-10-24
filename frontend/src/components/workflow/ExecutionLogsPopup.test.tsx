@@ -132,10 +132,8 @@ it('asks about the run with failures named', async () => {
   hookState.current = state()
   const { host, unmount } = await mount()
   try {
-    expect(host.querySelector('[data-testid="ask-ai"]')).toBeNull()
-    await act(async () => {
-      (host.querySelector('[aria-label="Walkthrough: Execution Logs"]') as HTMLButtonElement).click()
-    })
+    expect(host.querySelector('[data-testid="ask-ai"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Walkthrough: Execution Logs"]')).toBeNull()
     const runMessage = askMessages.find(message => message.includes('steps failed'))
     expect(runMessage).toContain('1 of 2 steps failed: "Classify intent"')
     expect(runMessage).toContain('rate limit exceeded')

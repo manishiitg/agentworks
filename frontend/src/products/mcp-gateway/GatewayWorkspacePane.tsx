@@ -24,7 +24,7 @@ export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSett
   const currentPanel = gatewayPanels.find(item => item.id === panel) ?? gatewayPanels[0]
   const readOnly = useVaultReadOnly()
   return <div className="flex h-full min-h-0 flex-col">
-    <WorkspaceViewHeader hideHeader={hideHeader} icon={currentPanel.icon} title={currentPanel.label} showWalkthrough={false}
+    <WorkspaceViewHeader hideHeader={hideHeader} icon={currentPanel.icon} title={currentPanel.label}
       tabs={panel === 'people' ? {
         value: peopleTab, onChange: value => setPeopleTab(value === 'groups' ? 'groups' : 'users'),
         options: [{ value: 'users', label: 'Users', icon: UserRound }, { value: 'groups', label: 'Groups', icon: UsersRound }], ariaLabel: 'People tabs',

@@ -65,7 +65,6 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
       <WorkspaceViewHeader
         icon={ShieldCheck}
         title="Access"
-        helpTopic={`Access · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'This workflow'}`}
         subtitle={activeTab === 'users'
           ? 'Accounts and roles for this deployment.'
             : isRelay

@@ -1,16 +1,4 @@
 export const LLM_DISCOVERY_ONBOARDING_DISMISSED_KEY = 'llm_discovery_onboarding_dismissed'
-export type WalkthroughSurface = 'overview' | 'empty-automation' | 'automation' | 'empty-crew' | 'crew' | 'empty-code' | 'code' | 'providers'
-const WALKTHROUGH_DISMISSED_KEYS: Record<WalkthroughSurface, string> = {
-  overview: 'agentworks_overview_walkthrough_v3_dismissed',
-  'empty-automation': 'agentworks_empty_automation_walkthrough_v3_dismissed',
-  automation: 'agentworks_automation_walkthrough_v3_dismissed',
-  'empty-crew': 'agentworks_empty_crew_walkthrough_v3_dismissed',
-  crew: 'agentworks_crew_walkthrough_v3_dismissed',
-  'empty-code': 'agentworks_empty_code_walkthrough_v1_dismissed',
-  code: 'agentworks_code_walkthrough_v1_dismissed',
-  providers: 'agentworks_providers_walkthrough_v1_dismissed',
-}
-
 export const LLM_DISCOVERY_ONBOARDING_OPENED_EVENT = 'llm-discovery-onboarding-opened'
 export const LLM_DISCOVERY_ONBOARDING_CLEARED_EVENT = 'llm-discovery-onboarding-cleared'
 
@@ -79,9 +67,6 @@ export const rememberGuide = (key: string) => {
     }
   }
 }
-
-export const isWorkflowWalkthroughDismissed = (surface: WalkthroughSurface) => isGuideRemembered(WALKTHROUGH_DISMISSED_KEYS[surface])
-export const dismissWorkflowWalkthrough = (surface: WalkthroughSurface) => rememberGuide(WALKTHROUGH_DISMISSED_KEYS[surface])
 
 export const getLLMDiscoveryOnboardingState = (): LLMDiscoveryOnboardingState => {
   const state = getWindowState()

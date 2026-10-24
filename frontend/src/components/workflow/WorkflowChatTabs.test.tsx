@@ -53,10 +53,10 @@ it('opens a left-sidebar step in the same strip and returns to the parent draft 
   const strip = host.querySelector('[aria-label="Chat tabs"]')!
   expect(strip.contains(button(host, 'Inspect Record Prices'))).toBe(true)
   expect(host.querySelector('main [role="tablist"]')).toBeNull()
-  expect(button(host, 'Example').getAttribute('aria-pressed')).toBe('false')
+  expect(button(host, 'Builder').getAttribute('aria-pressed')).toBe('false')
   expect(button(host, 'Inspect Record Prices').getAttribute('aria-pressed')).toBe('true')
   expect(host.textContent).not.toContain('Foreign step')
-  await act(async () => button(host, 'Example').click())
+  await act(async () => button(host, 'Builder').click())
   expect(host.querySelector('input')).toBe(draft)
   expect(draft.value).toBe('Keep my draft')
   expect(host.querySelector('main')?.textContent).not.toContain('Saved conversation:')
@@ -86,7 +86,7 @@ it('keeps step targets scoped to their parent sessions when switching or closing
 })
 
 
-it.each(['agentworks', 'relays'] as const)('names another owner once in the %s tab strip and preserves switching', async surface => {
+it.each(['agentworks', 'relays'] as const)('keeps the project name visible without owner headings in %s and preserves switching', async surface => {
   const host = await render()
   await act(async () => {
     useProductSurfaceStore.setState({ productSurface: surface })
@@ -98,12 +98,12 @@ it.each(['agentworks', 'relays'] as const)('names another owner once in the %s t
       review: { ...makeTab('review', 'review-session', { ...metadata, ...owner, workflowOwnerTabID: 'review' }), name: 'Review' },
     } })
   })
-  expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(1)
-  expect(host.querySelector('[data-chat-owner-label]')?.textContent).toBe('Alex T.')
+  expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
+  expect(host.querySelector('[data-project-title]')?.textContent).toBe('Example')
   expect(host.querySelector('[data-chat-owner-group="me"]')).toBeNull()
   await act(async () => button(host, 'Review').click())
   expect(useChatStore.getState().activeTabId).toBe('review')
-  expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(1)
+  expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
 })
 
 

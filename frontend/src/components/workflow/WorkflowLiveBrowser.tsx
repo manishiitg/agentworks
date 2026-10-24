@@ -106,7 +106,7 @@ export type BrowserEmptyStateActions = {
   canStart: boolean
 }
 
-export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun = 'workflow', minimal = false, showGuide = true, profileId, emptyContent, browserSelection }: { workspacePath: string | null; toolbar?: ReactNode; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; showGuide?: boolean; profileId?: string; browserSelection?: ReactNode; emptyContent?: ReactNode | ((actions: BrowserEmptyStateActions) => ReactNode) }) {
+export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun = 'workflow', minimal = false, profileId, emptyContent, browserSelection }: { workspacePath: string | null; toolbar?: ReactNode; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; profileId?: string; browserSelection?: ReactNode; emptyContent?: ReactNode | ((actions: BrowserEmptyStateActions) => ReactNode) }) {
   const [sessions, setSessions] = useState<BrowserSession[]>([])
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [startingBrowser, setStartingBrowser] = useState(false)
@@ -690,7 +690,6 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
           local={expanded}
           icon={Monitor}
           title="Browser"
-          showWalkthrough={showGuide}
           context={<>{browserPicker}<span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status" title={singleBrowserLabel}><span className={`h-2 w-2 rounded-full ${statusDot}`} aria-hidden="true" />{statusLabel}</span>{lastAction}</>}
           actions={<>
             {startToggle}

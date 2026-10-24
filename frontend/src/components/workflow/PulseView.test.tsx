@@ -20,7 +20,7 @@ beforeEach(() => {
  HTMLElement.prototype.scrollIntoView = vi.fn()
 })
 
-it.each([true, false])('separates goals from settings and decisions and keeps one hosted Help (on=%s)', async on => {
+it.each([true, false])('separates goals from settings and decisions and omits hosted Help (on=%s)', async on => {
  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
  try {
@@ -33,7 +33,7 @@ it.each([true, false])('separates goals from settings and decisions and keeps on
   expect(host.querySelector('section[aria-label="Autopilot activity"]')).toBeNull()
   expect(host.querySelector('section[aria-label="Decisions"]')).toBeNull()
   expect(host.querySelector('section[aria-label="Autopilot settings"]')).toBeNull()
-  expect(host.querySelectorAll('[aria-label="Help with this page"]')).toHaveLength(1)
+  expect(host.querySelectorAll('[aria-label="Help with this page"]')).toHaveLength(0)
   expect(host.querySelector('[aria-label^="Walkthrough:"]')).toBeNull()
   const chat = [...host.querySelectorAll('button')].find(button => button.textContent === 'Open Autopilot chat')!
   expect(chat.disabled).toBe(!on)
@@ -41,7 +41,7 @@ it.each([true, false])('separates goals from settings and decisions and keeps on
   expect(host.querySelector('section[aria-label="Goals"]')).toBeNull()
   expect(host.querySelectorAll('section[aria-label="Autopilot settings"]')).toHaveLength(1)
   expect(host.querySelector('[aria-label="Autopilot on/off"]')?.getAttribute('aria-checked')).toBe(String(on))
-  expect(host.querySelectorAll('[aria-label="Help with this page"]')).toHaveLength(1)
+  expect(host.querySelectorAll('[aria-label="Help with this page"]')).toHaveLength(0)
   for (const [target, label] of [['goals', 'Goals'], ['metrics', 'Metrics']]) {
    await act(async () => navigation.apply?.(target))
    expect(document.activeElement).toBe(host.querySelector(`section[aria-label="${label}"]`))

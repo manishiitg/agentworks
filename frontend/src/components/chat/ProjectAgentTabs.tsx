@@ -9,7 +9,8 @@ import { workSideChatDisplayName } from '../../products/work/workProjectPresenta
 import { markFeatureUsed } from '../../utils/featureUsage'
 import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
 import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
-import { ChatTabGroups, compactOwnerChatName } from './ChatTabGroups'
+import { compactOwnerChatName } from './chatTabName'
+import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, allowSideChats, opening, surface,
@@ -42,7 +43,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const agentCount = tabs.filter(isAgentTab).length
   const sideChatKey = (tab: ChatTab) => listedFor(tab)?.conversation_key
   const sideChatName = (tab: ChatTab) => workSideChatDisplayName(listedFor(tab)?.name || tab.name)
-  const tabLabel = (tab: ChatTab) => compactOwnerChatName(tab.tabId === canonicalTabId && tab.metadata?.agentProfileTabOwnerName ? 'Builder' : tab.tabId === canonicalTabId ? projectName : sideChatName(tab), tab.metadata?.agentProfileTabOwnerName)
+  const tabLabel = (tab: ChatTab) => compactOwnerChatName(tab.tabId === canonicalTabId ? 'Builder' : sideChatName(tab), tab.metadata?.agentProfileTabOwnerName)
   const canControl = (tab: ChatTab) => tab.metadata?.agentProfileTabCanWrite !== false
   const sideChatPinned = (tab: ChatTab) => listedFor(tab)?.pinned !== false
   // The strip shows the main chat and the tabs the person pinned, as many as they pin (owner, 2026-10-20); the rest are
@@ -156,8 +157,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   }, [activeTabId, tabs.length])
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
+      <ProjectWorkspaceTitle name={projectName} surface={surface} />
       <div ref={stripRef} className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
-      <ChatTabGroups tabs={visibleTabs}>{tab => {
+      {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
         const targetKey = key || (tab.tabId === canonicalTabId ? listed?.[0]?.conversation_key : undefined)
         return <div
@@ -178,13 +180,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         displayName={tabLabel(tab)}
         workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
         titleOverride={tab.tabId === canonicalTabId ? projectName : key ? sideChatName(tab) : undefined}
-        productSurface={tab.tabId === canonicalTabId ? surface : undefined}
         onTabClick={selectTab}
         onCloseTab={closeProjectTab}
         closeStopsSession={!!key}
         onMakeInteractive={onMakeInteractive}
       />{renderAfterTab?.(tab)}</div>
-      }}</ChatTabGroups>
+      })}
       </div>
       {tabs.length > 1 && (
         <div ref={moreRef} className="relative shrink-0">
@@ -208,7 +209,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
               </div>
               {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">Drag agents or use the arrows to change their order.</p>}
               <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
-              <ChatTabGroups tabs={tabs} layout="menu">{tab => {
+              {tabs.map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
                 const label = tabLabel(tab)
                 const position = ownedListed.findIndex(chat => chat.conversation_key === key)
@@ -262,7 +263,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
                   )}
                   </>}
                 </div>
-              }}</ChatTabGroups>
+              })}
               </div>
             </div>
           )}

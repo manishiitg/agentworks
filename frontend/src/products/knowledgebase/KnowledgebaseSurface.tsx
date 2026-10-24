@@ -139,7 +139,7 @@ export function KnowledgebaseSurface() {
   }
   const title = BRAIN_PANELS.find(item => item.id === effectiveView)?.label ?? 'Library'
   return <div className="flex h-dvh min-h-0 overflow-hidden bg-background text-foreground" data-product="knowledgebase">
-    <ModePresetBar reduced walkthroughPaused />
+    <ModePresetBar reduced />
     <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
       <LlmModalHost />
       <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Opening page…</div>}>

@@ -45,7 +45,7 @@ describe('fresh deep links keep their view', () => {
 })
 
 describe('Crew native tab dragging', () => {
-  it('names another owner once in the Crew strip and Agents menu', async () => {
+  it('keeps project identity visible and other-owner tab controls unavailable without owner headings', async () => {
     const owner = { agentProfileTabOwnerID: 'other', agentProfileTabOwnerName: 'alex.taylor@example.com', agentProfileTabCanWrite: false }
     const make = (id: string, metadata: Record<string, unknown>) => ({ tabId: id, sessionId: 'session-' + id, name: id, createdAt: 1, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileConversationKey: 'crew:chat:' + id, ...metadata } } as ChatTab)
     useChatStore.setState({ activeTabId: 'main', chatTabs: {
@@ -60,13 +60,14 @@ describe('Crew native tab dragging', () => {
     const root = createRoot(host)
     try {
       await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
-      expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(1)
-      expect(host.querySelector('[data-chat-owner-label]')?.textContent).toBe('Alex T.')
+      expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
+      expect(host.querySelector('[data-project-title]')?.textContent).toBe('Crew')
+      expect(host.querySelector('[data-chat-tab-id="research"] [role="button"]')?.getAttribute('aria-label')).toContain('alex.taylor@example.com')
       expect(host.textContent).not.toContain('me@example.com')
       await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
       const menu = host.querySelector('[aria-label="Agents"]')!
-      expect(menu.querySelectorAll('[data-chat-owner-label]')).toHaveLength(1)
-      expect(menu.querySelector('[data-chat-owner-label]')?.getAttribute('title')).toBe('alex.taylor@example.com')
+      expect(menu.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
+      expect(menu.querySelector('button[title="Research · alex.taylor@example.com"]')).not.toBeNull()
       expect(menu.querySelector('[aria-label="Rename Research"]')).toBeNull()
       expect(menu.querySelector('[aria-label="Close Review"]')).toBeNull()
     } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore() }

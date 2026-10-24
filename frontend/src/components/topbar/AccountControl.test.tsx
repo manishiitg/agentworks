@@ -45,22 +45,19 @@ describe('Account menu availability', () => {
       expect(host.textContent).not.toContain('Users & access')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
-  it('opens help and keyboard shortcuts from the menu and closes it after selection', async () => {
+  it('keeps keyboard shortcuts while removing Help and tours', async () => {
     vi.mocked(useAuthStore).mockReturnValue({ user: { id: 'user', username: 'Alex' }, isMultiUserMode: false, logout: vi.fn() })
-    const onOpenWalkthrough = vi.fn()
     const onOpenShortcuts = vi.fn()
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
-      await act(async () => root.render(<TooltipProvider><AccountControl onOpenWalkthrough={onOpenWalkthrough} onOpenShortcuts={onOpenShortcuts} /></TooltipProvider>))
+      await act(async () => root.render(<TooltipProvider><AccountControl onOpenShortcuts={onOpenShortcuts} /></TooltipProvider>))
       expect(host.textContent).not.toContain('Keyboard shortcuts')
       await act(async () => host.querySelector('button')!.click())
       await act(async () => Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Keyboard shortcuts'))!.click())
       expect(onOpenShortcuts).toHaveBeenCalledOnce()
       expect(host.querySelector('[role="menu"]')).toBeNull()
       await act(async () => host.querySelector('button')!.click())
-      await act(async () => Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Help & walkthrough'))!.click())
-      expect(onOpenWalkthrough).toHaveBeenCalledOnce()
-      expect(host.querySelector('[role="menu"]')).toBeNull()
+      expect(host.textContent).not.toContain('Help & walkthrough')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
   it('waits for the local account session to initialize', async () => {

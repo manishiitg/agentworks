@@ -3,7 +3,6 @@ import { ArrowLeft, MessageCircle } from 'lucide-react'
 import { panelBackAction, useWorkspacePanelNavigationStore, useWorkspacePanelScope, type WorkspacePanelChatTarget } from '../../stores/useWorkspacePanelNavigationStore'
 import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import type { WorkspacePanelSurface } from '../workflow/workspacePanelGuides'
 import { WorkspacePanelHeaderSlotsProvider } from './WorkspacePanelHeaderSlots'
 
 const WorkspacePanelNavigationContext = createContext<{ scope: string; chatTarget?: WorkspacePanelChatTarget; onOpenChat?: () => void }>({ scope: '' })
@@ -24,17 +23,6 @@ export function useWorkspacePanelHosted() {
   return !!useContext(WorkspacePanelNavigationContext).scope
 }
 
-/** A panel publishes its guide to the same scoped Help menu as its question. */
-export function useWorkspacePanelGuide(topic: string, surface: WorkspacePanelSurface) {
-  const { scope } = useContext(WorkspacePanelNavigationContext)
-  const owner = useRef(Symbol('panel-guide'))
-  useEffect(() => {
-    if (!scope || !topic) return
-    return useWorkspacePanelNavigationStore.getState().registerGuide({ owner: owner.current, scope, topic, surface })
-  }, [scope, topic, surface])
-  return !!scope
-}
-
 /** Nested details reuse the header arrow. Standalone panels get the same compact
  * control locally, so the reader remains usable without a workspace shell. */
 export function WorkspacePanelBack({ label, onBack }: { label: string; onBack: () => void }) {
@@ -50,7 +38,7 @@ export function WorkspacePanelBack({ label, onBack }: { label: string; onBack: (
   return <WorkspaceViewIconButton label={label} icon={ArrowLeft} onClick={onBack} />
 }
 
-/** Header and detail views publish one contextual question to the outer toolbar. */
+/** Header and detail views publish one contextual question to the panel header. */
 export function useWorkspacePanelAssistant(ask?: { workspacePath: string | null; message: string }) {
   const { scope, chatTarget, onOpenChat } = useContext(WorkspacePanelNavigationContext)
   const owner = useRef(Symbol('panel-assistant'))

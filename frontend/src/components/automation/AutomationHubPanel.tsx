@@ -192,7 +192,6 @@ export function AutomationHubPanel({
       <WorkspaceViewHeader
         icon={Zap}
         title="Automations"
-        helpTopic={`Automation · ${SECTION_DEFS.find(item => item.id === section)?.label ?? 'Chats'}`}
         actions={headerActions}
         context={
           section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} />

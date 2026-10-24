@@ -104,35 +104,16 @@ describe('CodingProvidersPanel', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
-  it('offers the current account and costs walkthrough on demand and keeps Providers open', async () => {
+  it('keeps provider setup without Help or manual tours', async () => {
     vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({})], provider_order: ['codex-cli'], integration_kinds: {} })
-    const host = document.createElement('div')
-    document.body.append(host)
-    const root = createRoot(host)
-    const onClose = vi.fn()
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
-      await act(async () => root.render(<CodingProvidersPanel isOpen onClose={onClose} />))
-      expect(document.querySelector('[aria-label="Providers walkthrough"]')).toBeNull()
-      // Give the tour targets visible bounds as in the real browser.
-      for (const target of document.querySelectorAll<HTMLElement>('[data-tour], [aria-label="Refresh provider status"]')) {
-        target.getBoundingClientRect = () => ({ left: 20, top: 20, right: 220, bottom: 50, width: 200, height: 30 }) as DOMRect
-      }
-      await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Providers help & walkthrough"]')!.click())
-      const tour = document.querySelector('[aria-label="Providers walkthrough"]')!
-      expect(tour.textContent).toContain('Runs on')
-      for (const text of ['Choose a provider', 'Your accounts and shared accounts', 'Costs across your work', 'Refresh connection status']) {
-        await act(async () => tour.querySelector<HTMLButtonElement>('[data-testid="workflow-walkthrough-next"]')!.click())
-        expect(tour.textContent).toContain(text)
-      }
-      await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
-      expect(document.querySelector('[aria-label="Providers walkthrough"]')).toBeNull()
-      expect(onClose).not.toHaveBeenCalled()
+      await act(async () => root.render(<CodingProvidersPanel isOpen onClose={vi.fn()} />))
       await act(async () => window.dispatchEvent(new Event('open-providers-walkthrough')))
-      expect(document.querySelector('[aria-label="Providers walkthrough"]')?.textContent).toContain('Connect the account your work runs on')
-    } finally {
-      await act(async () => root.unmount())
-      host.remove()
-    }
+      expect(document.querySelector('[aria-label="Providers help & walkthrough"]')).toBeNull()
+      expect(document.querySelector('[aria-label="Providers walkthrough"]')).toBeNull()
+      expect(document.querySelector('[aria-label="Refresh provider status"]')).not.toBeNull()
+    } finally { await act(async () => root.unmount()); host.remove() }
   })
 
   it('defines user-facing authentication guidance without server commands', () => {

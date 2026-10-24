@@ -56,15 +56,8 @@ function tabByName(host: HTMLElement, name: string) {
   return tab as HTMLElement;
 }
 
-async function openWalkthrough(host: HTMLElement) {
-  const guide = host.querySelector('button[aria-label^="Walkthrough:"]') as HTMLElement;
-  await act(async () => {
-    guide.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-}
-
-function popupAskMessage(host: HTMLElement) {
-  return host.querySelector('[role="dialog"] [data-testid="ask-ai"]')?.getAttribute("data-message");
+function inlineAskMessage(host: HTMLElement) {
+  return host.querySelector('[data-testid="ask-ai"]')?.getAttribute("data-message");
 }
 
 it("renders background knowledge and database tabs without a separate learnings feature", async () => {
@@ -78,9 +71,8 @@ it("renders background knowledge and database tabs without a separate learnings 
   expect(host.textContent).not.toContain('Learnings');
   expect(host.querySelector('[data-testid="database"]')).toBeNull();
   expect(host.querySelector('[aria-label="Refresh Knowledgebase"]')).not.toBeNull();
-  expect(host.querySelector('[data-testid="ask-ai"]')).toBeNull();
-  await openWalkthrough(host);
-  expect(popupAskMessage(host)).toContain("Knowledge · Knowledgebase");
+  expect(host.querySelector('[aria-label^="Walkthrough:"]')).toBeNull();
+  expect(inlineAskMessage(host)).toContain("Knowledge · Knowledgebase");
 });
 
 it("switches content, Ask AI, and refresh per tab", async () => {
@@ -92,8 +84,7 @@ it("switches content, Ask AI, and refresh per tab", async () => {
   expect(host.querySelector('[data-testid="database"]')).not.toBeNull();
   expect(host.querySelector('[data-testid="learnings"]')).toBeNull();
   expect(host.querySelector('[aria-label="Refresh Database"]')).not.toBeNull();
-  await openWalkthrough(host);
-  expect(popupAskMessage(host)).toContain("Knowledge · Database");
+  expect(inlineAskMessage(host)).toContain("Knowledge · Database");
   expect(openWorkspaceView).toHaveBeenCalledWith("knowledge", "database");
 });
 

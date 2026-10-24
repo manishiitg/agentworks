@@ -320,11 +320,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
           hideHeader={skillsView}
           icon={section === 'mcp' && sharing ? Users : SectionIcon}
           title={section === 'mcp' && sharing ? projectChannelLabel(shareChannel) : section === 'mcp' ? connectionLabel : copy.title}
-          helpTopic={section === 'mcp'
-            ? skillsView ? 'Integrations · Skills' : sharing ? projectChannelLabel(shareChannel) : `${activeMcpTab === 'slack' ? 'Connections' : 'Integrations'} · ${connectionLabel}`
-            : section === 'identity'
-              ? `Identity · ${identityTabs.find(option => option.value === activeIdentityTab)?.label ?? 'General'}`
-              : undefined}
           actions={section === 'mcp' && !relayMode && !sharing && activeMcpTab === 'apps' && pluginTab !== 'skills' ? undefined : (
             <WorkspaceViewActions
               workspacePath={workspacePath}

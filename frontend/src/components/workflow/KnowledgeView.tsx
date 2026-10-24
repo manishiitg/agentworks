@@ -51,7 +51,6 @@ export default function KnowledgeView({ workspacePath }: KnowledgeViewProps) {
       <WorkspaceViewHeader
         icon={BookOpen}
         title="Knowledge"
-        helpTopic={`Knowledge · ${tabLabel}`}
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}

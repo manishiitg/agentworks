@@ -130,7 +130,6 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
       <WorkspaceViewHeader
         icon={Brain}
         title={activeTab === 'skills' ? 'Skills' : 'Memory'}
-        helpTopic={activeTab === 'skills' ? 'Integrations · Skills' : undefined}
         hideHeader={activeTab === 'skills'}
         /* Memory and Skills are separate side-list items (owner, 2026-10-20: every tab independent). */
         actions={activeTab !== 'skills' && <WorkspaceViewActions

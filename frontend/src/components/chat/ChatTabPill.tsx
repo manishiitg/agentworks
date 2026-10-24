@@ -10,7 +10,7 @@ import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { PulseIcon, isPulseConversationSession } from '../workflow/pulseIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
-import { compactOwnerChatName } from './ChatTabGroups'
+import { compactOwnerChatName } from './chatTabName'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -148,6 +148,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       onClick={activate}
       onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate() } }}
       role="button"
+      aria-label={tooltip}
       tabIndex={0}
       data-tab-active={isActive ? 'true' : undefined}
       className={`group relative flex min-w-0 cursor-pointer items-center gap-1.5 border-b-2 px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-t-lg py-1.5 text-sm' : 'rounded-t-md py-1 text-xs'} ${

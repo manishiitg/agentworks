@@ -37,7 +37,7 @@ export function ServerProductSurface({ product, label }: { product: 'llm-gateway
     return () => { controller.abort(); clearTimeout(timer) }
   }, [prefix, label, userID])
   return <div className="flex h-screen min-h-0 bg-background">
-    <ModePresetBar reduced walkthroughPaused />
+    <ModePresetBar reduced />
     <main className="min-w-0 flex-1" aria-label={label}>
       {error ? <p role="alert" className="p-6 text-muted-foreground">{error}</p>
         : ready ? <iframe title={label} src={`${prefix}/ui/`} sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" className="h-full w-full border-0" />

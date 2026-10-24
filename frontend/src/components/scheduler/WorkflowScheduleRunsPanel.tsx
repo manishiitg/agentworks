@@ -143,7 +143,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
 
         {automationSection === 'bots' && botContent ? (
           <div className="flex min-h-0 flex-1 flex-col">
-            {!hideHeader && <WorkspaceViewHeader icon={Bot} title="Bots" helpTopic="Automation · Bots" actions={headerAction} />}
+            {!hideHeader && <WorkspaceViewHeader icon={Bot} title="Bots" actions={headerAction} />}
             <div className="min-h-0 flex-1 overflow-y-auto">{botContent}</div>
           </div>
         ) : automationSection === 'webhooks' && hasProductWebhooks && productTriggerScope ? (
@@ -168,8 +168,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
         {/* Header */}
         {!hideHeader && (
           <ScheduleRunsHeader panel={panel} onClose={onClose} showClose={!embedded} headerAction={headerAction}
-            compact={compact} navigation={compact ? viewControls : undefined}
-            helpTopic={showAutomationTabs && (hasWebhooks || botContent) ? 'Automation · Schedules' : undefined} />
+            compact={compact} navigation={compact ? viewControls : undefined} />
         )}
 
         {/* Body */}

@@ -3,7 +3,6 @@ import { useProductNavigationSidebar } from './workspace/ProductTopBar'
 import AccountControl from './topbar/AccountControl'
 
 interface WorkspaceTopBarControlsProps {
-  onOpenWalkthrough?: () => void
   onOpenShortcuts?: () => void
 }
 

@@ -1337,10 +1337,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         productControl={topBarControl}
         reduced
         activityMonitorInWorkspace={Boolean(selected) && !showProviders && !showSchedulesOverview && !adminPage}
-        walkthroughSurface={selected ? 'crew' : 'empty-crew'}
-        walkthroughReady={!sessionsLoading && !creating && !error}
-        // Both products have their own tour; only active dialogs pause it.
-        walkthroughPaused={createOpen || deleteCandidate !== null}
       />
       {createOpen ? (
         <CreateCrewWizard

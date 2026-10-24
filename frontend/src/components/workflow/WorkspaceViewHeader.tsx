@@ -2,11 +2,10 @@ import { Children, Fragment, cloneElement, createElement, isValidElement, type C
 import { createPortal } from 'react-dom'
 import { useWorkspacePanelHeaderSlots } from '../workspace/WorkspacePanelHeaderSlots'
 import { WorkspaceViewTabs, type WorkspaceViewTabOption } from './WorkspaceViewTabs'
-import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
-import { panelGuideAskFromNode, type PanelGuideAsk } from './workspacePanelGuideAsk'
+import { panelAskFromNode, type PanelAsk } from './workspacePanelAsk'
 import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './WorkspaceViewActions'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
-import { useWorkspacePanelAssistant, useWorkspacePanelHosted } from '../workspace/WorkspacePanelNavigation'
+import { useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
 
 export interface WorkspaceViewHeaderTabs {
   value: string
@@ -28,15 +27,11 @@ type WorkspaceViewHeaderProps = {
   title: ReactNode
   /** Hide the title, icon and subtitle; retain explicit actions, tabs and below content. */
   hideHeader?: boolean
-  /** Guide topic when the visible title is dynamic or omitted. */
-  helpTopic?: string
-  /** A parent toolbar can provide the walkthrough inside its own action pair. */
-  showWalkthrough?: boolean
   /** Inline context next to the title: counts, timestamps, badges. */
   context?: ReactNode
   /** Muted line under the title row. */
   subtitle?: ReactNode
-  /** Right side: page actions and walkthrough. Contextual questions go to the shared toolbar when hosted. */
+  /** Right side: page actions. Contextual questions go to the panel header when hosted. */
   actions?: ReactNode
   /** Full-width row under the title (stats strip, pills). For tabs use the tabs prop. */
   below?: ReactNode
@@ -72,16 +67,8 @@ type WorkspaceViewHeaderProps = {
  *   render as-is at the same h-8 footprint
  * - title: text-sm font-semibold in the shared compact heading
  * - subtitle: text-xs text-muted-foreground, rendered here
- * - actions: page operations, then Help and Back in the shared panel header
+ * - actions: page operations and contextual chat, with Back only for nested details
  */
-function isRefreshAction(node: ReactNode): boolean {
-  if (!isValidElement<{ label?: string; icon?: unknown; 'aria-label'?: string; children?: ReactNode }>(node)) return false
-  if (node.type === WorkspaceViewIconButton) return node.props.icon == null && /^refresh/i.test(node.props.label ?? '')
-  const label = node.props['aria-label']
-  if (typeof label === 'string' && /^refresh/i.test(label)) return true
-  return Children.toArray(node.props.children).some(isRefreshAction)
-}
-
 /** The panels refresh themselves now (owner, 2026-10-20), so the header's own Refresh icons are dropped. */
 function isPlainRefresh(node: ReactNode): boolean {
   return isValidElement<{ label?: string; icon?: unknown }>(node) && node.type === WorkspaceViewIconButton && node.props.icon == null && /^refresh/i.test(node.props.label ?? '')
@@ -94,42 +81,8 @@ function withoutRefresh(actions: ReactNode): ReactNode {
   return actions
 }
 
-function withAsk(walkthrough: ReactNode, ask: PanelGuideAsk | undefined): ReactNode {
-  if (!ask || !isValidElement<{ ask?: PanelGuideAsk }>(walkthrough)) return walkthrough
-  return cloneElement(walkthrough, { ask })
-}
-
-function insertWalkthrough(actions: ReactNode, walkthrough: ReactNode, assistantInHeader = false): ReactNode {
-  if (!walkthrough) return actions
-  if (isValidElement<WorkspaceViewActionsProps>(actions) && actions.type === WorkspaceViewActions) {
-    const { workspacePath, message, onAsk } = actions.props
-    return cloneElement(actions, { walkthrough: assistantInHeader ? walkthrough : withAsk(walkthrough, { workspacePath, message, onAsk }) })
-  }
-  // A lone Ask AI button is the whole row: it moves into the popup and the
-  // row keeps just the walkthrough.
-  const loneAsk = panelGuideAskFromNode(actions)
-  if (loneAsk) return assistantInHeader ? walkthrough : withAsk(walkthrough, loneAsk)
-  if (isValidElement<{ children?: ReactNode }>(actions) && actions.type === Fragment) {
-    const children: ReactNode[] = Children.toArray(actions.props.children)
-    let ask: PanelGuideAsk | undefined
-    const rest = children.filter(child => {
-      if (ask) return true
-      const found = panelGuideAskFromNode(child)
-      if (!found) return true
-      ask = found
-      return false
-    })
-    const guided = assistantInHeader ? walkthrough : withAsk(walkthrough, ask)
-    const refreshIndex = rest.findIndex(isRefreshAction)
-    if (refreshIndex >= 0) rest.splice(refreshIndex, 0, guided)
-    else rest.push(guided)
-    return <>{rest}</>
-  }
-  return <>{actions}{walkthrough}</>
-}
-
-function headerAsk(actions: ReactNode): PanelGuideAsk | undefined {
-  const direct = panelGuideAskFromNode(actions)
+function headerAsk(actions: ReactNode): PanelAsk | undefined {
+  const direct = panelAskFromNode(actions)
   if (direct) return direct
   if (isValidElement<WorkspaceViewActionsProps>(actions) && actions.type === WorkspaceViewActions) return { workspacePath: actions.props.workspacePath, message: actions.props.message, onAsk: actions.props.onAsk }
   if (isValidElement<{ children?: ReactNode }>(actions)) {
@@ -144,8 +97,6 @@ export function WorkspaceViewHeader({
   icon,
   title,
   hideHeader = false,
-  helpTopic,
-  showWalkthrough = true,
   context,
   subtitle,
   actions: rawActions,
@@ -157,14 +108,10 @@ export function WorkspaceViewHeader({
   className = '',
   tabActions,
 }: WorkspaceViewHeaderProps) {
-  const assistantInHeader = useWorkspacePanelAssistant(headerAsk(rawActions))
-  const hosted = useWorkspacePanelHosted()
+  useWorkspacePanelAssistant(headerAsk(rawActions))
   const actions = withoutRefresh(rawActions)
   const hasSubtitle = typeof subtitle === 'string' ? subtitle.trim().length > 0 : Boolean(subtitle)
   const tabExtra = tabs ? tabActions?.[tabs.value] : undefined
-  const guideTopic = helpTopic ?? (typeof title === 'string' ? title : '')
-  const walkthrough = (!hideHeader || hosted) && showWalkthrough && guideTopic ? <WorkspacePanelGuideButton key="walkthrough" topic={guideTopic} /> : null
-  const headerActions = insertWalkthrough(actions, walkthrough, assistantInHeader)
   const slots = useWorkspacePanelHeaderSlots()
   const iconNode = isValidElement(icon) ? icon : icon ? createElement(icon as ComponentType<{ className?: string }>, { className: 'h-4 w-4' }) : null
   const heading = <div data-workspace-panel-title className="flex min-w-0 items-center gap-2.5">
@@ -177,7 +124,7 @@ export function WorkspaceViewHeader({
       {hasSubtitle && <div className="mt-0.5 text-xs text-muted-foreground">{subtitle}</div>}
     </div>
   </div>
-  const controls = <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5">{tabExtra}{headerActions}</div>
+  const controls = <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5">{tabExtra}{actions}</div>
   const contentControls = <>{below}{tabs && <WorkspaceViewTabs value={tabs.value} onChange={tabs.onChange} options={tabs.options} ariaLabel={tabs.ariaLabel} inset={!bare} />}</>
 
   // Portals retain each view's state and callbacks. Only its heading/actions
@@ -190,7 +137,7 @@ export function WorkspaceViewHeader({
 
   // Dialogs, full-screen tools and embedded views without an outer header keep
   // the same compact header locally.
-  if (hideHeader && !actions && !tabExtra && !below && !tabs) return hosted ? walkthrough : null
+  if (hideHeader && !actions && !tabExtra && !below && !tabs) return null
   const body = <>
     {(!hideHeader || actions || tabExtra) && <div className="flex flex-wrap items-center justify-between gap-3">
       {!hideHeader && heading}

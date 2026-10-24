@@ -37,7 +37,7 @@ it.each(['user', 'admin'])('uses only header navigation and preserves AgentBridg
     const pages = host.querySelector('[aria-label="Product pages"]')!
     expect(pages.textContent).toContain('Agents')
     expect(pages.textContent?.includes('Administration')).toBe(role === 'admin')
-    expect(pages.textContent).toContain('Help')
+    expect(pages.textContent).not.toContain('Help')
     expect(pages.textContent).toContain('Token usage')
     await act(async () => [...pages.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Connect an agent')!.click())
     expect(host.textContent).toContain('Existing connection setup')

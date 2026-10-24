@@ -18,10 +18,9 @@ type ScheduleRunsHeaderProps = {
   headerAction?: React.ReactNode
   compact?: boolean
   navigation?: React.ReactNode
-  helpTopic?: string
 }
 
-export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, onClose, showClose = true, headerAction, compact = false, navigation, helpTopic }) => {
+export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, onClose, showClose = true, headerAction, compact = false, navigation }) => {
   const {
     panelTitle,
     isLoading,
@@ -44,7 +43,6 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
     <WorkspaceViewHeader
       icon={compact ? undefined : Calendar}
       title={compact ? '' : panelTitle}
-      helpTopic={helpTopic ?? (compact ? 'Schedules' : panelTitle)}
       context={compact ? <>
         {navigation}
         <span className="text-xs text-muted-foreground">{summary.total} schedules{isSchedulerPaused ? ` · ${isGloballyPaused ? 'All' : pauseProductLabel} schedules paused` : ''}</span>

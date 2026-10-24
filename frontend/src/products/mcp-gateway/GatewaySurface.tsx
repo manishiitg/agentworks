@@ -130,7 +130,7 @@ export function GatewaySurface({ standalone = false }: { standalone?: boolean } 
   const canViewVault = user?.is_admin === true || user?.is_vault_reader === true
   return <VaultReadOnlyContext.Provider value={user?.is_admin !== true}><div className="flex h-screen min-h-0 bg-background" data-testid="gateway-surface">
     <UpdateProgressToast /><GlobalHumanFeedbackPrompt />
-    <ModePresetBar reduced walkthroughPaused />
+    <ModePresetBar reduced />
     <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
       <LlmModalHost />
       {showSchedules && !showProviders && <SchedulesPage />}

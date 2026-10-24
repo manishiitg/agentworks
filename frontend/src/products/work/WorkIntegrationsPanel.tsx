@@ -37,7 +37,7 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
   })
   const labels: Record<WorkIntegrationTab, string> = { vault: 'Vault', brain: 'Brain', folders: 'Linked projects & folders', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', agents: 'Chats from your computer' }
   return <div className="flex h-full min-h-0 flex-col bg-background">
-    <WorkspaceViewHeader icon={shareSection ? Users : tab === 'vault' ? Vault : Server} title={shareSection ? shareSection === 'owners' ? 'Owners & collaborators' : 'People & access' : labels[tab]} helpTopic={tab === 'vault' ? 'Vault' : labels[tab]} />
+    <WorkspaceViewHeader icon={shareSection ? Users : tab === 'vault' ? Vault : Server} title={shareSection ? shareSection === 'owners' ? 'Owners & collaborators' : 'People & access' : labels[tab]} />
     <div data-ui-view-section={shareSection ? `share-${shareSection}` : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       {shareSection ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" section={shareSection} /> : <>
         {tab === 'vault' && <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled={!canEdit} />}

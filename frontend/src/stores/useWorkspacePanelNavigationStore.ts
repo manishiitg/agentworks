@@ -1,20 +1,12 @@
 import { create } from 'zustand'
 import { useAuthStore } from './useAuthStore'
 import { useWorkspaceConnectionStore } from './useWorkspaceConnectionStore'
-import type { WorkspacePanelSurface } from '../components/workflow/workspacePanelGuides'
 
 export interface WorkspacePanelBackAction {
   owner: symbol
   scope: string
   label: string
   onBack: () => void
-}
-
-interface WorkspacePanelGuideAction {
-  owner: symbol
-  scope: string
-  topic: string
-  surface: WorkspacePanelSurface
 }
 
 export interface WorkspacePanelAssistantAction {
@@ -43,8 +35,6 @@ export const useWorkspacePanelNavigationStore = create<{
   register: (action: WorkspacePanelBackAction) => () => void
   assistants: WorkspacePanelAssistantAction[]
   registerAssistant: (action: WorkspacePanelAssistantAction) => () => void
-  guides: WorkspacePanelGuideAction[]
-  registerGuide: (guide: WorkspacePanelGuideAction) => () => void
 }>(set => ({
   actions: [],
   register: action => {
@@ -55,11 +45,6 @@ export const useWorkspacePanelNavigationStore = create<{
   registerAssistant: action => {
     set(state => ({ assistants: [...state.assistants.filter(item => item.owner !== action.owner), action] }))
     return () => set(state => ({ assistants: state.assistants.filter(item => item.owner !== action.owner) }))
-  },
-  guides: [],
-  registerGuide: guide => {
-    set(state => ({ guides: [...state.guides.filter(item => item.owner !== guide.owner), guide] }))
-    return () => set(state => ({ guides: state.guides.filter(item => item.owner !== guide.owner) }))
   },
 }))
 

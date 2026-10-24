@@ -414,7 +414,6 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
         <FileTabs source={source} />
         <WorkspaceViewHeader
           icon={FileText}
-          showWalkthrough={false}
           title={selectedFile?.path ? (
             <span className="inline-flex max-w-full items-center gap-1.5">
               <button

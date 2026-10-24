@@ -1,6 +1,6 @@
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useWorkspacePanelAssistant, useWorkspacePanelGuide } from '../workspace/WorkspacePanelNavigation'
+import { useWorkspacePanelAssistant } from '../workspace/WorkspacePanelNavigation'
 import { ArrowDown, Code2, RefreshCw, Settings2, Sparkles } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { RunFolderInfo } from '../../services/api-types'
@@ -69,7 +69,6 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
 }) {
   const [tab, setTab] = useState<'graph' | 'calls' | 'source'>('graph')
   const panelTopic = tab === 'graph' ? 'Flow' : tab === 'calls' ? 'Flow runs' : 'Flow code'
-  useWorkspacePanelGuide(panelTopic, 'relay')
   useWorkspacePanelAssistant({ workspacePath, message: `Help me with this Flow's ${tab === 'graph' ? 'steps and graph' : tab === 'calls' ? 'runs and results' : 'code'}. Explain the current view in plain words and ask what I want to do before changing anything.` })
   const viewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   useEffect(() => {
@@ -214,7 +213,7 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
   useLiveRefetch(refresh, { kinds: ['plan', 'sessions', 'schedules'], workflow: workspacePath, fallbackMs: 3000, safetyMs: tab === 'calls' || trace?.status === 'running' ? 2000 : 30_000, minIntervalMs: 500 })
 
   return <div className="relative flex h-full min-h-0 flex-col bg-background">
-    <WorkspaceViewHeader title={panelTopic} showWalkthrough={false}
+    <WorkspaceViewHeader title={panelTopic}
       subtitle={tab === 'graph' ? 'Repeatable steps, AI tasks and decisions in one process.' : tab === 'source' ? 'Draft code · Implementation managed by the builder.' : undefined}
       actions={<>
         {tab === 'graph' && <button type="button" onClick={onBuild} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs hover:bg-muted"><Sparkles className="h-3.5 w-3.5" />Edit in chat</button>}

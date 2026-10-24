@@ -9,7 +9,6 @@ import type { BrowserEmptyStateActions } from './WorkflowLiveBrowser'
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: { defaults: {}, get: mocks.get, post: mocks.post }, getApiBaseUrl: () => 'http://localhost', getAuthToken: () => null }))
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn() }))
-vi.mock('./WorkspacePanelGuideButton', () => ({ WorkspacePanelGuideButton: () => null }))
 vi.mock('./WorkflowLiveBrowser', () => ({ default: ({ emptyContent, browserSelection }: { browserSelection?: React.ReactNode; emptyContent: React.ReactNode | ((actions: BrowserEmptyStateActions) => React.ReactNode) }) => <>{browserSelection}{typeof emptyContent === 'function' ? emptyContent({ startBrowser: vi.fn(), startingBrowser: false, canStart: true }) : emptyContent}</> }))
 vi.mock('../../utils/runtimeCapabilities', () => ({ isBrowserCDPEnabled: () => false }))
 

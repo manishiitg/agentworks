@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => {
     setWorkspaceMinimized: noop, setModeCategory: noop, getAgentModeFromCategory: () => 'workflow',
   }
   const store = Object.assign((selector?: (value: any) => any) => selector ? selector(state) : state, { getState: () => state })
-  return { state, store, renderedTours: [] as string[] }
+  return { state, store }
 })
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: mocks.store }))
 vi.mock('../stores/useModeStore', () => ({ useModeStore: mocks.store }))
@@ -45,16 +45,10 @@ vi.mock('./topbar/McpControl', () => ({ default: () => null }))
 vi.mock('./topbar/UsersControl', () => ({ default: () => null }))
 vi.mock('./topbar/ProvidersControl', () => ({ default: () => null }))
 vi.mock('../stores/useProductSurfaceStore', () => ({ useProductSurfaceStore: mocks.store }))
-vi.mock('./workflow/WorkflowWalkthrough', () => ({ default: ({ isOpen, surface, onClose }: any) => {
-  if (!isOpen) return null
-  mocks.renderedTours.push(surface)
-  return <button data-testid="tour" onClick={onClose}>{surface}</button>
-} }))
 
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { ModePresetBar } from './ModePresetBar'
 import { TooltipProvider } from './ui/tooltip'
-import { dismissWorkflowWalkthrough, markLLMDiscoveryOnboardingCleared, markLLMDiscoveryOnboardingOpen } from '../utils/onboarding'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let host: HTMLDivElement
@@ -63,7 +57,6 @@ const originalStorage = Object.getOwnPropertyDescriptor(window, 'localStorage')
 const render = async (props: React.ComponentProps<typeof ModePresetBar> = {}) => {
   await act(async () => root.render(<TooltipProvider><ModePresetBar {...props} /></TooltipProvider>))
 }
-const tour = () => host.querySelector('[data-testid="tour"]')
 
 beforeEach(() => {
   const values = new Map<string, string>()
@@ -74,7 +67,6 @@ beforeEach(() => {
   delete (window as any).__llmDiscoveryOnboardingState
   delete window.electronAPI
   Object.assign(mocks.state, { selectedModeCategory: 'workflow', workflowPresetsLoaded: false, activePreset: null, workflowPresets: [], showWorkflowsOverview: false, showSchedulesOverview: false, adminPage: null, showLLMModal: false, loading: false, showPresetCreate: false, productCreateSurface: null, canCreate: true, productSurface: 'agentworks' })
-  mocks.renderedTours.length = 0
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
@@ -88,57 +80,16 @@ afterEach(async () => {
   else Reflect.deleteProperty(window, 'localStorage')
 })
 
-it('never renders the temporary empty tour while a saved automation loads', async () => {
-  markLLMDiscoveryOnboardingCleared()
+it('keeps the workspace free of Help and tours, including old manual launch events', async () => {
   await render()
-  expect(tour()).toBeNull()
-  mocks.state.loading = true
-  await render()
-  expect(tour()).toBeNull()
-  Object.assign(mocks.state, { workflowPresetsLoaded: true, loading: false, activePreset: { id: 'saved', label: 'Saved automation' } })
-  await render()
-  expect(tour()?.textContent).toBe('automation')
-  expect(mocks.renderedTours).not.toContain('empty-automation')
+  await act(async () => {
+    window.dispatchEvent(new Event('open-workflow-walkthrough'))
+    window.dispatchEvent(new Event('open-providers-walkthrough'))
+  })
+  expect(host.querySelector('[data-testid="tour"]')).toBeNull()
+  expect(host.querySelector('[data-contextual-guide]')).toBeNull()
+  expect(host.textContent).not.toContain('Help & walkthrough')
 })
-
-it.each(['browser', 'electron'])('keeps a dismissed restored tour hidden in %s', async client => {
-  if (client === 'electron') {
-    window.electronAPI = { isWalkthroughDismissed: key => key === 'agentworks_automation_walkthrough_v3_dismissed' }
-  } else {
-    dismissWorkflowWalkthrough('automation')
-  }
-  markLLMDiscoveryOnboardingCleared()
-  await render()
-  Object.assign(mocks.state, { workflowPresetsLoaded: true, activePreset: { id: 'saved', label: 'Saved automation' } })
-  await render()
-  expect(tour()).toBeNull()
-  expect(mocks.renderedTours).toEqual([])
-})
-
-it('waits through pending and open provider onboarding, then opens the empty tour', async () => {
-  mocks.state.workflowPresetsLoaded = true
-  await render()
-  expect(tour()).toBeNull()
-  await act(async () => markLLMDiscoveryOnboardingOpen())
-  expect(tour()).toBeNull()
-  await act(async () => markLLMDiscoveryOnboardingCleared())
-  expect(tour()?.textContent).toBe('empty-automation')
-})
-
-it.each(['crew', 'code'] as const)('uses %s project readiness independently of automation manifests', async surface => {
-  markLLMDiscoveryOnboardingCleared()
-  await render({ walkthroughSurface: surface, walkthroughReady: false, reduced: true })
-  expect(tour()).toBeNull()
-  await render({ walkthroughSurface: surface, walkthroughReady: true, reduced: true })
-  expect(tour()?.textContent).toBe(surface)
-})
-
-it('allows manual help during startup', async () => {
-  await render()
-  await act(async () => window.dispatchEvent(new Event('open-workflow-walkthrough')))
-  expect(tour()?.textContent).toBe('empty-automation')
-})
-
 
 it('opens the existing creation dialog for an intro request, even with an active preset', async () => {
   mocks.state.activePreset = { id: 'existing', label: 'Existing automation' }

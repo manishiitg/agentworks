@@ -1,6 +1,6 @@
 import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ChartNoAxesCombined, HelpCircle, Keyboard, KeyRound, LogOut } from 'lucide-react'
+import { ChartNoAxesCombined, Keyboard, KeyRound, LogOut } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import ChangePasswordDialog from './ChangePasswordDialog'
@@ -9,7 +9,6 @@ import { APP_VERSION } from '../../version'
 
 /** Shared account actions, embedded in Account & settings or used by a standalone surface. */
 interface AccountControlProps {
-  onOpenWalkthrough?: () => void
   onOpenShortcuts?: () => void
   menuOnly?: boolean
   children?: ReactNode
@@ -17,7 +16,7 @@ interface AccountControlProps {
   onOpenUsage?: () => void
 }
 
-export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, menuOnly = false, children, messagingOnly = false, onOpenUsage }: AccountControlProps) {
+export default function AccountControl({ onOpenShortcuts, menuOnly = false, children, messagingOnly = false, onOpenUsage }: AccountControlProps) {
   const sidebar = useProductNavigationSidebar()
   const { user, logout, isMultiUserMode, providers } = useAuthStore()
   // A password can be changed only where people sign in with one: a server with single sign-on only (Google) has nothing to change.
@@ -70,14 +69,6 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, men
           {onOpenUsage && <button type="button" role="menuitem" className={itemClass} onClick={() => { setOpen(false); onOpenUsage() }}>
             <ChartNoAxesCombined className="h-4 w-4 text-muted-foreground" />
             Token usage
-          </button>}
-          {menuOnly && onOpenWalkthrough && <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Help</p>}
-          {onOpenWalkthrough && <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => {
-            setOpen(false)
-            onOpenWalkthrough()
-          }}>
-            <HelpCircle className="h-4 w-4 text-muted-foreground" />
-            Help &amp; walkthrough
           </button>}
           {!menuOnly && onOpenShortcuts && <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => {
             setOpen(false)

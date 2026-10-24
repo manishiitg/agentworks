@@ -13,7 +13,6 @@ import { DashboardCreateDraftButton } from '../../components/workflow/DashboardE
 import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
-import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspacePanelGuideContext'
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { GlobalActivityMonitor } from '../../components/GlobalActivityMonitor'
 import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
@@ -306,9 +305,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     <WorkspacePanelNavigationProvider workspacePath={workspacePath} view={view} chatTarget={{ tabId }} onOpenChat={onOpenChat}>
     {view === 'dashboard' && <WorkspacePanelAssistant workspacePath={workspacePath} message={`Help me with this ${noun} project's results page. Explain what it shows in plain words and ask what I want to change.`} />}
     {view === 'shell' && <WorkspacePanelAssistant workspacePath={workspacePath} message={`Help me understand this ${noun}'s terminal and what I can do here. Explain commands before running anything.`} />}
-    <WorkspacePanelGuideContext.Provider value={'crew'}>
     <div className="relative flex h-full min-h-0 flex-col bg-background">
-      <WorkspacePanelHeader workspacePath={workspacePath} view={view} surface="crew" title={view === 'context' ? 'Project menu' : [...contextPanels.views, ...contextPanels.ops, ...contextPanels.setup].find(panel => panel.id === view)?.label ?? view} contextAllowed={!readOnly} onBack={() => onViewChange('context')} />
+      <WorkspacePanelHeader workspacePath={workspacePath} view={view} title={view === 'context' ? 'Project menu' : [...contextPanels.views, ...contextPanels.ops, ...contextPanels.setup].find(panel => panel.id === view)?.label ?? view} onBack={() => onViewChange('context')} />
       <div className="min-h-0 flex-1 overflow-hidden">
         {view==='context' && <WorkContextPanel workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}
         {view === 'files' && (readOnly ? <SharedCrewFilesPanel
@@ -448,7 +446,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         </Suspense>
       </div>
     </div>
-    </WorkspacePanelGuideContext.Provider>
     </WorkspacePanelNavigationProvider>
   )
 })
