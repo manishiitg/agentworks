@@ -210,30 +210,11 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 	defer viewer.Close()
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	// Only this connection can hold control. Disconnect/heartbeat timeout always
-	// releases waiting browser tool calls. Watchers cannot inject any raw commands.
-	// Control state is shared with the command worker below; stateMu guards it.
-	var stateMu sync.Mutex
-	var releaseControl func()
-	controlHeld := func() bool {
-		stateMu.Lock()
-		defer stateMu.Unlock()
-		return releaseControl != nil
-	}
 	workspace := r.URL.Query().Get("workspace_path")
 	physical := workspace
 	if !strings.HasPrefix(normalizeConversationWorkspace(workspace), "Workflow/") {
 		physical = browserProjectKey(GetUserIDFromContext(r.Context()), workspace)
 	}
-	defer func() {
-		stateMu.Lock()
-		release := releaseControl
-		releaseControl = nil
-		stateMu.Unlock()
-		if release != nil {
-			release()
-		}
-	}()
 	var writeMu sync.Mutex
 	send := func(value interface{}) error {
 		writeMu.Lock()
@@ -299,6 +280,14 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 		}
 		return api.canControlLiveBrowser(ctx, GetUserFromContext(r.Context()), workspace)
 	}
+	canInteract := func() bool {
+		if !canControl() {
+			log.Printf("[BROWSER-LIVE] input refused session=%q user=%q reason=project_access", session, GetUserIDFromContext(r.Context()))
+			return false
+		}
+		browser.GetSessionTracker().TouchExisting(session)
+		return true
+	}
 	// Browser commands (open, tab, resize, paste) can take seconds.
 	// Running them in the viewer read loop stalled input forwarding and pings
 	// behind them, so clicks landed late or not at all (PLAT-776). One ordered
@@ -327,7 +316,9 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			sendError("Still working on the last action. Try again in a moment.")
 		}
 	}
-	_ = send(map[string]interface{}{"type": "viewer_control", "controlling": false, "platform": runtime.GOOS})
+	log.Printf("[BROWSER-LIVE] viewer connected session=%q user=%q interactive=%t", session, GetUserIDFromContext(r.Context()), canControl())
+	defer log.Printf("[BROWSER-LIVE] viewer disconnected session=%q user=%q", session, GetUserIDFromContext(r.Context()))
+	_ = send(map[string]interface{}{"type": "viewer_ready", "interactive": canControl(), "platform": runtime.GOOS})
 	for {
 		_, data, err := viewer.ReadMessage()
 		if err != nil {
@@ -352,32 +343,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 		_ = viewer.SetReadDeadline(time.Now().Add(45 * time.Second))
 		switch message.Type {
 		case "ping":
-			if controlHeld() {
-				browser.GetSessionTracker().TouchExisting(session)
-			}
 			_ = send(map[string]string{"type": "pong"})
-		case "take_control":
-			if !controlHeld() {
-				if !canControl() {
-					sendError("You do not have permission to control this workflow browser.")
-					continue
-				}
-				release, ok := browser.TryTakeWorkspaceBrowserControl(session)
-				if !ok {
-					sendError("The browser is busy. Wait for the current action to finish, then take control.")
-					continue
-				}
-				stateMu.Lock()
-				if releaseControl == nil {
-					releaseControl = release
-					release = nil
-				}
-				stateMu.Unlock()
-				if release != nil {
-					release()
-				}
-			}
-			_ = send(map[string]interface{}{"type": "viewer_control", "controlling": true, "platform": runtime.GOOS})
 		case "navigate", "history":
 			command := []string{"open", message.URL}
 			if message.Type == "history" {
@@ -396,7 +362,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			}
 			userID := GetUserIDFromContext(r.Context())
 			enqueue(func() {
-				if !controlHeld() || !canControl() {
+				if !canInteract() {
 					return
 				}
 				_, err := browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), append([]string{"--session", session}, append(command, "--json")...)...), workspaceBrowserExecuteOptions(userID, physical, session, 30*time.Second))
@@ -404,15 +370,6 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 					sendError("Unable to open this address.")
 				}
 			})
-		case "release_control":
-			stateMu.Lock()
-			release := releaseControl
-			releaseControl = nil
-			stateMu.Unlock()
-			if release != nil {
-				release()
-			}
-			_ = send(map[string]interface{}{"type": "viewer_control", "controlling": false, "platform": runtime.GOOS})
 		case "resize_viewport":
 			// Bound rendering cost and accept only real viewport dimensions.
 			if message.Width < 320 || message.Width > 1920 || message.Height < 320 || message.Height > 1920 {
@@ -422,7 +379,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			width, height := message.Width, message.Height
 			userID := GetUserIDFromContext(r.Context())
 			enqueue(func() {
-				if !controlHeld() || !canControl() {
+				if !canInteract() {
 					return
 				}
 				_, err := browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), "--session", session, "set", "viewport", fmt.Sprint(width), fmt.Sprint(height), "--json"), workspaceBrowserExecuteOptions(userID, physical, session, 10*time.Second))
@@ -446,7 +403,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			}
 			userID := GetUserIDFromContext(r.Context())
 			enqueue(func() {
-				if !controlHeld() || !canControl() {
+				if !canInteract() {
 					return
 				}
 				command := []string{"tab", tabRef}
@@ -502,7 +459,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			}
 			text, userID := message.Text, GetUserIDFromContext(r.Context())
 			enqueue(func() {
-				if !controlHeld() || !canControl() {
+				if !canInteract() {
 					return
 				}
 				if err := forwardBrowserViewerText(ctx, workspaceURL, session, userID, text); err != nil {
@@ -515,7 +472,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			}
 			requestID, userID := message.RequestID, GetUserIDFromContext(r.Context())
 			enqueue(func() {
-				if !controlHeld() || !canControl() {
+				if !canInteract() {
 					return
 				}
 				output, err := browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), "--session", session, "eval", liveBrowserSelectionScript, "--json"), workspaceBrowserExecuteOptions(userID, physical, session, 8*time.Second))
@@ -534,7 +491,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 				_ = send(reply)
 			})
 		case "input_mouse", "input_keyboard", "input_touch":
-			if !controlHeld() || !canControl() {
+			if !canInteract() {
 				continue
 			}
 			upstream.SetWriteDeadline(time.Now().Add(5 * time.Second))

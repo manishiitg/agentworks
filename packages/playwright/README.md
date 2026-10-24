@@ -2,7 +2,7 @@
 
 Use normal Playwright tests with an AgentWorks fixture. It streams Chromium
 viewport frames into the existing workflow Browser panel. Agent-browser sessions
-remain available alongside these watch-only test sessions.
+remain available alongside these interactive test sessions.
 
 This package is not published to npm yet. From this repository, install it into
 your test project with `npm install --save-dev /absolute/path/to/packages/playwright`.
@@ -105,5 +105,7 @@ it is ready. Report-owned evidence is not deleted by closing the Browser panel.
 ### Unattended runs
 
 Live viewing is always on: schedules, function calls, webhooks and bots stream
-to the Browser panel the same way Builder runs do. It is watch-only and never
+to the Browser panel the same way Builder runs do. Builders can interact while the test runs; the helper never
 changes video, trace, screenshot settings or assertions.
+
+Builders can click, type, paste, navigate and select live tabs while tests keep running. Shared Run access can watch but cannot send input. Install package version 0.2.0 from the platform to enable this protocol. Python input runs on the original Playwright event loop; use Playwright waits instead of blocking time.sleep so browser events can run.

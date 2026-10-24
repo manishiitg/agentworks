@@ -48,7 +48,7 @@ func TestLiveBrowserSessionIsolation(t *testing.T) {
 	}
 }
 
-func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
+func TestLiveBrowserStreamConcurrentInputAndDisconnect(t *testing.T) {
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
 	t.Setenv("MULTI_USER_MODE", "false")
 	const session = "live-stream-test"
@@ -134,25 +134,16 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 			}
 		}
 	}
-	readType("viewer_control")
-	conn.WriteJSON(map[string]interface{}{"type": "input_mouse", "eventType": "mousePressed", "x": 10, "y": 10})
-	conn.WriteJSON(map[string]interface{}{"type": "resize_viewport", "width": 900, "height": 1200})
-	conn.WriteJSON(map[string]string{"type": "new_tab", "url": "https://example.com"})
-	conn.WriteJSON(map[string]string{"type": "switch_tab", "tab": "t2"})
-	conn.WriteJSON(map[string]string{"type": "input_text", "text": "watch-only must not paste"})
-	conn.WriteJSON(map[string]string{"type": "clipboard_copy", "requestId": "copy-1"})
-	conn.WriteJSON(map[string]string{"type": "history", "action": "reload"})
-	conn.WriteJSON(map[string]string{"type": "ping"})
-	readType("pong")
-	select {
-	case value := <-received:
-		t.Fatalf("watch mode forwarded input %v", value)
-	default:
+	if readType("viewer_ready")["interactive"] != true {
+		t.Fatal("builder input unavailable")
 	}
-	conn.WriteJSON(map[string]string{"type": "take_control"})
-	if readType("viewer_control")["controlling"] != true {
-		t.Fatal("control not acquired")
+	ctxActive, cancelActive := context.WithTimeout(context.Background(), time.Second)
+	releaseActive, err := browser.AcquireBrowserAutomation(ctxActive, session)
+	cancelActive()
+	if err != nil {
+		t.Fatal("open viewer blocks agent tools", err)
 	}
+	releaseActive()
 	conn.WriteJSON(map[string]string{"type": "input_text", "text": "paste fixture\n日本語🙂"})
 	select {
 	case request := <-received:
@@ -229,9 +220,10 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 		t.Fatalf("invalid resize executed: %v", value)
 	default:
 	}
-	if release, ok := browser.TryTakeBrowserControl(session); ok {
+	if release, ok := browser.TryTakeBrowserControl(session); !ok {
+		t.Fatal("interactive viewer holds automation gate")
+	} else {
 		release()
-		t.Fatal("control gate not held")
 	}
 	conn.WriteJSON(map[string]interface{}{"type": "input_keyboard", "eventType": "char", "text": "hello"})
 	select {
@@ -311,25 +303,15 @@ func TestLiveBrowserInputFlowsWhileNavigateRuns(t *testing.T) {
 	defer conn.Close()
 	defer close(releaseNav)
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	readControlling := func() {
-		t.Helper()
-		for {
-			var message map[string]interface{}
-			if err := conn.ReadJSON(&message); err != nil {
-				t.Fatal(err)
-			}
-			if message["type"] == "viewer_control" && message["controlling"] == true {
-				return
-			}
+	for {
+		var initial map[string]interface{}
+		if err := conn.ReadJSON(&initial); err != nil {
+			t.Fatal(err)
+		}
+		if initial["type"] == "viewer_ready" {
+			break
 		}
 	}
-	// Drain the initial viewer_control before taking control.
-	var initial map[string]interface{}
-	if err := conn.ReadJSON(&initial); err != nil {
-		t.Fatal(err)
-	}
-	conn.WriteJSON(map[string]string{"type": "take_control"})
-	readControlling()
 	conn.WriteJSON(map[string]string{"type": "navigate", "url": "https://example.com/slow"})
 	select {
 	case <-navStarted:
@@ -665,11 +647,15 @@ func TestUserBrowserDiscoveryShowsOnlyTheSelectedCrewBrowser(t *testing.T) {
 func TestCrewBrowserIsSharedWithCrewMembersOnly(t *testing.T) {
 	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "/data/browser-profile")
 	fx := newCrewRunModeFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true,"products":["work"]},{"id":"reader","username":"vaibhav","can_create":true,"products":["work"]},{"id":"stranger","username":"stranger","can_create":true,"products":["video-studio"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"reader","username":"reader","can_create":true,"products":["work"]},{"id":"stranger","username":"stranger","can_create":true,"products":["video-studio"]}]}`)
 	api := fx.api
-	const physical = crewRunModeOwnerRoot
+	registry := withProjectOwnerRegistry(t)
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "alpha-a1", OwnerID: "owner", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	const physical = "Crew/alpha-a1"
 
-	ownerView := browserSessionForWorkspace("owner", "Chats/Work/projects/alpha")
+	ownerView := browserSessionForWorkspace("owner", "Crew/alpha-a1")
 	if got := browserSessionForWorkspace("reader", physical); got != ownerView {
 		t.Fatalf("owner and member got different Crew browsers: %q vs %q", ownerView, got)
 	}
@@ -680,7 +666,7 @@ func TestCrewBrowserIsSharedWithCrewMembersOnly(t *testing.T) {
 		t.Fatalf("Crew browser %q is not recognized as a persistent managed browser", ownerView)
 	}
 	// Binding a conversation matches discovery, whoever opens the Crew.
-	for _, c := range []struct{ session, user, workspace string }{{"crew-owner-chat", "owner", "Chats/Work/projects/alpha"}, {"crew-reader-chat", "reader", physical}} {
+	for _, c := range []struct{ session, user, workspace string }{{"crew-owner-chat", "owner", "Crew/alpha-a1"}, {"crew-reader-chat", "reader", physical}} {
 		bindConversationBrowserIsolation(c.session, c.user, c.workspace, nil)
 		defer common.ClearSessionShellConfig(c.session)
 		if got := common.ResolveBrowserSessionID(c.session, "default"); got != ownerView {
@@ -697,7 +683,7 @@ func TestCrewBrowserIsSharedWithCrewMembersOnly(t *testing.T) {
 	for _, c := range []struct {
 		user, workspace string
 		visible         bool
-	}{{"owner", "Chats/Work/projects/alpha", true}, {"reader", physical, true}, {"stranger", physical, false}} {
+	}{{"owner", "Crew/alpha-a1", true}, {"reader", physical, true}, {"stranger", physical, false}} {
 		r := httptest.NewRequest("GET", "/?workspace_path="+c.workspace, nil)
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: c.user}))
 		items := api.liveBrowserSessions(r)
@@ -726,6 +712,10 @@ func TestCrewBrowserIsSharedWithCrewMembersOnly(t *testing.T) {
 
 func TestCanControlLiveBrowserTreatsManifestBackedCrewAsProductWorkspace(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
+	registry := withProjectOwnerRegistry(t)
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "crew-a1", OwnerID: "alice", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":["work"]}]}`)
 	workspaceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -736,18 +726,18 @@ func TestCanControlLiveBrowserTreatsManifestBackedCrewAsProductWorkspace(t *test
 	defer workspaceServer.Close()
 	t.Setenv("WORKSPACE_API_URL", workspaceServer.URL)
 
-	const publicWorkspace = "Chats/Work/projects/crew-a"
+	const publicWorkspace = "Crew/crew-a1"
 	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{
 		"crew-a-chat": {
 			SessionID:     "crew-a-chat",
 			UserID:        "alice",
-			WorkspacePath: "_users/alice/Chats/Work/projects/crew-a",
+			WorkspacePath: "Crew/crew-a1",
 		},
 	}}
 	if !api.canControlLiveBrowser(context.Background(), &UserClaims{UserID: "alice"}, publicWorkspace) {
 		t.Fatal("expected the owner to control the active Crew browser even though the Crew has workflow.json")
 	}
-	if api.canControlLiveBrowser(context.Background(), &UserClaims{UserID: "bob"}, "_users/alice/Chats/Work/projects/crew-a") {
+	if api.canControlLiveBrowser(context.Background(), &UserClaims{UserID: "bob"}, "Crew/crew-a1") {
 		t.Fatal("another user must not control the Crew browser")
 	}
 }
@@ -807,7 +797,7 @@ func TestCanControlLiveBrowserAppliesSameFixedWorkspaceFallbackAsDiscovery(t *te
 	t.Run("multi user mode grants the owner only", func(t *testing.T) {
 		t.Setenv("MULTI_USER_MODE", "true")
 		withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"bob","username":"bob","can_create":true,"products":[]}]}`)
-		api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{}}
+		api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{"alice-chat": {UserID: "alice", WorkspacePath: "Chats/SparkQuill"}}}
 		if !api.canControlLiveBrowser(context.Background(), &UserClaims{UserID: "alice"}, "Chats/SparkQuill") {
 			t.Fatal("expected alice to control her own project browser")
 		}

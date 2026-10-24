@@ -5,9 +5,12 @@ package server
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -25,6 +28,7 @@ type playwrightLiveSession struct {
 	mu                               sync.Mutex
 	latest                           map[string][]byte
 	watchers                         map[chan []byte]struct{}
+	input                            chan []byte
 	done                             chan struct{}
 	recording                        *playwrightRecording
 }
@@ -71,7 +75,7 @@ func (api *StreamingAPI) playwrightSessionsFor(claims *UserClaims, workspace str
 	items := []map[string]string{}
 	for _, s := range api.playwrightLive.sessions {
 		if api.playwrightVisible(claims, workspace, s.owner, s.workspace) {
-			item := map[string]string{"browser_session": s.id, "workflow_session": s.run, "label": s.label, "kind": "playwright", "read_only": "true"}
+			item := map[string]string{"browser_session": s.id, "workflow_session": s.run, "label": s.label, "kind": "playwright", "read_only": fmt.Sprint(!api.canControlPlaywright(claims, workspace, s))}
 			if s.recording != nil {
 				item["recording_state"], item["recording_error"] = s.recording.status()
 			}
@@ -167,7 +171,7 @@ func (api *StreamingAPI) handlePlaywrightPublisher(w http.ResponseWriter, r *htt
 	if label == "" {
 		label = "Playwright test"
 	}
-	s := &playwrightLiveSession{id: "pw-" + uuid.NewString(), owner: user, workspace: workspace, run: run, label: label, latest: map[string][]byte{}, watchers: map[chan []byte]struct{}{}, done: make(chan struct{})}
+	s := &playwrightLiveSession{id: "pw-" + uuid.NewString(), owner: user, workspace: workspace, run: run, label: label, latest: map[string][]byte{}, watchers: map[chan []byte]struct{}{}, input: make(chan []byte, 64), done: make(chan struct{})}
 	api.playwrightLive.Lock()
 	if len(api.playwrightLive.sessions) >= 64 {
 		api.playwrightLive.Unlock()
@@ -194,12 +198,30 @@ func (api *StreamingAPI) handlePlaywrightPublisher(w http.ResponseWriter, r *htt
 		return
 	}
 	defer conn.Close()
+	_ = conn.WriteJSON(map[string]string{"type": "registered", "browser_session": s.id})
+	writerStop := make(chan struct{})
+	writerDone := make(chan struct{})
+	go func() {
+		defer close(writerDone)
+		for {
+			select {
+			case <-writerStop:
+				return
+			case command := <-s.input:
+				_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				if conn.WriteMessage(websocket.TextMessage, command) != nil {
+					_ = conn.Close()
+					return
+				}
+			}
+		}
+	}()
+	defer func() { close(writerStop); <-writerDone }()
 	rec := api.newPlaywrightRecording(s)
 	api.playwrightLive.Lock()
 	s.recording = rec
 	api.playwrightLive.Unlock()
 	conn.SetReadLimit(2 << 20)
-	_ = conn.WriteJSON(map[string]string{"type": "registered", "browser_session": s.id})
 	var lastFrame time.Time
 	for {
 		_ = conn.SetReadDeadline(time.Now().Add(45 * time.Second))
@@ -234,6 +256,11 @@ func (api *StreamingAPI) handlePlaywrightPublisher(w http.ResponseWriter, r *htt
 			return
 		}
 		switch m.Type {
+		case "clipboard", "viewer_error":
+			clean, err := playwrightViewerReply(raw)
+			if err == nil {
+				s.publish(m.Type, clean)
+			}
 		case "ping":
 			continue
 		case "frame":
@@ -308,13 +335,41 @@ func (api *StreamingAPI) handlePlaywrightViewer(w http.ResponseWriter, r *http.R
 		defer close(stopped)
 		for {
 			_ = conn.SetReadDeadline(time.Now().Add(45 * time.Second))
-			var m struct {
-				Type string `json:"type"`
-			}
-			if conn.ReadJSON(&m) != nil {
+			_, raw, err := conn.ReadMessage()
+			if err != nil {
 				return
 			}
-			if m.Type != "ping" {
+			var message struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(raw, &message) != nil {
+				continue
+			}
+			if message.Type == "ping" {
+				continue
+			}
+			if !api.canControlPlaywright(GetUserFromContext(r.Context()), r.URL.Query().Get("workspace_path"), s) {
+				log.Printf("[BROWSER-LIVE] input refused session=%q user=%q reason=project_access", id, GetUserIDFromContext(r.Context()))
+				select {
+				case errors <- struct{}{}:
+				default:
+				}
+				continue
+			}
+			command, err := playwrightViewerCommand(raw)
+			if err != nil {
+				log.Printf("[BROWSER-LIVE] input refused session=%q user=%q reason=unsupported_input", id, GetUserIDFromContext(r.Context()))
+				select {
+				case errors <- struct{}{}:
+				default:
+				}
+				continue
+			}
+			select {
+			case s.input <- command:
+			case <-s.done:
+				return
+			default:
 				select {
 				case errors <- struct{}{}:
 				default:
@@ -326,9 +381,11 @@ func (api *StreamingAPI) handlePlaywrightViewer(w http.ResponseWriter, r *http.R
 		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		return conn.WriteJSON(v)
 	}
-	if write(map[string]interface{}{"type": "viewer_control", "controlling": false, "read_only": true}) != nil {
+	if write(map[string]interface{}{"type": "viewer_ready", "interactive": api.canControlPlaywright(GetUserFromContext(r.Context()), r.URL.Query().Get("workspace_path"), s), "platform": runtime.GOOS}) != nil {
 		return
 	}
+	log.Printf("[BROWSER-LIVE] viewer connected session=%q user=%q interactive=%t", id, GetUserIDFromContext(r.Context()), api.canControlPlaywright(GetUserFromContext(r.Context()), r.URL.Query().Get("workspace_path"), s))
+	defer log.Printf("[BROWSER-LIVE] viewer disconnected session=%q user=%q", id, GetUserIDFromContext(r.Context()))
 	for {
 		select {
 		case <-s.done:
@@ -338,7 +395,7 @@ func (api *StreamingAPI) handlePlaywrightViewer(w http.ResponseWriter, r *http.R
 		case <-r.Context().Done():
 			return
 		case <-errors:
-			if write(map[string]string{"type": "viewer_error", "message": "Playwright tests are watch-only."}) != nil {
+			if write(map[string]string{"type": "viewer_error", "message": "This browser action is unavailable. Open a project you build, or try again."}) != nil {
 				return
 			}
 		case data := <-ch:

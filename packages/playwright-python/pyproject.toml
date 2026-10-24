@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentworks-playwright"
-version = "0.1.0"
-description = "Watch Python Playwright tests in the AgentWorks Browser panel"
+version = "0.2.0"
+description = "Watch and interact with Python Playwright tests in the AgentWorks Browser panel"
 requires-python = ">=3.10"
 dependencies = ["playwright>=1.51,<2", "websocket-client>=1.8,<2"]
 

@@ -13,130 +13,68 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
 )
 
-func TestChromeExtensionPairingRequiresWorkspaceWriteAccess(t *testing.T) {
-	t.Setenv("MULTI_USER_MODE", "true")
-	directory := withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"bob","username":"bob","can_create":true,"products":[]}]}`)
+func TestChromeExtensionProjectSelectsSavedAccountBrowser(t *testing.T) {
+	f := newMultiUserFixture(t, sharedIdentityLayout())
 	previous := browserrelay.Default
 	browserrelay.Default = browserrelay.New()
 	defer func() { browserrelay.Default.Close(); browserrelay.Default = previous }()
-	api := &StreamingAPI{}
-	call := func(user, path string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest("POST", path, strings.NewReader(`{"action":"pair"}`))
-		if user != "" {
-			req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user}))
-		}
+	workspace := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
+	projectURL := "/?workspace_path=" + workspace + "&profile_id=work"
+	call := func(user, method, endpoint, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, endpoint, strings.NewReader(body)).WithContext(f.Ctx(user))
 		w := httptest.NewRecorder()
-		api.handleBrowserExtension(w, req)
+		f.API.handleBrowserExtension(w, r)
 		return w
 	}
-	for _, user := range []string{"", "bob", "stranger"} {
-		for _, profile := range []string{"code", "work"} {
-			if w := call(user, "/?workspace_path=_users/alice/Chats/Code/projects/one&profile_id="+profile); w.Code != 403 {
-				t.Fatalf("%q paired through %s: %d %s", user, profile, w.Code, w.Body.String())
-			}
-		}
+	account := call(fixtureUserA, http.MethodPost, "/", `{"action":"copy"}`)
+	var pair struct{ Token string }
+	if account.Code != 200 || json.Unmarshal(account.Body.Bytes(), &pair) != nil || pair.Token == "" {
+		t.Fatal("account pairing failed")
 	}
-	if w := call("alice", "/?workspace_path=../Chats/Code/projects/one&profile_id=code"); w.Code != 403 {
-		t.Fatal("noncanonical scope admitted")
-	}
-	for _, path := range []string{"/?workspace_path=Workflow/one&profile_id=code", "/?workspace_path=Workflow/one&profile_id=work"} {
-		if w := call("alice", path); w.Code != 403 {
-			t.Fatalf("extension rollout leaked: %s %d", path, w.Code)
-		}
-	}
-	ownerPath := "/?workspace_path=_users/alice/Chats/Code/projects/one&profile_id=code"
-	first, second := call("alice", ownerPath), call("alice", ownerPath)
-	if first.Code != 200 || first.Body.String() != second.Body.String() {
-		t.Fatalf("copy rotated code: %d %s %s", first.Code, first.Body.String(), second.Body.String())
-	}
-	var result struct {
-		Token string `json:"token"`
-		Scope string `json:"scope"`
-	}
-	if err := json.Unmarshal(first.Body.Bytes(), &result); err != nil {
+	server := httptest.NewServer(http.HandlerFunc(f.API.handleBrowserExtensionConnect))
+	defer server.Close()
+	socket, _, err := websocket.DefaultDialer.Dial(strings.Replace(server.URL, "http", "ws", 1), http.Header{"Origin": []string{"chrome-extension://example"}})
+	if err != nil {
 		t.Fatal(err)
 	}
-	// Code-origin projects now belong to Crew. The same owner's profile alias
-	// must preserve the exact browser binding, not mint a new authority.
-	alias := call("alice", "/?workspace_path=_users/alice/Chats/Code/projects/one&profile_id=work")
-	var aliasCode struct{ Token, Scope string }
-	if err := json.Unmarshal(alias.Body.Bytes(), &aliasCode); err != nil || alias.Code != 200 || aliasCode.Token != result.Token || aliasCode.Scope != result.Scope {
-		t.Fatalf("Code/work alias changed browser authority: %d", alias.Code)
-	}
-	crewPath := "/?workspace_path=_users/alice/Chats/Work/projects/one&profile_id=work"
-	crew := call("alice", crewPath)
-	var crewCode struct{ Token, Scope string }
-	if err := json.Unmarshal(crew.Body.Bytes(), &crewCode); err != nil || crew.Code != 200 || crewCode.Token != result.Token || crewCode.Scope == result.Scope {
-		t.Fatalf("Code/Crew account code or scope: %d %s", crew.Code, crew.Body.String())
-	}
-	if w := call("bob", crewPath); w.Code != 403 {
-		t.Fatal("Crew reader paired owner's browser")
-	}
-	socketServer := httptest.NewServer(http.HandlerFunc(api.handleBrowserExtensionConnect))
-	defer socketServer.Close()
-	connect := func() *websocket.Conn {
-		t.Helper()
-		c, _, err := websocket.DefaultDialer.Dial(strings.Replace(socketServer.URL, "http", "ws", 1), http.Header{"Origin": []string{"chrome-extension://test"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { c.Close() })
-		c.SetReadDeadline(time.Now().Add(3 * time.Second))
-		return c
-	}
-	connection := connect()
-	connection.WriteJSON(map[string]string{"type": "pair", "token": result.Token, "scope": result.Scope})
+	defer socket.Close()
+	socket.SetReadDeadline(time.Now().Add(3 * time.Second))
+	const browserID = "11111111-1111-4111-8111-111111111111"
+	socket.WriteJSON(map[string]string{"type": "pair", "token": pair.Token, "browser_id": browserID, "browser": "Chrome", "version": "0.5.0"})
 	var reply map[string]any
-	if err := connection.ReadJSON(&reply); err != nil || reply["type"] != "paired" {
-		t.Fatal("Code socket authorization", err, reply)
+	if err := socket.ReadJSON(&reply); err != nil || reply["type"] != "account-paired" {
+		t.Fatal("account connection", err)
 	}
-	// Choosing Chrome in Crew reuses the live account browser without exposing
-	// or requiring another copy/paste of the credential.
-	crewStatus := browserrelay.Default.Status("alice", crewCode.Scope)
-	if !crewStatus.AccountConnected || crewStatus.Connected || browserrelay.Default.Status("bob", crewCode.Scope).AccountConnected {
-		t.Fatal("account availability leaked or pretended Crew was connected")
+	status := call(fixtureUserA, http.MethodGet, projectURL, "")
+	var before browserrelay.Status
+	if status.Code != 200 || json.Unmarshal(status.Body.Bytes(), &before) != nil || !before.AccountConnected || before.Selected {
+		t.Fatal("account connection should not select a project")
 	}
-	copyRequest := httptest.NewRequest(http.MethodPost, crewPath, strings.NewReader(`{"action":"copy"}`)).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice"}))
-	copyResponse := httptest.NewRecorder()
-	api.handleBrowserExtension(copyResponse, copyRequest)
-	var copied struct{ Token, Scope string }
-	if err := json.Unmarshal(copyResponse.Body.Bytes(), &copied); err != nil || copyResponse.Code != 200 || copied.Token != result.Token || copied.Scope != crewCode.Scope {
-		t.Fatal("Copy code rotated the account token or returned a different scope")
+	for _, action := range []string{"pair", "copy", "reset"} {
+		body, _ := json.Marshal(map[string]string{"action": action})
+		w := call(fixtureUserA, http.MethodPost, projectURL, string(body))
+		if w.Code != 400 || strings.Contains(w.Body.String(), pair.Token) {
+			t.Fatalf("retired project action %s: %d", action, w.Code)
+		}
 	}
-	if browserrelay.Default.Status("alice", crewCode.Scope).Selected || !browserrelay.Default.Status("alice", result.Scope).Connected {
-		t.Fatal("Copy code changed browser selection or disconnected Code")
+	if w := call(fixtureUserA, http.MethodPost, projectURL, `{"action":"connect"}`); w.Code != 400 {
+		t.Fatal("browser choice must be explicit")
 	}
-	r := httptest.NewRequest(http.MethodPost, crewPath, strings.NewReader(`{"action":"connect"}`)).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice"}))
-	w := httptest.NewRecorder()
-	api.handleBrowserExtension(w, r)
-	if w.Code != 200 || strings.Contains(w.Body.String(), result.Token) || strings.Contains(w.Body.String(), `"token"`) {
-		t.Fatalf("connected Crew response returned a credential: %d", w.Code)
+	selection, _ := json.Marshal(map[string]string{"action": "connect", "browser_id": browserID})
+	if w := call(fixtureUserB, http.MethodPost, projectURL, string(selection)); w.Code != 403 {
+		t.Fatal("Run user selected another person's browser")
 	}
-	if err := connection.ReadJSON(&reply); err != nil || reply["type"] != "connect-project" || reply["scope"] != crewCode.Scope {
-		t.Fatal("Crew did not reuse Code's account browser", err, reply)
+	selected := call(fixtureUserA, http.MethodPost, projectURL, string(selection))
+	var after browserrelay.Status
+	if selected.Code != 200 || json.Unmarshal(selected.Body.Bytes(), &after) != nil || !after.Selected || after.BrowserID != browserID || strings.Contains(selected.Body.String(), pair.Token) {
+		t.Fatalf("project selection failed or returned a credential: %d", selected.Code)
 	}
-	r = httptest.NewRequest(http.MethodPost, crewPath, strings.NewReader(`{"action":"connect"}`)).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "bob"}))
-	w = httptest.NewRecorder()
-	api.handleBrowserExtension(w, r)
-	if w.Code != 403 {
-		t.Fatal("Crew reader could connect the owner's browser")
+	if err := socket.ReadJSON(&reply); err != nil || reply["type"] != "connect-project" || reply["scope"] != browserSessionForWorkspace(fixtureUserA, workspace) {
+		t.Fatal("project did not reuse saved browser", err)
 	}
-	connection.WriteJSON(map[string]string{"type": "ping"})
-	if err := connection.ReadJSON(&reply); err != nil || reply["type"] != "pong" {
-		t.Fatal("authorized heartbeat", err, reply)
+	if !strings.Contains(after.Message, "Connecting it to this project") {
+		t.Fatal("selected online browser was shown as offline")
 	}
-	*directory = `{"users":[{"id":"alice","username":"alice","can_create":true,"disabled":true,"products":[]}]}`
-	invalidateUserDirectoryCache()
-	connection.WriteJSON(map[string]string{"type": "ping"})
-	if err := connection.ReadJSON(&reply); err == nil {
-		t.Fatal("disabled owner kept browser authority")
-	}
-	rejected := connect()
-	rejected.WriteJSON(map[string]string{"type": "pair", "token": result.Token, "scope": result.Scope})
-	if err := rejected.ReadJSON(&reply); err != nil || reply["type"] != "error" {
-		t.Fatal("saved code bypassed disabled account", err, reply)
-	}
-
 	if !shouldSkipAuth(browserExtensionConnectPath) || shouldSkipAuth("/api/browser/extension") || shouldSkipAuth(browserExtensionConnectPath+"/other") {
 		t.Fatal("extension auth exemption is not exact")
 	}
@@ -149,7 +87,7 @@ func TestChromeExtensionSharedCrewRequiresRegisteredOwner(t *testing.T) {
 	defer func() { browserrelay.Default.Close(); browserrelay.Default = previous }()
 	workspace := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
 	for _, user := range []string{fixtureUserA, fixtureUserB, fixtureUserC} {
-		r := httptest.NewRequest(http.MethodPost, "/?workspace_path="+workspace+"&profile_id=work", strings.NewReader(`{"action":"pair"}`)).WithContext(f.Ctx(user))
+		r := httptest.NewRequest(http.MethodGet, "/?workspace_path="+workspace+"&profile_id=work", nil).WithContext(f.Ctx(user))
 		w := httptest.NewRecorder()
 		f.API.handleBrowserExtension(w, r)
 		if user == fixtureUserA && w.Code != 200 {
@@ -183,7 +121,7 @@ func TestChromeExtensionWorkflowAccessAndRevocation(t *testing.T) {
 	defer func() { browserrelay.Default.Close(); browserrelay.Default = previous }()
 	api := &StreamingAPI{}
 	call := func(user, path string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"action":"pair"}`)).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user}))
+		r := httptest.NewRequest(http.MethodGet, path, nil).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user}))
 		w := httptest.NewRecorder()
 		api.handleBrowserExtension(w, r)
 		return w
@@ -199,15 +137,13 @@ func TestChromeExtensionWorkflowAccessAndRevocation(t *testing.T) {
 			t.Fatalf("invalid workflow binding admitted: %s %d", invalid, w.Code)
 		}
 	}
-	var account, workflow, other struct{ Token, Scope string }
-	code := call("alice", "/?workspace_path=Chats/Code/projects/one&profile_id=code")
-	json.Unmarshal(code.Body.Bytes(), &account)
-	first := call("alice", path)
-	json.Unmarshal(first.Body.Bytes(), &workflow)
-	second := call("charlie", path+"&profile_id=workflow")
-	json.Unmarshal(second.Body.Bytes(), &other)
-	if first.Code != 200 || second.Code != 200 || workflow.Token != account.Token || workflow.Scope == account.Scope || other.Token == workflow.Token {
-		t.Fatalf("workflow pairing: %d %d", first.Code, second.Code)
+	if call("alice", path).Code != 200 || call("charlie", path+"&profile_id=workflow").Code != 200 {
+		t.Fatal("workflow owners cannot choose their browsers")
+	}
+	scope := browserSessionForWorkspace("alice", "Workflow/browser-workflow")
+	token, err := browserrelay.Default.PairForProfile("alice", scope, "Workflow/browser-workflow", "workflow")
+	if err != nil {
+		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(api.handleBrowserExtensionConnect))
 	defer server.Close()
@@ -217,7 +153,7 @@ func TestChromeExtensionWorkflowAccessAndRevocation(t *testing.T) {
 	}
 	defer socket.Close()
 	socket.SetReadDeadline(time.Now().Add(3 * time.Second))
-	socket.WriteJSON(map[string]string{"type": "pair", "token": workflow.Token, "scope": workflow.Scope})
+	socket.WriteJSON(map[string]string{"type": "pair", "token": token, "scope": scope})
 	var reply map[string]any
 	if err := socket.ReadJSON(&reply); err != nil || reply["type"] != "paired" || reply["profile_id"] != "workflow" {
 		t.Fatal("workflow socket", reply, err)
@@ -226,7 +162,7 @@ func TestChromeExtensionWorkflowAccessAndRevocation(t *testing.T) {
 	if err := socket.ReadJSON(&reply); err != nil || reply["type"] != "pong" {
 		t.Fatal("workflow heartbeat", reply, err)
 	}
-	if browserrelay.Default.Lookup("charlie", workflow.Scope) != nil {
+	if browserrelay.Default.Lookup("charlie", scope) != nil {
 		t.Fatal("one owner's socket appeared in another owner's binding")
 	}
 	setManifest(`{"schema_version":1,"id":"browser-workflow","label":"Browser workflow","access":{"owners":["charlie"],"readers":["alice"]},"capabilities":{"browser_mode":"auto"}}`)

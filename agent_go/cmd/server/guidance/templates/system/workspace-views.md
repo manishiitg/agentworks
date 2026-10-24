@@ -38,7 +38,7 @@ page's current name, then choose this project's result. Do not invent old tabs.
 | `webhooks` | Authenticated workflow webhook endpoints | You created or changed a webhook. |
 | `schedules` | Scheduled runs and compatibility access to webhooks | You created or changed a schedule; use an advertised section target. |
 | `files` | Workflow files | The user should inspect a file or folder. |
-| `browser` | Live managed browser or watch-only Playwright test stream | Browser work begins or the user asks to watch it. The stream updates without repeated refreshes. |
+| `browser` | Live managed browser or interactive Playwright test stream | Browser work begins or the user asks to watch it. The stream updates without repeated refreshes. |
 | `workshop` | Automation chats, schedules, triggers, and bots | The user should inspect automation activity or configuration; use an advertised section target. |
 
 ## Autopilot and delivery views
@@ -98,7 +98,7 @@ Crew's direct `database` panel; Workflow database content is
 - When starting managed browser work, open `browser` once. For Playwright
   fixture rules, read
   `builder-reference/references/playwright-scripted.md`. Playwright sessions
-  are watch-only.
+  allow Builders to interact while the script continues; shared Run users watch.
 
 Crew uses the same protocol through its separate `work-ui-control` skill and a
 different view contract.

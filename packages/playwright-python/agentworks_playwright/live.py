@@ -40,13 +40,15 @@ class _Publisher:
         self.frames = queue.Queue(maxsize=1)
         self.tabs = queue.Queue(maxsize=1)
         self.socket = None
+        self.on_input = None
+        self.results = queue.Queue(maxsize=16)
         try:
             self.socket = websocket.create_connection(url, header={"Authorization": "Bearer " + token}, timeout=10, suppress_origin=True)
             message = json.loads(self.socket.recv())
             if message.get("type") != "registered" or not isinstance(message.get("browser_session"), str):
                 raise ValueError()
             self.session_id = message["browser_session"]
-            self.socket.settimeout(1)
+            self.socket.settimeout(0.05)
         except Exception:
             if self.socket:
                 self.socket.close(timeout=0)
@@ -71,13 +73,33 @@ class _Publisher:
 
     def _run(self):
         heartbeat = time.monotonic()
+        last_frame = 0.0
         try:
-            while not self.done.wait(0.25):
-                for channel in (self.tabs, self.frames):
+            while not self.done.wait(0.02):
+                for channel in (self.tabs, self.results):
                     try:
                         self.socket.send(json.dumps(channel.get_nowait()))
                     except queue.Empty:
                         pass
+                # Keep the latest frame queued until the server's frame window
+                # has passed. Sending a static page's final frame too soon
+                # would make the server drop it with no later repaint to retry.
+                now = time.monotonic()
+                if now - last_frame >= 0.25:
+                    try:
+                        self.socket.send(json.dumps(self.frames.get_nowait()))
+                        last_frame = now
+                    except queue.Empty:
+                        pass
+                try:
+                    raw = self.socket.recv()
+                    if not raw:
+                        raise RuntimeError("Live view closed")
+                    message = json.loads(raw)
+                    if self.on_input:
+                        self.on_input(message)
+                except websocket.WebSocketTimeoutException:
+                    pass
                 if time.monotonic() - heartbeat >= 10:
                     self.socket.send('{"type":"ping"}')
                     heartbeat = time.monotonic()
@@ -105,6 +127,79 @@ class _LiveBase:
         self.active = None
         self.sequence = 0
         self.stopped = False
+        self.loop = context._impl_obj._loop
+        self.input_queue = asyncio.Queue(maxsize=64)
+        self.input_task = self.loop.create_task(self._inputs())
+        self.publisher.on_input = lambda message: self.loop.call_soon_threadsafe(self._enqueue_input, message)
+
+    def _enqueue_input(self, message):
+        if self.stopped:
+            return
+        try:
+            self.input_queue.put_nowait(message)
+        except asyncio.QueueFull:
+            self.publisher.put(self.publisher.results, {"type": "viewer_error"})
+
+    async def _inputs(self):
+        while True:
+            message = await self.input_queue.get()
+            try:
+                await self._input(message)
+            except Exception:
+                self.publisher.put(self.publisher.results, {"type": "viewer_error"})
+
+    async def _input(self, m):
+        kind = m.get("type")
+        # The implementation APIs below are async for both sync and async
+        # contexts and always run on their owning loop, never on the worker.
+        if kind == "new_tab":
+            page = await self.context._impl_obj.new_page()
+            await page.goto(m["url"])
+            return
+        if kind in ("switch_tab", "close_tab"):
+            page = next((p for p, item in self.pages.items() if item["id"] == m["tab"]), None)
+            if page is None:
+                raise RuntimeError("Page closed")
+            if kind == "close_tab":
+                if len(self.pages) > 1:
+                    await page._impl_obj.close()
+            else:
+                self.active = page
+                self._tabs()
+                frame = self.pages[page].get("frame")
+                if frame:
+                    self._frame(page, frame)
+            return
+        page = self.active
+        item = self.pages.get(page)
+        if not item or not item["cdp"]:
+            raise RuntimeError("Page closed")
+        cdp = item["cdp"]._impl_obj
+        impl = page._impl_obj
+        if kind == "input_mouse":
+            args = {"type": m["eventType"], "x": m["x"], "y": m["y"],
+                    "button": m.get("button") or "none", "clickCount": m.get("clickCount", 0)}
+            if m["eventType"] == "mouseWheel":
+                args.update(deltaX=m.get("deltaX", 0), deltaY=m.get("deltaY", 0))
+            await cdp.send("Input.dispatchMouseEvent", args)
+        elif kind == "input_keyboard":
+            await cdp.send("Input.dispatchKeyEvent", {k: m[k] for k in ("key", "code", "text", "modifiers", "windowsVirtualKeyCode")} | {"type": m["eventType"]})
+        elif kind == "input_text":
+            await cdp.send("Input.insertText", {"text": m["text"]})
+        elif kind == "clipboard_copy":
+            text = await impl.evaluate("() => window.getSelection()?.toString() || (() => { const e = document.activeElement; return e && e.type !== 'password' && typeof e.value === 'string' ? e.value.slice(e.selectionStart, e.selectionEnd) : '' })()")
+            self.publisher.put(self.publisher.results, {"type": "clipboard", "requestId": m["requestId"], "text": text[:8192]})
+        elif kind == "navigate":
+            await impl.goto(m["url"])
+        elif kind == "history":
+            if m["action"] == "reload":
+                await impl.reload()
+            elif m["action"] == "back":
+                await impl.go_back()
+            elif m["action"] == "forward":
+                await impl.go_forward()
+        elif kind == "resize_viewport":
+            await impl.set_viewport_size({"width": m["width"], "height": m["height"]})
 
     @property
     def session_id(self):
@@ -126,7 +221,7 @@ class _LiveBase:
         item["frame"] = frame
         if page is self.active:
             self.publisher.put(self.publisher.frames, {"type": "frame", "data": frame["data"], "metadata": {
-                "deviceWidth": round(frame["metadata"]["deviceWidth"]), "deviceHeight": round(frame["metadata"]["deviceHeight"])}})
+                "deviceWidth": round(frame["metadata"]["deviceWidth"]), "deviceHeight": round(frame["metadata"]["deviceHeight"]), **{k: frame["metadata"][k] for k in ("offsetTop", "pageScaleFactor", "scrollOffsetX", "scrollOffsetY") if k in frame["metadata"]}}})
 
     def _closed(self, page):
         self.pages.pop(page, None)
@@ -197,6 +292,8 @@ class _SyncLive(_LiveBase):
         if self.stopped:
             return
         self.stopped = True
+        self.publisher.on_input = None
+        self.input_task.cancel()
         self.publisher.stop()
         self._remove_listeners()
         for item in list(self.pages.values()):
@@ -260,6 +357,8 @@ class _AsyncLive(_LiveBase):
         if self.stopped:
             return
         self.stopped = True
+        self.publisher.on_input = None
+        self.input_task.cancel()
         await asyncio.to_thread(self.publisher.stop)
         self._remove_listeners()
         pending = [task for task in self.tasks if task is not asyncio.current_task()]

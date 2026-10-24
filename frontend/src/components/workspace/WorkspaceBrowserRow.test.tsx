@@ -18,15 +18,16 @@ afterEach(() => {
 })
 
 it.each([
+  { name: 'Chrome available but not selected', selected: false, extensionConnected: false, sessions: [], connected: false, accountConnected: true },
   { name: 'live Playwright capture', selected: false, extensionConnected: false, sessions: [{ kind: 'playwright' }], connected: true },
   { name: 'live server browser', selected: false, extensionConnected: false, sessions: [{ kind: 'headless' }], connected: true },
   { name: 'completed replay only', selected: false, extensionConnected: false, sessions: [{ kind: 'playwright', state: 'completed' }], connected: false },
-  { name: 'selected extension without tabs', selected: true, extensionConnected: true, sessions: [], connected: true },
+  { name: 'selected extension without tabs', selected: true, extensionConnected: true, sessions: [], connected: true, accountConnected: false },
   { name: 'disconnected selected extension with another live browser', selected: true, extensionConnected: false, sessions: [{ kind: 'playwright' }], connected: false },
-])('shows the selected connection for $name', async ({ selected, extensionConnected, sessions, connected }) => {
+])('shows the selected connection for $name', async ({ selected, extensionConnected, sessions, connected, accountConnected = false }) => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   get.mockImplementation(async (url: string) => ({ data: url === '/api/browser/extension'
-    ? { selected, connected: extensionConnected, tabs: 0 }
+    ? { selected, connected: extensionConnected, tabs: 0, account_connected: accountConnected }
     : { sessions } }))
   const host = document.createElement('div')
   const root = createRoot(host)
@@ -34,7 +35,7 @@ it.each([
   await act(async () => {
     root.render(<WorkspaceBrowserRow workspacePath="Crew/example-123" profileId="work" onClick={() => {}} />)
   })
-  expect(host.querySelector('button')?.textContent).toBe(`Browser${connected ? 'Connected' : 'Not connected'}`)
+  expect(host.querySelector('button')?.textContent).toBe(`Browser${connected ? 'Connected' : selected ? 'Browser offline' : accountConnected ? 'Choose browser' : 'No browser open'}`)
   expect(get).toHaveBeenCalledWith('/api/browser/extension', expect.objectContaining({
     params: { workspace_path: 'Crew/example-123', profile_id: 'work' },
     skipSessionContext: true,

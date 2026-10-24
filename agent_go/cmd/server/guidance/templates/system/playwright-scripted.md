@@ -16,7 +16,7 @@ rendered viewport before claiming the user can see it.
 ### Use the AgentWorks fixtures for browser suites
 
 Keep the suite's language. Use `@agentworks/playwright` for JS/TS, and the
-`agentworks-playwright` Python package for Python. Both register watch-only Chromium
+`agentworks-playwright` Python package for Python. Both register interactive Chromium
 sessions in the same Browser panel. For a new suite without a required language,
 choose the runner that fits the project. For JS/TS, import
 its `test` and `expect` instead of `@playwright/test`; run the tests with the normal
@@ -107,7 +107,7 @@ wait methods instead of long time.sleep calls so live events are dispatched.
   Configure bounded test/action/navigation timeouts and retain assertion failures.
 - The fixture registers a separate test context in the same Browser panel as
   agent-browser. It follows the newest page, returning to a remaining page on close.
-  It is watch-only: no Take control, manual tab switching, or agent-browser capture.
+  Builders can click, type, navigate and select tabs while the script runs. Shared Run users watch. Managed agent-browser capture remains separate.
 - When foreground workspace-view tools are available, open the Browser view once
   when starting live tests; an `applied` receipt confirms the panel opened, not that
   a test registered. Confirm the test session/frame before claiming live visibility.
@@ -202,5 +202,4 @@ it is ready. Report-owned evidence is not deleted by closing the Browser panel.
 ### Unattended runs
 
 Live viewing is always on, in Builder chats and in schedules, function calls,
-webhooks and bots alike; there is no switch to turn it off. It is watch-only:
-keep runner video/trace/screenshot settings and assertions unchanged.
+webhooks and bots alike; there is no switch to turn it off. Builders may interact with the live browser while the script keeps running. Keep runner video/trace/screenshot settings and assertions unchanged.

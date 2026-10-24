@@ -4,12 +4,12 @@ import { useLiveRefetch } from './useLiveRefetch'
 import type { ChromeExtensionStatus } from '../components/workflow/ChromeExtensionConnection'
 
 /** Read-only discovery; opening another pane must not hide browser health. */
-export function useBrowserToolbarConnection(workspacePath: string | null | undefined, profileId: string, enabled = true, checkExtension = true): boolean {
+export function useBrowserToolbarConnection(workspacePath: string | null | undefined, profileId: string, enabled = true, checkExtension = true): { connected: boolean; label: string } {
   const scope = `${profileId}:${workspacePath}:${enabled}:${checkExtension}`
-  const [connection, setConnection] = useState({ scope: '', connected: false })
+  const [connection, setConnection] = useState({ scope: '', connected: false, label: 'Checking…' })
   const refreshRef = useRef<() => void>(() => {})
   useEffect(() => {
-    setConnection({ scope, connected: false })
+    setConnection({ scope, connected: false, label: 'Checking…' })
     if (!enabled || !workspacePath) return
     const controller = new AbortController()
     let alive = true
@@ -19,18 +19,23 @@ export function useBrowserToolbarConnection(workspacePath: string | null | undef
       refreshing = true
       const config = { params: { workspace_path: workspacePath, profile_id: profileId }, skipSessionContext: true, signal: controller.signal, timeout: 5000 }
       try {
+        let savedBrowserAvailable = false
         if (checkExtension) {
           const { data } = await api.get<ChromeExtensionStatus>('/api/browser/extension', config)
           if (data.selected) {
-            if (alive) setConnection({ scope, connected: data.connected })
+            if (alive) setConnection({ scope, connected: data.connected, label: data.connected ? 'Connected' : data.browsers?.some(browser => browser.id === data.browser_id && browser.connected) ? 'Connecting…' : 'Browser offline' })
             return
           }
+          savedBrowserAvailable = Boolean(data.account_connected)
         }
         const { data } = await api.get<{ sessions: Array<{ kind?: string; state?: string }> }>('/api/browser/live/sessions', config)
         // Completed Playwright recordings are replays, not live connections.
-        if (alive) setConnection({ scope, connected: (data.sessions ?? []).some(session => session.state !== 'completed') })
+        if (alive) {
+          const connected = (data.sessions ?? []).some(session => session.state !== 'completed')
+          setConnection({ scope, connected, label: connected ? 'Connected' : savedBrowserAvailable ? 'Choose browser' : 'No browser open' })
+        }
       } catch {
-        if (alive) setConnection({ scope, connected: false })
+        if (alive) setConnection({ scope, connected: false, label: 'Unable to check' })
       } finally { refreshing = false }
     }
     refreshRef.current = () => { void refresh() }
@@ -41,5 +46,5 @@ export function useBrowserToolbarConnection(workspacePath: string | null | undef
   // The server announces a browser change on the live feed; the old 2.5 s poll only runs while the feed is down. The
   // slow check also covers Playwright sessions, which the feed does not announce.
   useLiveRefetch(() => refreshRef.current(), { kinds: ['browser'], fallbackMs: 2500, safetyMs: 30_000, minIntervalMs: 500, enabled: enabled && !!workspacePath })
-  return connection.scope === scope && connection.connected
+  return connection.scope === scope ? connection : { connected: false, label: 'Checking…' }
 }

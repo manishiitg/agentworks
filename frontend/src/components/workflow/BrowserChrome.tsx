@@ -8,7 +8,7 @@ export const browserActionButtonClass = 'inline-flex h-7 shrink-0 items-center g
 type Props = {
   tabs: BrowserTab[]
   canSelect: boolean
-  controlling: boolean
+  interactive: boolean
   address: string
   onAddress: (value: string) => void
   onNavigate: () => void
@@ -16,7 +16,7 @@ type Props = {
   onSelect: (tab: BrowserTab) => void
   onClose: (tab: BrowserTab) => void
   onNew: () => void
-  onNeedControl?: () => void
+
 }
 
 export function BrowserChrome(props: Props) {
@@ -28,21 +28,21 @@ export function BrowserChrome(props: Props) {
           <button type="button" role="tab" aria-selected={tab.active} disabled={!props.canSelect} title={tab.title || 'New tab'} className="flex h-7 min-w-0 items-center gap-1.5 px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default" onClick={() => props.onSelect(tab)}>
             <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /><span className={`truncate ${tab.active ? 'font-medium text-foreground' : ''}`}>{tab.title || (tab.url && tab.url !== 'about:blank' ? 'Untitled page' : 'New tab')}</span>
           </button>
-          {props.canSelect && <button type="button" aria-label={`Close ${tab.title || 'tab'}`} title="Close tab" disabled={!props.controlling || props.tabs.length < 2} className={`${browserIconButtonClass} mr-0.5 h-6 w-6`} onClick={() => props.onClose(tab)}><X className="h-3.5 w-3.5" aria-hidden="true" /></button>}
+          {props.canSelect && <button type="button" aria-label={`Close ${tab.title || 'tab'}`} title="Close tab" disabled={!props.interactive || props.tabs.length < 2} className={`${browserIconButtonClass} mr-0.5 h-6 w-6`} onClick={() => props.onClose(tab)}><X className="h-3.5 w-3.5" aria-hidden="true" /></button>}
         </div>)}
       </div>
       </div>
     </div>}
-    <form className="live-browser-navigation flex shrink-0 items-center gap-1 h-9 border-b border-border px-2" aria-label="Browser navigation" onSubmit={event => { event.preventDefault(); if (props.controlling && props.address.trim()) props.onNavigate() }}>
-      {props.canSelect && (['back', 'forward', 'reload'] as const).map(action => <button key={action} type="button" aria-label={action === 'back' ? 'Go back' : action === 'forward' ? 'Go forward' : 'Reload page'} title={action === 'back' ? 'Go back' : action === 'forward' ? 'Go forward' : 'Reload page'} disabled={!props.controlling} className={browserIconButtonClass} onClick={() => props.onHistory(action)}>
+    <form className="live-browser-navigation flex shrink-0 items-center gap-1 h-9 border-b border-border px-2" aria-label="Browser navigation" onSubmit={event => { event.preventDefault(); if (props.interactive && props.address.trim()) props.onNavigate() }}>
+      {props.canSelect && (['back', 'forward', 'reload'] as const).map(action => <button key={action} type="button" aria-label={action === 'back' ? 'Go back' : action === 'forward' ? 'Go forward' : 'Reload page'} title={action === 'back' ? 'Go back' : action === 'forward' ? 'Go forward' : 'Reload page'} disabled={!props.interactive} className={browserIconButtonClass} onClick={() => props.onHistory(action)}>
         {action === 'back' ? <ArrowLeft className="h-4 w-4" aria-hidden="true" /> : action === 'forward' ? <ArrowRight className="h-4 w-4" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
       </button>)}
       <div className="ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-background px-2 focus-within:ring-1 focus-within:ring-ring">
         <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <input aria-label="Website address" placeholder="Enter a website address" autoComplete="off" spellCheck={false} readOnly={!props.controlling} value={props.address} onChange={event => props.onAddress(event.target.value)} onClick={() => { if (!props.controlling) props.onNeedControl?.() }} className="h-7 min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none" />
-        {props.canSelect && <button type="submit" aria-label="Go to address" title="Go to address" disabled={!props.controlling || !props.address.trim()} className={`${browserIconButtonClass} h-7 w-7`}><ArrowRight className="h-4 w-4" aria-hidden="true" /></button>}
+        <input aria-label="Website address" placeholder="Enter a website address" autoComplete="off" spellCheck={false} readOnly={!props.interactive} value={props.address} onChange={event => props.onAddress(event.target.value)} className="h-7 min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none" />
+        {props.canSelect && <button type="submit" aria-label="Go to address" title="Go to address" disabled={!props.interactive || !props.address.trim()} className={`${browserIconButtonClass} h-7 w-7`}><ArrowRight className="h-4 w-4" aria-hidden="true" /></button>}
       </div>
-      {props.canSelect && <button type="button" aria-label="New tab" title="New tab" disabled={!props.controlling} className={`${browserIconButtonClass} ml-0.5`} onClick={props.onNew}><Plus className="h-4 w-4" aria-hidden="true" /></button>}
+      {props.canSelect && <button type="button" aria-label="New tab" title="New tab" disabled={!props.interactive} className={`${browserIconButtonClass} ml-0.5`} onClick={props.onNew}><Plus className="h-4 w-4" aria-hidden="true" /></button>}
     </form>
   </div>
 }

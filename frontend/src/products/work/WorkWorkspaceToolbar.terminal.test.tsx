@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 // Connection transport is outside this toolbar layout test. Keep it off the live feed.
-vi.mock('../../hooks/useBrowserToolbarConnection', () => ({ useBrowserToolbarConnection: () => false }))
+vi.mock('../../hooks/useBrowserToolbarConnection', () => ({ useBrowserToolbarConnection: () => ({ connected: false, label: 'No browser open' }) }))
 vi.mock('../../components/GlobalActivityMonitor', () => ({ GlobalActivityMonitor: () => <button aria-label="Active work monitor">Active work</button> }))
 
 import { agentApi } from '../../services/api'
@@ -50,7 +50,8 @@ it('groups search like the menu and does not advertise the retired Bots tab', ()
   const entries = usePanelSwitcherStore.getState().entries.work!.panels
   expect(entries.find(item => item.id === 'schedules:triggers')).toMatchObject({ label: 'Webhooks', group: 'Use' })
   expect(entries.find(item => item.id === 'mcp:slack-bot')).toMatchObject({ label: 'Slack bot', group: 'Use' })
-  expect(entries.find(item => item.id === 'mcp:slack-account')).toMatchObject({ label: 'Slack account', group: 'Integrations' })
+  expect(entries.find(item => item.id === 'mcp:vault')).toMatchObject({ label: 'Vault', group: 'Integrations' })
+  expect(entries.some(item => item.id === 'mcp:slack-account')).toBe(false)
   expect(entries.find(item => item.id === 'history')).toMatchObject({ label: 'Chat history', group: 'Use' })
   expect(entries.find(item => item.id === 'schedules:functions')).toMatchObject({ label: 'Functions', group: 'Build' })
   expect(entries.flatMap(item => item.sections ?? []).some(item => item.id === 'bots')).toBe(false)

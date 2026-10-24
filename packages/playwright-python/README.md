@@ -1,6 +1,6 @@
 # AgentWorks Python Playwright live view
 
-Use your existing Python Chromium tests with the same watch-only Browser panel as
+Use your existing Python Chromium tests with the same interactive Browser panel as
 Node tests and agent-browser. Both sync and async contexts are supported; neither
 helper closes your browser or changes assertions, launch arguments, or recordings.
 
@@ -66,13 +66,13 @@ async with await attach_live_browser_async(context, label="Async login"):
 ```
 
 All Playwright calls stay on the caller's thread/event loop. A bounded transport
-worker sends only copied viewport frames and tab metadata, at up to four frames
+worker transports copied viewport frames, tab metadata and input messages, at up to four frames
 per second. Sync Playwright dispatches events during Playwright calls: use its
 wait methods instead of long time.sleep calls when awaiting browser changes.
 Latest frames are retained even if the screen becomes static. Popups are followed;
 closing one returns to a remaining page. Stops are idempotent and remove the session.
 
-The panel cannot take control or start agent-browser recording of a test. Store
+Builders can interact directly with the test browser. Agent-browser recording is separate from the test runner recording. Store
 actual test-runner screenshots/videos under your authorized evidence directory;
 there is no automatic workflow-dashboard upload.
 
@@ -99,5 +99,7 @@ it is ready. Report-owned evidence is not deleted by closing the Browser panel.
 ### Unattended runs
 
 Live viewing is always on: schedules, function calls, webhooks and bots stream
-to the Browser panel the same way Builder runs do. It is watch-only and never
+to the Browser panel the same way Builder runs do. Builders can interact while the test runs; the helper never
 changes video, trace, screenshot settings or assertions.
+
+Builders can click, type, paste, navigate and select live tabs while tests keep running. Shared Run access can watch but cannot send input. Install package version 0.2.0 from the platform to enable this protocol. Python input runs on the original Playwright event loop; use Playwright waits instead of blocking time.sleep so browser events can run.

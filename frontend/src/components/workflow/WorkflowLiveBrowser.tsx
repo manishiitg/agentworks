@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BrowserChrome, browserIconButtonClass, browserActionButtonClass, type BrowserTab } from './BrowserChrome'
 import { useBrowserClipboard } from './useBrowserClipboard'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
-import { CheckCircle2, Circle, Copy, FolderOpen, Hand, Info, Loader2, Maximize2, Minimize2, Monitor, MoreHorizontal, RefreshCw, Square, X } from 'lucide-react'
+import { CheckCircle2, Circle, Copy, FolderOpen, Info, Loader2, Maximize2, Minimize2, Monitor, MoreHorizontal, RefreshCw, Square, X } from 'lucide-react'
 import api, { getApiBaseUrl, getAuthToken } from '../../services/api'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
@@ -106,7 +106,7 @@ export type BrowserEmptyStateActions = {
   canStart: boolean
 }
 
-export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun = 'workflow', minimal = false, showGuide = true, profileId, emptyContent }: { workspacePath: string | null; toolbar?: ReactNode; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; showGuide?: boolean; profileId?: string; emptyContent?: ReactNode | ((actions: BrowserEmptyStateActions) => ReactNode) }) {
+export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun = 'workflow', minimal = false, showGuide = true, profileId, emptyContent, browserSelection }: { workspacePath: string | null; toolbar?: ReactNode; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; showGuide?: boolean; profileId?: string; browserSelection?: ReactNode; emptyContent?: ReactNode | ((actions: BrowserEmptyStateActions) => ReactNode) }) {
   const [sessions, setSessions] = useState<BrowserSession[]>([])
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [startingBrowser, setStartingBrowser] = useState(false)
@@ -146,13 +146,13 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   const [replayURL, setReplayURL] = useState('')
   const replayScope = useRef<{ workspace: string; ids: Set<string>; cleanup?: ReturnType<typeof setTimeout> } | null>(null)
   const [connected, setConnected] = useState(false)
-  const [controlling, setControlling] = useState(false)
+  const [interactive, setInteractive] = useState(false)
   const [error, setError] = useState('')
   const [retry, setRetry] = useState(0)
   const [linkState, setLinkState] = useState<BrowserLinkState>('starting')
   const [menuOpen, setMenuOpen] = useState(false)
   const reconnectAttempt = useRef(0)
-  const recovery = useRef<{ key: string; controlled: boolean; attempted: boolean; controller?: AbortController }>({ key: '', controlled: false, attempted: false })
+  const recovery = useRef<{ key: string; used: boolean; attempted: boolean; controller?: AbortController }>({ key: '', used: false, attempted: false })
   const controlAllowed = useRef(false)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -181,14 +181,13 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
       useChatStore.getState().addToast('Unable to copy recording path', 'error')
     }
   }
-  const pendingTab = useRef('')
   const socket = useRef<WebSocket | null>(null)
   const viewport = useRef({ width: 1280, height: 720 })
   const screencast = useRef<ScreencastGeometry | undefined>(undefined)
   const screen = useRef<HTMLImageElement>(null)
   const keyboardTarget = useRef<HTMLTextAreaElement>(null)
   const [browserPlatform, setBrowserPlatform] = useState('linux')
-  const clipboard = useBrowserClipboard(`${workspacePath}:${session}`, controlling, send)
+  const clipboard = useBrowserClipboard(`${workspacePath}:${session}`, interactive, send)
   const canWrite = useCanWriteWorkflow(workspacePath)
   const followingActivity = selection === AUTO_BROWSER
   const currentBrowser = sessions.find(item => item.browser_session === session)
@@ -198,7 +197,6 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
       ? `${currentBrowser.label || 'Managed browser'} · Auto`
       : 'Follow browser activity'
   const readOnly = currentBrowser?.read_only === 'true'
-    || (followingActivity && (!currentBrowser || currentBrowser.kind === 'playwright'))
   const canControl = canWrite && !readOnly
   controlAllowed.current = canControl
   const retainedFrame = !connected && lastPlaywrightFrame?.workspace === workspacePath
@@ -303,9 +301,8 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   }, [scopeNoun, workspacePath, minimal])
 
   useEffect(() => {
-    pendingTab.current = ''
     screencast.current = undefined
-    setFrame(''); setTabs([]); setConnected(false); setControlling(false); setError('')
+    setFrame(''); setTabs([]); setConnected(false); setInteractive(false); setError('')
     if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null }
     if (reconnectAttempt.current === 0) setLinkState('starting')
     if (!session || !workspacePath || sourceCompleted) return
@@ -354,25 +351,18 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
           setTabs(message.tabs)
         } else if (message.type === 'clipboard') {
           clipboard.receive(message)
-        } else if (message.type === 'viewer_control') {
+        } else if (message.type === 'viewer_ready') {
           if (message.platform) setBrowserPlatform(message.platform)
-          setControlling(message.controlling === true)
-          recovery.current.controlled = message.controlling === true
+          setInteractive(message.interactive === true)
           setError('')
-          if (message.controlling) {
-            keyboardTarget.current?.focus()
-            if (pendingTab.current) { ws.send(JSON.stringify({ type: 'switch_tab', tab: pendingTab.current })); pendingTab.current = '' }
-          }
-          else keyboardTarget.current?.blur()
         } else if (message.type === 'viewer_error') {
-          pendingTab.current = ''
           setError(message.message)
         }
       } catch { /* Ignore unsupported runtime messages. */ }
     }
     ws.onclose = () => {
       if (disposed) return
-      setConnected(false); setControlling(false); setFrame('')
+      setConnected(false); setInteractive(false); setFrame('')
       if (session.startsWith('pw-')) {
         setError(receivedFrame ? '' : 'Playwright test browser disconnected or finished. Running test browsers appear automatically.')
         return
@@ -387,9 +377,9 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
           reconnectTimer.current = null
           const intent = recovery.current
           const key = `${workspacePath}:${session}`
-          // A passive viewer never launches browsers. Only a previously controlled
+          // A passive viewer never launches browsers. Only a previously used
           // managed browser gets one authorized recovery, after reconnect failed.
-          if (reconnectAttempt.current >= 2 && intent.key === key && intent.controlled && !intent.attempted && controlAllowed.current && /(?:workflow|project|session|user|guest|workspace)-[a-f0-9]{16}--browser$/.test(session)) {
+          if (reconnectAttempt.current >= 2 && intent.key === key && intent.used && !intent.attempted && controlAllowed.current && /(?:workflow|project|session|user|guest|workspace)-[a-f0-9]{16}--browser$/.test(session)) {
             intent.attempted = true
             intent.controller = new AbortController()
             void api.post('/api/browser/workspace', { action: 'recover' }, {
@@ -418,7 +408,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   useEffect(() => {
     reconnectAttempt.current = 0
     recovery.current.controller?.abort()
-    recovery.current = { key: `${workspacePath}:${session}`, controlled: false, attempted: false }
+    recovery.current = { key: `${workspacePath}:${session}`, used: false, attempted: false }
     return () => {
       recovery.current.controller?.abort()
       if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null }
@@ -490,7 +480,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   const hasFrame = Boolean(displayFrame)
   useEffect(() => {
     const image = screen.current
-    if (!image || !controlling) return
+    if (!image || !interactive) return
     const wheel = (event: WheelEvent) => {
       event.preventDefault()
       const rect = image.getBoundingClientRect()
@@ -504,12 +494,12 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
     }
     image.addEventListener('wheel', wheel, { passive: false })
     return () => image.removeEventListener('wheel', wheel)
-  }, [controlling, hasFrame])
+  }, [interactive, hasFrame])
 
-  useEffect(() => { setClipboardMenu(null); if (controlling && hasFrame) keyboardTarget.current?.focus() }, [session, controlling, hasFrame])
+  useEffect(() => { setClipboardMenu(null); if (interactive && hasFrame) keyboardTarget.current?.focus() }, [session, interactive, hasFrame])
 
   function send(message: Record<string, unknown>) {
-    if (message.type === 'take_control') chooseBrowser(session)
+    if (interactive && message.type !== 'ping') recovery.current.used = true
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(message))
   }
   // The frame is drawn with object-contain, so the element box includes any
@@ -541,7 +531,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   }
   useEffect(() => () => { if (moveTimer.current) clearTimeout(moveTimer.current) }, [])
   function mouse(event: MouseEvent<HTMLImageElement>, eventType: string) {
-    if (!controlling) return
+    if (!interactive) return
     // No frame yet: the page size and painted area are still unknown, so any
     // coordinate would be a guess against the 1280x720 default (PLAT-776).
     if (!frame) return
@@ -563,9 +553,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
     send({ type: 'input_mouse', eventType, ...mapped, button: ['left', 'middle', 'right'][event.button] || 'left', clickCount: event.detail || 1 })
   }
   function keyboard(event: KeyboardEvent<HTMLTextAreaElement>, eventType: string) {
-    if (!controlling) return
-    // Escape releases control and keeps keyboard users from being trapped.
-    if (event.key === 'Escape') { event.preventDefault(); send({ type: 'release_control' }); return }
+    if (!interactive) return
     const shortcut = (event.ctrlKey || event.metaKey) && !event.altKey ? event.key.toLowerCase() : ''
     if (shortcut === 'v') return // Let the focused local textarea receive the native paste event.
     if (shortcut === 'c') { event.preventDefault(); if (eventType === 'keyDown' && !event.repeat) void clipboard.copy(); return }
@@ -575,12 +563,11 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   }
 
   const [expanded, setExpanded] = useState(false)
-  const controllingRef = useRef(false)
-  controllingRef.current = controlling
   useEffect(() => {
     if (!expanded) return
-    // Escape exits the expanded view unless it is releasing browser control.
-    const onKey = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape' && !controllingRef.current) setExpanded(false) }
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape' && event.target !== keyboardTarget.current) setExpanded(false)
+    }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [expanded])
@@ -601,7 +588,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
     </span>
   ) : null
   const canResize = connected && canControl && !minimal
-  const menuItems = (session && canControl) || canResize
+  const menuItems = (session && canControl && currentBrowser?.kind !== 'playwright') || canResize
 
   const browserPicker = showPicker ? (
     <select className="h-7 w-44 min-w-0 max-w-full shrink truncate rounded-md border border-border bg-background px-2 text-xs" aria-label="Browser session" title={followingActivity ? followLabel : currentBrowser?.kind === 'playwright' ? testBrowserLabel(currentBrowser) : currentBrowser?.label} value={selection || session} onChange={event => chooseBrowser(event.target.value)}>
@@ -616,8 +603,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
       <Info className="h-4 w-4" aria-hidden="true" />
     </span>
   ) : null
-  const statusLabel = controlling ? 'You have control'
-    : connected && displayFrame ? 'Live'
+  const statusLabel = connected && displayFrame ? 'Live'
       : completed ? 'Replay'
         : retainedFrame ? 'Disconnected'
           : startingBrowser ? 'Opening…'
@@ -625,16 +611,10 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
             : linkState === 'reconnecting' ? 'Reconnecting…'
               : linkState === 'failed' ? 'Not connected'
                 : 'Starting…'
-  const statusDot = controlling ? 'bg-amber-500' : connected && displayFrame ? 'bg-emerald-500' : linkState === 'failed' && session ? 'bg-red-500' : 'bg-muted-foreground/50'
+  const statusDot = connected && displayFrame ? 'bg-emerald-500' : linkState === 'failed' && session ? 'bg-red-500' : 'bg-muted-foreground/50'
   const iconButtonClass = browserIconButtonClass
   const tertiaryButtonClass = browserActionButtonClass
 
-  const controlToggle = connected && canControl && (
-    <button type="button" aria-pressed={controlling} aria-label={controlling ? 'Give back to helper' : 'Take control'} title={controlling ? 'Give back to helper (Esc)' : 'Take control'} className={tertiaryButtonClass} onClick={() => send({ type: controlling ? 'release_control' : 'take_control' })}>
-      <Hand className="h-4 w-4" aria-hidden="true" />
-      <span className="browser-action-label">{controlling ? 'Give back to helper' : 'Take control'}</span>
-    </button>
-  )
   const showingEmptyContent = Boolean(emptyContent) && sessionsLoaded && sessions.length === 0 && !displayFrame && !replayURL
   const startToggle = !(showingEmptyContent && typeof emptyContent === 'function') && canWrite && !connected && !displayFrame && !replayURL && <button type="button" disabled={startingBrowser} className={tertiaryButtonClass} onClick={() => void startBrowser()}>{startingBrowser ? 'Starting…' : 'Start browser'}</button>
   function navigateAddress() {
@@ -646,7 +626,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
     send({ type: 'close_tab', tab: tab.tabId })
     if (!tab.active && activeTab) send({ type: 'switch_tab', tab: activeTab.tabId })
   }
-  const pageSizeToggle = minimal && connected && canControl && <select aria-label="Browser page size" disabled={!controlling} className="h-7 rounded-md border border-border bg-background px-2 text-xs" defaultValue="" onChange={event => { const [width, height] = event.target.value.split('x').map(Number); send({ type: 'resize_viewport', width, height }); event.target.value = '' }}><option value="" disabled>Page size</option>{PAGE_SIZES.map(size => <option key={size.value} value={size.value}>{size.label.replace(' page', '')}</option>)}</select>
+  const pageSizeToggle = minimal && connected && canControl && <select aria-label="Browser page size" disabled={!interactive} className="h-7 rounded-md border border-border bg-background px-2 text-xs" defaultValue="" onChange={event => { const [width, height] = event.target.value.split('x').map(Number); send({ type: 'resize_viewport', width, height }); event.target.value = '' }}><option value="" disabled>Page size</option>{PAGE_SIZES.map(size => <option key={size.value} value={size.value}>{size.label.replace(' page', '')}</option>)}</select>
   const expandToggle = !minimal && Boolean(displayFrame || replayURL) && (
     <button type="button" aria-pressed={expanded} aria-label={expanded ? 'Exit expanded view' : 'Expand browser'} title={expanded ? 'Exit expanded view (Esc)' : 'Expand browser'} className={iconButtonClass} onClick={() => setExpanded(value => !value)}>
       {expanded ? <Minimize2 className="h-4 w-4" aria-hidden="true" /> : <Maximize2 className="h-4 w-4" aria-hidden="true" />}
@@ -659,14 +639,14 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
       </button>
       {menuOpen && (
         <div role="menu" aria-label="Browser options" className="absolute right-0 top-8 z-20 min-w-52 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md">
-          {session && canControl && (
+          {session && canControl && currentBrowser?.kind !== 'playwright' && (
             <button type="button" role="menuitem" disabled={recordingBusy} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50" onClick={() => { setMenuOpen(false); void toggleRecording() }}>
               {recordingBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : recording.recording ? <Square className="h-3 w-3 fill-current" aria-hidden="true" /> : <Circle className="h-3 w-3 fill-red-500 text-red-500" aria-hidden="true" />}
               {recordingBusy ? recording.recording ? 'Saving recording…' : 'Starting recording…' : recording.recording ? 'Stop recording' : 'Start recording'}
             </button>
           )}
           {canResize && PAGE_SIZES.map(size => (
-            <button key={size.value} type="button" role="menuitem" disabled={!controlling} title={controlling ? 'Resize the actual browser page' : 'Take control to change page size'} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50" onClick={() => { const [width, height] = size.value.split('x').map(Number); send({ type: 'resize_viewport', width, height }); setMenuOpen(false) }}>
+            <button key={size.value} type="button" role="menuitem" disabled={!interactive} title="Resize the actual browser page" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50" onClick={() => { const [width, height] = size.value.split('x').map(Number); send({ type: 'resize_viewport', width, height }); setMenuOpen(false) }}>
               {size.label}
             </button>
           ))}
@@ -715,7 +695,6 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
           actions={<>
             {startToggle}
             {recordingIndicator}
-            {controlToggle}
             {pageSizeToggle}
             {replayURL && <a href={replayURL} download="playwright-replay.mp4" className={tertiaryButtonClass}>Download video</a>}
             {recordingNote}
@@ -724,18 +703,19 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
             {toolbar}
           </>}
       />
-      {slim && <BrowserChrome tabs={tabs} canSelect={canControl} controlling={controlling} address={address} onAddress={setAddress} onNeedControl={canControl ? () => useChatStore.getState().addToast('Take control to type here', 'info') : undefined} onNavigate={navigateAddress} onHistory={action => send({ type: 'history', action })} onSelect={tab => { if (tab.active) return; if (controlling) send({ type: 'switch_tab', tab: tab.tabId }); else { pendingTab.current = tab.tabId; send({ type: 'take_control' }) } }} onClose={closeTab} onNew={() => send({ type: 'new_tab', url: 'about:blank' })} />}
+      {browserSelection}
+      {slim && <BrowserChrome tabs={tabs} canSelect={canControl} interactive={interactive} address={address} onAddress={setAddress} onNavigate={navigateAddress} onHistory={action => send({ type: 'history', action })} onSelect={tab => { if (!tab.active) send({ type: 'switch_tab', tab: tab.tabId }) }} onClose={closeTab} onNew={() => send({ type: 'new_tab', url: 'about:blank' })} />}
       {error && <p className="px-3 py-1.5 text-xs text-destructive" role="alert">{error}</p>}
 
       {replayURL ? <video controls preload="metadata" src={replayURL} poster={lastPlaywrightFrame?.workspace === workspacePath && lastPlaywrightFrame.session === session ? lastPlaywrightFrame.frame : undefined} aria-label="Playwright test recording" className="min-h-0 w-full flex-1 bg-black object-contain" /> : displayFrame ? <div className="live-browser-viewport relative min-h-0 flex-1 bg-black/90">
-        <img ref={screen} src={displayFrame} alt={retainedFrame ? "Last Playwright test frame" : "Live server browser viewport"} draggable={false} tabIndex={-1} className="live-browser-frame absolute inset-0 block h-full w-full select-none object-contain outline-none focus:ring-2 focus:ring-inset focus:ring-ring" onMouseDown={event => mouse(event, 'mousePressed')} onMouseUp={event => mouse(event, 'mouseReleased')} onMouseMove={event => mouse(event, 'mouseMoved')} onContextMenu={event => { event.preventDefault(); if (controlling) { const rect = event.currentTarget.getBoundingClientRect(); setClipboardMenu({ x: Math.max(0, Math.min(event.clientX - rect.left, rect.width - 160)), y: Math.max(0, Math.min(event.clientY - rect.top, rect.height - 80)) }) } }} />
-        <textarea ref={keyboardTarget} aria-label="Browser keyboard input" defaultValue=" " onFocus={event => event.currentTarget.select()} onCut={event => event.preventDefault()} tabIndex={controlling ? 0 : -1} readOnly={!controlling} className="pointer-events-none absolute left-0 top-0 h-px w-px resize-none opacity-0" onKeyDown={event => keyboard(event, 'keyDown')} onKeyUp={event => keyboard(event, 'keyUp')} onPaste={clipboard.paste} onCopy={event => { event.preventDefault(); void clipboard.copy() }} />
-        {controlling && clipboardMenu && <div role="menu" aria-label="Browser clipboard" className="absolute z-20 min-w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md" style={{ left: clipboardMenu.x, top: clipboardMenu.y }}>
+        <img ref={screen} src={displayFrame} alt={retainedFrame ? "Last Playwright test frame" : "Live server browser viewport"} draggable={false} tabIndex={-1} className="live-browser-frame absolute inset-0 block h-full w-full select-none object-contain outline-none focus:ring-2 focus:ring-inset focus:ring-ring" onMouseDown={event => mouse(event, 'mousePressed')} onMouseUp={event => mouse(event, 'mouseReleased')} onMouseMove={event => mouse(event, 'mouseMoved')} onContextMenu={event => { event.preventDefault(); if (interactive) { const rect = event.currentTarget.getBoundingClientRect(); setClipboardMenu({ x: Math.max(0, Math.min(event.clientX - rect.left, rect.width - 160)), y: Math.max(0, Math.min(event.clientY - rect.top, rect.height - 80)) }) } }} />
+        <textarea ref={keyboardTarget} aria-label="Browser keyboard input" defaultValue=" " onFocus={event => event.currentTarget.select()} onCut={event => event.preventDefault()} tabIndex={interactive ? 0 : -1} readOnly={!interactive} className="pointer-events-none absolute left-0 top-0 h-px w-px resize-none opacity-0" onKeyDown={event => keyboard(event, 'keyDown')} onKeyUp={event => keyboard(event, 'keyUp')} onPaste={clipboard.paste} onCopy={event => { event.preventDefault(); void clipboard.copy() }} />
+        {interactive && clipboardMenu && <div role="menu" aria-label="Browser clipboard" className="absolute z-20 min-w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md" style={{ left: clipboardMenu.x, top: clipboardMenu.y }}>
           <button type="button" role="menuitem" className="block w-full rounded px-3 py-1.5 text-left text-xs hover:bg-muted" onClick={() => { setClipboardMenu(null); keyboardTarget.current?.focus(); void clipboard.copy() }}>Copy</button>
           <button type="button" role="menuitem" className="block w-full rounded px-3 py-1.5 text-left text-xs hover:bg-muted" onClick={() => { setClipboardMenu(null); keyboardTarget.current?.focus(); void clipboard.pasteFromClipboard() }}>Paste</button>
         </div>}
         {retainedFrame && <span className="pointer-events-none absolute bottom-3 right-3 rounded bg-background/90 px-3 py-1 text-xs shadow">{completed ? 'Completed' : 'Disconnected'} · Last frame</span>}
-      </div> : showingEmptyContent ? <div className="min-h-0 flex-1 overflow-y-auto px-5 py-8"><div className="mx-auto max-w-sm">{typeof emptyContent === 'function' ? emptyContent({ startBrowser, startingBrowser, canStart: canWrite }) : emptyContent}</div></div> : <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center text-sm text-muted-foreground" onMouseDown={() => { if (controlling) setWaitingHint(true) }}>{waitingHint && controlling ? 'Waiting for the page…' : centered}</div>}
+      </div> : showingEmptyContent ? <div className="min-h-0 flex-1 overflow-y-auto px-5 py-8"><div className="mx-auto max-w-sm">{typeof emptyContent === 'function' ? emptyContent({ startBrowser, startingBrowser, canStart: canWrite }) : emptyContent}</div></div> : <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center text-sm text-muted-foreground" onMouseDown={() => { if (interactive) setWaitingHint(true) }}>{waitingHint && interactive ? 'Waiting for the page…' : centered}</div>}
       {(readOnly && !minimal) || session === 'shared-browser' ? <p className="live-browser-footer shrink-0 border-t border-border px-3 py-1 text-[11px] text-muted-foreground">{readOnly && !minimal ? 'Playwright test · Watch-only. Video replay is recorded automatically.' : 'Shared browser · everyone uses the same tabs and sign-ins. Coordinate before making changes.'}</p> : null}
     </section>
   )

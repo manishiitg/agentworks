@@ -394,6 +394,11 @@ func (m *Manager) Status(user, scope string) Status {
 	if status.BrowserID != "" && !status.Connected {
 		if r, ok := m.browserRecords[key(user, status.BrowserID)]; ok {
 			status.Message = "Your " + r.Name + " browser is offline. Open it, or choose another browser for this project."
+			for _, connection := range status.Browsers {
+				if connection.ID == status.BrowserID && connection.Connected {
+					status.Message = "Your " + r.Name + " browser is connected. Connecting it to this project."
+				}
+			}
 		}
 	}
 	for _, browser := range status.Browsers {

@@ -67,7 +67,59 @@ func readPlaywrightType(t *testing.T, c *websocket.Conn, kind string) map[string
 	}
 }
 
-func TestPlaywrightLiveOwnerScopeWatchOnlyAndCleanup(t *testing.T) {
+func TestPlaywrightRunCannotSendInput(t *testing.T) {
+	fx := newCrewRunModeFixture(t)
+	registry := withProjectOwnerRegistry(t)
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "browser-a1", OwnerID: "owner", CoOwners: []string{"coowner"}, Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	const root = "Crew/browser-a1"
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"reader","username":"reader","products":["work"]},{"id":"coowner","username":"coowner","products":["work"]}]}`)
+	api := fx.api
+	s := &playwrightLiveSession{id: "pw-access", owner: "owner", workspace: playwrightScope("owner", root), latest: map[string][]byte{}, watchers: map[chan []byte]struct{}{}, input: make(chan []byte, 8), done: make(chan struct{})}
+	api.playwrightLive.sessions = map[string]*playwrightLiveSession{s.id: s}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: r.Header.Get("X-Test-User")}))
+		api.handlePlaywrightViewer(w, r, s.id)
+	}))
+	defer server.Close()
+	for _, user := range []string{"owner", "coowner", "reader"} {
+		viewer, _, err := websocket.DefaultDialer.Dial(strings.Replace(server.URL, "http", "ws", 1)+"/?workspace_path="+root, http.Header{"X-Test-User": []string{user}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ready := readPlaywrightType(t, viewer, "viewer_ready")
+		if ready["interactive"] != (user != "reader") {
+			t.Fatalf("wrong input authority: %s %v", user, ready)
+		}
+		for _, command := range []map[string]any{
+			{"type": "input_mouse", "eventType": "mousePressed", "button": "left", "x": 10, "y": 20},
+			{"type": "input_keyboard", "eventType": "keyDown", "key": "x", "code": "KeyX", "text": "x"},
+			{"type": "navigate", "url": "https://example.com"},
+		} {
+			if err := viewer.WriteJSON(command); err != nil {
+				t.Fatal(err)
+			}
+			if user == "reader" {
+				readPlaywrightType(t, viewer, "viewer_error")
+				select {
+				case <-s.input:
+					t.Fatal("Run user drove browser")
+				default:
+				}
+			} else {
+				select {
+				case <-s.input:
+				case <-time.After(time.Second):
+					t.Fatal("owner input missing")
+				}
+			}
+		}
+		viewer.Close()
+	}
+}
+
+func TestPlaywrightLiveOwnerInputAndCleanup(t *testing.T) {
 	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "")
 	api, server := playwrightTestServer(t)
 	url := strings.Replace(server.URL, "http", "ws", 1)
@@ -120,15 +172,16 @@ func TestPlaywrightLiveOwnerScopeWatchOnlyAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer viewer.Close()
-	if readPlaywrightType(t, viewer, "viewer_control")["read_only"] != true {
-		t.Fatal("not read-only")
+	if readPlaywrightType(t, viewer, "viewer_ready")["interactive"] != true {
+		t.Fatal("builder input unavailable")
 	}
-	for _, kind := range []string{"take_control", "input_mouse", "switch_tab"} {
-		_ = viewer.WriteJSON(map[string]string{"type": kind})
-		if readPlaywrightType(t, viewer, "viewer_error")["message"] != "Playwright tests are watch-only." {
-			t.Fatal("control accepted")
-		}
+	_ = viewer.WriteJSON(map[string]any{"type": "input_mouse", "eventType": "mousePressed", "x": 12, "y": 20, "button": "left", "clickCount": 1, "secret": "must-not-forward"})
+	command := readPlaywrightType(t, producer, "input_mouse")
+	if command["x"] != float64(12) || command["secret"] != nil {
+		t.Fatalf("invalid input relay: %v", command)
 	}
+	_ = viewer.WriteJSON(map[string]any{"type": "navigate", "url": "file:///private"})
+	_ = readPlaywrightType(t, viewer, "viewer_error")
 	// Only viewport fields survive the relay; unrelated producer payload is dropped.
 	// Screencast geometry (where the page sits inside the captured surface)
 	// survives too, so viewers can map clicks through it (PLAT-776).
@@ -266,7 +319,16 @@ func testPlaywrightFixtureLive(t *testing.T, runtime string) {
 	observed := 0
 	var config image.Config
 	for observed < len(wantColors) {
-		frame := readPlaywrightType(t, viewer, "frame")
+		var frame map[string]any
+		_ = viewer.SetReadDeadline(time.Now().Add(12 * time.Second))
+		if err := viewer.ReadJSON(&frame); err != nil {
+			cancel()
+			fixtureErr := <-finished
+			t.Fatalf("viewer ended after %d/%d page states; wanted %s: %v; fixture: %v\n%s", observed, len(wantColors), wantColors[observed], err, fixtureErr, log.String())
+		}
+		if frame["type"] != "frame" {
+			continue
+		}
 		jpegData, err := base64.StdEncoding.DecodeString(frame["data"].(string))
 		if err != nil {
 			t.Fatal(err)
@@ -289,7 +351,21 @@ func testPlaywrightFixtureLive(t *testing.T, runtime string) {
 		case r>>8 > 30 && g>>8 > 70 && b>>8 < 65:
 			color = "green"
 		}
+		t.Logf("viewer page state=%s wanted=%s", color, wantColors[observed])
 		if color == wantColors[observed] {
+			if observed == 0 && !strings.HasPrefix(runtime, "pytest") {
+				for _, message := range []map[string]any{
+					{"type": "input_mouse", "eventType": "mousePressed", "x": 30, "y": 90, "button": "left", "clickCount": 1},
+					{"type": "input_mouse", "eventType": "mouseReleased", "x": 30, "y": 90, "button": "left", "clickCount": 1},
+					{"type": "input_text", "text": "manual"},
+					{"type": "input_keyboard", "eventType": "keyDown", "key": "x", "code": "KeyX", "text": "x", "windowsVirtualKeyCode": 88},
+					{"type": "input_keyboard", "eventType": "keyUp", "key": "x", "code": "KeyX", "text": "", "windowsVirtualKeyCode": 88},
+				} {
+					if err := viewer.WriteJSON(message); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
 			observed++
 		}
 	}

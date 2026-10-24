@@ -4,7 +4,7 @@ This is the single browser design and implementation guide for our products.
 It consolidates the former core browser, workflow authoring, live browser and
 Chrome/Edge extension designs, including extension installation and deployment.
 The extension policy includes PLAT-569–574. Browser tasks use ordinary chat
-and browser tools. People can take control for manual steps, keep diagnostic
+and browser tools. People and agents can interact with the same live page, keep diagnostic
 recordings, and ask the agent to save a working procedure as a project skill.
 
 ## Reading map and connection methods
@@ -98,28 +98,13 @@ Tracking: PLAT-542.
 
 ### Install and connect
 
-1. Build/restart the platform with this change. In an owned Code/Crew project or a workflow you can edit,
-   open **Browser → Settings** and choose **My Chrome or Edge · extension**.
-   Readers cannot pair a browser. Relay rollout remains deferred.
-2. Download the extension ZIP from that panel and unzip it.
-3. In Chrome, open `chrome://extensions` (in Edge, `edge://extensions`), enable **Developer mode**, choose
-   **Load unpacked**, and select the unzipped folder. Pin the extension if useful.
-4. Copy the connection from AgentWorks into the extension popup and choose
-   **Connect browser**. This immediately connects and shares the current HTTP(S)
-   website or about:blank; protected pages and tabs belonging to another workspace
-   remain unshared, while the connection still becomes ready for agent-created tabs.
-   Automatic connections to other workspaces never adopt your current tab. The token is shared across your Code/Crew projects and workflows until account Reset.
-5. Ask the agent to browse. It creates and chooses its own project tabs and
-   groups them automatically. No first-tab sharing step is required. To use an
-   already-open page, optionally choose the project and **Share this tab** in the extension.
-6. In another supported project, the browser picker shows **Connected to your
-   account** beside My Chrome or Edge when your account browser is online.
-   Choose that option to register and connect this project; no token copy/paste
-   is required. Opening the picker alone does not change the project's browser.
-   Each agent receives only its own project tabs. The picker is for optional
-   manual sharing; automatic connection preserves its current selection.
-7. Ask the existing chat to work in Chrome. `agent_browser(command="status")`
-   reports extension mode. Use ordinary browser commands without `--cdp`.
+1. Open **Browser → Connections** (or Account → Browser connections). Download the extension ZIP and unzip it.
+2. In Chrome, open `chrome://extensions` (in Edge, `edge://extensions`), enable **Developer mode**, choose **Load unpacked**, and select the unzipped folder.
+3. Copy the account connection into the extension popup and choose **Connect browser**. This connects Chrome or Edge to your account once.
+4. In a Crew or Goal's Browser panel, choose that saved browser and click **Use browser**. The project receives its own tabs; connecting the account alone does not select it for every project or adopt a personal tab.
+5. Ask the existing chat to work in Chrome. `agent_browser(command="status")` reports extension mode. Use ordinary browser commands without `--cdp`.
+6. To use an already-open page, choose the project and **Share this tab** in the extension. Protected pages and tabs belonging to another project remain unshared.
+7. Use the same inline project picker to choose **Workspace browser** instead. It streams here; saved Chrome and Edge tabs stay on the person's computer. Connections manages account setup, while the project picker only selects where to browse.
 
 Loading unpacked does not require Google login or Chrome Web Store approval.
 Keep the extracted folder available while using the extension. Company-managed
@@ -149,35 +134,13 @@ or rejected explicitly.
 
 ### Pairing and ownership
 
-The authenticated Code/Crew/workflow Browser settings picker exposes My Chrome or Edge ·
-extension and shows account availability separately from this project's connection.
-Choosing it explicitly reuses a live account browser through the authenticated
-`connect` action; the response contains status, never a pairing credential.
-Pairing registers the server-derived project and returns one
-persistent random token for the account plus that project's routing scope. The
-full JSON differs by scope even though the token is identical across projects.
-Only registered scopes can connect; scope is metadata, not authorization.
-Product access, project ownership and write access are checked on management,
-every connection and every heartbeat. Workflow pairing requires AgentWorks product
-access, an existing workflow root manifest and owner/editor access; Relay manifests
-are excluded. Each collaborator pairs their own account browser.
+Personal Chrome and Edge connections belong to the account. Each project explicitly selects a saved browser. Account availability and project readiness are separate: a connected account with no project selection shows **Choose browser**; an online selected browser preparing its project connection shows **Connecting this project**; a disconnected selected browser shows **Browser offline**.
 
-**Connection code options → Copy connection code** retrieves the same account
-token and this project's routing scope without selecting the project, requesting
-a new connection or putting a connected panel into Waiting. Copying does not
-rotate the token; it registers/persists this authorized project on the account
-code through PairForProfile. It is intentionally not a read-only request.
-**Reset connection code** is a separate confirmed action.
-Pasting the code into another browser still replaces that project's binding.
-Tracking: PLAT-574.
+The project management endpoint accepts `connect` with an explicit `browser_id` and `disconnect`. Its response contains status, never a pairing credential. Pair/copy/reset actions exist only at account scope, without a workspace parameter; project-scoped external tokens cannot obtain the general account credential. Account pairing stays in Connections.
 
-The private credential survives server restarts in the existing 0600 file.
-Account Reset rotates it and closes all of that account's live connections;
-ordinary disconnect removes only the chosen project selection. An existing
-project credential is upgraded to the canonical account token; other legacy
-project copies retain their original scope until Reset. Newly copied connections
-use the account token and explicit scope. A missing scope is allowed only when
-the credential identifies one project unambiguously.
+Selection registers the server-derived project scope and checks product access, project ownership and write access. The socket rechecks authority on connection and every heartbeat. Workflow selection requires AgentWorks product access and owner/editor access to an existing workflow root; Relay manifests remain excluded. Each collaborator selects their own account browser. No browser is automatically selected because it is used in another project.
+
+The private credential survives restarts in the existing 0600 file. Account reset rotates it and closes that account's connections; project disconnect removes only that project's selection. Browser connection credentials must never appear in logs or project status responses.
 
 A live binding is private to `(account identity, server-derived browser workspace
 identity)`. Each project has its own target/session maps, diagnostics and groups.
@@ -530,7 +493,7 @@ are saved beneath `/tmp/agentworks-chrome-extension-ui` by default.
 
 ## Start browser and manual sign-in
 
-**Browser → Start browser → Take control → open site → sign in → Return control**
+**Browser → Open workspace browser → open site → sign in**
 works before an agent runs. Opening the panel discovers browsers; the Start button
 launches/reuses the scoped browser through the workspace service.
 
@@ -547,8 +510,8 @@ folder survives command cleanup.
 On the server, the user sees streamed server Chrome pixels and inputs travel
 through the authenticated live WebSocket. The website is not an application
 iframe. Sign-in stays in that scoped browser profile. Local CDP uses the attached
-Chrome's own profile and may also be controlled directly in Chrome; the viewer's
-control lease holds the same per-port lock as agent CDP commands. Sites may expire
+Chrome's own profile and may also be controlled directly in Chrome. The viewer never
+holds the automation/CDP lock; human input and agent actions can proceed together. Sites may expire
 sessions, so saved procedures still require an active sign-in.
 
 ## Tabs and reconnection
@@ -571,15 +534,15 @@ restoration to the user's Chrome. Unsaved form contents are not restored; change
 within the last snapshot interval may be lost in a sudden crash.
 
 A dropped stream retries with bounded backoff. After failed reconnects, a writable
-viewer that previously held control may make one authorized managed-browser
+viewer that previously sent input may make one authorized managed-browser
 recovery request under the same scope/control gate. Passive watchers and Playwright
 never start a browser; local CDP recovery requires the user to reconnect Chrome.
 Starting a browser manually also resets exhausted reconnect retries.
 
 ## Reusable browser skills from chat
 
-Use the normal project chat for browser work. **Take control** lets the person
-sign in or complete a manual step; **Return control** lets the agent continue.
+Use the normal project chat for browser work. People can sign in or complete a
+manual step directly while the agent continues. Reinspect the page after human changes.
 The Browser panel keeps its live view, tabs, clipboard, diagnostic recordings
 and completed test replays. There is no separate demonstration recorder or
 teaching API.
@@ -978,90 +941,29 @@ section is the shared authoring and learning contract.
 
 ## Live browser and manual control
 
-The Browser panel discovers managed browsers after `agent_browser open` runs.
-Select a session to watch its active tab; settings are behind the gear button.
-Opening the panel currently does not launch a browser. Closed/reaped sessions
-disappear. Browser viewing is available through the shared workflow/project
-components, subject to product access rules.
+The shared Browser panel discovers managed browsers and live Playwright sessions in the selected workspace. It does not start a browser merely by opening. Authorized Builders and co-owners can click, type, paste, scroll, navigate and switch tabs immediately. Run people can watch but cannot send input. The server checks existing project authority for every command.
 
-Watch mode cannot send input. Take control requires workspace write access and
-an exclusive lease. Browser commands wait while manual control is held; unrelated
-workflow work can continue. Return control or Escape releases the lease. Closing
-the viewer, switching sessions or losing its connection also releases it.
+There is no Take control/Give back mode or viewer-held automation lease. Agent actions continue while the person interacts, including with a Playwright script's context. Concurrent actions may change the same page: agents should inspect it again rather than assuming it stayed unchanged. Agent-to-agent browser operations retain their existing serialization.
 
-### Sessions and tabs
+### Sessions, tabs and transport
 
-A workflow/project resolves to one managed browser, which can have multiple
-tabs. Discovery may also include isolated Playwright test sessions. The session
-selector chooses the tracked browser to watch. The tab strip
-shows that session's tabs, with the active tab highlighted. The viewer displays
-one active tab at a time; it does not display all tabs simultaneously.
+A project resolves to one managed browser with multiple tabs; isolated Playwright contexts appear as separate sessions. The session selector chooses which browser to follow. The tab strip changes the real browser's active tab. Frames arrive over the existing authenticated WebSocket; slow viewers never block the producer.
 
-Normal browser commands update the existing session's live view automatically.
-There is no separate viewer initialization command for each action. Session
-discovery refreshes every five seconds while the panel is mounted. Live frames
-arrive over WebSocket, with the proxy requesting a maximum of 10 frames per second.
-
-Watching follows the agent's active tab. Switching tabs changes the actual
-browser's active tab, so tab selection is enabled only after taking control.
-Users with control can click, type, scroll, and select another tab. Escape returns
-control to the agent. Manual control holds browser commands for that session;
-it does not pause the entire workflow or unrelated sessions.
-
-### Architecture
-
-```text
-Workflow Browser tab
-    │ authenticated WebSocket through the app's existing HTTPS endpoint
-    ▼
-Agent API
-    │ checks session owner and workflow; enforces watch/control mode
-    │ connects using WORKSPACE_API_URL and WORKSPACE_API_TOKEN
-    ▼
-Workspace service (same host/container environment as agent-browser)
-    │ resolves the session's .stream file to a loopback port
-    ▼
-agent-browser stream → managed headless Chrome
-```
+Managed streams travel through the agent API to the workspace service and then the session's local agent-browser stream. Scope, project grants and the current caller determine visibility and input authority. No public CDP port is opened. Live Playwright input uses its existing authenticated producer socket and a fixed allowlist of mouse, keyboard, text, navigation, tab, viewport and selected-copy operations. The viewer cannot choose arbitrary protocol methods or execute JavaScript.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/browser/live/sessions?workspace_path=Workflow/<folder>` | List authorized tracked browser sessions for the selected workspace. |
-| `GET /api/browser/live/{session}/stream?workspace_path=Workflow/<folder>` | Authenticated viewer WebSocket on the agent API. |
-| `GET /api/browser/live/:session/stream` | Internal workspace-service proxy to the local session stream. |
+| `GET /api/browser/live/sessions?workspace_path=Workflow/<folder>` | List authorized browser sessions for the selected workspace. |
+| `GET /api/browser/live/{session}/stream?workspace_path=Workflow/<folder>` | Authenticated viewer WebSocket. |
+| `GET /api/browser/live/:session/stream` | Internal workspace-service proxy to a managed session. |
 
-The frontend sends a heartbeat every 10 seconds. The server releases manual
-control after a disconnect or 45 seconds without an incoming message. Only one
-viewer connection can hold control of a session at a time. Other connections
-can continue watching.
+The server announces `viewer_ready` with the caller's input availability. Each viewer sends its existing heartbeat; closing it only closes the view and does not release or acquire an automation lock. Real human input refreshes managed-browser activity. A previously used writable managed view can perform the existing bounded recovery after a disconnect; passive watchers and Playwright do not launch a browser.
 
 ### Viewer controls
 
-The browser header contains control, expand and overflow actions
-with the existing neutral buttons. A separate tab strip contains per-tab close
-buttons and **+** for a blank tab. Back, forward and reload sit next to one
-address field; Enter opens an HTTP(S) website (bare hostnames use HTTPS).
-**Start browser** appears in the idle header and hides once the browser is running.
-Selecting a tab can acquire exclusive control; navigation, creating/closing tabs
-and clipboard actions require that control. A busy controller is reported.
+The compact header has session selection, status, expand and recording actions. One inline browser picker selects the workspace browser or a saved Chrome/Edge browser. Account Connections manages pairing once. There is no duplicate Browser settings popup or header Help action. Local CDP configuration remains in Advanced connection where enabled.
 
-After taking control, select a field and paste with Cmd+V / Ctrl+V. Select text
-and copy with Cmd+C / Ctrl+C; the viewport's right-click menu also offers Copy
-and Paste. Mac editing shortcuts map to the remote platform. Clipboard transfer
-is plain text, limited to 64 KiB per paste/selection, and never reads the server's
-OS clipboard or saves clipboard contents to disk. Multiline Unicode text is
-inserted into the existing browser's focused field through private daemon IPC;
-no browser launches or endpoint/executable selection are exposed by that route.
-Copy reads selection in the active page, open shadow roots and same-origin frames.
-Cross-origin frame selection is currently unsupported; paste uses the browser's
-focused field and remains available. Clipboard permissions/secure context are
-required by the viewer's host browser. Empty selections leave the local clipboard
-unchanged. Watch-only users cannot send clipboard or navigation actions.
-
-**Fill width** uses the panel width with vertical scrolling; **Fit page** keeps
-the whole viewport visible. Browser is a workspace view (the toolbar group is
-currently Pulse), not a Setup page; mode/connection settings remain behind its
-gear button. Implementation and qualification: PLAT-382.
+Tabs, navigation and clipboard are available to authorized Builders whenever the browser is live. Escape in the focused page is sent to the website; Escape outside it can leave expanded view. Managed diagnostic recording and script-owned Playwright recording remain separate. A completed test shows its saved replay because the script has closed that context.
 
 ### Runtime mode changes
 
@@ -1246,14 +1148,14 @@ The fixture connects to `/s/{session_id}/tools/browser/live` using the runner's
 existing MCP bearer credentials. The agent API derives user/workflow ownership
 from that server-owned active session and allocates a separate `pw-` session for
 each test context. The producer sends Chromium JPEG frames and page metadata,
-with no browser command channel and no public CDP port. Producer disconnect or
+and accepts the fixed UI input commands on that same socket. There is no public CDP port. Producer disconnect or
 45 seconds without heartbeat removes its discovery entry and closes viewers.
 
 The existing authenticated session-list/viewer endpoints include these sessions
 alongside agent-browser, including deployments using shared Chrome. Viewers see
-only their own workflow's test sessions. Control and agent-browser recording
-routes are rejected for these sessions on the server; the frontend also hides
-those controls. Playwright owns isolated contexts, teardown, and video artifacts
+sessions in projects they can access. Builders and co-owners can interact alongside
+the script; Run users can only watch. Agent-browser recording routes remain rejected
+for Playwright sessions because the running script owns recording. Playwright owns isolated contexts, teardown, and video artifacts
 in its test report. No automatic upload into a custom dashboard is performed.
 
 Validation: `AGENTWORKS_PLAYWRIGHT_LIVE_TEST=1 go -C agent_go test ./cmd/server
@@ -1286,7 +1188,7 @@ allow an idle timeout longer than 45 seconds. No session port is published.
 
 The generic workspace proxy rejects this internal stream route. The live viewer
 only forwards viewport, tab, URL and connection status messages, and accepts
-input only while its connection holds control. Shared desktop/CDP sessions are
+input only when the caller currently has Builder authority for that project. Shared desktop/CDP sessions are
 not listed; they can contain tabs belonging to other workflows. Discovery exposes only browsers in workspaces the caller
 can access.
 
@@ -1297,15 +1199,14 @@ can access.
 | No browser sessions appear | Use Start browser or let an enabled agent open it. Confirm that the caller can access the selected workspace and its browser identity. A closed session is not a replayable recording; use the saved artifacts. |
 | Session appears but live view cannot connect | Check the agent-browser version, its session `.stream` metadata, and whether streaming is enabled in the workspace service's runtime environment. |
 | WebSocket connection fails | Check the existing HTTPS proxy's upgrade forwarding, `WORKSPACE_API_URL`, and matching workspace service tokens. Use Reconnect after correcting the issue. |
-| Take control reports busy | Let the current browser action finish, or have the existing controller return control, then retry. |
-| Cannot switch tabs while watching | Take control first; switching tabs affects the browser the agent is using. |
-| Take control is unavailable or denied | Confirm workflow write access. Session visibility alone does not grant control. |
+| Input is unavailable or denied | Confirm Builder/co-owner access to this project. Session visibility alone does not grant input. Inspect content-free input-refused logs for the session and reason. |
+| Saved Chrome is online but this project has no browser | Select the saved browser explicitly in this project. Account connection alone does not select it everywhere. |
 
 ### Implementation files
 
 - [Extension worker](../../extensions/agentworks-chrome/background.js): shared target authorization, debugger transport, groups and foreground permission.
 - [Extension popup](../../extensions/agentworks-chrome/popup.html): connection and explicit sharing controls.
-- [Extension management API](../../agent_go/cmd/server/browser_extension.go): pairing, stable codes and authenticated selection.
+- [Extension management API](../../agent_go/cmd/server/browser_extension.go): authenticated project selection; account pairing is in browser_accounts.go.
 - [Private relay](../../agent_go/pkg/browserrelay/relay.go) and [diagnostics](../../agent_go/pkg/browserrelay/diagnostics.go): capability transport, serialized actions, private Code chat clients and per-target logs.
 - [Extension executor](../../agent_go/pkg/browser/extension_executor.go): managed tool routing and guarded CLI execution.
 - [Browser workspace panel](../../frontend/src/components/workflow/BrowserWorkspacePanel.tsx) and [connection UI](../../frontend/src/components/workflow/ChromeExtensionConnection.tsx): explicit methods and selected extension experience.
@@ -1314,7 +1215,7 @@ can access.
 - [WorkflowCapabilitiesPanel.tsx](../../frontend/src/components/workflow/WorkflowCapabilitiesPanel.tsx): embeds the viewer above browser settings.
 - [browser_workspace.go](../../agent_go/cmd/server/browser_workspace.go): authorized startup and canonical settings.
 - [Agent API browser_live.go](../../agent_go/cmd/server/browser_live.go): workflow-scoped discovery, authenticated stream relay, and manual control.
-- [live_control.go](../../agent_go/pkg/browser/live_control.go): exclusive control gate shared with managed browser commands.
+- [live_control.go](../../agent_go/pkg/browser/live_control.go): serialization between agent automation commands; viewers do not acquire it.
 - [executor.go](../../agent_go/pkg/browser/executor.go): waits on the control gate before running headless browser commands.
 - [Workspace browser_live.go](../../workspace/handlers/browser_live.go): resolves local stream metadata and proxies within the workspace environment.
 - [workspace_proxy.go](../../agent_go/cmd/server/workspace_proxy.go): prevents bypassing viewer access checks through the generic workspace proxy.

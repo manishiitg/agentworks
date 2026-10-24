@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: { defaults: {}, get: mocks.get, post: mocks.post }, getApiBaseUrl: () => 'http://localhost', getAuthToken: () => null }))
 vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn() }))
 vi.mock('./WorkspacePanelGuideButton', () => ({ WorkspacePanelGuideButton: () => null }))
-vi.mock('./WorkflowLiveBrowser', () => ({ default: ({ emptyContent }: { emptyContent: React.ReactNode | ((actions: BrowserEmptyStateActions) => React.ReactNode) }) => typeof emptyContent === 'function' ? emptyContent({ startBrowser: vi.fn(), startingBrowser: false, canStart: true }) : emptyContent }))
+vi.mock('./WorkflowLiveBrowser', () => ({ default: ({ emptyContent, browserSelection }: { browserSelection?: React.ReactNode; emptyContent: React.ReactNode | ((actions: BrowserEmptyStateActions) => React.ReactNode) }) => <>{browserSelection}{typeof emptyContent === 'function' ? emptyContent({ startBrowser: vi.fn(), startingBrowser: false, canStart: true }) : emptyContent}</> }))
 vi.mock('../../utils/runtimeCapabilities', () => ({ isBrowserCDPEnabled: () => false }))
 
 it('choosing Chrome in Crew reuses the account browser without copying another token', async () => {
@@ -24,24 +24,20 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
   mocks.post.mockResolvedValue({ data: { selected: true, connected: true, account_connected: true, browser_id: 'chrome-one', tabs: 0, browsers, workspace: 'Crew/example-crew-one' } })
   try {
     await act(async () => root.render(<TooltipProvider><BrowserWorkspacePanel workspacePath="Crew/example-crew-one" profileId="work" scopeNoun="project" browserMode="headless" onBrowserModeChange={vi.fn()} cdpPort={9222} onCdpPortChange={vi.fn()} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} /></TooltipProvider>))
-    const chrome = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Choose a saved browser'))!
-    expect(host.textContent).toContain('Reuse your sign-ins')
-    expect(host.textContent).toContain('Connect once to your account')
-    expect(host.textContent).not.toContain('one-time setup')
-    expect(mocks.post).not.toHaveBeenCalled()
-    await act(async () => chrome.click())
-    expect(mocks.post).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('connected to your account')
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
     expect(host.querySelectorAll('select')).toHaveLength(1)
+    expect(mocks.post).not.toHaveBeenCalled()
     const picker = host.querySelector('#project-saved-browser') as HTMLSelectElement
     expect([...picker.options].map(option => option.value)).toEqual(['workspace-browser', 'chrome-one', 'edge-two'])
     await act(async () => { picker.value = 'chrome-one'; picker.dispatchEvent(new Event('change', { bubbles: true })) })
-    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Use this browser')!.click() })
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Use browser')!.click() })
     expect(mocks.post).toHaveBeenCalledWith('/api/browser/extension', { action: 'connect', browser_id: 'chrome-one' }, expect.objectContaining({ params: { workspace_path: 'Crew/example-crew-one', profile_id: 'work' } }))
     expect(clipboard).not.toHaveBeenCalled()
-    expect(host.textContent).toContain('Connected · 0 shared tabs')
+    expect(host.textContent).toContain('Connected · 0 project tabs')
     expect(host.querySelector('option[value="chrome-one"]')?.textContent).toContain('Connected')
     expect(host.textContent).not.toContain('Install the extension')
-    const manage = [...host.querySelectorAll('button')].find(button => button.textContent === 'Manage browser connections')!
+    const manage = [...host.querySelectorAll('button')].find(button => button.textContent === 'Connections')!
     expect(manage).toBeTruthy()
     const opened = vi.fn()
     window.addEventListener('open-browser-connections', opened)

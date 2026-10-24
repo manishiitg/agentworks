@@ -47,7 +47,7 @@ const AGENTWORKS_GUIDES: Record<string, GuideCopy> = {
   },
   Browser: {
     purpose: 'Watch the browser this AgentWorks automation uses for web work.',
-    howTo: 'Inspect the live page, take control when needed, and use Browser settings to choose how the agent connects.',
+    howTo: 'Inspect the live page, click and type while the agent works, and use the browser picker to choose how the agent connects.',
   },
   'Browser automation': {
     purpose: 'Configure and inspect browser access for this automation.',
@@ -146,7 +146,7 @@ const CREW_GUIDES: Record<string, GuideCopy> = {
   },
   Browser: {
     purpose: 'Watch the browser this Crew member uses when it works on the web.',
-    howTo: 'Follow the live page, take control when needed, and open Browser settings to choose how Crew connects.',
+    howTo: 'Follow the live page, click and type while the agent works, and open the browser picker to choose how Crew connects.',
   },
   'Cost Analysis': {
     purpose: 'See how much this Crew project costs to run.',

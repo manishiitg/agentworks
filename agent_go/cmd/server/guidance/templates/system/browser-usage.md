@@ -54,7 +54,7 @@ before first use instead of relying on saved conversation or prompt state.
 
 For repeatable browser tests, read `references/playwright-scripted.md` from
 `builder-reference`. Use `@agentworks/playwright` for JS/TS or `agentworks-playwright` for Python
-when available. Its live test sessions share this panel but are watch-only; the
+when available. Its live test sessions share this panel and Builders can interact while the script continues; the
 managed commands, CDP policies, media defaults, and capture rules below apply to
 agent-browser sessions. Do not apply them to a test runner's private Chromium.
 
@@ -63,8 +63,7 @@ In an interactive Builder with workspace-view tools, call
 can watch the live server browser in the right-hand pane. Only an `applied`
 receipt confirms the UI opened. Open the view once; do not switch it back after
 every command if the user chose another view. The live stream follows navigation
-and tab changes automatically, so no workspace refresh is needed. Users can
-choose **Take control** to interact. Scheduled or unattended runs must not try
+and tab changes automatically, so no workspace refresh is needed. Builders can click and type directly while the agent continues. Re-inspect the page if a person changes it. Scheduled or unattended runs must not try
 to open the foreground UI.
 
 `status.cdp_supported` is the deployment authority. When it is `false`, CDP

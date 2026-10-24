@@ -20,7 +20,8 @@ async function attachLiveBrowser(context, options = {}) {
   url.pathname += '/tools/browser/live'
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   url.searchParams.set('label', (options.label || 'Playwright test').slice(0, 200))
-  const socket = new WebSocket(url, { headers: { Authorization: `Bearer ${token}` }, handshakeTimeout: 10000, maxPayload: 16384 })
+  // The server accepts an 8 KiB paste; JSON escaping can expand it sixfold.
+  const socket = new WebSocket(url, { headers: { Authorization: `Bearer ${token}` }, handshakeTimeout: 10000, maxPayload: 65536 })
   const sessionID = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => { socket.terminate(); reject(new Error('Live view registration timed out.')) }, 10000)
     const fail = () => { clearTimeout(timer); reject(new Error('Live view registration failed. Check the workflow session and server connection.')) }
@@ -97,6 +98,53 @@ async function attachLiveBrowser(context, options = {}) {
     const task = attachPage(page).catch(() => { warning = 'Could not stream a Chromium page.' }).finally(() => pending.delete(task))
     pending.add(task)
   }
+  // UI input shares the context with the script; it never pauses the test.
+  let inputTail = Promise.resolve()
+  const browserInput = async message => {
+    if (stopped) return
+    if (message.type === 'new_tab') {
+      const page = await context.newPage()
+      await attachPage(page)
+      active = page
+      await page.goto(message.url)
+      tabs(); return
+    }
+    if (message.type === 'switch_tab' || message.type === 'close_tab') {
+      const page = [...pages].find(([, item]) => item.id === message.tab)?.[0]
+      if (!page) throw new Error('Page closed')
+      if (message.type === 'close_tab') { if (pages.size < 2) return; await page.close() }
+      else { active = page; tabs(); flushFrame() }
+      return
+    }
+    const item = pages.get(active)
+    if (!item?.cdp || active.isClosed()) throw new Error('Page closed')
+    switch (message.type) {
+      case 'input_mouse': {
+        const params = { type: message.eventType, x: message.x, y: message.y, button: message.button || 'none', clickCount: message.clickCount || 0 }
+        if (message.eventType === 'mouseWheel') { params.deltaX = message.deltaX; params.deltaY = message.deltaY }
+        await item.cdp.send('Input.dispatchMouseEvent', params); break
+      }
+      case 'input_keyboard':
+        await item.cdp.send('Input.dispatchKeyEvent', { type: message.eventType, key: message.key, code: message.code, text: message.text, modifiers: message.modifiers, windowsVirtualKeyCode: message.windowsVirtualKeyCode }); break
+      case 'input_text': await item.cdp.send('Input.insertText', { text: message.text }); break
+      case 'clipboard_copy': {
+        const result = await active.evaluate(() => window.getSelection()?.toString() || (() => { const e = document.activeElement; return e && e.type !== 'password' && typeof e.value === 'string' ? e.value.slice(e.selectionStart, e.selectionEnd) : '' })())
+        send({ type: 'clipboard', requestId: message.requestId, text: result.slice(0, 8192) }); break
+      }
+      case 'navigate': await active.goto(message.url); break
+      case 'history':
+        if (message.action === 'reload') await active.reload()
+        else if (message.action === 'back') await active.goBack()
+        else if (message.action === 'forward') await active.goForward()
+        break
+      case 'resize_viewport': await active.setViewportSize({ width: message.width, height: message.height }); break
+    }
+  }
+  socket.on('message', raw => {
+    let message
+    try { message = JSON.parse(raw.toString()) } catch { return }
+    inputTail = inputTail.then(() => browserInput(message)).catch(() => send({ type: 'viewer_error' }))
+  })
   const heartbeat = setInterval(() => send({ type: 'ping' }), 10000)
   heartbeat.unref()
   const stop = async () => {

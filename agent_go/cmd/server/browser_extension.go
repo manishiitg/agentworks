@@ -76,36 +76,21 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 		}
 		switch req.Action {
 		case "connect":
+			if strings.TrimSpace(req.BrowserID) == "" {
+				http.Error(w, "Choose a saved browser from Browser connections", 400)
+				return
+			}
 			// The owner explicitly chose the extension for this project. Reuse
 			// the account browser without returning or copying its credential.
 			if _, err := browserrelay.Default.PairForProfile(user, scope, workspace, profile); err != nil {
 				http.Error(w, "Cannot start Chrome bridge", 503)
 				return
 			}
-			if req.BrowserID != "" {
-				if err := browserrelay.Default.SelectBrowser(user, scope, req.BrowserID); err != nil {
-					http.Error(w, err.Error(), 400)
-					return
-				}
-			}
-			browserrelay.Default.RequestProjectConnection(user, scope)
-		case "pair", "copy", "reset":
-			var token string
-			var err error
-			if req.Action == "reset" {
-				token, err = browserrelay.Default.Reset(user, scope, workspace, profile)
-			} else {
-				token, err = browserrelay.Default.PairForProfile(user, scope, workspace, profile)
-			}
-			if err != nil {
-				http.Error(w, "Cannot start Chrome bridge", 503)
+			if err := browserrelay.Default.SelectBrowser(user, scope, req.BrowserID); err != nil {
+				http.Error(w, err.Error(), 400)
 				return
 			}
-			if req.Action == "pair" {
-				browserrelay.Default.RequestProjectConnection(user, scope)
-			}
-			json.NewEncoder(w).Encode(map[string]interface{}{"token": token, "scope": scope})
-			return
+			browserrelay.Default.RequestProjectConnection(user, scope)
 		case "disconnect":
 			if err := browserrelay.Default.Disconnect(user, scope); err != nil {
 				http.Error(w, "Cannot save browser selection", 503)

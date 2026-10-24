@@ -8,6 +8,7 @@ import WorkflowLiveBrowser, { BROWSER_RECONNECT_ATTEMPTS, browserReconnectDelayM
 const api = vi.hoisted(() => ({ defaults: {}, get: vi.fn(), post: vi.fn() }))
 const addToast = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ default: api, getApiBaseUrl: () => 'http://localhost', getAuthToken: () => 'viewer-token' }))
+vi.mock('../../utils/runtimeCapabilities', () => ({ isBrowserCDPEnabled: () => false }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => true }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast }) } }))
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({ openWorkspaceView: vi.fn() }) } }))
@@ -40,7 +41,7 @@ it('shows both browser types but makes Playwright watch-only even for workflow w
   const buttons = () => [...host.querySelectorAll('button')].map(button => button.textContent)
   expect(host.textContent).toContain('Checkout · retry 0')
   expect(host.textContent).toContain('Agent browser')
-  expect(host.textContent).toContain('Watch-only')
+  expect(host.querySelector('[aria-label="Give back to helper"]')).toBeNull()
   expect(buttons()).not.toContain('Take control')
   expect(buttons()).not.toContain('Start recording')
   expect(host.querySelector('select[aria-label="Browser sizing"]')).toBeNull()
@@ -54,7 +55,7 @@ it('shows both browser types but makes Playwright watch-only even for workflow w
   expect(tab.disabled).toBe(true)
   const selector = host.querySelector('select[aria-label="Browser session"]') as HTMLSelectElement
   await act(async () => { selector.value = 'agent-test'; selector.dispatchEvent(new Event('change', { bubbles: true })) })
-  expect(buttons()).toContain('Take control')
+  expect(buttons()).not.toContain('Take control')
   expect(buttons()).not.toContain('Start recording')
   await act(async () => { (host.querySelector('button[aria-label="More browser options"]') as HTMLButtonElement).click() })
   expect(buttons()).toContain('Start recording')
@@ -123,7 +124,7 @@ it('follows the managed browser while waiting for the next Playwright test', asy
   expect(selector.value).toBe('playwright-tests')
   expect(selector.selectedOptions[0].textContent).toBe('Shared browser · all users · Auto')
   expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/shared-browser/stream')
-  expect([...host.querySelectorAll('button')].map(button => button.textContent)).toContain('Take control')
+  expect([...host.querySelectorAll('button')].map(button => button.textContent)).not.toContain('Take control')
   await pollBrowsers([shared, crew, testBrowser('pw-selected')])
   expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/pw-selected/stream')
 })
@@ -270,7 +271,7 @@ it('allows tall page resizing only after control and maps clicks to the new view
   const size = host.querySelector('select[aria-label="Browser page size"]') as HTMLSelectElement
   expect(size.disabled).toBe(true)
   const ws = FakeSocket.instances.at(-1)!
-  await act(async () => { ws.onmessage?.({data: JSON.stringify({type:'viewer_control', controlling:true})}) })
+  await act(async () => { ws.onmessage?.({data: JSON.stringify({type:'viewer_ready', interactive:true})}) })
   expect(size.disabled).toBe(false)
   await act(async () => { size.value='900x1200'; size.dispatchEvent(new Event('change',{bubbles:true})) })
   expect(ws.send).toHaveBeenCalledWith(JSON.stringify({type:'resize_viewport',width:900,height:1200}))
@@ -279,7 +280,7 @@ it('allows tall page resizing only after control and maps clicks to the new view
   image.getBoundingClientRect = () => ({left:10,top:20,width:450,height:600} as DOMRect)
   await act(async () => { image.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,clientX:235,clientY:320})) })
   expect(JSON.parse(ws.send.mock.calls.at(-1)![0])).toMatchObject({type:'input_mouse',x:450,y:600})
-  await act(async () => { ws.onmessage?.({data: JSON.stringify({type:'viewer_control', controlling:false})}) })
+  await act(async () => { ws.onmessage?.({data: JSON.stringify({type:'viewer_ready', interactive:false})}) })
   expect((host.querySelector('select[aria-label="Browser page size"]') as HTMLSelectElement).disabled).toBe(true)
 })
 
@@ -325,7 +326,7 @@ it('shows one header and address bar without a redundant single-tab row', async 
   expect(host.querySelector('[role="tab"]')).toBeNull()
   expect((host.querySelector('[aria-label="Website address"]') as HTMLInputElement).value).toBe('https://example.com/pricing')
   expect(host.querySelector('[aria-label="Browser tabs"]')).toBeNull()
-  expect(buttonNamed(host, 'Take control')).toBeDefined()
+  expect(buttonNamed(host, 'Take control')).toBeUndefined()
 })
 
 it('reconnects automatically with backoff after the browser restarts', async () => {
@@ -401,19 +402,18 @@ it('keeps recording and page size in an overflow menu that closes on Escape', as
   expect(items[1].disabled).toBe(true)
   await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
   expect(host.querySelector('[role="menu"]')).toBeNull()
-  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) }) })
-  expect(buttonNamed(host, 'Give back to helper')?.getAttribute('aria-pressed')).toBe('true')
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_ready', interactive: true }) }) })
+  expect(buttonNamed(host, 'Give back to helper')).toBeUndefined()
   await act(async () => { more.click() })
   const tall = [...host.querySelectorAll('[role="menuitem"]')].find(item => item.textContent?.startsWith('Tall')) as HTMLButtonElement
   expect(tall.disabled).toBe(false)
   await act(async () => { tall.click() })
   expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'resize_viewport', width: 900, height: 1200 }))
   expect(host.querySelector('[role="menu"]')).toBeNull()
-  await act(async () => { buttonNamed(host, 'Give back to helper')!.click() })
-  expect(ws.send).toHaveBeenLastCalledWith(JSON.stringify({ type: 'release_control' }))
+  expect(ws.send.mock.calls.some(([raw]) => JSON.parse(raw).type === 'release_control')).toBe(false)
 })
 
-it('expands the live view and exits on Escape unless the user is in control', async () => {
+it('keeps Escape available to the page and exits expansion from outside the page', async () => {
   api.get.mockResolvedValue({ data: { sessions: [shared] } })
   const { host } = await mountBrowser()
   expect(buttonNamed(host, 'Expand browser')).toBeUndefined()
@@ -423,10 +423,10 @@ it('expands the live view and exits on Escape unless the user is in control', as
   await act(async () => { buttonNamed(host, 'Expand browser')!.click() })
   expect(section.className).toContain('fixed inset-0')
   expect(buttonNamed(host, 'Exit expanded view')?.getAttribute('aria-pressed')).toBe('true')
-  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) }) })
-  await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_ready', interactive: true }) }) })
+  await act(async () => { host.querySelector('[aria-label="Browser keyboard input"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
   expect(section.className).toContain('fixed inset-0')
-  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: false }) }) })
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_ready', interactive: false }) }) })
   await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
   expect(section.className).not.toContain('fixed inset-0')
 })
@@ -505,7 +505,7 @@ it('coalesces mouse moves behind a press and maps through the in-frame page rect
   api.get.mockResolvedValue({ data: { sessions: [shared] } })
   const { host } = await mountBrowser()
   const ws = FakeSocket.instances.at(-1)!
-  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) }) })
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_ready', interactive: true }) }) })
   // Clicking the empty stage before the first frame says so instead of vanishing.
   const stage = [...host.querySelectorAll('div')].find(div => div.className.includes('justify-center') && div.className.includes('flex-1'))!
   await act(async () => { stage.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
@@ -551,7 +551,7 @@ it('hides startup for an existing browser and supports manual tabs without teach
   const ws = FakeSocket.instances.at(-1)!
   await act(async () => {
     ws.onmessage?.(frameMessage())
-    ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
+    ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_ready', interactive: true }) })
     ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'One', active: true }, { tabId: 't2', title: 'Two', active: false }] }) })
   })
   expect(buttonNamed(host, 'Teach task')).toBeUndefined()
@@ -573,7 +573,7 @@ it('keeps startup and tab controls in the minimal browser', async () => {
   const ws = FakeSocket.instances.at(-1)!
   await act(async () => {
     ws.onmessage?.(frameMessage())
-    ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
+    ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_ready', interactive: true }) })
     ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'One', active: true }, { tabId: 't2', title: 'Two', active: false }] }) })
   })
   expect(buttonNamed(host, 'Teach task')).toBeUndefined()
@@ -591,7 +591,7 @@ it('transfers native paste and selected copy only while controlling, including M
   api.get.mockResolvedValue({ data: { sessions: [shared] } })
   const { host } = await mountBrowser()
   const ws = FakeSocket.instances.at(-1)!
-  await act(async () => { ws.onmessage?.(frameMessage()); ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true, platform: 'linux' }) }) })
+  await act(async () => { ws.onmessage?.(frameMessage()); ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_ready', interactive: true, platform: 'linux' }) }) })
   const input = host.querySelector('[aria-label="Browser keyboard input"]')!
   await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', metaKey: true, bubbles: true, cancelable: true })) })
   expect(JSON.parse(ws.send.mock.calls.at(-1)![0])).toMatchObject({ type: 'input_keyboard', key: 'a', modifiers: 2, text: '' })
@@ -626,7 +626,7 @@ it('transfers native paste and selected copy only while controlling, including M
   await act(async () => { buttonNamed(host, 'Paste')!.click() })
   expect(ws.send).toHaveBeenLastCalledWith(JSON.stringify({ type: 'input_text', text: 'right-click paste\n日本語🙂' }))
   expect(host.querySelector('[role="menu"]')).toBeNull()
-  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: false }) }) })
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_ready', interactive: false }) }) })
   ws.send.mockClear()
   await act(async () => { input.dispatchEvent(paste); input.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true })) })
   expect(ws.send).not.toHaveBeenCalled()
@@ -642,8 +642,8 @@ it('keeps tab controls by the tabs and navigation mutations behind manual contro
   expect(buttonNamed(host, 'Open site')).toBeUndefined()
   expect(buttonNamed(host, 'Close tab')).toBeUndefined()
   expect(buttonNamed(host, 'Give back to helper')).toBeUndefined()
-  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) }) })
-  expect(buttonNamed(host, 'Give back to helper')?.className).not.toMatch(/amber|bg-primary/)
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_ready', interactive: true }) }) })
+  expect(buttonNamed(host, 'Give back to helper')).toBeUndefined()
   await act(async () => { buttonNamed(host, 'Go back')!.click(); buttonNamed(host, 'Go forward')!.click(); buttonNamed(host, 'Reload page')!.click() })
   expect(ws.send.mock.calls.map(([value]) => JSON.parse(value))).toEqual(expect.arrayContaining([{ type: 'history', action: 'back' }, { type: 'history', action: 'forward' }, { type: 'history', action: 'reload' }]))
 })
@@ -655,7 +655,10 @@ it('recovers a previously controlled managed browser once', async () => {
   const first = FakeSocket.instances.at(-1)!
   await act(async () => {
     first.onmessage?.(frameMessage())
-    first.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
+    first.onmessage?.({ data: JSON.stringify({ type: 'viewer_ready', interactive: true }) })
+  })
+  await act(async () => { host.querySelector('img')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 })) })
+  await act(async () => {
     first.onclose?.()
     vi.advanceTimersByTime(1000)
   })
@@ -678,7 +681,7 @@ it('never launches a missing managed browser for a passive viewer', async () => 
 })
 
 
-it('opens the built-in browser directly from the panel, with a retry and no settings detour', async () => {
+it('opens the built-in browser directly from the inline choice, with a retry', async () => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('WebSocket', FakeSocket)
@@ -690,20 +693,20 @@ it('opens the built-in browser directly from the panel, with a retry and no sett
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   await act(async () => root.render(<TooltipProvider><BrowserWorkspacePanel workspacePath="Chats/Work/projects/one" profileId="work" scopeNoun="project" browserMode="headless" onBrowserModeChange={vi.fn()} cdpPort={9222} onCdpPortChange={vi.fn()} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} /></TooltipProvider>))
   expect(host.textContent).toContain('Your browser will appear here')
-  expect(host.textContent).toContain('runs a browser test')
-  expect(buttonNamed(host, 'Connect Chrome or Edge')).toBeDefined()
-  expect(host.textContent).toContain('Connect once to your account')
+  expect(host.textContent).toContain('You can both click and type here')
+  expect(buttonNamed(host, 'Connections')).toBeDefined()
+  expect(host.querySelectorAll('#project-saved-browser')).toHaveLength(1)
   expect(host.textContent).not.toContain('Choose a browser')
   expect(host.textContent).not.toContain('Idle')
   expect(buttonNamed(host, 'Start browser')).toBeUndefined()
-  expect([...host.querySelectorAll('button')].filter(button => button.textContent === 'Open browser')).toHaveLength(1)
+  expect([...host.querySelectorAll('button')].filter(button => button.textContent === 'Open workspace browser')).toHaveLength(1)
   api.post.mockRejectedValueOnce(new Error('Browser unavailable'))
-  await act(async () => { buttonNamed(host, 'Open browser')!.click() })
+  await act(async () => { buttonNamed(host, 'Open workspace browser')!.click() })
   expect(host.querySelector('[role="alert"]')?.textContent).toContain('Browser unavailable')
-  expect(buttonNamed(host, 'Open browser')?.disabled).toBe(false)
+  expect(buttonNamed(host, 'Open workspace browser')?.disabled).toBe(false)
   let opened!: (value: unknown) => void
   api.post.mockImplementationOnce(() => new Promise(resolve => { opened = resolve }))
-  await act(async () => { buttonNamed(host, 'Open browser')!.click() })
+  await act(async () => { buttonNamed(host, 'Open workspace browser')!.click() })
   expect(buttonNamed(host, 'Opening browser…')?.disabled).toBe(true)
   expect(host.querySelector('[role="dialog"][aria-label="Browser settings"]')).toBeNull()
   expect(api.post).toHaveBeenLastCalledWith('/api/browser/workspace', { action: 'start' }, expect.objectContaining({ params: { workspace_path: 'Chats/Work/projects/one', profile_id: 'work' } }))

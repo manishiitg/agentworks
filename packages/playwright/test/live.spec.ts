@@ -1,8 +1,9 @@
 import { test, expect } from '@agentworks/playwright'
 
 test('live checkout demo', async ({ page, context }) => {
-  await page.setContent('<body style="background:#123456;color:white"><h1>Checkout test</h1><button onclick="document.querySelector(\'h1\').textContent=\'Order confirmed\';document.body.style.background=\'#285430\'">Place order</button></body>')
+  await page.setContent('<body style="background:#123456;color:white"><input id="human" style="position:absolute;left:8px;top:80px"><h1>Checkout test</h1><button onclick="document.querySelector(\'h1\').textContent=\'Order confirmed\';document.body.style.background=\'#285430\'">Place order</button></body>')
   await expect(page.getByRole('heading')).toHaveText('Checkout test')
+  await expect(page.locator('#human')).toHaveValue('manualx')
   // Deliberate visual holds so the integration harness can observe both states.
   await page.waitForTimeout(1500)
   await page.getByRole('button', { name: 'Place order' }).click()
