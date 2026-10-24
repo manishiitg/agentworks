@@ -53,7 +53,8 @@ width even in a narrow desktop panel. Do not cover chart labels or important dat
 ```tsx
 // Inside the authored page; `clock` comes from report.motion.create(...).
 // Its render callback updates progress and the actual observation label.
-<section style={{ position: 'relative', containerType: 'inline-size', paddingBottom: 120 }}>
+const playbackStyle = { position: 'relative', containerType: 'inline-size', paddingBottom: 120 };
+<section style={playbackStyle}>
   <LineChart data={rows} progress={progress} />
   <MotionControls clock={clock}
     positionLabel={currentObservation.label}
