@@ -34,5 +34,5 @@ export function openProductWorkspace(surface: ProductSurface) {
     app.setAgentMode('multi-agent')
   }
   useProductSurfaceStore.getState().setProductSurface(surface)
-  if (window.location.pathname === '/dashboards') productUrlViewChanged()
+  if (['/dashboards', '/home'].includes(window.location.pathname)) productUrlViewChanged()
 }

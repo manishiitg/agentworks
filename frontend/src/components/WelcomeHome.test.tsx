@@ -9,7 +9,7 @@ vi.hoisted(() => {
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
   Object.defineProperty(window, 'localStorage', { configurable: true, value: storage })
 })
-vi.mock('../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn() }))
+vi.mock('../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn((surface: string) => { window.history.pushState({}, '', `/${surface === 'work' ? 'crew' : surface === 'agentworks' ? 'goals' : surface}`) }) }))
 vi.mock('./integrations/McpConnectDialog', () => ({ default: ({ onClose, onNavigate }: { onClose: () => void; onNavigate: () => void }) => <div role="dialog" aria-label="AI app setup"><button onClick={onClose}>Back to welcome</button><button onClick={onNavigate}>Open AgentBridge</button></div> }))
 vi.mock('./WelcomeAiReadiness', () => ({ default: ({ setupOpen, onCloseSetup }: { setupOpen: boolean; onCloseSetup: () => void }) => setupOpen ? <div role="dialog" aria-label="Set up your AI"><button onClick={onCloseSetup}>Back to getting started</button></div> : null }))
 
@@ -19,7 +19,6 @@ import { useAppStore } from '../stores/useAppStore'
 import { useLLMStore } from '../stores/useLLMStore'
 import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
-import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -46,6 +45,7 @@ describe('WelcomeHome', () => {
   afterEach(() => {
     cleanups.splice(0).forEach(cleanup => cleanup())
     window.localStorage.clear()
+    window.history.replaceState({}, '', '/')
     delete window.__APP_RUNTIME_CONFIG__
     useAuthStore.setState({ user: null, isMultiUserMode: false })
     useCommandDialogStore.getState().closeAll()
@@ -65,9 +65,9 @@ describe('WelcomeHome', () => {
     await act(async () => button(host, 'Open Crew').click())
     expect(openProductWorkspace).toHaveBeenCalledWith('work')
     expect(window.localStorage.getItem(WELCOME_HOME_DISMISSED_KEY)).toBe('true')
-    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(host.querySelector('main[aria-label="Getting started"]')).toBeNull()
     const returning = await renderWelcome()
-    expect(returning.querySelector('[role="dialog"]')).toBeNull()
+    expect(returning.querySelector('main[aria-label="Getting started"]')).toBeNull()
   })
 
   it('orders the three cards Crew first without exposing creation to Run-only users', async () => {
@@ -90,7 +90,7 @@ describe('WelcomeHome', () => {
     await act(async () => button(host, label).click())
     expect(openProductWorkspace).toHaveBeenCalledWith(surface)
     expect(useCommandDialogStore.getState().productCreateSurface).toBe(surface)
-    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(host.querySelector('main[aria-label="Getting started"]')).toBeNull()
   })
 
   it('keeps an existing-workspace path alongside creation', async () => {
@@ -144,40 +144,51 @@ describe('WelcomeHome', () => {
     expect(host.querySelector('h1')).not.toBeNull()
   })
 
-  it('lets global navigation leave Welcome rather than covering the selected workspace', async () => {
+  it('stays on Home while opening search, and leaves when a destination is selected', async () => {
     configure()
     const host = await renderWelcome()
     await act(async () => button(host, 'Connect your AI app').click())
     await act(async () => window.dispatchEvent(new Event('quick-switcher-opened')))
-    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(host.querySelector('main[aria-label="Getting started"]')).not.toBeNull()
+    window.history.pushState({}, '', '/crew')
+    await act(async () => window.dispatchEvent(new Event('product-navigation-changed')))
+    expect(host.querySelector('main[aria-label="Getting started"]')).toBeNull()
   })
 
-  it('returns to the current permitted product through the shared workspace opener', async () => {
+  it('is a directly addressable page without modal close or workspace return controls', async () => {
     configure()
-    useProductSurfaceStore.setState({ productSurface: 'work' })
-    const host = await renderWelcome()
-    await act(async () => button(host, 'Back to workspace').click())
-    expect(openProductWorkspace).toHaveBeenCalledWith('work')
-    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    window.history.replaceState({}, '', '/home')
+    const host = await renderWelcome(false)
+    expect(host.querySelector('main[aria-label="Getting started"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Close welcome"]')).toBeNull()
+    expect(host.textContent).not.toContain('Back to workspace')
+    expect(host.querySelector('[aria-modal]')).toBeNull()
+    await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
+    expect(window.location.pathname).toBe('/home')
+    expect(host.querySelector('main[aria-label="Getting started"]')).not.toBeNull()
   })
 
   it('skips a single-product greeting but allows Getting started to reopen it', async () => {
     configure(['work'])
     const host = await renderWelcome()
-    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(host.querySelector('main[aria-label="Getting started"]')).toBeNull()
     await act(async () => window.dispatchEvent(new Event('open-welcome-home')))
-    expect(host.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(host.querySelector('main[aria-label="Getting started"]')).not.toBeNull()
     await act(async () => useProductNavigationToolbarStore.setState({ sidebarWidth: 300 }))
-    const guide = host.querySelector<HTMLElement>('[role="dialog"]')!
+    const guide = host.querySelector<HTMLElement>('main[aria-label="Getting started"]')!
     expect(guide.style.getPropertyValue('--welcome-sidebar-width')).toBe('300px')
-    expect(guide.getAttribute('aria-modal')).toBe('false')
+    expect(guide.getAttribute('aria-modal')).toBeNull()
     const sidebar = document.createElement('div')
     sidebar.setAttribute('data-product-navigation-mode', 'fixed')
     const project = document.createElement('button')
     sidebar.append(project); document.body.append(sidebar)
     await act(async () => project.click())
     sidebar.remove()
-    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(host.querySelector('main[aria-label="Getting started"]')).not.toBeNull()
+    expect(window.location.pathname).toBe('/home')
+    window.history.pushState({}, '', '/crew')
+    await act(async () => window.dispatchEvent(new Event('product-navigation-changed')))
+    expect(host.querySelector('main[aria-label="Getting started"]')).toBeNull()
   })
 
   it('updates visible choices when permissions change while open', async () => {

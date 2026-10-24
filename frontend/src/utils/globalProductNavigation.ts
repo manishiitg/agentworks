@@ -1,3 +1,4 @@
+import { productUrlViewChanged } from './productUrlNavigation'
 import { requestServiceChat } from './serviceChatNavigation'
 import { isProductSurface } from '../products/productSurfaceConfig'
 import type { ActiveSessionInfo } from '../services/api-types'
@@ -58,7 +59,9 @@ export function openGlobalTab(tabId: string): boolean {
   } else {
     surfaces.setProductSurface(workflowSurfaceForPreset(tab.metadata?.presetQueryId))
   }
-  return activateTab(tabId)
+  const activated = activateTab(tabId)
+  if (activated && window.location.pathname === '/home') productUrlViewChanged()
+  return activated
 }
 
 export async function openGlobalActivitySession(
@@ -67,6 +70,7 @@ export async function openGlobalActivitySession(
 ): Promise<void> {
   try {
     await openGlobalActivitySessionInner(session, options)
+    if (window.location.pathname === '/home') productUrlViewChanged()
   } catch (error) {
     // Both global entry points (header monitor, Ctrl+K) await this without
     // their own recovery. A failed open must toast, never reject unhandled

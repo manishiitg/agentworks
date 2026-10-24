@@ -39,8 +39,9 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     const controller = new AbortController()
     activeResolution.current = controller
     const finish = (status: Status) => { if (!controller.signal.aborted) setResolution({ location, account, workspace, status, attempt, permissionKey }) }
-    // Old Home bookmarks now return to the person's workspace as well.
-    let requested = window.location.pathname === '/home' ? '/' : window.location.pathname + window.location.search
+    const homeRequested = window.location.pathname === '/home'
+    // Resolve the permitted workspace normally, while Home remains the page.
+    let requested = homeRequested ? '/' : window.location.pathname + window.location.search
     // This library has no selected product or new product grant. Its ordinary
     // authenticated API decides which publications the person can discover.
     if (window.location.pathname === '/dashboards') {
@@ -89,7 +90,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
         if (controller.signal.aborted) return
         activate()
         useWorkspaceReturnStore.setState({ firstVisit: false, restore: null, note: 'Your last workspace is no longer available. Choose another workspace.' })
-        window.history.replaceState({}, '', productRoutePath(defaultDestination)); finish('ready'); return
+        if (!homeRequested) window.history.replaceState({}, '', productRoutePath(defaultDestination)); finish('ready'); return
       }
       await waitForChatStoreHydration()
       if (controller.signal.aborted) return
@@ -106,7 +107,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
           const layout = explicitPanel && saved.layout ? { ...saved.layout, panel_open: true, focused_pane: 'preview' as const } : saved.layout
           useWorkspaceReturnStore.setState({ restore: ['agentworks', 'relays', 'work', 'code'].includes(saved.surface) ? { ...saved, view: destination.view, layout } : null })
         }
-        window.history.replaceState({}, '', productRoutePath(destination))
+        if (!homeRequested) window.history.replaceState({}, '', productRoutePath(destination))
         finish('ready')
       } catch (error) {
         const code = (error as { response?: { status?: number } })?.response?.status
@@ -115,7 +116,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
           if (controller.signal.aborted) return
           activate()
           useWorkspaceReturnStore.setState({ firstVisit: false, restore: null, note: 'Your last workspace is no longer available. Choose another workspace.' })
-          window.history.replaceState({}, '', productRoutePath(defaultDestination)); finish('ready'); return
+          if (!homeRequested) window.history.replaceState({}, '', productRoutePath(defaultDestination)); finish('ready'); return
         }
         throw error
       }

@@ -69,3 +69,23 @@ it('keeps the Dashboards deep link until deliberate navigation, including return
     expect(popped).toHaveBeenCalledOnce()
   } finally { stop(); window.removeEventListener('popstate', popped) }
 })
+
+
+it('keeps Home during background hydration, then opens an explicitly chosen workspace', () => {
+  vi.useFakeTimers()
+  useProductSurfaceStore.setState({ productSurface: 'work', selectedWorkProjectId: 'same' })
+  window.history.replaceState({}, '', '/home')
+  const navigated = vi.fn()
+  window.addEventListener('product-navigation-changed', navigated)
+  const stop = observeProductHistory()
+  try {
+    replaceProductSelection(() => useProductSurfaceStore.setState({ selectedWorkProjectId: 'available' }))
+    productUrlViewChanged(true)
+    vi.runAllTimers()
+    expect(window.location.pathname).toBe('/home')
+    productUrlViewChanged()
+    vi.runAllTimers()
+    expect(window.location.pathname).toBe('/crew/projects/available')
+    expect(navigated).toHaveBeenCalledOnce()
+  } finally { stop(); window.removeEventListener('product-navigation-changed', navigated) }
+})

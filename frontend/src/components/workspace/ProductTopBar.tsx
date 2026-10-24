@@ -35,6 +35,7 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
   const open = navigationMode === 'fixed'
   useEffect(() => {
     const showHome = () => setNavigationMode('fixed')
+    if (window.location.pathname === '/home') showHome()
     window.addEventListener('open-welcome-home', showHome)
     return () => window.removeEventListener('open-welcome-home', showHome)
   }, [setNavigationMode])
@@ -61,7 +62,7 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
   const [sizing, setSizing] = useState(() => ({ key: widthKey, width: readWidth(widthKey) }))
   const width = sizing.key === widthKey ? sizing.width : readWidth(widthKey)
   useEffect(() => {
-    useProductNavigationToolbarStore.setState({ sidebarWidth: sidebar && open ? width : 0 })
+    useProductNavigationToolbarStore.setState({ sidebarWidth: sidebar ? (open ? width : 48) : 0 })
     return () => useProductNavigationToolbarStore.setState({ sidebarWidth: 0 })
   }, [sidebar, open, width])
   const drag = usePointerDrag()

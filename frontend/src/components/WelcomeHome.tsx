@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { ArrowRight, KeyRound, Plug, Terminal, X } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { ArrowRight, KeyRound, Plug, Terminal } from 'lucide-react'
 import { Button } from './ui/Button'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -11,7 +11,7 @@ import { openQuickNavigation, quickNavigationItems } from '../utils/quickNavigat
 import { isGuideRemembered, rememberGuide } from '../utils/onboarding'
 import { getRuntimeAppName, runtimeBrandAsset, runtimeBrandingConfig } from '../runtime-branding'
 import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
-import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
+import { productUrlViewChanged } from '../utils/productUrlNavigation'
 import WelcomeAiReadiness from './WelcomeAiReadiness'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 
@@ -35,10 +35,8 @@ const SERVICE_DESCRIPTIONS: Partial<Record<ProductSurface, string>> = {
 
 export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   // Single-product accounts go straight to their workspace; Getting started can still open this page.
-  const [open, setOpen] = useState(() => autoOpen && !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && navigationProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).length !== 1)
-  const [manualOpen, setManualOpen] = useState(false)
+  const [open, setOpen] = useState(() => window.location.pathname === '/home' || (autoOpen && !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && navigationProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).length !== 1))
   const sidebarWidth = useProductNavigationToolbarStore(state => state.sidebarWidth)
-  const guide = useRef<HTMLDivElement>(null)
   const [connectOpen, setConnectOpen] = useState(false)
   const [providerSetupOpen, setProviderSetupOpen] = useState(false)
   const user = useAuthStore(state => state.user)
@@ -48,38 +46,41 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
     return PRODUCT_CARDS.filter(product => visible.has(product.id) && !PERSONAL_PRODUCTS.has(product.id))
   }, [user?.allowed_products])
   const creationItems = useMemo(() => quickNavigationItems(user, 'work', isMultiUserMode).filter(item => item.action === 'create'), [user, isMultiUserMode])
-  const close = useCallback(() => {
+  const leaveHome = useCallback(() => {
     rememberGuide(WELCOME_HOME_DISMISSED_KEY)
     useWorkspaceReturnStore.setState({ firstVisit: false })
     setConnectOpen(false)
     setProviderSetupOpen(false)
     setOpen(false)
+    if (window.location.pathname === '/home') productUrlViewChanged()
   }, [])
 
   useEffect(() => {
-    const show = () => { setManualOpen(true); setConnectOpen(false); setProviderSetupOpen(false); setOpen(true) }
-    const leaveForNavigation = () => { if (open) close() }
+    const show = () => {
+      if (window.location.pathname !== '/home') window.history.pushState({}, '', '/home')
+      setConnectOpen(false); setProviderSetupOpen(false); setOpen(true)
+    }
+    const syncLocation = () => {
+      if (window.location.pathname === '/home') show()
+      else leaveHome()
+    }
     window.addEventListener(OPEN_WELCOME_HOME_EVENT, show)
-    // Global navigation must be able to leave Welcome, just as it leaves a settings page.
-    window.addEventListener('quick-switcher-opened', leaveForNavigation)
+    window.addEventListener('popstate', syncLocation)
+    window.addEventListener('product-navigation-changed', syncLocation)
     return () => {
       window.removeEventListener(OPEN_WELCOME_HOME_EVENT, show)
-      window.removeEventListener('quick-switcher-opened', leaveForNavigation)
+      window.removeEventListener('popstate', syncLocation)
+      window.removeEventListener('product-navigation-changed', syncLocation)
     }
-  }, [close, open])
+  }, [leaveHome])
 
   useEffect(() => {
-    if (autoOpen && !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && products.length > 1) setOpen(true)
+    if (autoOpen && !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && products.length > 1) {
+      window.history.replaceState({}, '', '/home')
+      setOpen(true)
+      window.dispatchEvent(new Event(OPEN_WELCOME_HOME_EVENT))
+    }
   }, [autoOpen, products.length])
-
-  useEffect(() => {
-    if (!open || !manualOpen || !sidebarWidth) return
-    const leaveForSidebar = (event: MouseEvent) => {
-      if (event.target instanceof Element && !guide.current?.contains(event.target) && event.target.closest('[data-product-navigation-mode]')) close()
-    }
-    document.addEventListener('click', leaveForSidebar, true)
-    return () => document.removeEventListener('click', leaveForSidebar, true)
-  }, [close, manualOpen, open, sidebarWidth])
 
   if (!open) return null
 
@@ -97,20 +98,14 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const openProduct = (surface: ProductSurface) => {
     if (!navigationProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).includes(surface)) return
     openProductWorkspace(surface)
-    close()
+    leaveHome()
   }
   const openMcpSetup = () => setConnectOpen(true)
   const openProviders = () => setProviderSetupOpen(true)
-  const returnToWorkspace = () => {
-    const current = useProductSurfaceStore.getState().productSurface
-    const destination = products.find(product => product.id === current) ?? products[0]
-    if (destination) openProduct(destination.id)
-    else close()
-  }
 
   return (
-    <div ref={guide} role="dialog" aria-modal={!manualOpen || !sidebarWidth} aria-label={`Welcome to ${appName}`}
-      style={{ '--welcome-sidebar-width': `${manualOpen ? sidebarWidth : 0}px` } as CSSProperties}
+    <main aria-label="Getting started"
+      style={{ '--welcome-sidebar-width': `${sidebarWidth}px` } as CSSProperties}
       className="fixed inset-0 z-[60] overflow-y-auto bg-background md:left-[var(--welcome-sidebar-width)]">
       <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-5 py-8 sm:px-8 sm:py-10">
         <header className="flex items-start justify-between gap-4">
@@ -122,7 +117,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">What would you like to do?</h1>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">Choose a starting point. We’ll help you set it up.</p>
           </div>
-          <button type="button" onClick={close} aria-label="Close welcome" className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><X className="h-5 w-5" /></button>
         </header>
 
         {workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} setupOpen={providerSetupOpen} onSetup={openProviders} onCloseSetup={() => setProviderSetupOpen(false)} />}
@@ -137,7 +131,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
               const actionLabel = creation ? copy.createLabel : `Open ${product.label}`
               return <article key={product.id} data-welcome-product={product.id} className={`flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-card ${product.id === 'work' ? 'border-primary/50' : 'border-border'}`}>
                 <button type="button" aria-label={actionLabel} onClick={() => {
-                  if (creation) { if (openQuickNavigation(creation)) close() }
+                  if (creation) { if (openQuickNavigation(creation)) leaveHome() }
                   else openProduct(product.id)
                 }} className="group flex flex-1 flex-col items-start p-5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
                   <span className="flex w-full items-center justify-between gap-2">
@@ -177,12 +171,11 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
         </section>
 
         <footer className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border pt-4 text-xs text-muted-foreground">
-          <button type="button" onClick={workProducts.length > 0 ? openProviders : () => { close(); useLLMStore.getState().setShowLLMModal(true) }} className="inline-flex min-h-8 items-center gap-2 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><KeyRound className="h-3.5 w-3.5" aria-hidden="true" />AI models &amp; accounts</button>
-          {agentBridgeEnabled && <a href={agentBridgeSetupUrl} onClick={close} className="inline-flex min-h-8 items-center gap-2 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Terminal className="h-3.5 w-3.5" aria-hidden="true" />CLI &amp; agent messaging</a>}
-          <button type="button" onClick={returnToWorkspace} className="min-h-8 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:ml-auto">Back to workspace<ArrowRight className="ml-1.5 inline h-3.5 w-3.5" aria-hidden="true" /></button>
+          <button type="button" onClick={workProducts.length > 0 ? openProviders : () => { leaveHome(); useLLMStore.getState().setShowLLMModal(true) }} className="inline-flex min-h-8 items-center gap-2 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><KeyRound className="h-3.5 w-3.5" aria-hidden="true" />AI models &amp; accounts</button>
+          {agentBridgeEnabled && <a href={agentBridgeSetupUrl} onClick={leaveHome} className="inline-flex min-h-8 items-center gap-2 rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Terminal className="h-3.5 w-3.5" aria-hidden="true" />CLI &amp; agent messaging</a>}
         </footer>
       </div>
-      {connectOpen && <Suspense fallback={<p role="status" className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg border border-border bg-card p-3 text-sm">Loading connection setup…</p>}><McpConnectDialog onClose={() => setConnectOpen(false)} onNavigate={close} /></Suspense>}
-    </div>
+      {connectOpen && <Suspense fallback={<p role="status" className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg border border-border bg-card p-3 text-sm">Loading connection setup…</p>}><McpConnectDialog onClose={() => setConnectOpen(false)} onNavigate={leaveHome} /></Suspense>}
+    </main>
   )
 }

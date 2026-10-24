@@ -82,7 +82,7 @@ describe('protected deep-link boundary', () => {
 })
 
 describe('server workspace return', () => {
-  it('treats an old Home bookmark as a return to the saved workspace', async () => {
+  it('keeps Home addressable while resolving the saved workspace with normal permissions', async () => {
     const { workspaceStateApi } = await import('../services/workspaceState')
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
@@ -94,7 +94,7 @@ describe('server workspace return', () => {
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
       await act(async () => root.render(<ProductRouteBoundary account="alice">Workspace</ProductRouteBoundary>))
-      expect(window.location.pathname).toBe('/code/projects/last')
+      expect(window.location.pathname).toBe('/home')
       expect(useWorkspaceReturnStore.getState().firstVisit).toBe(false)
       expect(workspaceStateApi.get).toHaveBeenCalled()
     } finally { await act(async () => root.unmount()); host.remove() }

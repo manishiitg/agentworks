@@ -10,6 +10,7 @@ describe('shareable product routes', () => {
       expect(route, path).toBeTruthy()
       expect(productRoutePath(route!), path).toBe(path)
     }
+    expect(productReturnPath('/home')).toBe('/home')
     expect(productReturnPath('/work')).toBe('/crew')
     expect(productReturnPath('/knowledgebase')).toBe('/brain')
     expect(productReturnPath('/mcp-gateway')).toBe('/vault')

@@ -55,7 +55,10 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
     const route = currentProductRoute(), selection = readProductNavigation()
     return route?.surface === selection.surface && route.id === selection.id && Boolean(route.overview) === Boolean(selection.overview)
   }
-  const schedule = (change: HistoryChange) => {
+  const schedule = (change: HistoryChange, explicit = false) => {
+    // Background hydration must not navigate away from the Home page.
+    const scheduledOnHome = window.location.pathname === '/home'
+    if (scheduledOnHome && (!explicit || change !== 'navigation')) return
     // Mounting and asynchronous resource hydration settle the current entry.
     // Keep a pending navigation push, and coalesce subsequent view hydration
     // into the same replacement rather than an extra Back step.
@@ -71,23 +74,27 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
       replace = false
       // Do not take over shared assets, sign-in or consent routes.
       const fromDashboards = window.location.pathname === '/dashboards'
-      if (currentProductRoute() === undefined && !fromDashboards) return
+      const fromHome = window.location.pathname === '/home'
+      if (fromHome && !scheduledOnHome) return
+      if (currentProductRoute() === undefined && !fromDashboards && !fromHome) return
       const projected = readProductNavigation()
       // A fresh deep link names its view before the mounted surface has
       // applied it; a projection must not rewrite the link to the default.
       if (replaceEntry && currentProductRoute()?.view && projected.view !== currentProductRoute()?.view) { lastSelection = productRoutePath(projected); return }
       onSelection?.(projected)
       const path = productRoutePath(projected)
-      if (path === lastSelection && !replaceEntry && !fromDashboards) return
+      if (path === lastSelection && !replaceEntry && !fromDashboards && !fromHome) return
       lastSelection = path
       if (path !== window.location.pathname + window.location.search) {
         if (replaceEntry) window.history.replaceState({}, '', path)
         else window.history.pushState({}, '', path)
         if (fromDashboards) window.dispatchEvent(new PopStateEvent('popstate'))
+        if (fromHome) window.dispatchEvent(new Event('product-navigation-changed'))
       }
     }, 0)
   }
-  notify = schedule
+  const navigate = (change: HistoryChange) => schedule(change, true)
+  notify = navigate
   const isWorkflow = () => ['agentworks', 'relays'].includes(useProductSurfaceStore.getState().productSurface) && !useAppStore.getState().showWorkflowsOverview
   const unsubscribers = [
     useProductSurfaceStore.subscribe((state, previous) => {
@@ -102,7 +109,7 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
   ]
   return () => {
     clearTimeout(timer)
-    if (notify === schedule) notify = undefined
+    if (notify === navigate) notify = undefined
     unsubscribers.forEach(unsubscribe => unsubscribe())
   }
 }
