@@ -1,4 +1,3 @@
-import { openAppPage } from '../../utils/appNavigation'
 import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChartNoAxesCombined, HelpCircle, Keyboard, KeyRound, LogOut } from 'lucide-react'
@@ -72,11 +71,7 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, men
             <ChartNoAxesCombined className="h-4 w-4 text-muted-foreground" />
             Token usage
           </button>}
-          {menuOnly && <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Help</p>}
-          {!messagingOnly && <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => { setOpen(false); openAppPage('/home') }}>
-            <HelpCircle className="h-4 w-4 text-muted-foreground" />
-            Getting started
-          </button>}
+          {menuOnly && onOpenWalkthrough && <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Help</p>}
           {onOpenWalkthrough && <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => {
             setOpen(false)
             onOpenWalkthrough()

@@ -38,8 +38,8 @@ it.each([false, true])('combines account and Setup with existing admin gates (ad
     expect(menu.hidden).toBe(false)
     expect(menu.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
     expect(menu.querySelector('[aria-label="My vaults"]') !== null).toBe(true) // everyone who can create sees My vaults, admins included
-    for (const label of ['Workspace', 'Help', 'Getting started', 'Sign out']) expect(menu.textContent).toContain(label)
-    for (const label of ['Browser connections', 'Notifications & sound', 'Tips while working']) expect(menu.textContent).not.toContain(label)
+    for (const label of ['Workspace', 'Help', 'Sign out']) expect(menu.textContent).toContain(label)
+    for (const label of ['Getting started', 'Browser connections', 'Notifications & sound', 'Tips while working']) expect(menu.textContent).not.toContain(label)
     expect(menu.textContent).not.toContain('Change password')
     expect(menu.querySelector('[data-product-option]')).toBeNull()
     for (const label of ['Dashboards', 'Switch product', 'Audit logs', 'Vault MCP endpoint', 'Search']) expect(menu.textContent).not.toContain(label)

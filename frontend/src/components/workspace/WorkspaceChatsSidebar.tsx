@@ -34,6 +34,7 @@ import {
 } from '../../utils/sidebarChats'
 import { openGlobalActivitySession, openGlobalTab } from '../../utils/globalProductNavigation'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
+import { followAppLink } from '../../utils/appNavigation'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
@@ -546,7 +547,9 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       className="flex min-h-0 w-full shrink-0 flex-col border-r border-border/70 bg-muted/20"
     >
       <div className="flex h-[50px] shrink-0 items-center gap-2 px-3">
-        <RuntimeBrandLogo variant="sidebar-header" className="flex-1" />
+        <a href="/home" onClick={followAppLink} aria-label="Home" title="Home" className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <RuntimeBrandLogo variant="sidebar-header" />
+        </a>
         <div className="flex shrink-0 items-center gap-1">
         <button
           type="button"

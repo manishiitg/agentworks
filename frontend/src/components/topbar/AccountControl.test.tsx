@@ -30,7 +30,7 @@ describe('Account menu availability', () => {
       await act(async () => trigger.click())
       expect(host.textContent).toContain(`AgentWorks v${APP_VERSION}`)
       expect(host.textContent).not.toContain('Access tokens')
-      for (const label of ['Tips while working', 'Notifications & sound', 'Browser connections']) expect(host.textContent).not.toContain(label)
+      for (const label of ['Getting started', 'Tips while working', 'Notifications & sound', 'Browser connections']) expect(host.textContent).not.toContain(label)
       expect(host.textContent?.includes('Change password')).toBe(isMultiUserMode)
       expect(host.textContent).not.toContain('Users & access')
       expect(host.textContent?.includes('Sign out')).toBe(isMultiUserMode)

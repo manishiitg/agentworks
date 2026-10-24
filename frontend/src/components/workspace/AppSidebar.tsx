@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
-import { Home, PanelLeftClose } from 'lucide-react'
+import { Home, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
 import { CompactProductNavigationContext } from './productNavigationContexts'
@@ -40,12 +40,9 @@ export function AppSidebar() {
   useEffect(() => { useWorkspaceReturnStore.setState({ navigationMode }) }, [navigationMode])
   const open = navigationMode === 'fixed'
   useEffect(() => {
-    const showHome = () => { restoredNavigation.current = true; setNavigationMode('fixed') }
-    if (window.location.pathname === '/home') showHome()
-    const followLocation = () => { if (window.location.pathname === '/home') showHome() }
-    window.addEventListener('open-welcome-home', showHome)
-    window.addEventListener('popstate', followLocation)
-    return () => { window.removeEventListener('open-welcome-home', showHome); window.removeEventListener('popstate', followLocation) }
+    const showSidebar = () => { restoredNavigation.current = true; setNavigationMode('fixed') }
+    window.addEventListener('open-app-sidebar', showSidebar)
+    return () => window.removeEventListener('open-app-sidebar', showSidebar)
   }, [setNavigationMode])
   const ownSidebarSettings = useRef<HTMLDivElement | null>(null)
   const registerSidebarSettings = useCallback((node: HTMLDivElement | null) => {
@@ -80,19 +77,21 @@ export function AppSidebar() {
     try { window.localStorage.setItem(widthKey, String(value)) } catch { /* Optional preference. */ }
   }
   const leadingTarget = useProductNavigationToolbarStore(state => state.leadingTarget)
+  const home = <button type="button" aria-label="Home" title="Home" onClick={() => openAppPage('/home')}
+    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+    <Home className="h-4 w-4" aria-hidden="true" />
+  </button>
   const toggle = <button type="button" data-navigation-toggle
-    aria-label={open ? 'Close sidebar' : 'Home'} aria-expanded={open}
-    title={open ? 'Close your work list' : 'Getting started'}
+    aria-label={open ? 'Close sidebar' : 'Open sidebar'} aria-expanded={open}
+    title={open ? 'Close sidebar' : 'Open sidebar'}
     onClick={() => {
       restoredNavigation.current = true
-      if (open) setNavigationMode('auto-hide')
-      else { setNavigationMode('fixed'); openAppPage('/home') }
+      setNavigationMode(open ? 'auto-hide' : 'fixed')
     }}
     className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-    {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <Home className="h-4 w-4" aria-hidden="true" />}
+    {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />}
   </button>
-  // Branding stays in the open sidebar; Home also opens Getting started.
-  const leading = <div className="flex shrink-0 items-center gap-2 md:hidden">{toggle}</div>
+  const leading = <div className="flex shrink-0 items-center gap-2 md:hidden">{home}{toggle}</div>
   return <CompactProductNavigationContext.Provider value={true}>
       <div data-terminal-focus-chrome="header" data-app-sidebar data-product-navigation-mode={navigationMode}
         style={{ '--chat-sidebar-width': `${width}px` } as CSSProperties}
@@ -101,7 +100,8 @@ export function AppSidebar() {
           <Suspense fallback={<div className="w-full border-r border-border">{toggle}</div>}><WorkspaceChatsSidebar toggle={toggle} footer={<div ref={registerSidebarSettings} data-sidebar-setup-slot />} /></Suspense>
         </aside>
         {!open && <aside aria-label="Product shortcuts" className="absolute inset-y-0 left-0 hidden w-12 flex-col border-r border-border/70 bg-muted/20 md:flex">
-          <div className="flex h-[50px] shrink-0 items-center justify-center">{toggle}</div>
+          <div className="flex h-[50px] shrink-0 items-center justify-center">{home}</div>
+          <div className="flex shrink-0 items-center justify-center py-1">{toggle}</div>
           <div className="mt-auto pb-14"><SharedToolShortcuts compact /></div>
         </aside>}
         {/* The account icon belongs to the rail's stacking context. A fixed

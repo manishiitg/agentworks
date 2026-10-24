@@ -5,6 +5,7 @@
 changing a product, page, project or chat does not.
 
 - `AppSidebar` owns the left work list, rail, expansion and width.
+- Home only navigates to `/home`; a separate sidebar button controls the menu.
 - `WorkspaceAccountMenu` and `AppQuickSwitcher` are app-level controls.
 - The shell’s `data-app-main` region contains the active page’s header and content.
 - `WorkspaceTopToolbar` / `WorkspacePageHeader` supply the existing header slots.

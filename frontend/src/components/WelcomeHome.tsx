@@ -118,7 +118,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">What would you like to do?</h1>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">Choose a starting point. We’ll help you set it up.</p>
           </div>
-          <button type="button" aria-label="Open navigation" onClick={() => window.dispatchEvent(new Event(OPEN_WELCOME_HOME_EVENT))}
+          <button type="button" aria-label="Open navigation" onClick={() => window.dispatchEvent(new Event('open-app-sidebar'))}
             className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"><Menu className="h-5 w-5" aria-hidden="true" /></button>
         </header>
 
