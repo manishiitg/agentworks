@@ -187,6 +187,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 }
 
 func TestExternalCrewAuthoringAccess(t *testing.T) {
+	ensureProjectStateRoot(t)
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true},{"id":"viewer","username":"viewer","role":"viewer","products":["work"]},{"id":"editor","username":"editor","can_create":false,"can_edit":true,"products":["work"]}]}`)
@@ -206,16 +207,22 @@ func TestExternalCrewAuthoringAccess(t *testing.T) {
 	if code, _ := externalCrewRequest(t, env, bounded, "create_crew", spec); code != 403 {
 		t.Fatalf("a token bounded to some Crews must not create, got %d", code)
 	}
-	// alpha belongs to owner: a bounded token may still edit Crews it names.
-	boundedAlpha := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:write"}, CrewIDs: []string{"alpha"}}}
-	if code, out := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": "alpha", "role": "Reviewer", "purpose": "Review changes."}); code != 200 || out["role"] != "Reviewer" {
+	// Use the current creation path instead of a retired per-user Crew fixture.
+	createdCode, created := externalCrewRequest(t, env, crewWriter("owner"), "create_crew", spec)
+	if createdCode != 200 {
+		t.Fatalf("create access fixture = %d %v", createdCode, created)
+	}
+	alpha := created["crew_id"].(string)
+	// A bounded token may still edit the Crew it names.
+	boundedAlpha := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:write"}, CrewIDs: []string{alpha}}}
+	if code, out := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": alpha, "role": "Reviewer", "purpose": "Review changes."}); code != 200 || out["role"] != "Reviewer" {
 		t.Fatalf("owner update within the bound = %d %v", code, out)
 	}
 	if code, _ := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": "beta", "role": "x"}); code != 404 {
 		t.Fatalf("Crew outside the token bound must be not-found, got %d", code)
 	}
-	// gamma belongs to "other": the owner of the token is a reader there.
-	if code, _ := externalCrewRequest(t, env, crewWriter("owner"), "update_crew", map[string]any{"crew_id": "gamma", "role": "x"}); code != 403 {
+	// Another person's unshared Crew is not exposed through authoring.
+	if code, _ := externalCrewRequest(t, env, crewWriter("owner"), "update_crew", map[string]any{"crew_id": "gamma", "role": "x"}); code != 404 {
 		t.Fatalf("another owner's Crew must be refused, got %d", code)
 	}
 	if code, _ := externalCrewRequest(t, env, crewWriter("owner"), "create_crew", map[string]any{"name": "Bad", "role": "x", "purpose": "y", "selected_skills": []any{"no-such-skill"}}); code != 400 {

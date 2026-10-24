@@ -195,13 +195,13 @@ func TestCrewCreationFailureKeepsOneUsableIdentity(t *testing.T) {
 	defer proxy.Close()
 	t.Setenv("WORKSPACE_API_URL", proxy.URL)
 	ctx := f.Ctx(fixtureUserA)
-	if id, err := f.API.createWorkspaceFromSpec(ctx, GetUserFromContext(ctx), "code", crewSpec{Name: "Initial failure"}, false); err == nil || id != "" {
+	if id, err := f.API.createWorkspaceFromSpec(ctx, GetUserFromContext(ctx), "work", crewSpec{Name: "Initial failure"}, false); err == nil || id != "" {
 		t.Fatalf("initial manifest failure = %q %v", id, err)
 	}
 	if failedRoot == "" {
 		t.Fatal("manifest failure was not reached")
 	}
-	if _, exists := defaultProjectOwners().Lookup("code", strings.TrimPrefix(failedRoot, "Crew/")); exists {
+	if _, exists := defaultProjectOwners().Lookup("work", strings.TrimPrefix(failedRoot, "Crew/")); exists {
 		t.Fatal("failed creation left an owner record")
 	}
 	for path := range f.Mock.files {
@@ -210,8 +210,8 @@ func TestCrewCreationFailureKeepsOneUsableIdentity(t *testing.T) {
 		}
 	}
 	failSuffix = "/README.md"
-	req := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/code/projects", strings.NewReader(`{"name":"Partial setup","files":{"README.md":"Project notes"}}`)).WithContext(ctx)
-	req = mux.SetURLVars(req, map[string]string{"id": "code"})
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/work/projects", strings.NewReader(`{"name":"Partial setup","files":{"README.md":"Project notes"}}`)).WithContext(ctx)
+	req = mux.SetURLVars(req, map[string]string{"id": "work"})
 	rec := httptest.NewRecorder()
 	f.API.handleCreateAgentProfileProject(rec, req)
 	var out struct {

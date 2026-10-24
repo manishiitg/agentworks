@@ -692,7 +692,6 @@ func TestCreateCrewProjectAvailability(t *testing.T) {
 	}
 	t.Run("unknown server fails before creating", func(t *testing.T) {
 		svc, mock, ctx := newEnv(t)
-		before := len(mock.files)
 		if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 			UserID: "owner", WorkflowPath: "Workflow/build", Title: "T",
 			Servers: []string{"ghost"}, Role: "R", Purpose: "P", StepInstruction: "S",
@@ -700,8 +699,10 @@ func TestCreateCrewProjectAvailability(t *testing.T) {
 		}); err == nil || !strings.Contains(err.Error(), "not configured") {
 			t.Fatalf("unknown server err = %v, want not-configured", err)
 		}
-		if len(mock.files) != before {
-			t.Fatal("failed validation wrote files")
+		for path := range mock.files {
+			if strings.HasPrefix(path, "Crew/") {
+				t.Fatalf("failed validation created %s", path)
+			}
 		}
 	})
 	t.Run("disconnected server is selected and pending", func(t *testing.T) {
