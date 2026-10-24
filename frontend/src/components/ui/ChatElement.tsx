@@ -67,8 +67,8 @@ export function ChatElement({ spec, renderMarkdown }: { spec: ElementSpec; rende
   return (
     <section className={`${frame} p-4`} data-chat-element="timeline" aria-label={spec.title}>
       <div className="mb-4 break-words text-sm font-semibold">{spec.title}</div>
-      <ol className="m-0 list-none p-0">
-        {spec.items.map((item, index) => <li key={index} className="relative ml-1 border-l border-border pb-5 pl-5 last:border-transparent last:pb-0">
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        {spec.items.map((item, index) => <li key={index} style={{ paddingLeft: '1.25rem', marginTop: 0 }} className="relative ml-1 border-l border-border pb-5 last:border-transparent last:pb-0">
           <span aria-hidden="true" className="absolute -left-1 top-1 h-2 w-2 rounded-full bg-sky-600 dark:bg-sky-400" />
           <div className="break-words text-xs text-muted-foreground">{item.when}</div>
           <div className="mt-0.5 break-words text-sm font-medium">{item.title}</div>
