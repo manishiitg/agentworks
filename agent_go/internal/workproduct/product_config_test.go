@@ -189,13 +189,13 @@ func TestCrewDomainSkillReferences(t *testing.T) {
 			t.Fatalf("missing builtin %s", name)
 		}
 		for _, file := range loaded[0].SupportingFiles {
-			if !strings.HasPrefix(file.RelPath, "references/") || strings.TrimSpace(file.Content) == "" {
+			if !strings.HasPrefix(file.RelPath, "references/") || strings.TrimSpace(string(file.Content)) == "" {
 				t.Fatalf("invalid procedure %s/%s", name, file.RelPath)
 			}
 			if !strings.Contains(loaded[0].Content, "("+file.RelPath+")") {
 				t.Fatalf("unindexed procedure %s/%s", name, file.RelPath)
 			}
-			if strings.Contains(file.Content, "TEMPLATE_SETUP") || strings.Contains(file.Content, "completed_steps") {
+			if strings.Contains(string(file.Content), "TEMPLATE_SETUP") || strings.Contains(string(file.Content), "completed_steps") {
 				t.Fatalf("retired setup dependency in %s/%s", name, file.RelPath)
 			}
 			count++
