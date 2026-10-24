@@ -24,7 +24,7 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"kind":         externalString("read_saved_chat: raw (default) or summary. Builders can read an agent's private imported chat with its current website access."),
 		"offset":       externalInteger(0, 1<<30), "limit": externalInteger(0, 65536),
 		"conversation_key": externalString("Exact conversation key from this Crew’s tab list."),
-		"chat_id":          externalString("Tab id from chats. Other owners’ tabs allow read_chat and message_chat; ask and control actions use your own tabs."),
+		"chat_id":          externalString("Tab id from chats. Selected shared agents accept attributed ask/message_chat and read_chat from sharing onward. Other co-owner tabs allow read_chat/message_chat. Tab controls belong to their owner."),
 		"inbox_id":         externalString("For message_chat: existing agent reply address, when continuing a conversation."),
 		"query":            externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
 		"wait_seconds": externalInteger(0, 25), "after": externalInteger(0, 1<<30),

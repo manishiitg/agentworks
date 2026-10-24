@@ -560,7 +560,7 @@ func workspaceDashboardTokenAllows(claims *UserClaims, profileID, id string) boo
 		return t.ProjectKind == profileID && t.AllowsCrew(id) && t.Allows("crews:read")
 	}
 	if profileID == crewProfileID {
-		return externalCodeRunAllowed(claims) && (len(t.CrewIDs) == 0 || t.AllowsCrew(id))
+		return (t.Allows("crews:read") || t.Allows("crews:run") || t.Allows("crews:write")) && (len(t.CrewIDs) == 0 || t.AllowsCrew(id))
 	}
 	return t.AllowsCrew(id)
 }
