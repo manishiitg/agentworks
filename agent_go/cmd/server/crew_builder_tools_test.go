@@ -266,13 +266,13 @@ func TestCreateCrewToolEndToEnd(t *testing.T) {
 		t.Fatal("create_crew tool is not registered")
 	}
 	for _, field := range tool.params["required"].([]string) {
-		if field == "role" || field == "purpose" {
+		if field == "purpose" {
 			t.Fatal("optional Crew identity is required by the Builder schema")
 		}
 	}
 	ctx := context.Background()
 	result, err := tool.exec(ctx, map[string]interface{}{
-		"title": "Release Reviewer", "purpose": "Own release quality", "role": "Reviewer",
+		"title": "Release Reviewer", "purpose": "Own release quality",
 		"step_instruction": "Review the release.", "idempotency_key": "proposal-1",
 	})
 	if err != nil {
@@ -305,7 +305,7 @@ func TestCreateCrewToolEndToEnd(t *testing.T) {
 		t.Fatalf("triggers = %+v, want one internal binding", triggers)
 	}
 	again, err := tool.exec(ctx, map[string]interface{}{
-		"title": "Release Reviewer", "purpose": "Own release quality", "role": "Reviewer",
+		"title": "Release Reviewer", "purpose": "Own release quality",
 		"step_instruction": "Review the release.", "idempotency_key": "proposal-1",
 	})
 	if err != nil {
@@ -333,7 +333,7 @@ func TestCreateCrewToolRejectsBadInput(t *testing.T) {
 		t.Fatalf("non-array skills err = %v, want rejection", err)
 	}
 	if _, err := tool.exec(ctx, map[string]interface{}{
-		"title": "T", "purpose": "P", "role": "R", "idempotency_key": "k",
+		"title": "T", "purpose": "P", "idempotency_key": "k",
 	}); err == nil {
 		t.Fatal("missing step instruction: expected rejection")
 	}

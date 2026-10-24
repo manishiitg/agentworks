@@ -52,7 +52,6 @@ type crewSpec struct {
 	Kind           string                         `json:"kind,omitempty"`
 	Name           string                         `json:"name"`
 	Icon           string                         `json:"icon,omitempty"`
-	Role           string                         `json:"role"`
 	Purpose        string                         `json:"purpose"`
 	SelectedSkills []string                       `json:"selected_skills,omitempty"`
 	Files          map[string]string              `json:"files,omitempty"`
@@ -156,15 +155,12 @@ func crewScheduleSpecFrom(schedule productschedule.Schedule, withID bool) crewSc
 
 // crewIdentityChecks applies the identity limits the Crew identity tool
 // (set_work_identity) and Builder creation enforce.
-func crewIdentityChecks(name, icon, role, purpose string) error {
+func crewIdentityChecks(name, icon, purpose string) error {
 	if name == "" || utf8.RuneCountInString(name) > 60 {
 		return fmt.Errorf("crew name must be 1-60 characters")
 	}
 	if utf8.RuneCountInString(icon) > 8 {
 		return fmt.Errorf("crew icon must be at most 8 characters")
-	}
-	if utf8.RuneCountInString(role) > 120 {
-		return fmt.Errorf("crew role must be at most 120 characters")
 	}
 	if utf8.RuneCountInString(purpose) > crewPurposeLimit {
 		return fmt.Errorf("crew purpose must be at most %d characters", crewPurposeLimit)
@@ -260,7 +256,7 @@ func checkCrewSkillsAvailable(ctx context.Context, root string, names []string, 
 // (skill availability aside), so a bad spec never leaves a half-made Crew.
 func normalizeCrewSpec(spec crewSpec) (crewSpec, error) {
 	spec.Name, spec.Icon = strings.TrimSpace(spec.Name), strings.TrimSpace(spec.Icon)
-	spec.Role, spec.Purpose = strings.TrimSpace(spec.Role), strings.TrimSpace(spec.Purpose)
+	spec.Purpose = strings.TrimSpace(spec.Purpose)
 	spec.Mode = strings.TrimSpace(spec.Mode)
 	switch spec.Mode {
 	case "", "dev", "cowork":
@@ -281,7 +277,7 @@ func normalizeCrewSpec(spec crewSpec) (crewSpec, error) {
 	if spec.SchemaVersion > crewSpecSchemaVersion {
 		return spec, fmt.Errorf("spec schema_version %d is newer than this server supports (%d)", spec.SchemaVersion, crewSpecSchemaVersion)
 	}
-	if err := crewIdentityChecks(spec.Name, spec.Icon, spec.Role, spec.Purpose); err != nil {
+	if err := crewIdentityChecks(spec.Name, spec.Icon, spec.Purpose); err != nil {
 		return spec, err
 	}
 	names, err := validateCrewCreationNames("skill", spec.SelectedSkills)
@@ -511,7 +507,7 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
 	}
-	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Role, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{Mode: spec.Mode, LLMConfig: spec.LLMConfig}); err != nil {
+	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{Mode: spec.Mode, LLMConfig: spec.LLMConfig}); err != nil {
 		return "", err
 	}
 	if folder, shared := workspaceref.MustParse(workspacePath).SharedProject(); shared {
@@ -555,7 +551,6 @@ type crewUpdate struct {
 	CrewID  string  `json:"crew_id"`
 	Name    *string `json:"name"`
 	Icon    *string `json:"icon"`
-	Role    *string `json:"role"`
 	Purpose *string `json:"purpose"`
 	Skills  *struct {
 		Set    *[]string `json:"set"`
@@ -589,8 +584,8 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 		out := strings.TrimSpace(*value)
 		return &out
 	}
-	name, icon, role, purpose := trimmed(update.Name), trimmed(update.Icon), trimmed(update.Role), trimmed(update.Purpose)
-	identityChanged := name != nil || icon != nil || role != nil || purpose != nil
+	name, icon, purpose := trimmed(update.Name), trimmed(update.Icon), trimmed(update.Purpose)
+	identityChanged := name != nil || icon != nil || purpose != nil
 	if identityChanged {
 		pick := func(value *string, current string) string {
 			if value != nil {
@@ -599,7 +594,7 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 			return strings.TrimSpace(current)
 		}
 		finalName := pick(name, firstNonEmptyTrimmed(manifest.Identity.Name, manifest.Title))
-		if err := crewIdentityChecks(finalName, pick(icon, manifest.Identity.Icon), pick(role, manifest.Identity.Role), pick(purpose, manifest.Description)); err != nil {
+		if err := crewIdentityChecks(finalName, pick(icon, manifest.Identity.Icon), pick(purpose, manifest.Description)); err != nil {
 			return err
 		}
 	}
@@ -692,7 +687,7 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 	}
 
 	if identityChanged {
-		if err := updateCrewIdentity(ctx, root, name, icon, role, purpose); err != nil {
+		if err := updateCrewIdentity(ctx, root, name, icon, purpose); err != nil {
 			return err
 		}
 	}
@@ -777,7 +772,7 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 // updateCrewIdentity edits product.json the way set_work_identity and the
 // Identity panel do: omitted fields are preserved, purpose is the project
 // description, and unrelated manifest fields pass through untouched.
-func updateCrewIdentity(ctx context.Context, root string, name, icon, role, purpose *string) error {
+func updateCrewIdentity(ctx context.Context, root string, name, icon, purpose *string) error {
 	manifestPath := root + "/product.json"
 	lock := productConversationRegistryMutex(manifestPath)
 	lock.Lock()
@@ -794,7 +789,7 @@ func updateCrewIdentity(ctx context.Context, root string, name, icon, role, purp
 	if identity == nil {
 		identity = map[string]interface{}{}
 	}
-	for key, value := range map[string]*string{"name": name, "icon": icon, "role": role} {
+	for key, value := range map[string]*string{"name": name, "icon": icon} {
 		if value == nil {
 			continue
 		}
@@ -825,7 +820,7 @@ func exportCrewSpec(ctx context.Context, crew crewProjectBinding, manifest produ
 	spec := crewSpec{
 		SchemaVersion: crewSpecSchemaVersion, Kind: crewSpecKind,
 		Name: manifest.displayTitle(), Icon: strings.TrimSpace(manifest.Identity.Icon),
-		Role: strings.TrimSpace(manifest.Identity.Role), Purpose: strings.TrimSpace(manifest.Description),
+		Purpose:        strings.TrimSpace(manifest.Description),
 		SelectedSkills: append([]string(nil), manifest.Capabilities.SelectedSkills...),
 	}
 	files := map[string]string{}
@@ -884,7 +879,7 @@ func externalCrewDescription(ctx context.Context, crew crewProjectBinding, manif
 	}
 	out := map[string]any{
 		"crew_id": manifest.ID, "name": label, "identity": summary["identity"],
-		"role": strings.TrimSpace(manifest.Identity.Role), "purpose": description, "description": description,
+		"purpose": description, "description": description,
 		"owner":     summary["owner"],
 		"skills":    append([]string{}, manifest.Capabilities.SelectedSkills...),
 		"schedules": schedules,
@@ -934,7 +929,6 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"kind":            map[string]any{"type": "string", "enum": []any{crewSpecKind}},
 		"name":            map[string]any{"type": "string", "minLength": 1, "maxLength": 60, "description": "Display name."},
 		"icon":            map[string]any{"type": "string", "maxLength": 8, "description": "One emoji or short glyph."},
-		"role":            map[string]any{"type": "string", "minLength": 1, "maxLength": 120, "description": "Short role, e.g. Support triage lead."},
 		"purpose":         map[string]any{"type": "string", "minLength": 1, "maxLength": crewPurposeLimit, "description": "What the Crew is for and how it works; its standing instructions."},
 		"selected_skills": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Skill folder names: built-in, installed on the server, or shipped under files as skills/<name>/SKILL.md."},
 		"files":           map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Crew-relative text files (path -> content), e.g. skills/<name>/SKILL.md. Manifests, functions.json, builder/ and db/ are refused."},
@@ -950,7 +944,7 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 func externalCrewUpdateReply(full map[string]any, update crewUpdate) map[string]any {
 	changed := []string{}
 	for name, set := range map[string]bool{
-		"name": update.Name != nil, "icon": update.Icon != nil, "role": update.Role != nil, "purpose": update.Purpose != nil,
+		"name": update.Name != nil, "icon": update.Icon != nil, "purpose": update.Purpose != nil,
 		"skills": update.Skills != nil, "functions": update.Functions != nil, "schedules": update.Schedules != nil,
 		"files": len(update.Files) > 0, "remove_files": len(update.RemoveFiles) > 0,
 	} {
@@ -981,7 +975,7 @@ func externalCrewUpdateReply(full map[string]any, update crewUpdate) map[string]
 	}
 	sort.Strings(files)
 	return map[string]any{
-		"crew_id": full["crew_id"], "name": full["name"], "role": full["role"], "updated": true,
+		"crew_id": full["crew_id"], "name": full["name"], "updated": true,
 		"changed": changed, "skills": full["skills"], "functions": functions, "schedules": schedules,
 		"files_written": files, "files_removed": update.RemoveFiles,
 		"note": "Compact reply. get_crew returns the full spec; pass return_spec=true to get it here.",

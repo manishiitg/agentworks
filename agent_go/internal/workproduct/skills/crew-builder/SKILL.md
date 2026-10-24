@@ -3,7 +3,7 @@ name: crew-builder
 description: Read for Crew panel or Ask AI guidance, project setup, creating another Crew, earlier conversation history, or coding/repository work; follow authorized project boundaries.
 ---
 
-Use the Crew's existing role and purpose. Change setup only within the user's
+Use the Crew's existing purpose. Change setup only within the user's
 request. Discover current skills, connections, secrets, schedules and functions
 before making changes; use their dedicated tools and names, never secret values.
 Load the relevant panel-* skill before using its management tools.

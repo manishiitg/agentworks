@@ -24,7 +24,7 @@ Over MCP, use `share action=get` to inspect the audience, then `share action=set
 
 Start from the person's process, using the `agentworks-mcp` journey. Identify the desired result, inputs/policy, intended team and timing from what they already said. Ask only for material missing details. Inspect existing work and available knowledge/connections; do not invent company rules or sign-ins.
 
-For a simple specialist, `workspace action=create` can set its name, role, purpose and files, plus functions when a defined action is needed, in one spec. Keep sensible existing defaults. Give the team a useful Ask conversation or published action, with a standard dashboard first when sufficient; a custom dashboard is optional. External actions need the actual selected connection; name any missing setup plainly.
+For a simple specialist, `workspace action=create` can set its name, purpose and files, plus functions when a defined action is needed, in one spec. Keep sensible existing defaults. Give the team a useful Ask conversation or published action, with a standard dashboard first when sufficient; a custom dashboard is optional. External actions need the actual selected connection; name any missing setup plainly.
 
 Try a representative request through the actual shared entry point and inspect the completed result. If the live tool offers a Run-mode preview, it uses the same real execution rules; it is not a simulation. Owner-only success does not prove another person's access. Use Share with the requested audience, read it back and retrieve the working dashboard/link. Return that link, one example request, who can use it and how teammates supply context or suggest improvements. Add co-owners only when the person wants others to help build, using `crew_owners`; explain Builder-chat visibility. Shared knowledge editing retains its own access.
 
@@ -62,8 +62,8 @@ start the owner's chat; inspect results before retrying a mutation. Use
 `crew_execution action=history` for the last 100 owner-only audit records: connection,
 operation, timing and outcome, with commands, values and payloads withheld.
 
-- `workspace action=create` takes `name` and optional `spec` with `role`,
-  `purpose` (standing instructions), `icon`, `selected_skills`, `files`,
+- `workspace action=create` takes `name` and optional `spec` with
+  `purpose` (what the Crew is for; its standing instructions), `icon`, `selected_skills`, `files`,
   `functions` and `schedules`. New Crews start Only me.
 - `workspace action=update` takes `workspace_id` and `changes` for sections to
   edit: `skills` {set, add, remove}, `functions` {upsert, delete},

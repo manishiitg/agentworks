@@ -332,7 +332,6 @@ export interface SharedProjectSchedule {
 }
 
 export interface SharedProjectSummary {
-  role?: string
   can_build?: boolean
   id: string
   title: string

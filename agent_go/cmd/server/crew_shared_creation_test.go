@@ -21,7 +21,7 @@ func TestCreateCrewProjectIsAtTheSharedRoot(t *testing.T) {
 	registry := withProjectOwnerRegistry(t)
 	t.Run("at Crew/<folder>, registered to its creator", func(t *testing.T) {
 		svc, mock, ctx := newCrewCreationTestEnv(t)
-		created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer Two", Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review.", IdempotencyKey: "on-1"})
+		created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer Two", Purpose: "Own release quality", StepInstruction: "Review.", IdempotencyKey: "on-1"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -54,7 +54,7 @@ func TestCreateCrewProjectIsAtTheSharedRoot(t *testing.T) {
 			t.Fatalf("the workflow's attachments do not name %s: %+v", created.WorkspacePath, manifest.CrewAttachments)
 		}
 		// Re-entry with the same key adopts the same Crew.
-		again, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer Two", Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review.", IdempotencyKey: "on-1"})
+		again, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer Two", Purpose: "Own release quality", StepInstruction: "Review.", IdempotencyKey: "on-1"})
 		if err != nil || again.CrewID != created.CrewID || again.WorkspacePath != created.WorkspacePath {
 			t.Fatalf("re-entry = %+v err=%v", again, err)
 		}
