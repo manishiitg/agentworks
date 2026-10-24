@@ -267,10 +267,6 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
           encodedPath={reportWorkspacePath}
           ownerUid={sharedUid || undefined}
           currentUserId={user?.id}
-          onBack={() => {
-            setReportWorkspacePath(null);
-            window.history.pushState({}, "", "/");
-          }}
         />
       );
     }
@@ -301,10 +297,6 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
         encodedPath={reportWorkspacePath}
         ownerUid={sharedUid || undefined}
         currentUserId={user?.id}
-        onBack={() => {
-          setReportWorkspacePath(null);
-          window.history.pushState({}, "", "/");
-        }}
       />
     );
   }

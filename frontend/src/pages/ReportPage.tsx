@@ -1,13 +1,13 @@
-import { BarChart3 } from "lucide-react";
+import { ArrowLeft, BarChart3 } from "lucide-react";
 import { ReportView } from "../components/workflow/ReportViewer";
 import { SharedCrewWorkspace } from "../products/work/SharedCrewWorkspace";
 import { isSafeReportWorkspacePath } from "../utils/reportWorkspacePath";
+import { followAppLink } from "../utils/appNavigation";
 
 interface ReportPageProps {
   encodedPath: string;
   ownerUid?: string;
   currentUserId?: string;
-  onBack?: () => void;
 }
 
 function decodeBase64Utf8(value: string): string | null {
@@ -22,7 +22,7 @@ function decodeBase64Utf8(value: string): string | null {
   }
 }
 
-export function ReportPage({ encodedPath, ownerUid, onBack }: ReportPageProps) {
+export function ReportPage({ encodedPath, ownerUid }: ReportPageProps) {
   const decodedPath = decodeBase64Utf8(encodedPath);
   const isValidPath = decodedPath !== null && isSafeReportWorkspacePath(decodedPath);
   const workspacePath = /^Chats\/(?:Work|Code)\/projects\//.test(decodedPath ?? "") && ownerUid && /^[a-zA-Z0-9_-]{1,128}$/.test(ownerUid)
@@ -32,6 +32,7 @@ export function ReportPage({ encodedPath, ownerUid, onBack }: ReportPageProps) {
   const documentPath = /^db\/reports\/(?!.*(?:^|\/)\.\.(?:\/|$))[^\\]+\.html$/i.test(requestedDocument)
     ? requestedDocument
     : "db/reports/index.html";
+  const backLink = <a href="/dashboards" onClick={followAppLink} className="inline-flex min-h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to dashboards</a>;
 
   if (!isValidPath) {
     return (
@@ -40,21 +41,20 @@ export function ReportPage({ encodedPath, ownerUid, onBack }: ReportPageProps) {
           <BarChart3 className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
           <h1 className="mb-2 text-lg font-semibold">Invalid dashboard URL</h1>
           <p className="mb-4 text-sm text-muted-foreground">The dashboard URL must include a valid encoded workflow, Crew or Code path.</p>
-          {onBack && (
-            <button type="button" onClick={onBack} className="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted">
-              Go back
-            </button>
-          )}
+          {backLink}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen min-h-screen overflow-hidden bg-background text-foreground">
-      <SharedCrewWorkspace key={workspacePath} workspacePath={workspacePath!} enabled>
-        <ReportView workspacePath={workspacePath!} documentPath={documentPath} allowContentQuestions={false} dashboardConversation hideToolbar />
-      </SharedCrewWorkspace>
+    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
+      <nav aria-label="Dashboard navigation" className="flex h-10 shrink-0 items-center border-b border-border px-3">{backLink}</nav>
+      <div className="min-h-0 flex-1">
+        <SharedCrewWorkspace key={workspacePath} workspacePath={workspacePath!} enabled>
+          <ReportView workspacePath={workspacePath!} documentPath={documentPath} allowContentQuestions={false} dashboardConversation hideToolbar />
+        </SharedCrewWorkspace>
+      </div>
     </div>
   );
 }

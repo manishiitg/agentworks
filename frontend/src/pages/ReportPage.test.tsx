@@ -35,10 +35,33 @@ describe("standalone report page", () => {
       // Managed publications resolve their own server-authorized project Ask.
       expect(view.host.querySelector('[data-project-conversation]')?.getAttribute('data-project-conversation')).toBe('true');
       expect(view.host.textContent).not.toContain("Live Dashboard");
-      // A shared link shows the dashboard alone: no help, refresh or close buttons around it.
+      expect(view.host.querySelector('nav a')?.textContent).toBe('Back to dashboards');
+      // The return bar does not restore help, refresh or close overlays on the dashboard.
       expect(view.host.querySelector('[data-toolbar-hidden]')?.getAttribute('data-toolbar-hidden')).toBe('true');
     } finally {
       await act(async () => view.root.unmount());
+    }
+  });
+
+  it.each(['Workflow/example', 'invalid'])('returns from dashboard path %s to the library through in-app navigation', async path => {
+    const previous = window.location.href;
+    window.history.replaceState({}, '', `/report?path=${btoa(path)}`);
+    const popstate = vi.fn();
+    window.addEventListener('popstate', popstate);
+    const view = await renderReport(path);
+    try {
+      const link = view.host.querySelector<HTMLAnchorElement>('a[href="/dashboards"]')!;
+      expect(link.textContent).toBe('Back to dashboards');
+      const event = new MouseEvent('click', { button: 0, bubbles: true, cancelable: true });
+      await act(async () => { link.dispatchEvent(event) });
+      expect(event.defaultPrevented).toBe(true);
+      expect(window.location.pathname).toBe('/dashboards');
+      expect(window.location.search).toBe('');
+      expect(popstate).toHaveBeenCalledOnce();
+    } finally {
+      await act(async () => view.root.unmount());
+      window.removeEventListener('popstate', popstate);
+      window.history.replaceState({}, '', previous);
     }
   });
 
