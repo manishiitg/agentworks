@@ -46,7 +46,7 @@ export function SharedToolShortcuts({ compact = false }: { compact?: boolean }) 
                 useSidebarHistoryStore.setState(state => ({ request: null, generation: state.generation + 1 }))
                 openProductWorkspace(surface)
               }}>
-              <span aria-hidden="true"><ProductSurfaceIcon surface={surface} className="h-[18px] w-[18px] shrink-0" /></span>
+              <span aria-hidden="true" className="flex h-[18px] w-[18px] items-center justify-center"><ProductSurfaceIcon surface={surface} className="h-[18px] w-[18px] shrink-0" /></span>
             </button>
           )}</span>
         })}
