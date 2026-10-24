@@ -84,6 +84,21 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 		return raw
 	}
 	listed := call(map[string]any{"action": "list"}, false)
+	var catalog struct {
+		Products       []string `json:"products"`
+		SharedProducts []string `json:"shared_products"`
+	}
+	if err := json.Unmarshal([]byte(listed), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	for _, product := range catalog.SharedProducts {
+		if containsFold(catalog.Products, product) || !sharedUserProduct(product) {
+			t.Fatalf("shared services must be separate from assignable products: %s", listed)
+		}
+	}
+	if productEnabled("knowledgebase") && !containsFold(catalog.SharedProducts, "knowledgebase") {
+		t.Fatal("MCP must describe the always-available Brain service", listed)
+	}
 	if !strings.Contains(listed, `"sign_in_method":"sso"`) || !strings.Contains(listed, `"sign_in_method":"password"`) || strings.Contains(listed, `"sign_in_method":"oidc"`) || !strings.Contains(listed, `"create_products":null`) {
 		t.Fatal("safe account metadata incomplete", listed)
 	}

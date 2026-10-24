@@ -164,25 +164,51 @@ func TestProductAccessResponseFieldsOmitsWhenUnrestricted(t *testing.T) {
 	}
 }
 
-func TestBrainIsAvailableToAccountsLimitedToOtherProducts(t *testing.T) {
-	withUserProductAccessFile(t, `{ "coder": { "products": ["code"] } }`)
-	coder := &UserClaims{UserID: "u-coder", Username: "coder"}
-	if !userAllowedProduct(coder, "knowledgebase") {
-		t.Fatal("an account limited to Code should still have Brain")
+func TestSharedServicesAreAvailableToEveryAccount(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,work,bullpen,knowledgebase,mcp-gateway")
+	t.Setenv("AGENT_PRODUCTS", "")
+	t.Setenv("AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL", "")
+	t.Setenv("AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES", "bullpen,knowledgebase,mcp-gateway")
+	withMemoryUserDirectory(t, `{"users":[
+		{"id":"member","username":"member","role":"viewer","products":["agentworks"]},
+		{"id":"empty","username":"empty","role":"viewer","products":[]},
+		{"id":"disabled","username":"disabled","role":"viewer","disabled":true,"products":[]}
+	]}`)
+	for _, id := range []string{"member", "empty"} {
+		claims := &UserClaims{UserID: id, Username: id}
+		projected, _ := productAccessResponseFields(claims)["allowed_products"].([]string)
+		for _, product := range []string{"bullpen", "knowledgebase", "mcp-gateway"} {
+			if !userAllowedProduct(claims, product) || !containsFold(projected, product) {
+				t.Fatalf("%s must open %s and see it in auth/me: %v", id, product, projected)
+			}
+			if containsFold(assignableUserProducts(), product) {
+				t.Fatalf("shared service %s must not be individually assignable", product)
+			}
+			if userAllowedProduct(&UserClaims{UserID: "disabled", Username: "disabled"}, product) {
+				t.Fatalf("disabled account must not use %s", product)
+			}
+			if userAllowedProduct(&UserClaims{Provider: "bot_route", BotRouteProfileID: "work"}, product) {
+				t.Fatalf("route identity must not gain shared service %s", product)
+			}
+		}
+		if userAllowedProduct(claims, "work") || userAllowedProduct(claims, "video-studio") {
+			t.Fatal("shared-service access must not widen other products")
+		}
 	}
-	if userAllowedProduct(coder, "video-studio") {
-		t.Fatal("the Brain rule must not widen other products")
+	// Installation selection stays the upper bound, including messaging-only servers.
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "bullpen")
+	claims := &UserClaims{UserID: "empty", Username: "empty"}
+	for _, product := range []string{"knowledgebase", "mcp-gateway"} {
+		if userAllowedProduct(claims, product) {
+			t.Fatalf("uninstalled service %s must not open", product)
+		}
+		if projected, _ := productAccessResponseFields(claims)["allowed_products"].([]string); containsFold(projected, product) {
+			t.Fatalf("uninstalled service %s must not be advertised: %v", product, projected)
+		}
 	}
-	fields := productAccessResponseFields(coder)
-	if got, _ := fields["allowed_products"].([]string); !containsFold(got, "knowledgebase") || !containsFold(got, "code") || containsFold(got, "video-studio") {
-		t.Fatalf("a Code-only account's projected products should be code plus Brain, got %v", fields["allowed_products"])
-	}
-	// The widening alone never turns Brain on: a server that does not run it still refuses the account.
-	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,code")
-	if knowledgebaseProductAllowed(coder) || knowledgebaseMCPAllowed(coder) {
-		t.Fatal("a server without Brain must refuse every account")
-	}
-	if got, _ := productAccessResponseFields(coder)["allowed_products"].([]string); containsFold(got, "knowledgebase") {
-		t.Fatalf("a server without Brain must not list it, got %v", got)
+	if shared := sharedUserProducts(); len(shared) != 1 || shared[0] != "bullpen" {
+		t.Fatalf("messaging-only shared services = %v", shared)
 	}
 }

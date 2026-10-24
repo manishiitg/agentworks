@@ -47,3 +47,5 @@ Never repeat or log a password. Use `account` with `action=usage`, `action=set_l
 `action=set_allowed_models` for shared-account usage, limits and model restrictions.
 If these tools are absent, explain that the connection needs admin access and
 ask the person to connect an admin account; never bypass it through files.
+
+AgentBridge, Brain and Vault are available to every account where installed. Admin account product lists only select other products; use `shared_products` from account discovery to explain the baseline. Folder roles, Vault grants, private accounts and agent publication still decide resource access.

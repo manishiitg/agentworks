@@ -48,8 +48,8 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 			"username":       str("Account username (update_user may rename)."),
 			"email":          str("Account email."), "password": str("User-provided account password only; never echo it."),
 			"role":  map[string]interface{}{"type": "string", "enum": []string{"admin", "creator", "editor", "viewer"}, "description": "Standardized account role; wins over admin/can_create/can_edit."},
-			"admin": map[string]interface{}{"type": "boolean"}, "can_create": map[string]interface{}{"type": "boolean"}, "can_edit": map[string]interface{}{"type": "boolean"}, "disabled": map[string]interface{}{"type": "boolean"}, "vault_reader": map[string]interface{}{"type": "boolean", "description": "May read Vault (connections, tools, groups, access, audit, SQL queries) without being an admin; changes nothing. Needs the Vault product."}, "crew_reviewer": map[string]interface{}{"type": "boolean", "description": "May review every Crew project's cost, chats and files, read-only and audited."},
-			"products": map[string]interface{}{"type": "array", "items": str("Allowed product ID.")},
+			"admin": map[string]interface{}{"type": "boolean"}, "can_create": map[string]interface{}{"type": "boolean"}, "can_edit": map[string]interface{}{"type": "boolean"}, "disabled": map[string]interface{}{"type": "boolean"}, "vault_reader": map[string]interface{}{"type": "boolean", "description": "May read Vault (connections, tools, groups, access, audit, SQL queries) without being an admin; changes nothing. Vault is available to everyone; this grants audit access, not secret values."}, "crew_reviewer": map[string]interface{}{"type": "boolean", "description": "May review every Crew project's cost, chats and files, read-only and audited."},
+			"products": map[string]interface{}{"type": "array", "items": str("Assignable product ID from list_users. AgentBridge, Brain and Vault are available to everyone where installed, regardless of this list.")},
 		}, "required": []string{"action"},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		claims := &UserClaims{UserID: userID}

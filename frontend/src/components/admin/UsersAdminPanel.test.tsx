@@ -8,7 +8,7 @@ vi.mock('../../services/api', () => ({ authApi: api }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (state: unknown) => unknown) => selector({ user: { id: 'admin' } }) }))
 vi.mock('../../products/productSurfaceConfig', async importOriginal => ({
   ...await importOriginal<typeof import('../../products/productSurfaceConfig')>(),
-  enabledProductSurfaces: () => ['agentworks', 'relays', 'work', 'code', 'mcp-gateway'],
+  enabledProductSurfaces: () => ['agentworks', 'relays', 'work', 'code', 'mcp-gateway', 'knowledgebase', 'bullpen'],
 }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -16,7 +16,7 @@ describe('Shared user roles and product access', () => {
   let host: HTMLDivElement
   let root: Root
   beforeEach(() => {
-    api.listAdminUsers.mockResolvedValue({ products: ['agentworks', 'relays', 'work', 'code', 'mcp-gateway'], users: [{
+    api.listAdminUsers.mockResolvedValue({ products: ['agentworks', 'relays', 'work', 'code'], shared_products: ['bullpen', 'knowledgebase', 'mcp-gateway'], users: [{
       id: 'creator', username: 'creator@example.com', email: 'creator@example.com', role: 'creator', admin: false, can_create: true, can_edit: true, products: ['work'], provider: 'google', invited: true,
     }] })
   })
@@ -34,6 +34,9 @@ describe('Shared user roles and product access', () => {
     // One line per person; the editor opens on click. No "viewer" wording (Builder and Run only).
     expect(host.querySelector('[aria-label="Role for creator@example.com"]')).toBeNull()
     await act(async () => (host.querySelector('[aria-label="Details for creator@example.com"]') as HTMLElement).click())
+    expect(host.textContent).toContain('Available to everyone: AgentBridge, Brain, Vault')
+    for (const name of ['AgentBridge', 'Brain', 'Vault']) expect(host.querySelector(`[aria-label="${name} for creator@example.com"]`)).toBeNull()
+    expect(host.querySelector('[aria-label="Crew for creator@example.com"]')).not.toBeNull()
     await openRole('Role for creator@example.com')
     expect(Array.from(document.querySelectorAll('[role="option"]')).map(option => option.querySelector('span.block')?.textContent)).toEqual(['Member', 'Editor', 'Creator', 'Admin'])
     await act(async () => (document.querySelector('[role="option"]') as HTMLElement).click())
@@ -45,7 +48,7 @@ describe('Shared user roles and product access', () => {
     expect(host.textContent).toContain('Company sign-in')
   })
   it('shows advanced permissions as a summary and directs updates through admin MCP', async () => {
-    api.listAdminUsers.mockResolvedValue({ products: ['mcp-gateway'], users: [{
+    api.listAdminUsers.mockResolvedValue({ products: [], shared_products: ['mcp-gateway'], users: [{
       id: 'gw', username: 'gw@example.com', email: 'gw@example.com', role: 'viewer', admin: false, can_create: false, can_edit: true, products: ['mcp-gateway'], provider: 'google', vault_reader: true, token_limits: { daily: 1000 },
     }] })
     await render()
@@ -60,7 +63,7 @@ describe('Shared user roles and product access', () => {
     expect(host.querySelector('[aria-label="Vault reader for gw@example.com"]')).toBeNull()
   })
   it('keeps password status visible while password resets and deletion use MCP', async () => {
-    api.listAdminUsers.mockResolvedValue({ products: ['code'], users: [{
+    api.listAdminUsers.mockResolvedValue({ products: ['code'], shared_products: [], users: [{
       id: 'pw', username: 'pw@example.com', email: 'pw@example.com', role: 'creator', admin: false, can_create: true, can_edit: true, products: ['code'], provider: 'password', has_password: true,
     }] })
     await render()

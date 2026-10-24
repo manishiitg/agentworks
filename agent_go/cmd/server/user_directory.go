@@ -885,7 +885,7 @@ func (api *StreamingAPI) handleAdminListUsers(w http.ResponseWriter, r *http.Req
 		out = append(out, view)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Username < out[j].Username })
-	writeUsersJSON(w, http.StatusOK, map[string]any{"users": out, "products": knownProductIDs()})
+	writeUsersJSON(w, http.StatusOK, map[string]any{"users": out, "products": assignableUserProducts(), "shared_products": sharedUserProducts()})
 }
 
 // userWriteRequest is the body for create and update. Pointer fields are
@@ -1260,8 +1260,6 @@ func (api *StreamingAPI) handleChangeOwnPassword(w http.ResponseWriter, r *http.
 	writeUsersJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
-// knownProductIDs lists the product surfaces an admin can enable per user:
-// AgentWorks itself plus every registered product profile.
 // canCreateInProducts is, for each product, whether the account may create there (PLAT-767): the app enables or
 // disables each product's "New ..." from it.
 func canCreateInProducts(acc UserAccess) map[string]bool {
@@ -1272,6 +1270,7 @@ func canCreateInProducts(acc UserAccess) map[string]bool {
 	return out
 }
 
+// knownProductIDs lists AgentWorks and the registered product surfaces.
 func knownProductIDs() []string {
 	ids := []string{"agentworks"}
 	for _, id := range registeredProductIDs() {

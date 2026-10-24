@@ -19,7 +19,7 @@ func externalUsersAllowed(c *UserClaims) bool {
 }
 
 func externalUsersDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	products := map[string]any{"type": "array", "maxItems": 100, "items": externalString("Existing product ID, as on the Users page.")}
+	products := map[string]any{"type": "array", "maxItems": 100, "items": externalString("Assignable product ID from list. AgentBridge, Brain and Vault are available to everyone where installed; product lists do not revoke their access.")}
 	add(externalUsersTool, "Administrator account access management, using the Users page's current rules and existing users:manage consent. list/get return account identity, sign-in method, role, products, create permissions, status and review flags; never credentials. update changes existing access or sets a person-supplied password through the app handler. delete removes the account while preserving its files. Use the account tool for AI usage, token limits and allowed models. Omitted fields stay unchanged; clear_create_products restores role defaults. Changing administrator access requires confirm=user_id. Self-demotion, self-disable and removing the last active administrator are refused. update/delete require a stable request_id: for 7 days an identical retry returns the recorded result and different arguments with the same ID are refused. After 7 days the ID is a new update; inspect current access before resending. Every new change is audited with its caller. Builder/Run product access continues to follow existing roles. Accounts are provisioned separately.", false, false, map[string]any{
 		"action":   map[string]any{"type": "string", "enum": []any{"list", "get", "update", "delete"}},
 		"user_id":  externalString("Existing account ID; required for get/update/delete."),
@@ -95,8 +95,9 @@ func (api *StreamingAPI) externalUsersCall(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		var response struct {
-			Users    []userAdminView `json:"users"`
-			Products []string        `json:"products"`
+			Users          []userAdminView `json:"users"`
+			Products       []string        `json:"products"`
+			SharedProducts []string        `json:"shared_products"`
 		}
 		if json.Unmarshal([]byte(body), &response) != nil {
 			externalError(w, 502, "users_failed", "Invalid account response.")
@@ -117,9 +118,9 @@ func (api *StreamingAPI) externalUsersCall(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if action == "get" {
-			externalJSON(w, map[string]any{"user": views[0]})
+			externalJSON(w, map[string]any{"user": views[0], "shared_products": response.SharedProducts})
 		} else {
-			externalJSON(w, map[string]any{"users": views, "products": response.Products})
+			externalJSON(w, map[string]any{"users": views, "products": response.Products, "shared_products": response.SharedProducts})
 		}
 		return
 	}

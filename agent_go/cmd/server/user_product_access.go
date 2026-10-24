@@ -110,7 +110,7 @@ func userProductPolicy(userID, username, email string) (products []string, restr
 // -- workflow-level access is what actually gates that path, via
 // userAllowedWorkflowID.
 func userAllowedProduct(claims *UserClaims, product string) bool {
-	product = strings.TrimSpace(product)
+	product = productpolicy.Canonical(product)
 	// A local installation excludes products it does not ship. A server's
 	// AGENT_PRODUCTS list does not revoke access granted per account.
 	if productpolicy.Local() && !productpolicy.Enabled(product) {
@@ -122,12 +122,17 @@ func userAllowedProduct(claims *UserClaims, product string) bool {
 	if claims.Provider == "bot_route" {
 		return claims.BotRouteProfileID != "" && strings.EqualFold(product, claims.BotRouteProfileID)
 	}
-	if adminOnlyProduct(product) && !userAccessForClaims(claims).Admin {
+	access := userAccessForClaims(claims)
+	if access.Disabled {
 		return false
 	}
-	// Brain is for every account (owner, 2026-10-12): an account limited to Code or Crew still reads and saves Brain
-	// notes and installs company skills. What a person can read or write is decided by folder roles, not by this list.
-	if strings.EqualFold(product, "knowledgebase") || productAvailableToAll(product) {
+	if sharedUserProduct(product) {
+		return productEnabled(product)
+	}
+	if adminOnlyProduct(product) && !access.Admin {
+		return false
+	}
+	if productAvailableToAll(product) {
 		return true
 	}
 	products, restricted := userProductPolicy(claims.UserID, claims.Username, claims.Email)
@@ -140,6 +145,38 @@ func userAllowedProduct(claims *UserClaims, product string) bool {
 		}
 	}
 	return false
+}
+
+// Shared services are available to every person on installations that run them.
+// Folder roles, Vault grants, token scopes and agent publication still decide
+// which resources and operations the person may use.
+func sharedUserProduct(product string) bool {
+	switch productpolicy.Canonical(product) {
+	case "bullpen", "knowledgebase", "mcp-gateway":
+		return true
+	default:
+		return false
+	}
+}
+
+func sharedUserProducts() []string {
+	products := []string{}
+	for _, product := range []string{"bullpen", "knowledgebase", "mcp-gateway"} {
+		if productEnabled(product) {
+			products = append(products, product)
+		}
+	}
+	return products
+}
+
+func assignableUserProducts() []string {
+	products := []string{}
+	for _, product := range knownProductIDs() {
+		if !sharedUserProduct(product) {
+			products = append(products, product)
+		}
+	}
+	return products
 }
 
 // productAvailableToAll provides a deployment-owned baseline product set.
@@ -156,10 +193,15 @@ func productAvailableToAll(product string) bool {
 }
 
 func appendProductsAvailableToAll(products []string) []string {
-	result := append([]string(nil), products...)
-	for _, candidate := range strings.Split(os.Getenv("AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL"), ",") {
+	result := []string{}
+	for _, product := range products {
+		if !sharedUserProduct(product) || productEnabled(product) {
+			result = append(result, product)
+		}
+	}
+	for _, candidate := range append(sharedUserProducts(), strings.Split(os.Getenv("AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL"), ",")...) {
 		candidate = strings.TrimSpace(candidate)
-		if candidate == "" {
+		if candidate == "" || sharedUserProduct(candidate) && !productEnabled(candidate) {
 			continue
 		}
 		found := false
@@ -181,6 +223,9 @@ func appendProductsAvailableToAll(products []string) []string {
 // deliberately enforced in the server as well as reflected in /api/auth/me;
 // hiding a product in the switcher alone would leave its APIs reachable.
 func adminOnlyProduct(product string) bool {
+	if sharedUserProduct(product) {
+		return false
+	}
 	for _, candidate := range strings.Split(os.Getenv("AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES"), ",") {
 		if strings.EqualFold(strings.TrimSpace(candidate), strings.TrimSpace(product)) {
 			return true
@@ -262,7 +307,9 @@ func productAccessResponseFields(claims *UserClaims) map[string]interface{} {
 	if claims != nil {
 		access := userAccessForClaims(claims)
 		products, restricted := userProductPolicy(claims.UserID, claims.Username, claims.Email)
-		if restricted {
+		if claims.Provider == "bot_route" {
+			products, restricted = access.Products, true
+		} else if restricted {
 			products = appendProductsAvailableToAll(products)
 		}
 		if !access.Admin && strings.TrimSpace(os.Getenv("AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES")) != "" {
@@ -275,10 +322,6 @@ func productAccessResponseFields(claims *UserClaims) map[string]interface{} {
 		if restricted {
 			if products == nil {
 				products = []string{}
-			}
-			// Brain is for every account (see userAllowedProduct), when this server runs it.
-			if productEnabled("knowledgebase") && !containsFold(products, "knowledgebase") {
-				products = append(append([]string(nil), products...), "knowledgebase")
 			}
 			out["allowed_products"] = products
 		}

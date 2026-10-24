@@ -66,6 +66,7 @@ const UsersAdminPanel: React.FC<{ vaultOnly?: boolean }> = ({ vaultOnly = false 
   const me = useAuthStore(s => s.user)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [products, setProducts] = useState<string[]>([])
+  const [sharedProducts, setSharedProducts] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -82,6 +83,7 @@ const UsersAdminPanel: React.FC<{ vaultOnly?: boolean }> = ({ vaultOnly = false 
       if (seq !== loadSeq.current) return
       setUsers(response.users || [])
       setProducts(selectableProducts(response.products || [], enabledProductSurfaces()))
+      setSharedProducts((response.shared_products || []).filter(p => isProductSurface(p) && enabledProductSurfaces().includes(p)))
     } catch (err) {
       if (seq !== loadSeq.current) return
       const message = err instanceof Error ? err.message : String(err)
@@ -114,6 +116,7 @@ const UsersAdminPanel: React.FC<{ vaultOnly?: boolean }> = ({ vaultOnly = false 
         <p>Basic updates are available below. New people are added by your server administrator.</p>
         <Button size="sm" variant="outline" onClick={() => setConnectOpen(true)}><Plug className="mr-1.5 h-3.5 w-3.5" />Connect AI app</Button>
       </div>}
+      {!vaultOnly && sharedProducts.length > 0 && <p className="mb-4 text-xs text-muted-foreground">Available to everyone: {sharedProducts.map(productLabel).join(', ')}. Access to folders, connections and agents follows their sharing settings.</p>}
       {error && <div role="alert" className="mb-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span className="flex-1">{error}</span><Button size="sm" variant="outline" onClick={() => void refresh()}>Retry</Button>
       </div>}
@@ -131,7 +134,7 @@ const UsersAdminPanel: React.FC<{ vaultOnly?: boolean }> = ({ vaultOnly = false 
                 className="h-auto w-full justify-start gap-3 rounded-none px-3 py-3 text-left font-normal hover:bg-muted/40 disabled:cursor-default disabled:opacity-100">
                 {!vaultOnly && (open ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />)}
                 <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{u.username}{isMe && <span className="ml-1 text-[11px] text-muted-foreground">(you)</span>}</span><span className="block truncate text-xs text-muted-foreground">{u.email || signInLabel(u)}</span></span>
-                <span className="hidden max-w-[35%] truncate text-xs text-muted-foreground sm:block">{role === 'admin' || role === 'creator' && !u.products.length ? 'All products' : apps.map(productLabel).join(', ') || 'No products'}</span>
+                <span className="hidden max-w-[35%] truncate text-xs text-muted-foreground sm:block">{role === 'admin' || role === 'creator' && !u.products.length ? 'All products' : apps.filter(p => products.includes(p)).map(productLabel).join(', ') || 'No additional products'}</span>
                 <Badge variant="secondary">{ROLES.find(r => r.value === role)?.label}</Badge>
                 {u.disabled ? <Badge variant="outline" className="text-destructive"><Ban className="mr-1 h-3 w-3" />Off</Badge> : u.invited ? <span className="hidden text-xs text-muted-foreground sm:inline">Not signed in</span> : null}
               </Button>
@@ -142,7 +145,7 @@ const UsersAdminPanel: React.FC<{ vaultOnly?: boolean }> = ({ vaultOnly = false 
                   <Button size="sm" variant="ghost" className="sm:ml-auto" onClick={() => { void copyAdminRequest(u) }}><Copy className="mr-1.5 h-3.5 w-3.5" />{copied === u.id ? 'Copied' : 'Copy admin request'}</Button>
                   {busy && <Loader2 role="status" className="h-4 w-4 animate-spin" aria-label="Saving account" />}
                 </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs"><span className="text-muted-foreground">Product access</span>{role === 'admin' ? <span>All products</span> : products.map(product => <label key={product} className="inline-flex items-center gap-1.5"><Checkbox disabled={busy} checked={apps.includes(product)} aria-label={`${productLabel(product)} for ${u.username}`} onCheckedChange={() => { void run(u.id, { products: apps.includes(product) ? apps.filter(p => p !== product) : [...apps, product] }) }} />{productLabel(product)}</label>)}</div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs"><span className="text-muted-foreground">Additional product access</span>{role === 'admin' ? <span>All products</span> : products.map(product => <label key={product} className="inline-flex items-center gap-1.5"><Checkbox disabled={busy} checked={apps.includes(product)} aria-label={`${productLabel(product)} for ${u.username}`} onCheckedChange={() => { void run(u.id, { products: apps.includes(product) ? apps.filter(p => p !== product) : [...apps, product] }) }} />{productLabel(product)}</label>)}</div>
                 <details className="border-t border-border pt-3"><summary className="cursor-pointer text-xs text-muted-foreground">Access and AI usage</summary>
                   <dl className="mt-3 grid gap-x-5 gap-y-2 text-xs sm:grid-cols-2" aria-label={`Access summary for ${u.username}`}>
                     <div><dt className="text-muted-foreground">Can create in</dt><dd>{create.map(productLabel).join(', ') || 'No products'}</dd></div>

@@ -123,8 +123,8 @@ func TestDirectoryDrivesWorkflowTierAndProducts(t *testing.T) {
 		t.Fatal("read-only user with no products must not open a product")
 	}
 	fields := productAccessResponseFields(carol)
-	if list, ok := fields["allowed_products"].([]string); !ok || len(list) != 0 {
-		t.Fatalf("read-only user must advertise an EMPTY allowed_products, got %#v", fields["allowed_products"])
+	if list, ok := fields["allowed_products"].([]string); !ok || strings.Join(list, ",") != strings.Join(sharedUserProducts(), ",") {
+		t.Fatalf("account without product grants must advertise only shared services, got %#v", fields["allowed_products"])
 	}
 	if fields := productAccessResponseFields(&UserClaims{UserID: "a1", Username: "alice"}); fields["allowed_products"] != nil {
 		t.Fatal("admin must be unrestricted (null)")

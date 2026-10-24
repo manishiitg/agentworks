@@ -11,6 +11,8 @@ resets and account deletion.
 {"name":"users","arguments":{"action":"update","user_id":"user-example","role":"creator","products":["code","relays"],"create_products":["code"],"request_id":"access-example-1"}}
 ```
 
+AgentBridge, Brain and Vault are available to every account on servers that run them. `shared_products` lists these services; `products` lists the remaining assignable products. Changing a person’s product list never revokes shared-service access. Brain folder roles, Vault grants, private accounts and agent publication still govern their resources.
+
 Use IDs from list. Role IDs are the app's existing values; Builder/Run behavior
 still follows the same product access. Updates also support `disabled`,
 `crew_reviewer` and `vault_reader`. Omitted fields are unchanged; an empty
