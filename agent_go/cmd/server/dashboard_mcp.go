@@ -12,12 +12,12 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-var dashboardActions = map[string]string{"get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "export_dashboard_static": "export_static", "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
+var dashboardActions = map[string]string{"upload_dashboard_asset": "upload", "get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "export_dashboard_static": "export_static", "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
 
 func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("get_dashboard_catalog", "Read the managed React TSX authoring contract, supported runtime imports, starter source, shared shadcn component props and Recharts imports. Use before authoring index.tsx. HTML authoring is deprecated; existing HTML remains supported; saved JSON dashboards migrate to TSX. Data, Ask, functions and sharing use the existing project contracts.", false, false, map[string]any{})
-	for _, name := range []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"} {
+	for _, name := range []string{"upload_dashboard_asset", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"} {
 		action := dashboardActions[name]
 		props := map[string]any{
 			"workflow_id":  externalString("Workflow or Flow ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
@@ -26,6 +26,11 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			"workspace_id": externalString("Stable work:<id> from workspace list/get. Pass exactly one project selector."),
 		}
 		required := []string{}
+		if action == "upload" {
+			props["file_name"] = externalString("Original reference file name. Stored by the existing Crew attachment handler; does not overwrite files.")
+			props["content_base64"] = externalString("Base64 file bytes. Existing Crew attachment limits apply: 10 MiB for Builders and 5 MiB for shared users.")
+			required = []string{"file_name", "content_base64"}
+		}
 		if action == "list" {
 			props["limit"] = externalInteger(1, 200)
 			props["shared_with_me"] = map[string]any{"type": "boolean", "description": "true lists only dashboards other people shared with you."}
@@ -66,6 +71,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			props["width"] = map[string]any{"type": "string", "enum": []any{"mobile", "tablet", "desktop", "all"}}
 		}
 		descriptions := map[string]string{
+			"upload":   "Upload an attachment to a Crew using the same route and limits as its chat. The server selects the caller’s upload area. Requires current Crew access and crews:run or crews:write. Returns a saved path for chat/functions; never edits dashboard source.",
 			"list":     "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. Existing HTML dashboards are included.",
 			"get":      "Read a dashboard bundle and revision. Draft source requires edit rights and existing product authoring consent.",
 			"create":   "Create a managed React TSX dashboard draft from index.tsx (get_dashboard_catalog). The server compiles and hosts it in Dashboards; no separate npm app/server. Existing JSON and deprecated HTML bundles remain supported. Does not publish or select new data sources. Uses existing workflow/Flow/Crew/Code authoring consent and current project edit access.",

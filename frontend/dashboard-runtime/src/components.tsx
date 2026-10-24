@@ -125,3 +125,8 @@ export function RefreshButton({ label = 'Refresh data', ...props }: DirectProps)
   }} />{error && <p role="alert">{error}</p>}</>
 }
 export { createDashboardStore, useDashboardStore, useDashboardBinding } from './state'
+export { UploadZone, MediaGallery, MediaPreview } from './media'
+export type { DashboardAsset, DashboardPresentation } from './media'
+
+/** Refresh saved data after a local filter or project selection changes. */
+export function useDashboardRefresh() { return useContext(Environment).refresh }

@@ -1,4 +1,4 @@
-package videoproduct
+package mediapresentation
 
 import (
 	"context"
@@ -71,7 +71,7 @@ func showReferenceFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				if err != nil || len(data) == 0 {
 					return "The visual reference is missing or empty: " + imagePath, nil
 				}
-				event, err := presentations.Upsert(ctx, client, presentations.Presentation{
+				event, err := persistPresentation(ctx, client, presentations.Presentation{
 					Kind: runtime.Presentation.Kind, IdentityKey: resolvedPath, Title: title,
 					WorkspacePath: runtime.WorkspacePath, SessionID: runtime.SessionID,
 					Activity:  presentationActivity(runtime.Presentation),
@@ -150,7 +150,7 @@ func showCharacterFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 					return "The character spec is missing or empty: " + specPath, nil
 				}
 
-				event, err := presentations.Upsert(ctx, client, presentations.Presentation{
+				event, err := persistPresentation(ctx, client, presentations.Presentation{
 					Kind:          runtime.Presentation.Kind,
 					IdentityKey:   name,
 					Title:         name,
@@ -221,7 +221,7 @@ func showDocumentFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 					title = filepath.Base(resolvedPath)
 				}
 
-				event, err := presentations.Upsert(ctx, client, presentations.Presentation{
+				event, err := persistPresentation(ctx, client, presentations.Presentation{
 					Kind:          runtime.Presentation.Kind,
 					IdentityKey:   resolvedPath,
 					Title:         title,

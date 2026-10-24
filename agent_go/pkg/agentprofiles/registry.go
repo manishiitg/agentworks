@@ -108,6 +108,17 @@ func (r *Registry) List(userID string) []Profile {
 	return profiles
 }
 
+// HasToolFactory lets shared platform capabilities register once when several
+// installed product profiles bind the same implementation.
+func (r *Registry) HasToolFactory(id string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.factories[strings.TrimSpace(id)] != nil
+}
+
 func (r *Registry) RegisterToolFactory(id string, factory ToolFactory) error {
 	if r == nil {
 		return fmt.Errorf("profile registry is nil")

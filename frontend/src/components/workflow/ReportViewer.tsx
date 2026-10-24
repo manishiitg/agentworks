@@ -5,7 +5,7 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LayoutDashboard, Loader2, RefreshCw } from 'lucide-react'
 import { DashboardEmptyState } from './DashboardEmptyState'
-import api, { agentApi, workspaceApi, getApiBaseUrl } from '../../services/api'
+import api, { agentApi, getApiBaseUrl } from '../../services/api'
 import { useReportFilePreviewStore } from '../../stores/useReportFilePreviewStore'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import {
@@ -126,6 +126,18 @@ function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi[
     }
     return {
       workspacePath,
+      uploadFile: async (file: File) => {
+        const body = new FormData()
+        body.append("workspace", workspacePath)
+        body.append("file", file)
+        try {
+          const response = await api.post("/api/workflow/report-preview/upload", body, { params: { workspace: workspacePath }, headers: { "Content-Type": "multipart/form-data" } })
+          return { ...response.data, name: file.name, size: file.size, content_type: file.type }
+        } catch (cause) {
+          const detail = (cause as { response?: { data?: { error?: string | { message?: string } } } })?.response?.data?.error
+          throw new Error(typeof detail === 'string' ? detail : detail?.message || 'This file could not be added.')
+        }
+      },
       getRelayRuns: async (options = {}) => {
         const response = await api.get('/api/workflow/report-preview/relay-runs', { params: { workspace: workspacePath, ...options } })
         return response.data
@@ -161,8 +173,8 @@ function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi[
           return mediaUrl(allowed)
         }
         try {
-          const response = await workspaceApi.get(`/api/documents/${encodeURIComponent(`${workspacePath}/${allowed}`)}`, {
-            params: { download: 'true' }, responseType: 'blob', headers: { Accept: 'application/octet-stream' }, transformResponse: [(data) => data],
+          const response = await api.get('/api/workflow/report-preview/file', {
+            params: { workspace: workspacePath, path: allowed }, responseType: 'blob', headers: { Accept: 'application/octet-stream' }, transformResponse: [(data) => data],
           })
           const blob = response.data instanceof Blob ? response.data : new Blob([response.data])
           return URL.createObjectURL(blob)

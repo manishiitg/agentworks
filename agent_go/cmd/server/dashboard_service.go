@@ -70,6 +70,10 @@ func dashboardAuthoringAllowed(claims *UserClaims, target *dashboardTarget) bool
 }
 
 func dashboardScopeAllowed(claims *UserClaims, action string) bool {
+	// Uploads reuse Crew attachment use-access, not dashboard authoring consent.
+	if action == "upload" {
+		return claims != nil && claims.Scope == "" && !userAccessForClaims(claims).Disabled
+	}
 	if claims == nil || userAccessForClaims(claims).Disabled {
 		return false
 	}
@@ -250,6 +254,8 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		FPS           int               `json:"fps"`
 		Workspace     string            `json:"workspace"`
 		Action        string            `json:"action"`
+		FileName      string            `json:"file_name"`
+		ContentBase64 string            `json:"content_base64"`
 		ID            string            `json:"dashboard_id"`
 		Title         string            `json:"title"`
 		Motion        *bool             `json:"motion"`
@@ -304,6 +310,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 			dashboardError(w, err)
 			return
 		}
+	}
+	if args.Action == "upload" {
+		api.dashboardUploadBase64(w, r, target.Root, args.FileName, args.ContentBase64)
+		return
 	}
 	if dashboardOwnersAction(args.Action) {
 		api.handleDashboardOwners(w, r, claims, target, args.Action, args.Emails)

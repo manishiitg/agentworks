@@ -17,6 +17,7 @@ export type ReportChatOptions = {
 // demand. Exposed inside the iframe as `window.report`.
 export interface ReportDataApi {
   workspacePath: string
+  uploadFile?: (file: File) => Promise<{ path: string; name: string; size: number; content_type?: string }>
   getCosts?: (options: ReportCostOptions) => Promise<WorkflowCostsResponse>
   /** Recorded Relay results; never starts a run or reads its private journal. */
   getRelayRuns?: (options?: { version?: string; limit?: number; before?: number }) => Promise<{ version: string; runs: Record<string, unknown>[]; next_before?: number; truncated?: boolean }>

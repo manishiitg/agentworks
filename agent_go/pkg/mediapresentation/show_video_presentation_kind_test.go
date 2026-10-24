@@ -1,4 +1,4 @@
-package videoproduct
+package mediapresentation
 
 import (
 	"context"
@@ -29,7 +29,7 @@ func TestFalCDNVideoURLAcceptsOnlyHTTPSFalMedia(t *testing.T) {
 func TestShowVideoRequiresADeclaredPresentationKind(t *testing.T) {
 	factory := showVideoFactory("http://unused")
 	spec, err := factory(agentprofiles.ToolRuntimeContext{
-		UserID: "u1", SessionID: "s1", WorkspacePath: "Chats/Video Studio/projects/demo",
+		UserID: "u1", SessionID: "s1", WorkspacePath: "Crew/example",
 		// Presentation intentionally left nil.
 	}, nil)
 	if err != nil {
@@ -53,7 +53,7 @@ func TestShowVideoRequiresADeclaredPresentationKind(t *testing.T) {
 func TestShowVideoUsesTheDeclaredKindNotAHardcodedDefault(t *testing.T) {
 	factory := showVideoFactory("http://unused")
 	spec, err := factory(agentprofiles.ToolRuntimeContext{
-		UserID: "u1", SessionID: "s1", WorkspacePath: "Chats/Video Studio/projects/demo",
+		UserID: "u1", SessionID: "s1", WorkspacePath: "Crew/example",
 		Presentation: &agentprofiles.PresentationBinding{Kind: "media.image", Activity: &agentprofiles.PresentationActivityBinding{Label: "Image ready", Destination: "Images panel", Detail: "Ready to review"}},
 	}, nil)
 	if err != nil {
@@ -77,7 +77,7 @@ func TestShowVideoUsesTheDeclaredKindNotAHardcodedDefault(t *testing.T) {
 
 func TestShowVideoAllowsAnMP4PreviewWithoutAQualityReport(t *testing.T) {
 	spec, err := showVideoFactory("http://unused")(agentprofiles.ToolRuntimeContext{
-		UserID: "u1", SessionID: "s1", WorkspacePath: "Chats/Video Studio/projects/demo",
+		UserID: "u1", SessionID: "s1", WorkspacePath: "Crew/example",
 		Presentation: &agentprofiles.PresentationBinding{Kind: "media.video", Activity: &agentprofiles.PresentationActivityBinding{Label: "Video ready", Destination: "Videos panel", Detail: "Ready to review"}},
 	}, nil)
 	if err != nil {

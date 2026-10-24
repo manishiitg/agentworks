@@ -90,6 +90,7 @@ export const REPORT_BOOTSTRAP = `<script>(function(){
     pending.push({ name: 'openFile', args: Array.prototype.slice.call(arguments), resolve: function(){}, reject: function(){} });
   };
   // Actions must not be replayed from a render/initialization callback.
+  api.uploadFile = function(){ return Promise.reject(new Error("Wait for the live dashboard before uploading a file.")); };
   api.sendChatMessage = function(){
     return Promise.reject(new Error('Dashboard chat is not ready. Try again after the dashboard loads.'));
   };
@@ -531,6 +532,7 @@ export function installReportDocumentHost(document: Document, options: ReportHos
     updateFields: dataApi.updateFields,
     run: dataApi.run,
     sendChatMessage: dataApi.sendChatMessage,
+    uploadFile: dataApi.uploadFile ?? (() => Promise.reject(new Error("Uploads are available in the signed-in live dashboard."))),
     theme: options.theme,
   }
 

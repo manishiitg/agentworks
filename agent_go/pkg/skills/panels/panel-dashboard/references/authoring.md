@@ -63,6 +63,11 @@ export default function Dashboard({data}: {data: Summary}) {
 }
 ```
 
+For uploaded references and live video, image, character or document results,
+read `panel-dashboard/references/media.md`. Shared exports include UploadZone,
+MediaGallery and MediaPreview. Managed result writes refresh loadData during a
+turn; preserve stable result IDs so the selected player keeps its state.
+
 The report prop (also imported as `report` from @agentworks/dashboard) uses the
 same authorized query/get/run, file/media, updates, costs, goal metrics, Ask,
 published-function and motion APIs documented below. Function buttons keep the

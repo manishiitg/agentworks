@@ -27,7 +27,7 @@ var externalToolMerges = []externalToolMerge{
 		{"get", "get_dashboard_share"}, {"set", "share_dashboard"},
 	}},
 	{"dashboard", "Live dashboards of workflows, Flows and Crews: find them, read and edit drafts, check and publish revisions, and get links.", [][2]string{
-		{"list", "list_dashboards"}, {"get", "get_dashboard"}, {"link", "get_dashboard_link"},
+		{"upload", "upload_dashboard_asset"}, {"list", "list_dashboards"}, {"get", "get_dashboard"}, {"link", "get_dashboard_link"},
 		{"create", "create_dashboard"}, {"update", "update_dashboard"}, {"validate", "validate_dashboard"},
 		{"export_static", "export_dashboard_static"}, {"export_motion", "export_dashboard_motion"}, {"preview", "preview_dashboard"}, {"publish", "publish_dashboard"}, {"restore", "restore_dashboard"},
 	}},

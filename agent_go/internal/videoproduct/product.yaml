@@ -81,7 +81,7 @@ profile:
     - video-storytelling
     - generated-video-quality
   tools:
-    - id: video.show-video
+    - id: media.show-video
       # Declares what this tool shows, not how. The frontend renderer
       # registered for this kind (getPresentationRenderer) and the
       # tool's own factory (which reads this at construction rather
@@ -97,7 +97,7 @@ profile:
     # so the user can reject a face while changing it is still cheap. Video
     # previews are likewise review material; show-video applies its QA gate
     # only when the caller supplies a final quality report.
-    - id: video.show-character
+    - id: media.show-character
       presentation:
         kind: media.character
         activity:
@@ -106,7 +106,7 @@ profile:
           detail: Ready for approval
     # Locations, wardrobe, props, and sequence boundary frames are their own
     # reviewable evidence. They must not be smuggled into the Characters panel.
-    - id: video.show-reference
+    - id: media.show-reference
       presentation:
         kind: media.reference
         activity:
@@ -115,7 +115,7 @@ profile:
           detail: Ready for approval
     # The written artifacts a stage produces — brief, script, shot list — are
     # what the user actually approves between stages.
-    - id: video.show-document
+    - id: media.show-document
       presentation:
         kind: document.markdown
         activity:

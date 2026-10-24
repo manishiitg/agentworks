@@ -58,6 +58,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/guidancesessions"
 	browserinstructions "github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/logger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/mediapresentation"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
@@ -2130,6 +2131,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := platformtools.RegisterAgentProfileTools(profileRegistry); err != nil {
 		log.Fatalf("Failed to register platform agent profile tools: %v", err)
 	}
+	if err := mediapresentation.Register(profileRegistry, getWorkspaceAPIURL()); err != nil {
+		log.Fatalf("Failed to register shared media tools: %v", err)
+	}
 	if productEnabled("video-studio") {
 		if err := videoproduct.RegisterProductSkills(); err != nil {
 			log.Printf("[SKILLS] Video Studio skills: some were not registered; the server keeps running: %v", err)
@@ -3107,6 +3111,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// report-preview scoped token can reach; see report_preview_routes.go.
 	apiRouter.HandleFunc("/workflow/report-preview/query", api.handleReportPreviewQuery).Methods("POST")
 	apiRouter.HandleFunc("/workflow/report-preview/media-url", api.handleReportMediaURL).Methods("POST")
+	apiRouter.HandleFunc("/workflow/report-preview/upload", api.handleDashboardUpload).Methods("POST")
 	apiRouter.HandleFunc("/workflow/report-preview/run", api.handleReportRun).Methods("POST")
 	apiRouter.HandleFunc("/workflow/report-media", api.handleReportMediaStream).Methods("GET", "HEAD")
 

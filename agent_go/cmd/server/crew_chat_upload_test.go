@@ -25,7 +25,7 @@ func TestCrewChatUploadUsesCallerFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	upload := func(claims *UserClaims, data []byte, filename string) *httptest.ResponseRecorder {
+	upload := func(claims *UserClaims, data []byte, filename string, dashboard ...bool) *httptest.ResponseRecorder {
 		t.Helper()
 		var body bytes.Buffer
 		form := multipart.NewWriter(&body)
@@ -41,7 +41,12 @@ func TestCrewChatUploadUsesCallerFolder(t *testing.T) {
 		r.Header.Set("Content-Type", form.FormDataContentType())
 		r.Header.Set("X-Request-ID", "crew-upload-proof")
 		w := httptest.NewRecorder()
-		f.api.handleCrewChatUpload(w, r)
+		if len(dashboard) > 0 && dashboard[0] {
+			r.URL.RawQuery = "workspace=" + externalCommandCrewRoot
+			f.api.handleDashboardUpload(w, r)
+		} else {
+			f.api.handleCrewChatUpload(w, r)
+		}
 		return w
 	}
 	for _, actor := range []string{"owner", "other", "runner"} {
@@ -69,6 +74,37 @@ func TestCrewChatUploadUsesCallerFolder(t *testing.T) {
 		stored, err := os.ReadFile(filepath.Join(f.docs, response.Filepath))
 		if err != nil || !bytes.Equal(stored, image) {
 			t.Fatalf("stored image differs: %v", err)
+		}
+	}
+	// Custom dashboards use the exact chat writer and caller-selected area.
+	for _, actor := range []string{"owner", "other", "runner"} {
+		claims := &UserClaims{UserID: actor, Username: actor}
+		if actor == "runner" {
+			claims.AccessToken = &accesstokens.Token{Scopes: []string{"crews:run"}, AllCrews: true}
+		}
+		for _, transport := range []string{"website", "mcp"} {
+			var response *httptest.ResponseRecorder
+			if transport == "website" {
+				response = upload(claims, image, "reference.png", true)
+			} else {
+				response = httptest.NewRecorder()
+				r := adminRequest(http.MethodPost, "/api/dashboards", "", claims, nil)
+				f.api.dashboardUploadBase64(response, r, externalCommandCrewRoot, "reference.png", base64.StdEncoding.EncodeToString(image))
+			}
+			if response.Code != 200 {
+				t.Fatalf("%s/%s: %d %s", actor, transport, response.Code, response.Body.String())
+			}
+			var saved map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &saved); err != nil {
+				t.Fatal(err)
+			}
+			prefix := "uploads/"
+			if actor != "owner" {
+				prefix = "shared/" + actor + "/"
+			}
+			if !strings.HasPrefix(saved["path"].(string), prefix) {
+				t.Fatalf("%s/%s escaped attachment area: %q", actor, transport, saved["path"])
+			}
 		}
 	}
 	if w := upload(&UserClaims{UserID: "other"}, make([]byte, crewSharedFileMaxBytes+1), "big.png"); w.Code != 413 || !strings.Contains(w.Body.String(), "smaller than 5 MB") {

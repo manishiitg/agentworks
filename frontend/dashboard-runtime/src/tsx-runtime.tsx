@@ -22,9 +22,12 @@ function showError(error: unknown) {
   throw error instanceof Error ? error : new Error(message)
 }
 
-class DashboardError extends React.Component<{ children: React.ReactNode }, { message: string }> {
+class DashboardError extends React.Component<{ children: React.ReactNode; resetKey: number }, { message: string }> {
   state = { message: '' }
   static getDerivedStateFromError(error: Error) { return { message: error.message } }
+  componentDidUpdate(previous: { resetKey: number }) {
+    if (previous.resetKey !== this.props.resetKey && this.state.message) this.setState({ message: '' })
+  }
   componentDidCatch(error: Error) {
     document.documentElement.dataset.reportState = 'error'
     window.dispatchEvent(new ErrorEvent('error', { error, message: error.message }))
@@ -50,7 +53,7 @@ function mount(module: DashboardModule) {
     try {
       const data = module.loadData ? await module.loadData(report) : undefined
       if (current !== sequence) return
-      ReactDOM.flushSync(() => root.render(<DashboardError key={current}><platform.DashboardProviders refresh={refresh}><module.default data={data} report={report} /></platform.DashboardProviders></DashboardError>))
+      ReactDOM.flushSync(() => root.render(<DashboardError resetKey={current}><platform.DashboardProviders refresh={refresh}><module.default data={data} report={report} /></platform.DashboardProviders></DashboardError>))
     } catch (error) { if (current === sequence) showError(error) }
   }
   window.report.ready(refresh)

@@ -2,38 +2,12 @@ package videoproduct
 
 import (
 	"embed"
-	"errors"
-	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 const DefaultClaudeModel = "claude-sonnet-5-5"
-
-var videoExtensions = map[string]bool{".mp4": true, ".mov": true, ".webm": true, ".m4v": true}
-
-type qualityReportCheck struct {
-	Status   string   `json:"status"`
-	Evidence []string `json:"evidence"`
-}
-
-type qualityReportFrame struct {
-	TimestampSeconds float64 `json:"timestamp_seconds"`
-	Path             string  `json:"path"`
-}
-
-type qualityReport struct {
-	SchemaVersion     int                           `json:"schema_version"`
-	CandidatePath     string                        `json:"candidate_path"`
-	ContactSheetPath  string                        `json:"contact_sheet_path"`
-	Verdict           string                        `json:"verdict"`
-	ReadyToPresent    bool                          `json:"ready_to_present"`
-	Checks            map[string]qualityReportCheck `json:"checks"`
-	SampledFrames     []qualityReportFrame          `json:"sampled_frames"`
-	RecommendedAction string                        `json:"recommended_action"`
-}
 
 //go:embed skills/*/SKILL.md skills/*/references/*.md skills/*/agents/*.yaml
 var profileSkillFiles embed.FS
@@ -90,16 +64,4 @@ func BuiltinAgentProfiles() []agentprofiles.Profile {
 	legacy := current
 	legacy.Version, legacy.Runtime.Provider, legacy.Runtime.ModelID = 1, "", ""
 	return []agentprofiles.Profile{legacy, current}
-}
-
-func cleanProjectPath(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", errors.New("path is missing")
-	}
-	clean := filepath.Clean(filepath.FromSlash(strings.TrimPrefix(raw, "/")))
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", errors.New("path must stay inside the project")
-	}
-	return filepath.ToSlash(clean), nil
 }
