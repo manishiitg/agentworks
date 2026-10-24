@@ -2476,3 +2476,18 @@ func TestScheduleQueueExpiryPreservesNewRunOwnership(t *testing.T) {
 		t.Fatalf("settled a claim beyond starting: %v", err)
 	}
 }
+
+func TestSplitOnTimeOccurrencesNeverCatchesUp(t *testing.T) {
+	now := time.Date(2026, 10, 24, 13, 0, 20, 0, time.UTC)
+	onTime := now.Add(-20 * time.Second)
+	old := now.Add(-3 * time.Hour)
+
+	skipped, fire := splitOnTimeOccurrences([]time.Time{old, onTime}, now)
+	if fire == nil || !fire.Equal(onTime) || len(skipped) != 1 {
+		t.Fatalf("the on-time slot must start and the older one be skipped: %v %v", skipped, fire)
+	}
+	skipped, fire = splitOnTimeOccurrences([]time.Time{old}, now)
+	if fire != nil || len(skipped) != 1 {
+		t.Fatalf("a slot hours late must be skipped, not run as catch-up: %v %v", skipped, fire)
+	}
+}

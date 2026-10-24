@@ -418,8 +418,8 @@ func (s *SchedulerService) durableScheduleRunProjection(ctx context.Context, run
 // tickLoop is the wall-clock scheduler. Every 60 seconds it evaluates each
 // registered schedule against the current wall-clock time and fires any that
 // are due. Unlike timer-based schedulers (gocron), this approach is immune to
-// macOS App Nap and sleep/wake monotonic clock drift — if a job was missed
-// during sleep, it fires on the first tick after wake.
+// macOS App Nap and sleep/wake monotonic clock drift. A slot missed during
+// sleep or a long gap is skipped, not run late (scheduleOnTimeGrace).
 func (s *SchedulerService) tickLoop(ctx context.Context) {
 	const interval = 60 * time.Second
 	const wakeThreshold = 90 * time.Second
@@ -446,12 +446,15 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 			for sid, job := range s.jobs {
 				if job.cronSched != nil {
 					occurrences := dueCronOccurrences(job.cronSched, job.lastFired, t)
-					if len(occurrences) > 0 {
-						for _, occurrence := range occurrences[:len(occurrences)-1] {
-							missed = append(missed, dueRegisteredJob{job: job, scheduledFor: occurrence})
-						}
-						latest := occurrences[len(occurrences)-1]
-						toFire = append(toFire, dueRegisteredJob{job: job, scheduledFor: latest})
+					skipped, fire := splitOnTimeOccurrences(occurrences, t)
+					for _, occurrence := range skipped {
+						missed = append(missed, dueRegisteredJob{job: job, scheduledFor: occurrence})
+					}
+					if len(skipped) > 0 && fire == nil && job.lastFired.Before(skipped[len(skipped)-1]) {
+						job.lastFired = skipped[len(skipped)-1]
+					}
+					if fire != nil {
+						toFire = append(toFire, dueRegisteredJob{job: job, scheduledFor: *fire})
 					}
 					parts = append(parts, fmt.Sprintf("%s next=%s", sid, job.cronSched.Next(t).UTC().Format(time.RFC3339)))
 				} else if job.runAt != nil {
@@ -470,7 +473,7 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 			for _, due := range missed {
 				occurrenceCtx := *due.job.sctx
 				occurrenceCtx.ScheduledFor = due.scheduledFor
-				if err := s.recordScheduleFireDecision(context.Background(), &occurrenceCtx, "missed_scheduler_gap", "scheduler was not evaluating at the scheduled occurrence; the latest due occurrence will run as catch-up", "", t.UTC()); err != nil {
+				if err := s.recordScheduleFireDecision(context.Background(), &occurrenceCtx, "missed_scheduler_gap", "scheduler was not evaluating at the scheduled occurrence; the slot is skipped (no catch-up)", "", t.UTC()); err != nil {
 					failedOccurrenceLedger[due.job] = true
 				}
 			}
@@ -521,6 +524,24 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 			lastTick = t
 		}
 	}
+}
+
+// scheduleOnTimeGrace is how late a scheduled slot may still start. Later than
+// this the slot is skipped and the schedule waits for its next one: there is no
+// catch-up after sleep or a long gap (owner, 2026-10-24: "no catch up at all").
+const scheduleOnTimeGrace = 2 * time.Minute
+
+// splitOnTimeOccurrences returns the due occurrences to skip and the one newest
+// occurrence to start, or nil when even that one is too late.
+func splitOnTimeOccurrences(occurrences []time.Time, now time.Time) (skipped []time.Time, fire *time.Time) {
+	if len(occurrences) == 0 {
+		return nil, nil
+	}
+	latest := occurrences[len(occurrences)-1]
+	if now.Sub(latest) > scheduleOnTimeGrace {
+		return occurrences, nil
+	}
+	return occurrences[:len(occurrences)-1], &latest
 }
 
 const maxCronOccurrenceScans = int(workflowScheduleHistoryRetention/time.Minute) + 1
