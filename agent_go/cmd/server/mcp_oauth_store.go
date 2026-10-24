@@ -184,6 +184,12 @@ func migrateStableMCPOAuthRefresh(db *sql.DB, path string) error {
 	if err != nil {
 		return err
 	}
+	keepBackup := false
+	defer func() {
+		if !keepBackup {
+			_ = os.Remove(backup)
+		}
+	}()
 	if err = file.Close(); err != nil {
 		return err
 	}
@@ -210,6 +216,7 @@ func migrateStableMCPOAuthRefresh(db *sql.DB, path string) error {
 	if err = tx.Commit(); err != nil {
 		return err
 	}
+	keepBackup = true
 	consumed, _ := removed.RowsAffected()
 	expired, _ := pruned.RowsAffected()
 	log.Printf("mcp_oauth event=%q consumed_refresh_removed=%d expired_access_removed=%d backup=%q", "stable_refresh_migrated", consumed, expired, filepath.Base(backup))
