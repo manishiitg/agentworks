@@ -1,11 +1,11 @@
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
-import { Plug } from 'lucide-react'
+import { Terminal } from 'lucide-react'
 import McpConnectBody from './topbar/McpConnectBody'
 import { useAuthStore } from '../stores/useAuthStore'
 
 /**
- * Connect an AI agent (MCP) as a full page, opened from the top-bar plug icon
- * (admins and Code reviewers).
+ * Connect an AI app through the shared CLI/MCP entry.
+ * Review controls retain their existing administrator and reviewer gates.
  */
 export default function McpConnectPage() {
   const user = useAuthStore(state => state.user)
@@ -13,7 +13,7 @@ export default function McpConnectPage() {
   const codeReview = user?.is_crew_reviewer === true || (user?.is_admin === true && isMultiUserMode)
   return (
     <section aria-label="Connect an AI agent" className="flex h-full min-h-0 flex-col bg-background">
-      <WorkspacePageHeader page="mcp" title="Connect AI tools" icon={Plug} />
+      <WorkspacePageHeader page="mcp" title="Connect AI tools" icon={Terminal} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
           <McpConnectBody codeReview={codeReview} />

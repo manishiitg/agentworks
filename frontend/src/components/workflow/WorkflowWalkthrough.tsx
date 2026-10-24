@@ -316,36 +316,7 @@ const PROVIDERS_STEPS: WalkthroughStep[] = [
 ]
 
 // Manual account Help is available even where automatic workspace tours are paused.
-const SHARED_HELP: Pick<Record<WalkthroughSurface, WalkthroughStep[]>, 'app' | 'brain' | 'vault' | 'bridge' | 'relays'> = {
-  app: [
-    { title: 'Find your way around AgentWorks', body: 'Start from Home: choose Crew for an ongoing teammate, Goals for a measurable outcome, or Flows for a repeatable process. Your work stays in the left menu.' },
-    { title: 'Set up your AI account', body: 'Open AI models & accounts from your account menu to review personal and company accounts. Choose the account under Runs on when starting work.' },
-    { title: 'Use your tools and knowledge', body: 'Brain holds reusable knowledge and skills. Vault holds connected apps and credentials. Use the CLI/MCP shortcut to connect an AI app, or Bridge to connect your coding agents.' },
-  ],
-  brain: [
-    { title: 'Knowledge your agents can reuse', body: 'Brain keeps shared knowledge, files and skills in folders. Open a folder to browse its content; your folder access decides what you can use or change.' },
-    { title: 'Work with your knowledge', body: 'Use Brain chat to find, explain or update the knowledge you can access. Ask a folder owner to add you if the folder you need is missing.' },
-    { title: 'Reuse knowledge in your work', body: 'Ask your Crew or Goal agent to use Brain for relevant knowledge and skills. Existing folder permissions still apply.' },
-  ],
-  vault: [
-    { title: 'Your connected apps and credentials', body: 'Vault keeps app connections and secrets together. My Vault holds your own resources; shared vaults contain resources their owners have made available to you.' },
-    { title: 'Connect an app through chat', body: 'Ask your Crew or Goal agent to connect an app, such as Dropbox. It guides setup and gives you the sign-in link or asks for the key the app needs.' },
-    { title: 'Choose what your project uses', body: 'Open Vault in your Crew or Goal to select the connections and secrets it needs. Vault grants and each resource’s sharing settings still decide access.' },
-  ],
-  bridge: [
-    { title: 'Connect your coding agents', body: 'AgentBridge lets connected coding agents exchange messages. Use the CLI/MCP shortcut for connection instructions, then find your agents here.' },
-    { title: 'Find an agent and send a message', body: 'Open an agent to see its details and send a message. Online means it is connected; the delivery status tells you whether your message has reached it.' },
-    { title: 'Choose who can find your agent', body: 'Connected agents start with Only you. Publishing an agent makes it discoverable on the network; it does not share the agent’s private chat or accounts.' },
-  ],
-  relays: [
-    { title: 'Build a repeatable process', body: 'Flows connects clear steps, AI decisions and actions. Describe the process in Builder chat and review its steps before using it.' },
-    { title: 'Follow the results', body: 'Open a run to inspect its progress and results. Use the dashboard to see what the Flow produces.' },
-    { title: 'Share and reuse your Flow', body: 'Share your Flow so people and agents can use its published entry points. Existing sharing and resource permissions still apply.' },
-  ],
-}
-
 const STEPS_BY_SURFACE: Record<WalkthroughSurface, WalkthroughStep[]> = {
-  ...SHARED_HELP,
   overview: OVERVIEW_STEPS,
   'empty-automation': EMPTY_AUTOMATION_STEPS,
   automation: AUTOMATION_STEPS,
@@ -357,11 +328,6 @@ const STEPS_BY_SURFACE: Record<WalkthroughSurface, WalkthroughStep[]> = {
 }
 
 const SURFACE_LABELS: Record<WalkthroughSurface, { product: string; section: string; aria: string }> = {
-  app: { product: 'AgentWorks', section: 'Help', aria: 'AgentWorks help walkthrough' },
-  brain: { product: 'Brain', section: 'Help', aria: 'Brain help walkthrough' },
-  vault: { product: 'Vault', section: 'Help', aria: 'Vault help walkthrough' },
-  bridge: { product: 'AgentBridge', section: 'Help', aria: 'AgentBridge help walkthrough' },
-  relays: { product: 'Flows', section: 'Help', aria: 'Flows help walkthrough' },
   overview: { product: 'Goals', section: 'Getting started', aria: 'Goals getting started walkthrough' },
   'empty-automation': { product: 'Goals', section: 'Choose an automation', aria: 'Empty automation walkthrough' },
   automation: { product: 'Goals', section: 'Automation', aria: 'Automation workspace walkthrough' },

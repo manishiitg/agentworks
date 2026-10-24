@@ -1,11 +1,6 @@
 export const LLM_DISCOVERY_ONBOARDING_DISMISSED_KEY = 'llm_discovery_onboarding_dismissed'
-export type WalkthroughSurface = 'overview' | 'empty-automation' | 'automation' | 'empty-crew' | 'crew' | 'empty-code' | 'code' | 'providers' | 'app' | 'brain' | 'vault' | 'bridge' | 'relays'
+export type WalkthroughSurface = 'overview' | 'empty-automation' | 'automation' | 'empty-crew' | 'crew' | 'empty-code' | 'code' | 'providers'
 const WALKTHROUGH_DISMISSED_KEYS: Record<WalkthroughSurface, string> = {
-  app: 'agentworks_app_help_v1_dismissed',
-  brain: 'agentworks_brain_help_v1_dismissed',
-  vault: 'agentworks_vault_help_v1_dismissed',
-  bridge: 'agentworks_bridge_help_v1_dismissed',
-  relays: 'agentworks_relays_help_v1_dismissed',
   overview: 'agentworks_overview_walkthrough_v3_dismissed',
   'empty-automation': 'agentworks_empty_automation_walkthrough_v3_dismissed',
   automation: 'agentworks_automation_walkthrough_v3_dismissed',

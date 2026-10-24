@@ -1,5 +1,4 @@
 import { ProductPickerActionsContext } from './workspace/productNavigationContexts'
-import { WorkspaceSetupMenu } from './workspace/WorkspaceSetupMenu'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
@@ -13,7 +12,7 @@ import type { CustomPreset, PredefinedPreset } from '../types/preset'
 import type { PlannerFile, PresetLLMConfig, WorkflowManifest } from '../services/api-types'
 import PresetModal from './PresetModal'
 import { agentApi, workflowManifestApi } from '../services/api'
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from './ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import ModalPortal from './ui/ModalPortal'
 import { useChatStore, useLLMStore } from '../stores'
 import { useMCPStore } from '../stores/useMCPStore'
@@ -25,7 +24,7 @@ import { dedupeServerNames } from '../utils/mcpServerAlias'
 import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
-import { ProductTopBar, ProductTopBarActions, ProductTopBarMain } from './workspace/ProductTopBar'
+import { ProductTopBar, ProductTopBarMain } from './workspace/ProductTopBar'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { WorkflowIcon } from './workflow/WorkflowIcon'
@@ -766,13 +765,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
             </div>
           </ProductTopBarMain>
 
-          {/* Shared actions stay at the top right in every product. */}
-          <TooltipProvider delayDuration={400}>
-            <ProductTopBarActions>
-              <WorkspaceSetupMenu onOpenWalkthrough={isRelaySurface ? undefined : openWorkflowWalkthrough} onOpenShortcuts={() => setShowShortcuts(true)} />
-
-            </ProductTopBarActions>
-          </TooltipProvider>
       </ProductTopBar>
       </ProductPickerActionsContext.Provider>
 

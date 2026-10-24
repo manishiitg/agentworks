@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { AppQuickSwitcher } from './AppQuickSwitcher'
 import { AppSidebar } from './AppSidebar'
-import { WorkspaceAccountMenu } from './WorkspaceSetupMenu'
+import { WorkspaceAccountMenu } from './WorkspaceAccountMenu'
 import { ProductNavigationContext, CompactProductNavigationContext } from './productNavigationContexts'
 import ToastHost from '../ui/ToastHost'
 import { TooltipProvider } from '../ui/tooltip'
