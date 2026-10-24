@@ -198,6 +198,7 @@ type localBridge struct {
 	options      LocalBridgeOptions
 	workers      sync.WaitGroup
 	closed       bool
+	reconnecting bool
 }
 
 var ErrNativeOfferUnconfirmed = errors.New("native delivery is unconfirmed")
@@ -208,6 +209,10 @@ var ErrNativeOfferRejected = errors.New("native offer failed before delivery")
 
 type LocalBridgeOptions struct {
 	Ready func(context.Context) // one bounded native-chat discovery after local readiness
+	// Reconnect verifies only saved native chats after their provider restarts.
+	// It runs outside the bridge lock, with at most one discovery in flight.
+	Reconnect         func(context.Context, []AgentAttachment)
+	HousekeepingEvery time.Duration // zero uses the normal 30-second maintenance interval
 
 	ChatContext func(context.Context, AgentAttachment, string) (string, string)
 	ChatLabel   func(AgentAttachment, string) string
@@ -2218,7 +2223,11 @@ func hostAliveFrom(probed map[hostProbeKey]bool, provider, host string, check fu
 }
 
 func (b *localBridge) housekeeping(ctx context.Context) {
-	tick := time.NewTicker(30 * time.Second)
+	interval := b.options.HousekeepingEvery
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	for {
 		select {
@@ -2228,11 +2237,15 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 		}
 		probed := b.probeHosts()
 		var labels []*localSession
+		var reconnect []AgentAttachment
 		b.mu.Lock()
 		for _, s := range b.sessions {
 			if !s.Offline && b.options.HostAlive != nil && !hostAliveFrom(probed, s.Attachment.Provider, s.HostKey, b.options.HostAlive) {
 				s.Offline = true
 				s.LastError = "Provider session ended; type /agentworks attach in that chat to reconnect."
+				if b.options.Reconnect != nil && s.NativeRemote != "" {
+					s.LastError = "Waiting for this chat to return; AgentWorks will reconnect automatically."
+				}
 				stopMuseWatch(s)
 				if s.cancel != nil {
 					s.cancel()
@@ -2242,6 +2255,20 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 				b.startNative(s)
 				labels = append(labels, s)
 			}
+			if s.Offline && !s.OfflineExplicit && !s.ServerClosed && !s.Also && s.NativeRemote != "" {
+				reconnect = append(reconnect, s.Attachment)
+			}
+		}
+		if !b.closed && !b.reconnecting && len(reconnect) > 0 && b.options.Reconnect != nil {
+			b.reconnecting = true
+			b.workers.Add(1)
+			go func() {
+				defer b.workers.Done()
+				b.options.Reconnect(ctx, reconnect)
+				b.mu.Lock()
+				b.reconnecting = false
+				b.mu.Unlock()
+			}()
 		}
 		_ = b.save()
 		b.wake()

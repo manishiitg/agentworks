@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -85,6 +86,66 @@ func autoConnectChat(ctx context.Context, root string, o *options, req agentwork
 		return activatePiSession(ctx, root, req.HostKey, req.SessionID, out.Attachment.ID)
 	}
 	return err
+}
+
+// A provider restart changes its process key while the native conversation
+// remains the same. Recheck saved chats without waiting for a person to type.
+// Absence is a local discovery result, not a reason to call the server again.
+func savedChatReconnector(root string, o *options, discover func(context.Context, string, *options) ([]liveAgentSession, error)) func(context.Context, []agentworksclient.AgentAttachment) {
+	type retry struct {
+		next   time.Time
+		delay  time.Duration
+		absent bool
+	}
+	attempts := map[string]retry{} // memory only; the helper runs one recovery at a time
+	return func(ctx context.Context, saved []agentworksclient.AgentAttachment) {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		probe := *o
+		probe.attachedOnly = true
+		live, err := discover(ctx, root, &probe)
+		if err != nil || ctx.Err() != nil {
+			return
+		}
+		for _, attachment := range saved {
+			var found *liveAgentSession
+			for i := range live {
+				if live[i].provider == attachment.Provider && live[i].session == attachment.SessionID {
+					found = &live[i]
+					break
+				}
+			}
+			state := attempts[attachment.ID]
+			if found == nil {
+				if !state.absent {
+					log.Printf("[BRIDGE-RECOVERY] outcome=still_absent agent=%s attachment=%s", attachment.AgentName, attachment.ID)
+				}
+				attempts[attachment.ID] = retry{absent: true}
+				continue
+			}
+			if time.Now().Before(state.next) {
+				continue
+			}
+			req := agentworksclient.LocalBridgeRequest{Provider: found.provider, SessionID: found.session, HostKey: found.host, NativeRemote: found.remote}
+			err := autoConnectChat(ctx, root, o, req, found.cwd)
+			if err == nil {
+				req.Action = "connection"
+				var status agentworksclient.LocalBridgeReply
+				status, err = agentworksclient.CallLocalBridge(ctx, root, req)
+				if err == nil && (!status.Attached || status.Offline || status.Stopped) {
+					err = fmt.Errorf("saved chat remains disconnected")
+				}
+			}
+			if err != nil {
+				delay := min(max(state.delay*2, 30*time.Second), 10*time.Minute)
+				attempts[attachment.ID] = retry{next: time.Now().Add(delay), delay: delay}
+				log.Printf("[BRIDGE-RECOVERY] outcome=refused agent=%s attachment=%s retry_in=%s", attachment.AgentName, attachment.ID, delay)
+				continue
+			}
+			delete(attempts, attachment.ID)
+			log.Printf("[BRIDGE-RECOVERY] outcome=reconnected agent=%s attachment=%s", attachment.AgentName, attachment.ID)
+		}
+	}
 }
 
 // A lifecycle operation connects the currently verified live chats once. No

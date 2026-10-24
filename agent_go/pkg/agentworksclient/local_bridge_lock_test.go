@@ -651,6 +651,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		t.Skip(err)
 	}
 	var attachments atomic.Int32
+	var backgroundAttachments atomic.Int32
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/agents/events") {
 			w.WriteHeader(http.StatusOK)
@@ -665,6 +666,11 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body.Action == "attach" {
+			if body.Session == "background" {
+				backgroundAttachments.Add(1)
+				_ = json.NewEncoder(w).Encode(AgentAttachment{ID: "background-renewed", AgentID: "agent-background", AgentName: body.Name, Provider: "codex", SessionID: body.Session})
+				return
+			}
 			id := attachments.Add(1)
 			_ = json.NewEncoder(w).Encode(AgentAttachment{ID: fmt.Sprintf("renewed-%d", id), AgentID: "agent-" + body.Session, AgentName: body.Name, Provider: "codex", SessionID: body.Session})
 			return
@@ -684,16 +690,44 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	seed := func(session, id string, closed bool) *localSession {
 		return &localSession{Attachment: AgentAttachment{ID: id, AgentID: "agent-" + session, AgentName: "saved-" + session, Provider: "codex", SessionID: session}, HostKey: "prior-process", AccountSenders: true, OwnCLI: true, Offline: true, ServerClosed: closed, ConfigPath: config, ParentConfigPath: config}
 	}
+	background := seed("background", "lease-background", false)
+	background.NativeRemote = "desktop+unix:///fixture.sock"
+	background.ReadPosition = 7
+	closed := seed("closed", "lease-closed", true)
+	closed.NativeRemote = background.NativeRemote
+	explicit := seed("explicit", "lease-explicit", false)
+	explicit.NativeRemote, explicit.OfflineExplicit = background.NativeRemote, true
 	if err = atomicLiveJSON(filepath.Join(root, "sessions.json"), map[string]*localSession{
-		localBridgeKey("codex", "saved"):  seed("saved", "lease-saved", false),
-		localBridgeKey("codex", "closed"): seed("closed", "lease-closed", true),
+		localBridgeKey("codex", "saved"):      seed("saved", "lease-saved", false),
+		localBridgeKey("codex", "closed"):     closed,
+		localBridgeKey("codex", "explicit"):   explicit,
+		localBridgeKey("codex", "background"): background,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+	recovered := make(chan error, 1)
 	go func() {
-		done <- ServeLocalBridge(ctx, root, LocalBridgeOptions{HostAlive: func(string, string) bool { return true }})
+		done <- ServeLocalBridge(ctx, root, LocalBridgeOptions{
+			HostAlive:         func(_ string, host string) bool { return host == "current-process" },
+			HousekeepingEvery: 20 * time.Millisecond,
+			NativeOffer:       func(context.Context, string, LocalBridgeReply) error { return nil },
+			Reconnect: func(ctx context.Context, saved []AgentAttachment) {
+				if len(saved) != 1 || saved[0].SessionID != "background" || saved[0].AgentName != "saved-background" {
+					select {
+					case recovered <- fmt.Errorf("recovery selected a closed, explicit or unrelated chat: %+v", saved):
+					default:
+					}
+					return
+				}
+				_, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "resume", Provider: "codex", SessionID: "background", HostKey: "current-process", NativeRemote: background.NativeRemote})
+				select {
+				case recovered <- err:
+				default:
+				}
+			},
+		})
 	}()
 	defer func() { cancel(); <-done }()
 	for i := 0; i < 100; i++ {
@@ -704,6 +738,27 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	}
 	if err != nil {
 		t.Fatal(err)
+	}
+	// No prompt or messaging call is made for this native chat: maintenance
+	// must restore it by its exact saved identity, outside the bridge lock.
+	select {
+	case err := <-recovered:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("saved native chat did not reconnect without a prompt")
+	}
+	status, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "status", Provider: "codex", SessionID: "background", HostKey: "current-process"})
+	if err != nil || !status.Attached || status.Attachment.AgentName != "saved-background" || backgroundAttachments.Load() != 1 {
+		t.Fatalf("background recovery changed or failed the saved identity: %+v %v", status, err)
+	}
+	var restored map[string]*localSession
+	if err := readLiveJSON(filepath.Join(root, "sessions.json"), &restored); err != nil {
+		t.Fatal(err)
+	}
+	if s := restored[localBridgeKey("codex", "background")]; s == nil || s.ReadPosition != 7 || s.ParentConfigPath != config {
+		t.Fatalf("background recovery lost the saved login or read position: %+v", s)
 	}
 	request := LocalBridgeRequest{Action: "peers", Provider: "codex", SessionID: "saved", HostKey: "current-process"}
 	before, err := CallLocalBridge(ctx, root, request)

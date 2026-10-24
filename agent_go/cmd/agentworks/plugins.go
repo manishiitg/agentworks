@@ -909,7 +909,7 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			root = configured
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Ping: notifyPing, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), ChatLabel: attachedChatLabel, ChatContext: attachedChatContext, AutoUpdate: autoUpdateHelperCallback, Ready: func(ctx context.Context) { connectLiveChats(ctx, o) }})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Ping: notifyPing, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), ChatLabel: attachedChatLabel, ChatContext: attachedChatContext, AutoUpdate: autoUpdateHelperCallback, Ready: func(ctx context.Context) { connectLiveChats(ctx, o) }, Reconnect: savedChatReconnector(root, o, discoverLiveAgents)})
 	}}
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")

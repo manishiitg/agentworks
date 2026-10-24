@@ -43,7 +43,7 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 	var mu sync.Mutex
 	var attached agentworksclient.AgentAttachment
 	var first agentworksclient.LocalBridgeRequest
-	attaches, stopped := 0, false
+	attaches, resumes, stopped, offline := 0, 0, false, false
 	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -52,12 +52,17 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		out := agentworksclient.LocalBridgeReply{Stopped: stopped, Attached: attached.ID != "", Attachment: attached}
+		out := agentworksclient.LocalBridgeReply{Stopped: stopped, Offline: offline, Attached: attached.ID != "" && !offline, Attachment: attached}
 		if in.Action == "attach" {
 			attaches++
 			first = in
 			attached = agentworksclient.AgentAttachment{ID: "lease", AgentName: in.AgentName, Provider: in.Provider, SessionID: in.SessionID}
 			out.Attached, out.Attachment = true, attached
+		}
+		if in.Action == "resume" && !stopped {
+			resumes++
+			offline = false
+			out.Offline, out.Attached = false, true
 		}
 		_ = json.NewEncoder(w).Encode(out)
 	})}
@@ -76,14 +81,37 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 	if attaches != 1 || !first.Automatic || first.Setup || first.Also || first.SwitchConnection || first.ConfigPath != login || first.AgentName == "older-folder-agent" || first.SessionID != req.SessionID {
 		t.Fatalf("wrong automatic connection: count=%d %+v", attaches, first)
 	}
+	saved := attached
+	offline = true
+	mu.Unlock()
+	available := []liveAgentSession{{provider: "codex", session: uuid.NewString(), host: "another-chat"}}
+	reconnect := savedChatReconnector(root, o, func(_ context.Context, _ string, probe *options) ([]liveAgentSession, error) {
+		if !probe.attachedOnly {
+			t.Error("recovery requested new-chat discovery")
+		}
+		return available, nil
+	})
+	reconnect(context.Background(), []agentworksclient.AgentAttachment{saved})
+	mu.Lock()
+	if resumes != 0 {
+		t.Fatal("recovery adopted another native thread")
+	}
+	mu.Unlock()
+	available = append(available, liveAgentSession{provider: "codex", session: req.SessionID, host: "restarted-process", cwd: folder})
+	reconnect(context.Background(), []agentworksclient.AgentAttachment{saved})
+	mu.Lock()
+	if resumes != 1 || offline || attached.AgentName != saved.AgentName || attaches != 1 {
+		t.Fatalf("recovery did not retain the exact saved chat: resumes=%d offline=%v attached=%+v", resumes, offline, attached)
+	}
 	stopped, attached = true, agentworksclient.AgentAttachment{}
 	mu.Unlock()
+	reconnect(context.Background(), []agentworksclient.AgentAttachment{saved})
 	if err = autoConnectChat(context.Background(), root, o, req, folder); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if attaches != 1 {
+	if attaches != 1 || resumes != 1 {
 		t.Fatal("explicit disconnect was overridden")
 	}
 }
