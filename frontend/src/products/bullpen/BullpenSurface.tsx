@@ -66,7 +66,7 @@ function AgentDetails({ agent, onClose }: { agent: BullpenAgent; onClose: () => 
         <dt className="text-muted-foreground">App</dt><dd>{agent.provider ? providerNames[agent.provider] || agent.provider : agent.type || 'Agent'}</dd>
         <dt className="text-muted-foreground">Address</dt><dd className="break-all font-mono">{agent.target}</dd>
         <dt className="text-muted-foreground">Connection</dt><dd>{agent.presence || 'Status unavailable'}</dd>
-        <dt className="text-muted-foreground">Visibility</dt><dd>{agent.shared || agent.published ? 'Published to the network' : 'Only you'}</dd>
+        <dt className="text-muted-foreground">Visibility</dt><dd>{agent.visibility_label}</dd>
         <dt className="text-muted-foreground">Last seen</dt><dd>{agent.last_seen_at ? <time dateTime={agent.last_seen_at}>{new Date(agent.last_seen_at).toLocaleString()}</time> : 'Unknown'}</dd>
         {agent.last_delivered_at && <><dt className="text-muted-foreground">Last delivered</dt><dd><time dateTime={agent.last_delivered_at}>{new Date(agent.last_delivered_at).toLocaleString()}</time></dd></>}
         {agent.repository && <><dt className="text-muted-foreground">Repository</dt><dd className="break-all">{agent.repository}{agent.branch ? `@${agent.branch}` : ''}</dd></>}
@@ -143,9 +143,9 @@ function AgentDirectory() {
       {visible.map(agent => <article key={agent.agent_id} className="flex flex-wrap items-center justify-between gap-4 p-4 sm:px-5">
         <button type="button" aria-label={'Details for ' + (agent.label || agent.agent_name)} aria-haspopup="dialog" onClick={() => setSelected(agent.agent_id)} className="min-w-0 flex-1 rounded-md text-left outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring">
           <h2 className="break-words text-sm font-semibold">{agent.label || agent.agent_name}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{agent.provider ? providerNames[agent.provider] || agent.provider : agent.type || 'Agent'}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{agent.provider ? providerNames[agent.provider] || agent.provider : agent.type || 'Agent'}<span className="mx-2" aria-hidden="true">·</span><span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${agent.online ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />{agent.availability_label}</span></p>
         </button>
-        <span className="rounded-full bg-muted px-2.5 py-1 text-xs">{agent.connection_label}{agent.availability_label && <span className="text-muted-foreground"> · {agent.availability_label}</span>}</span>
+        <span className="rounded-full bg-muted px-2.5 py-1 text-xs" title={agent.visibility_label === 'Published' ? 'People signed into this network can find and message this agent.' : 'Only you and your own agents can find and message this agent.'}>{agent.visibility_label}</span>
         <AgentAddress target={agent.target} />
       </article>)}
     </div> : agents.length > 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No agents match your search.</p> : null}

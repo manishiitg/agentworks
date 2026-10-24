@@ -91,8 +91,8 @@ func TestBullpenAccountDirectoryOverAuthenticatedHTTP(t *testing.T) {
 	if !strings.Contains(body, "own-agent") || strings.Contains(body, "offline-hidden") || strings.Contains(body, "foreign-agent") || strings.Contains(body, "private-connection") || strings.Contains(body, "native_session_id") {
 		t.Fatalf("directory ownership or metadata leak: %s", body)
 	}
-	if !strings.Contains(body, `"connection_label":"Connected"`) || !strings.Contains(body, `"availability_label":"Offline"`) {
-		t.Fatalf("browser needs the server's short connection label: %s", body)
+	if !strings.Contains(body, `"visibility_label":"Only you"`) || !strings.Contains(body, `"availability_label":"Offline"`) {
+		t.Fatalf("browser needs separate server visibility and availability labels: %s", body)
 	}
 	if body = get("other", http.StatusOK); !strings.Contains(body, "foreign-agent") || strings.Contains(body, "own-agent") {
 		t.Fatalf("foreign directory crossed account: %s", body)
