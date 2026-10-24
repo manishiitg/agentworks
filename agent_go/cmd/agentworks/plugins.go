@@ -428,9 +428,22 @@ func receiptAfterEmit(ctx context.Context, root string, o *options, req agentwor
 		}
 		ack := req
 		ack.Action, ack.Delivery, ack.MessageID, ack.WantNotice = "ack", "delivered", m.MessageID, false
-		if _, err := bridgeCall(ackCtx, root, o, ack); err != nil {
+		started := time.Now()
+		deadline, _ := ackCtx.Deadline()
+		budget := max(0, time.Until(deadline).Milliseconds())
+		out, err := bridgeCall(ackCtx, root, o, ack)
+		if err != nil {
+			cause := "ipc_failed"
+			if ackCtx.Err() != nil {
+				cause = "context_done"
+				err = ackCtx.Err()
+			} else if out.Error != "" {
+				cause = "helper_refused"
+			}
+			hookLog(root, "event=receipt transport=%s outcome=failed message=%s inbox=%s attachment=%s cause=%s detail=%.240q elapsed_ms=%d budget_ms=%d observed_at=%s", req.Transport, m.MessageID, m.InboxID, m.AttachmentID, cause, err.Error(), time.Since(started).Milliseconds(), budget, time.Now().UTC().Format(time.RFC3339Nano))
 			return
 		}
+		hookLog(root, "event=receipt transport=%s outcome=recorded message=%s inbox=%s attachment=%s elapsed_ms=%d budget_ms=%d observed_at=%s", req.Transport, m.MessageID, m.InboxID, m.AttachmentID, time.Since(started).Milliseconds(), budget, time.Now().UTC().Format(time.RFC3339Nano))
 	}
 }
 

@@ -43,6 +43,14 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 				t.Error("wrong delivered receipt", in.Action, in.Delivery, in.Transport)
 			}
 			receipts.Add(1)
+			if mode.Load() == 3 {
+				_ = json.NewEncoder(w).Encode(agentworksclient.LocalBridgeReply{Error: "fixture receipt refused"})
+				return
+			}
+			if mode.Load() == 4 {
+				<-r.Context().Done()
+				return
+			}
 			_ = json.NewEncoder(w).Encode(agentworksclient.LocalBridgeReply{Attached: true})
 			return
 		}
@@ -55,7 +63,7 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 			return
 		}
 		out := agentworksclient.LocalBridgeReply{}
-		if mode.Load() == 1 {
+		if mode.Load() == 1 || mode.Load() >= 3 {
 			out.Attached = true
 			out.Attachment = agentworksclient.AgentAttachment{ID: "lease", Provider: in.Provider, SessionID: in.SessionID}
 			out.Messages = []agentworksclient.AgentLiveMessage{{AttachmentID: "lease", MessageID: "message", InboxID: "inbox", Sender: "reviewer", Message: "MID_TURN_MARKER", Sequence: 1}}
@@ -64,8 +72,8 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 	})}
 	go srv.Serve(listener)
 	defer srv.Close()
-	for _, provider := range []string{"codex", "cursor"} {
-		for i, name := range []string{"empty", "pending", "slow"} {
+	for _, provider := range []string{"claude", "codex", "cursor"} {
+		for i, name := range []string{"empty", "pending", "slow", "refused_receipt", "slow_receipt"} {
 			mode.Store(int32(i))
 			var output bytes.Buffer
 			before, _ := os.ReadFile(filepath.Join(root, "bridge.log"))
@@ -78,7 +86,7 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 				t.Fatalf("post-tool exceeded budget: %v %s", err, elapsed)
 			}
 			after, _ := os.ReadFile(filepath.Join(root, "bridge.log"))
-			if i != 1 {
+			if i == 0 || i == 2 {
 				if receipts.Load() != beforeReceipts {
 					t.Fatal("empty/error hook acknowledged an unseen message")
 				}
@@ -96,6 +104,16 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 			trace := string(after[len(before):])
 			if !strings.Contains(trace, "event=PostToolUse transport="+provider+"_hook outcome=rendered message=message") || !strings.Contains(trace, "rendered_at=") || strings.Contains(trace, "MID_TURN_MARKER") {
 				t.Fatal("hook render trace missing or contains body", trace)
+			}
+			outcome := "recorded"
+			if i >= 3 {
+				outcome = "failed"
+			}
+			if !strings.Contains(trace, "event=receipt transport="+provider+"_hook outcome="+outcome+" message=message inbox=inbox attachment=lease") || !strings.Contains(trace, "elapsed_ms=") || !strings.Contains(trace, "budget_ms=") || !strings.Contains(trace, "observed_at=") {
+				t.Fatal("receipt outcome missing", trace)
+			}
+			if i == 3 && !strings.Contains(trace, `cause=helper_refused detail="fixture receipt refused"`) || i == 4 && !strings.Contains(trace, `cause=context_done detail="context deadline exceeded"`) {
+				t.Fatal("receipt failure cause missing", trace)
 			}
 			if !strings.Contains(output.String(), "MID_TURN_MARKER") || !strings.Contains(strings.ToLower(output.String()), "acknowledge delivered once") {
 				t.Fatal("body or receipt reminder lost", output.String())
