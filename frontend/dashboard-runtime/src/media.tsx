@@ -33,11 +33,15 @@ export function UploadZone({ onUploaded, label = 'Add references', className = '
     try {
       for (const file of files) {
         setStatus(`Adding ${file.name}…`)
-        try { saved.push(await assetAPI().uploadFile(file)) }
+        try {
+          const api = assetAPI()
+          if (typeof api.uploadFile !== 'function') throw new Error('Open the live dashboard to upload files.')
+          saved.push(await api.uploadFile(file))
+        }
         catch (cause) { failures.push(`${file.name}: ${cause instanceof Error ? cause.message : 'Upload failed'}`) }
       }
       if (saved.length) await onUploaded?.(saved)
-      setStatus(saved.length ? `${saved.length} reference${saved.length === 1 ? '' : 's'} added.` : '')
+      setStatus(saved.length ? `${saved.length} file${saved.length === 1 ? '' : 's'} uploaded.` : '')
       setError(failures.join('\n'))
     } catch (cause) {
       setError(`Files were uploaded, but the next action failed: ${cause instanceof Error ? cause.message : String(cause)}`)

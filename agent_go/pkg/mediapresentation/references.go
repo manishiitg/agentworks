@@ -84,7 +84,7 @@ func showReferenceFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				if runtime.Emit != nil {
 					runtime.Emit(&event)
 				}
-				return fmt.Sprintf("Showing %q in the References panel.", title), nil
+				return fmt.Sprintf("Showing %q in the dashboard.", title), nil
 			},
 		}, nil
 	}
@@ -177,7 +177,7 @@ func showCharacterFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				if runtime.Emit != nil {
 					runtime.Emit(&event)
 				}
-				return fmt.Sprintf("Showing %q in the Characters panel.", name), nil
+				return fmt.Sprintf("Showing %q in the dashboard.", name), nil
 			},
 		}, nil
 	}
@@ -198,7 +198,7 @@ func showDocumentFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 		projectRoot := profileWorkspaceRoot(runtime.UserID, runtime.WorkspacePath)
 		return agentprofiles.ToolSpec{
 			Name: "show_document", Category: "presentation_tools",
-			Description: "Present a written production artifact -- a brief, script, shot list, or character sheet -- in the product Documents panel so the user can read and approve it without hunting for the file. Call this when a stage finishes the artifact it owes. Repeating the same path updates the existing presentation.",
+			Description: "Present a written project artifact -- a brief, script, shot list, or character sheet -- in the dashboard so the user can read and approve it without hunting for the file. Call this when a stage finishes the artifact it owes. Repeating the same path updates the existing presentation.",
 			Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{
 				"path":  map[string]interface{}{"type": "string", "description": "Project-relative path to the .md artifact"},
 				"title": map[string]interface{}{"type": "string", "description": "Human-readable name, e.g. \"Script\" or \"Shot list\""},
@@ -241,7 +241,7 @@ func showDocumentFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				if runtime.Emit != nil {
 					runtime.Emit(&event)
 				}
-				return fmt.Sprintf("Showing %q in the Documents panel.", title), nil
+				return fmt.Sprintf("Showing %q in the dashboard.", title), nil
 			},
 		}, nil
 	}

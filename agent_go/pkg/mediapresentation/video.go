@@ -157,7 +157,7 @@ func showVideoFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 		projectRoot := profileWorkspaceRoot(runtime.UserID, runtime.WorkspacePath)
 		return agentprofiles.ToolSpec{
 			Name: "show_video", Category: "presentation_tools",
-			Description: "Present a playable project video in the Production panel. Call this as soon as a reviewable MP4 exists; include source_url when Fal returned its HTTPS CDN URL so the panel can start from that faster source and fall back to the durable project file. Include a passing quality-report.json only when marking it as an approved final. Repeating the same path updates the existing presentation.",
+			Description: "Present a playable project video in the dashboard. Call this as soon as a reviewable MP4 exists; include source_url when Fal returned its HTTPS CDN URL so the panel can start from that faster source and fall back to the durable project file. Include a passing quality-report.json only when marking it as an approved final. Repeating the same path updates the existing presentation.",
 			Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{
 				"path":           map[string]interface{}{"type": "string", "description": "Project-relative path to the exact video"},
 				"source_url":     map[string]interface{}{"type": "string", "description": "Optional HTTPS Fal CDN URL for fast preview playback; the project file remains required."},
