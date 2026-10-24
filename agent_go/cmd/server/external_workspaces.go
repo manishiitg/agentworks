@@ -274,7 +274,7 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				if navigation {
 					root := binding.Binding.WorkspacePath
 					item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
-
+					item["icon"] = doc.Identity.Icon
 				}
 				items = append(items, item)
 			}

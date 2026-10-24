@@ -37,6 +37,7 @@ import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { followAppLink } from '../../utils/appNavigation'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
+import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
 import { NewProjectMenu } from './NewProjectMenu'
 import SidebarStepInspections from './SidebarStepInspections'
@@ -46,6 +47,10 @@ import { SharedToolShortcuts } from './SharedToolShortcuts'
 
 // Stored chats only resolve each workflow's Builder and run chats; there is no Recent list.
 const HISTORY_LIMIT = 30
+
+function ProjectIcon({ icon, title, surface }: { icon?: string; title: string; surface: SidebarChat['surface'] }) {
+  return <EntityIdentityIcon icon={icon} label={title} className="h-4 w-4" fallback={<ProductSurfaceIcon surface={surface} className="h-4 w-4 shrink-0" />} />
+}
 
 export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: ReactNode; footer?: ReactNode }) {
   const user = useAuthStore((state) => state.user)
@@ -158,7 +163,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             authoritative: true,
             projects: result.workspaces.filter(item => allowed.includes(item.profile_id)).map(item => ({
               id: item.id, workspaceId: item.workspace_id, workspacePath: item.workspace_path,
-              aliases: item.aliases, title: item.name, surface: item.profile_id,
+              aliases: item.aliases, title: item.name, icon: item.icon, surface: item.profile_id,
             })),
           })
       })
@@ -348,14 +353,14 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   }
   const toggleSection = (id: string) =>
     toggleExpanded(sidebarExpansionKey(scope, 'project', id))
-  const workspaces = sidebarWorkspaceGroups(rows, directory?.scope === scope ? directory.projects : [])
-  const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: string, visible = true, disclosure?: { panelId: string; expanded: boolean; onToggle: () => void }) => {
+  const workspaces = sidebarWorkspaceGroups(rows, directory?.scope === scope ? directory.projects : [], presets)
+  const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: { title: string; icon?: string }, visible = true, disclosure?: { panelId: string; expanded: boolean; onToggle: () => void }) => {
     const tab = row.tabId ? tabs[row.tabId] : undefined
     const inspecting = tab?.metadata?.stepInspections?.items.some(item => inspectionKey(item) === tab.metadata?.stepInspections?.activeId)
     const selected = row.tabId === selectedTab && product === row.surface && !globalPageOpen && !providersOpen && !inspecting
     const scheduled = row.scheduled || / · Scheduled run$/i.test(row.title)
-    const title = workspaceEntry || sidebarChatDisplayTitle({ ...row, scheduled }, workspaceTitle, genericChatNumber)
-    const duplicateWorkspaceName = workspaceEntry && workspaces.filter(item => item.title === workspaceEntry).length > 1
+    const title = workspaceEntry?.title || sidebarChatDisplayTitle({ ...row, scheduled }, workspaceTitle, genericChatNumber)
+    const duplicateWorkspaceName = workspaceEntry && workspaces.filter(item => item.title === workspaceEntry.title).length > 1
     const runChat = row.workflowSessionKind === 'run'
     const displayTime = scheduled || runChat ? row.runTime || row.createdTime || 0 : row.group === 'Recent' ? row.time : 0
     const date =
@@ -401,9 +406,9 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           }}
           className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose || disclosure ? 'pr-9' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}
         >
-          {hasSourceIcon && <span className="shrink-0 opacity-60" title={sourceLabel} aria-hidden="true">
+          {hasSourceIcon && <span className={`shrink-0 ${workspaceEntry ? '' : 'opacity-60'}`} title={sourceLabel} aria-hidden="true">
             {workspaceEntry ? (
-              <ProductSurfaceIcon surface={row.surface} className="h-4 w-4" />
+              <ProjectIcon icon={workspaceEntry.icon} title={workspaceEntry.title} surface={row.surface} />
             ) : (
               <SourceIcon className="h-3.5 w-3.5" />
             )}
@@ -483,7 +488,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         openProductWorkspace('work')
       }}
       className="mb-2 flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    ><ProductSurfaceIcon surface="work" className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate font-medium">{workspace.title}</span></button>
+    ><ProjectIcon {...workspace} /><span className="min-w-0 flex-1 truncate font-medium">{workspace.title}</span></button>
     const hidden = !expanded[sidebarExpansionKey(scope, 'project', workspace.id)]
     const running = workspace.chats.filter(
       (row) => row.group === 'Running' && !row.waiting
@@ -497,7 +502,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const only = workspace.chats.length === 1 ? workspace.chats[0] : null
     const onlyTab = only?.tabId ? tabs[only.tabId] : undefined
     const primaryOnly = only && !only.scheduled && only.workflowSessionKind !== 'run' && (!onlyTab || !canCloseWorkspaceChatTab(onlyTab, tabs)) && (only.builder || only.title === workspace.title)
-    if (primaryOnly) return <div key={workspace.id}>{renderChat(only, undefined, undefined, workspace.title, true,
+    if (primaryOnly) return <div key={workspace.id}>{renderChat(only, undefined, undefined, workspace, true,
       only.surface === 'agentworks' ? { panelId, expanded: !hidden, onToggle: () => toggleSection(workspace.id) } : undefined
     )}</div>
     return (
@@ -510,7 +515,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           onClick={() => toggleSection(workspace.id)}
           className="group mb-0.5 flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <ProductSurfaceIcon surface={workspace.surface} className="h-4 w-4 shrink-0" />
+          <ProjectIcon {...workspace} />
           <span className="min-w-0 flex-1 truncate font-medium">{workspace.title}</span>
           {workspaces.filter(item => item.title === workspace.title).length > 1 && <span className="text-[10px] text-muted-foreground">{PRODUCT_SURFACE_LABELS[workspace.surface]}</span>}
           {hidden && (running > 0 || waiting > 0) && <span

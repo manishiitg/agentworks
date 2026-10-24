@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useState, type ReactNode } from 'react'
 import { isImageIcon } from './entityIcon'
+import { cn } from '../../lib/utils'
 
 const BADGE_TONES = [
   'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300',
@@ -25,27 +26,31 @@ export type EntityIdentityIconProps = {
   icon?: string | null
   label?: string
   className?: string
+  fallback?: ReactNode
 }
 
 /** Shared compact identity for workflows and product projects. */
-export function EntityIdentityIcon({ icon, label, className = '' }: EntityIdentityIconProps) {
+export function EntityIdentityIcon({ icon, label, className = '', fallback }: EntityIdentityIconProps) {
+  const [failedIcon, setFailedIcon] = useState<string>()
   const trimmed = icon?.trim() || ''
-  if (isImageIcon(trimmed)) {
+  const displayIcon = failedIcon === trimmed ? '' : trimmed
+  if (isImageIcon(displayIcon)) {
     return (
       <span
-        className={`inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-muted ${className}`}
+        className={cn('inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-muted', className)}
         aria-hidden="true"
       >
-        <img src={trimmed} alt="" className="h-full w-full object-cover" draggable={false} />
+        <img src={displayIcon} alt="" className="h-full w-full object-cover" draggable={false} loading="lazy" decoding="async" onError={() => setFailedIcon(trimmed)} />
       </span>
     )
   }
+  if (!displayIcon && fallback) return <>{fallback}</>
   return (
     <span
-      className={`inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded text-[11px] font-semibold leading-none ${toneForEntity(label)} ${className}`}
+      className={cn('inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded text-[11px] font-semibold leading-none', toneForEntity(label), className)}
       aria-hidden="true"
     >
-      {trimmed || entityInitial(label)}
+      {displayIcon || entityInitial(label)}
     </span>
   )
 }

@@ -20,6 +20,7 @@ export type SidebarProject = {
   workspaceId?: string
   workspacePath: string
   title: string
+  icon?: string
   surface: 'work'
 }
 const normalizedWorkspace = (path = '') =>
@@ -429,15 +430,15 @@ export function sidebarChats({
 }
 
 /** One workspace holds every visible chat; identical names never merge sessions. */
-export function sidebarWorkspaceGroups(rows: SidebarChat[], projects: SidebarProject[] = []) {
+export function sidebarWorkspaceGroups(rows: SidebarChat[], projects: SidebarProject[] = [], presets: (CustomPreset | PredefinedPreset)[] = []) {
   const groups = new Map<
     string,
-    { id: string; title: string; surface: ProductSurface; chats: SidebarChat[]; running: boolean; latestActivity: number }
+    { id: string; title: string; icon?: string; surface: ProductSurface; chats: SidebarChat[]; running: boolean; latestActivity: number }
   >()
   // Server-admitted Builder projects appear before the person opens a chat.
   for (const project of projects) {
     const id = `${project.surface}:${project.id}`
-    groups.set(id, { id, title: project.title, surface: project.surface, chats: [], running: false, latestActivity: 0 })
+    groups.set(id, { id, title: project.title, icon: project.icon, surface: project.surface, chats: [], running: false, latestActivity: 0 })
   }
   for (const row of rows) {
     if (row.group === 'Recent') continue
@@ -447,6 +448,7 @@ export function sidebarWorkspaceGroups(rows: SidebarChat[], projects: SidebarPro
       group = {
         id,
         title: row.workspaceTitle || row.workspace?.split('/').filter(Boolean).pop() || row.title,
+        icon: row.workflowId ? presets.find(preset => preset.id === row.workflowId)?.icon : undefined,
         surface: row.surface,
         chats: [],
         running: false,

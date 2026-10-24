@@ -82,9 +82,9 @@ vi.mock('../../products/productSurfaceConfig', () => ({
   enabledProductSurfaces: () => mocks.enabled,
   intersectAllowedProductSurfaces: (surfaces: string[], allowed: string[] | null) =>
     allowed ? surfaces.filter((surface) => allowed.includes(surface)) : surfaces,
-  PRODUCT_SURFACE_LABELS: { work: 'Crew', agentworks: 'Goals', knowledgebase: 'Brain', 'mcp-gateway': 'Vault', bullpen: 'AgentBridge' },
+  PRODUCT_SURFACE_LABELS: { work: 'Crew', agentworks: 'Goals', relays: 'Flows', knowledgebase: 'Brain', 'mcp-gateway': 'Vault', bullpen: 'AgentBridge' },
 }))
-vi.mock('../ProductSurfaceIcon', () => ({ ProductSurfaceIcon: () => null }))
+vi.mock('../ProductSurfaceIcon', () => ({ ProductSurfaceIcon: ({ surface }: { surface: string }) => <svg data-product-icon={surface} /> }))
 import WorkspaceChatsSidebar from './WorkspaceChatsSidebar'
 import { SharedToolShortcuts } from './SharedToolShortcuts'
 import { useSidebarHistoryStore } from '../../stores/useSidebarHistoryStore'
@@ -148,6 +148,42 @@ it('opens existing tabs through the shared navigator and lists no stored history
     await act(async () => (host.querySelector('[title="My Crew · Crew"]') as HTMLButtonElement).click())
     expect(mocks.openTab).toHaveBeenCalledWith('tab')
     expect(host.querySelector('[title="Saved Crew chat · Crew"]')).toBeNull()
+  })
+})
+it('keeps saved project icons on every sidebar row layout and falls back for missing or broken images', async () => {
+  mocks.enabled = ['work', 'agentworks', 'relays']
+  mocks.history.mockResolvedValue({ sessions: [] })
+  const image = 'data:image/png;base64,broken'
+  mocks.navigation.mockResolvedValueOnce({ workspaces: [
+    { id: 'empty', workspace_id: 'work:empty', profile_id: 'work', name: 'Before first chat', icon: image, workspace_path: 'Crew/empty' },
+    { id: 'plain', workspace_id: 'work:plain', profile_id: 'work', name: 'No custom icon', workspace_path: 'Crew/plain' },
+  ] } as never)
+  mocks.presets = [
+    { id: 'goal', label: 'Campaign', icon: '📈', selectedFolder: { filepath: 'Workflow/campaign' } },
+    { id: 'flow', label: 'Dispatch', icon: '🔀', workflowKind: 'relay', selectedFolder: { filepath: 'Workflow/dispatch' } },
+  ]
+  mocks.tabs = {
+    goal: { tabId: 'goal', sessionId: 'goal-main', name: 'Campaign', createdAt: 1, metadata: { mode: 'workflow', presetQueryId: 'goal' } },
+    flow: { tabId: 'flow', sessionId: 'flow-main', name: 'Dispatch', createdAt: 1, metadata: { mode: 'workflow', presetQueryId: 'flow' } },
+    run: { tabId: 'run', sessionId: 'flow-run', name: 'Delivery', createdAt: 1, metadata: { mode: 'workflow', presetQueryId: 'flow', isViewOnly: true } },
+  }
+  mocks.builders = {
+    goal: { session_id: 'goal-main', sessions: { 'goal-main': { is_builder: true, kind: 'builder' } } },
+    flow: { session_id: 'flow-main', sessions: { 'flow-main': { is_builder: true, kind: 'builder' }, 'flow-run': { kind: 'run' } } },
+  }
+  await render(async host => {
+    const crew = host.querySelector<HTMLButtonElement>('[title="Crew · Before first chat"]')!
+    const upload = crew.querySelector('img')!
+    expect(upload.getAttribute('src')).toBe(image)
+    expect(upload.loading).toBe('lazy')
+    expect(upload.parentElement?.className).toContain('h-4 w-4')
+    expect(upload.parentElement?.className).not.toContain('h-5')
+    expect(host.querySelector('[aria-label="Campaign · Goals"]')?.textContent).toContain('📈')
+    expect(host.querySelector('[title^="Flows · Dispatch · 2 chats"]')?.textContent).toContain('🔀')
+    expect(host.querySelector('[title="Crew · No custom icon"] [data-product-icon="work"]')).not.toBeNull()
+    await act(async () => upload.dispatchEvent(new Event('error')))
+    expect(crew.querySelector('img')).toBeNull()
+    expect(crew.querySelector('[data-product-icon="work"]')).not.toBeNull()
   })
 })
 it('labels remembered Goal Run chats from server kind while keeping one unnumbered Builder', async () => {
