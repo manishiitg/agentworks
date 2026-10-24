@@ -184,19 +184,20 @@ type localSession struct {
 }
 
 type localBridge struct {
-	usageWake   chan struct{}
-	museCurrent map[string]string
-	mu          sync.Mutex
-	hold        *holdClock // the request holding mu, when it is a request
-	attachMu    sync.Mutex
-	attaching   map[string]chan struct{}
-	root        string
-	sessions    map[string]*localSession
-	stopped     map[string]bool // explicit detach, keyed by exact native chat; no credentials or messages
-	changed     chan struct{}
-	options     LocalBridgeOptions
-	workers     sync.WaitGroup
-	closed      bool
+	usageWake    chan struct{}
+	usageRunning bool
+	museCurrent  map[string]string
+	mu           sync.Mutex
+	hold         *holdClock // the request holding mu, when it is a request
+	attachMu     sync.Mutex
+	attaching    map[string]chan struct{}
+	root         string
+	sessions     map[string]*localSession
+	stopped      map[string]bool // explicit detach, keyed by exact native chat; no credentials or messages
+	changed      chan struct{}
+	options      LocalBridgeOptions
+	workers      sync.WaitGroup
+	closed       bool
 }
 
 var ErrNativeOfferUnconfirmed = errors.New("native delivery is unconfirmed")
@@ -429,6 +430,8 @@ func (b *localBridge) wake() { close(b.changed); b.changed = make(chan struct{})
 // It makes no mailbox polling requests. Current server API has one stream per
 // attachment; a multiplexed server stream remains a separate scaling change.
 func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOptions) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	if err := localIPCSupported(); err != nil {
 		return err
 	}
@@ -582,21 +585,16 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		}
 		_ = srv.Close()
 	}()
-	houseCtx, houseCancel := context.WithCancel(ctx)
-	defer houseCancel()
-	go b.housekeeping(houseCtx)
+	go b.housekeeping(ctx)
 	if b.options.Ready != nil {
-		go b.options.Ready(houseCtx)
+		go b.options.Ready(ctx)
 	}
 	if b.options.AutoUpdate != nil {
-		go b.autoUpdateLoop(houseCtx)
+		go b.autoUpdateLoop(ctx)
 	}
-	usageCtx, usageCancel := context.WithCancel(houseCtx)
-	usageDone := make(chan struct{})
-	go func() { defer close(usageDone); b.runUsage(usageCtx) }()
+	b.startUsage(ctx)
 	defer func() {
-		usageCancel()
-		<-usageDone
+		cancel()
 		b.mu.Lock()
 		b.closed = true
 		for _, s := range b.sessions {
@@ -866,8 +864,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error()}
 		}
 	}
-	if in.Action == "usage_status" || in.Action == "usage_refresh" {
-		return b.usageControl(in)
+	if in.Action == "usage_refresh" {
+		b.startUsage(serverCtx)
+		return LocalBridgeReply{}
 	}
 	if len(in.SessionID) > 128 || len(in.HostKey) > 128 {
 		return LocalBridgeReply{Error: "invalid native session"}

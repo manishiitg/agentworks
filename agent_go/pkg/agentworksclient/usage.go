@@ -2,7 +2,6 @@ package agentworksclient
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -166,18 +165,55 @@ func LocalUsageStatus(root string) (UsageStatus, error) {
 	return out, nil
 }
 
+func (b *localBridge) startUsage(ctx context.Context) {
+	cfg, configErr := LocalUsageSettings(b.root)
+	state, stateErr := readUsageState(b.root)
+	needed := configErr != nil || stateErr != nil || cfg.Enabled || len(state.Bindings) > 0 || len(state.Caps) > 0 || state.Generation != cfg.Generation
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed || ctx.Err() != nil {
+		return
+	}
+	if b.usageRunning {
+		select {
+		case b.usageWake <- struct{}{}:
+		default:
+		}
+		return
+	}
+	if needed {
+		b.usageRunning = true
+		b.workers.Add(1)
+		go func() { defer b.workers.Done(); b.runUsage(ctx) }()
+	}
+}
+
 func (b *localBridge) runUsage(ctx context.Context) {
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
-	for {
-		b.usagePass(ctx)
+	for ctx.Err() == nil {
+		if !b.usagePass(ctx) {
+			b.mu.Lock()
+			// A person command racing this pass must not lose its refresh.
+			select {
+			case <-b.usageWake:
+				b.mu.Unlock()
+				continue
+			default:
+				b.usageRunning = false
+				b.mu.Unlock()
+				return
+			}
+		}
+		timer := time.NewTimer(time.Minute)
 		select {
 		case <-ctx.Done():
-			return
-		case <-ticker.C:
+		case <-timer.C:
 		case <-b.usageWake:
 		}
+		timer.Stop()
 	}
+	b.mu.Lock()
+	b.usageRunning = false
+	b.mu.Unlock()
 }
 
 func (b *localBridge) usageNow() time.Time {
@@ -187,14 +223,21 @@ func (b *localBridge) usageNow() time.Time {
 	return time.Now().UTC()
 }
 
-func (b *localBridge) usagePass(ctx context.Context) {
+func (b *localBridge) usagePass(ctx context.Context) bool {
 	cfg, err := LocalUsageSettings(b.root)
 	if err != nil {
-		return
+		return true
 	}
 	s, err := readUsageState(b.root)
 	if err != nil {
-		return
+		return true
+	}
+	if !cfg.Enabled && len(s.Bindings) == 0 {
+		if s.Generation != cfg.Generation || len(s.Caps) > 0 {
+			s.Generation, s.Caps = cfg.Generation, nil
+			return b.saveUsageState(cfg, s) != nil
+		}
+		return false
 	}
 	s.Caps = nil
 	changed := s.Generation != cfg.Generation
@@ -209,7 +252,7 @@ func (b *localBridge) usagePass(ctx context.Context) {
 		}
 		s.Generation = cfg.Generation
 		if b.saveUsageState(cfg, s) != nil {
-			return
+			return true
 		}
 	}
 	for key, x := range s.Bindings {
@@ -233,11 +276,10 @@ func (b *localBridge) usagePass(ctx context.Context) {
 		}
 	}
 	if !cfg.Enabled {
-		_ = b.saveUsageState(cfg, s)
-		return
+		return b.saveUsageState(cfg, s) != nil || len(s.Bindings) > 0
 	}
 	if b.options.UsageRead == nil {
-		return
+		return true
 	}
 	b.mu.Lock()
 	keys := []string{}
@@ -311,7 +353,7 @@ func (b *localBridge) usagePass(ctx context.Context) {
 			// Persist the exact reading before network IO. An uncertain retry
 			// reuses it instead of sampling or incrementing a second time.
 			if b.saveUsageState(cfg, s) != nil {
-				return
+				return true
 			}
 		}
 		latest, e = LocalUsageSettings(b.root)
@@ -348,23 +390,9 @@ func (b *localBridge) usagePass(ctx context.Context) {
 			}
 		}
 		if b.saveUsageState(cfg, s) != nil {
-			return
+			return true
 		}
 	}
 	_ = b.saveUsageState(cfg, s)
-}
-
-func (b *localBridge) usageControl(in LocalBridgeRequest) LocalBridgeReply {
-	if in.Action == "usage_refresh" {
-		select {
-		case b.usageWake <- struct{}{}:
-		default:
-		}
-	}
-	status, err := LocalUsageStatus(b.root)
-	if err != nil {
-		return LocalBridgeReply{Error: "Local usage state unavailable"}
-	}
-	raw, _ := json.Marshal(status)
-	return LocalBridgeReply{Result: raw}
+	return true
 }

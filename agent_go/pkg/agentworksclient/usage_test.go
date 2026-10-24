@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,9 @@ func TestUsageHourlyOptInRestartAndOff(t *testing.T) {
 		Action  string             `json:"action"`
 		Reading agentusage.Reading `json:"reading"`
 	}
+	var allowClear atomic.Bool
+	allowClear.Store(true)
+	reported := make(chan string, 16)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer fixture" || r.URL.Path != "/api/external/v1/agents/usage" {
 			t.Error("wrong reporting connection")
@@ -37,8 +41,13 @@ func TestUsageHourlyOptInRestartAndOff(t *testing.T) {
 			t.Error("invalid reading")
 		}
 		reports = append(reports, report)
+		if report.Action == "off" && !allowClear.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"stored":true}`))
+		reported <- report.Action
 	}))
 	defer srv.Close()
 	config := filepath.Join(root, "connection.json")
@@ -63,14 +72,21 @@ func TestUsageHourlyOptInRestartAndOff(t *testing.T) {
 		}}
 	}
 	b := makeBridge()
-	b.usagePass(context.Background())
+	if b.usagePass(context.Background()) {
+		t.Fatal("default-off collector requested another background pass")
+	}
 	if reads != 0 || len(reports) != 0 {
 		t.Fatal("default-off collector read native data")
+	}
+	if _, err = os.Stat(filepath.Join(root, "usage-state.json")); !os.IsNotExist(err) {
+		t.Fatal("default-off collector created an empty state file")
 	}
 	if err = SetLocalUsage(root, true); err != nil {
 		t.Fatal(err)
 	}
-	b.usagePass(context.Background())
+	if !b.usagePass(context.Background()) {
+		t.Fatal("enabled collector stopped its hourly worker")
+	}
 	if reads != 1 || len(reports) != 1 || !reports[0].Reading.Baseline {
 		t.Fatal("enable did not establish one native baseline")
 	}
@@ -97,12 +113,64 @@ func TestUsageHourlyOptInRestartAndOff(t *testing.T) {
 			t.Fatal("off retained local numeric state")
 		}
 	}
-	b.usagePass(context.Background())
+	allowClear.Store(false)
+	if !b.usagePass(context.Background()) {
+		t.Fatal("pending remote clear stopped retrying")
+	}
+	allowClear.Store(true)
+	if b.usagePass(context.Background()) {
+		t.Fatal("disabled collector kept running after cleanup")
+	}
 	if reads != 2 || reports[len(reports)-1].Action != "off" {
 		t.Fatal("off read data or failed to clear reporting")
 	}
 	status, err := LocalUsageStatus(root)
 	if err != nil || status.Enabled || status.PendingClear != 0 {
 		t.Fatalf("off status: %+v %v", status, err)
+	}
+	before, err := os.Stat(filepath.Join(root, "usage-state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.usagePass(context.Background()) {
+		t.Fatal("empty disabled collector requested background work")
+	}
+	after, err := os.Stat(filepath.Join(root, "usage-state.json"))
+	if err != nil || !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("empty disabled collector rewrote saved state")
+	}
+
+	// The existing person-command refresh starts an idle worker immediately.
+	b.usageWake = make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	b.startUsage(ctx)
+	b.mu.Lock()
+	running := b.usageRunning
+	b.mu.Unlock()
+	if running {
+		t.Fatal("disabled collector started a goroutine")
+	}
+	for len(reported) > 0 {
+		<-reported
+	}
+	if err = SetLocalUsage(root, true); err != nil {
+		t.Fatal(err)
+	}
+	if out := b.handle(ctx, ctx, LocalBridgeRequest{Action: "usage_refresh"}); out.Error != "" {
+		t.Fatal(out.Error)
+	}
+	select {
+	case action := <-reported:
+		if action != "sample" {
+			t.Fatal("refresh did not sample native usage")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("refresh waited for a background timer")
+	}
+	cancel()
+	b.workers.Wait()
+	if reads != 3 || !reports[len(reports)-1].Reading.Baseline {
+		t.Fatal("refresh did not start one fresh baseline")
 	}
 }
