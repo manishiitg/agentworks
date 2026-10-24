@@ -87,7 +87,7 @@ func TestVideoStudioManifestDrivesProfileAndWorkflowCapabilities(t *testing.T) {
 	if mode := strings.TrimSpace(manifest.Profile.Runtime.APITransport.Mode); mode == "native_shell" {
 		t.Fatalf("native_shell is intentionally off for now (see docs/design/product_api_transport_for_coding_agents.md); enabling it needs the bridge-shell entry above reconsidered too")
 	}
-	for id, wantKind := range map[string]string{"video.show-video": "media.video", "video.show-reference": "media.reference"} {
+	for id, wantKind := range map[string]string{"media.show-video": "media.video", "media.show-reference": "media.reference"} {
 		var binding *agentprofiles.ToolBinding
 		for i := range manifest.Profile.Tools {
 			if manifest.Profile.Tools[i].ID == id {

@@ -109,14 +109,23 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 			t.Fatalf("Crew admitted Goal planning/execution tool %q", name)
 		}
 	}
-	if len(manifest.Profile.Tools) != 3 || manifest.Profile.Tools[0].ID != "work.create-project" || manifest.Profile.Tools[1].ID != "work.set-identity" || manifest.Profile.Tools[2].ID != "work.custom-commands" {
-		t.Fatalf("work must expose project creation, identity, and custom-command tools, got %+v", manifest.Profile.Tools)
+	bindings := map[string]agentprofiles.ToolBinding{}
+	for _, binding := range manifest.Profile.Tools {
+		bindings[binding.ID] = binding
 	}
-	createInteraction := manifest.Profile.Tools[0].Interaction
+	for id, kind := range map[string]string{"media.show-video": "media.video", "media.show-character": "media.character", "media.show-reference": "media.reference", "media.show-document": "document.markdown"} {
+		if binding := bindings[id]; binding.Presentation == nil || binding.Presentation.Kind != kind {
+			t.Fatalf("Crew media binding %s must present %s, got %+v", id, kind, binding)
+		}
+	}
+	if _, ok := bindings["work.custom-commands"]; !ok {
+		t.Fatal("Crew lost custom commands")
+	}
+	createInteraction := bindings["work.create-project"].Interaction
 	if createInteraction == nil || createInteraction.Kind != "project_created" || createInteraction.Render != "product.refresh" {
 		t.Fatalf("work project creation interaction must refresh the product, got %+v", createInteraction)
 	}
-	identityInteraction := manifest.Profile.Tools[1].Interaction
+	identityInteraction := bindings["work.set-identity"].Interaction
 	if identityInteraction == nil || identityInteraction.Kind != "identity_updated" || identityInteraction.Render != "product.refresh" {
 		t.Fatalf("work identity interaction must be declared in product.yaml, got %+v", identityInteraction)
 	}

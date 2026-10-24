@@ -80,7 +80,10 @@ export function MediaPreview({ item }: { item: DashboardPresentation }) {
     const load = async () => {
       if (document) {
         const content = item.payload.markdown ?? await assetAPI().getText(source)
-        if (active) setText(content ?? '')
+        if (content == null) throw new Error('This saved document could not be opened.')
+        const next = URL.createObjectURL(new Blob([content], { type: 'text/markdown;charset=utf-8' }))
+        if (!active) URL.revokeObjectURL(next)
+        else { blob = next; setText(content); setURL(next) }
       } else {
         const next = media ? await assetAPI().mediaUrl(source) : await assetAPI().fileUrl(source)
         if (!next) throw new Error('This saved result could not be opened.')
@@ -95,7 +98,7 @@ export function MediaPreview({ item }: { item: DashboardPresentation }) {
   return <article className="overflow-hidden rounded-xl border border-border bg-card">
     <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-3">
       <h3 className="font-semibold">{item.title}</h3>
-      {url && <a href={url} download className="text-sm text-primary underline">Download</a>}
+      {url && <a href={url} download={source.split('/').pop() || 'document.md'} className="text-sm text-primary underline">Download</a>}
     </header>
     {loading && !url && <p role="status" className="p-4 text-sm text-muted-foreground">Opening result…</p>}
     {error ? <div role="alert" className="p-4 text-sm text-destructive">{error} <button type="button" className="underline" onClick={() => setRetry(value => value + 1)}>Retry</button></div>
