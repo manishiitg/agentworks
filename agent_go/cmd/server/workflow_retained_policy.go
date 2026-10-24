@@ -194,6 +194,7 @@ func (api *StreamingAPI) retainedCLIProvider(sessionID string) string {
 }
 
 func (api *StreamingAPI) interruptWorkflowPolicySession(session, provider string) {
+	logTurnQueue("session %s: closing retained CLI for a workflow policy refresh", session)
 	api.conversationMux.Lock()
 	delete(api.launchedAgentProfileKeyBySession, session)
 	api.conversationMux.Unlock()

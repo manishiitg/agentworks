@@ -3644,7 +3644,7 @@ func (api *StreamingAPI) corsMiddleware(next http.Handler) http.Handler {
 		// X-User-ID: the workspace client sends it on /api/wp calls; the gateway overwrites it with
 		// the signed-in user (workspace_proxy.go), so allowing it only lets the preflight pass.
 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-AgentWorks-Attended-Chat, X-User-ID")
-		w.Header().Set("Access-Control-Expose-Headers", "Server-Timing")
+		w.Header().Set("Access-Control-Expose-Headers", "Server-Timing, X-Queued-Steer-Unavailable")
 		if originAllowed {
 			w.Header().Set("Timing-Allow-Origin", origin)
 		}
@@ -4313,6 +4313,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// session (agent-tools mode, a CLI that cannot reload instructions) is
 	// decided per runtime by seedCodingAgentRuntimeFromRestoredConversation.
 	productDefinitionRefreshed := resolvedProfile != nil && !retainedProfileCompatible
+	if isQueuedMessageSteer(r.Context()) && !retainedProfileCompatible {
+		api.setConversationTurnRuntimeChange(sessionID, true)
+		logTurnQueue("session %s: queued steer deferred because the retained product definition changed", sessionID)
+		rejectUnavailableQueuedSteer(w)
+		return
+	}
 	if productDefinitionRefreshed {
 		log.Printf("[CHAT_HISTORY] Product definition changed for session %s; relaunching the coding CLI and resuming its native session where supported", sessionID)
 	}
@@ -4356,6 +4362,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if retainedDeliveryEligible && !retainedWorkflowCompatible {
+		// Steer now may only deliver into the current compatible turn. A
+		// changed policy must leave this message queued, never tear down the
+		// CLI (and its in-flight tools) while handling a queued steer.
+		if isQueuedMessageSteer(r.Context()) {
+			api.setConversationTurnRuntimeChange(sessionID, true)
+			logTurnQueue("session %s: queued steer deferred because retained workflow policy differs (runtime_changed=%t)", sessionID, runtimeChanged)
+			rejectUnavailableQueuedSteer(w)
+			return
+		}
 		if runtimeChanged && api.queueOccupiedConversationTurnForRuntimeChange(w, r, currentUserID, sessionID, req) {
 			return
 		}

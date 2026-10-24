@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -100,6 +101,8 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 
 type queuedMessageSteerKey struct{}
 
+var errQueuedSteerUnavailable = errors.New("Steer is not available; the message remains queued")
+
 func isQueuedMessageSteer(ctx context.Context) bool {
 	value, _ := ctx.Value(queuedMessageSteerKey{}).(bool)
 	return value
@@ -107,7 +110,7 @@ func isQueuedMessageSteer(ctx context.Context) bool {
 
 func rejectUnavailableQueuedSteer(w http.ResponseWriter) {
 	w.Header().Set("X-Queued-Steer-Unavailable", "true")
-	http.Error(w, "Steer is no longer available; the message remains queued", http.StatusConflict)
+	http.Error(w, errQueuedSteerUnavailable.Error(), http.StatusConflict)
 }
 
 func validChatDeliveryMode(mode string) bool {
@@ -162,7 +165,7 @@ func (api *StreamingAPI) changeQueuedConversationMessage(ctx context.Context, us
 				return turn, http.StatusConflict, fmt.Errorf("Delivery is unconfirmed. Check the chat before resending")
 			}
 			if _, canSteer := api.queuedMessageDeliveryState(sessionID, turn.Request); !canSteer {
-				return turn, http.StatusConflict, fmt.Errorf("Steer is not available; the message remains queued")
+				return turn, http.StatusConflict, errQueuedSteerUnavailable
 			}
 			now := time.Now().UTC()
 			turns[i].StartedAt = &now
@@ -191,6 +194,11 @@ func (api *StreamingAPI) queuedMessageAction(w http.ResponseWriter, r *http.Requ
 	defer cancel()
 	turn, status, err := api.changeQueuedConversationMessage(ctx, userID, vars["session_id"], vars["message_id"], steer)
 	if err != nil {
+		logTurnQueue("session %s: queued action message=%s steer=%t status=%d reason=%v", vars["session_id"], vars["message_id"], steer, status, err)
+		if errors.Is(err, errQueuedSteerUnavailable) {
+			rejectUnavailableQueuedSteer(w)
+			return
+		}
 		http.Error(w, err.Error(), status)
 		return
 	}

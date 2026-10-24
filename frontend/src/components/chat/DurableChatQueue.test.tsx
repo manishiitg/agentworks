@@ -26,6 +26,35 @@ import { DurableChatQueue } from './DurableChatQueue'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
+it('refreshes a stale Steer now action without an error or losing its queued bubble', async () => {
+  fixture.messages = [{ message_id: 'race-1', client_message_id: 'race-client', content: 'Keep this instruction queued.', queue_reason: 'running', can_steer: true }]
+  fixture.steer.mockImplementationOnce(async () => {
+    fixture.messages = [{ ...fixture.messages[0], queue_reason: 'starting', can_steer: false }]
+    return false // The API confirmed an unavailable steer; the queue still owns it.
+  })
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  try {
+    await act(async () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy /></QueryClientProvider>))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    const steer = [...host.querySelectorAll('button')].find(button => button.textContent === 'Steer now')!
+    await act(async () => steer.click())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    expect(host.textContent).toContain('Keep this instruction queued.')
+    expect(host.textContent).toContain('Agent starting')
+    expect(host.textContent).not.toContain('Could not update')
+    expect(host.textContent).not.toContain('Steer now')
+  } finally {
+    await act(async () => root.unmount())
+    client.clear()
+    host.remove()
+    fixture.steer.mockClear()
+    fixture.messages = [{ message_id: 'queued-1', client_message_id: 'client-1', content: 'Review the settings page.', queue_position: 1, queue_reason: 'running', can_steer: true }]
+  }
+})
+
 it('restores the server queue and keeps a failed remove visible until the server accepts it', async () => {
   const host = document.createElement('div')
   document.body.append(host)

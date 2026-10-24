@@ -71,13 +71,14 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
     setAction(message.message_id)
     setError('')
     try {
+      let steered = false
       if (retry) await agentApi.retryQueuedMessage(sessionId, message.message_id)
-      else if (steer) await agentApi.steerQueuedMessage(sessionId, message.message_id)
+      else if (steer) steered = await agentApi.steerQueuedMessage(sessionId, message.message_id)
       else await agentApi.removeQueuedMessage(sessionId, message.message_id)
       if (!owns()) return
-      if (steer) {
+      if (steered) {
         markDelivering(sessionId, new Set([clientMessageEventId(message.client_message_id)]))
-      } else if (!retry) {
+      } else if (!steer && !retry) {
         const store = useChatStore.getState()
         const id = clientMessageEventId(message.client_message_id)
         store.setTabEvents(sessionId, store.getTabEvents(sessionId).filter(event => event.id !== id || !isProvisionalUserMessage(event)))

@@ -52,6 +52,9 @@ func TestChatDeliveryModeDurableQueueActions(t *testing.T) {
 	if len(response.Messages) != 2 || response.Messages[0].MessageID != first.ID || response.Messages[1].Content != "second" {
 		t.Fatalf("queue = %+v", response)
 	}
+	if waiting := request(http.MethodPost, second.ID, "owner", api.handleSteerQueuedConversationMessage); waiting.Code != http.StatusConflict || waiting.Header().Get("X-Queued-Steer-Unavailable") != "true" {
+		t.Fatalf("an unavailable steer must tell the browser to refresh its queue: %d %s", waiting.Code, waiting.Body.String())
+	}
 	if rejected := request(http.MethodDelete, first.ID, "other-owner", api.handleRemoveQueuedConversationMessage); rejected.Code != http.StatusNotFound {
 		t.Fatalf("cross-owner removal returned %d", rejected.Code)
 	}
@@ -82,6 +85,33 @@ func TestChatDeliveryModeDurableQueueActions(t *testing.T) {
 	old := queuedConversationTurn{ID: "long-task", UserID: "owner", SessionID: "chat", SubmissionID: "waiting-client", Request: QueryRequest{DeliveryMode: "queue", Query: "wait"}, CreatedAt: time.Now().Add(-time.Hour)}
 	if got := dropStaleWaitingTurns([]queuedConversationTurn{old}, time.Now()); len(got) != 1 {
 		t.Fatal("explicit queued turn expired")
+	}
+}
+
+// A changed workflow policy used to close the running CLI before the final
+// queued-steer check. Exercise the real query boundary, without starting a model.
+func TestQueuedSteerPolicyMismatchDoesNotCancelCurrentTurn(t *testing.T) {
+	const sid = "queued-steer-policy"
+	env := newProviderAccountsEnv(t, "")
+	api := env.api
+	canceled := false
+	api.runningAgents = map[string]*mcpagent.Agent{sid: testCodingAgent(llm.ProviderClaudeCode, "claude-sonnet-4-6")}
+	api.agentCancelFuncs = map[string]context.CancelFunc{sid: func() { canceled = true }}
+	api.activeSessions = map[string]*ActiveSessionInfo{sid: {UserID: "alice", WorkspacePath: "Workflow/w"}}
+	api.internalSteerTransportReady = func(_, _ string) bool { return true }
+	api.lastChatPolicyBySession = map[string]string{sid: "previous-policy"}
+	req := QueryRequest{Query: "Use the connected app", AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: "Workflow/w", Provider: "claude-code", ModelID: "claude-sonnet-4-6", DeliveryMode: "steer"}
+	r := sharedSecretsRequest(http.MethodPost, "/api/query", "alice", req)
+	r.Header.Set("X-Session-ID", sid)
+	ctx := context.WithValue(r.Context(), queuedMessageSteerKey{}, true)
+	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: "queued-input", Owner: "alice", Session: sid, Message: req.Query})
+	w := httptest.NewRecorder()
+	api.handleQuery(w, r.WithContext(ctx))
+	if w.Code != http.StatusConflict || w.Header().Get("X-Queued-Steer-Unavailable") != "true" || canceled {
+		t.Fatalf("queued steer must defer without cancelling: status=%d canceled=%t body=%s", w.Code, canceled, w.Body.String())
+	}
+	if reason, allowed := api.queuedMessageDeliveryState(sid, req); reason != "refreshing" || allowed {
+		t.Fatalf("queue must explain the pending refresh: reason=%s can_steer=%t", reason, allowed)
 	}
 }
 

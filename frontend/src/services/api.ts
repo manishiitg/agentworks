@@ -1160,7 +1160,16 @@ export const agentApi = {
   },
 
   steerQueuedMessage: async (sessionId: string, messageId: string) => {
-    await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}/steer`, {}, { headers: { 'X-Session-ID': sessionId } })
+    try {
+      await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}/steer`, {}, { headers: { 'X-Session-ID': sessionId } })
+      return true
+    } catch (error) {
+      // The server can lose its live target between the queue poll and click.
+      // It explicitly confirms that nothing was sent and the message remains
+      // queued. Refresh that state; real failures still reach the error UI.
+      if (axios.isAxiosError(error) && error.response?.status === 409 && error.response.headers['x-queued-steer-unavailable'] === 'true') return false
+      throw error
+    }
   },
 
   startQuery: async (request: AgentQueryRequest, sessionId?: string, context?: ChatRequestContext): Promise<AgentQueryResponse> => {
