@@ -15,6 +15,7 @@ import { isDesktopAppOnlyMode } from "../services/api";
 import { DashboardsPageContext } from '../contexts/DashboardsPageContext';
 
 const ProductRouteBoundary = lazy(() => import("./ProductRouteBoundary").then(module => ({ default: module.ProductRouteBoundary })));
+const AgentBridgeApp = lazy(() => import('../products/bullpen/AgentBridgeApp'));
 
 interface AuthWrapperProps {
   children: React.ReactNode;
@@ -52,6 +53,7 @@ function reportWorkspaceFromFileLink(encodedPath: string): string | null {
 
 export function AuthWrapper({ children }: AuthWrapperProps) {
   const { user, isAuthenticated, isMultiUserMode, isMultiUserModeChecked, isLoading, checkAuthMode, checkAuth, login } = useAuthStore();
+  const messagingOnly = useAuthStore(state => state.messagingOnly);
 
   const [sharedFilePath, setSharedFilePath] = useState<string | null>(null);
   const [sharedFolderPath, setSharedFolderPath] = useState<string | null>(null);
@@ -196,6 +198,13 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
         </div>
       </div>
     );
+  }
+
+  if (messagingOnly) {
+    if (!isAuthenticated) return <Login />;
+    if (isMcpConsent) return <MCPOAuthConsent />;
+    if (isCliConsent) return <CLIOAuthConsent />;
+    return <Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening AgentBridge…</div>}><AgentBridgeApp /></Suspense>;
   }
 
   // Shared viewers use the same app authentication lifecycle. Wait for local

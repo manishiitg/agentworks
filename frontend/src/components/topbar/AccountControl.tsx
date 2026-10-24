@@ -13,9 +13,10 @@ interface AccountControlProps {
   onOpenShortcuts?: () => void
   menuOnly?: boolean
   children?: ReactNode
+  messagingOnly?: boolean
 }
 
-export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, menuOnly = false, children }: AccountControlProps) {
+export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, menuOnly = false, children, messagingOnly = false }: AccountControlProps) {
   const sidebar = useProductNavigationSidebar()
   const { user, logout, isMultiUserMode, providers } = useAuthStore()
   // A password can be changed only where people sign in with one: a server with single sign-on only (Google) has nothing to change.
@@ -24,12 +25,13 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, men
   const [changingPassword, setChangingPassword] = useState(false)
   const [browserConnections, setBrowserConnections] = useState(false)
   useEffect(() => {
+    if (messagingOnly) return
     const show = () => { setOpen(false); setBrowserConnections(true) }
     window.addEventListener('open-browser-connections', show)
     const url = new URL(window.location.href)
     if (url.searchParams.get('browser_connections') === '1') { show(); url.searchParams.delete('browser_connections'); window.history.replaceState(window.history.state, '', url) }
     return () => window.removeEventListener('open-browser-connections', show)
-  }, [])
+  }, [messagingOnly])
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -65,10 +67,10 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, men
           </div>
           {children}
           {menuOnly && <p className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">Help</p>}
-          <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => { setOpen(false); window.dispatchEvent(new Event('open-welcome-home')) }}>
+          {!messagingOnly && <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => { setOpen(false); window.dispatchEvent(new Event('open-welcome-home')) }}>
             <HelpCircle className="h-4 w-4 text-muted-foreground" />
             Getting started
-          </button>
+          </button>}
           {onOpenWalkthrough && <button type="button" role="menuitem" data-product-navigation-action className={itemClass} onClick={() => {
             setOpen(false)
             onOpenWalkthrough()
@@ -110,7 +112,7 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts, men
           </button>}
   </>
   const dialogs = <>
-    <BrowserConnectionsDialog open={browserConnections} onClose={() => setBrowserConnections(false)} />
+    {!messagingOnly && <BrowserConnectionsDialog open={browserConnections} onClose={() => setBrowserConnections(false)} />}
     <ChangePasswordDialog isOpen={changingPassword} onClose={() => setChangingPassword(false)} />
   </>
   if (menuOnly) return <>{menuContent}{dialogs}</>

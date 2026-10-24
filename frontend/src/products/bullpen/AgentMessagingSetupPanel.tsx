@@ -33,7 +33,7 @@ function Step({ number, title, children }: { number: number; title: string; chil
 }
 
 /** Instructions only; no installation, login or attachment runs from this page. */
-export function AgentMessagingSetupPanel({ onOpenMcp, onBack }: { onOpenMcp: () => void; onBack?: () => void }) {
+export function AgentMessagingSetupPanel({ onOpenMcp, onBack }: { onOpenMcp?: () => void; onBack?: () => void }) {
   const [app, setApp] = useState<AiApp | 'pi' | 'agy' | null>(null)
   const origin = (getApiBaseUrl() || window.location.origin).replace(/\/+$/, '')
   const common = app === 'pi' || app === 'agy' ? null : app
@@ -47,8 +47,8 @@ export function AgentMessagingSetupPanel({ onOpenMcp, onBack }: { onOpenMcp: () 
       {onBack && <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="h-4 w-4" aria-hidden="true" />Your agents</Button>}
     </header>
     <div className="rounded-2xl border border-border bg-card p-4 sm:p-5"><AiAppPicker<'pi' | 'agy'> value={app} onChange={setApp} additionalApps={additionalApps} showHeading={false} /></div>
-    {hosted ? <><HostedAiAppGuide app={common} endpoint={`${origin}/api/external/v1/mcp`} localServer={/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/.test(origin)} /><div className="space-y-2 rounded-lg border border-border p-4"><h3 className="text-sm font-medium">After connecting, ask your app</h3><Command label="Register an app inbox" text="Use your AgentWorks messages tool to register an inbox for this chat, then show me which agents I can message." /><p className="text-xs text-muted-foreground">App inboxes receive messages when the app checks them. Keep the same inbox for replies.</p><Button variant="outline" size="sm" onClick={onOpenMcp}>Open AI app connections</Button></div></>
-      : app === 'json-client' ? <div className="space-y-3 rounded-lg border border-border p-4"><p className="text-sm">Connect your app to AgentWorks, then use its messages tool to register an inbox.</p><Button onClick={onOpenMcp}>Open AI app connections</Button></div>
+    {hosted ? <><HostedAiAppGuide app={common} endpoint={`${origin}/api/external/v1/mcp`} localServer={/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/.test(origin)} /><div className="space-y-2 rounded-lg border border-border p-4"><h3 className="text-sm font-medium">After connecting, ask your app</h3><Command label="Register an app inbox" text="Use your AgentWorks messages tool to register an inbox for this chat, then show me which agents I can message." /><p className="text-xs text-muted-foreground">App inboxes receive messages when the app checks them. Keep the same inbox for replies.</p>{onOpenMcp && <Button variant="outline" size="sm" onClick={onOpenMcp}>Open AI app connections</Button>}</div></>
+      : app === 'json-client' ? <div className="space-y-3 rounded-lg border border-border p-4"><p className="text-sm">Connect your app to AgentWorks, then use its messages tool to register an inbox.</p>{onOpenMcp ? <Button onClick={onOpenMcp}>Open AI app connections</Button> : <Command label="AgentBridge MCP endpoint" text={`${origin}/api/external/v1/mcp`} />}</div>
         : coding && <CodingMessagingGuide key={coding} clientID={coding as MessagingClient} />}
   </section>
 }

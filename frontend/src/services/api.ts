@@ -2856,6 +2856,7 @@ export interface AuthProvider {
 export interface AuthModeResponse {
   multi_user_mode: boolean
   registration_enabled?: boolean
+  messaging_only?: boolean
   providers: AuthProvider[]
 }
 

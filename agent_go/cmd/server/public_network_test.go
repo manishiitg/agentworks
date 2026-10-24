@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
@@ -72,11 +73,29 @@ func TestPublicNetworkSignupAndConsent(t *testing.T) {
 	w := httptest.NewRecorder()
 	api.handleGetAuthMode(w, httptest.NewRequest("GET", "/api/auth/mode", nil))
 	var mode AuthModeResponse
-	if json.Unmarshal(w.Body.Bytes(), &mode) != nil || !mode.RegistrationEnabled {
+	if json.Unmarshal(w.Body.Bytes(), &mode) != nil || !mode.RegistrationEnabled || !mode.MessagingOnly {
 		t.Fatal("website did not receive sign-up availability")
+	}
+	guard := agentBridgeAPIMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	for _, path := range []string{"/api/dashboards", "/api/workflows", "/api/agent-profiles", "/api/wp/api/execute", "/api/external/v1/files/content", "/api/devices"} {
+		w := httptest.NewRecorder()
+		guard.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("messaging-only network exposed %s: %d", path, w.Code)
+		}
+	}
+	for _, path := range []string{"/api/auth/me", "/api/auth/password", "/api/oauth/cli/token", "/api/oauth/mcp/consent", "/api/external/v1/mcp", "/api/external/v1/agents/attachment", "/api/bullpen/agents", "/api/downloads/cli/version.json"} {
+		if !agentBridgeAPIPath(path) {
+			t.Fatalf("messaging endpoint refused: %s", path)
+		}
 	}
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "work,bullpen")
 	t.Setenv("AGENT_PRODUCTS", "work,bullpen")
+	w = httptest.NewRecorder()
+	guard.ServeHTTP(w, httptest.NewRequest("GET", "/api/dashboards", nil))
+	if w.Code != http.StatusNoContent {
+		t.Fatal("company API policy changed")
+	}
 	if got := register(`{"username":"new-person","password":"test-password-long-enough"}`); got != 403 {
 		t.Fatal("public signup enabled on a company server")
 	}

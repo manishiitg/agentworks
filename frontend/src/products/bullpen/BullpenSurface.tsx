@@ -16,6 +16,7 @@ import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useLLMStore } from '../../stores/useLLMStore'
+import AccountControl from '../../components/topbar/AccountControl'
 import { bullpenApi, bullpenError, type BullpenAgent, type BullpenNotice } from '../../services/bullpenApi'
 
 const AdminPages = lazy(() => import('../../components/AdminPages'))
@@ -106,7 +107,7 @@ function AgentDirectory({ onConnect }: { onConnect: () => void }) {
   </section>
 }
 
-export function BullpenSurface() {
+export function BullpenSurface({ messagingOnly = false }: { messagingOnly?: boolean }) {
   const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'setup', 'admin'] as const, currentProductRoute()?.surface === 'bullpen' ? (currentProductRoute()?.view === 'setup' ? 'setup' : currentProductRoute()?.view === 'admin' ? 'admin' : 'agents') : undefined)
   useProductUrlView('bullpen', { view: view === 'agents' ? undefined : view })
   const adminPage = useAppStore(state => state.adminPage)
@@ -114,17 +115,25 @@ export function BullpenSurface() {
   const user = useAuthStore(state => state.user)
   useRegisterPanelSwitcher('bullpen', user?.role === 'admin' ? [...views, { id: 'admin', label: 'Administration' }] : views, id => setView(id as 'agents' | 'setup' | 'admin'))
   return <div className="flex h-dvh min-h-0 min-w-0 bg-background text-foreground" data-testid="bullpen-surface">
-    <ModePresetBar reduced walkthroughPaused />
+    {!messagingOnly && <ModePresetBar reduced walkthroughPaused />}
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="flex h-full min-h-0 w-full flex-col">
-        <WorkspacePageHeader title={view === 'setup' ? 'Connect an agent' : view === 'admin' ? 'Administration' : 'AgentBridge'} icon={MessagesSquare} showBack={false} onProductHome={() => setView('agents')} productMenuItems={[
+      {!messagingOnly && showProviders ? <LlmModalHost /> : !messagingOnly && adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="flex h-full min-h-0 w-full flex-col">
+        {messagingOnly ? <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
+          <h1 className="flex items-center gap-2 text-base font-semibold"><MessagesSquare aria-hidden="true" className="h-5 w-5" />AgentBridge</h1>
+          <nav aria-label="AgentBridge" className="flex flex-wrap items-center gap-2">
+            {views.map(item => <Button key={item.id} variant={view === item.id ? 'secondary' : 'ghost'} size="sm" aria-current={view === item.id ? 'page' : undefined} onClick={() => setView(item.id)}>{item.label}</Button>)}
+            {user?.role === 'admin' && <Button variant={view === 'admin' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('admin')}>Administration</Button>}
+            <a className="px-2 text-sm text-muted-foreground hover:text-foreground" href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noreferrer">Help</a>
+            <AccountControl messagingOnly />
+          </nav>
+        </header> : <WorkspacePageHeader title={view === 'setup' ? 'Connect an agent' : view === 'admin' ? 'Administration' : 'AgentBridge'} icon={MessagesSquare} showBack={false} onProductHome={() => setView('agents')} productMenuItems={[
           ...views.map(item => ({ ...item, active: view === item.id, onSelect: () => setView(item.id) })),
           ...(user?.role === 'admin' ? [{ id: 'admin', label: 'Administration', icon: ShieldCheck, active: view === 'admin', onSelect: () => setView('admin') }] : []),
           { id: 'help', label: 'AgentBridge help', icon: BookOpen, href: 'https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md', external: true },
-        ]} />
+        ]} />}
         <div className="min-h-0 flex-1 overflow-y-auto">
           <WorkspacePageContent className={view === 'setup' ? 'mx-auto w-full max-w-5xl' : undefined}>
-            {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} onBack={() => setView('agents')} /> : view === 'admin' && user?.role === 'admin' ? <AdminPanel /> : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
+            {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={messagingOnly ? undefined : () => useAppStore.getState().setAdminPage('mcp')} onBack={() => setView('agents')} /> : view === 'admin' && user?.role === 'admin' ? <AdminPanel /> : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
           </WorkspacePageContent>
 
         </div>

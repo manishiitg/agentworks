@@ -30,6 +30,37 @@ func publicNetworkSignupEnabled() bool {
 	return IsMultiUserMode() && agentBridgeOnlyDeployment() && strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_PUBLIC_SIGNUP")), "true")
 }
 
+// A messaging-only installation has no hosted project, file or model APIs.
+// Company installations keep their existing route-level authorization.
+func agentBridgeAPIMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !agentBridgeOnlyDeployment() || agentBridgeAPIPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		externalError(w, http.StatusForbidden, "product_unavailable", "This network supports AgentBridge messaging only. Open AgentBridge to connect an agent.")
+	})
+}
+
+func agentBridgeAPIPath(path string) bool {
+	for _, prefix := range []string{"/api/bullpen/", "/api/downloads/cli/", "/api/oauth/mcp/connections/"} {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	switch path {
+	case "/api/health", "/api/live",
+		"/api/auth/mode", "/api/auth/register", "/api/auth/login", "/api/auth/logout", "/api/auth/me", "/api/auth/password", "/api/auth/start", "/api/auth/callback",
+		"/api/oauth/cli/device", "/api/oauth/cli/consent", "/api/oauth/cli/token", "/api/oauth/cli/revoke",
+		"/api/oauth/mcp/register", "/api/oauth/mcp/authorize", "/api/oauth/mcp/consent", "/api/oauth/mcp/token", "/api/oauth/mcp/connections",
+		"/api/external/v1/tools", "/api/external/v1/call", "/api/external/v1/mcp",
+		"/api/external/v1/agents/events", "/api/external/v1/agents/attachment", "/api/external/v1/agents/sharing", "/api/external/v1/agents/usage",
+		"/api/external/v1/skill.md", "/api/external/v1/skill.zip", "/api/external/v1/agentworks.plugin":
+		return true
+	}
+	return false
+}
+
 var publicSignupLimiter = &loginRateLimiter{failures: map[string]*loginFailures{}, limit: 10, window: 10 * time.Minute, lockout: 10 * time.Minute, now: time.Now}
 
 func (api *StreamingAPI) registerPublicNetworkUser(w http.ResponseWriter, r *http.Request) {

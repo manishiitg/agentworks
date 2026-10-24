@@ -53,6 +53,7 @@ type UserInfo struct {
 type AuthModeResponse struct {
 	MultiUserMode       bool           `json:"multi_user_mode"`
 	RegistrationEnabled bool           `json:"registration_enabled"`
+	MessagingOnly       bool           `json:"messaging_only"`
 	Providers           []ProviderInfo `json:"providers"`
 }
 
@@ -626,6 +627,7 @@ func (api *StreamingAPI) handleGetAuthMode(w http.ResponseWriter, r *http.Reques
 	response := AuthModeResponse{
 		MultiUserMode:       IsMultiUserMode(),
 		RegistrationEnabled: publicNetworkSignupEnabled(),
+		MessagingOnly:       agentBridgeOnlyDeployment(),
 		Providers:           GetProviderInfoList(baseURL),
 	}
 
