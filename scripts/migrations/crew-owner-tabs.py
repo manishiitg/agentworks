@@ -20,6 +20,7 @@ def migrate(workspace, state):
     changed = 0
     named = 0
     moved = {}
+    pending = {}
     laptop_changed = 0
     for project in projects.values():
         if project.get('product') != 'work':
@@ -33,14 +34,9 @@ def migrate(workspace, state):
         data = json.loads(path.read_text())
         if not data.get('device_id') or data.get('device_owner_id'):
             continue
-        backup.mkdir(parents=True, exist_ok=True, mode=0o700)
-        shutil.copy2(path, backup / ('laptop-' + key + '.json'))
         data['device_owner_id'] = owner
-        path.write_text(json.dumps(data, indent=2) + '\n')
-        os.chmod(path, 0o600)
+        pending[path] = ('laptop-' + key + '.json', (json.dumps(data, indent=2) + '\n').encode())
         laptop_changed += 1
-    if laptop_changed:
-        print(f'Crew shared settings: retained {laptop_changed} laptop device owners; backup {backup}')
     for path in (workspace / '_users').glob('*/chat_history/product-conversations.json'):
         user = path.parent.parent.name
         original = path.read_bytes()
@@ -87,6 +83,12 @@ def migrate(workspace, state):
             key = project_id + ':chat:' + suffix
             new = 'work/' + key
             if new in entries and entries[new]['session_id'] != record['session_id']:
+                # A co-owner may have opened their new default before this
+                # migration. Keep it and retain the older conversation as a tab.
+                suffix = 'root-' + hashlib.sha256(record['session_id'].encode()).hexdigest()
+                key = project_id + ':chat:' + suffix
+                new = 'work/' + key
+            if new in entries and entries[new]['session_id'] != record['session_id']:
                 raise ValueError('Crew tab key collision; no existing chat was replaced')
             moved[(user, record['session_id'], project_id)] = key
             entries[new] = entries.pop(old)
@@ -97,22 +99,14 @@ def migrate(workspace, state):
             for previous in data.get('previous', {}).get(new, []):
                 previous['conversation_key'] = key
             if user == project['owner_id'] and manifest.get('main_chat_key') in (None, '', project_id):
-                if not backup.exists():
-                    backup.mkdir(parents=True, mode=0o700)
-                dest = backup / ('manifest-' + hashlib.sha256(str(manifest_path).encode()).hexdigest()[:16] + '.json')
-                shutil.copyfile(manifest_path, dest)
-                os.chmod(dest, 0o600)
                 manifest['main_chat_key'] = key
                 manifest['session_id'] = record['session_id']
-                manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
+                name = 'manifest-' + hashlib.sha256(str(manifest_path).encode()).hexdigest()[:16] + '.json'
+                pending[manifest_path] = (name, (json.dumps(manifest, indent=2) + '\n').encode())
             touched = True
             changed += 1
         if touched:
-            backup.mkdir(parents=True, exist_ok=True, mode=0o700)
-            dest = backup / (user + '-conversations.json')
-            dest.write_bytes(original)
-            os.chmod(dest, 0o600)
-            path.write_text(json.dumps(data, indent=2) + '\n')
+            pending[path] = (user + '-conversations.json', (json.dumps(data, indent=2) + '\n').encode())
     messages = workspace / '_system/agent_messages/conversations.json'
     if moved and messages.exists():
         original = messages.read_bytes()
@@ -125,11 +119,17 @@ def migrate(workspace, state):
                     endpoint['chat_key'] = key
                     touched = True
         if touched:
-            backup.mkdir(parents=True, exist_ok=True, mode=0o700)
-            dest = backup / 'agent-messages.json'
-            dest.write_bytes(original)
+            pending[messages] = ('agent-messages.json', (json.dumps(data, indent=2) + '\n').encode())
+    # Parse and convert every document before changing any files.
+    if pending:
+        backup.mkdir(parents=True, exist_ok=True, mode=0o700)
+        for path, (name, content) in pending.items():
+            dest = backup / name
+            shutil.copy2(path, dest)
             os.chmod(dest, 0o600)
-            messages.write_text(json.dumps(data, indent=2) + '\n')
+            path.write_bytes(content)
+    if laptop_changed:
+        print(f'Crew shared settings: retained {laptop_changed} laptop device owners; backup {backup}')
     print(f'Crew owner tabs: migrated {changed} default chats, preserved {named} saved tab names; sessions and transcripts retained.')
     if changed or named:
         print(f'Crew owner tabs backup: {backup}')

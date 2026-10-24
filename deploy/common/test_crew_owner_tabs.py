@@ -13,6 +13,39 @@ spec.loader.exec_module(migration)
 
 
 class OwnerTabMigrationTest(unittest.TestCase):
+    def test_keeps_new_default_and_older_conversation_when_both_exist(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            workspace, state = base / 'docs', base / 'state'
+            (state / 'ownership').mkdir(parents=True)
+            (state / 'ownership/projects.json').write_text(json.dumps({'projects': {'work/demo': {
+                'product': 'work', 'folder': 'demo', 'project_id': 'p', 'owner_id': 'owner', 'co_owners': ['co']
+            }}}))
+            project = workspace / 'Crew/demo'
+            project.mkdir(parents=True)
+            manifest = {'id': 'p', 'main_chat_key': 'p:chat:main', 'session_id': 'main-session'}
+            (project / 'product.json').write_text(json.dumps(manifest))
+            current_key = 'p:chat:owner-' + hashlib.sha256(b'co').hexdigest()[:16]
+            retained_key = 'p:chat:root-' + hashlib.sha256(b'older-session').hexdigest()
+            registry = workspace / '_users/co/chat_history/product-conversations.json'
+            registry.parent.mkdir(parents=True)
+            current = {'conversation_key': current_key, 'conversation_id': 'new-conversation', 'session_id': 'new-session'}
+            registry.write_text(json.dumps({'entries': {
+                'work/p': {'conversation_key': 'p', 'conversation_id': 'older-conversation', 'session_id': 'older-session'},
+                'work/' + current_key: current
+            }, 'agents': {'work/p': {'name': 'Earlier work'}, 'work/' + current_key: {'name': 'Builder'}}}))
+            migration.migrate(workspace, state)
+            result = json.loads(registry.read_text())
+            self.assertEqual(result['entries']['work/' + current_key], current)
+            self.assertEqual(result['entries']['work/' + retained_key], {
+                'conversation_key': retained_key, 'conversation_id': 'older-conversation', 'session_id': 'older-session'
+            })
+            self.assertEqual(result['agents']['work/' + retained_key], {'name': 'Earlier work'})
+            self.assertEqual(json.loads((project / 'product.json').read_text()), manifest)
+            before = registry.read_bytes()
+            migration.migrate(workspace, state)
+            self.assertEqual(registry.read_bytes(), before)
+
     def test_preserves_identity_and_only_rewrites_exact_message_endpoints(self):
         with tempfile.TemporaryDirectory() as folder:
             base = Path(folder)
