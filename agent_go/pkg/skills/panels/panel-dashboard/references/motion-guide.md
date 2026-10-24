@@ -9,7 +9,9 @@ external_tools: ["export_dashboard_motion"]
 
 Use motion when the person requests it. They choose the layout, appearance,
 charts, controls, pacing and animation style; the platform supplies playback
-and export mechanics. Do not add a standard motion layout or required palette.
+and export mechanics. Use the shared floating MotionControls toolbar by default;
+this does not prescribe the page layout or palette. Honor requests for different
+controls, styling or placement.
 
 ### Make motion easy to find
 
@@ -27,13 +29,52 @@ one step at a time.” Examples: monthly sales, spending over time, project
 progress and process walkthroughs. Offer a small first version using available
 dated data. Ask only for missing data or business meaning; use fictional data
 only when the person requests a demo, and label it clearly. Keep appearance and
-layout editable. New TSX pages can use the shared MotionControls component,
-passing the report.motion clock and updating chart state onChange.
+layout editable. New TSX pages use the shared MotionControls component by default,
+passing the report.motion clock and driving chart state from its render callback.
 
 Interactive playback is a browser clock, not a HyperFrames video. HyperFrames
 is used on the server for optional MP4 rendering. Playback does not run Python
 or query data on each frame. Export freezes the loaded data and seeks the same
 authored page frame by frame; a separate explainer is an explicit choice.
+
+### Shared floating toolbar (default)
+
+Import `MotionControls` from `@agentworks/dashboard`. It supplies a single
+Play/Pause toggle, Replay, a themed seek slider and a 0.5×/1×/2× speed selector.
+It subscribes to the shared clock itself; do not add another playback timer or
+duplicate Play/Pause/speed buttons. Refresh data is a separate action.
+
+Place it inside the designer's `position: relative` playback area. It floats
+near that area's bottom, never fixed over the whole app. Reserve enough space
+below the chart for the toolbar (about 110px on narrow screens; inspect the real
+preview). Set `containerType: 'inline-size'` on that area so controls wrap to its
+width even in a narrow desktop panel. Do not cover chart labels or important data.
+
+```tsx
+// Inside the authored page; `clock` comes from report.motion.create(...).
+// Its render callback updates progress and the actual observation label.
+<section style={{ position: 'relative', containerType: 'inline-size', paddingBottom: 120 }}>
+  <LineChart data={rows} progress={progress} />
+  <MotionControls clock={clock}
+    positionLabel={currentObservation.label}
+    detail={`Day ${currentIndex + 1} of ${rows.length}`} />
+</section>
+```
+
+`positionLabel` and `detail` are supplied from real observations or process
+steps, never guessed from elapsed seconds. Omit them when not meaningful.
+`label` sets the group's accessible name. `placement="inline"` places it in
+normal flow; `showReplay`, `showSpeed` and `showTime` can hide optional controls.
+`speeds` supplies positive speed choices. `className`, `style`, theme tokens and
+`--motion-toolbar-offset` allow a different appearance, width or placement.
+The designer may place it above, below or over their visualization, and compose
+custom controls when requested. No required sidebar, layout or palette.
+
+Check Play/Pause, Replay, seeking backward and to the end, speed, keyboard
+focus and slider arrow/Home/End keys in desktop and mobile previews. An
+unavailable clock disables controls. Reduced motion, paused starts and hidden
+pages retain the shared clock's behavior. Export seeks the same clock and
+updates the same toolbar; do not reconstruct it for MP4.
 
 ### Use real dated data
 
@@ -74,7 +115,8 @@ window.report.ready(async () => {
     onChange: state => updateYourControls(state)
   });
 });
-// Wire the designer's controls once, outside the refresh callback:
+// Existing HTML or explicitly custom controls only; new TSX uses MotionControls.
+// Wire these once, outside the refresh callback:
 playButton.onclick = () => player?.play();
 pauseButton.onclick = () => player?.pause();
 replayButton.onclick = () => player?.replay();
@@ -86,7 +128,9 @@ widgets or a required design. Use existing tables/fields rather than creating
 this example's schema automatically. The slider range should be 0 to duration.
 `setSpeed(number)` accepts a positive playback multiplier. `getState()` returns
 `{ time, duration, progress, playing, speed, reducedMotion }`; `time` and
-`duration` are seconds and `progress` is 0–1. `destroy()` releases the player.
+`duration` are seconds and `progress` is 0–1. `subscribe(listener)` immediately supplies the current state and returns an
+idempotent unsubscribe function; later clock changes notify subscribers without
+an extra timer. `destroy()` releases the player and its subscriptions.
 
 `render` and `onChange` are synchronous. Fetch data before creating the player;
 render from absolute time/progress so backward seeking produces the same state.

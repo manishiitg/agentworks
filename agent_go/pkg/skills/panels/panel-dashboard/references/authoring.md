@@ -91,7 +91,11 @@ published function form; the person presses Run to execute it. Current project a
 function permissions apply; Flow function buttons remain unavailable.
 
 Use `report.motion.create()` for recorded-data playback, pass its clock to
-MotionControls, and drive chart progress through React state. Recharts animations
+MotionControls, and drive chart progress through React state. Use this shared toolbar
+by default rather than duplicating transport buttons. It floats inside the authored
+positioned playback area; reserve space to keep data visible. Labels, visible controls,
+theme and placement remain customizable, including placement="inline". See the
+[motion guide](motion-guide.md) for the actual props and example. Recharts animations
 are disabled in shared charts so seek/export stays deterministic. Keep ordinary CSS
 and mobile layouts editable; inspect real previews and preserve the person's design.
 

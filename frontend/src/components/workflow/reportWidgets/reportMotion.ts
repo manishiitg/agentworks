@@ -25,6 +25,8 @@ export interface ReportMotionPlayer {
   seek: (seconds: number) => void
   setSpeed: (speed: number) => void
   getState: () => Readonly<ReportMotionState>
+  /** Subscribe to this clock, including changes from capture and other controls. */
+  subscribe: (listener: (state: Readonly<ReportMotionState>) => void) => () => void
   destroy: () => void
 }
 
@@ -79,6 +81,7 @@ export function reportMotionFor(doc: Document, onError: (error: unknown) => void
       let destroyed = false
       let frame: number | undefined
       let last: number | undefined
+      const listeners = new Set<(state: Readonly<ReportMotionState>) => void>()
       const getState = () => Object.freeze({ time, duration, progress: time / duration, playing, speed, reducedMotion: preference?.matches ?? false })
       const cancel = () => {
         if (frame !== undefined) win.cancelAnimationFrame(frame)
@@ -95,6 +98,9 @@ export function reportMotionFor(doc: Document, onError: (error: unknown) => void
           playing = false
           cancel()
           onError(error)
+        }
+        for (const listener of listeners) {
+          try { listener(getState()) } catch (error) { onError(error) }
         }
       }
       const tick = (now: number) => {
@@ -132,10 +138,17 @@ export function reportMotionFor(doc: Document, onError: (error: unknown) => void
           paint()
         },
         getState,
+        subscribe(listener) {
+          if (destroyed) return () => {}
+          listeners.add(listener)
+          try { listener(getState()) } catch (error) { onError(error) }
+          return () => { listeners.delete(listener) }
+        },
         destroy() {
           destroyed = true
           playing = false
           cancel()
+          listeners.clear()
           if (players.get(options.id) === player) players.delete(options.id)
         },
       })

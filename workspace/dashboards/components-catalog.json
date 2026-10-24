@@ -2266,6 +2266,84 @@
               }
             ]
           },
+          "positionLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "placement": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "floating",
+                  "inline"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "showReplay": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "showSpeed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "showTime": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "speeds": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "className": {
             "anyOf": [
               {
@@ -2275,17 +2353,48 @@
                 "type": "null"
               }
             ]
+          },
+          "style": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "label",
-          "className"
+          "positionLabel",
+          "detail",
+          "placement",
+          "showReplay",
+          "showSpeed",
+          "showTime",
+          "speeds",
+          "className",
+          "style"
         ],
         "additionalProperties": false
       },
       "slots": [],
       "events": [],
-      "description": "Optional controls for this dashboard shared motion clock. Pass a clock created with report.motion.create()."
+      "description": "Default shared motion toolbar: Play/Pause, Replay, seek and speed. Pass a report.motion clock. Floating by default inside an authored position:relative container; reserve room so it does not cover data. placement=\"inline\" keeps it in flow. Supply positionLabel/detail from real data; colors, controls, CSS and placement remain editable."
     }
   }
 }

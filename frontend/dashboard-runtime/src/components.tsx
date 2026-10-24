@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { createDashboardStore, DashboardStateProvider, useDashboardStore } from './state'
 import { shadcnComponents } from './shadcn/components'
+import { MotionToolbar } from './MotionToolbar'
 import { BarChart as RechartsBarChart, LineChart as RechartsLineChart, Bar, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 const Environment = createContext<{ refresh: () => Promise<void>; clock?: any }>({ refresh: async () => {} })
 export function DashboardProviders({ children, store: supplied, refresh, clock }: { children: ReactNode; store?: ReturnType<typeof createDashboardStore>; refresh: () => Promise<void>; clock?: any }) {
@@ -84,15 +85,9 @@ function Chart({ props, line = false }: any) {
 }
 
 function MotionControlsRenderer({ props }: any) {
-  useDashboardStore()
   const { clock: environmentClock } = useContext(Environment)
-  const clock = props.clock ?? environmentClock
-  const state = clock?.getState()
-  return <div className={props.className ?? 'dashboard-motion'} aria-label={props.label || 'Playback'}>
-    <button type="button" className="dashboard-button" disabled={!clock} onClick={() => state?.playing ? clock.pause() : clock.play()}>{state?.playing ? 'Pause' : 'Play'}</button>
-    <input aria-label="Playback position" type="range" min="0" max={state?.duration ?? 1} step="0.01" value={state?.time ?? 0} disabled={!clock} onChange={e => clock.seek(Number(e.target.value))} />
-    <span>{(state?.time ?? 0).toFixed(1)} / {state?.duration ?? 0}s</span>
-  </div>
+  const supplied = Object.fromEntries(Object.entries(props).filter(([, value]) => value != null))
+  return <MotionToolbar {...supplied} clock={props.clock ?? environmentClock}/>
 }
 
 export const componentRenderers = {
