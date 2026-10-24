@@ -134,6 +134,23 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 			t.Fatalf("shared recipient acquired %s: %s", action, w.Body.String())
 		}
 	}
+	// Read/run consent can use agents but cannot edit even the caller's own project.
+	reader.UserID = "owner"
+	for _, action := range []string{"open_chat", "rename_chat", "set_chat_model", "stop", "chat_tool", "update"} {
+		w := call(action, map[string]any{"chat_id": "coach", "name": "New name", "tool_name": "perform_ui_action", "changes": map[string]any{"memory_enabled": false}}, false)
+		if w.Code < 400 {
+			t.Fatalf("run-only connection acquired owner action %s: %s", action, w.Body.String())
+		}
+	}
+	body, _ := json.Marshal(map[string]any{"workspace": externalCommandCrewRoot, "action": "create", "dashboard_id": "unauthorized", "title": "Unauthorized", "files": map[string]string{"index.tsx": "export default function Page(){return null}"}})
+	dashboardRequest := httptest.NewRequest(http.MethodPost, "/api/dashboards", strings.NewReader(string(body)))
+	dashboardRequest = dashboardRequest.WithContext(context.WithValue(dashboardRequest.Context(), UserContextKey, reader))
+	dashboardResponse := httptest.NewRecorder()
+	f.api.handleDashboards(dashboardResponse, dashboardRequest)
+	if dashboardResponse.Code != 403 {
+		t.Fatalf("run-only connection acquired dashboard authoring: %d %s", dashboardResponse.Code, dashboardResponse.Body.String())
+	}
+	reader.UserID = "other"
 	delivered := make(chan string, 2)
 	old := agentMessageTurn
 	agentMessageTurn = func(_ *StreamingAPI, ctx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {

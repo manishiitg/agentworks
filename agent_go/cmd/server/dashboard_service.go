@@ -335,7 +335,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		}
 	}
 	includeDraft := dashboardAuthoringAllowed(claims, &target)
-	if dashboardMutation(args.Action) && !includeDraft {
+	if (dashboardMutation(args.Action) || args.Action == "preview") && !includeDraft {
 		externalError(w, 403, "insufficient_scope", "Dashboard editing requires existing authoring consent for this project and its current owner/editor role.")
 		return
 	}
@@ -560,7 +560,7 @@ func workspaceDashboardTokenAllows(claims *UserClaims, profileID, id string) boo
 		return t.ProjectKind == profileID && t.AllowsCrew(id) && t.Allows("crews:read")
 	}
 	if profileID == crewProfileID {
-		return (t.Allows("crews:read") || t.Allows("crews:run") || t.Allows("crews:write")) && (len(t.CrewIDs) == 0 || t.AllowsCrew(id))
+		return userAllowedProduct(claims, crewProfileID) && (t.Allows("crews:read") || t.Allows("crews:run") || t.Allows("crews:write")) && (len(t.CrewIDs) == 0 || t.AllowsCrew(id))
 	}
 	return t.AllowsCrew(id)
 }

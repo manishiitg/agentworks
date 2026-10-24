@@ -144,7 +144,10 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 	claims := GetUserFromContext(ctx)
 	crewID, action := externalArg(args, "crew_id"), externalArg(args, "action")
 	if t := claims.AccessToken; t != nil {
-		scope := "crews:run"
+		scope := "crews:write"
+		if action == "message" {
+			scope = "crews:run"
+		}
 		if action == "list" || action == "read" || action == "tools" {
 			scope = "crews:read"
 		}

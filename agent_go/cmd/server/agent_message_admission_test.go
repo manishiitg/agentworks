@@ -12,6 +12,7 @@ import (
 )
 
 func TestAgentMessageStateIsOwnerOnlyAndDeliveryRechecksAuthority(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	crewOwnerTabsFixture(t, env)
