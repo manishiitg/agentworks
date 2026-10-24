@@ -110,7 +110,7 @@ it.each(['agentworks', 'relays'] as const)('names another owner once in the %s t
 it('uses the Crew naming form before opening a Goal agent and sends the chosen name', async () => {
   const host = await render()
   const ownerTab = { id: 'parity:chat:main', name: 'Builder', owner_id: 'me', owner_name: 'me@example.com', session_id: 'parity-main', is_main: true, can_write: true, working: false, pinned: true }
-  const binding = { success: true as const, source: 'workspace' as const, status: 'idle', preset_query_id: 'parity', workspace_path: 'Workflow/parity', session_id: ownerTab.session_id, tabs: [ownerTab] }
+  const binding = { success: true as const, source: 'workspace' as const, status: 'idle', preset_query_id: 'parity', workspace_path: 'Workflow/parity', session_id: ownerTab.session_id, events: [], tabs: [ownerTab] }
   const manage = vi.spyOn(agentApi, 'manageWorkflowChats').mockResolvedValue({ chat: { ...ownerTab, id: 'parity:chat:research', name: 'Research', session_id: 'parity-research', is_main: false } })
   vi.spyOn(agentApi, 'getWorkflowBuilderSessions').mockImplementation(async () => ({ success: true, bindings: { parity: { ...binding, tabs: [ownerTab, { ...ownerTab, id: 'parity:chat:research', name: 'Research', session_id: 'parity-research', is_main: false }] } } }))
   try {
