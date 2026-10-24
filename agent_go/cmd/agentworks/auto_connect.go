@@ -91,7 +91,7 @@ func autoConnectChat(ctx context.Context, root string, o *options, req agentwork
 // A provider restart changes its process key while the native conversation
 // remains the same. Recheck saved chats without waiting for a person to type.
 // Absence is a local discovery result, not a reason to call the server again.
-func savedChatReconnector(root string, o *options, discover func(context.Context, string, *options) ([]liveAgentSession, error)) func(context.Context, []agentworksclient.AgentAttachment) {
+func savedChatReconnector(root string, o *options, discover func(context.Context, string, *options, ...agentworksclient.AgentAttachment) ([]liveAgentSession, error)) func(context.Context, []agentworksclient.AgentAttachment) {
 	type retry struct {
 		next   time.Time
 		delay  time.Duration
@@ -103,7 +103,7 @@ func savedChatReconnector(root string, o *options, discover func(context.Context
 		defer cancel()
 		probe := *o
 		probe.attachedOnly = true
-		live, err := discover(ctx, root, &probe)
+		live, err := discover(ctx, root, &probe, saved...)
 		if err != nil || ctx.Err() != nil {
 			return
 		}

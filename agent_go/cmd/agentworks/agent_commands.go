@@ -909,7 +909,7 @@ func localAttachedChats(local agentworksclient.LocalBridgeReply) []agentworkscli
 	return chats
 }
 
-func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAgentSession, error) {
+func discoverLiveAgents(ctx context.Context, root string, o *options, only ...agentworksclient.AgentAttachment) ([]liveAgentSession, error) {
 	if os.Getenv("AGENTWORKS_BRIDGE_ROOT") != "" {
 		configured, err := piBridgeRoot()
 		if err != nil {
@@ -923,6 +923,19 @@ func discoverLiveAgents(ctx context.Context, root string, o *options) ([]liveAge
 		return nil, err
 	}
 	local, _ := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"})
+	if len(only) > 0 {
+		wanted := map[string]bool{}
+		for _, saved := range only {
+			wanted[saved.Provider+":"+saved.SessionID] = true
+		}
+		selected := local.AgentStates[:0]
+		for _, state := range local.AgentStates {
+			if state.Network == "" && wanted[state.Provider+":"+state.SessionID] {
+				selected = append(selected, state)
+			}
+		}
+		local.AgentStates = selected
+	}
 	var found []liveAgentSession
 	names := map[string]string{}
 	for _, s := range localAttachedChats(local) {

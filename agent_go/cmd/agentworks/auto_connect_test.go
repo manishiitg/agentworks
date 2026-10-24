@@ -85,9 +85,9 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 	offline = true
 	mu.Unlock()
 	available := []liveAgentSession{{provider: "codex", session: uuid.NewString(), host: "another-chat"}}
-	reconnect := savedChatReconnector(root, o, func(_ context.Context, _ string, probe *options) ([]liveAgentSession, error) {
-		if !probe.attachedOnly {
-			t.Error("recovery requested new-chat discovery")
+	reconnect := savedChatReconnector(root, o, func(_ context.Context, _ string, probe *options, selected ...agentworksclient.AgentAttachment) ([]liveAgentSession, error) {
+		if !probe.attachedOnly || len(selected) != 1 || selected[0].SessionID != saved.SessionID {
+			t.Error("recovery requested discovery beyond the saved recovery candidates")
 		}
 		return available, nil
 	})
