@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { ChatElement as ElementSpec } from './chatElement'
+import type { ChatElement as ElementSpec } from './chatElementSpec'
 
 const frame = 'not-prose my-4 min-w-0 max-w-xl rounded-xl border border-border bg-muted/20 text-foreground'
 const summary = 'cursor-pointer break-words px-4 py-3 text-sm font-medium marker:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring'

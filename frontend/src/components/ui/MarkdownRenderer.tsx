@@ -12,7 +12,7 @@ import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { workspaceApi, agentApi } from '../../services/api'
 import { CodeCopyButton, codeBlockText } from './CodeCopyButton'
 import { ChatElement } from './ChatElement'
-import { parseChatElement } from './chatElement'
+import { parseChatElement } from './chatElementSpec'
 
 const SyntaxHighlightedCode = lazy(() => import('./SyntaxHighlightedCode'))
 
