@@ -168,17 +168,14 @@ func sharedCrewAgentPeer(ctx context.Context, user string, peer agentMessageEndp
 	return ok && chat.OwnerID == peer.UserID && chat.SessionID == peer.Session
 }
 
-// Called on sending and again at queued delivery. Both directions matter: an
-// old reply address cannot retain a removed recipient's access.
-func recheckSharedCrewAgentContact(ctx context.Context, a, b agentMessageEndpoint) error {
-	for _, pair := range [][2]agentMessageEndpoint{{a, b}, {b, a}} {
-		tab, person := pair[0], pair[1]
-		if tab.Kind != triggerCallerCrew || tab.ChatKey == "" || strings.HasPrefix(tab.ChatKey, "messages:") || crewProjectOwnedByCaller(person.UserID, tab.Path) {
-			continue
-		}
-		if !sharedCrewAgentPeer(ctx, person.UserID, tab) {
-			return fmt.Errorf("shared agent unavailable or access removed")
-		}
+// The original recipient's Share grant admits this contact, including replies.
+// The caller can keep their own conversation private.
+func recheckSharedCrewAgentContact(ctx context.Context, caller, agent agentMessageEndpoint) error {
+	if agent.Kind != triggerCallerCrew || agent.ChatKey == "" || strings.HasPrefix(agent.ChatKey, "messages:") || crewProjectOwnedByCaller(caller.UserID, agent.Path) {
+		return nil
+	}
+	if !sharedCrewAgentPeer(ctx, caller.UserID, agent) {
+		return fmt.Errorf("shared agent unavailable or access removed")
 	}
 	return nil
 }

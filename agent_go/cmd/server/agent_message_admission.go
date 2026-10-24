@@ -16,7 +16,7 @@ import (
 // other people and project callers retain their original grant checks.
 func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) error {
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
-	if err := recheckSharedCrewAgentContact(ctx, source, dest); err != nil {
+	if err := recheckSharedCrewAgentContact(ctx, c.Endpoints[0], c.Endpoints[1]); err != nil {
 		return err
 	}
 	if source.ConditionJob != "" {

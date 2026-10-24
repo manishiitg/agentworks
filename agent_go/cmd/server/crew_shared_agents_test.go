@@ -25,23 +25,24 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	create := func(key, name, purpose string) ProductConversationRecord {
+	create := func(person, key, name, purpose string) ProductConversationRecord {
 		t.Helper()
-		binding, _, err := resolveConversationBindingForUser(ctx, "owner", profile, key)
+		personCtx := internalBotRequestContext(t.Context(), person)
+		binding, _, err := resolveConversationBindingForUser(personCtx, person, profile, key)
 		if err != nil {
 			t.Fatal(err)
 		}
-		record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, binding, "")
+		record, err := defaultProductConversationRegistryStore().resolveOrCreate(personCtx, person, profile, binding, "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", key, &name, &purpose, "owner"); err != nil {
+		if _, err = defaultProductConversationRegistryStore().setAgentIdentity(personCtx, person, "work", key, &name, &purpose, person); err != nil {
 			t.Fatal(err)
 		}
 		return record
 	}
-	coach := create("team:chat:coach", "Coach", "Help the team prepare useful feedback.")
-	private := create("team:chat:private", "Private planning", "Owner planning only.")
+	coach := create("owner", "team:chat:coach", "Coach", "Help the team prepare useful feedback.")
+	private := create("owner", "team:chat:private", "Private planning", "Owner planning only.")
 	reg := &recordingRegistrar{}
 	owner := &UserClaims{UserID: "owner", Username: "Owner"}
 	if err := f.api.registerDashboardTools(reg, "owner", externalCommandCrewRoot, owner); err != nil {
@@ -192,6 +193,12 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	callerTab := create("other", "calling:chat:builder", "Private caller", "Prepare our own work.")
+	caller.Chat = &codeChat{OwnerID: "other", Key: callerTab.ConversationKey, ID: callerTab.ConversationKey, SessionID: callerTab.SessionID}
+	contactPair := agentConversation{Endpoints: [2]agentMessageEndpoint{callerMessageEndpoint("other", caller), targetMessageEndpoint("other", peer)}}
+	if err := f.api.recheckAgentMessageAdmission(ctx, contactPair, agentMessage{From: 1}); err != nil {
+		t.Fatalf("shared agent could not reply to its private caller: %v", err)
+	}
 	if _, err := f.api.sendAgentMessage(otherCtx, "other", caller, peer, "Please review our feedback.", "", "hosted-crew-shared-agent"); err != nil {
 		t.Fatal(err)
 	}
@@ -225,6 +232,9 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	// Removing the selected agent invalidates old reply addresses and pending delivery.
 	if err := defaultProjectOwners().SetAudience("work", "test-team", true, []string{"other"}, nil); err != nil {
 		t.Fatal(err)
+	}
+	if err := f.api.recheckAgentMessageAdmission(ctx, contactPair, agentMessage{From: 1}); err == nil {
+		t.Fatal("shared agent retained reply access after unsharing")
 	}
 	if err := f.api.recheckAgentMessageAdmission(ctx, contact, contact.Messages[0]); err == nil {
 		t.Fatal("queued work retained revoked agent grant")

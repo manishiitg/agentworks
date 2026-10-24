@@ -524,7 +524,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		}
 	}
 	dest := c.Endpoints[1-side]
-	if err = recheckSharedCrewAgentContact(ctx, c.Endpoints[side], dest); err != nil {
+	if err = recheckSharedCrewAgentContact(ctx, c.Endpoints[0], c.Endpoints[1]); err != nil {
 		agentMessageMu.Unlock()
 		return nil, err
 	}
