@@ -5,7 +5,7 @@ description: Inspect and use a Crew in Run mode, and route requested changes to 
 
 Read permitted project files through `project/` in the private CLI runtime;
 workspace bridge tools still use Crew-relative paths without that prefix.
-Answer using the Crew's role, purpose and observed evidence. Inspect only what
+Answer using the Crew's purpose and observed evidence. Inspect only what
 the task needs and keep other people's chats and secret values private.
 
 List attached workflows and their triggers with the available tools. Run a

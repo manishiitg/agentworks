@@ -91,7 +91,7 @@ func TestCreateCrewProjectWritesUILayout(t *testing.T) {
 	svc, mock, ctx := newCrewCreationTestEnv(t)
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality",
+		Purpose:         "Own release quality",
 		StepInstruction: "Review the release.", IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -125,8 +125,8 @@ func TestCreateCrewProjectWritesUILayout(t *testing.T) {
 		t.Fatalf("product.json description = %v, want the purpose", product["description"])
 	}
 	identity, _ := product["identity"].(map[string]interface{})
-	if identity["role"] != "Reviewer" {
-		t.Fatalf("product.json identity = %v, want role persisted", product["identity"])
+	if _, hasRole := identity["role"]; hasRole || identity["name"] == "" {
+		t.Fatalf("product.json identity = %v, want a name and no role", product["identity"])
 	}
 	runtimeRaw, ok := mock.files[created.WorkspacePath+"/workflow.json"]
 	if !ok {
@@ -168,7 +168,7 @@ func TestCreateCrewProjectIsIdempotent(t *testing.T) {
 	svc, mock, ctx := newCrewCreationTestEnv(t)
 	req := CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	}
 	first, err := svc.CreateCrewProject(ctx, req)
@@ -193,7 +193,7 @@ func TestCreateCrewProjectIsIdempotent(t *testing.T) {
 	// attachment aliases are unique per workflow.
 	third, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer Two",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-2",
 	})
 	if err != nil {
@@ -208,13 +208,12 @@ func TestCreateCrewProjectValidatesInput(t *testing.T) {
 	svc, _, ctx := newCrewCreationTestEnv(t)
 	valid := CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	}
 	for name, mutate := range map[string]func(*CreateCrewRequest){
 		"empty title":              func(r *CreateCrewRequest) { r.Title = " " },
 		"long title":               func(r *CreateCrewRequest) { r.Title = strings.Repeat("a", 61) },
-		"long role":                func(r *CreateCrewRequest) { r.Role = strings.Repeat("a", 121) },
 		"long purpose":             func(r *CreateCrewRequest) { r.Purpose = strings.Repeat("a", 2001) },
 		"long icon":                func(r *CreateCrewRequest) { r.Icon = strings.Repeat("a", 9) },
 		"empty key":                func(r *CreateCrewRequest) { r.IdempotencyKey = "" },
@@ -237,12 +236,12 @@ func TestCreateCrewProjectValidatesInput(t *testing.T) {
 	}); err == nil {
 		t.Fatal("missing workflow: expected rejection")
 	}
-	// Role and purpose are optional. Instructions provide the existing trigger
+	// The purpose is optional. Instructions provide the existing trigger
 	// fallback; the required workflow step instruction remains present.
 	optional := valid
-	optional.Role, optional.Purpose, optional.Instructions = "", "", "Review the release."
+	optional.Purpose, optional.Instructions = "", "Review the release."
 	if _, err := svc.CreateCrewProject(ctx, optional); err != nil {
-		t.Fatalf("optional role/purpose with trigger instructions: %v", err)
+		t.Fatalf("optional purpose with trigger instructions: %v", err)
 	}
 }
 
@@ -252,7 +251,7 @@ func TestCreateCrewRejectsProductDeniedBeforeWriting(t *testing.T) {
 	before := len(mock.files)
 	_, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Search Researcher",
-		Role: "Researcher", Purpose: "Research site opportunities",
+		Purpose:         "Research site opportunities",
 		StepInstruction: "Return opportunities", IdempotencyKey: "denied-product-proposal",
 	})
 	if err == nil {
@@ -270,7 +269,7 @@ func TestCreateCrewProjectAvoidsOccupiedPath(t *testing.T) {
 	mock.files[occupied+"/product.json"] = `{"schema_version":1,"product":"work","id":"someone-else","title":"Other","session_id":"work:project:someone-else"}`
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -288,7 +287,7 @@ func TestCreateCrewProjectSeedsStarterAndSelections(t *testing.T) {
 	svc, mock, ctx := newCrewCreationTestEnv(t)
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", Instructions: "Check the changelog first.",
+		Purpose: "Own release quality", Instructions: "Check the changelog first.",
 		Skills: []string{"agent-browser"}, Servers: []string{"github"},
 		Secrets: []string{"SHARED_GH"}, GlobalSecrets: []string{"SHARED_GH"},
 		StepInstruction: "Review the release.", IdempotencyKey: "proposal-1",
@@ -329,7 +328,7 @@ func TestCreateCrewProjectSeedsStarterAndSelections(t *testing.T) {
 	// Re-entry converges without duplicating selections.
 	if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", Instructions: "Check the changelog first.",
+		Purpose: "Own release quality", Instructions: "Check the changelog first.",
 		Skills: []string{"agent-browser"}, Servers: []string{"github"},
 		Secrets: []string{"SHARED_GH"}, GlobalSecrets: []string{"SHARED_GH"},
 		StepInstruction: "Review the release.", IdempotencyKey: "proposal-1",
@@ -349,7 +348,7 @@ func TestCreateCrewProjectSeedsStarterBrief(t *testing.T) {
 	svc, mock, ctx := newCrewCreationTestEnv(t)
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Briefed Crew",
-		Role: "Reviewer", Purpose: "Own release quality",
+		Purpose:        "Own release quality",
 		TriggerMessage: "Review releases.", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	})
@@ -369,15 +368,15 @@ func TestCreateCrewProjectRejectsUnknownSkillAndBadNames(t *testing.T) {
 	svc, _, ctx := newCrewCreationTestEnv(t)
 	if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Ghost Skills",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		Skills: []string{"ghost"}, IdempotencyKey: "proposal-1",
 	}); err == nil || !strings.Contains(err.Error(), "not installed") {
 		t.Fatalf("unknown skill err = %v, want install-first failure", err)
 	}
 	for name, req := range map[string]CreateCrewRequest{
-		"secret path":   {UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Role: "R", Purpose: "P", StepInstruction: "S", Secrets: []string{"a/b"}, IdempotencyKey: "k"},
-		"server dotdot": {UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Role: "R", Purpose: "P", StepInstruction: "S", Servers: []string{".."}, IdempotencyKey: "k"},
-		"empty global":  {UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Role: "R", Purpose: "P", StepInstruction: "S", GlobalSecrets: []string{" "}, IdempotencyKey: "k"},
+		"secret path":   {UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Purpose: "P", StepInstruction: "S", Secrets: []string{"a/b"}, IdempotencyKey: "k"},
+		"server dotdot": {UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Purpose: "P", StepInstruction: "S", Servers: []string{".."}, IdempotencyKey: "k"},
+		"empty global":  {UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Purpose: "P", StepInstruction: "S", GlobalSecrets: []string{" "}, IdempotencyKey: "k"},
 	} {
 		if _, err := svc.CreateCrewProject(ctx, req); err == nil {
 			t.Fatalf("%s: expected rejection", name)
@@ -392,7 +391,7 @@ func TestCreateCrewProjectDefaultLLMConfig(t *testing.T) {
 	})
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Modeled Crew",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -419,7 +418,7 @@ func TestCreateCrewProjectWiring(t *testing.T) {
 	mock.files["Workflow/build/planning/plan.json"] = `{"objective":"t","steps":[]}`
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		ContextDependencies: []string{"release-notes"}, IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -473,7 +472,7 @@ func TestCreateCrewProjectWiringIdempotent(t *testing.T) {
 	svc, mock, ctx := newCrewCreationTestEnv(t)
 	req := CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	}
 	first, err := svc.CreateCrewProject(ctx, req)
@@ -507,7 +506,7 @@ func TestCrewManifestRewritePreservesContextPaths(t *testing.T) {
 	svc, mock, ctx := newCrewCreationTestEnv(t)
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -547,7 +546,7 @@ func TestCreateCrewProjectReservedAlias(t *testing.T) {
 	svc, _, ctx := newCrewCreationTestEnv(t)
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Planning",
-		Role: "Planner", Purpose: "Plan releases", StepInstruction: "Plan the release.",
+		Purpose: "Plan releases", StepInstruction: "Plan the release.",
 		IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -562,7 +561,7 @@ func TestCreateCrewProjectRejectsChangedPayload(t *testing.T) {
 	svc, mock, ctx := newCrewCreationTestEnv(t)
 	first, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -572,7 +571,7 @@ func TestCreateCrewProjectRejectsChangedPayload(t *testing.T) {
 	// the same crew ID.
 	if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer Renamed",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	}); err == nil || !strings.Contains(err.Error(), "new key") {
 		t.Fatalf("changed title err = %v, want a new-key conflict", err)
@@ -589,7 +588,7 @@ func TestCreateCrewProjectRejectsChangedPayload(t *testing.T) {
 	// A verbatim retry still adopts the original.
 	again, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -607,7 +606,7 @@ func TestCreateCrewProjectAdoptsOccupiedFallback(t *testing.T) {
 	mock.files[occupied+"/product.json"] = `{"schema_version":1,"product":"work","id":"someone-else","title":"Other","session_id":"work:project:someone-else"}`
 	first, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -617,7 +616,7 @@ func TestCreateCrewProjectAdoptsOccupiedFallback(t *testing.T) {
 	// another random crew.
 	second, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -634,7 +633,7 @@ func TestCreateCrewProjectDuplicateTitles(t *testing.T) {
 		t.Helper()
 		created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 			UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-			Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+			Purpose: "Own release quality", StepInstruction: "Review the release.",
 			IdempotencyKey: key,
 		})
 		if err != nil {
@@ -670,7 +669,7 @@ func TestCreateCrewProjectDuplicateTitles(t *testing.T) {
 	// Explicit collisions fail before writing anything.
 	if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Other",
-		Alias: "release-reviewer", Role: "R", Purpose: "P", StepInstruction: "S",
+		Alias: "release-reviewer", Purpose: "P", StepInstruction: "S",
 		IdempotencyKey: "proposal-3",
 	}); err == nil || !strings.Contains(err.Error(), "already used") {
 		t.Fatalf("taken alias err = %v, want an already-used failure", err)
@@ -678,7 +677,7 @@ func TestCreateCrewProjectDuplicateTitles(t *testing.T) {
 	mock.files["Workflow/build/planning/plan.json"] = `{"steps":[{"id":"custom-step"}]}`
 	if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Other",
-		StepID: "custom-step", Role: "R", Purpose: "P", StepInstruction: "S",
+		StepID: "custom-step", Purpose: "P", StepInstruction: "S",
 		IdempotencyKey: "proposal-4",
 	}); err == nil || !strings.Contains(err.Error(), "already used") {
 		t.Fatalf("taken step err = %v, want an already-used failure", err)
@@ -694,7 +693,7 @@ func TestCreateCrewProjectAvailability(t *testing.T) {
 		svc, mock, ctx := newEnv(t)
 		if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 			UserID: "owner", WorkflowPath: "Workflow/build", Title: "T",
-			Servers: []string{"ghost"}, Role: "R", Purpose: "P", StepInstruction: "S",
+			Servers: []string{"ghost"}, Purpose: "P", StepInstruction: "S",
 			IdempotencyKey: "k",
 		}); err == nil || !strings.Contains(err.Error(), "not configured") {
 			t.Fatalf("unknown server err = %v, want not-configured", err)
@@ -709,7 +708,7 @@ func TestCreateCrewProjectAvailability(t *testing.T) {
 		svc, mock, ctx := newEnv(t)
 		created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 			UserID: "owner", WorkflowPath: "Workflow/build", Title: "T",
-			Servers: []string{"gitlab"}, Role: "R", Purpose: "P", StepInstruction: "S",
+			Servers: []string{"gitlab"}, Purpose: "P", StepInstruction: "S",
 			IdempotencyKey: "k",
 		})
 		if err != nil {
@@ -732,7 +731,7 @@ func TestCreateCrewProjectAvailability(t *testing.T) {
 		svc, _, ctx := newEnv(t)
 		if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 			UserID: "owner", WorkflowPath: "Workflow/build", Title: "T",
-			Secrets: []string{"GHOST"}, Role: "R", Purpose: "P", StepInstruction: "S",
+			Secrets: []string{"GHOST"}, Purpose: "P", StepInstruction: "S",
 			IdempotencyKey: "k",
 		}); err == nil || !strings.Contains(err.Error(), "no stored value") {
 			t.Fatalf("unknown secret err = %v, want no-stored-value", err)
@@ -745,7 +744,7 @@ func TestCreateCrewProjectAvailability(t *testing.T) {
 		}
 		if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 			UserID: "owner", WorkflowPath: "Workflow/build", Title: "T",
-			Secrets: []string{"WF_ONLY"}, Role: "R", Purpose: "P", StepInstruction: "S",
+			Secrets: []string{"WF_ONLY"}, Purpose: "P", StepInstruction: "S",
 			IdempotencyKey: "k",
 		}); err == nil || !strings.Contains(err.Error(), "do not carry over") {
 			t.Fatalf("scoped secret err = %v, want a carry-over hint", err)
@@ -755,7 +754,7 @@ func TestCreateCrewProjectAvailability(t *testing.T) {
 		svc, _, ctx := newEnv(t)
 		if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 			UserID: "owner", WorkflowPath: "Workflow/build", Title: "T",
-			GlobalSecrets: []string{"GHOST"}, Role: "R", Purpose: "P", StepInstruction: "S",
+			GlobalSecrets: []string{"GHOST"}, Purpose: "P", StepInstruction: "S",
 			IdempotencyKey: "k",
 		}); err == nil || !strings.Contains(err.Error(), "does not exist") {
 			t.Fatalf("unknown global err = %v, want does-not-exist", err)
@@ -771,7 +770,7 @@ func TestCreateCrewProjectSucceedsUnderBuilderFolderGuard(t *testing.T) {
 	ctx = context.WithValue(ctx, common.FolderGuardAllowedWriteFolderKey, []string{"Workflow/build"})
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -811,7 +810,7 @@ func TestCreateCrewProjectInheritsWorkflowLLM(t *testing.T) {
 		return builder
 	}
 	baseReq := func(key string) CreateCrewRequest {
-		return CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Role: "R", Purpose: "P", StepInstruction: "S", IdempotencyKey: key}
+		return CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Purpose: "P", StepInstruction: "S", IdempotencyKey: key}
 	}
 	t.Run("provider profile resolves", func(t *testing.T) {
 		svc, mock, ctx := newCrewCreationTestEnv(t)
@@ -860,7 +859,7 @@ func TestCreateCrewProjectResolves(t *testing.T) {
 	svc, _, ctx := newCrewCreationTestEnv(t)
 	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
-		Role: "Reviewer", Purpose: "Own release quality", StepInstruction: "Review the release.",
+		Purpose: "Own release quality", StepInstruction: "Review the release.",
 		IdempotencyKey: "proposal-1",
 	})
 	if err != nil {

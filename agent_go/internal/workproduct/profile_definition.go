@@ -232,7 +232,6 @@ func RegisterFeatureSkills(profileID, productName string) error {
 type workIdentity struct {
 	Icon string `json:"icon,omitempty"`
 	Name string `json:"name,omitempty"`
-	Role string `json:"role,omitempty"`
 }
 
 type workProjectManifest struct {
@@ -244,20 +243,18 @@ type workProjectManifest struct {
 const (
 	workIdentityIconLimit    = 8
 	workIdentityNameLimit    = 60
-	workIdentityRoleLimit    = 120
 	workIdentityPurposeLimit = 1000
 )
 
 func normalizeWorkIdentity(identity workIdentity) workIdentity {
 	identity.Icon = strings.TrimSpace(identity.Icon)
 	identity.Name = strings.TrimSpace(identity.Name)
-	identity.Role = strings.TrimSpace(identity.Role)
 	return identity
 }
 
 func renderWorkIdentity(identity workIdentity) string {
 	identity = normalizeWorkIdentity(identity)
-	if identity.Icon == "" && identity.Name == "" && identity.Role == "" {
+	if identity.Icon == "" && identity.Name == "" {
 		return ""
 	}
 	var lines []string
@@ -273,9 +270,6 @@ func renderWorkIdentity(identity workIdentity) string {
 	if identity.Name != "" {
 		lines = append(lines, "Name: "+identity.Name)
 	}
-	if identity.Role != "" {
-		lines = append(lines, "Role: "+identity.Role)
-	}
 	return strings.Join(lines, "\n")
 }
 
@@ -290,7 +284,6 @@ func validateWorkIdentity(identity workIdentity) string {
 		max   int
 	}{
 		{label: "name", value: identity.Name, max: workIdentityNameLimit},
-		{label: "role", value: identity.Role, max: workIdentityRoleLimit},
 	}
 	for _, field := range limits {
 		if utf8.RuneCountInString(field.value) > field.max {
@@ -330,20 +323,19 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 			Name:     "set_work_identity",
 			Category: "work_identity",
 			Description: "Set, update, or clear this Crew project's agent identity when the user asks. " +
-				"A short name, icon, role, and purpose keep the agent consistent across project chats, schedules, bots, and background work; they change presentation and behavior, never permissions. " +
-				"Role and purpose are required: ask the user for both before the first save, and refuse to clear them. " +
+				"A short name, icon, and purpose keep the agent consistent across project chats, schedules, bots, and background work; they change presentation and behavior, never permissions. " +
+				"The purpose is required: ask the user for it before the first save, and refuse to clear it. " +
 				"Store it in product.json, preserve omitted fields, and never invent an identity.",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"operation": map[string]interface{}{
 						"type": "string", "enum": []string{"set", "clear"},
-						"description": "Use set to create or update the identity, or clear to remove its icon and name. Role and purpose are required and clear never removes them.",
+						"description": "Use set to create or update the identity, or clear to remove its icon and name. The purpose is required and clear never removes it.",
 					},
 					"icon":    map[string]interface{}{"type": "string", "maxLength": workIdentityIconLimit, "description": "One emoji or short glyph. Omit to preserve; pass empty to remove."},
 					"name":    map[string]interface{}{"type": "string", "maxLength": workIdentityNameLimit, "description": "Short display name. Omit to preserve; pass empty to remove."},
-					"role":    map[string]interface{}{"type": "string", "maxLength": workIdentityRoleLimit, "description": "Required short role. Omit to preserve."},
-					"purpose": map[string]interface{}{"type": "string", "maxLength": workIdentityPurposeLimit, "description": "Required short purpose for this Crew. Saved as the project description. Omit to preserve."},
+					"purpose": map[string]interface{}{"type": "string", "maxLength": workIdentityPurposeLimit, "description": "Required: what this Crew is for, in one short line. Saved as the project description. Omit to preserve."},
 				},
 				"required": []string{"operation"},
 			},
@@ -359,21 +351,9 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				operation, _ := args["operation"].(string)
 				operation = strings.ToLower(strings.TrimSpace(operation))
 				if operation == "clear" {
-					// Role is required, so clear removes presentation only.
-					// A legacy identity without it is dropped entirely
-					// instead of lingering half-empty. Purpose lives in the
+					// Clear removes the name and icon only. The purpose lives in the
 					// top-level description and is never touched by clear.
-					cleared := workIdentity{}
-					if current, ok := manifest["identity"]; ok {
-						encoded, _ := json.Marshal(current)
-						_ = json.Unmarshal(encoded, &cleared)
-						cleared = normalizeWorkIdentity(cleared)
-					}
-					if cleared.Role == "" {
-						delete(manifest, "identity")
-					} else {
-						manifest["identity"] = workIdentity{Role: cleared.Role}
-					}
+					delete(manifest, "identity")
 				} else if operation == "set" {
 					identity := workIdentity{}
 					if current, ok := manifest["identity"]; ok {
@@ -385,9 +365,6 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 					}
 					if value, ok := args["icon"].(string); ok {
 						identity.Icon = value
-					}
-					if value, ok := args["role"].(string); ok {
-						identity.Role = value
 					}
 					identity = normalizeWorkIdentity(identity)
 					if validationError := validateWorkIdentity(identity); validationError != "" {
@@ -402,8 +379,8 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 					if utf8.RuneCountInString(purpose) > workIdentityPurposeLimit {
 						return fmt.Sprintf("The identity purpose must be at most %d characters.", workIdentityPurposeLimit), nil
 					}
-					if identity.Role == "" || purpose == "" {
-						return "Role and purpose are both required for the Crew identity. Ask the user for whichever is missing before saving.", nil
+					if purpose == "" {
+						return "A purpose is required for the Crew identity. Ask the user what this Crew is for before saving.", nil
 					}
 					manifest["description"] = purpose
 					manifest["identity"] = identity
@@ -420,7 +397,7 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				}
 				if operation == "clear" {
 					emitIdentityUpdated(operation)
-					return "The project icon and name were removed. The required role and purpose are preserved and still apply.", nil
+					return "The project icon and name were removed. The required purpose is preserved and still applies.", nil
 				}
 				var saved workIdentity
 				encodedIdentity, _ := json.Marshal(manifest["identity"])
@@ -443,7 +420,7 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 			Category: "work_projects",
 			Description: "Create another basic Crew project for the signed-in user when they ask. " +
 				"The new Crew has its own durable conversation, files, runtime configuration, display name, and icon. " +
-				"This does not replace or rename the active Crew. After creation, tell the user to select the new Crew from the top project menu; it asks for its required role and purpose on first chat.",
+				"This does not replace or rename the active Crew. After creation, tell the user to select the new Crew from the top project menu; it asks for its purpose on first chat.",
 			Parameters: map[string]interface{}{
 				"type":                 "object",
 				"additionalProperties": false,
@@ -565,7 +542,7 @@ func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, workspaceAPIU
 	return registry.RegisterPromptVariables("work", ProjectPromptVariables(workspaceAPIURL, false))
 }
 
-// ProjectPromptVariables loads saved role and purpose for both project origins.
+// ProjectPromptVariables loads the saved identity and purpose for both project origins.
 // The caller must first resolve the project and its current access; request-supplied
 // prompt variables never replace this read of the admitted project. Code origins
 // may lack a legacy product.json; allowMissing keeps those chats usable.
@@ -588,10 +565,8 @@ func ProjectPromptVariables(workspaceAPIURL string, allowMissing bool) agentprof
 			return nil, fmt.Errorf("decode Crew identity: %w", err)
 		}
 		identity := ""
-		role := ""
 		if manifest.Identity != nil {
 			identity = renderWorkIdentity(*manifest.Identity)
-			role = normalizeWorkIdentity(*manifest.Identity).Role
 		}
 		purpose := strings.TrimSpace(manifest.Description)
 		if purpose != "" {
@@ -602,9 +577,9 @@ func ProjectPromptVariables(workspaceAPIURL string, allowMissing bool) agentprof
 			}
 		}
 		// Always return the key because the Crew prompt uses missingkey=error.
-		// WORK_IDENTITY_KEY carries just role and purpose so the agent
-		// session fingerprint relaunches retained sessions when the Crew's
-		// identity changes, without churning on cosmetic icon/name edits.
-		return map[string]string{"WORK_IDENTITY": identity, "WORK_IDENTITY_KEY": role + "\n" + purpose}, nil
+		// WORK_IDENTITY_KEY carries just the purpose so the agent session
+		// fingerprint relaunches retained sessions when the Crew's purpose
+		// changes, without churning on cosmetic icon/name edits.
+		return map[string]string{"WORK_IDENTITY": identity, "WORK_IDENTITY_KEY": purpose}, nil
 	}
 }

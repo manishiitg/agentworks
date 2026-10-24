@@ -85,7 +85,6 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
 }) {
   const [nameDraft, setNameDraft] = useState('')
   const [iconDraft, setIconDraft] = useState('')
-  const [roleDraft, setRoleDraft] = useState('')
   const [purposeDraft, setPurposeDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -93,15 +92,13 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
   useEffect(() => {
     setNameDraft(projectIdentity?.name ?? '')
     setIconDraft(projectIdentity?.icon ?? '')
-    setRoleDraft(projectIdentity?.role ?? '')
     setPurposeDraft(projectPurpose)
     setError(null)
-  }, [projectIdentity?.name, projectIdentity?.icon, projectIdentity?.role, projectPurpose])
+  }, [projectIdentity?.name, projectIdentity?.icon, projectPurpose])
 
   const displayName = nameDraft.trim() || projectTitle
   const dirty = nameDraft.trim() !== (projectIdentity?.name ?? '')
     || iconDraft.trim() !== (projectIdentity?.icon ?? '')
-    || roleDraft.trim() !== (projectIdentity?.role ?? '')
     || purposeDraft.trim() !== projectPurpose
 
   const save = async () => {
@@ -112,7 +109,6 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
       await onUpdateIdentity({
         name: nameDraft.trim(),
         icon: iconDraft.trim(),
-        role: roleDraft.trim(),
         purpose: purposeDraft.trim(),
       })
     } catch (cause) {
@@ -157,23 +153,14 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
 
       <SettingsCard
         icon={<Target aria-hidden="true" className="h-4 w-4 text-primary" />}
-        title="Purpose"
+        title="What this Crew is for"
       >
         <div>
-          <Label className="mb-2 block">Role (required)</Label>
-          <Input
-            value={roleDraft}
-            onChange={event => setRoleDraft(event.target.value)}
-            disabled={saving}
-            placeholder="e.g. Launch partner"
-          />
-        </div>
-        <div>
-          <Label className="mb-2 block">Purpose (required)</Label>
           <Textarea
             value={purposeDraft}
             onChange={event => setPurposeDraft(event.target.value)}
             disabled={saving}
+            aria-label="What this Crew is for"
             placeholder="e.g. Plan and ship the Q3 launch."
             rows={3}
           />

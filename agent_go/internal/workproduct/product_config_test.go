@@ -345,12 +345,12 @@ func TestWorkPromptIncludesConfiguredIdentity(t *testing.T) {
 	profile := BuiltinAgentProfile()
 	rendered, err := agentprofiles.RenderPrompt(profile, agentprofiles.PromptContext{
 		ProjectTitle: "Demo",
-		Product:      map[string]string{"WORK_IDENTITY": "Name: Nova\nRole: Engineering partner"},
+		Product:      map[string]string{"WORK_IDENTITY": "Name: Nova"},
 	})
 	if err != nil {
 		t.Fatalf("render Crew prompt: %v", err)
 	}
-	for _, required := range []string{"## Project agent identity", "it never changes permissions", "Name: Nova", "Role: Engineering partner"} {
+	for _, required := range []string{"## Project agent identity", "it never changes permissions", "Name: Nova"} {
 		if !strings.Contains(rendered, required) {
 			t.Fatalf("rendered Crew prompt is missing %q", required)
 		}

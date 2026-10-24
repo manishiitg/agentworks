@@ -55,7 +55,7 @@ func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
 		{"work", "dev", true}, {"code", "dev", true}, {"code", "cowork", true},
 	} {
 		t.Run(tc.origin+"/"+tc.mode, func(t *testing.T) {
-			body := `{"name":"Memory default","purpose":"Keep project facts","icon":"M","role":"Assistant","mode":"` + tc.mode + `","llm_config":{"schema_version":2,"mode":"explicit","builder_llm":{"provider":"codex-cli","model_id":"gpt-6-luna","connection_id":"company-account","options":{"reasoning_effort":"high"}}}}`
+			body := `{"name":"Memory default","purpose":"Keep project facts","icon":"M","mode":"` + tc.mode + `","llm_config":{"schema_version":2,"mode":"explicit","builder_llm":{"provider":"codex-cli","model_id":"gpt-6-luna","connection_id":"company-account","options":{"reasoning_effort":"high"}}}}`
 			req := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/"+tc.origin+"/projects", strings.NewReader(body)).WithContext(ctx)
 			req = mux.SetURLVars(req, map[string]string{"id": tc.origin})
 			rec := httptest.NewRecorder()

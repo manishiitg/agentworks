@@ -53,7 +53,6 @@ export type ProductProjectShare = {
 export type ProductIdentity = {
   icon?: string
   name?: string
-  role?: string
 }
 
 type ProductManifest = {
@@ -79,7 +78,6 @@ function parseProductIdentity(value: unknown): ProductIdentity | undefined {
   const identity = {
     icon: asString(raw.icon),
     name: asString(raw.name),
-    role: asString(raw.role),
   }
   return Object.values(identity).some(Boolean) ? identity : undefined
 }
@@ -271,7 +269,7 @@ export async function createProductProject<P extends string>(options: {
   const description = options.description.trim()
   if (options.product === 'work' || options.product === 'code') {
     const created = await agentApi.createProductProject(options.product, {
-      name: title, purpose: description, icon: options.identity?.icon, role: options.identity?.role,
+      name: title, purpose: description, icon: options.identity?.icon,
       mode: options.mode, llm_config: options.llmConfig,
       selected_skills: options.selectedSkills, files: options.initialFiles,
     })
@@ -432,7 +430,6 @@ async function stripLegacyRuntimeFromProduct<P extends string>(project: ProductP
 export type ProductIdentityPatch = {
   icon?: string
   name?: string
-  role?: string
   purpose?: string
 }
 
@@ -459,7 +456,7 @@ export async function updateProductProjectIdentity<P extends string>(
     ? { ...(manifest.identity as Record<string, unknown>) }
     : {}
   const merged: Record<string, string> = {}
-  for (const key of ['icon', 'name', 'role'] as const) {
+  for (const key of ['icon', 'name'] as const) {
     const value = patch[key] === undefined ? asString(current[key]) : patch[key].trim()
     if (value) merged[key] = value
   }

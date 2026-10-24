@@ -176,7 +176,6 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 		"properties": map[string]interface{}{
 			"title":                map[string]interface{}{"type": "string", "description": "Crew display name, 1-60 characters."},
 			"purpose":              map[string]interface{}{"type": "string", "description": "What the Crew owns. Stored as the Crew's purpose (shown in the Crew list and Identity) and seeded into its starter brief."},
-			"role":                 map[string]interface{}{"type": "string", "description": "Short Crew role shown in Identity, at most 120 characters (e.g. Reviewer)."},
 			"icon":                 map[string]interface{}{"type": "string", "description": "Crew icon, at most 8 characters. Defaults to the title initial."},
 			"instructions":         map[string]interface{}{"type": "string", "description": "Starter instructions seeded into the Crew brief."},
 			"skills":               map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Installed skill names to select. Unknown skills fail the call."},
@@ -218,7 +217,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 		}
 		req := CreateCrewRequest{
 			UserID: userID, WorkflowPath: workspace, ProfileID: str("crew_profile_id"),
-			Title: str("title"), Icon: str("icon"), Role: str("role"),
+			Title: str("title"), Icon: str("icon"),
 			Purpose: str("purpose"), Instructions: str("instructions"),
 			Alias: str("alias"), TriggerName: str("trigger_name"), TriggerMessage: str("trigger_message"),
 			StepID: str("step_id"), StepTitle: str("step_title"), StepInstruction: str("step_instruction"),
