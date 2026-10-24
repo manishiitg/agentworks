@@ -44,6 +44,9 @@ if [[ "$INNER" == 0 ]]; then
   WORK="$BUILDS/.work/verify-${SHA:0:8}-$(date -u +%Y%m%d%H%M%S)"
   CACHE="$BUILDS/.verify-cache"
   mkdir -p "$WORK" "$CACHE/go-build" "$CACHE/gomod" "$CACHE/npm"
+  # Full logs of failing steps stay for two days (the scratch folder is deleted with the run).
+  install -d -m 1777 "$BUILDS/.verify-logs"
+  find "$BUILDS/.verify-logs" -type f -mtime +2 -delete 2>/dev/null || true
   trap 'rm -rf "$WORK"' EXIT
   step "Fetching the commit and main"
   git init -q "$WORK/repo"
@@ -76,7 +79,15 @@ fail() { echo; echo "VERIFY: FAILED at: $*" >&2; exit 1; }
 run() { # run <label> <command...>: prints the last lines of the output when it fails
   local label="$1" log="$WORK/step.log"; shift
   step "$label"
-  if ! "$@" >"$log" 2>&1; then tail -n 80 "$log" >&2; fail "$label"; fi
+  if ! "$@" >"$log" 2>&1; then
+    # The first failures and the name of a hanging test come before the long tail, so print them first.
+    grep -E '^(--- FAIL|    --- FAIL|FAIL|panic: |running tests:|	Test[A-Za-z0-9_]+ \()' "$log" | head -n 60 >&2 || true
+    echo "---- last lines ----" >&2
+    tail -n 40 "$log" >&2
+    kept="$BUILDS/.verify-logs/${SHA:0:8}-$(date +%H%M%S).log"
+    cp "$log" "$kept" 2>/dev/null && echo "full log kept on the build host: $kept" >&2
+    fail "$label"
+  fi
 }
 
 go_needed=false; frontend_needed=false
