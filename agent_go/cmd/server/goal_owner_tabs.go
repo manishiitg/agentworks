@@ -29,6 +29,8 @@ type goalOwnerTab struct {
 	CanWrite  bool   `json:"can_write"`
 	Working   bool   `json:"working"`
 	UpdatedAt string `json:"updated_at,omitempty"`
+	Position  int    `json:"position,omitempty"`
+	Pinned    bool   `json:"pinned"`
 }
 
 func goalTabMembers(m *WorkflowManifest) []string {
@@ -88,10 +90,12 @@ func (api *StreamingAPI) goalOwnerTabs(ctx context.Context, scope workflowBuilde
 			if record.WorkspacePath != scope.Workspace {
 				continue
 			}
-			name := firstNonEmptyTrimmed(identities[record.ConversationKey].Name, record.Title, "Builder")
+			identity := identities[record.ConversationKey]
+			name := firstNonEmptyTrimmed(identity.Name, record.Title, "Builder")
 			out = append(out, goalOwnerTab{ID: record.ConversationKey, Name: name, OwnerID: owner,
 				OwnerName: crewOwnerDisplayName(owner), SessionID: record.SessionID,
 				IsMain:   record.ConversationKey == crewOwnerDefaultChatKey(scope.PresetID, owner),
+				Position: identity.Position, Pinned: !identity.Unpinned,
 				CanWrite: owner == user, Working: api.conversationTurnOccupied(record.SessionID), UpdatedAt: record.UpdatedAt})
 		}
 	}
@@ -101,6 +105,15 @@ func (api *StreamingAPI) goalOwnerTabs(ctx context.Context, scope workflowBuilde
 		}
 		if out[i].IsMain != out[j].IsMain {
 			return out[i].IsMain
+		}
+		if out[i].Position != out[j].Position {
+			if out[i].Position == 0 {
+				return false
+			}
+			if out[j].Position == 0 {
+				return true
+			}
+			return out[i].Position < out[j].Position
 		}
 		return out[i].ID < out[j].ID
 	})
@@ -119,6 +132,9 @@ func storeGoalOwnerTab(ctx context.Context, scope workflowBuilderScope, name str
 	user := GetUserIDFromContext(ctx)
 	name = strings.TrimSpace(name)
 	if name == "" {
+		if !main {
+			return goalOwnerTab{}, fmt.Errorf("name this agent before opening it")
+		}
 		name = "Builder"
 	}
 	if len([]rune(name)) > productAgentNameMaxRunes {
@@ -167,7 +183,7 @@ func storeGoalOwnerTab(ctx context.Context, scope workflowBuilderScope, name str
 	}
 	identity := doc.Agents[entry]
 	return goalOwnerTab{ID: key, Name: firstNonEmptyTrimmed(identity.Name, record.Title, "Builder"), OwnerID: user,
-		OwnerName: crewOwnerDisplayName(user), SessionID: record.SessionID, IsMain: main, CanWrite: true, UpdatedAt: record.UpdatedAt}, nil
+		OwnerName: crewOwnerDisplayName(user), SessionID: record.SessionID, IsMain: main, CanWrite: true, Position: identity.Position, Pinned: !identity.Unpinned, UpdatedAt: record.UpdatedAt}, nil
 }
 
 func (api *StreamingAPI) createGoalOwnerTab(ctx context.Context, scope workflowBuilderScope, name string, main bool, preferredSession string) (goalOwnerTab, error) {
@@ -293,9 +309,11 @@ func (api *StreamingAPI) goalOwnerTabSummary(ctx context.Context, scope workflow
 func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Request) {
 	var args struct {
 		workflowBuilderScope
-		Action string `json:"action"`
-		ChatID string `json:"chat_id"`
-		Name   string `json:"name"`
+		Action  string   `json:"action"`
+		ChatID  string   `json:"chat_id"`
+		Name    string   `json:"name"`
+		Pinned  *bool    `json:"pinned"`
+		ChatIDs []string `json:"chat_ids"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&args); err != nil {
 		externalError(w, 400, "invalid_arguments", "Choose a chat action.")
@@ -330,6 +348,36 @@ func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Requ
 		externalError(w, 400, "chat_failed", err.Error())
 		return
 	}
+	if args.Action == "order" {
+		for _, id := range args.ChatIDs {
+			found := false
+			for _, tab := range tabs {
+				if tab.ID != id {
+					continue
+				}
+				found = true
+				if !tab.CanWrite {
+					externalError(w, 403, "tab_owner", tab.OwnerName+" controls this tab.")
+					return
+				}
+				if tab.IsMain {
+					externalError(w, 400, "main_chat", "Keep your Builder tab first.")
+					return
+				}
+			}
+			if !found {
+				externalError(w, 404, "chat_unavailable", "Choose tabs from this project.")
+				return
+			}
+		}
+		if err := defaultProductConversationRegistryStore().setSideChatOrder(r.Context(), GetUserIDFromContext(r.Context()), goalChatProfile, scope.PresetID, args.ChatIDs); err != nil {
+			externalError(w, 400, "chat_failed", err.Error())
+			return
+		}
+		publishSessionsChanged()
+		externalJSON(w, map[string]any{"success": true})
+		return
+	}
 	var tab goalOwnerTab
 	for _, t := range tabs {
 		if t.ID == args.ChatID || t.SessionID == args.ChatID {
@@ -355,6 +403,16 @@ func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	switch args.Action {
+	case "pin":
+		if args.Pinned == nil {
+			externalError(w, 400, "invalid_arguments", "Choose whether to pin this agent.")
+			return
+		}
+		if tab.IsMain {
+			externalError(w, 400, "main_chat", "Keep your Builder tab on the tab bar.")
+			return
+		}
+		err = defaultProductConversationRegistryStore().setSideChatPinned(r.Context(), tab.OwnerID, goalChatProfile, scope.PresetID, tab.ID, *args.Pinned)
 	case "rename":
 		name := strings.TrimSpace(args.Name)
 		if name == "" {
@@ -385,7 +443,7 @@ func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Requ
 		}
 		lock.Unlock()
 	default:
-		externalError(w, 400, "invalid_arguments", "Use list, open, read, rename or close.")
+		externalError(w, 400, "invalid_arguments", "Use list, open, read, rename, pin, order or close.")
 		return
 	}
 	if err != nil {
@@ -399,9 +457,9 @@ func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Requ
 // One native Builder tool and the MCP builder tabs action call the website
 // handler, so no second tab roster or permission policy exists.
 func (api *StreamingAPI) registerGoalOwnerTabTools(reg definitionToolRegistrar, user, root string) error {
-	return reg.RegisterCustomTool("manage_builder_chats", "Manage this Goal or Relay's named Builder tabs. list/read: see the project tabs. open: create your own named tab. rename/close: only your own tab; keep your main Builder. To talk in your tab over MCP use builder action=chat with its session_id. Agent messages use send_message with target and chat_id from list_agents. Plans and runs remain shared.", goalOwnerTabSchema(false), func(ctx context.Context, args map[string]interface{}) (string, error) {
+	return reg.RegisterCustomTool("manage_builder_chats", "Manage this Goal or Relay's named Builder tabs. list/read: see the project tabs. open: create your own named tab. rename/pin/order/close: only your own tabs; keep your main Builder. To talk in your tab over MCP use builder action=chat with its session_id. Agent messages use send_message with target and chat_id from list_agents. Plans and runs remain shared.", goalOwnerTabSchema(false), func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, user)
-		clean := map[string]interface{}{"workspace_path": root, "action": args["action"], "chat_id": args["chat_id"], "name": args["name"]}
+		clean := map[string]interface{}{"workspace_path": root, "action": args["action"], "chat_id": args["chat_id"], "name": args["name"], "pinned": args["pinned"], "chat_ids": args["chat_ids"]}
 		body, err := json.Marshal(clean)
 		if err != nil {
 			return "", err
@@ -421,8 +479,10 @@ func goalOwnerTabSchema(external bool) map[string]interface{} {
 		action = "tab_action"
 	}
 	return map[string]interface{}{"type": "object", "required": []string{action}, "properties": map[string]interface{}{
-		action:    map[string]interface{}{"type": "string", "enum": []any{"list", "open", "read", "rename", "close"}},
-		"chat_id": externalString("Tab id or session_id from list."), "name": externalString("Short tab name for open or rename."),
+		action:     map[string]interface{}{"type": "string", "enum": []any{"list", "open", "read", "rename", "pin", "order", "close"}},
+		"pinned":   map[string]interface{}{"type": "boolean", "description": "Keep this agent on the tab bar (pin)."},
+		"chat_ids": map[string]interface{}{"type": "array", "items": externalString("Your named tab ID."), "description": "Your named tabs in first-to-last order; the main Builder stays first."},
+		"chat_id":  externalString("Tab id or session_id from list."), "name": externalString("Short tab name for open or rename."),
 	}}
 }
 func (api *StreamingAPI) goalTabEvents(ctx context.Context, tab goalOwnerTab, root string) ([]json.RawMessage, string, uint64, error) {

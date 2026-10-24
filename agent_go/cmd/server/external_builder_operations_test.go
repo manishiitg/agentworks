@@ -594,5 +594,16 @@ func TestExternalBuilderTabsShareNativeAndWebsiteControl(t *testing.T) {
 	if _, err := reg.tools["manage_builder_chats"].exec(context.Background(), map[string]any{"action": "close", "chat_id": opened.Chat.ID}); err == nil {
 		t.Fatal("native Builder closed another owner's tab")
 	}
+	f.call(t, owner, "builder_tabs", map[string]any{"tab_action": "pin", "chat_id": opened.Chat.ID, "pinned": false}, 200)
+	f.call(t, other, "builder_tabs", map[string]any{"tab_action": "order", "chat_ids": []string{opened.Chat.ID}}, 403)
+	if err := f.api.registerGoalOwnerTabTools(reg, "owner", "Workflow/invoices"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.tools["manage_builder_chats"].exec(context.Background(), map[string]any{"action": "pin", "chat_id": opened.Chat.ID, "pinned": true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.tools["manage_builder_chats"].exec(context.Background(), map[string]any{"action": "order", "chat_ids": []string{opened.Chat.ID}}); err != nil {
+		t.Fatal(err)
+	}
 	f.call(t, owner, "builder_tabs", map[string]any{"tab_action": "rename", "chat_id": opened.Chat.ID, "name": "Review changes"}, 200)
 }

@@ -11,7 +11,7 @@ import { resolveWorkflowTabForSession } from './workflowTabResolution'
 export function workflowOwnerTabMetadata(presetId: string, tab: WorkflowOwnerTab): NonNullable<ChatTab['metadata']> {
   return { mode: 'workflow', phaseId: 'workflow-builder', phaseName: 'Builder', presetQueryId: presetId,
     isWorkflowDraft: false, workflowOwnerTabID: tab.id, workflowOwnerTabIsMain: tab.is_main,
-    agentProfileTabOwnerID: tab.owner_id, agentProfileTabOwnerName: tab.owner_name, agentProfileTabCanWrite: tab.can_write }
+    agentProfileTabOwnerID: tab.owner_id, agentProfileTabOwnerName: tab.owner_name, agentProfileTabCanWrite: tab.can_write, agentProfileTabPosition: tab.position || 0, agentProfileTabPinned: tab.pinned !== false }
 }
 
 const hydrating = new Map<string, Promise<string>>()

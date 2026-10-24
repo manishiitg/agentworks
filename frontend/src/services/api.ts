@@ -1129,9 +1129,9 @@ export const agentApi = {
       async () => (await api.post('/api/workflow/builder-sessions', { workflows: sorted })).data)
   },
 
-  manageWorkflowChats: async (presetId: string, workspacePath: string, action: string, chatId?: string, name?: string): Promise<{ chats?: import('./api-types').WorkflowOwnerTab[]; chat?: import('./api-types').WorkflowOwnerTab }> => {
+  manageWorkflowChats: async (presetId: string, workspacePath: string, action: string, chatId?: string, name?: string, options?: { pinned?: boolean; chat_ids?: string[] }): Promise<{ chats?: import('./api-types').WorkflowOwnerTab[]; chat?: import('./api-types').WorkflowOwnerTab }> => {
     const identity = captureChatIdentity()
-    const response = await api.post('/api/workflow/chats', { preset_query_id: presetId, workspace_path: workspacePath, action, chat_id: chatId, name }, { chatIdentityGeneration: identity })
+    const response = await api.post('/api/workflow/chats', { preset_query_id: presetId, workspace_path: workspacePath, action, chat_id: chatId, name, ...options }, { chatIdentityGeneration: identity })
     assertChatIdentityCurrent(identity)
     invalidateDedupedGetPrefix('workflow-builder-batch:')
     return response.data

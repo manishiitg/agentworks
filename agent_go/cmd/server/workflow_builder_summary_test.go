@@ -54,8 +54,14 @@ func TestWorkflowOwnerTabsShareProjectAndKeepControl(t *testing.T) {
 			if bob.SessionID == main.SessionID {
 				t.Fatal("co-owner adopted another person's main")
 			}
-			request := func(user, action, id, name string) *httptest.ResponseRecorder {
-				body, _ := json.Marshal(map[string]any{"preset_query_id": "wf", "workspace_path": "Workflow/demo", "action": action, "chat_id": id, "name": name})
+			request := func(user, action, id, name string, extra ...map[string]any) *httptest.ResponseRecorder {
+				args := map[string]any{"preset_query_id": "wf", "workspace_path": "Workflow/demo", "action": action, "chat_id": id, "name": name}
+				for _, fields := range extra {
+					for key, value := range fields {
+						args[key] = value
+					}
+				}
+				body, _ := json.Marshal(args)
 				req := httptest.NewRequest("POST", "/api/workflow/chats", strings.NewReader(string(body))).WithContext(ctx(user))
 				w := httptest.NewRecorder()
 				api.handleGoalOwnerTabs(w, req)
@@ -80,6 +86,32 @@ func TestWorkflowOwnerTabsShareProjectAndKeepControl(t *testing.T) {
 			}
 			if w := request("runner", "list", "", ""); w.Code != 403 {
 				t.Fatal("Run person saw Builder tabs", w.Code)
+			}
+			if w := request("alice", "open", "", ""); w.Code != 400 {
+				t.Fatal("unnamed agent opened", w.Code)
+			}
+			second, err := api.createGoalOwnerTab(ctx("alice"), scope, "Research", false, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if w := request("bob", "pin", side.ID, "", map[string]any{"pinned": false}); w.Code != 403 {
+				t.Fatal("other owner pinned tab", w.Code)
+			}
+			if w := request("bob", "order", "", "", map[string]any{"chat_ids": []string{side.ID}}); w.Code != 403 {
+				t.Fatal("other owner reordered tab", w.Code)
+			}
+			if w := request("alice", "pin", side.ID, "", map[string]any{"pinned": false}); w.Code != 200 {
+				t.Fatal(w.Body.String())
+			}
+			if w := request("alice", "order", "", "", map[string]any{"chat_ids": []string{second.ID, side.ID}}); w.Code != 200 {
+				t.Fatal(w.Body.String())
+			}
+			ordered, err := api.goalOwnerTabs(ctx("alice"), scope)
+			if err != nil || len(ordered) != 4 || !ordered[0].IsMain || ordered[1].ID != second.ID || ordered[2].ID != side.ID || ordered[2].Pinned || ordered[2].SessionID != side.SessionID {
+				t.Fatalf("order/pin round trip: %+v %v", ordered, err)
+			}
+			if w := request("alice", "close", second.ID, ""); w.Code != 200 {
+				t.Fatal(w.Body.String())
 			}
 			if w := request("alice", "rename", side.ID, "Review changes"); w.Code != 200 {
 				t.Fatal(w.Body.String())

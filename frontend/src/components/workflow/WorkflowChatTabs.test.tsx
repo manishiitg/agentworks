@@ -7,6 +7,9 @@ import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { WorkflowChatTabs } from './WorkflowChatTabs'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
+import { agentApi } from '../../services/api'
+import { publishWorkflowBuilderBinding } from '../../hooks/useWorkflowBuilderBindings'
+import { captureChatIdentity } from '../../utils/chatIdentity'
 import { StepInspectionTabs } from '../chat/StepInspectionTabs'
 import { inspectionKey, openStepInspection, selectStepInspection } from '../../utils/stepInspection'
 import type { ExecutionInspectionTarget } from '../../services/api-types'
@@ -101,4 +104,30 @@ it.each(['agentworks', 'relays'] as const)('names another owner once in the %s t
   await act(async () => button(host, 'Review').click())
   expect(useChatStore.getState().activeTabId).toBe('review')
   expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(1)
+})
+
+
+it('uses the Crew naming form before opening a Goal agent and sends the chosen name', async () => {
+  const host = await render()
+  const ownerTab = { id: 'parity:chat:main', name: 'Builder', owner_id: 'me', owner_name: 'me@example.com', session_id: 'parity-main', is_main: true, can_write: true, working: false, pinned: true }
+  const binding = { success: true as const, source: 'workspace' as const, status: 'idle', preset_query_id: 'parity', workspace_path: 'Workflow/parity', session_id: ownerTab.session_id, tabs: [ownerTab] }
+  const manage = vi.spyOn(agentApi, 'manageWorkflowChats').mockResolvedValue({ chat: { ...ownerTab, id: 'parity:chat:research', name: 'Research', session_id: 'parity-research', is_main: false } })
+  vi.spyOn(agentApi, 'getWorkflowBuilderSessions').mockImplementation(async () => ({ success: true, bindings: { parity: { ...binding, tabs: [ownerTab, { ...ownerTab, id: 'parity:chat:research', name: 'Research', session_id: 'parity-research', is_main: false }] } } }))
+  try {
+    await act(async () => {
+      useGlobalPresetStore.setState({ activePresetIds: { ...originalPresets.activePresetIds, workflow: 'parity' }, workflowPresets: [{ id: 'parity', label: 'Parity', selectedFolder: { filepath: 'Workflow/parity' } } as any] })
+      useChatStore.setState({ chatTabs: { main: makeTab('main', 'parity-main', { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'parity', workflowOwnerTabID: ownerTab.id, workflowOwnerTabIsMain: true, agentProfileTabCanWrite: true, agentProfileTabOwnerName: ownerTab.owner_name }) }, activeTabId: 'main' })
+      publishWorkflowBuilderBinding(binding, captureChatIdentity())
+    })
+    await act(async () => button(host, 'New agent').click())
+    expect(manage).not.toHaveBeenCalled()
+    const input = host.querySelector<HTMLInputElement>('[aria-label="Agent name"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Research')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => input.form!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(manage).toHaveBeenCalledWith('parity', 'Workflow/parity', 'open', undefined, 'Research', undefined)
+    expect(useChatStore.getState().chatTabs[useChatStore.getState().activeTabId!]?.name).toBe('Research')
+  } finally { vi.restoreAllMocks() }
 })

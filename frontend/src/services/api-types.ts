@@ -1437,7 +1437,7 @@ export interface GetSessionEventsResponse {
 
 export interface WorkflowOwnerTab {
   id: string; name: string; owner_id: string; owner_name: string; session_id: string;
-  is_main: boolean; can_write: boolean; working: boolean; updated_at?: string;
+  is_main: boolean; can_write: boolean; working: boolean; updated_at?: string; position?: number; pinned?: boolean;
 }
 
 export interface WorkflowBuilderSessionResponse {
