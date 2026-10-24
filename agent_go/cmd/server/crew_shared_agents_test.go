@@ -19,6 +19,12 @@ import (
 func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	f.api.productSchedules = NewProductScheduleService(f.api, f.api.agentProfiles)
+	const callerRoot = "Crew/calling-team"
+	f.write(t, callerRoot+"/product.json", `{"schema_version":1,"product":"work","id":"calling","title":"Calling Team","session_id":"session-calling"}`)
+	f.write(t, callerRoot+"/workflow.json", `{"id":"calling","label":"Calling Team","created_by":"other"}`)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "calling-team", ProjectID: "calling", OwnerID: "other", Shared: true, Private: true}); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("AUTH_SECRET", "shared-agent-fixture-signing-key")
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
@@ -184,11 +190,6 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		_ = json.Unmarshal(w.Body.Bytes(), &receipt)
 	}
 	// A different hosted Crew reaches the same agent through the native path.
-	const callerRoot = "Crew/calling-team"
-	f.write(t, callerRoot+"/product.json", `{"schema_version":1,"product":"work","id":"calling","title":"Calling Team"}`)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "calling-team", ProjectID: "calling", OwnerID: "other", Shared: true, Private: true}); err != nil {
-		t.Fatal(err)
-	}
 	caller, err := crewTriggerLinkCaller(callerRoot)(otherCtx)
 	if err != nil {
 		t.Fatal(err)

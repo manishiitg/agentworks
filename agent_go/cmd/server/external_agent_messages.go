@@ -8,8 +8,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 )
 
 func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, inboxID string, send bool) (agentMessageEndpoint, error) {
@@ -135,25 +133,6 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 				return nil
 			}
 		}
-	}
-	if peer.Profile == workproduct.ProfileID {
-		if peer.UserID != claims.UserID || !externalCodeRunAllowed(claims) {
-			return denied
-		}
-		binding, _, ok := api.externalCodeRunOwnProject(ctx, claims.UserID, peer.ID)
-		if !ok || normalizeTrackedWorkspacePath(agentProfileRuntimeWorkspace(claims.UserID, binding.WorkspacePath)) != normalizeTrackedWorkspacePath(peer.Path) {
-			return denied
-		}
-		chats, err := api.externalCodeRunChats(ctx, claims.UserID, peer.ID, binding)
-		if err != nil {
-			return denied
-		}
-		for _, chat := range chats {
-			if chat.SessionID == peer.Session && chat.Key == peer.ChatKey {
-				return nil
-			}
-		}
-		return denied
 	}
 	if peer.Kind == triggerCallerCrew {
 		if token != nil && !(token.Allows("crews:run") || !send && token.Allows("crews:read")) {
