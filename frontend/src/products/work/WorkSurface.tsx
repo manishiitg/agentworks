@@ -214,6 +214,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     return listed
   }, [product, allowedProducts, setSelectedId, updateSessions])
 
+  // A sidebar activity can select a Crew created outside this browser.
   useEffect(() => {
     let cancelled = false
     const revisionAtStart = mutationRevision.current
@@ -233,7 +234,7 @@ function useWorkSessions(product: ProjectProductConfig) {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [product, allowedProducts, setSelectedId, updateSessions])
+  }, [product, selectedId, allowedProducts, setSelectedId, updateSessions])
 
   const create = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, mode?: ProductMode) => {
     const session = await createWorkSession(title, description, icon, product, runsOn, mode)
