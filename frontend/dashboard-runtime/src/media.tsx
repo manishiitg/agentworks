@@ -110,7 +110,7 @@ export function MediaPreview({ item }: { item: DashboardPresentation }) {
       : url && media ? item.kind === 'media.audio'
         ? <audio controls preload="metadata" src={url} className="w-full p-3" onError={() => setError('This audio could not be played.')} />
         : <video controls playsInline preload="metadata" src={remote && !remoteFailed ? remote : url} className="aspect-video w-full bg-black object-contain" onError={() => { if (remote && !remoteFailed) setRemoteFailed(true); else setError('This video could not be played.') }} />
-      : url && <img src={url} alt={item.title} className="max-h-[70vh] w-full object-contain" onError={() => setError('This reference could not be opened.')} />}
+      : url && <img src={url} alt={item.title} style={{ maxHeight: 'min(70vh, 36rem)' }} className="w-full object-contain" onError={() => setError('This reference could not be opened.')} />}
     {item.payload.spec && <div className="border-t border-border p-4 whitespace-pre-wrap text-sm">{item.payload.spec}</div>}
     {item.payload.note && <p className="border-t border-border p-3 text-sm text-muted-foreground">{item.payload.note}</p>}
     {item.kind === 'media.video' && <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{item.payload.verdict === 'placeholder-pass' ? 'Placeholder · Quality checked' : item.payload.qa_report_path && item.payload.verdict === 'pass' ? 'Quality checked · Final' : 'Preview · Awaiting final quality check'}</p>}

@@ -60,6 +60,8 @@ try{
  data=[{id:'character',kind:'media.character',title:'New character',revision:1,payload:{image_path:'db/assets/host.png',spec:'Approved appearance'}},...data]
  await frame.evaluate(async()=>{await Promise.all(window.__reportQueuedCallbacks.map(callback=>window.__runReportCallback(callback)))})
  await frame.getByRole('img',{name:'New character',exact:true}).waitFor()
+ await frame.waitForFunction(()=>document.querySelector('img')?.naturalWidth===16)
+ assert.ok(await frame.getByRole('img',{name:'New character',exact:true}).evaluate(image=>image.getBoundingClientRect().height<=576),'Reference images fit an automatically sized report frame')
  assert.equal(await frame.getByRole('textbox',{name:'Review note'}).inputValue(),'Keep this review draft')
  assert.equal(await frame.evaluate(()=>window.savedPlayer===document.querySelector('video')),true)
  assert.ok(await frame.locator('video').evaluate(video=>video.currentTime>=.4))
