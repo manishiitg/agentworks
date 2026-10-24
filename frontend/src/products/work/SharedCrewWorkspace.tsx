@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowLeft, Bot, Loader2, Send } from 'lucide-react'
 import api from '../../services/api'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 
+type SharedCrewScope = { workspace_id: string } | { workspace: string }
 type SharedAgent = { chat_id: string; name: string; purpose?: string; shared?: boolean }
 type ChatLine = { seq: number; role: string; text: string; sender?: string; at?: string }
 type ChatPage = { messages?: ChatLine[]; next_after?: number; working?: boolean; has_earlier?: boolean; first_seq?: number }
 
 /** Run recipients use the actual selected agent. Its owner keeps all controls. */
-export function SharedCrewWorkspace({ projectId, enabled, children }: { projectId: string; enabled: boolean; children: ReactNode }) {
+export function SharedCrewWorkspace({ projectId, workspacePath, enabled, children }: { projectId?: string; workspacePath?: string; enabled: boolean; children: ReactNode }) {
+  const scope = useMemo<SharedCrewScope>(() => projectId ? { workspace_id: `work:${projectId}` } : { workspace: workspacePath || '' }, [projectId, workspacePath])
   const [agents, setAgents] = useState<SharedAgent[]>([])
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<SharedAgent | null>(null)
@@ -16,18 +18,18 @@ export function SharedCrewWorkspace({ projectId, enabled, children }: { projectI
   useEffect(() => {
     if (!enabled) return
     const controller = new AbortController()
-    void api.post<{ chats: SharedAgent[] }>('/api/crew-agents', { action: 'chats', workspace_id: `work:${projectId}` }, { signal: controller.signal, skipSessionContext: true })
+    void api.post<{ chats: SharedAgent[] }>('/api/crew-agents', { action: 'chats', ...scope }, { signal: controller.signal, skipSessionContext: true })
       .then(({ data }) => { if (!controller.signal.aborted) { setAgents((data.chats || []).filter(agent => agent.shared)); setListError('') } })
       .catch(() => { if (!controller.signal.aborted) { setAgents([]); setListError('Could not load shared agents. Reopen this project to try again.') } })
     return () => controller.abort()
-  }, [enabled, projectId, open])
-  if (!enabled) return <>{children}</>
+  }, [enabled, scope, open])
+  if (!enabled || (!agents.length && !selected)) return <>{children}</>
   return <div className="flex h-full min-h-0 flex-col">
     <nav aria-label="Shared Crew" className="flex shrink-0 items-center gap-1 border-b border-border px-3 py-2">
       <button type="button" aria-current={!open ? 'page' : undefined} onClick={() => setOpen(false)} className={`rounded-md px-3 py-1.5 text-sm ${!open ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted'}`}>Dashboard</button>
       <button type="button" aria-current={open ? 'page' : undefined} onClick={() => setOpen(true)} className={`rounded-md px-3 py-1.5 text-sm ${open ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted'}`}>Agents{agents.length ? ` · ${agents.length}` : ''}</button>
     </nav>
-    {!open ? <div className="min-h-0 flex-1">{children}</div> : selected ? <SharedAgentConversation key={selected.chat_id} projectId={projectId} agent={selected} onBack={() => setSelected(null)} /> : <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+    {!open ? <div className="min-h-0 flex-1">{children}</div> : selected ? <SharedAgentConversation key={selected.chat_id} scope={scope} agent={selected} onBack={() => setSelected(null)} /> : <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
       <p className="mb-4 text-sm text-muted-foreground">Choose an agent to join its existing conversation. Your messages appear with your name.</p>
       {listError && <p role="alert" className="text-sm text-destructive">{listError}</p>}
       {!listError && !agents.length && <p className="text-sm text-muted-foreground">No agents have been shared with you in this Crew.</p>}
@@ -38,7 +40,7 @@ export function SharedCrewWorkspace({ projectId, enabled, children }: { projectI
   </div>
 }
 
-function SharedAgentConversation({ projectId, agent, onBack }: { projectId: string; agent: SharedAgent; onBack: () => void }) {
+function SharedAgentConversation({ scope: crewScope, agent, onBack }: { scope: SharedCrewScope; agent: SharedAgent; onBack: () => void }) {
   const [messages, setMessages] = useState<ChatLine[]>([])
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -50,7 +52,7 @@ function SharedAgentConversation({ projectId, agent, onBack }: { projectId: stri
   const [earlier, setEarlier] = useState(false)
   const [loadingEarlier, setLoadingEarlier] = useState(false)
   const bottom = useRef<HTMLDivElement>(null)
-  const scope = { workspace_id: `work:${projectId}`, chat_id: agent.chat_id }
+  const scope = { ...crewScope, chat_id: agent.chat_id }
   useEffect(() => {
     const update = () => setVisible(document.visibilityState !== 'hidden')
     document.addEventListener('visibilitychange', update)
@@ -64,7 +66,7 @@ function SharedAgentConversation({ projectId, agent, onBack }: { projectId: stri
     const read = async () => {
       try {
         while (!controller.signal.aborted) {
-          const { data } = await api.post<ChatPage>('/api/crew-agents', { action: 'read_chat', workspace_id: `work:${projectId}`, chat_id: agent.chat_id, after, wait_seconds: first ? 0 : 25 }, { signal: controller.signal, timeout: 35000, skipSessionContext: true })
+          const { data } = await api.post<ChatPage>('/api/crew-agents', { action: 'read_chat', ...crewScope, chat_id: agent.chat_id, after, wait_seconds: first ? 0 : 25 }, { signal: controller.signal, timeout: 35000, skipSessionContext: true })
           if (controller.signal.aborted) return
           const incoming = data.messages || []
           if (first) { setMessages(incoming); setEarlier(data.has_earlier === true) }
@@ -81,7 +83,7 @@ function SharedAgentConversation({ projectId, agent, onBack }: { projectId: stri
     }
     void read()
     return () => controller.abort()
-  }, [projectId, agent.chat_id, visible, refresh])
+  }, [crewScope, agent.chat_id, visible, refresh])
   useEffect(() => { bottom.current?.scrollIntoView?.({ block: 'end' }) }, [messages.length])
   const send = async () => {
     if (sending || !draft.trim()) return

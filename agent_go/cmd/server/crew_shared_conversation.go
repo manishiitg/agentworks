@@ -92,7 +92,7 @@ func (api *StreamingAPI) externalSharedCrewConversation(w http.ResponseWriter, r
 			out["first_seq"] = items[0].Seq
 		}
 		working := api.externalWorkspaceTurnExecution(chat.SessionID, "")
-		out["working"] = working != nil && (working.Status == trackedExecutionStatusRunning)
+		out["working"] = api.sessionTurnRunning(chat.SessionID) || working != nil && working.Status == trackedExecutionStatusRunning
 		if len(items) > 0 || !time.Now().Before(deadline) || r.Context().Err() != nil {
 			out["messages"], out["next_after"] = items, max(after, last)
 			logSharedCrewAgent(claims.UserID, chat.Key, "read")

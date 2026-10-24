@@ -37,7 +37,7 @@ try {
       if (args.action === 'share') saved.push(args)
       await route.fulfill({ json: { mode: args.mode || 'people', can_share: true, people: [{ id: 'colleague', email: 'colleague@example.com' }], agents: [{ ...agents[0], selected: true, can_edit_purpose: true }] } })
     })
-    const fixture = server.resolvedUrls.local[0] + 'scripts/test-fixtures/crew-share-agents-qa.html?theme=' + theme
+    const fixture = server.resolvedUrls.local[0] + 'scripts/test-fixtures/crew-share-agents-qa.html?theme=' + theme + (name === 'light' ? '&standalone=true' : '')
     await page.goto(fixture)
     await page.getByRole('button', { name: /^Agents/ }).click()
     await page.getByRole('button', { name: /Coach Review feedback/ }).click()
@@ -48,7 +48,8 @@ try {
     await page.waitForFunction(() => document.querySelector('textarea')?.value === '')
     assert.equal(sent.length, 1)
     assert.equal(sent[0].chat_id, 'team:chat:coach')
-    assert.equal(sent[0].workspace_id, 'work:example-team')
+    if (name === 'light') assert.equal(sent[0].workspace, 'Crew/example-team')
+    else assert.equal(sent[0].workspace_id, 'work:example-team')
     assert.ok(sent[0].submission_id)
     assert.equal(await page.getByRole('button', { name: /Stop|Reset|Change model/ }).count(), 0)
     await page.screenshot({ path: path.join(output, 'crew-shared-agent-' + name + '.png'), fullPage: true })

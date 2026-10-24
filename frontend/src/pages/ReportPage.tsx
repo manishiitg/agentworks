@@ -1,5 +1,6 @@
 import { BarChart3 } from "lucide-react";
 import { ReportView } from "../components/workflow/ReportViewer";
+import { SharedCrewWorkspace } from "../products/work/SharedCrewWorkspace";
 import { isSafeReportWorkspacePath } from "../utils/reportWorkspacePath";
 
 interface ReportPageProps {
@@ -51,7 +52,9 @@ export function ReportPage({ encodedPath, ownerUid, onBack }: ReportPageProps) {
 
   return (
     <div className="h-screen min-h-screen overflow-hidden bg-background text-foreground">
-      <ReportView workspacePath={workspacePath!} documentPath={documentPath} allowContentQuestions={false} dashboardConversation hideToolbar />
+      <SharedCrewWorkspace key={workspacePath} workspacePath={workspacePath!} enabled>
+        <ReportView workspacePath={workspacePath!} documentPath={documentPath} allowContentQuestions={false} dashboardConversation hideToolbar />
+      </SharedCrewWorkspace>
     </div>
   );
 }

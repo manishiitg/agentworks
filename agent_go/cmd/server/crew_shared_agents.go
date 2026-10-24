@@ -197,6 +197,18 @@ func (api *StreamingAPI) handleCrewSharedAgents(w http.ResponseWriter, r *http.R
 		externalError(w, 400, "invalid_arguments", "Choose agents, read a conversation or send a message.")
 		return
 	}
+	if externalArg(args, "workspace_id") == "" {
+		target, err := api.dashboardTarget(r.Context(), GetUserFromContext(r.Context()), externalArg(args, "workspace"))
+		if err != nil {
+			externalFailure(w, err)
+			return
+		}
+		if target.Kind != "crew" {
+			externalJSON(w, map[string]any{"chats": []any{}})
+			return
+		}
+		args["workspace_id"] = crewProfileID + ":" + target.ID
+	}
 	api.externalWorkspaceCall(w, r, args)
 }
 

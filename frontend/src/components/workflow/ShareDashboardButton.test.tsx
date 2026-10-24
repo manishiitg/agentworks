@@ -105,7 +105,7 @@ it('saves selected existing agents with the same Share audience', async () => {
   const root = createRoot(host)
   try {
     await act(async () => root.render(<ShareDashboardButton workspacePath="Crew/team" variant="panel" section="people" />))
-    expect(host.textContent).toContain('earlier messages')
+    expect(host.textContent).toContain('messages from sharing onward')
     await act(async () => host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click())
     await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Save')!.click())
     expect(post).toHaveBeenLastCalledWith('/api/dashboards', expect.objectContaining({ workspace: 'Crew/team', action: 'share', mode: 'private', shared_agents: ['team:chat:coach'], agent_purposes: {} }))

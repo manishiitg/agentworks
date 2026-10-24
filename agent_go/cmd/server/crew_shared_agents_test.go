@@ -62,6 +62,9 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		for k, v := range extra {
 			args[k] = v
 		}
+		if _, byRoot := args["workspace"]; byRoot {
+			delete(args, "workspace_id")
+		}
 		w := httptest.NewRecorder()
 		if website {
 			body, _ := json.Marshal(args)
@@ -104,6 +107,9 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		if w.Code < 400 {
 			t.Fatalf("unselected history web=%t: %s", web, w.Body.String())
 		}
+	}
+	if w := call("read_chat", map[string]any{"workspace": externalCommandCrewRoot, "chat_id": coach.ConversationKey}, true); w.Code != 200 || !strings.Contains(w.Body.String(), "Shared owner context") || strings.Contains(w.Body.String(), "Private earlier context") {
+		t.Fatalf("standalone dashboard reads the same shared conversation: %d %s", w.Code, w.Body.String())
 	}
 	if w := call("read_chat", map[string]any{"session_id": coach.SessionID}, false); w.Code != 200 || strings.Contains(w.Body.String(), "Private earlier context") || !strings.Contains(w.Body.String(), "Shared owner context") {
 		t.Fatalf("session read must use the same shared transcript: %d %s", w.Code, w.Body.String())
