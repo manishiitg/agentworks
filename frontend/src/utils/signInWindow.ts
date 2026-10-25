@@ -3,8 +3,13 @@ export function prepareSignInWindow() {
   const external = window.electronAPI?.openExternal
   let popup: Window | null = null
   if (!external) {
-    popup = window.open('about:blank', '_blank')
-    if (popup) popup.opener = null
+    try {
+      popup = window.open('about:blank', '_blank')
+      if (popup) popup.opener = null
+    } catch {
+      popup?.close()
+      popup = null
+    }
   }
   return {
     open(url: string): boolean {
