@@ -104,6 +104,7 @@ func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *
 		return
 	}
 	if err != nil {
+		log.Printf("[PROJECT_ASK_CHAT] actor=%s product=%s project=%s outcome=refused reason=%q", claims.UserID, target.Kind, target.ID, err.Error())
 		externalError(w, 409, "conversation_unavailable", "Could not open this app's chat. Reopen it and try again.")
 		return
 	}
