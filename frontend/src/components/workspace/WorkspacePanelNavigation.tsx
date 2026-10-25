@@ -71,9 +71,9 @@ export function WorkspacePanelAssistant({ workspacePath, message }: { workspaceP
   return null
 }
 
-export function useQuestionInPanelHeader(message: string) {
+export function useQuestionInPanelHeader() {
   const { scope } = useContext(WorkspacePanelNavigationContext)
-  return useWorkspacePanelNavigationStore(state => !!scope && panelBackAction(state.assistants, scope)?.message === message)
+  return useWorkspacePanelNavigationStore(state => !!scope && !!panelBackAction(state.assistants, scope))
 }
 
 export function WorkspacePanelAssistantButton({ workspacePath, view, panelScope, onDraftOpened, inMenu = false }: { workspacePath?: string | null; view?: string; panelScope?: string; onDraftOpened?: () => void; inMenu?: boolean }) {

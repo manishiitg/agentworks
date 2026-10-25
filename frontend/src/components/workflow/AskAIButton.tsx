@@ -57,7 +57,7 @@ export function AskAIButton({
   /** Renders just the icon (for a tight icon-toolbar spot) instead of icon+label. */
   iconOnly?: boolean
 }) {
-  const inPanelHeader = useQuestionInPanelHeader(message)
+  const inPanelHeader = useQuestionInPanelHeader()
   const [armed, setArmed] = useState(false)
   const [sent, setSent] = useState(false)
   // Icon-only buttons expand on hover/focus to reveal the label, and a click

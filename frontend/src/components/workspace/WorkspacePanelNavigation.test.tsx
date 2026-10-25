@@ -126,6 +126,22 @@ it('retains the panel Back arrow and contextual chat drafts without Help', async
   expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
 })
 
+it('keeps one header Ask AI when Brain publishes a more specific question', async () => {
+  await render(<WorkspacePanelNavigationProvider workspacePath="Crew/example" view="mcp" chatTarget={{ tabId: 'named-chat' }}>
+    <WorkspacePanelHeader workspacePath="Crew/example" view="mcp" title="Brain" onBack={vi.fn()} />
+    <WorkspaceViewHeader title="Brain" actions={<AskAIButton iconOnly workspacePath="Crew/example" message="Help with project integrations" />} />
+    <WorkspacePanelAssistant workspacePath="Crew/example" message="Explain Brain and check current access without changing permissions." />
+    <AskAIButton workspacePath="Crew/example" message="Set up Brain with existing permissions" label="Ask AI to set up" />
+  </WorkspacePanelNavigationProvider>)
+  const header = host.querySelector('[data-testid="workspace-panel-header"]')!
+  expect(header.querySelectorAll('button')).toHaveLength(2)
+  expect(header.querySelector('[aria-label="Back to context"]')).not.toBeNull()
+  expect(host.textContent).toContain('Ask AI to set up')
+  await act(async () => header.querySelector<HTMLButtonElement>('[aria-label="Ask AI about this page"]')!.click())
+  expect(openWorkspacePaneChatWithDraft).toHaveBeenCalledExactlyOnceWith({ tabId: 'named-chat', message: 'Explain Brain and check current access without changing permissions.' })
+  expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
+})
+
 it.each(['Crew/example', 'Workflow/example', 'Workflow/relay'])('keeps live panel actions in one header and removes them on navigation for %s', async workspacePath => {
   const back = vi.fn()
   const Action = () => {
