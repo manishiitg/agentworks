@@ -4,7 +4,6 @@ import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { Fingerprint, FolderOpen, Loader2, Lock, Settings, Tag, Target, Trash2 } from 'lucide-react'
 import { FolderGrantList } from '../../components/folders/FolderGrantList'
 import { WorkflowReferenceAccess } from '../../components/folders/WorkflowReferenceAccess'
-import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { Button } from '../../components/ui/Button'
 import { IconUploadField } from '../../components/ui/IconUploadField'
 import { SettingsCard } from '../../components/ui/SettingsCard'
@@ -174,7 +173,7 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
   )
 }
 
-function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContextPathsChange }: {
+export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWorkflowContextPathsChange }: {
   workspacePath: string
   workflowContextPaths: string[]
   onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>
@@ -264,40 +263,6 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
         {loading ? <p className="text-xs text-muted-foreground">Loading…</p> : <FolderGrantList grants={folders} onRemove={remove} />}
         {error && <p className="text-xs text-destructive">{error}</p>}
       </SettingsCard>
-    </div>
-  )
-}
-
-/** Folders on this server and other work this Crew or Code project can use (Integrations, "Folders & workflows"). */
-export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWorkflowContextPathsChange, onAsk, askMessage }: {
-  workspacePath: string
-  workflowContextPaths: string[]
-  onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>
-  onAsk: (message: string) => Promise<void>
-  askMessage: string
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
-            <div className="min-w-0 flex-1 basis-48">
-              <p className="text-sm font-semibold text-foreground">Want to link something else?</p>
-              <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                Ask the agent to link a folder or other work you made. No manual setup needed.
-              </p>
-            </div>
-            <AskAIButton
-              workspacePath={workspacePath}
-              onAsk={onAsk}
-              label="Ask AI to link"
-              message={askMessage}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            />
-          </div>
-          <WorkFoldersBody
-            workspacePath={workspacePath}
-            workflowContextPaths={workflowContextPaths}
-            onWorkflowContextPathsChange={onWorkflowContextPathsChange}
-          />
     </div>
   )
 }

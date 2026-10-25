@@ -201,25 +201,12 @@ export default function WorkflowFolderAccessView({ workspacePath, headerAction, 
               actions={<>
                 {!canWriteWorkflow && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">Run</span>}
                 {headerAction}
+                <AskAIButton workspacePath={canWriteWorkflow ? workspacePath : null} message={getIntegrationTabAskAIMessage('folders')} />
               </>}
             />
           )}
 
           <div className={`space-y-5 ${manageOwnScroll ? 'min-h-0 flex-1 overflow-y-auto p-5' : ''}`}>
-            <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
-              <div className="min-w-0 flex-1 basis-48">
-                <p className="text-sm font-semibold text-foreground">Want to link something else?</p>
-                <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                  Ask the builder to link a folder or other work you made. No manual setup needed. For shared knowledge, open Connections → Add connection → Brain.
-                </p>
-              </div>
-              <AskAIButton
-                workspacePath={!canWriteWorkflow ? null : workspacePath ?? null}
-                label="Ask AI to link"
-                message={getIntegrationTabAskAIMessage('folders')}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-            </div>
             {workspacePath && <KnowledgebaseSources key={workspacePath} workspacePath={workspacePath} variant="folders" />}
             <WorkflowReferenceAccess selectedPaths={workflowContextPaths} onChange={persistWorkflowReferences} excludeWorkspacePath={workspacePath} disabled={!canWriteWorkflow || saving} hideAdd />
             {canPickFolders && (<>

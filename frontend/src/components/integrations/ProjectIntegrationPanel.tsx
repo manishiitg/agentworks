@@ -18,6 +18,7 @@ export const INTEGRATION_LABELS: Record<IntegrationSection, string> = {
   connected: 'MCPs', available: 'Available MCPs', secrets: 'Secrets', gmail: 'Google apps', 'slack-account': 'Slack account', laptop: 'Local laptop',
 }
 export function integrationPanelQuestion(section: string, label: string): string {
+ if(section==='folders') return buildAskAIMessage({view:label,summary:'Help me link a folder or other work to this project.',instructions:"Read the relevant folder panel skill and inspect this project's current linked work and attached folders. Help me choose or update links using existing tools and current access. Explain what the project can use in plain words; do not change folder permissions unless I ask."})
  return buildAskAIMessage({view:label,summary:`Help me with ${label.toLowerCase()} for this project.`,instructions:`Read the relevant integration panel skill and inspect this project's current settings and canonical project inventory before advising. The current panel is ${section}. Explain saved accounts, selected resources and existing access in plain words. Use the familiar Integrations entries, not a My Vault destination. Help with the requested setup or sharing using existing native tools and permission checks; never repeat secret values.`})
 }
 export type ProjectSecretControls = {
