@@ -44,7 +44,7 @@ func TestGuestAskToolSurfaceIsAnExactAllowList(t *testing.T) {
 		"list_attached_workflows", "list_functions", "list_mcp_servers", "list_project_schedules", "list_project_triggers",
 		"list_skills", "list_workflow_triggers", "read_agent_messages", "read_image", "read_skill",
 		"search_skills", "search_tools", "send_message", crewSuggestionToolName,
-		crewPublishedCallToolName, crewPublishedGetToolName,
+		crewPublishedCallToolName, crewPublishedGetToolName, "request_clarification",
 	}
 	var got []string
 	for name := range crewAskAllowedTools {
@@ -154,7 +154,8 @@ func TestFunctionCallTurnNamesItsOwnOutputFolder(t *testing.T) {
 // Every non-owner chat with a Crew (the in-app chat, an MCP ask, a dashboard Ask) is one policy decided in one place (856-59,
 // owner 2026-10-13): read-only plus the owner's published functions. The owner's own chat and a guest's function-call turn are not it.
 func TestNonOwnerChatsShareOnePolicy(t *testing.T) {
-	ownerRoot := "_users/owner/Chats/Work/projects/alpha"
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	ownerRoot := registerTestCrew(t, "alpha-a1b2c3d4", "owner", true)
 	reader := QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot}
 	ownerTurn := QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot}
 	guestAsk := QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot, CrewGuestCaller: "reader", CrewAskReadOnly: true, PinRunMode: true}

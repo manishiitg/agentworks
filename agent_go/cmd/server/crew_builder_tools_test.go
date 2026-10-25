@@ -130,14 +130,20 @@ func TestCrewBuilderMutationsRecheckWriteAccess(t *testing.T) {
 	manifest.Access = &WorkflowAccess{Owners: []string{"different-owner"}, Readers: []string{"owner"}}
 	raw, _ := json.Marshal(manifest)
 	mock.files[manifestPath("Workflow/test")] = string(raw)
-	before := len(mock.files)
+	before := map[string]bool{}
+	for name := range mock.files {
+		before[name] = true
+	}
 	for _, name := range []string{"create_crew", "manage_crew_attachment", "manage_crew_trigger"} {
 		if _, err := tools[name].exec(context.Background(), map[string]interface{}{"action": "create"}); err == nil || !strings.Contains(err.Error(), "write access") {
 			t.Errorf("%s failed to recheck write access: %v", name, err)
 		}
 	}
-	if len(mock.files) != before {
-		t.Fatal("revoked writer changed workspace files")
+	for name := range mock.files {
+		// The plan changelog is written in the background by the test's own setup.
+		if !before[name] && !strings.Contains(name, "/planning/changelog/") {
+			t.Fatalf("revoked writer created %s", name)
+		}
 	}
 	if _, err := tools["manage_crew_attachment"].exec(context.Background(), map[string]interface{}{"action": "list"}); err != nil {
 		t.Fatalf("read-only discovery should remain available: %v", err)

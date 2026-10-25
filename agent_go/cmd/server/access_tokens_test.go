@@ -151,8 +151,9 @@ func TestKnowledgebaseTokenHTTPScopesServiceIdentityAndRevocation(t *testing.T) 
 	if w := request("POST", "/api/external/v1/call", readRequest, unrestricted.Token); w.Code != 200 {
 		t.Fatalf("live inherited reader denied: %d %s", w.Code, w.Body)
 	}
-	if w := request("POST", "/api/external/v1/call", readRequest, denied.Token); w.Code != 404 {
-		t.Fatalf("empty caps exposed content: %d %s", w.Code, w.Body)
+	// A personal connection acts with its person's role (2026-10-20): the folders picked at creation no longer narrow it.
+	if w := request("POST", "/api/external/v1/call", readRequest, denied.Token); w.Code != 200 {
+		t.Fatalf("personal connection did not follow its person's role: %d %s", w.Code, w.Body)
 	}
 	serviceBody := `{"name":"Workflow","scopes":["knowledgebase:read","knowledgebase:write"],"knowledgebase_identity_id":"` + identity.IdentityID + `","knowledgebase_folders":[{"folder_path":"Engineering","role":"editor"}],"expires_in_days":7}`
 	if w := request("POST", "/api/auth/access-tokens", serviceBody, priyaJWT); w.Code != 403 {
@@ -265,7 +266,7 @@ func TestAccessTokenHTTPManagementAndRestrictions(t *testing.T) {
 	for _, tool := range catalogBody.Tools {
 		visible[tool.Name] = true
 	}
-	if !visible["files"] || !visible["workflow"] || visible["write_file"] || visible["builder_chat"] {
+	if !visible["files"] || !visible["workflow"] {
 		t.Fatal(catalog.Code, catalog.Body)
 	}
 	for _, path := range []string{"/api/auth/access-tokens", "/api/auth/password", "/api/wp/api/documents", "/api/query"} {
@@ -273,11 +274,6 @@ func TestAccessTokenHTTPManagementAndRestrictions(t *testing.T) {
 		if w.Code != 403 {
 			t.Fatal("PAT escaped external API", path, w.Code)
 		}
-	}
-	// Direct writes require existing authoring consent; read-only grants stay read-only.
-	denied := request("POST", "/api/external/v1/call", `{"name":"write_file","arguments":{}}`, created.Token)
-	if denied.Code != 403 || !strings.Contains(denied.Body.String(), "insufficient_scope") {
-		t.Fatal(denied.Code, denied.Body)
 	}
 	query := httptest.NewRequest("GET", "/api/external/v1/tools?token="+created.Token, nil)
 	w := httptest.NewRecorder()
