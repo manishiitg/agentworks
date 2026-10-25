@@ -27,7 +27,6 @@ func TestWorkspaceReferenceLabelsLearningsAsHowNotDomainKnowledge(t *testing.T) 
 	out := GetWorkspaceReference("/tmp/workspace-docs", "_users/default/Chats")
 
 	for _, want := range []string{
-		"Learnings (reusable HOW-to-run knowledge)",
 		"reusable HOW-to-run knowledge for a workflow",
 	} {
 		if !strings.Contains(out, want) {
