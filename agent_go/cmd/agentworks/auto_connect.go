@@ -45,6 +45,28 @@ func autoConnectChat(ctx context.Context, root string, o *options, req agentwork
 		return nil
 	}
 	if out.Attached && !out.Offline {
+		if req.Provider == "codex" && out.HostKey != req.HostKey {
+			remote, err := codexDesktopSocket()
+			if err != nil {
+				return err
+			}
+			host, err := codexDesktopProcessHost(ctx, remote)
+			if err != nil || host != req.HostKey || !codexDesktopOwnerReady(ctx, remote, req.SessionID) {
+				return fmt.Errorf("waiting to verify this chat's current desktop process")
+			}
+			// Renew only this exact saved lease through the existing attach path.
+			// Messaging continues to accept one process key, never either key.
+			req.Action, req.Automatic, req.ReuseIdentity = "attach", true, true
+			req.AttachmentID, req.NativeRemote = out.Attachment.ID, remote
+			renewed, err := agentworksclient.CallLocalBridge(ctx, root, req)
+			if err != nil {
+				return err
+			}
+			if !renewed.Attached || renewed.Stopped {
+				return fmt.Errorf("this chat's desktop connection could not be renewed")
+			}
+			log.Printf("[BRIDGE-RECOVERY] outcome=process_rebound agent=%s attachment=%s", renewed.Attachment.AgentName, renewed.Attachment.ID)
+		}
 		if req.Provider == "pi" {
 			return activatePiSession(ctx, root, req.HostKey, req.SessionID, out.Attachment.ID)
 		}

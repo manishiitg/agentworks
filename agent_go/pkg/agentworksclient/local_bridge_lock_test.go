@@ -838,6 +838,11 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	if attachments.Load() != 1 {
 		t.Fatal("messaging must renew the lease only once")
 	}
+	wrong := request
+	wrong.Action, wrong.HostKey, wrong.InboxID = "reply_inbox", "another-process", "saved-inbox"
+	if refused, e := CallMessagingBridge(ctx, root, wrong, nil); e != nil || refused.Attached || attachments.Load() != 1 {
+		t.Fatalf("another process could act as the reconnected chat: %+v %v", refused, e)
+	}
 	// SessionEnd stops local delivery but keeps this chat's saved server lease.
 	if _, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "offline", Provider: "codex", SessionID: "saved", HostKey: "current-process"}); err != nil {
 		t.Fatal(err)

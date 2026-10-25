@@ -54,7 +54,7 @@ func TestAutomaticChatKeepsNativeIdentityAndExplicitDisconnect(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		out := agentworksclient.LocalBridgeReply{Stopped: stopped, Offline: offline, Attached: attached.ID != "" && !offline, Attachment: attached}
+		out := agentworksclient.LocalBridgeReply{Stopped: stopped, Offline: offline, Attached: attached.ID != "" && !offline, Attachment: attached, HostKey: in.HostKey}
 		if in.Action == "status" && in.AttachmentID != "" && in.AttachmentID != attached.ID {
 			_ = json.NewEncoder(w).Encode(agentworksclient.LocalBridgeReply{})
 			return

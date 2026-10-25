@@ -110,8 +110,9 @@ type LocalAgentDirectory struct {
 }
 
 type LocalBridgeReply struct {
-	Stopped       bool `json:"stopped,omitempty"`
-	MonitorActive bool `json:"monitor_active,omitempty"`
+	HostKey       string `json:"host_key,omitempty"` // local connection metadata, not an authorization grant
+	Stopped       bool   `json:"stopped,omitempty"`
+	MonitorActive bool   `json:"monitor_active,omitempty"`
 	// Notice is a one-time line for the person, e.g. an attach that finished after the command gave up.
 	Notice            string                `json:"notice,omitempty"`
 	Directories       []LocalAgentDirectory `json:"directories,omitempty"`
@@ -1029,7 +1030,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		// Discovery only asks whether this exact chat already has a connection.
 		// It neither changes the saved process nor authorizes delivery/actions.
-		return LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Stopped: s.ServerClosed, Attachment: s.Attachment}
+		return LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Stopped: s.ServerClosed, Attachment: s.Attachment, HostKey: s.HostKey}
 	}
 	if in.Action == "list" {
 		out := LocalBridgeReply{}

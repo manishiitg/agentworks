@@ -206,7 +206,7 @@ func dialPiSDK(ctx context.Context, record piSessionRecord) (net.Conn, error) {
 	}
 	var pid int
 	var peerErr error
-	if err = raw.Control(func(fd uintptr) { pid, peerErr = piSocketPeerPID(int(fd)) }); err != nil || peerErr != nil || pid != record.PID {
+	if err = raw.Control(func(fd uintptr) { pid, peerErr = localSocketPeerPID(int(fd)) }); err != nil || peerErr != nil || pid != record.PID {
 		return refuse()
 	}
 	host, err := piPIDHostKey(pid)

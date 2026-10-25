@@ -968,21 +968,7 @@ func discoverLiveAgents(ctx context.Context, root string, o *options, only ...ag
 	// The database is only a candidate catalog. Every candidate must be confirmed
 	// by a running desktop owner supporting untrusted input before it is selectable.
 	remote := "desktop+unix://" + filepath.Join(home, ".codex", "ipc", "ipc.sock")
-	var desktopHost string
-	ps, e := exec.CommandContext(ctx, "ps", "-axo", "pid=,args=").Output()
-	if e == nil {
-		for _, line := range strings.Split(string(ps), "\n") {
-			p := strings.Fields(line)
-			if len(p) < 2 || !codexDesktopHost(line) || !strings.Contains(line, "app-server") {
-				continue
-			}
-			pid, _ := strconv.Atoi(p[0])
-			desktopHost, e = providerPIDHostKey("codex", pid)
-			if e == nil {
-				break
-			}
-		}
-	}
+	desktopHost, _ := codexDesktopProcessHost(ctx, remote)
 	if desktopHost != "" && validateCodexRemote(remote) == nil {
 		candidates := codexProbeCandidates(localAttachedChats(local))
 		leased := map[string]bool{}
