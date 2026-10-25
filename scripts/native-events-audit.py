@@ -53,7 +53,7 @@ try:
                 reason=fields.get("reason","")
                 cost_gaps[reason if re.fullmatch("[a-z_]+",reason) else "reader_error"]+=1
             else:
-                kind="generation" if " generation " in line else "handoff" if " handoff " in line else "runtime_saved" if " runtime_saved " in line else "restored" if " restored " in line else "other"
+                kind="generation" if " generation " in line else "handoff" if " handoff " in line else "runtime_saved" if " runtime_saved " in line else "restored" if " restored " in line else "runtime_reset" if " runtime_reset " in line else "other"
                 mode=fields.get("mode","")
                 cost_events[kind+(":"+mode if mode in ("native","foreground") else "")]+=1
         if "[NATIVE_RECORD]" not in line:continue

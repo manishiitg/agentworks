@@ -180,6 +180,13 @@ func TestNativeAccountingResetsWhenRuntimeChanges(t *testing.T) {
 	defer api.stopNativeCostAccounting()
 	now := time.Now().UTC()
 	base := costledger.Entry{Timestamp: now, SessionID: "native-switch-example", UserID: "alice", AccountID: "account-a", Scope: "builder", ModelID: "unknown-example-model"}
+	foreground := base
+	foreground.EventID, foreground.IdempotencyKey = "switch-foreground", "switch-foreground"
+	foreground.PromptTokens, foreground.CompletionTokens, foreground.LLMCallCount = 7, 1, 1
+	foreground.BillingBasis = "unpriced"
+	if err := ledger.Append(foreground); err != nil {
+		t.Fatal(err)
+	}
 	seed := func(a *nativeCostAccountant) {
 		a.mu.Lock()
 		defer a.mu.Unlock()
@@ -228,6 +235,14 @@ func TestNativeAccountingResetsWhenRuntimeChanges(t *testing.T) {
 	third.bindNativeID("new-native")
 	third.mu.Unlock()
 	clean(third)
+	day := now.Format("2006-01-02")
+	before, err := ledger.Summarize(day, day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Total.PromptTokens != 7 || before.Total.CompletionTokens != 1 || before.Total.CallCount != 1 {
+		t.Fatalf("runtime reset changed foreground charge %+v", before.Total)
+	}
 	// The same source id under different accounts names distinct admitted
 	// usage. Replay after the switch never relabels or adds either charge.
 	for _, owner := range []costledger.Entry{oldAccount, base, base} {
@@ -240,7 +255,7 @@ func TestNativeAccountingResetsWhenRuntimeChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Total.CallCount != 2 || summary.Total.PromptTokens != 4 || summary.Total.CompletionTokens != 2 {
+	if summary.Total.CallCount != 3 || summary.Total.PromptTokens != 11 || summary.Total.CompletionTokens != 3 {
 		t.Fatalf("switch lost/duplicated charges %+v", summary.Total)
 	}
 }
