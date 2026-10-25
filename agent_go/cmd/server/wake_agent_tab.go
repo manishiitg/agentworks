@@ -79,7 +79,7 @@ func (s *SchedulerService) wakeAgentTab(ctx context.Context, sctx *ScheduleConte
 		}
 		message += " The run reported: " + detail
 	}
-	message += "\n\nLook at it now, as your tab check says: read this tab's notes, follow the matching guide in guides/, find the cause from the run records, save what you learn, and report here. If only the owner can unblock it, say so in one line."
+	message += "\n\nLook at it now, as your tab check says: read this tab's notes, follow the matching inspect skill, find the cause from the run records, save what you learn, and report here. If only the owner can unblock it, say so in one line."
 
 	go func() {
 		bg := internalBotRequestContext(context.WithoutCancel(ctx), owner)
