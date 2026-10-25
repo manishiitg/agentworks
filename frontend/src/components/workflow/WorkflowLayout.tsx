@@ -21,6 +21,8 @@ import { resolveWorkflowHistoryPath } from '../../utils/workflowHistoryPath'
 import ChatArea, { type ChatAreaRef } from '../ChatArea'
 import { useWorkflowProductCommands } from '../../commands/useWorkflowProductCommands'
 import { WorkflowChatTabs } from './WorkflowChatTabs'
+import { useMobileViewport } from '../../hooks/useMobileViewport'
+import { currentProductRoute } from '../../utils/productRoutes'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { resolveWorkspaceLayout } from './workspaceLayoutResolver'
 import { useRunningWorkflowsStore, useShowRunningDrawer } from '../../stores/useRunningWorkflowsStore'
@@ -95,6 +97,7 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
   // The agent's open_workspace_view calls open the toolbar's views here.
   useWorkflowViewPresentations(workflowTabId)
 
+  const isMobile = useMobileViewport()
   const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
   useWorkflowProductCommands(isRelaySurface)
 
@@ -605,6 +608,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   onNewChat
 }) => {
   const selectedModeCategory = useModeStore(state => state.selectedModeCategory)
+  const isMobile = useMobileViewport()
   const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
   // Narrow selectors: bare useChatStore() re-renders on every store update (10x/sec with 2 parallel sessions)
   const currentWorkflowPhase = useChatStore(state => state.currentWorkflowPhase)
@@ -798,6 +802,17 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
 
   // Get active workflow preset (file-backed manifests, not DB presets)
   const activePresetId = useGlobalPresetStore(state => state.activePresetIds.workflow)
+  const phoneEntry = useRef<{ id: string | null; explicitPanel: boolean; applied: boolean } | null>(null)
+  if (phoneEntry.current?.id !== activePresetId) {
+    const route = currentProductRoute()
+    phoneEntry.current = { id: activePresetId, explicitPanel: route?.id === activePresetId && Boolean(route?.view && route.view !== 'context'), applied: false }
+  }
+  useEffect(() => {
+    if (!isMobile) { if (phoneEntry.current) phoneEntry.current.applied = false; return }
+    if (!activePresetId || restoredPresetId !== activePresetId || !phoneEntry.current || phoneEntry.current.applied) return
+    phoneEntry.current.applied = true
+    if (!phoneEntry.current.explicitPanel) { setShowChatArea(true); setFocusedPane('chat') }
+  }, [isMobile, activePresetId, restoredPresetId, setShowChatArea, setFocusedPane])
   const activeWorkflowPreset = useGlobalPresetStore(state => {
     const presetId = state.activePresetIds.workflow
     return presetId ? state.workflowPresets.find(preset => preset.id === presetId) ?? null : null
@@ -1283,11 +1298,12 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   useWorkspaceReturn(relayMode ? 'relays' : 'agentworks', activePresetId ?? undefined, workflowWorkspaceView ?? undefined,
     { chat_open: showChatArea, panel_open: dashboardView || workflowWorkspaceView === 'context' || showWorkspacePane, split_ratio: workspaceSplitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, focused_pane: focusedPane },
     saved => {
-      setShowChatArea(saved.chat_open); setShowWorkspacePane(saved.panel_open)
+      setShowChatArea(isMobile || saved.chat_open); setShowWorkspacePane(saved.panel_open)
       // This flag controls the Files sidebar, not the workspace panel. Opening
       // it for Human actions/Autopilot/etc. makes Files-view sync replace that view.
       setWorkspaceMinimized(!saved.panel_open || useWorkflowStore.getState().workflowWorkspaceView !== 'files')
-      if (saved.focused_pane) setFocusedPane(saved.focused_pane)
+      if (isMobile && !phoneEntry.current?.explicitPanel) setFocusedPane('chat')
+      else if (saved.focused_pane) setFocusedPane(saved.focused_pane)
       const device = saved.preview_device ?? reportPreviewPreference
       // The validated server record hydrates this device's existing local cache.
       writeWorkflowSplitPreference(workspacePath, saved.split_ratio, device)
@@ -2298,7 +2314,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         if (pane === 'chat') {
           if (!showChatArea) handleToggleChatArea()
           setFocusedPane('chat')
-        } else { setShowWorkspacePane(true); setFocusedPane('preview') }
+        } else { setWorkflowWorkspaceView('context'); setShowWorkspacePane(true); setFocusedPane('preview') }
       },
     }}>
     <div className={`relative flex min-h-0 min-w-0 flex-col h-full ${className}`}>

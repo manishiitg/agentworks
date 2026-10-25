@@ -18,18 +18,19 @@ it('switches full-height phone panes without losing the mounted draft, and offer
   try {
     await act(async () => root.render(<Workspace />))
     const draft = host.querySelector('textarea')!
-    const workspace = [...host.querySelectorAll('button')].find(button => button.textContent === 'Workspace')!
+    const workspace = host.querySelector<HTMLButtonElement>('[aria-label="Open workspace menu"]')!
+    expect(host.querySelector('[aria-label="Workspace panes"]')).toBeNull()
     await act(async () => workspace.click())
-    expect(workspace.getAttribute('aria-pressed')).toBe('true')
+    expect(host.querySelector('[aria-label="Back to chat"]')).not.toBeNull()
     expect(host.querySelector('textarea')).toBe(draft)
     expect(host.querySelector('main')?.className).toContain('hidden md:flex')
     expect(host.querySelector('aside')?.classList.contains('hidden')).toBe(false)
     expect(host.querySelector('[class*="grid-rows"]')?.className).not.toContain('row-start-3')
-    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Chat')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back to chat"]')!.click())
     expect(draft.value).toBe('Keep this draft')
     expect(host.querySelector('aside')?.className).toContain('hidden md:block')
     await act(async () => root.render(<Workspace shared />))
-    expect(host.querySelector('[aria-label="Workspace panes"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Workspace navigation"]')).toBeNull()
     expect(host.querySelector('main')).toBeNull()
     expect(host.querySelector('aside')?.classList.contains('hidden')).toBe(false)
   } finally { await act(async () => root.unmount()); host.remove() }

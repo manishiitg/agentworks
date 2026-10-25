@@ -1,5 +1,6 @@
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
+import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { currentProductRoute, routeView } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
@@ -954,6 +955,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
+  const isMobile = useMobileViewport()
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
   const openChatPane = useCallback(() => { setChatOpen(true); setMobilePane('chat') }, [])
   const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
@@ -1173,13 +1175,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     splitRatioRef.current = nextRatio
     setSplitRatioState(nextRatio)
     setReportPreviewPreference(readReportPreviewPreference(selected?.workspacePath))
-    setMobilePane(savedView && savedView !== 'context' ? 'workspace' : 'chat')
+    setMobilePane(routeSuppliedView && routeSuppliedView !== 'context' ? 'workspace' : 'chat')
   }, [product.defaultView, product.profileId, selected?.id, selected?.shared, selected?.workspacePath])
 
   useWorkspaceReturn(product.profileId, selected?.id, selected ? workspaceView : undefined,
     { chat_open: chatOpen, panel_open: (!selected?.shared && workspaceView === 'context') || workspaceView === 'dashboard' || panelOpen, split_ratio: splitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, mobile_pane_width: mobilePaneWidth ?? undefined },
     saved => {
-      setChatOpen(saved.chat_open); setPanelOpen(saved.panel_open)
+      setChatOpen(isMobile || saved.chat_open); setPanelOpen(saved.panel_open)
       splitRatioRef.current = saved.split_ratio; setSplitRatioState(saved.split_ratio); writeWorkSplitRatio(selected?.id, saved.split_ratio)
       if (saved.preview_device) writeReportPreviewPreference(selected?.workspacePath, saved.preview_device)
       if (saved.mobile_pane_width) { mobilePaneWidthRef.current = saved.mobile_pane_width; setMobilePaneWidthState(saved.mobile_pane_width); writeMobilePaneWidth(selected?.id, saved.mobile_pane_width) }
@@ -1411,7 +1413,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               chatOpen={!isShared && chatOpen} panelOpen={isShared || workspaceView === 'dashboard' || panelOpen} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
               showChatReopenControl={!isShared}
               mobilePane={mobilePane}
-              onMobilePaneChange={pane => { setMobilePane(pane); if (pane === 'chat') setChatOpen(true); else setPanelOpen(true) }}
+              onMobilePaneChange={pane => { if (pane === 'chat') openChatPane(); else selectWorkspaceView('context') }}
               laptopPreview={workspaceView === 'dashboard' && reportPreviewPreference === 'desktop'}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={openChatPane} onOpenWorkspace={() => setPanelOpen(true)}

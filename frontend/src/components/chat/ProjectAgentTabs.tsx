@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -12,6 +12,7 @@ import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
 import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
 import { compactOwnerChatName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
+import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, allowSideChats, opening, surface,
@@ -31,13 +32,14 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const listedFor = (tab: ChatTab) => listed.find(chat => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)
   const ownedListed = listed.filter(chat => chat.can_write !== false)
   const sideChats = tabs.filter(tab => tab.tabId !== canonicalTabId && !tab.metadata?.isViewOnly)
-  const selectTab = onSelectTab
+  const phoneNavigation = useContext(MobileWorkspaceNavigationContext)
+  const selectTab = (tabId: string) => { onSelectTab(tabId); phoneNavigation?.onChange('chat') }
   const closeProjectTab = onCloseTab
   const renameSideChat = onRename
   const submitNewAgent = async (requested: string) => {
     const name = requested.trim()
     if (!name || opening) return
-    try { if (await onOpen(name) !== false) setNewTabName(null) }
+    try { if (await onOpen(name) !== false) { setNewTabName(null); phoneNavigation?.onChange('chat') } }
     catch (cause) { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open a new agent.', 'error') }
   }
   const isAgentTab = (tab: ChatTab) => !tab.metadata?.isViewOnly && !tab.metadata?.isScheduledRun && !tab.metadata?.isBotRun
@@ -175,7 +177,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <ProjectWorkspaceTitle name={projectName} surface={surface} />
-      <div ref={stripRef} className="flex min-w-[84px] flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
+      <div ref={stripRef} className="hidden min-w-[84px] flex-1 items-center gap-1 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
         const targetKey = key || (tab.tabId === canonicalTabId ? listed?.[0]?.conversation_key : undefined)
