@@ -107,7 +107,7 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			workspacehandlers.GetDocument(c)
 			return
 		}
-		if strings.HasSuffix(rel, "/preferences/workspace-state.json") || strings.Contains(rel, "/preferences/context-shortcuts/") {
+		if strings.HasSuffix(rel, "/preferences/workspace-state.json") || strings.HasSuffix(rel, "/preferences/chat-display.json") || strings.Contains(rel, "/preferences/context-shortcuts/") {
 			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
 			workspacehandlers.GetDocument(c)
 			return
@@ -136,7 +136,7 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			workspacehandlers.UpdateDocument(c)
 			return
 		}
-		if strings.HasSuffix(rel, "/preferences/workspace-state.json") || strings.Contains(rel, "/preferences/context-shortcuts/") {
+		if strings.HasSuffix(rel, "/preferences/workspace-state.json") || strings.HasSuffix(rel, "/preferences/chat-display.json") || strings.Contains(rel, "/preferences/context-shortcuts/") {
 			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
 			workspacehandlers.UpdateDocument(c)
 			return
@@ -440,7 +440,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates && tool.Name != "workspace" && !isDashboardTool(tool.Name) && !isExternalCrewTool(tool.Name) && tool.Name != "write_file" && tool.Name != "plan" && tool.Name != "workflow_upgrade" && tool.Name != "workflow_crews" && !isExternalWorkflowAccountTool(tool.Name) && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "manage_condition_triggers" && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != bullpenAdminTool && tool.Name != serverProductManagementTool && tool.Name != externalSignInAppsTool && tool.Name != brainAdminTool && tool.Name != "browser_connections" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "workflow_team" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "dismiss_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" && tool.Name != "manage_laptop_access" && tool.Name != "execute_local_shell_command" && tool.Name != "copy_local_file_to_project" && tool.Name != "list_local_files" && tool.Name != "write_local_file" {
+		if tool.mutates && tool.Name != "chat_preferences" && tool.Name != "workspace" && !isDashboardTool(tool.Name) && !isExternalCrewTool(tool.Name) && tool.Name != "write_file" && tool.Name != "plan" && tool.Name != "workflow_upgrade" && tool.Name != "workflow_crews" && !isExternalWorkflowAccountTool(tool.Name) && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "manage_condition_triggers" && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != bullpenAdminTool && tool.Name != serverProductManagementTool && tool.Name != externalSignInAppsTool && tool.Name != brainAdminTool && tool.Name != "browser_connections" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "workflow_team" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "dismiss_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" && tool.Name != "manage_laptop_access" && tool.Name != "execute_local_shell_command" && tool.Name != "copy_local_file_to_project" && tool.Name != "list_local_files" && tool.Name != "write_local_file" {
 			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}

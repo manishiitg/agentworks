@@ -27,6 +27,7 @@ import { ProviderChangeNotice } from '../../components/chat/ProviderChangeNotice
 import { allowedModelOrFirst, filterAllowedModels } from '../../utils/allowedModels'
 import { SharedTokenUsageNotice } from '../../components/providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../../utils/tokenLimits'
+import { useChatPreferences } from '../../hooks/useChatPreferences'
 
 const PROVIDERS_WITH_USAGE = new Set(['claude-code', 'codex-cli', 'muse-cli'])
 
@@ -57,6 +58,7 @@ export function WorkModelsPanel({
   // profile. Asking Crew's left a Code-only member (server B) with no
   // providers at all (issue #252).
   const queryClient = useQueryClient()
+  const chatPreferences = useChatPreferences()
   const product = useProjectProduct()
   const effectiveProfileId = profileId ?? product.profileId
   const effectiveProfileVersion = profileVersion ?? product.profileVersion
@@ -424,6 +426,13 @@ export function WorkModelsPanel({
   const savedProviderUnusable = Boolean(accounts !== null && selectedOption?.provider && !workProviderIds.includes(selectedOption.provider))
   const body = (
     <>
+        <div className="mb-4 rounded-xl border border-border p-3">
+          <label className="flex cursor-pointer items-center justify-between gap-4 text-sm">
+            <span>Show context usage beside the model<span className="mt-1 block text-xs text-muted-foreground">Applies to your chats when the model reports its context usage.</span></span>
+            <input type="checkbox" className="h-4 w-4 accent-primary" checked={chatPreferences.showContextIndicator} disabled={!chatPreferences.ready || chatPreferences.save.isPending} onChange={event => chatPreferences.save.mutate(event.target.checked)} />
+          </label>
+          {chatPreferences.save.isError && <p role="alert" className="mt-2 text-xs text-destructive">Could not save your display. Try again.</p>}
+        </div>
         {supportsChatModels && <section className="mb-4 overflow-hidden rounded-xl border border-border" aria-label="Models by chat">
           <button type="button" disabled={chatModelSaving} aria-pressed={!modelTarget} onClick={() => setModelTarget('')} className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm ${!modelTarget ? 'bg-primary/10' : 'hover:bg-muted'}`}>
             <span className="font-medium">Crew’s model</span><span className="text-xs text-muted-foreground">For chats without their own model</span>

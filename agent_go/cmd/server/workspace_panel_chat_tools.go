@@ -24,6 +24,7 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 		// Browser and model chat tools already exist for Crews.
 		names = []string{"settings", "crew_owners", "manage_messaging"}
 	}
+	names = append(names, "chat_preferences")
 	catalog, err := externalTools()
 	if err != nil {
 		return err
@@ -66,6 +67,21 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 		if err := reg.RegisterCustomToolWithTimeout(name, description, schema, func(ctx context.Context, args map[string]any) (out string, err error) {
 			defer func() { log.Printf("[PANEL_SETTINGS] tool=%s session=%s success=%t", name, session, err == nil) }()
 			claims := GetUserFromContext(ctx)
+			if name == "chat_preferences" {
+				if claims == nil || claims.UserID != user {
+					return "", errors.New("Use your own chat to change your display.")
+				}
+				var update *bool
+				if show, ok := args["show_context_indicator"].(bool); ok {
+					update = &show
+				}
+				recorder := httptest.NewRecorder()
+				api.chatPreferences(recorder, httptest.NewRequest(http.MethodGet, "/api/chat-preferences", nil).WithContext(ctx), update)
+				if recorder.Code >= 400 {
+					return "", errors.New(strings.TrimSpace(recorder.Body.String()))
+				}
+				return strings.TrimSpace(recorder.Body.String()), nil
+			}
 			if claims == nil || claims.UserID != user || !userAccessForClaims(claims).CanEdit {
 				return "", errors.New("Use your own Builder chat to change this project.")
 			}

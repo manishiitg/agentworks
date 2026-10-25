@@ -288,6 +288,12 @@ llmConfigApi.interceptors.request.use((config) => {
 
 // LLM Configuration API service
 export const llmConfigService = {
+  getChatPreferences: async (): Promise<{ show_context_indicator: boolean }> => {
+    return (await llmConfigApi.get('/api/chat-preferences')).data
+  },
+  setChatPreferences: async (show: boolean): Promise<{ show_context_indicator: boolean }> => {
+    return (await llmConfigApi.put('/api/chat-preferences', { show_context_indicator: show })).data
+  },
   // Get LLM configuration defaults from backend
   getLLMDefaults: async (): Promise<LLMDefaultsResponse> => {
     const response = await llmConfigApi.get('/api/llm-config/defaults')

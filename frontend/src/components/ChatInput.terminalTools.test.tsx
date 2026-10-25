@@ -18,6 +18,8 @@ vi.hoisted(() => {
 // unrelated configuration panels and network calls are replaced.
 vi.mock('./providers/CodingProvidersPanel', () => ({ default: () => null }))
 vi.mock('../commands/user-commands', () => ({ loadAndRegisterUserCommands: vi.fn().mockResolvedValue(undefined) }))
+const contextPreference = vi.hoisted(() => ({ show: false }))
+vi.mock('../hooks/useChatPreferences', () => ({ useChatPreferences: () => ({ showContextIndicator: contextPreference.show }) }))
 
 import { ChatInput } from './ChatInput'
 import { TerminalFocusLayout } from './TerminalFocusLayout'
@@ -62,6 +64,7 @@ describe('terminal toolbar shared tools', () => {
     </TerminalFocusLayout>
   </QueryClientProvider>)
   beforeEach(async () => {
+    contextPreference.show = false
     useProductSurfaceStore.setState({ productSurface: 'agentworks' })
     useModeStore.setState({ selectedModeCategory: 'workflow' })
     useLLMStore.setState({ providerManifestLoaded: true, llmConfigLocked: false })
@@ -118,7 +121,7 @@ describe('terminal toolbar shared tools', () => {
       })
     }
   })
-  it('stops terminal metadata intervals in chat and resumes them in the terminal view', async () => {
+  it('stops metadata intervals with context hidden and resumes them in the terminal view', async () => {
     vi.useFakeTimers()
     vi.mocked(agentApi.listTerminals).mockResolvedValue({ terminals: [{ terminal_id: 'A-main', active: true }] } as never)
     await act(async () => {
@@ -136,6 +139,27 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(3_100) })
     expect(vi.mocked(agentApi.listTerminals).mock.calls.length).toBeGreaterThan(before)
     vi.useRealTimers()
+  })
+  it('shows the reported context while idle and working, hides unknown usage and obeys the personal display choice', async () => {
+    contextPreference.show = true
+    const snapshot = { terminal_id: 'A-session:main:A-session', session_id: 'A-session', execution_kind: 'main_agent', active: false, status: { status_meta: { context_usage_percent: 42 } } }
+    vi.mocked(agentApi.listTerminals).mockResolvedValue({ terminals: [snapshot] } as never)
+    await act(async () => {
+      useChatStore.getState().setTabViewMode('A', 'formatted')
+      renderComposer('A', false)
+      await client.invalidateQueries({ queryKey: ['chat-input-statusline', 'A-session'] })
+    })
+    expect(host.querySelector('[aria-label="Context 42%"]')).not.toBeNull()
+    await act(async () => { useChatStore.getState().setTabStreaming('A', true); renderComposer('A', false) })
+    expect(host.querySelector('[aria-label="Context 42%"]')).not.toBeNull()
+    await act(async () => { contextPreference.show = false; renderComposer('A', false) })
+    expect(host.querySelector('[aria-label="Context 42%"]')).toBeNull()
+    vi.mocked(agentApi.listTerminals).mockResolvedValue({ terminals: [{ ...snapshot, status: {} }] } as never)
+    await act(async () => {
+      contextPreference.show = true; renderComposer('A', false)
+      await client.invalidateQueries({ queryKey: ['chat-input-statusline', 'A-session'] })
+    })
+    expect(host.querySelector('[aria-label^="Context "]')).toBeNull()
   })
   it('sends the selected Queue next intent by click and Enter while a turn is running', async () => {
     useChatStore.getState().setTabConfig('A', { sendDeliveryMode: 'queue' })

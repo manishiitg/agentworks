@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"math"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
@@ -101,6 +105,7 @@ func (api *StreamingAPI) nativeUsageSnapshot(ctx context.Context, s terminals.Sn
 		}
 		if usage.ContextWindow > 0 {
 			meta["context_window_tokens"] = usage.ContextWindow
+			meta["context_used_tokens"] = usage.ContextUsed
 		}
 		if api.nativeUsageOwner(ctx, s.SessionID) && len(usage.Limits) > 0 {
 			var windows []interface{}
@@ -121,5 +126,38 @@ func (api *StreamingAPI) nativeUsageSnapshot(ctx context.Context, s terminals.Sn
 		}
 	}
 	s.Status.StatusMeta = meta
+	if percent, known := nativeContextPercent(meta); known {
+		meta["context_usage_percent"] = percent
+	}
 	return s
+}
+
+var nativeContextSegment = regexp.MustCompile(`(?i)^ctx\s+(\d+(?:\.\d+)?)\s*%$`)
+
+// Normalize only numbers reported by the current runtime. Model guesses and
+// account plan windows are not context usage.
+func nativeContextPercent(meta map[string]interface{}) (int, bool) {
+	number := func(v interface{}) (float64, bool) {
+		n, err := strconv.ParseFloat(fmt.Sprint(v), 64)
+		return n, err == nil && !math.IsNaN(n) && !math.IsInf(n, 0) && n >= 0
+	}
+	if n, ok := number(meta["context_usage_percent"]); ok {
+		return int(math.Round(math.Min(n, 100))), true
+	}
+	used, hasUsed := number(meta["context_used_tokens"])
+	window, hasWindow := number(meta["context_window_tokens"])
+	if hasUsed && hasWindow && window > 0 {
+		return int(math.Round(math.Min(100*used/window, 100))), true
+	}
+	raw, _ := json.Marshal(meta["status_extras"])
+	var extras []string
+	_ = json.Unmarshal(raw, &extras)
+	for _, extra := range extras {
+		if match := nativeContextSegment.FindStringSubmatch(strings.TrimSpace(extra)); len(match) == 2 {
+			if n, ok := number(match[1]); ok {
+				return int(math.Round(math.Min(n, 100))), true
+			}
+		}
+	}
+	return 0, false
 }

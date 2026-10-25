@@ -525,6 +525,8 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return t.Allows("runs:execute")
 	}
 	switch tool.Name {
+	case "chat_preferences":
+		return true // Only the authenticated caller's display is read or changed.
 	case "get_file_link":
 		return t.Allows("files:read") || t.Allows("crews:read")
 	case "list_files", "read_file", "search_files", "list_step_code":

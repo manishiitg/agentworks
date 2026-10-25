@@ -224,6 +224,7 @@ chat:
       - manage_project
       - manage_builder_chats
       - browser_connections
+      - chat_preferences
       - manage_messaging
       - manage_pulse
       - add_mcp_server
@@ -532,6 +533,7 @@ chat:
       - get_settings
       - get_secret_sources
       - browser_connections
+      - chat_preferences
       - manage_laptop_access
       - execute_local_shell_command
       - copy_local_file_to_project

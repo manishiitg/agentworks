@@ -25,6 +25,7 @@ chat:
       - manage_project
       - manage_builder_chats
       - browser_connections
+      - chat_preferences
       - manage_messaging
       - list_agents
       - send_message

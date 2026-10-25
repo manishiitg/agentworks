@@ -8,6 +8,7 @@ import { useTerminalFocusMode } from './TerminalFocusLayout'
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
 import { getModelDisplayName, resolvePiModelGroup } from '../utils/llmDisplay'
+import { useChatPreferences } from '../hooks/useChatPreferences'
 import React, { Suspense, lazy, useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
@@ -1349,16 +1350,17 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // times), so it is also fetched whenever the live terminal is offered —
   // including product surfaces, where the lime chip itself stays hidden.
   const showChatInputStatusChip = !hideRuntimeStatus && !isProductSurface
+  const { showContextIndicator } = useChatPreferences()
   const { data: chatInputTerminalStatus } = useQuery({
     queryKey: ['chat-input-statusline', tabSessionId],
     queryFn: () => agentApi.listTerminals(tabSessionId!, 'none'),
-    enabled: (showChatInputStatusChip || liveTerminalOffered) && mainAgentIsTmuxCLI && !!tabSessionId,
+    enabled: (showContextIndicator || showChatInputStatusChip || liveTerminalOffered) && mainAgentIsTmuxCLI && !!tabSessionId,
     staleTime: 1_000,
     retry: false,
     refetchInterval: (query) => {
-      // Chat already receives live session events. The terminal hover/status
-      // may read once, but must not keep polling an unseen terminal pane.
-      if (!terminalViewSelected) return false
+      // Refresh while the visible context indicator or terminal needs live
+      // status. Idle chats keep the last reported figure without polling.
+      if (!terminalViewSelected && !showContextIndicator) return false
       const mainTerminal = query.state.data?.terminals?.find(isMainAgentTerminal)
       return isTurnInFlight || mainTerminal?.active ? 3_000 : false
     },
@@ -1373,6 +1375,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       ? rawExtras.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
       : []
   }, [chatInputMainTerminal])
+  const contextPercent = chatInputMainTerminal?.status?.status_meta?.context_usage_percent
   const chatInputStatusLine = showChatInputStatusChip ? chatInputStatusExtras.join(' · ') : ''
   // Plan usage windows with reset times in the browser's timezone, appended
   // to the terminal icon's hover text.
@@ -3597,6 +3600,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" title={activeTab.metadata.agentProfileChatModelLabel}>{activeTab.metadata.agentProfileChatModelLabel}</span>
                 )}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
+                {showContextIndicator && typeof contextPercent === 'number' && <span className="whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground" role="status" aria-label={`Context ${contextPercent}%`}>Context {contextPercent}%</span>}
                 {(agentProfileId === 'work' || isGoalBuilderChat) && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} workflowPath={isGoalBuilderChat ? workflowPhaseWorkspacePath : undefined} />}
                 {(agentProfileId === 'work' || isGoalBuilderChat) && <ReachableAgentsMenu />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
