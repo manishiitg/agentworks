@@ -199,6 +199,10 @@ gobuild() { # gobuild OUTPUT PACKAGE [GOOS GOARCH CGO]
   (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="${3:-linux}" GOARCH="${4:-$BUILD_ARCH}" CGO_ENABLED="${5:-0}" go build -o "$1" "$2")
 }
 
+# The server binaries, the CLI downloads and the website write to separate folders (bin/, downloads/, frontend/ static/ packages/)
+# and the agent embeds none of the files the website build writes, so the three run at the same time. Each part logs to its own
+# file, printed in order once all three have finished. (Bodies are not indented: one holds a multi-line python -c string.)
+build_binaries() {
 step "Building binaries (native linux/$BUILD_ARCH, cgo agent with sherpa-onnx)"
 # The agent links sherpa-onnx (voice/STT) with cgo and an $ORIGIN/lib rpath; the libraries are staged in bin/lib beside it.
 bash "$REPO_ROOT/deploy/aws-ec2/build/build-linux-agent.sh" "$OUT" "$REPO_ROOT/agent_go" "$WORKSPACE_ROOT"
@@ -219,6 +223,9 @@ source "$REPO_ROOT/deploy/common/vault.sh"
 vault_build "$REPO_ROOT" "$OUT"
 install -m 0755 "$REPO_ROOT/deploy/aws-ec2/server/update-coding-clis.sh" "$OUT/bin/update-coding-clis"
 
+}
+
+build_cli_downloads() {
 step "Building AgentWorks CLI downloads"
 # shellcheck source=deploy/common/cli-build-id.sh
 source "$REPO_ROOT/deploy/common/cli-build-id.sh"
@@ -249,6 +256,9 @@ install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.ps1" "$OUT/downloads/
 install -m 0644 "$REPO_ROOT/deploy/cli-release.json" "$OUT/downloads/cli-release.json"
 bash -n "$OUT/downloads/install-agentworks.sh"
 
+}
+
+build_frontend() {
 step "Building frontend"
 (cd "$REPO_ROOT/frontend" && npm ci)
 (cd "$REPO_ROOT/frontend" && VITE_API_BASE_URL='' VITE_WORKSPACE_API_URL=/api/wp npm run build)
@@ -257,6 +267,19 @@ node "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$OUT/frontend"
 # The frontend build writes report-preview.js here, into the checkout, never into dist; the agent serves it from ./static/.
 cp -R "$REPO_ROOT/agent_go/cmd/server/static/." "$OUT/static/"
 python3 "$REPO_ROOT/scripts/build-playwright-packages.py" "$OUT/packages" >/dev/null
+
+}
+
+declare -A part_pid=()
+for part in binaries cli_downloads frontend; do
+  "build_$part" > "$WORK/part-$part.log" 2>&1 &
+  part_pid[$part]=$!
+done
+failed=()
+for part in binaries cli_downloads frontend; do wait "${part_pid[$part]}" || failed+=("$part"); done
+for part in binaries cli_downloads frontend; do cat "$WORK/part-$part.log"; done
+step "Binaries, CLI downloads and website built"
+(( ${#failed[@]} == 0 )) || { echo "Build failed in: ${failed[*]} (its log is above)" >&2; exit 1; }
 
 # A binary that cannot find a shared library must never be announced as a build.
 missing="$(LD_LIBRARY_PATH="$OUT/bin/lib" ldd "$OUT/bin/agent" | grep 'not found' || true)"
