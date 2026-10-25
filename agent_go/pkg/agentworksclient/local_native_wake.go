@@ -2,7 +2,9 @@ package agentworksclient
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -44,6 +46,7 @@ func (b *localBridge) refreshNativeWakeStreams() {
 		b.workers.Add(1)
 		go func(path string) {
 			defer b.workers.Done()
+			login := sha256.Sum256([]byte(path))
 			delay := time.Second
 			for ctx.Err() == nil {
 				client, err := localConfiguredClient(path)
@@ -67,16 +70,21 @@ func (b *localBridge) refreshNativeWakeStreams() {
 							}
 						}
 						return nil
+					}, func() {
+						delay = time.Second
+						log.Printf("[BRIDGE-WAKE] outcome=connected login=%x", login[:4])
 					})
 				}
 				if ctx.Err() != nil {
 					return
 				}
-				code := "connection_unavailable"
-				if err != nil {
-					code = "stream_disconnected"
+				status := 0
+				code := "stream_disconnected"
+				var apiError *APIError
+				if errors.As(err, &apiError) {
+					status, code = apiError.Status, apiError.Code
 				}
-				log.Printf("[BRIDGE-WAKE] outcome=%s", code)
+				log.Printf("[BRIDGE-WAKE] outcome=disconnected login=%x status=%d reason=%s", login[:4], status, code)
 				timer := time.NewTimer(delay)
 				select {
 				case <-ctx.Done():
@@ -170,6 +178,12 @@ func (b *localBridge) queueNativeWake(s *localSession) bool {
 		}
 		b.mu.Unlock()
 		if err != nil || !valid {
+			status := 0
+			var apiError *APIError
+			if errors.As(err, &apiError) {
+				status = apiError.Status
+			}
+			log.Printf("[BRIDGE-WAKE] outcome=inspect_refused agent=%s attachment=%s status=%d", attachment.AgentName, attachment.ID, status)
 			return
 		}
 		if err = b.options.NativeWake(ctx, target, remote); err != nil {

@@ -107,8 +107,8 @@ func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttach
 }
 
 // StreamAgentWakeHints releases metadata only, never incoming message bodies.
-func (c *Client) StreamAgentWakeHints(ctx context.Context, receive func(AgentLiveMessage) error) error {
-	return c.streamAgentMessages(ctx, AgentAttachment{}, receive)
+func (c *Client) StreamAgentWakeHints(ctx context.Context, receive func(AgentLiveMessage) error, connected ...func()) error {
+	return c.streamAgentMessages(ctx, AgentAttachment{}, receive, connected...)
 }
 
 func (c *Client) streamAgentMessages(ctx context.Context, attachment AgentAttachment, receive func(AgentLiveMessage) error, connected ...func()) error {

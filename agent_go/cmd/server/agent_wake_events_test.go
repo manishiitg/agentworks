@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -62,7 +63,8 @@ func TestAgentWakeEventsRespectAccountAndSenderAccess(t *testing.T) {
 		}
 		return out
 	}
-	owner, connection, token := issue("owner")
+	owner, _, _ := issue("owner")
+	_, connection, token := issue("owner") // Fresh parent has no old per-name grants.
 	other, _, _ := issue("other")
 	for _, name := range []string{"dormant", "source"} {
 		call(owner, map[string]any{"action": "register", "agent_name": name})
@@ -84,6 +86,51 @@ func TestAgentWakeEventsRespectAccountAndSenderAccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Reproduce an old lifecycle detach: the saved child is still authorized,
+	// while the current parent is a new sign-in and the name has no lease.
+	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", strings.NewReader(`{"action":"detach","agent_name":"dormant","attachment_id":"`+attachment.ID+`"}`))
+	request.Header.Set("Authorization", "Bearer "+childConfig.Token)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil || response.StatusCode != 200 {
+		t.Fatalf("lifecycle detach: %v %v", response, err)
+	}
+	response.Body.Close()
+	// None of these same-account names may borrow authority from a fresh login.
+	for _, blocked := range []string{"revoked-child", "revoked-parent", "removed-child-grant"} {
+		prior, parent, _ := issue("owner")
+		registered := call(prior, map[string]any{"action": "register", "agent_name": blocked})
+		cfg, e := prior.CreateAgentConnection(ctx, blocked)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var family string
+		if e = store.db.QueryRow(`SELECT family_id FROM tokens WHERE hash=?`, mcpOAuthHash(cfg.Token)).Scan(&family); e != nil {
+			t.Fatal(e)
+		}
+		switch blocked {
+		case "revoked-child":
+			e = store.RevokeFamily(ctx, family, "owner")
+		case "revoked-parent":
+			e = store.RevokeFamily(ctx, strings.TrimPrefix(parent, "oauth-"), "owner")
+		case "removed-child-grant":
+			agentMessageMu.Lock()
+			s, readErr := readAgentMessageStore(ctx)
+			if readErr == nil {
+				for i := range s.Agents {
+					if s.Agents[i].ID == registered["agent_id"] {
+						s.Agents[i].Connections = slices.DeleteFunc(s.Agents[i].Connections, func(id string) bool { return id == "oauth-"+family })
+					}
+				}
+				readErr = saveAgentMessageStore(ctx, s)
+			}
+			agentMessageMu.Unlock()
+			e = readErr
+		}
+		if e != nil {
+			t.Fatal(e)
+		}
+		call(owner, map[string]any{"action": "send", "agent_name": "source", "target": "agent:" + blocked, "message": "must remain stored", "submission_id": blocked})
+	}
 	boundCtx, stopBound := context.WithTimeout(ctx, time.Second)
 	defer stopBound()
 	err = child.StreamAgentWakeHints(boundCtx, func(agentworksclient.AgentLiveMessage) error {
@@ -94,9 +141,9 @@ func TestAgentWakeEventsRespectAccountAndSenderAccess(t *testing.T) {
 	if !errors.As(err, &apiError) || apiError.Status != 403 {
 		t.Fatalf("bound connection: %v", err)
 	}
-	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/external/v1/agents/events", nil)
+	request, _ = http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/external/v1/agents/events", nil)
 	request.Header.Set("Authorization", "Bearer "+token)
-	response, err := http.DefaultClient.Do(request)
+	response, err = http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +178,7 @@ func TestAgentWakeEventsRespectAccountAndSenderAccess(t *testing.T) {
 	call(owner, map[string]any{"action": "send", "agent_name": "source", "target": "agent:dormant", "message": "permitted private body", "submission_id": "own-wake"})
 	select {
 	case frame := <-frames:
-		if len(frame) != 4 || frame["type"] != "inbox_changed" || frame["agent_id"] != attachment.AgentID || frame["attachment_id"] != attachment.ID || frame["sequence"].(float64) <= 0 {
+		if len(frame) != 4 || frame["type"] != "inbox_changed" || frame["agent_id"] != attachment.AgentID || frame["attachment_id"] != nil || frame["sequence"].(float64) <= 0 {
 			t.Fatalf("wrong or excess wake metadata: %v", frame)
 		}
 	case <-time.After(5 * time.Second):

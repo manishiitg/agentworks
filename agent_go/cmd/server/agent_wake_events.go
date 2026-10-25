@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,36 @@ func agentWakeClaims(ctx context.Context, claims *UserClaims) (*UserClaims, erro
 		return nil, errAgentLoginUnavailable
 	}
 	return live, nil
+}
+
+// A fresh full sign-in may observe its own saved names without changing their
+// grants. A dormant old name still needs an authorized child whose parent is
+// live; a revoked family or a removed child grant cannot authorize a hint.
+// This never authorizes a body read, receipt, inspect or attachment.
+func agentWakeReceiver(ctx context.Context, live *UserClaims, a namedMessageAgent) *UserClaims {
+	if a.UserID != live.UserID {
+		return nil
+	}
+	if a.Attachment != nil {
+		receiver, err := agentMessageConnectionClaims(ctx, a.Attachment.ConnectionID)
+		if err == nil && namedAgentConnectionAllowed(a, receiver) && namedAgentOperationAllowed(receiver, false) {
+			return receiver
+		}
+		return nil
+	}
+	if namedAgentConnectionAllowed(a, live) {
+		return live
+	}
+	for _, id := range a.Connections {
+		if !strings.HasPrefix(id, "oauth-") {
+			continue
+		}
+		receiver, err := agentMessageConnectionClaims(ctx, id)
+		if err == nil && receiver.AccessToken.BoundAgentID == a.ID && receiver.AccessToken.BoundAgentName == a.Name && namedAgentConnectionAllowed(a, receiver) && namedAgentOperationAllowed(receiver, false) {
+			return receiver
+		}
+	}
+	return nil
 }
 
 func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +99,7 @@ func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Re
 		agents := map[string]namedMessageAgent{}
 		receivers := map[string]*UserClaims{}
 		for _, a := range store.Agents {
-			if a.UserID != live.UserID || !namedAgentConnectionAllowed(a, live) {
+			if a.UserID != live.UserID {
 				continue
 			}
 			agents[a.ID] = a
@@ -94,13 +125,7 @@ func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Re
 				}
 				receiver, checked := receivers[a.ID]
 				if !checked {
-					receiver = live
-					if a.Attachment != nil {
-						receiver, err = agentMessageConnectionClaims(r.Context(), a.Attachment.ConnectionID)
-						if err != nil || !namedAgentConnectionAllowed(a, receiver) || !namedAgentOperationAllowed(receiver, false) {
-							receiver = nil
-						}
-					}
+					receiver = agentWakeReceiver(r.Context(), live, a)
 					receivers[a.ID] = receiver
 				}
 				if receiver == nil {
@@ -130,8 +155,8 @@ func (api *StreamingAPI) handleAgentWakeEvents(w http.ResponseWriter, r *http.Re
 				_ = write(map[string]any{"type": "login_changed"})
 				return
 			}
-			fresh, err := namedAgentForClaims(r.Context(), current, a.Name)
-			if err != nil || fresh.ID != id {
+			fresh, err := namedAgentByID(r.Context(), current.UserID, id)
+			if err != nil || fresh.Name != a.Name || agentWakeReceiver(r.Context(), current, fresh) == nil {
 				continue
 			}
 			currentAttachment := ""
