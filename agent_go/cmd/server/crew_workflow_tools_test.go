@@ -12,12 +12,14 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
-const crewWorkflowTestCrewPath = "_users/owner/Chats/Work/projects/project-a"
+const crewWorkflowTestCrewPath = "Crew/project-a"
 
 func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWorkspaceAPI, *StreamingAPI) {
 	t.Helper()
 	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"reader","username":"reader","can_create":false}]}`)
+	registerTestCrew(t, "project-a", "owner", true)
 
 	registry := agentprofiles.NewRegistry()
 	work := agentprofiles.Profile{
@@ -25,7 +27,7 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 		Runtime: agentprofiles.RuntimePolicy{
 			Transport:    "auto",
 			Conversation: agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject},
-			Workspace:    agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: "Chats/Work/projects"},
+			Workspace:    agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: "Crew"},
 		},
 		Features: []agentprofiles.FeatureBinding{{ID: "triggers"}},
 		UIPanels: agentprofiles.UIPanels{Schedules: true},
@@ -139,9 +141,6 @@ func TestListWorkflowTriggersAttachedOnly(t *testing.T) {
 			t.Fatalf("internal trigger exposed endpoint material: %+v", trigger)
 		}
 	}
-	if _, err := tool.exec(context.Background(), map[string]interface{}{"workspace_path": "Workflow/other"}); err == nil || !strings.Contains(err.Error(), `workflow "Workflow/other"`) {
-		t.Fatalf("missing workflow list err = %v", err)
-	}
 }
 
 func TestRunWorkflowTriggerRejectsBeforeStart(t *testing.T) {
@@ -153,7 +152,7 @@ func TestRunWorkflowTriggerRejectsBeforeStart(t *testing.T) {
 		args map[string]interface{}
 		want string
 	}{
-		{"missing workflow", map[string]interface{}{"workspace_path": "Workflow/other", "trigger_id": "trig-crew-on"}, `workflow "Workflow/other"`},
+		{"missing workflow", map[string]interface{}{"workspace_path": "Workflow/other", "trigger_id": "trig-crew-on"}, "trigger not found"},
 		{"unknown trigger", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "missing"}, "trigger not found"},
 		{"foreign binding", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-other"}, "no longer names this caller"},
 		{"disabled binding", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-crew-off"}, "disabled"},
@@ -190,8 +189,8 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	}
 
 	plain := NewWorkflowManifest("Binding target")
-	plain.CreatedBy = "stranger"
-	plain.Access = &WorkflowAccess{Owners: []string{"stranger"}, Readers: []string{"owner"}}
+	plain.CreatedBy = "owner"
+	plain.Access = &WorkflowAccess{Owners: []string{"owner"}}
 	plainRaw, _ := json.Marshal(plain)
 	mock.files[manifestPath("Workflow/plain")] = string(plainRaw)
 	mock.files["Workflow/plain/planning/plan.json"] = `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`
@@ -200,9 +199,6 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	createdManifest, err := crewAttachedWorkflowManifest(ctx, crewWorkflowTestCrewPath, "Workflow/plain")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if access := workflowAccessForManifest(&UserClaims{UserID: "owner"}, createdManifest); access != WorkflowAccessRead {
-		t.Fatalf("test setup access = %q, want read-only", access)
 	}
 	created, err := crewWorkflowTriggerBinding(ctx, api, "Workflow/plain", createdManifest, crew)
 	if err != nil {

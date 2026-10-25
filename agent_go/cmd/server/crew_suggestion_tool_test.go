@@ -14,7 +14,8 @@ func TestCrewSuggestionFromAnotherUserReachesOnlyTheOwner(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["work"]},{"id":"user","username":"user","role":"editor","products":["work"]},{"id":"other","username":"other","role":"editor","products":["work"]}]}`)
 	server, _ := newFakeWorkspaceServer(t)
 	t.Setenv("WORKSPACE_API_URL", server.URL)
-	const crewRoot = "_users/owner/Chats/Work/projects/demo"
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	crewRoot := registerTestCrew(t, "demo", "owner", true)
 	ctxFor := func(id string) context.Context {
 		return context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: id})
 	}
@@ -39,8 +40,8 @@ func TestCrewSuggestionFromAnotherUserReachesOnlyTheOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Stored once at the Crew's root, whichever way the owner addresses it.
-	inputs, err := listReportHumanInputs(ctxFor("owner"), "Chats/Work/projects/demo", "pending", "user_suggestion")
+	// Stored once at the Crew's root.
+	inputs, err := listReportHumanInputs(ctxFor("owner"), crewRoot, "pending", "user_suggestion")
 	if err != nil || len(inputs) != 1 {
 		t.Fatalf("owner's view: %v %v", inputs, err)
 	}

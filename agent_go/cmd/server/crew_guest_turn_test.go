@@ -54,7 +54,7 @@ func TestCrewGuestCallerForTurnOnlyNarrowsTheOwnersTurn(t *testing.T) {
 	if got := crewGuestCallerForTurn(workflow, "alice"); got != "" {
 		t.Fatalf("non-Crew turn = %q", got)
 	}
-	if prompt := crewSessionModeNotice("_users/alice/Chats/Work/projects/x", "", false); !strings.Contains(prompt, crewSuggestionToolName) || !strings.Contains(prompt, "Change nothing") {
+	if prompt := crewSessionModeNotice(registerTestCrew(t, "x", "alice", true), "", false); !strings.Contains(prompt, crewSuggestionToolName) || !strings.Contains(prompt, "Change nothing") {
 		t.Fatalf("reader prompt used for a guest: %s", prompt)
 	}
 }
@@ -81,7 +81,8 @@ func TestCrewSuggestionOnAGuestTurnIsFromTheGuest(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["work"]},{"id":"guest","username":"guest","role":"editor","products":["work"]}]}`)
 	server, _ := newFakeWorkspaceServer(t)
 	t.Setenv("WORKSPACE_API_URL", server.URL)
-	const crewRoot = "_users/owner/Chats/Work/projects/demo"
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	crewRoot := registerTestCrew(t, "demo", "owner", true)
 	api := &StreamingAPI{}
 	reg := &recordingRegistrar{}
 	if err := api.registerCrewSuggestionTool(reg, "guest", "call-session", crewRoot); err != nil {

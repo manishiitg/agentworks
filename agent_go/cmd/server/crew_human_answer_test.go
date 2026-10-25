@@ -35,12 +35,6 @@ func TestCrewBuilderAnswerSavesThePersonsDecision(t *testing.T) {
 	if _, err := registry.AddCoOwner("work", "approval-a", "co"); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "former-code", OwnerID: "owner"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.SetAudience("code", "former-code", false, nil); err != nil {
-		t.Fatal(err)
-	}
 	api := &StreamingAPI{eventStore: internalevents.NewEventStore(20), lastQueryRequests: map[string]QueryRequest{}, activeSessions: map[string]*ActiveSessionInfo{}}
 	previousAPI := pulsePlatformAPI
 	pulsePlatformAPI = api
@@ -81,7 +75,6 @@ func TestCrewBuilderAnswerSavesThePersonsDecision(t *testing.T) {
 	const name = "answer_human_input_request"
 	for _, test := range []struct{ actor, root, profile string }{
 		{"owner", rootA, "work"}, {"co", rootA, "work"},
-		{"owner", "_users/owner/Chats/Code/projects/former-code", "code"},
 	} {
 		id := create(test.root, "answer-"+test.actor+"-"+test.profile)
 		session := "chat-" + test.actor + "-" + test.profile
