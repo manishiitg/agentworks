@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { AppWindow, User, Lock } from 'lucide-react'
+import { PanelFlow } from '../ui/PanelGraphics'
 import api from '../../services/api'
 import { CliMcpSetupPanel } from './CliMcpSetupPanel'
 
@@ -22,6 +24,7 @@ export function ProjectMcpSetupPanel({ workspacePath }: { workspacePath: string 
   if (!project) return <p role="status" className="text-sm text-muted-foreground">Loading project connection…</p>
   const endpoint = access === 'use' ? project.use_url : project.view_url
   return <div className="space-y-4">
+    <PanelFlow label="Project MCP connection path" nodes={[{ label: 'Your AI app', detail: 'Choose below', icon: AppWindow }, { label: 'Your account', detail: 'Sign in to connect', icon: User }, { label: project.title, detail: `${access === 'use' ? 'Use' : 'View'} · this project only`, icon: Lock, tone: 'green' }]} />
     <section aria-label="Project connection" className="space-y-3 rounded-lg border border-border p-3">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><span className="text-xs text-muted-foreground">Project</span><h3 className="font-semibold">{project.title}</h3></div>
         <label className="flex items-center gap-2 text-sm">Access<select aria-label="Project MCP access" value={access} onChange={event => setAccess(event.target.value as 'view' | 'use')} className="rounded-md border border-border bg-background p-2"><option value="view">View</option><option value="use">Use</option></select></label>

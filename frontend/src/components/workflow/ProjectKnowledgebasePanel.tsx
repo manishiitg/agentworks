@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { Brain, RefreshCw, Users } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { knowledgebaseApi, knowledgebaseError, type BrainAccessMode, type KnowledgeProject } from '../../services/knowledgebaseApi'
 import { AskAIButton } from './AskAIButton'
@@ -7,6 +7,7 @@ import { WORKFLOW_KNOWLEDGE_SOURCES_REFRESH_EVENT } from './workflowEvents'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { buildAskAIMessage } from '../../utils/askAIMessage'
+import { PanelFlow } from '../ui/PanelGraphics'
 import { ProjectBrainLibrary } from './ProjectBrainLibrary'
 import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -83,8 +84,10 @@ function ProjectBrainContents({ workspacePath, disabled = false, onAsk }: Props)
       <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Refresh Brain" disabled={loading || busy} onClick={() => void refresh()}><RefreshCw className={loading ? 'animate-spin' : ''}/></Button>
     </WorkspacePanelActions>
     {!assistantInHeader && <AskAIButton workspacePath={disabled ? null : workspacePath} onAsk={disabled ? undefined : onAsk} message={aboutMessage}/>}
+    {project && <ProjectBrainLibrary />}
     <section aria-label="Brain" className="space-y-3 rounded-lg border border-border p-4">
       <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">Project access</h3>{project && <span className="rounded bg-muted px-2 py-1">{options.find(option => option.value === mode)?.label}</span>}</div>
+      {project && <PanelFlow label="Project Brain access" paused={mode === 'off'} nodes={[{ label: 'Project agents', detail: options.find(option => option.value === mode)?.label, icon: Users, tone: mode === 'off' ? 'muted' : 'blue' }, { label: 'Brain knowledge', detail: 'Folder permissions apply', icon: Brain, tone: mode === 'off' ? 'muted' : 'green' }]} />}
       {error && <p role="alert" className="text-destructive">{error}</p>}
       {loading ? <p role="status" className="text-muted-foreground">Loading your access…</p> : project ? <>
         <div role="radiogroup" aria-label="Brain access" className="grid grid-cols-3 gap-2">
@@ -96,6 +99,5 @@ function ProjectBrainContents({ workspacePath, disabled = false, onAsk }: Props)
         {!project.can_manage && <p className="text-muted-foreground">Only an owner of this project can change Brain access.</p>}
       </> : null}
     </section>
-    {project && <ProjectBrainLibrary />}
   </div>
 }

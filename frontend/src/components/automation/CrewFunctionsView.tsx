@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import { crewFunctionsApi, type CrewFunction, type CrewFunctionCall, type CrewFunctionSchema } from '../../api/crewFunctions'
 import { productWebhooksApi, type ProductAPITrigger, type ProductTriggerScope } from '../../api/productWebhooks'
-import { Braces } from 'lucide-react'
+import { Braces, FileInput, FileOutput, Activity, History } from 'lucide-react'
+import { PanelFlow, PanelCounters } from '../ui/PanelGraphics'
 import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations, relativeTime } from './AutomationKit'
 
 const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50'
@@ -112,8 +113,10 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
   return <div className="h-full min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background">
     <div className="space-y-4 p-4">
       <AutomationIntro icon={Braces} tone="sky" title="Functions" action={onEdit ? <button type="button" className={buttonClass} onClick={() => void onEdit('I want to add a function to this Crew. Ask me what it should do, then set it up.')}>Add in chat</button> : undefined}>
-        {loaded ? `${functions.length} functions · ${running} running · ${calls.length} recent calls` : 'Loading functions…'}
+        Jobs other agents can call.
       </AutomationIntro>
+      {loaded && <PanelCounters label="Function activity" items={[{ label: 'Functions', value: functions.length, icon: Braces }, { label: 'Running', value: running, icon: Activity }, { label: 'Recent calls', value: calls.length, icon: History }]} />}
+      {loaded && !functions.length && <PanelFlow label="How a function works" nodes={[{ label: 'Inputs', icon: FileInput }, { label: 'Function', detail: 'Your saved job', icon: Braces }, { label: 'Result', detail: 'Answer or files', icon: FileOutput, tone: 'green' }]} />}
       {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
       {functions.length > 6 && <input type="search" value={filter} onChange={event => setFilter(event.target.value)} placeholder={`Search ${functions.length} functions`} aria-label="Search functions" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />}
       {visibleFunctions.length > 0 && <AutomationListBox>
@@ -127,6 +130,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
             meta={last ? `${STATUS_LABEL[last.status] ?? last.status} · ${relativeTime(last.finished_at || last.started_at)}` : 'Not called yet'}
             status={status} statusLabel={last?.status === 'failed' ? 'Last call failed' : last?.status === 'running' || last?.status === 'queued' ? 'Running' : fresh ? 'Fresh' : 'Own tab'}>
             {fn.description && <p className="whitespace-pre-wrap text-muted-foreground">{fn.description}</p>}
+            <PanelFlow label={`Function ${fn.name} input and result`} nodes={[{ label: 'Inputs', detail: `${schemaFields(fn.input_schema).length} fields`, icon: FileInput }, { label: fn.name, detail: fresh ? 'New chat per call' : 'Own chat tab', icon: Braces }, { label: 'Result', detail: schemaFields(fn.result_schema).length ? `${schemaFields(fn.result_schema).length} fields` : 'Answer and files', icon: FileOutput, tone: 'green' }]} />
             <FieldTable label="Asks for" schema={fn.input_schema} />
             <FieldTable label="Gives back" schema={fn.result_schema} />
             <p className="text-[11px] text-muted-foreground">{fresh ? 'A new chat for every call.' : `Runs in its own tab${fn.agent ? ` "${fn.agent}"` : ''}; calls take turns there.`}{fn.updated_at ? ` · Changed ${formatTime(fn.updated_at)}` : ''}</p>
