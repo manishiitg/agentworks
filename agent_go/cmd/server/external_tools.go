@@ -596,7 +596,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		}
 	}
 	if tool == nil || tool.internalOnly && !translated {
-		externalError(w, 404, "unknown_tool", "Tool is not exposed by this API.")
+		externalError(w, 404, "unknown_tool", "Refresh the tool catalog with get_api_spec and choose its current action tool.")
 		return
 	}
 	if tool.actions != nil {

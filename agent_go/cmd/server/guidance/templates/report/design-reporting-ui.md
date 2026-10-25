@@ -19,7 +19,7 @@ Read `builder-reference/references/dashboard-authoring.md` with read_skill
 before choosing components, authoring index.tsx, previewing or publishing.
 It is the same canonical authoring procedure as panel-dashboard in Crew and
 Relay Builders. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
-and shared widget/API examples. Use get_dashboard_catalog for the current
+and shared widget/API examples. Use dashboard action=catalog for the current
 component contracts. The sections below cover this Goal's own report data and
 runtime; a dashboard edit does not authorize plan or execution changes.
 
@@ -105,17 +105,17 @@ prefer `query` when the data is already stored in `db/`.
 
 ## Validation
 
-For managed TSX dashboards, run `validate_dashboard` and `preview_dashboard`, repair errors,
-then `publish_dashboard`. For existing HTML, run `validate_report_html` for every
+For managed TSX dashboards, run `dashboard action=validate` and `dashboard action=preview`, repair errors,
+then `dashboard action=publish`. For existing HTML, run `dashboard action=validate` for every
 changed document and repair errors.
 It checks document structure, literal SQL, referenced files and dependencies.
 Dynamic queries/paths require separate verification.
-Then run `preview_report` for each changed document. It uses the same runtime
+Then run `dashboard action=preview` for each changed document. It uses the same runtime
 in a real browser and reports script/fetch errors, loading state and screenshots
 at real768px,390px and1280px browser widths in both themes. Inspect the images
 and per-capture `ui_checks`; verify the requested design and local interactions.
 Use only image-viewing capabilities actually available to the current client.
 
 ## When it works
-Call `get_dashboard_link` and give the person the link in plain words. Share opens this dashboard, Ask and published functions to the chosen audience and allows MCP reads of product files, runs and logs; secret values and private logs stay excluded. Tell them to press Share, or use MCP `share` action=get|set with their chosen audience. Sharing creates a standard dashboard when needed. Never put the dashboard on a public website or add a password page. For an MP4 or animation of the data, use the dashboard tool's `export_motion` action after loading the motion guide (`motion-guide` skill).
+Call `dashboard action=link` and give the person the link in plain words. Share opens this dashboard, Ask and published functions to the chosen audience and allows MCP reads of product files, runs and logs; secret values and private logs stay excluded. Tell them to press Share, or use MCP `share` action=get|set with their chosen audience. Sharing creates a standard dashboard when needed. Never put the dashboard on a public website or add a password page. For an MP4 or animation of the data, use the dashboard tool's `export_motion` action after loading the motion guide (`motion-guide` skill).
 

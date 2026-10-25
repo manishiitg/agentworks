@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
@@ -89,9 +90,9 @@ func ChatTools(mode string) []string {
 }
 
 func ChatAllowsTool(mode, toolName string) bool {
-	toolName = strings.TrimSpace(toolName)
+	toolName = platformtools.Identity(strings.TrimSpace(toolName))
 	for _, name := range ChatTools(mode) {
-		if name == toolName {
+		if platformtools.Identity(name) == toolName {
 			return true
 		}
 	}

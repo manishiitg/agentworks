@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/guidancesessions"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productguide"
 )
 
@@ -24,7 +25,10 @@ func externalToolGuidance(name string) []string {
 	var names []string
 	for _, topic := range externalGuidanceTopics {
 		for _, pattern := range topic.Tools {
-			if matched, _ := path.Match(pattern, name); matched {
+			matched, _ := path.Match(pattern, name)
+			public, _ := path.Match(pattern, platformtools.PublicName(name))
+			identity, _ := path.Match(pattern, platformtools.Identity(name))
+			if matched || public || identity {
 				names = append(names, topic.Name)
 				break
 			}

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -37,25 +38,40 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 		}
 		return body
 	}
-	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"create_dashboard", "preview_dashboard", "publish_dashboard"}})
+	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"dashboard", "share"}})
 	requireRemoteSuccess(t, spec, "dashboard schemas")
-	created := call("create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "title": "Overview", "files": map[string]any{"index.html": "<!doctype html><html><head><title>Overview</title></head><body><p>First</p></body></html>"}})
+	for _, retired := range []string{"create_dashboard", "get_dashboard_catalog", "get_report_link", "share_dashboard"} {
+		result := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": retired, "arguments": map[string]any{}})
+		requireRemoteError(t, result, "retired dashboard entry point", "unknown_tool")
+	}
+	created := call("dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "overview", "title": "Overview", "files": map[string]any{"index.html": "<!doctype html><html><head><title>Overview</title></head><body><p>First</p></body></html>"}})
 	rev1 := created["dashboard"].(map[string]any)["revision"].(string)
-	validation := call("validate_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "overview", "revision": rev1})
+	validation := call("dashboard", map[string]any{"action": "validate", "workflow_id": "invoices", "dashboard_id": "overview", "revision": rev1})
 	if validation["valid"] != true {
 		t.Fatalf("validation: %v", validation)
 	}
-	// The merged tool runs the same operation; the old names above stay callable.
+	// The canonical action tool runs the same authorized operation.
 	call("dashboard", map[string]any{"action": "publish", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1})
-	link := call("get_dashboard_link", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview"})["url"].(string)
-	if strings.Contains(link, "token=") || !strings.Contains(link, "document=") {
+	link := call("dashboard", map[string]any{"action": "link", "workspace": "Workflow/invoices", "dashboard_id": "overview"})["url"].(string)
+	parsed, _ := url.Parse(link)
+	code := strings.TrimPrefix(parsed.Path, "/d/")
+	if strings.Contains(link, "token=") || !strings.HasPrefix(parsed.Path, "/d/") || !validDashboardShortCode(code) {
 		t.Fatalf("bad live link: %s", link)
 	}
-	updated := call("update_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1, "title": "Draft title", "files": map[string]any{"index.html": "<html><title>Overview</title><body>Second</body></html>"}})
+	// PLAT-856 short links name the same authorized dashboard; they do not
+	// encode a document query. Resolve the real saved code before file reads.
+	resolved := httptest.NewRecorder()
+	f.api.handleDashboardByCode(resolved, mux.SetURLVars(adminRequest(http.MethodGet, "/api/dashboards/by-code/"+code, "", owner, nil), map[string]string{"code": code}))
+	var target map[string]any
+	if resolved.Code != http.StatusOK || json.Unmarshal(resolved.Body.Bytes(), &target) != nil || target["root"] != "Workflow/invoices" || target["document_path"] != "db/reports/managed/overview/index.html" {
+		t.Fatalf("short link resolved another dashboard: %d %s", resolved.Code, resolved.Body.String())
+	}
+	document := target["document_path"].(string)
+	updated := call("dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1, "title": "Draft title", "files": map[string]any{"index.html": "<html><title>Overview</title><body>Second</body></html>"}})
 	rev2 := updated["dashboard"].(map[string]any)["revision"].(string)
 	// The published library is the same HTTP/MCP list, using the live
 	// snapshot even when its owner has renamed the draft.
-	call("create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "unpublished", "title": "Unpublished draft", "files": map[string]any{"index.html": "<p>Draft</p>"}})
+	call("dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "unpublished", "title": "Unpublished draft", "files": map[string]any{"index.html": "<p>Draft</p>"}})
 	library := call("dashboard", map[string]any{"action": "list", "published_only": true, "limit": 1})
 	liveRows := library["dashboards"].([]any)
 	if library["total"] != float64(1) || library["has_more"] != false || len(liveRows) != 1 {
@@ -76,7 +92,7 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	if string(webRows) != string(mcpRows) {
 		t.Fatalf("HTTP/MCP library differ: %s / %s", webRows, mcpRows)
 	}
-	stale := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "publish_dashboard", "arguments": map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1}})
+	stale := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "publish", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1}})
 	requireRemoteError(t, stale, "stale publication", "revision_conflict")
 	reader := &UserClaims{UserID: "reader", Username: "reader", AccessToken: &accesstokens.Token{ID: "reader", Scopes: []string{"dashboards:read"}, WorkflowIDs: []string{"invoices"}, AllCrews: true}}
 	rsrv := serveExternalMCP(t, f.api, reader)
@@ -101,11 +117,11 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	if !strings.Contains(text, "overview") || strings.Contains(text, "secret") {
 		t.Fatalf("wrong discovery: %s", text)
 	}
-	denied := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "update_dashboard", "arguments": map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev2}})
+	denied := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev2}})
 	if !denied.IsError {
 		t.Fatal("read connection can edit")
 	}
-	direct := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "get_report_link", "arguments": map[string]any{"workflow_id": "invoices", "document_path": "db/reports/managed/overview/index.html"}})
+	direct := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "link", "workflow_id": "invoices", "document_path": "db/reports/managed/overview/index.html"}})
 	requireRemoteSuccess(t, direct, "read-only direct URL")
 	// Website ownership cannot upgrade a read-only or retired dashboard grant.
 	for _, scopes := range [][]string{{"dashboards:read"}, {"dashboards:read", "dashboards:write"}, {"dashboards:read", "code:run"}} {
@@ -113,18 +129,16 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 		limitedSrv := serveExternalMCP(t, f.api, limited)
 		limitedClient := dialExternalMCP(t, ctx, limitedSrv.URL)
 		initializeExternalMCP(t, ctx, limitedClient)
-		got := callRemoteTool(t, ctx, limitedClient, externalMCPToolCall, map[string]any{"name": "get_dashboard", "arguments": map[string]any{"workflow_id": "invoices", "dashboard_id": "overview", "revision": rev2}})
+		got := callRemoteTool(t, ctx, limitedClient, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "get", "workflow_id": "invoices", "dashboard_id": "overview", "revision": rev2}})
 		if !got.IsError {
 			t.Fatal("draft leaked to non-authoring consent", scopes)
 		}
-		got = callRemoteTool(t, ctx, limitedClient, externalMCPToolCall, map[string]any{"name": "update_dashboard", "arguments": map[string]any{"workflow_id": "invoices", "dashboard_id": "overview", "expected_revision": rev2}})
+		got = callRemoteTool(t, ctx, limitedClient, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "update", "workflow_id": "invoices", "dashboard_id": "overview", "expected_revision": rev2}})
 		if !got.IsError {
 			t.Fatal("non-authoring consent edited a dashboard", scopes)
 		}
 	}
 	// The same stable link serves published content while another draft exists.
-	parsed, _ := url.Parse(link)
-	document := parsed.Query().Get("document")
 	read := func(p string, claims *UserClaims) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodGet, reportPreviewAPIPrefix+"file?workspace=Workflow/invoices&path="+url.QueryEscape(p), nil)
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
@@ -141,13 +155,13 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	if w := read(document, &UserClaims{UserID: "outsider"}); w.Code != 403 {
 		t.Fatalf("link granted access: %d", w.Code)
 	}
-	call("publish_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev2})
-	if again := call("get_dashboard_link", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview"})["url"]; again != link {
+	call("dashboard", map[string]any{"action": "publish", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev2})
+	if again := call("dashboard", map[string]any{"action": "link", "workspace": "Workflow/invoices", "dashboard_id": "overview"})["url"]; again != link {
 		t.Fatalf("URL changed: %s -> %v", link, again)
 	}
-	call("restore_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev2, "revision": rev1})
-	bad := call("update_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1, "files": map[string]any{"index.html": "<html><body><script>window.report.unknown()</script></body></html>"}})["dashboard"].(map[string]any)["revision"]
-	rejected := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "publish_dashboard", "arguments": map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": bad}})
+	call("dashboard", map[string]any{"action": "restore", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev2, "revision": rev1})
+	bad := call("dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1, "files": map[string]any{"index.html": "<html><body><script>window.report.unknown()</script></body></html>"}})["dashboard"].(map[string]any)["revision"]
+	rejected := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "publish", "workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": bad}})
 	requireRemoteError(t, rejected, "invalid HTML", "invalid_dashboard")
 	// Preview credentials retain their originating connection's live bounds,
 	// even for a legacy document that has no bundle resolver.
@@ -179,10 +193,10 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.write(t, "Crew/dashboard-team/product.json", `{"id":"dashboard-team","product":"work","title":"Team"}`)
-	crewCreated := call("create_dashboard", map[string]any{"workspace": "Crew/dashboard-team", "dashboard_id": "team", "title": "Team", "files": map[string]any{"index.html": "<html><title>Team</title><body>Shared Crew</body></html>"}})
+	crewCreated := call("dashboard", map[string]any{"action": "create", "workspace": "Crew/dashboard-team", "dashboard_id": "team", "title": "Team", "files": map[string]any{"index.html": "<html><title>Team</title><body>Shared Crew</body></html>"}})
 	crewRevision := crewCreated["dashboard"].(map[string]any)["revision"].(string)
-	call("publish_dashboard", map[string]any{"workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision})
-	crewList := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "list_dashboards", "arguments": map[string]any{"workspace": "Crew/dashboard-team"}})
+	call("dashboard", map[string]any{"action": "publish", "workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision})
+	crewList := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "list", "workspace": "Crew/dashboard-team"}})
 	requireRemoteSuccess(t, crewList, "Crew reader discovery through canonical root")
 	if !strings.Contains(marshalStructured(t, crewList), "document=") {
 		t.Fatal("Crew discovery lacks its live URL")
@@ -202,13 +216,13 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	cli = dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
 	// Old editor grants confer Run access, never Relay Builder ownership.
-	requireRemoteError(t, callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "create_dashboard", "arguments": map[string]any{"workflow_id": "invoices", "dashboard_id": "editor-denied", "title": "Denied", "files": map[string]any{"index.html": "<html><body>Denied</body></html>"}}}), "legacy Relay editor cannot build", "forbidden")
+	requireRemoteError(t, callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "create", "workflow_id": "invoices", "dashboard_id": "editor-denied", "title": "Denied", "files": map[string]any{"index.html": "<html><body>Denied</body></html>"}}}), "legacy Relay editor cannot build", "forbidden")
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["owner"],"readers":["reader"]}}`)
-	relayDraft := call("create_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "relay-view", "title": "Relay view", "files": map[string]any{"index.html": "<html><title>Relay</title><body>Relay</body></html>"}})
+	relayDraft := call("dashboard", map[string]any{"action": "create", "workflow_id": "invoices", "dashboard_id": "relay-view", "title": "Relay view", "files": map[string]any{"index.html": "<html><title>Relay</title><body>Relay</body></html>"}})
 	relayRev := relayDraft["dashboard"].(map[string]any)["revision"].(string)
-	call("publish_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "relay-view", "expected_revision": relayRev})
+	call("dashboard", map[string]any{"action": "publish", "workflow_id": "invoices", "dashboard_id": "relay-view", "expected_revision": relayRev})
 	// Relay consent cannot mutate a Crew, even when the caller owns that Crew.
-	noCrew := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "update_dashboard", "arguments": map[string]any{"workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision}})
+	noCrew := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "update", "workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision}})
 	if !noCrew.IsError {
 		t.Fatal("Relay consent edited Crew dashboard")
 	}
@@ -240,7 +254,7 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	}
 	// Folder caps still refuse a dashboard mutation with otherwise valid consent.
 	owner.AccessToken.FileGuard = &wf.FolderGuard{WritePaths: []string{"docs"}}
-	folderDenied := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "update_dashboard", "arguments": map[string]any{"workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision, "files": map[string]any{"index.html": "<html><title>Team</title><body>Changed</body></html>"}}})
+	folderDenied := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "update", "workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision, "files": map[string]any{"index.html": "<html><title>Team</title><body>Changed</body></html>"}}})
 	if !folderDenied.IsError {
 		t.Fatal("dashboard edit bypassed folder caps")
 	}

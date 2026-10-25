@@ -54,7 +54,8 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if err := f.api.registerDashboardTools(reg, "owner", externalCommandCrewRoot, owner); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.tools["share_dashboard"].exec(ctx, map[string]any{"mode": "private", "shared_agents": []string{coach.ConversationKey}, "agent_purposes": map[string]string{coach.ConversationKey: "Review a situation and suggest practical next steps."}}); err != nil {
+	projectRecordedCatalog(t, reg)
+	if _, err := reg.tools["share"].exec(ctx, map[string]any{"action": "set", "mode": "private", "shared_agents": []any{coach.ConversationKey}, "agent_purposes": map[string]any{coach.ConversationKey: "Review a situation and suggest practical next steps."}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := defaultProjectOwners().SetAudience("work", "test-team", true, []string{"other"}); err != nil {

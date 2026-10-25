@@ -1,6 +1,6 @@
 ## Share an active project project file or folder
 
-For the project's live Dashboard, call `get_report_link` with no arguments and
+For the project's live Dashboard, call `dashboard` with `action=link` and no document_path and
 use its returned `url`. Do not pass `db/reports/index.html` to `get_file_link`:
 that would open a restricted generic HTML preview instead of the full Dashboard
 runtime, and the file-link tool rejects that Dashboard entry path. The dedicated

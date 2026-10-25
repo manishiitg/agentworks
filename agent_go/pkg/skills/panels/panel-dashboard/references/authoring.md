@@ -2,7 +2,7 @@
 name: "dashboard-authoring"
 description: "Dashboard MCP operations, React TSX defaults, shared shadcn/Recharts components and HTML compatibility, data scripts, preview and team links."
 external: true
-external_tools: ["*dashboard*", "get_report_link"]
+external_tools: ["dashboard"]
 ---
 # Dashboard API usage
 
@@ -23,14 +23,14 @@ snapshots.
 
 ## React TSX dashboards
 
-Author new dashboards as `files["index.tsx"]` through create_dashboard or
-update_dashboard. The server compiles the submitted source and saves an immutable
+Author new dashboards as `files["index.tsx"]` through dashboard action=create or
+dashboard action=update. The server compiles the submitted source and saves an immutable
 hosted Dashboard revision. Do not create a separate Vite/npm application, ask the
 person to run a dev server, or hand-edit the generated index.html/dashboard-app.js/
 dashboard-app.css. A compile error leaves the current draft and live page unchanged.
 TypeScript is transpiled; this does not claim a full TypeScript type check.
 
-Read get_dashboard_catalog for supported imports. React, react-dom,
+Read dashboard action=catalog for supported imports. React, react-dom,
 react-dom/client, react/jsx-runtime @agentworks/dashboard and recharts are supplied by the
 platform. Relative imports resolve only within the submitted bundle: .tsx, .ts,
 .js, .mjs, .json, .css and image/font assets. Other npm packages and network imports
@@ -81,7 +81,7 @@ styles customizable and preserve the person's visual design. Read and inspect th
 existing page, data and controls before converting; carry every view and action
 across. When converting a JSON dashboard remove index.json in the same update.
 Keep the same dashboard_id so its list entry, shared link and publication history
-remain intact. Confirm publish with list_dashboards and get_dashboard_link.
+remain intact. Confirm publish with dashboard action=list and dashboard action=link.
 
 HTML-only authoring is deprecated for new dashboards. Existing HTML pages and
 revisions continue to render, edit, publish, restore, share and export. Existing
@@ -89,7 +89,7 @@ saved HTML history stays available. Saved JSON dashboard revisions migrate once 
 
 ## Shared controls and charts
 
-Use `get_dashboard_catalog` for the actual shared component props. `AskButton` and
+Use `dashboard action=catalog` for the actual shared component props. `AskButton` and
 `ChatPanel` appear only for shared Run users and are hidden for Builders and preview.
 Ask opens the existing composer without sending. FunctionButton opens the current
 published function form; the person presses Run to execute it. Current project and
@@ -125,7 +125,7 @@ Choose an editable starting composition, then adapt or combine it:
 | Use an assistant or service | The actual purpose, Card components for the available published functions, and AskButton or a placed ChatPanel. Explain each action in ordinary words; no invented metrics or decorative charts. |
 
 These are examples for the agent, not user-facing modes or required sections.
-Use shared components and props returned by get_dashboard_catalog, with React and its supplied runtime imports. For a broad page,
+Use shared components and props returned by dashboard action=catalog, with React and its supplied runtime imports. For a broad page,
 a vertical Stack with `align: "stretch"` avoids narrow child cards. A Grid of
 Metric components gives a compact summary; a Grid of Card components can pair a
 chart with its breakdown. Card already supplies its surface and heading; avoid
@@ -164,7 +164,7 @@ business page with fictional values to make it look complete.
    visual identity, data sources and chosen layout. When no direction is given,
    use the platform's default theme and make the layout fit the task; do not
    invent brand rules, required sections, or sample business data.
-2. Read `get_dashboard_catalog` for supported props. Choose components for the
+2. Read `dashboard action=catalog` for supported props. Choose components for the
    content: readable text, metrics, charts, forms or tables as needed. A catalog
    is a set of available controls, not a complete page design. Use the actual
    data shape and include meaningful loading, empty and error states.
@@ -205,7 +205,7 @@ Use the authorized report APIs; no new data/auth server is needed. Only create a
 standalone React application when the person explicitly asks for that separate
 application. Do not claim a localhost app, /src/main.tsx or unregistered dist
 folder is a hosted dashboard. Validate and inspect the exact hosted revision,
-publish when requested, confirm list_dashboards and return get_dashboard_link.
+publish when requested, confirm dashboard action=list and return dashboard action=link.
 A copied link grants no access. If preview or publication is refused, report the
 actual refusal and continue resolving it; do not replace the task with directions
 for the person to start a server.
@@ -425,7 +425,7 @@ For requested interactive animation, use `window.report.motion.create` inside
 `window.report.ready`; the designer supplies the visuals and controls. See the
 on-demand `motion-guide` for play/pause/seek, real historical data and refresh.
 Optional MP4 exports use `dashboard action=export_motion` (app Builder:
-`export_dashboard_motion`) with the published `dashboard_id`, selected theme
+`dashboard action=export_motion`) with the published `dashboard_id`, selected theme
 and viewport. It captures the existing page and freezes its data. A separate
 explainer remains explicit through `composition_path` under `code/motion/`
 and `snapshot.json`. Export needs current authoring access and server
@@ -435,7 +435,7 @@ and whether to include motion or export controls belong to the user.
 
 ## External static publishing
 
-Use export_dashboard_static for Surge, Vercel, Netlify, Cloudflare Pages, GitHub Pages or any static host. It exports the same saved dashboard, shared platform runtimes and real authorized data calls. Deploy every returned file; do not copy managed index.html alone or reverse-engineer SQL from TSX/minified JavaScript. Put data needed by all views, images and files in loadData. Local interactions use the frozen results; new backend reads require the signed-in live dashboard. The export includes an Updated-at notice and live link; native Ask/function/write authority remains in AgentWorks. Each existing Publish automation pass exports afresh and applies the saved provider/visibility/encryption policy. No extra npm app, service, raw DB, preview token or private chat is published.
+Use dashboard action=export_static for Surge, Vercel, Netlify, Cloudflare Pages, GitHub Pages or any static host. It exports the same saved dashboard, shared platform runtimes and real authorized data calls. Deploy every returned file; do not copy managed index.html alone or reverse-engineer SQL from TSX/minified JavaScript. Put data needed by all views, images and files in loadData. Local interactions use the frozen results; new backend reads require the signed-in live dashboard. The export includes an Updated-at notice and live link; native Ask/function/write authority remains in AgentWorks. Each existing Publish automation pass exports afresh and applies the saved provider/visibility/encryption policy. No extra npm app, service, raw DB, preview token or private chat is published.
 
 
 ### Projects created by the current person

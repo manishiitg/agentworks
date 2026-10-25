@@ -131,7 +131,7 @@ profile:
       description: Create or update this Flow's live Dashboard
       icon: layout-dashboard
       prompt: |
-        Create or update this Flow's Dashboard using the panel-dashboard skill. Inspect existing db/reports/ documents and preserve user design choices. Use the shared HTML runtime, validate_report_html and preview_report. Keep dashboard scripts under code/reports/ separate from relay.py and API publication. Use files or scripts when a database is unnecessary.
+        Create or update this Flow's Dashboard using the panel-dashboard skill. Inspect existing db/reports/ documents and preserve user design choices. Use the shared HTML runtime, dashboard action=validate and dashboard action=preview. Keep dashboard scripts under code/reports/ separate from relay.py and API publication. Use files or scripts when a database is unnecessary.
         {{context}}
     - name: test
       description: Test the draft with sample inputs and inspect its JSON output

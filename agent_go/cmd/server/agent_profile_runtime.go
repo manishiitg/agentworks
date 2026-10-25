@@ -24,6 +24,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectinstructions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
@@ -1151,7 +1152,7 @@ func profileDisablesVirtualTool(profile *resolvedAgentProfile, toolName string) 
 		return false
 	}
 	for _, disabled := range profile.Definition.ToolPolicy.Disabled {
-		if strings.EqualFold(strings.TrimSpace(disabled), strings.TrimSpace(toolName)) {
+		if strings.EqualFold(platformtools.Identity(strings.TrimSpace(disabled)), platformtools.Identity(strings.TrimSpace(toolName))) {
 			return true
 		}
 	}

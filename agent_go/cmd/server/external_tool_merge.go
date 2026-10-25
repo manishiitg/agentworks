@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 // One tool per object (PLAT-738): a merged tool takes an action and runs the
@@ -23,14 +25,8 @@ type externalToolMerge struct {
 }
 
 var externalToolMerges = []externalToolMerge{
-	{"share", "Share a Crew, Goal or Flow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, [][2]string{
-		{"get", "get_dashboard_share"}, {"set", "share_dashboard"},
-	}},
-	{"dashboard", "Live dashboards of workflows, Flows and Crews: find them, read and edit drafts, check and publish revisions, and get links.", [][2]string{
-		{"upload", "upload_dashboard_asset"}, {"list", "list_dashboards"}, {"get", "get_dashboard"}, {"link", "get_dashboard_link"},
-		{"create", "create_dashboard"}, {"update", "update_dashboard"}, {"validate", "validate_dashboard"},
-		{"export_static", "export_dashboard_static"}, {"export_motion", "export_dashboard_motion"}, {"preview", "preview_dashboard"}, {"publish", "publish_dashboard"}, {"restore", "restore_dashboard"},
-	}},
+	{"share", "Share a Crew, Goal or Flow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, dashboardMergeActions("share")},
+	{"dashboard", "Live dashboards of workflows, Flows and Crews: find them, read and edit drafts, check and publish revisions, and get links.", dashboardMergeActions("dashboard")},
 	{"settings", "Read and change the setup of a workflow, Flow or Crew; inspect saved secret sources for these projects: models, MCP servers, skills, secrets, personal Google/Slack accounts, browser mode, notifications and after-run steps.", [][2]string{
 		{"get", "get_settings"}, {"update", "update_settings"}, {"secret_sources", "get_secret_sources"},
 		{"google_account", "workflow_google_account"}, {"slack_account", "workflow_slack_account"}, {"slack_bot", "workflow_slack_bot"},
@@ -76,6 +72,16 @@ var externalToolMerges = []externalToolMerge{
 	}},
 }
 
+func dashboardMergeActions(family string) [][2]string {
+	out := [][2]string{}
+	for _, action := range platformtools.DashboardActions {
+		if action.Family == family {
+			out = append(out, [2]string{action.Name, action.Member})
+		}
+	}
+	return out
+}
+
 // Hidden with no merged tool: a narrower duplicate of a merged action.
 var externalHiddenAliases = map[string]string{"get_report_link": "dashboard action=link"}
 
@@ -83,7 +89,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 	index := make(map[string]int, len(catalog))
 	for i, tool := range catalog {
 		index[tool.Name] = i
-		if projectServiceTool(tool.Name) {
+		if projectServiceTool(tool.Name) || platformtools.IsDashboardMember(tool.Name) {
 			catalog[i].hidden, catalog[i].internalOnly = true, true
 		}
 	}

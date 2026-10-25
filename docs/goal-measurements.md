@@ -93,7 +93,7 @@ are returned. The existing read-only `window.report.query` can query the full
 
 The widget groups primary metrics by goal and shows their linked supporting measurements, trends, targets,
 last observation time, and expandable definitions and evidence. Styling is bundled
-and isolated from the report's CSS. It works in both the app and `preview_report`,
+and isolated from the report's CSS. It works in both the app and `dashboard action=preview`,
 refreshes through the standard `ready` lifecycle, and never replaces missing or
 failed measurements with invented values. Legacy workflows show a setup message.
 Report field edits cannot modify these managed measurement tables.

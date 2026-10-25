@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 // productToolGate is the single place a product profile decides which tools its
@@ -96,7 +97,7 @@ func newProductToolGate(resolved *resolvedAgentProfile) *productToolGate {
 	gate.allowed = make(map[string]struct{}, len(policy.Enabled))
 	for _, name := range policy.Enabled {
 		if trimmed := strings.TrimSpace(name); trimmed != "" {
-			gate.allowed[trimmed] = struct{}{}
+			gate.allowed[platformtools.Identity(trimmed)] = struct{}{}
 		}
 	}
 	return gate
@@ -108,7 +109,7 @@ func newProductToolGateForAllowlist(productID string, names []string) *productTo
 	gate := &productToolGate{profileID: productID, allowed: make(map[string]struct{}, len(names))}
 	for _, name := range names {
 		if name = strings.TrimSpace(name); name != "" {
-			gate.allowed[name] = struct{}{}
+			gate.allowed[platformtools.Identity(name)] = struct{}{}
 		}
 	}
 	return gate
@@ -153,7 +154,7 @@ func (g *productToolGate) Declare(name string) {
 	if g.allowed == nil {
 		return
 	}
-	g.allowed[trimmed] = struct{}{}
+	g.allowed[platformtools.Identity(trimmed)] = struct{}{}
 	// If another registration path attempted this public name before its
 	// profile binding was built, the final diagnostic should reflect the
 	// effective surface rather than retain a stale filtered entry.
@@ -231,7 +232,7 @@ func (g *productToolGate) allowsLocked(name string) bool {
 		return false
 	}
 	if g.allowed != nil {
-		_, ok := g.allowed[name]
+		_, ok := g.allowed[platformtools.Identity(name)]
 		return ok
 	}
 	return true

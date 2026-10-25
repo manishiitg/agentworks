@@ -3,7 +3,7 @@ name: motion-guide
 description: "Interactive dashboard playback and optional snapshot MP4 export; user-owned design and layout."
 external: true
 external_scopes: ["dashboards:read"]
-external_tools: ["export_dashboard_motion"]
+external_tools: ["dashboard.export_motion"]
 ---
 ## Interactive motion and optional video export
 
@@ -15,8 +15,8 @@ controls, styling or placement.
 
 ### Make motion easy to find
 
-For an interactive playback page, set `motion: true` with create_dashboard or
-update_dashboard (MCP: dashboard action=create/update), then publish the revision.
+For an interactive playback page, set `motion: true` with dashboard action=create or
+dashboard action=update (MCP: dashboard action=create/update), then publish the revision.
 This puts it under **Motion dashboards** in the project menu. It is the same
 dashboard and live link, with the same Share and access rules. The flag is a
 label; it does not create animation or a video. Omit it on ordinary updates to
@@ -202,7 +202,7 @@ The designer chooses whether and where to offer playback or download.
 
 ### Check the actual result
 
-Run `validate_report_html`/`preview_report` (or managed dashboard validate and
+Run `dashboard action=validate`/`dashboard action=preview` (or managed dashboard validate and
 preview), then exercise play, pause, backward seek, replay, speed and refresh
 in the browser. Check the requested layout in both themes and reduced motion.
 For MP4, check metadata, playback and seeking through the actual media URL.

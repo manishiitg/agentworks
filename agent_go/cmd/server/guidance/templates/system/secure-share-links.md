@@ -13,10 +13,10 @@ public hosting.
 
 ## Create a report link
 
-For the active workflow's dashboard, call `get_report_link` with no arguments:
+For the active workflow's dashboard, call `dashboard` with `action=link` and no other arguments:
 
 ```json
-{}
+{"action":"link"}
 ```
 
 The server verifies access and confirms that `db/reports/index.html` exists,
@@ -97,6 +97,6 @@ For the workflow dashboard, use the same bridge pattern with an empty payload
 and the report tool:
 
 ```bash
-payload='{}'
-curl --fail-with-body -sS --json "$payload" -H "$MCP_AUTH" "$MCP_CUSTOM/get_report_link"
+payload='{"action":"link"}'
+curl --fail-with-body -sS --json "$payload" -H "$MCP_AUTH" "$MCP_CUSTOM/dashboard"
 ```

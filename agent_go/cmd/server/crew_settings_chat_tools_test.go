@@ -11,6 +11,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 // Real project resolution and settings handlers, including a folder whose
@@ -215,12 +216,14 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 
 func TestCrewDashboardChatCannotRetargetSharing(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	logDashboardCatalogFootprints(t, f.api)
 	reg := &recordingRegistrar{}
 	claims := &UserClaims{UserID: "owner", Username: "owner"}
 	if err := f.api.registerDashboardTools(reg, "owner", externalCommandCrewRoot, claims); err != nil {
 		t.Fatal(err)
 	}
-	tool := reg.tools["share_dashboard"]
+	projectRecordedCatalog(t, reg)
+	tool := reg.tools["share"]
 	props := tool.params["properties"].(map[string]any)
 	for _, key := range []string{"workspace", "workspace_id", "workflow_id", "crew_id", "flow_id"} {
 		if props[key] != nil {
@@ -228,25 +231,62 @@ func TestCrewDashboardChatCannotRetargetSharing(t *testing.T) {
 		}
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
-	out, err := tool.exec(ctx, map[string]any{"mode": "private", "workspace": "Crew/unrelated", "action": "list"})
+	if _, err := tool.exec(ctx, map[string]any{"action": "set", "mode": "private", "workspace": "Crew/unrelated"}); err == nil {
+		t.Fatal("bound sharing accepted a foreign selector")
+	}
+	out, err := tool.exec(ctx, map[string]any{"mode": "private", "action": "set"})
 	var body map[string]any
 	if err != nil || json.Unmarshal([]byte(out), &body) != nil || body["mode"] != "private" {
 		t.Fatalf("bound share did not run its canonical service: %s %v", out, err)
 	}
-	if _, err := reg.tools["get_dashboard_share"].exec(ctx, nil); err != nil {
+	if _, err := tool.exec(ctx, map[string]any{"action": "get"}); err != nil {
 		t.Fatal(err)
+	}
+	// PLAT-825-113: a selected action must not admit its whole family. Seed a
+	// real draft through the same bound service so get succeeds before refusal.
+	if _, err := reg.tools["dashboard"].exec(ctx, map[string]any{"action": "create", "dashboard_id": "selection", "title": "Selection", "files": map[string]any{"index.html": "<!doctype html><html><head><title>Selection</title></head><body>Selection</body></html>"}}); err != nil {
+		t.Fatal(err)
+	}
+	partial := &productSurfaceDraft{gate: newProductToolGateForAllowlist("partial", []string{"dashboard.get"})}
+	if err := f.api.registerDashboardTools(partial, "owner", externalCommandCrewRoot, claims); err != nil {
+		t.Fatal(err)
+	}
+	projectRecordedCatalog(t, &partial.recordingRegistrar)
+	if _, err := partial.tools["dashboard"].exec(ctx, map[string]any{"action": "get", "dashboard_id": "selection"}); err != nil {
+		t.Fatalf("selected dashboard.get refused: %v", err)
+	}
+	if _, err := partial.tools["dashboard"].exec(ctx, map[string]any{"action": "create", "dashboard_id": "forbidden", "title": "Forbidden", "files": map[string]any{"index.html": "<p>Forbidden</p>"}}); err == nil || !strings.Contains(err.Error(), "unavailable in this chat") {
+		t.Fatalf("partial selection widened to create: %v", err)
+	}
+	foreign := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
+	if _, err := partial.tools["dashboard"].exec(foreign, map[string]any{"action": "get", "dashboard_id": "selection"}); err == nil {
+		t.Fatal("grouped dashboard accepted another person")
+	}
+	for _, filterCustom := range []bool{false, true} {
+		selected := &recordingRegistrar{}
+		if err := f.api.registerDashboardTools(selected, "owner", externalCommandCrewRoot, claims); err != nil {
+			t.Fatal(err)
+		}
+		projectRecordedCatalog(t, selected, platformtools.Selection{Tools: []string{"dashboard:dashboard.get"}, FilterCustom: filterCustom})
+		if _, err := selected.tools["dashboard"].exec(ctx, map[string]any{"action": "get", "dashboard_id": "selection"}); err != nil {
+			t.Fatalf("saved selection refused get (API=%v): %v", filterCustom, err)
+		}
+		if _, err := selected.tools["dashboard"].exec(ctx, map[string]any{"action": "create"}); err == nil || !strings.Contains(err.Error(), "unavailable in this chat") {
+			t.Fatalf("saved selection widened (API=%v): %v", filterCustom, err)
+		}
 	}
 	limited := &recordingRegistrar{}
 	readClaims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
 	if err := f.api.registerDashboardTools(limited, "owner", externalCommandCrewRoot, readClaims); err != nil {
 		t.Fatal(err)
 	}
+	projectRecordedCatalog(t, limited)
 	// Native execution contexts may omit claims. Retain the original token's
 	// consent instead of reconstructing an unrestricted website principal.
-	if _, err := limited.tools["share_dashboard"].exec(context.Background(), map[string]any{"mode": "everyone"}); err == nil {
+	if _, err := limited.tools["share"].exec(context.Background(), map[string]any{"action": "set", "mode": "everyone"}); err == nil {
 		t.Fatal("dashboard tool dropped the captured token's scope")
 	}
-	if _, err := limited.tools["share_dashboard"].exec(ctx, map[string]any{"mode": "everyone"}); err == nil {
+	if _, err := limited.tools["share"].exec(ctx, map[string]any{"action": "set", "mode": "everyone"}); err == nil {
 		t.Fatal("same-user unscoped context widened sharing consent")
 	}
 }

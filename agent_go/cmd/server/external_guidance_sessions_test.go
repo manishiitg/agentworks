@@ -136,7 +136,9 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	for _, raw := range prep["guidance_skills"].([]any) {
 		prepared[raw.(map[string]any)["name"].(string)] = true
 	}
-	if len(prepared) != 3 || !prepared["dashboard-authoring"] || !prepared["motion-guide"] || !prepared["panel-dashboard"] {
+	// Other admitted actions may contribute their own guidance (for example
+	// the static-publishing procedure); keep the relevant-skill rule, not a count.
+	if !prepared["dashboard-authoring"] || !prepared["motion-guide"] || !prepared["panel-dashboard"] {
 		t.Fatalf("dashboard preparation skills: %+v", prepared)
 	}
 	// A second conversation with the same identity has its own independent handle.
@@ -157,7 +159,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 		}
 		return string(data)
 	}
-	measured := call("create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "measured", "title": "Measured", "files": map[string]any{"index.html": "<html><title>Measured</title><body>Data</body></html>"}}, handle)
+	measured := call("dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "measured", "title": "Measured", "files": map[string]any{"index.html": "<html><title>Measured</title><body>Data</body></html>"}}, handle)
 	revision := measured["dashboard"].(map[string]any)["revision"].(string)
 	beforeCalls, err := f.api.guidanceStore.Stats(ctx)
 	if err != nil || beforeCalls.Deliveries != int64(2*len(prepared)) {
@@ -166,14 +168,10 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	baselineBytes, baselineTokens, advisoryBytes, advisoryTokens, noHandleBytes, noHandleTokens := 0, 0, 0, 0, 0, 0
 	for i := 0; i < 20; i++ {
 		name, args := "dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "measured", "title": fmt.Sprintf("Measured %02d", i), "expected_revision": revision}
-		if i%2 == 1 {
-			name = "update_dashboard"
-			delete(args, "action")
-		}
 		body := call(name, args, handle)
 		revision = body["dashboard"].(map[string]any)["revision"].(string)
 		if status(body) != "delivered_to_client" || body["guidance_skills"] != nil {
-			t.Fatalf("duplicate or alias delivery: %+v", body)
+			t.Fatalf("duplicate guidance delivery: %+v", body)
 		}
 		raw := wire(body)
 		advisoryBytes += len(raw)
@@ -196,10 +194,10 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	if advisoryTokens-baselineTokens > 20*25 {
 		t.Fatalf("ordinary guidance exceeds 25 tokens/call: %d", advisoryTokens-baselineTokens)
 	}
-	if call("list_dashboards", map[string]any{}, handle)["guidance"] != nil {
+	if call("dashboard", map[string]any{"action": "list"}, handle)["guidance"] != nil {
 		t.Fatal("list reply includes unnecessary guidance")
 	}
-	if call("get_dashboard", map[string]any{"workflow_id": "invoices", "dashboard_id": "measured"}, handle)["guidance"] != nil {
+	if call("dashboard", map[string]any{"action": "get", "workflow_id": "invoices", "dashboard_id": "measured"}, handle)["guidance"] != nil {
 		t.Fatal("get reply includes unnecessary guidance")
 	}
 	counts, err := f.api.guidanceStore.Stats(ctx)
@@ -215,7 +213,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	rest.WithGuidanceSession(handle, nil)
-	schema, err := rest.Schemas(ctx, []string{"create_dashboard", "dashboard"})
+	schema, err := rest.Schemas(ctx, []string{"dashboard"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +223,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 		t.Fatal("REST schemas did not reuse canonical topic")
 	}
 	// Neither an absent receipt nor a forged receipt prevents an authorized mutation.
-	raw, err := rest.Call(agentworksclient.WithGuidanceSession(ctx, "awg_forged"), "create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "guide", "title": "Guide", "files": map[string]any{"index.html": "<html><title>Guide</title><body>Visible</body></html>"}})
+	raw, err := rest.Call(agentworksclient.WithGuidanceSession(ctx, "awg_forged"), "dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "guide", "title": "Guide", "files": map[string]any{"index.html": "<html><title>Guide</title><body>Visible</body></html>"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +234,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	}
 	other, _ := agentworksclient.New(srv.URL, "another-connection")
 	other.WithGuidanceSession(handle, nil)
-	raw, err = other.Call(ctx, "create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "connection-probe", "title": "Connection probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}})
+	raw, err = other.Call(ctx, "dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "connection-probe", "title": "Connection probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +249,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	token.Scopes = []string{"dashboards:read"}
 	limited.AccessToken = &token
 	current.Store(&limited)
-	_, err = rest.Call(ctx, "update_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "guide", "expected_revision": created["dashboard"].(map[string]any)["revision"], "title": "Denied"})
+	_, err = rest.Call(ctx, "dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "guide", "expected_revision": created["dashboard"].(map[string]any)["revision"], "title": "Denied"})
 	if err == nil {
 		t.Fatal("receipt upgraded consent")
 	}
@@ -273,7 +271,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status(call("create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "stale-probe", "title": "Stale probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}}, handle)) != "stale" {
+	if status(call("dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "stale-probe", "title": "Stale probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}}, handle)) != "stale" {
 		t.Fatal("stale receipt not flagged")
 	}
 	refreshed := decode(callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": "dashboard", "guidance_session_id": handle}))
@@ -293,7 +291,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	if id(reloaded) != handle || status(reloaded) != "delivered_to_client" {
 		t.Fatal("explicit context-loss reload failed")
 	}
-	_, err = rest.Call(ctx, "create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "invalid-probe", "title": "Invalid probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}, "unknown": true})
+	_, err = rest.Call(ctx, "dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "invalid-probe", "title": "Invalid probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}, "unknown": true})
 	if err == nil {
 		t.Fatal("domain validator bypassed")
 	}
@@ -365,7 +363,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	if err = f.api.guidanceStore.Close(); err != nil {
 		t.Fatal(err)
 	}
-	fallback := call("create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "unavailable-probe", "title": "Unavailable probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}}, handle)
+	fallback := call("dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "unavailable-probe", "title": "Unavailable probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}}, handle)
 	if status(fallback) != "unavailable" {
 		t.Fatal("storage failure refused ordinary operation")
 	}

@@ -23,7 +23,7 @@ func (api *StreamingAPI) registerShareLinkTools(reg definitionToolRegistrar, use
 	if strings.TrimSpace(workspace) == "" {
 		return nil
 	}
-	if err := reg.RegisterCustomTool("get_file_link", "Create an authenticated AgentWorks preview link for an existing non-dashboard file or folder in the active workflow. Pass a canonical workflow-relative path such as runs/latest/report.pdf or runs/latest; the server validates current workflow access, existence, protected-path rules, and whether the target is a file or folder. A request for db/reports/index.html is rejected because dashboards must use get_report_link and the dedicated report runtime. Present the returned url value verbatim; never manually build, rewrite, or Base64-encode a /file or /folder URL. Inspect shareable and warning in the result: when PUBLIC_URL is localhost or another loopback host, the URL is a same-machine preview only and must not be described as shareable. The URL contains no credential and grants no access: every recipient must sign in and already have access to this workflow. This is not publishing and cannot create anonymous links or share arbitrary web URLs.", map[string]interface{}{
+	if err := reg.RegisterCustomTool("get_file_link", "Create an authenticated AgentWorks preview link for an existing non-dashboard file or folder in the active workflow. Pass a canonical workflow-relative path such as runs/latest/report.pdf or runs/latest; the server validates current workflow access, existence, protected-path rules, and whether the target is a file or folder. A request for db/reports/index.html is rejected because dashboards must use dashboard action=link and the dedicated report runtime. Present the returned url value verbatim; never manually build, rewrite, or Base64-encode a /file or /folder URL. Inspect shareable and warning in the result: when PUBLIC_URL is localhost or another loopback host, the URL is a same-machine preview only and must not be described as shareable. The URL contains no credential and grants no access: every recipient must sign in and already have access to this workflow. This is not publishing and cannot create anonymous links or share arbitrary web URLs.", map[string]interface{}{
 		"type":                 "object",
 		"additionalProperties": false,
 		"required":             []string{"path"},
@@ -47,7 +47,7 @@ func (api *StreamingAPI) registerShareLinkTools(reg definitionToolRegistrar, use
 		}
 		// A dashboard is under db/, which is private to files; say where its link comes from.
 		if strings.HasPrefix(clean, "db/reports/") && strings.HasSuffix(strings.ToLower(clean), ".html") {
-			return "", fmt.Errorf("%s is a live dashboard; use get_report_link so it opens in the dedicated report runtime", clean)
+			return "", fmt.Errorf("%s is a live dashboard; use dashboard action=link so it opens in the dedicated report runtime", clean)
 		}
 		if wf.Private(clean) {
 			return "", fmt.Errorf("private workspace files are not shareable")
@@ -130,7 +130,7 @@ func registerProjectShareLinkTools(reg definitionToolRegistrar, userID, cleanWor
 		}
 		// A dashboard is under db/, which is private to files; say where its link comes from.
 		if strings.HasPrefix(clean, "db/reports/") && strings.HasSuffix(strings.ToLower(clean), ".html") {
-			return "", fmt.Errorf("%s is a live dashboard; use get_report_link so it opens in the dedicated report runtime", clean)
+			return "", fmt.Errorf("%s is a live dashboard; use dashboard action=link so it opens in the dedicated report runtime", clean)
 		}
 		if wf.Private(clean) {
 			return "", fmt.Errorf("private workspace files are not shareable")

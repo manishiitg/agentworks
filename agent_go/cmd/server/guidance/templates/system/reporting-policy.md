@@ -16,7 +16,7 @@ Read `builder-reference/references/dashboard-authoring.md` with read_skill
 before choosing components, authoring index.tsx, previewing or publishing.
 It is the same canonical authoring procedure as panel-dashboard in Crew and
 Relay Builders. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
-and shared widget/API examples. Use get_dashboard_catalog for the current
+and shared widget/API examples. Use dashboard action=catalog for the current
 component contracts. The sections below cover this Goal's own report data and
 runtime; a dashboard edit does not authorize plan or execution changes.
 
@@ -32,7 +32,7 @@ runtime; a dashboard edit does not authorize plan or execution changes.
 - CSS and component-library choice belongs to the Dashboard author. HTTPS CDN
   stylesheets and browser scripts are supported, including Tailwind's browser
   build. Pin library versions rather than using floating `latest` URLs, and
-  use `preview_report` to prove the chosen stack works in the Dashboard sandbox.
+  use `dashboard action=preview` to prove the chosen stack works in the Dashboard sandbox.
   Keep Dashboard-specific CSS/JS inline when that is the simpler choice.
   daisyUI is CDN-only. To use it, add `data-report-ui="daisyui"` to the
   document's `<html>` element, and include the pinned stylesheet
@@ -83,13 +83,13 @@ runtime; a dashboard edit does not authorize plan or execution changes.
   `[data-theme="dark"]` (or the injected `hsl(var(--token))` palette), with
   `report:theme` for live re-styling. `prefers-color-scheme` alone follows
   the viewer's OS and ignores the in-app toggle.
-- After editing, call `validate_report_html` for every changed document. Beyond the document shape it
+- After editing, call `dashboard action=validate` for every changed document. Beyond the document shape it
   runs every literal `window.report.query` SQL against the live
   `db/db.sqlite`, confirms every referenced `db/` file exists, checks local
   stylesheet/script references, and warns on OS-only dark mode. HTTPS CDN
   stylesheets and scripts are valid Dashboard dependencies.
-- `validate_report_html` is static and fast; it cannot tell you the page
-  actually renders. Call `preview_report` for each changed document after it passes, or whenever
+- `dashboard action=validate` is static and fast; it cannot tell you the page
+  actually renders. Call `dashboard action=preview` for each changed document after it passes, or whenever
   visual review is requested: it opens the Dashboard in a real headless browser
   through the same runtime the Dashboard tab uses, waits for it to settle, and
   returns whether it errored, its script/data-fetch errors, its tab labels,
@@ -212,7 +212,7 @@ Do NOT gate data calls on `DOMContentLoaded`, `window.onload`, or a bare
 top-level `(async () => { await window.report.query(...) })()`. All three can
 run before injection, before `window.report.query` is truly live — the single
 most common cause of a Dashboard that shows a "data loading error" or is stuck on
-"Loading…" the first time it is opened. `validate_report_html()` cannot catch
+"Loading…" the first time it is opened. `dashboard action=validate` cannot catch
 this: it parses the markup, it does not execute the page. `.ready()` is the
 only pattern that is safe regardless of when it runs.
 
@@ -332,7 +332,7 @@ window.report.ready(async function () {
 
 Test the script before wiring it: run it once from the shell with
 `REPORT_ARGS='{"days":7}'` set, confirm one JSON value on stdout, then
-`validate_report_html()` and `preview_report()` (the preview runs the script
+`dashboard action=validate` and `dashboard action=preview` (the preview runs the script
 for real).
 
 ### Sending a Dashboard request to the workflow agent
@@ -351,7 +351,7 @@ Scheduled/view-only/bot tabs are excluded. This sends a conversational request;
 it does not directly execute a route or trigger the scheduler.
 
 Call this only from a user action handler. Never call it from `ready`, render,
-polling, or refresh handlers. It is unavailable in `preview_report`. Before the
+polling, or refresh handlers. It is unavailable in `dashboard action=preview`. Before the
 host initializes, it rejects instead of queuing a request to replay on load.
 The host supplies the workspace; Dashboards cannot choose another workspace.
 Messages must be non-empty and at most 12,000 characters.
@@ -408,7 +408,7 @@ Referencing a path that was never published produces a broken-image icon and
 nothing else at runtime: no error, no log line, no failed run. Verify the file
 exists at its `db/` path, not only at the path the step wrote.
 
-`validate_report_html()` checks every literal path the document references
+`dashboard action=validate` checks every literal path the document references
 (`window.report.get/getText/getHtml/fileUrl/mediaUrl/openFile('db/...')`, `src="db/..."`,
 `href="db/..."`) and reports the missing ones. A path assembled at runtime from
 variables is invisible to it — prefer literal paths, or verify those yourself.
@@ -447,7 +447,7 @@ The optional widget renders primary/supporting cards, targets, change since the
 previous measurement, trends, freshness, and expandable definitions/evidence/history.
 It inherits the Dashboard's text color, fits the available width, and replaces its
 contents on refresh. Use an empty `div` or `section` as the container. Keep the
-returned promise inside `ready` so preview_report can observe loading/errors.
+returned promise inside `ready` so dashboard action=preview can observe loading/errors.
 
 For a custom layout, `await window.report.getGoalMetrics()` returns
 `{ metrics, observations, progress }`. Each progress item contains `metric`,
@@ -469,7 +469,7 @@ and preview the Dashboard using the normal Dashboard tools after adding it.
 ### Costs: matching Dashboard helper
 
 Use the canonical cost ledger without creating Dashboard-owned copies. The
-helper works in the app and `preview_report`:
+helper works in the app and `dashboard action=preview`:
 
 ```html
 <section id="costs"></section>
@@ -502,7 +502,7 @@ Custom rendering can use the same data APIs. The widgets inherit
 the Dashboard's theme and include responsive styling, loading/empty states,
 and touch-safe controls. Use empty `div`/`section` containers; each renderer
 replaces its own contents on refresh, returns its data, and rejects on load
-failure. The app and `preview_report` share the runtime.
+failure. The app and `dashboard action=preview` share the runtime.
 
 ```html
 <section id="leads"></section>

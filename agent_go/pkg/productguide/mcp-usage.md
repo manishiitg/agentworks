@@ -105,3 +105,5 @@ AgentWorks reports progress. Goals record run outcomes in Activity and keep conf
 Inspect the saved schedule, metrics and notification receipts before saying
 that follow-up is configured or working.
 <!-- /product --><!-- /product -->
+
+Dashboard tools use the same names in product chats and MCP: `dashboard` with actions such as catalog, create, validate, preview, publish and link, and `share` with get/set. Read the current catalog: each chat offers only its existing permitted actions. If an older conversation calls a retired dashboard name, refresh its tool catalog and choose the current action.

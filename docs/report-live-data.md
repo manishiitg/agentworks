@@ -95,11 +95,11 @@ builder's `reporting-policy` guidance):
 
 ## Validation
 
-`validate_report_html()` rejects:
+`dashboard action=validate` rejects:
 - a `window.report.run('…')` path that is not a script under `code/`;
 - a script that does not exist.
 
-`preview_report()` runs the scripts for real.
+`dashboard action=preview` runs the scripts for real.
 
 ## Implementation
 

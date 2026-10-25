@@ -1,5 +1,5 @@
 For Dashboards, use managed TSX with shared shadcn components and Recharts;
-read reporting-policy.md and get_dashboard_catalog for usage. This reference
+read reporting-policy.md and dashboard action=catalog for usage. This reference
 continues to describe existing HTML Dashboards and separately requested HTML
 artifacts. Existing HTML source and revisions stay supported.
 
@@ -63,6 +63,6 @@ available for standalone theme behavior when desired.
 
 Check that displayed values come from the actual evidence and that missing data
 is represented accurately. Verify dependencies, file links and interactions.
-For Dashboard documents, run `validate_report_html` and then `preview_report`;
+For Dashboard documents, run `dashboard action=validate` and then `dashboard action=preview`;
 inspect the browser result for runtime errors and confirm the user's requested
 presentation works at the supported widths and app themes.

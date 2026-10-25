@@ -1,0 +1,101 @@
+[
+  {
+    "family": "dashboard",
+    "name": "catalog",
+    "member": "get_dashboard_catalog",
+    "description": "Read the React authoring contract, components and starter source."
+  },
+  {
+    "family": "dashboard",
+    "name": "upload",
+    "member": "upload_dashboard_asset",
+    "description": "Upload a Crew attachment to the caller's existing upload area."
+  },
+  {
+    "family": "dashboard",
+    "name": "list",
+    "member": "list_dashboards",
+    "description": "Find accessible dashboards and their saved document paths."
+  },
+  {
+    "family": "dashboard",
+    "name": "get",
+    "member": "get_dashboard",
+    "description": "Read a dashboard bundle and its current revision."
+  },
+  {
+    "family": "dashboard",
+    "name": "link",
+    "member": "get_dashboard_link",
+    "description": "Get an authenticated live link; the link grants no new access.",
+    "aliases": [
+      "get_report_link"
+    ]
+  },
+  {
+    "family": "dashboard",
+    "name": "create",
+    "member": "create_dashboard",
+    "description": "Create a React dashboard draft from its title and files."
+  },
+  {
+    "family": "dashboard",
+    "name": "update",
+    "member": "update_dashboard",
+    "description": "Edit draft files using the current expected_revision."
+  },
+  {
+    "family": "dashboard",
+    "name": "validate",
+    "member": "validate_dashboard",
+    "description": "Check a saved revision or HTML document, SQL and referenced files.",
+    "aliases": [
+      "validate_report_html"
+    ]
+  },
+  {
+    "family": "dashboard",
+    "name": "preview",
+    "member": "preview_dashboard",
+    "description": "Render a saved dashboard and return errors and screenshots.",
+    "aliases": [
+      "preview_report"
+    ]
+  },
+  {
+    "family": "dashboard",
+    "name": "export_static",
+    "member": "export_dashboard_static",
+    "description": "Export a published dashboard and its authorized data as static files."
+  },
+  {
+    "family": "dashboard",
+    "name": "export_motion",
+    "member": "export_dashboard_motion",
+    "description": "Start or inspect a published dashboard's video export."
+  },
+  {
+    "family": "dashboard",
+    "name": "publish",
+    "member": "publish_dashboard",
+    "description": "Publish the expected draft revision to its live URL."
+  },
+  {
+    "family": "dashboard",
+    "name": "restore",
+    "member": "restore_dashboard",
+    "description": "Restore an earlier revision using the current expected_revision."
+  },
+  {
+    "family": "share",
+    "name": "get",
+    "member": "get_dashboard_share",
+    "description": "Inspect the product's current audience and selected shared agents."
+  },
+  {
+    "family": "share",
+    "name": "set",
+    "member": "share_dashboard",
+    "description": "Apply the owner's chosen audience, preserving people they did not ask to remove."
+  }
+]

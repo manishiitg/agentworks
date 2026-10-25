@@ -372,7 +372,7 @@ func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Reques
 		byName[tool.Name] = tool
 	}
 	if tool, ok := byName[target]; ok && tool.internalOnly {
-		return mcp.NewToolResultError("unknown_tool: choose a canonical action family with get_api_spec")
+		return mcp.NewToolResultError("unknown_tool: refresh the tool catalog with get_api_spec and choose its current action tool")
 	}
 	if _, ok := byName[target]; !ok {
 		catalog, err := externalTools()

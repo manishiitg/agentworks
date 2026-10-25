@@ -154,3 +154,5 @@ AgentWorks reports progress. Goals record run outcomes in Activity and keep conf
 Inspect the saved schedule, metrics and notification receipts before saying
 that follow-up is configured or working.
 <!-- /product --><!-- /product -->
+
+Dashboard building and sharing use the same `dashboard` and `share` action tools in the app and over MCP. Current access decides which actions appear; a link itself grants no access.

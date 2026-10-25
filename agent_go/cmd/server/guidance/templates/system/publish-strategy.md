@@ -14,10 +14,10 @@ do not add another confirmation for the same destination and audience.
 
 ## Build the static site from the same dashboard
 
-1. Use list_dashboards and choose the saved published dashboard(s). Do not build
+1. Use dashboard action=list and choose the saved published dashboard(s). Do not build
    a separate React/Vite app, extract literal SQL, parse minified JavaScript,
    convert TSX back to hand-written HTML, or copy the live index.html alone.
-2. Call **export_dashboard_static** with dashboard_id and the selected theme
+2. Call **dashboard action=export_static** with dashboard_id and the selected theme
    (dark by default). It renders the exact publication in the Builder's scoped
    preview, captures real query/get/run results and authorized media bytes, and
    packages the shared React, shadcn, Recharts, CSS and report runtime. Existing
@@ -50,7 +50,7 @@ loadData when the person wants it available in the static snapshot too.
 
 ## Refresh through Publish automation
 
-Every Publish pass, including after-run auto-publish, calls export_dashboard_static
+Every Publish pass, including after-run auto-publish, calls dashboard action=export_static
 again before deploying. After every run is one Goal choice, `publish.after_runs`,
 off for a new Goal. Preserve its existing choice when configuring a destination.
 The Publish panel, MCP update_settings and chat update_workflow_config change

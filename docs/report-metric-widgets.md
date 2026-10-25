@@ -24,7 +24,7 @@ window.report.ready(async () => {
 ```
 
 Use empty `div`/`section` containers. Each renderer replaces its own contents on
-refresh, returns its data, and rejects on load failure. The app and `preview_report`
+refresh, returns its data, and rejects on load failure. The app and `dashboard action=preview`
 share the runtime. No additional collector or duplicate reporting tables are needed.
 
 ## Composition widgets

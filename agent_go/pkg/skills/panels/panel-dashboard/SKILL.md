@@ -4,50 +4,20 @@ description: Project dashboard panel in Goals and Crews. Build, edit, preview, p
 metadata:
   panel-tools:
     work:
-    - list_dashboards
-    - get_dashboard
-    - create_dashboard
-    - update_dashboard
-    - validate_dashboard
-    - preview_dashboard
-    - publish_dashboard
-    - get_dashboard_link
-    - restore_dashboard
-    - get_dashboard_catalog
-    - export_dashboard_static
+    - dashboard
     agentworks:
-    - list_dashboards
-    - get_dashboard
-    - create_dashboard
-    - update_dashboard
-    - validate_dashboard
-    - preview_dashboard
-    - publish_dashboard
-    - get_dashboard_link
-    - restore_dashboard
-    - get_dashboard_catalog
-    - export_dashboard_static
+    - dashboard
     relays:
-    - list_dashboards
-    - get_dashboard
-    - create_dashboard
-    - update_dashboard
-    - validate_dashboard
-    - preview_dashboard
-    - publish_dashboard
-    - get_dashboard_link
-    - restore_dashboard
-    - get_dashboard_catalog
+    - dashboard
   external-tools:
-  - '*dashboard*'
-  - get_report_link
+  - dashboard
 ---
 
 # Project dashboard
 
-Use list_dashboards and get_dashboard first. Use create_dashboard/update_dashboard, validate_dashboard and preview_dashboard on the exact revision, then publish_dashboard when requested. Read get_dashboard_catalog for the authoring contract. Use get_dashboard_link to show the result; a link does not grant access. Use managed TSX with shared components from @agentworks/dashboard for dashboards; charts use Recharts. JSON dashboard specifications have been removed. AskButton and ChatPanel appear only for shared Run users, never for Builders. HTML authoring is deprecated; existing HTML remains supported. Preserve authored content and all views/actions when converting. Cost, file and database access remain the current product’s own checks.
+Use dashboard action=list and dashboard action=get first. Use dashboard action=create/dashboard action=update, dashboard action=validate and dashboard action=preview on the exact revision, then dashboard action=publish when requested. Read dashboard action=catalog for the authoring contract. Use dashboard action=link to show the result; a link does not grant access. Use managed TSX with shared components from @agentworks/dashboard for dashboards; charts use Recharts. JSON dashboard specifications have been removed. AskButton and ChatPanel appear only for shared Run users, never for Builders. HTML authoring is deprecated; existing HTML remains supported. Preserve authored content and all views/actions when converting. Cost, file and database access remain the current product’s own checks.
 
-Dashboard work stays in the project's dashboard list. “Move this dashboard to React” means the hosted dashboard, not a separate Vite app or localhost server. Read the React section in the detailed procedure; a successful npm build alone is not a completed dashboard. Do not claim it is published until list_dashboards confirms its publication and get_dashboard_link returns its link.
+Dashboard work stays in the project's dashboard list. “Move this dashboard to React” means the hosted dashboard, not a separate Vite app or localhost server. Read the React section in the detailed procedure; a successful npm build alone is not a completed dashboard. Do not claim it is published until dashboard action=list confirms its publication and dashboard action=link returns its link.
 
 Before authoring a dashboard, Read [the detailed procedure](references/authoring.md).
 

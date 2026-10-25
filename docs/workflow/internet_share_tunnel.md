@@ -1,6 +1,6 @@
 # Internet share tunnel (temporary off-machine links)
 
-Local AgentWorks servers bind loopback, so `get_report_link` / `get_file_link`
+Local AgentWorks servers bind loopback, so `dashboard action=link` / `get_file_link`
 URLs are same-machine previews. The internet share tunnel puts the running
 server on the internet through a Cloudflare quick tunnel
 (`https://xxx.trycloudflare.com`), after which those two tools return links
@@ -34,7 +34,7 @@ chat: manage_internet_share(action=start)
     → cloudflared tunnel --url http://127.0.0.1:<actualPort>
     → parse trycloudflare.com URL from stderr (45s timeout)
     → store override + arm expiry timer
-  → get_report_link / get_file_link build URLs from the override
+  → dashboard action=link / get_file_link build URLs from the override
 chat: manage_internet_share(action=stop|status) / expiry / shutdown
   → kill cloudflared, clear override
 ```

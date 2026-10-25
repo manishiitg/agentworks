@@ -128,7 +128,7 @@ func (api *StreamingAPI) registerReportPreviewTool(registrar definitionToolRegis
 		},
 		"additionalProperties": false,
 	}
-	description := "Render one HTML document under db/reports/ in a headless browser exactly as the Report tab does and return the real outcome: settled/error state, script errors, failed data reads, tab labels, stale loading text, page height, real viewport screenshots and UI measurements (overflow, missing CSS, broken images and unnamed controls). document_path defaults to db/reports/index.html. Run after validate_report_html passes; it is slower (~10-30s) and needs a browser."
+	description := "Render one HTML document under db/reports/ in a headless browser exactly as the Report tab does and return the real outcome: settled/error state, script errors, failed data reads, tab labels, stale loading text, page height, real viewport screenshots and UI measurements (overflow, missing CSS, broken images and unnamed controls). document_path defaults to db/reports/index.html. Run after dashboard action=validate passes; it is slower (~10-30s) and needs a browser."
 	return registrar.RegisterCustomToolWithTimeout(
 		"preview_report",
 		description,

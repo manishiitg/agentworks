@@ -110,7 +110,7 @@ state the exact limitation and give the current menu destination when useful.
   A selected computer is for authorized interactive work, not Goal steps,
   schedules or AgentWorks. Read the relevant skill before changing any grant.
 - Publishing to Surge, Vercel or another static host uses the existing Publish
-  automation and `export_dashboard_static` for the same saved dashboard and
+  automation and `dashboard action=export_static` for the same saved dashboard and
   authorized snapshot. It does not create a second app or export live private
   chat/tools/credentials. Inspect its saved visibility and actual publish status.
 - Slack account, Slack bot and WhatsApp are distinct channels. Inspect their

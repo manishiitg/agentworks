@@ -24,6 +24,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	agentlogger "github.com/manishiitg/coding-agent-loop/agent_go/pkg/logger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -961,11 +962,43 @@ func (w *LLMAgentWrapper) FinalizeDefinition(ctx context.Context) error {
 		return errors.New("underlying agent is nil")
 	}
 
+	// Admission happens per member during registration. Publish only the
+	// grouped catalog, whose dispatch retains that exact action membership.
+	projected, err := platformtools.Project(w.definition.Tools.Direct, platformtools.Selection{
+		Tools: w.runtime.Tools.SelectedTools, Servers: w.runtime.Tools.SelectedServers,
+		FilterCustom: !w.runtime.Tools.CodeExecution && !common.IsCLIProvider(string(w.config.Provider)),
+	})
+	if err != nil {
+		return fmt.Errorf("project platform tool catalog: %w", err)
+	}
+	w.definition.Tools.Direct = projected
 	for i := range w.definition.Tools.Direct {
 		tool := &w.definition.Tools.Direct[i]
 		tool.Description = skills.WorkspacePanelToolGuidance(tool.Name, tool.Description, w.definition.Skills)
 	}
 	runtime := w.runtime
+	bridge := []string{}
+	seen := map[string]bool{}
+	for _, name := range runtime.Tools.AdditionalBridge {
+		name = platformtools.PublicName(name)
+		if !seen[name] {
+			bridge = append(bridge, name)
+			seen[name] = true
+		}
+	}
+	runtime.Tools.AdditionalBridge = bridge
+	admit := runtime.Coding.BridgeToolAdmit
+	runtime.Coding.BridgeToolAdmit = func(name string) bool {
+		if name == "dashboard" || name == "share" {
+			for _, tool := range projected {
+				if tool.Name == name {
+					return true
+				}
+			}
+			return false
+		}
+		return admit == nil || admit(name)
+	}
 	runtime.ResumeHandle = w.lastResult.Handle
 	runtime.Observability.Observers = append([]mcpagent.AgentEventListener(nil), w.observers...)
 	next, err := mcpagent.NewAgentFromDefinition(ctx, w.definition, runtime)

@@ -22,7 +22,7 @@ For a tagged Crew:
 - Read Dashboard source in `db/reports/`, commonly `index.html`, and query
   its database read-only when needed. The Dashboard stays in the Crew's UI;
   attaching it does not replace the current project's Dashboard. The current
-  project's `get_report_link` tool does not target another Crew: ask that Crew
+  project's `dashboard action=link` tool does not target another Crew: ask that Crew
   for its Dashboard link when needed.
 - Schedule definitions live in `workflow.json`. For current enablement, next
   run or latest run status, send the Crew an explicit message and request its

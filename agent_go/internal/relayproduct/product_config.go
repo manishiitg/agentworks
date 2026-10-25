@@ -9,6 +9,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	platformskills "github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -108,12 +109,13 @@ func ChatTools(mode string) ([]string, error) {
 }
 
 func ChatAllowsTool(mode, name string) bool {
+	name = platformtools.Identity(name)
 	tools, err := ChatTools(mode)
 	if err != nil {
 		return false
 	}
 	for _, allowed := range tools {
-		if allowed == name {
+		if platformtools.Identity(allowed) == name {
 			return true
 		}
 	}

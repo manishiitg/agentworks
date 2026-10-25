@@ -52,7 +52,7 @@ Small structural repairs use the normal plan tools and current route ownership. 
 Workshop is for the run/measure/classify/act loop. If the user asks about:
 
 - **Report documents (HTML/Markdown), themes, tabs, custom colors** → handle them
-  here with normal report HTML edits and `validate_report_html`; read `reporting-policy` first. Workshop can maintain
+  here with normal report HTML edits and `dashboard action=validate`; read `reporting-policy` first. Workshop can maintain
   `db/reports/index.html` when report changes need to reflect
   run/measurement evidence.
 - **Greenfield workflow design — adding new execution steps or
