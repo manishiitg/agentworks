@@ -40,7 +40,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   add('workshop', 'Use', 'Chat history', MessageSquareText, 'chats')
   // These retain the existing Slack destinations: both Goal rows open its Slack page.
   if (!relayMode) {
-    add('mcp', 'Integrations', 'Slack bot', MessageSquareText, 'slack', 'Use from other apps')
+    add('mcp', 'Integrations', 'Slack bot', MessageSquareText, 'slack')
     items[items.length - 1].id = 'mcp:slack-bot'
   }
   add('mcp', 'Use', 'WhatsApp', MessageSquareText, 'whatsapp', 'Use from other apps')
