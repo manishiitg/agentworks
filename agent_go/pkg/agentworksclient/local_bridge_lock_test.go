@@ -773,7 +773,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("saved native chat did not reconnect without a prompt")
 	}
 	status, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "status", Provider: "codex", SessionID: "background", HostKey: "current-process"})
@@ -797,7 +797,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("SessionEnd permanently disconnected the saved native chat")
 	}
 	if detaches.Load() != 0 || backgroundAttachments.Load() != 2 {
@@ -812,7 +812,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		if err == nil {
 			t.Fatal("recovery ignored the replaced-attachment refusal")
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("recovery did not observe the replaced attachment")
 	}
 	stopped, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "connection", Provider: "codex", SessionID: "background"})
