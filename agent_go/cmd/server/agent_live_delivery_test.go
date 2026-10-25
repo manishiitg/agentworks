@@ -60,7 +60,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	}
 	receiver, receiverConnection, receiverToken := issue()
 	sender, senderConnection, _ := issue()
-	stranger, _, _ := issue()
+	stranger, _, strangerToken := issue()
 	call := func(c *agentworksclient.Client, args map[string]any) map[string]any {
 		t.Helper()
 		raw, e := c.Call(context.Background(), "messages", args)
@@ -81,6 +81,34 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	attached, err := receiver.AttachAgent(ctx, agentworksclient.AgentAttachmentOptions{AgentName: "reviewer", Purpose: "Review incoming work", Provider: "claude", SessionID: "exact-session-one"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	inspect := func(token string) (int, map[string]any) {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"action": "inspect", "agent_name": "reviewer"})
+		req, e := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", bytes.NewReader(body))
+		if e != nil {
+			t.Fatal(e)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, e := http.DefaultClient.Do(req)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer resp.Body.Close()
+		var out map[string]any
+		if e = json.NewDecoder(resp.Body).Decode(&out); e != nil {
+			t.Fatal(e)
+		}
+		return resp.StatusCode, out
+	}
+	status, metadata := inspect(receiverToken)
+	leaseMetadata, _ := metadata["attachment"].(map[string]any)
+	if status != http.StatusOK || metadata["agent_id"] != attached.AgentID || len(leaseMetadata) != 1 || leaseMetadata["attachment_id"] != attached.ID {
+		t.Fatal("own attachment inspect was missing or exposed excess metadata", metadata)
+	}
+	if status, _ := inspect(strangerToken); status != http.StatusNotFound {
+		t.Fatal("an unapproved connection inspected another connection's name", status)
 	}
 	root, err := os.MkdirTemp("", "aw-channel-")
 	if err != nil {

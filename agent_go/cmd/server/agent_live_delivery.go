@@ -214,6 +214,14 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	ackDelivery, previousAttachment := "", ""
 	receiptUnchanged := false
 	switch externalArg(args, "action") {
+	case "inspect":
+		// Current metadata for this account-owned name; no body or receipt.
+		var attachment any
+		if a.Attachment != nil {
+			attachment = map[string]any{"attachment_id": a.Attachment.ID}
+		}
+		externalJSON(w, map[string]any{"agent_id": a.ID, "attachment": attachment})
+		return
 	case "attach":
 		provider, session, purpose := externalArg(args, "provider"), externalArg(args, "native_session_id"), strings.TrimSpace(externalArg(args, "purpose"))
 		if !slices.Contains([]string{"codex", "claude", "muse", "cursor", "agy", "pi"}, provider) || session == "" || len(session) > 128 || strings.ContainsAny(session, "/\\\r\n\x00") || utf8.RuneCountInString(purpose) > 512 || strings.ContainsAny(purpose, "\r\n") {
