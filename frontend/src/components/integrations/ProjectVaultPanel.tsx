@@ -72,7 +72,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
   return <section aria-label={title || (secretsOnly ? "Shared secrets" : "Integrations")} className="space-y-4 text-sm">
     <p className="text-xs text-muted-foreground">{secretsOnly ? 'Choose the shared secrets this project can use. Values stay hidden.' : 'Tick what this project uses. Ask in chat to connect apps, add secrets or share an account.'}</p>
     {(error || setup.error) && <p role="alert" className="text-xs text-destructive">{error || setup.error}</p>}
-    {!data && !error && <p role="status" className="text-muted-foreground">Loading your vaults…</p>}
+    {!data && !error && <p role="status" className="text-muted-foreground">Loading integrations…</p>}
     {data?.notices.map(notice => <p key={notice} role="status" className="text-xs text-muted-foreground">{notice}</p>)}
     {groups?.length === 0 && <p className="py-4 text-muted-foreground">{secretsOnly ? 'No shared secrets are available to this project yet.' : 'No accounts or secrets yet. Ask this chat to connect your first app or share an account.'}</p>}
     {groups?.map(vault => <details key={`${scope}:${vault.id}`} open className="overflow-hidden rounded-lg border border-border">
