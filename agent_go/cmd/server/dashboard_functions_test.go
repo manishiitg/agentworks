@@ -123,7 +123,7 @@ func TestDashboardRelayFunctionsUsePublishedVersionAndRealCaller(t *testing.T) {
 	f.mock.mu.Unlock()
 	resolved := resolvedDashboardQuestion{Target: dashboardTarget{Kind: "relay", ID: "invoices", Root: "Workflow/invoices"}}
 	router := mux.NewRouter()
-	router.HandleFunc("/functions/{action}", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/api/functions/{action}", func(w http.ResponseWriter, r *http.Request) {
 		tool := "list_workflow_functions"
 		args := map[string]any{}
 		if mux.Vars(r)["action"] == "call" {
@@ -137,7 +137,7 @@ func TestDashboardRelayFunctionsUsePublishedVersionAndRealCaller(t *testing.T) {
 	call := func(action string) (int, map[string]any) {
 		t.Helper()
 		token, _ := GenerateJWT("reader", "reader", "")
-		request, _ := http.NewRequest(http.MethodPost, server.URL+"/functions/"+action, nil)
+		request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/functions/"+action, nil)
 		request.Header.Set("Authorization", "Bearer "+token)
 		response, err := server.Client().Do(request)
 		if err != nil {

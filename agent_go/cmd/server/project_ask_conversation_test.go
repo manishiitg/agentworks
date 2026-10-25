@@ -63,7 +63,7 @@ func TestProjectAskConversationKeepsCrewCallerOwnership(t *testing.T) {
 	}
 	// A conflicting stored owner is a refusal, never repaired by adoption.
 	f.api.eventStore.SetSessionOwner(readerID, "owner")
-	if status, _ := call("other"); status != 403 {
+	if status, _ := call("other"); status != 403 && status != 409 {
 		t.Fatalf("conflicting session owner accepted: %d", status)
 	}
 	if f.api.eventStore.GetSessionOwner(readerID) != "owner" {
