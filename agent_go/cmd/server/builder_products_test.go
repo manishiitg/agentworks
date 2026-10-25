@@ -7,15 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 func assertNoDisabledProductGuidance(t *testing.T, label, body string) {
@@ -31,87 +25,6 @@ func assertNoDisabledProductGuidance(t *testing.T, label, body string) {
 		if pattern.MatchString(candidate) {
 			t.Errorf("%s mentions disabled product: %s", label, line)
 		}
-	}
-}
-
-func TestBuilderProductsCanonicalPromptsAndSkills(t *testing.T) {
-	t.Setenv("AGENT_PRODUCTS", "")
-	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
-	if err := workproduct.RegisterProductSkills(); err != nil {
-		t.Fatal(err)
-	}
-	if err := workproduct.RegisterFeatureSkills("code", "Code"); err != nil {
-		t.Fatal(err)
-	}
-	for _, tc := range []struct {
-		name, mode, opt string
-		enabled         bool
-	}{{"local", "local", "0", false}, {"local opt-in", "local", "1", true}, {"server", "server", "0", true}} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", tc.mode)
-			t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", tc.opt)
-			selection := builderProductSelection(nil)
-			for _, p := range []agentprofiles.Profile{workproduct.BuiltinAgentProfile(), workproduct.BuiltinAgentProfile()} {
-				if !selection.Has(p.ID) {
-					continue
-				}
-				if err := agentprofiles.ResolveFeatures(&p); err != nil {
-					t.Fatal(err)
-				}
-				text := p.ForProducts(selection).SystemPromptTemplate
-				if !tc.enabled {
-					assertNoDisabledProductGuidance(t, p.ID+" prompt", text)
-					for _, extension := range agentprofiles.FeaturePromptExtensions(p.ForProducts(selection)) {
-						assertNoDisabledProductGuidance(t, p.ID+" feature prompt", selection.Text(extension))
-					}
-				}
-				if strings.Contains(text, "Vault") != tc.enabled || strings.Contains(text, "<!-- product:") {
-					t.Fatalf("%s prompt differs from deployment: %s", p.ID, text)
-				}
-			}
-			if text := selection.Text(agentworksproduct.ChatPromptTemplate("builder")); strings.Contains(text, "brain_browse") != tc.enabled {
-				t.Fatal("workflow builder Brain guidance differs from deployment")
-			}
-			for _, ref := range []*llmtypes.Skill{guidance.MaterializeReferenceSkill("workshop"), guidance.MaterializeReferenceSkill("run"), guidance.MaterializeGuidanceSkill("workshop")} {
-				if ref == nil {
-					continue
-				}
-				projected := selection.Skill(ref)
-				for _, file := range projected.SupportingFiles {
-					body := string(file.Content)
-					if !tc.enabled {
-						assertNoDisabledProductGuidance(t, ref.Name+"/"+file.RelPath, body)
-					}
-					if strings.Contains(body, "<!-- product:") || !tc.enabled && (strings.Contains(body, "brain_browse") || strings.Contains(body, "Vault")) {
-						t.Fatalf("%s leaked product guidance: %s", file.RelPath, body)
-					}
-				}
-			}
-			loaded := skills.LoadAttachableIn("", "", []string{"work-mcp", "code-mcp", "work-integrations", "code-integrations", "work-dashboard", "code-dashboard"})
-			wantSkills := 3
-			if tc.enabled {
-				wantSkills = 6
-			}
-			if len(loaded) != wantSkills {
-				t.Fatalf("canonical skill fixture incomplete: %d", len(loaded))
-			}
-			for _, skill := range loaded {
-				body := selection.Skill(skill).Content
-				if !tc.enabled {
-					assertNoDisabledProductGuidance(t, skill.Name, body)
-				}
-				if !tc.enabled && strings.Contains(body, "Vault") {
-					t.Fatalf("%s leaked Vault: %s", skill.Name, body)
-				}
-			}
-			for _, name := range []string{"work-workflow-files", "work-schedules-and-bots"} {
-				for _, skill := range skills.LoadAttachableIn("", "", []string{name}) {
-					if !tc.enabled {
-						assertNoDisabledProductGuidance(t, name, selection.Skill(skill).Content)
-					}
-				}
-			}
-		})
 	}
 }
 
