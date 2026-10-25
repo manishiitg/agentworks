@@ -31,6 +31,7 @@ type AgentAttachment struct {
 }
 
 type AgentLiveMessage struct {
+	AgentID      string `json:"agent_id,omitempty"`
 	AttachmentID string `json:"attachment_id"`
 	MessageID    string `json:"message_id"`
 	InboxID      string `json:"inbox_id"`
@@ -99,11 +100,27 @@ var streamIdleLimit = 45 * time.Second
 // StreamAgentMessages carries inbox wake hints and explicit person pings on one
 // authenticated connection. Peer bodies come only from the bounded inbox read.
 func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttachment, receive func(AgentLiveMessage) error, connected ...func()) error {
+	if attachment.AgentName == "" || attachment.ID == "" {
+		return errors.New("exact attachment required")
+	}
+	return c.streamAgentMessages(ctx, attachment, receive, connected...)
+}
+
+// StreamAgentWakeHints releases metadata only, never incoming message bodies.
+func (c *Client) StreamAgentWakeHints(ctx context.Context, receive func(AgentLiveMessage) error) error {
+	return c.streamAgentMessages(ctx, AgentAttachment{}, receive)
+}
+
+func (c *Client) streamAgentMessages(ctx context.Context, attachment AgentAttachment, receive func(AgentLiveMessage) error, connected ...func()) error {
+	account := attachment.ID == ""
 	token, err := c.authToken(ctx)
 	if err != nil {
 		return err
 	}
 	q := url.Values{"agent_name": {attachment.AgentName}, "attachment_id": {attachment.ID}}
+	if account {
+		q = url.Values{}
+	}
 	// The server sends a frame at least every 10 s (heartbeats included). A connection that goes quiet for streamIdleLimit is
 	// half open (sleep, a network change): drop it so the caller reconnects instead of waiting forever.
 	ctx, cancelStream := context.WithCancel(ctx)
@@ -161,12 +178,24 @@ func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttach
 			return &APIError{Status: 403, Code: "agent_attachment_closed", Message: "The attachment or its connection is no longer authorized."}
 		}
 		if frame.Type == "inbox_changed" {
+			if account {
+				if frame.AgentID == "" || frame.Sequence <= 0 || frame.Message != "" || frame.Sender != "" {
+					return errors.New("invalid account wake metadata")
+				}
+				if err = receive(AgentLiveMessage{AgentID: frame.AgentID, AttachmentID: frame.AttachmentID, Sequence: frame.Sequence}); err != nil {
+					return err
+				}
+				continue
+			}
 			if frame.AttachmentID != attachment.ID || frame.Sequence <= 0 {
 				return errors.New("inbox signal does not match this attachment")
 			}
 			if err = receive(AgentLiveMessage{AttachmentID: frame.AttachmentID, Sequence: frame.Sequence}); err != nil {
 				return err
 			}
+			continue
+		}
+		if account {
 			continue
 		}
 		if frame.Type != "message" || frame.Kind != "ping" {

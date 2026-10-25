@@ -188,6 +188,11 @@ type localSession struct {
 }
 
 type localBridge struct {
+	ctx          context.Context
+	wakeStreams  map[string]context.CancelFunc
+	wakeOpening  map[string]bool
+	wakeAfter    map[string]time.Time
+	wakeTries    map[string]nativeWakeTry
 	usageWake    chan struct{}
 	usageRunning bool
 	museCurrent  map[string]string
@@ -212,7 +217,9 @@ var ErrNativeOfferUnconfirmed = errors.New("native delivery is unconfirmed")
 var ErrNativeOfferRejected = errors.New("native offer failed before delivery")
 
 type LocalBridgeOptions struct {
-	Ready func(context.Context) // one bounded native-chat discovery after local readiness
+	// NativeWake resumes an exact saved desktop chat on permitted pending mail.
+	NativeWake func(context.Context, AgentAttachment, string) error
+	Ready      func(context.Context) // one bounded native-chat discovery after local readiness
 	// Reconnect verifies only saved native chats after their provider restarts.
 	// It runs outside the bridge lock, with at most one discovery in flight.
 	Reconnect         func(context.Context, []AgentAttachment)
@@ -493,7 +500,7 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 			return err
 		}
 	}
-	b := &localBridge{root: root, sessions: map[string]*localSession{}, changed: make(chan struct{}), usageWake: make(chan struct{}, 1)}
+	b := &localBridge{ctx: ctx, root: root, sessions: map[string]*localSession{}, changed: make(chan struct{}), usageWake: make(chan struct{}, 1)}
 	if len(options) > 0 {
 		b.options = options[0]
 	}
@@ -525,6 +532,7 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 	if err = b.save(); err != nil {
 		return err
 	}
+	b.refreshNativeWakeStreams()
 	shutdown := make(chan struct{})
 	var shutdownOnce sync.Once
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -610,6 +618,9 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		cancel()
 		b.mu.Lock()
 		b.closed = true
+		for _, cancel := range b.wakeStreams {
+			cancel()
+		}
 		for _, s := range b.sessions {
 			stopMuseWatch(s)
 			if s.cancel != nil {
@@ -1359,6 +1370,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			return LocalBridgeReply{Error: err.Error()}
 		}
+		b.refreshNativeWakeStreams()
 		if s != nil && s.LegacyLifecycleMigration {
 			log.Printf("[BRIDGE-MIGRATION] outcome=reconnected agent=%s attachment=%s", next.Attachment.AgentName, next.Attachment.ID)
 		}
@@ -2022,6 +2034,13 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 			}
 			s.LastError = "Native delivery uncertain; ask the agent to read the mailbox."
 			if errors.Is(err, ErrNativeOfferRejected) {
+				if _, _, eligible := b.nativeWakeTarget(s); eligible && b.options.NativeWake != nil {
+					// Nothing reached the native chat. Re-read pending server mail after
+					// wake; the local cursor must not skip this rejected handoff.
+					if b.queueNativeWake(s) {
+						s.ReadPosition = 0
+					}
+				}
 				s.LastError = "Message not delivered; ask the agent to read the mailbox."
 			}
 			_ = b.save()
@@ -2372,6 +2391,7 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 				b.mu.Unlock()
 			}()
 		}
+		b.refreshNativeWakeStreams()
 		_ = b.save()
 		b.wake()
 		b.mu.Unlock()

@@ -395,6 +395,10 @@ func currentAgentAttachment(ctx context.Context, claims *UserClaims, name, id st
 func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	name, id := r.URL.Query().Get("agent_name"), r.URL.Query().Get("attachment_id")
+	if name == "" && id == "" {
+		api.handleAgentWakeEvents(w, r)
+		return
+	}
 	a, _, err := currentAgentAttachment(r.Context(), claims, name, id)
 	if err != nil {
 		externalError(w, 403, "attachment_refused", "Exact attachment unavailable or access denied.")
