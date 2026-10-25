@@ -263,8 +263,10 @@ it('lets a Crew owner edit and remove an ordinary skill from its compact invento
     expect([...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Uninstall')!.disabled).toBe(true)
     access.canWrite = true
     await act(async () => root.render(<SkillsManagerPanel customOnly allowManage profileId="work" workspacePath="Crew/example" onOpenFile={open} onUninstalled={removed} />))
+    vi.mocked(skillsApi.deleteSkill).mockImplementationOnce(async () => { vi.mocked(skillsApi.listSkills).mockResolvedValue({ skills: [], total: 0 }) })
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Uninstall')!.click())
     expect(skillsApi.deleteSkill).toHaveBeenCalledWith('scene-guide', 'Crew/example')
     expect(removed).toHaveBeenCalledWith('scene-guide')
+    expect(host.querySelector('[aria-label="Read skill scene-guide"]')).toBeNull()
   } finally { await act(async () => root.unmount()); host.remove(); window.confirm = confirm; access.canWrite = true; vi.clearAllMocks() }
 })

@@ -75,8 +75,9 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
   readOnly?: boolean
   memoryEnabled?: boolean
   skillsEnabled?: boolean
-  skillsManager?: (skills: CrewSkill[]) => ReactNode
+  skillsManager?: ReactNode
 }) {
+  const managedSkills = Boolean(skillsManager)
   const [tab, setTab] = useState('memory')
   const activeTab = tab === 'memory' && memoryEnabled ? 'memory' : skillsEnabled ? 'skills' : 'memory'
   useWorkspacePanelAssistant(activeTab === 'skills' ? { workspacePath, message: readOnly
@@ -100,7 +101,7 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
     const files = fileClient ?? proxyCrewFileClient
     void Promise.allSettled([
       memoryEnabled ? files.readFile(`${workspacePath}/MEMORY.md`) : Promise.resolve({ data: { content: '' } }),
-      skillsEnabled ? loadCrewSkills(workspacePath, files) : Promise.resolve([]),
+      skillsEnabled && !managedSkills ? loadCrewSkills(workspacePath, files) : Promise.resolve([]),
     ]).then(([memoryResult, skillsResult]) => {
       if (cancelled) return
       if (memoryResult.status === 'fulfilled') {
@@ -123,7 +124,7 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
       if (!cancelled) setLoading(false)
     })
     return () => { cancelled = true }
-  }, [fileClient, refreshNonce, workspacePath, memoryEnabled, skillsEnabled])
+  }, [fileClient, refreshNonce, workspacePath, memoryEnabled, skillsEnabled, managedSkills])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
@@ -151,7 +152,7 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
         ) : (
           <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
             {activeTab === 'skills' && <>
-            {skillsManager ? skillsManager(skills) : <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+            {skillsManager ? skillsManager : <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">

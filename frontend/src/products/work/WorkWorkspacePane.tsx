@@ -370,7 +370,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           readOnly={readOnly}
           memoryEnabled={!enabledPanels || enabledPanels.has('memory')}
           skillsEnabled={!enabledPanels || enabledPanels.has('skills')}
-          skillsManager={skills => <WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} projectSkills={skills} onOpenFile={filePath => { void openProjectFile(filePath) }} onSelectedSkillsChange={onSelectedSkillsChange} />}
+          skillsManager={<WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} onOpenFile={filePath => { void openProjectFile(filePath) }} onSelectedSkillsChange={onSelectedSkillsChange} />}
         />}
         <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>
           {view === 'dashboard' && <ReportView

@@ -2,17 +2,15 @@ import { useRef } from 'react'
 import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import { useChatStore } from '../../stores/useChatStore'
 import { useProjectProduct } from './projectProduct'
-import type { CrewSkill } from './WorkMemoryPanel'
 
 const EMPTY_SKILLS: string[] = []
 
 /** User-installed project skills; automatic platform guidance stays in the runtime. */
-export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSkillsChange, projectSkills = [], onOpenFile }: {
+export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSkillsChange, onOpenFile }: {
   workspacePath: string
   projectId: string
   tabId: string
   onSelectedSkillsChange: (skills: string[]) => Promise<unknown>
-  projectSkills?: CrewSkill[]
   onOpenFile?: (path: string) => void
 }) {
   const product = useProjectProduct()
@@ -45,7 +43,6 @@ export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSki
           allowManage
           profileId={product.profileId}
           profileVersion={product.profileVersion}
-          additionalSkills={projectSkills.map(skill => ({ folder_name: skill.name, file_path: skill.filePath, frontmatter: { name: skill.name, description: skill.description }, content: '' }))}
           onOpenFile={onOpenFile ? path => onOpenFile(path.startsWith(`${workspacePath}/`) ? path : `${workspacePath}/${path}`) : undefined}
           workspacePath={workspacePath}
           selectedSkills={selectedSkills}
