@@ -136,6 +136,9 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		if !linked {
 			return "", fmt.Errorf("%q is not linked to this Crew; use the exact workspace_path from list_attached_workflows (link it first with attach_workflow_reference)", target)
 		}
+		if isCrewProjectPath(target) {
+			return "", fmt.Errorf("only linked workflows (Goals) have a database to read this way; for a linked Crew, read its files instead")
+		}
 		if _, err := attached(ctx, target); err != nil {
 			return "", err
 		}
