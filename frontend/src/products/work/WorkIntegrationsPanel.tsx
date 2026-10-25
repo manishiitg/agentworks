@@ -22,8 +22,9 @@ import { integrationProductAvailable } from '../../components/integrations/integ
 
 export type WorkIntegrationTab = 'vault' | 'brain' | 'folders' | 'slack' | 'whatsapp' | 'cli' | 'agents' | 'agentbridge'
 
-export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets = [], selectedGlobalSecrets = [], onSelectedSecretsChange = () => {}, onSelectedGlobalSecretsChange = () => {}, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange }: {
+export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets = [], selectedGlobalSecrets = [], onSelectedSecretsChange = () => {}, onSelectedGlobalSecretsChange = () => {}, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange }: {
   accessLoading?: boolean
+  onAppsSaved?: () => void
   selectedSecrets?: string[]; selectedGlobalSecrets?: string[]
   onSelectedSecretsChange?: ProjectSecretControls['onSelectedSecretsChange']; onSelectedGlobalSecretsChange?: ProjectSecretControls['onSelectedGlobalSecretsChange']
   canEdit?: boolean; workspacePath: string; projectId: string; projectTitle: string
@@ -55,7 +56,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
     <div data-ui-view-section={shareSection ? 'share' : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       {shareSection ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={draft} /> : <>
         {tab === 'agentbridge' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} />}
-        {tab === 'vault' && <MyVaultPanel workspacePath={workspacePath} tabId={tabId} disabled={!canEdit} projectControls={<ProjectVaultControls workspacePath={workspacePath} placeNoun="Crew" section={vaultSection} canEdit={canEdit} onAsk={draft} selectedSecrets={selectedSecrets} selectedGlobalSecrets={selectedGlobalSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSelectedGlobalSecretsChange={onSelectedGlobalSecretsChange} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />} />}
+        {tab === 'vault' && <MyVaultPanel workspacePath={workspacePath} tabId={tabId} disabled={!canEdit} projectControls={<ProjectVaultControls workspacePath={workspacePath} placeNoun="Crew" section={vaultSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} selectedGlobalSecrets={selectedGlobalSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSelectedGlobalSecretsChange={onSelectedGlobalSecretsChange} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} onAsk={onAsk} />}
         {tab === 'folders' && <WorkFoldersSection workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} onAsk={onAsk} askMessage="Help me choose the projects and folders this Crew uses." />}
         {tab === 'agents' && canEdit && <CrewPublishedAgents profileId={product.profileId} projectId={projectId} />}

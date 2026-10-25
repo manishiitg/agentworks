@@ -19,18 +19,19 @@ export function ProjectVaultControls({ workspacePath, placeNoun, section = 'vaul
   onAsk: (message: string) => Promise<void>; laptop?: ReactNode; onAppsSaved?: (servers: string[]) => void
 }) {
   const [apps, setApps] = useState<'connected' | 'available'>(section === 'available' ? 'available' : 'connected')
+  const appsRef = useRef<HTMLElement>(null)
   const secretRef = useRef<HTMLElement>(null)
   const googleRef = useRef<HTMLDetailsElement>(null)
   const slackRef = useRef<HTMLDetailsElement>(null)
   const laptopRef = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
     if (section === 'connected' || section === 'available') setApps(section)
-    const target = section === 'secrets' ? secretRef.current : section === 'gmail' ? googleRef.current : section === 'slack-account' ? slackRef.current : section === 'laptop' ? laptopRef.current : null
+    const target = section === 'secrets' ? secretRef.current : section === 'gmail' ? googleRef.current : section === 'slack-account' ? slackRef.current : section === 'laptop' ? laptopRef.current : appsRef.current
     if (target instanceof HTMLDetailsElement) target.open = true
     target?.scrollIntoView?.({ block: 'start' })
   }, [section])
   return <div className="space-y-5" aria-label="Project apps and secrets">
-    <section aria-label="MCPs" className="space-y-3">
+    <section ref={appsRef} aria-label="MCPs" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Apps &amp; MCPs</h2>
         <Button size="sm" variant="outline" onClick={() => setApps(apps === 'connected' ? 'available' : 'connected')}>{apps === 'connected' ? 'Add an app' : 'Back to connected apps'}</Button>
       </div>

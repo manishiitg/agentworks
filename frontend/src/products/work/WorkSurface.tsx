@@ -1451,6 +1451,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         onRuntimeChange={changeWorkRuntime}
                         nativeAgentTools={!!selected.nativeAgentTools}
                         onNativeAgentToolsChange={changeNativeAgentTools}
+                        onAppsSaved={() => { void refresh().catch(() => useChatStore.getState().addToast('Apps saved. Refresh the project to update its chat tools.', 'error')) }}
                         onSelectedServersChange={changeSelectedServers}
                         onSelectedSkillsChange={changeSelectedSkills}
                         onSelectedSecretsChange={changeSelectedSecrets}

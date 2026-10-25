@@ -286,6 +286,16 @@ describe('updateWorkSessionIdentity', () => {
 })
 
 describe('updateProductProjectSelections', () => {
+  it('keeps native Vault selections when saving a different field from a stale project list', async () => {
+    const project = parseSessionManifest(JSON.stringify({ schema_version: 1, product: 'work', id: 'abc', title: 'Example', session_id: 'work:project:abc', capabilities: { selected_servers: ['NO_SERVERS'] } }), 'Crew/example')!
+    getPlannerFileContent.mockResolvedValueOnce({ success: true, data: { content: JSON.stringify({ capabilities: { selected_servers: ['vault_saved'], selected_skills: ['saved-skill'], selected_secrets: [], selected_global_secret_names: ['SAVED_SHARED'] }, workflow_context_paths: ['Crew/reference'] }) } })
+    const updated = await updateProductProjectSelections(project, { selectedSecrets: ['NEW_KEY'] }, 'Update secrets', 'workflow.json')
+    const manifest = JSON.parse(updatePlannerFile.mock.calls.at(-1)![1] as string)
+    expect(manifest.capabilities).toEqual({ selected_servers: ['vault_saved'], selected_skills: ['saved-skill'], selected_secrets: ['NEW_KEY'], selected_global_secret_names: ['SAVED_SHARED'] })
+    expect(manifest.workflow_context_paths).toEqual(['Crew/reference'])
+    expect(updated.selectedServers).toEqual(['vault_saved'])
+  })
+
   it('persists Work runtime selections in workflow.json while preserving other capabilities', async () => {
     const project = parseSessionManifest(JSON.stringify({
       schema_version: 1,

@@ -531,11 +531,15 @@ export async function updateProductProjectSelections<P extends string>(
       ? { ...(manifest.capabilities as Record<string, unknown>) }
       : {}
     const normalize = (values: string[]) => [...new Set(values.map(value => value.trim()).filter(Boolean))]
-    const selectedServers = patch.selectedServers === undefined ? project.selectedServers : normalize(patch.selectedServers)
-    const selectedSkills = patch.selectedSkills === undefined ? project.selectedSkills : normalize(patch.selectedSkills)
-    const selectedSecrets = patch.selectedSecrets === undefined ? project.selectedSecrets : normalize(patch.selectedSecrets)
-    const selectedGlobalSecrets = patch.selectedGlobalSecrets === undefined ? project.selectedGlobalSecrets : normalize(patch.selectedGlobalSecrets)
-    const workflowContextPaths = patch.workflowContextPaths === undefined ? project.workflowContextPaths : normalize(patch.workflowContextPaths)
+    // Vault or another settings view may have saved since this project was
+    // listed. Keep untouched selections from the manifest we just read.
+    const saved = (key: string): string[] => Array.isArray(capabilities[key]) ? capabilities[key] as string[] : []
+    const selectedServers = patch.selectedServers === undefined ? saved('selected_servers') : normalize(patch.selectedServers)
+    const selectedSkills = patch.selectedSkills === undefined ? saved('selected_skills') : normalize(patch.selectedSkills)
+    const selectedSecrets = patch.selectedSecrets === undefined ? saved('selected_secrets') : normalize(patch.selectedSecrets)
+    const selectedGlobalSecrets = patch.selectedGlobalSecrets === undefined ? saved('selected_global_secret_names') : normalize(patch.selectedGlobalSecrets)
+    const savedContextPaths = runtimeManifestName ? manifest.workflow_context_paths : capabilities.workflow_context_paths
+    const workflowContextPaths = patch.workflowContextPaths === undefined ? (Array.isArray(savedContextPaths) ? savedContextPaths as string[] : []) : normalize(patch.workflowContextPaths)
     capabilities.selected_servers = selectedServers
     capabilities.selected_skills = selectedSkills
     capabilities.selected_secrets = selectedSecrets
