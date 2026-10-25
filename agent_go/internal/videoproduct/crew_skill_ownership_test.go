@@ -75,6 +75,11 @@ func TestCrewSkillFilesReplaceBundledVideoLibrary(t *testing.T) {
 	if err != nil || before == after {
 		t.Fatal("skill edit did not change the retained runtime revision")
 	}
+	body = strings.ReplaceAll(body, "Project instructions", "Edited discovery description")
+	headerRevision, err := skills.WorkspaceSkillDigest(server.URL, root, []string{name})
+	if err != nil || headerRevision == after {
+		t.Fatal("skill header edit did not change the runtime revision")
+	}
 	inventory, err := skills.DiscoverSkillsIn(server.URL, root)
 	if err != nil || len(inventory.Skills) != 1 || inventory.Skills[0].Builtin || inventory.Skills[0].Managed {
 		t.Fatalf("incorrect project ownership: %+v %v", inventory, err)

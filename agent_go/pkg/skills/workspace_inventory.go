@@ -201,14 +201,19 @@ func WorkspaceSkillDigest(workspaceAPIURL, workspacePath string, names []string)
 		if IsBuiltinSkillIn(workspacePath, name) {
 			continue
 		}
-		var content string
+		var document struct {
+			Name        string
+			Frontmatter SkillFrontmatter
+			Content     string
+		}
+		document.Name = name
 		for _, item := range inventory.Skills {
 			if item.FolderName == name {
-				content = item.Content
+				document.Content, document.Frontmatter = item.Content, item.Frontmatter
 				break
 			}
 		}
-		_ = encoder.Encode([]string{name, content})
+		_ = encoder.Encode(document)
 		files := loadSkillSupportingFilesIn(workspaceAPIURL, workspacePath, name)
 		sort.Slice(files, func(i, j int) bool { return files[i].RelPath < files[j].RelPath })
 		for _, file := range files {
