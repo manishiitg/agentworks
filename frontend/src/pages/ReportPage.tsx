@@ -52,7 +52,7 @@ export function ReportPage({ encodedPath, ownerUid }: ReportPageProps) {
       {backLink && <nav aria-label="Dashboard navigation" className="flex h-10 shrink-0 items-center border-b border-border px-3">{backLink}</nav>}
       <div className="min-h-0 flex-1">
         <SharedCrewWorkspace key={workspacePath} workspacePath={workspacePath!} enabled>
-          <ReportView workspacePath={workspacePath!} documentPath={documentPath} allowContentQuestions={false} dashboardConversation hideToolbar />
+          <ReportView workspacePath={workspacePath!} documentPath={documentPath} allowContentQuestions={false} dashboardConversation crewConversationPane hideToolbar />
         </SharedCrewWorkspace>
       </div>
     </div>

@@ -19,14 +19,14 @@ afterEach(async () => { for (const close of cleanup.splice(0)) await close(); vi
 const revision = 'a'.repeat(64)
 const view = { project_id: 'project-1', product: 'workflow', capability: { can_view: true, can_ask: true, mode: 'owner' } }
 
-async function mount(product = 'workflow', mode = 'owner', canAsk = true, markup = '<p id="total">42</p>') {
+async function mount(product = 'workflow', mode = 'owner', canAsk = true, markup = '<p id="total">42</p>', conversationPane = false) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanup.push(async () => { await act(async () => root.unmount()); host.remove() })
   const render = async (publication = revision) => {
     const data = { workspacePath: 'Workflow/demo', sendChatMessage: vi.fn() } as unknown as ReportDataApi
     await act(async () => root.render(<ReportEmbedProvider value={{ data }}>
-      <DashboardQuestionConversation resourceId="dashboard-1" revision={publication} product={product} projectId="project-1" workspacePath="Workflow/demo" capability={{ can_view: true, can_ask: canAsk, mode }} html="<p>Total 42</p>" title="Overview" documentPath="db/reports/managed/overview/index.html" className="" />
+      <DashboardQuestionConversation resourceId="dashboard-1" revision={publication} product={product} projectId="project-1" workspacePath="Workflow/demo" capability={{ can_view: true, can_ask: canAsk, mode }} conversationPane={conversationPane} html="<p>Total 42</p>" title="Overview" documentPath="db/reports/managed/overview/index.html" className="" />
     </ReportEmbedProvider>))
   }
   await render()
@@ -43,6 +43,23 @@ function click(text: string) {
   if (!button) throw new Error(`Missing ${text}`)
   button.click()
 }
+
+it.each(['owner', 'question_only'])('keeps the existing %s Crew chat beside its dashboard on opening and refresh', async mode => {
+  get.mockResolvedValue({ data: { ...view, product: 'crew', capability: { can_view: true, can_ask: true, mode } } })
+  openAsk.mockResolvedValue('caller-project-chat')
+  const current = await mount('crew', mode, true, '<p id="total">42</p>', true)
+  const chat = current.host.querySelector('[aria-label="Project chat"]')!
+  expect(chat.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('caller-project-chat')
+  expect(current.host.querySelector('[data-dashboard-pane]')?.contains(current.frame)).toBe(true)
+  expect(openAsk).toHaveBeenCalledWith({ product: 'crew', projectId: 'project-1', workspacePath: 'Workflow/demo' }, { activate: false })
+  expect(send).not.toHaveBeenCalled()
+  expect(current.host.querySelector('[aria-label="Open dashboard chat"]')).toBeNull()
+  expect(document.querySelector('dialog')).toBeNull()
+  await current.render('b'.repeat(64))
+  expect(current.host.querySelector('iframe')).toBe(current.frame)
+  expect(current.host.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('caller-project-chat')
+  expect(openAsk).toHaveBeenCalledTimes(1)
+})
 
 it('opens a shared Relay dashboard in the recipient’s existing normal conversation', async () => {
   get.mockResolvedValue({ data: { ...view, product: 'relay' } }); openAsk.mockResolvedValue('relay-builder-chat')
@@ -75,7 +92,7 @@ it.each(['crew', 'code', 'workflow', 'relay'])('lets an authorized %s Run user a
 })
 
 it.each([['crew', false], ['code', false], ['workflow', false], ['relay', false], ['unknown', true]] as const)('keeps %s Ask unavailable when capability is %s or no native adapter exists', async (product, canAsk) => {
-  const current = await mount(product, 'question_only', canAsk)
+  const current = await mount(product, 'question_only', canAsk, '<p id="total">42</p>', true)
   expect(current.host.querySelector('[aria-label="Open dashboard chat"]')).toBeNull()
   expect(get.mock.calls.filter(([url]) => !String(url).endsWith('/functions'))).toEqual([]); expect(openAsk).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()
 })

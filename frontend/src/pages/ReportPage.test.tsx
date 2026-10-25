@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../components/workflow/ReportViewer", () => ({
-  ReportView: ({ workspacePath, allowContentQuestions, hideToolbar, dashboardConversation }: { workspacePath: string; allowContentQuestions?: boolean; hideToolbar?: boolean; dashboardConversation?: boolean }) => <div data-questions={String(allowContentQuestions)} data-project-conversation={String(dashboardConversation)} data-toolbar-hidden={String(hideToolbar)}>Dashboard runtime {workspacePath}</div>,
+  ReportView: ({ workspacePath, allowContentQuestions, hideToolbar, dashboardConversation, crewConversationPane }: { workspacePath: string; allowContentQuestions?: boolean; hideToolbar?: boolean; dashboardConversation?: boolean; crewConversationPane?: boolean }) => <div data-questions={String(allowContentQuestions)} data-project-conversation={String(dashboardConversation)} data-crew-conversation-pane={String(crewConversationPane)} data-toolbar-hidden={String(hideToolbar)}>Dashboard runtime {workspacePath}</div>,
 }));
 
 vi.mock("../products/work/SharedCrewWorkspace", () => ({
@@ -34,6 +34,7 @@ describe("standalone report page", () => {
       expect(view.host.querySelector('[data-questions]')?.getAttribute('data-questions')).toBe('false');
       // Managed publications resolve their own server-authorized project Ask.
       expect(view.host.querySelector('[data-project-conversation]')?.getAttribute('data-project-conversation')).toBe('true');
+      expect(view.host.querySelector('[data-crew-conversation-pane]')?.getAttribute('data-crew-conversation-pane')).toBe('true');
       expect(view.host.textContent).not.toContain("Live Dashboard");
       expect(view.host.querySelector('nav')).toBeNull();
       // The return bar does not restore help, refresh or close overlays on the dashboard.

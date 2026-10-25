@@ -66,6 +66,8 @@ interface ReportViewProps {
   /** Standalone viewing links have no project chat destination. */
   allowContentQuestions?: boolean
   dashboardConversation?: boolean
+  /** Standalone Crew links keep the caller's native chat beside the UI. */
+  crewConversationPane?: boolean
   defaultRelayDashboard?: boolean
   headerAction?: React.ReactNode
   /** Standalone dashboard pages show the dashboard alone, without the app's help, refresh and close buttons. */
@@ -240,7 +242,7 @@ async function loadReportDocument(workspacePath: string, documentPath = 'db/repo
   return { path, html, label: title || 'Dashboard', questions }
 }
 
-function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, sendChatMessage, headerAction, hideToolbar = false, allowContentQuestions = true, dashboardConversation = false, defaultRelayDashboard = false }: ReportViewProps) {
+function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, sendChatMessage, headerAction, hideToolbar = false, allowContentQuestions = true, dashboardConversation = false, crewConversationPane = false, defaultRelayDashboard = false }: ReportViewProps) {
   const [report, setReport] = useState<ReportDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -320,6 +322,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
     : dashboardTitle
   const previewMode = focusTier || previewPreference
   const shellClass = previewMode === 'mobile' ? 'mx-auto w-full max-w-[480px] p-1.5' : 'w-full max-w-full'
+  const conversationPane = crewConversationPane && report?.questions?.product === 'crew' && report.questions.capability.can_ask
   const runtime = useMemo(() => ({ data: dataApi }), [dataApi])
 
   return (
@@ -338,9 +341,9 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
           tabIndex={0}
           aria-label="Dashboard content"
           data-report-viewport
-          className={`min-h-0 flex-1 overflow-y-auto overscroll-y-contain ${!loading && !error && !report && !defaultRelayDashboard ? 'flex flex-col' : ''}`}
+          className={`min-h-0 flex-1 overscroll-y-contain ${conversationPane ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'} ${!loading && !error && !report && !defaultRelayDashboard ? 'flex flex-col' : ''}`}
         >
-          <div className={`${shellClass} ${!loading && !error && !report && !defaultRelayDashboard ? 'flex flex-1 items-center justify-center' : ''}`}>
+          <div className={`${conversationPane ? 'flex min-h-0 w-full flex-1 flex-col' : shellClass} ${!loading && !error && !report && !defaultRelayDashboard ? 'flex flex-1 items-center justify-center' : ''}`}>
             {loading && !report && <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading dashboard…</div>}
             {error && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Failed to load report: {error}</div>}
             {!loading && !error && !report && defaultRelayDashboard && <Suspense fallback={<p className="p-6 text-sm text-muted-foreground">Opening Flow dashboard…</p>}><DefaultRelayDashboard workspacePath={workspacePath} refreshToken={refreshNonce} renderEmptyState={canCreate => <DashboardEmptyState description={emptyDescription} action={canCreate ? emptyAction : undefined} onRefresh={refresh} />} /></Suspense>}
@@ -349,7 +352,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
             )}
             {!loading && report && !report.html && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Could not read {report.label}.</div>}
             {report?.html && (report.questions
-              ? <DashboardQuestionConversation key={report.questions.resourceId} {...report.questions} html={report.html} title={report.label} documentPath={report.path} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />
+              ? <DashboardQuestionConversation key={report.questions.resourceId} {...report.questions} conversationPane={conversationPane} html={report.html} title={report.label} documentPath={report.path} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />
               : <ReportQuestionFrame key={report.path} html={report.html} title={report.label} documentPath={report.path} allowQuestions={allowContentQuestions} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />)}
           </div>
         </div>

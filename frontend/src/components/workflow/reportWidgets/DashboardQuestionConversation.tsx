@@ -19,9 +19,10 @@ export type DashboardQuestionCapability = { can_view: boolean; can_ask: boolean;
 type Props = ComponentProps<typeof ReportQuestionFrame> & {
   resourceId: string; revision: string; projectId: string; workspacePath: string
   capability: DashboardQuestionCapability; product: string
+  conversationPane?: boolean
 }
 
-export function DashboardQuestionConversation({ resourceId, revision, projectId, workspacePath, capability, product, ...frame }: Props) {
+export function DashboardQuestionConversation({ resourceId, revision, projectId, workspacePath, capability, product, conversationPane = false, ...frame }: Props) {
   const viewer = useAuthStore(state => state.user?.id)
   const [bound, setBound] = useState<{ tabId: string; viewer: string; resourceId: string } | null>(null)
   const [popup, setPopup] = useState(false)
@@ -46,7 +47,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const canAsk = Boolean(viewer && capability.can_ask && ['crew', 'code', 'workflow', 'relay'].includes(product))
   // Widgets belong to the shared Run view. Owner/context-menu questions retain
   // their existing native chat access, independently of widget presentation.
-  const showChatWidgets = canAsk && capability.mode === 'question_only'
+  const showChatWidgets = canAsk && capability.mode === 'question_only' && !conversationPane
   // Function buttons run the project's published functions as this person; the
   // server resolves the project from the dashboard record, including either Crew origin.
   const canUseFunctions = Boolean(viewer && capability.can_view && ['crew', 'code', 'workflow'].includes(product))
@@ -103,6 +104,11 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   }
   const opener = useRef(openAsk)
   opener.current = openAsk
+  useEffect(() => {
+    if (!conversationPane || !canAsk) return
+    setPopup(false)
+    void opener.current().catch(() => { /* openAsk records the failure for the pane. */ })
+  }, [conversationPane, canAsk, viewer, resourceId])
   const chatWidgets = useCallback((frame: HTMLIFrameElement) => {
     const binding = installDashboardChatWidgets(frame, {
       available: showChatWidgets, visible: showChatWidgets, container: container.current!, openConversation: () => opener.current(),
@@ -137,6 +143,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
     await sendWorkspacePaneMessageToChat({ tabId: id, message, notificationId: submissionId })
     if (generation.current === token) {
       accepted.current.set(submissionId, message)
+      if (conversationPane) return
       if (showChatWidgets && revealWidgets.current) revealWidgets.current()
       else setPopup(true)
     }
@@ -145,15 +152,22 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
     ? <div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><WorkingTipsContext.Provider value={false}><Suspense fallback={<p>Opening chat…</p>}><ChatArea tabId={bound.tabId} compact hideHeader previousChatsWorkspacePath={workspacePath} landingContent={<div />} slashCommands={slashCommands} composerPlaceholder="Ask a question…" /></Suspense></WorkingTipsContext.Provider></div></div>
     : <p role="status">{canAsk ? error || 'Opening chat…' : 'Chat is unavailable for this dashboard.'}</p>
   return <ReportEmbedProvider value={runtime}>
-    <div ref={container} className="relative overflow-hidden">
+    <div ref={container} className={conversationPane && canAsk ? 'relative flex h-full min-h-0 flex-col overflow-hidden md:flex-row' : 'relative overflow-hidden'}>
+      {conversationPane && canAsk && <aside aria-label="Project chat" className="flex h-[45%] min-h-64 shrink-0 flex-col border-b border-border md:h-full md:w-[38%] md:min-w-80 md:max-w-lg md:border-b-0 md:border-r">
+        <header className="shrink-0 border-b border-border px-4 py-3 text-sm font-semibold">Chat</header>
+        <div className="min-h-0 flex-1">{conversation}</div>
+        {error && <button type="button" onClick={() => void opener.current().catch(() => {})} className="shrink-0 px-4 py-2 text-left text-sm text-primary underline">Try opening chat again</button>}
+      </aside>}
+      <div data-dashboard-pane className={conversationPane && canAsk ? 'relative min-h-0 min-w-0 flex-1 overflow-y-auto' : 'contents'}>
       <ReportQuestionFrame key={`${viewer}:${resourceId}`} {...frame} allowQuestions={canAsk} submitQuestion={submitQuestion} publication={{ resourceId, revision }} />
       {!authored && showChatWidgets && <button type="button" aria-label="Open dashboard chat" title="Ask" className="absolute left-3 top-3 z-30 inline-flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 py-1 text-sm shadow-sm" onClick={() => void widgetApi.current?.open().catch(reason => setError(reason instanceof Error ? reason.message : 'Could not open chat.'))}>
         <MessageCircle className="h-4 w-4" /> Ask
       </button>}
       {slots.map(slot => <section key={slot.key} aria-label="Dashboard chat widget" aria-hidden={!slot.visible} data-report-theme={slot.palette} className={`absolute z-30 overflow-hidden bg-background text-foreground ${modeClass(slot.mode)}`} style={{ ...slot.vars, left: slot.left, top: slot.top, width: slot.width, height: slot.height, clipPath: slot.clipPath, visibility: slot.visible ? 'visible' : 'hidden' } as CSSProperties}>{conversation}</section>)}
-      {error && <p role="alert" className="absolute bottom-2 left-2 z-40 rounded-md border border-border bg-background px-2 py-1 text-sm text-destructive">{error}</p>}
+      {error && !conversationPane && <p role="alert" className="absolute bottom-2 left-2 z-40 rounded-md border border-border bg-background px-2 py-1 text-sm text-destructive">{error}</p>}
+      </div>
     </div>
-    {popup && canAsk && <ModalPortal><dialog ref={dialog} aria-label="Dashboard chat" style={theme.vars as CSSProperties} onCancel={() => setPopup(false)} className={`${modeClass(theme.mode)} m-auto h-[min(80vh,42rem)] w-[calc(100%_-_2rem)] max-w-xl overflow-hidden rounded-xl border border-border bg-background p-3 text-foreground shadow-xl backdrop:bg-black/50`}>
+    {popup && canAsk && !conversationPane && <ModalPortal><dialog ref={dialog} aria-label="Dashboard chat" style={theme.vars as CSSProperties} onCancel={() => setPopup(false)} className={`${modeClass(theme.mode)} m-auto h-[min(80vh,42rem)] w-[calc(100%_-_2rem)] max-w-xl overflow-hidden rounded-xl border border-border bg-background p-3 text-foreground shadow-xl backdrop:bg-black/50`}>
       <div className="flex h-full min-h-0 flex-col">
         <header className="mb-2 flex items-center justify-between"><span>Ask</span><button type="button" aria-label="Close chat" onClick={() => setPopup(false)}><X className="h-4 w-4" /></button></header>
         <div className="min-h-0 flex-1">{conversation}</div>
