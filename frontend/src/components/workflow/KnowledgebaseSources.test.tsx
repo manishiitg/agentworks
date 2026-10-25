@@ -23,7 +23,7 @@ vi.mock("../../hooks/useCanWriteWorkflow", () => ({
 vi.mock("../ui/MarkdownRenderer", () => ({
   MarkdownRenderer: ({ content }: { content: string }) => <div>{content}</div>,
 }));
-// The folders view banners Ask AI; stub the button so these tests don't pull
+// The folders header offers Ask AI; stub the button so these tests don't pull
 // the chat/LLM store chain through the services/api mock.
 vi.mock("./AskAIButton", () => ({
   AskAIButton: ({ label }: { label?: string }) => <button type="button">{label ?? "Ask AI"}</button>,
@@ -284,9 +284,12 @@ it("keeps the connected work view free of manual attach forms", async () => {
   expect(host.textContent).toContain("Nothing attached.");
   expect(host.querySelector("form")).toBeNull();
   expect(host.textContent).not.toContain("External folders");
+  expect(host.textContent).not.toContain("Want to link something else?");
+  expect(host.textContent).not.toContain("Ask AI to link");
+  expect(host.querySelector("header")?.textContent).toContain("Ask AI");
 });
 
-it("keeps the header above the source picker with Ask AI left of refresh", async () => {
+it("keeps the header and Ask AI above the source picker without automatic refresh", async () => {
   vi.mocked(workflowManifestApi.getKnowledgebaseSources).mockResolvedValue({
     success: true,
     sources: [source],
@@ -309,5 +312,5 @@ it("keeps the header above the source picker with Ask AI left of refresh", async
   expect(titleIndex).toBeGreaterThanOrEqual(0);
   expect(pickerIndex).toBeGreaterThan(titleIndex);
   expect(askIndex).toBeGreaterThanOrEqual(0);
-  expect(refreshIndex).toBeGreaterThan(askIndex);
+  expect(refreshIndex).toBe(-1);
 });
