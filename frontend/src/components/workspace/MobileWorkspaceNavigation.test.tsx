@@ -23,7 +23,7 @@ it('switches full-height phone panes without losing the mounted draft, and offer
     expect(workspace.getAttribute('aria-pressed')).toBe('true')
     expect(host.querySelector('textarea')).toBe(draft)
     expect(host.querySelector('main')?.className).toContain('hidden md:flex')
-    expect(host.querySelector('aside')?.className).not.toContain('hidden')
+    expect(host.querySelector('aside')?.classList.contains('hidden')).toBe(false)
     expect(host.querySelector('[class*="grid-rows"]')?.className).not.toContain('row-start-3')
     await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Chat')!.click())
     expect(draft.value).toBe('Keep this draft')
@@ -31,6 +31,6 @@ it('switches full-height phone panes without losing the mounted draft, and offer
     await act(async () => root.render(<Workspace shared />))
     expect(host.querySelector('[aria-label="Workspace panes"]')).toBeNull()
     expect(host.querySelector('main')).toBeNull()
-    expect(host.querySelector('aside')?.className).not.toContain('hidden')
+    expect(host.querySelector('aside')?.classList.contains('hidden')).toBe(false)
   } finally { await act(async () => root.unmount()); host.remove() }
 })

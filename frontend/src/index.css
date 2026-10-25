@@ -1867,7 +1867,7 @@
   [data-testid="workspace-panel-header"] button,
   [data-tour="chat-input-area"] button { min-height: 40px; min-width: 40px; }
   [data-testid="workspace-panel-header"] { gap: 4px; }
-  [data-testid="workspace-panel-header"] > :first-child { min-width: 0; }
-  [data-testid="workspace-panel-header"] > :last-child { flex-wrap: wrap; }
+  [data-testid="workspace-panel-header"] > :first-child { min-width: 0; flex-basis: 100%; }
+  [data-testid="workspace-panel-header"] > :last-child { width: 100%; flex-wrap: wrap; }
   [data-app-main] table { max-width: 100%; }
 }
