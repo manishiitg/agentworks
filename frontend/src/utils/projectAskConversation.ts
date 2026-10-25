@@ -5,10 +5,11 @@ import { useAppStore } from '../stores/useAppStore'
 import { assertChatIdentityCurrent, captureChatIdentity } from './chatIdentity'
 import { hydrateTabEvents } from './sessionRestore'
 import { resolveWorkspacePaneChatTab } from './workspacePaneChat'
+import { workUserViewChatKey } from '../products/work/workTabs'
 
 /** Open the ordinary project conversation, including its existing history.
  * A dashboard is another view of this chat, never a new session or tool mode. */
-export async function openProjectAskConversation(project: { product: string; projectId: string; workspacePath: string }, options?: { activate?: boolean }): Promise<string> {
+export async function openProjectAskConversation(project: { product: string; projectId: string; workspacePath: string }, options?: { activate?: boolean; userView?: boolean }): Promise<string> {
   const identity = captureChatIdentity()
   await waitForChatStoreHydration()
   assertChatIdentityCurrent(identity)
@@ -16,7 +17,10 @@ export async function openProjectAskConversation(project: { product: string; pro
     const profileId = project.product === 'code' ? 'code' : 'work'
     // Explicitly omit the unrelated active tab's session. The standard profile
     // endpoint resolves this caller's canonical project conversation.
-    const conversation = await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: project.projectId }, null)
+    // An owner on a dashboard link gets the chat a shared person would have: the server runs this key in Run mode.
+    const conversation = options?.userView && profileId === 'work'
+      ? await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: workUserViewChatKey(project.projectId, 'main'), name: 'As a user' }, null)
+      : await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: project.projectId }, null)
     assertChatIdentityCurrent(identity)
     const store = useChatStore.getState()
     const tabId = await store.createChatTab('Chat', {

@@ -28,6 +28,8 @@ type dashboardFunctionCallBody struct {
 	Function     string         `json:"function"`
 	Args         map[string]any `json:"args"`
 	SubmissionID string         `json:"submission_id"`
+	// AsUser runs the call in Run mode for the Crew's owner, the way anyone else's call would run. It only narrows.
+	AsUser bool `json:"as_user,omitempty"`
 }
 
 // dashboardFunctionDispatch runs one external typed-call tool for the
@@ -94,6 +96,9 @@ func (api *StreamingAPI) handleDashboardFunctionCall(w http.ResponseWriter, r *h
 	args := map[string]any{"function": body.Function, "submission_id": body.SubmissionID, "wait_seconds": 2}
 	if body.Args != nil {
 		args["args"] = body.Args
+	}
+	if body.AsUser && resolved.Capability.Mode == "owner" && resolved.Target.Kind == "crew" {
+		args["run_mode"] = true
 	}
 	api.dashboardFunctionDispatch(w, r, resolved, "call_crew_function", "call_workflow_function", args)
 }

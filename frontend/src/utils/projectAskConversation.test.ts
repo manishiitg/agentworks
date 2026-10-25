@@ -36,3 +36,10 @@ it('prepares a dashboard chat without activating it or changing the current mode
  expect(mocks.mode).not.toHaveBeenCalled()
  expect(mocks.app).not.toHaveBeenCalled()
 })
+
+it('gives an owner on a dashboard link the "as a user" chat, which the server runs in Run mode', async () => {
+  mocks.resolve.mockResolvedValue({ session_id: 'user-view-session', conversation_key: 'crew-1:chat:asuser-main', conversation_id: 'conversation' })
+  mocks.create.mockResolvedValue('user-view-tab')
+  expect(await openProjectAskConversation({ product: 'crew', projectId: 'crew-1', workspacePath: 'Crew/team' }, { activate: false, userView: true })).toBe('user-view-tab')
+  expect(mocks.resolve).toHaveBeenCalledWith('work', { conversation_key: 'crew-1:chat:asuser-main', name: 'As a user' }, null)
+})

@@ -16,7 +16,7 @@ const waiting = (call: CallState) => Boolean(call.pending_inputs && call.pending
 /** Native form for one published function of the dashboard's own project. The
  * server resolves the project from the dashboard record; this component only
  * names the function. Submit runs it as the signed-in person. */
-export function ReportActionDialog({ resourceId, request, theme, onClose }: { resourceId: string; request: ActionRequest; theme?: { vars: Record<string, string>; mode?: string }; onClose: () => void }) {
+export function ReportActionDialog({ resourceId, request, theme, asUser = false, onClose }: { resourceId: string; request: ActionRequest; theme?: { vars: Record<string, string>; mode?: string }; asUser?: boolean; onClose: () => void }) {
   const user = useAuthStore(state => state.user)
   const dialog = useRef<HTMLDialogElement>(null)
   const alive = useRef(true)
@@ -54,7 +54,7 @@ export function ReportActionDialog({ resourceId, request, theme, onClose }: { re
     if (!built.ok) { setFormError(built.error); return }
     setFormError(null); setCall(null); setRunning(true)
     try {
-      const started = await api.post<CallState>(`${base}/functions/call`, { function: request.name, args: built.args, submission_id: submission.current })
+      const started = await api.post<CallState>(`${base}/functions/call`, { function: request.name, args: built.args, submission_id: submission.current, ...(asUser ? { as_user: true } : {}) })
       let state = started.data
       if (alive.current) setCall(state)
       while (alive.current && state.call_id && !terminal(state.status) && !waiting(state)) {

@@ -45,6 +45,8 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   // Native project chat enforces Builder/Run permissions on every request.
   // Merged Crew projects retain their work/code origin for native conversation routing.
   const canAsk = Boolean(viewer && capability.can_ask && ['crew', 'code', 'workflow', 'relay'].includes(product))
+  // A dashboard link is the shared person's view, for its owner too: the chat and the function buttons run in Run mode.
+  const asUser = conversationPane === true && product === 'crew' && capability.mode === 'owner'
   // Widgets belong to the shared Run view. Owner/context-menu questions retain
   // their existing native chat access, independently of widget presentation.
   const showChatWidgets = canAsk && capability.mode === 'question_only' && !conversationPane
@@ -91,7 +93,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
       if (generation.current !== token) throw new Error('The dashboard account changed.')
       if (!data.capability.can_ask || data.project_id !== projectId || data.product !== product) throw new Error('Ask is no longer available for this dashboard.')
       const previous = boundRef.current
-      const id = previous && previous.viewer === viewer && previous.resourceId === resourceId ? previous.tabId : await openProjectAskConversation({ product, projectId, workspacePath }, { activate: false })
+      const id = previous && previous.viewer === viewer && previous.resourceId === resourceId ? previous.tabId : await openProjectAskConversation({ product, projectId, workspacePath }, { activate: false, ...(asUser ? { userView: true } : {}) })
       if (generation.current !== token) throw new Error('The dashboard account changed.')
       setBound({ tabId: id, viewer: viewer!, resourceId }); setError(null)
       return id
@@ -154,7 +156,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   return <ReportEmbedProvider value={runtime}>
     <div ref={container} className={conversationPane && canAsk ? 'relative flex h-full min-h-0 flex-col overflow-hidden md:flex-row' : 'relative overflow-hidden'}>
       {conversationPane && canAsk && <aside aria-label="Project chat" className="flex h-[45%] min-h-64 shrink-0 flex-col border-b border-border md:h-full md:w-[38%] md:min-w-80 md:max-w-lg md:border-b-0 md:border-r">
-        <header className="shrink-0 border-b border-border px-4 py-3 text-sm font-semibold">Chat</header>
+        <header className="shrink-0 border-b border-border px-4 py-3 text-sm font-semibold">{asUser ? 'Chat as a user' : 'Chat'}</header>
         <div className="min-h-0 flex-1">{conversation}</div>
         {error && <button type="button" onClick={() => void opener.current().catch(() => {})} className="shrink-0 px-4 py-2 text-left text-sm text-primary underline">Try opening chat again</button>}
       </aside>}
@@ -173,6 +175,6 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
         <div className="min-h-0 flex-1">{conversation}</div>
       </div>
     </dialog></ModalPortal>}
-    {action && canUseFunctions && <ReportActionDialog resourceId={resourceId} request={action} theme={theme} onClose={() => setAction(null)} />}
+    {action && canUseFunctions && <ReportActionDialog resourceId={resourceId} request={action} theme={theme} asUser={asUser} onClose={() => setAction(null)} />}
   </ReportEmbedProvider>
 }

@@ -44,14 +44,14 @@ function click(text: string) {
   button.click()
 }
 
-it.each(['owner', 'question_only'])('keeps the existing %s Crew chat beside its dashboard on opening and refresh', async mode => {
+it.each(['owner', 'question_only'])('keeps one %s Crew chat beside its dashboard on opening and refresh (an owner here gets the as-a-user chat)', async mode => {
   get.mockResolvedValue({ data: { ...view, product: 'crew', capability: { can_view: true, can_ask: true, mode } } })
   openAsk.mockResolvedValue('caller-project-chat')
   const current = await mount('crew', mode, true, '<p id="total">42</p>', true)
   const chat = current.host.querySelector('[aria-label="Project chat"]')!
   expect(chat.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('caller-project-chat')
   expect(current.host.querySelector('[data-dashboard-pane]')?.contains(current.frame)).toBe(true)
-  expect(openAsk).toHaveBeenCalledWith({ product: 'crew', projectId: 'project-1', workspacePath: 'Workflow/demo' }, { activate: false })
+  expect(openAsk).toHaveBeenCalledWith({ product: 'crew', projectId: 'project-1', workspacePath: 'Workflow/demo' }, mode === 'owner' ? { activate: false, userView: true } : { activate: false })
   expect(send).not.toHaveBeenCalled()
   expect(current.host.querySelector('[aria-label="Open dashboard chat"]')).toBeNull()
   expect(document.querySelector('dialog')).toBeNull()
