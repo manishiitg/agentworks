@@ -352,7 +352,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
             )}
             {!loading && report && !report.html && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Could not read {report.label}.</div>}
             {report?.html && (report.questions
-              ? <DashboardQuestionConversation key={report.questions.resourceId} {...report.questions} conversationPane={conversationPane} html={report.html} title={report.label} documentPath={report.path} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />
+              ? <DashboardQuestionConversation key={report.questions.resourceId} {...report.questions} conversationPane={conversationPane} sendChatMessage={sendChatMessage} html={report.html} title={report.label} documentPath={report.path} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />
               : <ReportQuestionFrame key={report.path} html={report.html} title={report.label} documentPath={report.path} allowQuestions={allowContentQuestions} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />)}
           </div>
         </div>

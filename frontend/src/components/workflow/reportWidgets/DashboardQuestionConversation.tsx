@@ -8,7 +8,7 @@ import ModalPortal from '../../ui/ModalPortal'
 import { WorkingTipsContext } from '../../chat/workingTipsContext'
 import type { CommandDefinition } from '../../../commands'
 import { ReportChatRequestController } from './reportChatRequest'
-import { ReportEmbedProvider, useReportDataApi } from './reportEmbedContext'
+import { ReportEmbedProvider, useReportDataApi, type ReportDataApi } from './reportEmbedContext'
 import { installDashboardChatWidgets, type ChatWidgetSlot, type ReportTheme } from './dashboardChatWidgets'
 import { installDashboardActionButtons, type ActionRequest } from './reportActionButtons'
 import { ReportActionDialog } from './ReportActionDialog'
@@ -21,9 +21,10 @@ type Props = ComponentProps<typeof ReportQuestionFrame> & {
   resourceId: string; revision: string; projectId: string; workspacePath: string
   capability: DashboardQuestionCapability; product: string
   conversationPane?: boolean
+  sendChatMessage?: ReportDataApi['sendChatMessage']
 }
 
-export function DashboardQuestionConversation({ resourceId, revision, projectId, workspacePath, capability, product, conversationPane = false, ...frame }: Props) {
+export function DashboardQuestionConversation({ resourceId, revision, projectId, workspacePath, capability, product, conversationPane = false, sendChatMessage, ...frame }: Props) {
   const viewer = useAuthStore(state => state.user?.id)
   const [bound, setBound] = useState<{ tabId: string; viewer: string; resourceId: string } | null>(null)
   const [popup, setPopup] = useState(false)
@@ -135,7 +136,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
     return sendWorkspacePaneMessageToChat({ tabId, message })
   }), [workspacePath, resourceId, viewer])
   useEffect(() => { messageController.activate(); return messageController.dispose }, [messageController])
-  const runtime = useMemo(() => data ? { data: { ...data, sendChatMessage: messageController.request }, chatWidgets } : null, [data, chatWidgets, messageController])
+  const runtime = useMemo(() => data ? { data: { ...data, sendChatMessage: sendChatMessage ?? messageController.request }, chatWidgets } : null, [data, chatWidgets, messageController, sendChatMessage])
   useEffect(() => { if (popup) dialog.current?.showModal() }, [popup])
 
   const submitQuestion = async (question: string, context: ReportContentContext, submissionId: string) => {

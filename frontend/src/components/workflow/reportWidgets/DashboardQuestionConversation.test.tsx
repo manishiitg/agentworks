@@ -19,14 +19,14 @@ afterEach(async () => { for (const close of cleanup.splice(0)) await close(); vi
 const revision = 'a'.repeat(64)
 const view = { project_id: 'project-1', product: 'workflow', capability: { can_view: true, can_ask: true, mode: 'owner' } }
 
-async function mount(product = 'workflow', mode = 'owner', canAsk = true, markup = '<p id="total">42</p>', conversationPane = false) {
+async function mount(product = 'workflow', mode = 'owner', canAsk = true, markup = '<p id="total">42</p>', conversationPane = false, sender?: ReportDataApi['sendChatMessage']) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanup.push(async () => { await act(async () => root.unmount()); host.remove() })
   const render = async (publication = revision) => {
     const data = { workspacePath: 'Workflow/demo', sendChatMessage: vi.fn() } as unknown as ReportDataApi
     await act(async () => root.render(<ReportEmbedProvider value={{ data }}>
-      <DashboardQuestionConversation resourceId="dashboard-1" revision={publication} product={product} projectId="project-1" workspacePath="Workflow/demo" capability={{ can_view: true, can_ask: canAsk, mode }} conversationPane={conversationPane} html="<p>Total 42</p>" title="Overview" documentPath="db/reports/managed/overview/index.html" className="" />
+      <DashboardQuestionConversation resourceId="dashboard-1" revision={publication} product={product} projectId="project-1" workspacePath="Workflow/demo" capability={{ can_view: true, can_ask: canAsk, mode }} conversationPane={conversationPane} sendChatMessage={sender} html="<p>Total 42</p>" title="Overview" documentPath="db/reports/managed/overview/index.html" className="" />
     </ReportEmbedProvider>))
   }
   await render()
@@ -210,4 +210,15 @@ it.each(['owner', 'question_only'])('routes a %s standalone UI send through the 
  expect(send).toHaveBeenCalledWith(expect.objectContaining({ tabId: 'recipient-chat', message: expect.stringContaining('Explain this result') }))
  expect(send.mock.calls[0][0]).not.toHaveProperty('workspacePath')
  expect(openAsk).toHaveBeenLastCalledWith(expect.objectContaining({ product: 'crew' }), mode === 'owner' ? { activate: false, userView: true } : { activate: false })
+})
+
+
+it('keeps an embedded dashboard message in its current project pane conversation', async () => {
+ const sender = vi.fn().mockResolvedValue({ status: 'queued', tabId: 'current-side-chat', reused: true, queuedBehindRunningTurn: false })
+ await mount('crew', 'owner', true, '<p id="total">42</p>', false, sender)
+ const options = install.mock.calls.at(-1)![1]
+ await act(async () => { await options.dataApi.sendChatMessage('Explain the selection', { requestId: 'selection' }) })
+ expect(sender).toHaveBeenCalledWith('Explain the selection', { requestId: 'selection' })
+ expect(openAsk).not.toHaveBeenCalled()
+ expect(send).not.toHaveBeenCalled()
 })
