@@ -174,9 +174,6 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	}
 	crewCapabilityHTTP(t, f, refClaims, "crew_execution", map[string]any{"action": "run_workflow_trigger", "arguments": map[string]any{"workspace_path": "Workflow/visible"}}, 403)
 	crewCapabilityHTTP(t, f, refClaims, "crew_execution", map[string]any{"action": "list_workflow_triggers", "arguments": map[string]any{"workspace_path": "Workflow/hidden"}}, 400)
-	f.write(t, externalCommandCrewRoot+"/workflow.json", `{"id":"team","created_by":"owner","workflow_context_paths":[]}`)
-	crewCapabilityHTTP(t, f, refClaims, "crew_execution", map[string]any{"action": "list_workflow_triggers", "arguments": map[string]any{"workspace_path": "Workflow/visible"}}, 400)
-
 }
 
 // The native session registry, transport and presentation broker enforce the

@@ -30,7 +30,8 @@ func TestCrewGuestCallerOnlyForNonOwners(t *testing.T) {
 // The guest field is honoured only on the owner's own Crew turn, where it can
 // only narrow access; a reader's turn and non-Crew turns ignore it.
 func TestCrewGuestCallerForTurnOnlyNarrowsTheOwnersTurn(t *testing.T) {
-	folder := "_users/alice/Chats/Work/projects/demo"
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	folder := registerTestCrew(t, "demo", "alice", true)
 	req := QueryRequest{AgentProfileID: "work", SelectedFolder: folder, CrewGuestCaller: "bob"}
 	if got := crewGuestCallerForTurn(req, "alice"); got != "bob" {
 		t.Fatalf("owner turn working for bob = %q", got)

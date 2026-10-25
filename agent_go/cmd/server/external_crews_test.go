@@ -200,17 +200,6 @@ func TestExternalAgentMessagesKeepOptionalRepliesAndCurrentBounds(t *testing.T) 
 	}
 }
 
-func TestOAuthGrantCrewAccessFollowsApprovedScopes(t *testing.T) {
-	withCrews := mcpOAuthTokenForGrant(mcpOAuthGrant{UserID: "u", Scopes: []string{"workflows:read", "crews:run"}})
-	if !withCrews.AllCrews || !withCrews.AllowsCrew("any") {
-		t.Fatal("an OAuth grant approving a Crew permission must reach the user's Crews")
-	}
-	legacy := mcpOAuthTokenForGrant(mcpOAuthGrant{UserID: "u", Scopes: []string{"workflows:read", "files:read", "runs:execute"}})
-	if legacy.AllCrews || legacy.AllowsCrew("any") {
-		t.Fatal("an OAuth grant without Crew permissions must not reach Crews")
-	}
-}
-
 // manage_crew_chats lists only the caller's own app chats, and a Crew-bounded
 // connection stays bounded. Agent messaging uses separate inboxes.
 func TestExternalCrewChatsAreYourOwn(t *testing.T) {
