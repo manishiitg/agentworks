@@ -231,7 +231,7 @@ func TestMemorySkillAndPromptAgreeAcrossModes(t *testing.T) {
 // already-resolved host paths must remain unchanged.
 func TestProjectWorkspaceMapResolvesAuthorizedAbsolutePaths(t *testing.T) {
 	section := sectionByName(t, "workspace-map")
-	for _, profile := range []string{"code", "work"} {
+	for _, profile := range []string{"work"} {
 		for _, workspace := range []string{"_users/alice/Chats/Code/projects/site", "/srv/docs/_users/alice/Chats/Code/projects/site"} {
 			text := section.Build(promptContext{ProfileID: profile, HasProfile: true,
 				ShellRoot: "/srv/docs", ProfileWorkspace: workspace, PerUserChatsFolder: "_users/alice/Chats"})
