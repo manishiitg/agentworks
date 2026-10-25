@@ -49,7 +49,7 @@ it('uses the full native inventory for shared-secret ticks, including scoped Vau
   expect(vault.querySelector('[aria-label="Reveal PROJECT_KEY"]')).not.toBeNull()
   expect(host.textContent).not.toContain('sealed-project-value')
   expect(vault.querySelector('[aria-label="Use KEY_17 from Team vault"]')?.hasAttribute('disabled')).toBe(true)
-  await act(async () => vault.querySelector<HTMLButtonElement>('[aria-label="Use PROJECT_KEY from Team vault"]')!.click())
+  await act(async () => vault.querySelector<HTMLButtonElement>('[data-item-kind="shared_secret"][data-item-id="VLT_team__PROJECT_KEY"] [role="checkbox"]')!.click())
   expect(mocks.select).toHaveBeenCalledWith('Crew/example', scoped[0])
   expect(saved).toHaveBeenCalledWith(expect.objectContaining({selected_global_secret_names:[scoped[0].id]}))
   expect(local).not.toHaveBeenCalled()
