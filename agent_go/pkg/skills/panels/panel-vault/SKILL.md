@@ -10,11 +10,14 @@ metadata:
 
 # Vault beside this chat
 
-The Vault panel lists apps with connection health, secret names and computers
-online or offline. A tick means this project uses that item. Project vaults are
-folded below personal and shared vaults; empty vaults are hidden. My vaults opens
-the last real Crew or Goal chat with Vault showing. There is no separate Vault
-chat or setup form.
+My Vault is the right panel beside the current Crew or Goal chat. It retains
+saved Google and Slack accounts, sign-in/reconnection and access controls,
+computers and their connection instructions, Slack bots, secret names, owned
+and shared vaults, and administrator-only company setup. An empty owned vault
+is still available to manage. The panel also shows what this project uses;
+its ticks change project use separately from connecting a saved account.
+There is no separate My Vault page or hidden setup chat. Do not direct people
+to a removed account-menu item; open this right panel.
 
 To open the panel, use the admitted perform_ui_action with view=mcp,
 action=open, target=vault in this same chat. Opening it changes presentation

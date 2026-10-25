@@ -51,7 +51,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
     add('publish', 'Setup', 'Publish', Globe)
     add('notify', 'Setup', 'Notify', BellRing)
   }
-  if (!relayMode) add('mcp', 'Integrations', 'Vault', Vault, 'vault')
+  if (!relayMode) add('mcp', 'Integrations', 'My Vault', Vault, 'vault')
   for (const item of projectConnectionSections({ allowedProducts, relayMode, onOpen: () => {} })) {
     if (!relayMode && ['mcp:connected', 'mcp:secrets', 'mcp:gmail'].includes(item.id)) continue
     add('mcp', 'Integrations', item.label, item.icon, item.id.slice(4), item.subgroup)

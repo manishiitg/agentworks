@@ -90,7 +90,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
     </div>)}
     {central && provider === 'google' && data && (data.can_connect || data.accounts.some(account => account.can_reconnect)) && <GoogleAccountConnect initiallyExpanded={data.accounts.length === 0} canConnect={data.can_connect} onChanged={() => { void refresh(); onChanged?.() }} />}
     {central && provider === 'slack' && data?.can_connect && !data.accounts.some(account => account.mine) && <Button variant="outline" size="sm" disabled={busy || data.sign_in_ready === false} onClick={() => void act('connect')}>Connect Slack account</Button>}
-    {central && data?.sign_in_ready === false && <p className="text-xs text-muted-foreground">An administrator needs to open My vaults → Company app setup → Sign-in apps → Slack and save this server’s Slack app before you connect your account.</p>}
+    {central && data?.sign_in_ready === false && <p className="text-xs text-muted-foreground">An administrator needs to open My Vault → Company sign-in apps → Slack and save this server’s Slack app before you connect your account.</p>}
   </div>
 }
 

@@ -17,7 +17,7 @@ import { ProjectAgentBridgePanel } from '../workspace/ProjectAgentBridgePanel'
 import { ShareDashboardButton } from './ShareDashboardButton'
 import { integrationProductAvailable, projectIntegrationSections } from '../integrations/integrationSections'
 import { ProjectPluginsPanel, projectPluginTabs, type PluginTab } from '../integrations/ProjectPluginsPanel'
-import { ProjectVaultPanel } from '../integrations/ProjectVaultPanel'
+import { MyVaultPanel } from '../integrations/MyVaultPanel'
 import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
 import { ProjectMcpPanel } from '../integrations/ProjectMcpPanel'
 import { agentApi, workflowManifestApi } from '../../services/api'
@@ -152,7 +152,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
     await prepareDraft(message)
   }
   const activeConnection = activeMcpTab === 'apps' ? pluginTab : activeMcpTab
-  const connectionLabel = !relayMode && activeMcpTab === 'apps' && pluginTab !== 'skills' ? 'Vault' : navigationOptions.find(option => option.value === (activeConnection === 'available' ? 'connected' : activeConnection))?.label ?? 'MCPs'
+  const connectionLabel = !relayMode && activeMcpTab === 'apps' && pluginTab !== 'skills' ? 'My Vault' : navigationOptions.find(option => option.value === (activeConnection === 'available' ? 'connected' : activeConnection))?.label ?? 'MCPs'
   const serverTabs = pluginTabs.filter(option => option.value === 'connected' || option.value === 'available').map(option => ({ ...option, label: option.value === 'connected' ? 'Connected' : 'Available' }))
   // Existing bubble and Ctrl+K targets open their resource directly.
   useWorkspaceViewTarget('mcp', selectConnection, section === 'mcp')
@@ -378,7 +378,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 {sharing ? <>
                   {workspacePath && (shareChannel === 'agentbridge' ? <ProjectAgentBridgePanel target={`workflow:${presetQueryId}`} tabId={vaultTabId} onAsk={askInCurrentChat} /> : shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={vaultTabId} onAsk={askInCurrentChat} /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun={relayMode ? 'Flow' : 'Goal'} allowBots={!relayMode} /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" />}</>)}
                 </> : <>
-                {!relayMode && activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <ProjectVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} />}
+                {!relayMode && activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <MyVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} />}
                 {activeMcpTab === 'apps' && workspacePath && (relayMode || pluginTab === 'skills') && <ProjectPluginsPanel tab={pluginTab}
                   connections={view => <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun={relayMode ? 'Flow' : 'workflow'} canEdit={canWriteWorkflow}
                       selectedServers={capabilities.selected_servers}
@@ -421,7 +421,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                         })
                       }}
                     />}
-                  vault={<ProjectVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} />}
+                  vault={<MyVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} />}
                 />}
                 {!relayMode && activeMcpTab === 'brain' && workspacePath && (
                   <ProjectKnowledgebasePanel workspacePath={workspacePath} disabled={!canWriteWorkflow} />

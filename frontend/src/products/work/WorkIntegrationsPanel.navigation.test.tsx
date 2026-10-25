@@ -15,7 +15,7 @@ vi.mock('../../components/workflow/ShareDashboardButton', () => ({ ShareDashboar
 vi.mock('../../components/integrations/ProjectMcpPanel', () => ({ ProjectMcpPanel: ({ view }: any) => <div data-content="mcp">{view} MCP content</div> }))
 vi.mock('../../components/integrations/ProjectSecretsPanel', () => ({ ProjectSecretsPanel: () => <div data-content="secrets">Existing secrets</div> }))
 vi.mock('../../components/skills/SkillsManagerPanel', () => ({ default: () => <div data-content="skills">Existing skills</div> }))
-vi.mock('../../components/integrations/ProjectVaultPanel', () => ({ ProjectVaultPanel: () => <div data-content="vault">Existing Vault selection</div> }))
+vi.mock('../../components/integrations/MyVaultPanel', () => ({ MyVaultPanel: () => <div data-content="vault">Full My Vault and project selections</div> }))
 vi.mock('../../components/workflow/ProjectKnowledgebasePanel', () => ({ ProjectKnowledgebasePanel: () => <div data-content="brain">Existing Brain settings</div> }))
 vi.mock('./WorkIdentityPanel', () => ({ WorkFoldersSection: () => <div data-content="folders">Existing folder access</div> }))
 vi.mock('../../components/workflow/WorkflowBotsPanel', () => ({ default: ({ fixedChannel, channelOnly, ownBotOnly }: any) => <div data-content={fixedChannel} data-channel-only={String(channelOnly)} data-own-bot-only={String(ownBotOnly)}>Existing {fixedChannel}</div> }))
@@ -45,6 +45,7 @@ async function mount(product = CREW_PRODUCT, enabledPanels?: Set<string>, canEdi
 
 it('uses one Vault destination and keeps setup in the existing project chat', async () => {
   const host = await mount()
+  expect(host.querySelector('header')?.textContent).toContain('My Vault')
   expect(host.querySelector('[data-content="vault"]')).not.toBeNull()
   expect(host.querySelector('nav, [aria-label="Integration sections"]')).toBeNull()
   for (const target of ['brain', 'folders', 'whatsapp', 'cli', 'agents', 'agentbridge', 'vault']) {

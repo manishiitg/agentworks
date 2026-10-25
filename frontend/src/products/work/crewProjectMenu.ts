@@ -38,7 +38,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     for (const item of projectChannelSections(bots, bots)) {
       add('mcp', 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, 'Use from other apps')
     }
-    add('mcp', 'Integrations', 'Vault', Vault, 'vault')
+    add('mcp', 'Integrations', 'My Vault', Vault, 'vault')
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
       if (['mcp:connected', 'mcp:secrets', 'mcp:gmail'].includes(item.id)) continue
       add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.subgroup)
