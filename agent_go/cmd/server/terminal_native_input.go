@@ -40,26 +40,26 @@ type nativeTerminalObserver struct {
 	nativeCounts, coveredCounts, eventCounts map[string]int
 	previous                                 []builderConversationMessage
 	lastRead                                 time.Time
+	nativeRecords                            *nativeCodingRecordState
 }
 
 func (api *StreamingAPI) ensureNativeTerminalObserver(snapshot terminals.Snapshot) {
-	if api.liveAttach == nil || api.eventStore == nil {
+	if api.eventStore == nil || snapshot.SessionID == "" {
 		return
 	}
-	m := api.liveAttach
-	m.mu.Lock()
-	if m.nativeObservers == nil {
-		m.nativeObservers = map[string]*nativeTerminalObserver{}
+	api.nativeObserversMu.Lock()
+	if api.nativeObservers == nil {
+		api.nativeObservers = map[string]*nativeTerminalObserver{}
 	}
-	if existing := m.nativeObservers[snapshot.TmuxSession]; existing != nil {
-		m.mu.Unlock()
+	if existing := api.nativeObservers[snapshot.SessionID]; existing != nil {
+		api.nativeObserversMu.Unlock()
 		<-existing.ready
 		return
 	}
 	o := &nativeTerminalObserver{api: api, snapshot: snapshot, ready: make(chan struct{}),
 		nativeCounts: map[string]int{}, coveredCounts: map[string]int{}, eventCounts: map[string]int{}}
-	m.nativeObservers[snapshot.TmuxSession] = o
-	m.mu.Unlock()
+	api.nativeObservers[snapshot.SessionID] = o
+	api.nativeObserversMu.Unlock()
 	o.poll(true)
 	close(o.ready)
 	go o.run()
@@ -69,11 +69,11 @@ func (o *nativeTerminalObserver) run() {
 	ticker := time.NewTicker(400 * time.Millisecond)
 	defer ticker.Stop()
 	defer func() {
-		o.api.liveAttach.mu.Lock()
-		if o.api.liveAttach.nativeObservers[o.snapshot.TmuxSession] == o {
-			delete(o.api.liveAttach.nativeObservers, o.snapshot.TmuxSession)
+		o.api.nativeObserversMu.Lock()
+		if o.api.nativeObservers[o.snapshot.SessionID] == o {
+			delete(o.api.nativeObservers, o.snapshot.SessionID)
 		}
-		o.api.liveAttach.mu.Unlock()
+		o.api.nativeObserversMu.Unlock()
 		tmuxinput.Default.ClearInteractiveDraft(o.snapshot.TmuxSession)
 	}()
 	var checkedAt time.Time
@@ -81,7 +81,14 @@ func (o *nativeTerminalObserver) run() {
 	for range ticker.C {
 		if time.Since(checkedAt) >= 3*time.Second {
 			ctx, cancel := context.WithTimeout(context.Background(), terminalTmuxActionTimeout)
-			err := runTerminalTmuxCommand(ctx, "", "has-session", "-t", o.snapshot.TmuxSession)
+			tmux := o.snapshot.TmuxSession
+			_, registered := mcpagent.LookupSession(o.snapshot.SessionID)
+			var err error
+			if tmux != "" {
+				err = runTerminalTmuxCommand(ctx, "", "has-session", "-t", tmux)
+			} else if !registered {
+				err = fmt.Errorf("owned runtime unavailable")
+			}
 			cancel()
 			checkedAt = time.Now()
 			if err != nil {
@@ -106,7 +113,12 @@ func (o *nativeTerminalObserver) read() ([]builderConversationMessage, string, b
 	o.api.sessionWorkspaceMu.RUnlock()
 	if session, ok := mcpagent.LookupSession(o.snapshot.SessionID); ok {
 		h := session.Snapshot()
-		if h != nil && (h.Provider.TmuxSession == "" || h.Provider.TmuxSession == o.snapshot.TmuxSession) {
+		if h != nil {
+			if h.Provider.TmuxSession != "" {
+				o.api.nativeObserversMu.Lock()
+				o.snapshot.TmuxSession = h.Provider.TmuxSession
+				o.api.nativeObserversMu.Unlock()
+			}
 			o.provider, o.nativeID, o.workingDir = string(h.Provider.Provider), h.Provider.NativeSessionID, h.Provider.WorkingDir
 			if !o.homeResolved && h.ConnectionID != "" && owner != "" {
 				if keys, err := o.api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: owner, WorkspacePath: workspace}, o.provider, h.ConnectionID); err == nil {
@@ -181,6 +193,7 @@ func nativeTerminalFileStamp(path string) string {
 
 func (o *nativeTerminalObserver) poll(prime bool) {
 	messages, path, ok := o.read()
+	o.pollNativeCodingRecords()
 	if !ok {
 		if prime {
 			o.primed, o.lastRead = true, time.Now()
@@ -437,12 +450,15 @@ func nativeTerminalPromptTime(path, provider, text string, fallback time.Time) t
 }
 
 func (api *StreamingAPI) nativeTerminalFinalResponse(tmuxSession string) string {
-	if api.liveAttach == nil {
-		return ""
+	api.nativeObserversMu.Lock()
+	var o *nativeTerminalObserver
+	for _, candidate := range api.nativeObservers {
+		if candidate.snapshot.TmuxSession == tmuxSession {
+			o = candidate
+			break
+		}
 	}
-	api.liveAttach.mu.Lock()
-	o := api.liveAttach.nativeObservers[tmuxSession]
-	api.liveAttach.mu.Unlock()
+	api.nativeObserversMu.Unlock()
 	if o == nil {
 		return ""
 	}

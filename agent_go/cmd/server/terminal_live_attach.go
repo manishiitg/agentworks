@@ -209,9 +209,8 @@ func leadingInt(s string) (int, string, bool) {
 // shared by that session's WebSocket viewers (the product constraint is a
 // single viewer per terminal, but the manager is written to tolerate more).
 type liveAttachManager struct {
-	mu              sync.Mutex
-	sessions        map[string]*liveAttachStream
-	nativeObservers map[string]*nativeTerminalObserver
+	mu       sync.Mutex
+	sessions map[string]*liveAttachStream
 }
 
 func newLiveAttachManager() *liveAttachManager {

@@ -94,7 +94,11 @@ func backgroundWorkKind(snap BackgroundAgentSnapshot) string {
 // and their progress mirrors) is stopped with its parent and not listed.
 func (api *StreamingAPI) sessionBackgroundWork(sessionID string) []SessionBackgroundWorkItem {
 	items := []SessionBackgroundWorkItem{}
-	if api == nil || api.bgAgentRegistry == nil {
+	if api == nil {
+		return items
+	}
+	items = append(items, api.nativeCodingBackgroundWork(sessionID)...)
+	if api.bgAgentRegistry == nil {
 		return items
 	}
 	running := map[string]BackgroundAgentSnapshot{}

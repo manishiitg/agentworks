@@ -1129,7 +1129,7 @@ export interface ExecutionInspectionResponse {
 export interface SessionBackgroundWorkItem {
  inspection?: ExecutionInspectionTarget
   id: string
-  kind: 'step' | 'workflow_run' | 'sub_agent' | 'crew_call'
+  kind: 'step' | 'workflow_run' | 'sub_agent' | 'crew_call' | 'native_helper' | 'native_turn'
   label: string
   started_at: string
   can_stop: boolean

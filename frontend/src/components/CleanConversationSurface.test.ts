@@ -14,6 +14,15 @@ function event(id: string, type: string, data: Record<string, unknown>, extra: P
 }
 
 describe('buildCleanConversationItems', () => {
+  it('renders a saved native continuation as a reply without creating a user turn', () => {
+    const items = buildCleanConversationItems([
+      event('helper', 'coding_agent_native_activity', { record: { kind: 'helper', state: 'finished' } }),
+      event('metadata', 'coding_agent_native_activity', { record: { kind: 'reply', state: 'committed' } }),
+      event('native-reply', 'streaming_chunk', { source: 'transcript', content: 'The helper result is ready.', metadata: { native_continuation: true } }),
+    ])
+    expect(items.map(item => item.role)).toEqual(['background', 'assistant'])
+    expect(items[1].content).toBe('The helper result is ready.')
+  })
   it('keeps both native answers after two quick sends and deduplicates only their own replay', () => {
     const items = buildCleanConversationItems([
       event('user-1', 'user_message', { content: 'First prompt' }),

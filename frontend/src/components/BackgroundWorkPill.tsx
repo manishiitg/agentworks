@@ -9,6 +9,8 @@ const KIND_PREFIX: Record<SessionBackgroundWorkItem['kind'], string> = {
   workflow_run: 'Workflow run',
   sub_agent: 'Sub-agent',
   crew_call: 'Call',
+  native_helper: 'Helper',
+  native_turn: 'Follow-up',
 }
 
 export function backgroundWorkLabel(item: SessionBackgroundWorkItem): string {

@@ -213,6 +213,23 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
       continue
     }
 
+    if (event.type === 'coding_agent_native_activity') {
+      const record = asRecord(payload.record)
+      const kind = firstText(record?.kind)
+      const state = firstText(record?.state)
+      if (['helper', 'compaction', 'retry', 'error', 'question', 'notice'].includes(kind)) {
+        const label = kind === 'helper' ? 'Coding agent helper' : kind === 'question' ? 'Coding agent question' : kind === 'notice' ? 'Coding agent' : kind === 'error' ? 'Coding agent error' : kind === 'compaction' ? 'Context compaction' : 'Coding agent retry'
+        items.push({ id: event.id, role: kind === 'error' ? 'error' : 'background', content: `${label} · ${state.replaceAll('_', ' ')}`, timestamp: event.timestamp })
+      }
+      continue
+    }
+
+    if (event.type === 'streaming_chunk' && asRecord(payload.metadata)?.native_continuation === true) {
+      const content = firstText(payload.content)
+      if (content) items.push({ id: event.id, role: 'assistant', content, timestamp: event.timestamp })
+      continue
+    }
+
     if (event.type === 'coding_agent_background_task') {
       const kind = firstText(payload.kind)
       if (['task_backgrounded', 'status', 'output', 'completed', 'failed', 'cancelled', 'rejected'].includes(kind)) {

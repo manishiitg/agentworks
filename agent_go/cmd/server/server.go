@@ -82,6 +82,7 @@ import (
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/nativereplies"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/tmuxcapture"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -508,7 +509,9 @@ type StreamingAPI struct {
 	// enough for control mode; otherwise the /api/terminals/{id}/stream endpoint
 	// stays inert (404). It is the transport for the SELECTED live tmux terminal;
 	// the snapshot/replay path above still serves the rail / non-selected panes.
-	liveAttach *liveAttachManager
+	liveAttach        *liveAttachManager
+	nativeObserversMu sync.Mutex
+	nativeObservers   map[string]*nativeTerminalObserver
 
 	// Short-lived, owner-only PTY sessions used by the guided provider setup
 	// wizard. Commands are selected from a server-side allowlist.
@@ -1993,6 +1996,9 @@ func runServer(cmd *cobra.Command, args []string) {
 		log.Fatalf("Failed to initialize durable structured-event journal: %v", err)
 	}
 	eventStore.SetDurableJournal(eventJournal)
+	if err := nativereplies.Configure(filepath.Join(eventStateRoot, "native-reply-claims")); err != nil {
+		log.Printf("[NATIVE_RECORD] gap reason=claim_restore_failed")
+	}
 	terminalStore := terminals.NewStore()
 	serverStartedAt := time.Now()
 	if processStart, ok := processStartedAt(os.Getpid()); ok {
@@ -2322,8 +2328,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	eventStore.SetEventPreparer(prepareUserMessageAttachments)
 	eventStore.SetEventAddedCallback(func(sessionID string, event events.Event) {
 		terminalEventObserver(sessionID, event)
+		// Runtime ownership starts observation. Opening a terminal is never
+		// required for committed replies or native helper activity to arrive.
+		api.observeNativeCodingRuntime(sessionID, event)
 		api.observeTurnInactivity(sessionID, event)
 		api.observeRetainedMainTurnEvent(sessionID, event)
+		api.settleNativeForeground(sessionID, event)
 		if event.Data != nil {
 			if call, ok := unifiedevents.ToolCallRecordFromEvent(event.Data.Data); ok {
 				api.logPersonalSlackCall(context.Background(), sessionID, call.ServerName, call.ToolName, call.Status)
