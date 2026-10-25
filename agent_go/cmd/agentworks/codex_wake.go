@@ -86,7 +86,19 @@ func nativeCodexWake(root string, o *options) func(context.Context, agentworkscl
 			if chat.provider == a.Provider && chat.session == a.SessionID {
 				// The exact native session was just verified. Its current local status
 				// decides whether a concurrent hook already restored it or stopped it.
-				return autoConnectChat(ctx, root, o, agentworksclient.LocalBridgeRequest{Provider: chat.provider, SessionID: chat.session, HostKey: chat.host, NativeRemote: chat.remote}, chat.cwd)
+				request := agentworksclient.LocalBridgeRequest{Provider: chat.provider, SessionID: chat.session, HostKey: chat.host, NativeRemote: chat.remote}
+				if err := autoConnectChat(ctx, root, o, request, chat.cwd); err != nil {
+					return err
+				}
+				request.Action = "connection"
+				status, err := agentworksclient.CallLocalBridge(ctx, root, request)
+				if err != nil {
+					return err
+				}
+				if !status.Attached || status.Offline || status.Stopped {
+					return errors.New("native chat is not connected")
+				}
+				return nil
 			}
 		}
 		return errors.New("resumed native chat unavailable")

@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-type nativeWakeTry struct{ Sequence, Count int }
+type nativeWakeTry struct {
+	Sequence, Count int
+	Reported        bool
+}
 
 // Called with the bridge lock. These are metadata subscriptions, one per saved
 // login, not a socket or mailbox for every dormant record.
@@ -127,8 +130,12 @@ func (b *localBridge) queueNativeWake(s *localSession) bool {
 		tries = nativeWakeTry{Sequence: s.latestSequence}
 	}
 	if tries.Count >= 3 {
-		s.LastError = "Could not open this chat automatically. AgentWorks will retry when another message arrives."
-		log.Printf("[BRIDGE-WAKE] outcome=gave_up agent=%s attachment=%s sequence=%d", s.Attachment.AgentName, s.Attachment.ID, s.latestSequence)
+		s.LastError = "Could not open this chat automatically. Open it once in Codex, or AgentWorks will try again when the next message arrives."
+		if !tries.Reported {
+			log.Printf("[BRIDGE-WAKE] outcome=gave_up agent=%s attachment=%s sequence=%d", s.Attachment.AgentName, s.Attachment.ID, s.latestSequence)
+			tries.Reported = true
+			b.wakeTries[recordKey] = tries
+		}
 		return false
 	}
 	if b.wakeOpening[key] || time.Now().Before(b.wakeAfter[key]) {

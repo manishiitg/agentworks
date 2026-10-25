@@ -63,7 +63,7 @@ func TestAgentWakeEventsRespectAccountAndSenderAccess(t *testing.T) {
 		return out
 	}
 	owner, connection, token := issue("owner")
-	other, _, _ := issue("other-person")
+	other, _, _ := issue("other")
 	for _, name := range []string{"dormant", "source"} {
 		call(owner, map[string]any{"action": "register", "agent_name": name})
 	}

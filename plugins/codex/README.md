@@ -84,40 +84,43 @@ The prompt hook consumes these commands before model execution and learns the
 exact session ID from the host hook input. An agent cannot attach through MCP.
 This is a tool boundary, not OS isolation from shell access to CLI credentials.
 
-Default hooks run without channel launch flags. Unattached hooks make no network
-request and emit nothing. Attached hooks drain a private local bridge socket;
-the bridge holds the server event stream and persists offers before handing them
-in. It does not poll the mailbox. Stop hooks respect the host loop guard.
-SessionEnd pauses local delivery without disconnecting the saved AgentWorks name.
-A returning native chat reconnects automatically; an explicit detach stays stopped. Its name
-and journal remain. Type `/agentworks attach` in the same session to reconnect, or `/agentworks detach` to revoke and remove the attachment.
+Default hooks run without channel launch flags. Unattached hooks emit nothing.
+Connected hooks check the server-owned inbox at session start, on a prompt and
+at turn end. The helper keeps a read position and connection metadata; message
+bodies, history and receipts stay on the server.
 
-Durable offers prevent automatic duplicates after restart. A crash between
-persisting an offer and delivering it is ambiguous: read the mailbox explicitly
-instead of automatically replaying a possible turn. SDK/stdout writes do not
-prove model receipt. Bodies are cleared on offer and acknowledgement; delivered metadata is reclaimed
-under quota pressure, and offered metadata after seven days. Automatic cleanup reclaims offered metadata while retaining pending bodies and the receive watermark.
-Retired messages require an explicit inbox read/reply. Legacy direct channels
-store bounded metadata without bodies. Use one delivered receipt
-and explicit replies in the original conversation. The private local cache is
-bounded to 2,000 pending messages per session and 32 MiB total. No message bodies
-are included in desktop notifications.
+SessionEnd pauses local delivery without disconnecting the saved AgentWorks
+name. When permitted mail arrives for a saved Codex desktop chat, the helper can
+open that exact chat through the app's registered thread link, reconnect it and
+deliver the message. You do not need to open the chat or type a prompt. This can
+switch the chat visible in the app. It preserves the existing thread, account,
+model and approval settings. An explicit detach or a name moved to another chat
+stays stopped. Standalone terminal sessions still use their supported hooks;
+the helper does not start a duplicate Codex runtime.
+
+One notification connection per saved login carries only pending-message
+metadata, including while a native chat is unloaded. The helper opens a chat
+only for its permitted pending mail, combines bursts and bounds failed wake
+attempts. It does not periodically open idle chats or copy mail into Codex's
+private queue. Codex must be installed with its native thread-link handler.
+
+A delivered receipt confirms that the chat received a message, not that the work
+finished. Replies are explicit and stay in the original conversation. Delivery
+is at least once: message IDs let the receiving agent recognize a repeat.
+Undelivered mail stops waiting after 24 hours; its history and receipts remain.
+An ambiguous native write does not justify automatically starting another turn.
 
 Codex requires explicit trust of plugin hooks; the installer never bypasses it.
-For native queue delivery, attach with `--native-remote unix:///ABSOLUTE/SOCKET`
-pointing at the private Codex daemon that owns this exact thread UUID. A normal
-CLI/desktop conversation may not be reachable through that daemon: prove its
-endpoint before enabling native delivery. Without it, hooks plus desktop
-notification are used. Queue exit zero means native admission, not processing.
-See https://developers.openai.com/plugins/build/plugins and
-https://learn.chatgpt.com/docs/hooks .
+Automatic native opening does not change hooks or trust. Native batches above
+96 KiB need an explicit bounded inbox read. A server or CLI update is separate
+from a Codex app update.
 
 Existing native sessions can use explicit desktop/session transports and the
 process-bound `agentworks bridge message` fallback. See [native transports](../../docs/communication-protocols.md#existing-desktop-and-claude-session-transports).
 
 Terminal attach discovers live Claude registrations and verifies Codex candidates with the exact desktop owner before offering a person selection. Technical process/session overrides are hidden from normal help. Native idle wake uses the chat's existing approval/sandbox settings. The desktop IPC is a same-OS-user trust boundary. Native batches above 96 KiB require explicit inbox recovery. CLI updates and stop/start restore still-live existing attachments without rotating their identity or repeating AgentWorks guidance. A provider process restart reconnects the same saved native chat automatically. Claude itself adds a notice to every native session message; AgentWorks cannot suppress that host notice.
 
-The person chooses only the attachment name. The attached agent can describe its work with `the agentworks tool (action=set_purpose)` or `agentworks bridge message purpose --provider codex --purpose "WHAT YOU WORK ON"`. On macOS, optional `terminal-notifier` provides a notification click action for the exact Codex thread; without it, the basic alert must be followed by opening the chat manually.
+The person chooses only the attachment name. The attached agent can describe its work with `the agentworks tool (action=set_purpose)` or `agentworks bridge message purpose --provider codex --purpose "WHAT YOU WORK ON"`. Automatic opening of a saved Codex desktop chat does not depend on `terminal-notifier`; explicit person-ping notifications remain separate.
 
 ### Updates from GitHub
 
