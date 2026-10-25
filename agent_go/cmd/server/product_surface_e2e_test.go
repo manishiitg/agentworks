@@ -256,11 +256,6 @@ func assertInstructionSectionsDeclared(t *testing.T, declared []string) {
 	t.Helper()
 	actual := []string{}
 	for _, section := range promptSections {
-		// This section is restricted to Code by its Applies predicate. Crew
-		// and workflow manifests declare the shared instruction surface only.
-		if section.Name == "code-host-safety" {
-			continue
-		}
 		actual = append(actual, section.Name)
 	}
 	if err := compareProductSurface(actual, declared); err != nil {

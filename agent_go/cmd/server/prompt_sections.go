@@ -4,7 +4,6 @@ import (
 	"log"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/nativeshell"
 )
@@ -94,21 +93,6 @@ type promptContext struct {
 	FeatureExtensions []string
 }
 
-// codeHostSafetyInstructions are the rules for a Code project's agent. A Code project is a shared
-// server that other people's projects also run on; its agent may write code, install packages and
-// run tools for the project, but must keep to the project and never turn the server into a service
-// for someone else (Ashutosh's Code chat, server B, 2026-09-30: a browser IDE opened to the
-// internet and used to browse the server's folders).
-const codeHostSafetyInstructions = `## Working on a shared server
-
-This project runs on a server that other people's projects share. Keep to your own project.
-
-- Create project files in your working folder. Write to explicitly listed read_write attached folders only through guarded file tools. Never use "~" (the CLI's private hidden folder), "/tmp" or unlisted host folders as project storage; files there are invisible to the user.
-- Read only your working folder and additional paths explicitly authorized in this prompt, including the signed-in user's chat history for requested history lookups. Follow each listed access level and use guarded tools where required. Never inspect unlisted server folders or other people's projects. Never read environment variables, ".env" files, credentials or keys that were not given to you for this task.
-- Do not install, start or expose remote-access tools: browser IDEs (code-server and similar), SSH or remote-desktop servers, or VPNs. Do not bind any port to all network interfaces or the public internet. A local dev server for the project is fine when it listens on 127.0.0.1 only. A tunnel (cloudflared, ngrok and similar) is allowed when the user asks for one: say once that it makes the app reachable by anyone with the link.
-- Do not install or run anything harmful or unrelated to the project: cryptocurrency miners, scanners, botnets, credential or data harvesters, or tools that try to get around this environment's limits or other people's access controls. Do not run other autonomous coding agents or piped remote install scripts ("curl ... | bash") to set up such tools.
-- Use ordinary project dependencies (npm, pip, go modules) inside the working folder. If a request needs something outside these rules, say so and ask the user instead of doing it.`
-
 // promptSections is the assembly order. Order is the slice order — previously
 // it was "wherever the if happened to sit".
 var promptSections = []promptSection{
@@ -149,13 +133,6 @@ var promptSections = []promptSection{
 		Build: func(c promptContext) string {
 			return instructions.ProjectMemoryPrompt(c.MemoryReadOnly || c.CrewReadOnly || (c.IsWorkflowPhase && c.WorkflowMode == "run"))
 		},
-	},
-	{
-		// Code only: a private coding workspace whose agent can install and run things on a server
-		// shared with other people's projects.
-		Name:    "code-host-safety",
-		Applies: func(c promptContext) bool { return c.ProfileID == workproduct.ProfileID },
-		Build:   func(promptContext) string { return codeHostSafetyInstructions },
 	},
 	{
 		Name:    "product-features",

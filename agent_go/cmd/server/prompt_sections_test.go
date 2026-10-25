@@ -243,12 +243,6 @@ func TestProjectWorkspaceMapResolvesAuthorizedAbsolutePaths(t *testing.T) {
 			}
 		}
 	}
-	text := sectionByName(t, "code-host-safety").Build(promptContext{})
-	for _, must := range []string{"additional paths explicitly authorized in this prompt", "signed-in user's chat history for requested history lookups", "read_write attached folders only through guarded file tools", "Never inspect unlisted server folders or other people's projects"} {
-		if !strings.Contains(text, must) {
-			t.Fatalf("missing authorization boundary %q", must)
-		}
-	}
 }
 
 // Full CLI chats are told to use their own subagents and to keep
