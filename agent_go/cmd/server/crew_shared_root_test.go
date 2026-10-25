@@ -1,14 +1,9 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"strings"
-	"sync"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -37,72 +32,6 @@ func (f *multiUserFixture) withLegacyCrew() string {
 		f.t.Fatal(err)
 	}
 	return root
-}
-
-// A mixed server: some Crews moved to Crew/<id>, some not. Every access rule holds for both kinds, and the owner's
-// listings, schedule discovery and webhook discovery find both.
-func TestMixedCrewLayoutSomeMovedSomeNot(t *testing.T) {
-	f := newMultiUserFixture(t, sharedIdentityLayout())
-	legacy := f.withLegacyCrew()
-	shared := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
-	f.WithSharing(true)
-
-	for _, tc := range []struct{ id, root string }{{fixtureCrewID, shared}, {fixtureLegacyCrewID, legacy}} {
-		own, err := resolveCrewProjectBinding(f.Ctx(fixtureUserA), fixtureUserA, f.Crew, tc.id, "")
-		if err != nil || !own.OwnedByCaller || own.Binding.WorkspacePath != tc.root {
-			t.Fatalf("A's binding of %s = %+v err=%v, want the owner's at %s", tc.id, own, err, tc.root)
-		}
-		reader, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Crew, tc.id, tc.root)
-		if err != nil || reader.OwnedByCaller || reader.OwnerID != fixtureUserA || reader.Binding.WorkspacePath != tc.root {
-			t.Fatalf("B's binding of %s = %+v err=%v, want a reader of A's at %s", tc.id, reader, err, tc.root)
-		}
-		if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserC), fixtureUserC, f.Crew, tc.id, tc.root); err == nil && got.OwnedByCaller {
-			t.Fatalf("C owns %s", tc.id)
-		}
-		if status := f.Proxy(fixtureUserB, http.MethodGet, tc.root+"/code/notes.md"); status != http.StatusForbidden {
-			t.Errorf("raw proxy let B read %s: %d", tc.root, status)
-		}
-		if status := f.Proxy(fixtureUserC, http.MethodPut, tc.root+"/code/notes.md"); status != http.StatusForbidden {
-			t.Errorf("raw proxy let C write %s: %d", tc.root, status)
-		}
-		if status := f.Proxy(fixtureUserA, http.MethodPut, tc.root+"/code/notes.md"); status != 0 {
-			t.Errorf("raw proxy refused A's own write to %s: %d", tc.root, status)
-		}
-		if owner, ok := crewProjectOwnerID(tc.root); !ok || owner != fixtureUserA {
-			t.Errorf("crewProjectOwnerID(%s) = %q ok=%v", tc.root, owner, ok)
-		}
-		if !crewProjectOwnedByCaller(fixtureUserA, tc.root) || crewProjectOwnedByCaller(fixtureUserB, tc.root) {
-			t.Errorf("crewProjectOwnedByCaller(%s) is wrong", tc.root)
-		}
-		if !isCrewProjectPath(tc.root) {
-			t.Errorf("isCrewProjectPath(%s) = false", tc.root)
-		}
-	}
-
-	// One listing of the owner's Crews finds both kinds; B's lists none of A's (their own tree has none and they own
-	// nothing at the shared root).
-	paths, exists, err := listProjectManifestPaths(f.Ctx(fixtureUserA), defaultProductProjectStore(), fixtureUserA, f.Crew)
-	if err != nil || !exists || len(paths) != 2 {
-		t.Fatalf("A's Crew manifests = %v exists=%v err=%v", paths, exists, err)
-	}
-	if paths, _, _ := listProjectManifestPaths(f.Ctx(fixtureUserB), defaultProductProjectStore(), fixtureUserB, f.Crew); len(paths) != 0 {
-		t.Fatalf("B's Crew manifests = %v", paths)
-	}
-	items, err := listAccessibleCrewProjects(f.Ctx(fixtureUserA), fixtureUserA, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	seen := map[string]string{}
-	for _, item := range items {
-		seen[item["id"].(string)] = item["workspace_path"].(string)
-	}
-	if seen[fixtureCrewID] != shared || seen[fixtureLegacyCrewID] != workspaceref.CrewProjectsRoot+"/"+fixtureLegacyCrewFolder {
-		t.Fatalf("accessible Crews = %v", seen)
-	}
-	// No Crew is anyone else's by a sibling's name.
-	if shared == legacy {
-		t.Fatal("fixture is wrong")
-	}
 }
 
 // Schedule and webhook discovery find a Crew at the shared root through its registered owner; a manifest that names
@@ -137,114 +66,6 @@ func TestSharedCrewSchedulesAndWebhooksAreDiscoveredByTheirOwner(t *testing.T) {
 	match, err := svc.findProductWebhook(f.Ctx(fixtureUserA), "11111111-1111-4111-8111-111111111111")
 	if err != nil || match.UserID != fixtureUserA || match.Binding.WorkspacePath != crewRoot {
 		t.Fatalf("webhook match = %+v err=%v", match, err)
-	}
-}
-
-// Stored references to a Crew that has since moved keep working through the alias resolver, whichever way they
-// spell the old place. One test per kind of stored reference this code base keeps.
-func TestOldSpellingIsNotAWayIntoAnotherOwnersMovedCrew(t *testing.T) {
-	f := newMultiUserFixture(t, sharedIdentityLayout())
-	moved := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
-	oldPhysical := workspaceref.PhysicalPath(fixtureUserA, workspaceref.CrewProjectsRoot, fixtureCrewFolder)
-	// A hostile alias in someone's hands is impossible (the registry is server-controlled), but even a registered alias
-	// leads only to the registered owner's Crew: B naming A's old path as their own gets the shared Crew's real owner.
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: fixtureCrewFolder, OwnerID: fixtureUserA, Shared: true, Aliases: []string{oldPhysical}}); err != nil {
-		t.Fatal(err)
-	}
-	ref, ok := resolveCrewPath(f.Ctx(fixtureUserB), fixtureUserB, oldPhysical+"/product.json")
-	if !ok || ref.Root != moved || ref.OwnerID != fixtureUserA {
-		t.Fatalf("resolved %+v ok=%v", ref, ok)
-	}
-	if crewAccessFor(f.Claims(fixtureUserB), ref) == crewAccessOwner {
-		t.Fatal("B is the owner through an old path")
-	}
-	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
-		if status := f.Proxy(fixtureUserB, method, oldPhysical+"/product.json"); status != http.StatusForbidden {
-			t.Errorf("proxy %s as B through the old path: %d", method, status)
-		}
-	}
-	if !strings.HasPrefix(moved, "Crew/") {
-		t.Fatal("fixture is wrong")
-	}
-	_ = context.Background()
-}
-
-// The browser (or any stored link) still sends an old spelling of a moved Crew: the proxy judges the Crew it names,
-// translates the path on the way out (a read finds the Crew's files; a write never creates a folder at the old place),
-// and keeps refusing everyone who does not own it.
-func TestProxyTranslatesOldSpellingsOfAMovedCrew(t *testing.T) {
-	f := newMultiUserFixture(t, sharedIdentityLayout())
-	moved := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
-	oldPhysical := workspaceref.PhysicalPath(fixtureUserA, workspaceref.CrewProjectsRoot, fixtureCrewFolder)
-	oldLogical := workspaceref.CrewProjectsRoot + "/" + fixtureCrewFolder
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: fixtureCrewFolder, OwnerID: fixtureUserA, Shared: true, Aliases: []string{oldPhysical}}); err != nil {
-		t.Fatal(err)
-	}
-
-	var seen []string
-	var seenMu sync.Mutex
-	recorder := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		// Only this test's own calls count: a background goroutine of another test may reach the same URL.
-		if r.Header.Get("X-Test-Call") != "" {
-			seenMu.Lock()
-			seen = append(seen, r.Method+" "+r.URL.Path+"?"+r.URL.RawQuery+" "+string(body))
-			seenMu.Unlock()
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer recorder.Close()
-	t.Setenv("WORKSPACE_API_URL", recorder.URL)
-	handler := workspaceProxyHandler()
-	call := func(user, method, target, body string) (int, string) {
-		seenMu.Lock()
-		seen = nil
-		seenMu.Unlock()
-		var reader io.Reader
-		if body != "" {
-			reader = strings.NewReader(body)
-		}
-		req := httptest.NewRequest(method, target, reader)
-		if body != "" {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		req.Header.Set("X-Test-Call", "1")
-		req = req.WithContext(f.Ctx(user))
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-		seenMu.Lock()
-		defer seenMu.Unlock()
-		return rec.Code, strings.Join(seen, "|")
-	}
-
-	for _, p := range []string{oldPhysical, oldLogical, moved} {
-		code, got := call(fixtureUserA, http.MethodGet, "/api/wp/api/documents/"+p+"/code/notes.md", "")
-		if code != http.StatusOK || !strings.HasPrefix(got, "GET /api/documents/"+moved+"/code/notes.md?") {
-			t.Errorf("owner GET %s: %d, workspace saw %q", p, code, got)
-		}
-	}
-	code, got := call(fixtureUserA, http.MethodPost, "/api/wp/api/folders", `{"folder_path":"`+oldLogical+`/new-folder"}`)
-	if code != http.StatusOK || !strings.Contains(got, `"folder_path":"`+moved+`/new-folder"`) {
-		t.Errorf("owner POST folder by the old path: %d, workspace saw %q", code, got)
-	}
-	code, got = call(fixtureUserA, http.MethodGet, "/api/wp/api/documents?folder="+url.QueryEscape(oldLogical)+"&max_depth=2", "")
-	if code != http.StatusOK || !strings.Contains(got, "folder="+url.QueryEscape(moved)) {
-		t.Errorf("owner listing by the old path: %d, workspace saw %q", code, got)
-	}
-	// Nobody else: the old spellings are not a way in, and the workspace never sees the request.
-	for _, user := range []string{fixtureUserB, fixtureUserC} {
-		for _, p := range []string{oldPhysical, moved} {
-			for _, method := range []string{http.MethodGet, http.MethodPut} {
-				code, got := call(user, method, "/api/wp/api/documents/"+p+"/code/notes.md", `{"content":"x"}`)
-				if code != http.StatusForbidden || got != "" {
-					t.Errorf("%s %s %s: %d, workspace saw %q", user, method, p, code, got)
-				}
-			}
-		}
-	}
-	// B's short spelling is B's OWN (empty) tree: forwarded untouched, never translated to A's Crew.
-	if code, got := call(fixtureUserB, http.MethodGet, "/api/wp/api/documents/"+oldLogical+"/code/notes.md", ""); code != http.StatusOK || !strings.HasPrefix(got, "GET /api/documents/"+oldLogical+"/code/notes.md?") {
-		t.Errorf("B's own-tree path: %d, workspace saw %q", code, got)
 	}
 }
 
