@@ -123,3 +123,43 @@ func TestAuthenticatedChatUserPrompt(t *testing.T) {
 		t.Fatal("anonymous request must not synthesize a user identity")
 	}
 }
+
+// App guidance belongs only to shared conversations, after platform policy.
+func TestSharedChatInstructionsSlot(t *testing.T) {
+	for _, relay := range []bool{false, true} {
+		for _, run := range []bool{false, true} {
+			vars := map[string]string{"WorkspacePath": "Workflow/example", "WorkshopMode": "workshop", "CHAT_INSTRUCTIONS": "A fictional app instruction marker."}
+			if run {
+				vars["WorkshopMode"] = "run"
+			}
+			if relay {
+				vars["WorkflowKind"] = "relay"
+				if run {
+					vars["RelayRunMode"] = "true"
+				}
+			}
+			plain := map[string]string{}
+			for k, v := range vars {
+				plain[k] = v
+			}
+			delete(plain, "CHAT_INSTRUCTIONS")
+			baseline, _, _, err := buildWorkflowPhaseSystemPrompt("workflow-builder", plain, promptContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, _, _, err := buildWorkflowPhaseSystemPrompt("workflow-builder", vars, promptContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(got, vars["CHAT_INSTRUCTIONS"]) != run {
+				t.Fatalf("guidance scope relay=%t run=%t", relay, run)
+			}
+			if run && !strings.HasPrefix(got, strings.Split(baseline, "\n\n")[0]) {
+				t.Fatal("app guidance preceded platform policy")
+			}
+			if !run && got != baseline {
+				t.Fatal("shared instructions changed the Builder prompt")
+			}
+		}
+	}
+}

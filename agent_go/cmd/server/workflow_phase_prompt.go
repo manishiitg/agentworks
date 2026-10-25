@@ -37,8 +37,8 @@ func buildWorkflowPhaseSystemPrompt(phase string, vars map[string]string, ctx pr
 			return "", nil, nil, err
 		}
 		parts := []string{chatPrompt, "## Workspace\n\nActive Flow workspace: `" + vars["WorkspacePath"] + "`. Use only the registered Flow " + surface + " tools and attached skills."}
-		if vars["RelayRunMode"] == "true" {
-			parts = append(parts, workflowtypes.ChatInstructionsPrompt(vars["CHAT_INSTRUCTIONS"]))
+		if guidance := workflowtypes.ChatInstructionsPrompt(vars["CHAT_INSTRUCTIONS"]); vars["RelayRunMode"] == "true" && guidance != "" {
+			parts = append(parts, guidance)
 		}
 		if ctx.WorkflowUIAvailable {
 			parts = append(parts, "## Flow views\n\nUse perform_ui_action to open and refresh the graph, triggers, and executions when useful.")
@@ -53,7 +53,9 @@ func buildWorkflowPhaseSystemPrompt(phase string, vars map[string]string, ctx pr
 
 	parts := &workflowPromptParts{parts: []string{workflow.PhaseChatSystemPrompt(phase, vars)}}
 	if phase == "workflow-builder" && vars["WorkshopMode"] == "run" {
-		parts.parts = append(parts.parts, workflowtypes.ChatInstructionsPrompt(vars["CHAT_INSTRUCTIONS"]))
+		if guidance := workflowtypes.ChatInstructionsPrompt(vars["CHAT_INSTRUCTIONS"]); guidance != "" {
+			parts.parts = append(parts.parts, guidance)
+		}
 		parts.parts = append(parts.parts, publishedFunctionAskGuidance("workflow", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call"))
 	}
 	// Other phase templates keep their existing reference contract. Builder
