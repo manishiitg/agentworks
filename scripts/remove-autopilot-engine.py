@@ -15,7 +15,7 @@ import sqlite3
 
 ENGINE_TABLES = (
     "goal_lead_builder_asks", "goal_lead_conversation", "goal_lead_messages",
-    "goal_lead_qa_requests", "pulse_consolidation", "pulse_context_records",
+    "goal_lead_qa_requests", "pulse_agent_metrics", "pulse_consolidation", "pulse_context_records",
     "pulse_decisions", "pulse_fast_request", "pulse_final_command_state",
     "pulse_finding_details", "pulse_finding_events", "pulse_finding_issue_aliases",
     "pulse_fix_attempt_findings", "pulse_fix_attempts", "pulse_fix_verifications",
