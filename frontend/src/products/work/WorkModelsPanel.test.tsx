@@ -31,8 +31,9 @@ vi.mock('../../utils/agentProfileCapabilities', async importOriginal => ({
 
 import { WorkModelsPanel as WorkModelsPanelInner } from './WorkModelsPanel'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { TooltipProvider } from '../../components/ui/tooltip'
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-function WorkModelsPanel(props: React.ComponentProps<typeof WorkModelsPanelInner>) { return <QueryClientProvider client={queryClient}><WorkModelsPanelInner {...props} /></QueryClientProvider> }
+function WorkModelsPanel(props: React.ComponentProps<typeof WorkModelsPanelInner>) { return <QueryClientProvider client={queryClient}><TooltipProvider><WorkModelsPanelInner {...props} /></TooltipProvider></QueryClientProvider> }
 import { llmConfigService } from '../../services/llm-config-api'
 import { agentApi } from '../../services/api'
 

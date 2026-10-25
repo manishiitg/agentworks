@@ -147,9 +147,9 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => {
       useChatStore.getState().setTabViewMode('A', 'formatted')
       renderComposer('A', false)
-      await client.invalidateQueries({ queryKey: ['chat-input-statusline', 'A-session'] })
     })
-    expect(host.querySelector('[aria-label="Context 42%"]')).not.toBeNull()
+    await act(async () => { await client.refetchQueries({ queryKey: ['chat-input-statusline', 'A-session'] }) })
+    await vi.waitFor(() => expect(host.querySelector('[aria-label="Context 42%"]')).not.toBeNull())
     await act(async () => { useChatStore.getState().setTabStreaming('A', true); renderComposer('A', false) })
     expect(host.querySelector('[aria-label="Context 42%"]')).not.toBeNull()
     await act(async () => { contextPreference.show = false; renderComposer('A', false) })
@@ -157,9 +157,9 @@ describe('terminal toolbar shared tools', () => {
     vi.mocked(agentApi.listTerminals).mockResolvedValue({ terminals: [{ ...snapshot, status: {} }] } as never)
     await act(async () => {
       contextPreference.show = true; renderComposer('A', false)
-      await client.invalidateQueries({ queryKey: ['chat-input-statusline', 'A-session'] })
     })
-    expect(host.querySelector('[aria-label^="Context "]')).toBeNull()
+    await act(async () => { await client.refetchQueries({ queryKey: ['chat-input-statusline', 'A-session'] }) })
+    await vi.waitFor(() => expect(host.querySelector('[aria-label^="Context "]')).toBeNull())
   })
   it('sends the selected Queue next intent by click and Enter while a turn is running', async () => {
     useChatStore.getState().setTabConfig('A', { sendDeliveryMode: 'queue' })
