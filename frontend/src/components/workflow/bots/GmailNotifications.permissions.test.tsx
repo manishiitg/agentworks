@@ -21,6 +21,7 @@ vi.mock('../../../stores/useWorkflowManifestStore', () => ({
   useWorkflowManifestStore: (selector: (state: unknown) => unknown) => selector({ workflows: [], refreshWorkflows: vi.fn(), updateWorkflow: vi.fn() }),
 }))
 vi.mock('../../integrations/PersonalAccountsPanel', () => ({ default: () => <div>Saved account picker</div> }))
+vi.mock('../../workspace/WorkspacePanelNavigation', () => ({ useWorkspacePanelHosted: () => false }))
 vi.mock('../AskAIButton', () => ({ AskAIButton: () => null }))
 vi.mock('./GmailSetupGuide', () => ({ GmailSetupGuide: () => null }))
 vi.mock('../../../api/googleApp', () => ({ googleAppApi: { status: vi.fn(async () => ({ configured: false })), clients: vi.fn(async () => [{ name: 'test-client' }]), connectWithClient: vi.fn(), registerClient: vi.fn(), reconnect: vi.fn() } }))

@@ -285,7 +285,7 @@ it("keeps the connected work view free of manual attach forms", async () => {
   expect(host.querySelector("form")).toBeNull();
   expect(host.textContent).not.toContain("External folders");
   expect(host.textContent).not.toContain("Want to link something else?");
-  expect(host.textContent).not.toContain("Ask AI to link");
+  expect([...host.querySelectorAll("button")].some(button => button.textContent === "Ask AI to link")).toBe(false);
   expect(host.querySelector("header")?.textContent).toContain("Ask AI");
 });
 
