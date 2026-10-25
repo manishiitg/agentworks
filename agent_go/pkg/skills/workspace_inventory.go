@@ -3,10 +3,13 @@ package skills
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
+	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -91,7 +94,7 @@ func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventor
 			delete(result.Usage, doc.Name)
 			continue
 		}
-		if doc.Managed || IsBuiltinSkill(doc.Name) {
+		if doc.Managed || IsBuiltinSkillIn(workspacePath, doc.Name) {
 			doc.Document = (productpolicy.Selection{}).Text(doc.Document)
 		}
 		parsed, err := ParseSkillFromContent(doc.Document, doc.Name, doc.FilePath)
@@ -104,7 +107,7 @@ func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventor
 		// imported file may share a name with a registered product procedure;
 		// that does not make this physical copy a platform-managed file.
 		parsed.Managed = doc.Managed
-		parsed.FileManaged, parsed.Builtin = doc.Managed, IsBuiltinSkill(doc.Name)
+		parsed.FileManaged, parsed.Builtin = doc.Managed, IsBuiltinSkillIn(workspacePath, doc.Name)
 		parsed.UsedBy = doc.UsedBy
 		parsed.BrainSource, parsed.BrainEdited = doc.BrainSource, doc.BrainEdited
 		parsed.Source, parsed.SourceType = doc.Source, doc.SourceType
@@ -115,7 +118,7 @@ func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventor
 			delete(result.Usage, name)
 			continue
 		}
-		builtin := (productpolicy.Selection{}).Skill(builtinAttachableSkill(name))
+		builtin := (productpolicy.Selection{}).Skill(builtinAttachableSkillIn(workspacePath, name))
 		if builtin == nil {
 			continue
 		}
@@ -137,7 +140,7 @@ func UninstallSkillIn(ctx context.Context, workspaceAPIURL, workspacePath, name 
 	if _, err := ValidateSkillName(name); err != nil {
 		return err
 	}
-	if IsBuiltinSkill(name) {
+	if IsBuiltinSkillIn(workspacePath, name) {
 		return fmt.Errorf("this skill is managed by the platform")
 	}
 	return workspaceSkillOperation(ctx, workspaceAPIURL, "delete", workspacePath, name, nil)
@@ -150,7 +153,7 @@ func InstallSkillFilesIn(workspaceAPIURL, workspacePath, name string, files map[
 	if _, err := ValidateSkillName(name); err != nil {
 		return err
 	}
-	if IsBuiltinSkill(name) {
+	if IsBuiltinSkillIn(workspacePath, name) {
 		return fmt.Errorf("this skill is managed by the platform")
 	}
 	payload, err := json.Marshal(map[string]interface{}{"workspace_path": workspacePath, "name": name, "files": files})
@@ -176,4 +179,41 @@ func InstallSkillFilesIn(workspaceAPIURL, workspacePath, name string, files map[
 		return fmt.Errorf("import failed: %s", failure.Error)
 	}
 	return nil
+}
+
+// WorkspaceSkillDigest tracks selected project files, including references and
+// scripts, so a retained coding chat picks up edits on its next turn. Built-in
+// platform procedures do not become project-owned through a same-name file.
+func WorkspaceSkillDigest(workspaceAPIURL, workspacePath string, names []string) (string, error) {
+	started := time.Now()
+	defer func() {
+		log.Printf("[SKILL_REVISION] workspace=%q selected=%d duration_ms=%d", workspacePath, len(names), time.Since(started).Milliseconds())
+	}()
+	inventory, err := DiscoverSkillsIn(workspaceAPIURL, workspacePath)
+	if err != nil {
+		return "", err
+	}
+	selected := append([]string(nil), names...)
+	sort.Strings(selected)
+	h := sha256.New()
+	encoder := json.NewEncoder(h)
+	for _, name := range selected {
+		if IsBuiltinSkillIn(workspacePath, name) {
+			continue
+		}
+		var content string
+		for _, item := range inventory.Skills {
+			if item.FolderName == name {
+				content = item.Content
+				break
+			}
+		}
+		_ = encoder.Encode([]string{name, content})
+		files := loadSkillSupportingFilesIn(workspaceAPIURL, workspacePath, name)
+		sort.Slice(files, func(i, j int) bool { return files[i].RelPath < files[j].RelPath })
+		for _, file := range files {
+			_ = encoder.Encode(file)
+		}
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }

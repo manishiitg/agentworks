@@ -138,7 +138,7 @@ export default function SkillRow({ skill, onDelete, selected, onToggleSelect, on
             {folder_name !== frontmatter.name ? (
               <span className="font-mono text-[11px] text-gray-400 dark:text-gray-500">{folder_name}</span>
             ) : <span />}
-            {!inventoryOnly && onDelete && !inclusionLabels.length ? <button
+            {onDelete && !inclusionLabels.length ? <button
               type="button"
               onClick={onDelete}
               disabled={readOnly}

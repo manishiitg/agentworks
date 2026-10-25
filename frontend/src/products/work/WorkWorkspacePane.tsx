@@ -277,7 +277,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     try {
       const response = await agentApi.getPlannerFileContent(filePath)
       if (!response.success || !response.data) throw new Error(response.message || 'Could not open skill file.')
-      workspace.setFileContent(String(response.data.content ?? '').replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r'))
+      workspace.setFileContent(String(response.data.content ?? ''))
     } catch (cause) {
       workspace.setShowFileContent(false)
       useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open skill file.', 'error')

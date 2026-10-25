@@ -39,7 +39,7 @@ func (api *StreamingAPI) registerWorkSkillSelectionTool(registrar definitionTool
 		}
 
 		canonical := requested
-		if action == "select" && !skills.IsBuiltinSkill(requested) {
+		if action == "select" && !skills.IsBuiltinSkillIn(workspacePath, requested) {
 			installed, err := skills.GetSkillIn(getWorkspaceAPIURL(), workspacePath, requested)
 			if err != nil {
 				return "", fmt.Errorf("skill %q is not installed in this workspace; use an exact folder name", requested)

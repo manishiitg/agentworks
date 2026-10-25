@@ -706,7 +706,7 @@ func validateCrewCreationSkills(names []string) ([]string, error) {
 	for _, name := range checked {
 		// Built-in skills (agent-browser and product skills) are served from the
 		// in-memory registry, exactly as attachment resolves them, not skills/.
-		if skills.IsBuiltinSkill(name) {
+		if skills.IsBuiltinSkillIn("Crew", name) {
 			continue
 		}
 		return nil, fmt.Errorf("crew skill %q is not installed inside the new Crew; create it without this attachment, then install and select it there", name)

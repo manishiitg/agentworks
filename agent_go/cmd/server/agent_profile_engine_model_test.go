@@ -243,6 +243,12 @@ func TestConversationRuntimeChangeReportsRestartForMCPAndSkills(t *testing.T) {
 	if bind([]string{"google_sheets"}, []string{"work-dashboard"}, []string{"workflow/RESEARCH", "Workflow/research"}) {
 		t.Fatal("equivalent workflow reference selection requested a restart")
 	}
+	for i, digest := range []string{"file-one", "file-one", "file-edited", "file-removed"} {
+		_, restart, err := store.bindRuntimeConfiguration(ctx, "u", profile, "main", "muse-cli", "muse-spark-1.3-contributor", "", []string{"google_sheets"}, []string{"work-dashboard"}, nil, productConversationAccount{SkillFilesDigest: digest})
+		if err != nil || restart != (i != 1) {
+			t.Fatalf("skill file revision %q restart=%v err=%v", digest, restart, err)
+		}
+	}
 }
 
 // Switching provider mid-chat must not carry the old provider's account along.

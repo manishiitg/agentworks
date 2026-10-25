@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 func crewWriter(userID string) *UserClaims {
@@ -309,5 +312,24 @@ func TestCrewAuthoringUsesSkillsWithoutTemplateSchema(t *testing.T) {
 	props, _, _ := externalCrewSpecSchemas()
 	if props["templates"] != nil || props["selected_skills"] == nil || props["files"] == nil {
 		t.Fatal("Crew spec must expose ordinary skills and files without a separate template mechanism")
+	}
+}
+
+func TestCrewSkillSelectionUsesWorkspaceOwnership(t *testing.T) {
+	const name = "test-other-product-procedure"
+	if err := skills.RegisterBuiltin(&llmtypes.Skill{Name: name, Description: "Product library", Content: "Bundled body", Metadata: map[string]string{"product": "another-product"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateCrewCreationSkills([]string{name}); err == nil {
+		t.Fatal("new Crew accepted a foreign library without its own file")
+	}
+	if err := checkCrewSkillsAvailable(context.Background(), "", []string{name}, nil); err == nil {
+		t.Fatal("import accepted missing Crew skill")
+	}
+	if err := checkCrewSkillsAvailable(context.Background(), "", []string{name}, map[string]string{crewLocalSkillManifest(name): "---\nname: " + name + "\ndescription: Own procedure\n---\nOwn body"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateCrewCreationSkills([]string{"agent-browser"}); err != nil {
+		t.Fatal("core platform guide became unavailable")
 	}
 }

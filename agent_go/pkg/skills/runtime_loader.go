@@ -2,6 +2,7 @@ package skills
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"log"
@@ -85,7 +86,7 @@ func loadOneAttachable(workspaceAPIURL, workspacePath, folderName string) (*llmt
 	if !(productpolicy.Selection{}).AllowsSkill(folderName) {
 		return nil, fmt.Errorf("skill %s product is unavailable", folderName)
 	}
-	if skill := builtinAttachableSkill(folderName); skill != nil {
+	if skill := builtinAttachableSkillIn(workspacePath, folderName); skill != nil {
 		return skill, nil
 	}
 
@@ -113,6 +114,7 @@ func loadOneAttachable(workspaceAPIURL, workspacePath, folderName string) (*llmt
 	// Walk the skill folder for supporting files. Failures here are
 	// non-fatal — SKILL.md alone is still a valid attach.
 	skill.SupportingFiles = loadSkillSupportingFilesIn(workspaceAPIURL, workspacePath, folderName)
+	log.Printf("[SKILL_SOURCE] workspace=%q name=%q source=workspace file=%q sha256=%x", workspacePath, folderName, parsed.FilePath, sha256.Sum256([]byte(parsed.Content)))
 	return skill, nil
 }
 

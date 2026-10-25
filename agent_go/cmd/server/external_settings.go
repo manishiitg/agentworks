@@ -412,7 +412,7 @@ func externalSettingsWorkflowSkillCheck(path string) func(context.Context, []str
 	return func(_ context.Context, names []string) error {
 		read := skills.NewInstalledSkillReader(getWorkspaceAPIURL(), path)
 		for _, name := range names {
-			if skills.IsBuiltinSkill(name) {
+			if skills.IsBuiltinSkillIn(path, name) {
 				continue
 			}
 			if _, err := read(name, "SKILL.md"); err != nil {

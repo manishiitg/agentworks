@@ -19,6 +19,8 @@ import (
 // The rendered frontmatter supplies its discovery description unless Description
 // explicitly overrides it for a product variant.
 type SkillFileBinding struct {
+	// Product owns a bundled library; other products use their installed files.
+	Product     string
 	Name        string
 	Description string
 	Path        string
@@ -94,12 +96,17 @@ func RegisterEmbeddedSkillsRendered(fsys fs.FS, bindings []SkillFileBinding, ren
 		}); err != nil {
 			return fmt.Errorf("read supporting files for skill %q: %w", binding.Name, err)
 		}
+		var metadata map[string]string
+		if binding.Product != "" {
+			metadata = map[string]string{"product": binding.Product}
+		}
 		if err := skills.RegisterBuiltin(&llmtypes.Skill{
 			Name:            binding.Name,
 			Description:     description,
 			Content:         content,
 			SupportingFiles: supportingFiles,
 			Source:          llmtypes.SkillSource{Origin: "builtin"},
+			Metadata:        metadata,
 		}); err != nil {
 			return fmt.Errorf("register skill %q: %w", binding.Name, err)
 		}

@@ -42,6 +42,7 @@ export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSki
           compact
           manageOwnScroll={false}
           customOnly
+          allowManage
           profileId={product.profileId}
           profileVersion={product.profileVersion}
           additionalSkills={projectSkills.map(skill => ({ folder_name: skill.name, file_path: skill.filePath, frontmatter: { name: skill.name, description: skill.description }, content: '' }))}

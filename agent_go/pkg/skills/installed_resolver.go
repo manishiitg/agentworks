@@ -1,8 +1,10 @@
 package skills
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
+	"log"
 	"path"
 	"strings"
 	"unicode/utf8"
@@ -48,7 +50,7 @@ func NewInstalledSkillReader(workspaceAPIURL, workspacePath string) func(string,
 		// Product-owned procedures are available directly, just as in the
 		// attachable-skill loader. Resolving them must not depend on a workspace
 		// catalog request or permit a workspace alias to shadow their identity.
-		if skill := builtinAttachableSkill(name); skill != nil {
+		if skill := builtinAttachableSkillIn(workspacePath, name); skill != nil {
 			names := []string{SkillFileName}
 			for _, file := range skill.SupportingFiles {
 				names = append(names, file.RelPath)
@@ -72,6 +74,7 @@ func NewInstalledSkillReader(workspaceAPIURL, workspacePath string) func(string,
 			if err != nil {
 				return InstalledSkillFile{}, err
 			}
+			log.Printf("[SKILL_SOURCE] workspace=%q name=%q source=workspace operation=read_skill file=%q sha256=%x", workspacePath, name, skill.FilePath, sha256.Sum256([]byte(skill.Content)))
 			return InstalledSkillFile{
 				Content:        skill.Content,
 				Description:    skill.Frontmatter.Description,

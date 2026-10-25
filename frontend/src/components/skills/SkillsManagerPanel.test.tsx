@@ -243,3 +243,28 @@ it('opens runtime defaults directly and keeps mode-specific instructions separat
     expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Uninstall')).toBe(false)
   } finally { await act(async () => root.unmount()); host.remove(); vi.clearAllMocks() }
 })
+
+it('lets a Crew owner edit and remove an ordinary skill from its compact inventory', async () => {
+  const skill = { folder_name: 'scene-guide', file_path: 'skills/scene-guide/SKILL.md', frontmatter: { name: 'scene-guide', description: 'Project procedure' }, content: 'My instructions', managed: false, builtin: false }
+  vi.mocked(skillsApi.listSkills).mockResolvedValue({ skills: [skill], total: 1 })
+  vi.mocked(agentApi.getAgentProfile).mockResolvedValue({ skill_defaults_by_mode: { builder: [], run: [] } } as never)
+  const open = vi.fn(), removed = vi.fn()
+  const confirm = window.confirm; window.confirm = vi.fn(() => true)
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+  try {
+    await act(async () => root.render(<SkillsManagerPanel customOnly allowManage profileId="work" workspacePath="Crew/example" onOpenFile={open} onUninstalled={removed} />))
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Read skill scene-guide"]')!.click())
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Open in Files')!.click())
+    expect(open).toHaveBeenCalledWith('skills/scene-guide/SKILL.md')
+    const uninstall = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Uninstall')!
+    expect(uninstall).toBeDefined()
+    access.canWrite = false
+    await act(async () => root.render(<SkillsManagerPanel customOnly allowManage profileId="work" workspacePath="Crew/example" onOpenFile={open} onUninstalled={removed} />))
+    expect([...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Uninstall')!.disabled).toBe(true)
+    access.canWrite = true
+    await act(async () => root.render(<SkillsManagerPanel customOnly allowManage profileId="work" workspacePath="Crew/example" onOpenFile={open} onUninstalled={removed} />))
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Uninstall')!.click())
+    expect(skillsApi.deleteSkill).toHaveBeenCalledWith('scene-guide', 'Crew/example')
+    expect(removed).toHaveBeenCalledWith('scene-guide')
+  } finally { await act(async () => root.unmount()); host.remove(); window.confirm = confirm; access.canWrite = true; vi.clearAllMocks() }
+})

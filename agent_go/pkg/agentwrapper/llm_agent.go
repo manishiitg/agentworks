@@ -660,7 +660,7 @@ func (w *LLMAgentWrapper) SetAdditionalBridgeTools(names []string) error {
 // SetInstalledSkillResolver configures read_skill fallback resolution for the
 // immutable agent that this wrapper will finalize. Setting it only on
 // GetUnderlyingAgent() is incorrect: FinalizeDefinition replaces that draft.
-func (w *LLMAgentWrapper) SetInstalledSkillResolver(resolver mcpagent.InstalledSkillResolver) error {
+func (w *LLMAgentWrapper) SetInstalledSkillResolver(workspacePath string, resolver mcpagent.InstalledSkillResolver) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err := w.ensureDefinitionMutable(); err != nil {
@@ -673,7 +673,7 @@ func (w *LLMAgentWrapper) SetInstalledSkillResolver(resolver mcpagent.InstalledS
 				return mcpagent.InstalledSkillFile{}, fmt.Errorf("skill %s product is unavailable", name)
 			}
 			file, err := original(name, path)
-			if err == nil && skills.IsBuiltinSkill(name) {
+			if err == nil && skills.IsBuiltinSkillIn(workspacePath, name) {
 				file.Content = w.productSelection.Text(file.Content)
 				file.Description = w.productSelection.Text(file.Description)
 			}

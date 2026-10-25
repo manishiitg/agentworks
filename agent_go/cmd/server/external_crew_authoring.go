@@ -230,8 +230,12 @@ func crewLocalSkillManifest(name string) string { return "skills/" + name + "/SK
 // the Crew or arriving in this same call. Unknown names fail before anything
 // is written.
 func checkCrewSkillsAvailable(ctx context.Context, root string, names []string, incoming map[string]string) error {
+	builtinScope := root
+	if builtinScope == "" {
+		builtinScope = "Crew"
+	}
 	for _, name := range names {
-		if skills.IsBuiltinSkill(name) {
+		if skills.IsBuiltinSkillIn(builtinScope, name) {
 			continue
 		}
 		if _, ok := incoming[crewLocalSkillManifest(name)]; ok {

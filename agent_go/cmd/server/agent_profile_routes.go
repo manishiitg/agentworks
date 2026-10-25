@@ -1191,7 +1191,15 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		query.resolvedResumeTarget = target
 	}
 	if strings.TrimSpace(query.Provider) != "" {
-		_, restart, err := defaultProductConversationRegistryStore().bindRuntimeConfiguration(ctx, userID, profile, conversation.ConversationKey, query.Provider, query.ModelID, query.ReasoningEffort, query.EnabledServers, query.SelectedSkills, query.WorkflowContextPaths, productConversationAccount{ConnectionID: query.ConnectionID, FillsUnrecorded: fillsUnrecorded})
+		skillFilesDigest := conversation.SkillFilesDigest
+		if workspaceref.MustParse(conversation.WorkspacePath).IsShared() {
+			if digest, err := skills.WorkspaceSkillDigest(getWorkspaceAPIURL(), conversation.WorkspacePath, query.SelectedSkills); err == nil {
+				skillFilesDigest = digest
+			} else {
+				log.Printf("[SKILLS] workspace=%q could not check changed skill files: %v", conversation.WorkspacePath, err)
+			}
+		}
+		_, restart, err := defaultProductConversationRegistryStore().bindRuntimeConfiguration(ctx, userID, profile, conversation.ConversationKey, query.Provider, query.ModelID, query.ReasoningEffort, query.EnabledServers, query.SelectedSkills, query.WorkflowContextPaths, productConversationAccount{ConnectionID: query.ConnectionID, FillsUnrecorded: fillsUnrecorded, SkillFilesDigest: skillFilesDigest})
 		if err != nil {
 			return QueryRequest{}, err
 		}

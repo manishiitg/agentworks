@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -91,6 +93,26 @@ func IsBuiltinSkill(folderName string) bool {
 	defer builtinSkillsMu.RUnlock()
 	_, ok := builtinSkills[folderName]
 	return ok
+}
+
+// IsBuiltinSkillIn reports the runtime owner for this workspace. A Crew owns
+// its installed copies of another product's library, including their absence.
+// Core platform procedures and the Crew's own declared defaults remain built in.
+func IsBuiltinSkillIn(workspacePath, folderName string) bool {
+	return builtinAttachableSkillIn(workspacePath, folderName) != nil
+}
+
+func builtinAttachableSkillIn(workspacePath, folderName string) *llmtypes.Skill {
+	skill := builtinAttachableSkill(folderName)
+	if skill == nil {
+		return nil
+	}
+	if workspaceref.MustParse(workspacePath).IsShared() {
+		if product := skill.Metadata["product"]; product != "" && product != "work" {
+			return nil
+		}
+	}
+	return skill
 }
 
 func builtinAttachableSkill(folderName string) *llmtypes.Skill {

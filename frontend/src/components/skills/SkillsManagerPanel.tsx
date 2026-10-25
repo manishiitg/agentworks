@@ -32,6 +32,8 @@ interface SkillsManagerPanelProps {
   profileVersion?: number
   /** Product panels show user-installed files; platform guidance stays in the runtime. */
   customOnly?: boolean
+  /** Allow owners to manage installed project files in the compact inventory. */
+  allowManage?: boolean
 }
 
 // All products use the same workspace inventory. Main chat selection and step
@@ -42,7 +44,7 @@ export default function SkillsManagerPanel({
   selectionScopeLabel = 'main chat', manageOwnScroll = true,
   onAddViaChat, onBeforeUninstall, onUninstalled, headerAction,
   additionalSkills = [], groupBySource = true, showRefresh = false, onOpenFile,
-  profileId, profileVersion, customOnly = false,
+  profileId, profileVersion, customOnly = false, allowManage = false,
 }: SkillsManagerPanelProps) {
   const [skills, setSkills] = useState<Skill[]>([])
   const [usage, setUsage] = useState<Record<string, string[]>>({})
@@ -146,7 +148,7 @@ export default function SkillsManagerPanel({
   const missing = [...new Set([...selectedSkills, ...Object.keys(usage)])]
     .filter(name => !completeInventory.some(skill => skill.folder_name === name))
   const groups = customOnly ? [
-    { title: 'Custom skills', description: `Extra skill files in this ${selectionScopeLabel}, added by a person, a chat or an import. This list does not identify who installed them. Ask in chat to inspect, add or remove one.`, skills: inventory },
+    { title: 'Custom skills', description: `Extra skill files in this ${selectionScopeLabel}, added by a person, a chat or an import. This list does not identify who installed them. ${allowManage ? 'Open a skill to edit or remove it, or ask in chat.' : 'Ask in chat to inspect, add or remove one.'}`, skills: inventory },
   ] : groupBySource ? [
     { title: 'Project skills', description: 'Skill files in this project. Their selection and usage are shown below.', skills: inventory.filter(skill => !isPlatform(skill)) },
     { title: 'Platform skills', description: 'Platform-managed files and declared defaults for Builder and Run. Actual access is checked when a session runs.', skills: inventory.filter(isPlatform) },
@@ -161,7 +163,7 @@ export default function SkillsManagerPanel({
         else setViewedSkill(skill.folder_name)
       }} reader={reader}
       defaultDefinitions={Object.entries(defaults?.definitionsByMode || {}).flatMap(([mode, definitions]) => definitions.filter(definition => definition.folder_name === skill.folder_name).map(definition => ({ mode, skill: definition })))}
-      onDelete={!customOnly && installed && !skill.managed && !skill.builtin && !included ? () => { void uninstall(skill.folder_name) } : undefined}
+      onDelete={(!customOnly || allowManage) && installed && !skill.managed && !skill.file_managed && !skill.builtin && !included ? () => { void uninstall(skill.folder_name) } : undefined}
       inventoryOnly={customOnly}
       selected={selectable && onToggleSkill ? selectedSkills.includes(skill.folder_name) : undefined}
       onToggleSelect={selectable && onToggleSkill ? () => { if (!readOnly && defaults && loadedScope === activeScope.current) onToggleSkill(skill.folder_name) } : undefined}

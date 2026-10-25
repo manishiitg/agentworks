@@ -63,6 +63,7 @@ type ProductConversationRecord struct {
 	ReasoningEffort      string   `json:"reasoning_effort,omitempty"`
 	EnabledServers       []string `json:"enabled_servers,omitempty"`
 	SelectedSkills       []string `json:"selected_skills,omitempty"`
+	SkillFilesDigest     string   `json:"skill_files_digest,omitempty"`
 	WorkflowContextPaths []string `json:"workflow_context_paths,omitempty"`
 	// ProjectLLMConfig is loaded from the project's runtime manifest for this request. It is not
 	// duplicated into the conversation registry.
@@ -913,6 +914,10 @@ func (store productConversationRegistryStore) bindRuntimeConfiguration(
 		if record.ConnectionID != next && !(strings.TrimSpace(record.ConnectionID) == "" && account[0].FillsUnrecorded) {
 			restartNeeded = true
 		}
+		if record.SkillFilesDigest != account[0].SkillFilesDigest && record.Provider != "" {
+			restartNeeded = true
+		}
+		record.SkillFilesDigest = account[0].SkillFilesDigest
 		record.ConnectionID = next
 	}
 	record.Provider = provider
@@ -938,8 +943,9 @@ func (store productConversationRegistryStore) bindRuntimeConfiguration(
 // had none recorded and this is the default its turns already resolved to, so recording it is not
 // a runtime change.
 type productConversationAccount struct {
-	ConnectionID    string
-	FillsUnrecorded bool
+	SkillFilesDigest string
+	ConnectionID     string
+	FillsUnrecorded  bool
 }
 
 func canonicalRuntimeSelection(values []string) []string {

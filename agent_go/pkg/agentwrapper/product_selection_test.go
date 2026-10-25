@@ -40,7 +40,7 @@ func TestBuilderProductSelectionOnFreshAndResumedDefinitions(t *testing.T) {
 			t.Fatalf("%s tools=%v skills=%v", mode, w.definition.Tools.Direct, w.AttachedSkills())
 		}
 	}
-	if err := w.SetInstalledSkillResolver(func(string, string) (mcpagent.InstalledSkillFile, error) {
+	if err := w.SetInstalledSkillResolver("Crew/example", func(string, string) (mcpagent.InstalledSkillFile, error) {
 		return mcpagent.InstalledSkillFile{Content: "old Brain guidance"}, nil
 	}); err != nil {
 		t.Fatal(err)

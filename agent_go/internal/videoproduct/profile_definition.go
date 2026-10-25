@@ -45,7 +45,7 @@ func RegisterProductSkills() error {
 	registerProductSkillsOnce.Do(func() {
 		bindings := make([]agentprofiles.SkillFileBinding, len(profileSkills))
 		for i, definition := range profileSkills {
-			bindings[i] = agentprofiles.SkillFileBinding{Name: definition.name, Description: definition.description, Path: definition.path}
+			bindings[i] = agentprofiles.SkillFileBinding{Name: definition.name, Description: definition.description, Path: definition.path, Product: mustVideoStudioManifest().Profile.ID}
 		}
 		registerProductSkillsErr = agentprofiles.RegisterEmbeddedSkills(profileSkillFiles, bindings)
 	})

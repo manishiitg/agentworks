@@ -79,14 +79,14 @@ func TestWrapperRetainsInstalledSkillResolverForFinalizedAgent(t *testing.T) {
 	resolver := func(name, path string) (mcpagent.InstalledSkillFile, error) {
 		return mcpagent.InstalledSkillFile{Content: name + ":" + path}, nil
 	}
-	if err := wrapper.SetInstalledSkillResolver(resolver); err != nil {
+	if err := wrapper.SetInstalledSkillResolver("Crew/example", resolver); err != nil {
 		t.Fatalf("SetInstalledSkillResolver: %v", err)
 	}
 	if wrapper.installedSkillResolver == nil {
 		t.Fatal("resolver was not retained on the immutable wrapper definition")
 	}
 	wrapper.finalized = true
-	if err := wrapper.SetInstalledSkillResolver(resolver); err == nil {
+	if err := wrapper.SetInstalledSkillResolver("Crew/example", resolver); err == nil {
 		t.Fatal("resolver changed after immutable definition was finalized")
 	}
 }

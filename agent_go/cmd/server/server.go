@@ -7316,7 +7316,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// read_skill can also serve a skill installed in this workspace
 				// but not attached, so a router skill names the specialists and
 				// the agent asks by name instead of shelling out to a path.
-				if err := llmAgent.SetInstalledSkillResolver(installedSkillResolver(chatWorkingFolder)); err != nil {
+				if err := llmAgent.SetInstalledSkillResolver(chatWorkingFolder, installedSkillResolver(chatWorkingFolder)); err != nil {
 					logfWithContext(queryLogCtx, "[SKILLS] Failed to configure installed-skill resolver: %v", err)
 				}
 				attached := skills.LoadAttachableIn(getWorkspaceAPIURL(), chatWorkingFolder, identitySkillNames)
