@@ -44,12 +44,12 @@ func TestLoginRecoveryBoundsAuthFailuresAndKeepsExplicitDetach(t *testing.T) {
 	if requests.Load() != 4 {
 		t.Fatal("fresh login did not reset retries")
 	}
-	s.OfflineExplicit = true
+	delete(b.sessions, localBridgeKey("claude", "chat"))
 	b.recoverSessionLogin(context.Background(), s, &retry)
 	if requests.Load() != 4 {
 		t.Fatal("explicitly detached chat was recovered")
 	}
-	s.OfflineExplicit = false
+	b.sessions[localBridgeKey("claude", "chat")] = s
 	s.ServerClosed = true
 	b.recoverSessionLogin(context.Background(), s, &retry)
 	if requests.Load() != 4 {

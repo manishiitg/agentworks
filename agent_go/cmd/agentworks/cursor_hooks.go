@@ -310,6 +310,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 	ctxDrain, cancelDrain := context.WithTimeout(cmd.Context(), 10*time.Second)
 	defer cancelDrain()
 	if input.Event == "SessionEnd" {
+		logHookLifecycle(root, "cursor", input)
 		req.Action = "offline"
 		_, _ = bridgeCall(ctxDrain, root, o, req)
 		return nil

@@ -153,7 +153,6 @@ type localSession struct {
 	HookTransport    string    `json:"hook_transport,omitempty"`
 	lateNotice       string    // set when an attach finished after its command had given up; said once on the next prompt
 	museWatch        *museWatchState
-	OfflineExplicit  bool `json:"offline_explicit,omitempty"`
 	OwnCLI           bool `json:"own_cli,omitempty"`
 	// Also marks an extra network this chat joined next to its own (--also);
 	// Network is that login's name. The chat's own attachment has neither.
@@ -591,10 +590,14 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 		}
 		_ = srv.Close()
 	}()
-	go b.housekeeping(ctx)
-	if b.options.Ready != nil {
-		go b.options.Ready(ctx)
-	}
+	go func() {
+		// Complete bounded startup discovery before recurring recovery: both
+		// otherwise race to renew the same saved chat after an update.
+		if b.options.Ready != nil {
+			b.options.Ready(ctx)
+		}
+		b.housekeeping(ctx)
+	}()
 	if b.options.AutoUpdate != nil {
 		go b.autoUpdateLoop(ctx)
 	}
@@ -772,7 +775,7 @@ func (b *localBridge) recoverSessionLogin(ctx context.Context, s *localSession, 
 	if s.Also {
 		key = localAlsoKey(key, s.ParentConfigPath)
 	}
-	if b.closed || b.sessions[key] != s || s.OfflineExplicit || s.ServerClosed || s.ParentConfigPath == "" || s.HostKey == "" {
+	if b.closed || b.sessions[key] != s || s.ServerClosed || s.ParentConfigPath == "" || s.HostKey == "" {
 		b.mu.Unlock()
 		return false
 	}
@@ -800,7 +803,7 @@ func (b *localBridge) recoverSessionLogin(ctx context.Context, s *localSession, 
 	defer release()
 	// A simultaneous detach must win before any network work begins.
 	b.mu.Lock()
-	active := !b.closed && b.sessions[key] == s && !s.OfflineExplicit && !s.ServerClosed
+	active := !b.closed && b.sessions[key] == s && !s.ServerClosed
 	b.mu.Unlock()
 	if !active {
 		return false
@@ -1655,7 +1658,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return out
 		}
 		var err error
-		if !s.Offline {
+		if in.Action == "detach" {
 			known, att := s.client, s.Attachment
 			b.unlocked(func() { // the server call runs without the bridge lock
 				_, err = known.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": att.AgentName, "attachment_id": att.ID}, true)
@@ -1671,9 +1674,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 		}
 		if in.Action == "offline" {
-			s.OfflineExplicit = true
+			// SessionEnd closes the local runtime, not the person's connection.
+			// Keep its server lease so exact-owner recovery can renew that lease.
 			s.Offline = true
 			s.HostKey = ""
+			s.LastError = "Waiting for this chat to return; AgentWorks will reconnect automatically."
+			log.Printf("[BRIDGE] lifecycle_offline provider=%s chat=%s agent=%s attachment=%s", s.Attachment.Provider, s.Attachment.SessionID, s.Attachment.AgentName, s.Attachment.ID)
 		} else {
 			if b.stopped == nil {
 				b.stopped = map[string]bool{}
@@ -2258,6 +2264,11 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
+	if ctx.Err() != nil {
+		return
+	}
+	log.Printf("[BRIDGE-RECOVERY] housekeeping_started interval=%s", interval)
+	var recoveryAfter string // memory-only position in saved offline chats
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	for {
@@ -2286,11 +2297,12 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 				b.startNative(s)
 				labels = append(labels, s)
 			}
-			if s.Offline && !s.OfflineExplicit && !s.ServerClosed && !s.Also && s.NativeRemote != "" {
+			if s.Offline && !s.ServerClosed && !s.Also && s.NativeRemote != "" {
 				reconnect = append(reconnect, s.Attachment)
 			}
 		}
 		if !b.closed && !b.reconnecting && len(reconnect) > 0 && b.options.Reconnect != nil {
+			reconnect, recoveryAfter = nativeRecoveryBatch(reconnect, recoveryAfter)
 			b.reconnecting = true
 			b.workers.Add(1)
 			go func() {
@@ -2308,6 +2320,33 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 			b.refreshChatLabel(ctx, s)
 		}
 	}
+}
+
+// Old saved chats must not consume the whole discovery deadline before a
+// live one is checked. Start with recent activity, then rotate over the rest.
+func nativeRecoveryBatch(saved []AgentAttachment, after string) ([]AgentAttachment, string) {
+	const batchSize = 32
+	sort.Slice(saved, func(i, j int) bool {
+		if saved[i].ActivityAt.Equal(saved[j].ActivityAt) {
+			return saved[i].ID < saved[j].ID
+		}
+		return saved[i].ActivityAt.After(saved[j].ActivityAt)
+	})
+	if len(saved) == 0 {
+		return nil, ""
+	}
+	start := 0
+	for i, a := range saved {
+		if a.ID == after {
+			start = (i + 1) % len(saved)
+			break
+		}
+	}
+	batch := make([]AgentAttachment, 0, min(batchSize, len(saved)))
+	for i := 0; i < cap(batch); i++ {
+		batch = append(batch, saved[(start+i)%len(saved)])
+	}
+	return batch, batch[len(batch)-1].ID
 }
 
 // Only providers with a hook that actually drains messages can report one.
@@ -2726,7 +2765,7 @@ func (b *localBridge) networkConfig(primary, network string) string {
 
 // leaveNetwork detaches (or takes offline) one extra network of a chat.
 func (b *localBridge) leaveNetwork(callCtx context.Context, key string, x *localSession, action string) {
-	if !x.Offline && x.client != nil {
+	if action == "detach" && x.client != nil {
 		known, att := x.client, x.Attachment
 		b.unlocked(func() {
 			_, _ = known.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": att.AgentName, "attachment_id": att.ID}, true)
@@ -2740,7 +2779,8 @@ func (b *localBridge) leaveNetwork(callCtx context.Context, key string, x *local
 		x.cancel()
 	}
 	if action == "offline" {
-		x.Offline, x.OfflineExplicit = true, true
+		x.Offline, x.HostKey = true, ""
+		x.LastError = "Waiting for this chat to return; AgentWorks will reconnect automatically."
 	} else {
 		delete(b.sessions, key)
 		if cfg, e := LoadConfig(x.ConfigPath); e == nil && x.client != nil {

@@ -38,10 +38,28 @@ type pluginHookInput struct {
 	PiPersonToken      string          `json:"pi_person_token,omitempty"`
 	SessionID          string          `json:"session_id"`
 	Event              string          `json:"hook_event_name"`
+	Source             string          `json:"source,omitempty"`
+	Reason             string          `json:"reason,omitempty"`
 	Prompt             string          `json:"prompt"`
 	StopActive         bool            `json:"stop_hook_active"`
 	Queued             bool            `json:"queued,omitempty"`
 	Cwd                string          `json:"cwd"`
+}
+
+// Record lifecycle metadata only, never prompt text or provider-supplied details.
+func logHookLifecycle(root, provider string, input pluginHookInput) {
+	if input.Event != "SessionStart" && input.Event != "SessionEnd" {
+		return
+	}
+	known := func(value string) string {
+		switch value {
+		case "startup", "resume", "clear", "compact", "fork", "other", "logout", "prompt_input_exit", "bypass_permissions_disabled":
+			return value
+		default:
+			return "unknown"
+		}
+	}
+	hookLog(root, "event=%s provider=%s session=%s source=%s reason=%s", input.Event, provider, input.SessionID, known(input.Source), known(input.Reason))
 }
 
 // Cursor supplies an object for generic post-tool input and a JSON string for
@@ -131,6 +149,9 @@ func pluginCommand(o *options) *cobra.Command {
 			if err := confirmPiPersonInput(cmd.Context(), root, req.HostKey, input.SessionID, input.Prompt, input.PiPersonToken); err != nil {
 				return pluginBlock(o, "Pi hook requires a one-use proof from literal person input. Type /agentworks attach yourself in the TUI.")
 			}
+		}
+		if req.HostKey != "" {
+			logHookLifecycle(root, args[0], input)
 		}
 		if input.Event == "PostToolUse" {
 			return postToolMessages(cmd.Context(), root, o, req)

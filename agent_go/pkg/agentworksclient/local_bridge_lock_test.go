@@ -651,7 +651,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		t.Skip(err)
 	}
 	var attachments atomic.Int32
-	var backgroundAttachments atomic.Int32
+	var backgroundAttachments, detaches atomic.Int32
 	var providerRestarted, nameReplaced atomic.Bool
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/agents/events") {
@@ -666,6 +666,9 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 			Session string `json:"native_session_id"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Action == "detach" {
+			detaches.Add(1)
+		}
 		if body.Action == "attach" {
 			if body.Session == "background" {
 				backgroundAttachments.Add(1)
@@ -701,12 +704,9 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	background.ReadPosition = 7
 	closed := seed("closed", "lease-closed", true)
 	closed.NativeRemote = background.NativeRemote
-	explicit := seed("explicit", "lease-explicit", false)
-	explicit.NativeRemote, explicit.OfflineExplicit = background.NativeRemote, true
 	if err = atomicLiveJSON(filepath.Join(root, "sessions.json"), map[string]*localSession{
 		localBridgeKey("codex", "saved"):      seed("saved", "lease-saved", false),
 		localBridgeKey("codex", "closed"):     closed,
-		localBridgeKey("codex", "explicit"):   explicit,
 		localBridgeKey("codex", "background"): background,
 	}); err != nil {
 		t.Fatal(err)
@@ -724,7 +724,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 			Reconnect: func(ctx context.Context, saved []AgentAttachment) {
 				if len(saved) != 1 || saved[0].SessionID != "background" || saved[0].AgentName != "saved-background" {
 					select {
-					case recovered <- fmt.Errorf("recovery selected a closed, explicit or unrelated chat: %+v", saved):
+					case recovered <- fmt.Errorf("recovery selected a closed or unrelated chat: %+v", saved):
 					default:
 					}
 					return
@@ -772,6 +772,22 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	if s := restored[localBridgeKey("codex", "background")]; s == nil || s.ReadPosition != 7 || s.ParentConfigPath != config {
 		t.Fatalf("background recovery lost the saved login or read position: %+v", s)
 	}
+	// A real SessionEnd-style IPC request must leave the server lease intact
+	// and let background recovery return this exact native chat without a prompt.
+	if _, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "offline", Provider: "codex", SessionID: "background", HostKey: "current-process"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-recovered:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("SessionEnd permanently disconnected the saved native chat")
+	}
+	if detaches.Load() != 0 || backgroundAttachments.Load() != 2 {
+		t.Fatal("SessionEnd detached the server lease or failed to recover it")
+	}
 	// Another chat claimed this address while the old provider was gone.
 	// The server's existing expected-attachment refusal must end recovery.
 	nameReplaced.Store(true)
@@ -785,13 +801,13 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		t.Fatal("recovery did not observe the replaced attachment")
 	}
 	stopped, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "connection", Provider: "codex", SessionID: "background"})
-	if err != nil || !stopped.Stopped || !stopped.Offline || backgroundAttachments.Load() != 2 {
+	if err != nil || !stopped.Stopped || !stopped.Offline || backgroundAttachments.Load() != 3 {
 		t.Fatalf("replacement did not stop recovery: %+v %v", stopped, err)
 	}
 	if err := readLiveJSON(filepath.Join(root, "sessions.json"), &restored); err != nil || !restored[localBridgeKey("codex", "background")].ServerClosed {
 		t.Fatal("replacement refusal was not saved")
 	}
-	if _, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "resume", Provider: "codex", SessionID: "background", HostKey: "restarted-process", AttachmentID: "background-renewed"}); err == nil || backgroundAttachments.Load() != 2 {
+	if _, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "resume", Provider: "codex", SessionID: "background", HostKey: "restarted-process", AttachmentID: "background-renewed"}); err == nil || backgroundAttachments.Load() != 3 {
 		t.Fatal("server-closed recovery made another attachment request")
 	}
 	providerRestarted.Store(false)
@@ -807,7 +823,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	if attachments.Load() != 1 {
 		t.Fatal("messaging must renew the lease only once")
 	}
-	// SessionEnd closes the server lease but keeps this chat's saved identity.
+	// SessionEnd stops local delivery but keeps this chat's saved server lease.
 	if _, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "offline", Provider: "codex", SessionID: "saved", HostKey: "current-process"}); err != nil {
 		t.Fatal(err)
 	}
@@ -824,6 +840,9 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	}
 	if _, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "detach", Provider: "codex", SessionID: "saved", HostKey: "current-process"}); err != nil {
 		t.Fatal(err)
+	}
+	if detaches.Load() != 1 {
+		t.Fatal("the person's detach did not close the server lease")
 	}
 	request.SessionID = "saved"
 	if got, err = CallMessagingBridge(ctx, root, request, nil); err != nil || got.Attached {
@@ -1111,5 +1130,26 @@ func TestHeldNoticeChangesWithoutRepeatingAtEveryBoundary(t *testing.T) {
 	}
 	if strings.Contains(string(saved), revision) || strings.Contains(string(saved), "Sharing has ended") {
 		t.Fatal("helper persisted notice metadata")
+	}
+}
+
+// The real laptop held hundreds of ended chats; a bounded first page must not
+// starve a returning native chat later in that saved set.
+func TestNativeRecoveryBatchesRotatePastOldChats(t *testing.T) {
+	saved := make([]AgentAttachment, 65)
+	for i := range saved {
+		saved[i] = AgentAttachment{ID: fmt.Sprintf("lease-%02d", i), ActivityAt: time.Unix(int64(i), 0)}
+	}
+	first, cursor := nativeRecoveryBatch(saved, "")
+	if len(first) != 32 || first[0].ID != "lease-64" || first[31].ID != "lease-33" {
+		t.Fatal("recent saved chats were not checked first")
+	}
+	second, cursor := nativeRecoveryBatch(saved, cursor)
+	if len(second) != 32 || second[0].ID != "lease-32" || second[31].ID != "lease-01" {
+		t.Fatal("later saved chats were starved by the first page")
+	}
+	last, _ := nativeRecoveryBatch(saved, cursor)
+	if last[0].ID != "lease-00" || last[1].ID != "lease-64" {
+		t.Fatal("recovery did not wrap after checking the oldest chat")
 	}
 }

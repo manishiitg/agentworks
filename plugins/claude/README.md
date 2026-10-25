@@ -23,7 +23,8 @@ Default hooks run without channel launch flags. Unattached hooks make no network
 request and emit nothing. Attached hooks drain a private local bridge socket;
 the bridge holds the server event stream and persists offers before handing them
 in. It does not poll the mailbox. Stop hooks respect the host loop guard.
-Closing the session marks it offline when the host emits SessionEnd. Its name
+SessionEnd pauses local delivery without disconnecting the saved AgentWorks name.
+A returning native chat reconnects automatically; an explicit detach stays stopped. Its name
 and journal remain. Type `/agentworks attach` in the same session to reconnect, or `/agentworks detach` to revoke and remove the attachment.
 
 Durable offers prevent automatic duplicates after restart. A crash between
@@ -49,7 +50,7 @@ See https://code.claude.com/docs/en/channels .
 Existing native sessions can use explicit desktop/session transports and the
 process-bound `agentworks bridge message` fallback. See [native transports](../../docs/communication-protocols.md#existing-desktop-and-claude-session-transports).
 
-Terminal attach discovers live Claude registrations and verifies Codex candidates with the exact desktop owner before offering a person selection. Technical process/session overrides are hidden from normal help. Native idle wake uses the chat's existing approval/sandbox settings. The desktop IPC is a same-OS-user trust boundary. Native batches above 96 KiB require explicit inbox recovery. CLI updates and stop/start restore still-live existing attachments without rotating their identity or repeating AgentWorks guidance. A provider process restart requires the person to type attach again. Claude itself adds a notice to every native session message; AgentWorks cannot suppress that host notice.
+Terminal attach discovers live Claude registrations and verifies Codex candidates with the exact desktop owner before offering a person selection. Technical process/session overrides are hidden from normal help. Native idle wake uses the chat's existing approval/sandbox settings. The desktop IPC is a same-OS-user trust boundary. Native batches above 96 KiB require explicit inbox recovery. CLI updates and stop/start restore still-live existing attachments without rotating their identity or repeating AgentWorks guidance. A provider process restart reconnects the same saved native chat automatically. Claude itself adds a notice to every native session message; AgentWorks cannot suppress that host notice.
 
 The person chooses only the attachment name. The attached agent can describe its work with `the agentworks tool (action=set_purpose)` or `agentworks bridge message purpose --provider claude --purpose "WHAT YOU WORK ON"`. Purpose updates cannot attach, rename or grant permissions.
 

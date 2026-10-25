@@ -98,6 +98,9 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 				json.NewEncoder(w).Encode(map[string]any{"message_id": "new-message-" + network, "accepted": true})
 			case "inbox":
 				json.NewEncoder(w).Encode(map[string]any{"messages": []map[string]any{{"attachment_id": args["attachment_id"], "message_id": id, "inbox_id": "inbox-" + network, "message": "Review", "sequence": 1}}, "next_cursor": 1, "pending": 1})
+			case "detach":
+				t.Error("lifecycle offline closed the joined server lease")
+				fmt.Fprint(w, `{}`)
 			case "validate":
 				json.NewEncoder(w).Encode(map[string]any{"message_ids": []string{id}})
 			case "read":
@@ -157,6 +160,10 @@ func TestJoinedNetworksDeliverAndRecoverInTheSameChat(t *testing.T) {
 			t.Fatalf("joined stream did not connect: %+v %v", out, e)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	peers, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "peers", Provider: "codex", SessionID: session, HostKey: "host"})
+	if err != nil || len(peers.Directories) != 1 || peers.Directories[0].Server != "partner" {
+		t.Fatalf("joined network disappeared from peers: %+v %v", peers, err)
 	}
 	req.Action, req.Transport = "next", "codex_queue"
 	batch, err := CallLocalBridge(ctx, root, req)
