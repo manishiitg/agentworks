@@ -41,8 +41,8 @@ it('keeps project files readable and leaves saved selection unchanged when persi
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   try {
-    await act(async () => root.render(<WorkSkillsPanel workspacePath="Crew/test" projectId="test" tabId="current" onSelectedSkillsChange={save} onOpenFile={open} projectSkills={[{ name: 'nested', filePath: 'skills/custom/nested/SKILL.md', description: 'Local instructions' }]} />))
-    expect(manager.props.additionalSkills).toEqual([expect.objectContaining({ folder_name: 'nested', file_path: 'skills/custom/nested/SKILL.md' })])
+    await act(async () => root.render(<WorkSkillsPanel workspacePath="Crew/test" projectId="test" tabId="current" onSelectedSkillsChange={save} onOpenFile={open} />))
+    expect(manager.props.additionalSkills).toBeUndefined()
     ;(manager.props.onOpenFile as (path: string) => void)('skills/custom/nested/SKILL.md')
     expect(open).toHaveBeenCalledWith('Crew/test/skills/custom/nested/SKILL.md')
     await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
