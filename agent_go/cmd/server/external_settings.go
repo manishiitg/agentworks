@@ -73,6 +73,9 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"run_instructions": map[string]any{"type": "string", "maxLength": 4000}, "pulse_instructions": map[string]any{"type": "string", "maxLength": 4000},
 			"run_channels": names, "pulse_channels": names,
 			"daily_digest": map[string]any{"type": "boolean", "description": "One evening email (8 pm in the schedules' timezone) listing the day's runs. On unless turned off."},
+			"wake_tab": map[string]any{"type": "object", "additionalProperties": false, "description": "A Crew tab to message straight away when a run of this workflow fails, stops partway, or never actually ran. Pass the Crew id and the tab's chat id (from workspace action=chats); send both empty to clear.", "properties": map[string]any{
+				"crew_id": map[string]any{"type": "string"}, "chat_id": map[string]any{"type": "string"},
+			}},
 		}},
 	} {
 		props[key] = value
@@ -451,7 +454,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	notifications := func(c WorkflowCapabilities) map[string]any {
 		if n := c.Notifications; n != nil {
 			return map[string]any{"run_instructions": n.RunSummaryInstructions, "pulse_instructions": n.PulseSummaryInstructions,
-				"run_channels": n.RunSummaryChannels, "pulse_channels": n.PulseSummaryChannels, "daily_digest": !n.DailyDigestOff}
+				"run_channels": n.RunSummaryChannels, "pulse_channels": n.PulseSummaryChannels, "daily_digest": !n.DailyDigestOff, "wake_tab": n.WakeTab}
 		}
 		return map[string]any{"daily_digest": true}
 	}
@@ -511,6 +514,11 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		}
 		if v, ok := n["daily_digest"].(bool); ok {
 			req.DailyDigest = &v
+		}
+		if w, ok := n["wake_tab"].(map[string]any); ok {
+			crew, _ := w["crew_id"].(string)
+			chat, _ := w["chat_id"].(string)
+			req.WakeTab = &WorkflowWakeTab{CrewID: crew, ChatID: chat}
 		}
 		changed = append(changed, "notifications")
 	}

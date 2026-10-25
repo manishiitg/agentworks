@@ -272,6 +272,9 @@ type UpdateWorkflowManifestRequest struct {
 	PulseNotificationChannels     *[]string `json:"pulse_notification_channels,omitempty"`
 	// DailyDigest turns the evening email of the day's runs on or off.
 	DailyDigest *bool `json:"daily_digest,omitempty"`
+	// WakeTab names the Crew tab to message when a run fails or never ran; an
+	// empty crew_id clears it.
+	WakeTab *WorkflowWakeTab `json:"wake_tab,omitempty"`
 	// Recipient lists are pointers so an explicitly sent empty array clears them
 	// (back to the account default) while omission leaves them untouched.
 	RunNotificationRecipients   *[]string `json:"run_notification_recipients,omitempty"`
@@ -526,6 +529,16 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 			manifest.Capabilities.Notifications = &WorkflowNotificationConfig{}
 		}
 		manifest.Capabilities.Notifications.DailyDigestOff = !*req.DailyDigest
+	}
+	if req.WakeTab != nil {
+		if manifest.Capabilities.Notifications == nil {
+			manifest.Capabilities.Notifications = &WorkflowNotificationConfig{}
+		}
+		if crew, tab := strings.TrimSpace(req.WakeTab.CrewID), strings.TrimSpace(req.WakeTab.ChatID); crew == "" || tab == "" {
+			manifest.Capabilities.Notifications.WakeTab = nil
+		} else {
+			manifest.Capabilities.Notifications.WakeTab = &WorkflowWakeTab{CrewID: crew, ChatID: tab}
+		}
 	}
 
 	if req.RunNotificationInstructions != nil || req.PulseNotificationInstructions != nil ||

@@ -2682,6 +2682,8 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 					pulseResult = s.runPulseLifecycle(ctx, sctx, effectiveSchedulePulseMode(sctx, manifest), pulseEvidenceStatus, runFolder, sessionID, runID, errMsg)
 				}
 			} else if sctx.WebhookInput == nil {
+				// A Crew tab that looks after this workflow hears about a bad run at once.
+				s.wakeAgentTab(ctx, sctx, manifest, status, errMsg, runID)
 				// The housekeeping turn, when needed, resumes the run's own chat.
 				pulseResult = s.runAfterRunOptions(ctx, sctx, manifest, status, errMsg, runFolder, sessionID, runID, time.Since(startTime))
 			}
