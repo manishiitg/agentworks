@@ -13,7 +13,7 @@ The six adapters expose only fields their stored records actually contain:
 | Codex | Selected rollout JSONL | Committed items, native turn end/error, tools, files, question observation, compaction, cumulative usage | Account plans, credits and limits are excluded |
 | Cursor | Selected session SQLite root | Reply blobs, prompt boundaries, tool starts | Native blob records do not establish timestamps, usage or turn completion |
 | Pi | Selected runtime JSONL | Replies, tools, compaction, per-message usage | No fabricated native helper lifecycle or authoritative end signal |
-| Muse | Selected runtime journal | Committed replies, task records, tools, questions, compaction, usage/status observations | Native questions retain the existing answer adapter; status is not permission to retry |
+| Muse | Selected runtime journal | Committed replies, tools, questions, compaction, usage/status and terminal observations | Generic internal tasks are coverage gaps, not proven helper lifecycle; native questions retain the existing answer adapter; status is not permission to retry |
 | Agy | Selected conversation SQLite steps | Committed reply steps, tool state, error/notice observations | No fabricated native usage, model, timestamp or turn completion |
 
 An initial baseline supplies identity context without importing old chat.
