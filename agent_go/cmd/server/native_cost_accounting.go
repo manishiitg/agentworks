@@ -82,10 +82,12 @@ func (api *StreamingAPI) nativeCostAccounting(base costledger.Entry, provider st
 		api.nativeCosts = map[string]*nativeCostAccountant{}
 	}
 	a := api.nativeCosts[base.SessionID]
+	retiredFile := ""
 	if a != nil {
 		a.mu.Lock()
 		changed := a.state.Provider != provider || a.state.Current.AccountID != base.AccountID
 		if changed {
+			retiredFile = a.file
 			a.retired = true
 			close(a.done)
 		}
@@ -94,6 +96,15 @@ func (api *StreamingAPI) nativeCostAccounting(base costledger.Entry, provider st
 			log.Printf("[NATIVE_COST] runtime_reset session=%s provider=%s reason=provider_or_account_changed", base.SessionID, provider)
 			a = nil
 		}
+	}
+	if !nativeusage.Supported(provider) {
+		delete(api.nativeCosts, base.SessionID)
+		if retiredFile != "" {
+			if err := os.Remove(retiredFile); err != nil && !os.IsNotExist(err) {
+				log.Printf("[NATIVE_COST] gap session=%s provider=%s reason=retired_checkpoint_remove", base.SessionID, provider)
+			}
+		}
+		return nil
 	}
 	if a == nil {
 		root, err := workflowCLIStateRoot()

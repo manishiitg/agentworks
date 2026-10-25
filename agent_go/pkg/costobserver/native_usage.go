@@ -39,7 +39,7 @@ func newNativeAccounting(o *Observer) NativeAccounting {
 	nativeFactory.RLock()
 	f := nativeFactory.value
 	nativeFactory.RUnlock()
-	if f == nil || o.ledger == nil || !nativeusage.Supported(o.provider) {
+	if f == nil || o.ledger == nil {
 		return nil
 	}
 	base := o.baseEntry(&events.AgentEvent{Timestamp: time.Now()})

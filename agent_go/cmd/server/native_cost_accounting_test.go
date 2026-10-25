@@ -258,4 +258,48 @@ func TestNativeAccountingResetsWhenRuntimeChanges(t *testing.T) {
 	if summary.Total.CallCount != 3 || summary.Total.PromptTokens != 11 || summary.Total.CompletionTokens != 3 {
 		t.Fatalf("switch lost/duplicated charges %+v", summary.Total)
 	}
+	// Foreground-only providers must still retire the previous native cache.
+	// Returning nil leaves their existing cost observer as the sole writer.
+	for _, provider := range []string{"cursor-cli", "agy-cli", "openai"} {
+		old := api.nativeCostAccounting(base, "codex-cli").(*nativeCostAccountant)
+		clean(old)
+		seed(old)
+		if api.nativeCostAccounting(base, provider) != nil {
+			t.Fatal("unsupported native parser claimed accounting")
+		}
+		if api.nativeCosts[base.SessionID] != nil {
+			t.Fatal("foreground provider retained old private cache")
+		}
+		select {
+		case <-old.done:
+		default:
+			t.Fatal("old native reader not retired")
+		}
+		if _, err := os.Stat(old.file); !os.IsNotExist(err) {
+			t.Fatal("retired native checkpoint can restore old provider")
+		}
+	}
+	returned := api.nativeCostAccounting(base, "codex-cli").(*nativeCostAccountant)
+	clean(returned)
+	source := filepath.Join(dir, "returned.jsonl")
+	row := fmt.Sprintf(`{"type":"token_usage_record","timestamp":%q,"payload":{"response_id":"foreground-covered","usage":{"input_tokens":99,"output_tokens":9}}}`+"\n", now.Add(3*time.Second).Format(time.RFC3339Nano))
+	if err := os.WriteFile(source, []byte(row), 0600); err != nil {
+		t.Fatal(err)
+	}
+	returned.mu.Lock()
+	returned.bindNativeID("returned-native")
+	returned.state.Path = source
+	returned.mu.Unlock()
+	returned.poll()
+	coverage, err := ledger.NativeCoverage(returned.runtimeKey())
+	if err != nil || !coverage.Ready || coverage.Positions[source] == 0 {
+		t.Fatal("returning CLI did not establish a fresh handoff")
+	}
+	after, err := ledger.Summarize(day, day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Total != summary.Total {
+		t.Fatal("foreground-only switch changed cost totals")
+	}
 }
