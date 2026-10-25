@@ -1,5 +1,3 @@
-import { Braces, FileInput, FileOutput, Play, Pause } from 'lucide-react'
-import { PanelFlow, PanelCounters } from '../ui/PanelGraphics'
 import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import { workflowWebhooksApi, type APITriggerOptions, type RelayReleasesResponse, type WorkflowAPITrigger } from '../../api/workflowWebhooks'
@@ -80,8 +78,7 @@ export default function WorkflowFunctionsView({ workspacePath, relayMode = false
 
   return <div className="h-full min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background">
     <div className="space-y-4 p-4" data-testid="workflow-functions">
-      {loaded ? <PanelCounters label="Workflow functions" items={[{ label: 'Functions', value: functions.length, icon: Braces }, { label: 'Enabled', value: functions.filter(item => item.enabled).length, icon: Play }, { label: 'Paused', value: functions.filter(item => !item.enabled).length, icon: Pause }]} /> : <p role="status" className="text-xs text-muted-foreground">Loading functions…</p>}
-      {loaded && !functions.length && <PanelFlow label="How a function works" nodes={[{ label: 'Inputs', icon: FileInput }, { label: relayMode ? 'Flow graph' : 'Workflow', icon: Braces }, { label: 'Result', icon: FileOutput, tone: 'green' }]} />}
+      <p className="text-xs text-muted-foreground">{loaded ? `${functions.length} functions · ${functions.filter(item => item.enabled).length} enabled` : 'Loading functions…'}</p>
       {relayMode && <section className="rounded-lg border border-border p-3 text-xs" data-testid="relay-release-status">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div><span className="font-medium">API release</span> <span className="text-muted-foreground">{releases?.active_error ? `Unavailable ${releases.active_version || "release"}` : releases?.active_version ? `Published ${releases.active_version}` : 'Draft only'}</span></div>
@@ -103,7 +100,6 @@ export default function WorkflowFunctionsView({ workspacePath, relayMode = false
               <h3 className="truncate font-mono text-sm font-medium">{fn.name}</h3>
               <span className="shrink-0 text-[11px] text-muted-foreground">{trigger.enabled ? 'Active' : 'Paused'}</span>
             </div>
-            <PanelFlow label={`Function ${fn.name} path`} paused={!trigger.enabled} nodes={[{ label: 'Inputs', detail: `${(fn.inputs || []).length} fields`, icon: FileInput }, { label: fn.name, detail: trigger.enabled ? 'Enabled' : 'Paused', icon: Braces }, { label: 'Run result', icon: FileOutput, tone: trigger.enabled ? 'green' : 'muted' }]} />
             {fn.description && <p className="text-muted-foreground">{fn.description}</p>}
             <p><span className="font-medium">Inputs</span> <span className="text-muted-foreground">{(fn.inputs || []).length === 0 ? 'none' : (fn.inputs || []).map(input => `${input.name}: ${input.type || 'string'}${input.required ? '' : '?'}`).join(', ')}</span></p>
             {relayMode && relayWorkflowID && <details className="rounded bg-muted/40 p-2">

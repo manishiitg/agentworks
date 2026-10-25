@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, FileText, FolderOpen, Brain, BookOpen, Braces, Lightbulb } from 'lucide-react'
+import { ArrowLeft, FileText, FolderOpen } from 'lucide-react'
 import { knowledgebaseApi, knowledgebaseError, type KnowledgeEntry, type KnowledgeFolder } from '../../services/knowledgebaseApi'
-import { PanelConnections, type PanelGraphicNode } from '../ui/PanelGraphics'
 import { Button } from '../ui/Button'
 
 /** The person's existing library inventory, not a claim about project usage. */
@@ -35,12 +34,6 @@ export function ProjectBrainLibrary() {
     } catch (cause) { if (version === generation.current) setError(knowledgebaseError(cause)) }
     finally { if (version === generation.current) setLoading(false) }
   }
-  const categories = [
-    { type: 'note', label: 'Notes', icon: FileText }, { type: 'skill', label: 'Skills', icon: Braces },
-    { type: 'fact', label: 'Facts', icon: Lightbulb }, { type: 'source', label: 'Sources', icon: BookOpen },
-  ]
-  const branches: PanelGraphicNode[] = [{ label: 'Folders', detail: folders.length, icon: FolderOpen }, ...categories.filter(category => entries.some(item => item.type === category.type)).map(category => ({ label: category.label, detail: entries.filter(item => item.type === category.type).length, icon: category.icon, tone: 'green' as const }))]
-  if (!entries.length) branches.push({ label: 'Items', detail: 0, icon: FileText, tone: 'muted' })
   return <section aria-label="Knowledge available to you" className="overflow-hidden rounded-lg border border-border">
     <div className="space-y-1 border-b border-border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">Available to you</h3>{!loading && !error && <span className="text-muted-foreground">{folders.length} folders · {entries.length} items{cursors.folders || cursors.entries ? ' shown' : ''}</span>}</div>
@@ -48,9 +41,8 @@ export function ProjectBrainLibrary() {
       {folder && <button className="flex items-center gap-1 pt-1 text-primary" onClick={() => setFolder(folder.split('/').slice(0, -1).join('/'))}><ArrowLeft className="h-3 w-3"/> {folder}</button>}
     </div>
     {error && <div role="alert" className="p-3 text-destructive">{error} <Button size="sm" variant="ghost" onClick={() => setRevision(value => value + 1)}>Retry</Button></div>}
-    {!loading && !error && <PanelConnections label="Current Brain folder contents" parent={{ label: folder.split('/').at(-1) || 'Your Brain', detail: cursors.folders || cursors.entries ? 'Loaded items · more available' : 'Current folder', icon: Brain }} branches={branches} />}
-    <ul className="relative ml-5 border-l border-primary/25 py-1 pr-2">
-      {folders.map(item => <li key={item.path} className="relative before:absolute before:-left-px before:top-5 before:h-px before:w-4 before:bg-primary/25"><button onClick={() => setFolder(item.path)} className="ml-4 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg border border-transparent px-3 py-2.5 text-left hover:border-primary/25 hover:bg-muted/40"><FolderOpen className="h-4 w-4 shrink-0 text-primary"/><span className="min-w-0 flex-1 truncate">{item.name}</span><span className="text-muted-foreground">{item.breadcrumb_only ? 'Contains shared items' : item.effective_role === 'owner' ? 'Manage' : item.effective_role === 'editor' ? 'Can edit' : 'Can open'}</span></button></li>)}
+    <ul className="divide-y divide-border">
+      {folders.map(item => <li key={item.path}><button onClick={() => setFolder(item.path)} className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-muted/40"><FolderOpen className="h-4 w-4 shrink-0 text-primary"/><span className="min-w-0 flex-1 truncate">{item.name}</span><span className="text-muted-foreground">{item.breadcrumb_only ? 'Contains shared items' : item.effective_role === 'owner' ? 'Manage' : item.effective_role === 'editor' ? 'Can edit' : 'Can open'}</span></button></li>)}
       {entries.map(item => <li key={item.entry_id} className="flex items-center gap-2 px-3 py-2.5"><FileText className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1 truncate" title={item.path}>{item.title || item.filename}</span><span className="text-muted-foreground">{item.type}</span>{item.updated_at && <time dateTime={item.updated_at} className="text-muted-foreground">{new Date(item.updated_at).toLocaleDateString()}</time>}</li>)}
     </ul>
     {loading && <p role="status" className="p-3 text-muted-foreground">Loading knowledge…</p>}

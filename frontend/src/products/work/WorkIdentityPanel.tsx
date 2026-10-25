@@ -1,8 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
-import { Fingerprint, FolderOpen, Layers, Link2, Loader2, Lock, Settings, Tag, Target, Trash2 } from 'lucide-react'
-import { PanelConnections } from '../../components/ui/PanelGraphics'
+import { Fingerprint, FolderOpen, Loader2, Lock, Settings, Tag, Target, Trash2 } from 'lucide-react'
 import { FolderGrantList } from '../../components/folders/FolderGrantList'
 import { WorkflowReferenceAccess } from '../../components/folders/WorkflowReferenceAccess'
 import { Button } from '../../components/ui/Button'
@@ -246,8 +245,6 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
 
   return (
     <div className="space-y-4">
-      {!loading && <PanelConnections label="This project's linked work and folders" parent={{ label: 'This project', icon: Layers }} branches={[{ label: 'Linked work', detail: `${new Set(workflowContextPaths).size} linked`, icon: Link2, tone: workflowContextPaths.length ? 'blue' : 'muted' }, { label: 'Attached folders', detail: `${folders.length} attached`, icon: FolderOpen, tone: folders.length ? 'green' : 'muted' }]} />}
-
       {roots.length > 0 && <p className="text-[11px] text-muted-foreground">Allowed roots: {roots.join(', ')}</p>}
       <WorkflowReferenceAccess
         selectedPaths={workflowContextPaths}

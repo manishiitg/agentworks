@@ -1,8 +1,7 @@
 import { useWorkspacePanelHosted } from '../../workspace/WorkspacePanelNavigation'
 import { openProjectIntegrations } from '../../../utils/projectIntegrationNavigation'
-import { Loader2, Mail, Send, Users } from 'lucide-react'
+import { Loader2, Mail } from 'lucide-react'
 import { agentApi } from '../../../services/api'
-import { PanelFlow } from '../../ui/PanelGraphics'
 import { Button } from '../../ui/Button'
 import { Card } from '../../ui/Card'
 import { FormSection } from '../../ui/FormSection'
@@ -90,9 +89,6 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 onReconnect={() => openProjectIntegrations('gmail')} onRemove={handleRemoveMailbox} onChangeAccess={() => openProjectIntegrations('gmail')}
               /></div>}
           </FormSection>
-          <section aria-label="Company email delivery" className="space-y-2">
-          <h3 className="text-xs font-medium text-muted-foreground">Company email delivery</h3>
-          <PanelFlow label="Company notification delivery path" paused={!gmailConfig.enabled || !gmailCanEnable} nodes={[{ label: 'Company sender', detail: gmailCanEnable ? 'Ready' : 'Needs setup', icon: Mail, tone: gmailCanEnable ? 'blue' : 'amber' }, { label: 'Notifications', detail: gmailConfig.enabled ? 'On' : 'Off', icon: Send, tone: gmailConfig.enabled ? 'green' : 'muted' }, { label: 'Default recipients', detail: `${(gmailConfig.default_to || '').split(',').map(item => item.trim()).filter(Boolean).length} addresses`, icon: Users, tone: gmailConfig.default_to ? 'blue' : 'muted' }]} />
           <details className="rounded-lg border border-border p-3">
           <summary className="cursor-pointer text-sm font-medium">Company delivery defaults · {gmailConfig.enabled ? 'On' : 'Off'}{gmailSettingsReadOnly ? ' · Admin managed' : ''}</summary>
           <FormSection
@@ -135,7 +131,6 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
               </div>
           </FormSection>
           </details>
-          </section>
           </>
         )}
     </div>

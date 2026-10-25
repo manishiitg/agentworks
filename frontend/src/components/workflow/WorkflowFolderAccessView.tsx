@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { FolderOpen, LoaderCircle, Plus, Layers, Link2 } from 'lucide-react'
-import { PanelConnections } from '../ui/PanelGraphics'
+import { FolderOpen, LoaderCircle, Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { SettingsCard } from '../ui/SettingsCard'
@@ -208,8 +207,6 @@ export default function WorkflowFolderAccessView({ workspacePath, headerAction, 
           )}
 
           <div className={`space-y-5 ${manageOwnScroll ? 'min-h-0 flex-1 overflow-y-auto p-5' : ''}`}>
-            {!loading && <PanelConnections label="Workflow linked work and folders" parent={{ label: 'This workflow', icon: Layers }} branches={[{ label: 'Linked work', detail: `${new Set(workflowContextPaths).size} linked`, icon: Link2, tone: workflowContextPaths.length ? 'blue' : 'muted' }, { label: 'Attached folders', detail: `${grants.length} attached`, icon: FolderOpen, tone: grants.length ? 'green' : 'muted' }]} />}
-
             {workspacePath && <KnowledgebaseSources key={workspacePath} workspacePath={workspacePath} variant="folders" />}
             <WorkflowReferenceAccess selectedPaths={workflowContextPaths} onChange={persistWorkflowReferences} excludeWorkspacePath={workspacePath} disabled={!canWriteWorkflow || saving} hideAdd />
             {canPickFolders && (<>

@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import { WebhookEndpoint } from '../scheduler/scheduleRuns/WebhookEndpoint'
 import { describeCron } from '../scheduler/scheduleRuns/cron'
-import { Zap, Clock, Search, Play } from 'lucide-react'
-import { PanelFlow, PanelStateBar } from '../ui/PanelGraphics'
+import { Zap } from 'lucide-react'
 import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations, relativeTime } from './AutomationKit'
 import { conditionTriggersApi, type ConditionTrigger, type ConditionHistory, type WatcherCaller } from '../../api/conditionTriggers'
 import type { ProductTriggerScope } from '../../api/productWebhooks'
@@ -74,21 +73,12 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
   }
   return <div className="h-full min-w-0 overflow-y-auto p-4" data-testid="condition-triggers">
     <div className="mb-4"><AutomationIntro icon={Zap} tone="emerald" title="Watchers" action={canManage ? <button className={buttonClass} onClick={() => void ask(setupMessage)}>Add in chat</button> : undefined}>
-      Work starts only when a check finds a match.
+      {loaded ? `${triggers.length} saved · ${triggers.filter(item => item.enabled && !item.completed_at).length} on · ${triggers.filter(item => item.last_status === 'error' || item.once_status === 'failed' || item.once_status === 'needs_reconciliation').length} need attention` : 'Loading watchers…'}
     </AutomationIntro></div>
-    {loaded && <PanelStateBar label="Saved Watcher status" items={[
-      { label: 'On', tone: 'green', value: triggers.filter(item => !item.completed_at && item.enabled && item.last_status !== 'error' && item.once_status !== 'failed' && item.once_status !== 'needs_reconciliation').length },
-      { label: 'Paused', tone: 'muted', value: triggers.filter(item => !item.completed_at && !item.enabled && item.last_status !== 'error' && item.once_status !== 'failed' && item.once_status !== 'needs_reconciliation').length },
-      { label: 'Needs attention', tone: 'rose', value: triggers.filter(item => !item.completed_at && (item.last_status === 'error' || item.once_status === 'failed' || item.once_status === 'needs_reconciliation')).length },
-      { label: 'Done', tone: 'blue', value: triggers.filter(item => !!item.completed_at).length },
-    ]} />}
-    {loaded && !triggers.length && <PanelFlow label="How a Watcher starts work" nodes={[{ label: 'Schedule or event', icon: Clock }, { label: 'Check condition', detail: 'Match found?', icon: Search, tone: 'amber' }, { label: 'Start work', detail: 'Only on a match', icon: Play, tone: 'green' }]} />}
     {error && <p role="alert" className="mb-3 rounded border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
     {loaded && triggers.length === 0 && <EmptyAutomations>No watchers yet. Add one to start work when something changes.</EmptyAutomations>}
     {callers.length > 0 && <details className="mb-4 rounded border border-border p-3 text-xs"><summary className="cursor-pointer">Watchers calling this product</summary><ul className="mt-2 space-y-2">{callers.map(caller => <li key={`${caller.owner_id}:${caller.id}`} className="break-all">{caller.name} · {caller.owner_id} · {targetLabel(caller.target)} · {caller.enabled ? 'Enabled' : 'Paused'}{caller.last_dispatch_at ? ` · Last dispatch ${new Date(caller.last_dispatch_at).toLocaleString()}` : caller.last_status ? ` · ${caller.last_status}` : ''}</li>)}</ul></details>}
     {triggers.length > 0 && <AutomationListBox>{triggers.map(t => { const attention = t.once_status === 'failed' || t.once_status === 'needs_reconciliation' || t.last_status === 'error'; return <AutomationRow key={t.id} icon={Zap} tone="emerald" open={openId === t.id} onToggle={() => setOpenId(openId === t.id ? null : t.id)} title={t.name} summary={`${t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Crew Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'On events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'On a schedule'} · starts ${targetLabel(t.target, sideChats)}`} meta={t.last_run_at ? `Checked ${relativeTime(t.last_run_at)}` : 'Not checked yet'} status={t.completed_at ? 'done' : attention ? 'failing' : t.enabled ? 'on' : 'paused'} statusLabel={t.completed_at ? 'Done' : attention ? 'Needs attention' : t.enabled ? 'On' : 'Paused'}>
-
-      <PanelFlow label={`Watcher ${t.name} path`} paused={!t.enabled || !!t.completed_at} nodes={[{ label: t.check_mode === 'event' ? 'Event' : t.check_mode === 'inbox' ? 'New email' : 'Scheduled check', detail: t.check_mode === 'event' ? 'Authenticated wakeup' : t.check_mode === 'inbox' ? 'Mailbox arrivals' : t.cron_expression ? describeCron(t.cron_expression) : 'Saved cadence', icon: Clock }, { label: 'Check condition', detail: 'Match found?', icon: Search, tone: 'amber' }, { label: 'Start work', detail: targetLabel(t.target, sideChats), icon: Play, tone: t.enabled ? 'green' : 'muted' }]} />
 
       <p className="break-all text-xs text-muted-foreground">{t.script} · {t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Crew Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'Events + backup schedule' : 'On a schedule'}{t.cron_expression ? ` · ${t.cron_expression} · ${t.timezone}` : ''}</p>
       {t.email_source === 'personal_gmail' && <p className="text-xs text-muted-foreground">Your mailbox stays private. Only the content selected by this Watcher is sent to the Crew.</p>}
