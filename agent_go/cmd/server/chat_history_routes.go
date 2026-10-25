@@ -782,7 +782,7 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(data)
+		_ = json.NewEncoder(w).Encode(api.nativeUsageResponse(r, sessionID, data))
 	}
 }
 

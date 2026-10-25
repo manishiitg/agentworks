@@ -1532,6 +1532,9 @@ export interface CostAggregate {
   cache_read_tokens: number
   cache_write_tokens: number
   total_cost_usd: number
+  provider_actual_cost_usd?: number
+  token_estimate_cost_usd?: number
+  subscription_shadow_cost_usd?: number
   call_count: number
   // LLM calls without a known price are excluded from total_cost_usd.
   unpriced_call_count?: number

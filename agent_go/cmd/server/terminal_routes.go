@@ -602,14 +602,15 @@ func (api *StreamingAPI) handleGetTerminalEvents(w http.ResponseWriter, r *http.
 		http.Error(w, "Terminal events not found", http.StatusNotFound)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(terminalEventsResponse{
+	response := terminalEventsResponse{
 		TerminalID:     terminalID,
 		Events:         result.Events,
 		HasOlder:       result.HasOlder,
 		HasNewer:       result.HasNewer,
 		OldestSequence: result.OldestSequence,
 		LatestSequence: result.LatestSequence,
-	})
+	}
+	_ = json.NewEncoder(w).Encode(api.nativeUsageResponse(r, snapshot.SessionID, response))
 }
 
 func shouldCaptureTerminalPaneForDetail(snapshot terminals.Snapshot, r *http.Request) bool {
@@ -1526,6 +1527,7 @@ func isMissingTmuxTargetError(err error) bool {
 }
 
 func (api *StreamingAPI) enrichTerminalSnapshot(ctx context.Context, planTypes *terminalPlanTypeResolver, snapshot terminals.Snapshot) terminals.Snapshot {
+	snapshot = api.nativeUsageSnapshot(ctx, snapshot)
 	active, exists := api.getActiveSession(snapshot.SessionID)
 	if !exists || active == nil {
 		enrichedSnapshot := snapshot.WithContext(terminals.Context{})
@@ -1557,6 +1559,7 @@ func (api *StreamingAPI) terminalSnapshotForList(ctx context.Context, planTypes 
 }
 
 func (api *StreamingAPI) enrichTerminalSnapshotMetadata(ctx context.Context, planTypes *terminalPlanTypeResolver, snapshot terminals.Snapshot) terminals.Snapshot {
+	snapshot = api.nativeUsageSnapshot(ctx, snapshot)
 	active, exists := api.getActiveSession(snapshot.SessionID)
 	if !exists || active == nil {
 		enrichedSnapshot := snapshot.WithContext(terminals.Context{})

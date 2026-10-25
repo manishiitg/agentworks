@@ -180,6 +180,14 @@ func ensureCostEventColumn(db *sql.DB, column, definition string) error {
 }
 
 func (s *sqliteLedger) append(e Entry) error {
+	return appendCostEntry(s.db, e, false)
+}
+
+type costEntryExecutor interface {
+	Exec(string, ...interface{}) (sql.Result, error)
+}
+
+func appendCostEntry(executor costEntryExecutor, e Entry, native bool) error {
 	// normalizeEntry backfills a blank scope with "unknown" so the NOT NULL
 	// column and the legacy import both stay valid. For a live write that
 	// backfill is a defect being swallowed, so name the writer before it
@@ -193,7 +201,7 @@ func (s *sqliteLedger) append(e Entry) error {
 	if err != nil {
 		return fmt.Errorf("costledger: marshal operation metadata: %w", err)
 	}
-	const insertEvent = `
+	insertEvent := `
 INSERT OR IGNORE INTO cost_events (
     event_id, idempotency_key, occurred_at, user_id, workflow_id, session_id,
     run_id, execution_id, scope, source_platform, phase, agent_mode, component, correlation_id,
@@ -204,6 +212,26 @@ INSERT OR IGNORE INTO cost_events (
     source_id, source_label, source_run_id, attribution_version,
     actor_id, product_kind, product_id, product_owner_id, product_name, activity, origin_dashboard_id, origin_dashboard_name, function_call_id, parent_session_id, parent_execution_id
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	if native {
+		// A streamed message can grow after its first observation. Its identity
+		// does not change, and replay must neither add a call nor reprice history.
+		insertEvent = strings.Replace(insertEvent, "INSERT OR IGNORE", "INSERT", 1) + `
+ON CONFLICT(idempotency_key) DO UPDATE SET
+ prompt_tokens=excluded.prompt_tokens, completion_tokens=excluded.completion_tokens,
+ reasoning_tokens=excluded.reasoning_tokens, cache_read_tokens=excluded.cache_read_tokens,
+ cache_write_tokens=excluded.cache_write_tokens, total_cost_usd=excluded.total_cost_usd,
+ effective_model_id=excluded.effective_model_id, billing_basis=excluded.billing_basis,
+ pricing_source=excluded.pricing_source, operation_metadata_json=excluded.operation_metadata_json
+WHERE excluded.prompt_tokens>=cost_events.prompt_tokens
+ AND excluded.completion_tokens>=cost_events.completion_tokens
+ AND excluded.cache_read_tokens>=cost_events.cache_read_tokens
+ AND excluded.cache_write_tokens>=cost_events.cache_write_tokens
+ AND (excluded.prompt_tokens>cost_events.prompt_tokens
+ OR excluded.completion_tokens>cost_events.completion_tokens
+ OR excluded.cache_read_tokens>cost_events.cache_read_tokens
+ OR excluded.cache_write_tokens>cost_events.cache_write_tokens
+ OR (cost_events.billing_basis='unpriced' AND excluded.billing_basis!='unpriced'))`
+	}
 	args := []interface{}{
 		e.EventID, e.IdempotencyKey, e.Timestamp.UTC().Format(time.RFC3339Nano),
 		e.UserID, e.WorkflowID, e.SessionID, e.RunID, e.ExecutionID, e.Scope, e.SourcePlatform, e.Phase,
@@ -217,7 +245,7 @@ INSERT OR IGNORE INTO cost_events (
 		e.OriginDashboardID, e.OriginDashboardName, e.FunctionCallID, e.ParentSessionID, e.ParentExecutionID,
 	}
 	for attempt := 0; ; attempt++ {
-		_, err = s.db.Exec(insertEvent, args...)
+		_, err = executor.Exec(insertEvent, args...)
 		if err == nil {
 			return nil
 		}
@@ -686,7 +714,8 @@ func normalizeEntry(e *Entry) {
 			}
 		}
 	}
-	if e.LLMCallCount == 0 && !strings.HasPrefix(e.Component, "tool:") &&
+	adjustment, _ := e.OperationMetadata["native_usage_adjustment"].(bool)
+	if e.LLMCallCount == 0 && !adjustment && !strings.HasPrefix(e.Component, "tool:") &&
 		(e.Provider != "" || e.ModelID != "" || e.PromptTokens > 0 || e.CompletionTokens > 0) {
 		e.LLMCallCount = 1
 	}

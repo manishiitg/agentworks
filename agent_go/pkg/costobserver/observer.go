@@ -73,6 +73,7 @@ type Observer struct {
 	sourceRunID    string
 	launchPath     string
 	attribution    costledger.Attribution
+	native         NativeAccounting
 
 	mu         sync.Mutex
 	sawPerCall bool
@@ -272,6 +273,7 @@ func New(ledger *costledger.Ledger, sessionID, userID, agentMode string, opts ..
 			launchPath, sessionID, agentMode, ScopeUnknown)
 		observer.scope = ScopeUnknown
 	}
+	observer.native = newNativeAccounting(observer)
 	return observer
 }
 
@@ -332,6 +334,9 @@ func (o *Observer) HandleEvent(_ context.Context, event *unifiedevents.AgentEven
 	}
 	switch event.Type {
 	case unifiedevents.LLMGenerationStart:
+		if o.native != nil {
+			o.native.Begin(o.baseEntry(event))
+		}
 		if start, ok := event.Data.(*unifiedevents.LLMGenerationStartEvent); ok && start != nil {
 			o.logModelRequest(event, "started", o.provider, FirstNonEmpty(start.ModelID, o.modelID), "not_completed", 0)
 		}
@@ -431,7 +436,13 @@ func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generati
 		// the provider; it is not a charge on a subscription login.
 		billingBasis = "subscription_shadow"
 	}
-	if effectiveModel == "" {
+	if unidentifiedAgyModel(provider, effectiveModel) {
+		totalCostUSD = 0
+		billingBasis = "unpriced"
+		pricingSource = ""
+		effectiveModel = ""
+	}
+	if effectiveModel == "" && !unidentifiedAgyModel(provider, effectiveModel) {
 		effectiveModel = modelID
 	}
 	entry := o.baseEntry(event)
@@ -494,6 +505,9 @@ func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generati
 		countBasis = "retained_native_step"
 	}
 	o.logModelRequest(event, "completed", provider, effectiveModel, countBasis, entry.LLMCallCount)
+	if o.native != nil && o.native.Record(entry) {
+		return
+	}
 	o.append(entry)
 }
 
@@ -528,7 +542,13 @@ func (o *Observer) recordLegacyTokenUsage(event *unifiedevents.AgentEvent, tu *u
 	} else if isSubscriptionCodingProvider(provider) {
 		billingBasis = "subscription_shadow"
 	}
-	if effectiveModel == "" {
+	if unidentifiedAgyModel(provider, effectiveModel) {
+		totalCostUSD = 0
+		billingBasis = "unpriced"
+		pricingSource = ""
+		effectiveModel = ""
+	}
+	if effectiveModel == "" && !unidentifiedAgyModel(provider, effectiveModel) {
 		effectiveModel = modelID
 	}
 	entry := o.baseEntry(event)

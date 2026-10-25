@@ -512,6 +512,8 @@ type StreamingAPI struct {
 	liveAttach        *liveAttachManager
 	nativeObserversMu sync.Mutex
 	nativeObservers   map[string]*nativeTerminalObserver
+	nativeCostsMu     sync.Mutex
+	nativeCosts       map[string]*nativeCostAccountant
 
 	// Short-lived, owner-only PTY sessions used by the guided provider setup
 	// wizard. Commands are selected from a server-side allowlist.
@@ -2309,6 +2311,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	runningServerAPI = api
 	mcpagent.SetNativeRuntimeObserver(api.observeNativeHandle)
 	defer mcpagent.SetNativeRuntimeObserver(nil)
+	api.initNativeCostAccounting()
+	defer api.stopNativeCostAccounting()
 	defer api.stopNativeCodingObservers()
 	api.restoreNativeCodingObservers()
 	events.SetTurnDiagnostics(api.turnDiagnostics)

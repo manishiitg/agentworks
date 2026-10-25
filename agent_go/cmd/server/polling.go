@@ -402,7 +402,7 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 			CanSteer:                   canSteer,
 			RuntimeState:               &runtimeState,
 		}
-		if err := json.NewEncoder(w).Encode(response); err != nil {
+		if err := json.NewEncoder(w).Encode(api.nativeUsageResponse(r, sessionID, response)); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -431,7 +431,7 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 		response.PendingMessages = api.pendingQueuedMessages(r.Context(), currentUserID, sessionID)
 	}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	if err := json.NewEncoder(w).Encode(api.nativeUsageResponse(r, sessionID, response)); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 		return
 	}

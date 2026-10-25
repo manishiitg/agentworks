@@ -172,7 +172,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 					IsSyntheticTurn:            api.isSyntheticTurn(sessionID), CanSteer: runtimeStatus.CanSteer,
 					RuntimeState: &runtimeState,
 				}
-				if err := writeSSEEvent(w, "event", cursor, msg); err != nil {
+				if err := writeSSEEvent(w, "event", cursor, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
 					return
 				}
 			}
@@ -211,7 +211,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 				CanSteer:                   runtimeStatus.CanSteer,
 				RuntimeState:               &runtimeState,
 			}
-			if err := writeSSEEvent(w, "event", resultLastIndex, msg); err != nil {
+			if err := writeSSEEvent(w, "event", resultLastIndex, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
 				return
 			}
 			sinceIndex = resultLastIndex
@@ -249,7 +249,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 				SessionStatus:      sessionStatus,
 				LastProcessedIndex: -1,
 			}
-			if err := writeSSEEvent(w, "event", -1, msg); err != nil {
+			if err := writeSSEEvent(w, "event", -1, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
 				return
 			}
 			sinceIndex = -1
@@ -295,7 +295,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 					IsSyntheticTurn:            api.isSyntheticTurn(sessionID), CanSteer: runtimeStatus.CanSteer,
 					RuntimeState: &runtimeState,
 				}
-				if err := writeSSEEvent(w, "event", -1, msg); err != nil {
+				if err := writeSSEEvent(w, "event", -1, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
 					return
 				}
 				flusher.Flush()
@@ -345,7 +345,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 				CanSteer:                   runtimeStatus.CanSteer,
 				RuntimeState:               &runtimeState,
 			}
-			if err := writeSSEEvent(w, "event", lastIndex, msg); err != nil {
+			if err := writeSSEEvent(w, "event", lastIndex, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
 				return
 			}
 			flusher.Flush()

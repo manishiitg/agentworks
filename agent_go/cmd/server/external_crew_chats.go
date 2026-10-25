@@ -277,6 +277,11 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 			externalError(w, 404, "chat_not_found", "The chat's history is unavailable.")
 			return
 		}
+		data, err = json.Marshal(api.nativeUsageResponse(r, sessionID, json.RawMessage(data)))
+		if err != nil {
+			externalError(w, 500, "chat_unavailable", "This chat could not be read.")
+			return
+		}
 		if len(data) > externalRunPageBytes {
 			externalJSON(w, map[string]any{"session_id": sessionID, "truncated": true, "note": "Only the newest part is shown.", "conversation_tail": string(data[len(data)-externalRunPageBytes:])})
 			return

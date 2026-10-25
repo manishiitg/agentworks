@@ -221,6 +221,12 @@ github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261025093137-54e280e0cba8
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261025093137-54e280e0cba8/go.mod h1:fr7WUUOqYFzI7+2zVubwRK7GoL/tfyf2fuKzqxONOUI=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261025100855-828e90ddcca4 h1:pvsXu5bCX9BJFkYwshxf4RnHvgMJt48cuMuBEutqCOk=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261025100855-828e90ddcca4/go.mod h1:fr7WUUOqYFzI7+2zVubwRK7GoL/tfyf2fuKzqxONOUI=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261025115350-4c232fc2fb19 h1:d78kBE/A/sEuT7kZQRiUSIMsBoIiuN6nX2fxV4ip/Qc=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261025115350-4c232fc2fb19/go.mod h1:fr7WUUOqYFzI7+2zVubwRK7GoL/tfyf2fuKzqxONOUI=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261025121613-d8b4a4bb2399 h1:nFNwaxf7M4I/qGKuK0vUKWG0Z3axn1nKsnaU+7Z+t/I=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261025121613-d8b4a4bb2399/go.mod h1:fr7WUUOqYFzI7+2zVubwRK7GoL/tfyf2fuKzqxONOUI=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261025122155-c1b3ce212fb1 h1:cIYQt5NL8AjlHs+w5efRim4v1Ydtkt/dcAVM7/JOf7k=
+github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20261025122155-c1b3ce212fb1/go.mod h1:fr7WUUOqYFzI7+2zVubwRK7GoL/tfyf2fuKzqxONOUI=
 github.com/mark3labs/mcp-go v1.0.0 h1:CZqCzXwUiTOstkIdW1MyOZGuM+LaKMEJSu+ZYluN4DU=
 github.com/mark3labs/mcp-go v1.0.0/go.mod h1:r2fW4o3wsoJ7IMsx1Wuq5xeP8PRGXPDfNveoGAYbb/s=
 github.com/mattn/go-colorable v0.1.14 h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=
