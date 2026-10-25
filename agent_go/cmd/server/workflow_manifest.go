@@ -379,6 +379,12 @@ func nativeAgentToolsEnabled(_ *bool) bool {
 
 // WorkflowNotificationConfig contains only safe references. Credential values
 // are kept in the encrypted secret store and resolved immediately before a run.
+// WorkflowWakeTab names one tab of one Crew.
+type WorkflowWakeTab struct {
+	CrewID string `json:"crew_id"`
+	ChatID string `json:"chat_id"`
+}
+
 type WorkflowNotificationConfig struct {
 	SlackWebhookSecretName string `json:"slack_webhook_secret_name,omitempty"`
 
@@ -404,6 +410,11 @@ type WorkflowNotificationConfig struct {
 	// DailyDigestOff stops the one evening email of the day's runs
 	// (owner_alerts.go). The digest is on unless the owner turns it off.
 	DailyDigestOff bool `json:"daily_digest_off,omitempty"`
+
+	// WakeTab is a Crew tab that is told straight away when a run of this
+	// workflow fails, stops partway, or never actually ran (wake_agent_tab.go).
+	// Nil means no one is woken.
+	WakeTab *WorkflowWakeTab `json:"wake_tab,omitempty"`
 
 	// Instructions is the legacy shared content preference. Keep it as a
 	// fallback so workflows that saved the original single field retain their
