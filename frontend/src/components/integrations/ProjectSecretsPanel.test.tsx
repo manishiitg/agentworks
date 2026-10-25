@@ -9,6 +9,7 @@ vi.mock('../../api/projectVault', () => ({ loadProjectVault: mocks.load, selectP
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => true }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 vi.mock('../secrets/SecretSourceView', () => ({ default: () => null }))
+vi.mock('../../utils/workspacePaneChat', () => ({ openWorkspacePaneChatWithDraft: vi.fn() }))
 vi.mock('./useVaultSetupDraft', () => ({ useVaultSetupDraft: () => ({ open: mocks.draft, error: '' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: any) => select({ chatTabs: {} }) }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: any) => select({ user: { id: 'owner' } }), { getState: () => ({ user: { id: 'owner' } }) }) }))
