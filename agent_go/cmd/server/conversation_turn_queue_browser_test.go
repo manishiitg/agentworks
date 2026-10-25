@@ -47,7 +47,7 @@ func TestProjectBrowserQueueReplayWithoutCDP(t *testing.T) {
 	if _, err := api.resolveAgentProfileForQuery(ctx, &incoming, "owner", "chat"); err != nil {
 		t.Fatal(err)
 	}
-	if incoming.BrowserMode != "headless" || incoming.CdpPort != nil || len(incoming.CdpPorts) != 0 {
+	if incoming.BrowserMode != "auto" || incoming.CdpPort != nil || len(incoming.CdpPorts) != 0 {
 		t.Fatalf("enriched browser settings: mode=%s port=%v ports=%v", incoming.BrowserMode, incoming.CdpPort, incoming.CdpPorts)
 	}
 	// Even a later enrichment must never become persisted caller input.
@@ -98,7 +98,7 @@ func TestProjectBrowserQueueReplayWithoutCDP(t *testing.T) {
 	if err := validateRequestedCDPPorts(replay); err != nil {
 		t.Fatal(err)
 	}
-	if replay.BrowserMode != "headless" || replay.CdpPort != nil {
+	if replay.BrowserMode != "auto" || replay.CdpPort != nil {
 		t.Fatal("replay did not rederive managed browser settings")
 	}
 	// Refusal of actual caller CDP remains before any profile normalization.

@@ -23,6 +23,8 @@ import (
 
 func nativeClaudeQuestionTestServer(t *testing.T) (*StreamingAPI, string) {
 	t.Helper()
+	// The hook scripts go to <tmp>/claude-code-hooks; a shared /tmp folder made by another user is not writable here.
+	t.Setenv("TMPDIR", t.TempDir())
 	const session = "native-claude-question-test"
 	api := &StreamingAPI{eventStore: events.NewEventStore(100), activeSessions: map[string]*ActiveSessionInfo{session: {SessionID: session, UserID: "owner"}}}
 	registrar := &singleToolCaptureRegistrar{}

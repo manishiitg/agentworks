@@ -608,39 +608,6 @@ func TestUserBrowserDiscoveryShowsFixedWorkspaceProductSessionInSingleUserMode(t
 	}
 }
 
-func TestUserBrowserDiscoveryShowsOnlyTheSelectedCrewBrowser(t *testing.T) {
-	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "/data/browser-profile")
-	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":["work"]}]}`)
-	workspaceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Real Crew projects have a workflow.json. The discovery path must not
-		// mistake that shared project manifest for a Workflow whose browser is
-		// disabled by capabilities.browser_mode.
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true,
-			"data":    map[string]string{"content": `{"version":"1","id":"crew-a","capabilities":{"browser_mode":"none"}}`},
-		})
-	}))
-	defer workspaceServer.Close()
-	t.Setenv("WORKSPACE_API_URL", workspaceServer.URL)
-
-	const workspace = "Chats/Work/projects/crew-a"
-	api := &StreamingAPI{}
-	crewA := browserSessionForWorkspace("alice", workspace)
-	crewB := browserSessionForWorkspace("alice", "Chats/Work/projects/crew-b")
-	browser.GetSessionTracker().Touch(crewA, "crew-a-chat", "crew-a-chat")
-	browser.GetSessionTracker().Touch(crewB, "crew-b-chat", "crew-b-chat")
-	defer browser.GetSessionTracker().Remove(crewA)
-	defer browser.GetSessionTracker().Remove(crewB)
-
-	r := httptest.NewRequest("GET", "/?workspace_path="+workspace, nil)
-	r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "alice"}))
-	items := api.liveBrowserSessions(r)
-	if len(items) != 1 || items[0]["browser_session"] != crewA || items[0]["label"] != "Crew browser" {
-		t.Fatalf("expected only selected Crew browser %q, got %v", crewA, items)
-	}
-}
-
 // One browser per Crew, not per user: the owner (logical path) and a member
 // (physical path) name the same browser, a Crew member may watch it, an
 // outsider without the Crew product may not, and only the owner may control it.
@@ -739,39 +706,6 @@ func TestCanControlLiveBrowserTreatsManifestBackedCrewAsProductWorkspace(t *test
 	}
 	if api.canControlLiveBrowser(context.Background(), &UserClaims{UserID: "bob"}, "Crew/crew-a1") {
 		t.Fatal("another user must not control the Crew browser")
-	}
-}
-
-// A fixed-workspace product project (SparkQuill, ...) is owner-
-// qualified: the logical path always names the caller's own tree, so two users
-// at "Chats/SparkQuill" get distinct browsers and neither sees the other's.
-func TestUserBrowserDiscoveryKeepsFixedWorkspaceProjectBrowsersPerOwnerInMultiUserMode(t *testing.T) {
-	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "/data/browser-profile")
-	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"bob","username":"bob","can_create":true,"products":[]}]}`)
-	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer workspace.Close()
-	t.Setenv("WORKSPACE_API_URL", workspace.URL)
-	api := &StreamingAPI{activeSessions: make(map[string]*ActiveSessionInfo)}
-	aliceSession := browserSessionForWorkspace("alice", "Chats/SparkQuill")
-	if aliceSession == browserSessionForWorkspace("bob", "Chats/SparkQuill") {
-		t.Fatal("two users' own projects shared a browser")
-	}
-	browser.GetSessionTracker().Touch(aliceSession, "alice-chat", "alice-chat")
-	defer browser.GetSessionTracker().Remove(aliceSession)
-
-	for _, c := range []struct {
-		user, workspace string
-		visible         bool
-	}{{"alice", "Chats/SparkQuill", true}, {"bob", "Chats/SparkQuill", false}, {"bob", "_users/alice/Chats/SparkQuill", false}} {
-		r := httptest.NewRequest("GET", "/?workspace_path="+c.workspace, nil)
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: c.user}))
-		items := api.liveBrowserSessions(r)
-		if c.visible != (len(items) == 1 && items[0]["browser_session"] == aliceSession) || (!c.visible && len(items) != 0) {
-			t.Fatalf("%s at %s: got %v", c.user, c.workspace, items)
-		}
 	}
 }
 

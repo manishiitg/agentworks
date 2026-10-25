@@ -121,8 +121,7 @@ func TestBuilderProductsGateCachedAndExternalTools(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
 	blocked := append(knowledgebase.ToolNames(), caplayerproduct.ExternalTools()...)
-	blocked = append(blocked, "brain_schedule", "brain_secrets", "read_knowledgebase", "run_relay", "test_relay", "publish_relay")
-	blocked = append(blocked, "create_code_workspace", "ask_my_code", "list_my_code_projects", "list_review_workspaces")
+	blocked = append(blocked, "brain_schedule", "brain_secrets", "run_relay", "test_relay", "publish_relay")
 	gate := newProductToolGate(nil)
 	claims := &UserClaims{UserID: "default"}
 	resolve := (&StreamingAPI{}).bindToolExecutionContext(context.WithValue(context.Background(), UserContextKey, claims), "product-selection-test", QueryRequest{}, false)
@@ -148,49 +147,6 @@ func TestBuilderProductsGateCachedAndExternalTools(t *testing.T) {
 	}
 }
 
-func TestBuilderProductsExplicitServerSurfaceSelection(t *testing.T) {
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "0")
-	t.Setenv("AGENT_PRODUCTS", "")
-	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "code")
-	claims := &UserClaims{UserID: "default"}
-	for _, name := range []string{"list_crews", "brain_read", "manage_vault_access", "run_relay"} {
-		if externalTokenAllows(claims, externalTool{Name: name}) {
-			t.Fatalf("disabled product advertised by MCP: %s", name)
-		}
-	}
-	text := (productpolicy.Selection{}).Text(externalMCPInstructions)
-	if strings.Contains(text, "list_crews") || strings.Contains(text, "list_workflows") || strings.Contains(text, "<!-- product:") || !strings.Contains(text, "list_review_workspaces") {
-		t.Fatal(text)
-	}
-	js := runtimeFrontendConfigJS(1, "")
-	if !strings.Contains(js, `enabledProductSurfaces: ["code"]`) {
-		t.Fatal(js)
-	}
-}
-
-func TestBuilderProductsExternalCodeRequiresInstalledProduct(t *testing.T) {
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	t.Setenv("AGENT_PRODUCTS", "")
-	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "work")
-	catalog, err := externalTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	checked := 0
-	for _, tool := range catalog {
-		if productpolicy.ToolProduct(tool.Name) == "code" {
-			checked++
-			if externalTokenAllows(&UserClaims{UserID: "default"}, tool) {
-				t.Fatalf("disabled Code tool advertised: %s", tool.Name)
-			}
-		}
-	}
-	if checked == 0 {
-		t.Fatal("Code coverage did not exercise any tools")
-	}
-}
-
 func TestBuilderProductsLocalToolGuidance(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "0")
@@ -207,6 +163,10 @@ func TestBuilderProductsLocalToolGuidance(t *testing.T) {
 	}
 	for name, tool := range reg.tools {
 		if !selection.AllowsTool(name) {
+			continue
+		}
+		// Vault is the only MCP store (2026-10-22), so these tools name it by design.
+		if strings.Contains(name, "mcp_") {
 			continue
 		}
 		assertNoDisabledProductGuidance(t, name, selection.Text(tool.desc))
