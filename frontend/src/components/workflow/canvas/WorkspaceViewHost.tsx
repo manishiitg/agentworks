@@ -1,9 +1,8 @@
-import { assertChatIdentityCurrent, captureChatIdentity } from '../../../utils/chatIdentity'
+import GoalOverview from '../GoalOverview'
 import { inspectionKey } from '../../../utils/stepInspection'
 import { WorkspacePanelAssistant, WorkspacePanelNavigationProvider } from '../../workspace/WorkspacePanelNavigation'
 import { WorkspacePanelHeader } from '../../workspace/WorkspacePanelHeader'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
-import { usePulseToggle } from '../hooks/usePulseToggle'
 import React, {
   Suspense,
   forwardRef,
@@ -15,7 +14,6 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import { useShallow } from 'zustand/react/shallow'
 import { ReactFlowProvider } from '@xyflow/react'
 import { useChatStore } from '../../../stores/useChatStore'
 import { WorkflowToolbar } from './WorkflowToolbar'
@@ -31,9 +29,9 @@ import { useWorkflowStore } from '../../../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
 import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
 import { agentApi, workspaceApi } from '../../../services/api'
-import type { ExecutionOptions, PulseOutwardActions, VariablesManifest, WorkflowRunSetup, PulseOverviewResponse } from '../../../services/api-types'
+import type { ExecutionOptions, VariablesManifest } from '../../../services/api-types'
 import { assertNeverView, getWorkspaceView, isInspectorView, type InspectorViewId, type WorkspaceViewId, type WorkspaceViewKind } from '../workspaceViews'
-import { WorkspaceViewDataContext, useWorkspaceViewData, type FlowShell, type PulseData, type WorkflowImageExportFormat, type WorkspaceViewData } from './workspaceViewData'
+import { WorkspaceViewDataContext, useWorkspaceViewData, type FlowShell, type WorkflowImageExportFormat, type WorkspaceViewData } from './workspaceViewData'
 import { WORKFLOW_REPORT_EXPORT_EVENT, WorkflowCanvasInner, usePreviewDevice, type WorkflowCanvasProps, type WorkflowCanvasRef } from './WorkflowCanvas'
 
 // Every inspector view is lazy: only the one the user opens is fetched, so the
@@ -49,7 +47,6 @@ const KnowledgeView = lazy(() => import('../KnowledgeView'))
 const WorkflowScheduleRunsPanel = lazy(() => import('../../scheduler/WorkflowScheduleRunsPanel'))
 const WorkflowAPITriggersView = lazy(() => import('../WorkflowAPITriggersView'))
 const WorkflowCapabilitiesPanel = lazy(() => import('../WorkflowCapabilitiesPanel'))
-const PulseView = lazy(() => import('../PulseView'))
 const HumanActionsView = lazy(() => import('../HumanActionsView'))
 const WorkflowBackupView = lazy(() => import('../WorkflowBackupView'))
 const WorkflowPublishView = lazy(() => import('../WorkflowPublishView'))
@@ -98,7 +95,7 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
     const inspections = tab?.metadata?.stepInspections
     return inspections?.items.find(item => item.workspace_path === workspacePath && item.session_id === tab?.sessionId && inspectionKey(item) === inspections.activeId)
   })
-  const { planData, selectedRunFolder, runFolderNames, workspace, pulse } = useWorkspaceViewData()
+  const { planData, selectedRunFolder, runFolderNames, workspace } = useWorkspaceViewData()
   const relayID = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest.id)
   const plan = planData.plan
   const refreshWorkspaceState = workspace.refresh
@@ -173,26 +170,8 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
         // WorkspaceViewHost renders the caller-supplied Workshop panel before
         // reaching InspectorBody. Keep this branch for registry exhaustiveness.
         return null
-      case 'pulse':
-        return (
-          <PulseView key={workspacePath}
-            workspacePath={workspacePath}
-            monitorOn={pulse.monitorOn}
-            monitorSaving={pulse.monitorSaving}
-            onToggleMonitor={pulse.toggleMonitor}
-            hasSoul={pulse.hasSoul}
-            overview={pulse.overview}
-            outwardActions={pulse.outwardActions}
-            outwardSaving={pulse.outwardSaving}
-            onChangeOutward={pulse.setOutward}
-
-            statusError={pulse.statusError}
-            statusLoading={pulse.statusLoading}
-
-            onRefresh={() => { void pulse.refresh() }}
-            headerAction={askAI('pulse')}
-          />
-        )
+      case 'goals':
+        return workspacePath ? <GoalOverview key={workspacePath} workspacePath={workspacePath} /> : null
       case 'human-actions':
         return <HumanActionsView workspacePath={workspacePath} />
       case 'backup':
@@ -294,72 +273,6 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   const workspaceState = workspace.state
   const isLoadingWorkspaceState = workspace.loading
 
-  // --- Pulse: the toolbar's badge and the pane's PulseView are siblings, so
-  // this lives here and reaches both through props / the WorkspaceViewData
-  // context rather than either fetching its own copy.
-  // useShallow is load-bearing: this selector builds a new object per call,
-  // and without shallow comparison zustand's useSyncExternalStore sees a fresh
-  // snapshot every render and loops ("Maximum update depth exceeded").
-  const pulseConfig = useWorkflowManifestStore(useShallow(state => {
-    const wf = state.workflows.find(w => w.workspace_path === workspacePath)
-    return {
-      enabled: wf?.manifest.pulse?.enabled,
-    }
-  }))
-  const monitorOn = !!pulseConfig.enabled
-  const updateWorkflowManifest = useWorkflowManifestStore(state => state.updateWorkflow)
-  const { monitorSaving, toggleMonitor } = usePulseToggle(
-    workspacePath, monitorOn, updateWorkflowManifest, useChatStore.getState().addToast,
-  )
-  const [pulseOutward, setPulseOutwardState] = useState<PulseOutwardActions>('ask')
-  const [pulseOutwardSaving, setPulseOutwardSaving] = useState(false)
-  const [pulseHasSoul, setPulseHasSoul] = useState(false)
-  const [pulseRunSetup, setPulseRunSetup] = useState<WorkflowRunSetup | null>(null)
-  const [pulseOverview, setPulseOverview] = useState<{ workspacePath: string; identity: number; data: PulseOverviewResponse } | null>(null)
-  const [pulseStatusLoading, setPulseStatusLoading] = useState(false)
-  const [pulseStatusError, setPulseStatusError] = useState<string | null>(null)
-
-  const setPulseOutward = useCallback((next: PulseOutwardActions) => {
-    if (!workspacePath || pulseOutwardSaving || next === pulseOutward) return
-    setPulseOutwardSaving(true)
-    void updateWorkflowManifest(workspacePath, { pulse_outward_actions: next })
-      .then(manifest => {
-        setPulseOutwardState(manifest.pulse?.outward_actions ?? 'ask')
-        useChatStore.getState().addToast('Autopilot outward actions updated', 'success')
-      })
-      .catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not update Autopilot outward actions', 'error'))
-      .finally(() => setPulseOutwardSaving(false))
-  }, [workspacePath, pulseOutwardSaving, pulseOutward, updateWorkflowManifest])
-
-  const refreshPulseOverview = useCallback(async (showLoading = true) => {
-    const identity = captureChatIdentity()
-    if (!workspacePath) {
-
-      setPulseStatusError(null)
-      return
-    }
-    if (showLoading) setPulseStatusLoading(true)
-    setPulseStatusError(null)
-    try {
-      const resp = await agentApi.getPulseOverview(workspacePath)
-      assertChatIdentityCurrent(identity)
-      if (!resp.success) {
-        throw new Error(resp.error || 'Failed to load Autopilot status')
-      }
-
-      setPulseOutwardState(resp.outward_actions ?? 'ask')
-      setPulseHasSoul(!!resp.has_soul)
-      setPulseRunSetup(resp.run_setup ?? null)
-      setPulseOverview({ workspacePath, identity, data: resp })
-
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load Autopilot status'
-      setPulseStatusError(message)
-    } finally {
-      if (showLoading) setPulseStatusLoading(false)
-    }
-  }, [workspacePath])
-
   // Used by cross-workflow decision links: opening a decision must surface
   // Human actions, but re-renders after that must not keep reopening a view the user
   // deliberately navigated away from -- one-shot, gated the same as before
@@ -371,19 +284,6 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     openedInitialActionsRef.current = true
     useWorkflowStore.getState().openWorkspaceView('human-actions')
   }, [openHumanActionsOnMount, kind])
-
-  useEffect(() => {
-    if (workflowWorkspaceView === 'pulse') void refreshPulseOverview()
-  }, [workflowWorkspaceView, refreshPulseOverview])
-
-  const pulse = useMemo<PulseData>(() => ({ monitorOn, monitorSaving, toggleMonitor,
-    outwardActions: pulseOutward, outwardSaving: pulseOutwardSaving, setOutward: setPulseOutward,
-    statusError: pulseStatusError, statusLoading: pulseStatusLoading, refresh: refreshPulseOverview,
-    hasSoul: pulseHasSoul, runSetup: pulseRunSetup,
-    overview: pulseOverview?.workspacePath === workspacePath && pulseOverview.identity === captureChatIdentity() ? pulseOverview.data : null,
-  }), [monitorOn, monitorSaving, toggleMonitor,
-    pulseOutward, pulseOutwardSaving, setPulseOutward, pulseStatusError, pulseStatusLoading,
-    refreshPulseOverview, pulseHasSoul, pulseRunSetup, pulseOverview, workspacePath])
 
   // The flow canvas's VariablesSidebar edits the manifest in place; keep the
   // toolbar showing that edit until the next workspace refresh replaces it.
@@ -551,11 +451,9 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     flowShell,
     flowError,
     registerExportHandler,
-    pulse,
   }), [
     planData, status, workspace, selectedRunFolder, runFolderNames,
     variablesManifest, isLoadingVariables, isRefreshingPlan, flowShell, flowError, registerExportHandler,
-    pulse,
   ])
 
   const showToolbar = !hideToolbar && (pythonRelay || !(kind === 'canvas' && flowShell !== 'ready'))
@@ -630,7 +528,6 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
               onToggleChatArea={onToggleChatArea}
               onExport={onExport}
               chatTabsSlot={chatTabsSlot}
-              monitorOn={monitorOn}
             />
           </div>
         )}

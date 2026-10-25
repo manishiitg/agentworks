@@ -288,7 +288,7 @@ func seedMCPBridgeCodeExecRegistry(logger loggerv2.Logger) {
 var ServerCmd = &cobra.Command{
 	Use:   "server",
 	Short: "Start the streaming API server",
-	Long: `Start the streaming API server that provides HTTP endpoints and Server-Sent Events (SSE) support 
+	Long: `Start the streaming API server that provides HTTP endpoints and Server-Sent Events (SSE) support
 for real-time agent streaming. This server enables frontend integration with the MCP agent.
 
 The server provides:
@@ -879,25 +879,16 @@ type QueryRequest struct {
 	BotUserEmail string `json:"bot_user_email,omitempty"`
 	// Internal workflow wire field: name of the selected encrypted secret that
 	// contains a Slack Incoming Webhook URL. The URL itself is never serialized.
-	NotificationSlackWebhookSecretName string `json:"notification_slack_webhook_secret_name,omitempty"`
-	// Per-workflow notification preferences resolved from workflow.json
-	// notifications.*. Channel and recipient rules are backend-enforced;
-	// owner-authored content preferences are visible to Workflow Builder and
-	// used by the Pulse finalizer for their matching notification sections.
-	NotificationRunSummaryInstructions         string   `json:"notification_run_summary_instructions,omitempty"`
-	NotificationPulseSummaryInstructions       string   `json:"notification_pulse_summary_instructions,omitempty"`
-	NotificationRunSummaryChannels             []string `json:"notification_run_summary_channels,omitempty"`
-	NotificationPulseSummaryChannels           []string `json:"notification_pulse_summary_channels,omitempty"`
-	NotificationExcludeChannels                []string `json:"notification_exclude_channels,omitempty"`
-	NotificationBlockRecipients                []string `json:"notification_block_recipients,omitempty"`
-	NotificationGmailConnectionID              string   `json:"notification_gmail_connection_id,omitempty"`
-	NotificationRunSummaryGmailConnectionIDs   []string `json:"notification_run_summary_gmail_connection_ids,omitempty"`
-	NotificationPulseSummaryGmailConnectionIDs []string `json:"notification_pulse_summary_gmail_connection_ids,omitempty"`
-	NotificationRunSummaryRecipients           []string `json:"notification_run_summary_recipients,omitempty"`
-	NotificationPulseSummaryRecipients         []string `json:"notification_pulse_summary_recipients,omitempty"`
+	NotificationSlackWebhookSecretName       string   `json:"notification_slack_webhook_secret_name,omitempty"`
+	NotificationRunSummaryInstructions       string   `json:"notification_run_summary_instructions,omitempty"`
+	NotificationRunSummaryChannels           []string `json:"notification_run_summary_channels,omitempty"`
+	NotificationExcludeChannels              []string `json:"notification_exclude_channels,omitempty"`
+	NotificationBlockRecipients              []string `json:"notification_block_recipients,omitempty"`
+	NotificationGmailConnectionID            string   `json:"notification_gmail_connection_id,omitempty"`
+	NotificationRunSummaryGmailConnectionIDs []string `json:"notification_run_summary_gmail_connection_ids,omitempty"`
+	NotificationRunSummaryRecipients         []string `json:"notification_run_summary_recipients,omitempty"`
 	// Per-summary Slack channels, as encrypted-secret names holding webhook URLs.
-	NotificationRunSummarySlackWebhookSecretNames   []string `json:"notification_run_summary_slack_webhook_secret_names,omitempty"`
-	NotificationPulseSummarySlackWebhookSecretNames []string `json:"notification_pulse_summary_slack_webhook_secret_names,omitempty"`
+	NotificationRunSummarySlackWebhookSecretNames []string `json:"notification_run_summary_slack_webhook_secret_names,omitempty"`
 	// Internal-only resolved notification credentials. Unlike DecryptedSecrets,
 	// these values are never serialized, prompted, or injected as SECRET_*.
 	// notificationSlackWebhookURL is the default/fallback webhook;
@@ -973,18 +964,8 @@ type QueryRequest struct {
 	// RestartCodingCLI asks for the chat's coding CLI to be closed and relaunched when this
 	// message's turn starts: a product chat's runtime selection changed while a turn was running
 	// (PLAT-676). It is applied between turns, never mid-turn; the flag survives the turn queue.
-	RestartCodingCLI bool `json:"restart_coding_cli,omitempty"`
-	// KeepNativeSessionAlive was how a scheduler kept one native coding-CLI
-	// process alive across its consecutive turns (run → Pulse). Every
-	// chat-level turn now retains its CLI (codingAgentRequestAllowsPersistentInteractive),
-	// so it no longer changes the transport; kept for wire compatibility with
-	// callers that still send it.
+	RestartCodingCLI       bool `json:"restart_coding_cli,omitempty"`
 	KeepNativeSessionAlive bool `json:"keep_native_session_alive,omitempty"`
-	// PulseLifecycleTurn marks a scheduler-sent Pulse turn (Gate, review
-	// dispatch, Finalize). The main conversation keeps the Builder model on
-	// every turn, reviews included. Pulse shares scheduled execution's
-	// unattended capabilities; the flag identifies its stage and cost scope.
-	PulseLifecycleTurn bool `json:"pulse_lifecycle_turn,omitempty"`
 	// UserInteractiveContinuation promotes an observed schedule/bot conversation
 	// into an interactive chat without changing its session or native resume ID.
 	UserInteractiveContinuation bool `json:"user_interactive_continuation,omitempty"`
@@ -995,25 +976,11 @@ type QueryRequest struct {
 	tokenOwner string `json:"-"`
 }
 
-func buildWorkflowNotificationInstructionsPrompt(runInstructions, pulseInstructions string) string {
-	runInstructions = strings.TrimSpace(runInstructions)
-	pulseInstructions = strings.TrimSpace(pulseInstructions)
-	if runInstructions == "" && pulseInstructions == "" {
+func buildWorkflowNotificationInstructionsPrompt(runInstructions string) string {
+	if strings.TrimSpace(runInstructions) == "" {
 		return ""
 	}
-	prompt := "\n## Workflow Notification Preferences\n\n" +
-		"The workflow owner saved the following workflow-scoped guidance for notification content. " +
-		"Apply each preference only to its named section when designing, reviewing, or composing this workflow's notifications. " +
-		"It controls content, detail, tone, emphasis, subject/header/sign-off conventions, and similar presentation preferences only. " +
-		"It does not authorize changing recipients, channels, secrets, permissions, tools, schedules, plan behavior, or delivery configuration. " +
-		"Do not copy it into soul/soul.md; workflow.json is the source of truth.\n"
-	if runInstructions != "" {
-		prompt += "\n### Workflow run summary\n<workflow_run_summary_preferences>\n" + runInstructions + "\n</workflow_run_summary_preferences>\n"
-	}
-	if pulseInstructions != "" {
-		prompt += "\n### Autopilot review summary\n<pulse_review_summary_preferences>\n" + pulseInstructions + "\n</pulse_review_summary_preferences>\n"
-	}
-	return prompt
+	return "\n### Team run notification content\nUse the saved content preference below. It does not change recipients, channels, accounts, access or permissions.\n<workflow_run_summary_preferences>\n" + strings.TrimSpace(runInstructions) + "\n</workflow_run_summary_preferences>\n"
 }
 
 func notificationDestinationFromQuery(req QueryRequest, userID string) *services.NotificationDestination {
@@ -1063,17 +1030,13 @@ func notificationDestinationFromQuery(req QueryRequest, userID string) *services
 		return webhooks
 	}
 	dest.RunSummaryWebhooks = webhooksFor(req.NotificationRunSummarySlackWebhookSecretNames)
-	dest.PulseSummaryWebhooks = webhooksFor(req.NotificationPulseSummarySlackWebhookSecretNames)
 	// Per-workflow notification preferences (workflow.json notifications.*).
 	if len(req.NotificationExcludeChannels) > 0 {
 		dest.ExcludeChannels = append([]string(nil), req.NotificationExcludeChannels...)
 	}
 	dest.RunSummaryChannels = append([]string(nil), req.NotificationRunSummaryChannels...)
-	dest.PulseSummaryChannels = append([]string(nil), req.NotificationPulseSummaryChannels...)
 	dest.RunSummaryGmailConnectionIDs = append([]string(nil), req.NotificationRunSummaryGmailConnectionIDs...)
-	dest.PulseSummaryGmailConnectionIDs = append([]string(nil), req.NotificationPulseSummaryGmailConnectionIDs...)
 	dest.RunSummaryRecipients = append([]string(nil), req.NotificationRunSummaryRecipients...)
-	dest.PulseSummaryRecipients = append([]string(nil), req.NotificationPulseSummaryRecipients...)
 	if len(req.NotificationBlockRecipients) > 0 {
 		if dest.Gmail == nil {
 			dest.Gmail = &services.GmailDest{}
@@ -1089,16 +1052,14 @@ func notificationDestinationFromQuery(req QueryRequest, userID string) *services
 		}
 		dest.Gmail.ConnectionIDs = []string{connID}
 	}
-	if dest.Gmail != nil || len(dest.RunSummaryGmailConnectionIDs) > 0 || len(dest.PulseSummaryGmailConnectionIDs) > 0 {
+	if dest.Gmail != nil || len(dest.RunSummaryGmailConnectionIDs) > 0 {
 		if dest.Gmail == nil {
 			dest.Gmail = &services.GmailDest{}
 		}
 		dest.Gmail.Workspace = req.notificationItemWorkspace
 	}
 	if dest.UserID == "" && dest.WorkspacePath == "" && dest.Slack == nil && dest.SlackWebhook == nil && dest.WhatsApp == nil && dest.Gmail == nil &&
-		len(dest.ExcludeChannels) == 0 && len(dest.RunSummaryRecipients) == 0 && len(dest.PulseSummaryRecipients) == 0 &&
-		len(dest.RunSummaryGmailConnectionIDs) == 0 && len(dest.PulseSummaryGmailConnectionIDs) == 0 &&
-		len(dest.RunSummaryWebhooks) == 0 && len(dest.PulseSummaryWebhooks) == 0 {
+		len(dest.ExcludeChannels) == 0 && len(dest.RunSummaryRecipients) == 0 && len(dest.RunSummaryGmailConnectionIDs) == 0 && len(dest.RunSummaryWebhooks) == 0 {
 		return nil
 	}
 	return dest
@@ -1117,10 +1078,7 @@ func (api *StreamingAPI) resolveNotificationSecretForRequest(ctx context.Context
 	// injection, not just the default one — otherwise adding a second channel
 	// would quietly turn its URL into a SECRET_* variable the agent can read.
 	defaultSecretName := strings.TrimSpace(req.NotificationSlackWebhookSecretName)
-	secretNames := uniqueNonEmpty(append(
-		append([]string{defaultSecretName}, req.NotificationRunSummarySlackWebhookSecretNames...),
-		req.NotificationPulseSummarySlackWebhookSecretNames...,
-	))
+	secretNames := uniqueNonEmpty(append([]string{defaultSecretName}, req.NotificationRunSummarySlackWebhookSecretNames...))
 	if len(secretNames) == 0 {
 		req.notificationSlackWebhookURL = ""
 		req.notificationSlackWebhookURLs = nil
@@ -1359,18 +1317,13 @@ func applyMultiAgentCapabilitiesToRequest(req *QueryRequest, caps WorkflowCapabi
 	if caps.Notifications != nil {
 		req.NotificationSlackWebhookSecretName = strings.TrimSpace(caps.Notifications.SlackWebhookSecretName)
 		req.NotificationRunSummaryInstructions = caps.Notifications.EffectiveRunSummaryInstructions()
-		req.NotificationPulseSummaryInstructions = caps.Notifications.EffectivePulseSummaryInstructions()
 		req.NotificationRunSummaryChannels = append([]string(nil), caps.Notifications.RunSummaryChannels...)
-		req.NotificationPulseSummaryChannels = append([]string(nil), caps.Notifications.PulseSummaryChannels...)
 		req.NotificationExcludeChannels = append([]string(nil), caps.Notifications.ExcludeChannels...)
 		req.NotificationBlockRecipients = append([]string(nil), caps.Notifications.BlockRecipients...)
 		req.NotificationGmailConnectionID = caps.Notifications.GmailConnectionID
 		req.NotificationRunSummaryGmailConnectionIDs = append([]string(nil), caps.Notifications.RunSummaryGmailConnectionIDs...)
-		req.NotificationPulseSummaryGmailConnectionIDs = append([]string(nil), caps.Notifications.PulseSummaryGmailConnectionIDs...)
 		req.NotificationRunSummaryRecipients = append([]string(nil), caps.Notifications.RunSummaryRecipients...)
-		req.NotificationPulseSummaryRecipients = append([]string(nil), caps.Notifications.PulseSummaryRecipients...)
 		req.NotificationRunSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.RunSummarySlackWebhookSecretNames...)
-		req.NotificationPulseSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.PulseSummarySlackWebhookSecretNames...)
 	}
 	if req.BrowserMode == "" || req.BrowserMode == "none" {
 		req.BrowserMode = "auto"
@@ -1510,14 +1463,11 @@ func shouldSerializeInteractiveQueryInput(req QueryRequest) bool {
 	return mode == "workflow_phase" || isToolBackedChatMode(mode)
 }
 
-// Only a person's fresh chat submission may bypass the next-turn queue to
-// steer a retained CLI. A claimed queue item must execute as its own turn, and
-// bot/scheduled/Pulse/token/synthetic producers retain their turn boundaries.
 func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest, sessionID string) bool {
 	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
 	claims := GetUserFromContext(ctx)
 	if conversationTurnQueueExecution(ctx) || req.DisableLiveInputDelivery || req.DeliveryMode == "queue" ||
-		req.IsAutoNotification || req.PulseLifecycleTurn ||
+		req.IsAutoNotification ||
 		(claims != nil && claims.AccessToken != nil) {
 		return false
 	}
@@ -1843,13 +1793,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		cancelSweep()
 	}
 
-	// Upgrade every currently available workflow database before schedules and
-	// interactive Pulse sessions can write. This is intentionally repeated at
-	// startup: the version receipt makes it a no-op after the first successful
-	// deployment, while the lazy open guard covers laptops that were offline.
-	// PLAT-449: every Crew's and Code's owner is recorded in the server's owner registry from its path (idempotent;
-	// never changes a registered owner), and written into product.json as information only; no symlink is followed
-	// (PLAT-450).
 	if ownerReport := migrateProductOwners(fsutil.WorkspaceDocsRoot()); ownerReport.Scanned > 0 || len(ownerReport.Failures) > 0 {
 		log.Printf("[OWNER_BACKFILL] scanned=%d registered=%d already_registered=%d conflicts=%d stamped=%d current=%d skipped=%d manifest_mismatch=%d unsafe=%d shared_orphans=%d failures=%d",
 			ownerReport.Scanned, ownerReport.Registered, ownerReport.Registry, ownerReport.Conflicts, ownerReport.Stamped, ownerReport.Current, ownerReport.Skipped, ownerReport.Mismatched, ownerReport.Unsafe, ownerReport.SharedOrphans, len(ownerReport.Failures))
@@ -2307,8 +2250,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		interruptedTurns:                    make(map[string]bool),
 	}
 	defer api.closeGuidanceSessions()
-	// Pulse Goal Work reaches other workflows and Crews through the external API.
-	pulsePlatformAPI = api
+	workflowToolsAPI = api
 	runningServerAPI = api
 	mcpagent.SetNativeRuntimeObserver(api.observeNativeHandle)
 	defer mcpagent.SetNativeRuntimeObserver(nil)
@@ -2922,8 +2864,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/answer", requireReportHumanInputAccess(true, api.handleAnswerReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/dismiss", requireReportHumanInputAccess(true, api.handleDismissReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/consume", requireReportHumanInputAccess(true, api.handleConsumeReportHumanInput)).Methods("POST", "OPTIONS")
-	// The Pulse's goal memory, edited by the owner in the Pulse tab (PLAT-697).
-	// The Pulse conversation and focus areas in the Pulse tab (PLAT-697 phase 4).
 	apiRouter.HandleFunc("/workflow/team", api.handleWorkflowTeam).Methods("GET", "PUT")
 
 	// Workflow running-session API (decoupled from chat session storage).
@@ -4088,11 +4028,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
-	if workflowPulseTagIsOff(r.Context(), req) || isGoalLeadSessionID(sessionID) && !workflowHasGoal(r.Context(), req.SelectedFolder) {
-		logfWithContext(queryLogCtx, "[PULSE] Refused Autopilot message while unavailable; nothing delivered")
-		externalError(w, http.StatusConflict, "pulse_unavailable", errPulseOff.Error())
-		return
-	}
+
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
 	if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 		if e := crewQueryTabWriteError(r.Context(), currentUserID, resolvedProfile.Definition.ID, req.SelectedFolder, sessionID); e != nil {
@@ -4201,11 +4137,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if workflowNativeAgentTools {
 		agentToolsMode = "full"
 	}
-	// Persist the same guarded mode that the Pulse launcher uses below. The
-	// saved mode decides native-session restoration and capability changes.
-	if isGoalLeadSessionID(sessionID) {
-		agentToolsMode = "mcp_only"
-	}
+
 	api.lastAgentToolsModeBySession[sessionID] = agentToolsMode
 	api.conversationMux.Unlock()
 	if api.internalAgentToolsModeDecided != nil && api.internalAgentToolsModeDecided(sessionID, agentToolsMode) {
@@ -4509,11 +4441,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Chat sessions are in-memory only — tracked via activeSessions map
 	// below. No persistent session metadata.
 
-	// Only a real user message may reactivate a stopped/interrupted session.
-	// Cron sequence turns and synthetic auto-notifications are internal work; if
-	// they clear these guards, Pulse can continue after the user pressed
-	// Stop. startSessionInternal preserves TriggeredBy="cron", so this distinction
-	// also applies to backend-driven turns.
 	if !req.IsAutoNotification && !strings.EqualFold(strings.TrimSpace(req.TriggeredBy), "cron") {
 		api.clearSessionStopped(sessionID)
 		// Lift the MCP registry zombie-prevention flag only for that intentional
@@ -4782,18 +4709,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if manifest.Capabilities.Notifications != nil {
 					req.NotificationSlackWebhookSecretName = strings.TrimSpace(manifest.Capabilities.Notifications.SlackWebhookSecretName)
 					req.NotificationRunSummaryInstructions = manifest.Capabilities.Notifications.EffectiveRunSummaryInstructions()
-					req.NotificationPulseSummaryInstructions = manifest.Capabilities.Notifications.EffectivePulseSummaryInstructions()
 					req.NotificationRunSummaryChannels = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryChannels...)
-					req.NotificationPulseSummaryChannels = append([]string(nil), manifest.Capabilities.Notifications.PulseSummaryChannels...)
 					req.NotificationExcludeChannels = append([]string(nil), manifest.Capabilities.Notifications.ExcludeChannels...)
 					req.NotificationBlockRecipients = append([]string(nil), manifest.Capabilities.Notifications.BlockRecipients...)
 					req.NotificationGmailConnectionID = manifest.Capabilities.Notifications.GmailConnectionID
 					req.NotificationRunSummaryGmailConnectionIDs = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryGmailConnectionIDs...)
-					req.NotificationPulseSummaryGmailConnectionIDs = append([]string(nil), manifest.Capabilities.Notifications.PulseSummaryGmailConnectionIDs...)
 					req.NotificationRunSummaryRecipients = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryRecipients...)
-					req.NotificationPulseSummaryRecipients = append([]string(nil), manifest.Capabilities.Notifications.PulseSummaryRecipients...)
 					req.NotificationRunSummarySlackWebhookSecretNames = append([]string(nil), manifest.Capabilities.Notifications.RunSummarySlackWebhookSecretNames...)
-					req.NotificationPulseSummarySlackWebhookSecretNames = append([]string(nil), manifest.Capabilities.Notifications.PulseSummarySlackWebhookSecretNames...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, resolvedWPath, &req)
 				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
@@ -4937,18 +4859,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if caps.Notifications != nil {
 					req.NotificationSlackWebhookSecretName = strings.TrimSpace(caps.Notifications.SlackWebhookSecretName)
 					req.NotificationRunSummaryInstructions = caps.Notifications.EffectiveRunSummaryInstructions()
-					req.NotificationPulseSummaryInstructions = caps.Notifications.EffectivePulseSummaryInstructions()
 					req.NotificationRunSummaryChannels = append([]string(nil), caps.Notifications.RunSummaryChannels...)
-					req.NotificationPulseSummaryChannels = append([]string(nil), caps.Notifications.PulseSummaryChannels...)
 					req.NotificationExcludeChannels = append([]string(nil), caps.Notifications.ExcludeChannels...)
 					req.NotificationBlockRecipients = append([]string(nil), caps.Notifications.BlockRecipients...)
 					req.NotificationGmailConnectionID = caps.Notifications.GmailConnectionID
 					req.NotificationRunSummaryGmailConnectionIDs = append([]string(nil), caps.Notifications.RunSummaryGmailConnectionIDs...)
-					req.NotificationPulseSummaryGmailConnectionIDs = append([]string(nil), caps.Notifications.PulseSummaryGmailConnectionIDs...)
 					req.NotificationRunSummaryRecipients = append([]string(nil), caps.Notifications.RunSummaryRecipients...)
-					req.NotificationPulseSummaryRecipients = append([]string(nil), caps.Notifications.PulseSummaryRecipients...)
 					req.NotificationRunSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.RunSummarySlackWebhookSecretNames...)
-					req.NotificationPulseSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.PulseSummarySlackWebhookSecretNames...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, manifestWorkspacePath, &req)
 				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
@@ -5919,9 +5836,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		} else if workflowNativeAgentTools {
 			profileAgentToolsMode = "full"
 		}
-		if crewAskOnly || isGoalLeadSessionID(sessionID) {
-			// Pulse uses the server's guarded tools, including its native bridge.
-			// Native CLI shell/files would bypass its outward and folder rules.
+		if crewAskOnly {
 			profileAgentToolsMode = "mcp_only"
 		}
 		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)
@@ -5986,10 +5901,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				cliWritePaths = publishedRuntimeRoots(p.runtimeRoot())
 			}
 		}
-		if isWorkflowPhase && isGoalLeadSessionID(sessionID) {
-			// Pulse writes only its own folders (product.yaml pulse.write_paths).
-			cliWritePaths = pulseWriteDirs(sharedChatWorkingDir)
-		}
+
 		if chatWorkingDir != sharedChatWorkingDir {
 			cliReadPaths = append(cliReadPaths, chatWorkingDir)
 			cliWritePaths = append(cliWritePaths, chatWorkingDir)
@@ -6123,11 +6035,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				toolGate = newProductToolGateForAllowlist("relays", relayTools)
 			}
 		}
-		// The Pulse conversation reads and talks to the Builder chat; it changes
-		// nothing itself (pulseTools).
-		// Goals chats enforce product.yaml before the immutable definition and
-		// CLI catalog are built. Pulse retains its own narrower declaration.
-		if isWorkflowPhase && !relayChat && (resolvedProfile == nil || isGoalLeadSessionID(sessionID)) {
+		if isWorkflowPhase && !relayChat && resolvedProfile == nil {
 			toolGate = newWorkflowConversationToolGate(sessionID, req, currentUserIsReadOnly)
 		}
 		toolGate.DenyWhere(func(name string) bool {
@@ -6495,10 +6403,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// workflow.json carries the access record and created_by (whom
 				// schedules run as): only an owner's session may write it, so an
 				// editor cannot have the agent promote them or change run-as.
-				if isGoalLeadSessionID(sessionID) {
-					// Autopilot's own settings live in workflow.json: it never writes it raw.
-					fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, effectiveWorkflowPhaseFolderForWrites+"/workflow.json")
-				}
+
 				if blockedManifest := workflowManifestBlockedWriteForNonOwner(context.WithoutCancel(r.Context()), GetUserFromContext(r.Context()), effectiveWorkflowPhaseFolderForWrites); blockedManifest != "" {
 					fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedManifest)
 					log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Non-owner session: blocked writes to %s", blockedManifest)
@@ -7521,9 +7426,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						return
 					}
 					configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, currentUserIsReadOnly)
-					if isGoalLeadSessionID(sessionID) {
-						configurePulseShellGuard(sessionID, phaseWorkspacePath)
-					}
+
 					// Reapply the managed DB boundary on every setup/restore so old
 					// sessions cannot retain broad raw SQLite or sidecar access.
 					if relayChat {
@@ -7749,7 +7652,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					if userPrompt := authenticatedChatUserPrompt(GetUserFromContext(r.Context())); userPrompt != "" {
 						phaseAdditions = append(phaseAdditions, userPrompt)
 					}
-					if notificationPrompt := buildWorkflowNotificationInstructionsPrompt(req.NotificationRunSummaryInstructions, req.NotificationPulseSummaryInstructions); notificationPrompt != "" {
+					if notificationPrompt := buildWorkflowNotificationInstructionsPrompt(req.NotificationRunSummaryInstructions); notificationPrompt != "" {
 						phaseAdditions = append(phaseAdditions, notificationPrompt)
 						log.Printf("[WORKFLOW_PHASE] Appended workflow notification preferences to %s system prompt", workflowPhaseID)
 					}
@@ -7824,19 +7727,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// Workflow browser configuration is authoritative; do not add the
 				// generic chat browser pointer as well.
 				promptCtx.BrowserPointer = ""
-				// The Pulse conversation's standing instructions live in its
-				// system prompt, never in its messages (PLAT-697).
-				if isGoalLeadSessionID(sessionID) {
-					if section := goalLeadSystemSection(context.Background(), phaseWorkspacePath); section != "" {
-						// Pulse's section leads; the runtime pointers follow it.
-						phaseAdditions = append([]string{section}, phaseAdditions...)
-						phaseTemplateVars["PulseConversation"] = "true"
-					}
-				} else if workflowPhaseID == "workflow-builder" {
-					if section := builderPulseLevelsSection(context.Background(), phaseWorkspacePath); section != "" {
-						phaseAdditions = append(phaseAdditions, section)
-					}
-				}
+
 				if section := workflowTeamInstructions(r.Context(), phaseWorkspacePath, currentUserID); section != "" {
 					phaseAdditions = append(phaseAdditions, section)
 				}
@@ -7869,7 +7760,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					AgentProfileID:              req.AgentProfileID,
 					IsAutoNotification:          req.IsAutoNotification,
 					UserInteractiveContinuation: req.UserInteractiveContinuation,
-					PulseLifecycleTurn:          req.PulseLifecycleTurn,
 					LLMConfig:                   req.LLMConfig,
 					ExecutionOptions:            req.ExecutionOptions,
 					SelectedGlobalSecrets:       req.SelectedGlobalSecrets,
@@ -7914,17 +7804,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Observers are runtime construction inputs, so attach them to the draft
 		// before finalization instead of mutating the live agent afterward.
 		eventObserver := events.NewEventObserverWithLogger(api.eventStore, sessionID, queryLogger)
-		// Scope resolution, in priority order (PLAT-088):
-		//  1. The scheduler's explicit pulse_lifecycle_turn flag, with the older
-		//     llm_config_source marker retained as compatibility. Pulse may use
-		//     the Builder model, so model selection is not an attribution signal.
-		//  2. A product schedule/reminder/trigger turn names its source (PLAT-702).
-		//  3. Otherwise the agent mode + phase. req.AgentMode is rewritten to
-		//     "multi-agent" far above purely to route workflow_phase requests
-		//     down the standard agent path, so inferring from it directly
-		//     charged every scheduled workflow AND Pulse turn to "chat".
-		//     isWorkflowPhase is captured before that rewrite and is what the
-		//     inference is supposed to see.
 		costObs := newCostObserver(
 			api.costLedger,
 			sessionID,
@@ -8039,8 +7918,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if relayChat {
 				policyWorkflowKind = "relay"
 			}
-			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind) +
-				pulsePolicyKeySuffix(sessionID, req.PhaseID, req.SelectedFolder)
+			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind)
 			laptopPolicy := api.workflowChatLaptopPolicyKey(r.Context(), req, currentUserIsReadOnly)
 			policyKey += laptopPolicy
 			policyRoleKey := currentPolicy.sessionKey() + laptopPolicy
@@ -12397,7 +12275,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 				// Role models follow the run person's allowed models (PLAT-714).
 				modelCtx := withModelLimitPerson(ctx, firstNonEmptyTrimmed(req.tokenOwner, currentUserID))
 				cfg.PresetPhaseLLM, cfg.TieredConfig = workshopResolveLLMConfigFor(modelCtx, llmCfg)
-				cfg.PresetPulseLLM = workshopResolvePulseLLMConfigFor(modelCtx, llmCfg)
+				cfg.PresetBackgroundLLM = workshopResolveBackgroundLLMConfigFor(modelCtx, llmCfg)
 
 				if llmCfg.UseKnowledgebase != nil {
 					cfg.UseKnowledgebase = *llmCfg.UseKnowledgebase
@@ -12411,8 +12289,8 @@ func (api *StreamingAPI) buildWorkshopConfig(
 						workshopFormatAgentLLM(cfg.TieredConfig.Tier3))
 				}
 
-				log.Printf("[WORKSHOP] LLM config loaded: phase=%v pulse=%v tiered=%v kb=%v",
-					cfg.PresetPhaseLLM != nil, cfg.PresetPulseLLM != nil, cfg.TieredConfig != nil, cfg.UseKnowledgebase)
+				log.Printf("[WORKSHOP] LLM config loaded: phase=%v background=%v tiered=%v kb=%v",
+					cfg.PresetPhaseLLM != nil, cfg.PresetBackgroundLLM != nil, cfg.TieredConfig != nil, cfg.UseKnowledgebase)
 			}
 		}
 	}
@@ -12628,7 +12506,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				sb.WriteString(fmt.Sprintf("- **Timezone**: %s\n", sched.Timezone))
 				sb.WriteString(fmt.Sprintf("- **Status**: %s\n", status))
 				afterRun := manifest.EffectiveAfterRun(sched)
-				sb.WriteString(fmt.Sprintf("- **After run**: backup=%v, publish=%v, notify=%v\n", afterRun.Backup, afterRun.Publish, afterRun.Notify))
+				sb.WriteString(fmt.Sprintf("- **After run**: backup=%v, publish=%v\n", afterRun.Backup, afterRun.Publish))
 				if api.scheduler != nil {
 					state := api.scheduler.GetRuntimeStateForWorkflow(workspacePath, sched.ID)
 					if state.LastStatus != "" {
@@ -14009,19 +13887,19 @@ func workshopResolveLLMConfigFor(ctx context.Context, config *workflowtypes.Pres
 	return builder, tiered
 }
 
-func workshopResolvePulseLLMConfig(config *workflowtypes.PresetLLMConfig) *todo_creation_human.AgentLLMConfig {
-	return workshopResolvePulseLLMConfigFor(context.Background(), config)
+func workshopResolveBackgroundLLMConfig(config *workflowtypes.PresetLLMConfig) *todo_creation_human.AgentLLMConfig {
+	return workshopResolveBackgroundLLMConfigFor(context.Background(), config)
 }
 
-func workshopResolvePulseLLMConfigFor(ctx context.Context, config *workflowtypes.PresetLLMConfig) *todo_creation_human.AgentLLMConfig {
+func workshopResolveBackgroundLLMConfigFor(ctx context.Context, config *workflowtypes.PresetLLMConfig) *todo_creation_human.AgentLLMConfig {
 	if config == nil {
 		return nil
 	}
-	if resolved, ok := workflowtypes.ResolveProviderProfilePulseConfig(config); ok {
+	if resolved, ok := workflowtypes.ResolveProviderProfileBackgroundConfig(config); ok {
 		return workshopConvertAgentLLMConfigFor(ctx, resolved)
 	}
-	if config.PulseLLM != nil && config.PulseLLM.Provider != "" && config.PulseLLM.ModelID != "" {
-		return workshopConvertAgentLLMConfigFor(ctx, config.PulseLLM)
+	if config.BackgroundLLM != nil && config.BackgroundLLM.Provider != "" && config.BackgroundLLM.ModelID != "" {
+		return workshopConvertAgentLLMConfigFor(ctx, config.BackgroundLLM)
 	}
 	return nil
 }

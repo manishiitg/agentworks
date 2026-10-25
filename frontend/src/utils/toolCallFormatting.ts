@@ -126,7 +126,7 @@ export function toolCallValueToText(value: unknown): string {
  * `exit_code: 0` — the *curl* succeeded, so every exit-code check says success.
  * On 2026-08-01 a single day of codex rollouts held 34 of these, every one
  * rendered with a green check: 46 get_api_spec rejections, 14 failed
- * mark_pulse_module_result calls, 8 get_pulse_review_result misses. An operator
+ * mark_pulse_module_result calls, 8 get_goal_update_result misses. An operator
  * reading that transcript sees a clean run.
  *
  * Matched on `layer=` rather than on the word "error", so tool output that

@@ -17,8 +17,6 @@ type workflowSidebarSession struct {
 }
 
 func workflowBuilderHistoryKind(id, mode, bot, origin string) string {
-	// Interactive and MCP Builder conversations can become owner tabs. Automated provenance, including Pulse without a scheduler ID,
-	// stays a run; explicit Run mode and channel identities still win below.
 	if origin != "" && origin != "interactive" && origin != "notification" && origin != "external_builder" {
 		return "run"
 	}

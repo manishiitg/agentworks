@@ -10,16 +10,16 @@ A workflow always resolves these roles:
 - **High execution**: first-time, ambiguous or difficult step work.
 - **Medium execution**: established work with useful context and skills.
 - **Low execution**: deterministic validation and mature routine work.
-- **Autopilot** (`pulse_llm`): the single continuing goal-owning Autopilot conversation, including checks and Goal Work. It asks Builder to implement changes; there are no separate review agents or model roles for Gate/fixer/finalizer stages.
+- **Background work** (`background_llm`): independent reviews and knowledge-base maintenance that start their own process. This preserves their existing model selection; it is not a continuing Goal agent.
 
 The config has two modes:
 
 - **`provider_profile` (simple)** stores only a coding-agent `provider`. The provider package supplies current defaults for every role at runtime, so an app update can improve those defaults without rewriting the workflow.
-- **`explicit` (advanced)** pins `builder_llm`, `pulse_llm`, and all three entries under `tiered_config`. Every entry has a direct `provider` + `model_id`, optional provider `options` such as `reasoning_effort`.
+- **`explicit` (advanced)** pins `builder_llm`, `background_llm`, and all three entries under `tiered_config`. Every entry has a direct `provider` + `model_id`, optional provider `options` such as `reasoning_effort`.
 
 Each call uses one selected model and coding-agent provider. Transient errors may
 retry that same model; failures never trigger automatic model/provider switching.
-Autopilot reviews actual failures and must not recommend backup chains or flag their
+AgentWorks reviews actual failures and must not recommend backup chains or flag their
 absence as a configuration issue.
 
 Saved configurations are reusable shortcuts for exact provider/model/options combinations. They are not required before a provider or model can be selected.
@@ -29,12 +29,12 @@ Saved configurations are reusable shortcuts for exact provider/model/options com
 - `list_published_llms` — optional saved model configurations that may be reused as shortcuts.
 - `test_llm` — smoke-test a provider/model before committing to it.
 - `set_workflow_llm_config(mode="provider_profile", provider="...")` — follow the provider's current role defaults.
-- `set_workflow_llm_config(mode="explicit", builder_llm=..., pulse_llm=..., tier_1=..., tier_2=..., tier_3=...)` — pin the complete advanced role configuration. Do NOT edit `workflow.json` by hand.
+- `set_workflow_llm_config(mode="explicit", builder_llm=..., background_llm=..., tier_1=..., tier_2=..., tier_3=...)` — pin the complete advanced role configuration. Do NOT edit `workflow.json` by hand.
 - `get_llm_config` / `get_workflow_config` — inspect the current workflow roles and per-step overrides.
 
 ### Per-step overrides (use sparingly)
 
-Autopilot and Builder agree evidence-based persistent tier/model improvements. Runtime does
+AgentWorks and Builder agree evidence-based persistent tier/model improvements. Runtime does
 not switch tiers from successful-run counts, learning changes, or failures.
 Unconfigured execution steps default to High; evaluation steps default to Medium.
 Existing explicit settings and one-run caller overrides keep their precedence.

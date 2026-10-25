@@ -9,7 +9,7 @@ It is worth keeping. The workflow UI still exposes execution logs, cost analysis
 There are three practical scopes:
 
 ### 1. Workflow-level views
-- **Pulse**: a database-native popup for current health, decisions, findings, reviews, fixes, verification, finalization, and longitudinal goal impact; `builder/improve.html` remains the lightweight published executive journal
+- **Goals & metrics**: purpose, success criteria and saved source-backed readings
 - **Costs**: aggregated token and USD usage across run folders
 - **Evaluation reports**: benchmark-style scoring across runs, with single-run drill-down
 - **Learnings**: current persisted learning state, including the global workflow skill
@@ -22,16 +22,13 @@ There are three practical scopes:
 - **Workflow overview**: recent run folders, status, timestamps, costs, and measurement presence across workflows
 - **Scheduled runs panel**: cron job history, latest runs, live sessions, and drill-down into logs/costs/measurement for scheduled executions
 
-## Pulse — structured workspace plus generated dashboard
+## Goals and metrics
 
-The Pulse popup is the primary in-app monitoring surface. It reads structured SQLite projections and presents the workflow goal/success criteria, pending user decisions, current findings, lifecycle history, compact review receipts, fix attempts, verification, final-command status, and goal impact over time. Narrative reviewer reports are not persisted; detailed evidence belongs to the finding lifecycle.
-
-`builder/improve.html` remains a separate required artifact: the Dashboard stage generates a lightweight, publishable, archive-linked executive journal after review and fixing. It contains only the verdict/status summary, three Latest Pulse cells, and up to six material history transitions; the popup owns complete operational details and does not scrape HTML snippets from that file. Every workflow is judged on two independent axes, each stamped with the run it is based on:
-
-- **Bug** — did it run correctly (errors, skipped steps, missing/empty artifacts, regressions)? Fixed by hardening.
-- **Goal** — is it achieving its success criteria (eval scores and outcome metrics vs `soul.md`)? Fixed by refining or replanning.
-
-A **Pulse run** follows each scheduled workflow run. Pulse Gate selects only the due review modules, those reviewers return evidence without writing, and the parent Pulse Fixer applies bounded verified changes before the final dashboard/backup/publish/notify step. Enable it with the **Pulse** toolbar control. Current questions are stored as structured human-input requests and rendered by Runloop; answered question/outcome history is preserved under Reflection / Hansei.
+Goals & metrics shows the Goal's purpose, success criteria and saved measurement
+history. The dashboard, run logs and Costs provide execution evidence. Decisions
+hold questions for the owner. AgentWorks can review a linked Goal using its
+existing access, shared skills and ordinary schedules; no built-in engine runs
+after a workflow.
 
 ## Execution Logs
 

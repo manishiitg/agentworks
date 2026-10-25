@@ -5,13 +5,6 @@ import (
 	"sync"
 )
 
-// A Workshop background agent (a Pulse reviewer, Goal Work, or a plain
-// run_in_background task) calls tools over the MCP bridge with its own tool
-// session, which carries no user claims. Server-side tools that act for a
-// workflow must scope to the workflow and chat session that started the agent
-// from trusted state, never from a model-chosen argument; this registry is
-// that state. Entries live exactly as long as the agent's tool session.
-
 // WorkshopToolSessionOwner is the workflow and Builder chat session a
 // background agent's tool session belongs to.
 type WorkshopToolSessionOwner struct {

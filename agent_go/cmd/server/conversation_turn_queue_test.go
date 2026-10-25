@@ -32,7 +32,6 @@ func TestRetainedDeliveryPrecedesTurnQueueOnlyForHumanInput(t *testing.T) {
 		{"workflow chat", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "manual"}, context.Background(), true},
 		{"synthetic notification", QueryRequest{AgentMode: "multi-agent", IsAutoNotification: true}, context.Background(), false},
 		{"scheduled turn", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "cron"}, context.Background(), false},
-		{"pulse with manual trigger", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "manual", PulseLifecycleTurn: true}, context.Background(), false},
 		// A person's follow-up in a bot conversation steers the running CLI.
 		{"bot turn", QueryRequest{AgentMode: "multi-agent", TriggeredBy: "bot:slack", BotPlatform: "slack"}, context.Background(), true},
 		{"workflow bot turn", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "cron", BotPlatform: "slack"}, context.Background(), true},

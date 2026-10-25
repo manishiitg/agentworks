@@ -107,7 +107,7 @@ type, properties, required, items, enum).
 
 - Builders change the Crew; people with Run access use its shared chat, dashboard and published functions under the current server checks. Share never grants Builder controls or access to unselected Builder conversations. Selected agents expose their existing conversation and accept attributed requests.
 - For a conversation, use `workspace action=ask` with the discovered workspace ID and optional `chat_id`. Keep the returned chat and submission receipt; read progress and replies with `workspace action=read_chat`, `chat_id`, `after` and `wait_seconds` (up to 25). Ask without a chat ID opens or uses the caller's own conversation. A started turn is not a finished answer; inspect its returned status.
-- Ask is available to people the Crew is shared with. Inside a Crew, `schedule_message_wakeup` can set one timed wakeup in its own conversation; it does not fire while the scheduler is paused.
+- Ask is available to people the Crew is shared with. Use an ordinary one-time schedule for a later check, targeting the intended Crew chat. Schedules respect the scheduler pause.
 - Use `workspace action=set_chat_model` with `workspace_id`, `chat_id`, `engine`, `model_id` and optional `reasoning_effort` and `connection_id` to select your own chat's model and personal or available company account. `workspace action=chats` returns `provider_connections` with available account IDs. Omit `engine` to use the Crew's model again.
 - Named function tabs keep earlier calls' conversation; `execution: "fresh"` starts without it.
   Put lasting instructions and shared knowledge in `MEMORY.md` or the Crew's files,

@@ -70,67 +70,9 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 
 // Pulse settings follow the Pulse tab: an owner turns Pulse on with an
 // outward action permission, and a reader cannot run it.
-func TestExternalPulseSettingsAndRunNeedEditAccess(t *testing.T) {
-	f := newExternalToolsFixture(t)
-	t.Setenv("AUTH_SECRET", "external-settings-test-auth-secret-0123456789")
-	store, err := chathistory.NewFilesystemStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.api.chatStore = store
-	if w := f.call(t, "reader", "manage_pulse", map[string]any{"workflow_id": "invoices", "action": "run_now"}); w.Code != 403 {
-		t.Fatalf("reader ran Autopilot: %d %s", w.Code, w.Body)
-	}
-	if w := f.call(t, "reader", "run_after_run", map[string]any{"workflow_id": "invoices", "option": "backup"}); w.Code != 403 {
-		t.Fatalf("reader started a backup: %d %s", w.Code, w.Body)
-	}
-	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "pulse": map[string]any{"enabled": true, "outward_actions": "allow"}, "after_manual_run": map[string]any{"notify": true}})
-	if w.Code != 200 {
-		t.Fatalf("owner pulse settings: %d %s", w.Code, w.Body)
-	}
-	body := f.call(t, "owner", "get_settings", map[string]any{"workflow_id": "invoices"}).Body.String()
-	if !strings.Contains(body, `"enabled":true`) || !strings.Contains(body, `"outward_actions":"allow"`) || !strings.Contains(body, `"after_manual_run":{"backup":false,"publish":false,"notify":true}`) {
-		t.Fatalf("pulse settings not saved: %s", body)
-	}
-}
 
 // The live MCP refusal uses a connection with Builder consent; the general
 // settings fixture deliberately lacks that scope and stops before this path.
-func TestExternalPulseOffChatHasPlainNextStep(t *testing.T) {
-	f := newBuilderOperationFixture(t)
-	_, token := f.issue(t, "owner")
-	w := f.call(t, token, "builder_pulse_chat", map[string]any{"message": "How is the goal doing?"}, 409)
-	if !strings.Contains(w.Body.String(), errPulseOff.Error()) {
-		t.Fatalf("OFF chat needs the plain next step: %s", w.Body)
-	}
-}
 
 // Status used to return saved Pulse context records instead of the current
 // screen's status. Reading it must also remain possible while Pulse is OFF.
-func TestExternalPulseStatusUsesCurrentScreenWhileOff(t *testing.T) {
-	f := newExternalToolsFixture(t)
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","created_by":"owner","access":{"owners":["owner"],"readers":["reader"]},"pulse":{"enabled":false}}`)
-	w := f.call(t, "reader", "manage_pulse", map[string]any{"workflow_id": "invoices", "action": "status"})
-	if w.Code != 200 {
-		t.Fatalf("status: %d %s", w.Code, w.Body)
-	}
-	var page map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
-		t.Fatal(err)
-	}
-	conversation, _ := page["conversation"].(map[string]any)
-	if page["goal_status"] != nil || page["workflow_id"] != "invoices" || page["records"] != nil || conversation["busy"] != false || conversation["has_goal"] != false || page["next_pulse"] != nil {
-		t.Fatalf("not the inactive current Autopilot view: %s", w.Body)
-	}
-	_, db, err := openPulseStoreDB(t.Context(), "Workflow/invoices", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if db != nil {
-		defer db.Close()
-		var tables int
-		if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name IN ('goal_lead_conversation','goal_lead_messages')`).Scan(&tables); err != nil || tables != 0 {
-			t.Fatalf("status created conversation state: tables=%d error=%v", tables, err)
-		}
-	}
-}

@@ -16,7 +16,7 @@ An Agent can declare `predefined_routes` only for saved scripted Python helpers
 with typed inputs and outputs. The agent chooses when to call them. LLM
 specialists and persistent multi-agent work belong to an explicit Crew step.
 The existing `agent` type stays; there is no new simple-agent type. Automatic
-reflection is retired. Knowledge-base writes happen only when the task explicitly asks and the step has write access. Steps read selected skills; Builder and Autopilot maintain them.
+reflection is retired. Knowledge-base writes happen only when the task explicitly asks and the step has write access. Steps read selected skills; Builder maintains them.
 
 Before stamping v1.0.48, the first retained item needs `retained_reason`: a review
 note explaining the distinct later phase, the evidence the automatic gate cannot
@@ -159,7 +159,7 @@ An item override can narrow but never exceed the step-level permissions. Write a
 
 - DB rows via `mutate_workflow_db` (never direct SQLite access from an agentic step); `db/assets/` for durable **files** of any format (PDF, image, CSV, JSON, txt, zip). A downloaded or generated file that later steps or the builder must reach goes in `db/assets/` with a reference row in `db.sqlite`. Shared `reports/` and `tool_output_folder/` are also writable; use `db/assets/` for durable result assets.
 - `knowledgebase/notes/` — workflow-discovered narrative facts (KB direct-write only). An item with `write_access.knowledgebase` and an attached `access: "write"` knowledgebase_source can also write that source's `notes/` — same notes/-only boundary, same item-level grant, just in a resolved external workflow's KB. Requires the source workflow to have separately granted this workflow write access via its own `kb_write_grants`; see `references/stores.md`'s "Attached knowledge bases" section for the two-sided consent model and its known concurrency limitation.
-- `skills/` — reusable HOW-to instructions, readable by steps and maintained by Builder/Autopilot.
+- `skills/` — reusable HOW-to instructions, readable by steps and maintained by Builder.
 - the step's own execution folder + `Downloads/` — volatile per-run scratch (wiped on re-run).
 
 `docs/`, `knowledgebase/context/`, other `knowledgebase/` subfolders, and any custom top-level folder are **builder-only or denied** — do not route a step's durable file there.

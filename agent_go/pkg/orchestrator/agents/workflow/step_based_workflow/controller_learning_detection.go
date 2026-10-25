@@ -42,21 +42,17 @@ type LearningMetadata struct {
 	LastExecutionLLM    string `json:"last_execution_llm,omitempty"`
 	LastLearningLLM     string `json:"last_learning_llm,omitempty"`
 	// Detection tracking
-	LastLearningDetectedAt  string                  `json:"last_learning_detected_at,omitempty"`
-	LastDetectionReasoning  string                  `json:"last_detection_reasoning,omitempty"`
-	LastDetectionConfidence float64                 `json:"last_detection_confidence,omitempty"`
-	DetectionHistory        []DetectionHistoryEntry `json:"detection_history,omitempty"`
-	// Legacy adaptive tier history, retained for backwards-compatible metadata reads.
-	// These fields are not used to select or change a model; Architecture owns tier review.
-	// Validation failures stay on the selected tier and are surfaced to Pulse as
-	// concerns rather than silently changing model allocation.
-	PreferredExecutionTier              string `json:"preferred_execution_tier,omitempty"`                 // "high" | "medium"
-	LastExecutionTier                   string `json:"last_execution_tier,omitempty"`                      // Last execution tier actually used ("high" | "medium")
-	MediumSuccessStreak                 int    `json:"medium_success_streak,omitempty"`                    // Consecutive successful executions on Medium
-	HighSuccessStreakSinceMediumFailure int    `json:"high_success_streak_since_medium_failure,omitempty"` // Deprecated compatibility field; cleared on read
-	LastMediumFailureAt                 string `json:"last_medium_failure_at,omitempty"`                   // Deprecated compatibility field; cleared on read
-	LastTierDecisionReason              string `json:"last_tier_decision_reason,omitempty"`                // Human-readable reason for current preference
-	LastTierChangeAt                    string `json:"last_tier_change_at,omitempty"`                      // Timestamp when PreferredExecutionTier last changed
+	LastLearningDetectedAt              string                  `json:"last_learning_detected_at,omitempty"`
+	LastDetectionReasoning              string                  `json:"last_detection_reasoning,omitempty"`
+	LastDetectionConfidence             float64                 `json:"last_detection_confidence,omitempty"`
+	DetectionHistory                    []DetectionHistoryEntry `json:"detection_history,omitempty"`
+	PreferredExecutionTier              string                  `json:"preferred_execution_tier,omitempty"`                 // "high" | "medium"
+	LastExecutionTier                   string                  `json:"last_execution_tier,omitempty"`                      // Last execution tier actually used ("high" | "medium")
+	MediumSuccessStreak                 int                     `json:"medium_success_streak,omitempty"`                    // Consecutive successful executions on Medium
+	HighSuccessStreakSinceMediumFailure int                     `json:"high_success_streak_since_medium_failure,omitempty"` // Deprecated compatibility field; cleared on read
+	LastMediumFailureAt                 string                  `json:"last_medium_failure_at,omitempty"`                   // Deprecated compatibility field; cleared on read
+	LastTierDecisionReason              string                  `json:"last_tier_decision_reason,omitempty"`                // Human-readable reason for current preference
+	LastTierChangeAt                    string                  `json:"last_tier_change_at,omitempty"`                      // Timestamp when PreferredExecutionTier last changed
 	// Global learning: per-step contribution tracking (only used when StepID == "_global")
 	// Maps step ID -> number of times that step has contributed to the global skill
 	StepContributions map[string]int `json:"step_contributions,omitempty"`

@@ -11,16 +11,6 @@ import (
 	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// Goal setup is an automation's initial setup, like a Crew template's setup
-// bar: goal -> plan -> metrics -> dashboard, each done in the Builder chat
-// (/setup-goals, /design-plan, /design-dashboard), then Pulse, which owns the
-// goal from then on and is turned on with one click (no chat; Relays have no
-// Pulse, so they have no such step). It opens with an optional
-// playbook: an installed playbook's skill is the starting point for those
-// chats, and choosing none never blocks setup. Every check reads the workflow's real state; nothing is
-// self-reported. Goals are optional, so the owner can dismiss the bar, and it
-// only shows during initial setup: once the automation has run, it is gone.
-
 const workflowGoalSetupDismissFile = ".goal-setup.json"
 
 type workflowGoalSetupCheck struct {
@@ -96,12 +86,7 @@ func buildWorkflowGoalSetupStatus(ctx context.Context, workspacePath string, man
 		{ID: "dashboard", Label: "Dashboard", Done: dashboardDone, Command: "design-dashboard"},
 	}
 	complete := goalDone && planDone && metricsDone && dashboardDone
-	// Pulse is the last step: it takes over the goal once the rest exists.
-	if manifest != nil && manifest.Kind != "relay" {
-		pulseDone := manifest.PulseEnabled()
-		checks = append(checks, workflowGoalSetupCheck{ID: "pulse", Label: "Autopilot", Done: pulseDone})
-		complete = complete && pulseDone
-	}
+
 	status := workflowGoalSetupStatus{Checks: checks, Playbooks: playbooks, Complete: complete}
 	for i := range checks {
 		if !checks[i].Done && !checks[i].Optional {

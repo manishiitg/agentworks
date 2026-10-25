@@ -17,7 +17,6 @@ func TestScheduleExpectsWorkflowRun(t *testing.T) {
 		"direct messages": {Schedule: WorkflowSchedule{ID: "m", Messages: []string{"Run only step-send-email-outreach"}}},
 		"query":           {Schedule: WorkflowSchedule{ID: "q", Query: "summarize"}},
 		"execution mode":  {Schedule: WorkflowSchedule{ID: "c", ExecutionMode: "close_only"}},
-		"pulse only":      {Schedule: WorkflowSchedule{ID: "p"}, PulseOnly: true},
 	} {
 		if scheduleExpectsWorkflowRun(sctx) {
 			t.Errorf("%s schedule may legitimately run no workflow", name)

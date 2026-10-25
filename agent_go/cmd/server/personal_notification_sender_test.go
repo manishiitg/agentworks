@@ -22,7 +22,7 @@ func TestPersonalNotificationSenderSave(t *testing.T) {
 	if err := svc.SaveConfig(ctx, cfg); err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{"notification_gmail_connection_id", "run_notification_gmail_connection_ids", "pulse_notification_gmail_connection_ids"} {
+	for _, field := range []string{"notification_gmail_connection_id", "run_notification_gmail_connection_ids", "goal_update_notification_gmail_connection_ids"} {
 		for _, id := range []string{"mail", "missing"} {
 			body := map[string]interface{}{"workspace_path": "Workflow/mail"}
 			if field == "notification_gmail_connection_id" {

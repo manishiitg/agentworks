@@ -13,9 +13,7 @@ import (
 type agentReplyOnlyRegistrar struct{ definitionToolRegistrar }
 
 func (r agentReplyOnlyRegistrar) RegisterCustomTool(name, description string, params map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), category string) error {
-	if name == "schedule_message_wakeup" {
-		return r.definitionToolRegistrar.RegisterCustomTool(name, description, params, execute, category)
-	}
+
 	if name != "send_message" && name != "read_agent_messages" {
 		return nil
 	}
@@ -23,9 +21,7 @@ func (r agentReplyOnlyRegistrar) RegisterCustomTool(name, description string, pa
 }
 
 func (r agentReplyOnlyRegistrar) RegisterCustomToolWithTimeout(name, description string, params map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, category string) error {
-	if name == "schedule_message_wakeup" {
-		return r.definitionToolRegistrar.RegisterCustomToolWithTimeout(name, description, params, execute, timeout, category)
-	}
+
 	if name != "send_message" && name != "read_agent_messages" {
 		return nil
 	}

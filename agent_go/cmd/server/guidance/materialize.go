@@ -37,8 +37,7 @@ func materializeReferenceSkillWithMCP(mode string, mcpManagement bool) *llmtypes
 		Intro:            spec.Intro,
 		Render:           renderReferenceKind,
 		Select: func(kind string, meta kindMeta) bool {
-			// Pulse's skills live only in Pulse's own pack (MaterializePulseSkill).
-			return kind != "workspace-views" && !isPulseSkillKind(kind) && (mcpManagement || kind != "integration-discovery") && (mode == "" || modeAllowedIn(kind, mode, referenceKinds))
+			return kind != "workspace-views" && (mcpManagement || kind != "integration-discovery") && (mode == "" || modeAllowedIn(kind, mode, referenceKinds))
 		},
 	})
 }
@@ -100,7 +99,7 @@ func referenceSkillSpecForMode(mode string) referenceSkillSpec {
 // MaterializeGuidanceSkill bundles every mode-allowed entry in allKinds into
 // ONE skill named "workflow-commands". Same Anthropic pattern: SKILL.md is
 // the TOC, references/<kind>.md is the procedural flow for each slash
-// command (design-plan, pulse-review, define-success, strategy-auditor, ...).
+// command (design-plan, setup-goals, run-plan-drift, ...).
 //
 // Procedural flows benefit from Focus/Iteration context when invoked via
 // get_workflow_command_guidance — the materialized version is the no-context
@@ -112,7 +111,7 @@ func MaterializeGuidanceSkill(mode string) *llmtypes.Skill {
 		Registry:         allKinds,
 		Name:             "workflow-commands",
 		DescriptionIntro: "Workflow workshop slash-command flows — canonical procedural guidance for each command below.",
-		Intro:            "This skill bundles the workshop's canonical slash-command procedures. Match it when the user invokes one of these commands (e.g. `/design-plan`, `/pulse-review`) or describes the same intent in plain chat. Read the single matching file under `references/` — the prose there is your instructions for the turn, follow it verbatim.",
+		Intro:            "This skill bundles the workshop's canonical slash-command procedures. Match it when the user invokes one of these commands (e.g. `/design-plan`, `/setup-goals`) or describes the same intent in plain chat. Read the single matching file under `references/` — the prose there is your instructions for the turn, follow it verbatim.",
 		Render:           renderKind,
 	})
 }
@@ -313,7 +312,7 @@ func buildMegaSkill(spec buildMegaSkillSpec) *llmtypes.Skill {
 	// tenth of the skill format's 1024-character description budget, and every
 	// new topic must stay discoverable without stealing that budget. Topics
 	// that share a first word are written once with braces
-	// (pulse-{gate,finalizer}); the full names stay in the SKILL.md index.
+	// (workflow-{chat,tools}); the full names stay in the SKILL.md index.
 	description := spec.DescriptionIntro + " Topics: " + compactTopicList(topics) + "."
 
 	return &llmtypes.Skill{
@@ -330,7 +329,7 @@ func buildMegaSkill(spec buildMegaSkillSpec) *llmtypes.Skill {
 }
 
 // compactTopicList joins sorted topic names for a skill description, writing
-// topics that share a first word once: pulse-{gate,finalizer}, goal-lead-{check,work}. Every name
+// topics that share a first word once: workflow-{chat,tools}. Every name
 // still reads in full when its braces are expanded, and the description stays
 // within the 1024-character limit as topics are added.
 func compactTopicList(topics []string) string {

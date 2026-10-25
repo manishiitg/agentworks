@@ -50,11 +50,8 @@ func (api *StreamingAPI) scheduleCollisionCheck(workspacePath, sessionID, trigge
 		if s.stateStore == nil {
 			return fmt.Errorf("schedule_state_unavailable: cannot verify workflow ownership; retry when scheduler storage is available")
 		}
-		// A Pulse turn only reads; the runs and edits it asks the Builder for
-		// must not be refused because of it (owner, 2026-10-08: Pulse blocked
-		// its own measurement re-runs on linkedin and social-media).
 		run, err := s.stateStore.ActiveRunForScope(ctx, "workflow", filepath.Clean(strings.TrimSpace(workspacePath)),
-			manualWorkflowPulseScheduleID)
+			"")
 		if err != nil {
 			return fmt.Errorf("schedule_state_unavailable: %w", err)
 		}

@@ -77,10 +77,8 @@ type ReportHumanInput struct {
 	ApplyContract     ReportHumanInputApplyContract `json:"apply_contract,omitempty"`
 	// ApplyMessage is computed for list responses only (never stored): the
 	// Builder chat message that applies an answered decision.
-	ApplyMessage string `json:"apply_message,omitempty"`
-	// Recommendation is the Pulse's recommended answer (PLAT-697 phase
-	// 3), kept apart from the owner's answer; list responses only.
-	Withdrawal *ReportHumanInputWithdrawal `json:"withdrawal,omitempty"`
+	ApplyMessage string                      `json:"apply_message,omitempty"`
+	Withdrawal   *ReportHumanInputWithdrawal `json:"withdrawal,omitempty"`
 }
 
 type ReportHumanInputCreateRequest struct {
@@ -908,15 +906,15 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "create_human_input_request",
-			Description: "Create or refresh a structured non-blocking workflow question for the user. Review decisions are stored in that workflow's db/db.sqlite and answered inside the Autopilot/report panel. Attribute new review requests to source=\"technical_review\" or \"strategic_review\"; reserve source=\"pulse\" for generic Autopilot coordination. For any decision that authorizes a workflow change, supply apply_contract: pre-run routes it deterministically and never infers a repair from user-facing prose. Use targeted_fixer for prompt, plan, route, validation, database, tool, model, or cross-artifact changes; direct_apply only for a known single setting and exact static check. This tool is called through the custom HTTP route, so the JSON body must match the published schema exactly; apply_contract is an object, but approved_scope and post_run_proof inside it are plain strings.",
+			Description: "Create or refresh a structured non-blocking workflow question for the user. Review decisions are stored in that workflow's db/db.sqlite and answered inside the Needs you panel. Attribute new review requests to source=\"technical_review\" or \"strategic_review\"; reserve source=\"goal\" for generic Goal coordination. For any decision that authorizes a workflow change, supply apply_contract: pre-run routes it deterministically and never infers a repair from user-facing prose. Use targeted_fixer for prompt, plan, route, validation, database, tool, model, or cross-artifact changes; direct_apply only for a known single setting and exact static check. This tool is called through the custom HTTP route, so the JSON body must match the published schema exactly; apply_contract is an object, but approved_scope and post_run_proof inside it are plain strings.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"workspace_path": map[string]interface{}{"type": "string", "description": "Workflow-relative path, for example Workflow/social-media. Required; requests are stored in that workflow's db/db.sqlite."},
-					"input_id":       map[string]interface{}{"type": "string", "description": "Optional stable id. Reuse this for the same still-open question so Autopilot refreshes it instead of duplicating it."},
-					"source":         map[string]interface{}{"type": "string", "enum": []string{"pulse", "technical_review", "architecture_review", "strategic_review"}, "description": "Who is asking. Use the canonical reviewer identity; defaults to pulse only for generic Autopilot coordination."},
+					"input_id":       map[string]interface{}{"type": "string", "description": "Optional stable id. Reuse this for the same still-open question so the platform refreshes it instead of duplicating it."},
+					"source":         map[string]interface{}{"type": "string", "enum": []string{"goal", "technical_review", "architecture_review", "strategic_review"}, "description": "Who is asking. Use the canonical reviewer identity; defaults to goal only for generic Goal coordination."},
 					"priority":       map[string]interface{}{"type": "string", "enum": []string{"low", "medium", "high"}, "description": "How important the answer is. Defaults to medium."},
-					"work_stopped":   map[string]interface{}{"type": "boolean", "description": "True only when the Goal's main work has stopped (or keeps producing nothing, for example no emails or LinkedIn actions on consecutive runs) and cannot resume until the owner acts. The question is then also emailed to the owner once, not only listed in Needs you."},
+					"work_stopped":   map[string]interface{}{"type": "boolean", "description": "True only when the Goal's main work has stopped (or keeps producing nothing, for example no emails or LinkedIn actions on consecutive runs) and cannot resume until the owner acts. The question is marked urgent in Needs you."},
 					"question":       map[string]interface{}{"type": "string", "description": "The exact user-facing question in ONE short plain sentence -- the kind a busy operator reads in three seconds, not an analyst's framing of the problem."},
 					"context":        map[string]interface{}{"type": "string", "description": "Short explanation of why this matters and what will happen next, for a non-technical operator, not a technical report. One to three short sentences PER SECTION, plain language, no jargon, no walked-through derivation -- state the single number or fact that matters and the conclusion, not how you got there; the full analysis belongs in the reviewer's findings file, not this question. For plan-change proposals, use newline-separated labeled sections exactly like: Proposal:\n...\nExact intended edits if approved:\n(1) ...\n(2) ...\nRationale:\n...\nExpected impact:\n...\nRisk:\n... -- each section still capped at one to three short sentences. Keep evidence paths in the separate evidence field, never inline citations or file paths in context."},
 					"options": map[string]interface{}{
@@ -957,7 +955,7 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 				"type": "object",
 				"properties": map[string]interface{}{
 					"workspace_path": map[string]interface{}{"type": "string", "description": "Exact workspace path, for example Workflow/latency-report or Crew/example."},
-					"input_id":       map[string]interface{}{"type": "string", "description": "Exact decision id supplied by the scheduler, Autopilot state, or chat context."},
+					"input_id":       map[string]interface{}{"type": "string", "description": "Exact decision id supplied by the scheduler, AgentWorks state, or chat context."},
 				},
 				"required": []string{"workspace_path", "input_id"},
 			}),
@@ -1048,9 +1046,8 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 			if err != nil {
 				return "", err
 			}
-			// Pulse decisions land in the user's Needs you list.
-			if isPulseDecisionSource(req.Source) {
-				if err := checkPulsePlainText("context", plainTextField{name: "question", text: req.Question, maxLen: 300}); err != nil {
+			if isGoalDecisionSource(req.Source) {
+				if err := checkDecisionPlainText("context", plainTextField{name: "question", text: req.Question, maxLen: 300}); err != nil {
 					return "", err
 				}
 			}
@@ -1060,12 +1057,12 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 			req.CreatedByKind = "agent"
 			req.CreatedVia = "agent_tool"
 			req.SessionID = mcpexecutor.SessionIDFromContext(ctx)
+			if stopped, _ := args["work_stopped"].(bool); stopped {
+				req.Priority = "high"
+			}
 			input, err := createReportHumanInput(ctx, req.WorkspacePath, req)
 			if err != nil {
 				return "", err
-			}
-			if stopped, _ := args["work_stopped"].(bool); stopped {
-				alertOwnerWorkStopped(ctx, input)
 			}
 			return marshalReportHumanInputToolResult("created", input)
 		},
@@ -1386,7 +1383,7 @@ func formatAnsweredReportHumanInputsForAgent(ctx context.Context, workspacePath 
 		b.WriteString(fmt.Sprintf("- input_id=%s source=%s priority=%s question=%q answer=%q answered_by=%q actor_kind=%s via=%s answered_at=%s evidence=%q%s\n",
 			input.ID, input.Source, input.Priority, input.Question, answer, input.AnsweredBy, input.AnsweredByKind, input.AnsweredVia, input.AnsweredAt, input.Evidence, context))
 	}
-	b.WriteString("If an answered Goal Advisor plan proposal is approved, apply it only with normal plan modification/config/measurement/report tools, verify the saved result, then call mark_human_input_consumed with outcome_summary and outcome_evidence. For an explicit rejection, record the owner's answer as evidence and consume it without applying the proposal. Deferred, blocked or uncertain work stays answered with a recorded reason; do not consume to claim or start work. Reconcile an uncertain external result before retrying. The Autopilot popup derives pending questions from typed state, so do not edit a presentation artifact or the SQLite table directly.\n")
+	b.WriteString("If an answered plan proposal is approved, apply it only with normal plan modification/config/measurement/report tools, verify the saved result, then call mark_human_input_consumed with outcome_summary and outcome_evidence. For an explicit rejection, record the owner's answer as evidence and consume it without applying the proposal. Deferred, blocked or uncertain work stays answered with a recorded reason; do not consume to claim or start work. Reconcile an uncertain external result before retrying. The Decisions panel derives pending questions from typed state, so do not edit a presentation artifact or the SQLite table directly.\n")
 	return strings.TrimSpace(b.String())
 }
 
@@ -1422,7 +1419,7 @@ func normalizeReportHumanInputSource(source string) string {
 		"goal_advisor", "goal-advisor", "goal advisor":
 		return "strategic_review"
 	default:
-		return "pulse"
+		return "goal"
 	}
 }
 

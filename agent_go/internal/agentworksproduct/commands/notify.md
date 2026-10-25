@@ -1,9 +1,7 @@
-{{context}}
+# Notifications
 
-Help me choose who hears about this workflow, and where.
-- First look at the current setup (get_workflow_config). Tell me in plain words who gets the run summary and who gets the Autopilot review summary, by which channel (email, Slack), and whether it is working. Never show or save a webhook link in files, prompts or logs.
-- Ask separately what the run summary should say and what the Autopilot summary should say, and whether they go to different people or channels. Save only what I clearly want to keep: update_workflow_config(run_notification_instructions, pulse_notification_instructions, run_notification_channels, pulse_notification_channels). If I say a preference applies to everything, save it in both.
-- Email: ask who should get each summary and save the lists with update_workflow_config(run_notification_recipients, pulse_notification_recipients); an empty list goes back to the account default. A saved list never unblocks a blocked address; if I name one, tell me. To pick the sending account, save it with notification_gmail_connection_id.
-- Slack: each Slack channel needs its own incoming-webhook link (one link reaches one channel). Ask me for the link for each channel, store each with set_workflow_secret under a clear name, then call update_workflow_config(run_notification_slack_webhooks, pulse_notification_slack_webhooks) with the names. Use list_secrets first. Never read a SECRET_ variable or post to a webhook from the shell; the server sends the messages.
-- To send one message to specific people I asked for, use send_email or send_slack_message. Send a test summary (record_summary, clearly marked as a test) only if I ask, and tell me honestly which channels got it.
-- human_feedback is a different thing: it is only for short input that must stop a run (a code, a captcha).
+- Read the current settings with get_workflow_config. Explain which team messages are configured and whether delivery is working. Never show or save webhook values in files, prompts or logs.
+- Use one setting, `update_workflow_config(break_alerts=true|false)`, for “Tell me when something breaks”. It controls informational run failures in Needs you. Questions requiring an answer and failing Gmail delivery notices remain available.
+- AgentWorks handles progress reports. There are no automatic per-Goal daily digests, Autopilot reports or owner-account summary emails.
+- Keep the team messages the person configured. Save run content and channels with `run_notification_instructions` and `run_notification_channels`. Save email recipients with `run_notification_recipients`; an empty list stops summary emails. Explicitly chosen recipients, including the owner, stay chosen. Denylists still apply. Select the sending Gmail account with `notification_gmail_connection_id`.
+- A Slack Incoming Webhook reaches one channel. Store each link with set_workflow_secret and configure `run_notification_slack_webhooks` with secret names. Use list_secrets first. Never read webhook secret values or post to them through a shell; the server delivers messages.

@@ -166,7 +166,7 @@ func workflowDBApplyMigrationToolDefinition() llmtypes.Tool {
 func workflowDBBackupSnapshotToolDefinition() llmtypes.Tool {
 	return llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name:        "create_workflow_database_snapshot",
-		Description: "Create the current workflow's managed SQLite backup image. This is an operational Builder/Autopilot backup tool, not a query or mutation tool. It accepts no path or SQL: the backend resolves db/db.sqlite, includes committed WAL rows, runs integrity_check, and atomically writes backup/database/db.sqlite plus its stable checksum sidecar. Use the returned snapshot_path and checksum_path for Git/object backup; never stage or copy the protected live db/db.sqlite directly.",
+		Description: "Create the current workflow's managed SQLite backup image. This is an operational Builder backup tool, not a query or mutation tool. It accepts no path or SQL: the backend resolves db/db.sqlite, includes committed WAL rows, runs integrity_check, and atomically writes backup/database/db.sqlite plus its stable checksum sidecar. Use the returned snapshot_path and checksum_path for Git/object backup; never stage or copy the protected live db/db.sqlite directly.",
 		Parameters: llmtypes.NewParameters(map[string]any{
 			"type":                 "object",
 			"properties":           map[string]any{},
@@ -385,7 +385,7 @@ func CreateWorkflowDBToolRegistry(workspaceURL, userID, fallbackSessionID string
 			return "", err
 		}
 		if strings.TrimSpace(cfg.Env["STEP_OUTPUT_DIR"]) != "" || strings.TrimSpace(cfg.Env["RUNLOOP_STEP_ID"]) != "" {
-			return "", fmt.Errorf("workflow database backup snapshots are restricted to the parent Builder/Autopilot session, not workflow steps")
+			return "", fmt.Errorf("workflow database backup snapshots are restricted to the parent Builder session, not workflow steps")
 		}
 		access := strings.TrimSpace(cfg.Env[workflowDBAccessEnv])
 		if access != "read" && access != "read-write" {

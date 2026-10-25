@@ -12,7 +12,7 @@ func videoAgentLLMConfig() map[string]interface{} {
 	return map[string]interface{}{"provider": "claude-code", "model_id": DefaultClaudeModel}
 }
 func videoWorkflowLLMConfig() map[string]interface{} {
-	return map[string]interface{}{"schema_version": 2, "mode": "explicit", "builder_llm": videoAgentLLMConfig(), "pulse_llm": videoAgentLLMConfig(), "tiered_config": map[string]interface{}{"tier_1": videoAgentLLMConfig(), "tier_2": videoAgentLLMConfig(), "tier_3": videoAgentLLMConfig()}}
+	return map[string]interface{}{"schema_version": 2, "mode": "explicit", "builder_llm": videoAgentLLMConfig(), "background_llm": videoAgentLLMConfig(), "tiered_config": map[string]interface{}{"tier_1": videoAgentLLMConfig(), "tier_2": videoAgentLLMConfig(), "tier_3": videoAgentLLMConfig()}}
 }
 func planForAll(pipelines []*Pipeline) map[string]interface{} {
 	steps := make([]map[string]interface{}, 0, 1+len(pipelines)*8)

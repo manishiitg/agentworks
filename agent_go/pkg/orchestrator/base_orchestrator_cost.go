@@ -21,21 +21,6 @@ type agentObserverSink interface {
 	AddObserver(observer mcpagent.AgentEventListener) error
 }
 
-// attachCostObserver records this agent's LLM spend in the process-wide cost
-// ledger.
-//
-// setupStandardAgent is the single place every orchestrator-created agent
-// passes through — workflow steps, todo_task predefined and generic
-// sub-agents, and the background stages behind the workshop's
-// call_generic_agent (Pulse reviewers, Pulse fixers, Goal Advisor stages).
-// None of them were attached to the ledger before, which is why a 56-minute
-// Pulse review of four reviewers produced no cost rows at all: the only two
-// attachment points in the process were the chat path and delegate().
-//
-// A nil default ledger is not an error. Tests, CLI tools, and any process that
-// never called costledger.SetDefaultLedger simply have nowhere to record; the
-// server publishes the ledger during startup, long before a workflow or a
-// background agent can launch.
 func (bo *BaseOrchestrator) attachCostObserver(
 	ctx context.Context,
 	agent agentObserverSink,
@@ -92,9 +77,6 @@ func (bo *BaseOrchestrator) attachCostObserver(
 // on the child context; nothing new is invented here.
 func agentCostExecutionID(ctx context.Context, config *agents.OrchestratorAgentConfig, stepID string) string {
 	if ctx != nil {
-		// Background/generic launches (Pulse reviewers, call_generic_agent
-		// children, agent steps) set this to the execution id the
-		// launch site registered with the execution notifier.
 		if agentID := strings.TrimSpace(virtualtools.SubAgentSpecFromContext(ctx).BackgroundAgentID); agentID != "" {
 			return agentID
 		}

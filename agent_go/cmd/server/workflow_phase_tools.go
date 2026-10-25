@@ -63,8 +63,6 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	}
 	active, _ := api.getActiveSession(sessionID)
 	policy := resolveWorkflowChatPolicy(sessionID, syntheticReq, active, readOnly)
-	// Contract migration remains an interactive boundary. AI Plan Drift review
-	// belongs to Pulse and is never a prerequisite for executing these tools.
 	if shouldGuardWorkflowContractForRun(sessionID, syntheticReq.TriggeredBy) {
 		definitionAgent = workflowContractExecutionGuardRegistrar{
 			definitionRegistrar: definitionAgent,
@@ -92,7 +90,6 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			return err
 		}
 	} else {
-		// Run and Pulse conversations keep native messaging without Builder tools.
 		if err := api.registerAgentMessagingTools(definitionAgent, userID, sessionID, syntheticReq, workflowTriggerLinkCaller(phaseWorkspacePath), nil); err != nil {
 			return err
 		}
@@ -226,9 +223,6 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			// Always refresh API keys on session reuse (workspace keys may have changed)
 			// Use mergedAPIKeys loaded before goroutine (r.Context() is canceled inside goroutine)
 			workshopSession.UpdateAPIKeys(mergedAPIKeys)
-			// Per-turn: only a scheduler Pulse turn routes its background
-			// reviewers to pulse_llm; a later interactive turn must not inherit it.
-			workshopSession.SetPulseLifecycleTurn(syntheticReq.PulseLifecycleTurn)
 
 			// Refresh enabled group IDs from current request (toolbar selection may have changed)
 			if syntheticReq.ExecutionOptions != nil && len(syntheticReq.ExecutionOptions.EnabledGroupNames) > 0 {
@@ -283,7 +277,7 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 						lockedCfg := lockedPresetLLMConfig(caps.LLMConfig)
 						modelCtx := withModelLimitPerson(context.Background(), userID) // the person's allowed models (PLAT-714)
 						phaseLLM, refreshedTiered := workshopResolveLLMConfigFor(modelCtx, lockedCfg)
-						pulseLLM := workshopResolvePulseLLMConfigFor(modelCtx, lockedCfg)
+						pulseLLM := workshopResolveBackgroundLLMConfigFor(modelCtx, lockedCfg)
 						workshopSession.UpdatePresetLLMConfigs(phaseLLM, pulseLLM)
 
 						if refreshedTiered != nil {
@@ -317,10 +311,7 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			if cfgErr != nil {
 				log.Printf("[WORKFLOW_PHASE] Error: Failed to build workshop config for %s: %v — workshop execution tools unavailable", workflowPhaseID, cfgErr)
 			} else {
-				workshopCfg.PulseLifecycleTurn = syntheticReq.PulseLifecycleTurn
-				if isPulseScheduleSessionID(sessionID) {
-					workshopCfg.StepBusyForPulse = api.pulseStepBusyCheck(sessionID)
-				}
+
 				newSession, sessionErr := todo_creation_human.NewWorkshopChatSession(ctx, workshopCfg)
 				if sessionErr != nil {
 					log.Printf("[WORKFLOW_PHASE] Warning: Failed to create workshop session for %s: %v — workshop execution tools unavailable", workflowPhaseID, sessionErr)
@@ -492,20 +483,6 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 
 		}
 
-		// Attach the reference and command bundles once. mcpagent owns
-		// transport-specific access: read_skill is a normal API tool and
-		// an MCP-bridge tool for coding CLIs, while native projection is
-		// a convenience rather than a second contract.
-		//
-		// Deliberately OUTSIDE the workshopSession guard (PLAT-119). These
-		// bundles are the agent's procedures, not workshop tooling: every Pulse
-		// step opens with "load builder-reference and follow it exactly".
-		// Nesting them inside tool registration meant that whenever workshop
-		// creation was skipped — most commonly because the session was already
-		// stopped, which is exactly when Pulse runs its finalizer — the agent
-		// silently lost its procedures along with its tools and improvised a
-		// plausible-looking pass instead. Tools may legitimately be unavailable;
-		// the procedure describing how to behave must not vanish with them.
 		if phaseTemplateVars["WorkflowKind"] == "relay" {
 			skillMode := "builder"
 			if phaseTemplateVars["RelayRunMode"] == "true" {
@@ -519,15 +496,6 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 				if err := definitionAgent.AttachSkill(skill); err != nil {
 					return fmt.Errorf("attach Flow Builder skill %s: %w", skill.Name, err)
 				}
-			}
-		} else if isGoalLeadSessionID(sessionID) {
-			// Pulse gets its own pack, from product.yaml pulse.skills.
-			skill, err := guidance.MaterializePulseSkill(agentworksproduct.PulseSkills())
-			if err != nil {
-				return fmt.Errorf("pulse skills: %w", err)
-			}
-			if err := definitionAgent.AttachSkill(skill); err != nil {
-				return fmt.Errorf("attach pulse skills: %w", err)
 			}
 		} else {
 			workshopMode := phaseTemplateVars["WorkshopMode"]

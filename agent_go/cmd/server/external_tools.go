@@ -71,7 +71,7 @@ func externalTools() ([]externalTool, error) {
 		}
 		p := page()
 		p["query"] = externalString("Filter workflow labels and IDs.")
-		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and Autopilot state only. Pass false for every workflow's full manifest (tens of thousands of characters); get_workflow returns one manifest."}
+		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and schedule counts only. Pass false for every workflow's full manifest (tens of thousands of characters); get_workflow returns one manifest."}
 		externalAgentMessageDefinition(add)
 		add("chat_preferences", "Read your personal chat display, or set show_context_indicator to show or hide Context beside the model in all your chats. On by default. Changes only your display; never changes a project or provider account.", true, false, map[string]any{"show_context_indicator": map[string]any{"type": "boolean"}})
 		externalServerProductDefinitions(add)
@@ -273,7 +273,6 @@ func externalTools() ([]externalTool, error) {
 		dashboardToolDefinitions(add)
 		externalDashboardAppDefinition(add)
 		externalNeedsYouDefinitions(add)
-		externalPulseManageDefinitions(add)
 		externalProjectDefinitions(add)
 		externalCrewChatDefinitions(add)
 		if err := externalCrewCommandDefinition(add); err != nil {
@@ -950,10 +949,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalQueryDatabase(w, r, args, selected.WorkspacePath)
 		return
 	}
-	if tool.Name == "manage_pulse" {
-		api.externalPulseManageCall(w, r, args, *selected, access)
-		return
-	}
+
 	if tool.Name == "manage_schedules" {
 		if selected.Manifest.Kind == "relay" {
 			externalError(w, 400, "relay_api_only", "Flows have no schedules; they run through function triggers.")

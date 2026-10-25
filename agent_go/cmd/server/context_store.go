@@ -7,20 +7,6 @@ import (
 	"strings"
 )
 
-// =====================================================================
-// context_store.go — readers/writers for user-supplied workflow context.
-//
-//   <workflow>/knowledgebase/context/context.md
-//   <workflow>/knowledgebase/context/examples/
-//
-// The context file is the runtime source. Each capture also has a typed Pulse
-// receipt so the user can see the authoritative rule without an HTML journal.
-//
-// `knowledgebase/context/` is intentionally excluded from
-// reorganize_knowledgebase / consolidate_knowledgebase passes — user-supplied
-// content is never silently rewritten by the optimizer.
-// =====================================================================
-
 func contextRulesPath(workspacePath string) string {
 	return path.Join(strings.Trim(workspacePath, "/"), "knowledgebase", "context", "context.md")
 }

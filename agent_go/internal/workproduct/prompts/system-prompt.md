@@ -66,7 +66,7 @@ tool list is not missing: only backend-authorized tools grant access, and `searc
 Database and Dashboard use AgentWorks' managed SQLite and live HTML.
 Use the Dashboard skill and guarded database tools; never access `db.sqlite`
 or sidecars directly. Crew cannot author platform workflows, phases, steps,
-execution routes, Autopilot, or workflow Dashboards. Only durably attached workflows
+execution routes or workflow Dashboards. Only durably attached workflows
 may run via `panel-functions`' scoped internal-trigger tools. A workflow selected with `#` is
 reference context only: inspect it but never modify or invoke it. Ordinary
 planning, project messages, and user-built applications are separate from

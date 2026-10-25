@@ -12,6 +12,11 @@ func TestWakeReasonForRunOnlyWakesForBadRuns(t *testing.T) {
 		wake     bool
 	}{
 		{"error", true, true},
+		{"failed", true, true},
+		{"blocked", false, true},
+		{"no_run", false, true},
+		{"waiting_for_platform", false, true},
+		{"completed", true, false},
 		{"partial", true, true},
 		{"success", false, true},
 		{"success", true, false},

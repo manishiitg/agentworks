@@ -23,14 +23,14 @@ function MetricCard({
   supportingCount = 0,
   supportingOpen = false,
   onToggleSupporting,
-  onAskPulse,
+  onAskBuilder,
 }: {
   metric: GoalMetric;
   observations: GoalObservation[];
   supportingCount?: number;
   supportingOpen?: boolean;
   onToggleSupporting?: () => void;
-  onAskPulse?: (question: string) => void;
+  onAskBuilder?: (question: string) => void;
 }) {
   const p = goalMetricProgress(metric, observations);
   const primary = metric.role === "primary";
@@ -142,9 +142,9 @@ function MetricCard({
           <ChevronDown className={`h-4 w-4 transition-transform ${supportingOpen ? "rotate-180" : ""}`} aria-hidden="true" />
         </button>
       )}
-      <button type="button" disabled={!onAskPulse}
-        onClick={() => onAskPulse?.(`Explain progress for "${metric.name}" (metric ${metric.id}, goal ${metric.goal_name || metric.goal_id || 'workflow goal'}). Check its latest observations, source, measurement periods and evidence. What changed, what is missing, and what should we do next?`)}
-        className="mt-3 text-xs font-medium text-primary disabled:opacity-50">Ask Autopilot about this metric</button>
+      <button type="button" disabled={!onAskBuilder}
+        onClick={() => onAskBuilder?.(`Explain progress for "${metric.name}" (metric ${metric.id}, goal ${metric.goal_name || metric.goal_id || 'workflow goal'}). Check its latest observations, source, measurement periods and evidence. What changed, what is missing, and what should we do next?`)}
+        className="mt-3 text-xs font-medium text-primary disabled:opacity-50">Ask Builder about this metric</button>
       <details className="mt-3 text-xs">
         <summary className="cursor-pointer text-muted-foreground">
           Measurement details and history
@@ -216,12 +216,12 @@ function PrimaryMetricGroup({
   metric,
   supporting,
   observations,
-  onAskPulse,
+  onAskBuilder,
 }: {
   metric: GoalMetric;
   supporting: GoalMetric[];
   observations: GoalObservation[];
-  onAskPulse?: (question: string) => void;
+  onAskBuilder?: (question: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -235,7 +235,7 @@ function PrimaryMetricGroup({
         supportingCount={supporting.length}
         supportingOpen={open}
         onToggleSupporting={() => setOpen((value) => !value)}
-        onAskPulse={onAskPulse}
+        onAskBuilder={onAskBuilder}
       />
       {open && supporting.length > 0 && (
         <div
@@ -247,7 +247,7 @@ function PrimaryMetricGroup({
               key={supportingMetric.id}
               metric={supportingMetric}
               observations={observations}
-              onAskPulse={onAskPulse}
+              onAskBuilder={onAskBuilder}
             />
           ))}
         </div>
@@ -259,11 +259,11 @@ function PrimaryMetricGroup({
 export function GoalProgress({
   impact,
   workspacePath,
-  onAskPulse,
+  onAskBuilder,
 }: {
   impact: GoalMeasurements;
   workspacePath: string;
-  onAskPulse?: (question: string) => void;
+  onAskBuilder?: (question: string) => void;
 }) {
   const metrics = impact.metrics || [];
   const { groups, unassigned } = goalMetricGroups(metrics);
@@ -299,8 +299,8 @@ export function GoalProgress({
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold">{group.name}</h3>
-                <button type="button" disabled={!onAskPulse} onClick={() => onAskPulse?.(`How are we doing on "${group.name}"? Review its goals, primary and supporting metrics, evidence and blockers, then recommend the next action.`)}
-                  className="text-xs font-medium text-primary disabled:opacity-50">Ask Autopilot about this goal</button>
+                <button type="button" disabled={!onAskBuilder} onClick={() => onAskBuilder?.(`How are we doing on "${group.name}"? Review its goals, primary and supporting metrics, evidence and blockers, then recommend the next action.`)}
+                  className="text-xs font-medium text-primary disabled:opacity-50">Ask Builder about this goal</button>
               </div>
               {group.primaries.map(({ metric, supporting }) => (
                 <PrimaryMetricGroup
@@ -308,7 +308,7 @@ export function GoalProgress({
                   metric={metric}
                   supporting={supporting}
                   observations={impact.observations}
-                  onAskPulse={onAskPulse}
+                  onAskBuilder={onAskBuilder}
                 />
               ))}
             </section>
@@ -321,7 +321,7 @@ export function GoalProgress({
               <p className="text-xs text-muted-foreground">
                 {unassigned.length} supporting {unassigned.length === 1 ? "measurement needs" : "measurements need"} a primary metric relationship. Edit goals &amp; metrics to assign {unassigned.length === 1 ? "it" : "them"}.
               </p>
-              {unassigned.map(metric => <MetricCard key={metric.id} metric={metric} observations={impact.observations} onAskPulse={onAskPulse} />)}
+              {unassigned.map(metric => <MetricCard key={metric.id} metric={metric} observations={impact.observations} onAskBuilder={onAskBuilder} />)}
             </section>
           )}
         </>

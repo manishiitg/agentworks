@@ -65,7 +65,7 @@ type PresetLLMConfig struct {
 	Mode          string `json:"mode"`
 
 	// Provider is stored only in provider_profile mode. The provider package
-	// owns the Builder, execution-tier, and Pulse defaults and can
+	// owns the Builder, execution-tier, and background-work defaults and can
 	// evolve them when the application is updated.
 	Provider     string `json:"provider,omitempty"`
 	ConnectionID string `json:"connection_id,omitempty"`
@@ -73,9 +73,9 @@ type PresetLLMConfig struct {
 	// Explicit mode pins each workflow role directly.
 	BuilderLLM *AgentLLMConfig `json:"builder_llm,omitempty"`
 
-	// Optional Pulse Gate/routine post-run QA override. When omitted,
-	// coding-agent providers may supply a provider-owned Pulse default.
-	PulseLLM *AgentLLMConfig `json:"pulse_llm,omitempty"`
+	// Optional independent review and knowledge-base upkeep model. When omitted,
+	// coding-agent providers may supply a provider-owned background default.
+	BackgroundLLM *AgentLLMConfig `json:"background_llm,omitempty"`
 
 	// Feature toggles.
 	UseKnowledgebase *bool  `json:"use_knowledgebase,omitempty"`
@@ -129,7 +129,7 @@ func NormalizePresetLLMConfig(config *PresetLLMConfig) bool {
 	changed := false
 	legacyMode := config.LegacyLLMAllocationMode
 	if config.Mode == "" {
-		legacyHasOverrides := config.LegacyPhaseLLM != nil || config.LegacyAutoImproveLLM != nil || config.PulseLLM != nil || config.TieredConfig != nil
+		legacyHasOverrides := config.LegacyPhaseLLM != nil || config.LegacyAutoImproveLLM != nil || config.BackgroundLLM != nil || config.TieredConfig != nil
 		if (legacyMode == "coding_agent" || legacyMode == "coding_plan") && config.Provider != "" && !legacyHasOverrides {
 			config.Mode = LLMConfigModeProviderProfile
 		} else {
@@ -176,15 +176,15 @@ func NormalizePresetLLMConfig(config *PresetLLMConfig) bool {
 		if config.TieredConfig != nil && config.TieredConfig.Tier1 != nil {
 			defaultPulse = config.TieredConfig.Tier1
 		}
-		if config.PulseLLM == nil {
+		if config.BackgroundLLM == nil {
 			if config.LegacyAutoImproveLLM != nil {
-				config.PulseLLM = config.LegacyAutoImproveLLM
+				config.BackgroundLLM = config.LegacyAutoImproveLLM
 			} else if providerDefaults != nil {
-				config.PulseLLM = agentLLMConfigFromCodingAgentRef(providerDefaults.Pulse)
+				config.BackgroundLLM = agentLLMConfigFromCodingAgentRef(providerDefaults.Pulse)
 			} else {
-				config.PulseLLM = defaultPulse
+				config.BackgroundLLM = defaultPulse
 			}
-			if config.PulseLLM != nil {
+			if config.BackgroundLLM != nil {
 				changed = true
 			}
 		}
@@ -193,9 +193,9 @@ func NormalizePresetLLMConfig(config *PresetLLMConfig) bool {
 			changed = true
 		}
 	} else if config.Mode == LLMConfigModeProviderProfile {
-		if config.BuilderLLM != nil || config.PulseLLM != nil || config.TieredConfig != nil {
+		if config.BuilderLLM != nil || config.BackgroundLLM != nil || config.TieredConfig != nil {
 			config.BuilderLLM = nil
-			config.PulseLLM = nil
+			config.BackgroundLLM = nil
 			config.TieredConfig = nil
 			changed = true
 		}
@@ -253,7 +253,7 @@ func ResolveProviderProfileConfig(config *PresetLLMConfig) (*AgentLLMConfig, *Ti
 	return builder, tiered, true
 }
 
-func ResolveProviderProfilePulseConfig(config *PresetLLMConfig) (*AgentLLMConfig, bool) {
+func ResolveProviderProfileBackgroundConfig(config *PresetLLMConfig) (*AgentLLMConfig, bool) {
 	if config == nil || config.Provider == "" {
 		return nil, false
 	}
@@ -274,10 +274,10 @@ func ResolveProviderProfilePulseConfig(config *PresetLLMConfig) (*AgentLLMConfig
 }
 
 // ResolveCodingAgentMemoryConfig returns the model used by scheduled memory
-// enrichment. Memory follows the Pulse default because it is frequent,
+// enrichment. Memory follows the provider background default because it is frequent,
 // report-free background maintenance.
 func ResolveCodingAgentMemoryConfig(config *PresetLLMConfig) (*AgentLLMConfig, bool) {
-	return ResolveProviderProfilePulseConfig(config)
+	return ResolveProviderProfileBackgroundConfig(config)
 }
 
 // WorkflowSelectedOption represents a selected option for a workflow phase.
@@ -339,7 +339,7 @@ func ValidatePresetLLMConfigPublic(config *PresetLLMConfig) error {
 			}
 		}
 	}
-	if err := validateRequiredPresetAgentLLMConfig(config.PulseLLM, "pulse_llm"); err != nil {
+	if err := validateRequiredPresetAgentLLMConfig(config.BackgroundLLM, "background_llm"); err != nil {
 		return err
 	}
 	return nil

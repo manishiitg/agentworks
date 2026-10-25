@@ -8,23 +8,17 @@ import (
 	llmtypes "github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-// record_summary records what a workflow run or a Pulse review did, and the server delivers it. It replaces the
-// notification tool (PLAT-736): the agent supplies content (verdict, fields, sections, optional rich email
-// and Slack renderings); it cannot name recipients, channels or webhooks. The Activity record and the delivery to the
-// workflow's saved channels, recipients and webhooks (by kind) are the existing summary delivery path, unchanged,
-// so a summary is still recorded when nothing is configured to receive it.
-
-const recordSummaryDescription = "Record what this workflow run or Autopilot review did, in the Activity feed, and deliver it to the workflow's saved channels and recipients automatically. You supply the content only: `kind` (run_summary for the execution outcome, pulse_summary for Autopilot review and fix activity), a short plain-text `message` (the verdict), a `title` and `status`, and structured `fields` and `sections` (use the labels the workflow's run-summary instructions name). You cannot choose recipients, channels or webhooks: those come from the workflow's saved settings (notifications.run_summary_channels, run_summary_recipients, pulse_summary_recipients). For an unchanged run that should be recorded without notifying anyone, set `delivery` to record_only; for an Autopilot update whose results are already in Activity, set it to deliver_only. Read prior summaries first with get_notification_history so you do not repeat an unchanged status. Rich renderings: `email_subject` with one inline-styled `email_html` body, and `slack_title`/`slack_color`/`slack_fields`/`slack_sections`. Reports a receipt per channel. To email or Slack specific people, use send_email or send_slack_message instead."
+const recordSummaryDescription = "Record this workflow run's outcome in Activity and optionally deliver it to the saved team channels and recipients. Supply kind=run_summary, a plain message, title, status, fields and sections. Recipients, channels and webhooks come from workflow settings. Empty run_summary_recipients means no summary email. Use delivery=record_only to record without sending, or deliver_only for a run outcome already recorded. AgentWorks handles progress reports separately. Rich channel content can use email_subject/email_html and Slack fields. To contact specific people directly use send_email or send_slack_message."
 
 func createRecordSummaryTool(summaryContentProps map[string]interface{}) llmtypes.Tool {
 	props := map[string]interface{}{
 		"kind": map[string]interface{}{
-			"type": "string", "enum": []string{"run_summary", "pulse_summary"},
-			"description": "run_summary for the execution outcome of a run; pulse_summary for Autopilot review, fix and goal activity. Selects the saved channels and recipients.",
+			"type": "string", "enum": []string{"run_summary"},
+			"description": "run_summary for the execution outcome of a run. Selects the saved channels and recipients.",
 		},
 		"delivery": map[string]interface{}{
 			"type": "string", "enum": []string{"record_and_deliver", "record_only", "deliver_only"},
-			"description": "record_and_deliver (default): record in Activity and deliver to the saved channels. record_only: record without emailing or posting (an unchanged run). deliver_only: deliver without a new Activity item (an Autopilot update whose results are already projected).",
+			"description": "record_and_deliver (default): record in Activity and deliver to the saved channels. record_only: record without emailing or posting (an unchanged run). deliver_only: deliver without a new Activity item (a run outcome already recorded).",
 		},
 	}
 	// Reuse the summary content schemas under shorter names.
@@ -79,8 +73,8 @@ func handleRecordSummary(ctx context.Context, args map[string]interface{}) (stri
 	}
 	kind, _ := args["kind"].(string)
 	kind = strings.ToLower(strings.TrimSpace(kind))
-	if kind != "run_summary" && kind != "pulse_summary" {
-		return "", fmt.Errorf("kind must be run_summary or pulse_summary")
+	if kind != "run_summary" {
+		return "", fmt.Errorf("kind must be run_summary")
 	}
 	mapped := map[string]interface{}{"notification_kind": kind}
 	for name, value := range args {

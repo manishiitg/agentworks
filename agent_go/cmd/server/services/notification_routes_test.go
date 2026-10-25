@@ -24,7 +24,6 @@ func TestRouteSummariesKeepIndependentHistoryAndIdentity(t *testing.T) {
 	quiet := NotificationRouteSummary{RoutingStepID: "router-a", RouteID: "publish", Label: "Publishing A", Title: "Needs access", Status: "blocked", Message: "No publishing happened."}
 	busy := NotificationRouteSummary{RoutingStepID: "router-b", RouteID: "publish", Label: "Publishing B", Title: "Published", Status: "completed", Message: "One article published."}
 	send("run_summary", quiet, busy)
-	send("pulse_summary", quiet)
 	for i := 0; i < 55; i++ {
 		busy.Title = fmt.Sprintf("Busy run %d", i)
 		send("run_summary", busy)
@@ -39,12 +38,12 @@ func TestRouteSummariesKeepIndependentHistoryAndIdentity(t *testing.T) {
 	for _, route := range got.ByRoute {
 		switch route.RoutingStepID {
 		case "router-a":
-			if route.RunSummary == nil || route.PulseSummary == nil || route.RunSummary.Status != "blocked" || route.RunSummary.Title != "Needs access" {
+			if route.RunSummary == nil || route.RunSummary.Status != "blocked" || route.RunSummary.Title != "Needs access" {
 				t.Fatalf("busy route evicted quiet route or changed its status: %+v", route)
 			}
 		case "router-b":
-			if route.RunSummary == nil || route.RunSummary.Title != "Busy run 54" || route.PulseSummary != nil {
-				t.Fatalf("invented Autopilot coverage or lost latest run: %+v", route)
+			if route.RunSummary == nil || route.RunSummary.Title != "Busy run 54" {
+				t.Fatalf("lost latest run: %+v", route)
 			}
 		default:
 			t.Fatalf("unexpected route: %+v", route)
@@ -63,8 +62,8 @@ func TestRouteSummariesKeepIndependentHistoryAndIdentity(t *testing.T) {
 	if err := db.QueryRow(`SELECT count(*) FROM org_dashboard_notifications`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 52 {
-		t.Fatalf("retention should keep 50 busy runs, the quiet digest, and quiet Autopilot; got %d", count)
+	if count != 51 {
+		t.Fatalf("retention should keep 50 busy runs, the quiet run; got %d", count)
 	}
 	other, err := ListOrgDashboardNotifications(ctx, "Workflow/other", 10)
 	if err != nil || len(other.ByRoute) != 0 {
@@ -78,7 +77,6 @@ func TestLegacyRouteLabelsAreNotGuessedIntoCanonicalRoutes(t *testing.T) {
 	c := NewOrgDashboardConnector()
 	for _, summary := range []*NotificationSummary{
 		{Kind: "run_summary", Route: "publish", Status: "completed"},
-		{Kind: "pulse_summary", Status: "monitoring"},
 		{Kind: "run_summary", Routes: []NotificationRouteSummary{{RoutingStepID: "router", RouteID: "publish", Status: "blocked"}}},
 	} {
 		if _, err := c.SendUserNotification(ctx, "Recorded evidence", "", &NotificationDestination{WorkspacePath: "Workflow/routes", Content: &NotificationContent{Summary: summary}}); err != nil {
@@ -91,10 +89,5 @@ func TestLegacyRouteLabelsAreNotGuessedIntoCanonicalRoutes(t *testing.T) {
 	}
 	if len(got.ByRoute) != 2 {
 		t.Fatalf("legacy label must remain distinct: %+v", got.ByRoute)
-	}
-	for _, group := range got.ByRoute {
-		if group.PulseSummary != nil {
-			t.Fatalf("workflow-wide Autopilot must not imply route coverage: %+v", group)
-		}
 	}
 }

@@ -91,7 +91,7 @@ func TestLockedPresetLLMConfigLocksToThePublishedProvidersProfile(t *testing.T) 
 	if got == saved || got.Mode != workflowtypes.LLMConfigModeProviderProfile || got.Provider != "cursor-cli" {
 		t.Fatalf("expected a provider-profile lock on cursor-cli, got %+v", got)
 	}
-	if got.BuilderLLM != nil || got.TieredConfig != nil || got.PulseLLM != nil {
+	if got.BuilderLLM != nil || got.TieredConfig != nil || got.BackgroundLLM != nil {
 		t.Fatal("explicit roles must be dropped so the provider profile resolves them")
 	}
 	builder, tiers, ok := workflowtypes.ResolveProviderProfileConfig(got)

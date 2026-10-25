@@ -206,37 +206,6 @@ func TestSummarizeWorkflowOverviewKeepsExactTotalsAndBoundsDailyDetails(t *testi
 	}
 }
 
-func TestSummarizeWorkflowScopeWindowIsolatesOnePulsePass(t *testing.T) {
-	ledger, err := NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
-	if err != nil {
-		t.Fatalf("NewSQLiteLedger() error = %v", err)
-	}
-	defer ledger.Close()
-
-	base := time.Date(2026, 8, 15, 1, 0, 0, 0, time.UTC)
-	entries := []Entry{
-		{EventID: "prior-pulse", IdempotencyKey: "prior-pulse", Timestamp: base.Add(-time.Minute), WorkflowID: "Workflow/demo", Scope: "pulse", LLMCallCount: 1, TotalCostUSD: 50},
-		{EventID: "current-gate", IdempotencyKey: "current-gate", Timestamp: base.Add(time.Minute), WorkflowID: "Workflow/demo", Scope: "pulse", LLMCallCount: 1, TotalCostUSD: 2},
-		{EventID: "current-review", IdempotencyKey: "current-review", Timestamp: base.Add(2 * time.Minute), WorkflowID: "Workflow/demo", Scope: "pulse", LLMCallCount: 2, TotalCostUSD: 3},
-		{EventID: "workflow", IdempotencyKey: "workflow", Timestamp: base.Add(2 * time.Minute), WorkflowID: "Workflow/demo", Scope: "workflow_execution", LLMCallCount: 1, TotalCostUSD: 100},
-		{EventID: "other-workflow", IdempotencyKey: "other-workflow", Timestamp: base.Add(2 * time.Minute), WorkflowID: "Workflow/other", Scope: "pulse", LLMCallCount: 1, TotalCostUSD: 200},
-		{EventID: "after-window", IdempotencyKey: "after-window", Timestamp: base.Add(4 * time.Minute), WorkflowID: "Workflow/demo", Scope: "pulse", LLMCallCount: 1, TotalCostUSD: 75},
-	}
-	for _, entry := range entries {
-		if err := ledger.Append(entry); err != nil {
-			t.Fatalf("Append(%q) error = %v", entry.EventID, err)
-		}
-	}
-
-	summary, err := ledger.SummarizeWorkflowScopeWindow("Workflow/demo", "pulse", base, base.Add(3*time.Minute))
-	if err != nil {
-		t.Fatalf("SummarizeWorkflowScopeWindow() error = %v", err)
-	}
-	if summary.Total.CallCount != 3 || summary.Total.TotalCostUSD != 5 {
-		t.Fatalf("window summary = %#v, want 3 calls and $5", summary.Total)
-	}
-}
-
 func TestSQLiteLedgerMigrationQuarantinesMalformedRowsAndIsIdempotent(t *testing.T) {
 	root := t.TempDir()
 	legacyPath := filepath.Join(root, "costs.jsonl")
@@ -483,5 +452,36 @@ func TestSourceAggregateMergePreservesDecodedRunCounts(t *testing.T) {
 	merged.Merge(&SourceAggregate{RunCount: 1, runIDs: map[string]struct{}{"c": {}}})
 	if merged.RunCount != 5 {
 		t.Fatalf("decoded or later counts lost: %d", merged.RunCount)
+	}
+}
+
+func TestSummarizeWorkflowScopeWindowIsolatesOneActivity(t *testing.T) {
+	ledger, err := NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
+	if err != nil {
+		t.Fatalf("NewSQLiteLedger() error = %v", err)
+	}
+	defer ledger.Close()
+
+	base := time.Date(2026, 8, 15, 1, 0, 0, 0, time.UTC)
+	entries := []Entry{
+		{EventID: "prior-pulse", IdempotencyKey: "prior-pulse", Timestamp: base.Add(-time.Minute), WorkflowID: "Workflow/demo", Scope: "pulse", LLMCallCount: 1, TotalCostUSD: 50},
+		{EventID: "current-gate", IdempotencyKey: "current-gate", Timestamp: base.Add(time.Minute), WorkflowID: "Workflow/demo", Scope: "pulse", LLMCallCount: 1, TotalCostUSD: 2},
+		{EventID: "current-review", IdempotencyKey: "current-review", Timestamp: base.Add(2 * time.Minute), WorkflowID: "Workflow/demo", Scope: "pulse", LLMCallCount: 2, TotalCostUSD: 3},
+		{EventID: "workflow", IdempotencyKey: "workflow", Timestamp: base.Add(2 * time.Minute), WorkflowID: "Workflow/demo", Scope: "workflow_execution", LLMCallCount: 1, TotalCostUSD: 100},
+		{EventID: "other-workflow", IdempotencyKey: "other-workflow", Timestamp: base.Add(2 * time.Minute), WorkflowID: "Workflow/other", Scope: "pulse", LLMCallCount: 1, TotalCostUSD: 200},
+		{EventID: "after-window", IdempotencyKey: "after-window", Timestamp: base.Add(4 * time.Minute), WorkflowID: "Workflow/demo", Scope: "pulse", LLMCallCount: 1, TotalCostUSD: 75},
+	}
+	for _, entry := range entries {
+		if err := ledger.Append(entry); err != nil {
+			t.Fatalf("Append(%q) error = %v", entry.EventID, err)
+		}
+	}
+
+	summary, err := ledger.SummarizeWorkflowScopeWindow("Workflow/demo", "pulse", base, base.Add(3*time.Minute))
+	if err != nil {
+		t.Fatalf("SummarizeWorkflowScopeWindow() error = %v", err)
+	}
+	if summary.Total.CallCount != 3 || summary.Total.TotalCostUSD != 5 {
+		t.Fatalf("window summary = %#v, want 3 calls and $5", summary.Total)
 	}
 }

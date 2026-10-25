@@ -12,8 +12,7 @@ import (
 	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// pulseToolScope is the workflow and principal a Pulse platform tool
-// (search_platform, ask_platform_crew, read_crew_calls) acts for. Both come
+// workflowToolScope resolves the workflow and principal for decision tools. Both come
 // from trusted session state, never from the model's arguments:
 //   - the calling session is the one the MCP bridge (or the in-process agent)
 //     attached, not an argument;
@@ -28,7 +27,9 @@ import (
 //
 // Anything else is refused, so a run of workflow A can never act for workflow
 // B or as B's owner (reported 2026-09-27 against 4f84023ed / e6682ff73).
-func (api *StreamingAPI) pulseToolScope(ctx context.Context, requestedWorkspace string, needWrite bool) (string, *UserClaims, error) {
+var workflowToolsAPI *StreamingAPI
+
+func (api *StreamingAPI) workflowToolScope(ctx context.Context, requestedWorkspace string, needWrite bool) (string, *UserClaims, error) {
 	if api == nil {
 		return "", nil, fmt.Errorf("platform tools are unavailable in this process")
 	}
@@ -54,7 +55,7 @@ func (api *StreamingAPI) pulseToolScope(ctx context.Context, requestedWorkspace 
 		return "", nil, fmt.Errorf("this session has no workflow to act for")
 	}
 	if requested := strings.Trim(strings.TrimSpace(requestedWorkspace), "/"); requested != "" && path.Clean(requested) != workspacePath {
-		return "", nil, fmt.Errorf("workspace_path must be this workflow (%s); an Autopilot tool cannot act for another workflow", workspacePath)
+		return "", nil, fmt.Errorf("workspace_path must be this workflow (%s); a workflow tool cannot act for another workflow", workspacePath)
 	}
 
 	userID := ""

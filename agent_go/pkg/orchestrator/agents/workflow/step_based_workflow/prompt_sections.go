@@ -171,20 +171,6 @@ func contextOutputFileNames(output string) []string {
 	return names
 }
 
-// BuildMainPyAuthoringRules returns the canonical rules that any agent writing or
-// patching a step's main.py MUST follow. Shared by:
-//   - the execution agent in scripted mode (via GetScriptedModeInstructions)
-//   - review_step_code (detects drift from these rules)
-//   - the parent Pulse Fixer (applies reviewed fixes)
-//
-// The workshop chat agent prompt does NOT call this anymore — it gets a short
-// cheat sheet and loads the full rules on demand via
-// read_skill(skills=[{"name":"builder-reference","path":"references/code-authoring.md"}]) when it actually needs to patch.
-//
-// Source of truth lives in cmd/server/guidance/templates/system/code-authoring.md.
-// This wrapper is the inline fallback for API agents and non-execution review
-// surfaces; coding CLI execution agents read the same document from the
-// projected builder-reference skill instead.
 func BuildMainPyAuthoringRules() string {
 	return guidance.RenderSystemDoc("code-authoring") + "\n"
 }

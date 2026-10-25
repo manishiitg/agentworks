@@ -5,7 +5,6 @@ export type ProductChatFailureCode =
   | 'rate_limited'
   | 'provider_unavailable'
   | 'configuration_error'
-  | 'pulse_unavailable'
   | 'access_denied'
   | 'project_unavailable'
   | 'cancelled'
@@ -118,15 +117,7 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
   }
 
   // This is a server refusal with a plain next step, not a provider failure.
-  if (normalizedCode === 'pulse_unavailable') {
-    return {
-      code: 'pulse_unavailable',
-      title: 'Autopilot is unavailable',
-      message: raw,
-      retryable: false,
-      technicalDetails,
-    }
-  }
+
 
   if (normalizedCode === 'billing_error' || /\[billing_error\]/i.test(evidence)) {
     return {

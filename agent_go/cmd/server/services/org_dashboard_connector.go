@@ -39,7 +39,6 @@ type OrgDashboardNotification struct {
 type OrgDashboardWorkflowNotifications struct {
 	WorkspacePath string                           `json:"workspace_path"`
 	RunSummary    *OrgDashboardNotification        `json:"run_summary,omitempty"`
-	PulseSummary  *OrgDashboardNotification        `json:"pulse_summary,omitempty"`
 	Recent        []OrgDashboardNotification       `json:"recent,omitempty"`
 	ByRoute       []OrgDashboardRouteNotifications `json:"by_route,omitempty"`
 	Error         string                           `json:"error,omitempty"`
@@ -51,11 +50,10 @@ type OrgDashboardRouteNotifications struct {
 	Label         string                    `json:"label"`
 	Legacy        bool                      `json:"legacy,omitempty"`
 	RunSummary    *OrgDashboardNotification `json:"run_summary,omitempty"`
-	PulseSummary  *OrgDashboardNotification `json:"pulse_summary,omitempty"`
 }
 
 // OrgDashboardConnector is an always-on internal notification connector. It
-// persists run_summary and pulse_summary calls even when every external
+// persists run_summary calls even when every external
 // channel is disabled or fails.
 type OrgDashboardConnector struct {
 	mu sync.Mutex
@@ -77,7 +75,7 @@ func (c *OrgDashboardConnector) SendUserNotification(ctx context.Context, messag
 	}
 	summary := dest.Content.Summary
 	kind := strings.ToLower(strings.TrimSpace(summary.Kind))
-	if kind != "run_summary" && kind != "pulse_summary" {
+	if kind != "run_summary" {
 		return "", nil
 	}
 	workspacePath, dbPath, err := orgDashboardDBPath(dest.WorkspacePath)
@@ -154,7 +152,7 @@ func (c *OrgDashboardConnector) SendUserNotification(ctx context.Context, messag
 
 func normalizedSummaryStatus(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed", "failed", "blocked", "waiting_for_user", "waiting_for_platform", "monitoring", "informational", "no_run":
+	case "completed", "failed", "partial", "blocked", "waiting_for_user", "waiting_for_platform", "monitoring", "informational", "no_run":
 		return strings.ToLower(strings.TrimSpace(status))
 	// Older notifications used visual severity. Preserve their meaning as a
 	// truthful workflow status when they are read or rewritten.
@@ -210,7 +208,7 @@ func ensureOrgDashboardSchema(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS org_dashboard_notifications (
 			id TEXT PRIMARY KEY,
-			notification_kind TEXT NOT NULL CHECK (notification_kind IN ('run_summary', 'pulse_summary')),
+			notification_kind TEXT NOT NULL CHECK (notification_kind IN ('run_summary')),
 			title TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL DEFAULT 'informational',
 			message TEXT NOT NULL,
@@ -301,10 +299,6 @@ func ListOrgDashboardNotifications(ctx context.Context, rawWorkspacePath string,
 			copy := item
 			result.RunSummary = &copy
 		}
-		if item.Kind == "pulse_summary" && result.PulseSummary == nil {
-			copy := item
-			result.PulseSummary = &copy
-		}
 		if len(result.Recent) < recentLimit {
 			result.Recent = append(result.Recent, item)
 		}
@@ -317,9 +311,6 @@ func ListOrgDashboardNotifications(ctx context.Context, rawWorkspacePath string,
 			}
 			if summary.Kind == "run_summary" && result.ByRoute[index].RunSummary == nil {
 				result.ByRoute[index].RunSummary = &summary
-			}
-			if summary.Kind == "pulse_summary" && result.ByRoute[index].PulseSummary == nil {
-				result.ByRoute[index].PulseSummary = &summary
 			}
 		}
 		for _, route := range item.Routes {

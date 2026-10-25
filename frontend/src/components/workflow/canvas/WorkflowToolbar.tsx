@@ -4,7 +4,7 @@ import { useWorkspaceConnectionStore } from '../../../stores/useWorkspaceConnect
 import { openProductWorkspace } from '../../../utils/productWorkspaceNavigation'
 import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
-import React, { useEffect, useRef, useMemo, useCallback } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useWorkflowStore, type RunFolder } from '../../../stores/useWorkflowStore'
 import { useChatStore } from '../../../stores/useChatStore'
@@ -47,7 +47,6 @@ interface WorkflowToolbarProps {
   chatTabsSlot?: React.ReactNode
   // Whether Pulse review is enabled for this workflow -- owned by the host
   // (shared with the pane's PulseView), just read here for the badge.
-  monitorOn: boolean
   className?: string
 }
 
@@ -88,11 +87,10 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   const incomingEmail = false
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const canWrite = useCanWriteWorkflow(workspacePath)
-  const pulseEnabled = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest?.pulse?.enabled === true)
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const projectID = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest.id)
-  const menuOptions = { relayMode, isMultiUser, pulseEnabled, incomingEmail, allowedProducts }
+  const menuOptions = { relayMode, isMultiUser, incomingEmail, allowedProducts }
   const menuItems = workflowProjectMenuItems(menuOptions)
   const panelSwitcherPanels: PanelSwitcherPanel[] = canWrite
     ? [{ id: 'context', label: 'Project menu' }, ...menuItems.map(item => ({ id: item.id, label: item.label, group: item.group }))]
@@ -113,7 +111,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   })
   // Main workflow execution phase for the canvas toolbar
   const targetExecutionPhaseId = EXECUTION_PHASE_ID
-  
+
   // Check if execution phase specifically is running (not just any phase)
   // Use a selector that only recalculates when chatTabs, pollingInterval, or sseConnections change
   const isExecutionRunning = useChatStore(state => {
@@ -210,7 +208,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   }, [relayMode, isExecutionRunning, selectedGroupIds.length, currentRunningGroupId, variablesManifest, selectedRunFolder, setSelectedGroupIds])
 
   // selectedGroupIds is already included in the batched selector above
-  
+
   // Settings are no longer persisted to localStorage - removed save logic
 
   const workflowMode = useModeStore(state => state.selectedModeCategory === 'workflow')

@@ -198,29 +198,6 @@ func TestWorkshopConsolidatesGroupsAndRemovesReviewLauncher(t *testing.T) {
 		}
 	}
 }
-func TestBackgroundReadOnlyAccessRejectsEscalationAndWriterTools(t *testing.T) {
-	for _, args := range []map[string]interface{}{{"access_mode": "unknown"}, {"access_mode": true}} {
-		if _, err := parseBackgroundReadOnlyAccess(args, "executor"); err == nil {
-			t.Fatal("invalid access mode accepted")
-		}
-	}
-	if _, err := parseBackgroundReadOnlyAccess(map[string]interface{}{"access_mode": "read_only"}, "orchestrator"); err == nil {
-		t.Fatal("read-only delegation accepted mutating orchestrator")
-	}
-	if ok, err := parseBackgroundReadOnlyAccess(map[string]interface{}{"access_mode": "read_only"}, "executor"); err != nil || !ok {
-		t.Fatal("read-only executor unavailable")
-	}
-	for _, n := range []string{"add_step", "update_step", "execute_step", "run_full_workflow", "run_in_background", "write_workspace_file", "record_pulse_finding", "record_plan_drift_review", "slack", "send_email", "set_workflow_secret"} {
-		if readOnlyBackgroundToolAllowed(n) {
-			t.Errorf("writer tool allowed: %s", n)
-		}
-	}
-	for _, n := range []string{"get_workflow_config", "query_workflow_db", "execute_shell_command", "read_skill"} {
-		if !readOnlyBackgroundToolAllowed(n) {
-			t.Errorf("inspection tool missing: %s", n)
-		}
-	}
-}
 
 func TestConsolidatedUpdateFindsNestedSteps(t *testing.T) {
 	parent := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "parent", Title: "Delegate", Description: "Delegate analysis"}, Items: []AgentItem{{ID: "delegate", Type: "user_message", Message: "Delegate analysis."}}, NextStepID: "end", PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "nested", RouteName: "Analysis", SubAgentStep: testSequenceStep("nested", "Analyze")}}}

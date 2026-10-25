@@ -40,10 +40,7 @@ func AgentWorksManifest() (ProductManifest, error) {
 			productManifestErr = err
 			return
 		}
-		if err := validatePulse(manifest); err != nil {
-			productManifestErr = err
-			return
-		}
+
 		productManifest = manifest
 	})
 	return productManifest, productManifestErr

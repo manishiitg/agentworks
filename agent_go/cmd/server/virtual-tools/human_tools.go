@@ -71,7 +71,7 @@ func CreateHumanTools() []llmtypes.Tool {
 		"slack_title": map[string]interface{}{
 			"type":        "string",
 			"maxLength":   150,
-			"description": "Optional Block Kit header. Use by default for workflow, Autopilot, Goal Advisor, and other structured summaries. The backend owns the webhook URL and renders this safely; never post to a webhook directly.",
+			"description": "Optional Block Kit header. Use by default for workflow and other structured summaries. The backend owns the webhook URL and renders this safely; never post to a webhook directly.",
 		},
 		"slack_color": map[string]interface{}{
 			"type":        "string",
@@ -119,27 +119,27 @@ func CreateHumanTools() []llmtypes.Tool {
 		"delivery_mode": map[string]interface{}{
 			"type":        "string",
 			"enum":        []string{"all", "dashboard_only", "external_only"},
-			"description": "Delivery scope for classified summaries. Use dashboard_only to record an unchanged run summary in Activity without Slack/Gmail/WhatsApp or an in-app alert. Use external_only for a material Autopilot update whose current review results are already projected into Activity. Omit or use all when both Activity and configured external channels should receive the summary. Custom notification instructions may explicitly choose a different mode.",
+			"description": "Delivery scope for classified summaries. Use dashboard_only to record an unchanged run summary in Activity without Slack/Gmail/WhatsApp or an in-app alert. Use external_only for a run outcome already recorded in Activity. Omit or use all when both Activity and configured external channels should receive the summary. Custom notification instructions may explicitly choose a different mode.",
 		},
 		"notification_kind": map[string]interface{}{
 			"type":        "string",
-			"enum":        []string{"general", "run_summary", "pulse_summary"},
-			"description": "Classifies this notification so the backend can enforce its workflow-configured channel routing. Autopilot finalizers use run_summary for the execution outcome and pulse_summary for Autopilot review/fix activity. Use general for ordinary notifications.",
+			"enum":        []string{"general", "run_summary"},
+			"description": "Classifies this notification so the backend can enforce its workflow-configured channel routing. Use run_summary for the execution outcome for progress updates. Use general for ordinary notifications.",
 		},
 		"summary_title": map[string]interface{}{
 			"type":        "string",
 			"maxLength":   150,
-			"description": "Channel-neutral title used by the Org Dashboard and as the default title for rich channel renderings. For run_summary and pulse_summary, set this instead of relying on a channel-specific title.",
+			"description": "Channel-neutral title used by the Org Dashboard and as the default title for rich channel renderings. For run_summary, set this instead of relying on a channel-specific title.",
 		},
 		"summary_status": map[string]interface{}{
 			"type":        "string",
-			"enum":        []string{"completed", "failed", "blocked", "waiting_for_user", "waiting_for_platform", "monitoring", "informational", "no_run"},
+			"enum":        []string{"completed", "failed", "partial", "blocked", "waiting_for_user", "waiting_for_platform", "monitoring", "informational", "no_run"},
 			"description": "Channel-neutral description of what the workflow is doing now. Use completed when done, failed for a confirmed run failure, blocked when work cannot continue, waiting_for_user or waiting_for_platform when that is the specific blocker, monitoring when awaiting natural evidence, informational for an update, and no_run when a scheduled run did not start.",
 		},
 		"summary_route": map[string]interface{}{
 			"type":        "string",
 			"maxLength":   200,
-			"description": "Legacy single route label; prefer summary_routes with exact routing_step_id/route_id identities. Omit for shared workflow work. Only run_summary may inherit a scheduled selection; Autopilot review scope must be explicit. Do not combine with summary_routes.",
+			"description": "Legacy single route label; prefer summary_routes with exact routing_step_id/route_id identities. Omit for shared workflow work. Run summaries may inherit a scheduled selection. Do not combine with summary_routes.",
 		},
 		"summary_fields": map[string]interface{}{
 			"type":     "array",
@@ -187,11 +187,11 @@ func CreateHumanTools() []llmtypes.Tool {
 	}
 	summaryContentProps["email_html"] = map[string]interface{}{
 		"type":        "string",
-		"description": "The single rich email body (Gmail only). For workflow/Autopilot/Goal Advisor notifications, supply this by default unless the user explicitly asked not to email. MUST be EMAIL-SAFE: use INLINE styles only (a style attribute on each element). Gmail strips <style> blocks, <head>, <script>, and class-based CSS, so a full browser HTML document or a generated *.html report (e.g. pulse/org-pulse.html) arrives UNSTYLED — build a compact inline-styled summary and link to the full report instead of pasting it. Do not create a separate plain email version; message_for_user is the automatic fallback. Other channels ignore this.",
+		"description": "The single rich email body (Gmail only). For workflow notifications, supply this by default unless the user explicitly asked not to email. MUST be EMAIL-SAFE: use INLINE styles only (a style attribute on each element). Gmail strips <style> blocks, <head>, <script>, and class-based CSS, so a full browser HTML document or a generated *.html report (e.g. reports/index.html) arrives UNSTYLED — build a compact inline-styled summary and link to the full report instead of pasting it. Do not create a separate plain email version; message_for_user is the automatic fallback. Other channels ignore this.",
 	}
 	summaryContentProps["email_html_file"] = map[string]interface{}{
 		"type":        "string",
-		"description": "Optional. Absolute path to an .html file on the server host to use as the HTML email body (alternative to email_html). The file MUST be email-safe — INLINE styles only; Gmail strips <style>/<head>/class CSS, so a browser-oriented report file (e.g. pulse/org-pulse.html) renders UNSTYLED. Point this at an email-specific inline-styled file, not the full browser report. If the file can't be read, the tool returns an error so you can fix the path.",
+		"description": "Optional. Absolute path to an .html file on the server host to use as the HTML email body (alternative to email_html). The file MUST be email-safe — INLINE styles only; Gmail strips <style>/<head>/class CSS, so a browser-oriented report file (e.g. reports/index.html) renders UNSTYLED. Point this at an email-specific inline-styled file, not the full browser report. If the file can't be read, the tool returns an error so you can fix the path.",
 	}
 	humanTools = append(humanTools, createSendEmailTool())
 	humanTools = append(humanTools, createRecordSummaryTool(summaryContentProps))
@@ -199,12 +199,12 @@ func CreateHumanTools() []llmtypes.Tool {
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "get_notification_history",
-			Description: "Read prior channel-neutral run or Autopilot summaries for the current workflow before deciding whether an external notification is new and important. This is read-only and uses the same durable Activity history shown in the Org Dashboard. Records prove that a summary was created; they are not per-provider Slack/Gmail delivery receipts.",
+			Description: "Read prior channel-neutral run outcomes for the current workflow before deciding whether an external notification is new and important. This is read-only and uses the same durable Activity history shown in the Org Dashboard. Records prove that a summary was created; they are not per-provider Slack/Gmail delivery receipts.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"notification_kind": map[string]interface{}{
-						"type": "string", "enum": []string{"run_summary", "pulse_summary"},
+						"type": "string", "enum": []string{"run_summary"},
 						"description": "Summary stream to compare against.",
 					},
 					"limit": map[string]interface{}{
@@ -389,8 +389,8 @@ func handleGetNotificationHistory(ctx context.Context, args map[string]interface
 	}
 	kind, _ := args["notification_kind"].(string)
 	kind = strings.ToLower(strings.TrimSpace(kind))
-	if kind != "run_summary" && kind != "pulse_summary" {
-		return "", fmt.Errorf("notification_kind must be run_summary or pulse_summary")
+	if kind != "run_summary" {
+		return "", fmt.Errorf("notification_kind must be run_summary")
 	}
 	limit := 5
 	if raw, ok := args["limit"].(float64); ok {
@@ -491,6 +491,9 @@ func DeliverWorkflowNotification(ctx context.Context, args map[string]interface{
 	if notificationKind == "" {
 		notificationKind = "general"
 	}
+	if notificationKind != "general" && notificationKind != "run_summary" {
+		return "", fmt.Errorf("notification_kind must be general or run_summary")
+	}
 	deliveryMode, _ := args["delivery_mode"].(string)
 	deliveryMode = strings.ToLower(strings.TrimSpace(deliveryMode))
 	if deliveryMode == "" {
@@ -500,7 +503,7 @@ func DeliverWorkflowNotification(ctx context.Context, args map[string]interface{
 		return "", fmt.Errorf("delivery_mode must be all, dashboard_only, or external_only")
 	}
 	if notificationKind == "general" && deliveryMode != "all" {
-		return "", fmt.Errorf("delivery_mode %s requires run_summary or pulse_summary", deliveryMode)
+		return "", fmt.Errorf("delivery_mode %s requires run_summary", deliveryMode)
 	}
 	if deliveryMode == "dashboard_only" {
 		excludeChannels = append(excludeChannels, "gmail", "slack", "whatsapp")
@@ -508,9 +511,6 @@ func DeliverWorkflowNotification(ctx context.Context, args map[string]interface{
 		excludeChannels = append(excludeChannels, "org_dashboard")
 	}
 	if notificationKind == "general" {
-		// Org Dashboard records only run and Pulse summaries; for anything
-		// else it sends nothing, which the receipt reported as a failed
-		// channel (PUL-70AD0472: a Slack-only secret alert showed "failed").
 		excludeChannels = append(excludeChannels, "org_dashboard")
 	}
 	summary, err := notificationSummaryFromArgs(args, notificationKind, gc, slackContent)
@@ -519,6 +519,11 @@ func DeliverWorkflowNotification(ctx context.Context, args map[string]interface{
 	}
 	if dest == nil {
 		dest = &services.NotificationDestination{}
+	}
+	if notificationKind == "run_summary" {
+		if len(dest.RunSummaryRecipients) == 0 {
+			excludeChannels = append(excludeChannels, "gmail")
+		}
 	}
 	if notificationKind == "run_summary" && len(summary.Routes) == 0 && strings.TrimSpace(summary.Route) == "" {
 		summary.Route = notificationRouteFromSelections(dest.RouteSelections)
@@ -544,9 +549,6 @@ func DeliverWorkflowNotification(ctx context.Context, args map[string]interface{
 	}
 	dest.Content.Text = summaryMessage
 	dest.Content.Summary = summary
-	// Durable per-workflow recipients for this summary kind. This must run after notification_kind is read, since the
-	// kind is what selects between the run and Pulse lists. The denylist on dest.Gmail is left untouched and is still
-	// enforced at send time.
 	if routedTo := summaryRecipientsForKind(dest, notificationKind); len(routedTo) > 0 {
 		if dest.Gmail == nil {
 			dest.Gmail = &services.GmailDest{}
@@ -703,8 +705,6 @@ func summaryChannelsForKind(dest *services.NotificationDestination, kind string)
 	switch kind {
 	case "run_summary":
 		return dest.RunSummaryChannels
-	case "pulse_summary":
-		return dest.PulseSummaryChannels
 	default:
 		return nil
 	}
@@ -722,8 +722,6 @@ func webhooksForKind(dest *services.NotificationDestination, kind string) []serv
 	switch kind {
 	case "run_summary":
 		configured = dest.RunSummaryWebhooks
-	case "pulse_summary":
-		configured = dest.PulseSummaryWebhooks
 	}
 	if len(configured) > 0 {
 		return configured
@@ -757,8 +755,6 @@ func summaryRecipientsForKind(dest *services.NotificationDestination, kind strin
 	switch kind {
 	case "run_summary":
 		return dest.RunSummaryRecipients
-	case "pulse_summary":
-		return dest.PulseSummaryRecipients
 	default:
 		return nil
 	}
@@ -782,8 +778,6 @@ func notificationSenderForKind(dest *services.NotificationDestination, kind stri
 	switch kind {
 	case "run_summary":
 		perSummary = dest.RunSummaryGmailConnectionIDs
-	case "pulse_summary":
-		perSummary = dest.PulseSummaryGmailConnectionIDs
 	}
 	if len(perSummary) > 0 {
 		if len(perSummary) > 1 {
@@ -926,7 +920,7 @@ func normalizedNotificationSummaryStatus(status string) string {
 		return "blocked"
 	case "danger":
 		return "failed"
-	case "completed", "failed", "blocked", "waiting_for_user", "waiting_for_platform", "monitoring", "informational", "no_run":
+	case "completed", "failed", "partial", "blocked", "waiting_for_user", "waiting_for_platform", "monitoring", "informational", "no_run":
 		return strings.ToLower(strings.TrimSpace(status))
 	default:
 		return ""
@@ -1135,19 +1129,15 @@ func cloneNotificationDestination(dest *services.NotificationDestination) *servi
 		return nil
 	}
 	clone := &services.NotificationDestination{
-		UserID:                         dest.UserID,
-		WorkflowName:                   dest.WorkflowName,
-		WorkspacePath:                  dest.WorkspacePath,
-		RouteSelections:                maps.Clone(dest.RouteSelections),
-		ExcludeChannels:                append([]string(nil), dest.ExcludeChannels...),
-		RunSummaryChannels:             append([]string(nil), dest.RunSummaryChannels...),
-		PulseSummaryChannels:           append([]string(nil), dest.PulseSummaryChannels...),
-		RunSummaryGmailConnectionIDs:   append([]string(nil), dest.RunSummaryGmailConnectionIDs...),
-		PulseSummaryGmailConnectionIDs: append([]string(nil), dest.PulseSummaryGmailConnectionIDs...),
-		RunSummaryRecipients:           append([]string(nil), dest.RunSummaryRecipients...),
-		PulseSummaryRecipients:         append([]string(nil), dest.PulseSummaryRecipients...),
-		RunSummaryWebhooks:             append([]services.SlackWebhookDest(nil), dest.RunSummaryWebhooks...),
-		PulseSummaryWebhooks:           append([]services.SlackWebhookDest(nil), dest.PulseSummaryWebhooks...),
+		UserID:                       dest.UserID,
+		WorkflowName:                 dest.WorkflowName,
+		WorkspacePath:                dest.WorkspacePath,
+		RouteSelections:              maps.Clone(dest.RouteSelections),
+		ExcludeChannels:              append([]string(nil), dest.ExcludeChannels...),
+		RunSummaryChannels:           append([]string(nil), dest.RunSummaryChannels...),
+		RunSummaryGmailConnectionIDs: append([]string(nil), dest.RunSummaryGmailConnectionIDs...),
+		RunSummaryRecipients:         append([]string(nil), dest.RunSummaryRecipients...),
+		RunSummaryWebhooks:           append([]services.SlackWebhookDest(nil), dest.RunSummaryWebhooks...),
 	}
 	if dest.Slack != nil {
 		clone.Slack = &services.SlackDest{
@@ -1220,11 +1210,7 @@ func notificationDestinationEmpty(dest *services.NotificationDestination) bool {
 			(dest.Gmail == nil || dest.Gmail.Email == "") &&
 			len(dest.ExcludeChannels) == 0 &&
 			len(dest.RunSummaryChannels) == 0 &&
-			len(dest.PulseSummaryChannels) == 0 &&
 			len(dest.RunSummaryGmailConnectionIDs) == 0 &&
-			len(dest.PulseSummaryGmailConnectionIDs) == 0 &&
 			len(dest.RunSummaryRecipients) == 0 &&
-			len(dest.PulseSummaryRecipients) == 0 &&
-			len(dest.RunSummaryWebhooks) == 0 &&
-			len(dest.PulseSummaryWebhooks) == 0)
+			len(dest.RunSummaryWebhooks) == 0)
 }

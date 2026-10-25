@@ -259,33 +259,27 @@ type UpdateWorkflowManifestRequest struct {
 	FolderAccess         *[]workflowtypes.WorkflowFolderGrant         `json:"folder_access,omitempty"`
 	FolderAccessRequests *[]workflowtypes.WorkflowFolderAccessRequest `json:"folder_access_requests,omitempty"`
 	WorkflowContextPaths *[]string                                    `json:"workflow_context_paths,omitempty"`
-	PulseEnabled         *bool                                        `json:"pulse_enabled,omitempty"`
-	PulseOutwardActions  *string                                      `json:"pulse_outward_actions,omitempty"`
 	// AfterManualRun sets the after-run options for runs started from a chat
 	// (PLAT-697 phase 0). Schedules carry their own after_run.
 	AfterManualRun *ScheduleAfterRun `json:"after_manual_run,omitempty"`
 	// Notification instruction fields are standalone patches so the Notify
 	// popup can update content guidance without replacing workflow capabilities.
-	RunNotificationInstructions   *string   `json:"run_notification_instructions,omitempty"`
-	PulseNotificationInstructions *string   `json:"pulse_notification_instructions,omitempty"`
-	RunNotificationChannels       *[]string `json:"run_notification_channels,omitempty"`
-	PulseNotificationChannels     *[]string `json:"pulse_notification_channels,omitempty"`
-	// DailyDigest turns the evening email of the day's runs on or off.
-	DailyDigest *bool `json:"daily_digest,omitempty"`
+	RunNotificationInstructions *string   `json:"run_notification_instructions,omitempty"`
+	RunNotificationChannels     *[]string `json:"run_notification_channels,omitempty"`
+	// BreakAlerts controls informational run statuses in Needs you.
+	BreakAlerts *bool `json:"break_alerts,omitempty"`
 	// WakeTab names the Crew tab to message when a run fails or never ran; an
 	// empty crew_id clears it.
 	WakeTab *WorkflowWakeTab `json:"wake_tab,omitempty"`
 	// Recipient lists are pointers so an explicitly sent empty array clears them
 	// (back to the account default) while omission leaves them untouched.
-	RunNotificationRecipients   *[]string `json:"run_notification_recipients,omitempty"`
-	PulseNotificationRecipients *[]string `json:"pulse_notification_recipients,omitempty"`
+	RunNotificationRecipients *[]string `json:"run_notification_recipients,omitempty"`
 	// One sender for this workflow's Gmail notifications. Empty inherits the
 	// account default. Saving it clears legacy per-summary sender overrides.
 	NotificationGmailConnectionID *string `json:"notification_gmail_connection_id,omitempty"`
 	// Legacy per-summary sender overrides. New clients select one sender with
 	// NotificationGmailConnectionID, which clears these lists.
-	RunNotificationGmailConnectionIDs   *[]string `json:"run_notification_gmail_connection_ids,omitempty"`
-	PulseNotificationGmailConnectionIDs *[]string `json:"pulse_notification_gmail_connection_ids,omitempty"`
+	RunNotificationGmailConnectionIDs *[]string `json:"run_notification_gmail_connection_ids,omitempty"`
 	// NotificationInstructions is retained for older clients that still send a
 	// single preference. New clients should use the two scoped fields above.
 	NotificationInstructions *string `json:"notification_instructions,omitempty"`
@@ -303,19 +297,14 @@ func mergeWorkflowCapabilitiesUpdate(existing WorkflowCapabilities, incoming *Wo
 		updated.Notifications = existing.Notifications
 	} else if strings.TrimSpace(updated.Notifications.SlackWebhookSecretName) == "" &&
 		strings.TrimSpace(updated.Notifications.RunSummaryInstructions) == "" &&
-		strings.TrimSpace(updated.Notifications.PulseSummaryInstructions) == "" &&
 		strings.TrimSpace(updated.Notifications.Instructions) == "" &&
 		len(updated.Notifications.RunSummaryChannels) == 0 &&
-		len(updated.Notifications.PulseSummaryChannels) == 0 &&
 		len(updated.Notifications.ExcludeChannels) == 0 &&
 		len(updated.Notifications.BlockRecipients) == 0 &&
 		strings.TrimSpace(updated.Notifications.GmailConnectionID) == "" &&
 		len(updated.Notifications.RunSummaryGmailConnectionIDs) == 0 &&
-		len(updated.Notifications.PulseSummaryGmailConnectionIDs) == 0 &&
 		len(updated.Notifications.RunSummaryRecipients) == 0 &&
-		len(updated.Notifications.PulseSummaryRecipients) == 0 &&
-		len(updated.Notifications.RunSummarySlackWebhookSecretNames) == 0 &&
-		len(updated.Notifications.PulseSummarySlackWebhookSecretNames) == 0 {
+		len(updated.Notifications.RunSummarySlackWebhookSecretNames) == 0 && updated.Notifications.BreakAlerts == nil && updated.Notifications.WakeTab == nil {
 		// An explicitly supplied empty object (no webhook, no exclude/block
 		// preferences) disables the workflow-specific notification config.
 		updated.Notifications = nil
@@ -328,14 +317,6 @@ func mergeWorkflowCapabilitiesUpdate(existing WorkflowCapabilities, incoming *Wo
 		}
 	}
 	return updated
-}
-
-func setWorkflowPulseEnabled(manifest *WorkflowManifest, enabled bool) {
-	if manifest.Pulse == nil {
-		manifest.Pulse = &WorkflowPulseConfig{}
-	}
-	manifest.Pulse.Enabled = enabled
-
 }
 
 func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *http.Request) {
@@ -380,9 +361,6 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 	}
 	if req.RunNotificationGmailConnectionIDs != nil {
 		senderIDs = append(senderIDs, (*req.RunNotificationGmailConnectionIDs)...)
-	}
-	if req.PulseNotificationGmailConnectionIDs != nil {
-		senderIDs = append(senderIDs, (*req.PulseNotificationGmailConnectionIDs)...)
 	}
 	if len(normalizeGmailConnectionIDs(senderIDs)) > 0 {
 		gmail, gmailErr := ensureGmailService()
@@ -501,34 +479,18 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		}
 		manifest.WorkflowContextPaths = normalized
 	}
-	if (req.PulseEnabled != nil || req.PulseOutwardActions != nil) && common.GoalWorkHeld(r.Context()) {
-		http.Error(w, "Autopilot cannot change its own settings (on/off or autonomy); they stay with the owner", http.StatusForbidden)
-		return
-	}
-	if req.PulseEnabled != nil {
-		setWorkflowPulseEnabled(manifest, *req.PulseEnabled)
-	}
+
 	if req.AfterManualRun != nil {
 		copied := *req.AfterManualRun
 		manifest.AfterManualRun = &copied
 	}
-	if req.PulseOutwardActions != nil {
-		value, err := normalizePulseOutwardActions(*req.PulseOutwardActions)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if manifest.Pulse == nil {
-			manifest.Pulse = &WorkflowPulseConfig{}
-		}
-		manifest.Pulse.OutwardActions = value
-	}
 
-	if req.DailyDigest != nil {
+	if req.BreakAlerts != nil {
 		if manifest.Capabilities.Notifications == nil {
 			manifest.Capabilities.Notifications = &WorkflowNotificationConfig{}
 		}
-		manifest.Capabilities.Notifications.DailyDigestOff = !*req.DailyDigest
+		value := *req.BreakAlerts
+		manifest.Capabilities.Notifications.BreakAlerts = &value
 	}
 	if req.WakeTab != nil {
 		if manifest.Capabilities.Notifications == nil {
@@ -541,51 +503,36 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		}
 	}
 
-	if req.RunNotificationInstructions != nil || req.PulseNotificationInstructions != nil ||
-		req.RunNotificationChannels != nil || req.PulseNotificationChannels != nil ||
-		req.RunNotificationRecipients != nil || req.PulseNotificationRecipients != nil ||
+	if req.RunNotificationInstructions != nil ||
+		req.RunNotificationChannels != nil ||
+		req.RunNotificationRecipients != nil ||
 		req.NotificationGmailConnectionID != nil ||
-		req.RunNotificationGmailConnectionIDs != nil || req.PulseNotificationGmailConnectionIDs != nil {
+		req.RunNotificationGmailConnectionIDs != nil {
 		runInstructions := ""
-		pulseInstructions := ""
 		if manifest.Capabilities.Notifications != nil {
 			runInstructions = manifest.Capabilities.Notifications.EffectiveRunSummaryInstructions()
-			pulseInstructions = manifest.Capabilities.Notifications.EffectivePulseSummaryInstructions()
 		}
 		if req.RunNotificationInstructions != nil {
 			runInstructions = strings.TrimSpace(*req.RunNotificationInstructions)
 		}
-		if req.PulseNotificationInstructions != nil {
-			pulseInstructions = strings.TrimSpace(*req.PulseNotificationInstructions)
-		}
-		if manifest.Capabilities.Notifications == nil && (runInstructions != "" || pulseInstructions != "" ||
-			req.RunNotificationChannels != nil || req.PulseNotificationChannels != nil ||
-			req.RunNotificationRecipients != nil || req.PulseNotificationRecipients != nil ||
+		if manifest.Capabilities.Notifications == nil && (runInstructions != "" ||
+			req.RunNotificationChannels != nil ||
+			req.RunNotificationRecipients != nil ||
 			req.NotificationGmailConnectionID != nil ||
-			req.RunNotificationGmailConnectionIDs != nil || req.PulseNotificationGmailConnectionIDs != nil) {
+			req.RunNotificationGmailConnectionIDs != nil) {
 			manifest.Capabilities.Notifications = &WorkflowNotificationConfig{}
 		}
 		if manifest.Capabilities.Notifications != nil {
 			manifest.Capabilities.Notifications.RunSummaryInstructions = runInstructions
-			manifest.Capabilities.Notifications.PulseSummaryInstructions = pulseInstructions
 			manifest.Capabilities.Notifications.Instructions = ""
 			if req.RunNotificationChannels != nil {
 				manifest.Capabilities.Notifications.RunSummaryChannels = normalizeNotificationChannels(*req.RunNotificationChannels)
 			}
-			if req.PulseNotificationChannels != nil {
-				manifest.Capabilities.Notifications.PulseSummaryChannels = normalizeNotificationChannels(*req.PulseNotificationChannels)
-			}
 			if req.RunNotificationRecipients != nil {
 				manifest.Capabilities.Notifications.RunSummaryRecipients = normalizeNotificationRecipients(*req.RunNotificationRecipients)
 			}
-			if req.PulseNotificationRecipients != nil {
-				manifest.Capabilities.Notifications.PulseSummaryRecipients = normalizeNotificationRecipients(*req.PulseNotificationRecipients)
-			}
 			if req.RunNotificationGmailConnectionIDs != nil {
 				manifest.Capabilities.Notifications.RunSummaryGmailConnectionIDs = normalizeGmailConnectionIDs(*req.RunNotificationGmailConnectionIDs)
-			}
-			if req.PulseNotificationGmailConnectionIDs != nil {
-				manifest.Capabilities.Notifications.PulseSummaryGmailConnectionIDs = normalizeGmailConnectionIDs(*req.PulseNotificationGmailConnectionIDs)
 			}
 			if req.NotificationGmailConnectionID != nil {
 				setWorkflowNotificationSender(manifest.Capabilities.Notifications, *req.NotificationGmailConnectionID)
@@ -642,7 +589,6 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 func setWorkflowNotificationSender(config *WorkflowNotificationConfig, connectionID string) {
 	config.GmailConnectionID = strings.TrimSpace(connectionID)
 	config.RunSummaryGmailConnectionIDs = nil
-	config.PulseSummaryGmailConnectionIDs = nil
 }
 
 func normalizeWorkflowFolderGrants(requested, previous []workflowtypes.WorkflowFolderGrant) ([]workflowtypes.WorkflowFolderGrant, error) {

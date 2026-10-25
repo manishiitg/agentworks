@@ -42,7 +42,7 @@ type structuredFunctionMessage struct {
 }
 
 func isBuiltinConversationalFunction(target triggerTarget, fn crewFunction) bool {
-	return isWorkflowAsk(target, fn) || isPulseBuilderAsk(target, fn) || isGoalLeadAsk(target, fn) || (fn.Name == crewFunctionAskName && fn.CreatedBy == defaultAskCrewFunction().CreatedBy)
+	return isWorkflowAsk(target, fn) || (fn.Name == crewFunctionAskName && fn.CreatedBy == defaultAskCrewFunction().CreatedBy)
 }
 
 // Admission and insertion share crewFunctionCalls.Lock: two callers cannot both

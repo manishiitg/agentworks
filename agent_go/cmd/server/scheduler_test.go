@@ -92,32 +92,6 @@ func TestBuildScheduleCronExpressionAlwaysSetsTimezone(t *testing.T) {
 	}
 }
 
-func TestMergeRuntimeStatePreservesRunningPulseForSameSession(t *testing.T) {
-	runtimeStarted := time.Now().Add(-time.Minute).UTC()
-	historyStarted := runtimeStarted.Add(time.Millisecond)
-	duration := int64(1200)
-
-	got := mergeRuntimeStateWithRuns(ScheduleRuntimeState{
-		LastStatus:    "running",
-		LastRunAt:     &runtimeStarted,
-		LastSessionID: "session-1",
-	}, "schedule-1", []ScheduleRunEntry{{
-		ID:         "run-1",
-		ScheduleID: "schedule-1",
-		SessionID:  "session-1",
-		Status:     "success",
-		StartedAt:  historyStarted,
-		DurationMs: &duration,
-	}}, true, "")
-
-	if got.LastStatus != "running" {
-		t.Fatalf("LastStatus = %q, want running while Autopilot owns the session", got.LastStatus)
-	}
-	if got.LastSessionID != "session-1" {
-		t.Fatalf("LastSessionID = %q, want session-1", got.LastSessionID)
-	}
-}
-
 func TestMergeRuntimeStateAdoptsGenuinelyNewerRun(t *testing.T) {
 	runtimeStarted := time.Now().Add(-time.Hour).UTC()
 	historyStarted := runtimeStarted.Add(30 * time.Minute)
@@ -190,11 +164,7 @@ func TestScheduleStateLockKeyFromRuntimeKey(t *testing.T) {
 	if got := scheduleStateLockKeyFromRuntimeKey(workflowKey); got != wantWorkflow {
 		t.Fatalf("workflow lock key = %q, want %q", got, wantWorkflow)
 	}
-	pulseKey := workflowScheduleRuntimeKey("/tmp/Workflow/demo", manualWorkflowPulseScheduleID)
-	wantPulse := strings.Join([]string{"workflow-pulse", "/tmp/Workflow/demo"}, scheduleScopeSeparator)
-	if got := scheduleStateLockKeyFromRuntimeKey(pulseKey); got != wantPulse {
-		t.Fatalf("Autopilot lock key = %q, want %q", got, wantPulse)
-	}
+
 }
 
 func TestScheduleStateScopeUsesIndependentParallelLane(t *testing.T) {
@@ -373,31 +343,6 @@ func TestHandleCreateWorkflowManifestStampsCreatedBy(t *testing.T) {
 	}
 	if saved.CreatedBy != "user-abc-123" {
 		t.Fatalf("saved manifest CreatedBy = %q, want the authenticated request's user ID", saved.CreatedBy)
-	}
-}
-
-func TestPulseAndWorkflowScheduleUseSeparateDurableLanes(t *testing.T) {
-	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "schedule-state.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-
-	svc := NewSchedulerService(nil)
-	svc.stateStore = store
-	manifest := &WorkflowManifest{ID: "demo"}
-	pulse := buildScheduleContext("Workflow/demo", manifest, WorkflowSchedule{ID: manualWorkflowPulseScheduleID})
-	daily := buildScheduleContext("Workflow/demo", manifest, WorkflowSchedule{ID: "daily"})
-	now := time.Now().UTC()
-
-	if err := svc.claimScheduleRun(context.Background(), pulse, "pulse-run", now); err != nil {
-		t.Fatalf("claim Autopilot lane: %v", err)
-	}
-	if err := svc.claimScheduleRun(context.Background(), daily, "daily-run", now); err != nil {
-		t.Fatalf("workflow schedule should coexist with Autopilot/chat lane: %v", err)
-	}
-	if err := svc.claimScheduleRun(context.Background(), daily, "second-daily-run", now); err == nil {
-		t.Fatal("second workflow schedule unexpectedly acquired the workflow lane")
 	}
 }
 
@@ -1138,28 +1083,6 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 	})
 }
 
-func TestDesignPlanGuidanceSupportsReadOnlyPulseChecklist(t *testing.T) {
-	repoRoot := findRepoRoot(t)
-	raw, err := os.ReadFile(filepath.Join(repoRoot, "agent_go/cmd/server/guidance/templates/builder/design-plan.md"))
-	if err != nil {
-		t.Fatalf("read design-plan guidance: %v", err)
-	}
-	guidance := string(raw)
-	for _, want := range []string{
-		"parent Autopilot prompt",
-		"read-only checklist",
-		"overrides persistence",
-		"do not edit any workspace file",
-		"parent Autopilot Fixer remains the only writer",
-		"technical_review",
-		"is this checklist's automated owner",
-	} {
-		if !strings.Contains(guidance, want) {
-			t.Fatalf("design-plan guidance missing Autopilot read-only contract %q:\n%s", want, guidance)
-		}
-	}
-}
-
 func TestPostRunMonitorPrependsWorkflowVersionUpgradeForOldManifest(t *testing.T) {
 	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.0"}, "1.0.0")
 }
@@ -1192,36 +1115,12 @@ func TestPostRunMonitorPrependsPublishGateUpgradeForVersion101Manifest(t *testin
 	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.1"}, "1.0.1")
 }
 
-func TestPostRunMonitorPrependsPulseReadabilityUpgradeForVersion103Manifest(t *testing.T) {
-	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.3"}, "1.0.3")
-}
-
-func TestPostRunMonitorPrependsPulseFilterUpgradeForVersion104Manifest(t *testing.T) {
-	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.4"}, "1.0.4")
-}
-
-func TestPostRunMonitorPrependsRichPulseWidgetUpgradeForVersion105Manifest(t *testing.T) {
-	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.5"}, "1.0.5")
-}
-
 func TestPostRunMonitorPrependsLegacyOptimizerCleanupUpgradeForVersion106Manifest(t *testing.T) {
 	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.6"}, "1.0.6")
 }
 
-func TestPostRunMonitorPrependsPulseDatePickerCleanupForVersion107Manifest(t *testing.T) {
-	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.7"}, "1.0.7")
-}
-
-func TestPostRunMonitorPrependsStableSoulAndPulseHierarchyUpgradeForVersion108Manifest(t *testing.T) {
-	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.8"}, "1.0.8")
-}
-
 func TestPostRunMonitorPrependsAgentCodeMigrationForVersion109Manifest(t *testing.T) {
 	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.9"}, "1.0.9")
-}
-
-func TestPostRunMonitorPrependsPulseHistoryContractUpgradeForVersion110Manifest(t *testing.T) {
-	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.10"}, "1.0.10")
 }
 
 // assertDirectContractUpgrade checks the upgrade turns a workflow at `from`
@@ -1271,14 +1170,6 @@ func TestNoUpgradeTurnsForAWorkflowAlreadyAtTheCurrentContract(t *testing.T) {
 	}
 }
 
-func TestPostRunMonitorPrependsLightweightPulseReportUpgradeForVersion118Manifest(t *testing.T) {
-	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.18"}, "1.0.18")
-}
-
-func TestPostRunMonitorPrependsExecutivePulseJournalUpgradeForVersion119Manifest(t *testing.T) {
-	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.19"}, "1.0.19")
-}
-
 func TestPostRunMonitorPrependsArtifactPurityUpgradeForVersion120Manifest(t *testing.T) {
 	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.20"}, "1.0.20")
 }
@@ -1313,56 +1204,8 @@ func TestWorkflowBackupRequiresDatabaseSnapshotOnlyForDueTriggerAndCoverage(t *t
 }
 
 // A Pulse lifecycle turn is tagged and elevated to Workshop while retaining the
-// workflow's Builder llm_config. pulse_llm is applied by the workshop to the
+// workflow's Builder llm_config. background_llm is applied by the workshop to the
 // background review agents the tagged turn launches.
-func TestPulseLifecycleTurnKeepsBuilderLLMAndTagsTheTurn(t *testing.T) {
-	builder := &workflowtypes.AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5-5", Options: map[string]interface{}{"reasoning_effort": "high"}}
-	sctx := &ScheduleContext{
-		WorkflowID:    "wf_test",
-		WorkspacePath: "Workflow/test",
-		Schedule:      WorkflowSchedule{ID: "daily", Name: "Daily", WorkshopMode: "run"},
-		Capabilities: WorkflowCapabilities{
-			LLMConfig: &workflowtypes.PresetLLMConfig{
-				SchemaVersion: workflowtypes.LLMConfigSchemaVersion,
-				Mode:          workflowtypes.LLMConfigModeExplicit,
-				BuilderLLM:    builder,
-				TieredConfig:  &workflowtypes.TieredLLMConfig{Tier1: builder, Tier2: builder, Tier3: builder},
-				PulseLLM: &workflowtypes.AgentLLMConfig{
-					Provider: "codex-cli",
-					ModelID:  "gpt-5.5",
-					Options:  map[string]interface{}{"reasoning_effort": "high"},
-				},
-			},
-		},
-	}
-
-	svc := &SchedulerService{}
-	reqMap := svc.buildWorkshopRequest(context.Background(), sctx, "")
-	markPulseLifecycleTurn(reqMap)
-
-	if got := reqMap["pulse_lifecycle_turn"]; got != true {
-		t.Fatalf("pulse_lifecycle_turn = %#v, want true", got)
-	}
-	execOpts, ok := reqMap["execution_options"].(map[string]interface{})
-	if !ok || execOpts["workshop_mode"] != "workshop" {
-		t.Fatalf("Autopilot execution_options = %#v, want workshop mode", reqMap["execution_options"])
-	}
-	if _, set := reqMap["llm_config_source"]; set {
-		t.Fatalf("an Autopilot turn must not override the manifest LLM, got llm_config_source=%#v", reqMap["llm_config_source"])
-	}
-	llmConfig, ok := reqMap["llm_config"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("llm_config missing or wrong type: %#v", reqMap["llm_config"])
-	}
-	primary, ok := llmConfig["primary"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("llm_config.primary missing or wrong type: %#v", llmConfig["primary"])
-	}
-	if primary["provider"] != "claude-code" || primary["model_id"] != "claude-sonnet-5-5" {
-		t.Fatalf("Autopilot turn llm_config = %#v, want the workflow Builder model, never pulse_llm", primary)
-	}
-	markPulseLifecycleTurn(nil) // nil-safe
-}
 
 func TestBuildWorkshopRequestDisablesLiveInputDeliveryForSchedulerTurns(t *testing.T) {
 	svc := &SchedulerService{}
@@ -1432,13 +1275,6 @@ func TestRequestWithWorkshopModeDoesNotLeakElevationAcrossTurns(t *testing.T) {
 		t.Fatalf("base mode was mutated to %#v", got)
 	}
 
-	markPulseLifecycleTurn(normal)
-	if got := normal["execution_options"].(map[string]interface{})["workshop_mode"]; got != "workshop" {
-		t.Fatalf("Autopilot mode = %#v, want workshop", got)
-	}
-	if got := base["execution_options"].(map[string]interface{})["workshop_mode"]; got != "workshop" {
-		t.Fatalf("Autopilot elevation leaked into base request: %#v", got)
-	}
 }
 
 func TestRefreshSessionTmuxSnapshotsForIdleCheckCapturesFreshPane(t *testing.T) {
@@ -1532,15 +1368,6 @@ func TestRunJobDoesNotJoinAnotherActiveRun(t *testing.T) {
 }
 
 // A missing manifest leaves Pulse fully off, never implicit run authority.
-func TestPulseMissingManifestCannotAct(t *testing.T) {
-	perms, text := pulsePermissionsForWorkflow(context.Background(), "Workflow/does-not-exist")
-	if perms.Run || perms.Outward || perms.Change || perms.Reshape {
-		t.Fatalf("missing workflow granted authority: %+v", perms)
-	}
-	if !strings.Contains(text, "Autopilot is off") || !strings.Contains(text, "No checks, reports or messages run") {
-		t.Fatalf("OFF instructions missing: %s", text)
-	}
-}
 
 func TestRunningScheduleInSetLockedFindsOtherRunningSchedule(t *testing.T) {
 	states := map[string]*ScheduleRuntimeState{
@@ -1669,7 +1496,7 @@ func resumeTestScheduleContext(workspacePath, scheduleID string) *ScheduleContex
 				SchemaVersion: workflowtypes.LLMConfigSchemaVersion,
 				Mode:          workflowtypes.LLMConfigModeExplicit,
 				BuilderLLM:    builder,
-				PulseLLM:      builder,
+				BackgroundLLM: builder,
 				TieredConfig:  &workflowtypes.TieredLLMConfig{Tier1: builder, Tier2: builder, Tier3: builder},
 			},
 		},
@@ -1900,9 +1727,9 @@ func TestRunFolderNameSetSkipsEmptyNames(t *testing.T) {
 	}
 }
 
-// pulseStepQueryByLabel selects a stage by label so these assertions survive
+// housekeepingQueryByLabel selects a stage by label so these assertions survive
 // new stages being added to the final sequence.
-func pulseStepQueryByLabel(t *testing.T, steps []pulseLifecycleStep, label string) string {
+func housekeepingQueryByLabel(t *testing.T, steps []afterRunStep, label string) string {
 	t.Helper()
 	for _, st := range steps {
 		if st.label == label {
@@ -2170,7 +1997,7 @@ func TestApplyLLMAndSecretsToReqMapUsesTheWorkflowModelForEverySchedule(t *testi
 		SchemaVersion: workflowtypes.LLMConfigSchemaVersion,
 		Mode:          workflowtypes.LLMConfigModeExplicit,
 		BuilderLLM:    builder,
-		PulseLLM:      builder,
+		BackgroundLLM: builder,
 		TieredConfig:  &workflowtypes.TieredLLMConfig{Tier1: high, Tier2: builder, Tier3: builder},
 	}
 
@@ -2441,7 +2268,6 @@ func TestScheduleQueueExpiryPreservesNewRunOwnership(t *testing.T) {
 	// Reproduce legacy corrupted runtime state: rejection must close THIS starting
 	// claim, so it cannot hold the workflow overnight after the goroutine exits.
 	svc.updateRuntimeState(key, func(state *ScheduleRuntimeState) { state.LastStatus = "error" })
-	sctx.PulseOnly = true // no workflow or retention work is executed by this rejected invocation
 	if _, err := svc.runJob(runCtx, sctx, "new-cron"); err == nil {
 		t.Fatal("lost-owner run was allowed to execute")
 	}
@@ -2489,5 +2315,31 @@ func TestSplitOnTimeOccurrencesNeverCatchesUp(t *testing.T) {
 	skipped, fire = splitOnTimeOccurrences([]time.Time{old}, now)
 	if fire != nil || len(skipped) != 1 {
 		t.Fatalf("a slot hours late must be skipped, not run as catch-up: %v %v", skipped, fire)
+	}
+}
+
+func TestMergeRuntimeStatePreservesRunningHousekeepingForSameSession(t *testing.T) {
+	runtimeStarted := time.Now().Add(-time.Minute).UTC()
+	historyStarted := runtimeStarted.Add(time.Millisecond)
+	duration := int64(1200)
+
+	got := mergeRuntimeStateWithRuns(ScheduleRuntimeState{
+		LastStatus:    "running",
+		LastRunAt:     &runtimeStarted,
+		LastSessionID: "session-1",
+	}, "schedule-1", []ScheduleRunEntry{{
+		ID:         "run-1",
+		ScheduleID: "schedule-1",
+		SessionID:  "session-1",
+		Status:     "success",
+		StartedAt:  historyStarted,
+		DurationMs: &duration,
+	}}, true, "")
+
+	if got.LastStatus != "running" {
+		t.Fatalf("LastStatus = %q, want running while Autopilot owns the session", got.LastStatus)
+	}
+	if got.LastSessionID != "session-1" {
+		t.Fatalf("LastSessionID = %q, want session-1", got.LastSessionID)
 	}
 }

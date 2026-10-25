@@ -69,11 +69,7 @@ func (api *StreamingAPI) workflowRetainedCompatibility(ctx context.Context, sess
 	if found && manifest.Kind == "relay" {
 		workflowKind = "relay"
 	}
-	// The same key as the turn stored, Pulse parts included: without them every
-	// follow-up to a Pulse workflow's Builder chat looked like a policy change
-	// and cancelled the running turn (local 2026-10-08).
 	key := api.chatPolicySessionKey(resolveWorkflowChatPolicy(session, req, active, readOnlyForRequest(access, req)), workflowKind) +
-		pulsePolicyKeySuffix(session, req.PhaseID, folder) +
 		api.workflowChatLaptopPolicyKey(validated, req, readOnlyForRequest(access, req))
 	api.conversationMux.RLock()
 	previous, known := api.lastChatPolicyBySession[session]

@@ -61,7 +61,7 @@ Store a secret value supplied in chat using the secret tool; never repeat, log,
 commit or send it. Confirm success using its name only. For a computer, use
 manage_laptop_access devices/get, browse and set to choose allowed folders and
 command access. Normal shell/files remain on the server; computers are for
-interactive Builder work only, never Goal steps, schedules or Autopilot.
+interactive Builder work only, never Goal steps, schedules or AgentWorks.
 
 After changing something, read the saved state and explain the result plainly.
 The panel refreshes after the turn finishes. A panel click drafts a request into

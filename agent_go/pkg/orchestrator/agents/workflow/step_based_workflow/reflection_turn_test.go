@@ -35,7 +35,7 @@ func TestGoalReflectionSkillIsNotAttached(t *testing.T) {
 func TestLoadWorkflowDBTableNamesExcludesPlatformTables(t *testing.T) {
 	// The list exists to show a step where its own observations belong. Naming
 	// harness bookkeeping would invite a step to write into Pulse's records.
-	for _, name := range []string{"pulse_finding_details", "pulse_review_log", "run_concerns", "report_human_inputs", "eval_results"} {
+	for _, name := range []string{"pulse_finding_details", "goal_update_log", "run_concerns", "report_human_inputs", "eval_results"} {
 		if !isPlatformOwnedTable(name) {
 			t.Errorf("%q should be filtered out of the step-facing table list", name)
 		}

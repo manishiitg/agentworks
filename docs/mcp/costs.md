@@ -40,7 +40,7 @@ Provider actual, token estimates and subscription shadow costs stay separate;
 unpriced/missing usage is visible. This does not invent vendor charges or combine
 the separate opt-in external-agent native usage ledger with model events.
 
-Production writers: admitted chat/Builder turns; workflow agents and Pulse;
+Production writers: admitted chat/Builder turns; workflow agents;
 delegated children; product schedules and functions; channel bots; Python Relay
 agents; paid virtual tools and MCP activity. The durable queue preserves trusted
 origin context. Dashboard dispatch on the current base has no execution adapter;

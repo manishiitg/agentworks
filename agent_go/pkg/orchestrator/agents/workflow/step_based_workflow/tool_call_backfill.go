@@ -9,38 +9,6 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 )
 
-// backfillMissingToolResults recovers a step's orphaned tool calls from Claude
-// Code's own transcript before they are written into the durable
-// execution-attempt-*.json evidence Pulse reads.
-//
-// PLAT-142/143. No interactive (tmux) adapter emits a tool-call-end event, on
-// any provider — a terminal pane carries no structured tool events, so there
-// is nothing to emit one from. Measured across 745 real execution logs:
-// 15,601 tool calls, 2,563 (16.4%) with no recorded result, up to 88% on some
-// workflows. This is not a display gap; it is Pulse reviewing evidence with
-// holes in it.
-//
-// Two recovery sources are tried, in order, and neither reimplements the
-// other:
-//
-//  1. toolcallrecovery (PLAT-143) — mcpagent's toolcalllog is fed by the HTTP
-//     bridge handler EVERY provider's bridge tool calls go through, and is
-//     measured essentially perfect (1 of 36 unpaired live). It needs only the
-//     session id already in scope here — no live agent handle, no transcript,
-//     no provider check.
-//  2. claudecode.ToolResultsFromTranscript (PLAT-141/142) — Claude Code's own
-//     transcript, for whatever the account-agnostic source above does not
-//     cover (a session already torn down, or a genuinely different gap).
-//
-// This is the same shared toolcallrecovery package the chat UI's settle
-// (internal/events.EventStore) tries first, reused rather than
-// reimplemented — the whole reason it is its own package.
-//
-// The ideal fix is one reconciliation at mcpagent's event fan-out point
-// (Agent.emitTypedEvent), reaching every consumer identically instead of each
-// needing its own call site; that is a cross-repo change to the coding-agent
-// turn lifecycle and needs a live run to verify, so it is recorded as
-// follow-up rather than attempted blind here.
 func backfillMissingToolResults(sessionID string, toolCalls []orchestrator.ToolCallEntry, executionAgent agents.OrchestratorAgent) {
 	if len(toolCalls) == 0 {
 		return

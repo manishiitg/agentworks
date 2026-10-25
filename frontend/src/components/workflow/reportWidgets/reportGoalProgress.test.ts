@@ -29,7 +29,7 @@ function fixture(status = "ok", value: number | null = 400) {
     if (sql.includes("sqlite_master"))
       return [
         { name: "workflow_goal_metrics" },
-        { name: "pulse_goal_observations" },
+        { name: "goal_observations" },
       ];
     if (sql.includes("definition_json"))
       return [

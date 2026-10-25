@@ -27,13 +27,6 @@ func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]
 		map[string]any{"path": externalString("Workflow-relative source file path, such as code/task.py.")}, "path")
 	add("builder_restore_file", "Restore the content that preceded one audited Builder file edit. Requires the file's current revision to prevent overwriting newer work.", true, true,
 		map[string]any{"path": externalString("Workflow-relative source file path."), "edit_id": externalString("Edit ID from builder action=file_history."), "expected_revision": externalString("Current revision from read_file, or missing.")}, "path", "edit_id", "expected_revision")
-	// The workflow's Pulse, from MCP (never from Slack). Same grant as
-	// builder_chat: talking to Pulse can make the Builder act within Pulse's
-	// autonomy levels.
-	add("builder_pulse_chat", "Send a message to the selected workflow's Autopilot (the agent that owns its goal) and start its turn. Use for the goal: how it is doing, what Autopilot is working on, direction for it. Poll builder action=pulse_status for the reply. Requires builder:chat and write access; the workflow's Autopilot must be on with a goal in soul.md.", true, true,
-		map[string]any{"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 4000}}, "message")
-	add("builder_pulse_status", "Read the selected workflow's Autopilot conversation: whether it is busy, its latest messages (newest last), the latest goal check and pending decisions. Use after builder action=pulse_chat.", false, true,
-		map[string]any{"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 40}})
 	for _, name := range []string{"builder_status", "builder_reply_input", "builder_cancel"} {
 		props := map[string]any{"operation_id": externalString("Operation ID returned by builder action=chat.")}
 		required := []string{"operation_id"}
@@ -269,10 +262,7 @@ func (api *StreamingAPI) externalBuilderOperationCall(w http.ResponseWriter, r *
 		api.submitExternalBuilder(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), args, workflow)
 		return
 	}
-	if name == "builder_pulse_chat" || name == "builder_pulse_status" {
-		api.externalPulseCall(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), name, args, workflow)
-		return
-	}
+
 	if name == "builder_file_history" || name == "builder_restore_file" {
 		api.externalBuilderFileCall(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), name, args, workflow)
 		return

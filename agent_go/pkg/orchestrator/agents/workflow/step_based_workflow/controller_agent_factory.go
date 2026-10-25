@@ -524,10 +524,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 	// agents and scripts under the same parent to exchange artifacts without
 	// granting write access to another top-level step.
 	writePaths = []string{writeRootPath, downloadsPath}
-	// A step may write anywhere in THIS run (any step's outputs, run logs) and the shared areas db/assets, reports and
-	// tool_output_folder; never past runs or other iterations, planning/, workflow.json, config, variables,
-	// functions or soul (Builder and Pulse only, through their tools). Generic review agents stay on their narrow
-	// write scope. With no selected run there is no run folder to grant (it would be the whole workflow).
 	if !genericStep {
 		if hcpo.selectedRunFolder != "" {
 			writePaths = append(writePaths, runWorkspacePath)
@@ -891,11 +887,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 		if hcpo.stepHasGoal.Load() {
 			enabledTools = append(enabledTools, "workflow:get_goal_metrics", "workflow:record_goal_observations")
 		}
-		// A step working on the goal may ask the workflow's Pulse for a
-		// recommendation (PLAT-697 phase 4).
-		if hcpo.stepHasGoal.Load() && hcpo.stepPulseEnabled.Load() {
-			enabledTools = append(enabledTools, "workflow:ask_pulse", "workflow:ask_goal_lead")
-		}
+
 	}
 	if hcpo.resolveDBAccess(stepConfig) == DBAccessReadWrite {
 		enabledTools = append(enabledTools, "workflow_db:mutate_workflow_db")
@@ -1097,36 +1089,32 @@ func (hcpo *StepBasedWorkflowOrchestrator) selectPhaseLLM(agentPurpose string) *
 	}
 }
 
-func (hcpo *StepBasedWorkflowOrchestrator) selectPulseLLM(agentPurpose string) *orchestrator.LLMConfig {
-	if hcpo.presetPulseLLM == nil || hcpo.presetPulseLLM.Provider == "" || hcpo.presetPulseLLM.ModelID == "" {
+func (hcpo *StepBasedWorkflowOrchestrator) selectBackgroundLLM(agentPurpose string) *orchestrator.LLMConfig {
+	if hcpo.presetBackgroundLLM == nil || hcpo.presetBackgroundLLM.Provider == "" || hcpo.presetBackgroundLLM.ModelID == "" {
 		return hcpo.selectPhaseLLM(agentPurpose)
 	}
-	hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using Autopilot LLM for %s: %s/%s",
-		agentPurpose, hcpo.presetPulseLLM.Provider, hcpo.presetPulseLLM.ModelID))
+	hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using AgentWorks LLM for %s: %s/%s",
+		agentPurpose, hcpo.presetBackgroundLLM.Provider, hcpo.presetBackgroundLLM.ModelID))
 	return &orchestrator.LLMConfig{
 		Primary: orchestrator.LLMModel{
-			Provider:     hcpo.presetPulseLLM.Provider,
-			ModelID:      hcpo.presetPulseLLM.ModelID,
-			Options:      hcpo.presetPulseLLM.Options,
-			ConnectionID: hcpo.presetPulseLLM.ConnectionID,
+			Provider:     hcpo.presetBackgroundLLM.Provider,
+			ModelID:      hcpo.presetBackgroundLLM.ModelID,
+			Options:      hcpo.presetBackgroundLLM.Options,
+			ConnectionID: hcpo.presetBackgroundLLM.ConnectionID,
 		},
 		APIKeys: hcpo.GetAPIKeys(),
 	}
 }
 
-// selectPulseUpkeepLLM is the model for Pulse's platform-upkeep work (Plan
-// Drift, Technical and Architecture reviews, KB maintenance): the workflow's
-// Medium tier, so pulse_llm stays reserved for Goal Work. Without a Medium
-// tier it falls back to the Pulse model, then the phase model.
-func (hcpo *StepBasedWorkflowOrchestrator) selectPulseUpkeepLLM(agentPurpose string) *orchestrator.LLMConfig {
+func (hcpo *StepBasedWorkflowOrchestrator) selectBackgroundUpkeepLLM(agentPurpose string) *orchestrator.LLMConfig {
 	if hcpo.tierResolver != nil {
 		if cfg := hcpo.tierResolver.ResolveTier(TierMedium); cfg != nil {
-			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using Medium tier for Autopilot upkeep %s: %s/%s",
+			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using Medium tier for AgentWorks upkeep %s: %s/%s",
 				agentPurpose, cfg.Primary.Provider, cfg.Primary.ModelID))
 			return cfg
 		}
 	}
-	return hcpo.selectPulseLLM(agentPurpose)
+	return hcpo.selectBackgroundLLM(agentPurpose)
 }
 
 // createKBConsolidateAgent builds the one-shot KB consolidate agent. Same folder-guard
@@ -1147,7 +1135,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createKBConsolidateAgent(ctx context.
 	hcpo.SetWorkspacePathForFolderGuard(readPaths, writePaths)
 	hcpo.GetLogger().Info(fmt.Sprintf("🔒 Setting folder guard for KB consolidate agent - Read: %v, Write: %v", readPaths, writePaths))
 
-	llmConfig := hcpo.selectPulseUpkeepLLM("KB consolidate agent")
+	llmConfig := hcpo.selectBackgroundUpkeepLLM("KB consolidate agent")
 	if llmConfig == nil {
 		return nil, fmt.Errorf("no valid LLM configuration found for KB consolidate agent")
 	}
@@ -1206,7 +1194,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createKBReorganizeAgent(ctx context.C
 	hcpo.SetWorkspacePathForFolderGuard(readPaths, writePaths)
 	hcpo.GetLogger().Info(fmt.Sprintf("🔒 Setting folder guard for KB reorganize agent - Read: %v, Write: %v", readPaths, writePaths))
 
-	llmConfig := hcpo.selectPulseUpkeepLLM("KB reorganize agent")
+	llmConfig := hcpo.selectBackgroundUpkeepLLM("KB reorganize agent")
 	if llmConfig == nil {
 		return nil, fmt.Errorf("no valid LLM configuration found for KB reorganize agent")
 	}

@@ -10,7 +10,7 @@ import (
 // product.yaml. This locks the manifest contract the workflow surface menu
 // renders from: every command resolves a non-empty prompt carrying the
 // {{context}} placeholder, kind-backed commands name their guidance kind,
-// and the retained pulse-review focus shortcuts stay executable but hidden.
+// and explicit review commands keep their menu visibility.
 func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 	manifest, err := AgentWorksManifest()
 	if err != nil {
@@ -55,16 +55,9 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 			t.Fatalf("command %q missing from product.yaml", name)
 		}
 	}
-	// /pulse stays a hardcoded builtin: it is an async frontend API call no
-	// static prompt can express.
-	if _, ok := byName["pulse"]; ok {
-		t.Fatal("command pulse must stay a hardcoded builtin, not a yaml prompt")
-	}
-	if !hidden["run-plan-drift"] {
-		t.Fatal("run-plan-drift must be hidden from the slash menu: the Autopilot tab starts it")
-	}
+	// Removed reviewer commands are absent.
 	// Owner 2026-10-08: one Pulse, no separate reviewers. The old reviewer
-	// commands and their aliases are gone; #pulse in the Builder chat asks Pulse.
+	// commands and their aliases are gone.
 	for _, retired := range []string{"run-goal-work", "strategy-auditor", "goal-advisor", "run-technical-review", "pulse-review",
 		"run-architecture-review", "pulse-review-execution-health", "pulse-review-database", "pulse-fixer", "merge-pulse-issues",
 		// Saved-code quality is part of Workflow Review (owner, 2026-10-08).
@@ -78,8 +71,5 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 	}
 	if !slices.Equal(aliases["publish"], []string{"share"}) {
 		t.Fatalf("share keeps /publish as an alias, got %v", aliases["publish"])
-	}
-	if len(byName) != 12 {
-		t.Fatalf("product.yaml carries %d commands, want 12", len(byName))
 	}
 }

@@ -11,44 +11,6 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-func TestRuntimeProjectionClearsStaleRunningButPreservesOwnedPulse(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	workspace := &mockWorkspaceAPI{files: map[string]string{}}
-	wsServer := httptest.NewServer(workspace)
-	defer wsServer.Close()
-	t.Setenv("WORKSPACE_API_URL", wsServer.URL)
-	svc := NewSchedulerService(nil)
-	ws, id := "Workflow/projection", "schedule-1"
-	start := time.Now().UTC().Add(-time.Hour)
-	if err := WriteScheduleRuns(context.Background(), ws, []ScheduleRunEntry{{ID: "run-1", ScheduleID: id, SessionID: "session-1", StartedAt: start, Status: "success"}}); err != nil {
-		t.Fatal(err)
-	}
-	svc.runtimeStates[workflowScheduleRuntimeKey(ws, id)] = &ScheduleRuntimeState{ActiveRunID: "run-1", LastStatus: "running", LastSessionID: "session-1", LastRunAt: &start, LastError: "stale error"}
-	svc.registerScheduleRunContext("run-1")
-	if got := svc.GetRuntimeStateForWorkflow(ws, id); got.LastStatus != "running" {
-		t.Fatalf("active Autopilot overwritten: %+v", got)
-	}
-	svc.releaseScheduleRunContext("run-1")
-	if got := svc.GetRuntimeStateForWorkflow(ws, id); got.LastStatus != "success" || got.ActiveRunID != "" || got.LastError != "" {
-		t.Fatalf("stale state retained: %+v", got)
-	}
-	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "scheduler.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	svc.stateStore = store
-	if err := store.BeginRun(context.Background(), schedulerstate.Run{RunID: "run-1", ScopeType: "workflow", ScopeID: ws, LockKey: ws, ScheduleID: id, StartedAt: start}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.ForceTerminal(context.Background(), schedulerstate.Transition{RunID: "run-1", To: schedulerstate.StatePartial, ErrorMessage: "Autopilot incomplete"}); err != nil {
-		t.Fatal(err)
-	}
-	if got := svc.GetRuntimeStateForWorkflow(ws, id); got.LastStatus != "partial" || got.LastError != "Autopilot incomplete" {
-		t.Fatalf("lost durable Autopilot outcome: %+v", got)
-	}
-}
-
 func TestRuntimeProjectionDoesNotUseSessionAsRunIdentity(t *testing.T) {
 	now := time.Now().UTC()
 	old := now.Add(-time.Hour)
@@ -113,5 +75,43 @@ func TestNextWorkflowScheduleRunUsesCurrentTimeAndScope(t *testing.T) {
 	}
 	if got := svc.nextWorkflowScheduleRunAt("Workflow/a", "s", later); got != nil {
 		t.Fatalf("exhausted calendar next=%v", got)
+	}
+}
+
+func TestRuntimeProjectionClearsStaleRunningButPreservesOwnedWork(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	workspace := &mockWorkspaceAPI{files: map[string]string{}}
+	wsServer := httptest.NewServer(workspace)
+	defer wsServer.Close()
+	t.Setenv("WORKSPACE_API_URL", wsServer.URL)
+	svc := NewSchedulerService(nil)
+	ws, id := "Workflow/projection", "schedule-1"
+	start := time.Now().UTC().Add(-time.Hour)
+	if err := WriteScheduleRuns(context.Background(), ws, []ScheduleRunEntry{{ID: "run-1", ScheduleID: id, SessionID: "session-1", StartedAt: start, Status: "success"}}); err != nil {
+		t.Fatal(err)
+	}
+	svc.runtimeStates[workflowScheduleRuntimeKey(ws, id)] = &ScheduleRuntimeState{ActiveRunID: "run-1", LastStatus: "running", LastSessionID: "session-1", LastRunAt: &start, LastError: "stale error"}
+	svc.registerScheduleRunContext("run-1")
+	if got := svc.GetRuntimeStateForWorkflow(ws, id); got.LastStatus != "running" {
+		t.Fatalf("active Autopilot overwritten: %+v", got)
+	}
+	svc.releaseScheduleRunContext("run-1")
+	if got := svc.GetRuntimeStateForWorkflow(ws, id); got.LastStatus != "success" || got.ActiveRunID != "" || got.LastError != "" {
+		t.Fatalf("stale state retained: %+v", got)
+	}
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "scheduler.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	svc.stateStore = store
+	if err := store.BeginRun(context.Background(), schedulerstate.Run{RunID: "run-1", ScopeType: "workflow", ScopeID: ws, LockKey: ws, ScheduleID: id, StartedAt: start}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ForceTerminal(context.Background(), schedulerstate.Transition{RunID: "run-1", To: schedulerstate.StatePartial, ErrorMessage: "Autopilot incomplete"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.GetRuntimeStateForWorkflow(ws, id); got.LastStatus != "partial" || got.LastError != "Autopilot incomplete" {
+		t.Fatalf("lost durable Autopilot outcome: %+v", got)
 	}
 }

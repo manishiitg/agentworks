@@ -24,11 +24,6 @@ func getToolNamesByCategory(category string) map[string]bool {
 			toolNames[toolName] = true
 		}
 	case "human_tools":
-		// HumanToolImplementationNames is the complete implementation inventory.
-		// CreateHumanToolExecutors only contains the older
-		// immediate-feedback tools, so using it here silently dropped the
-		// durable Pulse decision tools from `human_tools:*` in workflow
-		// execution agents.
 		for _, toolName := range virtualtools.HumanToolImplementationNames() {
 			toolNames[toolName] = true
 		}

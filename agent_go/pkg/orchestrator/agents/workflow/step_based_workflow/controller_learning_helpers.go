@@ -82,21 +82,6 @@ func shouldDirectWriteLearnings(agentConfigs *AgentConfigs, step PlanStepInterfa
 	return canWriteLearnings(agentConfigs, step)
 }
 
-// PLAT-060. Architecture-owned config decisions must carry the reason that justified
-// them into step_config.json, which is what the *next* reviewer actually reads.
-//
-// architecture_review owns tier, mode, and model selection, is read-only, and
-// already produces "current state, exact suggestion, expected benefit, risk, and
-// evidence" for every recommendation. That rationale lived only in the Pulse
-// finding: the Fixer applied it through a tool call with no reason parameter, so
-// the config recorded the change with no trace of why.
-//
-// The escape hatch matters as much as the requirement. A required field invites
-// a confabulated answer from an agent that has already decided to act, and an
-// invented justification is harder to challenge later than a missing one. So
-// every message names the sanctioned alternative: raise a decision with
-// create_human_input_request and park the finding awaiting_user. Uncertainty is
-// a legitimate terminal state.
 const reasonEscapeHatch = " If the evidence does not settle it, do not make the change: raise a decision with create_human_input_request and park the finding awaiting_user. An invented reason is worse than no change."
 
 // validateExecutionTierChange rejects a tier override that states no reason.

@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -270,36 +268,6 @@ func TestWorkshopExecutionNotifierQueuesReviewerCompletionForParent(t *testing.T
 		}
 	default:
 		t.Fatal("expected reviewer completion to queue a parent auto-notification")
-	}
-}
-
-func TestWorkshopCompletionDisplayResultUsesPulseReviewArtifact(t *testing.T) {
-	workspacePath := t.TempDir()
-	resultPath := filepath.Join("pulse", "reviews", "run-1", "eval_health.md")
-	if err := os.MkdirAll(filepath.Dir(filepath.Join(workspacePath, resultPath)), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(workspacePath, resultPath), []byte(`# Autopilot reviewer result
-
-- Module: eval_health
-
-## Findings
-
-The evaluation found a stale metric source.
-
-**Next:** correct the source and verify the next run.
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	got := workshopCompletionDisplayResult(workspacePath, "review saved at "+resultPath, map[string]string{
-		"execution_type":     "pulse-reviewer",
-		"review_result_path": resultPath,
-	})
-
-	want := "The evaluation found a stale metric source.\n\n**Next:** correct the source and verify the next run."
-	if got != want {
-		t.Fatalf("display result = %q, want %q", got, want)
 	}
 }
 

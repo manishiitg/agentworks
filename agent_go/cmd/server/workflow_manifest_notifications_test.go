@@ -1,7 +1,6 @@
 package server
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -29,12 +28,11 @@ func TestMergeWorkflowCapabilitiesUpdatePreservesNotificationsForOlderClients(t 
 
 func TestNotifySenderSaveReplacesLegacySummarySenders(t *testing.T) {
 	config := &WorkflowNotificationConfig{
-		RunSummaryGmailConnectionIDs:   []string{"gmail_001", "gmail_002"},
-		PulseSummaryGmailConnectionIDs: []string{"gmail_003"},
-		RunSummaryRecipients:           []string{"owner@example.com"},
+		RunSummaryGmailConnectionIDs: []string{"gmail_001", "gmail_002"},
+		RunSummaryRecipients:         []string{"owner@example.com"},
 	}
 	setWorkflowNotificationSender(config, " gmail_004 ")
-	if config.GmailConnectionID != "gmail_004" || len(config.RunSummaryGmailConnectionIDs) != 0 || len(config.PulseSummaryGmailConnectionIDs) != 0 {
+	if config.GmailConnectionID != "gmail_004" || len(config.RunSummaryGmailConnectionIDs) != 0 {
 		t.Fatalf("sender selection did not replace legacy overrides: %+v", config)
 	}
 	if len(config.RunSummaryRecipients) != 1 || config.RunSummaryRecipients[0] != "owner@example.com" {
@@ -62,8 +60,7 @@ func TestMergeWorkflowCapabilitiesUpdateCanDisableNotifications(t *testing.T) {
 func TestMergeWorkflowCapabilitiesUpdateKeepsNotificationInstructions(t *testing.T) {
 	incoming := &WorkflowCapabilities{
 		Notifications: &WorkflowNotificationConfig{
-			RunSummaryInstructions:   "Include delivered outputs and the primary metric.",
-			PulseSummaryInstructions: "Put decisions and material fixes first.",
+			RunSummaryInstructions: "Include delivered outputs and the primary metric.",
 		},
 	}
 	got := mergeWorkflowCapabilitiesUpdate(WorkflowCapabilities{}, incoming)
@@ -73,15 +70,12 @@ func TestMergeWorkflowCapabilitiesUpdateKeepsNotificationInstructions(t *testing
 	if got.Notifications.RunSummaryInstructions != incoming.Notifications.RunSummaryInstructions {
 		t.Fatalf("run instructions = %q, want %q", got.Notifications.RunSummaryInstructions, incoming.Notifications.RunSummaryInstructions)
 	}
-	if got.Notifications.PulseSummaryInstructions != incoming.Notifications.PulseSummaryInstructions {
-		t.Fatalf("pulse instructions = %q, want %q", got.Notifications.PulseSummaryInstructions, incoming.Notifications.PulseSummaryInstructions)
-	}
+
 }
 
 func TestMergeWorkflowCapabilitiesUpdateKeepsSummaryChannelRoutes(t *testing.T) {
 	incoming := &WorkflowCapabilities{Notifications: &WorkflowNotificationConfig{
-		RunSummaryChannels:   []string{"slack"},
-		PulseSummaryChannels: []string{"gmail"},
+		RunSummaryChannels: []string{"slack"},
 	}}
 	got := mergeWorkflowCapabilitiesUpdate(WorkflowCapabilities{}, incoming)
 	if got.Notifications == nil {
@@ -90,38 +84,13 @@ func TestMergeWorkflowCapabilitiesUpdateKeepsSummaryChannelRoutes(t *testing.T) 
 	if len(got.Notifications.RunSummaryChannels) != 1 || got.Notifications.RunSummaryChannels[0] != "slack" {
 		t.Fatalf("run channels = %#v, want slack", got.Notifications.RunSummaryChannels)
 	}
-	if len(got.Notifications.PulseSummaryChannels) != 1 || got.Notifications.PulseSummaryChannels[0] != "gmail" {
-		t.Fatalf("pulse channels = %#v, want gmail", got.Notifications.PulseSummaryChannels)
-	}
+
 }
 
-func TestLegacyNotificationInstructionsRemainEffectiveForBothSections(t *testing.T) {
+func TestLegacyNotificationInstructionsRemainEffectiveForRunSummary(t *testing.T) {
 	config := &WorkflowNotificationConfig{Instructions: "Use a detailed owner summary."}
 	if got := config.EffectiveRunSummaryInstructions(); got != config.Instructions {
 		t.Fatalf("run instructions = %q, want legacy %q", got, config.Instructions)
 	}
-	if got := config.EffectivePulseSummaryInstructions(); got != config.Instructions {
-		t.Fatalf("pulse instructions = %q, want legacy %q", got, config.Instructions)
-	}
-}
 
-func TestNotificationInstructionsDefaultToMaterialTransitions(t *testing.T) {
-	var config *WorkflowNotificationConfig
-	if got := runSummaryInstructionsOrDefault(config); !strings.Contains(got, "get_notification_history") || !strings.Contains(got, "record_only") {
-		t.Fatalf("run default does not require history-aware quiet delivery: %q", got)
-	}
-	if got := pulseSummaryInstructionsOrDefault(config); !strings.Contains(got, "get_notification_history") || !strings.Contains(got, "deliver_only") {
-		t.Fatalf("Autopilot default does not require history-aware external delivery: %q", got)
-	}
-
-	custom := &WorkflowNotificationConfig{
-		RunSummaryInstructions:   "Send every run.",
-		PulseSummaryInstructions: "Never send externally.",
-	}
-	if got := custom.EffectiveRunSummaryInstructions(); got != "Send every run." {
-		t.Fatalf("run custom instruction = %q", got)
-	}
-	if got := custom.EffectivePulseSummaryInstructions(); got != "Never send externally." {
-		t.Fatalf("Autopilot custom instruction = %q", got)
-	}
 }

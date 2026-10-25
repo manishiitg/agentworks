@@ -18,10 +18,6 @@ import (
 // need to supply it.
 // =====================================================================
 
-// RegisterCaptureContextTool exposes capture_context to the optimizer/builder.
-// It is the privileged, structured path for durable user-supplied runtime
-// context. The tool writes the canonical context file; Pulse surfaces the
-// durable result from SQLite when it is relevant.
 func RegisterCaptureContextTool(agent definitionToolRegistrar, workspacePath string, logger loggerv2.Logger) {
 	desc := "Capture durable user-supplied runtime business context for this workflow. " +
 		"Use only after the user confirms the item should be remembered across runs, and only when the Workflow Profile allows business-context accumulation. " +

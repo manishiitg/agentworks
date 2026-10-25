@@ -14,35 +14,6 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-// The backlog of plan changes whose knock-on effects nobody has checked yet.
-//
-// A workflow is a web of implicit dependencies: a step's output feeds downstream
-// steps, evals score it, the report dashboard queries its data, db stores it, and
-// learnings/KB describe its behavior. Change a step and those silently rot.
-//
-// The framework already accounts for this. plan-change-impact names the six
-// dimensions to reconcile, every plan-mod call is logged with its reason and
-// old/new values, artifact_review is the module that sweeps them, and
-// mark_changelog_artifact_reviewed stamps an entry once its blast radius has been
-// traced.
-//
-// The one missing piece was arithmetic. Nothing counted the unstamped entries, so
-// Pulse Gate had to open the changelog files and work it out on every run — the
-// same shape of blind spot as learning_health, whose trigger has always been
-// "plan or prompt changes affected step behavior" but which had no fact to fire
-// on.
-//
-// So this counts them, and makes no judgement about which dependents actually
-// broke: only tracing a change's surface against the real artifacts can tell a
-// cosmetic edit from one that orphans a report query. An earlier version of this
-// file tried to decide staleness in Go and was wrong for exactly that reason —
-// in a live workflow, 78 of the plan-mod calls were update_step_config, which
-// records no field diff at all, so a review_notes touch was indistinguishable
-// from a rewritten step description.
-//
-// Computed on read. It needs no state, and an entry stays listed until it is
-// actually stamped, so the backlog cannot be lost by anything failing to record.
-
 // UnreviewedPlanChange is one plan-mod call whose blast radius has not been traced.
 type UnreviewedPlanChange struct {
 	ChangeID                   string           `json:"change_id,omitempty"`
@@ -56,7 +27,6 @@ type UnreviewedPlanChange struct {
 	DependencyCoverageProblems []string         `json:"dependency_coverage_problems,omitempty"`
 }
 
-// PlanChangeBacklog is the summary handed to Pulse Gate.
 type PlanChangeBacklog struct {
 	UnreviewedCount                int                    `json:"unreviewed_count"`
 	SupersededLegacyCount          int                    `json:"superseded_legacy_count,omitempty"`
@@ -99,11 +69,6 @@ func workflowAbsPath(workspacePath string, parts ...string) string {
 	return filepath.Join(all...)
 }
 
-// CollectPlanChangeBacklog scans planning/changelog/ for entries that have not
-// been stamped artifact_review.done, newest first.
-//
-// Returns nil when there is no changelog or nothing is outstanding — a workflow
-// whose changes have all been reconciled must add nothing to Pulse's context.
 func CollectPlanChangeBacklog(workspacePath string) *PlanChangeBacklog {
 	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
 	if workspacePath == "" {
@@ -205,9 +170,6 @@ func CollectPlanChangeBacklog(workspacePath string) *PlanChangeBacklog {
 	return backlog
 }
 
-// BuildPlanChangeDependencyIntake projects the exact current-contract coverage
-// failures into the deterministic Gate feed without duplicating the changelog
-// scan or promoting them to Pulse issues.
 func BuildPlanChangeDependencyIntake(backlog *PlanChangeBacklog) PlanChangeDependencyIntake {
 	result := PlanChangeDependencyIntake{
 		Detector:        "plan_change_dependencies",
@@ -249,9 +211,6 @@ func planDependencyCoverageProblems(entry PlanChangelogEntry) []string {
 		}
 		if len(normalizedEvidenceStrings(review.Evidence)) == 0 {
 			problems = append(problems, surface+": evidence is missing")
-		}
-		if (review.Disposition == "blocked" || review.Disposition == "broken") && len(normalizedEvidenceStrings(review.IssueIDs)) == 0 {
-			problems = append(problems, surface+": blocked/broken disposition lacks a durable Autopilot issue")
 		}
 	}
 	return problems

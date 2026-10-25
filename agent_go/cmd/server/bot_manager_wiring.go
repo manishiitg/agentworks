@@ -33,10 +33,6 @@ func (api *StreamingAPI) wireBotManager(m *services.BotConversationManager) {
 	// Slack slugs: one app reaches many targets, per channel list and per
 	// DM sender (slack_slugs.go, PLAT-668).
 	services.SetSlackRoutingHooks(api.slackRoutingHooksFor())
-	// "<workflow-slug>-pulse" talks to the workflow's Pulse (PLAT-697).
-	services.SetGoalLeadSlackHandler(api.handleGoalLeadSlack)
-	// A 1:1 Slack DM runs as the one enabled account its sender's email
-	// maps to (slack_dm.go).
 	services.SetSlackDMUserResolver(slackDMUserForEmail)
 	// WhatsApp lists other owners' crews (read-only) beside the user's own.
 	services.SetWhatsAppOtherCrewsFunc(api.whatsappOtherCrews)

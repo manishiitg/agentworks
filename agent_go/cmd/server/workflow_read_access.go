@@ -11,37 +11,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
-// Per-workflow READ authorization for the workflow data routes.
-//
-// These routes take a workspace_path (or a file_path) from the query and read
-// run logs, costs, learnings, Pulse state and so on straight from the shared
-// workspace. Until 2026-09-29 most of them checked nothing beyond a signed-in
-// user, so any account on a multi-user server could read any workflow's runs,
-// and logs/file could read any file under another user's _users/<id> tree.
-//
-// The rule, by the root a path names:
-//
-//	Workflow/<name>        the workflow's access record (owner, editor or
-//	                       reader) plus the per-user workflow allow-list;
-//	                       dot-named folders (Workflow/.relay_releases, ...)
-//	                       hold no workflow and are admin-only
-//	_users/<caller>/...    the caller's own tree
-//	_users/<o>/Chats/Work/projects/<id>, Crew/<id>
-//	                       the Crew's owner (Crew Run-mode readers use the
-//	                       mediated shared-crew endpoints, not these)
-//	_users/<o>/Chats/Code/projects/<id>
-//	                       anyone the Code is shared with (codeRoleFor)
-//	Chats/, Downloads/, chat_history/, memories/
-//	                       per-user logical paths. These handlers read the
-//	                       workspace without an X-User-ID, so the workspace
-//	                       service resolves them under the server's default
-//	                       user: they are that user's tree, not the caller's
-//	                       (costs remaps them to the caller and says so)
-//	anything else          admin-only
-//
-// Admins read everything; a bot-route token reads only its bound workflow;
-// no claims at all is the single-user (auth disabled) mode.
-
 // logicalPathOwner says whose tree a logical per-user path names for a route.
 type logicalPathOwner int
 
@@ -220,8 +189,7 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	read := func(route string, handler http.HandlerFunc) {
 		apiRouter.HandleFunc(route, requireWorkflowReadAccess(handler)).Methods("GET", "OPTIONS")
 	}
-	read("/workflow/pulse-overview", api.handleGetPulseOverview)
-	read("/workflow/goal-lead", api.handleGetGoalLead)
+	read("/workflow/goal-metrics", api.handleGetGoalMetrics)
 	read("/workspace/state", api.handleLoadWorkspaceState)
 	read("/workflow/run-folders", api.handleGetRunFolders)
 	read("/workflow/learnings/all", api.handleGetAllStepLearnings)

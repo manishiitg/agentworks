@@ -33,35 +33,6 @@ func TestChatPolicyRoleRequiresReconnect(t *testing.T) {
 	}
 }
 
-func TestScheduledPulseTransitionKeepsNativeConversation(t *testing.T) {
-	api := &StreamingAPI{}
-	for _, readOnly := range []bool{false, true} {
-		scheduled := resolveWorkflowChatPolicy("schedule-digest_123", QueryRequest{TriggeredBy: "cron"}, nil, readOnly)
-		pulse := resolveWorkflowChatPolicy("schedule-digest_123", QueryRequest{TriggeredBy: "cron", PulseLifecycleTurn: true}, nil, readOnly)
-		if scheduled.Origin != "scheduled" || pulse.Origin != "pulse" {
-			t.Fatal("stage provenance must remain distinct")
-		}
-		if chatPolicyRoleRequiresReconnect(true, scheduled.sessionKey(), pulse.sessionKey(), true, nil) {
-			t.Fatal("same-permission scheduled -> Autopilot transition restarted native conversation")
-		}
-		saved := &ChatHistoryAgentRuntime{ExternalSessionID: "native-1", ChatPolicyRoleKey: scheduled.sessionKey()}
-		if chatPolicyRoleRequiresReconnect(true, "", pulse.sessionKey(), false, saved) {
-			t.Fatal("restored scheduled runtime cannot continue into Autopilot")
-		}
-		if chatPolicyRequiresReconnect(true, api.chatPolicySessionKey(scheduled), api.chatPolicySessionKey(pulse), true, nil) {
-			t.Fatal("same-definition scheduled -> Autopilot transition still reconnects Muse")
-		}
-		interactive := resolveWorkflowChatPolicy("schedule-digest_123", QueryRequest{UserInteractiveContinuation: true}, nil, readOnly)
-		if !chatPolicyRoleRequiresReconnect(true, scheduled.sessionKey(), interactive.sessionKey(), true, nil) {
-			t.Fatal("interactive promotion must still refresh authority")
-		}
-		pulse.Capabilities["mcp_management"] = true
-		if !chatPolicyRoleRequiresReconnect(true, scheduled.sessionKey(), pulse.sessionKey(), true, nil) {
-			t.Fatal("a real Autopilot capability change must still reconnect")
-		}
-	}
-}
-
 func TestCodingProviderReloadsInstructionsOnResume(t *testing.T) {
 	for _, provider := range []string{"claude-code", "codex-cli", "cursor-cli", "pi-cli"} {
 		if !codingProviderReloadsInstructionsOnResume(provider) {
@@ -130,9 +101,10 @@ func TestAutoNotificationKeepsTheInteractiveNativeConversation(t *testing.T) {
 // PLAT-548 round 2 (owner's log, 2026-10-16): an auto-notification into a Pulse chat or an external Builder chat took the
 // full interactive capability set, so it looked like a different chat and threw the coding CLI's session away. It now keeps
 // the chat's own role (and not its tools), and still looks like itself once the chat's role is restored after a restart.
-func TestAutoNotificationKeepsThePulseAndExternalBuilderRole(t *testing.T) {
-	pulse := resolveWorkflowChatPolicy("schedule-goallead--round2-g1", QueryRequest{TriggeredBy: "cron", PulseLifecycleTurn: true}, nil, false)
-	notice := resolveWorkflowChatPolicy("schedule-goallead--round2-g1", QueryRequest{TriggeredBy: "cron", IsAutoNotification: true}, nil, false)
+
+func TestAutoNotificationKeepsTheUnattendedAndExternalBuilderRole(t *testing.T) {
+	pulse := resolveWorkflowChatPolicy("schedule-cron--daily-round2-g1", QueryRequest{TriggeredBy: "cron"}, nil, false)
+	notice := resolveWorkflowChatPolicy("schedule-cron--daily-round2-g1", QueryRequest{TriggeredBy: "cron", IsAutoNotification: true}, nil, false)
 	if notice.Origin != "notification" || notice.Capabilities["mcp_management"] || notice.Capabilities["user_management"] {
 		t.Fatalf("a notification into an Autopilot chat must keep Autopilot's capabilities and its own origin: %+v", notice)
 	}

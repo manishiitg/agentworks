@@ -24,7 +24,6 @@ type PlanChangeOrigin struct {
 	Username     string   `json:"username,omitempty"`
 	OperationID  string   `json:"operation_id,omitempty"`
 	ViaToken     string   `json:"via_token,omitempty"`
-	PulseRunID   string   `json:"pulse_run_id,omitempty"`
 	IssueIDs     []string `json:"issue_ids,omitempty"`
 	FixAttemptID string   `json:"fix_attempt_id,omitempty"`
 	HumanInputID string   `json:"human_input_id,omitempty"`
@@ -115,65 +114,8 @@ func planChangeOriginFromContext(ctx context.Context, workspacePath string) Plan
 	if origin.SessionID == "" {
 		origin.SessionID = strings.TrimSpace(mcpexecutor.SessionIDFromContext(ctx))
 	}
-	// A Pulse run records its gate mode before any Fixer mutation. That durable
-	// row is stronger evidence than the generic background-agent name.
-	if origin.SessionID != "" && pulseRunExistsForChange(ctx, workspacePath, origin.SessionID) {
-		origin.Type = "pulse_fixer"
-		origin.PulseRunID = origin.SessionID
-	}
+
 	return origin
-}
-
-func pulseRunExistsForChange(ctx context.Context, workspacePath, sessionID string) bool {
-	db, err := openWorkflowEvidenceDB(ctx, workspacePath, false)
-	if err != nil || db == nil {
-		return false
-	}
-	defer db.Close()
-	var exists int
-	err = db.QueryRowContext(ctx, `SELECT 1 FROM pulse_run_mode WHERE pulse_run_id=? LIMIT 1`, strings.TrimSpace(sessionID)).Scan(&exists)
-	return err == nil && exists == 1
-}
-
-func pulseChangeReferences(ctx context.Context, workspacePath, pulseRunID string) (issueIDs []string, attemptID, humanInputID string) {
-	if strings.TrimSpace(pulseRunID) == "" {
-		return nil, "", ""
-	}
-	db, err := openWorkflowEvidenceDB(ctx, workspacePath, false)
-	if err != nil || db == nil {
-		return nil, "", ""
-	}
-	defer db.Close()
-	rows, err := db.QueryContext(ctx, `SELECT af.finding_id, a.attempt_id,
-		COALESCE((SELECT json_extract(e.metadata_json, '$.human_input_id')
-			FROM pulse_finding_events e
-			WHERE e.fingerprint=af.fingerprint AND e.event_type='awaiting_user'
-			ORDER BY e.recorded_at DESC, e._id DESC LIMIT 1), '')
-		FROM pulse_fix_attempts a JOIN pulse_fix_attempt_findings af ON af.attempt_id=a.attempt_id
-		WHERE a.pulse_run_id=? ORDER BY a.started_at DESC`, strings.TrimSpace(pulseRunID))
-	if err != nil {
-		return nil, "", ""
-	}
-	defer rows.Close()
-	seen := map[string]bool{}
-	for rows.Next() {
-		var issueID, candidate, decisionID string
-		if rows.Scan(&issueID, &candidate, &decisionID) != nil {
-			continue
-		}
-		issueID = strings.TrimSpace(issueID)
-		if issueID != "" && !seen[issueID] {
-			seen[issueID] = true
-			issueIDs = append(issueIDs, issueID)
-		}
-		if attemptID == "" {
-			attemptID = strings.TrimSpace(candidate)
-		}
-		if humanInputID == "" {
-			humanInputID = strings.TrimSpace(decisionID)
-		}
-	}
-	return issueIDs, attemptID, humanInputID
 }
 
 var requiredPlanDependencySurfaces = []string{
@@ -199,11 +141,6 @@ func planDependencySurfaceReviewSchema() map[string]interface{} {
 				"evidence": map[string]interface{}{
 					"type": "array", "minItems": 1,
 					"items": map[string]interface{}{"type": "string", "minLength": 1},
-				},
-				"issue_ids": map[string]interface{}{
-					"type": "array", "minItems": 1,
-					"items":       map[string]interface{}{"type": "string", "minLength": 1},
-					"description": "Required for blocked or broken dispositions; durable Autopilot issue ids that own the unresolved repair.",
 				},
 			},
 			"required": []string{"disposition", "evidence"},
@@ -251,17 +188,7 @@ func parsePlanDependencySurfaceReviews(raw interface{}) (map[string]PlanDependen
 			}
 			evidence = append(evidence, value)
 		}
-		var issueIDs []string
-		if rawIssueIDs, ok := reviewObject["issue_ids"].([]interface{}); ok {
-			for _, rawIssueID := range rawIssueIDs {
-				issueIDs = append(issueIDs, asString(rawIssueID))
-			}
-		}
-		issueIDs = normalizedEvidenceStrings(issueIDs)
-		if (disposition == "blocked" || disposition == "broken") && len(issueIDs) == 0 {
-			return nil, fmt.Errorf("surface_reviews.%s.issue_ids requires at least one durable Autopilot issue for %s", surface, disposition)
-		}
-		reviews[surface] = PlanDependencySurfaceReview{Disposition: disposition, Evidence: evidence, IssueIDs: issueIDs}
+		reviews[surface] = PlanDependencySurfaceReview{Disposition: disposition, Evidence: evidence}
 	}
 	for surface := range object {
 		known := false

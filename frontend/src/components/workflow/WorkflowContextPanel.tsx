@@ -1,8 +1,4 @@
-import { openWorkflowPulseChatTab } from '../../utils/pulseChatTab'
-import { useChatStore } from '../../stores/useChatStore'
-import { useEffect, useId, useState } from 'react'
-import { ChevronRight, MessageSquareText, Power, Settings2, Target } from 'lucide-react'
-import { PulseIcon } from './pulseIcon'
+import { useEffect, useState } from 'react'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
@@ -26,7 +22,6 @@ const EMPTY_RECENT: string[] = []
 
 /** Current product admission controls the inventory; recents are presentation only. */
 export function WorkflowContextPanel({ workspacePath, relayMode = false }: { workspacePath: string | null; relayMode?: boolean }) {
-  const pulseMenuId = useId()
   const openView = useWorkflowStore(state => state.openWorkspaceView)
   const canWrite = useCanWriteWorkflow(workspacePath)
   const multiUser = useAuthStore(state => state.isMultiUserMode)
@@ -35,9 +30,6 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
   const manifest = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest)
   const product = relayMode ? 'relays' : 'agentworks'
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', product, manifest?.id ?? workspacePath ?? '')
-  const pulseEnabled = manifest?.pulse?.enabled === true
-  const [pulseMenuOpen, setPulseMenuOpen] = useState(pulseEnabled)
-  useEffect(() => { setPulseMenuOpen(pulseEnabled) }, [scope, pulseEnabled])
   const storedRecent = useProjectMenuHistoryStore(state => state.recent[scope] || EMPTY_RECENT)
   const incomingEmail = false
   const { documents } = useReportDocuments(workspacePath || '')
@@ -52,14 +44,11 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
       .catch(() => { if (!controller.signal.aborted) setSharing({ scope, allowed: false }) })
     return () => controller.abort()
   }, [scope, workspacePath, canWrite])
-  const menuOptions = { relayMode, isMultiUser: multiUser, pulseEnabled, incomingEmail, canShare: sharing?.scope === scope && sharing.allowed }
+  const menuOptions = { relayMode, isMultiUser: multiUser, incomingEmail, canShare: sharing?.scope === scope && sharing.allowed }
   const inventory = workflowProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
-  const pulse = inventory.find(item => item.id === 'pulse')
-  const pulseDecisions = pulse ? inventory.find(item => item.id === 'human-actions') : undefined
-  const inPulseMenu = (id: string) => id === 'pulse' || Boolean(pulseDecisions && id === pulseDecisions.id)
-  const items = inventory.filter(item => !inPulseMenu(item.id))
+  const items = inventory
   const byId = new Map(inventory.map(item => [item.id, item]))
-  const recent = [...new Set(storedRecent)].filter(id => !inPulseMenu(id)).flatMap(id => byId.get(id) || []).slice(0, 10)
+  const recent = [...new Set(storedRecent)].flatMap(id => byId.get(id) || []).slice(0, 10)
   const recentIDs = new Set(recent.map(item => item.id))
   if (!workspacePath || !canWrite) return null
   const open = (item: WorkflowMenuItem) => {
@@ -67,14 +56,11 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     const admitted = workflowProjectMenuItems({ ...menuOptions, allowedProducts: current?.allowed_products })
     if (!admitted.some(candidate => candidate.id === item.id)) return
-    if (!inPulseMenu(item.id)) useProjectMenuHistoryStore.getState().visit(scope, item.id)
+    useProjectMenuHistoryStore.getState().visit(scope, item.id)
     if (item.external) { openProductWorkspace(item.external); return }
     if (!item.view) return
     if (item.reportPath) selectReportDocument(workspacePath, item.reportPath)
-    if (item.id === 'pulse' && item.target === 'chat') {
-      void openWorkflowPulseChatTab(workspacePath).catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not open Autopilot chat.', 'error'))
-      return
-    }
+
     openView(item.view, item.target)
   }
   const renderItem = (item: WorkflowMenuItem) => {
@@ -89,26 +75,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} attention={item.id === 'human-actions' && decisions.loaded && decisions.count > 0} onClick={() => open(item)}>{item.label}</Row>
   }
   return <WorkspaceContextCard>
-    {pulse && <div key={scope}>
-      <Row icon={Target} onClick={() => open({ ...pulse, target: 'goals' })}>Goals &amp; metrics</Row>
-      {pulseDecisions && renderItem(pulseDecisions)}
-      <div role="group" aria-label="Autopilot menu" className="mt-1">
-        <div className="grid grid-cols-[minmax(0,1fr)_24px] items-center rounded-md bg-primary/5">
-          <Row icon={PulseIcon} hint="Open the full Autopilot panel"
-            detail={<span className={menuOptions.pulseEnabled ? 'text-emerald-600 dark:text-emerald-400' : undefined}>{menuOptions.pulseEnabled ? 'On' : 'Off'}</span>}
-            onClick={() => open(pulse)}>Autopilot</Row>
-          <button type="button" aria-label={pulseMenuOpen ? 'Hide Autopilot panels' : 'Show Autopilot panels'} aria-expanded={pulseMenuOpen} aria-controls={pulseMenuId}
-            onClick={() => setPulseMenuOpen(value => !value)} className="flex h-8 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${pulseMenuOpen ? 'rotate-90' : ''}`} />
-          </button>
-        </div>
-        <div id={pulseMenuId} hidden={!pulseMenuOpen} role="group" aria-label="Autopilot panels" className="ml-2.5 mt-1 space-y-0.5 border-l border-border pl-3">
-          {!menuOptions.pulseEnabled && <Row icon={Power} onClick={() => open({ ...pulse, target: 'settings' })}>Turn Autopilot on</Row>}
-          <Row icon={MessageSquareText} onClick={() => open({ ...pulse, target: 'chat' })}>Talk to Autopilot</Row>
-          <Row icon={Settings2} onClick={() => open({ ...pulse, target: 'settings' })}>Autopilot settings</Row>
-        </div>
-      </div>
-    </div>}
+
     {recent.length > 0 && <Group title="Recent">{recent.map(renderItem)}</Group>}
     {PROJECT_MENU_GROUPS.map(group => {
       const remaining = items.filter(item => item.group === group && !recentIDs.has(item.id))

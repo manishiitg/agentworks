@@ -138,7 +138,7 @@ func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
 	api.activeSessions["mcp-parent"] = &ActiveSessionInfo{SessionID: "mcp-parent", UserID: "alice", WorkspacePath: "Workflow/example"}
 	step("mcp-parent", "newer-during-page", "conversation-turn-root", "workflow_step")
 	delete(api.activeSessions, "mcp-parent")
-	_, db, err := openPulseStoreDB(context.Background(), "Workflow/example", false)
+	_, db, err := openWorkflowStoreDB(context.Background(), "Workflow/example", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
 	}
 	query.Del("cursor")
 	query.Del("session_id")
-	_, db, err = openPulseStoreDB(context.Background(), "Workflow/example", false)
+	_, db, err = openWorkflowStoreDB(context.Background(), "Workflow/example", false)
 	if err != nil {
 		t.Fatal(err)
 	}

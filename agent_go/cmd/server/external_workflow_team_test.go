@@ -30,7 +30,7 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 	m.ID, m.CreatedBy = "invoices", "owner"
 	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Editors: []string{"outsider"}, Readers: []string{"reader"}}
 	m.Schedules = []WorkflowSchedule{{ID: "route-clock", Name: "Reviewed clock", CronExpression: "0 9 * * *", Timezone: "UTC", Enabled: false,
-		GroupNames: []string{"default"}, RouteSelections: map[string]string{"parent": "first"}, AfterRun: &ScheduleAfterRun{Backup: true, Notify: true}}}
+		GroupNames: []string{"default"}, RouteSelections: map[string]string{"parent": "first"}, AfterRun: &ScheduleAfterRun{Backup: true}}}
 	b, _ := json.Marshal(m)
 	f.write(t, "Workflow/invoices/workflow.json", string(b))
 	ownerToken, owner := f.issue(t, "owner")

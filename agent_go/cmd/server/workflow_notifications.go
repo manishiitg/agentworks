@@ -61,6 +61,7 @@ type WorkflowNotificationSenderChoice struct {
 }
 
 type WorkflowNotificationInfoResponse struct {
+	BreakAlerts     bool                                     `json:"break_alerts"`
 	Success         bool                                     `json:"success"`
 	Agentic         bool                                     `json:"agentic"`
 	ScopeLabel      string                                   `json:"scope_label"`
@@ -72,26 +73,20 @@ type WorkflowNotificationInfoResponse struct {
 	// lists inherited account-level channels this workflow opts out of;
 	// BlockRecipients is the workflow's own email denylist (added to the
 	// account-wide one), and both are display-only here — edits go through
-	// /notify. The Run/PulseSummaryRecipients lists say where mail is sent.
-	RunSummaryInstructions   string   `json:"run_summary_instructions,omitempty"`
-	PulseSummaryInstructions string   `json:"pulse_summary_instructions,omitempty"`
-	RunSummaryChannels       []string `json:"run_summary_channels,omitempty"`
-	PulseSummaryChannels     []string `json:"pulse_summary_channels,omitempty"`
-	RunSummaryRecipients     []string `json:"run_summary_recipients,omitempty"`
-	PulseSummaryRecipients   []string `json:"pulse_summary_recipients,omitempty"`
+	RunSummaryInstructions string   `json:"run_summary_instructions,omitempty"`
+	RunSummaryChannels     []string `json:"run_summary_channels,omitempty"`
+	RunSummaryRecipients   []string `json:"run_summary_recipients,omitempty"`
 	// Slack channels per summary, as webhook secret names (one webhook = one
 	// channel). Display-only — edits go through /notify.
-	RunSummarySlackWebhooks   []string `json:"run_summary_slack_webhooks,omitempty"`
-	PulseSummarySlackWebhooks []string `json:"pulse_summary_slack_webhooks,omitempty"`
-	ExcludeChannels           []string `json:"exclude_channels,omitempty"`
-	BlockRecipients           []string `json:"block_recipients,omitempty"`
+	RunSummarySlackWebhooks []string `json:"run_summary_slack_webhooks,omitempty"`
+	ExcludeChannels         []string `json:"exclude_channels,omitempty"`
+	BlockRecipients         []string `json:"block_recipients,omitempty"`
 	// GmailConnectionID is which Gmail account sends this workflow's mail.
 	// Empty means the account-level default connection is inherited.
 	GmailConnectionID string `json:"gmail_connection_id,omitempty"`
 	// Per-summary senders. Empty means the summary falls back to
 	// GmailConnectionID, then to the account default connection.
-	RunSummaryGmailConnectionIDs   []string `json:"run_summary_gmail_connection_ids,omitempty"`
-	PulseSummaryGmailConnectionIDs []string `json:"pulse_summary_gmail_connection_ids,omitempty"`
+	RunSummaryGmailConnectionIDs []string `json:"run_summary_gmail_connection_ids,omitempty"`
 }
 
 func resolveSlackNotificationState(id, label string, capabilities WorkflowCapabilities, secretValue string, secretResolved bool) WorkflowNotificationDestinationInfo {
@@ -125,7 +120,7 @@ func resolveSlackNotificationState(id, label string, capabilities WorkflowCapabi
 	}
 
 	destination.State = workflowNotificationStateReady
-	destination.Summary = "Run and Autopilot summaries are delivered here automatically."
+	destination.Summary = "Configured team run messages are delivered here."
 	return destination
 }
 
@@ -282,28 +277,24 @@ func (api *StreamingAPI) handleGetWorkflowNotifications(w http.ResponseWriter, r
 	accountChannels := notificationAccountChannels(r.Context(), selectedSenderID, personalConnectionItemRoot(GetUserIDFromContext(r.Context()), workspacePath))
 
 	response := WorkflowNotificationInfoResponse{
-		Success:                  true,
-		Agentic:                  true,
-		ScopeLabel:               manifest.Label,
-		WorkflowLabel:            manifest.Label,
-		EffectiveState:           effectiveNotificationState(slack, accountChannels),
-		Destinations:             []WorkflowNotificationDestinationInfo{slack},
-		AccountChannels:          accountChannels,
-		RunSummaryInstructions:   runSummaryInstructionsOrDefault(manifest.Capabilities.Notifications),
-		PulseSummaryInstructions: pulseSummaryInstructionsOrDefault(manifest.Capabilities.Notifications),
+		BreakAlerts:            manifest.Capabilities.Notifications.BreakAlertsEnabled(),
+		Success:                true,
+		Agentic:                true,
+		ScopeLabel:             manifest.Label,
+		WorkflowLabel:          manifest.Label,
+		EffectiveState:         effectiveNotificationState(slack, accountChannels),
+		Destinations:           []WorkflowNotificationDestinationInfo{slack},
+		AccountChannels:        accountChannels,
+		RunSummaryInstructions: runSummaryInstructionsOrDefault(manifest.Capabilities.Notifications),
 	}
 	if manifest.Capabilities.Notifications != nil {
 		response.RunSummaryChannels = manifest.Capabilities.Notifications.RunSummaryChannels
-		response.PulseSummaryChannels = manifest.Capabilities.Notifications.PulseSummaryChannels
 		response.RunSummaryRecipients = manifest.Capabilities.Notifications.RunSummaryRecipients
-		response.PulseSummaryRecipients = manifest.Capabilities.Notifications.PulseSummaryRecipients
 		response.RunSummarySlackWebhooks = manifest.Capabilities.Notifications.RunSummarySlackWebhookSecretNames
-		response.PulseSummarySlackWebhooks = manifest.Capabilities.Notifications.PulseSummarySlackWebhookSecretNames
 		response.ExcludeChannels = manifest.Capabilities.Notifications.ExcludeChannels
 		response.BlockRecipients = manifest.Capabilities.Notifications.BlockRecipients
 		response.GmailConnectionID = manifest.Capabilities.Notifications.GmailConnectionID
 		response.RunSummaryGmailConnectionIDs = manifest.Capabilities.Notifications.RunSummaryGmailConnectionIDs
-		response.PulseSummaryGmailConnectionIDs = manifest.Capabilities.Notifications.PulseSummaryGmailConnectionIDs
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)

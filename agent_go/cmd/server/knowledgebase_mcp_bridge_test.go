@@ -50,7 +50,7 @@ func TestKnowledgebaseAccessFactoryThroughMCPBridge(t *testing.T) {
 	}))
 	defer api.Close()
 	schemas, _ := json.Marshal([]map[string]any{{"name": tool.Name, "description": tool.Description, "type": "custom", "input_schema": tool.Parameters}})
-	bridge, err := client.NewStdioMCPClient(buildPulseTestMCPBridge(t), append(os.Environ(), "MCP_API_URL="+api.URL, "MCP_API_TOKEN=bridge-test-token", "MCP_SESSION_ID=kb-access-bridge", "MCP_TOOLS_FILE="+writeMCPToolsFileForTest(t, schemas)))
+	bridge, err := client.NewStdioMCPClient(buildTestMCPBridge(t), append(os.Environ(), "MCP_API_URL="+api.URL, "MCP_API_TOKEN=bridge-test-token", "MCP_SESSION_ID=kb-access-bridge", "MCP_TOOLS_FILE="+writeMCPToolsFileForTest(t, schemas)))
 	if err != nil {
 		t.Fatal(err)
 	}

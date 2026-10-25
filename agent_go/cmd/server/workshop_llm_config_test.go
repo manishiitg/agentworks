@@ -84,7 +84,7 @@ func TestWorkshopResolveLLMConfigExpandsCodingAgentMode(t *testing.T) {
 	if got := builder.Options["reasoning_effort"]; got != defaults.Builder.Options["reasoning_effort"] {
 		t.Fatalf("builder reasoning_effort = %#v, want %#v", got, defaults.Builder.Options["reasoning_effort"])
 	}
-	pulse := workshopResolvePulseLLMConfig(&workflowtypes.PresetLLMConfig{
+	pulse := workshopResolveBackgroundLLMConfig(&workflowtypes.PresetLLMConfig{
 		SchemaVersion: workflowtypes.LLMConfigSchemaVersion,
 		Mode:          workflowtypes.LLMConfigModeProviderProfile,
 		Provider:      "claude-code",

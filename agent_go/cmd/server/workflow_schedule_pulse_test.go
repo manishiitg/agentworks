@@ -6,7 +6,8 @@ import (
 
 // A workflow already stamped before retirement remains loadable; runtime
 // validation does not repeat the stamp prerequisites.
-func TestStampedScheduleWithoutRetiredPulseFieldsStillValidates(t *testing.T) {
+
+func TestStampedScheduleWithCanonicalAfterRunStillValidates(t *testing.T) {
 	m := NewWorkflowManifest("Example")
 	m.Version = WorkflowContractCurrentVersion
 	m.Schedules = []WorkflowSchedule{{ID: "daily", CronExpression: "0 9 * * *", GroupNames: []string{"prod"}}}

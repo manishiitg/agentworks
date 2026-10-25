@@ -56,7 +56,7 @@ function pulseReviewTitleFromIdentity(searchable: string): string {
     .filter(match => match.index >= 0))
     .sort((a, b) => a.index - b.index)
   if (matches.length > 0) return matches[0].title
-  return 'Autopilot review'
+  return 'Goal review'
 }
 
 function pulseReviewTitle(terminal: TerminalSnapshot): string {
@@ -69,7 +69,7 @@ function pulseReviewTitle(terminal: TerminalSnapshot): string {
     terminal.owner_id,
     terminal.terminal_id,
   ]))
-  if (ownershipTitle && ownershipTitle !== 'Autopilot review') return ownershipTitle
+  if (ownershipTitle && ownershipTitle !== 'Goal review') return ownershipTitle
   const descriptiveTitle = pulseReviewTitleFromIdentity(normalizedReviewIdentity([
     terminal.agent_name,
     terminal.step_name,

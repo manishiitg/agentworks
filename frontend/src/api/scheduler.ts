@@ -68,15 +68,7 @@ export const schedulerApi = {
   triggerJob: (id: string) =>
     afterJobWrite(api.post<{ session_id: string }>(`/api/scheduler/jobs/${id}/trigger`).then(r => r.data)),
 
-  runPulse: (workspacePath: string) =>
-    api.post<{ run_id: string }>('/api/scheduler/workflows/pulse-run', {
-      workspace_path: workspacePath,
-    }).then(r => r.data),
 
-  runGoalCheck: (workspacePath: string) =>
-    api.post<{ run_id: string }>('/api/scheduler/workflows/goal-check-run', {
-      workspace_path: workspacePath,
-    }).then(r => r.data),
 
   getJobRuns: (id: string, limit = 20, offset = 0) =>
     api.get<ListScheduledJobRunsResponse>(`/api/scheduler/jobs/${id}/runs`, { params: { limit, offset } }).then(r => r.data),

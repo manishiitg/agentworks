@@ -275,7 +275,7 @@ type SchedulerCallbacks struct {
 
 // ScheduleAfterRunOptions is what runs after a schedule's run.
 type ScheduleAfterRunOptions struct {
-	Backup, Publish, Notify bool
+	Backup, Publish bool
 }
 
 // scheduleAfterRunArgument reads an after_run tool argument.
@@ -287,7 +287,7 @@ func scheduleAfterRunArgument(args map[string]interface{}) (ScheduleAfterRunOpti
 	options := ScheduleAfterRunOptions{}
 	options.Backup, _ = raw["backup"].(bool)
 	options.Publish, _ = raw["publish"].(bool)
-	options.Notify, _ = raw["notify"].(bool)
+
 	return options, true
 }
 
@@ -295,7 +295,7 @@ func scheduleAfterRunArgument(args map[string]interface{}) (ScheduleAfterRunOpti
 // enforced by the runtime rather than inferred from a natural-language
 // message or a conveniently spaced cron expression.
 type ScheduleRuntimePolicy struct {
-	// AfterRun is the schedule's after-run options (backup, publish, notify;
+	// AfterRun is the schedule's after-run options (backup, publish;
 	// PLAT-697 phase 0). SetAfterRun is true when the call supplied it.
 	AfterRun    ScheduleAfterRunOptions
 	SetAfterRun bool
@@ -610,30 +610,16 @@ type WorkshopConfig struct {
 	ToolCategories         map[string]string
 	// BrowserRuntime stores configured intent (auto/cdp/headless + candidate
 	// ports). The executor resolves live CDP reachability at tool-call time.
-	BrowserRuntime *browser.BrowserRuntimeConfig
-	LLMConfig      *orchestrator.LLMConfig
-	PresetPhaseLLM *AgentLLMConfig
-	PresetPulseLLM *AgentLLMConfig
-	// PulseLifecycleTurn is per-turn: true while the scheduler is sending a
-	// Pulse lifecycle turn (Gate, review dispatch, Finalize). The main
-	// conversation stays on PresetPhaseLLM (the Builder model); the flag routes
-	// and tags the turn for Pulse scope and cost.
-	// Refreshed on every turn through WorkshopChatSession.SetPulseLifecycleTurn.
-	PulseLifecycleTurn bool
-	// PulseReviewResultCheck reports whether a Pulse reviewer has recorded
-	// its terminal result for module in pulse run pulseRunID (nil means it
-	// has). A reviewer about to finish without one gets one more turn, in its
-	// own conversation, to record it.
+	BrowserRuntime         *browser.BrowserRuntimeConfig
+	LLMConfig              *orchestrator.LLMConfig
+	PresetPhaseLLM         *AgentLLMConfig
+	PresetBackgroundLLM    *AgentLLMConfig
 	PulseReviewResultCheck func(ctx context.Context, module, pulseRunID string) error
-	// StepBusyForPulse, set only on Pulse workshops, returns a non-empty
-	// explanation when stepID is being run right now by the workflow's own
-	// (non-Pulse) run, so Pulse waits instead of running it a second time.
-	StepBusyForPulse  func(ctx context.Context, workspacePath, stepID string) string
-	UseKnowledgebase  bool
-	LLMAllocationMode string
-	TieredConfig      *TieredLLMConfig
-	Logger            loggerv2.Logger
-	EventBridge       mcpagent.AgentEventListener
+	UseKnowledgebase       bool
+	LLMAllocationMode      string
+	TieredConfig           *TieredLLMConfig
+	Logger                 loggerv2.Logger
+	EventBridge            mcpagent.AgentEventListener
 	// Session tracking — needed for MCP connection sharing and session cleanup
 	SessionID string
 	// Secrets for step execution (merged global + user secrets)
@@ -689,8 +675,8 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	if cfg.PresetPhaseLLM != nil {
 		logger.Info(fmt.Sprintf("[WORKSHOP] presetPhaseLLM=%s/%s", cfg.PresetPhaseLLM.Provider, cfg.PresetPhaseLLM.ModelID))
 	}
-	if cfg.PresetPulseLLM != nil {
-		logger.Info(fmt.Sprintf("[WORKSHOP] presetPulseLLM=%s/%s", cfg.PresetPulseLLM.Provider, cfg.PresetPulseLLM.ModelID))
+	if cfg.PresetBackgroundLLM != nil {
+		logger.Info(fmt.Sprintf("[WORKSHOP] presetBackgroundLLM=%s/%s", cfg.PresetBackgroundLLM.Provider, cfg.PresetBackgroundLLM.ModelID))
 	}
 	if cfg.TieredConfig != nil {
 		logger.Info(fmt.Sprintf("[WORKSHOP] tiered: T1=%s T2=%s T3=%s",
@@ -728,7 +714,7 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 		cfg.CustomToolExecutors,
 		cfg.ToolCategories,
 		cfg.PresetPhaseLLM,
-		cfg.PresetPulseLLM,
+		cfg.PresetBackgroundLLM,
 		cfg.UseKnowledgebase,
 		cfg.TieredConfig,
 	)
@@ -900,23 +886,11 @@ func formatTierAgentLLM(cfg *AgentLLMConfig) string {
 // the user made in the workflow editor since the session was first created.
 func (s *WorkshopChatSession) UpdatePresetLLMConfigs(phaseLLM *AgentLLMConfig, pulseLLM *AgentLLMConfig) {
 	s.controller.presetPhaseLLM = phaseLLM
-	s.controller.presetPulseLLM = pulseLLM
+	s.controller.presetBackgroundLLM = pulseLLM
 	if s.config != nil {
 		s.config.PresetPhaseLLM = phaseLLM
-		s.config.PresetPulseLLM = pulseLLM
+		s.config.PresetBackgroundLLM = pulseLLM
 	}
-}
-
-// SetPulseLifecycleTurn records whether the turn about to run is a scheduler
-// Pulse lifecycle turn. The workshop manager shares this config pointer, so
-// run_in_background reads the current value at spawn time. Must be set on
-// every reused turn: a user's later interactive turn in the same session must
-// not keep routing background agents to pulse_llm.
-func (s *WorkshopChatSession) SetPulseLifecycleTurn(on bool) {
-	if s == nil || s.config == nil {
-		return
-	}
-	s.config.PulseLifecycleTurn = on
 }
 
 // UpdateTieredConfig refreshes the controller's tiered LLM allocation config.
@@ -2099,7 +2073,7 @@ func RegisterRunFullWorkflowTool(
 					cfg.CustomToolExecutors,
 					cfg.ToolCategories,
 					cfg.PresetPhaseLLM,
-					cfg.PresetPulseLLM,
+					cfg.PresetBackgroundLLM,
 					cfg.UseKnowledgebase,
 					cfg.TieredConfig,
 				)

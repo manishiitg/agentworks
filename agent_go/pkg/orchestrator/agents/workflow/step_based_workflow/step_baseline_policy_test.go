@@ -33,7 +33,7 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 	}))
 	defer s.Close()
 	c.WorkspaceClient = workspace.NewClient(s.URL)
-	names := []string{"execute_shell_command", "human_feedback", "create_human_input_request", "query_workflow_db", "mutate_workflow_db", "query_workflow_costs", "apply_workflow_db_migration", "list_functions", "call_function", "get_function_call", "reply_function_call", "get_goal_metrics", "record_goal_observations", "ask_pulse", "ask_goal_lead", "send_email", "send_slack_message"}
+	names := []string{"execute_shell_command", "human_feedback", "create_human_input_request", "query_workflow_db", "mutate_workflow_db", "query_workflow_costs", "apply_workflow_db_migration", "list_functions", "call_function", "get_function_call", "reply_function_call", "get_goal_metrics", "record_goal_observations", "send_email", "send_slack_message"}
 	c.WorkspaceToolExecutors = map[string]interface{}{}
 	cfg := &AgentConfigs{}
 	for _, name := range names {
@@ -45,12 +45,11 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 	}
 	for _, test := range []struct {
 		name, manifest, soul string
-		goal, pulse          bool
+		goal                 bool
 	}{
-		{"no goal", `{}`, "", false, false},
-		{"goal without Autopilot", `{}`, "## Objective\nProduce verified research.\n## Success Criteria\nEvidence checked.", true, false},
-		{"goal with Autopilot", `{"pulse":{"enabled":true}}`, "## Objective\nProduce verified research.", true, true},
-		{"Relay", `{"kind":"relay","pulse":{"enabled":true}}`, "## Objective\nTransform input.", false, false},
+		{"no goal", `{}`, "", false},
+		{"goal", `{}`, "## Objective\nProduce verified research.\n## Success Criteria\nEvidence checked.", true},
+		{"Relay", `{"kind":"relay"}`, "## Objective\nTransform input.", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			manifest, soul = test.manifest, test.soul
@@ -81,8 +80,8 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 					t.Fatalf("baseline includes %s", name)
 				}
 			}
-			if slices.Contains(got, "get_goal_metrics") != test.goal || slices.Contains(got, "record_goal_observations") != test.goal || slices.Contains(got, "ask_pulse") != test.pulse || slices.Contains(got, "ask_goal_lead") != test.pulse {
-				t.Fatalf("wrong goal/Autopilot surface: %v", got)
+			if slices.Contains(got, "get_goal_metrics") != test.goal || slices.Contains(got, "record_goal_observations") != test.goal {
+				t.Fatalf("wrong Goal measurement surface: %v", got)
 			}
 		})
 	}

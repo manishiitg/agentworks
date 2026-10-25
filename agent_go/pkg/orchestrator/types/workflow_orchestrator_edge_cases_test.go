@@ -409,7 +409,7 @@ func buildEdgeCaseOrchestrator(t *testing.T) (*edgeCaseHarness, func(), bool) {
 		SchemaVersion: workflowtypes.LLMConfigSchemaVersion,
 		Mode:          workflowtypes.LLMConfigModeExplicit,
 		BuilderLLM:    agentLLM,
-		PulseLLM:      agentLLM,
+		BackgroundLLM: agentLLM,
 		TieredConfig:  &workflowtypes.TieredLLMConfig{Tier1: agentLLM, Tier2: agentLLM, Tier3: agentLLM},
 	}
 

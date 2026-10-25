@@ -24,9 +24,7 @@ export function workflowTabDisplayName(
   // Finished schedule tabs are persisted until the user closes them and no
   // longer pass through live runtime reconciliation. Normalize an older
   // one-off Pulse lane from its durable session identity too.
-  if (tab.metadata?.isScheduledRun && isManualPulseSession(tab.sessionId)) {
-    return 'Manual Autopilot'
-  }
+
   if (
     tab.metadata?.phaseId === 'workflow-builder' &&
     (tab.name === 'Automation Builder' || tab.name === 'Workflow Builder')
@@ -36,15 +34,7 @@ export function workflowTabDisplayName(
   return tab.name
 }
 
-const MANUAL_PULSE_SESSION_PREFIX = 'schedule-manual--manual-p_'
 
-/** The toolbar's one-off Pulse run uses the scheduler lane but is not a
- * user-authored schedule. Its generated session id carries the reserved
- * manual-pulse schedule prefix, which lets the tab distinguish it from the
- * Workflow Builder child execution projected for the same session. */
-function isManualPulseSession(sessionId?: string | null): boolean {
-  return (sessionId || '').toLowerCase().startsWith(MANUAL_PULSE_SESSION_PREFIX)
-}
 
 /**
  * A runtime-projected tab can be discovered after its session has already
@@ -193,9 +183,7 @@ export function workflowRuntimeTabProjection(
   if (external && !scheduled) return null
 
   if (scheduled) {
-    const scheduledJobName = isManualPulseSession(running.session_id)
-      ? 'Manual Autopilot'
-      : running.title || running.preset_name || running.phase_name || 'Schedule'
+    const scheduledJobName = running.title || running.preset_name || running.phase_name || 'Schedule'
     return {
       // The tab label shows the actual schedule's name (e.g. "Daily
       // execution") rather than the generic "Schedule" -- with several

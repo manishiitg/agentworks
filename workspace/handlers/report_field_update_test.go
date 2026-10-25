@@ -210,7 +210,7 @@ func TestUpdateReportFieldRejectsUnknownTableColumnAndRow(t *testing.T) {
 }
 
 func TestReportCannotEditManagedGoalData(t *testing.T) {
-	for _, table := range []string{"workflow_goal_metrics", "pulse_goal_observations"} {
+	for _, table := range []string{"workflow_goal_metrics", "goal_observations"} {
 		t.Run(table, func(t *testing.T) {
 			rel, abs, router := setupReportFieldUpdateTest(t)
 			db, err := sql.Open("sqlite", abs)

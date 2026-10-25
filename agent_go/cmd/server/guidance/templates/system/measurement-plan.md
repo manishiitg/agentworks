@@ -2,26 +2,25 @@
 
 Outcome measurement is produced by ordinary workflow steps, not a mandated
 route or table. Any normal step may produce a
-run-scoped, evidence-backed measurement. Autopilot does not depend on which step
+run-scoped, evidence-backed measurement. Measurement does not depend on which step
 or route produced it.
 
-### Builder and Autopilot share the measurement
+### Who owns the measurement
 
-Builder chooses a meaningful primary outcome and implements its measurement;
-Autopilot checks whether that choice actually represents `soul.md`, inspects DB
-history and challenges weak sources, missing readings or incompatible comparisons.
-Use `get_goal_metrics` together. Agree the formula/definition, source method,
-unit, fixed dimension/environment scope, point-in-time or period window,
-collection cadence, freshness and evidence needed to verify the number.
-Builder asks Autopilot for goal context when uncertain; Autopilot uses `ask_builder`
-for implementation or repair when Autopilot is ON and within its outward-action setting. Verify the
-result through real source-backed DB readings and history, then record the
-agreed meaning, baseline and remaining gaps in goal memory. Setup alone is not
-verified measurement. Do not invent a target or silently change goal meaning.
+The owner agrees the goals and numbers through the Goal's Builder. The Builder
+implements their definitions and collection. Ordinary steps record source-backed
+readings; the platform stores and serves those records. The Crew that looks after
+your Goals can read and judge them through the available tools. It does not gain
+Builder access or permission to change targets by reviewing them.
+Use `get_goal_metrics` to inspect the same definitions and history. Agree the
+formula, source method, unit, fixed dimensions, point-in-time or period window,
+collection cadence, freshness and evidence. Verify real readings against their
+sources. Setup alone is not verified collection. Do not invent a target or
+silently change goal meaning.
 
 ### Shared DB format and history
 
-- Reuse `workflow_goal_metrics` definitions and `pulse_goal_observations` in
+- Reuse `workflow_goal_metrics` definitions and `goal_observations` in
   the workflow DB for generic goal history. No separate collector subsystem.
 - A stable metric ID fixes formula, source/method, unit, window, environment,
   route and dimensions. A changed meaning uses a new ID; old history stays.
@@ -47,7 +46,7 @@ verified measurement. Do not invent a target or silently change goal meaning.
   Existing workflow tables stay the source of truth; do not copy their values
   into a second metrics store.
 - Add `record_goal_observations` to that producer only when the value should
-  enter Autopilot's generic goal-progress history (definitions via
+  enter the Goal's measurement history (definitions via
   `configure_goal_metrics`, reads via `get_goal_metrics`).
 - Put route-specific measurements in existing route-local steps.
 - Use a shared convergence step only when multiple routes genuinely require
@@ -77,15 +76,9 @@ as are retired `costs/evaluation/` ledgers and retired `eval_results` rows,
 unless a separate cleanup migration is approved. Never write to them; never let
 a new measurement depend on them.
 
-### Autopilot-enabled workflows only
+### Existing workflows
 
-Automatic measurement upgrades apply only when this workflow's Autopilot is enabled.
-The backend exposes `measurement_upgrade` only for enabled workflows. On the next
-Autopilot check, Builder and Autopilot review the indicated gaps, migrate the necessary
-ordinary producing steps within current Autopilot permissions, preserve history and verify
-new DB readings. Reuse any pending migration conversation/work; do not start
-duplicate repair runs. Disabled workflows keep their steps and metric definitions
-untouched. Enabling Autopilot later makes this check eligible then; a prior disabled
-state is not a completed measurement migration. This is a targeted measurement
-migration, not a global workflow-version bump or a reason to block normal runs.
-A valid unavailable outcome needs source recovery, not a format rewrite.
+Keep ordinary runs working while measurement is configured. Inspect existing
+sources, definitions and readings before proposing changes. An absent metric is
+missing setup, not proof the workflow failed. Change collection only within the
+owner's request and existing Builder permissions; preserve source history.

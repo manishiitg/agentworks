@@ -44,7 +44,7 @@ import { apiTimingPathFor, recordApiTiming, sanitizeApiBody } from '../utils/api
 import { retryUncertainChatSubmission } from './uncertainSubmissionRetry'
 import { retryTurnRunningSubmission } from './turnRunningRetry'
 import { configureChatDeliveryTelemetryTransport } from '../utils/chatDeliveryTelemetry'
-import type { PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, WorkflowBuilderSessionResponse, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, WorkflowBackupInfoResponse, WorkflowNotificationInfoResponse, WorkflowPublishSecretResponse, ReportHumanInputResponse, GoalLeadResponse, ReportHumanInputsResponse, PulseOverviewResponse, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
+import type { PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, WorkflowBuilderSessionResponse, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, WorkflowBackupInfoResponse, WorkflowNotificationInfoResponse, WorkflowPublishSecretResponse, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
 import type { PlanStep, AgentConfigs } from '../utils/stepConfigMatching'
 
 // Re-export types for other components to use
@@ -458,11 +458,11 @@ async function retryWithFreshRuntimeConfig(
 // This function gets the session ID from the active tab
 export function getSessionId(): string {
   const activeTab = useChatStore.getState().getActiveTab()
-  
+
   if (activeTab?.sessionId) {
     return activeTab.sessionId
   }
-  
+
   // If no active tab or tab has no session ID, generate a new one for the tab
   if (activeTab) {
     const newSessionId = crypto.randomUUID()
@@ -470,7 +470,7 @@ export function getSessionId(): string {
     console.log(`[API] Generated new session ID for tab ${activeTab.tabId}: ${newSessionId}`)
     return newSessionId
   }
-  
+
   // Fallback: generate a temporary session ID
   // In workflow mode, it's normal to not have an active tab until a phase is started
   // Only warn in multi-agent mode where tabs should always exist
@@ -2061,21 +2061,14 @@ export const agentApi = {
 		return response.data as ReportHumanInputsResponse
 	},
 
-  getGoalLead: async (workspacePath: string) => {
- const response=await api.get("/api/workflow/goal-lead",{params:{workspace_path:workspacePath}})
- return response.data as GoalLeadResponse
- },
-
-  getPulseOverview: async (workspacePath: string) => {
-    const response = await api.get('/api/workflow/pulse-overview', {
-      params: { workspace_path: workspacePath },
+  getGoalMetrics: async (workspacePath: string, signal?: AbortSignal) => {
+    const response = await api.get('/api/workflow/goal-metrics', {
+      params: { workspace_path: workspacePath }, signal,
     })
-    return response.data as PulseOverviewResponse
+    return response.data as GoalMeasurements
   },
 
-  // The Pulse's goal memory and decision log (PLAT-697).
 
-  /** The owner's message to the workflow's Pulse; the reply appears in the conversation. */
 
   /** Confirm, reject, add, extend or close a focus area. */
 
@@ -2406,7 +2399,6 @@ export const agentApi = {
     workflows: Array<{
       workspace_path: string
       run_summary?: OrgDashboardNotification
-      pulse_summary?: OrgDashboardNotification
       recent?: OrgDashboardNotification[]
       by_route?: import('./api-types').OrgDashboardRouteNotifications[]
       error?: string
@@ -3185,6 +3177,7 @@ export const workFolderApi = {
 export default api
 
 export interface WorkflowTeamMember {
+  notify: boolean
   approval_ids?: string[]
   user_id: string
   run: boolean
@@ -3192,7 +3185,6 @@ export interface WorkflowTeamMember {
   approve: boolean
   backup: boolean
   publish: boolean
-  notify: boolean
 }
 export interface WorkflowTeamPolicy {
   leader_id: string

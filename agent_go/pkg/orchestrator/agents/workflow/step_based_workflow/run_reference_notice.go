@@ -8,11 +8,6 @@ import (
 	"strings"
 )
 
-// observeRunReferences reports useful repair evidence at the shared execution
-// boundary. It makes no model call and cannot refuse or delay a run for review.
-// It examines the bounded plan graph only, without walking KB, skills or history.
-// Pulse uses the full reference map through its existing tools; no review queue
-// or copy of the workflow's findings is created here.
 func (hcpo *StepBasedWorkflowOrchestrator) observeRunReferences(stepID string) {
 	if hcpo.isRelayExecution() {
 		return

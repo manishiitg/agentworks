@@ -1,13 +1,13 @@
 # Shared goal measurement
 
-Builder and Pulse use one measurement contract. Builder chooses and implements
-meaningful measurements in ordinary workflow steps. Pulse checks the source,
+Builder and AgentWorks use one measurement contract. Builder chooses and implements
+meaningful measurements in ordinary workflow steps. AgentWorks checks the source,
 history and comparability and works with Builder to improve gaps. Go validates
 records and calculates facts; agents judge whether a metric represents the goal
 and whether evidence supports progress.
 
 The existing workflow DB holds `workflow_goal_metrics` definitions and immutable
-`pulse_goal_observations` history. Existing business tables remain source data;
+`goal_observations` history. Existing business tables remain source data;
 no separate measurement service or duplicated business dataset is introduced.
 
 | Record | Contract |
@@ -44,7 +44,7 @@ of execution identities. Reads use one evaluator for current and historical data
 
 No workflow topology migration is required. Builder updates an existing
 period-producing step to supply the actual bounds through
-`record_goal_observations`, verifies the DB readback with Pulse, and records the
+`record_goal_observations`, verifies the DB readback with AgentWorks, and records the
 baseline and any gap in goal memory. Snapshot producers can keep their format.
 Old period readings still count as measured if source-backed and fresh, but
 without provable boundaries they cannot support a period comparison. Never
@@ -52,7 +52,6 @@ guess old periods, overwrite history, or replay business actions to migrate it.
 If an existing definition has the wrong meaning, create a new metric ID rather
 than changing the definition under old readings. Retired series stay in the DB.
 
-`get_goal_status` exposes per-metric facts and bounded matching history;
 `get_goal_metrics` exposes complete definitions and bounded observations.
 Current active series retain up to 120 readings independently of the global
 recent-row limit. This is a bounded view, not deletion of the older DB history.
@@ -63,15 +62,9 @@ erase a DB reading or classify a measured goal as unmeasured. A source capture
 time is not the time a recovery step re-recorded an old reading. Code `ok`
 means no mechanical alarm, not an agent verdict that the goal is on track.
 
-### Pulse-enabled workflows only
+### Existing Goals
 
-Automatic measurement upgrades apply only when this workflow's Pulse is enabled.
-The backend exposes `measurement_upgrade` only for enabled workflows. On the next
-Pulse check, Builder and Pulse review the indicated gaps, migrate the necessary
-ordinary producing steps within existing autonomy, preserve history and verify
-new DB readings. Reuse any pending migration conversation/work; do not start
-duplicate repair runs. Disabled workflows keep their steps and metric definitions
-untouched. Enabling Pulse later makes this check eligible then; a prior disabled
-state is not a completed measurement migration. This is a targeted measurement
-migration, not a global workflow-version bump or a reason to block normal runs.
-A valid unavailable outcome needs source recovery, not a format rewrite.
+Measurement setup is independent of review agents. Builder can inspect gaps,
+connect collectors, preserve prior evidence and verify saved readings through
+`get_goal_metrics`. Targets and changes to the meaning of a metric remain the
+owner's decision. Missing setup does not stop ordinary runs.

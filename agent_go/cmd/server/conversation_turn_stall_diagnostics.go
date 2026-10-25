@@ -11,30 +11,6 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 )
 
-// diagnoseAndCleanupStalledConversationTurn runs once waitForConversationTurnTree's
-// idle-wait has already given up on a turn (PLAT-116, reproduced live on a
-// social-media contract-upgrade turn: Codex genuinely completed and stamped
-// its work two minutes in, but the platform's own bridge from that
-// completion back to its caller never observed it, and the turn sat orphaned
-// until this 10-minute safety net gave up 17+ minutes after the real work
-// had already succeeded). Two independent things happen here:
-//
-//  1. Diagnosis: ask the coding-agent provider's OWN completion signal
-//     (Codex's task_complete, Claude Code's committed end_turn) whether the
-//     turn actually finished after the platform stopped observing progress.
-//     That signal already IS the source of truth interactive completion
-//     trusts (PLAT-108) — this reuses it purely as a post-hoc diagnostic,
-//     never as a live control-flow decision. A wrong or missing read only
-//     makes the error message less precise; it can never claim a stuck turn
-//     succeeded, since the platform genuinely never processed its result
-//     (history, persistence, and downstream steps never ran for it either
-//     way).
-//  2. Cleanup: regardless of what the diagnosis finds, the exact turn is now
-//     orphaned. Cancel and settle that turn, but do not close the reusable
-//     conversation, its MCP tools, or its browser binding. Scheduled Pulse is
-//     a sequence of turns in one conversation; tearing down the session here
-//     made a reconciled Gate timeout poison the following Review+Fix turn
-//     (PLAT-148).
 func (api *StreamingAPI) diagnoseAndCleanupStalledConversationTurn(sessionID, rootExecutionID string, since time.Time, baseErr error) error {
 	if api == nil || baseErr == nil {
 		return baseErr

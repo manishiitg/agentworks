@@ -27,15 +27,7 @@ profile:
   # today uses on purpose, is the wrong shape for AgentWorks specifically.
   scope: global
   built_in: true
-  # Slash commands the builder ships with itself. Each prompt lives in its
-  # own file under commands/; `{{context}}` is replaced with whatever the
-  # user typed before the slash. /pulse stays a hardcoded builtin: it is an async
-  # frontend API call no static prompt can express.
   commands:
-    # The old reviewer commands (/run-goal-work, /strategy-auditor,
-    # /goal-advisor, /run-technical-review, /pulse-review*, /run-architecture-review)
-    # are gone: the Autopilot agent owns the goal and there are no separate
-    # reviewers (owner, 2026-10-08). Ask Autopilot with #pulse in the Builder chat.
     - name: design-plan
       description: Would you build this again today? Review the plan and suggest a simpler one
       icon: git-branch
@@ -134,82 +126,17 @@ chat_policy:
     # The owner (or an editor) over MCP is the same Builder as on the website.
     external_builder: *builder_capabilities
     interactive: *builder_capabilities
-    # Unattended execution and post-run Autopilot share the same authority.
-    # Neither stage admits connection/user/bot management or live workspace UI.
     scheduled: &scheduled_capabilities [plan_authoring, report_authoring, secret_management, knowledgebase_maintenance, improvement_proposals, workflow_suggestions]
-    pulse: *scheduled_capabilities
     child: [plan_authoring, report_authoring, secret_management, knowledgebase_maintenance, improvement_proposals]
     bot: *builder_capabilities
     notification: *builder_capabilities
   read_only: [workspace_ui, bot_management, workflow_suggestions, mcp_inspection]
 
-# The workflow Autopilot agent (PLAT-697): it reads the workflow, keeps its own
-# records and talks to the Builder chat (ask_builder), which runs and changes
-# things within Autopilot's permission levels. These are the only tools it gets,
-# and the only workflow folders it may write; the rest is read-only to it.
-# execute_shell_command stays because a coding CLI reaches its tools through it.
-pulse:
-  # Autopilot's own skill pack ("pulse"), loaded with read_skill(name="pulse").
-  skills:
-    - goal-lead-inspect
-    - goal-lead-measure
-    - goal-lead-funnel
-    - goal-lead-experiment
-    - goal-lead-costs
-    - goal-lead-architecture
-    # The Builder's design guides, read-only knowledge so Autopilot judges the
-    # plan and directs the Builder precisely (owner, 2026-10-08).
-    - measurement-plan
-    - plan-design
-    - routing
-    - schedules
-    - step-config
-  write_paths:
-    - pulse/
-    - memory/
-  tools:
-    - get_goal_metrics
-    - query_workflow_db
-    - query_workflow_costs
-    - get_cost_summary
-    - get_step_prompts
-    - get_plan_prompt_health
-    - get_workflow_config
-    - get_llm_config
-    - list_executions
-    - get_schedule_runs
-    - list_schedules
-    - query_step
-    - get_notification_history
-    - get_human_input_request
-    - list_skills
-    - search_skills
-    - get_workflow_command_guidance
-    - get_file_link
-    - get_report_link
-    - read_image
-    - read_crew_calls
-    - search_platform
-    - search_playbooks
-    - brain_browse
-    - brain_read
-    - brain_access
-    - list_accessible_workflows
-    - get_contract_upgrades
-    - execute_shell_command
-    - record_goal_observations
-    - ask_builder
-    - send_message
-    - read_agent_messages
-    - list_agents
-    - schedule_message_wakeup
-    - get_function_call
-
 # Prompt text stays in Markdown. Includes contain named Go-template definitions;
 # the entry file chooses which definitions to render. Runtime values stay in Go.
 chat:
   builder:
-    external_tools: [create_workflow, plan, workflow_upgrade, workflow_crews, workflow_google_account, workflow_slack_account, workflow_slack_bot, builder_chat, builder_tabs, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, builder_pulse_chat, builder_pulse_status]
+    external_tools: [create_workflow, plan, workflow_upgrade, workflow_crews, workflow_google_account, workflow_slack_account, workflow_slack_bot, builder_chat, builder_tabs, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file]
     # Default workflow phase tools; integration tests compare real registration.
     tools:
       - brain_browse
@@ -226,7 +153,6 @@ chat:
       - browser_connections
       - chat_preferences
       - manage_messaging
-      - manage_pulse
       - add_mcp_server
       - manage_step_route
       - agent_browser
@@ -354,11 +280,7 @@ chat:
       # outside this declaration by the Goals shadow gate. Admission now
       # happens here before agent construction; executor authority still applies.
       - apply_workflow_db_migration
-      - ask_builder
       - ask_function_update
-      - ask_goal_lead
-      - ask_platform_crew
-      - ask_pulse
       - call_function
       - configure_goal_metrics
       - create_crew
@@ -392,7 +314,6 @@ chat:
       - report_function_progress
       - request_clarification
       - scan_workflow_script_db_usage
-      - schedule_message_wakeup
       - search_platform
       - send_message
       - set_code_layout_version
@@ -401,7 +322,7 @@ chat:
     prompt:
       file: prompts/builder.md
       includes: [prompts/workflow-shared.md]
-    skills: [system-tools, builder-reference, workflow-ui-control, workflow-commands, panel-dashboard, panel-functions, panel-skills, panel-files, panel-database, panel-goal-plan, panel-goal-execution, panel-browser, panel-chat-history, panel-schedules, panel-watchers, panel-webhooks, panel-inbox, panel-slack-bot, panel-slack-account, panel-whatsapp, panel-mcp-access, panel-vault, panel-mcp-connections, panel-secrets, panel-brain, panel-linked-folders, panel-google-apps, panel-agentbridge, panel-sharing, panel-settings, panel-models, panel-costs, panel-knowledgebase, panel-playbooks, panel-pulse, panel-decisions, panel-team, panel-publish, panel-notify, panel-run-logs, panel-upgrades, panel-backup]
+    skills: [system-tools, builder-reference, workflow-ui-control, workflow-commands, panel-dashboard, panel-functions, panel-skills, panel-files, panel-database, panel-goal-plan, panel-goal-execution, panel-browser, panel-chat-history, panel-schedules, panel-watchers, panel-webhooks, panel-inbox, panel-slack-bot, panel-slack-account, panel-whatsapp, panel-mcp-access, panel-vault, panel-mcp-connections, panel-secrets, panel-brain, panel-linked-folders, panel-google-apps, panel-agentbridge, panel-sharing, panel-settings, panel-models, panel-costs, panel-knowledgebase, panel-playbooks, panel-decisions, panel-team, panel-publish, panel-notify, panel-run-logs, panel-upgrades, panel-backup]
   run:
     # Default workflow phase tools; integration tests compare real registration.
     tools:
@@ -440,7 +361,6 @@ chat:
       - send_message
       - read_agent_messages
       - list_agents
-      - schedule_message_wakeup
       - submit_workflow_suggestion
       - get_ui_state
       - get_workflow_command_guidance
@@ -546,7 +466,6 @@ chat:
       - list_needs_you
       - answer_needs_you
       - dismiss_needs_you
-      - manage_pulse
       - manage_project
       - manage_crew_chats
       - query_database

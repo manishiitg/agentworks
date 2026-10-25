@@ -26,7 +26,7 @@ type ReportHumanInputWithdrawal struct {
 func createHumanInputWithdrawalTool() llmtypes.Tool {
 	return llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name:        "withdraw_human_input_request",
-		Description: "Builder may withdraw an obsolete, still-unanswered agent-issued proposal in its own workflow. First read the request and verify why it is no longer needed: for completed work, cite the actual repair and the authority that allowed it. Supply a reason and evidence references. Preserves the question, options, approval contract and history as withdrawn; never answers, approves or authorizes work. Do not withdraw a still-needed approval to bypass it. Human-created requests, suggestions, answered/claimed requests and other workflows are refused. Autopilot should discuss withdrawal with Builder.",
+		Description: "Builder may withdraw an obsolete, still-unanswered agent-issued proposal in its own workflow. First read the request and verify why it is no longer needed: for completed work, cite the actual repair and the authority that allowed it. Supply a reason and evidence references. Preserves the question, options, approval contract and history as withdrawn; never answers, approves or authorizes work. Do not withdraw a still-needed approval to bypass it. Human-created requests, suggestions, answered/claimed requests and other workflows are refused. AgentWorks should discuss withdrawal with Builder.",
 		Parameters: llmtypes.NewParameters(map[string]interface{}{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]interface{}{
@@ -47,10 +47,10 @@ func withdrawHumanInputFromToolArgs(ctx context.Context, args map[string]interfa
 		sessionID = strings.TrimSpace(sessionID)
 	}
 	_, background := step.LookupWorkshopToolSession(sessionID)
-	if sessionID == "" || background || isScheduledSession(sessionID) || isGoalLeadSessionID(sessionID) {
+	if sessionID == "" || background || isScheduledSession(sessionID) {
 		return "", fmt.Errorf("only the workflow's Builder chat may withdraw its agent-issued proposals; discuss this with Builder")
 	}
-	ws, claims, err := pulsePlatformAPI.pulseToolScope(ctx, stringToolArg(args, "workspace_path"), true)
+	ws, claims, err := workflowToolsAPI.workflowToolScope(ctx, stringToolArg(args, "workspace_path"), true)
 	if err != nil {
 		return "", err
 	}

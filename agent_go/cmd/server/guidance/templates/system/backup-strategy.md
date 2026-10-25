@@ -182,7 +182,7 @@ them to a public one is refused — make the repo private or keep the secrets ou
 
 ## Git workflow per per-workflow repo
 
-Run Git backup commands in the **parent workflow-builder/Autopilot turn only**.
+Run Git backup commands in the **parent workflow-builder turn only**.
 Do not delegate backup to a reviewer or another sub-agent. Delegated tool agents have deliberately narrower
 write access and cannot write the workflow's `.git/` directory; attempting Git
 there produces misleading `FETCH_HEAD` / `index.lock: Operation not permitted`

@@ -3,19 +3,10 @@ package virtualtools
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
-
-// slackCLIReadMethods are the admitted Slack reads; anything else (today
-// chat.postMessage) writes to Slack.
-var slackCLIReadMethods = map[string]bool{
-	"conversations.history": true, "conversations.replies": true, "conversations.info": true,
-	"reactions.get": true, "pins.list": true, "bookmarks.list": true,
-}
 
 var slackCLIHandler struct {
 	sync.RWMutex
@@ -34,9 +25,7 @@ func handleSlackCLI(ctx context.Context, args map[string]interface{}) (string, e
 	if run == nil {
 		return "", fmt.Errorf("Slack CLI service unavailable")
 	}
-	if method, _ := args["method"].(string); common.OutwardHeld(ctx) && !slackCLIReadMethods[strings.TrimSpace(method)] {
-		return "", fmt.Errorf("slack %s refused: outward actions are unavailable in this turn. Reads still work. With Autopilot on and outward_actions=ask, prepare the message for the existing owner decision", method)
-	}
+
 	return run(ctx, args)
 }
 func createSlackCLITool() llmtypes.Tool {

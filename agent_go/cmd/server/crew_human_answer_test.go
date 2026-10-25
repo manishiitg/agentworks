@@ -36,9 +36,9 @@ func TestCrewBuilderAnswerSavesThePersonsDecision(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{eventStore: internalevents.NewEventStore(20), lastQueryRequests: map[string]QueryRequest{}, activeSessions: map[string]*ActiveSessionInfo{}}
-	previousAPI := pulsePlatformAPI
-	pulsePlatformAPI = api
-	t.Cleanup(func() { pulsePlatformAPI = previousAPI })
+	previousAPI := workflowToolsAPI
+	workflowToolsAPI = api
+	t.Cleanup(func() { workflowToolsAPI = previousAPI })
 	contextFor := func(actor, session string) context.Context {
 		return executor.WithSessionID(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: actor}), session)
 	}

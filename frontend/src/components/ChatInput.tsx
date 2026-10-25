@@ -478,9 +478,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       : undefined
     return manifestPath || workflowPhasePreset?.selectedFolder?.filepath
   })
-  const workflowPulseEnabled = useWorkflowManifestStore(state =>
-    workflowPhaseWorkspacePath ? state.getWorkflowByPath(workflowPhaseWorkspacePath)?.manifest.pulse?.enabled === true : false,
-  )
   const manifestLLMConfig = useWorkflowManifestStore(state => {
     if (!workflowPhaseWorkspacePath) return null
     const wf = state.getWorkflowByPath(workflowPhaseWorkspacePath)
@@ -651,10 +648,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     llmConfigLocked: state.llmConfigLocked,
     publishedLLMs: state.savedLLMs,
   })))
-  
+
   // Note: activeTab may be undefined during initial render before tabs are created
   // This is expected and will resolve once the tab store initializes
-  
+
   // Always use tab-specific config (ChatInput is only in multi-agent mode)
   // Memoize to prevent unnecessary re-renders when other config values change
   const chatFileContext = useMemo(() => tabConfig?.fileContext || [], [tabConfig?.fileContext])
@@ -908,7 +905,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       writeComposerText(removeFileReferences(inputText, path), { fileContext: newFileContext })
     }
   }, [activeTabId, activeTab, chatFileContext, inputText, writeComposerText])
-  
+
   const clearFileContext = useCallback(() => {
     if (activeTabId) {
       writeComposerText(chatFileContext.reduce((text, file) => removeFileReferences(text, file.path), inputText), {
@@ -922,7 +919,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       })
     }
   }, [activeTabId, chatFileContext, inputText, writeComposerText])
-  
+
   const addPastedAttachment = useCallback((content: string): string | null => {
     if (!activeTabId) return null
     const existingAttachments = useChatStore.getState().getTabConfig(activeTabId)?.pastedAttachments || chatPastedAttachments
@@ -1089,11 +1086,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const canWriteCommandWorkflow = useCanWriteWorkflow(commandWorkflowPath?.replace(/\/+$/, ''))
   const useProductCommandCatalog = isProductProfile || (isRelaySurface && isWorkflowMode)
   const customCommandWorkspacePath = agentProfileWorkspace || (isWorkflowMode ? commandWorkflowPath : undefined) || undefined
-  
+
   // Get queued messages from tab config
   const queuedMessages = useMemo(() => tabConfig?.queuedMessages || [], [tabConfig?.queuedMessages])
 
-  
+
 
   // State for steer message loading
   const [steeringIndex, setSteeringIndex] = useState<number | null>(null)
@@ -1176,7 +1173,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       setChatSelectedServers(newServers)
     }
   }, [activeTabId, manualSelectedServers, setTabConfig, setChatSelectedServers])
-  
+
   const onSelectAllServers = useCallback(() => {
     if (activeTabId) {
       const allServers = availableServers
@@ -1483,7 +1480,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   const uploadFilesToChatRef = useRef<(files: File[]) => Promise<void>>(async () => {})
   const dragCounterRef = useRef(0)
-  
+
   // File selection dialog state
   const [showFileDialog, setShowFileDialog] = useState(false)
   const [fileDialogPosition, setFileDialogPosition] = useState({ top: 0, left: 0 })
@@ -1567,7 +1564,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       if (activeTabId) {
         setTabConfig(activeTabId, { autoRun: false, inputText: '' })
       }
-      
+
       // 3. Submit the query
       onSubmit(inputText)
     }
@@ -1585,7 +1582,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       }
     }
   }, [inputText, adjustTextareaHeight, isProductSurface, terminalViewSelected])
-  
+
   // Set initial height on mount
   useEffect(() => {
     if (textareaRef.current) {
@@ -2467,22 +2464,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     const beforeHash = inputText.substring(0, hashPosition)
     const afterSearch = inputText.substring(hashPosition + 1 + workflowSearchQuery.length)
-    // #pulse is plain text the Builder reads as "ask Autopilot"; it adds no context.
-    if (workflow.presetId === 'pulse') {
-      writeComposerText(beforeHash + '#pulse ' + afterSearch)
-      setShowWorkflowDialog(false)
-      setHashPosition(-1)
-      setWorkflowSearchQuery('')
-      // Back to the textarea, cursor after the tag, so typing continues.
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus()
-          const cursorPosition = beforeHash.length + '#pulse '.length
-          textareaRef.current.setSelectionRange(cursorPosition, cursorPosition)
-        }
-      }, 0)
-      return
-    }
+
     const tag = referenceTag(workflow)
     const newQuery = beforeHash + tag + ' ' + afterSearch
 
@@ -2832,7 +2814,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // the short interval before the backend has attached the live session.
   const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || isUploadingFiles
   const sendButtonLabel = isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'Queue next' : 'Steer') : 'Send'
-  
+
   // Memoized placeholder
   const placeholder = useMemo(() => {
     if (pendingNativeChoice) return 'Choose an option above to continue…'
@@ -3644,7 +3626,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           disabled={isUploadingFiles}
         />
       </ChatComposerArea>
-      
+
       </div>
 
       {/* Command Selection Dialog */}
@@ -3704,7 +3686,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         onSelectWorkflow={handleWorkflowSelect}
         searchQuery={workflowSearchQuery}
         position={workflowDialogPosition}
-        includePulse={isWorkflowPhaseChat && workflowPulseEnabled}
       />
 
       {/* Inline Skill Selection Popup */}

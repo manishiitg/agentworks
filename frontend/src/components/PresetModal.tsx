@@ -77,7 +77,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
 
   const [builderLLM, setBuilderLLM] = useState<AgentLLMConfig | null>(null);
   const [maintenanceLLM, setMaintenanceLLM] = useState<AgentLLMConfig | null>(null);
-  const [pulseLLM, setPulseLLM] = useState<AgentLLMConfig | null>(null);
+  const [backgroundLLM, setBackgroundLLM] = useState<AgentLLMConfig | null>(null);
   const [tier1LLM, setTier1LLM] = useState<AgentLLMConfig | null>(null);
   const [tier2LLM, setTier2LLM] = useState<AgentLLMConfig | null>(null);
   const [tier3LLM, setTier3LLM] = useState<AgentLLMConfig | null>(null);
@@ -173,7 +173,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
       mode: 'explicit',
       builder_llm: selected,
       maintenance_llm: selected,
-      pulse_llm: selected,
+      background_llm: selected,
       tiered_config: { tier_1: selected, tier_2: selected, tier_3: selected },
     });
   }, [toAgentLLMConfig]);
@@ -216,7 +216,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
   const effectiveTier3LLM = useMemo<AgentLLMConfig | null>(() => tier3LLM || workflowDefaultTierLLMs?.tier3 || defaultAgentLLM, [tier3LLM, workflowDefaultTierLLMs, defaultAgentLLM]);
   const effectiveBuilderLLM = useMemo<AgentLLMConfig | null>(() => builderLLM || workflowDefaultTierLLMs?.builder || effectiveTier1LLM || defaultAgentLLM, [builderLLM, workflowDefaultTierLLMs, effectiveTier1LLM, defaultAgentLLM]);
   const effectiveMaintenanceLLM = useMemo<AgentLLMConfig | null>(() => maintenanceLLM || workflowDefaultTierLLMs?.maintenance || effectiveTier1LLM || defaultAgentLLM, [maintenanceLLM, workflowDefaultTierLLMs, effectiveTier1LLM, defaultAgentLLM]);
-  const effectivePulseLLM = useMemo<AgentLLMConfig | null>(() => pulseLLM || workflowDefaultTierLLMs?.pulse || defaultAgentLLM, [pulseLLM, workflowDefaultTierLLMs, defaultAgentLLM]);
+  const effectiveBackgroundLLM = useMemo<AgentLLMConfig | null>(() => backgroundLLM || workflowDefaultTierLLMs?.pulse || defaultAgentLLM, [backgroundLLM, workflowDefaultTierLLMs, defaultAgentLLM]);
 
 
   // Clears any half-typed credential when the modal opens or switches
@@ -265,7 +265,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
       // Load agent-specific configs if available
       setBuilderLLM(presetLLM.builder_llm || null);
       setMaintenanceLLM(presetLLM.maintenance_llm || null);
-      setPulseLLM(presetLLM.pulse_llm || null);
+      setBackgroundLLM(presetLLM.background_llm || null);
       // Load tiered LLM allocation config
       setTier1LLM(presetLLM.tiered_config?.tier_1 || null);
       setTier2LLM(presetLLM.tiered_config?.tier_2 || null);
@@ -298,7 +298,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
       // Initialize agent-specific configs to null (will use legacy default)
       setBuilderLLM(null);
       setMaintenanceLLM(null);
-      setPulseLLM(null);
+      setBackgroundLLM(null);
       // Initialize tiered config
       setTier1LLM(null);
       setTier2LLM(null);
@@ -320,15 +320,15 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
     // Estimate dialog height (max-h-80 = 320px + some padding)
     const estimatedDialogHeight = 320;
     const spaceAbove = rect.top + window.scrollY;
-    
+
     // Always try to position above the button so contents are visible
     // Fallback to below only if there's not enough space above
     const minSpaceNeeded = 200; // Minimum space needed above
     const shouldPositionAbove = spaceAbove >= minSpaceNeeded;
-    
+
     setFolderDialogPosition({
-      top: shouldPositionAbove 
-        ? rect.top + window.scrollY - estimatedDialogHeight 
+      top: shouldPositionAbove
+        ? rect.top + window.scrollY - estimatedDialogHeight
         : rect.bottom + window.scrollY,
       left: rect.left + window.scrollX
     });
@@ -367,7 +367,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
     setIsSavingPreset(true);
     let manifestSaved = false;
     try {
-      
+
       // Debug: Log what we're sending
       console.log('[PresetModal] Saving preset with:', {
         selectedServers,
@@ -376,7 +376,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         label,
         agentMode: effectiveAgentMode
       });
-      
+
       // Build LLM config with workflow-level defaults
       // execution_llm is step-only and is not persisted at the workflow level.
       let finalLLMConfig: PresetLLMConfig | undefined = stripRetiredLLMFallbacks(llmConfig || undefined);
@@ -406,12 +406,12 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
             mode: 'provider_profile',
             builder_llm: undefined,
             maintenance_llm: undefined,
-            pulse_llm: undefined,
+            background_llm: undefined,
             tiered_config: undefined,
           };
         } else {
-          if (!effectiveBuilderLLM || !effectiveMaintenanceLLM || !effectivePulseLLM || !explicitTieredConfig) {
-            alert('Builder, Maintenance, Autopilot, and all three execution tiers are required');
+          if (!effectiveBuilderLLM || !effectiveMaintenanceLLM || !effectiveBackgroundLLM || !explicitTieredConfig) {
+            alert('Builder, Maintenance, Background work, and all three execution tiers are required');
             return;
           }
           finalLLMConfig = {
@@ -421,7 +421,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
             provider: undefined,
             builder_llm: effectiveBuilderLLM,
             maintenance_llm: effectiveMaintenanceLLM,
-            pulse_llm: effectivePulseLLM,
+            background_llm: effectiveBackgroundLLM,
             tiered_config: explicitTieredConfig,
           };
         }
@@ -431,8 +431,8 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         effectiveBuilderLLM: effectiveBuilderLLM || undefined,
         maintenanceLLM: maintenanceLLM,
         effectiveMaintenanceLLM: effectiveMaintenanceLLM || undefined,
-        pulseLLM: pulseLLM,
-        effectivePulseLLM: effectivePulseLLM || undefined,
+        backgroundLLM: backgroundLLM,
+        effectiveBackgroundLLM: effectiveBackgroundLLM || undefined,
         defaultAgentLLM: defaultAgentLLM || undefined,
         effectiveTier1LLM: effectiveTier1LLM || undefined,
         effectiveTier2LLM: effectiveTier2LLM || undefined,
@@ -476,7 +476,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
     } finally {
       setIsSavingPreset(false);
     }
-  }, [label, icon, query, effectiveAgentMode, selectedFolder, selectedServers, selectedTools, selectedSkills, selectedSecrets, selectedGlobalSecrets, llmConfig, builderLLM, effectiveBuilderLLM, maintenanceLLM, effectiveMaintenanceLLM, pulseLLM, effectivePulseLLM, browserMode, cdpPort, editingPreset, onSave, onClose, defaultAgentLLM, effectiveTier1LLM, effectiveTier2LLM, effectiveTier3LLM, showWorkflowLLMAdvanced, unsavedCredentialProvider, showRunsOn, runsOn, workflowKind]);
+  }, [label, icon, query, effectiveAgentMode, selectedFolder, selectedServers, selectedTools, selectedSkills, selectedSecrets, selectedGlobalSecrets, llmConfig, builderLLM, effectiveBuilderLLM, maintenanceLLM, effectiveMaintenanceLLM, backgroundLLM, effectiveBackgroundLLM, browserMode, cdpPort, editingPreset, onSave, onClose, defaultAgentLLM, effectiveTier1LLM, effectiveTier2LLM, effectiveTier3LLM, showWorkflowLLMAdvanced, unsavedCredentialProvider, showRunsOn, runsOn, workflowKind]);
 
   // Close modal on escape key
   useEffect(() => {

@@ -35,12 +35,8 @@ var (
 	toInt                        = costobserver.ToInt
 )
 
-// chatTurnCostScope names the cost scope of a chat/query-path turn: Pulse
-// (scheduler flag), then a product schedule's source, then mode + phase.
 func chatTurnCostScope(req QueryRequest, agentModeForScope, phaseID string) string {
-	if scope := scopeForScheduledTurn(req.PulseLifecycleTurn, req.LLMConfigSource); scope != "" {
-		return scope
-	}
+
 	if scope := scopeForAutomationSource(req.CostSourceID); scope != "" {
 		return scope
 	}

@@ -22,7 +22,7 @@ Start with the operator journey, then use the subsystem references when you need
 ## Product Areas
 
 - [Retiring fixed human-input steps](workflow/human-input-step-retirement.md): required launch variables, live human tools and a drained migration.
-- [Workflow](workflow/README.md): workflow authoring, execution, scheduling, monitoring, Pulse, and Auto Improve.
+- [Workflow](workflow/README.md): workflow authoring, execution, scheduling, metrics, reviews and notifications.
 - [Organization and Agents](multiagent/README.md): delegation, Org Pulse, shared memory, and agent-to-agent coordination.
 - [Core](core/README.md): providers, MCP, browser sessions, connectors, secrets, security, and shared runtime services.
 - [Security](security/README.md): the security model, per-user Linux accounts, and provider credentials.
@@ -61,9 +61,7 @@ this is the complete map.
 - [Channel connectors](channel-connectors.md)
 - [Google CLI authentication and agent terminals](google-cli-authentication.md)
 - [Header Consolidation](header-consolidation.md)
-- [Outcome goals and measurable progress](pulse-goal-measurement.md)
-- [Pulse review visibility](pulse-review-visibility.md)
-- [Workflow improvement through Pulse](pulse-workflow-improvement-system.md)
+- [Outcome goals and measurable progress](goal-measurements.md)
 - [Reusable report data and widgets](report-metric-widgets.md)
 - [Live report data from scripts (`window.report.run`)](report-live-data.md)
 - [Secrets](secrets.md)
@@ -130,7 +128,6 @@ this is the complete map.
 - [Native Coding-Agent Environment Policy](design/native_coding_agent_environment_policy.md)
 - [Product API Transport for Coding Agents](design/product_api_transport_for_coding_agents.md)
 - [Product Tool Registration and Agent Visibility](design/product_tool_registration_and_visibility.md)
-- [Pulse scheduled review lifecycle — historical design spec](design/pulse-post-run-monitor-spec.md)
 - [Reusable Platform for Dedicated Agent Products](design/reusable_vertical_product_platform.md)
 - [Skill system — current state and narrow product-skill design](design/skill_system_design.md)
 - [SparkQuill desktop on the platform — plan and research record](design/sparkquill_desktop_on_platform_plan.md)
@@ -197,15 +194,11 @@ this is the complete map.
 - [Iteration Run Folder Architecture](workflow/iteration_run_folder_architecture.md)
 - [Learn Code and Code Execution Modes](workflow/learn_code_flow.md)
 - [Learning Architecture](workflow/learning_architecture.md)
-- [LinkedIn Pulse Review Audit — 2026-08-02](workflow/linkedin_pulse_review_audit_2026-08-02.md)
 - [Agent Steps](workflow/agent_step_design.md)
 - [Org Dashboard — design](workflow/org_dashboard_design.md)
 - [Persistent Stores Design](workflow/persistent_stores_design.md)
 - [Deterministic Pre-Validation Guide](workflow/pre_validation_guide.md)
 - [Publish — share a workflow's HTML to a public URL](workflow/publish_design.md)
-- [Pulse: current architecture and decision map](workflow/pulse_consolidation.md)
-- [Pulse v2.1: Reliability-First Experiment Proposal](workflow/pulse_v2_1_experiment_proposal.md)
-- [Pulse v2: Proof-Carrying Workflows and Exception-Driven Autonomy](workflow/pulse_v2_proof_carrying_architecture.md)
 - [Workflow self-improvement & reporting — system overview](workflow/self_improvement_and_reporting.md)
 - [Shared knowledge bases through workflow references](workflow/shared_knowledgebase_sources.md)
 - [step_config.json Format Specification](workflow/step_config_format_specification.md)

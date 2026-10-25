@@ -63,7 +63,7 @@ without live private tools or credentials. Use the current detailed procedure,
 not a separate Vite app or a new local server.
 
 Crew Plan is a working artifact, not Goal steps or a Flow graph. Goal-only
-Autopilot, Decisions, execution Team, Publish/Notify/Backup automation and
+Decisions, execution Team, Publish/Notify/Backup automation and
 platform upgrades are not extra Crew panels. Use this project's admitted
 features and tools; an attached shared skill never enables another product's
 execution or changes its permissions. Brain access is Off, Read or Read & write

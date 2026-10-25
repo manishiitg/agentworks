@@ -382,16 +382,15 @@ manifest parses. They do not prove the chat works. Verify live:
 ## AgentWorks chat capabilities
 
 AgentWorks declares `chat_policy.modes` (`builder`, `run`), `origins`
-(`interactive`, `scheduled`, `pulse`, `child`, `bot`, `notification`) and
+(`interactive`, `scheduled`, `child`, `bot`, `notification`) and
 `read_only` in its embedded product manifest. Capabilities are intersected; an
 unknown role grants nothing. The current named host groups are MCP management,
 plan authoring, report authoring, secret management, KB maintenance, improvement
 proposals and workspace UI. Adding a capability requires manifest validation,
 a registrar consumer and tests for allowed and denied callers.
 
-Scheduled ordinary execution resolves to Run. Pulse maintenance is a specialized
-origin with existing typed reviewer/fixer restrictions, not an interactive
-Builder. Client-visible mode alone is never sufficient evidence for installer
+Scheduled ordinary execution resolves to Run. Backup/publish housekeeping has
+only its existing actions. Client-visible mode alone is never sufficient evidence for installer
 admission. Existing non-AgentWorks products keep their own tool allowlists.
 
 Service deployments should set `AGENTWORKS_MCP_STATE_DIR` to a private durable

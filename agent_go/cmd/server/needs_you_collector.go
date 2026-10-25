@@ -91,12 +91,18 @@ func (api *StreamingAPI) collectNeedsYou(ctx context.Context, claims *UserClaims
 			if read, _ := reportHumanInputAccess(ctx, place.path); !read {
 				continue
 			}
+			if place.Kind == "workflow" {
+				manifest, found, err := ReadWorkflowManifest(ctx, place.path)
+				if err != nil || !found || manifest == nil || !manifest.Capabilities.Notifications.BreakAlertsEnabled() {
+					continue
+				}
+			}
 			updates, err := services.ListOrgDashboardNotifications(ctx, place.path, 1)
 			if err != nil {
 				result.warnings = append(result.warnings, "Some run summaries could not be loaded.")
 				continue
 			}
-			if latest := updates.RunSummary; latest != nil && (latest.Status == "failed" || latest.Status == "blocked" || latest.Status == "waiting_for_platform" || latest.Status == "no_run") {
+			if latest := updates.RunSummary; latest != nil && wakeReasonForRun(latest.Status, true) != "" {
 				result.failures = append(result.failures, needsYouFailure{ID: latest.ID, Status: latest.Status, Title: firstNonEmptyTrimmed(latest.Title, latest.Message), UpdatedAt: latest.CreatedAt, Place: place})
 			}
 		}

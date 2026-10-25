@@ -80,7 +80,6 @@ func TestGoalBuilderLaptopUsesSharedGrantsOnlyInInteractiveTurns(t *testing.T) {
 			case "schedule":
 				next.TriggeredBy = "schedule"
 			case "autopilot":
-				next.PulseLifecycleTurn = true
 			case "run":
 				next.PinRunMode = true
 			case "run_mode":

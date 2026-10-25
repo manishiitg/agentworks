@@ -900,9 +900,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveExecutionConversationLogs(
 	return nil
 }
 
-// saveFinalExecutionSummary persists the authoritative compact result after all
-// execution, validation, KB, and learnings turns have finished. Attempt logs stay
-// immutable diagnostic evidence; Pulse reads this stable file for completed steps.
 func (hcpo *StepBasedWorkflowOrchestrator) saveFinalExecutionSummary(stepID, stepPath, executionResult string) error {
 	trimmed := strings.TrimSpace(executionResult)
 	if trimmed == "" {
@@ -1631,10 +1628,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				templateVars["ScriptedMetadataPath"] = metaRelPath
 			}
 
-			// A run never asks an LLM to write, repair or stand in for a scripted
-			// step: it runs the saved main.py and fails on its error, which Pulse
-			// reports. Authoring and repair happen only when the Builder runs the
-			// step itself (AllowScriptRepair), PLAT-436.
 			strictScript := scriptedRunIsStrict(execCtx, step)
 			if strictScript {
 				if scriptedDecision.FastPathDone {
@@ -1682,8 +1675,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			// If scripted was ever active in any attempt, the conversation is polluted
 			// with main.py authoring turns — fall back to fresh agents instead of continuing.
 			learnCodeActiveInAnyAttempt := false
-			// Tier selection belongs to explicit configuration and Pulse Architecture
-			// review. Never derive a runtime override from learning/run counters.
 
 			// Retry loop: Execute with validation feedback, reusing the same learning history
 			// Fires an [AUTO-NOTIFICATION] into the builder chat on the FIRST
@@ -1915,10 +1906,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				}
 
 				hcpo.GetLogger().Info(fmt.Sprintf("✅ Step %d execution completed successfully (attempt %d)", stepIndex+1, retryAttempt))
-				// Carry validation failures from earlier attempts into every later
-				// execution result. Pulse Gate intentionally reads the latest/final
-				// attempt, so keeping the concern only on the failed attempt would
-				// hide a recovered validation failure.
 				executionResult = withValidationFailureConcern(executionResult, validationFailures, 0, false)
 				hcpo.recordWorkflowContinuationPhase(context.Background(), artifactStepID, artifactStepPath, workflowContinuationOwnerStepExecution, workflowContinuationPhaseMainExecution, workflowContinuationStatusCompleted, "", executionAgent)
 
@@ -2319,7 +2306,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				}
 				hcpo.recordWorkflowContinuationPhase(ctx, artifactStepID, artifactStepPath, workflowContinuationOwnerStepExecution, workflowContinuationPhasePreValidation, preValidationStatus, preValidationError, executionAgent)
 
-				// Persist pre-validation results for Pulse Bug Review and diagnostics.
 				if hcpo.selectedRunFolder != "" {
 					preValLogPath := fmt.Sprintf("%s/runs/%s", hcpo.GetWorkspacePath(), hcpo.selectedRunFolder)
 					mode := "agentic"
@@ -2664,14 +2650,6 @@ func summarizeExecutionResultForNotification(result string) string {
 		return ""
 	}
 
-	// The execution prompt deliberately puts the human-readable outcome and any
-	// non-fatal CONCERNS immediately before the final STATUS line. Keeping only
-	// the last line therefore turns a useful completion into little more than
-	// "STATUS: COMPLETED" and drops the evidence that downstream steps and Pulse
-	// need. Preserve the final response as the compact notification summary. The
-	// prompt already limits it to a few sentences; the defensive tail cap keeps a
-	// misbehaving provider response from making notifications unbounded while
-	// retaining the contractually important final lines.
 	const maxSummaryRunes = 4000
 	runes := []rune(trimmed)
 	if len(runes) > maxSummaryRunes {

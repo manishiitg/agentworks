@@ -1,7 +1,6 @@
 package agentworksproduct
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -35,31 +34,6 @@ func TestMCPInspectionIsDeclaredForRunMode(t *testing.T) {
 			for _, origin := range []string{"scheduled", "pulse", "child"} {
 				if ChatCapabilities(mode, origin, readOnly)["mcp_inspection"] {
 					t.Fatalf("%s admitted undeclared MCP inspection", origin)
-				}
-			}
-		}
-	}
-}
-
-func TestScheduledAndPulseShareUnattendedCapabilities(t *testing.T) {
-	for _, mode := range []string{"builder", "run"} {
-		for _, readOnly := range []bool{false, true} {
-			scheduled := ChatCapabilities(mode, "scheduled", readOnly)
-			pulse := ChatCapabilities(mode, "pulse", readOnly)
-			if !reflect.DeepEqual(scheduled, pulse) {
-				t.Fatalf("%s readOnly=%v scheduled=%v pulse=%v", mode, readOnly, scheduled, pulse)
-			}
-			for _, capability := range []string{"user_management", "mcp_management", "mcp_inspection", "bot_management", "workspace_ui"} {
-				if scheduled[capability] {
-					t.Fatalf("unattended %s admitted %s", mode, capability)
-				}
-			}
-			if !scheduled["workflow_suggestions"] {
-				t.Fatalf("unattended %s readOnly=%v cannot submit suggestions", mode, readOnly)
-			}
-			for _, capability := range []string{"plan_authoring", "report_authoring", "secret_management", "knowledgebase_maintenance", "improvement_proposals"} {
-				if scheduled[capability] != (mode == "builder" && !readOnly) {
-					t.Fatalf("unattended %s readOnly=%v unexpected %s admission", mode, readOnly, capability)
 				}
 			}
 		}

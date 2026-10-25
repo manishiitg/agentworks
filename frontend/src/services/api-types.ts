@@ -549,7 +549,7 @@ export interface ReportHumanInput {
 	apply_contract?: ReportHumanInputApplyContract
   /** Answered decisions only: the Builder chat message that applies it (Needs you "Apply in chat"). */
   apply_message?: string
-  /** The Pulse's recommended answer (PLAT-697), kept apart from the owner's answer. */
+  
   withdrawal?: {
     reason: string
     evidence: string[]
@@ -559,9 +559,6 @@ export interface ReportHumanInput {
   }
 }
 
-/** The Pulse's recommendation on one decision; also that decision's log entry (PLAT-697). */
-
-/** One line of the Pulse conversation shown in the Pulse tab (PLAT-697 phase 4). */
 export interface GoalLeadMessage {
   id: string
   at: string
@@ -569,24 +566,6 @@ export interface GoalLeadMessage {
   source?: string
   text: string
   session_id?: string
-}
-
-export interface GoalLeadConversation {
-  has_goal: boolean
-  session_id?: string
-  started_at?: string
-  generation?: number
-  busy: boolean
-  messages: GoalLeadMessage[]
-  error?: string
-}
-
-/** A focus area's lifecycle: proposed by the Pulse, confirmed by the owner, tracked, closed. */
-
-export interface GoalLeadResponse {
- success: boolean
- conversation?: GoalLeadConversation
- error?: string
 }
 
 export interface ReportHumanInputsResponse {
@@ -608,34 +587,7 @@ export interface GoalMeasurements {
   observations: GoalObservation[]
 }
 
-export interface PulseOverviewResponse {
- success: boolean
- outward_actions?: PulseOutwardActions
- has_soul?: boolean
- run_setup?: WorkflowRunSetup
- measurements?: GoalMeasurements
- measurements_error?: string
- conversation?: GoalLeadConversation
- error?: string
-}
-
-/** What runs for a workflow whoever manages it (shown on the Pulse tab when Pulse is off). */
-export interface WorkflowRunSetup {
-  schedules: { name: string; type: 'cron' | 'calendar' | 'webhook' | string; enabled: boolean; cron_expression?: string; timezone?: string; after_run: ScheduleAfterRun }[]
-  manual_after_run: ScheduleAfterRun
-  workflow_review?: { finished_at?: string; started_at?: string; outcome?: string; reason?: string } | null
-}
-
-export type PulseOutwardActions = 'ask' | 'allow' | 'decide'
-
 /** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
-
-/** The Pulse's goal status: code facts plus the latest daily goal check verdict. */
-
-/** Work Pulse did (or plans) to move the user's goals, and constraint challenges. */
-
-/** The workflow's own Pulse schedule. Normal schedules only back up, publish
- * and notify; the full Pulse runs here and, in self mode, picks its own next time. */
 
 export interface GoalMetric {
   goal_id?: string
@@ -1752,7 +1704,7 @@ export interface PresetLLMConfig {
   // Advanced mode: pin every workflow role directly.
   builder_llm?: AgentLLMConfig
   maintenance_llm?: AgentLLMConfig
-  pulse_llm?: AgentLLMConfig
+  background_llm?: AgentLLMConfig
   // Feature toggles
   use_knowledgebase?: boolean           // nil/true = enabled (default), false = disabled
 
@@ -1889,7 +1841,7 @@ export interface ExecutionOptions {
   execution_strategy: string;
   resume_from_step?: number;  // 1-based step number (for top-level steps)
   plan_change_action?: 'keep_old_progress' | 'delete_old_progress';
-  
+
   // Validation response persistence
   save_validation_responses?: boolean;  // If true, save validation responses to workspace validation folder (default: true)
 
@@ -2731,6 +2683,7 @@ export interface WorkflowNotificationSenderChoice {
 }
 
 export interface WorkflowNotificationInfoResponse {
+  break_alerts: boolean
   success: boolean
   agentic: boolean
   scope_label: string
@@ -2740,20 +2693,15 @@ export interface WorkflowNotificationInfoResponse {
   account_channels: WorkflowNotificationAccountChannelInfo[]
   // Per-workflow content preferences from workflow.json notifications.
   run_summary_instructions?: string
-  pulse_summary_instructions?: string
   run_summary_channels?: string[]
-  pulse_summary_channels?: string[]
-  // Who each summary is emailed to. Empty means the account default recipient.
+  // Who each summary is emailed to. Empty means summary email delivery is off.
   run_summary_recipients?: string[]
   /** One sender selected for this workflow's Notify emails; empty inherits the account default. */
   gmail_connection_id?: string
   /** Legacy per-summary sender overrides; Notify now selects one sender. */
   run_summary_gmail_connection_ids?: string[]
-  pulse_summary_gmail_connection_ids?: string[]
-  pulse_summary_recipients?: string[]
   // Slack channels per summary, as webhook secret names (one webhook = one channel).
   run_summary_slack_webhooks?: string[]
-  pulse_summary_slack_webhooks?: string[]
   exclude_channels?: string[]
   block_recipients?: string[]
 }
@@ -2763,7 +2711,6 @@ export interface WorkflowNotificationInfoResponse {
 export interface ScheduleAfterRun {
   backup: boolean
   publish: boolean
-  notify: boolean
 }
 
 export interface ScheduledJob {
@@ -3013,7 +2960,6 @@ export interface WorkflowManifest {
   created_at?: string
   updated_at?: string
   run_retention_count?: number
-  pulse?: WorkflowPulseConfig
   backup?: WorkflowBackupConfig
   publish?: { enabled?: boolean; triggers?: WorkflowBackupTriggers }
   /** After-run options for runs started from a chat (PLAT-697 phase 0). */
@@ -3056,11 +3002,6 @@ export interface WorkflowFolderAccessRequest {
   requested_at: string
 }
 
-export interface WorkflowPulseConfig {
-  outward_actions?: PulseOutwardActions
-  enabled?: boolean
-}
-
 export interface WorkflowCapabilities {
   selected_servers: string[]
   selected_tools: string[]
@@ -3081,14 +3022,13 @@ export interface WorkflowCapabilities {
 }
 
 export interface WorkflowNotificationConfig {
+  break_alerts?: boolean
   // Name of an encrypted workflow/user/global secret; never the webhook URL.
   slack_webhook_secret_name?: string
   // Legacy shared guidance; new saves use the scoped fields below.
   instructions?: string
   run_summary_instructions?: string
-  pulse_summary_instructions?: string
   run_summary_channels?: string[]
-  pulse_summary_channels?: string[]
 }
 
 export interface WorkflowExecutionDefaults {
@@ -3188,24 +3128,19 @@ export interface UpdateWorkflowManifestRequest {
   schedules?: WorkflowScheduleEntry[]
   workshop_mode?: string // Standalone patch — avoids zeroing out other execution_defaults fields
   run_retention_count?: number
-  pulse_enabled?: boolean
-  pulse_outward_actions?: PulseOutwardActions
   /** After-run options for runs started from a chat (PLAT-697 phase 0). */
   after_manual_run?: ScheduleAfterRun
   run_notification_instructions?: string
-  pulse_notification_instructions?: string
   run_notification_channels?: string[]
-  pulse_notification_channels?: string[]
   // Send an empty array to clear a recipient list back to the account default;
   // omit the field to leave it unchanged.
   run_notification_recipients?: string[]
-  pulse_notification_recipients?: string[]
   /** One sender for this workflow's Notify emails. Empty inherits the account default. */
+  break_alerts?: boolean
   notification_gmail_connection_id?: string
   // Legacy per-summary sender overrides. New Notify settings use
   // notification_gmail_connection_id and clear these lists.
   run_notification_gmail_connection_ids?: string[]
-  pulse_notification_gmail_connection_ids?: string[]
   notification_instructions?: string
   knowledgebase_sources?: KnowledgebaseSource[]
   /** Replaces the complete list of other workflow IDs allowed to write into
@@ -3274,15 +3209,14 @@ export interface OrgDashboardRouteNotifications {
   label: string
   legacy?: boolean
   run_summary?: OrgDashboardNotification
-  pulse_summary?: OrgDashboardNotification
 }
 
 export interface OrgDashboardNotification {
+  kind: 'run_summary'
   id: string
   workspace_path: string
-  kind: 'run_summary' | 'pulse_summary'
   title?: string
-  status: 'completed' | 'failed' | 'blocked' | 'waiting_for_user' | 'waiting_for_platform' | 'monitoring' | 'informational' | 'no_run'
+  status: 'completed' | 'partial' | 'failed' | 'blocked' | 'waiting_for_user' | 'waiting_for_platform' | 'monitoring' | 'informational' | 'no_run'
   route?: string
   message: string
   routes?: NotificationRouteSummary[]

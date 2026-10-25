@@ -53,7 +53,7 @@ func laptopBuilderTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
 	goal := profile == nil && (req.AgentMode == "workflow_phase" || req.admittedWorkflowPhase) && req.PhaseID == "workflow-builder" && workflowCLIMode(&req, false) != "run"
 	return (crew || goal) && !req.PinRunMode && req.BotPlatform == "" &&
 		(strings.TrimSpace(req.TriggeredBy) == "" || req.TriggeredBy == "interactive") &&
-		req.ParentSessionID == "" && req.SessionKind == "" && !req.IsAutoNotification && !req.PulseLifecycleTurn
+		req.ParentSessionID == "" && req.SessionKind == "" && !req.IsAutoNotification
 }
 
 func laptopProfileForRequest(req QueryRequest) *resolvedAgentProfile {

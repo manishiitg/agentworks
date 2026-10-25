@@ -157,12 +157,6 @@ type PreValidationAttempt struct {
 	ValidationAttempt int
 }
 
-// SavePreValidationLog writes pre-validation results to the step's log folder.
-// Path: logs/{stepID}/pre_validation.json. That compatibility pointer is
-// overwritten with the latest result, while every invocation is also retained
-// at logs/{stepID}/pre_validation_<phase>_execution_N_attempt_M.json. Failures
-// remain evidence, not automatic durable Pulse issues: a later repair may
-// succeed in the same attempt. Reviewers classify unresolved terminal failures.
 func SavePreValidationLog(
 	ctx context.Context,
 	bo *orchestrator.BaseOrchestrator,
@@ -217,9 +211,6 @@ func SavePreValidationLog(
 	_ = bo.WriteWorkspaceFile(ctx, historyPath, string(data))
 	_ = bo.WriteWorkspaceFile(ctx, logPath, string(data))
 
-	// Failed validation remains in this run's persisted validation receipt for
-	// Pulse's deterministic intake and Technical Review. Do not mirror it into
-	// the observation store: Go must not create or text-deduplicate Pulse work.
 }
 
 func normalizePreValidationAttemptPart(value, fallback string) string {

@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-// Definitions are configured once by the builder. Measurements reuse the
-// immutable Pulse observation ledger; reviewers do not maintain another report.
 type GoalMetric struct {
 	// Goal grouping is independent of the immutable observation criterion.
 	GoalID      string   `json:"goal_id,omitempty"`
@@ -155,8 +153,6 @@ func ConfigureGoalMetrics(ctx context.Context, workspacePath string, metrics []G
 	return tx.Commit()
 }
 
-// RecordGoalObservations is callable by ordinary producing steps, without
-// claiming a Pulse review run. Source run identity and evidence remain required.
 func RecordGoalObservations(ctx context.Context, workspacePath string, observations []GoalObservation) (*GoalMeasurementLedger, error) {
 	ledger, err := LoadGoalMeasurements(ctx, workspacePath, 1)
 	if err != nil {
@@ -212,7 +208,7 @@ func RecordGoalObservations(ctx context.Context, workspacePath string, observati
 		}
 		var value sql.NullFloat64
 		var stamp, unit, status, evidence, windowStart, windowEnd string
-		err = tx.QueryRowContext(ctx, `SELECT value,observed_at,unit,status,evidence_json,window_start,window_end FROM pulse_goal_observations WHERE criterion_id=? AND metric=? AND run_id=? AND route=? AND environment=?`, o.CriterionID, o.Metric, o.RunID, o.Route, o.Environment).Scan(&value, &stamp, &unit, &status, &evidence, &windowStart, &windowEnd)
+		err = tx.QueryRowContext(ctx, `SELECT value,observed_at,unit,status,evidence_json,window_start,window_end FROM goal_observations WHERE criterion_id=? AND metric=? AND run_id=? AND route=? AND environment=?`, o.CriterionID, o.Metric, o.RunID, o.Route, o.Environment).Scan(&value, &stamp, &unit, &status, &evidence, &windowStart, &windowEnd)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -224,7 +220,7 @@ func RecordGoalObservations(ctx context.Context, workspacePath string, observati
 			continue
 		}
 		id := "obs-" + goalObservationID(o.CriterionID, o.Metric, o.RunID, o.Route, o.Environment)
-		_, err = tx.ExecContext(ctx, `INSERT INTO pulse_goal_observations(observation_id,criterion_id,metric,run_id,route,environment,value,status,unit,observed_at,window_start,window_end,evidence_json,recorded_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, o.CriterionID, o.Metric, o.RunID, o.Route, o.Environment, nullableFloat(o.Value), o.Status, o.Unit, o.ObservedAt, o.WindowStart, o.WindowEnd, goalEvidenceJSON(o.Evidence), time.Now().UTC().Format(time.RFC3339Nano))
+		_, err = tx.ExecContext(ctx, `INSERT INTO goal_observations(observation_id,criterion_id,metric,run_id,route,environment,value,status,unit,observed_at,window_start,window_end,evidence_json,recorded_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, o.CriterionID, o.Metric, o.RunID, o.Route, o.Environment, nullableFloat(o.Value), o.Status, o.Unit, o.ObservedAt, o.WindowStart, o.WindowEnd, goalEvidenceJSON(o.Evidence), time.Now().UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return nil, err
 		}

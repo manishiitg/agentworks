@@ -119,17 +119,6 @@ func (g *GmailService) computeAuthStatusGog(ctx context.Context, gogPath string,
 		return st
 	}
 
-	// For a server-managed token, Google's own tokeninfo verdict is the
-	// liveness check AND the identity source. It works for every scope set —
-	// crucially the send-only default (gmailOAuthScopesFor), where
-	// gmail.users.getProfile is closed (it needs a read scope): were
-	// getProfile still the probe, every default-scoped connection would read
-	// as "reconnect" and Pulse would refuse to send through it.
-	//
-	// It also reports what was actually granted, not what we last asked for —
-	// an operator (or the agent, via `gog auth add`) may have widened access
-	// since this connection was created, and the UI's Scopes display is only
-	// honest if it reflects that.
 	if cfg != nil && strings.TrimSpace(cfg.Token) != "" {
 		if scopes, tokenEmail, infoErr := googleTokenInfo(ctx, cfg.Token); infoErr == nil {
 			st.Authenticated = true

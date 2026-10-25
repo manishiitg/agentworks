@@ -128,6 +128,19 @@ func TestExternalNeedsYouIncludesLatestFailedRunWithoutHomeTool(t *testing.T) {
 	if strings.Contains(w.Body.String(), "Invoice run") {
 		t.Fatal("foreign failure leaked", w.Body)
 	}
+	// PLAT-825-102: the informational projection follows the Goal setting;
+	// disabling it creates no decision and changes no product access.
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoice processing","created_by":"owner","access":{"owners":["owner","readonly-owner"],"readers":["reader"]},"capabilities":{"notifications":{"break_alerts":false}}}`)
+	w = f.call(t, "owner", "list_needs_you", map[string]any{})
+	if strings.Contains(w.Body.String(), `"type":"run_review"`) {
+		t.Fatal("disabled break alerts remained visible", w.Body)
+	}
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoice processing","created_by":"owner","access":{"owners":["owner","readonly-owner"],"readers":["reader"]},"capabilities":{"notifications":{"break_alerts":true}}}`)
+	send("partial")
+	w = f.call(t, "owner", "list_needs_you", map[string]any{})
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"type":"run_review"`) {
+		t.Fatal("missing partial run alert", w.Code, w.Body)
+	}
 	send("completed")
 	w = f.call(t, "owner", "list_needs_you", map[string]any{})
 	if strings.Contains(w.Body.String(), `"type":"run_review"`) {

@@ -230,7 +230,7 @@ func TestWorkflowE2ESingleRegularStepPiCLI(t *testing.T) {
 		SchemaVersion: workflowtypes.LLMConfigSchemaVersion,
 		Mode:          workflowtypes.LLMConfigModeExplicit,
 		BuilderLLM:    agentLLM,
-		PulseLLM:      agentLLM,
+		BackgroundLLM: agentLLM,
 		TieredConfig: &workflowtypes.TieredLLMConfig{
 			Tier1: agentLLM,
 			Tier2: agentLLM,
@@ -369,7 +369,7 @@ func TestWorkflowE2EAgentPiCLI(t *testing.T) {
 		SchemaVersion: workflowtypes.LLMConfigSchemaVersion,
 		Mode:          workflowtypes.LLMConfigModeExplicit,
 		BuilderLLM:    agentLLM,
-		PulseLLM:      agentLLM,
+		BackgroundLLM: agentLLM,
 		TieredConfig:  &workflowtypes.TieredLLMConfig{Tier1: agentLLM, Tier2: agentLLM, Tier3: agentLLM},
 	}
 

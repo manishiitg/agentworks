@@ -231,7 +231,7 @@ func createWorkflowAutoNotificationFixture(workspaceDocs string, keep bool, prov
 				"schema_version": 2,
 				"mode":           "explicit",
 				"builder_llm":    fixtureModel,
-				"pulse_llm":      fixtureModel,
+				"background_llm": fixtureModel,
 				"tiered_config": map[string]interface{}{
 					"tier_1": fixtureModel,
 					"tier_2": fixtureModel,

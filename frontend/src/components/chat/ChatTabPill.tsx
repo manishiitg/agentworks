@@ -8,7 +8,6 @@ import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
-import { PulseIcon, isPulseConversationSession } from '../workflow/pulseIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { compactOwnerChatName, ownerInitials } from './chatTabName'
 
@@ -54,7 +53,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
   const yourTab = !!ownerName && tab.metadata?.agentProfileTabCanWrite === true
   const rawName = compactOwnerChatName(displayNameOverride ?? tab.name, ownerName)
   const displayName = readableGeneratedChatTitle(rawName, tab.metadata?.isScheduledRun) ||
-    (tab.metadata?.isScheduledRun && /^(?:Manual )?(?:Pulse|Autopilot)$/i.test(rawName) ? /^Manual /i.test(rawName) ? 'Manual review' : 'Automatic review' : rawName)
+    rawName
   const rawTooltip = titleOverride || tab.name || displayName
   const nameTooltip = readableGeneratedChatTitle(rawTooltip, tab.metadata?.isScheduledRun) || rawTooltip
   const tooltip = ownerName ? `${nameTooltip} · ${yourTab ? 'Your tab' : 'Owned by'} · ${ownerName}` : nameTooltip
@@ -162,7 +161,6 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     >
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
-      {isPulseConversationSession(tab.sessionId) && <PulseIcon className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Autopilot" role="img" />}
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
         {!isBlank && (!productSurface || status !== 'ready') && (status === 'busy'
           ? <Loader2 className="h-3 w-3 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img"><title>{dot.label}</title></Loader2>

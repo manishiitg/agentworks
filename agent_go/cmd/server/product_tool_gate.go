@@ -123,9 +123,7 @@ func newAgentWorksChatToolGate(mode string) *productToolGate {
 }
 
 func newWorkflowConversationToolGate(sessionID string, req QueryRequest, readOnly bool) *productToolGate {
-	if isGoalLeadSessionID(sessionID) {
-		return newProductToolGateForAllowlist(pulseToolSurface, agentworksproduct.PulseTools())
-	}
+
 	policy := resolveWorkflowChatPolicy(sessionID, req, nil, readOnly)
 	return newAgentWorksChatToolGate(policy.Mode)
 }
@@ -216,8 +214,6 @@ func (g *productToolGate) Allows(name string) bool {
 func (g *productToolGate) AllowWorkflowNotifications(enabled bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	// Goals Builder/Run own workflow notifications, subject to their YAML
-	// allowlist. Pulse and other product profiles cannot opt in here.
 	g.workflowNotifications = enabled && (g.profileID == "" || g.shadowed || g.workflowSurface)
 }
 

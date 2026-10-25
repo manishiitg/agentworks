@@ -20,8 +20,8 @@ import { installedCodingProviders, readyCodingProviders } from '../../utils/prov
 import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { hasModelLimit, isModelAllowed } from '../../utils/allowedModels'
 
-type RoleKey = 'tier_1' | 'tier_2' | 'tier_3' | 'builder_llm' | 'pulse_llm'
-const ROLE_KEYS: RoleKey[] = ['tier_1', 'tier_2', 'tier_3', 'builder_llm', 'pulse_llm']
+type RoleKey = 'tier_1' | 'tier_2' | 'tier_3' | 'builder_llm' | 'background_llm'
+const ROLE_KEYS: RoleKey[] = ['tier_1', 'tier_2', 'tier_3', 'builder_llm', 'background_llm']
 
 type RoleRow = {
   key: RoleKey
@@ -35,7 +35,7 @@ const ROLE_ROWS: RoleRow[] = [
   { key: 'tier_2', label: 'Medium reasoning', description: 'Routine runs and upkeep', group: 'Execution' },
   { key: 'tier_3', label: 'Low reasoning', description: 'Quick checks', group: 'Execution' },
   { key: 'builder_llm', label: 'Builder', description: 'Chat, planning and scheduled runs', group: 'Workflow agents' },
-  { key: 'pulse_llm', label: 'Autopilot Goal Work', description: 'Goal Work: your strongest model, working toward your goals', group: 'Workflow agents' },
+  { key: 'background_llm', label: 'Background work', description: 'Independent reviews and knowledge-base maintenance', group: 'Workflow agents' },
 ]
 
 const CODING_AGENT_PROVIDER_ORDER = ['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli']
@@ -484,7 +484,7 @@ export default function WorkflowLLMConfigurationPanel({
         mode: 'explicit',
         connection_id,
  builder_llm: {...groupDefaults.builder,connection_id},
-        pulse_llm: {...groupDefaults.pulse,connection_id},
+        background_llm: {...groupDefaults.pulse,connection_id},
         tiered_config: { tier_1: {...groupDefaults.tier1,connection_id}, tier_2: {...groupDefaults.tier2,connection_id}, tier_3: {...groupDefaults.tier3,connection_id} },
       }
     }
@@ -534,7 +534,7 @@ export default function WorkflowLLMConfigurationPanel({
       schema_version: 2,
       mode: 'explicit',
       builder_llm: seed('builder_llm'),
-      pulse_llm: seed('pulse_llm'),
+      background_llm: seed('background_llm'),
       tiered_config: {
         tier_1: seed('tier_1') ?? next,
         tier_2: seed('tier_2') ?? next,
@@ -572,7 +572,7 @@ export default function WorkflowLLMConfigurationPanel({
       schema_version: 2,
       mode: 'explicit',
       builder_llm: { ...value },
-      pulse_llm: { ...value },
+      background_llm: { ...value },
       tiered_config: { tier_1: { ...value }, tier_2: { ...value }, tier_3: { ...value } },
     }))
   }

@@ -21,24 +21,6 @@ import (
 // copy. The token file and TokenSource helpers below remain only for legacy
 // gws connections until they are migrated or reconnected.
 
-// gmailOAuthScopesFor is the minimum that supports the send path plus
-// identity discovery, plus gmail.readonly only when the connection was
-// explicitly opted into read access. Send-only is the default because the
-// primary use (Pulse and workflow notifications) only ever sends; a
-// connection that also needs to read mail (e.g. triage, reply-context) opts
-// in per-connection via GmailConnection.AllowReadAccess. Deliberately
-// narrower than `gws auth login -s gmail`, which requests sixteen scopes
-// including cloud-platform.
-//
-// Note: gmail.send alone does NOT grant users.getProfile (Gmail API requires
-// readonly/metadata/modify/compose or mail.google.com for that call), so a
-// send-only connection's display email may come back empty from
-// fetchGmailAccountEmail/computeAuthStatusGog — a cosmetic gap, not a
-// functional one; sending itself works fine on gmail.send alone.
-// extraScopes appends scopes for Google Workspace services beyond Gmail
-// (Drive, Sheets, Docs, Slides, Calendar...) that the connection was granted
-// via GmailConnection.Services. Nil/empty for a Gmail-only connection, the
-// pre-existing behavior.
 func gmailOAuthScopesFor(includeRead, includeAgentWrite bool, extraScopes []string) []string {
 	scopes := []string{
 		"https://www.googleapis.com/auth/gmail.send",

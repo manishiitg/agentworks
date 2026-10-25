@@ -5,9 +5,6 @@ import (
 	"time"
 )
 
-// nextWorkflowScheduleRunAt projects the loaded schedule, not a timestamp
-// captured before a potentially long workflow/Pulse invocation. Calendar jobs
-// have separate entries; disabled/removed jobs have no next occurrence.
 func (s *SchedulerService) nextWorkflowScheduleRunAt(workspacePath, scheduleID string, now time.Time) *time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()

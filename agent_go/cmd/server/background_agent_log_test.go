@@ -118,7 +118,7 @@ func TestBackgroundAgentLogSkipsSessionsWithNoWorkspace(t *testing.T) {
 		},
 	}
 	// No WORKSPACE_API_URL set. If either call below tried to reach a
-	// workspace, openPulseStoreDB would fail against an empty/invalid
+	// workspace, openWorkflowStoreDB would fail against an empty/invalid
 	// URL — these must return without even trying.
 	api.recordBackgroundAgentLogStarted("chat-session", "agent-1", "some delegation",
 		orchEvents.ExecutionKindSubAgent, "", time.Now())

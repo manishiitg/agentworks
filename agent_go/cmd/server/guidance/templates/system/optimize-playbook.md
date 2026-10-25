@@ -6,7 +6,7 @@
 
 **Important**: For proactive optimization suggestions (learning config, server scoping, description refinement), wait until a step has had a few successful runs before pushing changes. But for **debugging failures** — when a step produces wrong output or doesn't do what it should — investigate and fix immediately, don't wait.
 
-**Repair in service of the goal, across the whole plan.** Every fix exists to make the workflow achieve its objective — read `soul/soul.md` (success criteria) and the plan before changing behavior, understand each step's role (what feeds it, what depends on its output), and fix it so it does its real job *in that context*, not merely so it stops erroring or passes validation. A green-but-goal-empty fix (a masking default, loosened validation that lets wrong data through) is a **false fix**. If a contained, plan-coherent repair cannot make a step reliably do its job, return a **Goal finding for Goal Advisor** instead of stretching a local repair into strategy work.
+**Repair in service of the goal, across the whole plan.** Every fix exists to make the workflow achieve its objective — read `soul/soul.md` (success criteria) and the plan before changing behavior, understand each step's role (what feeds it, what depends on its output), and fix it so it does its real job *in that context*, not merely so it stops erroring or passes validation. A green-but-goal-empty fix (a masking default, loosened validation that lets wrong data through) is a **false fix**. If a contained, plan-coherent repair cannot make a step reliably do its job, return a recommendation for the owner instead of stretching a local repair into strategy work.
 
 When helping users optimize steps, follow these principles:
 
@@ -28,7 +28,7 @@ When reviewing a successful step, check whether its evidence establishes freshne
 
 ### 2. Knowledge and skills
 
-Goal steps consume selected workflow skills and read knowledge under existing grants. A required KB contribution belongs in the task with KB write access. No automatic post-completion reflection or learning runs. Builder/Autopilot maintain skills; Crew owns ongoing agent learning. Existing guides migrate explicitly through contract 1.0.51, preserving contents and history without changing KB grants.
+Goal steps consume selected workflow skills and read knowledge under existing grants. A required KB contribution belongs in the task with KB write access. No automatic post-completion reflection or learning runs. Builder maintain skills; Crew owns ongoing agent learning. Existing guides migrate explicitly through contract 1.0.51, preserving contents and history without changing KB grants.
 
 #### The Per-Step Code Lock — What It Freezes and When To Use
 
@@ -59,7 +59,7 @@ Trust output you can trace back to real evidence, not a self-reported success.
 
 ### 3. Maintaining workflow skills
 
-Use the existing workflow-local skill format and selection tools. Read the short `skills/<name>/SKILL.md` index and targeted references before a repair. Builder/Autopilot update reusable methods in place, preserving evidence and avoiding conflicting duplicate instructions. Do not create or tune a separate learning store. For existing guides use `migrate_workflow_skills`, inspect the preserved references and copy hashes, then stamp 1.0.51. Keep old files as history for the transition; legacy executable code uses the separate code-layout upgrade first.
+Use the existing workflow-local skill format and selection tools. Read the short `skills/<name>/SKILL.md` index and targeted references before a repair. Builder update reusable methods in place, preserving evidence and avoiding conflicting duplicate instructions. Do not create or tune a separate learning store. For existing guides use `migrate_workflow_skills`, inspect the preserved references and copy hashes, then stamp 1.0.51. Keep old files as history for the transition; legacy executable code uses the separate code-layout upgrade first.
 
 ### 3b. Debugging & Fixing Scripted Code Steps (scripted)
 
@@ -122,7 +122,7 @@ Installed skills are reusable capability instructions under `<workspace-root>/sk
 - If guidance is workflow-specific (selectors discovered in this workflow, account names, run paths, current plan details), put it in a workflow-local skill instead of editing an external skill.
 
 ### 4b. LLM Tier Selection
-Autopilot and Builder agree these evidence-based recommendations and measured trials.
+AgentWorks and Builder agree these evidence-based recommendations and measured trials.
 Runtime never changes tiers based on run counts; preserve explicit user settings.
 In tiered mode, prefer a persistent `execution_tier` when a step should usually run on a cheaper or faster tier, instead of pinning an exact model.
 
@@ -143,7 +143,7 @@ The step **description** in plan.json is the primary instruction the execution a
 - **Reference context_output files from prior steps**: E.g., "Using the data from step-extract-data's context_output, generate...". The execution agent receives prior step outputs as context.
 - **Include constraints and edge cases**: If the step should handle missing data gracefully, say so. If there's a size limit or format requirement, specify it.
 - **Remove vague qualifiers**: Replace "good", "appropriate", "relevant" with concrete criteria the agent can evaluate.
-- **Keep WHAT and HOW separate**: Keep objectives, task-specific business constraints, authorization boundaries, and success criteria in the description. Curate reusable methods and verified procedures in accessible skills maintained by Builder/Autopilot. See `references/step-description.md`.
+- **Keep WHAT and HOW separate**: Keep objectives, task-specific business constraints, authorization boundaries, and success criteria in the description. Curate reusable methods and verified procedures in accessible skills maintained by Builder. See `references/step-description.md`.
 - **Keep the boundary coherent**: The description may include many tool calls or sub-actions, but it should still serve one durable output contract. If it starts mixing unrelated outputs, validation gates, retry domains, stores, or approval/routing decisions, split at those boundaries.
 
 **How to update**: Use the plan modification tools (`update_step`, `update_step`, `update_step`, `manage_step_route`, `update_step`, `update_step`, or `update_validation_schema`) to update step descriptions and validation. Do not patch `planning/plan.json` directly; it is system-managed and guarded. The change takes effect on the next execution.
@@ -152,7 +152,7 @@ The step **description** in plan.json is the primary instruction the execution a
 - `description_reviewed` + `review_notes`
 Plan modification tools automatically clear `description_reviewed` when a reviewed contract changes (including description, dependencies, schema, messages, or routing). Review the final edited contract before marking it reviewed again. If the tool reports a bookkeeping failure, repair that metadata; do not assume the old review is current.
 
-**Dependencies after changes**: Follow `builder-reference/references/plan-change-impact.md`. After related edits, do one combined compatibility check in the current agent before the targeted test; inspect only affected dependencies. Do not launch a separate drift reviewer for each edit or test retry. Reserve the full `/review-artifact-drift` audit for scheduled Autopilot or an explicit user request. Record inspected changelog entries through typed review metadata.
+**Dependencies after changes**: Follow `builder-reference/references/plan-change-impact.md`. After related edits, do one combined compatibility check in the current agent before the targeted test; inspect only affected dependencies. Do not launch a separate drift reviewer for each edit or test retry. Reserve the full `/review-artifact-drift` audit for scheduled AgentWorks or an explicit user request. Record inspected changelog entries through typed review metadata.
 
 ### 6. Post-Execution Step Review
 After running a step, review it for optimization — but follow this priority order. Fix fundamentals first before worrying about efficiency.
@@ -212,7 +212,7 @@ Review actual outputs, validation and execution logs before setting description_
 
 `lock_code` freezes only the Builder's own repairs to a scripted step. Lock when requested or when representative evidence proves the script stable; runs already execute saved code without rewriting it. Clear stale code locks and description review state after a meaningful change.
 
-Knowledge-base writes are explicit task work under that step's access. Builder or Autopilot can curate existing notes using their file tools and evidence. Do not require retired contribution objectives, a learning-file generation pass, or a separate KB writer mode.
+Knowledge-base writes are explicit task work under that step's access. Builder can curate existing notes using their file tools and evidence. Do not require retired contribution objectives, a learning-file generation pass, or a separate KB writer mode.
 
 ### 9. Script helpers and Crew
 

@@ -18,7 +18,7 @@ type NotificationContent struct {
 // NotificationSummary is the channel-neutral representation of a structured
 // workflow notification. External connectors may render it, while the
 // org_dashboard connector persists it without parsing Slack blocks or Gmail
-// HTML. Kind is one of general, run_summary, or pulse_summary. Only the latter
+// HTML. Kind is one of general, run_summary,. Only the latter
 // two are durable Org Dashboard inputs. Status describes what the workflow is
 // doing now (for example completed, blocked, or waiting_for_user). The title,
 // message, facts, and sections provide the explanation; there is no separate

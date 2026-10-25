@@ -25,9 +25,9 @@ func humanAnswerFixture(t *testing.T) (builderChat context.Context) {
 	api := &StreamingAPI{eventStore: store}
 	api.workshopChatSessions.Store("chat-a", &scopeWorkshop{&step.WorkshopConfig{WorkspacePath: "Workflow/a"}})
 	api.workshopChatSessions.Store("sched_a_1", &scopeWorkshop{&step.WorkshopConfig{WorkspacePath: "Workflow/a"}})
-	old := pulsePlatformAPI
-	pulsePlatformAPI = api
-	t.Cleanup(func() { pulsePlatformAPI = old })
+	old := workflowToolsAPI
+	workflowToolsAPI = api
+	t.Cleanup(func() { workflowToolsAPI = old })
 	t.Cleanup(step.RegisterWorkshopToolSession("tool-a", "Workflow/a", "chat-a"))
 	return executor.WithSessionID(context.Background(), "chat-a")
 }

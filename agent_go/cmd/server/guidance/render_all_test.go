@@ -303,48 +303,6 @@ func TestWorkflowCompositionExamplesLiveInOwningReferences(t *testing.T) {
 // call something that no longer exists, and the failure surfaces as a broken
 // tool rather than a stale prompt. This walks every embedded template, not only
 // the registered kinds, so a template added outside a registry is covered too.
-func TestNoTemplateNamesARemovedPulseTool(t *testing.T) {
-	removed := []string{
-		"record_pulse_worklist",
-		"record_pulse_result",
-		"record_pulse_qa_request",
-		"record_pulse_impact",
-		"get_pulse_module_state",
-		"get_pulse_finding_backlog",
-		"get_pulse_review_result",
-		"start_pulse_fix_attempt",
-		"mark_pulse_module_result",
-		"mark_pulse_final_command_result",
-	}
-	visited := 0
-	err := fs.WalkDir(templatesFS, "templates", func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".md") {
-			return nil
-		}
-		body, readErr := templatesFS.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		visited++
-		for _, name := range removed {
-			if strings.Contains(string(body), name) {
-				t.Errorf("%s still instructs agents to call removed Autopilot tool %q; "+
-					"use get_pulse_state(view=...), current goal records and canonical issue writes",
-					path, name)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk embedded templates: %v", err)
-	}
-	if visited == 0 {
-		t.Fatal("no templates were walked; the embed pattern or path changed")
-	}
-}
 
 // The improve-* checklists had no slash command and no live loader, and
 // ops-review / specialize-advisors are reference docs, not commands — but
@@ -375,6 +333,49 @@ func TestNoTemplateBatchesReadSkillFiles(t *testing.T) {
 		for lineNumber, line := range strings.Split(string(body), "\n") {
 			if strings.Contains(line, "read_skill") && strings.Contains(line, "},{") {
 				t.Errorf("%s:%d batches multiple read_skill files; issue one call per file", path, lineNumber+1)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk embedded templates: %v", err)
+	}
+	if visited == 0 {
+		t.Fatal("no templates were walked; the embed pattern or path changed")
+	}
+}
+
+func TestNoTemplateNamesARemovedTool(t *testing.T) {
+	removed := []string{
+		"record_pulse_worklist",
+		"record_pulse_result",
+		"record_pulse_qa_request",
+		"record_pulse_impact",
+		"get_pulse_module_state",
+		"get_pulse_finding_backlog",
+		"get_goal_update_result",
+		"start_pulse_fix_attempt",
+		"mark_pulse_module_result",
+		"mark_pulse_final_command_result",
+	}
+	visited := 0
+	err := fs.WalkDir(templatesFS, "templates", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".md") {
+			return nil
+		}
+		body, readErr := templatesFS.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		visited++
+		for _, name := range removed {
+			if strings.Contains(string(body), name) {
+				t.Errorf("%s still instructs agents to call removed Autopilot tool %q; "+
+					"use get_pulse_state(view=...), current goal records and canonical issue writes",
+					path, name)
 			}
 		}
 		return nil

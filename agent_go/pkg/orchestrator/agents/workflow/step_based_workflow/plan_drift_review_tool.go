@@ -11,16 +11,6 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-// PLAT-258 phase 3. record_plan_drift_review is the write half of the
-// plan-drift review: the reviewer turn (automatic, Pulse-triggered, or a
-// manual review-artifact-drift invocation) calls this once per step to
-// persist what it found. planning/step_config.json is FolderGuard-blocked-
-// write for a normal session, so this must be a purpose-built tool
-// registered with the same privileged writeFile callback
-// registerPlanModificationTools already wraps for every other plan-mod tool
-// (withPlanMutationWriteAccess) -- not a raw file write, which would be
-// denied the same way a step-execution session's shell tools already are.
-
 const (
 	stepDriftCheckStatusPass  = "pass"
 	stepDriftCheckStatusFail  = "fail"
@@ -92,7 +82,7 @@ func getRecordPlanDriftReviewSchema() string {
 			},
 			"reviewed_by": {
 				"type": "string",
-				"description": "Optional actor label, e.g. \"pulse:plan_drift_review\" for the automatic Autopilot module, or left unset for a manual review-artifact-drift invocation (defaults to the current session)."
+				"description": "Optional actor label, e.g. \"pulse:plan_drift_review\" for the automatic AgentWorks module, or left unset for a manual review-artifact-drift invocation (defaults to the current session)."
 			},
 			"reviewed_through_change_id": {
 				"type": "string",
@@ -155,10 +145,6 @@ func createRecordPlanDriftReviewExecutor(workspacePath string, logger loggerv2.L
 				fixed++
 			}
 		}
-		// A review replaces the prior evidence, but it clears due-ness only when
-		// every check is compatible or fixed. An unresolved fail remains a Plan
-		// Drift prerequisite on the next Pulse cycle; otherwise later reviewers
-		// would assess a baseline this receipt already proves is stale.
 		record := &StepDriftReview{
 			NeedsReview:             failed > 0,
 			ReviewedAt:              now,

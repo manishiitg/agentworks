@@ -29,8 +29,8 @@ Products can work together when this installation enables them and current acces
 
 Use Goals when the task is a continuing outcome, rather than a single question or a fixed code pipeline.
 
-- **Abilities:** define the objective and success measures; create and edit the workflow plan; configure steps, skills, schedules and integrations; run steps or the workflow; inspect results, reports and costs; use Autopilot to follow up on the goal.
-- **MCP route:** discover workflows with `workflow action=list`; read the plan and current revision; discover native edit operations with `plan action=list`; inspect run state and evidence through the available run tools. Load the relevant plan, execution and Autopilot guidance.
+- **Abilities:** define the objective and success measures; create and edit the workflow plan; configure steps, skills, schedules and integrations; run steps or the workflow; inspect results, reports and costs; inspect the saved goals and measurements.
+- **MCP route:** discover workflows with `workflow action=list`; read the plan and current revision; discover native edit operations with `plan action=list`; inspect run state and evidence through the available run tools. Load the relevant plan, execution and measurement guidance.
 - **Access:** owners and workflow editors can build through MCP just as on the website. Running, sharing and integration access use the same server checks.
 - **Example:** monitor incoming support requests, measure response time and follow up on unresolved cases.
 
@@ -42,7 +42,7 @@ Crew combines the former Code and Crew products. Use it to work privately with a
 - **MCP route:** start with `workspace action=list`, then `get` using its returned `workspace_id`. Use `create`, `update`, `ask` and the chat actions from the live schema. Load `crew-authoring` for setup and discover published functions with `functions action=list`. Keep the canonical `workspace_id` returned by discovery; do not construct retired product selectors.
 - **Access:** the main owner and co-owners build together and can see all Builder chats. Share offers **Only me / Chosen people / Everyone**. People with Run access see their own chat and the dashboard, can use published functions and read permitted files, runs and results over MCP. Owners may also explicitly select existing agents in Share: recipients can read those selected conversations from sharing onward, and message the existing agent with sender attribution from the website, MCP or another Crew. Unselected Builder chats, secret values and private logs remain excluded. Current connection, account and project checks still apply; sharing does not grant Builder access.
 - **Accounts and costs:** work uses the project's selected model and connected accounts under their current grants. Sharing does not switch accounts automatically. Show whose account will be used and attribute activity to the caller.
-- **Optional laptop access:** Crew runs on the server, including its files, shell, functions, schedules and background work. Connect your computer once in My Vault, then choose it and its folders in the Goal or Crew Local laptop panel. Each folder is Read (list and copy files into Crew) or Read & write (also write files); running terminal commands is a separate switch, "Run terminal commands", that also needs a Read & write folder. Use `manage_laptop_access` for settings and folder grants, `list_local_files`, `write_local_file`, `copy_local_file_to_project` for files and `execute_local_shell_command` for commands, using their live schemas. Laptop access belongs to the owner’s interactive Builder chat; Run callers, schedules and Autopilot do not inherit it. A disconnected laptop leaves normal server work available. There is no separate Publish copy, sync or copy back to the laptop; server secrets are not sent to laptop commands.
+- **Optional laptop access:** Crew runs on the server, including its files, shell, functions, schedules and background work. Connect your computer once in My Vault, then choose it and its folders in the Goal or Crew Local laptop panel. Each folder is Read (list and copy files into Crew) or Read & write (also write files); running terminal commands is a separate switch, "Run terminal commands", that also needs a Read & write folder. Use `manage_laptop_access` for settings and folder grants, `list_local_files`, `write_local_file`, `copy_local_file_to_project` for files and `execute_local_shell_command` for commands, using their live schemas. Laptop access belongs to the owner’s interactive Builder chat; Run callers and schedules do not inherit it. A disconnected laptop leaves normal server work available. There is no separate Publish copy, sync or copy back to the laptop; server secrets are not sent to laptop commands.
 - **Example:** develop an invoice assistant privately, expose a reconciliation function, then share the same Crew with the finance team. A Goal can call its published function.
 
 <!-- /product --><!-- product:relays -->### Flows
@@ -139,3 +139,18 @@ The guide and MCP skill have source versions; package fingerprints identify the 
 <!-- product:work -->Ask your Crew Builder to watch your personal Gmail and send only matching content to your Crew chat. It uses the same Watcher setup: check_mode=inbox, email_source=personal_gmail, with Python supplied through script_content. You must own the Crew and select your own Gmail inbox account in My Vault with read access. The server's email feature must be enabled. A dedicated Crew email address is optional for this use.
 
 <!-- product:work -->It watches new received mail, including archived arrivals, about every60seconds; it excludes sent mail and drafts and does not import old mail. Private message bodies exist only in the temporary detector snapshot, up to20 at a time, then are deleted. Message identities and the Watcher cursor stay private; personal mail is never listed in the Crew Inbox. Only the event payload chosen by your Watcher is sent to your chat or published function. Use target kind=agent and a message for chat; functions must be declared entry points. Changing the selected Gmail requires a new Watcher.
+
+<!-- product:agentworks --><!-- product:crew -->
+## Following up on Goals
+
+Use AgentWorks for ongoing review and follow-through.
+It uses ordinary scheduled chats and the Goal tools its person can access.
+The owner defines goals and numbers with Builder; Goal steps record real
+measurements; the platform stores and serves them. AgentWorks reads
+that evidence and raises recommendations or decisions through the shared entry
+points. It does not inherit Builder rights or owner approval. A Goal can use
+`notifications.wake_tab` to message the chosen Crew chat when a run needs attention.
+AgentWorks reports progress. Goals record run outcomes in Activity and keep configured team messages. There are no automatic owner emails or daily digests. Use “Tell me when something breaks” (`notifications.break_alerts`, on by default) for informational run failures in Needs you. Questions requiring an answer and failing Gmail notices remain available. Summary emails require explicitly saved recipients; choosing yourself explicitly is allowed.
+Inspect the saved schedule, metrics and notification receipts before saying
+that follow-up is configured or working.
+<!-- /product --><!-- /product -->

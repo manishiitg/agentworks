@@ -1,6 +1,6 @@
 # Outcome goals and measurable progress
 
-Pulse starts with primary and optional secondary outcome goals, then one or more
+A Goal starts with primary and optional secondary outcome goals, then one or more
 primary metrics per goal and linked supporting measurements. Goal priority and
 metric role are independent.
 Acceptance conditions and explicit user boundaries remain available as expandable
@@ -9,11 +9,10 @@ definitions and observations. There is no extra reviewer-authored report.
 
 ## Setup
 
-- Pulse can be enabled directly without configured metrics. Missing measurement
-  setup remains visible in Goal Progress; its "Set up goals & metrics" action
-  opens the shared setup conversation independently of the review toggle.
-- Existing workflow: `/setup-goals`, its `/define-success` alias, or the Pulse
-  "Set up goals & metrics" button runs the same flow. Existing runs are not stopped.
+- Goals can run without configured metrics. Goals & metrics shows missing setup
+  and offers the shared setup conversation.
+- Existing workflow: `/setup-goals`, its `/define-success` alias, or the Goals & metrics
+  setup button runs the same flow. Existing runs are not stopped.
 - Setup is idempotent. Existing targets/constraints are preserved unless the user
   agrees to change them. Historical goal prose is not automatically rewritten.
 
@@ -29,11 +28,11 @@ window, scope, or direction is rejected; use a new ID for the new series.
 
 `get_goal_metrics` returns definitions, recent history and deterministic progress
 snapshots suitable for review and notifications. Active streams retain up to 120
-recent observations each in the response, independently of unrelated Pulse rows;
+recent observations each in the response, independently of unrelated records;
 the underlying database retains the full history.
 
 `record_goal_observations` is available to producing runs and collectors. It uses
-`pulse_goal_observations` and requires configured IDs, matching scope/unit, source
+`goal_observations` and requires configured IDs, matching scope/unit, source
 run identity, observation time and evidence. Missing values are represented by a
 status, never zero. Repeated identical submissions are idempotent; conflicting
 values for the same run/metric/scope are rejected. Use the actual collection run
@@ -58,24 +57,23 @@ collection never falls back silently to an earlier successful value. There is no
 invented universal progress percentage. Target met is a metric state, not a claim
 that every goal and boundary is satisfied.
 
-Run/Pulse summaries receive platform-computed goal progress grouped by primary metric with linked supporting measurements
+Run summaries receive platform-computed goal progress grouped by primary metric with linked supporting measurements
 sections ahead of review details, including when agents provide rich email HTML.
 The provider reads the trusted notification workspace; recipients and routing are
 unchanged. If readings cannot be loaded, the summary says progress is unavailable.
 Reviewers interpret the same definitions/history; they do not collect measurements
 or maintain parallel Markdown/chart reports.
 
-## Rollout
+## Setup on existing Goals
 
-No live workflow is bulk-migrated. Begin with `/setup-goals` in social-media to map
-existing follower history, then LinkedIn/Substack. Target choices and semantic
-changes remain user decisions. Workflows with missing outcome instrumentation
-can keep running while setup identifies and connects the required collector.
+Targets and changes to measurement meaning remain owner decisions. Goals can
+keep running while Builder connects the required collectors. Existing history is
+retained and missing readings are never replaced with zero.
 
 ## Using measurements in workflow reports
 
 The report host exposes the same scoped metric history and progress calculations
-used by Pulse. Add an optional prebuilt section without designing a chart:
+used by Builder and AgentWorks. Add an optional prebuilt section without designing a chart:
 
 ```html
 <section id="goal-progress"></section>
@@ -91,7 +89,7 @@ For a custom visualization, use `await window.report.getGoalMetrics()` inside
 include the metric definition, current value, delta, state, freshness, target
 status, and recent comparable history. Up to 120 observations per active metric
 are returned. The existing read-only `window.report.query` can query the full
-`workflow_goal_metrics` / `pulse_goal_observations` history when needed.
+`workflow_goal_metrics` / `goal_observations` history when needed.
 
 The widget groups primary metrics by goal and shows their linked supporting measurements, trends, targets,
 last observation time, and expandable definitions and evidence. Styling is bundled

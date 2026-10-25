@@ -95,35 +95,3 @@ func TestGoalSetupPlaybookIsOptionalAndReported(t *testing.T) {
 
 // Pulse is the last setup step: pending until it is on, never ahead of the
 // steps before it, and absent for a Relay (which has no Pulse).
-func TestGoalSetupEndsWithPulse(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	stub, _ := newScheduleRunWorkspaceStub(t)
-	ctx := context.Background()
-	ws := "Workflow/owned-goal"
-	stub.mu.Lock()
-	stub.files[ws+"/soul/soul.md"] = "# G\n\n## Objective\n- Book demos\n\n## Success Criteria\n- 5 a week\n"
-	stub.files[ws+"/planning/plan.json"] = `{"steps":[{"id":"a","type":"agent"}]}`
-	stub.files[ws+"/db/reports/index.html"] = "<html>demos</html>"
-	stub.mu.Unlock()
-
-	off := buildWorkflowGoalSetupStatus(ctx, ws, &WorkflowManifest{})
-	last := off.Checks[len(off.Checks)-1]
-	if last.ID != "pulse" || last.Done || last.Command != "" {
-		t.Fatalf("Autopilot is the last, pending, chat-free check, got %+v", last)
-	}
-	if off.Complete || off.Next == nil || off.Next.ID == "pulse" {
-		t.Fatalf("Autopilot must not come before the steps it follows (metrics are not set): %+v", off)
-	}
-
-	on := buildWorkflowGoalSetupStatus(ctx, ws, &WorkflowManifest{Pulse: &WorkflowPulseConfig{Enabled: true}})
-	if !on.Checks[len(on.Checks)-1].Done {
-		t.Fatalf("an enabled Autopilot counts as done: %+v", on.Checks)
-	}
-
-	relay := buildWorkflowGoalSetupStatus(ctx, ws, &WorkflowManifest{Kind: "relay"})
-	for _, check := range relay.Checks {
-		if check.ID == "pulse" {
-			t.Fatal("a Relay has no Autopilot step")
-		}
-	}
-}

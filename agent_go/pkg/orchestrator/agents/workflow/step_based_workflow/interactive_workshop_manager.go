@@ -925,7 +925,7 @@ func uniqueStringsPreserveOrder(values []string) []string {
 // missing override as "this workflow emails nobody".
 func notificationRecipientSummary(recipients []string) string {
 	if len(recipients) == 0 {
-		return "not configured (uses the account default recipient)"
+		return "not configured (summary emails are off)"
 	}
 	return strings.Join(recipients, ", ")
 }
@@ -1023,9 +1023,6 @@ func (iwm *InteractiveWorkshopManager) persistWorkflowConfigToManifest(ctx conte
 		return fmt.Errorf("marshal workflow.json: %w", err)
 	}
 
-	// Go-owned structured write of the workflow's own manifest (PLAT-304):
-	// background and Pulse sessions have no raw grant to workflow.json, and
-	// the typed tool that led here already wrote it the managed way.
 	if err := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); err != nil {
 		return fmt.Errorf("write workflow.json: %w", err)
 	}
@@ -1240,17 +1237,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"get_workflow_command_guidance", // canonical slash-command prose; see guidance package.
 	}
 
-	// Pulse state tools are only for scheduled/manual Pulse maintenance in
-	// workshop mode. Run mode can inspect outcomes, but should not mutate the
-	// dynamic Pulse worklist/result state.
-	pulseState := []string{
-		"mark_changelog_artifact_reviewed",
-		// Pulse goal focus tools.
-		"search_platform",
-		"ask_platform_crew",
-		"read_crew_calls",
-	}
-
 	var tools []string
 	tools = append(tools, system...)
 	tools = append(tools, readOnly...)
@@ -1286,11 +1272,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 		tools = append(tools, "review_workflow_costs")
 		tools = append(tools, report...)
 		tools = append(tools, autoImprovement...)
-		tools = append(tools, pulseState...)
-		tools = append(tools, "ask_pulse", "ask_goal_lead")
-		// The Pulse asks the workflow's Builder chat; the tool refuses any
-		// other session (PLAT-697).
-		tools = append(tools, "ask_builder")
 
 	case "run":
 		// RUN: deployed/user-facing runtime for workflow-backed work, Slack, WhatsApp,
@@ -1307,9 +1288,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 		tools = append(tools, "review_workflow_timing")
 		tools = append(tools, "review_workflow_costs")
 		tools = append(tools, "get_workflow_command_guidance") // /review-* commands need this even in run mode
-		// Chats and steps working on the goal may ask the workflow's Pulse
-		// for a recommendation (PLAT-697 phase 4).
-		tools = append(tools, "ask_pulse", "ask_goal_lead")
 
 	default:
 		// Unknown mode — allow everything (no restriction)
@@ -1384,7 +1362,7 @@ func (iwm *InteractiveWorkshopManager) registerMarkChangelogArtifactReviewedTool
 				},
 				"report_entry_id": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional reference ID of the structured Autopilot review record that records this review.",
+					"description": "Optional reference ID of the structured AgentWorks review record that records this review.",
 				},
 				"reviewed_at": map[string]interface{}{
 					"type":        "string",
@@ -1400,10 +1378,6 @@ func (iwm *InteractiveWorkshopManager) registerMarkChangelogArtifactReviewedTool
 	)
 }
 
-// registerWorkshopAgentTools is the single registration path for tools that are
-// available only to a workshop/Pulse agent. Keep both the exported CLI wrapper
-// and the legacy in-process workshop executor on this path so their actual tool
-// registries cannot drift from one another.
 func registerWorkshopAgentTools(iwm *InteractiveWorkshopManager, mcpAgent DefinitionRegistrar, workspacePath string, logger loggerv2.Logger) {
 	registerInteractiveWorkshopTools(iwm, mcpAgent, logger)
 	if !iwm.isRunModeRestricted() && iwm.workshopConfig != nil && iwm.workshopConfig.KnowledgebaseProjectTool != nil {
@@ -1664,10 +1638,6 @@ func (iwm *InteractiveWorkshopManager) configureWorkshopToolAgentSession(config 
 	return cleanup
 }
 
-// configureWorkshopToolAgentSessionWithID also returns the MCP session id the
-// child's tool calls will actually carry. Callers that must key something on
-// that identity — Pulse write authority is keyed by session id — need the real
-// value, which is derived here and is not the agentKind passed in.
 func (iwm *InteractiveWorkshopManager) configureWorkshopToolAgentSessionWithID(config *agents.OrchestratorAgentConfig, agentKind string, readPaths []string, writePaths []string) (string, func()) {
 	readPaths, writePaths, readOnlyPaths, folderEnv := appendWorkflowFolderAccess(iwm.controller.GetWorkspacePath(), readPaths, writePaths)
 	toolAgentSessionID := iwm.setupWorkshopToolAgentSession(agentKind, readPaths, writePaths)
@@ -1756,7 +1726,7 @@ func resolveWorkshopStepConfigTarget(ctx context.Context, controller interface {
 func registerGetCostSummaryTool(iwm *InteractiveWorkshopManager, mcpAgent DefinitionToolRegistrar, logger loggerv2.Logger) {
 	if err := mcpAgent.RegisterCustomTool(
 		"get_cost_summary",
-		"Show token usage and cost breakdown for one execution run. Builder/Autopilot usage is shown separately as cumulative reference only and is never part of that run's total.",
+		"Show token usage and cost breakdown for one execution run. Builder usage is shown separately as cumulative reference only and is never part of that run's total.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -1793,7 +1763,7 @@ func registerGetCostSummaryTool(iwm *InteractiveWorkshopManager, mcpAgent Defini
 
 			var result strings.Builder
 			result.WriteString(fmt.Sprintf("## Cost Summary — %s\n\n", runFolder))
-			result.WriteString("Run totals below cover only this execution run. Builder/Autopilot totals, when present, are cumulative workflow-wide reference and must not be added to this run.\n\n")
+			result.WriteString("Run totals below cover only this execution run. Builder totals, when present, are cumulative workflow-wide reference and must not be added to this run.\n\n")
 
 			if runMissingReason != "" {
 				result.WriteString("### Run Cost\n\n")
@@ -1862,18 +1832,18 @@ func registerGetCostSummaryTool(iwm *InteractiveWorkshopManager, mcpAgent Defini
 			phaseTokenPath := orchestrator.ResolvePhaseTokenUsagePath("")
 			phaseContent, phaseErr := iwm.controller.ReadWorkspaceFile(ctx, phaseTokenPath)
 			if phaseErr != nil {
-				result.WriteString("\n### Cumulative Builder/Autopilot Reference (not part of this run)\n\n")
+				result.WriteString("\n### Cumulative Builder Reference (not part of this run)\n\n")
 				result.WriteString(fmt.Sprintf("missing evidence: no phase token usage data found at %s\n", phaseTokenPath))
 			} else {
 				var phaseFile orchestrator.PhaseTokenUsageFile
 				if err := json.Unmarshal([]byte(phaseContent), &phaseFile); err != nil {
-					result.WriteString("\n### Cumulative Builder/Autopilot Reference (not part of this run)\n\n")
+					result.WriteString("\n### Cumulative Builder Reference (not part of this run)\n\n")
 					result.WriteString(fmt.Sprintf("missing evidence: failed to parse %s: %v\n", phaseTokenPath, err))
 				} else if len(phaseFile.ByPhaseAndModel) == 0 {
-					result.WriteString("\n### Cumulative Builder/Autopilot Reference (not part of this run)\n\n")
+					result.WriteString("\n### Cumulative Builder Reference (not part of this run)\n\n")
 					result.WriteString(fmt.Sprintf("missing evidence: no by_phase_and_model entries in %s\n", phaseTokenPath))
 				} else {
-					result.WriteString("\n### Cumulative Builder/Autopilot Reference (not part of this run)\n\n")
+					result.WriteString("\n### Cumulative Builder Reference (not part of this run)\n\n")
 					result.WriteString("| Phase | Model | Input | Output | Cost |\n")
 					result.WriteString("|-------|-------|-------|--------|------|\n")
 
@@ -1901,7 +1871,7 @@ func registerGetCostSummaryTool(iwm *InteractiveWorkshopManager, mcpAgent Defini
 							))
 						}
 					}
-					result.WriteString(fmt.Sprintf("\n**Cumulative builder/Autopilot reference: $%.4f (not included in run total)**\n", phaseTotalCost))
+					result.WriteString(fmt.Sprintf("\n**Cumulative builder/AgentWorks reference: $%.4f (not included in run total)**\n", phaseTotalCost))
 				}
 			}
 
@@ -2138,15 +2108,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 
-			// Pulse runs alongside the workflow's own schedules; it must not run
-			// a step the workflow is running right now, or the step acts twice.
-			if check := iwm.pulseStepBusyCheck(); check != nil {
-				if busy := check(ctx, iwm.controller.GetWorkspacePath(), stepID); busy != "" {
-					logger.Info(fmt.Sprintf("⏭️ Workshop: execute_step(%q) held — %s", stepID, busy))
-					return fmt.Sprintf("Step %q is being run right now by the workflow's own run (%s), so it was NOT started again: two runs of one step can act twice (send or post twice). Check that run's result when it finishes (query_step or the run history) and verify from it; re-run the step later only if that result shows it is still needed.", stepID, busy), nil
-				}
-			}
-
 			scriptedStep := false
 			var resolvedStep PlanStepInterface
 			if plan != nil {
@@ -2243,12 +2204,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				ID:                execID,
 				ParentExecutionID: parentExecutionID,
 				Name:              stepDisplayName,
-				// This is a real workflow step, even when a schedule invokes it
-				// directly instead of through run_full_workflow. The scheduler uses
-				// the declared kind as invocation evidence for Pulse.
-				Kind:     string(orchestrator_events.ExecutionKindWorkflowStep),
-				Metadata: startMetadata,
-				Cancel:   cancel,
+				Kind:              string(orchestrator_events.ExecutionKindWorkflowStep),
+				Metadata:          startMetadata,
+				Cancel:            cancel,
 			})
 			execCtx = virtualtools.WithBackgroundAgentID(execCtx, execID)
 			execCtx = context.WithValue(execCtx, orchestrator_events.ParentExecutionIDKey, execID)
@@ -3690,7 +3648,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 	// Tool: get_llm_config — show current LLM configuration (read-only)
 	if err := mcpAgent.RegisterCustomTool(
 		"get_llm_config",
-		"Show every effective workflow LLM role (Builder, execution high/medium/low, and Autopilot), including provider/model, reasoning, inheritance source, override status, and per-step overrides.",
+		"Show every effective workflow LLM role (Builder, execution high/medium/low, and background work), including provider/model, reasoning, inheritance source, override status, and per-step overrides.",
 		map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -4111,59 +4069,51 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			sb.WriteString("\n### Notifications\n")
 			var slackWebhookSecretName string
 			var runNotificationInstructions string
-			var pulseNotificationInstructions string
+			breakAlerts := true
 			var runNotificationChannels []string
-			var pulseNotificationChannels []string
 			var notificationExcludeChannels []string
 			var notificationBlockRecipients []string
 			var notificationGmailConnectionID string
 			var runNotificationRecipients []string
-			var pulseNotificationRecipients []string
 			var runNotificationWebhooks []string
-			var pulseNotificationWebhooks []string
 			if content, readErr := ctrl.ReadWorkspaceFile(ctx, "workflow.json"); readErr == nil {
 				var manifest struct {
 					Capabilities struct {
 						Notifications struct {
-							SlackWebhookSecretName   string   `json:"slack_webhook_secret_name"`
-							RunSummaryInstructions   string   `json:"run_summary_instructions"`
-							PulseSummaryInstructions string   `json:"pulse_summary_instructions"`
-							RunSummaryChannels       []string `json:"run_summary_channels"`
-							PulseSummaryChannels     []string `json:"pulse_summary_channels"`
-							Instructions             string   `json:"instructions"`
-							ExcludeChannels          []string `json:"exclude_channels"`
-							BlockRecipients          []string `json:"block_recipients"`
-							GmailConnectionID        string   `json:"gmail_connection_id"`
-							RunSummaryRecipients     []string `json:"run_summary_recipients"`
-							PulseSummaryRecipients   []string `json:"pulse_summary_recipients"`
+							BreakAlerts            *bool    `json:"break_alerts"`
+							SlackWebhookSecretName string   `json:"slack_webhook_secret_name"`
+							RunSummaryInstructions string   `json:"run_summary_instructions"`
+							RunSummaryChannels     []string `json:"run_summary_channels"`
+							Instructions           string   `json:"instructions"`
+							ExcludeChannels        []string `json:"exclude_channels"`
+							BlockRecipients        []string `json:"block_recipients"`
+							GmailConnectionID      string   `json:"gmail_connection_id"`
+							RunSummaryRecipients   []string `json:"run_summary_recipients"`
 
-							RunSummarySlackWebhookSecretNames   []string `json:"run_summary_slack_webhook_secret_names"`
-							PulseSummarySlackWebhookSecretNames []string `json:"pulse_summary_slack_webhook_secret_names"`
+							RunSummarySlackWebhookSecretNames []string `json:"run_summary_slack_webhook_secret_names"`
 						} `json:"notifications"`
 					} `json:"capabilities"`
 				}
 				if json.Unmarshal([]byte(content), &manifest) == nil {
+					if enabled := manifest.Capabilities.Notifications.BreakAlerts; enabled != nil {
+						breakAlerts = *enabled
+					}
 					slackWebhookSecretName = strings.TrimSpace(manifest.Capabilities.Notifications.SlackWebhookSecretName)
 					runNotificationInstructions = strings.TrimSpace(manifest.Capabilities.Notifications.RunSummaryInstructions)
-					pulseNotificationInstructions = strings.TrimSpace(manifest.Capabilities.Notifications.PulseSummaryInstructions)
 					legacyInstructions := strings.TrimSpace(manifest.Capabilities.Notifications.Instructions)
 					if runNotificationInstructions == "" {
 						runNotificationInstructions = legacyInstructions
 					}
-					if pulseNotificationInstructions == "" {
-						pulseNotificationInstructions = legacyInstructions
-					}
+
 					notificationExcludeChannels = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.ExcludeChannels)
 					notificationBlockRecipients = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.BlockRecipients)
 					notificationGmailConnectionID = strings.TrimSpace(manifest.Capabilities.Notifications.GmailConnectionID)
 					runNotificationRecipients = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.RunSummaryRecipients)
-					pulseNotificationRecipients = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.PulseSummaryRecipients)
 					runNotificationWebhooks = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.RunSummarySlackWebhookSecretNames)
-					pulseNotificationWebhooks = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.PulseSummarySlackWebhookSecretNames)
 					runNotificationChannels = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.RunSummaryChannels)
-					pulseNotificationChannels = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.PulseSummaryChannels)
 				}
 			}
+			sb.WriteString(fmt.Sprintf("- Tell me when something breaks: %v\n", breakAlerts))
 			if slackWebhookSecretName == "" {
 				sb.WriteString("- Slack Incoming Webhook: not configured\n")
 			} else {
@@ -4174,17 +4124,11 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			} else {
 				sb.WriteString("- Workflow run summary instructions:\n  " + strings.ReplaceAll(runNotificationInstructions, "\n", "\n  ") + "\n")
 			}
-			if pulseNotificationInstructions == "" {
-				sb.WriteString("- Autopilot review summary instructions: not configured\n")
-			} else {
-				sb.WriteString("- Autopilot review summary instructions:\n  " + strings.ReplaceAll(pulseNotificationInstructions, "\n", "\n  ") + "\n")
-			}
+
 			if len(runNotificationChannels) > 0 {
 				sb.WriteString(fmt.Sprintf("- Workflow run summary channels: %s\n", strings.Join(runNotificationChannels, ", ")))
 			}
-			if len(pulseNotificationChannels) > 0 {
-				sb.WriteString(fmt.Sprintf("- Autopilot review summary channels: %s\n", strings.Join(pulseNotificationChannels, ", ")))
-			}
+
 			if len(notificationExcludeChannels) > 0 {
 				sb.WriteString(fmt.Sprintf("- Excluded channels: %s\n", strings.Join(notificationExcludeChannels, ", ")))
 			}
@@ -4232,14 +4176,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			} else {
 				sb.WriteString(fmt.Sprintf("- Gmail sender connection ID: %s (connection status unavailable)\n", notificationGmailConnectionID))
 			}
-			// State both recipient lists unconditionally. "Not configured" is a real
-			// answer here — it means mail goes to the account default — and leaving
-			// the line out entirely reads as "no email is sent", which is wrong.
+			// Summaries email only explicitly configured recipients.
 			sb.WriteString(fmt.Sprintf("- Workflow run summary recipients: %s\n", notificationRecipientSummary(runNotificationRecipients)))
-			sb.WriteString(fmt.Sprintf("- Autopilot review summary recipients: %s\n", notificationRecipientSummary(pulseNotificationRecipients)))
-			if len(runNotificationWebhooks) > 0 || len(pulseNotificationWebhooks) > 0 {
+			if len(runNotificationWebhooks) > 0 {
 				sb.WriteString(fmt.Sprintf("- Workflow run summary Slack channels: %s\n", notificationWebhookSummary(runNotificationWebhooks)))
-				sb.WriteString(fmt.Sprintf("- Autopilot review summary Slack channels: %s\n", notificationWebhookSummary(pulseNotificationWebhooks)))
 			}
 
 			// Show available secrets that can be added
@@ -4323,7 +4263,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 			writeLLMDefault("Builder", ctrl.presetPhaseLLM)
-			writeLLMDefault("Autopilot", ctrl.presetPulseLLM)
+			writeLLMDefault("Background work", ctrl.presetBackgroundLLM)
 
 			// --- Schedules ---
 			if iwm.schedulerFuncs != nil && iwm.schedulerWorkspacePath != "" {
@@ -4425,7 +4365,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip update_workflow_config registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"update_workflow_config",
-		"Update workflow configuration: add/remove MCP servers, workflow-level tool allowlist entries, skills and secrets; save workflow-scoped notification content instructions and one Gmail notification sender; configure a one-way Slack Incoming Webhook by encrypted secret name; set browser mode and optional specialized multi-profile CDP ports; set run retention; disable selected Autopilot reviewers; or activate an owner-approved Strategy Auditor + Goal Advisor specialization. Use get_workflow_config to inspect current workflow settings and list_skills to discover installed skill folder names. Most changes take effect immediately for subsequent steps; changing cdp_ports, Autopilot reviewer selection, or Slack webhook configuration takes effect on the next workflow execution.",
+		"Update workflow configuration: add/remove MCP servers, workflow-level tool allowlist entries, skills and secrets; save workflow-scoped notification content instructions and one Gmail notification sender; configure a one-way Slack Incoming Webhook by encrypted secret name; set browser mode and optional specialized multi-profile CDP ports; set run retention. Use get_workflow_config to inspect current workflow settings and list_skills to discover installed skill folder names. Most changes take effect immediately for subsequent steps; changing cdp_ports or Slack webhook configuration takes effect on the next workflow execution.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -4481,56 +4421,34 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type":        "string",
 					"description": "Name of an existing encrypted secret containing a complete Slack Incoming Webhook URL. This converts the credential into backend-only notification configuration and removes it from selected_secrets, selected_global_secret_names, and SECRET_* injection. The server sends a rich Block Kit card to it automatically and applies the change in the current builder turn; human_feedback never does because webhooks are one-way. Pass an empty string to disable workflow webhook delivery. Never put the URL itself in workflow.json or post to it directly.",
 				},
+				"break_alerts": map[string]interface{}{
+					"type": "boolean", "description": "Tell me when something breaks: show run failures in Needs you. Enabled by default. Does not change configured team messages or decisions that need an answer.",
+				},
 				"run_notification_instructions": map[string]interface{}{
 					"type":        "string",
 					"maxLength":   2000,
 					"description": "Owner-approved guidance for the workflow execution section of notifications: what happened, outputs, failures, goal movement, metrics, detail, tone, and emphasis. Stored in workflow.json capabilities.notifications.run_summary_instructions. Pass an empty string to clear it. It cannot change recipients, channels, permissions, schedules, plan behavior, or delivery configuration.",
 				},
-				"pulse_notification_instructions": map[string]interface{}{
-					"type":        "string",
-					"maxLength":   2000,
-					"description": "Owner-approved guidance for the Autopilot section of notifications: reviews, bugs, fixes, recommendations, decisions, backup/publish state, and next actions. Stored in workflow.json capabilities.notifications.pulse_summary_instructions. Pass an empty string to clear it. It cannot change recipients, channels, permissions, schedules, plan behavior, or delivery configuration.",
-				},
+
 				"run_notification_channels": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string", "enum": []string{"gmail", "slack", "whatsapp"}},
 					"minItems":    1,
 					"description": "Channels for the workflow run summary only. The backend enforces this allowlist. Omit to retain the current/default routing.",
 				},
-				"pulse_notification_channels": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string", "enum": []string{"gmail", "slack", "whatsapp"}},
-					"minItems":    1,
-					"description": "Channels for the Autopilot review summary only. The backend enforces this allowlist. Omit to retain the current/default routing.",
-				},
+
 				"run_notification_slack_webhooks": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
 					"description": "Which Slack CHANNEL(S) the workflow run summary posts to, as names of existing encrypted secrets that each hold a complete Slack Incoming Webhook URL. A webhook is bound to one channel when it is created and cannot be retargeted, so a different channel means a different webhook secret — store each with set_workflow_secret, then list its name here. Listing several posts the run summary to several channels. Stored in workflow.json capabilities.notifications.run_summary_slack_webhook_secret_names. Omit to leave unchanged; pass an empty array to fall back to the workflow's single slack_webhook_secret_name.",
 				},
-				"pulse_notification_slack_webhooks": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Which Slack CHANNEL(S) the Autopilot review summary posts to, as encrypted-secret names holding Slack Incoming Webhook URLs. Use when Autopilot activity belongs in a different channel than the run outcome. Stored in workflow.json capabilities.notifications.pulse_summary_slack_webhook_secret_names. Omit to leave unchanged; pass an empty array to fall back to the workflow's single slack_webhook_secret_name.",
-				},
+
 				"run_notification_recipients": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
-					"description": "Email addresses the workflow run summary is sent TO, stored in workflow.json capabilities.notifications.run_summary_recipients and applied automatically to every run_summary send. This is the positive 'send here' list — set it when the user names who should receive this workflow's run emails. Omit to leave unchanged; pass an empty array to clear it and fall back to the account default recipient. Never blocks anything: the account-wide and per-workflow denylists are still applied on top, so a blocked address listed here is skipped rather than unblocked.",
+					"description": "Email addresses the workflow run summary is sent TO, stored in workflow.json capabilities.notifications.run_summary_recipients and applied automatically to every run_summary send. This is the positive 'send here' list — set it when the user names who should receive this workflow's run emails. Omit to leave unchanged; pass an empty array to stop summary emails. Never blocks anything: the account-wide and per-workflow denylists are still applied on top, so a blocked address listed here is skipped rather than unblocked.",
 				},
-				"pulse_notification_recipients": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Email addresses the Autopilot review summary is sent TO, stored in workflow.json capabilities.notifications.pulse_summary_recipients and applied automatically to every pulse_summary send. Use when Autopilot findings should reach different people than the run outcome. Omit to leave unchanged; pass an empty array to clear it and fall back to the account default recipient. Denylists still apply on top.",
-				},
-				"pulse_outward_actions": map[string]interface{}{
-					"type": "string", "enum": []interface{}{"ask", "allow", "decide"},
-					"description": "Autopilot autonomy: ask the owner before outward actions, allow them within existing workflow limits, or decide (allow, and also decide plan changes itself; spending money and security stay the owner's). Change only when the owner asks.",
-				},
-				"pulse_enabled": map[string]interface{}{
-					"type":        "boolean",
-					"description": "Turn the workflow's Autopilot on or off, only when the owner asks. On: an agent owns the goal in soul/soul.md (needs that file). Off: the owner manages the workflow.",
-				},
+
 				"after_manual_run": map[string]interface{}{
 					"type":                 "object",
 					"additionalProperties": false,
@@ -4538,12 +4456,11 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"properties": map[string]interface{}{
 						"backup":  map[string]interface{}{"type": "boolean"},
 						"publish": map[string]interface{}{"type": "boolean"},
-						"notify":  map[string]interface{}{"type": "boolean"},
 					},
 				},
 				"notification_gmail_connection_id": map[string]interface{}{
 					"type":        "string",
-					"description": "One enabled Gmail connection ID to send this workflow's workflow summary delivery emails FROM, for both run and Autopilot summaries. Inspect available IDs with get_workflow_config. Stored in workflow.json capabilities.notifications.gmail_connection_id; clears legacy per-summary sender overrides. Omit to leave unchanged; pass an empty string to inherit the account default Gmail sender. This does not change recipients or the Gmail connection_id chosen by ordinary workflow and Builder email actions.",
+					"description": "One enabled Gmail connection ID to send this workflow's workflow summary delivery emails FROM for configured team run messages. Inspect available IDs with get_workflow_config. Stored in workflow.json capabilities.notifications.gmail_connection_id; clears legacy per-summary sender overrides. Omit to leave unchanged; pass an empty string to inherit the account default Gmail sender. This does not change recipients or the Gmail connection_id chosen by ordinary workflow and Builder email actions.",
 				},
 
 				"browser_mode": map[string]interface{}{
@@ -4562,7 +4479,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type":        "integer",
 					"minimum":     1,
 					"maximum":     maxRunRetentionCount,
-					"description": "Number of completed run/eval folders to keep independently for plain Builder archives, saved-schedule -sched runs, and webhook -hook runs, excluding active iteration-0. Defaults to 10 when omitted. Raise this for workflows whose Autopilot or Goal Advisor reviews need a wider evidence window.",
+					"description": "Number of completed run/eval folders to keep independently for plain Builder archives, saved-schedule -sched runs, and webhook -hook runs, excluding active iteration-0. Defaults to 10 when omitted. Raise this when reviewing progress needs a wider evidence window.",
 				},
 				"disable_parallel_tool_execution": map[string]interface{}{
 					"type":        "boolean",
@@ -4944,17 +4861,50 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 
+			// --- Informational run failure alerts ---
+			if raw, provided := args["break_alerts"]; provided {
+				enabled, ok := raw.(bool)
+				if !ok {
+					return "Error: break_alerts must be true or false.", nil
+				}
+				content, err := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
+				if err != nil {
+					return fmt.Sprintf("Failed to read workflow.json: %v", err), nil
+				}
+				var manifest map[string]interface{}
+				if err := json.Unmarshal([]byte(content), &manifest); err != nil {
+					return "Failed to read Goal settings.", nil
+				}
+				caps, _ := manifest["capabilities"].(map[string]interface{})
+				if caps == nil {
+					caps = map[string]interface{}{}
+				}
+				notifications, _ := caps["notifications"].(map[string]interface{})
+				if notifications == nil {
+					notifications = map[string]interface{}{}
+				}
+				notifications["break_alerts"] = enabled
+				caps["notifications"] = notifications
+				manifest["capabilities"] = caps
+				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
+				updated, err := json.MarshalIndent(manifest, "", "  ")
+				if err != nil {
+					return "Failed to save Goal settings.", nil
+				}
+				if err := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); err != nil {
+					return fmt.Sprintf("Failed to save Goal settings: %v", err), nil
+				}
+				anyChanged = true
+				sb.WriteString(fmt.Sprintf("\nTell me when something breaks: %v\n", enabled))
+			}
 			// --- Workflow-scoped notification content instructions ---
 			runRaw, runProvided := args["run_notification_instructions"]
-			pulseRaw, pulseProvided := args["pulse_notification_instructions"]
 			runChannelsRaw, runChannelsProvided := args["run_notification_channels"]
-			pulseChannelsRaw, pulseChannelsProvided := args["pulse_notification_channels"]
 			runRecipientsRaw, runRecipientsProvided := args["run_notification_recipients"]
-			pulseRecipientsRaw, pulseRecipientsProvided := args["pulse_notification_recipients"]
 			senderRaw, senderProvided := args["notification_gmail_connection_id"]
-			if (runProvided && runRaw != nil) || (pulseProvided && pulseRaw != nil) ||
-				(runChannelsProvided && runChannelsRaw != nil) || (pulseChannelsProvided && pulseChannelsRaw != nil) ||
-				(runRecipientsProvided && runRecipientsRaw != nil) || (pulseRecipientsProvided && pulseRecipientsRaw != nil) ||
+			if (runProvided && runRaw != nil) ||
+				(runChannelsProvided && runChannelsRaw != nil) ||
+				(runRecipientsProvided && runRecipientsRaw != nil) ||
 				(senderProvided && senderRaw != nil) {
 				workspacePath := iwm.controller.GetWorkspacePath()
 				parseInstructions := func(name string, raw interface{}, provided bool) (string, error) {
@@ -4972,10 +4922,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return value, nil
 				}
 				runInstructions, parseErr := parseInstructions("run_notification_instructions", runRaw, runProvided)
-				if parseErr != nil {
-					return "Error: " + parseErr.Error() + ".", nil
-				}
-				pulseInstructions, parseErr := parseInstructions("pulse_notification_instructions", pulseRaw, pulseProvided)
 				if parseErr != nil {
 					return "Error: " + parseErr.Error() + ".", nil
 				}
@@ -5003,12 +4949,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 						runInstructions = legacyInstructions
 					}
 				}
-				if !pulseProvided {
-					pulseInstructions, _ = notifications["pulse_summary_instructions"].(string)
-					if strings.TrimSpace(pulseInstructions) == "" {
-						pulseInstructions = legacyInstructions
-					}
-				}
+
 				parseChannels := func(name string, raw interface{}, provided bool) ([]string, error) {
 					if !provided || raw == nil {
 						return nil, nil
@@ -5040,13 +4981,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if parseErr != nil {
 					return "Error: " + parseErr.Error() + ".", nil
 				}
-				pulseChannels, parseErr := parseChannels("pulse_notification_channels", pulseChannelsRaw, pulseChannelsProvided)
-				if parseErr != nil {
-					return "Error: " + parseErr.Error() + ".", nil
-				}
+
 				// Recipient lists are stored as-given minus obvious junk. An empty
 				// array is a legitimate value here — it clears the list back to the
-				// account default — so unlike channels it is not an error.
+				// disabled email delivery — so unlike channels it is not an error.
 				parseRecipients := func(name string, raw interface{}, provided bool) ([]string, error) {
 					if !provided || raw == nil {
 						return nil, nil
@@ -5082,10 +5020,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if parseErr != nil {
 					return "Error: " + parseErr.Error() + ".", nil
 				}
-				pulseRecipients, parseErr := parseRecipients("pulse_notification_recipients", pulseRecipientsRaw, pulseRecipientsProvided)
-				if parseErr != nil {
-					return "Error: " + parseErr.Error() + ".", nil
-				}
+
 				var senderID string
 				if senderProvided && senderRaw != nil {
 					var ok bool
@@ -5108,8 +5043,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 				delete(notifications, "instructions")
 				for key, value := range map[string]string{
-					"run_summary_instructions":   strings.TrimSpace(runInstructions),
-					"pulse_summary_instructions": strings.TrimSpace(pulseInstructions),
+					"run_summary_instructions": strings.TrimSpace(runInstructions),
 				} {
 					if value == "" {
 						delete(notifications, key)
@@ -5120,11 +5054,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if runChannelsProvided {
 					notifications["run_summary_channels"] = runChannels
 				}
-				if pulseChannelsProvided {
-					notifications["pulse_summary_channels"] = pulseChannels
-				}
+
 				// An explicitly emptied list is stored as "no override" by removing
-				// the key, which is what falls back to the account default.
+				// the key, which disables summary email delivery.
 				if runRecipientsProvided {
 					if len(runRecipients) == 0 {
 						delete(notifications, "run_summary_recipients")
@@ -5132,13 +5064,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 						notifications["run_summary_recipients"] = runRecipients
 					}
 				}
-				if pulseRecipientsProvided {
-					if len(pulseRecipients) == 0 {
-						delete(notifications, "pulse_summary_recipients")
-					} else {
-						notifications["pulse_summary_recipients"] = pulseRecipients
-					}
-				}
+
 				if senderProvided && senderRaw != nil {
 					if senderID == "" {
 						delete(notifications, "gmail_connection_id")
@@ -5146,7 +5072,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 						notifications["gmail_connection_id"] = senderID
 					}
 					delete(notifications, "run_summary_gmail_connection_ids")
-					delete(notifications, "pulse_summary_gmail_connection_ids")
 				}
 				if len(notifications) == 0 {
 					delete(caps, "notifications")
@@ -5172,13 +5097,11 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 
 				anyChanged = true
-				sb.WriteString("\n### Notification Instructions (updated)\nSaved separate workflow run and Autopilot review content preferences in workflow.json.\n")
+				sb.WriteString("\n### Notification Instructions (updated)\nSaved team run notification preferences in workflow.json.\n")
 				if runRecipientsProvided {
 					sb.WriteString(fmt.Sprintf("- Run summary recipients: %s\n", notificationRecipientSummary(runRecipients)))
 				}
-				if pulseRecipientsProvided {
-					sb.WriteString(fmt.Sprintf("- Autopilot summary recipients: %s\n", notificationRecipientSummary(pulseRecipients)))
-				}
+
 				if senderProvided && senderRaw != nil {
 					if senderID == "" {
 						sb.WriteString("- Gmail notification sender: account default\n")
@@ -5186,100 +5109,14 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 						sb.WriteString(fmt.Sprintf("- Gmail notification sender connection ID: %s\n", senderID))
 					}
 				}
-				logger.Info(fmt.Sprintf("Updated workflow notification instructions: run_configured=%v pulse_configured=%v run_recipients=%d pulse_recipients=%d", strings.TrimSpace(runInstructions) != "", strings.TrimSpace(pulseInstructions) != "", len(runRecipients), len(pulseRecipients)))
-			}
-
-			// --- Pulse outward actions ---
-			if _, ok := args["pulse_outward_actions"]; ok && common.GoalWorkHeld(ctx) {
-				return "Error: Autopilot cannot change its own autonomy; it stays with the owner. Create a decision request (create_human_input_request) if you think it should change.", nil
-			}
-			if raw, provided := args["pulse_outward_actions"]; provided && raw != nil {
-				outward, ok := raw.(string)
-				outward = strings.ToLower(strings.TrimSpace(outward))
-				if !ok || (outward != "ask" && outward != "allow" && outward != "decide") {
-					return "Error: pulse_outward_actions must be ask, allow or decide.", nil
-				}
-				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if readErr != nil {
-					return fmt.Sprintf("Failed to read workflow.json: %v", readErr), nil
-				}
-				if normalized, changed := workflowtypes.NormalizePulseSettingsJSON([]byte(content)); changed {
-					content = string(normalized)
-				}
-				var manifest map[string]interface{}
-				if parseErr := json.Unmarshal([]byte(content), &manifest); parseErr != nil {
-					return fmt.Sprintf("Failed to parse workflow.json: %v", parseErr), nil
-				}
-				pulse, _ := manifest["pulse"].(map[string]interface{})
-				if pulse == nil {
-					pulse = map[string]interface{}{}
-				}
-				pulse["outward_actions"] = outward
-				manifest["pulse"] = pulse
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-				updated, marshalErr := json.MarshalIndent(manifest, "", "  ")
-				if marshalErr != nil {
-					return fmt.Sprintf("Failed to marshal workflow.json: %v", marshalErr), nil
-				}
-				if writeErr := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); writeErr != nil {
-					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
-				}
-				anyChanged = true
-				sb.WriteString(fmt.Sprintf("\n### Autopilot outward actions (updated)\nOutward actions: %s.\n", outward))
-			}
-
-			// --- Pulse on or off (owner, 2026-10-08) ---
-			if _, ok := args["pulse_enabled"]; ok && common.GoalWorkHeld(ctx) {
-				return "Error: Autopilot cannot turn itself on or off; that stays with the owner.", nil
-			}
-			if raw, provided := args["pulse_enabled"]; provided && raw != nil {
-				enabled, ok := raw.(bool)
-				if !ok {
-					return "Error: pulse_enabled must be true or false.", nil
-				}
-				if enabled {
-					if soul, err := iwm.controller.ReadWorkspaceFile(ctx, "soul/soul.md"); err != nil || strings.TrimSpace(soul) == "" {
-						return "Error: Autopilot needs the goal in soul/soul.md first. Help the owner write it (objective, the number that shows progress, a target and date), then turn Autopilot on.", nil
-					}
-				}
-				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if readErr != nil {
-					return fmt.Sprintf("Failed to read workflow.json: %v", readErr), nil
-				}
-				if normalized, changed := workflowtypes.NormalizePulseSettingsJSON([]byte(content)); changed {
-					content = string(normalized)
-				}
-				var manifest map[string]interface{}
-				if parseErr := json.Unmarshal([]byte(content), &manifest); parseErr != nil {
-					return fmt.Sprintf("Failed to parse workflow.json: %v", parseErr), nil
-				}
-				pulse, _ := manifest["pulse"].(map[string]interface{})
-				if pulse == nil {
-					pulse = map[string]interface{}{}
-				}
-				pulse["enabled"] = enabled
-				manifest["pulse"] = pulse
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-				updated, marshalErr := json.MarshalIndent(manifest, "", "  ")
-				if marshalErr != nil {
-					return fmt.Sprintf("Failed to marshal workflow.json: %v", marshalErr), nil
-				}
-				if writeErr := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); writeErr != nil {
-					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
-				}
-				anyChanged = true
-				if enabled {
-					sb.WriteString("\n### Autopilot (updated)\nAutopilot is on: it owns the goal in soul/soul.md and starts with a goal check.\n")
-				} else {
-					sb.WriteString("\n### Autopilot (updated)\nAutopilot is off: the owner manages the workflow; Autopilot's history and memory are kept.\n")
-				}
+				logger.Info(fmt.Sprintf("Updated workflow notification instructions: run_configured=%v run_recipients=%d", strings.TrimSpace(runInstructions) != "", len(runRecipients)))
 			}
 
 			// --- After a manual run: backup, publish, notify (PLAT-697 phase 0) ---
 			if raw, provided := args["after_manual_run"]; provided && raw != nil {
 				opts, ok := raw.(map[string]interface{})
 				if !ok {
-					return "Error: after_manual_run must be an object {backup, publish, notify}.", nil
+					return "Error: after_manual_run must be an object {backup, publish}.", nil
 				}
 				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
 				if readErr != nil {
@@ -5290,7 +5127,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return fmt.Sprintf("Failed to parse workflow.json: %v", parseErr), nil
 				}
 				current, _ := manifest["after_manual_run"].(map[string]interface{})
-				next := map[string]interface{}{"backup": false, "publish": false, "notify": false}
+				next := map[string]interface{}{"backup": false, "publish": false}
 				for key := range next {
 					if v, ok := current[key].(bool); ok {
 						next[key] = v
@@ -5313,7 +5150,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
 				}
 				anyChanged = true
-				sb.WriteString(fmt.Sprintf("\n### After a manual run (updated)\nbackup=%v publish=%v notify=%v\n", next["backup"], next["publish"], next["notify"]))
+				sb.WriteString(fmt.Sprintf("\n### After a manual run (updated)\nbackup=%v publish=%v\n", next["backup"], next["publish"]))
 			}
 
 			// --- Workflow-scoped one-way Slack webhook ---
@@ -5443,8 +5280,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 
 			// --- Per-summary Slack channels (one webhook == one channel) ---
 			runWebhooksRaw, runWebhooksProvided := args["run_notification_slack_webhooks"]
-			pulseWebhooksRaw, pulseWebhooksProvided := args["pulse_notification_slack_webhooks"]
-			if (runWebhooksProvided && runWebhooksRaw != nil) || (pulseWebhooksProvided && pulseWebhooksRaw != nil) {
+			if runWebhooksProvided && runWebhooksRaw != nil {
 				// Validate before writing anything: a name with no stored value, or
 				// one holding something that is not a webhook URL, would persist as a
 				// channel that silently never receives a message.
@@ -5503,10 +5339,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if parseErr != nil {
 					return "Error: " + parseErr.Error() + ".", nil
 				}
-				pulseWebhookNames, pulseWebhookValues, parseErr := parseWebhooks("pulse_notification_slack_webhooks", pulseWebhooksRaw, pulseWebhooksProvided)
-				if parseErr != nil {
-					return "Error: " + parseErr.Error() + ".", nil
-				}
 
 				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
 				if readErr != nil {
@@ -5535,7 +5367,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					notifications[key] = names
 				}
 				applyWebhookNames("run_summary_slack_webhook_secret_names", runWebhookNames, runWebhooksProvided)
-				applyWebhookNames("pulse_summary_slack_webhook_secret_names", pulseWebhookNames, pulseWebhooksProvided)
 				if len(notifications) == 0 {
 					delete(caps, "notifications")
 				} else {
@@ -5544,7 +5375,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 
 				// Same backend-only guarantee the single webhook gets: a credential
 				// referenced by notifications must never reach the agent as SECRET_*.
-				backendOnly := append(append([]string{}, runWebhookNames...), pulseWebhookNames...)
+				backendOnly := runWebhookNames
 				if len(backendOnly) > 0 {
 					blocked := map[string]bool{}
 					for _, name := range backendOnly {
@@ -5610,9 +5441,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					if runWebhooksProvided {
 						destination.RunSummaryWebhooks = toWebhookDests(runWebhookNames, runWebhookValues)
 					}
-					if pulseWebhooksProvided {
-						destination.PulseSummaryWebhooks = toWebhookDests(pulseWebhookNames, pulseWebhookValues)
-					}
+
 				}
 
 				anyChanged = true
@@ -5620,11 +5449,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if runWebhooksProvided {
 					sb.WriteString(fmt.Sprintf("- Workflow run summary channels: %s\n", notificationWebhookSummary(runWebhookNames)))
 				}
-				if pulseWebhooksProvided {
-					sb.WriteString(fmt.Sprintf("- Autopilot review summary channels: %s\n", notificationWebhookSummary(pulseWebhookNames)))
-				}
+
 				sb.WriteString("Each webhook is one Slack channel. The agent never receives these URLs; the backend posts through them by notification_kind.\n")
-				logger.Info(fmt.Sprintf("Updated per-summary Slack webhooks: run=%d pulse=%d", len(runWebhookNames), len(pulseWebhookNames)))
+				logger.Info(fmt.Sprintf("Updated per-summary Slack webhooks: run=%d", len(runWebhookNames)))
 			}
 
 			// --- Browser mode ---
@@ -5895,7 +5722,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			if !anyChanged {
-				return "No changes applied. Provide at least one of: knowledgebase_sources, kb_write_grants, add_servers, remove_servers, add_tools, remove_tools, add_skills, remove_skills, add_secrets, remove_secrets, run_notification_instructions, pulse_notification_instructions, run_notification_channels, pulse_notification_channels, slack_webhook_secret_name, browser_mode, cdp_ports, run_retention_count.", nil
+				return "No changes applied. Provide at least one of: knowledgebase_sources, kb_write_grants, add_servers, remove_servers, add_tools, remove_tools, add_skills, remove_skills, add_secrets, remove_secrets, run_notification_instructions, run_notification_channels, slack_webhook_secret_name, browser_mode, cdp_ports, run_retention_count.", nil
 			}
 
 			// Persist config changes to workflow.json manifest (file-backed)
@@ -5955,8 +5782,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if err := json.Unmarshal([]byte(content), &manifest); err != nil {
 				return fmt.Sprintf("Failed to parse workflow.json: %v", err), nil
 			}
-			if err := schedulepolicy.ValidatePulseStamp([]byte(content), version); err != nil {
-				return fmt.Sprintf("Refused: schedule Autopilot migration is incomplete: %v", err), nil
+			if err := schedulepolicy.ValidateAfterRunStamp([]byte(content), version); err != nil {
+				return fmt.Sprintf("Refused: schedule after-run migration is incomplete: %v", err), nil
 			}
 			if err := validateContractVersionStampPrerequisites(version, manifest); err != nil {
 				return fmt.Sprintf("Refused: nested Agent artifact migration is incomplete: %v", err), nil
@@ -6105,7 +5932,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip create_schedule registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"create_schedule",
-		"Create a new cron schedule for this workflow. Workflow schedules use mode='workshop' with workshop_mode='workshop'; read-only access is pinned to Run by the server. Messages are optional; when omitted, the scheduler asks the Builder to execute the full workflow. Before adding, inspect existing schedules and choose a useful run time using goal evidence. Set after_run (backup, publish, notify) for what runs after each run; it defaults to all three. Autopilot chooses its own checks; Plan Drift belongs to its same goal-work turn and never holds a run. Basic validation and the unreadable-input guard still apply. For the full contract (collision/dependency policy design, when direct messages vs. route_selections is correct, resume_previous tradeoffs): read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
+		"Create a new cron schedule for this workflow. Workflow schedules use mode='workshop' with workshop_mode='workshop'; read-only access is pinned to Run by the server. Messages are optional; when omitted, the scheduler asks the Builder to execute the full workflow. Before adding, inspect existing schedules and choose a useful run time using goal evidence. Set after_run (backup, publish) for what runs after each run; it defaults to both. Basic validation and the unreadable-input guard still apply. For the full contract (collision/dependency policy design, when direct messages vs. route_selections is correct, resume_previous tradeoffs): read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -6156,11 +5983,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				},
 				"after_run": map[string]interface{}{
 					"type":        "object",
-					"description": "What runs after each run of this schedule, as plain platform code with no Autopilot pass: backup (save workflow state when it changed), publish (refresh the published report when it changed), notify (send the run summary; routine successes are recorded in the dashboard, failures and changes are sent). Normal schedules turn all three on.",
+					"description": "After-run housekeeping: backup saves changed workflow state; publish refreshes the configured report. New schedules enable both. Run outcomes and configured team messages are independent of these options.",
 					"properties": map[string]interface{}{
 						"backup":  map[string]interface{}{"type": "boolean"},
 						"publish": map[string]interface{}{"type": "boolean"},
-						"notify":  map[string]interface{}{"type": "boolean"},
 					},
 				},
 				"execution_mode": map[string]interface{}{
@@ -6297,17 +6123,16 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip create_calendar_schedule registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"create_calendar_schedule",
-		"Create a dated calendar schedule for this workflow, such as a full-month Instagram content calendar. Set after_run (backup, publish, notify); it defaults to all three. Use this when the user provides specific dates/times instead of a repeating cron pattern. Workflow calendar schedules use mode='workshop' and workshop_mode='workshop'; read-only access is pinned to Run by the server. For the full contract: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
+		"Create a dated calendar schedule for this workflow, such as a full-month Instagram content calendar. Set after_run (backup, publish); it defaults to both. Use this when the user provides specific dates/times instead of a repeating cron pattern. Workflow calendar schedules use mode='workshop' and workshop_mode='workshop'; read-only access is pinned to Run by the server. For the full contract: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"after_run": map[string]interface{}{
 					"type":        "object",
-					"description": "What runs after each run of this schedule, as plain platform code with no Autopilot pass: backup (save workflow state when it changed), publish (refresh the published report when it changed), notify (send the run summary; routine successes are recorded in the dashboard, failures and changes are sent). Normal schedules turn all three on.",
+					"description": "After-run housekeeping: backup saves changed workflow state; publish refreshes the configured report. New schedules enable both. Run outcomes and configured team messages are independent of these options.",
 					"properties": map[string]interface{}{
 						"backup":  map[string]interface{}{"type": "boolean"},
 						"publish": map[string]interface{}{"type": "boolean"},
-						"notify":  map[string]interface{}{"type": "boolean"},
 					},
 				},
 
@@ -6484,11 +6309,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				},
 				"after_run": map[string]interface{}{
 					"type":        "object",
-					"description": "What runs after each run of this schedule, as plain platform code with no Autopilot pass: backup (save workflow state when it changed), publish (refresh the published report when it changed), notify (send the run summary; routine successes are recorded in the dashboard, failures and changes are sent). Normal schedules turn all three on.",
+					"description": "After-run housekeeping: backup saves changed workflow state; publish refreshes the configured report. New schedules enable both. Run outcomes and configured team messages are independent of these options.",
 					"properties": map[string]interface{}{
 						"backup":  map[string]interface{}{"type": "boolean"},
 						"publish": map[string]interface{}{"type": "boolean"},
-						"notify":  map[string]interface{}{"type": "boolean"},
 					},
 				},
 				"execution_mode": map[string]interface{}{
@@ -7096,7 +6920,7 @@ func registerWorkshopLLMTools(iwm *InteractiveWorkshopManager, mcpAgent Definiti
 		// PLAT-262: skip set_workflow_llm_config registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"set_workflow_llm_config",
-		"Save the workflow's LLM configuration to workflow.json capabilities.llm_config. Requires read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/llm-selection.md\"}]) first. In provider_profile mode, provide one coding-agent provider and its current Builder, execution-tier, and Autopilot defaults resolve at runtime. In explicit mode, provide builder_llm, pulse_llm, and all three execution tiers; each entry directly pins provider, model_id, and options. Saved model-library entries are optional reusable shortcuts, not a prerequisite.",
+		"Save the workflow's LLM configuration to workflow.json capabilities.llm_config. Requires read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/llm-selection.md\"}]) first. In provider_profile mode, provide one coding-agent provider and its current Builder, execution-tier, and background-work defaults resolve at runtime. In explicit mode, provide builder_llm, background_llm, and all three execution tiers; each entry directly pins provider, model_id, and options. Saved model-library entries are optional reusable shortcuts, not a prerequisite.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -7105,12 +6929,12 @@ func registerWorkshopLLMTools(iwm *InteractiveWorkshopManager, mcpAgent Definiti
 					"enum":        []string{workflowtypes.LLMConfigModeProviderProfile, workflowtypes.LLMConfigModeExplicit},
 					"description": "provider_profile follows the coding-agent provider defaults; explicit pins every workflow role.",
 				},
-				"provider":    map[string]interface{}{"type": "string", "description": "Coding-agent provider id. Required only in provider_profile mode."},
-				"builder_llm": llmEntrySchema("Builder model for planning, eval design, debugging, and normal workflow-builder chat."),
-				"tier_1":      llmEntrySchema("High-reasoning execution tier: first-time or difficult work."),
-				"tier_2":      llmEntrySchema("Medium-reasoning execution tier: established work with useful context."),
-				"tier_3":      llmEntrySchema("Low-reasoning execution tier: validation and mature routine work."),
-				"pulse_llm":   llmEntrySchema("Autopilot coordinator model for gate, worklist, reporting, and notification turns."),
+				"provider":       map[string]interface{}{"type": "string", "description": "Coding-agent provider id. Required only in provider_profile mode."},
+				"builder_llm":    llmEntrySchema("Builder model for planning, eval design, debugging, and normal workflow-builder chat."),
+				"tier_1":         llmEntrySchema("High-reasoning execution tier: first-time or difficult work."),
+				"tier_2":         llmEntrySchema("Medium-reasoning execution tier: established work with useful context."),
+				"tier_3":         llmEntrySchema("Low-reasoning execution tier: validation and mature routine work."),
+				"background_llm": llmEntrySchema("Model for independent reviews and knowledge-base maintenance."),
 			},
 			"required": []string{"mode"},
 		},
@@ -7184,7 +7008,7 @@ func registerWorkshopLLMTools(iwm *InteractiveWorkshopManager, mcpAgent Definiti
 			case workflowtypes.LLMConfigModeExplicit:
 				llmCfg["mode"] = workflowtypes.LLMConfigModeExplicit
 				missing := []string{}
-				for _, key := range []string{"builder_llm", "pulse_llm"} {
+				for _, key := range []string{"builder_llm", "background_llm"} {
 					entry := buildTierEntry(args[key])
 					if entry == nil {
 						missing = append(missing, key)
@@ -7259,7 +7083,7 @@ This is a **read-only review**:
 7. **Do not drift into full redesign**: You may suggest a concrete correction, but the primary task is to review and explain what is wrong with the current decision.
 8. **Check portability and secrecy**: Flag plan-visible secrets, user-specific values, absolute paths, run-folder-specific values, and brittle environment assumptions.
 9. **Check persistent-store discipline**: Stores survive across runs — workflow-local skills (HOW to run), `+"`knowledgebase/context/`"+` (user-supplied runtime business context), `+"`"+`knowledgebase/notes/`+"`"+` (workflow-discovered durable narrative observations), `+"`"+`db/db.sqlite`+"`"+` (structured durable SQLite tables for cross-run state, read live by HTML reports via `+"`window.report.query`"+`), and `+"`db/assets/`"+` (durable media/file assets referenced by db rows or reports). Flag steps that confuse these stores: stashing durable facts in learnings or plan.json, stashing user-owned context in notes, writing report data only to run folders, embedding assets as blobs, or failing to describe explicit task contributions or the `+"`"+`db/README.md`+"`"+` contract when steps produce persistent facts.
-10. **Check skill and mode discipline**: Steps consume selected workflow skills. Builder edits them when asked; Autopilot may edit them during its improvement pass when Autopilot is on. Autopilot off does not edit them. No separate learning store or automatic reflection turn is added. Deterministic API/SDK calls, CLI commands, data fetching, known pagination, stable parsing/normalization/transforms, and mechanical persistence should be `+"`"+`scripted`+"`"+` from initial design with an authored/tested `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+`; no run-history threshold is required to choose that mode. Browser/UI work, adaptive discovery, and judgment stay agentic. The 10+ representative-run bar applies to `+"`"+`lock_code`+"`"+`, not to declaring deterministic work scripted.
+10. **Check skill and mode discipline**: Steps consume selected workflow skills. Builder edits them when asked. Other products use this Goal’s shared entry points and existing access checks. No separate learning store or automatic reflection turn is added. Deterministic API/SDK calls, CLI commands, data fetching, known pagination, stable parsing/normalization/transforms, and mechanical persistence should be `+"`"+`scripted`+"`"+` from initial design with an authored/tested `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+`; no run-history threshold is required to choose that mode. Browser/UI work, adaptive discovery, and judgment stay agentic. The 10+ representative-run bar applies to `+"`"+`lock_code`+"`"+`, not to declaring deterministic work scripted.
 11. **Check KB discipline**: KB writes require explicit task instructions and correct read/write access. `+"`knowledgebase/context/`"+` should contain user-supplied runtime context; `+"`knowledgebase/notes/`"+` should contain workflow-discovered durable narrative observations, not execution recipes, raw rows, or volatile run state. If `+"`"+`knowledgebase/notes/_index.json`+"`"+` exists, it must point to coherent topic notes.
 12. **Check db discipline**: `+"`"+`db/db.sqlite`+"`"+` should be a clean relational surface: each table documented in `+"`"+`db/README.md`+"`"+` with DDL, PRIMARY KEY, upsert rule (`+"`INSERT ... ON CONFLICT`"+`), indexes, writer ownership, group separation, report consumers (the HTML report `+"`window.report.query`"+` SQL that reads it), and correct references to durable assets under `+"`db/assets/`"+`.
 13. **Check skill discipline**: Installed skills live under `+"`skills/{folder}/SKILL.md`"+` and are reusable instructions local to the workflow. Review workflow-selected skills and per-step `+"`enabled_skills`"+` against the actual plan. Flag missing needed skills, selected-but-unused skills, descriptions that reference skills not enabled for the execution agent, malformed skill folders, and skills that duplicate other workflow skills or contain workflow-specific secrets/paths/run state. Do not assume workflow-level selected skills automatically reach step execution; verify step-level `+"`enabled_skills`"+` when runtime requires explicit scoping.
@@ -7955,7 +7779,7 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowTimingAgent(ctx context.
 	}
 	iwm.controller.SetWorkspacePathForFolderGuard(readPaths, []string{})
 
-	llmConfigToUse := iwm.controller.selectPulseLLM("review_workflow_timing agent")
+	llmConfigToUse := iwm.controller.selectBackgroundLLM("review_workflow_timing agent")
 	if llmConfigToUse == nil {
 		return "", fmt.Errorf("no valid LLM configuration for review_workflow_timing agent")
 	}
@@ -8045,7 +7869,7 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowCostsAgent(ctx context.C
 	}
 	iwm.controller.SetWorkspacePathForFolderGuard(readPaths, []string{})
 
-	llmConfigToUse := iwm.controller.selectPulseLLM("review_workflow_costs agent")
+	llmConfigToUse := iwm.controller.selectBackgroundLLM("review_workflow_costs agent")
 	if llmConfigToUse == nil {
 		return "", fmt.Errorf("no valid LLM configuration for review_workflow_costs agent")
 	}
@@ -8207,7 +8031,7 @@ func (iwm *InteractiveWorkshopManager) runReviewStepCodeAgent(ctx context.Contex
 	}
 	iwm.controller.SetWorkspacePathForFolderGuard(readPaths, []string{})
 
-	llmConfigToUse := iwm.controller.selectPulseLLM("review_step_code agent")
+	llmConfigToUse := iwm.controller.selectBackgroundLLM("review_step_code agent")
 	if llmConfigToUse == nil {
 		return "", fmt.Errorf("no valid LLM configuration for review_step_code agent")
 	}
@@ -8382,13 +8206,4 @@ func notifySecretsAttached(callback func(set map[string]string, removed []string
 		}
 	}
 	callback(set, removed)
-}
-
-// pulseStepBusyCheck is the Pulse workshop's check for a step the workflow is
-// running right now, or nil outside Pulse.
-func (iwm *InteractiveWorkshopManager) pulseStepBusyCheck() func(context.Context, string, string) string {
-	if iwm == nil || iwm.workshopConfig == nil {
-		return nil
-	}
-	return iwm.workshopConfig.StepBusyForPulse
 }

@@ -9,14 +9,13 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	llmtypes "github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // send_email addresses named people through Gmail. Summary delivery uses the
 // workflow's saved notification settings independently.
 
-const sendEmailDescription = "Send one email to the recipients you name, by Gmail only. `to` is required (at least one address); `subject` is required; give a plain `body` or an email-safe `html` body (INLINE styles only; Gmail strips <style>, <head> and class CSS). Attach existing server files with `attachments` (absolute paths). The workflow's blocked-recipients list and the account's disallowed-recipients list still apply. This sends to the named recipients. Workflow run and Autopilot summaries use the saved notification settings automatically. Refused when the Outward permission is ask for this turn."
+const sendEmailDescription = "Send one email to the recipients you name, by Gmail only. `to` is required (at least one address); `subject` is required; give a plain `body` or an email-safe `html` body (INLINE styles only; Gmail strips <style>, <head> and class CSS). Attach existing server files with `attachments` (absolute paths). The workflow's blocked-recipients list and the account's disallowed-recipients list still apply. This sends to the named recipients. Workflow run and Goal updates use the saved notification settings automatically."
 
 func createSendEmailTool() llmtypes.Tool {
 	list := func(description string) map[string]interface{} {
@@ -71,11 +70,7 @@ func handleSendEmail(ctx context.Context, args map[string]interface{}) (string, 
 	if strings.TrimSpace(body) == "" && strings.TrimSpace(html) == "" {
 		return "", fmt.Errorf("body or html is required")
 	}
-	// Emailing people the agent chose is an Outward action: with the permission at ask (Pulse Goal Work) the owner
-	// decides first. The tool is held whole, not argument by argument.
-	if common.OutwardHeld(ctx) {
-		return "", fmt.Errorf("send_email refused: the Outward permission is ask for this turn (pulse.outward_actions). Create a decision request (create_human_input_request) for sending to anyone else")
-	}
+
 	nm := services.GetNotificationManager()
 	if nm == nil {
 		return "", fmt.Errorf("notification manager not available")

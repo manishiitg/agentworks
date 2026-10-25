@@ -11,15 +11,6 @@ import (
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 )
 
-// PLAT-114. Every background agent (Pulse's Gate/reviewers/Fixer, and a
-// workflow's own todo-task sub-agents) previously had exactly two records of
-// what it did: the typed pulse_review_log receipt, which a module's own Fixer
-// turn may simply never write, and the chat session's ui_events cache, which
-// is hard-capped at the last 200 UI events and gets silently overwritten once
-// a session is reused for a later run. Neither is durable. Workflow steps, by
-// contrast, get a real per-run record for free (runs/iteration-N/default/).
-// This table gives background agents the equivalent: one durable row per
-// agent, upserted on start and again on completion, independent of both.
 const backgroundAgentLogSchema = `CREATE TABLE IF NOT EXISTS background_agent_log (
 	workspace_path TEXT NOT NULL,
 	session_id TEXT NOT NULL,
@@ -130,7 +121,7 @@ func (api *StreamingAPI) recordBackgroundAgentLogStarted(sessionID, agentID, nam
 		return
 	}
 	ctx := context.Background()
-	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
+	_, db, err := openWorkflowStoreDB(ctx, workspacePath, true)
 	if err != nil || db == nil {
 		if err != nil {
 			log.Printf("[BG_AGENT_LOG] failed to open db for %s: %v", workspacePath, err)
@@ -161,7 +152,7 @@ func (api *StreamingAPI) recordBackgroundAgentLogCompleted(sessionID, agentID, n
 		return
 	}
 	ctx := context.Background()
-	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
+	_, db, err := openWorkflowStoreDB(ctx, workspacePath, true)
 	if err != nil || db == nil {
 		if err != nil {
 			log.Printf("[BG_AGENT_LOG] failed to open db for %s: %v", workspacePath, err)
@@ -195,7 +186,7 @@ func (api *StreamingAPI) recordBackgroundAgentTranscriptPath(sessionID, agentID,
 		return
 	}
 	ctx := context.Background()
-	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
+	_, db, err := openWorkflowStoreDB(ctx, workspacePath, true)
 	if err != nil || db == nil {
 		if err != nil {
 			log.Printf("[BG_AGENT_LOG] failed to open db for %s: %v", workspacePath, err)
@@ -215,13 +206,8 @@ func (api *StreamingAPI) recordBackgroundAgentTranscriptPath(sessionID, agentID,
 	}
 }
 
-// backgroundAgentLogForSession reads every background agent durably recorded
-// for one session, oldest first. Used to answer "what did this Pulse run's
-// (or workflow run's) background agents actually do" without depending on
-// pulse_review_log (which a module's Fixer turn may never write) or
-// ui_events (capped at 200, overwritten on session reuse).
 func backgroundAgentLogForSession(ctx context.Context, workspacePath, sessionID string) ([]BackgroundAgentLogEntry, error) {
-	_, db, err := openPulseStoreDB(ctx, workspacePath, false)
+	_, db, err := openWorkflowStoreDB(ctx, workspacePath, false)
 	if err != nil {
 		return nil, err
 	}

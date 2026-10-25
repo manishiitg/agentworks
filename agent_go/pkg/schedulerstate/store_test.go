@@ -39,8 +39,7 @@ func TestRunLifecycleAndEvents(t *testing.T) {
 	transitions := []Transition{
 		{RunID: run.RunID, To: StateWorkflowRunning, SessionID: "session-1", SessionKind: "workflow", Reason: "session started"},
 		{RunID: run.RunID, To: StateWorkflowFinished, SessionID: "session-1", RunFolder: "iteration-0", Reason: "workflow finished"},
-		{RunID: run.RunID, To: StatePulseRunning, SessionID: "session-1", SessionKind: "pulse", Reason: "Autopilot enabled"},
-		{RunID: run.RunID, To: StateCompleted, SessionID: "recovery-session", SessionKind: "pulse_recovery", Reason: "done"},
+		{RunID: run.RunID, To: StateCompleted, SessionID: "recovery-session", SessionKind: "workflow", Reason: "done"},
 	}
 	for _, transition := range transitions {
 		if err := store.Transition(ctx, transition); err != nil {
@@ -90,7 +89,7 @@ func TestRejectsInvalidAndTerminalRegression(t *testing.T) {
 	if err := store.BeginRun(ctx, run); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Transition(ctx, Transition{RunID: run.RunID, To: StatePulseRunning}); !errors.Is(err, ErrInvalidTransition) {
+	if err := store.Transition(ctx, Transition{RunID: run.RunID, To: StateWorkflowFinished}); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("invalid transition error = %v", err)
 	}
 	if err := store.Transition(ctx, Transition{RunID: run.RunID, To: StateFailed, Reason: "failed to start"}); err != nil {
@@ -98,25 +97,6 @@ func TestRejectsInvalidAndTerminalRegression(t *testing.T) {
 	}
 	if err := store.Transition(ctx, Transition{RunID: run.RunID, To: StateWorkflowRunning}); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("terminal regression error = %v", err)
-	}
-}
-
-func TestPulseCanComplete(t *testing.T) {
-	store := openTestStore(t)
-	ctx := context.Background()
-	run := Run{RunID: "run-no-modules", ScopeType: "workflow", ScopeID: "Workflow/demo", LockKey: "workflow:Workflow/demo", ScheduleID: "schedule-1"}
-	if err := store.BeginRun(ctx, run); err != nil {
-		t.Fatal(err)
-	}
-	for _, transition := range []Transition{
-		{RunID: run.RunID, To: StateWorkflowRunning},
-		{RunID: run.RunID, To: StateWorkflowFinished},
-		{RunID: run.RunID, To: StatePulseRunning},
-		{RunID: run.RunID, To: StateCompleted},
-	} {
-		if err := store.Transition(ctx, transition); err != nil {
-			t.Fatalf("transition to %s: %v", transition.To, err)
-		}
 	}
 }
 
@@ -541,47 +521,6 @@ func TestActiveRunForScheduleIgnoresConcurrencyLockKeyShape(t *testing.T) {
 	got, err := s.ActiveRunForSchedule(ctx, "workflow", "Workflow/demo", "measurement")
 	if err != nil || got.RunID != run.RunID {
 		t.Fatalf("active run = (%+v, %v), want %s", got, err, run.RunID)
-	}
-}
-
-func TestRetiredPulseStagesReleaseLocksOnOpen(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.sqlite")
-	store, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	run := Run{RunID: "old", ScopeType: "workflow", ScopeID: "Workflow/example", LockKey: "workflow:example", ScheduleID: "daily", TriggerSource: "cron"}
-	if err := store.BeginRun(ctx, run); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.db.Exec(`DROP INDEX idx_schedule_runs_active_lock; CREATE UNIQUE INDEX idx_schedule_runs_active_lock ON schedule_runs(lock_key) WHERE state IN ('starting','workflow_running','workflow_finished','pulse_gate','pulse_modules','pulse_finalizing'); UPDATE schedule_runs SET state='pulse_modules' WHERE run_id='old'`); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	store, err = Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	old, err := store.GetRun(ctx, "old")
-	if err != nil || old.State != StateInterrupted || old.CompletedAt == nil {
-		t.Fatalf("old=%+v err=%v", old, err)
-	}
-	run.RunID = "new"
-	if err := store.BeginRun(ctx, run); err != nil {
-		t.Fatal(err)
-	}
-	for _, state := range []State{StateWorkflowRunning, StateWorkflowFinished, StatePulseRunning} {
-		if err := store.Transition(ctx, Transition{RunID: "new", To: state}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	run.RunID = "overlap"
-	if err := store.BeginRun(ctx, run); !errors.Is(err, ErrRunAlreadyActive) {
-		t.Fatalf("Autopilot active index lost: %v", err)
 	}
 }
 

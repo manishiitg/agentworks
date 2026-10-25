@@ -170,7 +170,7 @@ describe('Autopilot slash commands', () => {
 
     expect(submitted).toContain('Run the /run-goal-work pass in this turn')
     expect(submitted).toContain('kind="strategy-auditor"')
-    expect(submitted).not.toContain('required_pulse_review_modules')
+    expect(submitted).not.toContain('required_goal_update_modules')
     expect(submitted).toContain('focus on repeated targets')
     expect(submitted).toContain('Needs your decision proposals')
     expect(submitted).not.toContain('agent=')

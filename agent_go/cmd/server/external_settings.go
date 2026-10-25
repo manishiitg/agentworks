@@ -63,16 +63,12 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		}, "description": "set/remove store or delete secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
 		"browser_mode": map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
 		"after_manual_run": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only: what runs after a full run you start yourself (schedules have their own after_run in manage_schedules). Backup and publish need to be set up first (in the app's Builder: /backup, /publish).", "properties": map[string]any{
-			"backup": map[string]any{"type": "boolean"}, "publish": map[string]any{"type": "boolean"}, "notify": map[string]any{"type": "boolean"},
-		}},
-		"pulse": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only. Autopilot owns the goal when enabled (it needs soul/soul.md; until then it waits for a goal). OFF starts no checks, reports or messages; turn it on before using Autopilot. Outward actions are ask first or allowed within existing limits.", "properties": map[string]any{
-			"enabled":         map[string]any{"type": "boolean"},
-			"outward_actions": map[string]any{"type": "string", "enum": []any{"ask", "allow", "decide"}},
+			"backup": map[string]any{"type": "boolean"}, "publish": map[string]any{"type": "boolean"},
 		}},
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
-			"run_instructions": map[string]any{"type": "string", "maxLength": 4000}, "pulse_instructions": map[string]any{"type": "string", "maxLength": 4000},
-			"run_channels": names, "pulse_channels": names,
-			"daily_digest": map[string]any{"type": "boolean", "description": "One evening email (8 pm in the schedules' timezone) listing the day's runs. On unless turned off."},
+			"run_instructions": map[string]any{"type": "string", "maxLength": 4000},
+			"run_channels":     names,
+			"break_alerts":     map[string]any{"type": "boolean", "description": "Tell me when something breaks: show a run status in Needs you. On unless turned off. AgentWorks reports progress; configured team delivery is separate."},
 			"wake_tab": map[string]any{"type": "object", "additionalProperties": false, "description": "A Crew tab to message straight away when a run of this workflow fails, stops partway, or never actually ran. Pass the Crew id and the tab's chat id (from workspace action=chats); send both empty to clear.", "properties": map[string]any{
 				"crew_id": map[string]any{"type": "string"}, "chat_id": map[string]any{"type": "string"},
 			}},
@@ -202,7 +198,7 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 		if err := decoder.Decode(&config); err != nil {
 			return nil, nil, settingsInvalid("models: %v", err)
 		}
-		pins := []*workflowtypes.AgentLLMConfig{config.BuilderLLM, config.PulseLLM}
+		pins := []*workflowtypes.AgentLLMConfig{config.BuilderLLM, config.BackgroundLLM}
 		if config.TieredConfig != nil {
 			pins = append(pins, config.TieredConfig.Tier1, config.TieredConfig.Tier2, config.TieredConfig.Tier3)
 		}
@@ -453,20 +449,11 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		Secrets: append([]string{}, caps.SelectedSecrets...), GlobalSecrets: caps.SelectedGlobalSecretNames, BrowserMode: caps.BrowserMode}
 	notifications := func(c WorkflowCapabilities) map[string]any {
 		if n := c.Notifications; n != nil {
-			return map[string]any{"run_instructions": n.RunSummaryInstructions, "pulse_instructions": n.PulseSummaryInstructions,
-				"run_channels": n.RunSummaryChannels, "pulse_channels": n.PulseSummaryChannels, "daily_digest": !n.DailyDigestOff, "wake_tab": n.WakeTab}
+			return map[string]any{"run_instructions": n.RunSummaryInstructions, "run_channels": n.RunSummaryChannels, "break_alerts": n.BreakAlertsEnabled(), "wake_tab": n.WakeTab}
 		}
-		return map[string]any{"daily_digest": true}
+		return map[string]any{"break_alerts": true}
 	}
-	pulseView := func(m *WorkflowManifest) map[string]any {
-		view := map[string]any{"enabled": m.PulseEnabled(), "has_goal": workflowHasSoul(ctx, workflow.WorkspacePath)}
-		view["outward_actions"] = "ask"
-		if m.Pulse != nil {
-			view["outward_actions"] = m.Pulse.OutwardActions
-		}
 
-		return view
-	}
 	if name == "get_settings" {
 		view := api.externalSettingsView(ctx, claims.UserID, target, state, notifications(caps))
 		if target.kind == "workflow" && (access == WorkflowAccessOwner || access == WorkflowAccessWrite) {
@@ -474,7 +461,6 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 				view["vault"] = vault
 			}
 		}
-		view["pulse"] = pulseView(manifest)
 		view["after_manual_run"] = manifest.EffectiveManualAfterRun()
 		// Backup, publish and notify status, as the app's views show them.
 		for key, handler := range map[string]http.HandlerFunc{"backup": api.handleGetWorkflowBackup, "publish": api.handleGetWorkflowPublish, "notify": api.handleGetWorkflowNotifications} {
@@ -501,19 +487,12 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		if v, ok := n["run_instructions"].(string); ok {
 			req.RunNotificationInstructions = &v
 		}
-		if v, ok := n["pulse_instructions"].(string); ok {
-			req.PulseNotificationInstructions = &v
-		}
 		if _, ok := n["run_channels"]; ok {
 			v := externalSettingsList(args, "notifications", "run_channels")
 			req.RunNotificationChannels = &v
 		}
-		if _, ok := n["pulse_channels"]; ok {
-			v := externalSettingsList(args, "notifications", "pulse_channels")
-			req.PulseNotificationChannels = &v
-		}
-		if v, ok := n["daily_digest"].(bool); ok {
-			req.DailyDigest = &v
+		if v, ok := n["break_alerts"].(bool); ok {
+			req.BreakAlerts = &v
 		}
 		if w, ok := n["wake_tab"].(map[string]any); ok {
 			crew, _ := w["crew_id"].(string)
@@ -524,7 +503,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	}
 	if after, ok := args["after_manual_run"].(map[string]any); ok {
 		current := manifest.EffectiveManualAfterRun()
-		for key, target := range map[string]*bool{"backup": &current.Backup, "publish": &current.Publish, "notify": &current.Notify} {
+		for key, target := range map[string]*bool{"backup": &current.Backup, "publish": &current.Publish} {
 			if v, ok := after[key].(bool); ok {
 				*target = v
 			}
@@ -532,16 +511,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		req.AfterManualRun = &current
 		changed = append(changed, "after_manual_run")
 	}
-	if p, ok := args["pulse"].(map[string]any); ok {
-		if v, ok := p["enabled"].(bool); ok {
-			req.PulseEnabled = &v
-		}
-		if v, ok := p["outward_actions"].(string); ok {
-			req.PulseOutwardActions = &v
-		}
 
-		changed = append(changed, "pulse")
-	}
 	if len(changed) == 0 {
 		externalError(w, 400, "invalid_settings", "Nothing to change; send at least one setting.")
 		return
@@ -567,7 +537,6 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		Tools: caps.SelectedTools, Skills: caps.SelectedSkills, Secrets: caps.SelectedSecrets, GlobalSecrets: caps.SelectedGlobalSecretNames,
 		BrowserMode: caps.BrowserMode}, notifications(caps))
 	view["changed"] = changed
-	view["pulse"] = pulseView(manifest)
 	if len(pending) > 0 {
 		view["pending_sign_in"] = pending
 	}
@@ -644,10 +613,7 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		externalError(w, 400, "invalid_settings", "notifications apply to workflows and Flows only.")
 		return
 	}
-	if _, ok := args["pulse"]; ok {
-		externalError(w, 400, "invalid_settings", "pulse applies to workflows only.")
-		return
-	}
+
 	if _, ok := args["after_manual_run"]; ok {
 		externalError(w, 400, "invalid_settings", "after_manual_run applies to workflows only.")
 		return

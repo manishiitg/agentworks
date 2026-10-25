@@ -491,7 +491,7 @@ func TestExternalBuilderOperationsRealMCPTransportAndDiscovery(t *testing.T) {
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "Builder catalog")
 	builderSpec := marshalStructured(t, callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"builder"}}))
-	for _, action := range []string{"chat", "status", "reply_input", "cancel", "file_history", "restore_file", "pulse_chat", "pulse_status"} {
+	for _, action := range []string{"chat", "status", "reply_input", "cancel", "file_history", "restore_file"} {
 		if !strings.Contains(builderSpec, `"`+action+`"`) {
 			t.Fatalf("enabled scoped catalog: builder has no %s action", action)
 		}

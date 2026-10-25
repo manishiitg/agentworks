@@ -11,11 +11,7 @@ import (
 // to the workflow.
 func configureWorkflowPhaseCLIShellGuard(sessionID, workspacePath, userID string, readOnly bool) {
 	if m, ok, e := ReadWorkflowManifest(context.Background(), workspacePath); e == nil && ok && m.Team != nil {
-		if isGoalLeadSessionID(sessionID) {
-			configurePulseShellGuard(sessionID, workspacePath)
-			protectOtherWorkflowBuilderChats(sessionID, workspacePath, userID)
-			return
-		}
+
 		writes := []string{workspacePath + "/builder/conversation/users/" + sanitizeUserIDForPath(userID)}
 		if !readOnly {
 			writes = append(writes, workspacePath+"/runs")

@@ -28,7 +28,7 @@ describe('workflowHasActivity', () => {
 
     expect(workflowHasActivity('Workflow/demo', {
       success: true,
-      workflows: [{ workspace_path: 'Workflow/demo', by_route: [{ route_id: 'daily', label: 'Daily', pulse_summary: notification }] }],
+      workflows: [{ workspace_path: 'Workflow/demo', by_route: [{ route_id: 'daily', label: 'Daily', run_summary: notification }] }],
     }, [])).toBe(true)
 
     expect(workflowHasActivity('Workflow/demo', { success: true, workflows: [] }, [

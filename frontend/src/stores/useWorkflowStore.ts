@@ -1016,7 +1016,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
             ? 'triggers'
             : undefined
         const resolvedView: WorkspaceViewId = automationTarget ? 'workshop' : view
-        const resolvedTarget = target?.trim() || automationTarget || (resolvedView === 'pulse' ? 'goals' : undefined)
+        const resolvedTarget = target?.trim() || automationTarget
         const kind = getWorkspaceView(resolvedView).kind
         if (resolvedTarget) {
           set(state => ({ workspaceViewTarget: { view: resolvedView, target: resolvedTarget, token: (state.workspaceViewTarget?.token ?? 0) + 1 } }))

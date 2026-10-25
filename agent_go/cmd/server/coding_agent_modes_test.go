@@ -1609,7 +1609,7 @@ func TestRequestLLMConfigOverridesManifestOnlyForAgentProfileSource(t *testing.T
 	}
 
 	// A scheduler Pulse turn no longer overrides the manifest: the whole
-	// scheduled conversation stays on the Builder model, and pulse_llm is
+	// scheduled conversation stays on the Builder model, and background_llm is
 	// applied by the workshop to the background review agents instead.
 	req.LLMConfigSource = "scheduled_pulse"
 	if requestLLMConfigOverridesManifest(req) {

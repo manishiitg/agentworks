@@ -56,7 +56,7 @@ the computer is offline.
 
 Both the Crew and laptop must be yours. Sharing a Crew does not share your
 laptop. These are explicit tools for your own MCP connection; Run callers,
-schedules and Pulse do not inherit access. There is no automatic sync or
+schedules do not inherit access. There is no automatic sync or
 server-to-laptop copy. When the computer disconnects, normal server work
 continues.
 
@@ -840,7 +840,7 @@ The owner's interactive Builder chat gets these extra tools:
   normal guarded Crew writer. The model receives a receipt, not the file bytes.
 
 Sharing the Crew does not share the laptop. Run callers, other owners, remote
-asks, schedules, Pulse and background turns do not inherit its tools. Current
+asks, schedules and background turns do not inherit its tools. Current
 account access and the laptop's live device/folder grants are checked on every
 call. Server secrets and environment variables are never forwarded into laptop
 commands. Existing macOS light sandbox, Linux folder confinement and Windows
@@ -934,4 +934,4 @@ CLI update and stop/start preserve and reconnect still-live approved attachments
 
 Terminal attach/detach refuse coding-agent process ancestry even through a PTY; the person uses the in-chat hook instead. A missing plugin install names its provider and current project folder and asks for yes. Explicit NAME cannot take over another live chat: detach that name there first. Offline identities can move through person attach.
 
-My Vault computers can also be listed over MCP with `manage_laptop_access` and `action: "devices"`, without a project selector. Then choose the computer and its grants in a Goal or Crew. Goal steps, schedules and Autopilot stay on the server; their Gmail and Slack settings remain independent.
+My Vault computers can also be listed over MCP with `manage_laptop_access` and `action: "devices"`, without a project selector. Then choose the computer and its grants in a Goal or Crew. Goal steps and schedules stay on the server; their Gmail and Slack settings remain independent.

@@ -24,7 +24,7 @@ func TestWorkshopSenderSaveReachesSameTurnChild(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			controller, folder := newPreValidationConcernTestOrchestrator(t)
 			t.Setenv("WORKSPACE_API_URL", controller.WorkspaceClient.BaseURL)
-			manifest := `{"id":"sender-test","capabilities":{"notifications":{"run_summary_recipients":["recipient@example.com"],"run_summary_gmail_connection_ids":["legacy-run"],"pulse_summary_gmail_connection_ids":["legacy-pulse"]}}}`
+			manifest := `{"id":"sender-test","capabilities":{"notifications":{"run_summary_recipients":["recipient@example.com"],"run_summary_gmail_connection_ids":["legacy-run"]}}}`
 			if err := os.WriteFile(filepath.Join(folder, "workflow.json"), []byte(manifest), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -38,7 +38,7 @@ func TestWorkshopSenderSaveReachesSameTurnChild(t *testing.T) {
 			const parent = "sender-save-parent"
 			const child = "sender-save-child"
 			controller.SetMCPSessionID(parent)
-			dest := &services.NotificationDestination{UserID: "owner", WorkspacePath: controller.GetWorkspacePath(), WorkflowName: "demo", RunSummaryGmailConnectionIDs: []string{"legacy-run"}, PulseSummaryGmailConnectionIDs: []string{"legacy-pulse"}}
+			dest := &services.NotificationDestination{UserID: "owner", WorkspacePath: controller.GetWorkspacePath(), WorkflowName: "demo", RunSummaryGmailConnectionIDs: []string{"legacy-run"}}
 			if clear {
 				dest.Gmail = &services.GmailDest{Workspace: controller.GetWorkspacePath(), ConnectionIDs: []string{"selected-mail"}}
 			}
@@ -68,9 +68,8 @@ func TestWorkshopSenderSaveReachesSameTurnChild(t *testing.T) {
 			var saved struct {
 				Capabilities struct {
 					Notifications struct {
-						Sender       string   `json:"gmail_connection_id"`
-						RunSenders   []string `json:"run_summary_gmail_connection_ids"`
-						PulseSenders []string `json:"pulse_summary_gmail_connection_ids"`
+						Sender     string   `json:"gmail_connection_id"`
+						RunSenders []string `json:"run_summary_gmail_connection_ids"`
 					} `json:"notifications"`
 				} `json:"capabilities"`
 			}
@@ -80,7 +79,7 @@ func TestWorkshopSenderSaveReachesSameTurnChild(t *testing.T) {
 			if saved.Capabilities.Notifications.Sender != sender {
 				t.Fatalf("saved sender=%q", saved.Capabilities.Notifications.Sender)
 			}
-			if len(saved.Capabilities.Notifications.RunSenders) != 0 || len(saved.Capabilities.Notifications.PulseSenders) != 0 {
+			if len(saved.Capabilities.Notifications.RunSenders) != 0 {
 				t.Fatal("saved sender kept legacy overrides")
 			}
 			if !clear {
@@ -120,7 +119,7 @@ func TestWorkshopSenderSaveReachesSameTurnChild(t *testing.T) {
 			if got == nil {
 				t.Fatal("child has no destination")
 			}
-			if len(got.RunSummaryGmailConnectionIDs) != 0 || len(got.PulseSummaryGmailConnectionIDs) != 0 {
+			if len(got.RunSummaryGmailConnectionIDs) != 0 {
 				t.Fatal("child differs from saved workflow: legacy overrides remain")
 			}
 			if !clear {

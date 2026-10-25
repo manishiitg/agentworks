@@ -154,21 +154,6 @@ func buildModelTokenUsage(modelTokenData *ModelTokenData) *ModelTokenUsage {
 		return nil
 	}
 
-	// PLAT-072/B. context_window_usage/context_usage_percent removed from the
-	// persisted ledger by operator decision (2026-08-10). This function
-	// unconditionally recomputed both from modelTokenData.InputTokens+
-	// OutputTokens — the call's TOTAL token count, not a context-window
-	// snapshot — silently ignoring the correctly-scoped ModelTokenData.
-	// ContextWindowUsage field entirely. Once accumulated across a day's calls
-	// via ApplyModelTokenData, that produced e.g. 4,469,416 against a 200,000
-	// window (23x over, permanently pinned at the 100% clamp below) — a live
-	// misreading, not real context pressure. Traced but not consumed by any
-	// gate/summarization decision downstream: purely display (CostsPopup UI)
-	// and Pulse review-finding evidence text, both now equally misleading.
-	// The one place this concept is genuinely load-bearing — live in-session
-	// context editing during the actual API transfer — is
-	// mcpagent/agent.go's contextWindowUsageKnown-gated path (2026-08-10,
-	// commit 0ebd5c8) and is untouched by this change.
 	inputCost, outputCost, reasoningCost, cacheCost, totalCost, _, pricingFound := calculatePricingFromModelData(modelTokenData)
 	if !pricingFound {
 		log.Printf("[COST] no rate card for provider=%q model=%q — recording as unpriced, not $0", modelTokenData.Provider, modelTokenData.ModelID)

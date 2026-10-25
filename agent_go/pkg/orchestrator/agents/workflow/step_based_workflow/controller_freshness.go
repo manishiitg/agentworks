@@ -14,24 +14,6 @@ import (
 	"time"
 )
 
-// Freshness ledger — a code-owned record of when a workflow's learnings and
-// knowledgebase stores (and each item within them) were last confirmed by an
-// actual run.
-//
-// Unlike the LLM-maintained notes/_index.json provenance (which the agent
-// recomputes with wc/grep/date and can silently desync), this ledger is written
-// by Go at contribution-turn completion, so it cannot drift. It records
-// CONFIRMATION recency, not calendar age: a run that reviews a store and leaves
-// it current confirms the store; a run that rewrites a specific reference file
-// or note confirms that item. Knowledge exercised every run stays fresh;
-// knowledge no run re-touches ages. Pulse learning_health / knowledgebase_health
-// read this to age out (re-verify / demote) knowledge no run has re-confirmed.
-//
-// Per-item confirmation is derived from observable content-hash changes, not the
-// LLM's self-report: an item whose file content changed this run was updated
-// (definitely current); an item never rewritten again keeps its old stamp and
-// visibly ages, which is exactly the orphaned-knowledge signal we want.
-
 const freshnessLedgerFileName = "_freshness.json"
 
 // Confirmation action verbs.

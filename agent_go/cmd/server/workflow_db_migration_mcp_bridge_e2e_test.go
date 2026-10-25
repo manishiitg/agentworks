@@ -142,7 +142,7 @@ COMMIT;
 	if err != nil {
 		t.Fatal(err)
 	}
-	bridge, err := client.NewStdioMCPClient(buildPulseTestMCPBridge(t), append(os.Environ(),
+	bridge, err := client.NewStdioMCPClient(buildTestMCPBridge(t), append(os.Environ(),
 		"MCP_API_URL="+customAPI.URL,
 		"MCP_API_TOKEN=bridge-test-token",
 		"MCP_SESSION_ID="+sessionID,

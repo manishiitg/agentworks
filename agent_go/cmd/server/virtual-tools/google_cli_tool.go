@@ -95,7 +95,7 @@ func handleGoogleWorkspaceCLI(ctx context.Context, args map[string]interface{}) 
 	if scopeErr != nil {
 		return "", scopeErr
 	}
-	output, err := services.RunGoogleCLIIn(ctx, strings.TrimSpace(connectionID), cliArgs, services.GmailUseScope{Workspace: workspace, UserID: common.SessionUserIDFromContext(ctx), ReadOnly: common.OutwardHeld(ctx)})
+	output, err := services.RunGoogleCLIIn(ctx, strings.TrimSpace(connectionID), cliArgs, services.GmailUseScope{Workspace: workspace, UserID: common.SessionUserIDFromContext(ctx)})
 	if err != nil {
 		if strings.TrimSpace(output) != "" {
 			return "", fmt.Errorf("%w\noutput:\n%s", err, output)

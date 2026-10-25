@@ -53,7 +53,7 @@ The backend struct lives in [workflow_manifest.go](../../agent_go/cmd/server/wor
         "provider": "anthropic",
         "model_id": "claude-opus-4-8"
       },
-      "pulse_llm": {
+      "background_llm": {
         "provider": "anthropic",
         "model_id": "claude-sonnet-5-5"
       },
@@ -118,9 +118,9 @@ Workflow-wide execution defaults:
 Notes:
 
 - `llm_config.schema_version` is `2`
-- `mode="provider_profile"` stores only a coding-agent `provider`; Builder, Maintenance, Pulse, Chief of Staff, and execution tiers resolve from current provider defaults
-- `mode="explicit"` stores `builder_llm`, `maintenance_llm`, `pulse_llm`, and all three entries in `tiered_config`
-- `builder_llm` runs the workflow-builder chat, scheduled runs, and every turn of the post-run Pulse conversation; `pulse_llm` runs only the background review agents a Pulse turn launches (plan drift / technical / strategic review) and KB maintenance. A scheduled run is one conversation on one retained coding CLI, so its model cannot change between the run and its Pulse turns; a background agent starts its own process, which is where `pulse_llm` takes effect.
+- `mode="provider_profile"` stores only a coding-agent `provider`; Builder, background work and execution tiers resolve from current provider defaults
+- `mode="explicit"` stores `builder_llm`, `maintenance_llm`, `background_llm`, and all three entries in `tiered_config`
+- `builder_llm` runs Builder chats and scheduled workflow conversations. `background_llm` selects independent background reviews and knowledge-base upkeep. Execution tiers select step models.
 - old `phase_llm`, `auto_improve_llm`, and `llm_allocation_mode` fields are migrated once when the manifest is read and are not written again
 - tool search fields are not part of current workflow manifest capabilities
 
@@ -206,7 +206,7 @@ These still live alongside it:
 - `planning/workflow_layout.json`
 - `planning/output_plan.json`
 - `variables/variables.json`
-- `builder/improve.html` — the schema-5 lightweight, newest-first Pulse executive journal: Bug/Goal verdicts, one status sentence, three Latest Pulse cells, and at most six material Activity transitions. Goal / Ikigai remains exclusively in `soul/soul.md` and is rendered directly by Runloop. Reviewer coverage, assumptions, issues, backlog counts, and complete operational detail stay in SQLite/Pulse; older material history can live in linked monthly `builder/improve-archive/YYYY-MM.html` files. See [auto_improvement_framework.md](auto_improvement_framework.md).
+- Goal measurements live in `workflow_goal_metrics` and `goal_observations`; Goals & metrics and dashboards read those facts. Reviews and pending actions use normal agent chats and owner decisions.
 - `knowledgebase/rules/rules.md` and `knowledgebase/rules/examples/` — legacy business-rule storage when present. Current user-confirmed runtime context belongs in `knowledgebase/context/`; its audit trail is recorded in dated Reflection entries in `builder/improve.html`.
 
 `workflow.json` is the workflow-level definition file.

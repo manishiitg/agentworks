@@ -108,8 +108,8 @@ type WorkflowOrchestrator struct {
 	*orchestrator.BaseOrchestrator
 
 	// Preset-level agent defaults
-	presetBuilderLLM *step_based_workflow.AgentLLMConfig // Default for workflow-builder agents.
-	presetPulseLLM   *step_based_workflow.AgentLLMConfig // Default for review, maintenance, and Pulse agents.
+	presetBuilderLLM    *step_based_workflow.AgentLLMConfig // Default for workflow-builder agents.
+	presetBackgroundLLM *step_based_workflow.AgentLLMConfig // Default for independent review and maintenance.
 
 	// Preset-level feature toggles
 	useKnowledgebase bool   // Whether to create and reference knowledgebase folder (default: true)
@@ -256,29 +256,28 @@ func NewWorkflowOrchestrator(
 		return nil, fmt.Errorf("failed to create base orchestrator: %w", err)
 	}
 
-	// Resolve the workflow Builder and Pulse models.
 	var presetBuilderLLM *step_based_workflow.AgentLLMConfig
-	var presetPulseLLM *step_based_workflow.AgentLLMConfig
+	var presetBackgroundLLM *step_based_workflow.AgentLLMConfig
 	var resolvedCodingAgentTiered *workflowtypes.TieredLLMConfig
 	if presetLLMConfig != nil {
 		if builder, tiered, ok := workflowtypes.ResolveProviderProfileConfig(presetLLMConfig); ok {
 			presetBuilderLLM = convertDBAgentLLMConfig(builder)
 			resolvedCodingAgentTiered = tiered
-			if pulse, ok := workflowtypes.ResolveProviderProfilePulseConfig(presetLLMConfig); ok {
-				presetPulseLLM = convertDBAgentLLMConfig(pulse)
+			if pulse, ok := workflowtypes.ResolveProviderProfileBackgroundConfig(presetLLMConfig); ok {
+				presetBackgroundLLM = convertDBAgentLLMConfig(pulse)
 			}
 			log.Printf("[CODING_AGENT_LLM] Resolved provider profile %s dynamically", presetLLMConfig.Provider)
 		} else {
-			if presetLLMConfig.PulseLLM != nil && presetLLMConfig.PulseLLM.Provider != "" && presetLLMConfig.PulseLLM.ModelID != "" {
-				presetPulseLLM = convertDBAgentLLMConfig(presetLLMConfig.PulseLLM)
+			if presetLLMConfig.BackgroundLLM != nil && presetLLMConfig.BackgroundLLM.Provider != "" && presetLLMConfig.BackgroundLLM.ModelID != "" {
+				presetBackgroundLLM = convertDBAgentLLMConfig(presetLLMConfig.BackgroundLLM)
 			}
 			if presetLLMConfig.BuilderLLM != nil && presetLLMConfig.BuilderLLM.Provider != "" && presetLLMConfig.BuilderLLM.ModelID != "" {
 				presetBuilderLLM = convertDBAgentLLMConfig(presetLLMConfig.BuilderLLM)
 			}
 		}
 	}
-	if presetPulseLLM == nil {
-		presetPulseLLM = presetBuilderLLM
+	if presetBackgroundLLM == nil {
+		presetBackgroundLLM = presetBuilderLLM
 	}
 
 	// Extract tiered LLM allocation config
@@ -320,12 +319,12 @@ func NewWorkflowOrchestrator(
 
 	// Create workflow orchestrator instance
 	wo := &WorkflowOrchestrator{
-		BaseOrchestrator: baseOrchestrator,
-		presetBuilderLLM: presetBuilderLLM,
-		presetPulseLLM:   presetPulseLLM,
-		useKnowledgebase: useKnowledgebase,
-		kbShape:          kbShape,
-		tieredConfig:     tieredConfig,
+		BaseOrchestrator:    baseOrchestrator,
+		presetBuilderLLM:    presetBuilderLLM,
+		presetBackgroundLLM: presetBackgroundLLM,
+		useKnowledgebase:    useKnowledgebase,
+		kbShape:             kbShape,
+		tieredConfig:        tieredConfig,
 	}
 
 	return wo, nil
@@ -411,7 +410,7 @@ func (wo *WorkflowOrchestrator) runHumanControlledPlanning(ctx context.Context, 
 		wo.WorkspaceToolExecutors,
 		wo.ToolCategories,
 		wo.presetBuilderLLM,
-		wo.presetPulseLLM,
+		wo.presetBackgroundLLM,
 		wo.useKnowledgebase,
 		wo.tieredConfig,
 	)

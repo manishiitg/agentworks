@@ -35,12 +35,6 @@ func workflowCostsQueryToolDefinition() llmtypes.Tool {
 	}}
 }
 
-// CreateWorkflowCostsToolRegistry creates the read-only per-workspace cost
-// ledger tool (PLAT-184). It is shared by workflow step execution, Pulse's
-// background reviewer sessions, and the interactive Workflow Builder --
-// mirroring CreateWorkflowDBToolRegistry, but resolved to costs/costs.sqlite
-// instead of db/db.sqlite, and query-only: cost events are only ever written
-// by the cost observer itself, never by an agent.
 func CreateWorkflowCostsToolRegistry(workspaceURL, userID, fallbackSessionID string) WorkflowDBToolRegistry {
 	if strings.TrimSpace(workspaceURL) == "" {
 		workspaceURL = getWorkspaceAPIURL()

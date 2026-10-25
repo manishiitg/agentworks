@@ -33,7 +33,7 @@ func (r *singleToolCaptureRegistrar) RegisterCustomToolWithTimeout(name, descrip
 }
 
 func TestCodingAgentClarificationThroughMCPBridge(t *testing.T) {
-	binary := buildPulseTestMCPBridge(t)
+	binary := buildTestMCPBridge(t)
 	for _, provider := range []string{"muse-cli", "claude-code", "codex-cli"} {
 		t.Run(provider, func(t *testing.T) {
 			const session = "clarification-bridge-test"

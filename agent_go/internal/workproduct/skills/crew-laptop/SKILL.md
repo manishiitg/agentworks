@@ -40,4 +40,4 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 - Server secrets are never sent to the laptop. What you read there reaches the server and the chat history, so say so before opening anything personal.
 - Change the saved folders only when the person asks.
 
-Connect the computer once in My Vault (manage_my_vaults operation=laptops lists your computers and setup steps), then choose it in this project. Goals use the same optional connection for Builder chats; their steps, schedules and Autopilot stay on the server. copy_local_file_to_project takes local_path and project_path.
+Connect the computer once in My Vault (manage_my_vaults operation=laptops lists your computers and setup steps), then choose it in this project. Goals use the same optional connection for Builder chats; their steps and schedules stay on the server. copy_local_file_to_project takes local_path and project_path.

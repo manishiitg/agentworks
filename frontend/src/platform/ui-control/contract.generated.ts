@@ -96,19 +96,13 @@ export const UI_CONTROL_CONTRACT = {
       "targets": []
     },
     {
-      "id": "pulse",
-      "label": "Autopilot",
+      "id": "goals",
+      "label": "Goals & metrics",
       "actions": [
         "open",
         "refresh"
       ],
-      "targets": [
-        "goals",
-        "metrics",
-        "decisions",
-        "settings",
-        "chat"
-      ],
+      "targets": [],
       "target_kind": "view_section"
     },
     {
@@ -147,8 +141,7 @@ export const UI_CONTROL_CONTRACT = {
         "refresh"
       ],
       "targets": [
-        "run_summary",
-        "pulse_review"
+        "run_summary"
       ]
     },
     {

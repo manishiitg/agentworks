@@ -329,28 +329,6 @@ func createCustomTools(workflowMode bool, sessionInfo ...string) ([]llmtypes.Too
 			toolCategories[name] = category
 		}
 
-		platformTools, platformExecutors, platformCategories := createPulsePlatformTools()
-		allTools = append(allTools, platformTools...)
-		for name, executor := range platformExecutors {
-			allExecutors[name] = executor
-		}
-		for name, category := range platformCategories {
-			toolCategories[name] = category
-		}
-
-		// The workflow's chats and steps ask its Pulse (PLAT-697 phase 4).
-		for _, ask := range createGoalLeadAskTools() {
-			allTools = append(allTools, ask.tool)
-			allExecutors[ask.tool.Function.Name] = ask.execute
-			toolCategories[ask.tool.Function.Name] = "workflow"
-		}
-
-		// The Pulse asks the workflow's Builder chat (PLAT-697).
-		builderAskTool, builderAskExecute := createPulseBuilderAskTool()
-		allTools = append(allTools, builderAskTool)
-		allExecutors[builderAskTool.Function.Name] = builderAskExecute
-		toolCategories[builderAskTool.Function.Name] = "workflow"
-
 	}
 
 	// Note: Todo tools (create_todo, complete_todo, etc.) have been removed.
@@ -414,22 +392,6 @@ func enhanceToolDescriptionForWorkflowPhase(toolName, originalDescription, workf
 	return originalDescription + accessInfo.String()
 }
 
-// enhanceToolDescriptionForMultiAgentMode augments workspace tool descriptions for multi-agent plan mode.
-// chatsFolder is the full per-user path (e.g. "_users/default/Chats").
-//
-// multiAgentPlacementGuidance returns the artifact-layout lines for one tool.
-// A product declares its own per tool in runtime.workspace.placement; a session
-// with no profile falls back to AgentWorks' own layout.
-//
-// This used to be hardcoded and appended to every write tool alike, so Video
-// Studio — which has no plan folders and does not carry the Pulse tools at all
-// — was told on every get_api_spec call to save plan outputs to
-// {plan_id}/output.txt and org goals to pulse/goals.html, contradicting the
-// uploads//work//outputs/ layout its own system prompt had just given it.
-//
-// A profile that declares nothing for a tool gets no placement lines, which is
-// the correct answer rather than a reason to fall back: inheriting another
-// product's conventions is the bug this replaced.
 func multiAgentPlacementGuidance(toolName, chatsFolder string, profile *resolvedAgentProfile) []string {
 	// Only a project-scoped profile's own declared placement map applies.
 	if profile != nil && !isGlobalScopedProfile(profile) {
@@ -728,14 +690,6 @@ func wrapExecutorsWithFolderGuard(executors map[string]func(ctx context.Context,
 						if pathStr, ok := paramValue.(string); ok && pathStr != "" {
 							cleanedPath := filepath.Clean(pathStr)
 
-							// Allow entries are workspace-relative ("Workflow/social-media"),
-							// so an absolute argument could never prefix-match and was denied
-							// even when it pointed inside an allowed folder. The workspace
-							// client normalizes the same way, but only after this guard runs,
-							// so it never got the chance. Prompts actively encourage absolute
-							// paths, which is how a legitimate write to
-							// A retired Pulse HTML path was rejected against
-							// an allow list that contained Workflow/social-media.
 							if relPath, ok := orchestrator.NormalizeAbsoluteWorkspaceDocsPath(cleanedPath); ok {
 								cleanedPath = filepath.Clean(relPath)
 							}

@@ -11,16 +11,6 @@ import (
 	"github.com/manishiitg/mcpagent/events"
 )
 
-// BackgroundAgentTranscript is the durable, per-execution structured record
-// of one background agent's provider conversation (PLAT-164). Every
-// background execution — a generic run_in_background task, a todo-task
-// delegate, or a scheduled/Pulse child — gets exactly one of these, keyed by
-// (session, agent). It is intentionally narrower than the live UI event
-// stream: only what is needed to forensically reconstruct what the child
-// said and did after its ui_events cache has aged out or the server has
-// restarted.
-// ExecutionInspectionTarget binds navigation to the execution that emitted it.
-// A run folder and a step name alone do not distinguish repeated dispatches.
 type ExecutionInspectionTarget struct {
 	WorkflowKind  string    `json:"workflow_kind,omitempty"`
 	ExecutionKind string    `json:"execution_kind,omitempty"`

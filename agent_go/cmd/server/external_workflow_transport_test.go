@@ -111,7 +111,7 @@ func TestExternalRunToolsThroughMCPBridge(t *testing.T) {
 	}))
 	defer api.Close()
 	encoded, _ := json.Marshal(schemas)
-	bridge, err := client.NewStdioMCPClient(buildPulseTestMCPBridge(t), append(os.Environ(), "MCP_API_URL="+api.URL, "MCP_API_TOKEN=run-bridge-test-token", "MCP_SESSION_ID="+sessionID, "MCP_TOOLS_FILE="+writeMCPToolsFileForTest(t, encoded)))
+	bridge, err := client.NewStdioMCPClient(buildTestMCPBridge(t), append(os.Environ(), "MCP_API_URL="+api.URL, "MCP_API_TOKEN=run-bridge-test-token", "MCP_SESSION_ID="+sessionID, "MCP_TOOLS_FILE="+writeMCPToolsFileForTest(t, encoded)))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -77,7 +77,6 @@ func TestDelegatedWorkflowToolGatePreservesProductAndRole(t *testing.T) {
 		{"builder", "chat", "Workflow/goals", "workflow_phase", false, agentworksproduct.ChatTools("builder")},
 		{"reader", "chat", "Workflow/goals", "workflow_phase", true, agentworksproduct.ChatTools("run")},
 		{"executor", "chat", "Workflow/goals", "workflow", false, agentworksproduct.ChatTools("run")},
-		{"pulse", goalLeadSessionPrefix + "test", "Workflow/goals", "workflow_phase", false, agentworksproduct.PulseTools()},
 		{"relay", "chat", "Workflow/relay", "workflow_phase", false, relayTools},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

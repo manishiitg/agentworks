@@ -52,21 +52,12 @@ type ScheduleContext struct {
 	// A scheduled run mints its own session, so without this link its terminals
 	// are invisible to the tab that asked for the run. Empty for cron.
 	OriginSessionID string
-	// ForcePulseReview is used by the toolbar's one-off Pulse action. Normal
-	// schedules use workflow.json pulse.enabled instead.
-	ForcePulseReview bool
-	// PulseOnly suppresses the normal workflow message for the toolbar's one-off
-	// Pulse action. Version preflight still runs before Pulse, which reviews the
-	// latest retained workflow evidence and then executes the normal finalizer.
-	PulseOnly bool
 
 	// AfterRunBackup and AfterRunPublish select the after-run housekeeping
 	// turn's actions (after_run.go): only those with something to do.
-	AfterRunBackup         bool
-	AfterRunPublish        bool
-	PulseEvidenceRunFolder string
-	PulseEvidenceRunStatus string
-	CalendarItem           *CalendarScheduleItem
+	AfterRunBackup  bool
+	AfterRunPublish bool
+	CalendarItem    *CalendarScheduleItem
 	// ScheduledFor is the durable identity of a cron/calendar occurrence. It is
 	// empty for a manual trigger, whose actual trigger time is its identity.
 	ScheduledFor time.Time
@@ -76,11 +67,6 @@ type ScheduleContext struct {
 	QueuedOccurrenceCount int
 	OrderedScheduleIDs    []string // enabled schedules sharing the serial workflow lease
 
-	// ProducedRunEvidence reports whether this invocation actually started the
-	// workflow and created or restarted a run folder. It is deliberately
-	// independent of success: a failed run still produced evidence that Pulse
-	// should review. A preflight abort against a pre-existing, untouched run
-	// folder (e.g. a workflow reusing iteration-0) did not.
 	ProducedRunEvidence bool
 
 	// CapacityResume* carry a run that was suspended on a provider capacity
@@ -93,12 +79,8 @@ type ScheduleContext struct {
 	CapacityResumeFromStep  int
 	DBOSResumeRunID         string
 	DBOSResumeRunFolder     string
-	// ScheduledRunFolder is allocated and durably bound before a producing
-	// saved-schedule session starts. Pulse-only runs leave it empty.
-	ScheduledRunFolder string
+	ScheduledRunFolder      string
 }
-
-const manualWorkflowPulseScheduleID = "manual-pulse"
 
 const scheduleScopeSeparator = "\x1f"
 
@@ -140,17 +122,12 @@ func activeWebhookDeliveryCount(states map[string]*ScheduleRuntimeState, workspa
 	return active
 }
 
-// scheduleStateLockKeyFromRuntimeKey retains the legacy sequential/Pulse key
-// projection for diagnostics and compatibility tests. Runtime recovery uses
-// ActiveRunForSchedule so parallel lane keys are resolved by durable identity.
 func scheduleStateLockKeyFromRuntimeKey(runtimeKey string) string {
 	parts := strings.Split(runtimeKey, scheduleScopeSeparator)
 	if len(parts) < 3 || parts[0] != "workflow" {
 		return runtimeKey
 	}
-	if parts[2] == manualWorkflowPulseScheduleID {
-		return strings.Join([]string{"workflow-pulse", parts[1]}, scheduleScopeSeparator)
-	}
+
 	return strings.Join(parts[:2], scheduleScopeSeparator)
 }
 
@@ -163,13 +140,7 @@ func scheduleStateScope(sctx *ScheduleContext) (scopeType, scopeID, lockKey stri
 			}
 			return "workflow", scopeID, strings.Join([]string{"workflow-hook", scopeID, sctx.Schedule.ID}, scheduleScopeSeparator)
 		}
-		// Pulse runs, scheduled and fix runs alike, hold their own lock: one
-		// Pulse at a time per workflow, in parallel with the workflow's own
-		// schedules, never blocking them. Fix runs used to take the workflow
-		// lock and refuse real schedules that came due while they ran.
-		if sctx.Schedule.ID == manualWorkflowPulseScheduleID {
-			return "workflow", scopeID, strings.Join([]string{"workflow-pulse", scopeID}, scheduleScopeSeparator)
-		}
+
 		if scheduleAllowsParallel(sctx.Schedule) {
 			return "workflow", scopeID, strings.Join([]string{"workflow-parallel", scopeID, sctx.Schedule.ID}, scheduleScopeSeparator)
 		}
@@ -501,27 +472,6 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 			// schedules (PLAT-101).
 			go s.resumeDueCapacityWaits(context.Background(), t.UTC())
 			go s.resumeQueuedScheduleOccurrences(context.Background(), t.UTC())
-			go s.sendDueDailyDigests(context.Background(), t)
-			// The workflow's own Pulse schedule: the time each Pulse chose for
-			// itself, bounded by the interval guards, or earlier for a durable
-			// fast request (pulse_schedule.go).
-			// Then fix runs: a short Technical Review+Fix pass for a workflow
-			// with something to fix, instead of waiting for the full Pulse.
-			go func() {
-				// One launcher pass at a time: overlapping ticks could each
-				// see room under maxConcurrentPulseRuns and both start a run.
-				if !pulseLauncherMu.TryLock() {
-					return
-				}
-				defer pulseLauncherMu.Unlock()
-				// No separate Goal Work clock (owner, 2026-10-08): the goal
-				// check is Pulse's one self-timed turn and does Goal Work when
-				// useful. A failed run still wakes it.
-				// Then the daily goal check (PLAT-697).
-				s.launchDuePulseChecks(context.Background())
-				// Plan Drift is checked inside the same Pulse goal-work turn;
-				// ordinary workflow runs never dispatch an AI reviewer.
-			}()
 			lastTick = t
 		}
 	}
@@ -611,9 +561,9 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		Capabilities:  lockedScheduleCapabilities(manifest.Capabilities),
 		OwnerUserID:   workflowExecutionOwnerUserID(manifest),
 	}
-	if sched.ScheduleType != "webhook" && sched.ID != manualWorkflowPulseScheduleID && !scheduleAllowsParallel(sched) {
+	if sched.ScheduleType != "webhook" && !scheduleAllowsParallel(sched) {
 		for _, candidate := range manifest.Schedules {
-			if candidate.Enabled && candidate.ScheduleType != "webhook" && candidate.ID != manualWorkflowPulseScheduleID && !scheduleAllowsParallel(candidate) {
+			if candidate.Enabled && candidate.ScheduleType != "webhook" && !scheduleAllowsParallel(candidate) {
 				sctx.OrderedScheduleIDs = append(sctx.OrderedScheduleIDs, candidate.ID)
 			}
 		}
@@ -631,7 +581,6 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "slack", "whatsapp")
 		notifications.SlackWebhookSecretName = ""
 		notifications.RunSummarySlackWebhookSecretNames = nil
-		notifications.PulseSummarySlackWebhookSecretNames = nil
 		sctx.Capabilities.Notifications = &notifications
 	}
 
@@ -684,36 +633,6 @@ func workflowExecutionOwnerUserID(manifest *WorkflowManifest) string {
 func workflowExecutionAccountActive(userID string) bool {
 	acc := userAccessForClaims(&UserClaims{UserID: userID})
 	return !acc.Disabled && (acc.Known || !IsMultiUserMode())
-}
-
-func shouldRunPulseLifecycle(sctx *ScheduleContext, manifest *WorkflowManifest) bool {
-	if manifest == nil {
-		return false
-	}
-	return effectiveSchedulePulseMode(sctx, manifest) != schedulePulseModeOff
-}
-
-func effectiveSchedulePulseMode(sctx *ScheduleContext, manifest *WorkflowManifest) string {
-	if sctx != nil && (sctx.WebhookInput != nil || sctx.Schedule.ScheduleType == "webhook") {
-		return schedulePulseModeOff
-	}
-	if sctx != nil && sctx.ForcePulseReview {
-		if manifest != nil && manifest.PulseEnabled() {
-			return schedulePulseModeFull
-		}
-		return schedulePulseModeOff
-	}
-	if sctx == nil || manifest == nil {
-		return schedulePulseModeOff
-	}
-	// A blocking migration may have changed the policy after this run captured
-	// its schedule. Use the freshly read manifest for post-run stewardship.
-	for _, schedule := range manifest.Schedules {
-		if schedule.ID != "" && schedule.ID == sctx.Schedule.ID {
-			return manifest.EffectivePulseMode(schedule)
-		}
-	}
-	return manifest.EffectivePulseMode(sctx.Schedule)
 }
 
 // Stop shuts down the scheduler.
@@ -1004,8 +923,6 @@ func (s *SchedulerService) GetRuntimeStateForWorkflow(workspacePath, scheduleID 
 	runs, err := ReadScheduleRuns(context.Background(), workspacePath)
 	if err == nil {
 		durableRunID := ""
-		// The durable scheduler receipt includes Pulse's terminal outcome;
-		// workflow-only file history must not erase a partial/stopped result.
 		if !ownsActiveRun {
 			latest := -1
 			for i := range runs {
@@ -1233,9 +1150,6 @@ func mergeRuntimeStateWithRuns(state ScheduleRuntimeState, scheduleID string, ru
 	if state.RunCount < len(filtered) {
 		state.RunCount = len(filtered)
 	}
-	// File history records the workflow result before Pulse finishes. Preserve
-	// the live in-memory state for that same run so the UI cannot report success
-	// and admit another trigger while Pulse still owns the session.
 	if state.LastStatus == "running" && ownsActiveRun {
 		return state
 	}
@@ -1521,154 +1435,6 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 	return "triggered", nil
 }
 
-// TriggerPulseNow runs version-preflight -> Pulse against the latest
-// retained workflow evidence. It does not execute the workflow or change a saved
-// schedule.
-func (s *SchedulerService) TriggerPulseNow(workspacePath string) (string, error) {
-	return s.triggerPulseOnly(workspacePath, "manual")
-}
-
-func (s *SchedulerService) triggerPulseOnly(workspacePath, triggerSource string) (string, error) {
-	return s.triggerPulseRun(workspacePath, triggerSource)
-}
-
-// triggerPulseRun starts the workflow's continuing Pulse.
-func (s *SchedulerService) triggerPulseRun(workspacePath, triggerSource string) (string, error) {
-	return s.triggerPulseRunKind(workspacePath, triggerSource)
-}
-
-func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource string) (string, error) {
-	ctx := context.Background()
-	workspacePath = filepath.Clean(strings.TrimSpace(workspacePath))
-	if workspacePath == "." || workspacePath == "" {
-		return "", errors.New("workspace_path is required")
-	}
-
-	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read manifest from %s: %w", workspacePath, err)
-	}
-	if !found {
-		return "", fmt.Errorf("workflow manifest not found at %s", workspacePath)
-	}
-
-	if !manifest.PulseEnabled() {
-		return "", errPulseOff
-	}
-	sched := WorkflowSchedule{
-		ID:             manualWorkflowPulseScheduleID,
-		Name:           "Run Autopilot",
-		Description:    "One-off Autopilot review of the latest retained run; not persisted as a schedule",
-		ScheduleType:   "cron",
-		CronExpression: "",
-		Timezone:       "UTC",
-		Mode:           "workshop",
-		WorkshopMode:   "workshop",
-	}
-	sctx := buildScheduleContext(workspacePath, manifest, sched)
-	sctx.TriggerSource = triggerSource
-	sctx.ForcePulseReview = true
-	sctx.PulseOnly = true
-	sctx.PulseEvidenceRunFolder, sctx.PulseEvidenceRunStatus = latestRetainedPulseEvidence(ctx, workspacePath)
-	startTime := time.Now().UTC()
-
-	// One interactive builder chat may coexist with this run, matching normal
-	// schedule behavior. Another workflow/schedule execution may not.
-	if activeExec := s.findActiveNonBuilderExecutionForWorkspace(workspacePath); activeExec != nil {
-		triggeredBy := strings.TrimSpace(activeExec.TriggeredBy)
-		if triggeredBy == "" {
-			triggeredBy = "unknown"
-		}
-		return "", fmt.Errorf("workflow already has an active %s run (session: %s)", triggeredBy, activeExec.SessionID)
-	}
-
-	runtimeKey := workflowScheduleRuntimeKey(workspacePath, sched.ID)
-	workflowRuntimeKeys := make([]string, 0, len(manifest.Schedules)+1)
-	for i := range manifest.Schedules {
-		workflowRuntimeKeys = append(workflowRuntimeKeys, workflowScheduleRuntimeKey(workspacePath, manifest.Schedules[i].ID))
-	}
-	// A full Pulse and a fix run have different keys; each must see the other,
-	// or both start on the same workflow and work the same issues at once.
-	workflowRuntimeKeys = append(workflowRuntimeKeys,
-		workflowScheduleRuntimeKey(workspacePath, manualWorkflowPulseScheduleID))
-	runID := uuid.NewString()
-	s.runtimeStatesMu.Lock()
-	state := s.getRuntimeStateLocked(runtimeKey)
-	if state.LastStatus == "running" {
-		s.runtimeStatesMu.Unlock()
-		return "", fmt.Errorf("Autopilot run is already active (session: %s)", state.LastSessionID)
-	}
-	if _, otherSession := runningScheduleInSetLocked(s.runtimeStates, workflowRuntimeKeys, runtimeKey); otherSession != "" {
-		s.runtimeStatesMu.Unlock()
-		return "", fmt.Errorf("another schedule is already running (session: %s)", otherSession)
-	}
-	previousState := *state
-	runCtx := s.activateScheduleRunLocked(state, runID, startTime)
-	s.runtimeStatesMu.Unlock()
-
-	if err := s.claimScheduleRun(ctx, sctx, runID, startTime); err != nil {
-		s.rollbackScheduleRunActivation(runtimeKey, runID, previousState)
-		return "", err
-	}
-	if s.abortCanceledScheduleRunBeforeStart(runCtx, sctx, runtimeKey, runID) {
-		return "", context.Canceled
-	}
-	// One Pulse clock: every manual or scheduled cycle records its start.
-	// The existing Pulse timestamp also bounds its evidence window.
-	if err := markPulseStarted(ctx, workspacePath, runID, startTime); err != nil {
-		s.logf(sctx, "[PULSE] could not record evidence window: %v", err)
-	}
-
-	go func() {
-		defer s.cleanupRemovedScheduleRuntimeState(runtimeKey)
-		if _, runErr := s.runJob(runCtx, sctx, runID); runErr != nil {
-			scheduleLogf("[SCHEDULER] Autopilot-only run (%s) failed for %s: %v", triggerSource, workspacePath, runErr)
-		}
-	}()
-
-	return runID, nil
-}
-
-func latestRetainedPulseEvidence(ctx context.Context, workspacePath string) (string, string) {
-	runs, err := ReadScheduleRuns(ctx, workspacePath)
-	if err == nil {
-		if runFolder, status, ok := latestRetainedPulseEvidenceFromRuns(runs); ok {
-			return runFolder, status
-		}
-	}
-
-	// iteration-0 is the active retained slot even before schedule history has
-	// been written. Pulse can still review plan/config/report evidence when the
-	// folder has no completed run artifacts yet.
-	return "iteration-0", "unknown"
-}
-
-func latestRetainedPulseEvidenceFromRuns(runs []ScheduleRunEntry) (string, string, bool) {
-	fallbackFolder := ""
-	fallbackStatus := ""
-	for _, run := range runs {
-		if run.ScheduleID == manualWorkflowPulseScheduleID || strings.TrimSpace(run.RunFolder) == "" {
-			continue
-		}
-		status := strings.TrimSpace(run.Status)
-		if status == "" {
-			status = "unknown"
-		}
-		if status == "running" {
-			if fallbackFolder == "" {
-				fallbackFolder = strings.TrimSpace(run.RunFolder)
-				fallbackStatus = status
-			}
-			continue
-		}
-		return strings.TrimSpace(run.RunFolder), status, true
-	}
-	if fallbackFolder != "" {
-		return fallbackFolder, fallbackStatus, true
-	}
-	return "", "", false
-}
-
 // StopRunningJob stops a running scheduled job by canceling its session.
 func (s *SchedulerService) StopRunningJobForWorkflow(workspacePath, scheduleID string) {
 	s.stopRunningJob(workflowScheduleRuntimeKey(workspacePath, scheduleID), scheduleID)
@@ -1730,10 +1496,6 @@ func (s *SchedulerService) stopRunningJob(runtimeKey, scheduleID string) {
 	scheduleLogf("[STOP] ===== stop teardown complete: schedule=%s session=%s =====", scheduleID, sessionID)
 }
 
-// cancelScheduledSessionWork stops agent, workflow, background, and tmux work
-// owned by a scheduled session without changing the schedule's recorded run
-// result. Pulse timeout recovery uses this before continuing finalization in a
-// fresh session.
 func (s *SchedulerService) cancelScheduledSessionWork(sessionID, closeReason string, terminalPhase RuntimePhase) {
 	if s == nil || s.api == nil || strings.TrimSpace(sessionID) == "" {
 		return
@@ -2351,7 +2113,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 
 	if sctx.WebhookInput != nil {
 		defer s.pruneWebhookRuns(sctx.WorkspacePath)
-	} else if !sctx.PulseOnly {
+	} else {
 		defer s.pruneScheduledRuns(sctx.WorkspacePath)
 	}
 	defer s.releaseScheduleRunContext(runID)
@@ -2461,7 +2223,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		})
 		s.cleanupRemovedScheduleRuntimeState(runtimeKey)
 	}
-	if !sctx.PulseOnly && sctx.WebhookInput == nil {
+	if sctx.WebhookInput == nil {
 		if err := validateTeamScheduleFire(ctx, sctx.WorkspacePath, sctx.Schedule); err != nil {
 			failBeforeHistory(err, "")
 			return "", err
@@ -2479,7 +2241,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		return "", err
 	}
 
-	if !sctx.PulseOnly && sctx.WebhookInput == nil {
+	if sctx.WebhookInput == nil {
 		folder := strings.TrimSpace(sctx.CapacityResumeRunFolder)
 		if folder == "" {
 			var allocationErr error
@@ -2550,25 +2312,14 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		s.logf(sctx, "[SCHEDULER] Failed to create run entry for %s: %v", schedID, err)
 	}
 	startReason := "workflow execution starting"
-	if sctx.PulseOnly {
-		startReason = "Autopilot cycle starting; workflow execution is skipped"
-	}
+
 	s.transitionScheduleRun(ctx, sctx, schedulerstate.Transition{
 		RunID:  runID,
 		To:     schedulerstate.StateWorkflowRunning,
 		Reason: startReason,
 		At:     time.Now().UTC(),
 	})
-	if sctx.PulseOnly {
-		// A cron/manual Pulse that starts before the tick loop dispatches a
-		// pending fast request already satisfies the request. Coalescing here
-		// prevents a second review of the same evidence one minute later.
 
-	}
-
-	// AI Plan Drift review belongs to Pulse. Execution performs its quick
-	// reference observation in the shared workflow entry point and starts
-	// independently of saved review outcomes.
 	sessionID, runFolder, execErr := s.executeJob(ctx, sctx, runID)
 
 	// Execution cancellation must stop work, not the durable record explaining
@@ -2618,10 +2369,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	}
 	finishedReason := "workflow execution finished with status " + status
 	finishedSessionKind := "workflow"
-	if sctx.PulseOnly {
-		finishedReason = "Autopilot cycle prepared with status " + status + "; workflow execution was skipped"
-		finishedSessionKind = "pulse"
-	}
+
 	s.transitionScheduleRun(persistenceCtx, sctx, schedulerstate.Transition{
 		RunID:        runID,
 		To:           schedulerstate.StateWorkflowFinished,
@@ -2633,59 +2381,29 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		At:           time.Now().UTC(),
 	})
 
-	// Keep the runtime state as "running" until all post-run side effects finish.
-	// Pulse runs as several resumed builder-chat turns after the workflow result
-	// is recorded; if we mark the schedule successful before Pulse finishes, a
-	// frequent cron can start the next workflow run while Pulse is between steps.
-	// That makes the next Pulse turn fail with workflow_busy (commonly after the
-	// LLM/cost/time report), so cadence/backup/publish/notify never run.
 	s.updateRuntimeState(runtimeKey, func(state *ScheduleRuntimeState) {
 		state.LastSessionID = sessionID
 	})
 
-	// Update run history entry for the workflow run. Post-run Pulse
-	// may continue after this, but it does not change the recorded run result.
-	pulseResult := pulseLifecycleNotRun
+	housekeepingResult := afterRunNotRun
 	if err := UpdateScheduleRun(persistenceCtx, sctx.WorkspacePath, runID, status, errMsg, &durationMs, runFolder, sessionID); err != nil {
 		s.sessionLogf(sctx, sessionID, "[SCHEDULER] Failed to update run entry for %s: %v", schedID, err)
 	}
-	if !sctx.PulseOnly && sctx.WebhookInput == nil {
+	if sctx.WebhookInput == nil {
 		if err := SetScheduleRunRanWorkflow(persistenceCtx, sctx.WorkspacePath, runID, sctx.ProducedRunEvidence); err != nil {
 			s.logf(sctx, "[SCHEDULER] could not record ran_workflow for %s: %v", runID, err)
 		}
 	}
 
-	// After the run: a Pulse-only run (full Pulse, fix run, goal check) runs
-	// its Pulse lifecycle; a normal schedule runs its after-run options
-	// (backup, publish, notify; after_run.go), which are code unless backup or
-	// publish has something to do (PLAT-697 phase 0). Never affects the run's
-	// recorded result.
-	// An automated lane that still requires a current contract (currently a
-	// direct webhook) can return the migration sentinel. The workflow never
-	// executed, so there is nothing to review, back up or publish. Skip it and
-	// leave the workflow upgrade to the operator's Workshop chat.
 	migrationRequired := errors.Is(execErr, errWorkflowContractMigrationRequired)
 	if migrationRequired {
-		s.sessionLogf(sctx, sessionID, "[PULSE] skipped for %s: this workflow requires a manual contract migration, so it did not run and there is no evidence to review", schedID)
+		s.sessionLogf(sctx, sessionID, "[AFTER RUN] skipped for %s: this workflow requires a manual contract migration, so it did not run and there is no evidence to review", schedID)
 	}
 	if status != scheduleRunStatusWaitingForCapacity && !migrationRequired && !userInterrupted {
 		if manifest, found, mErr := ReadWorkflowManifest(ctx, sctx.WorkspacePath); mErr == nil && found {
-			if sctx.PulseOnly {
-				if shouldRunPulseLifecycle(sctx, manifest) {
-					pulseEvidenceStatus := status
-					if strings.TrimSpace(sctx.PulseEvidenceRunStatus) != "" {
-						pulseEvidenceStatus = sctx.PulseEvidenceRunStatus
-					}
-					s.transitionScheduleRun(ctx, sctx, schedulerstate.Transition{
-						RunID: runID, To: schedulerstate.StatePulseRunning, Reason: "continuing Autopilot goal check started", SessionID: sessionID, SessionKind: "pulse", At: time.Now().UTC(),
-					})
-					pulseResult = s.runPulseLifecycle(ctx, sctx, effectiveSchedulePulseMode(sctx, manifest), pulseEvidenceStatus, runFolder, sessionID, runID, errMsg)
-				}
-			} else if sctx.WebhookInput == nil {
-				// A Crew tab that looks after this workflow hears about a bad run at once.
-				s.wakeAgentTab(ctx, sctx, manifest, status, errMsg, runID)
+			if sctx.WebhookInput == nil {
 				// The housekeeping turn, when needed, resumes the run's own chat.
-				pulseResult = s.runAfterRunOptions(ctx, sctx, manifest, status, errMsg, runFolder, sessionID, runID, time.Since(startTime))
+				housekeepingResult = s.runAfterRunOptions(ctx, sctx, manifest, status, errMsg, runFolder, sessionID, runID, time.Since(startTime))
 			}
 		}
 	}
@@ -2698,9 +2416,9 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		terminalState = schedulerstate.StateStopped
 	} else if status == "error" {
 		terminalState = schedulerstate.StateFailed
-	} else if pulseResult == pulseLifecycleStopped {
+	} else if housekeepingResult == afterRunStopped {
 		terminalState = schedulerstate.StateStopped
-	} else if status == "partial" || pulseResult == pulseLifecyclePartial {
+	} else if status == "partial" || housekeepingResult == afterRunPartial {
 		terminalState = schedulerstate.StatePartial
 	}
 	overallStatus := status
@@ -2713,17 +2431,18 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	} else if terminalState == schedulerstate.StatePartial {
 		overallStatus = "partial"
 		if overallError == "" {
-			overallError = "Autopilot completed partially"
+			overallError = "After-run housekeeping completed partially"
 		}
 	}
-	// Runtime state measures the complete scheduled job, including post-run
-	// Pulse. Normal history remains the workflow result.
+	// Both the informational Needs you status and linked Crew wake-up use
+	// the final outcome, including a failure of after-run housekeeping.
+	if sctx.WebhookInput == nil && overallStatus != scheduleRunStatusWaitingForCapacity && !userInterrupted {
+		if manifest, found, err := ReadWorkflowManifest(persistenceCtx, sctx.WorkspacePath); err == nil && found {
+			s.reportScheduledRunOutcome(persistenceCtx, sctx, manifest, runID, overallStatus, overallError, time.Since(startTime))
+		}
+	}
 	durationMs = time.Since(startTime).Milliseconds()
-	if sctx.PulseOnly {
-		if err := UpdateScheduleRun(persistenceCtx, sctx.WorkspacePath, runID, overallStatus, overallError, &durationMs, runFolder, sessionID); err != nil {
-			s.sessionLogf(sctx, sessionID, "[SCHEDULER] failed to finalize schedule run history: %v", err)
-		}
-	}
+
 	nextRun := s.nextWorkflowScheduleRunAt(sctx.WorkspacePath, schedID, time.Now())
 	s.updateRuntimeState(runtimeKey, func(state *ScheduleRuntimeState) {
 		state.ActiveRunID = ""
@@ -2739,9 +2458,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		}
 	})
 	terminalReason := "scheduled run finished with status " + overallStatus
-	if sctx.PulseOnly {
-		terminalReason = "one-off Autopilot finished with status " + overallStatus + "; workflow execution was skipped"
-	}
+
 	s.transitionScheduleRun(persistenceCtx, sctx, schedulerstate.Transition{
 		RunID: runID, To: terminalState, Reason: terminalReason,
 		SessionID: sessionID, RunFolder: runFolder, ErrorMessage: overallError, At: time.Now().UTC(),
@@ -2756,29 +2473,22 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	return sessionID, execErr
 }
 
-// Pulse has one continuing goal turn; ordinary after-run housekeeping is
-// separate. Scheduler bookkeeping retains its existing terminal outcomes.
-type pulseLifecycleResult string
+type afterRunResult string
 
 const (
-	pulseLifecycleNotRun    pulseLifecycleResult = "not_run"
-	pulseLifecycleCompleted pulseLifecycleResult = "completed"
-	pulseLifecyclePartial   pulseLifecycleResult = "partial"
-	pulseLifecycleStopped   pulseLifecycleResult = "stopped"
+	afterRunNotRun    afterRunResult = "not_run"
+	afterRunCompleted afterRunResult = "completed"
+	afterRunPartial   afterRunResult = "partial"
+	afterRunStopped   afterRunResult = "stopped"
 )
 
-// runPulseLifecycle separates ordinary after-run housekeeping from Pulse's one
-// continuing conversation. Backup/Publish are the only agent work after a run;
-// notification remains the existing deterministic after-run path.
-func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *ScheduleContext, pulseMode, runStatus, runFolder, runSessionID, scheduleRunID, _ string) (result pulseLifecycleResult) {
-	ctx = costActivityContext(ctx, sctx.OwnerUserID, "pulse", "")
+func (s *SchedulerService) runAfterRunHousekeeping(ctx context.Context, sctx *ScheduleContext, runStatus, runFolder, runSessionID, scheduleRunID string) (result afterRunResult) {
+	ctx = costActivityContext(ctx, sctx.OwnerUserID, "schedule", "")
 	if sctx.WebhookInput != nil || strings.EqualFold(sctx.Schedule.ScheduleType, "webhook") {
-		return pulseLifecycleNotRun
+		return afterRunNotRun
 	}
-	if sctx.PulseOnly || pulseMode != schedulePulseModeBasic {
-		return s.runSinglePulseCycle(ctx, sctx, runSessionID)
-	}
-	result = pulseLifecyclePartial
+
+	result = afterRunPartial
 	sessionID := strings.TrimSpace(runSessionID)
 	if sessionID == "" {
 		sessionID = s.newScheduleSessionID(sctx)
@@ -2794,19 +2504,19 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 	s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping for %s backup=%t publish=%t", sctx.Schedule.ID, sctx.AfterRunBackup, sctx.AfterRunPublish)
 	for _, step := range afterRunHousekeepingSteps(scheduleRunID, sctx.AfterRunBackup, sctx.AfterRunPublish) {
 		req := cloneStringInterfaceMap(s.buildWorkshopRequest(ctx, sctx, scheduleRunID))
-		markPulseLifecycleTurn(req)
-		req["query"] = pulseLifecycleIntro("A run finished; do only its selected backup and publish. This is not an Autopilot pass", sctx.WorkspacePath, sessionID, runStatus, runFolder) + "\n\n" + step.query + s.prepareWorkflowDatabaseBackupSnapshot(ctx, sctx)
+
+		req["query"] = fmt.Sprintf("AFTER-RUN CONTEXT. workspace_path=%q evidence_status=%q run_folder=%q.\n\n", sctx.WorkspacePath, runStatus, runFolder) + step.query + s.prepareWorkflowDatabaseBackupSnapshot(ctx, sctx)
 		if err := s.api.startSessionInternal(ctx, req, sessionID, sctx.OwnerUserID, nil); err != nil {
 			s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping unfinished: %v", err)
 			if errors.Is(err, context.Canceled) || errors.Is(err, errWorkshopSequenceInterrupted) {
-				return pulseLifecycleStopped
+				return afterRunStopped
 			}
-			return pulseLifecyclePartial
+			return afterRunPartial
 		}
 	}
 
 	s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping completed for %s", sctx.Schedule.ID)
-	return pulseLifecycleCompleted
+	return afterRunCompleted
 }
 
 // prepareWorkflowDatabaseBackupSnapshot makes the protected live SQLite DB
@@ -2821,7 +2531,7 @@ func (s *SchedulerService) prepareWorkflowDatabaseBackupSnapshot(ctx context.Con
 	manifest, exists, err := ReadWorkflowManifest(ctx, sctx.WorkspacePath)
 	if err != nil {
 		s.logf(sctx, "[BACKUP] could not inspect workflow backup config before finalization: %v", err)
-		return fmt.Sprintf("\n\nMANAGED DATABASE SNAPSHOT. The backend could not inspect workflow backup config: %v. Keep backup status truthful, but continue independently through Publish and Notify.", err)
+		return fmt.Sprintf("\n\nMANAGED DATABASE SNAPSHOT. The backend could not inspect workflow backup config: %v. Keep backup status truthful, but continue independently through Publish; the platform records the run outcome.", err)
 	}
 	if !exists || !workflowBackupRequiresDatabaseSnapshot(manifest.Backup, sctx.TriggerSource) {
 		return ""
@@ -2832,10 +2542,10 @@ func (s *SchedulerService) prepareWorkflowDatabaseBackupSnapshot(ctx context.Con
 	result, err := client.CreateWorkflowDatabaseBackupSnapshot(ctx, workspace.CreateWorkflowDatabaseBackupSnapshotParams{DBPath: dbPath})
 	if err != nil {
 		s.logf(sctx, "[BACKUP] managed workflow database snapshot failed: %v", err)
-		return fmt.Sprintf("\n\nMANAGED DATABASE SNAPSHOT. The backend attempted the required WAL-aware snapshot before this turn, but it failed: %v. Mark the database portion of Backup partial/failed as appropriate; do not try to read or stage live db/db.sqlite. Publish and Notify are independent and must still run.", err)
+		return fmt.Sprintf("\n\nMANAGED DATABASE SNAPSHOT. The backend attempted the required WAL-aware snapshot before this turn, but it failed: %v. Mark the database portion of Backup partial/failed as appropriate; do not try to read or stage live db/db.sqlite. Publish and run-outcome recording are independent and must still run.", err)
 	}
 	s.logf(sctx, "[BACKUP] managed workflow database snapshot ready at %s", result.SnapshotPath)
-	return fmt.Sprintf("\n\nMANAGED DATABASE SNAPSHOT. The backend already created and integrity-checked the current SQLite backup image at %q (sha256 %s, %d bytes). Stage that snapshot and its checksum at %q for every destination covering db-sqlite; never read or stage live db/db.sqlite. Publish and Notify are independent of the Backup result.", result.SnapshotPath, result.SHA256, result.SizeBytes, result.ChecksumPath)
+	return fmt.Sprintf("\n\nMANAGED DATABASE SNAPSHOT. The backend already created and integrity-checked the current SQLite backup image at %q (sha256 %s, %d bytes). Stage that snapshot and its checksum at %q for every destination covering db-sqlite; never read or stage live db/db.sqlite. Publish and run-outcome recording are independent of the Backup result.", result.SnapshotPath, result.SHA256, result.SizeBytes, result.ChecksumPath)
 }
 
 func workflowBackupRequiresDatabaseSnapshot(config *WorkflowBackupConfig, triggerSource string) bool {
@@ -2859,53 +2569,22 @@ func workflowBackupRequiresDatabaseSnapshot(config *WorkflowBackupConfig, trigge
 	return false
 }
 
-type pulseLifecycleStep struct {
+type afterRunStep struct {
 	label, query string
-	// goalWork, when set, are the Pulse permissions the server enforces on the
-	// Pulse session's tools for the length of this turn (Goal Work only).
-	goalWork *stepworkflow.GoalWorkPermissions
-	// goalLead runs the turn in the workflow's Pulse conversation
-	// (goal_lead_conversation.go) instead of the pass's own session.
-	goalLead bool
-}
-
-type pulseLifecycleStepOutcome string
-
-const (
-	pulseLifecycleStepCompleted   pulseLifecycleStepOutcome = "completed"
-	pulseLifecycleStepWaitFailed  pulseLifecycleStepOutcome = "wait_failed"
-	pulseLifecycleStepTimedOut    pulseLifecycleStepOutcome = "timed_out"
-	pulseLifecycleStepInterrupted pulseLifecycleStepOutcome = "interrupted"
-)
-
-type pulseLifecycleStepRunResult struct {
-	outcome pulseLifecycleStepOutcome
-	err     error
-}
-
-func pulseLifecycleIntro(contextSummary, workspacePath, pulseRunID, runStatus, runFolder string) string {
-	return fmt.Sprintf("PULSE RUN CONTEXT. %s. workspace_path=%q, pulse_run_id=%q, evidence_status=%q, run_folder=%q. This is one continuing Autopilot conversation. Do only the selected after-run housekeeping, keep statuses truthful and then stop. Goal checks and improvements belong to the continuing Autopilot conversation, not this turn.",
-		contextSummary, workspacePath, pulseRunID, runStatus, runFolder)
 }
 
 type workflowNotificationContentInstructions struct {
-	runSummary             string
-	pulseSummary           string
-	runSummaryChannels     []string
-	pulseSummaryChannels   []string
-	runSummaryRecipients   []string
-	pulseSummaryRecipients []string
+	runSummary           string
+	runSummaryChannels   []string
+	runSummaryRecipients []string
 }
 
 func notificationInstructionsFromCapabilities(capabilities WorkflowCapabilities) workflowNotificationContentInstructions {
 	notifications := capabilities.Notifications
 	return workflowNotificationContentInstructions{
-		runSummary:             runSummaryInstructionsOrDefault(notifications),
-		pulseSummary:           pulseSummaryInstructionsOrDefault(notifications),
-		runSummaryChannels:     notificationChannels(notifications, true),
-		pulseSummaryChannels:   notificationChannels(notifications, false),
-		runSummaryRecipients:   notificationRecipients(notifications, true),
-		pulseSummaryRecipients: notificationRecipients(notifications, false),
+		runSummary:           runSummaryInstructionsOrDefault(notifications),
+		runSummaryChannels:   notificationChannels(notifications, true),
+		runSummaryRecipients: notificationRecipients(notifications, true),
 	}
 }
 
@@ -2916,7 +2595,7 @@ func notificationChannels(config *WorkflowNotificationConfig, run bool) []string
 	if run {
 		return append([]string(nil), config.RunSummaryChannels...)
 	}
-	return append([]string(nil), config.PulseSummaryChannels...)
+	return nil
 }
 
 func notificationRecipients(config *WorkflowNotificationConfig, run bool) []string {
@@ -2926,23 +2605,19 @@ func notificationRecipients(config *WorkflowNotificationConfig, run bool) []stri
 	if run {
 		return append([]string(nil), config.RunSummaryRecipients...)
 	}
-	return append([]string(nil), config.PulseSummaryRecipients...)
+	return nil
 }
 
-// afterRunHousekeepingSteps is the one short turn a run's after-run options
-// need when the code check found something to back up or publish
-// (after_run.go). It is not a Pulse pass: no Gate, reviews or fixes, and no
-// notification (the platform sends the run summary in code afterwards).
-func afterRunHousekeepingSteps(runID string, backup, publish bool) []pulseLifecycleStep {
+func afterRunHousekeepingSteps(runID string, backup, publish bool) []afterRunStep {
 	var actions []string
 	if backup {
 		actions = append(actions, "(backup) run the configured source-hash-gated backup following backup-strategy.md (read_skill builder-reference references/backup-strategy.md), directly in this turn, and report its actual result in the run chat")
 	}
 	if publish {
-		actions = append(actions, "(publish) independently of whether backup succeeded, publish workflow.json's publish.targets other than \"pulse\" (the run's own report) following publish-strategy.md (read_skill builder-reference references/publish-strategy.md). Call export_dashboard_static afresh for each selected dashboard, then deploy its whole returned folder to the saved destination; do not redeploy an older snapshot. Report its actual result in the run chat. Never suppress a valid report publish merely because backup was partial or failed")
+		actions = append(actions, "(publish) independently of whether backup succeeded, publish workflow.json's publish.targets (the run's own report) following publish-strategy.md (read_skill builder-reference references/publish-strategy.md). Call export_dashboard_static afresh for each selected dashboard, then deploy its whole returned folder to the saved destination; do not redeploy an older snapshot. Report its actual result in the run chat. Never suppress a valid report publish merely because backup was partial or failed")
 	}
-	return []pulseLifecycleStep{{label: "finalize", query: fmt.Sprintf(
-		"AFTER-RUN HOUSEKEEPING. run_id=%q. This run's after-run options asked for this, and the platform found something to do. This is not an Autopilot pass: do not run Gate, reviewers or Fixer, do not present old Autopilot findings, do not notify (the platform sends the run summary itself), and do not write builder/improve.html.\n\n"+
+	return []afterRunStep{{label: "finalize", query: fmt.Sprintf(
+		"AFTER-RUN HOUSEKEEPING. run_id=%q. This run's after-run options asked for this, and the platform found something to do. Do not review or change the workflow. The platform sends its notification itself.\n\n"+
 			"Do only these, in order: %s. Report what actually happened, including any failure and what could not be verified, in the run chat. Then stop.",
 		runID, strings.Join(actions, "; "),
 	)}}
@@ -2963,10 +2638,6 @@ type scheduledWorkshopTurn struct {
 	label         string
 	query         string
 	upgradeTarget string
-	// decisionDrain marks the pre-run turn that applies operator decisions the
-	// user already answered. It runs on the Pulse LLM like an upgrade turn, but
-	// unlike one it is never allowed to fail the run — see the loop in
-	// executeWorkshopJob.
 	decisionDrain bool
 	// failureBlocksRun is set only by an approved decision contract that names
 	// a safety/public-action boundary. Ordinary failed repairs keep the old safe
@@ -3001,9 +2672,6 @@ func scheduledWorkshopMessages(sctx *ScheduleContext) []string {
 		return nil
 	}
 	messages := compactScheduleMessages(sctx.Schedule.Messages)
-	if sctx.PulseOnly {
-		return messages
-	}
 
 	// A saved route is executable configuration, not optional prose.  Older
 	// schedules could carry both route_selections and a follow-up message such
@@ -3043,11 +2711,6 @@ func scheduledWorkshopMessages(sctx *ScheduleContext) []string {
 // executeJob builds a session request from the manifest and runs it.
 // Returns (sessionID, runFolder, error).
 func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext, runID string) (string, string, error) {
-	if sctx.PulseOnly && sctx.WebhookInput == nil {
-		// No workflow or Builder turn executes here. Pulse chooses its evidence
-		// through tools; its DB report must not depend on execution-folder listings.
-		return s.newScheduleSessionID(sctx), "", nil
-	}
 
 	if sctx.WebhookInput != nil {
 		return s.executeWebhookJob(ctx, sctx, runID)
@@ -3065,7 +2728,7 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	}
 	messages := scheduledWorkshopMessages(sctx)
 	if sctx.WebhookInput != nil {
-		messages[0] += " " + webhookRunInputInstruction(webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)) + " This is an isolated webhook invocation. Execute only the saved workflow binding. Do not run Autopilot, reviewers, post-run backup, publish, or maintenance. Stop after reporting the run result."
+		messages[0] += " " + webhookRunInputInstruction(webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)) + " This is an isolated webhook invocation. Execute only the saved workflow binding. Do not run AgentWorks, reviewers, post-run backup, publish, or maintenance. Stop after reporting the run result."
 	}
 	runFolder := "iteration-0"
 	if strings.TrimSpace(sctx.ScheduledRunFolder) != "" {
@@ -3077,9 +2740,6 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 		if allocationErr != nil {
 			return "", "", allocationErr
 		}
-	}
-	if sctx.PulseOnly && strings.TrimSpace(sctx.PulseEvidenceRunFolder) != "" {
-		runFolder = strings.TrimSpace(sctx.PulseEvidenceRunFolder)
 	}
 
 	// Snapshot existing run folders before this invocation. A producing saved
@@ -3113,7 +2773,7 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	// scheduled session has ended.
 	contractupgrade.MarkScheduled(sessionID)
 	defer contractupgrade.ClearScheduled(sessionID)
-	if sctx.WebhookInput == nil && !sctx.PulseOnly && sctx.ScheduledRunFolder != "" {
+	if sctx.WebhookInput == nil && sctx.ScheduledRunFolder != "" {
 		s.api.scheduleInvocations.Store(sessionID, &stepworkflow.ScheduleInvocation{
 			RunID: runID, ScheduleID: sctx.Schedule.ID, RunFolder: sctx.ScheduledRunFolder,
 			TriggerSource: sctx.TriggerSource, ScheduledFor: sctx.ScheduledFor,
@@ -3139,8 +2799,8 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 		_ = UpdateScheduleRun(ctx, sctx.WorkspacePath, runID, "running", "", nil, runFolder, sessionID)
 	}
 
-	s.sessionLogf(sctx, sessionID, "[SCHEDULER] Scheduled workflow: executing %d messages for %s (session=%s workspace=%s run_folder=%s pulse_only=%t)",
-		len(messages), sctx.Schedule.ID, sessionID, sctx.WorkspacePath, runFolder, sctx.PulseOnly)
+	s.sessionLogf(sctx, sessionID, "[SCHEDULER] Scheduled workflow: executing %d messages for %s (session=%s workspace=%s run_folder=%s )",
+		len(messages), sctx.Schedule.ID, sessionID, sctx.WorkspacePath, runFolder)
 
 	baseReqMap := s.buildWorkshopRequest(ctx, sctx, runID)
 	if sctx.WebhookInput != nil {
@@ -3177,9 +2837,6 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	// 2026-10-05): no notice is added to the schedule's messages. They live in
 	// Needs you and the Builder chat.
 
-	// This run owns the session until its work is done: it alone hands step
-	// results back to the agent (scheduled_turn_followups.go). Released when
-	// this function returns, before the Pulse finalizer starts.
 	releaseCompletions := s.api.claimSessionCompletions(sessionID)
 	defer releaseCompletions()
 
@@ -3199,11 +2856,6 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 
 		turnStartedAt := time.Now().UTC()
 		if err := s.api.startSessionInternal(ctx, reqMap, sessionID, sctx.OwnerUserID, nil); err != nil {
-			// A non-blocking direct decision turn that cannot start must not cost
-			// the operator the run itself. The decisions stay answered-and-
-			// unapplied, exactly as before this turn existed, and the post-run
-			// Pulse pass still sees them (PLAT-093). A targeted Fixer with a
-			// block_run contract is intentionally not exempt.
 			if turn.decisionDrain && !turn.failureBlocksRun {
 				s.sessionLogf(sctx, sessionID, "[SCHEDULER] Pre-run decision drain could not start (continuing to the run): %v", err)
 				continue
@@ -3263,14 +2915,6 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 		s.sessionLogf(sctx, sessionID, "[SCHEDULER] Workshop turn %d/%d (%s) completed", i+1, len(turns), turn.label)
 	}
 
-	// Note: backup-on-completion is not appended here as a message turn. Backup is
-	// owned by two arms that share one source-hash-gated contract: the Pulse pass
-	// (runPulseLifecycle, final step) for dedicated Pulse runs, and the
-	// interactive-run completion directive for interactive runs (and as the fallback
-	// when Pulse is off). The shared source-hash
-	// gate means whichever arm runs second sees the state already backed up and skips
-	// the push — so the overlap can't double-back up.
-
 	// Previously auto-generated a static markdown report here via the report agent.
 	// The dynamic report (design doc §2) is a live frontend view over db/ + graph.json;
 	// there is no post-run artifact to produce, so scheduled runs now finish without a
@@ -3298,15 +2942,10 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	sctx.ProducedRunEvidence = workshopRunProducedEvidence(preRunFolderNames, postRunFolders, invocationStartedAt)
 	if !sctx.ProducedRunEvidence && s.scheduledWorkflowExecutionProducedEvidence(sessionID, invocationStartedAt) {
 		sctx.ProducedRunEvidence = true
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] the schedule's linked workflow execution receipt is this invocation's authoritative Autopilot evidence")
+		s.sessionLogf(sctx, sessionID, "[SCHEDULER] the schedule's linked workflow execution receipt is this invocation's authoritative AgentWorks evidence")
 	}
 	if !sctx.ProducedRunEvidence {
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] no run folder was created or restarted during this invocation for %s; Autopilot evidence-dependent stages will be skipped", sctx.Schedule.ID)
-		// A plain workflow schedule exists to run the workflow; finishing its
-		// turns without starting a run is a failure, not a success (for example
-		// the agent refused or misread the scheduled message). Schedules with
-		// their own messages, a query or an execution mode may legitimately run
-		// no workflow; their runs record ran_workflow=false for Pulse to judge.
+		s.sessionLogf(sctx, sessionID, "[SCHEDULER] no run folder was created or restarted during this invocation for %s; AgentWorks evidence-dependent stages will be skipped", sctx.Schedule.ID)
 		if scheduleExpectsWorkflowRun(sctx) && postRunFoldersErr == nil && runFolderBaselineKnown {
 			return sessionID, runFolder, fmt.Errorf("the scheduled workflow did not start: the session finished without creating or restarting a run folder")
 		}
@@ -3344,11 +2983,8 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	return sessionID, runFolder, nil
 }
 
-// scheduleExpectsWorkflowRun is true for a plain workflow schedule: no custom
-// messages, no query and no execution mode, so its only job is to run the
-// workflow. Pulse-only, webhook and manual Pulse invocations are excluded.
 func scheduleExpectsWorkflowRun(sctx *ScheduleContext) bool {
-	if sctx == nil || sctx.PulseOnly || sctx.WebhookInput != nil {
+	if sctx == nil || sctx.WebhookInput != nil {
 		return false
 	}
 	sched := sctx.Schedule
@@ -3365,25 +3001,6 @@ func runFolderNameSet(folders []RunFolderInfo) map[string]bool {
 	return names
 }
 
-// preserveRunEvidenceAfterFailedTurn consults the durable record before a failed
-// turn returns, so Pulse is never told "the workflow did not run" merely because
-// the session stopped progressing.
-//
-// This is PLAT-071 restored. It shipped 2026-08-10 in the dedicated
-// waitForWorkshopIdle failure branch, was extended by PLAT-084 the next day, and
-// was dropped whole on 2026-08-13 when that branch was replaced by
-// waitForConversationTurnTree — leaving workshopRunStartedDuringInvocation as
-// dead code and both its unit tests still green, because they call that helper
-// directly instead of driving this path. social-media then lost a second run to
-// the identical bug on 2026-08-16: a post landed and was verified, the idle wait
-// expired anyway, and the operator was emailed that nothing had run.
-//
-// It sits on the generic turn-failure return rather than an idle-wait-specific
-// branch, which widens it deliberately: "did a run actually start?" is answered
-// by the run's own metadata regardless of how the session died. Widening is safe
-// because workshopRunStartedDuringInvocation demands a real timestamp at or after
-// the invocation began and counts an unreadable record as nothing, so no failure
-// mode here can manufacture evidence that does not exist.
 func (s *SchedulerService) preserveRunEvidenceAfterFailedTurn(ctx context.Context, sctx *ScheduleContext, sessionID string, since time.Time) {
 	if s == nil || s.api == nil || sctx == nil || sctx.ProducedRunEvidence {
 		return
@@ -3396,13 +3013,13 @@ func (s *SchedulerService) preserveRunEvidenceAfterFailedTurn(ctx context.Contex
 		folders = scheduleInvocationFolders(folders, sctx.ScheduledRunFolder, sctx.ScheduledRunFolder != "")
 		if workshopRunStartedDuringInvocation(folders, since) {
 			sctx.ProducedRunEvidence = true
-			s.sessionLogf(sctx, sessionID, "[SCHEDULER] turn failed for %s, but a full workflow run started during this invocation and its own metadata is the authority; preserving run evidence for Autopilot", sctx.Schedule.ID)
+			s.sessionLogf(sctx, sessionID, "[SCHEDULER] turn failed for %s, but a full workflow run started during this invocation and its own metadata is the authority; preserving run evidence for AgentWorks", sctx.Schedule.ID)
 			return
 		}
 	}
 	if s.scheduledWorkflowExecutionProducedEvidence(sessionID, since) {
 		sctx.ProducedRunEvidence = true
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] turn failed for %s, but a linked workflow execution started during this invocation; preserving run evidence for Autopilot", sctx.Schedule.ID)
+		s.sessionLogf(sctx, sessionID, "[SCHEDULER] turn failed for %s, but a linked workflow execution started during this invocation; preserving run evidence for AgentWorks", sctx.Schedule.ID)
 	}
 }
 
@@ -3792,23 +3409,6 @@ func requestWithWorkshopMode(base map[string]interface{}, mode string) map[strin
 	execOpts["workshop_mode"] = mode
 	reqMap["execution_options"] = execOpts
 	return reqMap
-}
-
-// markPulseLifecycleTurn tags a Pulse lifecycle turn (Gate, review dispatch,
-// Finalize) and elevates that turn to Workshop mode. It keeps the workflow's
-// Builder model. Reviews run in this turn on that model; pulse_llm no longer
-// applies to them (a retained CLI cannot switch model mid-conversation).
-func markPulseLifecycleTurn(reqMap map[string]interface{}) {
-	if reqMap == nil {
-		return
-	}
-	reqMap["pulse_lifecycle_turn"] = true
-	execOpts := map[string]interface{}{}
-	if current, ok := reqMap["execution_options"].(map[string]interface{}); ok {
-		execOpts = cloneStringInterfaceMap(current)
-	}
-	execOpts["workshop_mode"] = "workshop"
-	reqMap["execution_options"] = execOpts
 }
 
 // buildWorkshopRequest creates the base request map for scheduled workflow
@@ -4238,11 +3838,6 @@ func (s *SchedulerService) findActiveNonBuilderExecutionForWorkspace(workspacePa
 	return &active
 }
 
-// findActiveExecutionBlockingSchedule keeps manual workflow runs and Pulse
-// exclusive. A human-approved parallel schedule may overlap other producing
-// schedules, but it does not silently broaden that approval to manual work or
-// maintenance. Sequential schedules ignore only already-running schedules that
-// themselves carry the parallel opt-in.
 func (s *SchedulerService) findActiveExecutionBlockingSchedule(workspacePath string, incomingParallel bool) *ActiveWorkflowExecution {
 	if !incomingParallel {
 		return s.findActiveNonBuilderExecutionForWorkspace(workspacePath)
@@ -4254,9 +3849,6 @@ func (s *SchedulerService) findActiveExecutionBlockingSchedule(workspacePath str
 		if exec.TriggeredBy == "webhook" || exec.Metadata["trigger_source"] == "webhook" || strings.HasPrefix(exec.SessionID, "schedule-webhook--") {
 			return false
 		}
-		// A trusted schedule binding identifies a normal workflow-producing
-		// schedule. Pulse-only sessions deliberately have no such binding and
-		// therefore continue to block this lane.
 		if _, scheduled := s.api.scheduleInvocations.Load(exec.SessionID); scheduled {
 			return false
 		}
@@ -4438,26 +4030,7 @@ func ValidateCronExpression(expr string) error {
 	return nil
 }
 
-// lockedScheduleCapabilities is the manifest's capabilities as a scheduled run
-// (and Pulse, and the capacity wait) must see them: the LLM config rewritten
-// to the published default under LLM_CONFIG_LOCKED (lockedPresetLLMConfig),
-// everything else untouched. Applied once where the ScheduleContext is built
-// so every scheduler consumer of Capabilities.LLMConfig agrees.
 func lockedScheduleCapabilities(caps WorkflowCapabilities) WorkflowCapabilities {
 	caps.LLMConfig = lockedPresetLLMConfig(caps.LLMConfig)
 	return caps
-}
-
-// pulsePermissionsForWorkflow reads the workflow's current permissions for the
-// strategic review turn, and the same levels as text. A manifest that cannot be
-// read gives the defaults (run auto, outward and change ask).
-func pulsePermissionsForWorkflow(ctx context.Context, workspacePath string) (stepworkflow.GoalWorkPermissions, string) {
-	manifestJSON := ""
-	if manifest, found, err := ReadWorkflowManifest(ctx, workspacePath); err == nil && found {
-		if encoded, marshalErr := json.Marshal(manifest); marshalErr == nil {
-			manifestJSON = string(encoded)
-		}
-	}
-	perms := stepworkflow.PulsePermissions(manifestJSON)
-	return perms, stepworkflow.PulsePermissionInstructions(perms)
 }

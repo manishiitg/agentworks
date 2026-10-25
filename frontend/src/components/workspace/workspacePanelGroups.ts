@@ -1,7 +1,7 @@
 const GROUPS = [
   ['Work & results', ['context', 'report', 'dashboard', 'flow', 'plan']],
   ['Scheduled work', ['schedules', 'workshop', 'webhooks']],
-  ['Reviews & decisions', ['pulse', 'human-actions', 'suggestions']],
+  ['Reviews & decisions', ['goals', 'human-actions', 'suggestions']],
   ['Knowledge & tools', ['knowledge', 'memory', 'browser', 'files', 'database', 'shell']],
   ['Activity', ['costs', 'execution-logs']],
   ['Project setup', ['identity', 'mcp', 'access', 'backup', 'publish', 'notify', 'playbooks']],
@@ -21,5 +21,5 @@ export const panelSearchAliases: Record<string, string> = {
   context: 'Context overview', identity: 'Identity settings purpose instructions',
   mcp: 'Connections Use & share sharing people channels Integrations MCP apps tools secrets tools & secrets Apps & tools MCPs & secrets', memory: 'Memory skills',
   workshop: 'Automation schedules webhooks watchers bots chats', schedules: 'Automation',
-  pulse: 'Autopilot automatic reviews', 'execution-logs': 'Execution logs run history',
+  goals: 'Goals metrics progress', 'execution-logs': 'Execution logs run history',
 }

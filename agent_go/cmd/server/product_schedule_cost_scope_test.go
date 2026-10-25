@@ -97,13 +97,5 @@ func TestProductScheduleTurnRecordsScheduleCostScope(t *testing.T) {
 	if workflowSource == nil || workflowSource.Label != "Receipt check" || workflowSource.RunCount != 1 || workflowSource.Scope != "schedule" || workflowSource.CallCount != 25 {
 		t.Fatalf("workflow schedule source = %+v", workflowSource)
 	}
-	var pulseReq QueryRequest
-	raw, _ := json.Marshal(workflow)
-	if err := json.Unmarshal(raw, &pulseReq); err != nil {
-		t.Fatal(err)
-	}
-	pulseReq.PulseLifecycleTurn = true
-	if got := chatTurnCostScope(pulseReq, pulseReq.AgentMode, ""); got != "pulse" {
-		t.Fatalf("scheduled Autopilot scope = %q, want pulse", got)
-	}
+
 }

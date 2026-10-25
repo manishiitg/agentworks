@@ -92,20 +92,6 @@ func validateContractVersionStampPrerequisites(version string, manifest map[stri
 	return nil
 }
 
-// authorizeContractVersionStamp decides whether sessionID may stamp version
-// right now, spending the authorization when it may. The second return value
-// reports permission; the first is the refusal to hand back when it does not.
-//
-// This bound lives in the executor rather than in the upgrade prompt because
-// the stamp does not only arrive as a native tool call. On customer-login
-// 2026-08-12 it arrived as
-//
-//	curl -X POST -d '{"version":"1.0.21"}' -H "$MCP_AUTH" "$MCP_CUSTOM/set_workflow_contract_version"
-//
-// run through execute_shell_command from a Pulse turn, ten minutes after the
-// upgrade turn that owed that stamp had been adjudicated and closed. Both paths
-// land here, so both are covered; no wording in a prompt could have covered the
-// shell one.
 func authorizeContractVersionStamp(sessionID, version string, nextPending func() (string, string, error)) (string, bool) {
 	// An operator working in the workflow builder is the authorization. They
 	// asked for the migration and can see what the agent does, so there is
@@ -160,8 +146,8 @@ func CheckContractStamp(version, workflowDir string, manifestJSON []byte, readPl
 	if err := json.Unmarshal(manifestJSON, &manifest); err != nil {
 		return fmt.Errorf("parse workflow.json: %w", err)
 	}
-	if err := schedulepolicy.ValidatePulseStamp(manifestJSON, version); err != nil {
-		return fmt.Errorf("the schedule Autopilot migration is incomplete: %w", err)
+	if err := schedulepolicy.ValidateAfterRunStamp(manifestJSON, version); err != nil {
+		return fmt.Errorf("the schedule after-run migration is incomplete: %w", err)
 	}
 	if err := validateContractVersionStampPrerequisites(version, manifest); err != nil {
 		return fmt.Errorf("the nested Agent artifact migration is incomplete: %w", err)

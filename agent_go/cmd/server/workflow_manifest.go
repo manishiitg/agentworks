@@ -39,7 +39,7 @@ const WorkflowContractCurrentVersion = workflowContractSkillsVersion
 const workflowContractSkillsVersion = step_based_workflow.WorkflowSkillsContractVersion
 const workflowContractGoalAgentVersion = step_based_workflow.GoalAgentContractVersion
 
-const workflowContractExplicitSchedulePulseVersion = schedulepolicy.ExplicitPulseContractVersion
+const workflowContractExplicitSchedulePulseVersion = schedulepolicy.ExplicitAfterRunContractVersion
 
 const workflowContractRouteSummariesVersion = "1.0.40"
 
@@ -176,12 +176,6 @@ type WorkflowManifest struct {
 	// per-step runtime skill selections.
 	InstalledPlaybooks []InstalledPlaybook `json:"installed_playbooks,omitempty"`
 
-	// Auto-improvement framework fields. See docs/workflow/auto_improvement_framework.md.
-	//
-	// Only fields that drive HARD behavioral gates live here. Workflow profile
-	// (deterministic / exploratory / contextual classification, plan-stability
-	// guidance, dual-mode declarations) belongs in semantic workflow artifacts
-	// and typed Pulse records; prose captures nuance that enums cannot.
 	OversightMode OversightMode `json:"oversight_mode,omitempty"`
 
 	// PaceOnLowQuota spreads a run out rather than racing into a provider
@@ -199,19 +193,11 @@ type WorkflowManifest struct {
 	// waits. Zero means the default.
 	PaceThresholdPercent int `json:"pace_threshold_percent,omitempty"`
 
-	// Pulse contains owner-approved workflow-specific review lenses. These
-	// specialize the stable reviewer contracts; they never replace them.
-	Pulse *WorkflowPulseConfig `json:"pulse,omitempty"`
-
 	// Backup is declarative configuration for builder-agent managed backup.
 	// Operational status is written separately to backup/status.json so normal
 	// backup attempts do not churn workflow.json.
 	Backup *WorkflowBackupConfig `json:"backup,omitempty"`
 
-	// Publish is declarative config for builder-agent managed publishing of the
-	// workflow's HTML artifacts (Pulse log, report dashboard) to a public URL.
-	// Operational status (incl. the URL) is written to publish/status.json so
-	// publish attempts do not churn workflow.json.
 	Publish *WorkflowPublishConfig `json:"publish,omitempty"`
 
 	// AfterManualRun is the after-run options for full runs started from a
@@ -240,41 +226,6 @@ type InstalledPlaybook struct {
 	SourceHash  string `json:"source_hash"`
 	Status      string `json:"status"`
 	InstalledAt string `json:"installed_at"`
-}
-
-type WorkflowPulseConfig struct {
-	Enabled        bool   `json:"enabled"`
-	OutwardActions string `json:"outward_actions"`
-}
-
-// PulseEnabled uses only the canonical workflow toggle. Saved legacy signals
-// are converted once by workflowtypes.NormalizePulseSettingsJSON before manifest decoding.
-func (m *WorkflowManifest) PulseEnabled() bool {
-	if m == nil {
-		return false
-	}
-	if m.Kind == "relay" {
-		return false
-	}
-	if m.Pulse != nil && m.Pulse.Enabled {
-		return true
-	}
-	return false
-}
-
-const (
-	schedulePulseModeOff   = "off"
-	schedulePulseModeBasic = "basic"
-	schedulePulseModeFull  = "full"
-)
-
-// EffectivePulseMode selects only ordinary after-run housekeeping. Pulse itself
-// is workflow-wide and runs in its continuing conversation.
-func (m *WorkflowManifest) EffectivePulseMode(schedule WorkflowSchedule) string {
-	if m.EffectiveAfterRun(schedule).Any() {
-		return schedulePulseModeBasic
-	}
-	return schedulePulseModeOff
 }
 
 type WorkflowBackupConfig struct {
@@ -314,7 +265,7 @@ type WorkflowBackupDestination struct {
 type WorkflowPublishConfig struct {
 	Enabled       bool                         `json:"enabled"`
 	Mode          string                       `json:"mode,omitempty"`           // "agent" (default)
-	Targets       []json.RawMessage            `json:"targets,omitempty"`        // strings ("pulse"/"report") or objects — agent's choice
+	Targets       []json.RawMessage            `json:"targets,omitempty"`        // report targets, as strings or objects
 	DashboardMode string                       `json:"dashboard_mode,omitempty"` // "snapshot" (static HTML)
 	URL           string                       `json:"url,omitempty"`            // last published URL (agent-written, mirror of status)
 	Triggers      WorkflowBackupTriggers       `json:"triggers,omitempty"`
@@ -395,21 +346,15 @@ type WorkflowNotificationConfig struct {
 	// complete webhook URL; listing several fans that summary out to several
 	// channels. An empty list falls back to SlackWebhookSecretName, so a
 	// workflow that never split its channels behaves exactly as before.
-	RunSummarySlackWebhookSecretNames   []string `json:"run_summary_slack_webhook_secret_names,omitempty"`
-	PulseSummarySlackWebhookSecretNames []string `json:"pulse_summary_slack_webhook_secret_names,omitempty"`
+	RunSummarySlackWebhookSecretNames []string `json:"run_summary_slack_webhook_secret_names,omitempty"`
 
 	// RunSummaryInstructions controls the execution/outcome section of a
-	// notification. PulseSummaryInstructions controls the review/fix section.
 	// Both are ordinary workflow configuration, never secrets, recipients, or
 	// delivery credentials.
-	RunSummaryInstructions   string   `json:"run_summary_instructions,omitempty"`
-	PulseSummaryInstructions string   `json:"pulse_summary_instructions,omitempty"`
-	RunSummaryChannels       []string `json:"run_summary_channels,omitempty"`
-	PulseSummaryChannels     []string `json:"pulse_summary_channels,omitempty"`
+	RunSummaryInstructions string   `json:"run_summary_instructions,omitempty"`
+	RunSummaryChannels     []string `json:"run_summary_channels,omitempty"`
 
-	// DailyDigestOff stops the one evening email of the day's runs
-	// (owner_alerts.go). The digest is on unless the owner turns it off.
-	DailyDigestOff bool `json:"daily_digest_off,omitempty"`
+	BreakAlerts *bool `json:"break_alerts,omitempty"`
 
 	// WakeTab is a Crew tab that is told straight away when a run of this
 	// workflow fails, stops partway, or never actually ran (wake_agent_tab.go).
@@ -439,15 +384,13 @@ type WorkflowNotificationConfig struct {
 	// Legacy per-summary sender overrides. New Notify settings save one
 	// GmailConnectionID and clear these fields. A legacy list with multiple
 	// senders is refused at delivery rather than sending duplicate messages.
-	RunSummaryGmailConnectionIDs   []string `json:"run_summary_gmail_connection_ids,omitempty"`
-	PulseSummaryGmailConnectionIDs []string `json:"pulse_summary_gmail_connection_ids,omitempty"`
+	RunSummaryGmailConnectionIDs []string `json:"run_summary_gmail_connection_ids,omitempty"`
 
 	// BlockRecipients is a per-workflow email denylist, unioned with the
 	// account-wide GmailConfig.BlockedRecipients at send time. It can only block
 	// MORE addresses for this workflow, never unblock a globally-blocked one.
 	BlockRecipients []string `json:"block_recipients,omitempty"`
 
-	// RunSummaryRecipients and PulseSummaryRecipients say WHERE this workflow's
 	// email goes, selected by record_summary's kind — the positive
 	// counterpart to BlockRecipients, which only ever says where it must not go.
 	// Empty means "inherit the account-level default recipient", so an existing
@@ -455,13 +398,14 @@ type WorkflowNotificationConfig struct {
 	// account-wide denylist and BlockRecipients are still applied on top and
 	// still win, so naming a blocked address here skips the send rather than
 	// unblocking it.
-	RunSummaryRecipients   []string `json:"run_summary_recipients,omitempty"`
-	PulseSummaryRecipients []string `json:"pulse_summary_recipients,omitempty"`
+	RunSummaryRecipients []string `json:"run_summary_recipients,omitempty"`
+}
+
+func (c *WorkflowNotificationConfig) BreakAlertsEnabled() bool {
+	return c == nil || c.BreakAlerts == nil || *c.BreakAlerts
 }
 
 const defaultRunSummaryInstructions = "Before external delivery, read prior run summaries with get_notification_history. Always record the current run summary in Activity. Send Slack, Gmail, or WhatsApp only when the current run contains a new materially important outcome, failure, recovery, blocker, decision, or threshold crossing compared with prior summaries. Ignore timestamps, routine counts, and wording-only differences. If nothing important changed, call record_summary with delivery=record_only."
-
-const defaultPulseSummaryInstructions = "Before external delivery, read prior Autopilot summaries with get_notification_history and exclude the current pulse_run_id. The current Autopilot reviewer results are already recorded in Activity. Send Slack, Gmail, or WhatsApp only for a new materially important finding, fix, recovery, blocker, unsafe backup/publish state, or decision requiring the user. Ignore timestamps and wording-only differences. When external delivery is warranted, call record_summary with kind=pulse_summary and delivery=deliver_only; otherwise do not send an Autopilot notification."
 
 func (c *WorkflowNotificationConfig) EffectiveRunSummaryInstructions() string {
 	if c == nil {
@@ -476,31 +420,11 @@ func (c *WorkflowNotificationConfig) EffectiveRunSummaryInstructions() string {
 	return ""
 }
 
-func (c *WorkflowNotificationConfig) EffectivePulseSummaryInstructions() string {
-	if c == nil {
-		return ""
-	}
-	if value := strings.TrimSpace(c.PulseSummaryInstructions); value != "" {
-		return value
-	}
-	if value := strings.TrimSpace(c.Instructions); value != "" {
-		return value
-	}
-	return ""
-}
-
 func runSummaryInstructionsOrDefault(c *WorkflowNotificationConfig) string {
 	if value := c.EffectiveRunSummaryInstructions(); value != "" {
 		return value
 	}
 	return defaultRunSummaryInstructions
-}
-
-func pulseSummaryInstructionsOrDefault(c *WorkflowNotificationConfig) string {
-	if value := c.EffectivePulseSummaryInstructions(); value != "" {
-		return value
-	}
-	return defaultPulseSummaryInstructions
 }
 
 // WorkflowExecutionDefaults stores workflow-wide execution settings. Run-folder
@@ -738,9 +662,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 	if m.Kind != "relay" && m.RelayOutputStepID != "" {
 		return fmt.Errorf("relay_output_step_id requires kind relay")
 	}
-	if m.Kind == "relay" && m.Pulse != nil && m.Pulse.Enabled {
-		return fmt.Errorf("Flows do not support Autopilot")
-	}
+
 	if m.Kind == "relay" && strings.TrimSpace(m.Capabilities.SlackConnectionID) != "" {
 		return fmt.Errorf("Flows do not support Slack connections")
 	}
@@ -751,8 +673,8 @@ func ValidateManifest(m *WorkflowManifest) error {
 				return strings.EqualFold(strings.TrimSpace(channel), "whatsapp") || strings.EqualFold(strings.TrimSpace(channel), "slack")
 			})
 		}
-		if unsupportedChannel(notifications.RunSummaryChannels) || unsupportedChannel(notifications.PulseSummaryChannels) ||
-			strings.TrimSpace(notifications.SlackWebhookSecretName) != "" || len(notifications.RunSummarySlackWebhookSecretNames) > 0 || len(notifications.PulseSummarySlackWebhookSecretNames) > 0 {
+		if unsupportedChannel(notifications.RunSummaryChannels) ||
+			strings.TrimSpace(notifications.SlackWebhookSecretName) != "" {
 			return fmt.Errorf("Flows do not support Slack or WhatsApp notifications")
 		}
 	}
@@ -855,14 +777,6 @@ func ValidateManifest(m *WorkflowManifest) error {
 			return fmt.Errorf("duplicate workflow_context_paths entry %q", path)
 		}
 		seenWorkflowContexts[path] = struct{}{}
-	}
-
-	if m.Pulse != nil {
-
-		if _, err := normalizePulseOutwardActions(m.Pulse.OutwardActions); err != nil {
-			return err
-		}
-
 	}
 
 	// Validate browser mode if set
@@ -1137,11 +1051,8 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 		return nil, false, nil
 	}
 
-	pulseSettingsMigrated := false
 	if !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/") {
-		if normalized, changed := workflowtypes.NormalizePulseSettingsJSON([]byte(content)); changed {
-			content, pulseSettingsMigrated = string(normalized), true
-		}
+
 	}
 	var m WorkflowManifest
 	if err := json.Unmarshal([]byte(content), &m); err != nil {
@@ -1231,7 +1142,7 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	// every read, and had it passed it would have dropped the product fields.
 	heldRoot, _ := ctx.Value(teamLockHeldKey{}).(string)
 	mayPersistManifestMigrations := persistMigrations && heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
-	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields || pulseSettingsMigrated) && len(m.MalformedConfig) == 0 {
+	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) && len(m.MalformedConfig) == 0 {
 		if hasStaleFields {
 			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v execution_defaults=%v capabilities=%v",
 				workspacePath, staleTopLevel, staleExecutionDefaults, staleCapabilities)
@@ -1397,36 +1308,6 @@ func stripOptionalConfigBlocks(content []byte) ([]byte, []string) {
 	return stripped, dropped
 }
 
-// workflowManifestChangelogChanges returns a stable, value-free description of
-// a workflow.json mutation. The changelog already carries content hashes as
-// the authoritative change boundary; copying values here would make a human
-// diff easier at the cost of leaking secrets such as webhook or token values.
-// Field paths plus lifecycle markers are sufficient for Artifact Review.
-//
-// Arrays deliberately appear as one changed field. Their order and contents
-// are meaningful to a manifest, but producing index-level entries would be
-// noisy and unstable when an item is inserted or reordered.
-// withoutPulseSettingsManifestChanges drops changes to Pulse's own settings
-// and returns nothing when only those (and updated_at) changed.
-func withoutPulseSettingsManifestChanges(changes []step_based_workflow.PlanFieldChange) []step_based_workflow.PlanFieldChange {
-	kept := make([]step_based_workflow.PlanFieldChange, 0, len(changes))
-	substantive := false
-	for _, change := range changes {
-		field := strings.TrimSpace(change.Field)
-		if field == "workflow.json.pulse" || strings.HasPrefix(field, "workflow.json.pulse.") {
-			continue
-		}
-		if field != "workflow.json.updated_at" {
-			substantive = true
-		}
-		kept = append(kept, change)
-	}
-	if !substantive {
-		return nil
-	}
-	return kept
-}
-
 // withoutScheduleAfterRunFields drops each schedule's after_run, pulse_mode
 // and pulse_mode_reason from a workflow.json text before it is compared for
 // the changelog. Unparseable text is returned unchanged.
@@ -1445,8 +1326,7 @@ func withoutScheduleAfterRunFields(text string) string {
 	for _, raw := range schedules {
 		if schedule, ok := raw.(map[string]interface{}); ok {
 			delete(schedule, "after_run")
-			delete(schedule, "pulse_mode")
-			delete(schedule, "pulse_mode_reason")
+
 		}
 	}
 	delete(document, "after_manual_run")
@@ -1599,13 +1479,6 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		m.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 
-	if m.Pulse != nil {
-		outward, err := normalizePulseOutwardActions(m.Pulse.OutwardActions)
-		if err != nil {
-			return fmt.Errorf("%w: %w", ErrInvalidWorkflowManifest, err)
-		}
-		m.Pulse.OutwardActions = outward
-	}
 	if err := ValidateManifest(m); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidWorkflowManifest, err)
 	}
@@ -1632,24 +1505,11 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		return fmt.Errorf("failed to write workflow.json: %w", err)
 	}
 
-	// Record the change so artifact drift review can see it. workflow.json has
-	// no plan-modification tool, and planning/changelog only ever receives
-	// entries from those tools, so until now every edit here was invisible to
-	// Artifact Review.
-	//
-	// Skipped when the bytes are unchanged: WriteWorkflowManifest is called on
-	// paths that rewrite the manifest without altering it, and a changelog full
-	// of no-op entries would bury the real ones.
-	//
-	// Pulse's own settings (pulse.*: on/off, schedule, permissions, focus areas,
-	// reviewer toggles) are not part of the plan Plan Drift protects, so a save
-	// that changes only them is not recorded. Otherwise changing a Pulse
-	// setting made the next Pulse spend its pass on a drift review.
 	if !previousExists || previous != string(data) {
 		// A schedule's after-run options (and their legacy pulse_mode mirror)
 		// are not part of the plan either (PLAT-697 phase 0): the pulse_mode ->
 		// after_run migration and a checkbox toggle must not start a review.
-		if changes := withoutPulseSettingsManifestChanges(workflowManifestChangelogChanges(withoutScheduleAfterRunFields(previous), withoutScheduleAfterRunFields(string(data)))); len(changes) > 0 {
+		if changes := workflowManifestChangelogChanges(withoutScheduleAfterRunFields(previous), withoutScheduleAfterRunFields(string(data))); len(changes) > 0 {
 			logCtx := ctx
 			if m.Team != nil {
 				// This typed save already passed policy validation. Its audit
@@ -1740,9 +1600,6 @@ func workflowManifestChangelogReader(ctx context.Context, path string) (string, 
 
 // applyManifestDefaults fills in defaults for fields that may be missing from older schema versions.
 func applyManifestDefaults(m *WorkflowManifest) {
-	if m.Pulse != nil && m.Pulse.OutwardActions == "" {
-		m.Pulse.OutwardActions = "ask"
-	}
 
 	if m.SchemaVersion == 0 {
 		m.SchemaVersion = 1
@@ -1775,9 +1632,6 @@ func applyManifestDefaults(m *WorkflowManifest) {
 		}
 	}
 
-	// Auto-improvement framework defaults. oversight_mode is the one hard-gate
-	// field that default-fills — typology, plan-stability, and decision-log
-	// handling stay in semantic artifacts and typed Pulse records.
 	if m.OversightMode == "" {
 		m.OversightMode = OversightSupervised
 	}

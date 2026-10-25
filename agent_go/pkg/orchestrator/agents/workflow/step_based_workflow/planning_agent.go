@@ -1105,7 +1105,6 @@ type PlanChangelogArtifactReview struct {
 type PlanDependencySurfaceReview struct {
 	Disposition string   `json:"disposition"`
 	Evidence    []string `json:"evidence,omitempty"`
-	IssueIDs    []string `json:"issue_ids,omitempty"`
 }
 
 // PlanChangelog is the per-session changelog file under planning/changelog/.
@@ -1196,12 +1195,7 @@ func writePlanChangelogEntry(
 		entry.Timestamp = now.Format(time.RFC3339)
 	}
 	entry.Origin = planChangeOriginFromContext(ctx, workspacePath)
-	if entry.Origin.Type == "pulse_fixer" {
-		entry.Origin.IssueIDs, entry.Origin.FixAttemptID, entry.Origin.HumanInputID = pulseChangeReferences(ctx, workspacePath, entry.Origin.PulseRunID)
-		if entry.Origin.HumanInputID != "" {
-			entry.Origin.Type = "human_decision"
-		}
-	}
+
 	completePlanChangelogEntry(&entry)
 	if entry.ChangeID == "" {
 		entry.ChangeID = strings.TrimPrefix(artifactContentRef(map[string]interface{}{
@@ -3666,21 +3660,6 @@ func planStepUpdateRequiresDependentArtifactReview(fieldChanges []PlanFieldChang
 	return len(fieldChanges) > 0
 }
 
-// planDriftMaterialFieldNames are step fields whose change can alter what a
-// step produces or how the plan routes, so a dependent step, an eval, a
-// report query, a DB contract, or downstream learnings/KB may now be stale.
-// It is the same set planStepUpdateInvalidatesDescriptionReview uses, minus
-// "description" and "title": wording edits are the single largest share of
-// plan-mod calls (2026-09-26 review: description-only edits on scripted and
-// agent steps were the biggest bucket of the unreviewed changelog
-// backlog across live workflows), and treating every one as drift-worthy made
-// plan_drift_review due on nearly every plan edit. A wording rewrite
-// occasionally hides a real behavior change, but that then shows up as an
-// output or data change on the step's next run, which Pulse already catches
-// through its own step-output and step-concern review, not through Plan
-// Drift. Schedule timing, review_notes, updated_at, and model/tier settings
-// (Architecture's, not Plan Drift's, per pulse-gate.md) were never in this
-// set either.
 var planDriftMaterialFieldNames = map[string]bool{
 	"type": true, "required_variables": true, "context_dependencies": true, "context_output": true,
 	"items": true, "next_step_id": true,
@@ -3801,24 +3780,6 @@ func clearDescriptionReviewedAfterPlanUpdate(ctx context.Context, workspacePath,
 	return false, nil
 }
 
-// clearDriftReviewAfterPlanUpdate flags an existing drift review stale rather
-// than destroying it — the "stale flag" model. Whether it fires is now
-// planStepFieldChangesRequireDriftReview's call (planDriftMaterialFieldNames):
-// until 2026-09-26 this fired on ANY changed field, title included, which
-// made plan_drift_review due on nearly every plan edit — description-only
-// edits were the single largest share of live workflows' unreviewed
-// changelog backlog. A step's last real review can be trusted through a
-// wording-only edit; a change to what it outputs, depends on, validates, or
-// routes to cannot.
-//
-// A step with NeedsReview==true (or no record at all) is what makes the
-// plan_drift_review Pulse module due — this is the mechanism that turns "we
-// edited a step" into "Pulse will now notice," without discarding the
-// step's last real review: Checks/ReviewedAt/ReviewedBy/
-// ReviewedThroughChangeID stay exactly as they were until a completed
-// plan_drift_review turn replaces them. The plan-mod tool's own call already
-// appends the changelog entry for this field change elsewhere in the same
-// turn — no separate changelog entry is needed here.
 func clearDriftReviewAfterPlanUpdate(ctx context.Context, workspacePath, stepID string, fieldChanges []PlanFieldChange, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error) (bool, error) {
 	if !planStepFieldChangesRequireDriftReview(fieldChanges) {
 		return false, nil
@@ -3871,10 +3832,7 @@ func clearDriftReviewAfterPlanUpdateRetried(ctx context.Context, workspacePath, 
 	return cleared, err
 }
 
-// Editing records stale review state for Pulse; it does not launch an audit.
-// Keep interactive checks scoped to the combined change, including when several
-// typed tools are called to implement one repair.
-const planEditImpactGuidance = "After related edits are complete, do one combined compatibility check in the current agent before the targeted test. For small internal edits with unchanged outputs, DB writes, routing, and behavior, confirm compatibility briefly and test. For output, DB, routing, or behavior changes, inspect and reconcile only affected dependencies before testing. Stop once affected consumers are compatible; unrelated backlog and missing audit receipts must not delay the test. Read builder-reference/references/plan-change-impact.md for the procedure. Do not launch a separate drift reviewer for each edit or test retry; reserve the full review-artifact-drift audit for scheduled Autopilot or an explicit user request."
+const planEditImpactGuidance = "After related edits are complete, do one combined compatibility check in the current agent before the targeted test. For small internal edits with unchanged outputs, DB writes, routing, and behavior, confirm compatibility briefly and test. For output, DB, routing, or behavior changes, inspect and reconcile only affected dependencies before testing. Stop once affected consumers are compatible; unrelated backlog and missing audit receipts must not delay the test. Read builder-reference/references/plan-change-impact.md for the procedure. Do not launch a separate drift reviewer for each edit or test retry; reserve the full review-artifact-drift audit for scheduled AgentWorks or an explicit user request."
 
 // planEditImpactGuidancePointer replaces planEditImpactGuidance on repeated plan edits of the same workflow.
 // The full paragraph (~700 characters) used to come back on every edit, most of each update response.
@@ -3927,7 +3885,7 @@ func buildPlanStepDependentArtifactReviewNotice(stepID string, fieldChanges []Pl
 		b.WriteString("- Cleared step_config.agent_configs.description_reviewed because the reviewed step contract may now be stale.\n")
 	}
 	if driftReviewCleared {
-		b.WriteString("- Flagged step_config.agent_configs.drift_review.needs_review=true — the plan_drift_review Autopilot module will now treat this step as due until it (or the manual review-artifact-drift slash command) records fresh evidence via record_plan_drift_review.\n")
+		b.WriteString("- Flagged step_config.agent_configs.drift_review.needs_review=true — the plan_drift_review AgentWorks module will now treat this step as due until it (or the manual review-artifact-drift slash command) records fresh evidence via record_plan_drift_review.\n")
 	}
 	if driftReviewFlagFailed {
 		b.WriteString("- ⚠️ FAILED to flag drift_review.needs_review after two attempts — plan_drift_review may NOT notice this step changed until it happens to be re-edited later. Report this failure explicitly in your final response rather than treating the edit as fully clean; do not attempt to write drift_review yourself (it is not an update_step_config field — only record_plan_drift_review may set it).\n")
@@ -5645,7 +5603,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"update_scripted_step",
-		"Update an existing deterministic scripted step. The internal plan type remains scripted, but this tool only edits a checked-in script boundary implemented by code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py). Provide existing_step_id and only the contract fields to change. Use next_step_id to chain scripted steps inside a selected route and make the final script converge on a shared downstream step. Do not use it for conversational or judgment-heavy work; those steps must be agent. An agent step is rejected; edit it with update_agent_step. A scripted step runs its saved script by plan type. The plan is updated immediately. After related edits, update and test main.py and check affected validation, learnings, and downstream consumers once in the current agent; follow builder-reference/references/plan-change-impact.md. A full drift audit is reserved for Autopilot or an explicit user request.",
+		"Update an existing deterministic scripted step. The internal plan type remains scripted, but this tool only edits a checked-in script boundary implemented by code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py). Provide existing_step_id and only the contract fields to change. Use next_step_id to chain scripted steps inside a selected route and make the final script converge on a shared downstream step. Do not use it for conversational or judgment-heavy work; those steps must be agent. An agent step is rejected; edit it with update_agent_step. A scripted step runs its saved script by plan type. The plan is updated immediately. After related edits, update and test main.py and check affected validation, learnings, and downstream consumers once in the current agent; follow builder-reference/references/plan-change-impact.md. A full drift audit is reserved for AgentWorks or an explicit user request.",
 		regularUpdateParams,
 		createUpdateScriptedStepExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -5771,7 +5729,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"update_routing_step",
-		"Update a deterministic routing step in the plan. Provide existing_step_id (required) and only include fields you want to change: title, routing_question, routes, default_route_id, route_source_file, context_dependencies, or clear_description=true for legacy migration. Do not set description or context_output; routing never executes an agent and never LLM-evaluates routing_question. The selected route must come from caller route_selections, route_selection.json, route_source_file, context_dependencies, or default_route_id. The plan.json file is updated immediately when this tool is called. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for Autopilot or an explicit user request.",
+		"Update a deterministic routing step in the plan. Provide existing_step_id (required) and only include fields you want to change: title, routing_question, routes, default_route_id, route_source_file, context_dependencies, or clear_description=true for legacy migration. Do not set description or context_output; routing never executes an agent and never LLM-evaluates routing_question. The selected route must come from caller route_selections, route_selection.json, route_source_file, context_dependencies, or default_route_id. The plan.json file is updated immediately when this tool is called. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for AgentWorks or an explicit user request.",
 		routingUpdateParams,
 		createUpdateRoutingStepExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -5801,7 +5759,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"update_branch_step",
-		"Update a deterministic branch step in the plan. Provide existing_step_id (required) and only include fields you want to change: title, branch_question, routes, default_route_id, route_source_file, context_dependencies, or clear_description=true for legacy migration. Do not set description or context_output; branch never executes an agent and never LLM-evaluates branch_question. The selected route must come from caller route_selections, route_selection.json, route_source_file, context_dependencies, or default_route_id. The plan.json file is updated immediately when this tool is called. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for Autopilot or an explicit user request.",
+		"Update a deterministic branch step in the plan. Provide existing_step_id (required) and only include fields you want to change: title, branch_question, routes, default_route_id, route_source_file, context_dependencies, or clear_description=true for legacy migration. Do not set description or context_output; branch never executes an agent and never LLM-evaluates branch_question. The selected route must come from caller route_selections, route_selection.json, route_source_file, context_dependencies, or default_route_id. The plan.json file is updated immediately when this tool is called. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for AgentWorks or an explicit user request.",
 		branchUpdateParams,
 		createUpdateBranchStepExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -5831,7 +5789,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"update_crew_step",
-		"Update a crew step in the plan. Provide existing_step_id (required) and only include fields you want to change: title, description, crew_profile_id, crew_project_id, trigger_id, instruction, context_dependencies, context_output, timeout_seconds, next_step_id. The plan.json file is updated immediately when this tool is called. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for Autopilot or an explicit user request.",
+		"Update a crew step in the plan. Provide existing_step_id (required) and only include fields you want to change: title, description, crew_profile_id, crew_project_id, trigger_id, instruction, context_dependencies, context_output, timeout_seconds, next_step_id. The plan.json file is updated immediately when this tool is called. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for AgentWorks or an explicit user request.",
 		crewUpdateParams,
 		createUpdateCrewStepExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -5861,7 +5819,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"update_agent_step",
-		"Update an agent step in the plan. This also accepts a persisted legacy non-scripted step and atomically upgrades it to agent, matching the compatibility runtime agents already see; declared scripted steps still require update_scripted_step. Provide existing_step_id and only the fields to change. Replacing items changes the configured queue; an existing runtime session will still resume unless explicitly restarted by execution controls. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for Autopilot or an explicit user request.",
+		"Update an agent step in the plan. This also accepts a persisted legacy non-scripted step and atomically upgrades it to agent, matching the compatibility runtime agents already see; declared scripted steps still require update_scripted_step. Provide existing_step_id and only the fields to change. Replacing items changes the configured queue; an existing runtime session will still resume unless explicitly restarted by execution controls. After related edits, follow builder-reference/references/plan-change-impact.md: do one combined compatibility check of affected dependencies in the current agent before the targeted test. A full drift audit is reserved for AgentWorks or an explicit user request.",
 		agentSequenceUpdateParams,
 		createUpdateAgentStepExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",

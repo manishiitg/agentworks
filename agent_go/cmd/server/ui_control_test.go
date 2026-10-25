@@ -223,7 +223,7 @@ func TestUIControlOnlyAdvertisesActualActions(t *testing.T) {
 			t.Fatalf("unsafe file target accepted: %q", invalid)
 		}
 	}
-	if validateUIAction("notify", "expand", "pulse_review") != nil {
+	if validateUIAction("notify", "expand", "run_summary") != nil {
 		t.Fatal("notify disclosure missing")
 	}
 }

@@ -20,22 +20,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
-// Product schedules are the recurring jobs a product declares in its
-// product.yaml (profile.schedules). For every user who has the product, the
-// platform runs each due schedule by sending its messages one at a time into
-// the user's normal product conversation, unless the saved schedule selects
-// its own persistent isolated conversation.
-// Each user keeps their own enable/disable override and run bookkeeping in
-// _users/<id>/chat_history/product-schedules.json; run history goes to
-// schedule-runs.json next to the conversation, the same file workflow
-// schedules use.
-//
-// This deliberately stays outside SchedulerService: that service is built
-// around workflow manifests (leases, dependency queues, capacity waits, Pulse
-// reviews). A product schedule needs none of that; it needs the timing rule
-// and the one-message-at-a-time send, which productschedule and
-// startSessionInternal already provide.
-
 const productScheduleJobPrefix = "product:"
 const projectScheduleJobPrefix = "product-project:"
 const productScheduleStateFile = "product-schedules.json"

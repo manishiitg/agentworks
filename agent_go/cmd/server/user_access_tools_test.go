@@ -83,7 +83,6 @@ func TestUserAccessToolsAbsentOutsideBuilder(t *testing.T) {
 		case "child":
 			req.ParentSessionID = "parent"
 		case "pulse":
-			req.PulseLifecycleTurn = true
 		}
 		policy := resolveWorkflowChatPolicy("session", req, nil, false)
 		reg := &recordingRegistrar{}

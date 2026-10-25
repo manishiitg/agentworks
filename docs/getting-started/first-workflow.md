@@ -48,7 +48,7 @@ After the run, inspect:
 - logs and per-step execution status;
 - model and token cost;
 - any requested human input;
-- Pulse findings about reliability or missing evidence.
+- run evidence about reliability or missing data.
 
 See [Workflow Monitoring](../workflow/workflow_monitoring.md), [Cost and Log Measurement](../workflow/cost_and_log_measurement.md), and [Human Feedback](../workflow/human_feedback_system.md).
 

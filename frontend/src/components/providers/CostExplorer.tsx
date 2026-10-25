@@ -45,7 +45,7 @@ const itemGroup = (item: CostOverviewItem): Group =>
 
 const scopeNames: Record<string, string> = {
   workflow_execution: 'Runs',
-  pulse: 'Autopilot',
+  pulse: 'Past monitoring',
   builder: 'Builder',
   chat: 'Conversations',
   schedule: 'Schedules',

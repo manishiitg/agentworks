@@ -330,8 +330,6 @@ func (d PromptBudgetDue) FocusKeys() []string {
 	return keys
 }
 
-// CollectPromptBudgetDue measures the authored plan on disk (no orchestrator
-// needed) for the Pulse Gate. A missing plan is not an error.
 func CollectPromptBudgetDue(ctx context.Context, workspacePath string) (PromptBudgetDue, error) {
 	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
 	if workspacePath == "" {

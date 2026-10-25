@@ -29,7 +29,7 @@ func uiContractViewIDs(contract uiContract) []string {
 func (api *StreamingAPI) registerUIControlToolsForContract(registrar definitionToolRegistrar, session, workspace string, contract uiContract) error {
 	b := api.uiBroker()
 	b.setScope(session, workspace)
-	targetDescription := "For flow/open: exact plan step ID. For report/open: exact top-level report tab label. For files/open: workspace-relative file path (for example code/shared/helpers.py). For notify/expand: run_summary or pulse_review. Omit for other view openings."
+	targetDescription := "For flow/open: exact plan step ID. For report/open: exact top-level report tab label. For files/open: workspace-relative file path (for example code/shared/helpers.py). For notify/expand: run_summary. Omit for other view openings."
 	if isProjectProfileID(contract.Product) {
 		targetDescription = "For section targets (for example memory/skills or mcp/slack), use only the exact targets from list_ui_capabilities. Omit target to open a whole panel."
 	}

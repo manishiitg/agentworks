@@ -1,12 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
-import { Archive, Bell, ChevronDown, Globe, SlidersHorizontal, X } from 'lucide-react'
+import { Archive, ChevronDown, Globe, SlidersHorizontal, X } from 'lucide-react'
 import ModalPortal from '../../ui/ModalPortal'
 import type { ScheduleAfterRun } from '../../../services/api-types'
 
 const OPTIONS = [
   { key: 'backup', label: 'Backup', icon: Archive, description: 'Save workflow state when it has changed.' },
   { key: 'publish', label: 'Publish report', icon: Globe, description: 'Refresh the configured published report when it has changed.' },
-  { key: 'notify', label: 'Notify', icon: Bell, description: 'Record a run summary. Send failures and status changes to your configured channels.' },
 ] as const
 
 export function AfterRunActions({ options, scope, disabled, saving, onChange }: {
@@ -113,7 +112,7 @@ export function AfterRunActions({ options, scope, disabled, saving, onChange }: 
             <span aria-hidden="true" className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${options[key] ? 'bg-primary' : 'bg-muted-foreground/25'}`}><span className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${options[key] ? 'translate-x-4' : ''}`} /></span>
           </button>)}
         </div>
-        <p className="border-t border-border px-4 py-2.5 text-[11px] leading-5 text-muted-foreground">{disabled ? 'You can run these settings, not change them.' : saving || updating ? 'Saving…' : 'Changes save automatically. These actions also work with Autopilot off.'}</p>
+        <p className="border-t border-border px-4 py-2.5 text-[11px] leading-5 text-muted-foreground">{disabled ? 'You can run these settings, not change them.' : saving || updating ? 'Saving…' : 'Changes save automatically. These actions run after the workflow finishes.'}</p>
       </div>
     </ModalPortal>}
   </>

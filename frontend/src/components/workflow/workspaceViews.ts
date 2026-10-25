@@ -10,6 +10,7 @@ import {
   FileText,
   Fingerprint,
   Hand,
+  Target,
   Globe,
   LayoutDashboard,
   Monitor,
@@ -20,7 +21,6 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react'
-import { PulseIcon } from './pulseIcon'
 
 /**
  * The single registry of right-side workspace views.
@@ -58,7 +58,7 @@ export type WorkspaceViewDef = {
   label: string
   icon: LucideIcon
   /** Which toolbar cluster the view's button belongs to, if it has one. */
-  toolbarGroup?: 'views' | 'pulse' | 'capabilities'
+  toolbarGroup?: 'views' | 'setup' | 'capabilities'
   /** Opening this view shows the workspace pane. */
   pane: boolean
   /** The section renders inside a bounded flex column and manages its own
@@ -82,18 +82,18 @@ const VIEWS = [
   // -- inspectors (toolbar "pulse" cluster) --------------------------------
   // Pulse is a primary toolbar button beside Report. The remaining controls
   // are hand-built in Views/Setup for their status dots and permissions,
-  // so the legacy `toolbarGroup: 'pulse'` here
+  // so the legacy `toolbarGroup: 'setup'` here
   // is categorization only -- nothing filters on it the way `views` and
   // `capabilities` are filtered into their auto-rendered clusters below.
-  { id: 'pulse', kind: 'inspector', label: 'Autopilot', icon: PulseIcon, toolbarGroup: 'pulse', pane: true },
-  { id: 'human-actions', kind: 'inspector', label: 'Decisions', icon: Hand, toolbarGroup: 'pulse', pane: true },
-  { id: 'backup', kind: 'inspector', label: 'Backup', icon: Cloud, toolbarGroup: 'pulse', pane: true },
-  { id: 'publish', kind: 'inspector', label: 'Publish', icon: Globe, toolbarGroup: 'pulse', pane: true },
-  { id: 'notify', kind: 'inspector', label: 'Notify', icon: BellRing, toolbarGroup: 'pulse', pane: true },
+  { id: 'goals', kind: 'inspector', label: 'Goals & metrics', icon: Target, toolbarGroup: 'setup', pane: true },
+  { id: 'human-actions', kind: 'inspector', label: 'Decisions', icon: Hand, toolbarGroup: 'setup', pane: true },
+  { id: 'backup', kind: 'inspector', label: 'Backup', icon: Cloud, toolbarGroup: 'setup', pane: true },
+  { id: 'publish', kind: 'inspector', label: 'Publish', icon: Globe, toolbarGroup: 'setup', pane: true },
+  { id: 'notify', kind: 'inspector', label: 'Notify', icon: BellRing, toolbarGroup: 'setup', pane: true },
   // Access (share this workflow / manage users) opens in the pane like the
   // rest of Setup, not a modal (user request 2026-09-03). Button is hand-built
   // in the toolbar because its visibility is permission-gated.
-  { id: 'access', kind: 'inspector', label: 'Access', icon: ShieldCheck, toolbarGroup: 'pulse', pane: true },
+  { id: 'access', kind: 'inspector', label: 'Access', icon: ShieldCheck, toolbarGroup: 'setup', pane: true },
   // -- capability sections (WorkflowCapabilitiesPanel) -------------------------
   { id: 'identity', kind: 'capability', label: 'Settings', icon: Fingerprint, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
   { id: 'mcp', kind: 'capability', label: 'Connections', icon: Server, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },

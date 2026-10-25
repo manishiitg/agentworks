@@ -20,7 +20,7 @@ export const WORKSPACE_ASK_AI_MESSAGE = {
   schedules: "Help me set up or change a schedule for this workflow. Ask what should run, when it should run, and any route requirements.",
   webhooks: "Help me set up or change a webhook for this workflow. Ask which external event should trigger it, what should run, and which authentication and routing it needs.",
   files: "Help me work with this workflow's files. Ask what I want to find, understand, create, or change before modifying anything.",
-  pulse: "Tell me what Autopilot is and how it can help me. Explain in plain words, then ask what I want to review or act on.",
+  goals: "Help me understand this Goal’s purpose, targets and latest measurements. Explain what the numbers show and what needs attention.",
   'human-actions': "Help me review the pending human actions for this workflow. Explain the evidence and options for the action I choose.",
   backup: "Help me set up or change backup for this workflow. Explain the current state and ask what should be backed up and where.",
   publish: "Help me publish this workflow. Explain its current publishing state and ask which target and release process I want.",
@@ -129,7 +129,7 @@ const IDENTITY_TAB_ASK_AI_MESSAGE: Record<IdentityTabId, { label: string; summar
   },
   laptop: {
     label: 'Settings · Local laptop',
-    summary: 'Help me connect my computer to this Goal with manage_laptop_access. Check the current connection, explain its folders and terminal commands switch, and change only what I ask. Steps, schedules and Autopilot stay on the server.',
+    summary: 'Help me connect my computer to this Goal with manage_laptop_access. Check the current connection, explain its folders and terminal commands switch, and change only what I ask. Steps and schedules stay on the server.',
   },
   upgrades: {
     label: 'Identity · Upgrades',

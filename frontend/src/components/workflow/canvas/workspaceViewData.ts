@@ -2,28 +2,9 @@ import { createContext, useContext } from 'react'
 import type { UsePlanDataReturn } from '../hooks/usePlanData'
 import type { UseWorkspaceStateReturn } from '../hooks/useWorkspaceState'
 import type { WorkflowExecutionStatus } from '../hooks/useWorkflowExecution'
-import type { VariablesManifest, PulseOutwardActions, WorkflowRunSetup, PulseOverviewResponse } from '../../../services/api-types'
+import type { VariablesManifest } from '../../../services/api-types'
 
 export type WorkflowImageExportFormat = 'svg' | 'png' | 'jpeg'
-
-/** Pulse's data, owned by the host so both the toolbar's Pulse badge and the
- * pane's PulseView (siblings under the host, not parent/child) can read the
- * same live state instead of each fetching their own copy. */
-export interface PulseData {
-  monitorOn: boolean
-  monitorSaving: boolean
-  toggleMonitor: () => void
-  outwardActions: PulseOutwardActions
-  outwardSaving: boolean
-  setOutward: (next: PulseOutwardActions) => void
-  statusError: string | null
-  statusLoading: boolean
-  refresh: (showLoading?: boolean) => Promise<void>
-  hasSoul: boolean
-  runSetup: WorkflowRunSetup | null
-  overview: PulseOverviewResponse | null
-
-}
 
 /** The flow view's shell state. `loading` and `error` replace the whole pane
  * (and hide the toolbar) exactly as the flow canvas always did before the
@@ -56,7 +37,6 @@ export interface WorkspaceViewData {
   /** The flow canvas registers its image export here so the host-owned
    * toolbar can trigger it; null when no flow canvas is mounted. */
   registerExportHandler: (handler: ((format: WorkflowImageExportFormat) => Promise<void>) | null) => void
-  pulse: PulseData
 }
 
 export const WorkspaceViewDataContext = createContext<WorkspaceViewData | null>(null)

@@ -107,5 +107,5 @@ func (api *StreamingAPI) workflowChatLaptopPolicyKey(ctx context.Context, req Qu
 
 func (api *StreamingAPI) personalLaptopConnections(caller *UserClaims) map[string]any {
 	devices := api.localDeviceListForOwner(caller)
-	return map[string]any{"devices": devices, "setup": laptopSetupSteps(len(devices) == 0), "next": "Connect your computer once in My Vault, then select it with manage_laptop_access in any Goal or Crew you build. Each project chooses folders and terminal commands. Steps, schedules and Autopilot never inherit laptop access."}
+	return map[string]any{"devices": devices, "setup": laptopSetupSteps(len(devices) == 0), "next": "Connect your computer once in My Vault, then select it with manage_laptop_access in any Goal or Crew you build. Each project chooses folders and terminal commands. Steps, schedules and background work never inherit laptop access."}
 }

@@ -6,7 +6,28 @@ import (
 	"fmt"
 	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"net/http"
 )
+
+// handleGetGoalMetrics exposes the same saved measurements as the native tools.
+// registerWorkflowReadRoutes supplies the existing workflow access check.
+func (api *StreamingAPI) handleGetGoalMetrics(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	workspacePath, ok := requireWorkspacePath(w, r)
+	if !ok {
+		return
+	}
+	ledger, err := step.LoadGoalMeasurements(r.Context(), workspacePath, 500)
+	if err != nil {
+		http.Error(w, "Could not read this Goal's measurements", http.StatusInternalServerError)
+		return
+	}
+	writeAIJSON(w, ledger)
+}
 
 func createGoalMetricTools() ([]llmtypes.Tool, map[string]interface{}, map[string]string) {
 	var metric, observation map[string]interface{}
@@ -24,9 +45,9 @@ func createGoalMetricTools() ([]llmtypes.Tool, map[string]interface{}, map[strin
 		name, description, field string
 		schema                   map[string]interface{}
 	}{
-		{"get_goal_metrics", "Read configured primary/supporting metric definitions and bounded per-metric source-backed history with actual observation times. Builder and Autopilot use the same saved readings to agree measurement plans and verify repairs. Numerical differences still need agent review of source quality and goal meaning.", "", nil},
-		{"configure_goal_metrics", "Builder setup: replace the complete active metric list with one or more primary metrics. Group primary metrics using optional goal_id/goal_name; link supporting measurements with supports and support_kind. Multiple outcomes never force a workflow split. Reuse stable IDs; changing measurement meaning requires a new ID. Omitted metrics are retired, history retained. Confirm changes to goal meaning and targets with the user; never invent targets. This saves definitions, not a claim that the measurement step works. No mapping from a metric to executable work is required; Autopilot and Builder judge goal contribution from actual run evidence.", "metrics", metric},
-		{"record_goal_observations", "Record real measurements from ordinary workflow steps, independently of Autopilot reviews. Use configured metric IDs and exact criterion/unit/route/environment. Supply source run ID, actual source observation time and evidence. For period-based readings supply window_start and window_end in RFC3339; never invent boundaries for old data. Instant/snapshot metrics need no period. Missing values need status; never substitute zero. Backfill only comparable evidence. Duplicate observations are idempotent; conflicting values are rejected.", "observations", observation},
+		{"get_goal_metrics", "Read configured primary/supporting metric definitions and bounded per-metric source-backed history with actual observation times. Builder and AgentWorks use the same saved readings to agree measurement plans and verify repairs. Numerical differences still need agent review of source quality and goal meaning.", "", nil},
+		{"configure_goal_metrics", "Builder setup: replace the complete active metric list with one or more primary metrics. Group primary metrics using optional goal_id/goal_name; link supporting measurements with supports and support_kind. Multiple outcomes never force a workflow split. Reuse stable IDs; changing measurement meaning requires a new ID. Omitted metrics are retired, history retained. Confirm changes to goal meaning and targets with the user; never invent targets. This saves definitions, not a claim that the measurement step works. No mapping from a metric to executable work is required; The Builder and AgentWorks judge goal contribution from actual run evidence.", "metrics", metric},
+		{"record_goal_observations", "Record real measurements from ordinary workflow steps, from their original sources. Use configured metric IDs and exact criterion/unit/route/environment. Supply source run ID, actual source observation time and evidence. For period-based readings supply window_start and window_end in RFC3339; never invent boundaries for old data. Instant/snapshot metrics need no period. Missing values need status; never substitute zero. Backfill only comparable evidence. Duplicate observations are idempotent; conflicting values are rejected.", "observations", observation},
 	}
 	tools := []llmtypes.Tool{}
 	executors := map[string]interface{}{}
@@ -64,7 +85,7 @@ func createGoalMetricTools() ([]llmtypes.Tool, map[string]interface{}, map[strin
 		if err = step.ConfigureGoalMetrics(ctx, stringToolArg(args, "workspace_path"), metrics); err != nil {
 			return "", err
 		}
-		return `{"status":"configured","next":"Connect ordinary measurement steps and verify source-backed DB observations and history with Autopilot; do not claim measurement is ready yet."}`, nil
+		return `{"status":"configured","next":"Connect ordinary measurement steps and verify source-backed DB observations and history with get_goal_metrics; do not claim measurement is ready yet."}`, nil
 	}
 	executors["record_goal_observations"] = func(ctx context.Context, args map[string]interface{}) (string, error) {
 		raw, err := json.Marshal(args["observations"])

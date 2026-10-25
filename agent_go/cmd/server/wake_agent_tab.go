@@ -28,10 +28,14 @@ var wakeAgentTabLast = struct {
 // no run evidence means the schedule fired but no workflow actually ran.
 func wakeReasonForRun(status string, producedRunEvidence bool) string {
 	switch status {
-	case "error":
+	case "error", "failed":
 		return "failed"
 	case "partial":
 		return "stopped partway"
+	case "blocked", "waiting_for_platform":
+		return "did not start"
+	case "no_run":
+		return "finished without actually running the workflow"
 	case "success":
 		if !producedRunEvidence {
 			return "finished without actually running the workflow"
@@ -42,18 +46,17 @@ func wakeReasonForRun(status string, producedRunEvidence bool) string {
 
 // wakeAgentTab messages the workflow's wake tab when its run ended badly. It
 // never changes the run's recorded result and never blocks the scheduler.
-func (s *SchedulerService) wakeAgentTab(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, status, errMsg, runID string) {
+func (s *SchedulerService) wakeAgentTab(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, reason, errMsg, runID string) {
 	if s == nil || s.api == nil || s.api.productSchedules == nil || manifest == nil || sctx == nil {
 		return
 	}
-	if sctx.PulseOnly || sctx.WebhookInput != nil {
+	if sctx.WebhookInput != nil {
 		return
 	}
 	notifications := manifest.Capabilities.Notifications
 	if notifications == nil || notifications.WakeTab == nil {
 		return
 	}
-	reason := wakeReasonForRun(status, sctx.ProducedRunEvidence)
 	if reason == "" {
 		return
 	}

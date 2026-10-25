@@ -6,12 +6,6 @@ import (
 	"sync"
 )
 
-// Steps running right now, across every workshop in this process, keyed by
-// workflow and step. A Pulse run that re-runs a step to fix or verify it while
-// the workflow's own scheduled run is executing that same step makes the step
-// act twice (a second email send, a second post). Pulse asks this registry
-// first (WorkshopConfig.StepBusyForPulse) and waits instead.
-
 type runningWorkflowStep struct {
 	executionID string
 	sessionID   string // the launching workshop's main session

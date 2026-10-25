@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// The continuing Pulse conversation uses the workflow's existing private store.
-func openPulseStoreDB(ctx context.Context, workspacePath string, create bool) (string, *sql.DB, error) {
+func openWorkflowStoreDB(ctx context.Context, workspacePath string, create bool) (string, *sql.DB, error) {
 	return openReportHumanInputDB(ctx, workspacePath, create)
 }
 
@@ -19,7 +18,7 @@ func stringToolArg(args map[string]interface{}, key string) string {
 
 func stringSliceFromToolArg(raw interface{}) []string {
 	if values, ok := raw.([]string); ok {
-		return normalizePulseEvidence(values)
+		return normalizeWorkflowEvidence(values)
 	}
 	arr, ok := raw.([]interface{})
 	if !ok {
@@ -34,7 +33,7 @@ func stringSliceFromToolArg(raw interface{}) []string {
 	return out
 }
 
-func normalizePulseEvidence(evidence []string) []string {
+func normalizeWorkflowEvidence(evidence []string) []string {
 	out := make([]string, 0, len(evidence))
 	seen := map[string]bool{}
 	for _, item := range evidence {
@@ -48,7 +47,7 @@ func normalizePulseEvidence(evidence []string) []string {
 	return out
 }
 
-func pulseArgTypeName(raw interface{}) string {
+func toolArgTypeName(raw interface{}) string {
 	switch value := raw.(type) {
 	case nil:
 		return "nothing"
@@ -73,13 +72,13 @@ func pulseArgTypeName(raw interface{}) string {
 func strictStringSliceToolArg(raw interface{}) ([]string, error) {
 	arr, ok := raw.([]interface{})
 	if !ok {
-		return nil, fmt.Errorf("must be an array of strings such as [\"first\", \"second\"] (one string goes in a one-item array), got %s", pulseArgTypeName(raw))
+		return nil, fmt.Errorf("must be an array of strings such as [\"first\", \"second\"] (one string goes in a one-item array), got %s", toolArgTypeName(raw))
 	}
 	out := make([]string, 0, len(arr))
 	for index, item := range arr {
 		value, ok := item.(string)
 		if !ok {
-			return nil, fmt.Errorf("item %d must be a string, got %s", index, pulseArgTypeName(item))
+			return nil, fmt.Errorf("item %d must be a string, got %s", index, toolArgTypeName(item))
 		}
 		if value = strings.TrimSpace(value); value != "" {
 			out = append(out, value)

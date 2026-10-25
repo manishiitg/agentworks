@@ -15,9 +15,6 @@ var workflowWorkspaceViews = func() []struct{ ID, Label, About string } {
 	views := make([]struct{ ID, Label, About string }, 0, len(uiControlContract.Views))
 	for _, view := range uiControlContract.Views {
 		about := view.Label
-		if view.ID == "pulse" {
-			about = "Needs your decision cards, saved answers and their application history, review findings and Autopilot status"
-		}
 		views = append(views, struct{ ID, Label, About string }{view.ID, view.Label, about})
 	}
 	return views

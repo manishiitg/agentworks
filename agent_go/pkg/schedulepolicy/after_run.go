@@ -1,4 +1,4 @@
-// Package schedulepolicy defines the shared schedule Pulse authoring contract.
+// Package schedulepolicy defines the shared schedule after-run authoring contract.
 package schedulepolicy
 
 import (
@@ -8,9 +8,9 @@ import (
 	"strings"
 )
 
-const ExplicitPulseContractVersion = "1.0.41"
+const ExplicitAfterRunContractVersion = "1.0.41"
 
-func RequiresExplicitPulse(version string) bool {
+func RequiresExplicitAfterRun(version string) bool {
 	parts := strings.Split(strings.TrimSpace(version), ".")
 	if len(parts) != 3 {
 		return false
@@ -26,11 +26,11 @@ func RequiresExplicitPulse(version string) bool {
 	return values[0] > 1 || (values[0] == 1 && (values[1] > 0 || values[2] >= 41))
 }
 
-// ValidatePulseStamp checks canonical after-run choices only when stamping an
+// ValidateAfterRunStamp checks canonical after-run choices only when stamping an
 // upgrade. Already-stamped workflows are not revalidated by runtime reads.
 // Disabled and calendar schedules count; webhooks do not do housekeeping.
-func ValidatePulseStamp(content []byte, target string) error {
-	if !RequiresExplicitPulse(target) {
+func ValidateAfterRunStamp(content []byte, target string) error {
+	if !RequiresExplicitAfterRun(target) {
 		return nil
 	}
 	var manifest struct {
@@ -41,7 +41,6 @@ func ValidatePulseStamp(content []byte, target string) error {
 			AfterRun *struct {
 				Backup  *bool `json:"backup"`
 				Publish *bool `json:"publish"`
-				Notify  *bool `json:"notify"`
 			} `json:"after_run"`
 		} `json:"schedules"`
 	}
@@ -56,8 +55,8 @@ func ValidatePulseStamp(content []byte, target string) error {
 			continue
 		}
 		a := schedule.AfterRun
-		if a == nil || a.Backup == nil || a.Publish == nil || a.Notify == nil {
-			return fmt.Errorf("schedules[%d] (%s): set after_run backup, publish and notify using update_schedule", i, schedule.ID)
+		if a == nil || a.Backup == nil || a.Publish == nil {
+			return fmt.Errorf("schedules[%d] (%s): set after_run backup and publish using update_schedule", i, schedule.ID)
 		}
 	}
 	return nil

@@ -21,7 +21,7 @@ func writeMCPToolsFileForTest(t *testing.T, toolsJSON []byte) string {
 	return path
 }
 
-func buildPulseTestMCPBridge(t *testing.T) string {
+func buildTestMCPBridge(t *testing.T) string {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {

@@ -133,3 +133,16 @@ func readWorkflowSchedulerState(ctx context.Context, manifest *WorkflowManifest,
 	}
 	return view
 }
+
+// workflowSchedulesAllPaused reports the person's saved schedule pause.
+func workflowSchedulesAllPaused(manifest *WorkflowManifest) bool {
+	if manifest == nil || len(manifest.Schedules) == 0 {
+		return false
+	}
+	for _, schedule := range manifest.Schedules {
+		if schedule.Enabled {
+			return false
+		}
+	}
+	return true
+}

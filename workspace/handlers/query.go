@@ -213,7 +213,7 @@ func pruneMigrationBackups(backupDir string) {
 // applied migration, inside the same transaction as the DDL it records --
 // so a ledger row exists if and only if its migration actually committed.
 // Not underscore-prefixed: matches this codebase's existing backend-owned
-// table naming (run_concerns, pulse_module_state, eval_results, ...), not a
+// table naming (run_concerns, goal_observations, workflow_goal_metrics, ...), not a
 // distinct "system table" convention.
 const schemaMigrationLedgerTableSQL = `CREATE TABLE IF NOT EXISTS schema_migration_log (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -782,24 +782,18 @@ func quoteIdent(name string) string {
 // touch — each already has its own dedicated, validated write path elsewhere
 // (report_human_inputs via /report-human-inputs/{id}/answer|dismiss,
 // schema_migration_log via the managed-migration route, run_concerns/
-// eval_results/pulse_module_state/pulse_module_audit written by Go only, this
+// platform-owned metric and decision records written by Go only, this
 // endpoint's own audit log). Keep in sync with the Go-managed table list in
 // guidance/templates/system/stores.md.
 var reportFieldUpdateReservedTables = map[string]bool{
 	"workflow_goal_metrics":     true,
-	"pulse_goal_observations":   true,
+	"goal_observations":         true,
 	"report_human_inputs":       true,
 	"report_human_input_events": true,
 	"schema_migration_log":      true,
 	"run_concerns":              true,
 	"eval_results":              true,
-	"pulse_module_state":        true,
-	"pulse_module_audit":        true,
 	"report_field_update_log":   true,
-	"pulse_recommendations":     true,
-	"goal_lead_conversation":    true,
-	"goal_lead_messages":        true,
-	"goal_lead_qa_requests":     true,
 }
 
 // reportFieldUpdateGuardedColumnSuffixes/Names bound what a report's own

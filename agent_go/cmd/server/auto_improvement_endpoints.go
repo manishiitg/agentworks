@@ -63,10 +63,6 @@ type BuilderDocResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// handleGetBuilderDoc serves stable workflow documents and compact dashboard
-// card fragments. Pulse has its own SQLite-backed API and popup; it is not a
-// builder document.
-// The "doc" query param picks which file. Read-only.
 func (api *StreamingAPI) handleGetBuilderDoc(w http.ResponseWriter, r *http.Request) {
 	if !setupCORS(w, r, http.MethodGet) {
 		return

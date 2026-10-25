@@ -31,7 +31,7 @@ var externalToolMerges = []externalToolMerge{
 		{"create", "create_dashboard"}, {"update", "update_dashboard"}, {"validate", "validate_dashboard"},
 		{"export_static", "export_dashboard_static"}, {"export_motion", "export_dashboard_motion"}, {"preview", "preview_dashboard"}, {"publish", "publish_dashboard"}, {"restore", "restore_dashboard"},
 	}},
-	{"settings", "Read and change the setup of a workflow, Flow or Crew; inspect saved secret sources for these projects: models, MCP servers, skills, secrets, personal Google/Slack accounts, Autopilot, browser mode, notifications and after-run steps.", [][2]string{
+	{"settings", "Read and change the setup of a workflow, Flow or Crew; inspect saved secret sources for these projects: models, MCP servers, skills, secrets, personal Google/Slack accounts, browser mode, notifications and after-run steps.", [][2]string{
 		{"get", "get_settings"}, {"update", "update_settings"}, {"secret_sources", "get_secret_sources"},
 		{"google_account", "workflow_google_account"}, {"slack_account", "workflow_slack_account"}, {"slack_bot", "workflow_slack_bot"},
 	}},
@@ -62,10 +62,9 @@ var externalToolMerges = []externalToolMerge{
 	{"runs", "Runs of a workflow or Flow: list them, read one, its logs, poll a session started externally and answer a pending input.", [][2]string{
 		{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"status", "run_status"}, {"reply_input", "run_reply_input"},
 	}},
-	{"builder", "Edit a workflow or Flow through its Builder model in your existing workflow chat, and talk to its Autopilot. Submit with action=chat, then poll status; answer a question with reply_input; cancel an operation; read and restore file edits.", [][2]string{
+	{"builder", "Edit a workflow or Flow through its Builder model in your existing workflow chat. Submit with action=chat, then poll status; answer a question with reply_input; cancel an operation; read and restore file edits.", [][2]string{
 		{"tabs", "builder_tabs"}, {"chat", "builder_chat"}, {"status", "builder_status"}, {"reply_input", "builder_reply_input"}, {"cancel", "builder_cancel"},
 		{"file_history", "builder_file_history"}, {"restore_file", "builder_restore_file"},
-		{"pulse_chat", "builder_pulse_chat"}, {"pulse_status", "builder_pulse_status"},
 	}},
 	{"relay", "Flows: create and edit one, test the draft, publish an immutable version, run a published version and read its runs and releases. Edit its code directly with files action=read/write, then test and inspect the draft run.", [][2]string{
 		{"create", "create_relay"}, {"update", "update_relay"}, {"test", "test_relay"}, {"publish", "publish_relay"},

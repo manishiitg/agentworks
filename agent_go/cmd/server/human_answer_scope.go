@@ -11,20 +11,6 @@ import (
 	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// humanAnswerScope is who may answer a decision through
-// answer_human_input_request: only a person in their own Builder chat. The
-// answer is recorded as theirs and applied in the same turn, so an agent that
-// answers is an agent approving its own proposal.
-//
-// Refused:
-//   - background and review agents (their tool sessions are registered in
-//     workshop_tool_sessions.go), which includes every Pulse reviewer;
-//   - scheduled runs and Pulse lifecycle turns (sched_/schedule- sessions);
-//   - any session with no Builder workspace or no authenticated owner.
-//
-// The workspace and the person come from trusted session state, never from
-// workspace_path or the model. Crew Builders recheck the project registry;
-// workflow Builders use pulseToolScope with write access required.
 func humanAnswerScope(ctx context.Context, requestedWorkspace string) (string, *UserClaims, error) {
 	sessionID := strings.TrimSpace(executor.SessionIDFromContext(ctx))
 	if sessionID == "" {
@@ -38,10 +24,10 @@ func humanAnswerScope(ctx context.Context, requestedWorkspace string) (string, *
 	if sessionID == "" || isScheduledSession(sessionID) {
 		return "", nil, fmt.Errorf("%s (a scheduled or unattended run cannot answer it)", refusal)
 	}
-	if workspacePath, claims, crew, err := pulsePlatformAPI.crewHumanAnswerScope(ctx, sessionID, requestedWorkspace); crew {
+	if workspacePath, claims, crew, err := workflowToolsAPI.crewHumanAnswerScope(ctx, sessionID, requestedWorkspace); crew {
 		return workspacePath, claims, err
 	}
-	workspacePath, claims, err := pulsePlatformAPI.pulseToolScope(ctx, requestedWorkspace, true)
+	workspacePath, claims, err := workflowToolsAPI.workflowToolScope(ctx, requestedWorkspace, true)
 	if err != nil {
 		return "", nil, fmt.Errorf("%s: %w", refusal, err)
 	}

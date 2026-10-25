@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import { Bot, ChevronDown, ChevronRight } from 'lucide-react'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
-import { PulseIcon } from './workflow/pulseIcon'
 import { ShowFullContentButton, useChatArtifactText, type ChatArtifactRef } from './ChatArtifactExpander'
 
 // Only server-stamped delivery metadata selects this presentation. Unmarked
@@ -16,7 +15,7 @@ export function agentInboxMessage(metadata?: Record<string, unknown>) {
 
 type AgentInboxContent = NonNullable<ReturnType<typeof agentInboxMessage>>
 // Plain words for the sender kind the server stamps; an unknown or empty kind adds nothing.
-const KIND_LABEL: Record<string, string> = { agent: 'Agent', crew: 'Crew', goal: 'Goal', flow: 'Flow', code: 'Crew', pulse: 'Autopilot' }
+const KIND_LABEL: Record<string, string> = { agent: 'Agent', crew: 'Crew', goal: 'Goal', flow: 'Flow', code: 'Crew' }
 const BODY_ARTIFACT_KEYS = ['metadata.display_content'] as const
 
 // A message another agent sent into this chat: one quiet row, like "Message to X sent", opened on request.
@@ -24,7 +23,7 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
   const [open, setOpen] = useState(false)
   const full = useChatArtifactText(artifact, BODY_ARTIFACT_KEYS)
   const body = full.text || message.body
-  const Icon = message.kind === 'pulse' || /\b(?:Pulse|Autopilot)(?: chat)?$/i.test(message.sender) ? PulseIcon : Bot
+  const Icon = Bot
   const kind = KIND_LABEL[message.kind]
   const showKind = kind && !message.sender.toLowerCase().startsWith(kind.toLowerCase())
   return (

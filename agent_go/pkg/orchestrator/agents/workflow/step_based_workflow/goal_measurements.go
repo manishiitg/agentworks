@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const goalObservationsSchema = `CREATE TABLE IF NOT EXISTS pulse_goal_observations (
+const goalObservationsSchema = `CREATE TABLE IF NOT EXISTS goal_observations (
 	observation_id TEXT PRIMARY KEY,
 	criterion_id TEXT NOT NULL,
 	metric TEXT NOT NULL,
@@ -107,12 +107,12 @@ func LoadGoalMeasurements(ctx context.Context, workspacePath string, limit int) 
 	}
 	rows, err := db.QueryContext(ctx, `SELECT observation_id, criterion_id, metric, run_id, route, environment,
 		value, status, unit, observed_at, window_start, window_end, evidence_json, recorded_at
-		FROM pulse_goal_observations WHERE observation_id IN (
- SELECT observation_id FROM pulse_goal_observations ORDER BY julianday(observed_at) DESC, recorded_at DESC LIMIT ?
+		FROM goal_observations WHERE observation_id IN (
+ SELECT observation_id FROM goal_observations ORDER BY julianday(observed_at) DESC, recorded_at DESC LIMIT ?
  ) OR observation_id IN (
  SELECT observation_id FROM (
  SELECT o.observation_id, ROW_NUMBER() OVER (PARTITION BY o.metric,o.criterion_id,o.unit,o.route,o.environment ORDER BY julianday(o.observed_at) DESC, o.recorded_at DESC) AS position
- FROM pulse_goal_observations o JOIN workflow_goal_metrics m ON m.metric_id=o.metric AND m.active=1
+ FROM goal_observations o JOIN workflow_goal_metrics m ON m.metric_id=o.metric AND m.active=1
  WHERE o.criterion_id=json_extract(m.definition_json,'$.criterion_id') AND o.unit=json_extract(m.definition_json,'$.unit')
  AND o.route=json_extract(m.definition_json,'$.route') AND o.environment=json_extract(m.definition_json,'$.environment')
  ) WHERE position<=120

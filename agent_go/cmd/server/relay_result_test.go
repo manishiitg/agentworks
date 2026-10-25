@@ -114,9 +114,6 @@ func TestRelayManifestKindValidation(t *testing.T) {
 	if err := ValidateManifest(manifest); err != nil {
 		t.Fatalf("relay manifest rejected: %v", err)
 	}
-	if manifest.PulseEnabled() || manifest.EffectivePulseMode(WorkflowSchedule{}) != schedulePulseModeOff {
-		t.Fatal("Relay enabled Autopilot")
-	}
 	manifest.Capabilities.SlackConnectionID = "slack-app"
 	if err := ValidateManifest(manifest); err == nil {
 		t.Fatal("Relay accepted a Slack connection")
@@ -172,11 +169,10 @@ func TestRelayFunctionContextSuppressesLegacyChannels(t *testing.T) {
 	// Existing Relays may still have the previous Slack configuration on disk.
 	manifest.Capabilities.SlackConnectionID = "legacy-slack"
 	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{
-		GmailConnectionID:                   "google-account",
-		RunSummaryChannels:                  []string{"gmail", "slack"},
-		SlackWebhookSecretName:              "legacy-webhook",
-		RunSummarySlackWebhookSecretNames:   []string{"legacy-run-webhook"},
-		PulseSummarySlackWebhookSecretNames: []string{"legacy-pulse-webhook"},
+		GmailConnectionID:                 "google-account",
+		RunSummaryChannels:                []string{"gmail", "slack"},
+		SlackWebhookSecretName:            "legacy-webhook",
+		RunSummarySlackWebhookSecretNames: []string{"legacy-run-webhook"},
 	}
 	sctx := buildScheduleContext("Workflow/relay", manifest, WorkflowSchedule{GroupNames: []string{"prod"}, TriggerPayload: json.RawMessage(`{"question":"status"}`)})
 	if sctx.WorkflowKind != "relay" || sctx.Capabilities.Notifications == nil ||
@@ -185,7 +181,7 @@ func TestRelayFunctionContextSuppressesLegacyChannels(t *testing.T) {
 		t.Fatalf("Relay schedule context = %+v", sctx)
 	}
 	if sctx.Capabilities.SlackConnectionID != "" || sctx.Capabilities.Notifications.SlackWebhookSecretName != "" ||
-		len(sctx.Capabilities.Notifications.RunSummarySlackWebhookSecretNames) != 0 || len(sctx.Capabilities.Notifications.PulseSummarySlackWebhookSecretNames) != 0 {
+		len(sctx.Capabilities.Notifications.RunSummarySlackWebhookSecretNames) != 0 {
 		t.Fatalf("Relay retained legacy Slack credentials: %+v", sctx.Capabilities)
 	}
 	if sctx.Capabilities.Notifications.GmailConnectionID != "google-account" || manifest.Capabilities.SlackConnectionID != "legacy-slack" || manifest.Capabilities.Notifications.SlackWebhookSecretName != "legacy-webhook" {

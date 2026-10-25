@@ -115,9 +115,6 @@ type PlanDriftCandidate struct {
 	Checks   []StepDriftCheck `json:"checks"`
 }
 
-// PlanDriftDueItem is the lightweight UI/status projection of due-ness. It
-// intentionally omits deterministic check execution so polling the Pulse UI
-// does not repeatedly run report, DB, validation, and scripted-code checks.
 type PlanDriftDueItem struct {
 	StepID   string `json:"step_id"`
 	StepType string `json:"step_type,omitempty"`

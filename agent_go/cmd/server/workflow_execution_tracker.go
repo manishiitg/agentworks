@@ -22,19 +22,6 @@ const (
 
 const trackedExecutionRetention = 24 * time.Hour
 
-// trackedExecutionRunningMaxAge caps how long an entry may sit in "running".
-//
-// The registry is in-memory and an entry only leaves "running" when a completion
-// path fires. If one is ever missed — a dropped notifier call, a killed agent
-// process, a context torn down before finalize — the entry is immortal: it keeps
-// the global monitor showing a live spinner and makes every new workflow-builder
-// chat fail with 409 workflow_busy, until the server is restarted. That has bitten
-// this workflow repeatedly.
-//
-// The cap is deliberately far above any legitimate run. The scheduler's own
-// inactivity timeouts are 10 minutes for a normal Pulse step and 30 for Goal
-// Advisor, and observed full runs are ~1.5 hours, so 12 hours cannot reap live
-// work — it only clears entries that are certainly dead.
 const trackedExecutionRunningMaxAge = 12 * time.Hour
 
 // TrackedWorkflowExecution is the backend's unified execution record.
@@ -171,10 +158,6 @@ func trackedExecutionBlocksNewWorkflowBuilderChat(exec *TrackedWorkflowExecution
 	return true
 }
 
-// trackedExecutionBlocksScheduledWorkflow distinguishes producing workflow
-// executions from interactive chats and Pulse/reviewer stages. A schedule has
-// its own durable single-run lock, so only another actual full-workflow run
-// should prevent it from starting; chats are intentionally a separate lane.
 func trackedExecutionBlocksScheduledWorkflow(exec *TrackedWorkflowExecution) bool {
 	if exec == nil || exec.Status != trackedExecutionStatusRunning {
 		return false

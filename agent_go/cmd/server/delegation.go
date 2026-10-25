@@ -314,12 +314,6 @@ func (n *workshopExecutionBgNotifier) OnExecutionComplete(execID, name, result s
 		return
 	}
 
-	// Context-canceled / deadline-exceeded while the registry still says running
-	// is a runtime timeout or unexpected parent-context loss, not an explicit user
-	// cancellation. Treat it as failed and notify the waiting main agent. Marking
-	// it canceled would make processBackgroundAgentCompletion deliberately suppress
-	// the synthetic turn, which strands Pulse after a timed-out maintenance agent.
-
 	duration := time.Since(agent.CreatedAt)
 	if len(meta) > 0 {
 		agent.SetMetadata(meta)

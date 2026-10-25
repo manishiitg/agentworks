@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -42,5 +43,34 @@ func TestAfterRunSummaryDeliveryIsIndependentOfAgentTool(t *testing.T) {
 		}
 	default:
 		t.Fatal("server run summary was not delivered")
+	}
+}
+
+// PLAT-825-102: removing notify must not turn repeat successes into team spam.
+func TestScheduledOutcomeOnlyDeliversFailuresAndStatusChanges(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	runs := []ScheduleRunEntry{
+		{ID: "other", ScheduleID: "other", Status: "error", StartedAt: time.Now()},
+		{ID: "prior", ScheduleID: "daily", Status: "success", StartedAt: time.Now().Add(-time.Hour)},
+		{ID: "current", ScheduleID: "daily", Status: "success", StartedAt: time.Now()},
+	}
+	data, err := json.Marshal(runs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, "Workflow/invoices/schedule-runs.json", string(data))
+	if shouldDeliverRunOutcome(t.Context(), "Workflow/invoices", "daily", "current", "success") {
+		t.Fatal("routine successful repeat would notify the team")
+	}
+	for _, status := range []string{"error", "partial", "blocked", "no_run"} {
+		if !shouldDeliverRunOutcome(t.Context(), "Workflow/invoices", "daily", "current", status) {
+			t.Fatalf("%s did not notify", status)
+		}
+	}
+	runs[1].Status = "error"
+	data, _ = json.Marshal(runs)
+	f.write(t, "Workflow/invoices/schedule-runs.json", string(data))
+	if !shouldDeliverRunOutcome(t.Context(), "Workflow/invoices", "daily", "current", "success") {
+		t.Fatal("recovery was suppressed")
 	}
 }

@@ -57,26 +57,14 @@ func RegisterSessionNotificationDestination(sessionID string, dest *services.Not
 	if len(incoming.RunSummaryChannels) > 0 {
 		current.RunSummaryChannels = incoming.RunSummaryChannels
 	}
-	if len(incoming.PulseSummaryChannels) > 0 {
-		current.PulseSummaryChannels = incoming.PulseSummaryChannels
-	}
 	if len(incoming.RunSummaryGmailConnectionIDs) > 0 {
 		current.RunSummaryGmailConnectionIDs = incoming.RunSummaryGmailConnectionIDs
-	}
-	if len(incoming.PulseSummaryGmailConnectionIDs) > 0 {
-		current.PulseSummaryGmailConnectionIDs = incoming.PulseSummaryGmailConnectionIDs
 	}
 	if len(incoming.RunSummaryRecipients) > 0 {
 		current.RunSummaryRecipients = incoming.RunSummaryRecipients
 	}
-	if len(incoming.PulseSummaryRecipients) > 0 {
-		current.PulseSummaryRecipients = incoming.PulseSummaryRecipients
-	}
 	if len(incoming.RunSummaryWebhooks) > 0 {
 		current.RunSummaryWebhooks = incoming.RunSummaryWebhooks
-	}
-	if len(incoming.PulseSummaryWebhooks) > 0 {
-		current.PulseSummaryWebhooks = incoming.PulseSummaryWebhooks
 	}
 	sessionNotificationDestinations.values[sessionID] = current
 }
@@ -152,7 +140,6 @@ func UpdateSessionGmailSender(sessionID, workspacePath, senderID string) bool {
 		dest.Gmail.ConnectionIDs = []string{senderID}
 	}
 	dest.RunSummaryGmailConnectionIDs = nil
-	dest.PulseSummaryGmailConnectionIDs = nil
 	sessionNotificationDestinations.values[sessionID] = dest
 	return true
 }

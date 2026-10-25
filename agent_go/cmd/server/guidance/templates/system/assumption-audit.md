@@ -57,15 +57,13 @@ a Goal concern. Do not confuse the two.
 3. Apply a bounded correction without asking when it preserves business meaning:
    remove stale prose, parameterize a literal, stop treating a tactic as a goal,
    or mark a current choice as revisable.
-4. If changing it would alter business intent, risk, cost, external behavior, or
-   a material plan path, do not guess. Add or refresh one concise Product finding
-   in the SQLite-backed Autopilot lifecycle with the assumption, source, evidence
-   for/against, and validation/retirement condition. Route high-leverage strategy
-   work to Goal Advisor. Create a human-input request only when a real user
-   decision is required. Do not create a separate assumptions presentation.
-5. When an assumption is resolved, close its Product finding and record the
-   consequential outcome through typed Autopilot tools. Never duplicate the same
-   challenge across findings.
+4. If changing it would alter business intent, risk, cost, external behaviour or
+   a material plan path, ask the owner through `create_human_input_request`.
+   Include the assumption, source, evidence for and against, and what would
+   validate it. Keep one pending question for the same decision.
+5. Record authorized work and its evidence in the existing plan changelog or
+   requesting conversation. Close obsolete proposals through the normal
+   withdrawal tools; a withdrawal never grants approval.
 
 ### Store-specific ownership
 
@@ -76,7 +74,7 @@ a Goal concern. Do not confuse the two.
 - **Report:** show goal/outcome truth; do not make the current implementation or
   an inferred proxy look like the user's target.
 - **KB notes:** distinguish durable domain evidence from workflow-design beliefs.
-  Never rewrite user-owned `knowledgebase/context/` in an Autopilot maintenance pass.
+  Never rewrite user-owned `knowledgebase/context/` without the owner asking.
 - **Learnings/skills:** keep reusable HOW; remove business policy, strategy, and
   stale architecture disguised as execution guidance.
 - **DB:** challenge schemas/enums/cardinality that unnecessarily lock the workflow
@@ -86,4 +84,4 @@ a Goal concern. Do not confuse the two.
   constraints from temporary workarounds.
 
 The output is not a second review report. Fold bounded fixes into the command's
-normal result and keep only active consequential challenges at the top of Autopilot.
+normal result and surface only consequential unresolved questions to the owner.

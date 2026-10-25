@@ -3,7 +3,6 @@ import type { OrgDashboardNotification, OrgDashboardRouteNotifications } from '.
 interface WorkflowActivitySummary {
   workspace_path: string
   run_summary?: OrgDashboardNotification
-  pulse_summary?: OrgDashboardNotification
   recent?: OrgDashboardNotification[]
   by_route?: OrgDashboardRouteNotifications[]
 }
@@ -31,8 +30,8 @@ export function workflowHasActivity(
 
   const workflow = notifications.workflows?.find(item => item.workspace_path === workspacePath)
   if (!workflow) return false
-  if (workflow.run_summary || workflow.pulse_summary || workflow.recent?.length) return true
-  return workflow.by_route?.some(route => route.run_summary || route.pulse_summary) ?? false
+  if (workflow.run_summary || workflow.recent?.length) return true
+  return workflow.by_route?.some(route => route.run_summary) ?? false
 }
 
 export function workflowHasRecentActivity(
@@ -49,9 +48,8 @@ export function workflowHasRecentActivity(
   if (!workflow) return false
   const summaries = [
     workflow.run_summary,
-    workflow.pulse_summary,
     ...(workflow.recent || []),
-    ...(workflow.by_route || []).flatMap(route => [route.run_summary, route.pulse_summary]),
+    ...(workflow.by_route || []).flatMap(route => [route.run_summary]),
   ]
   return summaries.some(summary => isRecentTimestamp(summary?.created_at, now, maxAgeMs))
 }

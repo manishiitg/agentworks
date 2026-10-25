@@ -9,9 +9,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
-// WorkflowReviewRecord is retained only to read the standalone reviews made
-// by earlier releases. Current Plan Drift review belongs to the single Pulse.
-// These records are never consulted to admit or refuse an execution.
 type WorkflowReviewRecord struct {
 	Revision   string               `json:"revision"`
 	Trigger    string               `json:"trigger"`

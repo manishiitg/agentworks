@@ -4,21 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 // PLAT-822: real metric tools and run recording preserve DB/run evidence without
 // interpreting scope labels, or even an equal route name, as goal contribution.
 
-// Exercise the real tool -> existing SQLite schema upgrade -> Pulse facts path.
+// Exercise the real tool -> existing SQLite schema -> Goal measurements response.
 
 func TestGoalMetricToolsRoundTripMultipleOutcomes(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	env.mock.mu.Lock()
-	env.mock.files["Workflow/metrics/workflow.json"] = `{"id":"metrics","pulse":{"enabled":false}}`
+	env.mock.files["Workflow/metrics/workflow.json"] = `{"id":"metrics","access":{"owners":["owner"]}}`
 	env.mock.mu.Unlock()
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
@@ -66,12 +67,11 @@ func TestGoalMetricToolsRoundTripMultipleOutcomes(t *testing.T) {
 	if len(result.Metrics) != 3 || len(result.Observations) != 1 {
 		t.Fatal("tool dropped outcomes", raw)
 	}
-	page, err := pulseOverview(context.Background(), ws, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	measurements, ok := page["measurements"].(*step.GoalMeasurementLedger)
-	if !ok || len(measurements.Metrics) != 3 || len(measurements.Observations) != 1 {
-		t.Fatalf("Autopilot overview lost saved measurements: %v", page)
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/workflow/goal-metrics?workspace_path="+ws, nil)
+	(&StreamingAPI{}).handleGetGoalMetrics(response, request)
+	var measurements step.GoalMeasurementLedger
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &measurements) != nil || len(measurements.Metrics) != 3 || len(measurements.Observations) != 1 {
+		t.Fatalf("Goal measurements response lost saved values: %d %s", response.Code, response.Body.String())
 	}
 }

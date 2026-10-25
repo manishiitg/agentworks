@@ -142,27 +142,6 @@ type StreakInfo struct {
 	Count int    `json:"count"`
 }
 
-// ErrScriptedHarnessRejection means the workspace API refused the execute
-// request, so main.py never started and produced no output at all.
-//
-// This is deliberately a distinct failure kind rather than "the script failed",
-// because the two demand opposite responses. A failed script is the relearn
-// path's whole purpose: the step agent is handed the source plus the error and
-// told to "fix the bug and rewrite it", and its rewrite is then saved back as
-// the canonical script. Feed a harness rejection into that path and the agent
-// is asked to explain an error its code did not cause, against a script it
-// cannot observe running. It complies, because the prompt presumes the script
-// is at fault and offers no branch for "the error is not yours".
-//
-// That is not hypothetical. One workflow concluded DB_PATH was missing; another
-// concluded Python's sqlite3 could not open the database and wrote a permanent
-// learning to shell out to the sqlite3 CLI instead. Neither script had executed
-// a line, and both rewrites were persisted over working code.
-//
-// So a rejection aborts the step instead. It is infrastructure being down, and
-// it surfaces through the ordinary step-failure notification the operator
-// already watches — not as a workflow concern, which Pulse Gate reads to choose
-// reviewers that could do nothing about it.
 var ErrScriptedHarnessRejection = errors.New("workspace refused to start the script")
 
 // ErrScriptedHarnessTimeout means main.py started but the outer workspace

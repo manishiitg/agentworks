@@ -9,11 +9,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
-// Scheduled occurrences that did not start fall into three groups, and Pulse
-// must treat them differently. A single "skipped" list framed as "the
-// scheduler working as designed" let a review note "four days lost to skipped
-// schedules" and still conclude nothing needed fixing (social-media,
-// 2026-09-27).
 const (
 	fireDecisionLost       = "lost"       // real work that never ran and will not
 	fireDecisionDeferred   = "deferred"   // will still run (queued, waiting)

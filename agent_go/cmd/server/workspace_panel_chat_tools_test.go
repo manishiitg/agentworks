@@ -70,7 +70,7 @@ func TestWorkspacePanelChatToolsBindCurrentBuilder(t *testing.T) {
 	reads := map[string]map[string]any{
 		"settings": {"action": "get"}, "workflow_team": {"action": "get"},
 		"manage_project": {"action": "get_access"}, "browser_connections": {"action": "list"},
-		"manage_messaging": {"action": "whatsapp_link"}, "manage_pulse": {"action": "status"},
+		"manage_messaging": {"action": "whatsapp_link"},
 	}
 	for name, args := range reads {
 		if out, err := reg.tools[name].exec(ctx, args); err != nil {

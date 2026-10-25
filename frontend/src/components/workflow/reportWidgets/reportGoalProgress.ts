@@ -26,7 +26,7 @@ export async function getReportGoalMetrics(
   query: ReportDataApi["query"],
 ): Promise<ReportGoalMetrics> {
   const tables = await query(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('workflow_goal_metrics','pulse_goal_observations')",
+    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('workflow_goal_metrics','goal_observations')",
   );
   if (!tables.some((t) => t.name === "workflow_goal_metrics"))
     return { metrics: [], observations: [], progress: [] };
@@ -77,14 +77,14 @@ export async function getReportGoalMetrics(
       (a, b) => Number(b.role === "primary") - Number(a.role === "primary"),
     );
   const observations: GoalObservation[] = tables.some(
-    (t) => t.name === "pulse_goal_observations",
+    (t) => t.name === "goal_observations",
   )
     ? (
         await Promise.all(
           metrics.map(async (m) => {
             const history =
               await query(`SELECT observation_id, criterion_id, metric, run_id, route, environment, value, status, unit, observed_at, window_start, window_end, evidence_json, recorded_at
-        FROM pulse_goal_observations WHERE metric = ${quote(m.id)} AND criterion_id = ${quote(m.criterion_id)}
+        FROM goal_observations WHERE metric = ${quote(m.id)} AND criterion_id = ${quote(m.criterion_id)}
         AND unit = ${quote(m.unit)} AND COALESCE(route, '') = ${quote(m.route)} AND COALESCE(environment, '') = ${quote(m.environment)}
         ORDER BY julianday(observed_at) DESC, recorded_at DESC, observation_id DESC LIMIT 120`);
             return history.map((row) => {

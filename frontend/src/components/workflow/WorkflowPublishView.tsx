@@ -100,12 +100,12 @@ const WorkflowPublishView: React.FC<WorkflowPublishViewProps> = ({ workspacePath
       loadAccessSecret={loadAccessSecret}
       onStateLoaded={onStateLoaded}
       fallbackStrategies={FALLBACK_SUPPORTED}
-      subtitle="Share this automation's Autopilot log and dashboard at a public URL"
+      subtitle="Publish this automation's dashboards at a public URL"
       emptyDestinationsText="No hosts yet — share the dashboard with /share in chat."
       destinationsHelp="Deploys update automatically."
       askContext={{ workspacePath, strategyVerb: 'publish this workflow to' }}
       supportedHelp="Suggestions, not a limit — any static host works."
-      defaultTargetLabel="pulse, dashboard"
+      defaultTargetLabel="dashboard"
       getSummary={getPublishSummary}
       headerAction={headerAction}
     />

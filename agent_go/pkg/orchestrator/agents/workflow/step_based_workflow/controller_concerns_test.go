@@ -8,15 +8,6 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-func TestExecutionEvidencePathsMatchPulseContract(t *testing.T) {
-	logsRoot := getExecutionFolderPathForLogs("Workflow/demo/runs/iteration-0/default", "collect-price", "step-1")
-	got := filepath.Join(logsRoot, finalExecutionSummaryFilename)
-	want := "Workflow/demo/runs/iteration-0/default/logs/collect-price/execution/execution-final-summary.json"
-	if got != want {
-		t.Fatalf("final summary path = %q, want %q", got, want)
-	}
-}
-
 func TestOrchestratorExecutionLogFilenamePreservesRetryIdentity(t *testing.T) {
 	if got, want := orchestratorExecutionLogFilename(3, 0), "execution-attempt-3-iteration-0.json"; got != want {
 		t.Fatalf("filename = %q, want %q", got, want)
@@ -173,5 +164,14 @@ func TestNewValidationFailureConcernCompactsReasoning(t *testing.T) {
 	})
 	if got.Attempt != 2 || got.Detail != "receipt was missing" {
 		t.Fatalf("concern = %+v, want compact attempt 2 detail", got)
+	}
+}
+
+func TestExecutionEvidencePathsMatchPublishedContract(t *testing.T) {
+	logsRoot := getExecutionFolderPathForLogs("Workflow/demo/runs/iteration-0/default", "collect-price", "step-1")
+	got := filepath.Join(logsRoot, finalExecutionSummaryFilename)
+	want := "Workflow/demo/runs/iteration-0/default/logs/collect-price/execution/execution-final-summary.json"
+	if got != want {
+		t.Fatalf("final summary path = %q, want %q", got, want)
 	}
 }

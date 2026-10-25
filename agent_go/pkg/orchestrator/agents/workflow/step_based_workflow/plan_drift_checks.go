@@ -16,14 +16,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// PLAT-258 phase 2. Deterministic plan-drift checks: pure Go, no LLM turn, no
-// agent tool call to skip — the same design constraint run_concerns.go already
-// documents ("there is no call for an agent to skip"). Each check reads the
-// workflow's own current db/reports/index.html and db/db.sqlite directly and
-// returns one evidence-required StepDriftCheck. Judgment checks (description
-// accuracy, learnings/KB content staleness, DB normalization) are NOT here —
-// those need an actual Pulse reviewer turn and are phase 4.
-
 const reportDriftCheckID = "report_query_compatibility"
 
 func planDriftWorkflowDBPath(workspacePath string) string {
@@ -677,16 +669,7 @@ var planDriftReservedTables = map[string]bool{
 	// eval_results is retired: reserved as read-only history.
 	"eval_results": true,
 
-	"pulse_module_state":      true,
-	"pulse_module_audit":      true,
 	"report_field_update_log": true,
-	// The Pulse's recommendations and decision log (PLAT-697).
-	"pulse_recommendations": true,
-	// The Pulse's conversation, its Pulse-tab log and its QA requests
-	// (PLAT-697 phase 4).
-	"goal_lead_conversation": true,
-	"goal_lead_messages":     true,
-	"goal_lead_qa_requests":  true,
 }
 
 // sqlTableReferencePattern extracts table names referenced by FROM/JOIN/

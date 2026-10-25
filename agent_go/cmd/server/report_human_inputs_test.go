@@ -190,24 +190,6 @@ func TestOpenReportHumanInputDBUsesWALMode(t *testing.T) {
 
 // The decisions store no longer initializes Pulse for any product. Goals create
 // their own measurement and scheduling tables through the actual Goal paths.
-func TestDecisionsStoreDoesNotCreatePulseTables(t *testing.T) {
-	ctx := context.Background()
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	for _, path := range []string{"Crew/demo-1a2b", "Workflow/goal-check"} {
-		_, db, err := openReportHumanInputDB(ctx, path, true)
-		if err != nil {
-			t.Fatalf("%s: %v", path, err)
-		}
-		var n int
-		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name GLOB 'pulse_*'").Scan(&n); err != nil {
-			t.Fatal(err)
-		}
-		_ = db.Close()
-		if n != 0 {
-			t.Fatalf("%s: %d Autopilot tables, want none from decisions", path, n)
-		}
-	}
-}
 
 func TestReportHumanInputPersistsStructuredApplyContract(t *testing.T) {
 	ctx := context.Background()
@@ -570,5 +552,24 @@ func TestReportHumanInputHTTPAnswerIgnoresForgedActor(t *testing.T) {
 	}
 	if inputs[0].AnsweredBy == "forged-user" || inputs[0].AnsweredByKind != "human_ui" || inputs[0].AnsweredVia != "report_ui" || inputs[0].AnsweredSessionID != "ui-session-1" {
 		t.Fatalf("HTTP attribution was not server-derived: %+v", inputs[0])
+	}
+}
+
+func TestDecisionsStoreOnlyCreatesDecisionTables(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	for _, path := range []string{"Crew/demo-1a2b", "Workflow/goal-check"} {
+		_, db, err := openReportHumanInputDB(ctx, path, true)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		var n int
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name GLOB 'pulse_*'").Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		_ = db.Close()
+		if n != 0 {
+			t.Fatalf("%s: %d Autopilot tables, want none from decisions", path, n)
+		}
 	}
 }

@@ -13,21 +13,6 @@ import (
 	"time"
 )
 
-// A reference that stops resolving makes Plan Drift due (PLAT-565). Whatever
-// wrote the file -- a plan tool, a builder CLI's native edit, a shell command,
-// Pulse -- the Go side sees only the result: when the workflow's tracked files
-// change it recomputes the reference map and compares the breaks with the set
-// it saw last time. A NEW break flags its owning step (or the workflow, for a
-// note, eval or learnings file) until a drift review is recorded after the flag.
-//
-// Only new breaks flag, except an unreadable input (the GraphPreflight kinds),
-// which is flagged once even when it is old because it breaks the step's next
-// run (PLAT-582). Other breaks that already existed stay Plan Drift's evidence
-// (get_plan_prompt_health) but do not keep it due forever, so a break Drift
-// cannot or should not fix never blocks Technical and Architecture. The flags
-// live in planning/reference_map_flags.json, never in step_config.json, so a
-// background sync cannot race a builder edit of the plan's own config.
-
 const referenceMapFlagsFile = "reference_map_flags.json"
 
 // flagOnlyStrictKinds are breaks that make Plan Drift look at the step once even when they are old, but that must never

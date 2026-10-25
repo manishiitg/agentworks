@@ -502,7 +502,7 @@ func (api *StreamingAPI) invalidateWorkflowTeamSessions(root string) {
 	api.activeSessionsMux.RLock()
 	ids := []string{}
 	for id, s := range api.activeSessions {
-		if strings.Trim(s.WorkspacePath, "/") == strings.Trim(root, "/") && s.AgentMode == "workflow_phase" && s.PhaseID == "workflow-builder" && !isGoalLeadSessionID(id) && !isScheduledSessionIdentity(id, s.TriggeredBy) {
+		if strings.Trim(s.WorkspacePath, "/") == strings.Trim(root, "/") && s.AgentMode == "workflow_phase" && s.PhaseID == "workflow-builder" && !isScheduledSessionIdentity(id, s.TriggeredBy) {
 			ids = append(ids, id)
 		}
 	}
@@ -874,7 +874,7 @@ func teamScheduleAuthority(t *WorkflowTeam, actor string, s WorkflowSchedule) er
 		return fmt.Errorf("Contributor schedules require explicit after_run choices")
 	}
 	a := *s.AfterRun
-	if a.Backup && !member.Backup || a.Publish && !member.Publish || a.Notify && !member.Notify {
+	if a.Backup && !member.Backup || a.Publish && !member.Publish {
 		return fmt.Errorf("after-run action requires its own grant")
 	}
 	return nil
@@ -1216,7 +1216,7 @@ func workflowTeamInstructions(ctx context.Context, root, user string) string {
 	if containsID(m.effectiveOwners(), user) {
 		role = "Leader"
 	}
-	return "## Goal team\n\nYou act for " + role + " " + user + ". Call get_workflow_team for current assignments and plan_revision before proposing a change. Use that revision as expected_plan_revision with native plan/config tools; conflicts require rereading and reconciling. Only an assigned Contributor edits its route's steps; the Leader must explicitly reassign or take back the route first. Source edits use read_team_source then edit_team_source with expected_revision. Raw source writes, moves and deletes cannot bypass this. Only the Leader changes the overall goal and shared settings. Execution, schedule management, Backup, Publish, Notify and named decision approvals are separate grants. Share relevant results with Autopilot through explicit messages; Project owners share registered named Builder tabs and control only their own; earlier private history stays private. Separate Builder chats may run concurrently, but never overwrite a conflicting saved edit."
+	return "## Goal team\n\nYou act for " + role + " " + user + ". Call get_workflow_team for current assignments and plan_revision before proposing a change. Use that revision as expected_plan_revision with native plan/config tools; conflicts require rereading and reconciling. Only an assigned Contributor edits its route's steps; the Leader must explicitly reassign or take back the route first. Source edits use read_team_source then edit_team_source with expected_revision. Raw source writes, moves and deletes cannot bypass this. Only the Leader changes the overall goal and shared settings. Execution, schedule management, Backup, Publish, Notify and named decision approvals are separate grants. Share relevant results with AgentWorks through explicit messages; Project owners share registered named Builder tabs and control only their own; earlier private history stays private. Separate Builder chats may run concurrently, but never overwrite a conflicting saved edit."
 }
 
 // Compare executable plan shapes, including the same default/canonical fields

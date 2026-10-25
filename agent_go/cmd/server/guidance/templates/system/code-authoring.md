@@ -70,13 +70,13 @@ For an authorized migration, using `set_code_layout_version`:
 - `from agentworks_db import query, query_one, scalar, iter_query, execute, insert, execute_many, transaction, DBError`
   - Reads: `query(sql, params)` returns every row as a dict (pages are fetched for you); `iter_query` streams a very large result; `query_one` / `scalar` for one row or value. Use `?` placeholders; give a big SELECT an `ORDER BY`.
   - Writes (INSERT, UPDATE, DELETE only): `execute(sql, params)` returns rows affected, `insert` the new id, `execute_many(sql, rows)` writes many rows (2000 per call, each call atomic; `atomic=True` for one transaction of at most 5000), `transaction([(sql, params), ...])` for up to 200 statements that must succeed together.
-  - Every failure raises `DBError` with the platform's message; let it propagate so the step fails with the real error (a run never rewrites the script; Autopilot reports it).
-- DDL is known when you write the script. A table or column the script needs is a `db/migrations/` file the Builder applies with `apply_workflow_db_migration` before the script runs; a script never issues CREATE, ALTER or DROP. If the schema changes, update the script to match; a script that no longer matches the schema fails its run (runs never rewrite scripts; Autopilot reports it) and the Builder repairs it with `execute_step`.
+  - Every failure raises `DBError` with the platform's message; let it propagate so the step fails with the real error (a run never rewrites the script; AgentWorks reports it).
+- DDL is known when you write the script. A table or column the script needs is a `db/migrations/` file the Builder applies with `apply_workflow_db_migration` before the script runs; a script never issues CREATE, ALTER or DROP. If the schema changes, update the script to match; a script that no longer matches the schema fails its run (runs never rewrite scripts; AgentWorks reports it) and the Builder repairs it with `execute_step`.
 - Foreign keys declared in the schema are always enforced on managed writes; a script never sets `PRAGMA foreign_keys`. Other `PRAGMA`s, `ATTACH`, `VACUUM`, `executescript` and triggers created at run time are not available; if a step needs one, report it instead of working around the helper.
 - Tests (`test_*.py`) may open the database to check what the script wrote; they are not scanned. Report-data scripts under `code/reports/` read their own read-only snapshot and are unaffected.
 
 **Runs never repair scripts**
-- In a run (schedule, webhook<!-- product:relays -->/Flow<!-- /product -->, `run_full_workflow`, a route called by an agent) a scripted step only executes its saved `main.py`. A missing or failing script fails the step with its real error; no LLM writes, repairs or stands in for it, and Autopilot reports the failure. Write and fix scripts in the Builder with `execute_step` on that step, which may author or repair `main.py` (not with `fast_path_only`, and not for a `lock_code` step).
+- In a run (schedule, webhook<!-- product:relays -->/Flow<!-- /product -->, `run_full_workflow`, a route called by an agent) a scripted step only executes its saved `main.py`. A missing or failing script fails the step with its real error; no LLM writes, repairs or stands in for it, and AgentWorks reports the failure. Write and fix scripts in the Builder with `execute_step` on that step, which may author or repair `main.py` (not with `fast_path_only`, and not for a `lock_code` step).
 
 **Returning a value from a scripted route**
 - A scripted route called by an agent hands its answer back by writing one JSON value to `os.path.join(os.environ['STEP_OUTPUT_DIR'], 'route_result.json')` (at most 1 MiB). Inputs arrive in `json.loads(os.environ['STEP_PARAMS_JSON'])`. A lookup that finds nothing returns e.g. `{"found": false}`; it does not fail.
@@ -122,7 +122,7 @@ For an authorized migration, using `set_code_layout_version`:
   ```python
   print(f"CONCERNS: prospect source returned 0 rows for group {group} (usual 40-60); outreach queue is empty")
   ```
-- Plain text, one line each, with the affected artifact and the evidence. Do not classify or file it anywhere else. Autopilot reads these lines from the step's retained output and decides whether each is a real issue. Print nothing when everything is normal. Use `CONCERNS:` only for non-fatal problems; a real error still exits non-zero, and a deliberate refusal still uses exit code 2.
+- Plain text, one line each, with the affected artifact and the evidence. Do not classify or file it anywhere else. AgentWorks reads these lines from the step's retained output and decides whether each is a real issue. Print nothing when everything is normal. Use `CONCERNS:` only for non-fatal problems; a real error still exits non-zero, and a deliberate refusal still uses exit code 2.
 
 **Calling platform tools from main.py — which errors to retry**
 - A retry helper must sort errors into two kinds, never "retry everything". Retrying an error that cannot go away only delays the failure and hides a platform defect. A helper that retried every error six times turned a platform bug into a random 30-second delay.

@@ -64,13 +64,9 @@ type StepBasedWorkflowOrchestrator struct {
 	codeLayoutVersion       atomic.Int32
 	platformStoresDisabled  atomic.Bool
 	workflowSkillsOnly      atomic.Bool
-	// codeWritableByRun is true only for a run started by the Builder (execute_step with script repair allowed): code/
-	// stays with the Builder and Pulse, so every other run (schedules, webhooks, functions, Watchers, Run mode, MCP)
-	// reads it and never writes it. Unset means not the Builder.
-	codeWritableByRun atomic.Bool
-	relayExecution    atomic.Bool
-	stepHasGoal       atomic.Bool
-	stepPulseEnabled  atomic.Bool
+	codeWritableByRun       atomic.Bool
+	relayExecution          atomic.Bool
+	stepHasGoal             atomic.Bool
 	// Base orchestrator for common functionality
 	*orchestrator.BaseOrchestrator
 	// NEW: Store planning conversation for iterative refinement
@@ -124,8 +120,8 @@ type StepBasedWorkflowOrchestrator struct {
 	executionOptions *ExecutionOptions
 
 	// Preset-level agent defaults (used when step config doesn't specify)
-	presetPhaseLLM *AgentLLMConfig // The Builder model: workshop chat, planning, measurement setup, scheduled runs and every turn of the Pulse conversation (Gate, dispatch, Finalize).
-	presetPulseLLM *AgentLLMConfig // The Pulse model: background review agents launched by Pulse turns (plan drift / technical / strategic review) and KB upkeep -- work that starts its own process.
+	presetPhaseLLM      *AgentLLMConfig // The Builder model: workshop chat, planning, measurement setup, scheduled runs and every turn of the Pulse conversation (Gate, dispatch, Finalize).
+	presetBackgroundLLM *AgentLLMConfig // Independent background review and knowledge-base upkeep model.
 
 	// Preset-level feature toggles
 	useKnowledgebase bool   // Whether to create and reference knowledgebase folder (default: true)
@@ -196,7 +192,7 @@ func NewStepBasedWorkflowOrchestrator(
 	customToolExecutors map[string]interface{},
 	toolCategories map[string]string, // NEW: tool category map
 	presetPhaseLLM *AgentLLMConfig, // Optional preset default for lightweight phase agents
-	presetPulseLLM *AgentLLMConfig, // Optional preset default for review, maintenance, and Pulse agents
+	presetBackgroundLLM *AgentLLMConfig, // Optional preset default for independent review and maintenance
 	useKnowledgebase bool, // Whether to create and reference knowledgebase folder (default: true)
 	tieredConfig *TieredLLMConfig, // Tiered LLM config (nil when not using tiered allocation)
 ) (*StepBasedWorkflowOrchestrator, error) {
@@ -230,12 +226,12 @@ func NewStepBasedWorkflowOrchestrator(
 	logger.Info(fmt.Sprintf("🔗 Set MCP session ID for workflow: %s", workflowSessionID))
 
 	hcpo := &StepBasedWorkflowOrchestrator{
-		BaseOrchestrator: baseOrchestrator,
-		sessionID:        workflowSessionID, // Use the same session ID set on BaseOrchestrator for MCP connection sharing
-		workflowID:       fmt.Sprintf("workflow_%d", time.Now().UnixNano()),
-		presetPhaseLLM:   presetPhaseLLM,
-		presetPulseLLM:   presetPulseLLM,
-		useKnowledgebase: useKnowledgebase,
+		BaseOrchestrator:    baseOrchestrator,
+		sessionID:           workflowSessionID, // Use the same session ID set on BaseOrchestrator for MCP connection sharing
+		workflowID:          fmt.Sprintf("workflow_%d", time.Now().UnixNano()),
+		presetPhaseLLM:      presetPhaseLLM,
+		presetBackgroundLLM: presetBackgroundLLM,
+		useKnowledgebase:    useKnowledgebase,
 	}
 
 	// Set up tiered LLM allocation mode
@@ -252,8 +248,8 @@ func NewStepBasedWorkflowOrchestrator(
 		} else {
 			logger.Info("🏷️ WARNING: No Phase LLM configured - phase agents will fail")
 		}
-		if hcpo.presetPulseLLM != nil {
-			logger.Info(fmt.Sprintf("🏷️ Autopilot LLM (independent): %s/%s", hcpo.presetPulseLLM.Provider, hcpo.presetPulseLLM.ModelID))
+		if hcpo.presetBackgroundLLM != nil {
+			logger.Info(fmt.Sprintf("🏷️ AgentWorks LLM (independent): %s/%s", hcpo.presetBackgroundLLM.Provider, hcpo.presetBackgroundLLM.ModelID))
 		}
 		logger.Info(fmt.Sprintf("🏷️ Tiered LLM allocation mode enabled - Tier1: %s, Tier2: %s, Tier3: %s",
 			formatTierAgentLLM(tieredConfig.Tier1),

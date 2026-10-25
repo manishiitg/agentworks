@@ -85,7 +85,7 @@ accepted; 200 duplicate/ping; 401 invalid auth; 404 unknown; 410 disabled; 503 r
 
 
 Webhooks use dedicated iteration-<n>-hook/group folders and never run post-run
-Autopilot, backup or publish. Omit route_selections for a full-workflow trigger.
+AgentWorks, backup or publish. Omit route_selections for a full-workflow trigger.
 After terminal=true, inspect all generic steps[].outputs; do not equate completed
 with smoke-test success unless the output contract proves it. Artifact download
 URLs are server-relative, file-scoped and expire after 30 minutes; re-poll for new
@@ -190,7 +190,7 @@ Rules that keep a multi-path trigger debuggable:
 
 Webhook deliveries dispatch directly to the workflow plan executor with the saved route selections and validated group/variable inputs. They do not start a Builder chat or ask an agent to call `run_full_workflow`. Plan prerequisites and agent steps still run normally. An empty route selection runs the full plan. Scheduled jobs retain their existing execution path.
 
-Prepare and upgrade the workflow in Builder before testing the trigger; a webhook never edits or upgrades the plan. Poll the returned status URL (or use `manage_workflow_webhook` action `status`) for progress, step outputs, final success/failure and artifact links. The isolated `iteration-<n>-hook` folders, last-10 retention, cancellation, authentication, idempotency and no-Autopilot policy still apply.
+Prepare and upgrade the workflow in Builder before testing the trigger; a webhook never edits or upgrades the plan. Poll the returned status URL (or use `manage_workflow_webhook` action `status`) for progress, step outputs, final success/failure and artifact links. The isolated `iteration-<n>-hook` folders, last-10 retention, cancellation, authentication, idempotency and isolated execution policy still apply.
 
 ### Payload-driven selection setup
 
@@ -267,7 +267,7 @@ agents, including agents with `predefined_routes` (and legacy
 orchestrator compatibility records). Routing/branch nodes are not
 standalone targets; select a route instead. Nested steps must be exposed as a
 top-level step to bind directly. Single-step webhooks skip prior and subsequent
-plan steps, automatic evaluation, and Autopilot. They run the chosen step once for
+plan steps, automatic evaluation, and AgentWorks. They run the chosen step once for
 each configured or envelope-selected group. Supply all required inputs through
 that group, allowed variables, or payload; never rely on outputs from a previous
 invocation. IDs are checked again against the loaded plan, so deletion fails

@@ -34,7 +34,7 @@ func TestNotifyRouteDigestAcrossSessionAndDurableProvider(t *testing.T) {
 	t.Cleanup(func() { DeleteSessionNotificationDestination(session) })
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, session)
 	_, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
-		"message_for_user": "Shared work checked.", "notification_kind": "pulse_summary", "summary_status": "blocked",
+		"message_for_user": "Shared work checked.", "notification_kind": "run_summary", "summary_status": "blocked",
 		"exclude_channels": []interface{}{"gmail", "slack", "whatsapp"},
 		"summary_routes": []interface{}{
 			map[string]interface{}{"routing_step_id": "router", "route_id": "research", "title": "Access blocked", "status": "blocked", "message": "Waiting for access."},
@@ -51,7 +51,7 @@ func TestNotifyRouteDigestAcrossSessionAndDurableProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.PulseSummary == nil || got.PulseSummary.Route != "" || len(got.PulseSummary.Routes) != 2 || len(got.ByRoute) != 2 || got.PulseSummary.Message != "Shared work checked." {
+	if got.RunSummary == nil || got.RunSummary.Route != "" || len(got.RunSummary.Routes) != 2 || len(got.ByRoute) != 2 || got.RunSummary.Message != "Shared work checked." {
 		t.Fatalf("digest lost route-specific evidence across bridge/provider: %+v", got)
 	}
 	db, err := sql.Open("sqlite", filepath.Join(root, "Workflow/routes/db/db.sqlite"))
@@ -85,32 +85,6 @@ func TestNotificationRouteInputAndChannelRendering(t *testing.T) {
 	for _, bad := range []interface{}{map[string]interface{}{}, []interface{}{map[string]interface{}{"route_id": "publish"}}, []interface{}{map[string]interface{}{"routing_step_id": "router", "route_id": "publish", "title": "Done", "message": "done", "status": "clean"}}} {
 		if _, err := notificationRoutesFromArg(bad); err == nil {
 			t.Fatalf("invalid route summary accepted: %+v", bad)
-		}
-	}
-}
-
-func TestPulseNotificationDoesNotInheritExecutionRoute(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	ch := make(chan *services.NotificationDestination, 2)
-	c := &testUserNotificationConnector{name: "route_contract", ch: ch}
-	m := services.GetNotificationManager()
-	m.RegisterConnector(c)
-	t.Cleanup(func() { m.UnregisterConnector(c.Name()) })
-	ctx := context.WithValue(context.Background(), BotNotificationDestinationKey, &services.NotificationDestination{
-		WorkspacePath: "Workflow/routes", RouteSelections: map[string]string{"router": "publish"},
-	})
-	for _, kind := range []string{"run_summary", "pulse_summary"} {
-		_, err := DeliverWorkflowNotification(ctx, map[string]interface{}{"message_for_user": "Current evidence", "notification_kind": kind, "summary_status": "informational", "exclude_channels": []interface{}{"gmail", "slack", "whatsapp"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		dest := <-ch
-		want := ""
-		if kind == "run_summary" {
-			want = "publish"
-		}
-		if dest.Content.Summary.Route != want {
-			t.Fatalf("%s scope = %q, want %q", kind, dest.Content.Summary.Route, want)
 		}
 	}
 }

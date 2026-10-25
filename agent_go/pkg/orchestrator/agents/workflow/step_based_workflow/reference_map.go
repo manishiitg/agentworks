@@ -15,22 +15,6 @@ import (
 	"time"
 )
 
-// PLAT-561: the edit-time reference map.
-//
-// About a third of the issues QA filed on a large workflow were changes not
-// carried through: a step's Inputs naming a removed producer step, an eval
-// asserting a file that moved, a note naming a retired path. Plan Drift checks
-// only the changed step, and description-only or non-plan edits never flag it.
-//
-// The map is computed on read from the workflow on disk: plan steps (ids,
-// context_output, context_dependencies, the files their validation schemas
-// declare, and the paths and step ids their text names), step_config.json,
-// the evaluation plan, KB notes, soul.md and learnings SKILL.md/references.
-// Its checks are deterministic and it only REPORTS: edit responses append the
-// dependents of what changed, and get_plan_prompt_health and Pulse evidence
-// carry the open breaks. It never blocks an edit or a run. Business-rule
-// contradictions (a rate in a note vs soul.md) need judgment and are not here.
-
 const (
 	refSeverityBreak = "break"
 	refSeverityWarn  = "warn"
@@ -84,8 +68,6 @@ type refText struct {
 }
 
 type referenceMap struct {
-	// Optional bounded script reader for the quick run observation only. Full
-	// Pulse/reference and strict graph checks keep their existing file reads.
 	readScript func(string) ([]byte, error)
 	root       string
 	order      []*refStep
@@ -741,8 +723,6 @@ func (m *referenceMap) retiredSorted() []string {
 	return ids
 }
 
-// Compact keeps the counts and the first max issues (breaks sort first), for
-// payloads with a size budget such as Pulse state.
 func (r ReferenceMapReport) Compact(max int) ReferenceMapReport {
 	if max >= 0 && len(r.Issues) > max {
 		r.Issues = append([]RefMapIssue(nil), r.Issues[:max]...)

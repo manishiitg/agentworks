@@ -488,12 +488,12 @@ export async function renderReportActivity(
     let rows: Record<string, unknown>[];
     try {
       rows = await dataApi.query(
-        `SELECT id, notification_kind, title, status, summary_text, message, fields_json, sections_json, route_summaries_json, created_at FROM org_dashboard_notifications WHERE notification_kind IN ('run_summary','pulse_summary') ORDER BY created_at DESC LIMIT ${limit}`,
+        `SELECT id, notification_kind, title, status, summary_text, message, fields_json, sections_json, route_summaries_json, created_at FROM org_dashboard_notifications WHERE notification_kind = 'run_summary' ORDER BY created_at DESC LIMIT ${limit}`,
       );
     } catch {
       // Older schema without the newer detail columns.
       rows = await dataApi.query(
-        `SELECT id, notification_kind, title, status, message, fields_json, sections_json, created_at FROM org_dashboard_notifications WHERE notification_kind IN ('run_summary','pulse_summary') ORDER BY created_at DESC LIMIT ${limit}`,
+        `SELECT id, notification_kind, title, status, message, fields_json, sections_json, created_at FROM org_dashboard_notifications WHERE notification_kind = 'run_summary' ORDER BY created_at DESC LIMIT ${limit}`,
       );
       for (const row of rows) {
         row.summary_text = "";
@@ -510,10 +510,7 @@ export async function renderReportActivity(
     const list = el("div", "", "list");
     list.setAttribute("aria-label", "Recent activity");
     for (const row of rows) {
-      const kind =
-        row.notification_kind === "pulse_summary"
-          ? "Autopilot review"
-          : "Run summary";
+      const kind = "Run summary";
       const card = el("article");
       const header = el("header");
       const title = el("div");

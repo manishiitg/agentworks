@@ -8,7 +8,6 @@ function manualAfterRun(manifest: WorkflowManifest): ScheduleAfterRun {
   return {
     backup: !!(manifest.backup?.enabled && manifest.backup.triggers?.after_manual_run),
     publish: !!(manifest.publish?.enabled && manifest.publish.triggers?.after_manual_run),
-    notify: false,
   }
 }
 

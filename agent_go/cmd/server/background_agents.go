@@ -376,48 +376,6 @@ type BackgroundAgentSnapshot struct {
 	CompletionNotified bool `json:"-"`
 }
 
-// IsProgressMirror reports whether this record is a per-step workflow PROGRESS
-// MIRROR rather than work in its own right (PLAT-117).
-//
-// workflowProgressBridge (planning_exports.go) turns each workflow step's
-// start/end progress events into a background-agent record so the UI can show
-// per-step progress, and workshopExecutionBgNotifier registers it expressly "so
-// that HasRunningAgents() returns true and the frontend keeps polling". That is
-// a DISPLAY concern, and best-effort is fine for it: the same work is already
-// recorded twice more reliably — the run's own durable per-step files on disk
-// (runs/<iteration>/<group>/execution/<step>/session.json, which is what Pulse
-// Gate actually reads), and the parent workflow-full-<id> agent, registered for
-// the whole run.
-//
-// It is NOT fine for deciding whether a turn may finish, which is why this
-// predicate exists. These records come from event pairing: a start mints an id
-// cached under agentType:stepIndex:agentName, and only a matching end closes it,
-// so any dropped or mismatched end leaves one open forever. Counting those as
-// live children made terminal() unreachable — social-media 2026-08-16 left two
-// step-0 mirrors open, so a turn whose real work had finished (a post landed and
-// was verified) was structurally guaranteed to time out, and the operator was
-// emailed that the workflow never ran.
-//
-// Callers that ask the DISPLAY question (HasRunningAgents and its call sites)
-// deliberately keep counting these. Callers that ask whether a turn may finish
-// must not.
-//
-// Classification DELEGATES to isWorkflowStepTrackingExecution rather than
-// checking Kind alone, and that distinction is the whole point.
-//
-// OnExecutionStart resolves a record's Kind as "a declared kind always wins",
-// falling back to the workflow_step override only when the creator declared
-// nothing. The per-step progress records in question declare "orchestrator", so
-// the override never fires for them and their Kind is NOT workflow_step — while
-// their ids (workflow-full-<parent>-step-<n>-<token>) are exactly what
-// isWorkflowStepTrackingExecution recognizes.
-//
-// An earlier version of this predicate matched Kind=="workflow_step" only. It
-// therefore did not match the very records that caused this bug, and its test
-// passed because the test constructed Kind:"workflow_step" instead of using the
-// kind production actually stores — the same "reach the state through the
-// product path, never construct it" rule this register keeps relearning. The
-// live durable log settled it: both stuck orphans are stored kind=orchestrator.
 func (s BackgroundAgentSnapshot) IsProgressMirror() bool {
 	if strings.TrimSpace(s.Kind) == "workflow_step" {
 		return true
@@ -725,28 +683,6 @@ func (r *BackgroundAgentRegistry) GetAll(sessionID string) []*BackgroundAgent {
 	return agents
 }
 
-// ReconcileOrphanedProgressChildren settles progress sub-executions that a
-// finished parent left running, and returns their ids.
-//
-// Workflow and evaluation runs publish per-step progress executions whose ids
-// are built as "<parentID>-step-<n>-<token>" (workflowProgressExecIDForStart).
-// Each is registered on OrchestratorAgentStart and settled on the matching end
-// event — but several real paths never deliver that end. A superseded or
-// abandoned evaluation stops emitting entirely, and a delegating_agent's
-// successful turn end is deliberately ignored in favor of a later
-// AgentStepCompleted event that an abandoned run never sends.
-//
-// That matters because HasRunningAgents treats BGAgentRunning as live
-// unconditionally and the registry never deletes entries, so one orphan pins
-// its session busy forever. Observed live (PLAT-091): four
-// eval-full-…-step-0-* children outlived their parent and blocked Pulse's
-// Review+Fix, Finalize, backup and notification for the full three-hour
-// ceiling, on a run that was never marked failed.
-//
-// The parent finishing is a sound completion boundary: a progress child cannot
-// still be doing work once the execution that owns it has settled. Only
-// descendants of that parent are touched, so unrelated children keep holding
-// the session open exactly as before.
 func (r *BackgroundAgentRegistry) ReconcileOrphanedProgressChildren(sessionID, parentExecutionID, reason string) []string {
 	parentExecutionID = strings.TrimSpace(parentExecutionID)
 	if r == nil || parentExecutionID == "" {
@@ -2104,7 +2040,7 @@ func backgroundAgentStartLabel(snap BackgroundAgentSnapshot) string {
 	}
 	switch {
 	case kind == "pulse_reviewer":
-		return "Autopilot reviewer"
+		return "AgentWorks reviewer"
 	case kind == "generic_agent":
 		return "Generic agent"
 	case strings.Contains(kind, "sub_agent"):
@@ -2540,13 +2476,6 @@ func (api *StreamingAPI) processBackgroundAgentCompletion(sessionID, agentID str
 	}
 }
 
-// workflowRunBackupDirective returns the directive that backs up an interactive
-// workflow run/step after it completes, or "" when this completion is not a
-// workflow run. This is the interactive arm of post-run backup: for scheduled
-// runs the dedicated Pulse lifecycle (scheduler.go runPulseLifecycle) owns backup.
-// Both arms share ONE backup contract — same default (zero-config local git),
-// same source-hash skip — so a run backed up by one is recognized as current by
-// the other (no double push). Keep this text in sync with Pulse's backup step.
 func workflowRunBackupDirective(snap BackgroundAgentSnapshot) string {
 	if snap.Status != BGAgentCompleted || snap.Metadata == nil || snap.Metadata["trigger_source"] == "webhook" {
 		return ""
@@ -2554,7 +2483,7 @@ func workflowRunBackupDirective(snap BackgroundAgentSnapshot) string {
 	if snap.Kind != "workflow_run_tool" && snap.Metadata["type"] != "workflow_run" {
 		return ""
 	}
-	return "\n\nThe run is complete - now back up this workflow. Call read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/backup-strategy.md\"}]), read workflow.json.backup, and use it as the backup contract. Perform backup and all Git commands directly in this parent workflow turn. Never delegate them through run_in_background, call_generic_agent, a reviewer, or another sub-agent: delegated agents intentionally cannot write the workflow .git directory. If any configured destination covers db-sqlite, call create_workflow_database_snapshot first and stage its returned backup/database/db.sqlite snapshot plus backup/database/db.sqlite.sha256 checksum; never read or stage protected live db/db.sqlite. If backup is enabled, perform the configured destinations (git/github, object store, HuggingFace, etc.). If backup is missing or disabled, do not silently skip: set it up with the zero-config local-git default (a local git repo needs no credentials) and back up. Skip the push only when backup/status.json shows the current source is already backed up (unchanged source hash) — i.e. an Autopilot pass or an earlier turn already captured this state. Always write backup/status.json with state, last attempt/success timestamps, destination results, errors, and the current source hash; do not write operational backup status into workflow.json."
+	return "\n\nThe run is complete - now back up this workflow. Call read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/backup-strategy.md\"}]), read workflow.json.backup, and use it as the backup contract. Perform backup and all Git commands directly in this parent workflow turn. Never delegate them through run_in_background, call_generic_agent, a reviewer, or another sub-agent: delegated agents intentionally cannot write the workflow .git directory. If any configured destination covers db-sqlite, call create_workflow_database_snapshot first and stage its returned backup/database/db.sqlite snapshot plus backup/database/db.sqlite.sha256 checksum; never read or stage protected live db/db.sqlite. If backup is enabled, perform the configured destinations (git/github, object store, HuggingFace, etc.). If backup is missing or disabled, do not silently skip: set it up with the zero-config local-git default (a local git repo needs no credentials) and back up. Skip the push only when backup/status.json shows the current source is already backed up (unchanged source hash) — i.e. an AgentWorks pass or an earlier turn already captured this state. Always write backup/status.json with state, last attempt/success timestamps, destination results, errors, and the current source hash; do not write operational backup status into workflow.json."
 }
 
 // workflowRunCompletionDirective used to also append a goal-alignment
@@ -2616,7 +2545,7 @@ func (api *StreamingAPI) buildAutoNotificationMessage(sessionID string, snap Bac
 		"[AUTO-NOTIFICATION] Agent '%s' completed — status=%s%s%s.\nResult: %s%s%s",
 		strings.TrimSpace(snap.Name), snap.Status, contextInfo, delayContext, resultText, actionHint, workflowRunCompletionDirective(snap))
 	if presentationOnly {
-		syntheticMsg += "\n\n[PRESENTATION-ONLY COMPLETION] The background agent above is the authoritative owner of this task's evidence collection and durable writes. Present its result to the user now. Do not call any tool, reload Autopilot/SQLite/workspace state, inspect the child conversation, or independently revalidate the result. Do not start more work."
+		syntheticMsg += "\n\n[PRESENTATION-ONLY COMPLETION] The background agent above is the authoritative owner of this task's evidence collection and durable writes. Present its result to the user now. Do not call any tool, reload AgentWorks/SQLite/workspace state, inspect the child conversation, or independently revalidate the result. Do not start more work."
 	}
 
 	// Bot connector sessions (slack / whatsapp / discord / telegram / etc.): the
@@ -2731,11 +2660,7 @@ func autoNotificationBracketContext(meta map[string]string) string {
 // NOT queue). Returns false on any failure so the caller falls back to the
 // existing queue + drain-on-idle backstop.
 func (api *StreamingAPI) steerBackgroundAgentCompletion(sessionID, agentID string) bool {
-	// Pulse reconciles results in a normal Pulse turn with current authority.
-	// Queue behind its active turn instead of injecting another task into it.
-	if isGoalLeadSessionID(sessionID) {
-		return false
-	}
+
 	if api.autoNotificationSessionUnreachable(sessionID) {
 		return false
 	}
@@ -2984,9 +2909,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 		log.Printf("[BG AGENT] Session %s is stopped/inactive, suppressing synthetic turn", sessionID)
 		return false
 	}
-	if isGoalLeadSessionID(sessionID) {
-		return api.executePulseResultTurn(sessionID, syntheticMsg, onComplete)
-	}
+
 	if api.botManager != nil {
 		api.botManager.PrepareSyntheticTurn(sessionID)
 	}

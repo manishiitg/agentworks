@@ -9,7 +9,7 @@ func testExplicitConfig() *PresetLLMConfig {
 		SchemaVersion: LLMConfigSchemaVersion,
 		Mode:          LLMConfigModeExplicit,
 		BuilderLLM:    builder,
-		PulseLLM:      builder,
+		BackgroundLLM: builder,
 		TieredConfig: &TieredLLMConfig{
 			Tier1: high,
 			Tier2: builder,
@@ -51,8 +51,8 @@ func TestNormalizePresetLLMConfigMigratesLegacyExplicitShape(t *testing.T) {
 	if cfg.SchemaVersion != LLMConfigSchemaVersion || cfg.Mode != LLMConfigModeExplicit {
 		t.Fatalf("normalized schema/mode = %d/%q", cfg.SchemaVersion, cfg.Mode)
 	}
-	if cfg.BuilderLLM != legacyBuilder || cfg.PulseLLM != legacyMaintenance {
-		t.Fatalf("normalized roles = builder:%+v pulse:%+v", cfg.BuilderLLM, cfg.PulseLLM)
+	if cfg.BuilderLLM != legacyBuilder || cfg.BackgroundLLM != legacyMaintenance {
+		t.Fatalf("normalized roles = builder:%+v pulse:%+v", cfg.BuilderLLM, cfg.BackgroundLLM)
 	}
 	if cfg.Provider != "" || cfg.LegacyPhaseLLM != nil || cfg.LegacyAutoImproveLLM != nil || cfg.LegacyLLMAllocationMode != "" {
 		t.Fatalf("legacy fields not cleared: %+v", cfg)
@@ -132,14 +132,14 @@ func TestResolveProviderProfileConfigUsesBuilderDefaults(t *testing.T) {
 	}
 }
 
-func TestResolveProviderProfilePulseConfigUsesProviderDefault(t *testing.T) {
-	got, ok := ResolveProviderProfilePulseConfig(providerProfile("claude-code"))
+func TestResolveProviderProfileBackgroundConfigUsesProviderDefault(t *testing.T) {
+	got, ok := ResolveProviderProfileBackgroundConfig(providerProfile("claude-code"))
 	if !ok || got.Provider != "claude-code" || got.ModelID != "claude-sonnet-5-5" || got.Options["reasoning_effort"] != "high" {
-		t.Fatalf("ResolveProviderProfilePulseConfig() = %+v, %v", got, ok)
+		t.Fatalf("ResolveProviderProfileBackgroundConfig() = %+v, %v", got, ok)
 	}
 }
 
-func TestResolveCodingAgentMemoryConfigUsesPulseDefault(t *testing.T) {
+func TestResolveCodingAgentMemoryConfigUsesProviderMaintenanceDefault(t *testing.T) {
 	got, ok := ResolveCodingAgentMemoryConfig(providerProfile("claude-code"))
 	if !ok || got.Provider != "claude-code" || got.ModelID != "claude-sonnet-5-5" || got.Options["reasoning_effort"] != "high" {
 		t.Fatalf("ResolveCodingAgentMemoryConfig() = %+v, %v", got, ok)

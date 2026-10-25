@@ -172,8 +172,6 @@ func effectiveRuntimeStepType(step PlanStepInterface) string {
 	return string(step.StepType())
 }
 
-// Goal steps end after the authored task and backend validation. Learning is
-// explicit task work (or belongs to Builder, Pulse or Crew), never a hidden turn.
 func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceClosingItems(context.Context, *AgentPlanStep, int) []AgentItem {
 	return nil
 }
@@ -583,8 +581,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 	if sequenceStep.AuthoredPrompt && len(session.Entries) > 0 {
 		finalSummary = session.Entries[len(session.Entries)-1].Summary
 	}
-	// Item summaries stay in the retained agent session. Pulse reads
-	// that evidence directly; do not parse prose into observations here.
 	if err := hcpo.saveFinalExecutionSummary(sequenceStep.GetID(), stepPath, finalSummary); err != nil {
 		hcpo.recordRunPersistenceError(context.Background(), sequenceStep.GetID(), err)
 	}
@@ -1506,10 +1502,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupAgentFolderGuard(stepPath string
 		readPaths = appendLearningReadPaths(readPaths, baseWorkspacePath, stepID)
 	}
 	writePaths = append(writePaths, writeRootPath, downloadsPath)
-	// Writes: anywhere in THIS run (any step's outputs, run logs) plus the shared areas db/assets, reports and
-	// tool_output_folder. Never past runs or other iterations, planning/, workflow.json, config, variables, functions,
-	// soul or code/ (Builder and Pulse only, through their tools). Knowledge base, learnings and database writes keep
-	// the step's own settings below. With no selected run there is no run folder to grant.
 	if hcpo.selectedRunFolder != "" {
 		writePaths = append(writePaths, runWorkspacePath)
 	}

@@ -49,11 +49,6 @@ type ChatPromptSource struct {
 }
 
 // PulseDefinition is product.yaml's pulse section.
-type PulseDefinition struct {
-	Tools      []string `yaml:"tools"`
-	Skills     []string `yaml:"skills"`
-	WritePaths []string `yaml:"write_paths"`
-}
 
 // ExecutionFunctionTools admits server-owned function tools to workflow agents.
 // Omission or an empty tool list exposes no function tools.
@@ -73,12 +68,9 @@ type ProductManifest struct {
 	// integration checks; each section still decides when it applies at runtime.
 	InstructionSections []string                      `yaml:"instruction_sections,omitempty"`
 	Chat                map[string]ChatModeDefinition `yaml:"chat,omitempty"`
-	// Pulse is the workflow Pulse agent's surface (PLAT-697): the only tools it
-	// gets, and the workflow folders it may write; everything else is read-only.
-	Pulse         *PulseDefinition      `yaml:"pulse,omitempty"`
-	ChatPolicy    *ChatCapabilityPolicy `yaml:"chat_policy,omitempty"`
-	SchemaVersion int                   `yaml:"schema_version"`
-	Dependencies  productdeps.Manifest  `yaml:"dependencies"`
+	ChatPolicy          *ChatCapabilityPolicy         `yaml:"chat_policy,omitempty"`
+	SchemaVersion       int                           `yaml:"schema_version"`
+	Dependencies        productdeps.Manifest          `yaml:"dependencies"`
 	// Prompt is the primary profile's prompt source.
 	Prompt PromptSource `yaml:"prompt"`
 	// Profile is the primary profile (the one the product surface opens).

@@ -23,7 +23,7 @@ when the answer can wait. Read `references/human-in-the-loop.md`.
 
 A scripted step runs its saved `main.py` and nothing else. In any run (schedule,
 webhook, `run_full_workflow`, a route called by an agent) a missing or failing
-script fails the step with its real error, and Autopilot reports it; no LLM rewrites
+script fails the step with its real error, and AgentWorks reports it; no LLM rewrites
 the script, repairs it or stands in for it. You write and fix scripts: author
 `main.py`, test it with `execute_step` (the only place an agent may write or repair
 a script), and after a reported failure read the error and fix the script the same

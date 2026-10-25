@@ -1352,18 +1352,6 @@ func (api *StreamingAPI) handleGetAzureDeployedModels(w http.ResponseWriter, r *
 	http.Error(w, unsupportedCodingAgentProviderMessage("LLM", "azure"), http.StatusGone)
 }
 
-// lockedPresetLLMConfig is a workflow's saved LLM config as it actually runs
-// under LLM_CONFIG_LOCKED with an explicitly published list: every role --
-// Builder, Pulse and the three execution tiers -- runs the published default
-// unless the saved role is itself on the published list.
-// Without the lock (or without a published list) the config is
-// returned untouched. The result is runtime-only; nothing writes it back to
-// workflow.json, so lifting the lock restores the workflow's own choices.
-//
-// Why here and not in handleQuery's primary-config check: the Builder chat,
-// scheduled runs and step execution take their models from the manifest's
-// llm_config, not from the request's primary config, so a locked deployment
-// still ran a synced workflow on claude-sonnet-5 (server A, 2026-09-03).
 func lockedPresetLLMConfig(cfg *workflowtypes.PresetLLMConfig) *workflowtypes.PresetLLMConfig {
 	if !isGlobalLLMConfigLocked() || !publishedLLMListConfigured() {
 		return cfg
@@ -1384,17 +1372,10 @@ func lockedPresetLLMConfig(cfg *workflowtypes.PresetLLMConfig) *workflowtypes.Pr
 		copied := *cfg
 		out = &copied
 	}
-	// A coding-agent provider (Cursor, Claude Code, Codex, Pi) carries its own
-	// role profile -- Builder/High, Medium, Low and Pulse models chosen for
-	// that provider (GetCodingAgentDefaultTierModels). Locking to such a
-	// provider means locking to that profile, not flattening every role onto
-	// one hardcoded model, so the tiers keep meaning something. Cursor's
-	// profile is all-auto as of 2026-09-03: a live server A run hit
-	// quota_exhausted on the previously-pinned grok-4.6 with no fallback.
 	if _, ok := llmproviders.GetCodingAgentDefaultTierModels(llmproviders.Provider(defProvider)); ok {
 		out.Mode = workflowtypes.LLMConfigModeProviderProfile
 		out.Provider = defProvider
-		out.BuilderLLM, out.PulseLLM, out.TieredConfig = nil, nil, nil
+		out.BuilderLLM, out.BackgroundLLM, out.TieredConfig = nil, nil, nil
 		return out
 	}
 	// Any other published provider has no role profile: every role runs the
@@ -1409,7 +1390,7 @@ func lockedPresetLLMConfig(cfg *workflowtypes.PresetLLMConfig) *workflowtypes.Pr
 	}
 	var savedBuilder, savedPulse, t1, t2, t3 *workflowtypes.AgentLLMConfig
 	if cfg != nil {
-		savedBuilder, savedPulse = cfg.BuilderLLM, cfg.PulseLLM
+		savedBuilder, savedPulse = cfg.BuilderLLM, cfg.BackgroundLLM
 		if cfg.TieredConfig != nil {
 			t1, t2, t3 = cfg.TieredConfig.Tier1, cfg.TieredConfig.Tier2, cfg.TieredConfig.Tier3
 		}
@@ -1417,7 +1398,7 @@ func lockedPresetLLMConfig(cfg *workflowtypes.PresetLLMConfig) *workflowtypes.Pr
 	out.Mode = workflowtypes.LLMConfigModeExplicit
 	out.Provider = ""
 	out.BuilderLLM = role(savedBuilder)
-	out.PulseLLM = role(savedPulse)
+	out.BackgroundLLM = role(savedPulse)
 	out.TieredConfig = &workflowtypes.TieredLLMConfig{Tier1: role(t1), Tier2: role(t2), Tier3: role(t3)}
 	return out
 }

@@ -12,7 +12,6 @@ interface WorkflowDashEntry {
   workspacePath: string
   label: string
 	runSummary: OrgDashboardNotification | null
-	pulseSummary: OrgDashboardNotification | null
 	recent: OrgDashboardNotification[]
 	byRoute: OrgDashboardRouteNotifications[]
 	pendingInputs: ReportHumanInput[]
@@ -28,6 +27,7 @@ interface OrgDashboardProps {
 
 const PILL_BASE = 'font-runloop-mono inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]'
 const STATUS_PILL: Record<SummaryStatus, { className: string; label: string; Icon: React.ComponentType<{ className?: string }> }> = {
+  partial: { className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-300', label: 'Partial', Icon: AlertTriangle },
   completed: { className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300', label: 'Completed', Icon: CheckCircle2 },
   failed: { className: 'border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-300', label: 'Failed', Icon: CircleAlert },
   blocked: { className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-300', label: 'Blocked', Icon: AlertTriangle },
@@ -64,23 +64,22 @@ function absoluteTime(iso: string): string {
 function summaryScopes(entry: WorkflowDashEntry) {
   const routes = entry.byRoute.map(route => ({
     key: JSON.stringify([route.legacy ? 'legacy' : 'route', route.routing_step_id, route.route_id]),
-    label: route.label, runSummary: route.run_summary || null, pulseSummary: route.pulse_summary || null,
+    label: route.label, runSummary: route.run_summary || null,
   }))
   // The API's workflow summary can be the same notification projected into a
   // route. Show that update once, under its route, while preserving distinct
   // aggregate content and different runs that happen to use identical prose.
   const representedByRoute = (summary: OrgDashboardNotification | null) => !!summary &&
-    routes.some(route => [route.runSummary, route.pulseSummary].some(candidate =>
+    routes.some(route => [route.runSummary].some(candidate =>
       candidate?.id === summary.id && candidate.status === summary.status &&
       candidate.title === summary.title && candidate.message === summary.message &&
       JSON.stringify(candidate.fields) === JSON.stringify(summary.fields) &&
       JSON.stringify(candidate.sections) === JSON.stringify(summary.sections) &&
       (summary.routes?.length || 0) <= 1))
   const runSummary = representedByRoute(entry.runSummary) ? null : entry.runSummary
-  const pulseSummary = representedByRoute(entry.pulseSummary) ? null : entry.pulseSummary
   return [
-    ...(runSummary || pulseSummary ? [{ key: 'workflow', label: 'Automation overview', runSummary, pulseSummary }] : []),
-    ...routes.filter(route => route.runSummary || route.pulseSummary),
+    ...(runSummary ? [{ key: 'workflow', label: 'Automation overview', runSummary }] : []),
+    ...routes.filter(route => route.runSummary),
   ]
 }
 
@@ -89,7 +88,7 @@ function hasPendingDecisions(entry: WorkflowDashEntry): boolean {
 }
 
 function latestSummary(entry: WorkflowDashEntry): OrgDashboardNotification | undefined {
-  return [...summaryScopes(entry).flatMap(scope => [scope.runSummary, scope.pulseSummary]), ...entry.recent]
+  return [...summaryScopes(entry).flatMap(scope => [scope.runSummary]), ...entry.recent]
     .filter((summary): summary is OrgDashboardNotification => !!summary)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0]
 }
@@ -129,7 +128,7 @@ const SummaryDetail: React.FC<{ title: string; summary: OrgDashboardNotification
 )
 
 const WorkflowSummaryRow: React.FC<{
-  label: 'Run' | 'Autopilot'
+  label: 'Run'
   summary: OrgDashboardNotification | null
 }> = ({ label, summary }) => {
   const [expanded, setExpanded] = useState(false)
@@ -159,7 +158,7 @@ const WorkflowSummaryRow: React.FC<{
         {!expanded && <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted-foreground">{summary.message}</p>}
       </button>
       {expanded && <div id={detailsId} role="region" aria-label={`${label} details: ${summary.title || 'Summary'}`} className="border-t border-border p-3">
-        <SummaryDetail title={label === 'Autopilot' ? 'Autopilot update' : 'Workflow run'} summary={summary} />
+        <SummaryDetail title={'Workflow run'} summary={summary} />
       </div>}
     </div>
   )
@@ -188,7 +187,6 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({ workflows, selectedW
           workspacePath: workflow.workspacePath,
 		  label: workflow.label,
 		  runSummary: notification?.run_summary || null,
-		  pulseSummary: notification?.pulse_summary || null,
 		  recent: notification?.recent || [],
 		  byRoute: notification?.by_route || [],
           pendingInputs: humanInputs.success ? humanInputs.inputs.filter(input => input.workspace_path === workflow.workspacePath) : [],
@@ -225,7 +223,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({ workflows, selectedW
   const header = <div className={`flex shrink-0 items-center justify-between gap-3 ${embedded ? 'border-b border-border px-4 py-2.5 sm:px-6' : 'px-6 pt-6 pb-5'}`}>
     {embedded ? <p className="text-xs text-muted-foreground">{entries.length} automations<span className="mx-2 text-border">/</span>{decisionCount ? `${decisionCount} pending decision${decisionCount === 1 ? '' : 's'}` : 'No pending decisions'}</p> : <div className="flex items-center gap-3"><LayoutDashboard className="h-6 w-6 text-primary" /><div>
       <h2 className="text-xl font-semibold tracking-tight text-foreground">Activity</h2>
-      <p className="mt-0.5 text-sm text-muted-foreground">Runs, Autopilot updates, and decisions — by automation</p>
+      <p className="mt-0.5 text-sm text-muted-foreground">Runs, Goal updates, and decisions — by automation</p>
     </div></div>}
     <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
   </div>
@@ -264,7 +262,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({ workflows, selectedW
       </aside>
       {selected ? <section key={selected.workspacePath} aria-label={`${selected.label} activity`} className="min-h-0 min-w-0 overflow-y-auto bg-background p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
-          <div className="min-w-0"><h3 className="break-words text-lg font-semibold tracking-tight text-foreground">{selected.label}</h3><p className="mt-1 text-xs text-muted-foreground">{selectedLatest ? `Latest update ${relativeTime(selectedLatest.created_at)}` : 'Run and Autopilot updates'}{selected.byRoute.length > 0 && ` · ${selected.byRoute.length} route${selected.byRoute.length !== 1 ? 's' : ''}`}</p></div>
+          <div className="min-w-0"><h3 className="break-words text-lg font-semibold tracking-tight text-foreground">{selected.label}</h3><p className="mt-1 text-xs text-muted-foreground">{selectedLatest ? `Latest update ${relativeTime(selectedLatest.created_at)}` : 'Run and Goal updates'}{selected.byRoute.length > 0 && ` · ${selected.byRoute.length} route${selected.byRoute.length !== 1 ? 's' : ''}`}</p></div>
           <button type="button" onClick={() => onOpenWorkflow(selected.workspacePath)} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-muted">Open automation<ArrowUpRight className="h-3.5 w-3.5" /></button>
         </div>
         {selected.failed && <p className="mt-4 text-sm text-amber-600 dark:text-amber-300">Some data could not be loaded. Refresh to try again.</p>}
@@ -277,13 +275,12 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({ workflows, selectedW
           {selectedScopes.map(scope => <section key={scope.key} aria-label={`${selected.label} · ${scope.label}`} className="space-y-2">
             <h5 className="text-xs font-semibold text-muted-foreground">{scope.label}</h5>
             <WorkflowSummaryRow label="Run" summary={scope.runSummary} />
-            <WorkflowSummaryRow label="Autopilot" summary={scope.pulseSummary} />
           </section>)}
-          {!selectedScopes.length && <div className="flex min-h-48 flex-col items-center justify-center px-4 py-8 text-center"><Activity className="mb-3 h-6 w-6 text-muted-foreground/50" /><p className="text-sm font-medium text-foreground">No updates yet</p><p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">Run summaries and Autopilot updates will appear here when this automation reports activity.</p></div>}
+          {!selectedScopes.length && <div className="flex min-h-48 flex-col items-center justify-center px-4 py-8 text-center"><Activity className="mb-3 h-6 w-6 text-muted-foreground/50" /><p className="text-sm font-medium text-foreground">No updates yet</p><p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">Run summaries and Goal updates will appear here when this automation reports activity.</p></div>}
         </div>
         {!!selectedHistory.length && <details className="group mt-6 border-t border-border pt-4">
           <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md py-2 text-sm font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden"><ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" />Activity history<span className="ml-auto text-xs font-normal">{selectedHistory.length} update{selectedHistory.length === 1 ? '' : 's'}</span></summary>
-          <div className="mt-3 space-y-2">{selectedHistory.map(summary => <WorkflowSummaryRow key={summary.id} label={summary.kind === 'pulse_summary' ? 'Autopilot' : 'Run'} summary={summary} />)}</div>
+          <div className="mt-3 space-y-2">{selectedHistory.map(summary => <WorkflowSummaryRow key={summary.id} label="Run" summary={summary} />)}</div>
         </details>}
       </section> : <div className="flex items-center justify-center p-6 text-sm text-muted-foreground">{decisionsOnly && !search ? 'No automations have pending decisions.' : 'No automations match your search.'}</div>}
     </div>

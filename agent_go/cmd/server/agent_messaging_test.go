@@ -137,76 +137,11 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	}
 }
 
-func TestAgentMessageWakeupsStayExplicit(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	ctx := internalBotRequestContext(context.Background(), "owner")
-	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "alpha", ProfileID: "work"}, Label: "Alpha", Path: linkAlphaPath, Chat: &codeChat{Key: "session:alpha", SessionID: "alpha"}}
-	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "crew:Beta")
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := agentConversation{ID: "inbox-existing", Endpoints: [2]agentMessageEndpoint{callerMessageEndpoint("owner", caller), targetMessageEndpoint("owner", target)}}
-	agentMessageMu.Lock()
-	err = saveAgentMessageStore(ctx, agentMessageStore{Conversations: []agentConversation{c}})
-	agentMessageMu.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	wake, err := env.api.scheduleAgentMessageWakeup(ctx, "owner", caller, "schedule", "", "Read inbox and decide whether to follow up", 600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(ctx)
-	agentMessageMu.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if materializeAgentWakeups(&s, time.Now()) {
-		t.Fatal("timer fired early")
-	}
-	if !materializeAgentWakeups(&s, time.Now().Add(601*time.Second)) {
-		t.Fatal("due timer not materialized")
-	}
-	if materializeAgentWakeups(&s, time.Now().Add(time.Hour)) {
-		t.Fatal("timer resent repeatedly")
-	}
-	if s.Wakeups[0].ID != wake["wakeup_id"] || s.Conversations[1].Endpoints[1].Session != "alpha" || !s.Conversations[1].Messages[0].Wakeup {
-		t.Fatalf("timer lost exact session: %+v", s)
-	}
-	if n := expirePendingAgentMessages(&s, time.Now().Add(48*time.Hour)); n != 0 || s.Conversations[1].Messages[0].Delivery != "pending" {
-		t.Fatal("peer backlog expiry cleared a scheduled wakeup")
-	}
-}
-
 // A Crew that sets a wakeup from the chat a message started must be woken in
 // that same chat. Its caller key says "session:<id>" (the main-chat form), which
 // resolved to a chat that does not exist and left the wakeup undelivered.
-func TestWakeupFromAMessageChatWakesThatChat(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	ctx := internalBotRequestContext(context.Background(), "owner")
-	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "alpha", ProfileID: "work"}, Label: "Alpha", Path: linkAlphaPath, Chat: &codeChat{Key: "session:alpha", SessionID: "alpha"}}
-	known := agentConversation{ID: "inbox-known", Endpoints: [2]agentMessageEndpoint{
-		{UserID: "owner", Kind: triggerCallerUser, ID: "owner", External: true},
-		{UserID: "owner", Kind: triggerCallerCrew, ID: "alpha", Profile: "work", Session: "alpha", ChatKey: "messages:inbox-known"}}}
-	agentMessageMu.Lock()
-	err := saveAgentMessageStore(ctx, agentMessageStore{Conversations: []agentConversation{known}})
-	agentMessageMu.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = env.api.scheduleAgentMessageWakeup(ctx, "owner", caller, "schedule", "", "Check back", 60); err != nil {
-		t.Fatal(err)
-	}
-	agentMessageMu.Lock()
-	s, err := readAgentMessageStore(ctx)
-	agentMessageMu.Unlock()
-	if err != nil || len(s.Wakeups) != 1 || s.Wakeups[0].Endpoint.ChatKey != "messages:inbox-known" {
-		t.Fatalf("wakeup not bound to the message chat: %+v %v", s.Wakeups, err)
-	}
-}
 
-func TestFixedMainAndPhysicalChatWakeupsStayPinned(t *testing.T) {
+func TestFixedMainAndPhysicalMessageChatsStayPinned(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	ctx := internalBotRequestContext(context.Background(), "owner")
@@ -242,8 +177,8 @@ func TestFixedMainAndPhysicalChatWakeupsStayPinned(t *testing.T) {
 	for _, check := range []struct{ key, want string }{{"alpha", original.SessionID}, {target.ConversationKey, target.SessionID}, {"session:" + original.SessionID, original.SessionID}} {
 		// Each address carries its own receiving chat's session.
 		endpoint.ChatKey, endpoint.Session = check.key, check.want
-		conversation := agentConversation{ID: "wakeup-pointer-test", Endpoints: [2]agentMessageEndpoint{endpoint, endpoint}}
-		if _, err := env.api.deliverAgentMessage(ctx, conversation, agentMessage{From: 0, Text: "wake up", Wakeup: true}); err != nil {
+		conversation := agentConversation{ID: "message-pointer-test", Endpoints: [2]agentMessageEndpoint{endpoint, endpoint}}
+		if _, err := env.api.deliverAgentMessage(ctx, conversation, agentMessage{From: 0, Text: "wake up"}); err != nil {
 			t.Fatal(err)
 		}
 		if received != check.want {

@@ -28,26 +28,21 @@ type NotificationDestination struct {
 	// Summary-specific allowlists. Empty means inherit the existing workflow
 	// routing. workflow summary delivery selects one by notification_kind and enforces it in
 	// the backend, including the workflow Slack webhook.
-	RunSummaryChannels   []string
-	PulseSummaryChannels []string
+	RunSummaryChannels []string
 
 	// Summary-specific Slack Incoming Webhooks, selected by the same
 	// notification_kind. Each webhook is a distinct channel. Empty means fall
 	// back to the single SlackWebhook above.
-	RunSummaryWebhooks   []SlackWebhookDest
-	PulseSummaryWebhooks []SlackWebhookDest
+	RunSummaryWebhooks []SlackWebhookDest
 
 	// Summary-specific Gmail To lists, selected by the same notification_kind.
-	// Empty means fall through to the per-user preference and then the
-	// account-wide default recipient. Sourced from workflow.json
-	// notifications.run_summary_recipients / pulse_summary_recipients.
+	// Empty disables summary emails. Sourced from workflow.json
+	// notifications.run_summary_recipients.
 	// Per-summary senders — the FROM counterpart to the recipient lists below.
 	// Several entries fan the summary out, one delivery per account.
-	RunSummaryGmailConnectionIDs   []string
-	PulseSummaryGmailConnectionIDs []string
+	RunSummaryGmailConnectionIDs []string
 
-	RunSummaryRecipients   []string
-	PulseSummaryRecipients []string
+	RunSummaryRecipients []string
 }
 
 // SlackWebhookDest is a workflow-scoped, one-way Slack Incoming Webhook.

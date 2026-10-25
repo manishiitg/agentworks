@@ -37,10 +37,10 @@ reference explains the product; it grants no tools, access or permission to run 
   data and say what is missing or stale. New dashboards are hosted React TSX with
   shared shadcn/Recharts components; JSON dashboard layouts are removed. Existing
   HTML pages can still be inspected. Keep all views and actions when converting.
-- **Autopilot**: the Goal's continuing agent for progress and follow-through.
-  Goals & metrics shows the goal, measurements and evidence; Talk to Autopilot
-  opens its full saved chat. Decisions and settings have their own destinations.
-  Reading a panel does not start a check, answer a decision or change On/Off.
+- **Goals & metrics**: the goal, success criteria, saved metric definitions and
+  real readings. Define numbers with Builder; ordinary steps collect them.
+  A Crew that looks after your Goals can review the same evidence through its
+  available tools. Decisions keep their existing Needs you destination.
 - **Knowledge**: Goal-local background notes and structured database records are
   separate from shared **Brain**. Crew **Memory** holds durable project facts;
   **Skills** hold reusable procedures. Do not restore a retired Learnings panel.
@@ -57,7 +57,7 @@ Use attached skills and live schemas, including product-specific differences.
 |---|---|
 | Dashboards, TSX conversion, live data, actions, motion or video | `panel-dashboard` and its relevant authoring/motion reference |
 | Plan & progress; starting, stopping or investigating Goal work | `panel-goal-plan`, `panel-goal-execution`, `panel-run-logs` |
-| Goals & metrics, Autopilot settings or its continuing chat | `panel-pulse`; `references/working-with-pulse.md` for Builder coordination |
+| Goals & metrics | `references/measurement-plan.md`; define and edit with Builder |
 | Pending Decisions | `panel-decisions` |
 | Functions; schedules; Watchers; webhooks | `panel-functions`, `panel-schedules`, `panel-watchers`, `panel-webhooks` |
 | Email inbox or personal Gmail monitoring, when offered | `panel-inbox`, `panel-google-apps`, `panel-watchers`; respect each product's supported source |
@@ -78,8 +78,7 @@ Use attached skills and live schemas, including product-specific differences.
 The project name stays beside Home; Builder is a chat tab. Ownership details
 are on hover. The project menu groups Recent, Build, Use, Share, Integrations
 and Setup; recent items can move without changing their identity. Dashboards
-are collected under the project. Autopilot has its own Goal menu; when Off,
-its submenu starts collapsed. Workflow playbooks, Publish, Notify and Backup
+are collected under the project. Workflow playbooks, Publish, Notify and Backup
 are in Setup. Access summarizes owners, audience and shared agents; changes
 are made through the visible project chat with the existing management tools.
 
@@ -98,7 +97,7 @@ state the exact limitation and give the current menu destination when useful.
 
 ## Product and permission boundaries
 
-- Goals have executable plans, steps and Autopilot. Crew is an agentic project
+- Goals have executable plans, steps and AgentWorks. Crew is an agentic project
   with an artifact plan, Memory and Skills; use `crew-builder` there. Flows
   (Relays internally) use their Python/DBOS graph, code and versioned runs; use
   `relay-builder`, `panel-relay-code` and `panel-relay-runs`. Do not turn one
@@ -109,7 +108,7 @@ state the exact limitation and give the current menu destination when useful.
 - Vault selections and Brain folder roles remain the existing access gates.
   Brain project access is Off, Read or Read & write; it is not folder binding.
   A selected computer is for authorized interactive work, not Goal steps,
-  schedules or Autopilot. Read the relevant skill before changing any grant.
+  schedules or AgentWorks. Read the relevant skill before changing any grant.
 - Publishing to Surge, Vercel or another static host uses the existing Publish
   automation and `export_dashboard_static` for the same saved dashboard and
   authorized snapshot. It does not create a second app or export live private

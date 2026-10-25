@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -13,39 +12,21 @@ import (
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// After-run options (PLAT-697 phase 0). Backup, Publish and Notify used to be
-// the Pulse finalizer's work, chosen by a schedule's pulse_mode (off / basic /
-// full). They are now plain options on each schedule, plus the same choice
-// for manual runs, and run after the run without a Pulse pass:
-//
-//   - Notify is code: a run summary built from the run's facts, through the
-//     normal notification path (configured channels and recipients). Routine
-//     successes are recorded in the dashboard only; failures and changes of
-//     status go out to the channels.
-//   - Backup and Publish are skipped in code when nothing changed since the
-//     last backup / publish (source hashes). Only when there is something to
-//     back up or publish does one short turn run, limited to those actions,
-//     because each destination's provider steps live in backup-strategy.md and
-//     publish-strategy.md.
-//
-// pulse_mode is read for one release: a schedule without after_run gets the
-// options its pulse_mode stood for (basic, and the retired full, did all
-// three; off did none), and the migration writes after_run. pulse_mode is
-// removed by the one-time manifest conversion; saves never recreate it.
+// After-run options run backup and publish after ordinary Goal runs.
+// Notifications use the configured channels and recipients. Backup and publish
+// start a short provider turn only when their source files have changed.
 
 // ScheduleAfterRun is a schedule's after-run options.
 type ScheduleAfterRun struct {
 	Backup  bool `json:"backup"`
 	Publish bool `json:"publish"`
-	Notify  bool `json:"notify"`
 }
 
 // Any reports whether any option is on.
-func (a ScheduleAfterRun) Any() bool { return a.Backup || a.Publish || a.Notify }
+func (a ScheduleAfterRun) Any() bool { return a.Backup || a.Publish }
 
 // EffectiveAfterRun reads the canonical housekeeping settings. The raw manifest
-// converter preserves legacy choices before decoding, once; runtime saves never
-// infer Pulse authority or recreate old per-schedule modes.
+// stores explicit choices; the one-off data migration preserves old choices.
 func (m *WorkflowManifest) EffectiveAfterRun(schedule WorkflowSchedule) ScheduleAfterRun {
 	if m == nil || m.Kind == "relay" || strings.EqualFold(strings.TrimSpace(schedule.ScheduleType), "webhook") || schedule.AfterRun == nil {
 		return ScheduleAfterRun{}
@@ -74,24 +55,21 @@ func setScheduleAfterRun(schedule *WorkflowSchedule, options ScheduleAfterRun) {
 	schedule.AfterRun = &copied
 }
 
-// applyScheduleAfterRunPolicy applies a create/update request's after_run.
-// A new schedule without after_run gets what its pulse_mode stands for, or
-// all three when it names neither; an update that changes only pulse_mode
-// moves after_run with it.
+// applyScheduleAfterRunPolicy defaults new schedules to backup and publish.
 func applyScheduleAfterRunPolicy(schedule *WorkflowSchedule, policy stepworkflow.ScheduleRuntimePolicy, creating bool) {
 	if schedule == nil {
 		return
 	}
 	switch {
 	case policy.SetAfterRun:
-		setScheduleAfterRun(schedule, ScheduleAfterRun{Backup: policy.AfterRun.Backup, Publish: policy.AfterRun.Publish, Notify: policy.AfterRun.Notify})
+		setScheduleAfterRun(schedule, ScheduleAfterRun{Backup: policy.AfterRun.Backup, Publish: policy.AfterRun.Publish})
 	case creating:
-		setScheduleAfterRun(schedule, ScheduleAfterRun{Backup: true, Publish: true, Notify: true})
+		setScheduleAfterRun(schedule, ScheduleAfterRun{Backup: true, Publish: true})
 	}
 }
 
 // effectiveScheduleAfterRun reads the schedule from the freshly read manifest,
-// as effectiveSchedulePulseMode did: a change saved while the run ran counts.
+// so a change saved during a run applies when that run finishes.
 func effectiveScheduleAfterRun(sctx *ScheduleContext, manifest *WorkflowManifest) ScheduleAfterRun {
 	if sctx == nil || manifest == nil || sctx.WebhookInput != nil || sctx.Schedule.ScheduleType == "webhook" {
 		return ScheduleAfterRun{}
@@ -130,8 +108,6 @@ func (s *SchedulerService) afterRunWorkDue(ctx context.Context, sctx *ScheduleCo
 		switch {
 		case manifest == nil || manifest.Publish == nil || !manifest.Publish.Enabled:
 			work.Notes = append(work.Notes, "publish skipped: publishing is not set up")
-		case !publishHasReportTarget(manifest.Publish):
-			work.Notes = append(work.Notes, "publish skipped: only the Autopilot page is published")
 		default:
 			hash := computeWorkflowPublishSourceHash(ctx, sctx.WorkspacePath)
 			status, _, _ := readWorkflowPublishStatus(ctx, sctx.WorkspacePath)
@@ -145,48 +121,12 @@ func (s *SchedulerService) afterRunWorkDue(ctx context.Context, sctx *ScheduleCo
 	return work
 }
 
-// publishHasReportTarget reports whether publish covers anything besides the
-// Pulse page. No targets means the workflow's report.
-func publishHasReportTarget(config *WorkflowPublishConfig) bool {
-	if config == nil {
-		return false
-	}
-	if len(config.Targets) == 0 {
-		return true
-	}
-	for _, raw := range config.Targets {
-		var name string
-		if json.Unmarshal(raw, &name) == nil {
-			if !strings.EqualFold(strings.TrimSpace(name), "pulse") {
-				return true
-			}
-			continue
-		}
-		var object map[string]interface{}
-		if json.Unmarshal(raw, &object) == nil {
-			for _, key := range []string{"id", "name", "type", "kind"} {
-				if value, ok := object[key].(string); ok && strings.EqualFold(strings.TrimSpace(value), "pulse") {
-					object = nil
-					break
-				}
-			}
-			if object != nil {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // runAfterRunOptions runs a scheduled run's after-run options. It never
 // changes the run's recorded result; a failed housekeeping turn makes the
 // scheduled job partial, as the basic finalizer did.
-func (s *SchedulerService) runAfterRunOptions(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, status, errMsg, runFolder, sessionID, runID string, duration time.Duration) pulseLifecycleResult {
+func (s *SchedulerService) runAfterRunOptions(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, status, errMsg, runFolder, sessionID, runID string, duration time.Duration) afterRunResult {
 	options := effectiveScheduleAfterRun(sctx, manifest)
-	result := pulseLifecycleNotRun
-	if !options.Any() {
-		return result
-	}
+	result := afterRunNotRun
 	if strings.TrimSpace(runFolder) != "" && (options.Backup || options.Publish) {
 		work := s.afterRunWorkDue(ctx, sctx, manifest, options)
 		for _, note := range work.Notes {
@@ -194,12 +134,7 @@ func (s *SchedulerService) runAfterRunOptions(ctx context.Context, sctx *Schedul
 		}
 		if work.Backup || work.Publish {
 			sctx.AfterRunBackup, sctx.AfterRunPublish = work.Backup, work.Publish
-			result = s.runPulseLifecycle(ctx, sctx, schedulePulseModeBasic, status, runFolder, sessionID, runID, errMsg)
-		}
-	}
-	if options.Notify {
-		if err := s.sendAfterRunNotification(ctx, sctx, manifest, runID, status, errMsg, duration); err != nil {
-			s.sessionLogf(sctx, sessionID, "[AFTER RUN] run notification not sent: %v", err)
+			result = s.runAfterRunHousekeeping(ctx, sctx, status, runFolder, sessionID, runID)
 		}
 	}
 	return result
@@ -210,15 +145,15 @@ func afterRunNotificationArgs(workflowName, scheduleName, status, errMsg string,
 	summaryStatus := "completed"
 	verb := "finished"
 	switch status {
-	case "blocked":
-		summaryStatus, verb = "blocked", "did not start"
+	case "blocked", "no_run":
+		summaryStatus, verb = status, "did not start"
 	case "error", "failed":
 		summaryStatus, verb = "failed", "failed"
 		if strings.Contains(errMsg, "Workflow Review found problems") {
 			summaryStatus, verb = "blocked", "did not start"
 		}
 	case "partial":
-		summaryStatus, verb = "completed", "finished with warnings"
+		summaryStatus, verb = "partial", "finished with warnings"
 	case "stopped":
 		summaryStatus, verb = "informational", "was stopped"
 	}
@@ -266,11 +201,24 @@ func afterRunNotificationArgs(workflowName, scheduleName, status, errMsg string,
 	return args
 }
 
-// afterRunNotifyExternally is the code form of the finalizer's "new and
-// important" default: a failure, or a status different from this schedule's
-// previous run, goes to the channels; a routine repeat is recorded only.
-func afterRunNotifyExternally(ctx context.Context, workspacePath, scheduleID, runID, status string) bool {
-	if status != "success" {
+// reportScheduledRunOutcome records the same outcome used to wake the linked
+// Crew. Needs-you reads that durable status; it creates no question or decision.
+func (s *SchedulerService) reportScheduledRunOutcome(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, runID, status, errMsg string, duration time.Duration) {
+	reason := wakeReasonForRun(status, sctx.ProducedRunEvidence)
+	s.wakeAgentTab(ctx, sctx, manifest, reason, errMsg, runID)
+	notificationStatus := status
+	if status == "success" && reason != "" {
+		notificationStatus = "no_run"
+	}
+	if err := s.sendAfterRunNotification(ctx, sctx, manifest, runID, notificationStatus, errMsg, duration); err != nil {
+		s.logf(sctx, "[RUN STATUS] run=%s outcome could not be recorded: %v", runID, err)
+	}
+}
+
+// shouldDeliverRunOutcome keeps routine repeated successes in Activity.
+// The saved team channels receive failures and changes in scheduled status.
+func shouldDeliverRunOutcome(ctx context.Context, workspacePath, scheduleID, runID, status string) bool {
+	if wakeReasonForRun(status, true) != "" {
 		return true
 	}
 	runs, err := ReadScheduleRuns(ctx, workspacePath)
@@ -279,12 +227,12 @@ func afterRunNotifyExternally(ctx context.Context, workspacePath, scheduleID, ru
 	}
 	var previous *ScheduleRunEntry
 	for i := range runs {
-		run := runs[i]
+		run := &runs[i]
 		if run.ID == runID || run.ScheduleID != scheduleID || run.Status == "running" {
 			continue
 		}
 		if previous == nil || run.StartedAt.After(previous.StartedAt) {
-			previous = &runs[i]
+			previous = run
 		}
 	}
 	return previous == nil || previous.Status != status
@@ -307,7 +255,8 @@ func (s *SchedulerService) sendAfterRunNotification(ctx context.Context, sctx *S
 	if dest != nil {
 		nctx = context.WithValue(nctx, virtualtools.BotNotificationDestinationKey, dest)
 	}
-	external := afterRunNotifyExternally(ctx, sctx.WorkspacePath, sctx.Schedule.ID, runID, status)
+	// Manual outcomes are recorded only; explicit workflow/team messages remain independent.
+	external := sctx.TriggerSource != "manual" && shouldDeliverRunOutcome(ctx, sctx.WorkspacePath, sctx.Schedule.ID, runID, status)
 	_, err := virtualtools.DeliverWorkflowNotification(nctx, afterRunNotificationArgs(firstNonEmptyString(manifest.Label, sctx.WorkflowLabel), sctx.Schedule.Name, status, errMsg, duration, external))
 	return err
 }
@@ -343,9 +292,6 @@ func (s *SchedulerService) runManualAfterRunOptions(workspacePath, runFolder, st
 		return
 	}
 	options := manifest.EffectiveManualAfterRun()
-	if !options.Any() {
-		return
-	}
 	if _, busy := manualAfterRunInflight.LoadOrStore(workspacePath, true); busy {
 		return
 	}
@@ -354,7 +300,7 @@ func (s *SchedulerService) runManualAfterRunOptions(workspacePath, runFolder, st
 	sched := WorkflowSchedule{
 		ID:           manualAfterRunScheduleID,
 		Name:         "After-run options",
-		Description:  "Backup, publish and notify after a manual run",
+		Description:  "Backup and publish after a manual run",
 		ScheduleType: "cron",
 		Timezone:     "UTC",
 		Mode:         "workshop",
@@ -363,26 +309,30 @@ func (s *SchedulerService) runManualAfterRunOptions(workspacePath, runFolder, st
 	sctx := buildScheduleContext(workspacePath, manifest, sched)
 	sctx.TriggerSource = "manual"
 	sctx.ProducedRunEvidence = true
-	scheduleStatus := "success"
-	if status != "completed" && status != "success" {
+	scheduleStatus := status
+	switch status {
+	case "completed", "success":
+		scheduleStatus = "success"
+	case "partial", "stopped", "interrupted":
+	default:
 		scheduleStatus = "error"
 	}
 	if options.Backup || options.Publish {
 		work := s.afterRunWorkDue(ctx, sctx, manifest, options)
 		if work.Backup || work.Publish {
 			sctx.AfterRunBackup, sctx.AfterRunPublish = work.Backup, work.Publish
-			s.runPulseLifecycle(ctx, sctx, schedulePulseModeBasic, scheduleStatus, runFolder, "", runFolder, "")
+			result := s.runAfterRunHousekeeping(ctx, sctx, scheduleStatus, runFolder, "", runFolder)
+			if result == afterRunStopped {
+				scheduleStatus = "stopped"
+			} else if result == afterRunPartial && scheduleStatus == "success" {
+				scheduleStatus = "partial"
+			}
 		}
 	}
-	if options.Notify {
-		sctx.Schedule.Name = ""
-		_ = s.sendAfterRunNotification(ctx, sctx, manifest, "", scheduleStatus, "", 0)
-	}
+	sctx.Schedule.Name = ""
+	_ = s.sendAfterRunNotification(ctx, sctx, manifest, runFolder, scheduleStatus, "", 0)
 }
 
-// runAfterRunNow starts the backup or publish pass now, outside a run: the
-// same Pulse basic pass, in-flight guard and "anything to do" check as after
-// a manual run. It reports why nothing started (not set up, nothing changed).
 func (s *SchedulerService) runAfterRunNow(workspacePath, option string) (bool, []string, error) {
 	if s == nil || s.api == nil {
 		return false, nil, fmt.Errorf("the scheduler is not running")
@@ -407,7 +357,7 @@ func (s *SchedulerService) runAfterRunNow(workspacePath, option string) (bool, [
 	sctx.AfterRunBackup, sctx.AfterRunPublish = work.Backup, work.Publish
 	go func() {
 		defer manualAfterRunInflight.Delete(workspacePath)
-		s.runPulseLifecycle(context.Background(), sctx, schedulePulseModeBasic, "success", "", "", "", "")
+		s.runAfterRunHousekeeping(context.Background(), sctx, "success", "", "", "")
 	}()
 	return true, work.Notes, nil
 }

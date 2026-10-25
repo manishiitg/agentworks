@@ -2,29 +2,16 @@ package step_based_workflow
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-// A goal comes from soul, not from DB availability. Pulse configuration uses
-// the canonical workflow toggle, matching WorkflowManifest.PulseEnabled.
 func (hcpo *StepBasedWorkflowOrchestrator) refreshStepGoalPolicy(ctx context.Context, manifest string) {
 	objective, _ := hcpo.ResolveWorkflowObjective(ctx)
 	hasGoal := hcpo.platformStoresEnabled() && !hcpo.isRelayExecution() && strings.TrimSpace(objective) != ""
 	hcpo.stepHasGoal.Store(hasGoal)
-	var m struct {
-		Pulse *struct {
-			Enabled bool `json:"enabled"`
-		} `json:"pulse"`
-	}
-	enabled := false
-	if json.Unmarshal([]byte(manifest), &m) == nil {
-		enabled = m.Pulse != nil && m.Pulse.Enabled
 
-	}
-	hcpo.stepPulseEnabled.Store(hasGoal && enabled)
 }
 
 // Apply after category filtering: an old explicit list or wildcard cannot
@@ -35,7 +22,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) filterOrdinaryStepTools(tools []llmty
 		"query_workflow_costs": true, "apply_workflow_db_migration": true,
 		"list_functions": true, "call_function": true, "get_function_call": true, "reply_function_call": true,
 		"get_goal_metrics": !hcpo.stepHasGoal.Load(), "record_goal_observations": !hcpo.stepHasGoal.Load(),
-		"ask_pulse": !hcpo.stepPulseEnabled.Load(), "ask_goal_lead": !hcpo.stepPulseEnabled.Load(),
 	}
 	result := make([]llmtypes.Tool, 0, len(tools))
 	resultExecutors := make(map[string]interface{}, len(executors))

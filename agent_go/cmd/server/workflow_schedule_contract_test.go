@@ -97,22 +97,6 @@ func TestValidateScheduleMessagesRequiresReasonForSequentialConversation(t *test
 	}
 }
 
-func TestVersion133SkipsRetiredPulseBacklogMigration(t *testing.T) {
-	plan := workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractPulseBacklogTriageVersion})
-	if len(plan) != 16 || plan[0].label != "upgrade-pulse-actionable-backlog" || plan[0].to != workflowContractPulseActionableBacklogVersion || plan[1].label != "upgrade-orchestrator-step-type" || plan[1].to != workflowContractOrchestratorStepTypeVersion || plan[2].label != "upgrade-activity-tab-from-run-summary" || plan[2].to != workflowContractActivityTabFromRunSummaryVersion || plan[3].label != "upgrade-scripted-type-stays-regular" || plan[3].to != workflowContractScriptedPlanTypeVersion || plan[4].label != "upgrade-declared-execution-mode-retired" || plan[4].to != workflowContractDeclaredExecutionModeRetiredVersion || plan[5].label != "upgrade-declared-execution-mode-stripped" || plan[5].to != workflowContractDeclaredExecutionModeStrippedVersion || plan[6].label != "upgrade-route-summaries" || plan[6].to != workflowContractRouteSummariesVersion {
-		t.Fatalf("1.0.33 upgrade plan = %+v, want actionable Autopilot backlog migration then agent step-type migration", plan)
-	}
-	for _, want := range []string{
-		"legacy Autopilot actionable-backlog migration for this version has been retired",
-		"Do not inspect or modify Autopilot data",
-		`set_workflow_contract_version(version="1.0.34")`,
-	} {
-		if !strings.Contains(plan[0].query, want) {
-			t.Errorf("actionable Autopilot backlog migration missing %q", want)
-		}
-	}
-}
-
 // TestUpgradeQueriesNeverNamePlatTickets guards a real mistake made while
 // writing upgradeDedicatedPulseSchedule and workflow-tools.md's
 // periodic-Pulse guidance: this text runs live on operators' own workflows,

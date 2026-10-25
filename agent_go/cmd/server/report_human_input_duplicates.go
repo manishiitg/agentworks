@@ -43,32 +43,7 @@ func dismissDuplicateHumanInput(ctx context.Context, workspacePath, inputID, kee
 	if matches != 1 {
 		return nil, fmt.Errorf("requests must both be pending and have identical question, context, options, source, run, evidence, and approval contract")
 	}
-	for _, spec := range []struct{ table, column string }{{"pulse_finding_events", "metadata_json"}, {"pulse_finding_details", "detail_json"}} {
-		var exists int
-		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", spec.table).Scan(&exists); err != nil {
-			return nil, err
-		}
-		if exists == 0 {
-			continue
-		}
-		var invalid int
-		invalidQuery := fmt.Sprintf("SELECT count(*) FROM %s WHERE trim(coalesce(%s,''))<>'' AND NOT json_valid(%s)", spec.table, spec.column, spec.column)
-		if err := tx.QueryRowContext(ctx, invalidQuery).Scan(&invalid); err != nil {
-			return nil, err
-		}
-		if invalid != 0 {
-			return nil, fmt.Errorf("cannot safely check decision links: malformed finding metadata")
-		}
-		// These identifiers are constants, never caller-controlled.
-		query := fmt.Sprintf("SELECT count(*) FROM %s r, json_tree(CASE WHEN json_valid(r.%s) THEN r.%s ELSE '{}' END) j WHERE j.key='human_input_id' AND j.value=?", spec.table, spec.column, spec.column)
-		var links int
-		if err := tx.QueryRowContext(ctx, query, inputID).Scan(&links); err != nil {
-			return nil, err
-		}
-		if links != 0 {
-			return nil, fmt.Errorf("input_id %q is linked to a finding; keep linked decisions", inputID)
-		}
-	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := tx.ExecContext(ctx, `UPDATE report_human_inputs SET status='dismissed', dismissed_at=?, updated_at=? WHERE workspace_path=? AND id=? AND status='pending'`, now, now, normalized, inputID)
 	if err != nil {

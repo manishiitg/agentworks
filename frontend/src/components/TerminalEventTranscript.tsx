@@ -32,7 +32,6 @@ import {
   type TranscriptItem,
 } from '../utils/terminalEventTranscript'
 import { withToolCallVisibility } from '../utils/toolCallVisibility'
-import { PulseIcon } from './workflow/pulseIcon'
 import { formatDurationCompact } from '../utils/duration'
 import { formatElapsed, turnDoneWord } from './chat/workingWords'
 import { liveUsageSummary, type LiveUsageSummary } from './terminalUsage'
@@ -321,24 +320,11 @@ const TranscriptEvent: React.FC<{
   }
   // A message another agent sent into this chat (Pulse messaging the Builder
   // chat) shows who sent it, with that agent's icon, on the agent side.
-  if (metadata?.source === 'pulse') {
-    const label = typeof metadata.sender_label === 'string' && metadata.sender_label.trim() ? metadata.sender_label.trim() : 'Autopilot'
-    const text = (displayContent || content || '').replace(new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*`), '')
-    return <AgentSentMessage label={label} content={text} timestamp={timestamp} />
-  }
+
   return <UserTranscriptMessage content={displayContent || content || (messageAttachmentPaths(metadata).length > 0 ? '' : 'Message')} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} />
 }
 
-const AgentSentMessage: React.FC<{ label: string; content: string; timestamp: string }> = ({ label, content, timestamp }) => (
-  <div data-testid="agent-sent-message" className="mb-2 mt-2 max-w-[84%] rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-    <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-primary">
-      <PulseIcon className="h-3.5 w-3.5" aria-hidden="true" />
-      <span>{label}</span>
-      {timestamp && <span className="ml-auto tabular-nums font-normal text-muted-foreground">{timestamp}</span>}
-    </div>
-    <div className="whitespace-pre-wrap break-words text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{content}</div>
-  </div>
-)
+
 
 const USER_MESSAGE_PREVIEW_LIMIT = 480
 

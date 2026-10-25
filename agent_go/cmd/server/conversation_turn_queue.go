@@ -1114,6 +1114,6 @@ func autoSteerablePersonTurn(turn queuedConversationTurn) bool {
 	req := turn.Request
 	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
 	return sanitizeClientMessageID(turn.SubmissionID) != "" && turn.DeliveryError == "" && !turn.Steering &&
-		req.DeliveryMode != "queue" && !req.DisableLiveInputDelivery && !req.IsAutoNotification && !req.PulseLifecycleTurn &&
+		req.DeliveryMode != "queue" && !req.DisableLiveInputDelivery && !req.IsAutoNotification &&
 		strings.TrimSpace(req.BotPlatform) == "" && (trigger == "" || trigger == "manual" || trigger == "interactive")
 }

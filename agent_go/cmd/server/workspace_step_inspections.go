@@ -110,7 +110,7 @@ func (api *StreamingAPI) handleWorkspaceStepInspections(w http.ResponseWriter, r
 		args = append(args, cursor.UpdatedAt, cursor.UpdatedAt, cursor.RowID)
 	}
 	response := workspaceStepInspectionsResponse{Items: []workspaceStepInspection{}}
-	_, db, err := openPulseStoreDB(r.Context(), workspace, false)
+	_, db, err := openWorkflowStoreDB(r.Context(), workspace, false)
 	if err != nil {
 		http.Error(w, "Step records unavailable", http.StatusServiceUnavailable)
 		return

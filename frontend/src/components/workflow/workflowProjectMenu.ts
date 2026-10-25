@@ -1,8 +1,7 @@
-import { ArrowUpCircle, BookOpen, Cable, Cloud, Code2, Cpu, Database, DollarSign, Laptop, Files, FileText, Globe, Hand, History, LayoutDashboard, MessageSquareText, Monitor, Route, Settings, BellRing, ShieldCheck, Sparkles, Vault, type LucideIcon } from 'lucide-react'
+import { ArrowUpCircle, BookOpen, Cable, Cloud, Code2, Cpu, Database, DollarSign, Laptop, Files, FileText, Globe, Hand, History, LayoutDashboard, MessageSquareText, Monitor, Route, Settings, BellRing, ShieldCheck, Target, Sparkles, type LucideIcon } from 'lucide-react'
 import { projectAutomationSections, projectConnectionSections } from '../workspace/WorkspaceProjectNavigation'
 import { PROJECT_MENU_GROUPS, type ProjectMenuGroup } from '../workspace/projectMenuGroups'
 import type { WorkspaceViewId } from './workspaceViews'
-import { PulseIcon } from './pulseIcon'
 import { visibleProductSurfaceIDs } from '../../products/productSurfaceConfig'
 
 export type WorkflowMenuItem = {
@@ -11,9 +10,9 @@ export type WorkflowMenuItem = {
 }
 
 /** The menu and panel search use the same destinations and existing product gates. */
-export function workflowProjectMenuItems({ relayMode = false, isMultiUser = false, allowedProducts, pulseEnabled = false, incomingEmail = false, canShare = true }: {
+export function workflowProjectMenuItems({ relayMode = false, isMultiUser = false, allowedProducts, incomingEmail = false, canShare = true }: {
   relayMode?: boolean; isMultiUser?: boolean; allowedProducts?: string[] | null
-  pulseEnabled?: boolean; incomingEmail?: boolean; canShare?: boolean
+  incomingEmail?: boolean; canShare?: boolean
 }): WorkflowMenuItem[] {
   const items: WorkflowMenuItem[] = []
   const add = (view: WorkspaceViewId, group: ProjectMenuGroup, label: string, icon: LucideIcon, target?: string, subgroup?: string) => {
@@ -33,7 +32,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   }
   if (relayMode) add('flow', 'Use', 'Runs', History, 'calls')
   else {
-    add('pulse', 'Use', pulseEnabled ? 'Autopilot' : 'Turn Autopilot on', PulseIcon)
+    add('goals', 'Build', 'Goals & metrics', Target)
     add('human-actions', 'Use', 'Decisions', Hand)
     add('browser', 'Use', 'Browser', Monitor)
   }

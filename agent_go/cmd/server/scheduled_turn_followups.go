@@ -9,24 +9,6 @@ import (
 	"time"
 )
 
-// A scheduled run owns its session the way a step owns its sub-agents
-// (reconcileAsyncSubAgentCalls): after each agent turn it waits until every
-// step that turn started reports itself done, hands the agent their results as
-// its next turn, and repeats until a turn starts nothing new. Only then is the
-// scheduled message's work complete.
-//
-// Before this, the scheduler treated "the agent's turn ended" as "the work is
-// done". An agent looping over groups with execute_step ends its turn after
-// starting each step, to wait for the result, so the scheduler closed the run
-// and started the Pulse finalizer in the same session; the finalizer won the
-// race for the session and the step's completion notice landed in its turn.
-// salesoutreach's email and LinkedIn schedules ran 1 of 12 groups every day
-// from Sep 19 to Sep 26 because of it.
-//
-// While a run owns the session, the auto-notification path leaves completions
-// undelivered (deferWorkflowStepAutoNotification) so there is exactly one
-// deliverer and nothing to race.
-
 // maxScheduledFollowUpRounds bounds one scheduled message. 12 groups x 2 steps
 // run one at a time is 24 rounds.
 const maxScheduledFollowUpRounds = 100

@@ -81,14 +81,6 @@ type GmailConnection struct {
 	// GmailService.ImportLegacyOAuthClient backfills it.
 	ClientName string `json:"client_name,omitempty"`
 
-	// AllowReadAccess opts this connection into gmail.readonly alongside the
-	// always-requested gmail.send. Off by default: the primary use (Pulse and
-	// workflow notifications) only ever sends, so every connection requests
-	// the minimum until a specific use case (triage, reply-context) needs to
-	// read mail too. Fixed for the life of the connection at the scope the
-	// user consented to; changing it requires reconnecting (see
-	// gmail_oauth.go's BeginGmailOAuth), since Google scopes a token at grant
-	// time, not after.
 	AllowReadAccess bool `json:"allow_read_access,omitempty"`
 
 	// AllowAgentWriteAccess opts project agents into creating Gmail drafts and
@@ -145,10 +137,7 @@ type GmailUseScope struct {
 	// Workspace is the server-bound target, independent of the person running it.
 	Workspace string
 	UserID    string
-	// ReadOnly runs gog read-only whatever the connection grants (a Pulse Goal
-	// Work turn whose Outward permission is ask). It does not affect which
-	// connections are usable.
-	ReadOnly bool
+	ReadOnly  bool
 }
 
 // UsableFrom reports whether conn may be used, listed or managed in scope: a

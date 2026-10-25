@@ -49,8 +49,7 @@ type triggerTarget struct {
 	CrewProfile      string
 	// CrewOwner is the user whose workspace holds a Crew target. Crews are
 	// shared server-wide, so it may differ from the requester.
-	CrewOwner string
-	// TeamRecipientID is selected by trusted Pulse route assignment lookup, never model identity arguments.
+	CrewOwner       string
 	TeamRecipientID string
 	Manifest        *WorkflowManifest
 	// Chat is set on a sibling chat of the caller's own Code (PLAT-648):
@@ -210,8 +209,7 @@ func (c triggerLinkCaller) isTarget(target triggerTarget) bool {
 		return same
 	}
 	same := target.Manifest != nil && strings.TrimSpace(c.Stamp.ID) == strings.TrimSpace(target.Manifest.ID)
-	// The workflow's Pulse conversation (ask_pulse) is another
-	// participant of the same workflow; only that conversation itself is "self".
+	// Named chats are separate participants; only the caller's own chat is self.
 	if same && target.Chat != nil {
 		return c.Chat != nil && c.Chat.Key == target.Chat.Key
 	}
@@ -360,8 +358,7 @@ func triggerTargetRunIsRunning(kind, status string) bool {
 		return status == "running"
 	}
 	switch status {
-	case string(schedulerstate.StateWorkflowRunning), string(schedulerstate.StateWorkflowFinished),
-		string(schedulerstate.StatePulseRunning):
+	case string(schedulerstate.StateWorkflowRunning), string(schedulerstate.StateWorkflowFinished):
 		return true
 	}
 	return false

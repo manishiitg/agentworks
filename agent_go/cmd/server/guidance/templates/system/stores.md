@@ -6,7 +6,7 @@ Keep reusable instructions separate from business knowledge and recorded results
 
 **skills/<name>/ — reusable HOW to do the task**
 - Workflow-local skills hold task methods: selectors, API quirks, authentication sequences, parsing, recovery and verified techniques. Use the existing skill format: a short `SKILL.md` index, detail under `references/`, and supporting assets when needed. Open only the reference needed for the task.
-- Builder edits these instructions when asked. Autopilot may edit them as part of its own improvement pass when Autopilot is on; Autopilot off never edits them. Select a skill in workflow `selected_skills` for Builder/Autopilot and per-step `enabled_skills` for execution. Steps consume skills; they do not update them or run a separate learning phase. Crew can own ongoing learning.
+- Builder edits these instructions when asked. Select workflow `selected_skills` for Builder and per-step `enabled_skills` for execution. Steps consume skills; they do not update them or run a separate learning phase. A Crew can own ongoing learning through its own instructions and skills.
 - Contract 1.0.51 retires the separate learnings feature. Upgrade existing workflows explicitly with `migrate_workflow_skills`, review its copy hashes and index, then stamp. The existing code-layout upgrade must come first. It copies old guides and supporting files verbatim into a workflow-local skill, preserves originating steps in the index, keeps old files as history, and does not change knowledge-base grants. Never move private guides into the shared workspace skill catalog or turn legacy `main.py` backups into skill scripts.
 - Platform mechanics belong in platform guidance and tool schemas, rather than copied into task skills.
 
@@ -51,7 +51,7 @@ Keep reusable instructions separate from business knowledge and recorded results
 <!-- product:knowledgebase -->**Shared Brain product:** the organization Brain is a separate store accessed through `brain_browse`, `brain_read`, `brain_update`, `brain_skills` and `brain_access`, using explicit actions. Existing workflow-local `knowledgebase/`, its `knowledgebase_sources` aliases, and Crew workspace attachments retain their current file paths and permissions. An attachment does not grant access to a shared Brain folder. Do not migrate, copy, or dual-write existing knowledge unless explicitly requested. Shared Brain content must be accessed through its MCP tools; never mount or shell-read its server data directory. Workflow skills remain local to their workflow.
 
 **When to use which — deciding questions:**
-- *Does it tell the agent HOW to do the task?* → a workflow-local skill maintained by Builder or Autopilot
+- *Does it tell the agent HOW to do the task?* → a workflow-local skill maintained by Builder
 - *Did the user provide runtime business context, rules, examples, preferences, or constraints that steps must respect?* → knowledgebase/context/context.md (user-owned; steps read it with KB read access)
 - *Is it a durable observation, decision, or pattern about the workflow's subject matter discovered by the workflow?* → knowledgebase/notes/ (put the contribution in the task and grant knowledge-base write access)
 - *Is it the workflow's actual output data — rows, records, results this run produced?* → db/db.sqlite (agentic steps use managed DB tools; upsert on the primary key, never recreate or wholesale-overwrite the table)
@@ -91,7 +91,7 @@ Every non-trivial step has a `context_output` file (e.g. `extracted_data.json`).
 `db/db.sqlite` is different: workspace-level, persistent across runs and groups, and the live data source for the report. The report is an **HTML document** that reads it on view via `window.report.query("SELECT ...")` and renders its own charts/tables; it can also pull durable files from `db/`, `knowledgebase/`, or `docs/` via `window.report.get`/`fileUrl`. Keep report-facing data in `db/db.sqlite` and durable files under those roots — never have a report read volatile `runs/...` paths. Only data that must be live from an outside system comes through a `code/reports/` script via `window.report.run` (see reporting-policy); do not use it to re-read what a run already stores in `db/`.
 
 **When to introduce a db/db.sqlite table:**
-- (a) You want (or might plausibly want) structured data to appear in the Report UI — a db.sqlite table is the default durable option (the HTML report queries it live); migrating later means rewriting step code + schema notes, so lean toward it up front. For a durable **file** a step downloads or generates (any format — PDF, image, CSV, JSON, txt, zip), the step-writable home is `db/assets/` with a reference row in `db.sqlite`. Other shared step-writable areas are `reports/` and `tool_output_folder/`; knowledge-base notes require the step’s write grant. Past runs, planning, settings, skills and code stay with Builder/Autopilot. Prefer `db/assets/` for durable assets referenced by results. If it is structured data you will query, parse the content into `db.sqlite` tables and keep the raw file in `db/assets/` for provenance.
+- (a) You want (or might plausibly want) structured data to appear in the Report UI — a db.sqlite table is the default durable option (the HTML report queries it live); migrating later means rewriting step code + schema notes, so lean toward it up front. For a durable **file** a step downloads or generates (any format — PDF, image, CSV, JSON, txt, zip), the step-writable home is `db/assets/` with a reference row in `db.sqlite`. Other shared step-writable areas are `reports/` and `tool_output_folder/`; knowledge-base notes require the step’s write grant. Past runs, planning, settings, skills and code stay with Builder. Prefer `db/assets/` for durable assets referenced by results. If it is structured data you will query, parse the content into `db.sqlite` tables and keep the raw file in `db/assets/` for provenance.
 - (b) Cross-run persistence matters — cursors ("last-processed date"), processed-ID sets for dedup, cumulative rows that grow across runs.
 - (c) Cross-group aggregation matters — combined tallies, per-group rows unified into one view.
 
@@ -107,8 +107,7 @@ Every non-trivial step has a `context_output` file (e.g. `extracted_data.json`).
 
 **Backend-owned tables — never write these from a step or the builder shell.** A few tables in `db/db.sqlite` are created and maintained by the backend, not by workflow code. They do not belong in `db/README.md`'s writer list and a step that inserts into them will corrupt state the scheduler depends on:
 
-- `pulse_module_state`, `pulse_module_audit` — Autopilot scheduling state and module outcomes.
-- `run_concerns` — Autopilot's canonical finding records, written only by Autopilot's own review path. Steps never write it. A step raises a concern with one plain `CONCERNS: <what happened, affected artifact, evidence>` line in its completion summary (scripted steps print it to stdout); Autopilot reads those lines from retained summaries and decides whether each becomes a finding. Read-only queries against `run_concerns` are fine.
+- `run_concerns` — retained run evidence, owned by the platform. Steps do not write platform tables. They report non-fatal concerns in their completion output; the requesting person or reviewing Crew can inspect the evidence.
 - `report_human_inputs` — pending/answered operator questions. New answers carry
   `answered_by`, `answered_by_kind`, `answered_via`, and
   `answered_session_id`; `report_human_input_events` is the append-only audit
@@ -138,7 +137,7 @@ Every non-trivial step has a `context_output` file (e.g. `extracted_data.json`).
 
 ### Explicit contributions
 
-Knowledge-base writes require the step's write access and a task instruction saying what to record and where. Goals do not run an automatic reflection or learning turn. Builder and Autopilot maintain reusable workflow skills; Crew can own ongoing learning. Contract 1.0.50 archives old objectives; 1.0.51 moves existing guides into skills without changing KB grants or run history.
+Knowledge-base writes require the step's write access and a task instruction saying what to record and where. Goals do not run an automatic reflection or learning turn. Builder maintains reusable workflow skills; Crew can own ongoing learning. Contract 1.0.50 archives old objectives; 1.0.51 moves existing guides into skills without changing KB grants or run history.
 
 ### Completing a run's durable output
 

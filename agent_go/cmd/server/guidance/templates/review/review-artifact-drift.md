@@ -1,8 +1,8 @@
 Review whether the current plan and its dependent artifacts agree.{{if .Focus}} Focus: {{.Focus}}.{{end}}
 
-Do this in the current Builder or Autopilot conversation. There is no separate reviewer, due claim, Gate or completion handshake. Ordinary edits use `builder-reference/references/plan-change-impact.md`: one combined compatibility check in the current agent. Run a full audit for scheduled Autopilot or an explicit user request when the evidence warrants it. A stale `drift_review.needs_review` flag alone does not require this audit before testing. Merely reading this guide during an edit does not authorize launching a background audit.
+Do this in the current authorized conversation. There is no separate reviewer, due claim, Gate or completion handshake. Ordinary edits use `builder-reference/references/plan-change-impact.md`: one combined compatibility check in the current agent. Run a full audit when the requesting person or reviewing Crew asks for it when the evidence warrants it. A stale `drift_review.needs_review` flag alone does not require this audit before testing. Merely reading this guide during an edit does not authorize launching a background audit.
 
-Read the goal, current plan, step configuration and relevant plan-change history. Identify changed steps, downstream consumers and references left by deleted steps. Use existing Builder tools for authorized repairs and verify actual results. Autopilot asks Builder for repairs within their shared permissions; do not create a separate repair agent. Preserve route ownership, the outward-action setting and the unreadable-input guard.
+Read the goal, current plan, step configuration and relevant plan-change history. Identify changed steps, downstream consumers and references left by deleted steps. Use existing Builder tools for authorized repairs and verify actual results. A reviewing Crew asks Builder for repairs through the shared entry points; do not create a separate repair agent. Preserve route ownership, existing access and the unreadable-input guard.
 
 Record per-step evidence with `record_plan_drift_review`: pass for a demonstrated match, fixed after a verified repair, fail for an unresolved mismatch. Record the mismatch and follow up with Builder in the normal conversation. Use the live tool schema for change identifiers and workflow deletion checks. There is no worklist claim or reviewer-result tool.
 
@@ -35,7 +35,7 @@ runs (same route/group and materially equivalent configuration). Read compact
 receipts first; open raw traces only for the changed or suspicious step/attempt.
 State an evidence limitation when fewer comparable runs remain.
 
-Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumption-audit.md"}])`. While tracing changed surfaces, identify dependent artifacts that preserved an old architecture, tactic, schema, metric, or execution assumption after the plan evolved. Keep consequential unresolved restrictions under Autopilot's Assumptions challenged.
+Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumption-audit.md"}])`. While tracing changed surfaces, identify dependent artifacts that preserved an old architecture, tactic, schema, metric, or execution assumption after the plan evolved. Raise consequential unresolved restrictions through the existing human-input request tools.
 
 ## Audit checklist
 
@@ -111,7 +111,7 @@ Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumpti
      itself be evidence the workflow-level flag was missed)
    - a schedule-local procedure that duplicates durable plan behavior, lacks
      `direct_messages_reason`, or claims canonical step-level learning,
-     validation/retry, repair, or Autopilot attribution that it does not receive.
+     validation/retry, repair, or run attribution that it does not receive.
      Direct schedule conversation is a supported execution model, so do not
      report it merely because it is long. Compare reuse, inputs/outputs,
      side effects, approval and failure boundaries; report the missing route
@@ -132,4 +132,4 @@ Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumpti
 
 ## Result
 
-Summarize what was checked, changed and verified, and what remains unresolved, with exact evidence. In Autopilot record useful work in the current Goal Work records. Measurements and their history belong in the database. A successful run or a delivered message alone does not prove the goal improved. Do not mark an uninspected change reviewed or require a fresh audit before every normal step run.
+Summarize what was checked, changed and verified, and what remains unresolved, with exact evidence. Record useful work and its evidence in the existing plan changelog or requesting conversation. Measurements and their history belong in the database. A successful run or a delivered message alone does not prove the goal improved. Do not mark an uninspected change reviewed or require a fresh audit before every normal step run.

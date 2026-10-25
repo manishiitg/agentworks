@@ -5,13 +5,6 @@ import (
 	"strings"
 )
 
-// LoadWorkflowDBTableNames lists the workflow's own tables.
-//
-// Platform-owned bookkeeping (Pulse lifecycle, report human inputs) is filtered
-// out: naming those in a step's routing rule would invite a step to write into
-// the harness's own records, and they are not where a step's observations
-// belong. The point of the list is to show a step that a home for its
-// measurement already exists.
 func LoadWorkflowDBTableNames(ctx context.Context, workspacePath string) ([]string, error) {
 	db, err := openWorkflowEvidenceDB(ctx, workspacePath, false)
 	if err != nil || db == nil {

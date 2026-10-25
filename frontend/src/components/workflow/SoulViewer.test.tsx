@@ -22,7 +22,7 @@ Keep the agreed scope.
 - Preserve privacy.` })
   const container = document.createElement('div'), root = createRoot(container)
   try {
-    await act(async () => root.render(<SoulViewer workspacePath="Workflow/learner" pulseSummary />))
+    await act(async () => root.render(<SoulViewer workspacePath="Workflow/learner" goalSummary />))
     expect(Array.from(container.querySelectorAll('h3')).map(el => el.textContent)).toEqual(['Primary goals', 'Secondary goals', 'Additional goal context'])
     const text = container.textContent || ''
     expect(text.indexOf('Make conversations feel immediate.')).toBeLessThan(text.indexOf('Make the learner experience ready quickly.'))
@@ -35,7 +35,7 @@ it('does not assign priorities to legacy goals', async () => {
   vi.mocked(agentApi.getBuilderDoc).mockResolvedValue({ success: true, exists: true, doc: 'soul', path: 'soul/soul.md', content: '## Objective\n- Grow the audience.\n- Retain readers.' })
   const container = document.createElement('div'), root = createRoot(container)
   try {
-    await act(async () => root.render(<SoulViewer workspacePath="Workflow/social" pulseSummary />))
+    await act(async () => root.render(<SoulViewer workspacePath="Workflow/social" goalSummary />))
     expect(container.textContent).toContain('Grow the audience.')
     expect(container.textContent).toContain('Retain readers.')
     expect(container.textContent).not.toContain('Primary goals')

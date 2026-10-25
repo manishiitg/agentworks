@@ -171,39 +171,6 @@ func TestWorkshopToolAgentBridgeSessionOverridesParentRouting(t *testing.T) {
 	}
 }
 
-func TestSelectPulseLLMUsesPulseConfigInsteadOfPhaseConfig(t *testing.T) {
-	base, err := orchestrator.NewBaseOrchestrator(
-		loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0,
-		"", nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil,
-	)
-	if err != nil {
-		t.Fatalf("NewBaseOrchestrator returned error: %v", err)
-	}
-	hcpo := &StepBasedWorkflowOrchestrator{
-		BaseOrchestrator: base,
-		presetPhaseLLM: &AgentLLMConfig{
-			Provider: "phase-provider",
-			ModelID:  "phase-model",
-		},
-		presetPulseLLM: &AgentLLMConfig{
-			Provider: "pulse-provider",
-			ModelID:  "pulse-model",
-			Options:  map[string]interface{}{"reasoning_effort": "high"},
-		},
-	}
-
-	got := hcpo.selectPulseLLM("review agent")
-	if got == nil {
-		t.Fatal("selectPulseLLM returned nil")
-	}
-	if got.Primary.Provider != "pulse-provider" || got.Primary.ModelID != "pulse-model" {
-		t.Fatalf("review selected %s/%s, want pulse-provider/pulse-model", got.Primary.Provider, got.Primary.ModelID)
-	}
-	if got.Primary.Options["reasoning_effort"] != "high" {
-		t.Fatalf("review lost Autopilot options: %+v", got.Primary.Options)
-	}
-}
-
 func TestKBMaintenanceAgentsGetQueryButNotMutation(t *testing.T) {
 	base, err := orchestrator.NewBaseOrchestrator(
 		loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0,
@@ -1544,5 +1511,38 @@ func TestStepPromptTextIsCompact(t *testing.T) {
 	line := placementLine("Measured followers. [preflight] Python bundle syntax ok and more log text here. Second sentence that is quite long and goes past the limit of the line so it must be cut.", 80)
 	if strings.Contains(line, "preflight") || strings.HasSuffix(line, "so it must be") || !strings.HasSuffix(line, ".") && !strings.HasSuffix(line, "…") {
 		t.Errorf("placement line not tidy: %q", line)
+	}
+}
+
+func TestSelectBackgroundLLMUsesBackgroundConfigInsteadOfPhaseConfig(t *testing.T) {
+	base, err := orchestrator.NewBaseOrchestrator(
+		loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0,
+		"", nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("NewBaseOrchestrator returned error: %v", err)
+	}
+	hcpo := &StepBasedWorkflowOrchestrator{
+		BaseOrchestrator: base,
+		presetPhaseLLM: &AgentLLMConfig{
+			Provider: "phase-provider",
+			ModelID:  "phase-model",
+		},
+		presetBackgroundLLM: &AgentLLMConfig{
+			Provider: "pulse-provider",
+			ModelID:  "pulse-model",
+			Options:  map[string]interface{}{"reasoning_effort": "high"},
+		},
+	}
+
+	got := hcpo.selectBackgroundLLM("review agent")
+	if got == nil {
+		t.Fatal("selectBackgroundLLM returned nil")
+	}
+	if got.Primary.Provider != "pulse-provider" || got.Primary.ModelID != "pulse-model" {
+		t.Fatalf("review selected %s/%s, want pulse-provider/pulse-model", got.Primary.Provider, got.Primary.ModelID)
+	}
+	if got.Primary.Options["reasoning_effort"] != "high" {
+		t.Fatalf("review lost Autopilot options: %+v", got.Primary.Options)
 	}
 }

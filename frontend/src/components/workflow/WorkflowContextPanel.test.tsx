@@ -1,7 +1,5 @@
 // @vitest-environment happy-dom
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
-vi.mock('../../utils/pulseChatTab', () => ({ openWorkflowPulseChatTab: vi.fn(async () => 'pulse-tab') }))
-import { openWorkflowPulseChatTab } from '../../utils/pulseChatTab'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -9,7 +7,7 @@ vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: (
 const state = vi.hoisted(() => ({ enabled: true, canWrite: true, canShare: true, multiUser: false, user: { id: 'alice', allowed_products: ['agentworks', 'relays'] as string[] | null }, server: 'local', documents: [] as { id: string; path: string; title: string; order: number }[], open: vi.fn() }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => state.canWrite }))
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: (select: any) => select({ openWorkspaceView: state.open }) }))
-vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: (select: any) => select({ workflows: [{ workspace_path: 'Workflow/example', manifest: { id: 'example', pulse: { enabled: state.enabled } } }] }) }))
+vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: (select: any) => select({ workflows: [{ workspace_path: 'Workflow/example', manifest: { id: 'example' } }] }) }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: any) => select({ isMultiUserMode: state.multiUser, user: state.user }), { getState: () => ({ user: state.user }) }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedStorageKey: (key: string) => key, useWorkspaceConnectionStore: Object.assign((select: any) => select({ activeWorkspaceId: state.server }), { getState: () => ({ activeWorkspaceId: state.server }) }) }))
 vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: { can_share: state.canShare } }) }, getApiBaseUrl: () => '', getAuthToken: () => null }))
@@ -37,15 +35,14 @@ const scope = (relay = false, project = 'example') => projectMenuHistoryScope(st
 
 it.each([false, true])('uses Crew category order and keeps every product destination (%s)', async relay => {
   await render(relay)
-  expect([...host.querySelectorAll('summary:not([aria-label="Autopilot"])')].map(node => node.textContent)).toEqual(['Build', 'Motion dashboards0', 'Use', 'Share', 'Integrations', 'Setup'])
-  expect([...host.querySelectorAll<HTMLDetailsElement>('details:not([aria-label="Autopilot menu"])')].map(node => node.open)).toEqual([true, false, false, false, false, false])
+  expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build', 'Motion dashboards0', 'Use', 'Share', 'Integrations', 'Setup'])
+  expect([...host.querySelectorAll<HTMLDetailsElement>('details')].map(node => node.open)).toEqual([true, false, false, false, false, false])
   for (const label of ['Dashboards', 'Files', 'Skills', 'Chat history', 'Access', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
   if (relay) {
     for (const label of ['Flow', 'Runs', 'Code']) expect(button(label)).toBeDefined()
-    for (const label of ['Autopilot', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database']) expect(button(label)).toBeUndefined()
+    for (const label of ['Goals & metrics', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database']) expect(button(label)).toBeUndefined()
   } else {
-    for (const label of ['Talk to Autopilot', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database', 'Knowledge base']) expect(button(label)).toBeDefined()
-    expect(host.querySelector('[aria-label="Autopilot menu"]')).not.toBeNull()
+    for (const label of ['Goals & metrics', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database', 'Knowledge base']) expect(button(label)).toBeDefined()
     for (const label of ['Workflow playbooks', 'Publish', 'Notify', 'Backup']) {
       expect(button(label).closest('details')?.querySelector('summary')?.textContent).toBe('Setup')
     }
@@ -116,46 +113,3 @@ it.each([false, true])('groups named dashboards once and preserves selection in 
   expect(host.querySelector('[aria-label="Project dashboards"]')?.closest('section')?.querySelector('h2')?.textContent).toBe('Recent')
 })
 
-it('opens the full Autopilot panel from its name, expands subpanels separately and preserves OFF', async () => {
-  useProjectMenuHistoryStore.getState().visit(scope(), 'pulse')
-  useProjectMenuHistoryStore.getState().visit(scope(), 'human-actions')
-  await render()
-  const menu = host.querySelector<HTMLElement>('[aria-label="Autopilot menu"]')!
-  const full = menu.querySelector('button')!
-  const panels = menu.querySelector<HTMLElement>('[aria-label="Autopilot panels"]')!
-  expect(full.textContent).toBe('AutopilotOn')
-  expect(panels.hidden).toBe(false)
-  expect([...panels.querySelectorAll('button')].map(row => row.textContent)).toEqual(['Talk to Autopilot', 'Autopilot settings'])
-  expect(menu.contains(button('Goals & metrics'))).toBe(false)
-  expect(menu.contains(button('Decisions2 waiting'))).toBe(false)
-  await act(async () => full.click())
-  expect(state.open).toHaveBeenLastCalledWith('pulse', undefined)
-  const toggle = menu.querySelector<HTMLButtonElement>('[aria-label="Hide Autopilot panels"]')!
-  await act(async () => toggle.click())
-  expect(panels.hidden).toBe(true)
-  expect(state.open).toHaveBeenCalledTimes(1)
-  await act(async () => toggle.click())
-  expect(panels.hidden).toBe(false)
-  expect(host.querySelectorAll('[aria-label="Autopilot panels"]')).toHaveLength(1)
-  expect([...host.querySelectorAll('h2')].some(node => node.textContent === 'Recent')).toBe(false)
-  await act(async () => button('Goals & metrics').click())
-  expect(state.open).toHaveBeenLastCalledWith('pulse', 'goals')
-  await act(async () => panels.querySelectorAll('button')[0].click())
-  expect(openWorkflowPulseChatTab).toHaveBeenCalledWith('Workflow/example')
-  await act(async () => button('Decisions2 waiting').click())
-  expect(state.open).toHaveBeenLastCalledWith('human-actions', undefined)
-  await act(async () => panels.querySelectorAll('button')[1].click())
-  expect(state.open).toHaveBeenLastCalledWith('pulse', 'settings')
-  expect([...host.querySelectorAll('button')].filter(node => node.textContent === 'Decisions2 waiting')).toHaveLength(1)
-  state.enabled = false; await render()
-  expect(full.textContent).toBe('AutopilotOff')
-  expect(panels.hidden).toBe(true)
-  await act(async () => menu.querySelector<HTMLButtonElement>('[aria-label="Show Autopilot panels"]')!.click())
-  expect(panels.hidden).toBe(false)
-  expect([...panels.querySelectorAll('button')].map(row => row.textContent)).toEqual(['Turn Autopilot on', 'Talk to Autopilot', 'Autopilot settings'])
-  await act(async () => full.click())
-  expect(state.open).toHaveBeenLastCalledWith('pulse', undefined)
-  expect(state.enabled).toBe(false)
-  await render(true)
-  expect(host.querySelector('[aria-label="Autopilot menu"]')).toBeNull()
-})

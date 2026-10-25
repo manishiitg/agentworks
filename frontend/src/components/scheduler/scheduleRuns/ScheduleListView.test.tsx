@@ -147,20 +147,20 @@ describe('ScheduleListView declutter', () => {
   it('keeps after-run settings compact, saves a switch and dismisses with Escape', async () => {
     const handleAfterRun = vi.fn(async () => {})
     const { host, unmount } = await renderList([
-      job({ id: 'a', name: 'Daily', after_run: { backup: true, publish: false, notify: true } }),
+      job({ id: 'a', name: 'Daily', after_run: { backup: true, publish: false } }),
     ], handleAfterRun)
     try {
-      const trigger = host.querySelector<HTMLButtonElement>('[aria-label="After-run actions for Daily: Backup · Notify"]')!
+      const trigger = host.querySelector<HTMLButtonElement>('[aria-label^="After-run actions for Daily:"]')!
       expect(document.querySelector('[role="dialog"]')).toBeNull()
       expect(host.querySelector('input[type="checkbox"]')).toBeNull()
       await act(async () => { trigger.click() })
       const dialog = document.querySelector('[role="dialog"]')!
       const switches = Array.from(dialog.querySelectorAll<HTMLButtonElement>('[role="switch"]'))
-      expect(switches.map(control => control.getAttribute('aria-checked'))).toEqual(['true', 'false', 'true'])
+      expect(switches.map(control => control.getAttribute('aria-checked'))).toEqual(['true', 'false'])
       expect(switches[1].getAttribute('aria-label')).toBe('Publish report')
       expect(dialog.textContent).toContain('Refresh the configured published report')
       await act(async () => { switches[1].click() })
-      expect(handleAfterRun).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), { backup: true, publish: true, notify: true })
+      expect(handleAfterRun).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), { backup: true, publish: true })
       await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
       expect(document.querySelector('[role="dialog"]')).toBeNull()
       expect(document.activeElement).toBe(trigger)

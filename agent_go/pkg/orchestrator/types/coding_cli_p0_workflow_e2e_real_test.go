@@ -274,7 +274,7 @@ func runCodingCLIWorkflowP0(t *testing.T, provider codingCLIP0Provider) {
 	model := &workflowtypes.AgentLLMConfig{Provider: string(provider.provider), ModelID: provider.model, ConnectionID: provider.connectionID}
 	preset := &workflowtypes.PresetLLMConfig{
 		SchemaVersion: workflowtypes.LLMConfigSchemaVersion, Mode: workflowtypes.LLMConfigModeExplicit,
-		BuilderLLM: model, PulseLLM: model,
+		BuilderLLM: model, BackgroundLLM: model,
 		TieredConfig: &workflowtypes.TieredLLMConfig{Tier1: model, Tier2: model, Tier3: model},
 	}
 	workflowLLM := &orchestrator.LLMConfig{

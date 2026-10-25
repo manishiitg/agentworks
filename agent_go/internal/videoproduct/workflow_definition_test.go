@@ -12,7 +12,7 @@ func TestNewVideoStudioProjectDefaultsToClaudeCode(t *testing.T) {
 	if !ok {
 		t.Fatal("workflow manifest llm_config missing")
 	}
-	for _, role := range []string{"builder_llm", "pulse_llm"} {
+	for _, role := range []string{"builder_llm", "background_llm"} {
 		agent, ok := config[role].(map[string]interface{})
 		if !ok || agent["provider"] != "claude-code" || agent["model_id"] != DefaultClaudeModel {
 			t.Fatalf("%s = %#v, want claude-code/%s", role, agent, DefaultClaudeModel)

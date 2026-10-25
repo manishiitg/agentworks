@@ -30,7 +30,7 @@ export function LaptopAccountsPanel() {
     return () => { active = false; window.removeEventListener('focus', refresh) }
   }, [scope, attempt])
   return <SettingsCard icon={<Laptop className="h-4 w-4" />} title="Your computers" description="Connect once, then choose where to use it.">
-    <p className="text-xs leading-5 text-muted-foreground">Choose a connected computer in any Goal or Crew’s Local laptop panel. Each project chooses its folders and terminal commands. Laptop tools are for Builder chats; workflow steps, schedules and Autopilot stay on the server. Gmail and Slack for steps are separate.</p>
+    <p className="text-xs leading-5 text-muted-foreground">Choose a connected computer in any Goal or Crew’s Local laptop panel. Each project chooses its folders and terminal commands. Laptop tools are for Builder chats; workflow steps and schedules stay on the server. Gmail and Slack for steps are separate.</p>
     {!data && <p role="status" className="text-xs text-muted-foreground">Loading your computers…</p>}
     {data?.error && <p role="alert" className="text-xs text-destructive">{data.error}</p>}
     {data?.devices.map(device => <div key={device.device_id} className="flex items-center gap-2 rounded border border-border p-3 text-sm"><Laptop className="h-4 w-4 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{device.device_id}</span><span className="text-xs text-emerald-600 dark:text-emerald-400">Connected</span></div>)}

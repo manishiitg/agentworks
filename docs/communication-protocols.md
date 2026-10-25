@@ -33,7 +33,7 @@ contract according to which of those behaviors the caller needs.
 
 | Caller | Direct messages | Structured functions |
 |---|---|---|
-| Workflow Builder, Run chat and Pulse | Authorized conversations through the registered message tools | Declared Crew/workflow functions through the shared function tools |
+| Workflow Builder and Run chat | Authorized conversations through the registered message tools | Declared Crew/workflow functions through the shared function tools |
 | Crew conversations | Authorized conversations, subject to the receiving Crew's messaging switch | Crew Builder offers declared Crew/workflow functions; Run mode has no outgoing function tools |
 | Executing workflow `agent` steps, including delegated agents | Message and wakeup tools are not currently provided by the execution function tool binding | Declared Crew functions, other workflow functions and published Relay functions |
 | External MCP/CLI agent | Send/read using its own continuing inbox | Declared functions within its account access, connection scopes and target bounds |
@@ -456,7 +456,7 @@ and graph Relays remain supported. Recovery depends on the runtime and durabilit
 configuration. DBOS reuses completed checkpoints; uncertain side effects require
 reconciliation or an explicitly safe replay policy. A durable Relay does not make
 arbitrary external writes exactly once. See the Python contract for recovery
-details. Relays have no Run chat, Pulse, cron/calendar schedules or bot chats.
+details. Relays have no Run chat, cron/calendar schedules or bot chats.
 
 ## MCP, identity and other entry points
 

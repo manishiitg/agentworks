@@ -22,7 +22,7 @@ func (api *StreamingAPI) clearBotOriginForOwnerTurn(sessionID string, claims *Us
 		return
 	}
 	if claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "" || req.BotPlatform != "" || strings.TrimSpace(req.TriggeredBy) != "" ||
-		req.ParentSessionID != "" || req.SessionKind != "" || req.IsAutoNotification || req.PulseLifecycleTurn {
+		req.ParentSessionID != "" || req.SessionKind != "" || req.IsAutoNotification {
 		return
 	}
 	api.activeSessionsMux.Lock()

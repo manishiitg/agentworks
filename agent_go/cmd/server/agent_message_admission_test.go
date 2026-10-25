@@ -26,7 +26,7 @@ func TestAgentMessageStateIsOwnerOnlyAndDeliveryRechecksAuthority(t *testing.T) 
 	peer.Session = "message-session"
 	peer.ChatKey = "messages:inbox-state"
 	c := agentConversation{ID: "inbox-state", Endpoints: [2]agentMessageEndpoint{{UserID: "other", Kind: triggerCallerUser, ID: "other", External: true}, peer}, Messages: []agentMessage{{ID: "msg-state", Text: "private message body", Delivery: "undeliverable", Error: "receiving session was closed", SentAt: time.Now()}}}
-	store := agentMessageStore{Conversations: []agentConversation{c}, Wakeups: []agentWakeup{{ID: "wake-state", Endpoint: peer, Status: "scheduled", Due: time.Now().Add(time.Hour), Text: "private wakeup text"}}}
+	store := agentMessageStore{Conversations: []agentConversation{c}}
 	agentMessageMu.Lock()
 	err = saveAgentMessageStore(ctx, store)
 	agentMessageMu.Unlock()
@@ -43,7 +43,7 @@ func TestAgentMessageStateIsOwnerOnlyAndDeliveryRechecksAuthority(t *testing.T) 
 		return rec.Code, rec.Body.String()
 	}
 	status, body := request("owner", "beta")
-	if status != 200 || !strings.Contains(body, "receiving session was closed") || !strings.Contains(body, "wake-state") || strings.Contains(body, "private message body") || strings.Contains(body, "private wakeup text") {
+	if status != 200 || !strings.Contains(body, "receiving session was closed") || strings.Contains(body, "private message body") {
 		t.Fatalf("owner projection: %d %s", status, body)
 	}
 	for _, tc := range [][2]string{{"other", "beta"}, {"owner", "alpha"}} {

@@ -21,7 +21,7 @@ func TestRecordSummaryRefusesRecipientsChannelsAndOtherKinds(t *testing.T) {
 	}
 	args := base()
 	args["kind"] = "general"
-	if _, err := handleRecordSummary(context.Background(), args); err == nil || !strings.Contains(err.Error(), "run_summary or pulse_summary") {
+	if _, err := handleRecordSummary(context.Background(), args); err == nil || !strings.Contains(err.Error(), "run_summary") {
 		t.Fatalf("a non-summary kind must be refused, got %v", err)
 	}
 }

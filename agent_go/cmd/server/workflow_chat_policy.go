@@ -56,8 +56,6 @@ func resolveWorkflowChatPolicy(session string, req QueryRequest, active *ActiveS
 		origin = "bot"
 	case req.IsAutoNotification || strings.EqualFold(strings.TrimSpace(req.TriggeredBy), "auto_notification"):
 		origin = "notification"
-	case req.PulseLifecycleTurn:
-		origin = "pulse"
 	case !req.UserInteractiveContinuation && (isScheduledSessionIdentity(session, req.TriggeredBy) || active != nil && isScheduledSessionIdentity(session, active.TriggeredBy)):
 		origin = "scheduled"
 	}
@@ -133,16 +131,11 @@ func (p workflowChatPolicy) sessionKey() string {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	// Scheduled execution and Pulse are stages of the same unattended chat.
-	// Keep provenance for routing/costs, but only reconnect if their actual
-	// capabilities differ. Interactive and child origins remain distinct.
 	roleOrigin := p.Origin
 	if p.RoleOrigin != "" {
 		roleOrigin = p.RoleOrigin
 	}
-	if roleOrigin == "pulse" {
-		roleOrigin = "scheduled"
-	}
+
 	// An auto-notification is a message into the same interactive chat. As its own role it threw the
 	// coding CLI's session away whenever a notification and a typed message alternated, so the chat
 	// kept showing "Conversation restored" (Upwork chat, 2026-10-05). The capability set below still
@@ -278,13 +271,6 @@ func normalizeWorkflowConversationMode(req *QueryRequest, readOnly bool) {
 	}
 }
 
-// workflowChatNativeAgentTools reports whether this workflow chat turn runs
-// with the coding CLI's native tools (agent_tools full). Owner decision
-// 2026-09-29: on for every turn type — interactive Builder and Run chats,
-// schedules, webhooks and triggers, Pulse, Slack and WhatsApp — unless the
-// workflow's "Native agent tools" switch is off. Read-only principals stay
-// off, and so do workflow step agents: child sessions of a run (a Pulse
-// reviewer child is a Pulse turn, not a step).
 func (api *StreamingAPI) workflowChatNativeAgentTools(ctx context.Context, req QueryRequest, sessionID string, readOnly bool) bool {
 	if readOnly || strings.TrimSpace(req.AgentMode) != "workflow_phase" || strings.TrimSpace(req.SelectedFolder) == "" {
 		return false
@@ -349,9 +335,6 @@ func (r externalBuilderDefinitionRegistrar) RegisterCustomToolWithTimeout(name, 
 	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, auditExternalBuilderPlanTool(name, run), timeout, category)
 }
 
-// isWorkflowStepTurn reports a child session of a workflow run (a step
-// agent), which keeps AgentWorks-only tools. A Pulse child session is a
-// Pulse turn and is not a step.
 func (api *StreamingAPI) isWorkflowStepTurn(req QueryRequest, sessionID string) bool {
 	parent, kind := strings.TrimSpace(req.ParentSessionID), strings.TrimSpace(req.SessionKind)
 	if api != nil {
@@ -363,5 +346,5 @@ func (api *StreamingAPI) isWorkflowStepTurn(req QueryRequest, sessionID string) 
 	if parent == "" && kind == "" {
 		return false
 	}
-	return !strings.HasPrefix(strings.ToLower(kind), "pulse")
+	return true
 }

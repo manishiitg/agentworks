@@ -1,7 +1,7 @@
 ## User and workflow access management
 
 In workflow Builder mode, use `manage_user_access`. Run sessions,
-Autopilot and child agents do not receive this management capability. Writable bot,
+AgentWorks and child agents do not receive this management capability. Writable bot,
 scheduled and notification turns share the Builder capability set; every call
 still rechecks the mapped user's current authorization.
 

@@ -50,6 +50,7 @@ export default function WorkflowNotificationView({
   const [info, setInfo] = useState<WorkflowNotificationInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [senderSelection, setSenderSelection] = useState('')
+  const [breakSaving, setBreakSaving] = useState(false)
   const [senderSaving, setSenderSaving] = useState(false)
   const [senderError, setSenderError] = useState<string | null>(null)
   const canWriteWorkflow = useCanWriteWorkflow(workspacePath)
@@ -61,7 +62,7 @@ export default function WorkflowNotificationView({
     try {
       const next = loadInfo ? await loadInfo() : await loadWorkflowNotificationInfo(workspacePath as string)
       setInfo(next)
-      setSenderSelection(next.runSummaryGmailConnectionIds.length || next.pulseSummaryGmailConnectionIds.length ? '__legacy__' : (next.gmailConnectionId || ''))
+      setSenderSelection(next.runSummaryGmailConnectionIds.length ? '__legacy__' : (next.gmailConnectionId || ''))
       onStateLoaded?.(next.effectiveState)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load notification status')
@@ -90,6 +91,18 @@ export default function WorkflowNotificationView({
     }
   }
 
+  const saveBreakAlerts = async (enabled: boolean) => {
+    if (!workspacePath || !canWriteWorkflow || breakSaving) return
+    setBreakSaving(true)
+    setError(null)
+    try {
+      await workflowManifestApi.updateWorkflowManifest({ workspace_path: workspacePath, break_alerts: enabled })
+      await load()
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Failed to save alerts')
+    } finally { setBreakSaving(false) }
+  }
+
   useEffect(() => {
     void load()
   }, [load])
@@ -107,19 +120,16 @@ export default function WorkflowNotificationView({
   const StateIcon = state === 'ready' ? CheckCircle2 : state === 'missing_secret' || state === 'invalid_secret' ? AlertCircle : BellRing
   const gmailReady = info?.gmail?.state === 'ready'
   const gmailChecking = info?.gmail?.state === 'checking'
-  const gmailDefault = info?.gmail?.default_recipient?.trim() || ''
   const gmailBlocked = info?.gmail?.blocked_recipients || []
   const gmailSender = info?.gmail?.default_sender?.trim() || ''
   const gmailSenderChoices = info?.gmail?.sender_choices || []
-  const hasLegacySenders = Boolean(info && (info.runSummaryGmailConnectionIds.length || info.pulseSummaryGmailConnectionIds.length))
+  const hasLegacySenders = Boolean(info && (info.runSummaryGmailConnectionIds.length))
   const scopeName = info?.scopeLabel || workspacePath?.split('/').filter(Boolean).pop() || 'Workflow'
   const senderLabel = (id: string) => {
     const choice = gmailSenderChoices.find(entry => entry.id === id)
     return choice ? (choice.email || choice.display_name || id) : id
   }
-  // Run and Pulse have separate content/routing policies. Both always remain
-  // visible in Activity; external delivery follows their saved instructions
-  // (the default is new-and-important changes only).
+  // Run outcomes stay visible in Activity. Team delivery uses saved destinations.
   // Summary content and recipients remain edited through /notify in chat.
   // The single Notify sender is selected directly above these summaries.
   const summaries = info ? [
@@ -131,15 +141,6 @@ export default function WorkflowNotificationView({
       senders: info.runSummaryGmailConnectionIds.map(senderLabel),
       recipients: info.runSummaryRecipients,
       slackWebhooks: info.runSummarySlackWebhooks,
-    },
-    {
-      key: 'pulse',
-      title: 'Autopilot review',
-      instructions: info.pulseSummaryInstructions.trim(),
-      channels: info.pulseSummaryChannels,
-      senders: info.pulseSummaryGmailConnectionIds.map(senderLabel),
-      recipients: info.pulseSummaryRecipients,
-      slackWebhooks: info.pulseSummarySlackWebhooks,
     },
   ] : []
   const overrides = info ? [
@@ -194,6 +195,14 @@ export default function WorkflowNotificationView({
               <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : info ? (
               <div className="space-y-4">
+                <section className="rounded-md border border-border p-4">
+                  <label className="flex items-center gap-3 text-sm font-medium">
+                    <input type="checkbox" checked={info.breakAlerts} disabled={!workspacePath || !canWriteWorkflow || breakSaving}
+                      onChange={event => { void saveBreakAlerts(event.target.checked) }} />
+                    Tell me when something breaks
+                  </label>
+                  <p className="mt-2 text-xs text-muted-foreground">Show run failures in Needs you. Questions that need your answer and configured team messages stay available.</p>
+                </section>
                 <section className="rounded-md border border-border">
                   <h3 className={sectionHeadClass}><span className="h-2 w-2 rounded-full bg-sky-500" />Channels</h3>
                   <div className="divide-y divide-border">
@@ -213,9 +222,6 @@ export default function WorkflowNotificationView({
                     <div className={rowClass}>
                       <span className={labelClass}><Mail className="h-3.5 w-3.5 text-violet-500" />Gmail</span>
                       <span className={chipMuted}>Account default From: {gmailSender || 'none'}</span>
-                      {gmailDefault
-                        ? <span className={`${chipTo} font-mono`} title="Default recipients">→ {gmailDefault}</span>
-                        : gmailReady && <span className={chipMuted}>no default recipient</span>}
                       {!gmailReady && !gmailChecking && info.gmail?.summary && <span className={chipWarn}>{info.gmail.summary}</span>}
                       <span className="ml-auto flex items-center gap-2">
                         <AskAIButton
@@ -240,7 +246,7 @@ export default function WorkflowNotificationView({
                         className="min-w-0 max-w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="">Use account default{gmailSender ? ` — ${gmailSender}` : ' — none configured'}</option>
-                        {hasLegacySenders && <option value="__legacy__" disabled>Older Run/Autopilot sender settings</option>}
+                        {hasLegacySenders && <option value="__legacy__" disabled>Older run sender settings</option>}
                         {senderSelection && senderSelection !== '__legacy__' && !gmailSenderChoices.some(choice => choice.id === senderSelection) &&
                           <option value={senderSelection} disabled>Unavailable: {senderSelection}</option>}
                         {gmailSenderChoices.map(choice => (
@@ -251,7 +257,7 @@ export default function WorkflowNotificationView({
                       </select>
                       {senderSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Saving sender" />}
                       <span className="text-xs text-muted-foreground">One account for Notify. Workflow and Builder Gmail actions choose independently.</span>
-                      {hasLegacySenders && <span className={chipWarn}>Older Run/Autopilot sender overrides are active; choose one account to replace them.</span>}
+                      {hasLegacySenders && <span className={chipWarn}>Older run sender overrides are active; choose one account to replace them.</span>}
                       {senderError && <span role="alert" className="text-xs text-destructive">{senderError}</span>}
                     </div>
                     {overrides.length > 0 && (
@@ -290,17 +296,17 @@ export default function WorkflowNotificationView({
                               {summary.senders.map(sender => <span key={sender} className={`${chipFrom} font-mono`}>{sender}</span>)}
                             </div>
                           )}
-                          {(summary.recipients.length > 0 || gmailDefault) && (
+                          {summary.recipients.length > 0 && (
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="w-16 shrink-0 text-[11px] text-muted-foreground">To</span>
                               {summary.recipients.length > 0
                                 ? summary.recipients.map(email => <span key={email} className={`${chipTo} font-mono`}>{email}</span>)
-                                : <span className={chipMuted}>{gmailDefault}</span>}
+                                : <span className={chipMuted}>Summary emails are off</span>}
                             </div>
                           )}
                         </div>
                         {summary.instructions && (
-                          <NotificationInstructions target={summary.key === 'run' ? 'run_summary' : 'pulse_review'} title={summary.title} instructions={summary.instructions} />
+                          <NotificationInstructions target={'run_summary'} title={summary.title} instructions={summary.instructions} />
                         )}
                       </div>
                     ))}

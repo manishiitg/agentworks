@@ -9,25 +9,6 @@ import "testing"
 // stage of every scheduled run was charged to `chat`. The scheduler already
 // stamps llm_config_source when it swaps in the Pulse LLM, so the
 // intent is known at the source; this maps it to the cost scope.
-func TestScopeForScheduledLLMRoleNamesPulse(t *testing.T) {
-	for _, tc := range []struct {
-		source string
-		want   string
-	}{
-		{"scheduled_pulse", ScopePulse},
-		// Goal Advisor / Strategy Auditor are Pulse modules that happen to run
-		{"  SCHEDULED_PULSE  ", ScopePulse},
-		// Anything else must return "" so the caller keeps its own default
-		// rather than inheriting a wrong one.
-		{"", ""},
-		{"user_selected", ""},
-		{"workflow_default", ""},
-	} {
-		if got := ScopeForScheduledLLMRole(tc.source); got != tc.want {
-			t.Fatalf("ScopeForScheduledLLMRole(%q) = %q, want %q", tc.source, got, tc.want)
-		}
-	}
-}
 
 func TestScopeForScheduledTurnUsesLifecycleFlagWithoutModelOverride(t *testing.T) {
 	if got := ScopeForScheduledTurn(true, ""); got != ScopePulse {

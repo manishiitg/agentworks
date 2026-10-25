@@ -63,7 +63,7 @@ func GetWorkspaceMap(docsRoot, chatsFolder string) string {
 
 **Never use WebFetch/raw GitHub URLs for workspace artifacts, skills, or reference docs.** Files such as ` + "`" + "skills/<name>/SKILL.md" + "`" + ` live on local disk under the docs root above. Read them with the declared local tools/shell, or load canonical reference docs with ` + "`" + "read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/....md\"}])" + "`" + `.
 
-**Autopilot storage is SQLite-only.** Use the typed Autopilot, finding, review, and human-input tools; the Autopilot popup is the only workflow Autopilot presentation. Older journal artifacts are retired and must be ignored.
+**AgentWorks storage is SQLite-only.** Use the typed AgentWorks, finding, review, and human-input tools; the AgentWorks popup is the only workflow AgentWorks presentation. Older journal artifacts are retired and must be ignored.
 
 | Path | Access | Purpose |
 |------|--------|---------|
@@ -176,7 +176,7 @@ List workflows with ` + "`execute_shell_command(command: \"ls " + absWorkflow + 
 Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 
 **Planning & config:**
-- ` + "`soul/soul.md`" + ` — canonical stable workflow intent: ` + "`## Objective`" + `, ` + "`## Success Criteria`" + `, and optional explicit user-approved constraints. Read before review, improve, measure, harden, and ambiguous execution decisions. **Do not store architecture, current step design, provider/tool choices, implementation details, historical decisions, references, agent-inferred assumptions, or notification preferences in soul.md** — per-workflow notification preferences live in workflow.json ` + "`notifications`" + ` (` + "`run_summary_instructions`" + ` and ` + "`run_summary_channels`" + ` for execution outcomes, ` + "`pulse_summary_instructions`" + ` and ` + "`pulse_summary_channels`" + ` for Autopilot activity, ` + "`run_summary_recipients`" + ` and ` + "`pulse_summary_recipients`" + ` for WHO each summary is emailed to (empty = the account default recipient), ` + "`run_summary_slack_webhook_secret_names`" + ` and ` + "`pulse_summary_slack_webhook_secret_names`" + ` for WHICH Slack channel(s) each summary posts to — one Incoming Webhook is one channel, so a second channel needs a second webhook secret (empty = the single ` + "`slack_webhook_secret_name`" + `),` + "`exclude_channels`" + ` for workflow-wide channel opt-outs, and ` + "`block_recipients`" + ` for the email denylist, and ` + "`gmail_connection_id`" + ` for WHICH configured Gmail account sends this workflow's mail — empty inherits the account default connection, and an unknown or disabled connection fails the send rather than falling back to another account). The backend applies delivery rules automatically, exposes the preferences to Workflow Builder, and supplies them to the Autopilot finalizer for their matching notification sends. Those describe the revisable "how" and belong in workflow notification configuration, not soul.md. **Stays Markdown — never create a ` + "`soul.html`" + `, a "readable mirror", or any HTML copy.** It is parsed as Markdown (the framework-health check and run-time objective injection read the ` + "`## Objective`" + ` / ` + "`## Success Criteria`" + ` headings), and AgentWorks renders it directly in Goal. Typed Autopilot records store time-based review, analysis, and improvement history; they may report evidence-stamped goal progress but must not copy a Goal/Profile card. soul.md is the single source; leave it Markdown.
+- ` + "`soul/soul.md`" + ` — canonical stable workflow intent: ` + "`## Objective`" + `, ` + "`## Success Criteria`" + `, and optional explicit user-approved constraints. Read before review, improve, measure, harden, and ambiguous execution decisions. **Do not store architecture, current step design, provider/tool choices, implementation details, historical decisions, references, agent-inferred assumptions, or notification preferences in soul.md** — per-workflow notification preferences live in workflow.json notifications: run_summary_instructions, run_summary_channels, run_summary_recipients and run_summary_slack_webhook_secret_names configure team run messages. No configured recipients means no summary email; never fall back to the owner's address. The break_alerts setting (“Tell me when something breaks”) controls informational failures in Needs you. Questions requiring an answer and failed Gmail notices remain visible. AgentWorks handles progress reporting; there is no per-Goal digest or Autopilot reporting stream. gmail_connection_id selects the sending Gmail account with existing account access checks. Those describe the revisable "how" and belong in workflow notification configuration, not soul.md. **Stays Markdown — never create a ` + "`soul.html`" + `, a "readable mirror", or any HTML copy.** It is parsed as Markdown (the framework-health check and run-time objective injection read the ` + "`## Objective`" + ` / ` + "`## Success Criteria`" + ` headings), and AgentWorks renders it directly in Goal. Typed AgentWorks records store time-based review, analysis, and improvement history; they may report evidence-stamped goal progress but must not copy a Goal/Profile card. soul.md is the single source; leave it Markdown.
 - ` + "`workflow.json`" + ` — workflow-level config: schedules, MCP servers, skills, LLM config, optional ` + "`run_retention_count`" + ` (completed run folders to keep per Builder, schedule, and webhook family; default 10). May carry legacy optional ` + "`objective`" + ` / ` + "`success_criteria`" + ` fallback values.
 - ` + "`planning/plan.json`" + ` — step definitions (IDs, titles, descriptions, dependencies, validation). It no longer owns root objective/success fields; use ` + "`soul/soul.md`" + ` for that.
 - ` + "`planning/step_config.json`" + ` — per-step settings. Each step's ` + "`agent_configs`" + ` object controls execution mode:
@@ -187,7 +187,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - ` + "`variables/variables.json`" + ` — **the only** source of runtime variable values. Shape: ` + "`{variables:[{name,value,group}], groups:[{id,name,enabled}]}`" + `. Groups enable batch execution with different value sets. ` + "`workflow.json`" + ` does NOT carry variable definitions.
 
 **Workflow skills and saved code:**
-- ` + "`skills/<name>/SKILL.md`" + ` — short index of reusable methods, with detail in references. Builder/Autopilot maintain it; steps consume selected skills. Facts belong in the knowledge base and results in the database. Contract 1.0.51 moves existing guides into local skills explicitly; old learning files remain history.
+- ` + "`skills/<name>/SKILL.md`" + ` — short index of reusable methods, with detail in references. Builder maintain it; steps consume selected skills. Facts belong in the knowledge base and results in the database. Contract 1.0.51 moves existing guides into local skills explicitly; old learning files remain history.
 - ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + ` — **persistent saved script** for ` + "`scripted`" + ` steps. Source of truth; version 1 runs it directly, while legacy runs copy it into the run working folder.
 - ` + "`code/<step-id>/script_metadata.json (legacy: learnings/<step-id>/script_metadata.json)`" + ` — version history + run stats for the saved script
 
@@ -204,10 +204,10 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 
 **Interactive builder / workshop:**
 - ` + "`builder/conversation/users/{user-id}/YYYY-MM-DD/session-{id}-conversation.json`" + ` — the current user's workshop (interactive builder) conversation histories. Legacy installations may still have date folders directly below ` + "`builder/conversation/`" + `. These are JSON files with ` + "`conversation_history`" + ` entries. User messages have ` + "`Role`" + `=` + "`human`" + `/` + "`user`" + ` and text in ` + "`Parts[].Text`" + `; assistant replies have ` + "`Role`" + `=` + "`ai`" + `/` + "`assistant`" + `. Tool calls/results are interleaved and noisy, so scan from the end for the latest user/assistant text instead of assuming the final JSON entry is the latest user request. Other users' folders are private and blocked by the folder guard.
-- ` + "`planning/changelog/changelog-YYYY-MM-DD-HH-MM-SS.json`" + ` — per-session log of every plan-mod tool call (` + "`update_*_step`" + `, ` + "`add_*_step`" + `, ` + "`delete_plan_steps`" + `, ` + "`*_agent_route`" + `, ` + "`update_validation_schema`" + `, ` + "`update_step_config`" + `). Each entry carries timestamp, tool, the mandatory ` + "`reason`" + ` you supplied at invocation, affected step ids, per-field old/new values, and full JSON of added/deleted steps for revert; Artifact Review later stamps inspected entries with ` + "`artifact_review.done=true`" + ` through ` + "`mark_changelog_artifact_reviewed`" + `. **Read this** before proposing plan edits to see what's already been tried this session and why; it complements typed Autopilot findings with per-session, per-mutation detail. Files rotate hourly. Read-only via shell — entries are written automatically by the plan-mod tools, never edit them by hand.
+- ` + "`planning/changelog/changelog-YYYY-MM-DD-HH-MM-SS.json`" + ` — per-session log of every plan-mod tool call (` + "`update_*_step`" + `, ` + "`add_*_step`" + `, ` + "`delete_plan_steps`" + `, ` + "`*_agent_route`" + `, ` + "`update_validation_schema`" + `, ` + "`update_step_config`" + `). Each entry carries timestamp, tool, the mandatory ` + "`reason`" + ` you supplied at invocation, affected step ids, per-field old/new values, and full JSON of added/deleted steps for revert; Artifact Review later stamps inspected entries with ` + "`artifact_review.done=true`" + ` through ` + "`mark_changelog_artifact_reviewed`" + `. **Read this** before proposing plan edits to see what's already been tried this session and why; it complements owner decisions with per-session, per-mutation detail. Files rotate hourly. Read-only via shell — entries are written automatically by the plan-mod tools, never edit them by hand.
 
-**Autopilot / Goal Advisor framework files (opt-in per workflow):**
-- ` + "`knowledgebase/context/context.md`" + ` and ` + "`knowledgebase/context/examples/`" + ` — user-supplied runtime business context: rules, preferences, constraints, assumptions, examples. **Excluded** from ` + "`reorganize_knowledgebase`" + ` and ` + "`consolidate_knowledgebase`" + ` passes — user-supplied content is never silently rewritten by the optimizer. Steps with ` + "`knowledgebase_access: read`" + ` (or ` + "`read-write`" + `) automatically have read access — context lives as a sub-section of the knowledgebase. Each capture is recorded as a typed authoritative context record so it is visible in Autopilot.
+**Business context:**
+- ` + "`knowledgebase/context/context.md`" + ` and ` + "`knowledgebase/context/examples/`" + ` — user-supplied runtime business context: rules, preferences, constraints, assumptions, examples. **Excluded** from ` + "`reorganize_knowledgebase`" + ` and ` + "`consolidate_knowledgebase`" + ` passes — user-supplied content is never silently rewritten by the optimizer. Steps with ` + "`knowledgebase_access: read`" + ` (or ` + "`read-write`" + `) automatically have read access — context lives as a sub-section of the knowledgebase. The saved context is available to authorized workflow steps.
 
 **Operating model and oversight:**
 - ` + "`/define-success`" + ` records the confirmed operating-model assessment (primary type, secondary traits, plan stability, runtime mode, business-context accumulation, and cadence) as a typed decision record. It is historical reasoning, not a permanent Goal/Profile card. Reassess it when evidence or user intent changes instead of treating an old classification as an immutable constraint.
@@ -228,7 +228,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - **Schedules:** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; scheds=json.load(open('" + absWorkflow + "/<name>/workflow.json')).get('schedules',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s[\\\\\\\"cron_expression\\\\\\\"]} enabled={s.get(\\\\\\\"enabled\\\\\\\",True)}') for s in scheds]\\\"\")`" + `
 - **Variables + groups:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/variables/variables.json\")`" + `
 - **Saved step code (scripted steps only):** Read workflow.json first. For code_layout_version=1: ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/code/<step-id>/main.py\")`" + `. For absent/zero layout versions use learnings instead of code.
-- **Run logs:** start with ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/<name>/runs/iteration-0/\")`" + ` for the latest active run, then inspect older retained ` + "`iteration-{N}`" + ` folders when Autopilot decision timestamps indicate a relevant before-after window.
+- **Run logs:** start with ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/<name>/runs/iteration-0/\")`" + ` for the latest active run, then inspect older retained ` + "`iteration-{N}`" + ` folders when AgentWorks decision timestamps indicate a relevant before-after window.
 - **Live report pages:** ` + "`execute_shell_command(command: \"find " + absWorkflow + "/<name>/db/reports -maxdepth 1 -type f -name '*.html' -print\")`" + `
 - **Full config (when needed):** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/workflow.json\")`" + `
 
@@ -252,19 +252,19 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 ### What You Can Do
 - **Reuse global workflow learnings**: ` + "`learnings/_global/SKILL.md`" + ` contains reusable HOW-to-run knowledge for a workflow (how to log into a bank, parsing quirks, tool/API call patterns) — not domain facts or run results. Read it and reuse the guidance in your own delegated tasks for related work.
 - **Reuse saved step scripts**: For ` + "`scripted`" + ` steps, the canonical working script lives at ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + `. Read it to understand what a step does, or borrow patterns into your own scripts.
-- **Inspect recent runs**: ` + "`runs/iteration-0/`" + ` always holds the most recent execution. Older ` + "`runs/iteration-{N}/`" + ` folders are retained history; use them for trends, regressions, and before/after comparisons against typed Autopilot timestamps.
+- **Inspect recent runs**: ` + "`runs/iteration-0/`" + ` always holds the most recent execution. Older ` + "`runs/iteration-{N}/`" + ` folders are retained history; use them for trends, regressions, and before/after comparisons against typed AgentWorks timestamps.
 
-## Autopilot — Goal Checks and Useful Work
+## Goal progress and follow-through
 
-When Autopilot is ON, one continuing Autopilot conversation reads the goal, database measurement history, saved outputs and decisions. It judges progress, identifies useful work and collaborates with Builder to improve the workflow. There are no separate Gate, reviewer or fixer agents. Internal changes use existing Builder permissions; outward actions follow the saved Ask first or Allowed within limits setting. When OFF, Autopilot does no work and receives no messages or tags. Existing decisions and history remain available.
+The owner defines the objective and success criteria with Builder. Ordinary
+steps produce real measurements, and the platform stores and serves them.
+AgentWorks can inspect this evidence through the shared tools its person may
+use, recommend useful work, and ask Builder to implement an authorized change.
+A message or recommendation from an agent is not owner approval. Goals do not
+start a separate monitoring engine after each run.
 
-The plan and goal define the intended work; database measurements and actual execution evidence show whether it worked. Never infer goal progress from a successful run alone.
-
-### Goal readiness: ` + "`/define-success`" + `
-
-Recurring improvement needs a clear Goal in ` + "`soul/soul.md`" + `, not a permanent profile card in Autopilot. ` + "`/define-success`" + ` confirms or repairs the objective and checkable success criteria, records the operating-model assessment as a typed decision, and sets the structured ` + "`oversight_mode`" + ` gate.
-
-If an evaluation or strategy review finds a missing or vague objective in ` + "`soul/soul.md`" + `, identify the specific ambiguity and recommend ` + "`/define-success`" + ` when useful. Strategic review can still assess available outputs and propose improvements with explicit assumptions; do not block the whole review for missing measurement coverage or an old Workflow Profile card.
+Use /setup-goals to clarify missing goals, metric definitions and collection.
+Never infer goal progress from a successful run alone or invent targets.
 
 ### Tool: ` + "`get_workflow_command_guidance`" + `
 
@@ -272,7 +272,7 @@ Returns the canonical guided-flow text for any workflow slash command. Always ca
 
   1. The user invokes a slash command (` + "`/design-plan`" + `, ` + "`/setup-goals`" + `, etc.). The slash command's submitted message names the kind to pass; you call this tool with that kind. Do NOT improvise the flow yourself.
   2. The user describes the same intent in plain chat ("help me improve this workflow", "review whether the goal is being met", "improve the measurement step"). Recognize the intent, pick the matching kind, and call the tool. The user gets the same canonical flow whether they typed the slash or asked in chat.
-  3. You're running on a schedule (e.g. the scheduled Goal Advisor message). The schedule message names the kind to call.
+  3. You're running on a schedule (e.g. a scheduled review request). The schedule message names the kind to call.
 
 **Kinds — match to intent:**
 
@@ -280,9 +280,8 @@ Returns the canonical guided-flow text for any workflow slash command. Always ca
     - design-plan            → design review: is the plan following best practices (step types, stores, validation, flow)
     - design-reporting-ui    → dashboard authoring flow, submitted by /design-dashboard
 
-  Reviews (recommend, don't apply; record typed Autopilot findings):
+  Reviews (recommend, don't apply; record owner decisions):
     - review-artifact-drift  → Plan Drift: plan-changelog-to-artifact drift audit, submitted by /run-plan-drift (run-plan-drift is an alias kind)
-    - goal-advisor           → compatibility alias for strategy-auditor; use the same Goal Work flow
 
   Improvements:
     - setup-goals              → goal and metric setup, submitted by /setup-goals
@@ -299,9 +298,11 @@ The returned text is your instructions for this turn — do not paraphrase or sk
 
 ### Goal improvement and follow-through
 
-Autopilot uses one continuing conversation to understand the goal, inspect real evidence and work with Builder on useful changes. It checks daily and can schedule a message wakeup for a useful follow-up. A normal workflow run does not launch separate reviewers or repair queues. In chat, ` + "`/pulse`" + ` requests one Autopilot cycle when Autopilot is ON.
-
-Record actual work, decisions and verification evidence in the existing goal records. The Autopilot page shows the last change, pending owner decisions and next check; the conversation contains the discussion. Keep measurement history in the database. Do not create a parallel review tracker or claim delivered work from a message being sent. An owner decision still needs the owner's answer; an ordinary authorized improvement needs no new approval.
+AgentWorks uses ordinary scheduled chats for follow-up. A Goal can notify a
+selected agent tab when a run needs attention. Keep measurements in the Goal's
+database; record actual authorized edits in its changelog and decisions in
+Needs you. Check completion and evidence rather than treating a sent message
+as finished work. An agent never grants itself additional authority.
 
 ### Honesty rules
 
@@ -323,11 +324,11 @@ The ` + "`Workflow/`" + ` folder is read-only via raw shell writes — but sever
 
 Default mode rule: workflow schedules use ` + "`mode=\"workshop\"`" + `. Do not create direct ` + "`mode=\"workflow\"`" + ` schedules; legacy values are normalized to workshop execution.
 
-**Schedule execution-model rule** — prefer a route-backed schedule for durable workflow behavior: create or reuse the owning plan route/step, select it with ` + "`route_selections`" + `, and keep ` + "`messages`" + ` empty so canonical learnings, validation/retry, repair, and Autopilot attribution apply. A direct ordered agent is also valid for genuinely schedule-specific conversation; record ` + "`direct_messages_reason`" + ` explaining why a route is the wrong abstraction and why its weaker step-level lifecycle is acceptable. Never choose solely from message length. Before mapping draft-only or approval-gated work to a route, verify identical inputs, outputs, side effects, failure behavior, and approval boundary.
+**Schedule execution-model rule** — prefer a route-backed schedule for durable workflow behavior: create or reuse the owning plan route/step, select it with ` + "`route_selections`" + `, and keep ` + "`messages`" + ` empty so canonical learnings, validation/retry, repair, and run attribution apply. A direct ordered agent is also valid for genuinely schedule-specific conversation; record ` + "`direct_messages_reason`" + ` explaining why a route is the wrong abstraction and why its weaker step-level lifecycle is acceptable. Never choose solely from message length. Before mapping draft-only or approval-gated work to a route, verify identical inputs, outputs, side effects, failure behavior, and approval boundary.
 
 **Back up scheduled workflows** — backup behavior belongs to the planned workflow/finalizer, not a copied final message in every schedule. Whenever you create recurring work that mutates durable state, ensure its planned route has the workflow's configured backup behavior; do not append backup shell procedures to schedule messages. Confirm before intentionally skipping the configured backup behavior.
 
-**Other config (LLM tiers, MCP servers, skills, secrets, variables, plan steps)** — *not* editable from multi-agent chat. These live in the workshop builder. If the user asks to change LLM config, MCP servers, selected skills, or plan steps, tell them to open the workflow in the canvas / workflow builder. (You can still *read* these fields from ` + "`workflow.json`" + ` to answer questions about them, and record a recommendation through typed Autopilot tools.)
+**Other config (LLM tiers, MCP servers, skills, secrets, variables, plan steps)** — *not* editable from multi-agent chat. These live in the workshop builder. If the user asks to change LLM config, MCP servers, selected skills, or plan steps, tell them to open the workflow in the canvas / workflow builder. (You can still *read* these fields from ` + "`workflow.json`" + ` to answer questions about them, and record a recommendation through typed AgentWorks tools.)
 
 ## Creating New Workflows
 

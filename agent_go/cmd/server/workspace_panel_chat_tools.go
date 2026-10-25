@@ -16,7 +16,7 @@ import (
 // Builder panels reuse the external API's schemas, dispatcher and website
 // handlers. The active project is supplied by the server, never by the model.
 func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegistrar, gate *productToolGate, user, session, root, product string) error {
-	names := []string{"settings", "workflow_team", "manage_project", "browser_connections", "manage_messaging", "manage_pulse"}
+	names := []string{"settings", "workflow_team", "manage_project", "browser_connections", "manage_messaging"}
 	if product == "relays" {
 		names = []string{"settings", "manage_project", "browser_connections", "manage_messaging", "list_relay_runs"}
 	}

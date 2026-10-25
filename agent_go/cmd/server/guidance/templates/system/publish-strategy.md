@@ -33,9 +33,9 @@ do not add another confirmation for the same destination and audience.
    gains backend access. Refresh replays captured data; a new Publish updates it.
 5. If several dashboards are configured, export each into its own subfolder and
    make a simple index linking them. Keep their original names and views. Do not
-   expose Autopilot's private conversation: it remains in the application.
+   expose AgentWorks's private conversation: it remains in the application.
    Separately authored public pages may be included only when selected by the
-   person; do not manufacture an Autopilot transcript or force a second page.
+   person; do not manufacture an AgentWorks transcript or force a second page.
 6. Apply the saved visibility/password procedure below to **all data-bearing
    HTML pages**, then deploy the whole staged folder with the existing provider
    adapter. Encrypting index.html covers its source/data; shared JS/CSS has no
@@ -234,7 +234,7 @@ inline the two views into the single nav page and encrypt just that one file.
 
 **Store the password as a named secret — never in plaintext.** For workflow publish, put it in
 the workflow's secret store (e.g. `PUBLISH_PASSWORD`) and read it as `$SECRET_PUBLISH_PASSWORD`,
-so the **auto-republish (Autopilot)** step can re-encrypt without the user. Record only
+so the **auto-republish (AgentWorks)** step can re-encrypt without the user. Record only
 `visibility: "private"` and the `secret_name` in `workflow.json.publish` / `publish/status.json`.
 **Never the password itself.**
 
@@ -355,14 +355,14 @@ Follow the same set-up-then-prove flow as backup:
    and write `publish/status.json` with state `configured_not_verified`. Do not publish yet.
 
    **Edit workflow.json safely.** For workflow publish, change ONLY the `publish` block and preserve every other
-   field. The `targets` value must be a JSON array (of strings like `"report"`/`"pulse"`, or
+   field. The `targets` value must be a JSON array (of strings like `"report"`, or
    objects). After writing, re-read it with a JSON parser
    (`python3 -c "import json; json.load(open('workflow.json'))"`) to confirm it still parses —
    a malformed workflow.json drops the workflow's config and can hide the workflow from the UI.
 2. **Verify** — on the first real publish, deploy, fetch the returned URL to confirm it loads,
    and only then mark `published`. Record the URL in both the destination and the top-level
    `url`.
-3. Auto-republish (the post-run Autopilot step) runs against a **verified** destination on **every**
+3. Auto-republish (the post-run AgentWorks step) runs against a **verified** destination on **every**
    run — the source artifacts (`db/db.sqlite` + reports) can change every run, so
    publishing must use the current verified source set.
 

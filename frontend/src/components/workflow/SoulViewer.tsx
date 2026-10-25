@@ -10,13 +10,13 @@ export const WORKFLOW_SOUL_REFRESH_EVENT = 'workflow-soul-refresh'
 interface SoulViewerProps {
   workspacePath: string
   embedded?: boolean
-  pulseSummary?: boolean
+  goalSummary?: boolean
 }
 
 // SoulViewer renders the workflow's north star (soul/soul.md — ## Objective +
 // ## Success Criteria). soul.md stays markdown because framework health and
 // runtime objective injection parse it directly.
-export function SoulViewer({ workspacePath, embedded = false, pulseSummary = false }: SoulViewerProps) {
+export function SoulViewer({ workspacePath, embedded = false, goalSummary = false }: SoulViewerProps) {
   const [content, setContent] = useState('')
   const [exists, setExists] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
@@ -47,7 +47,7 @@ export function SoulViewer({ workspacePath, embedded = false, pulseSummary = fal
   }, [load])
 
   if (loading && !content) {
-    if (pulseSummary) {
+    if (goalSummary) {
       return (
         <div className="flex min-h-20 items-center justify-center gap-2 rounded-xl border bg-background text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading goal and success criteria…
@@ -62,7 +62,7 @@ export function SoulViewer({ workspacePath, embedded = false, pulseSummary = fal
   }
 
   if (error) {
-    if (pulseSummary) {
+    if (goalSummary) {
       return (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
           Goal and success criteria could not be loaded: {error}
@@ -79,7 +79,7 @@ export function SoulViewer({ workspacePath, embedded = false, pulseSummary = fal
   }
 
   if (exists === false || !content.trim()) {
-    if (pulseSummary) {
+    if (goalSummary) {
       return (
         <div className="rounded-xl border bg-background p-4 text-xs text-muted-foreground">
           No workflow goal or success criteria yet. Run <code className="rounded bg-muted px-1">/setup-goals</code>.
@@ -90,13 +90,13 @@ export function SoulViewer({ workspacePath, embedded = false, pulseSummary = fal
       <div className={`flex items-center justify-center p-6 text-center ${embedded ? 'min-h-40' : 'h-full'}`}>
         <div className="max-w-md text-sm text-muted-foreground">
           No soul yet — the workflow's north star. Run <code className="rounded bg-muted px-1">/setup-goals</code> to
-          confirm the <code className="rounded bg-muted px-1">## Objective</code> and <code className="rounded bg-muted px-1">## Success Criteria</code>. Then turn on Autopilot from the toolbar if you want recurring review.
+          confirm the <code className="rounded bg-muted px-1">## Objective</code> and <code className="rounded bg-muted px-1">## Success Criteria</code>.
         </div>
       </div>
     )
   }
 
-  if (pulseSummary) {
+  if (goalSummary) {
     const summary = extractWorkflowGoalSections(content)
     return (
       <section className="rounded-xl border bg-background p-4 sm:p-5" aria-label="Workflow goal">

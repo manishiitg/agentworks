@@ -43,7 +43,7 @@ func TestAssembledWorkflowPrompt(t *testing.T) {
 					if !ui {
 						ctx.ChannelFormatting = "## Channel formatting\nKeep replies suitable for WhatsApp."
 					}
-					notifications := buildWorkflowNotificationInstructionsPrompt("Report approved work only.", "Summarize verified changes.")
+					notifications := buildWorkflowNotificationInstructionsPrompt("Report approved work only.")
 					secrets := workflow.BuildWorkflowSecretPrompt([]orchestrator.SecretEntry{{Name: "TEST_TOKEN", Value: "never-render-this-value"}})
 					browser := "## Browser\nConfigured mode=auto. Call agent_browser status first; read builder-reference/references/browser-usage.md."
 					got, _, _, err := buildWorkflowPhaseSystemPrompt("workflow-builder", vars, ctx, notifications, secrets, browser)

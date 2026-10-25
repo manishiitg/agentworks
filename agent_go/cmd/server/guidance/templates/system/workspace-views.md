@@ -1,8 +1,8 @@
 ## Workflow UI control
 
 Use `list_ui_capabilities`, `get_ui_state` and `perform_ui_action` only in a
-supported interactive Goal or Flow chat that exposes them. Scheduled, bot,
-Autopilot and background turns must not manipulate the foreground workspace.
+supported interactive Goal or Flow chat that exposes them. Scheduled, bot
+and background turns must not manipulate the foreground workspace.
 Use the calling product's live contract; a skill never adds a view or access.
 
 `perform_ui_action(view, action="open")` requests a destination; `refresh`
@@ -14,8 +14,7 @@ Prefer one relevant open per reply and respect a view the person selected.
 
 The project name is separate from its Builder/agent tabs. The project menu
 uses Recent, Build, Use, Share, Integrations and Setup; recent destinations are
-not repeated below. Dashboards are collected by project. Autopilot has its own
-Goal menu and starts collapsed when Off. Skills is in Build; Workflow playbooks,
+not repeated below. Dashboards are collected by project. Goals & metrics shows the outcome and saved measurements. Skills is in Build; Workflow playbooks,
 Publish, Notify and Backup are in Setup. Access summarizes ownership, audience
 and shared agents; requested changes happen in the visible project chat.
 
@@ -36,7 +35,7 @@ are no Help popups or tours. Explain directly and load the relevant attached
 | `browser` | Live browser interaction and recordings; it streams without repeated refresh. |
 | `workshop` | Chat history, Schedules, Watchers, Webhooks, Functions and supported Inbox sources. |
 | `schedules`, `webhooks` | Their advertised schedule/webhook presentation. Prefer the current menu destination and live contract. |
-| `pulse` | Goals & metrics, Autopilot settings and its full continuing chat. |
+| `goals` | Goal purpose, success criteria and saved measurements. |
 | `human-actions` | Decisions and questions waiting for a person; do not duplicate them in Goals & metrics. |
 | `mcp` | Vault, Brain, Linked work, Skills, channel setup, Access and AgentBridge through advertised targets. |
 | `access` | Goal execution Team and its existing access policy; product Share is in Access at `mcp/share`. |
@@ -45,7 +44,7 @@ are no Help popups or tours. Explain directly and load the relevant attached
 | `playbooks`, `publish`, `notify`, `backup` | The corresponding Setup page. |
 
 Use `panel-goal-plan`/`panel-goal-execution` for Goal execution,
-`panel-pulse`/`panel-decisions` for Autopilot and decisions, and the matching
+`panel-decisions` for decisions, and the matching
 shared panel skill for other tasks. Inspect the actual question before answering
 a decision. Discussion alone does not select an option; saving an answer and
 implementing the chosen change are separate results.
@@ -62,10 +61,10 @@ when `list_ui_capabilities` advertises it for this chat and product.
 | `files` | Safe workflow-relative file path. |
 | `knowledge` | `knowledgebase` or `database`; these are separate menu items. |
 | `workshop` | `chats`, `schedules`, `conditions` (Watchers), `triggers` (Webhooks), `functions`, or supported `email`. |
-| `pulse` | `goals`, `metrics`, `settings` or `chat`. Decisions use the existing Decisions destination. |
+| `goals` | Goal purpose and metrics. Decisions use the existing Decisions destination. |
 | `mcp` | `vault`, `skills`, `brain`, `folders`, `slack`, `whatsapp`, `cli` (MCP access), `share` (Access), or `agentbridge`, when offered. |
 | `identity` | Advertised General, Models or Upgrades section. |
-| `notify` expand | Advertised run-summary or Autopilot notification section. |
+| `notify` expand | Advertised run-summary section. |
 
 The website can offer a destination before a running server advertises its
 UI target. Do not invent support or retry a rejected target under another name.
@@ -78,7 +77,7 @@ Connected/Available/Secrets tab rows merely because an older target still exists
 ## Flows and boundaries
 
 Flows use `relay-builder`, `panel-relay-code` and `panel-relay-runs`: a Python/DBOS
-graph, source code and versioned calls, not a Goal step plan or Autopilot.
+graph, source code and versioned calls, not a Goal step plan.
 Only the Flow's advertised inventory is available. Crew navigation belongs
 to the separate `work-ui-control` skill and its own panel IDs.
 

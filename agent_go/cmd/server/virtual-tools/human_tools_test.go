@@ -169,7 +169,7 @@ func TestNotificationHistoryToolAndDeliveryModesAreExposed(t *testing.T) {
 		}
 	}
 	if !foundHistory {
-		t.Fatal("get_notification_history tool or current-Autopilot exclusion is missing")
+		t.Fatal("get_notification_history tool or current-Run exclusion is missing")
 	}
 	if !foundDeliveryModes {
 		t.Fatal("record_summary delivery modes are missing")
@@ -226,17 +226,6 @@ func TestWorkflowNotificationDeliveryModesSeparateDashboardAndExternalChannels(t
 	case <-dashboardCh:
 		t.Fatal("external_only duplicated the Org Dashboard entry")
 	default:
-	}
-}
-
-func TestPublishPulseUpdateIsNotAnAgentTool(t *testing.T) {
-	for _, tool := range CreateHumanTools() {
-		if tool.Function != nil && tool.Function.Name == "publish_pulse_update" {
-			t.Fatal("publish_pulse_update must not be exposed; record_pulse_result powers Activity")
-		}
-	}
-	if _, ok := CreateHumanToolExecutors()["publish_pulse_update"]; ok {
-		t.Fatal("publish_pulse_update executor must not be registered")
 	}
 }
 
@@ -809,9 +798,9 @@ func TestHandleNotifyUserEnforcesSummaryChannelRoute(t *testing.T) {
 	})
 
 	ctx := context.WithValue(context.Background(), BotNotificationDestinationKey, &services.NotificationDestination{
-		UserID:               "user-1",
-		RunSummaryChannels:   []string{"slack"},
-		PulseSummaryChannels: []string{"gmail"},
+		UserID:             "user-1",
+		RunSummaryChannels: []string{"slack"},
+		Slack:              &services.SlackDest{ChannelID: "team-channel"},
 	})
 	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
 		"email_subject":     "Notification routing test",
@@ -831,54 +820,6 @@ func TestHandleNotifyUserEnforcesSummaryChannelRoute(t *testing.T) {
 	default:
 	}
 
-	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
-		"email_subject":     "Notification routing test",
-		"message_for_user":  "Autopilot complete",
-		"notification_kind": "pulse_summary",
-	}); err != nil {
-		t.Fatalf("pulse summary notification: %v", err)
-	}
-	select {
-	case <-gmailCh:
-	case <-time.After(time.Second):
-		t.Fatal("expected Autopilot summary on Gmail")
-	}
-	select {
-	case <-slackCh:
-		t.Fatal("Autopilot summary must not be sent to Slack")
-	default:
-	}
-}
-
-func TestHandleNotifyUserSuppressesWorkflowSlackWebhookForGmailOnlyPulse(t *testing.T) {
-	manager := services.GetNotificationManager()
-	gmailCh := make(chan *services.NotificationDestination, 1)
-	manager.RegisterConnector(&testUserNotificationConnector{name: "gmail", ch: gmailCh})
-	t.Cleanup(func() { manager.UnregisterConnector("gmail") })
-
-	oldSend := sendRichSlackIncomingWebhook
-	webhookCalled := false
-	sendRichSlackIncomingWebhook = func(context.Context, string, string, services.SlackWebhookContent) (string, error) {
-		webhookCalled = true
-		return "webhook-message", nil
-	}
-	t.Cleanup(func() { sendRichSlackIncomingWebhook = oldSend })
-
-	ctx := context.WithValue(context.Background(), BotNotificationDestinationKey, &services.NotificationDestination{
-		UserID:               "user-1",
-		SlackWebhook:         &services.SlackWebhookDest{URL: "https://hooks.slack.com/services/test"},
-		PulseSummaryChannels: []string{"gmail"},
-	})
-	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
-		"email_subject":     "Notification routing test",
-		"message_for_user":  "Autopilot complete",
-		"notification_kind": "pulse_summary",
-	}); err != nil {
-		t.Fatalf("pulse summary notification: %v", err)
-	}
-	if webhookCalled {
-		t.Fatal("Gmail-only Autopilot summary must not reach the workflow Slack webhook")
-	}
 }
 
 func TestHandleNotifyUserAddsWorkflowNameToRichEmail(t *testing.T) {
@@ -888,20 +829,21 @@ func TestHandleNotifyUserAddsWorkflowNameToRichEmail(t *testing.T) {
 	t.Cleanup(func() { manager.UnregisterConnector("gmail") })
 
 	ctx := context.WithValue(context.Background(), BotNotificationDestinationKey, &services.NotificationDestination{
-		UserID:       "user-1",
-		WorkflowName: "latency-report",
+		UserID:               "user-1",
+		WorkflowName:         "latency-report",
+		RunSummaryRecipients: []string{"team@example.com"},
 	})
 	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
-		"message_for_user":  "Autopilot completed",
-		"notification_kind": "pulse_summary",
-		"email_subject":     "Autopilot summary",
+		"message_for_user":  "Run completed",
+		"notification_kind": "run_summary",
+		"email_subject":     "Run summary",
 		"email_html":        `<div>Three findings remain pending.</div>`,
 		"summary_routes": []interface{}{map[string]interface{}{
 			"routing_step_id": "review_router", "route_id": "security", "label": "Security",
 			"title": "Review complete", "status": "completed", "message": "route facts already rendered by the email card",
 		}},
 	}); err != nil {
-		t.Fatalf("Autopilot notification: %v", err)
+		t.Fatalf("Run notification: %v", err)
 	}
 
 	select {
@@ -910,7 +852,7 @@ func TestHandleNotifyUserAddsWorkflowNameToRichEmail(t *testing.T) {
 			t.Fatalf("destination = %#v, want rich Gmail content", dest)
 		}
 		gmail := dest.Content.Gmail
-		if gmail.Subject != "latency-report · Autopilot summary" {
+		if gmail.Subject != "latency-report · Run summary" {
 			t.Fatalf("subject = %q", gmail.Subject)
 		}
 		if !strings.Contains(gmail.HTMLBody, "Workflow: <strong") || !strings.Contains(gmail.HTMLBody, "latency-report</strong>") {
@@ -938,17 +880,17 @@ func TestHandleNotifyUserPreservesWorkflowNameThroughSessionDestination(t *testi
 	t.Cleanup(func() { DeleteSessionNotificationDestination(sessionID) })
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sessionID)
 	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
-		"message_for_user": "Autopilot completed",
-		"email_subject":    "Autopilot summary",
+		"message_for_user": "Run completed",
+		"email_subject":    "Run summary",
 		"email_html":       `<div>Complete.</div>`,
 	}); err != nil {
-		t.Fatalf("Autopilot notification: %v", err)
+		t.Fatalf("Run notification: %v", err)
 	}
 
 	select {
 	case dest := <-ch:
 		gmail := dest.Content.Gmail
-		if gmail.Subject != "social-media · Autopilot summary" || !strings.Contains(gmail.HTMLBody, "social-media</strong>") {
+		if gmail.Subject != "social-media · Run summary" || !strings.Contains(gmail.HTMLBody, "social-media</strong>") {
 			t.Fatalf("workflow identity was not preserved through session destination: %#v", gmail)
 		}
 	case <-time.After(time.Second):
@@ -962,10 +904,9 @@ func TestHandleNotifyUserPreservesWorkflowNameThroughSessionDestination(t *testi
 func TestWorkflowNotificationRoutesToConfiguredRecipientsByKind(t *testing.T) {
 	baseDest := func() *services.NotificationDestination {
 		return &services.NotificationDestination{
-			UserID:                 "user-1",
-			Gmail:                  &services.GmailDest{Email: "account-default@example.com"},
-			RunSummaryRecipients:   []string{"run@example.com", "ops@example.com"},
-			PulseSummaryRecipients: []string{"pulse@example.com"},
+			UserID:               "user-1",
+			Gmail:                &services.GmailDest{Email: "account-default@example.com"},
+			RunSummaryRecipients: []string{"run@example.com", "ops@example.com"},
 		}
 	}
 
@@ -975,7 +916,6 @@ func TestWorkflowNotificationRoutesToConfiguredRecipientsByKind(t *testing.T) {
 		want string
 	}{
 		{name: "run summary uses the run list", kind: "run_summary", want: "run@example.com, ops@example.com"},
-		{name: "pulse summary uses the pulse list", kind: "pulse_summary", want: "pulse@example.com"},
 		// An unclassified send has no configured list and must fall through to
 		// whatever the destination already resolved, exactly as channel routing does.
 		{name: "general falls back to the account default", kind: "general", want: "account-default@example.com"},
@@ -1051,30 +991,23 @@ func TestConfiguredRecipientsKeepWorkflowDenylist(t *testing.T) {
 // falls back to the workflow's single webhook rather than posting nowhere.
 func TestWebhooksForKindSelectsChannelsAndFallsBack(t *testing.T) {
 	runHook := services.SlackWebhookDest{SecretName: "SLACK_RUNS", URL: "https://hooks.slack.com/services/T/B/runs"}
-	pulseHook := services.SlackWebhookDest{SecretName: "SLACK_PULSE", URL: "https://hooks.slack.com/services/T/B/pulse"}
 	fallback := services.SlackWebhookDest{SecretName: "SLACK_DEFAULT", URL: "https://hooks.slack.com/services/T/B/default"}
 
 	dest := &services.NotificationDestination{
-		SlackWebhook:         &fallback,
-		RunSummaryWebhooks:   []services.SlackWebhookDest{runHook},
-		PulseSummaryWebhooks: []services.SlackWebhookDest{pulseHook},
+		SlackWebhook:       &fallback,
+		RunSummaryWebhooks: []services.SlackWebhookDest{runHook},
 	}
 
 	if got := webhooksForKind(dest, "run_summary"); len(got) != 1 || got[0].SecretName != "SLACK_RUNS" {
 		t.Fatalf("run_summary webhooks = %#v, want the run channel", got)
 	}
-	if got := webhooksForKind(dest, "pulse_summary"); len(got) != 1 || got[0].SecretName != "SLACK_PULSE" {
-		t.Fatalf("pulse_summary webhooks = %#v, want the pulse channel", got)
-	}
+
 	// "general" has no configured channel of its own, and a kind whose list is
 	// empty must not go silent — both fall back to the single workflow webhook.
 	if got := webhooksForKind(dest, "general"); len(got) != 1 || got[0].SecretName != "SLACK_DEFAULT" {
 		t.Fatalf("general webhooks = %#v, want the fallback channel", got)
 	}
-	noPulse := &services.NotificationDestination{SlackWebhook: &fallback}
-	if got := webhooksForKind(noPulse, "pulse_summary"); len(got) != 1 || got[0].SecretName != "SLACK_DEFAULT" {
-		t.Fatalf("unconfigured pulse = %#v, want the fallback channel", got)
-	}
+
 	// No webhook at all anywhere means no Slack post, not a post to an empty URL.
 	if got := webhooksForKind(&services.NotificationDestination{}, "run_summary"); len(got) != 0 {
 		t.Fatalf("no webhooks configured = %#v, want none", got)
@@ -1112,9 +1045,7 @@ func TestNotifyUsesOnlyOneConfiguredGmailSender(t *testing.T) {
 	if got, err := notificationSenderForKind(dest, "run_summary"); err != nil || got != "gmail_run" {
 		t.Fatalf("run sender = %q, %v", got, err)
 	}
-	if got, err := notificationSenderForKind(dest, "pulse_summary"); err != nil || got != "gmail_default" {
-		t.Fatalf("pulse sender = %q, %v", got, err)
-	}
+
 	dest.RunSummaryGmailConnectionIDs = []string{"gmail_run", "gmail_other"}
 	if _, err := notificationSenderForKind(dest, "run_summary"); err == nil {
 		t.Fatal("legacy multi-sender Notify setting must not fan out")
@@ -1198,5 +1129,82 @@ func TestPersonalNotificationSummaryKeepsEmailSchemaAndItem(t *testing.T) {
 	copy := cloneNotificationDestination(dest)
 	if copy.Gmail.Workspace != "Workflow/mail" {
 		t.Fatal("cloning dropped trusted item")
+	}
+}
+
+func TestHandleNotifyUserSuppressesSlackWebhookForGmailOnlyRunSummary(t *testing.T) {
+	manager := services.GetNotificationManager()
+	gmailCh := make(chan *services.NotificationDestination, 1)
+	manager.RegisterConnector(&testUserNotificationConnector{name: "gmail", ch: gmailCh})
+	t.Cleanup(func() { manager.UnregisterConnector("gmail") })
+
+	oldSend := sendRichSlackIncomingWebhook
+	webhookCalled := false
+	sendRichSlackIncomingWebhook = func(context.Context, string, string, services.SlackWebhookContent) (string, error) {
+		webhookCalled = true
+		return "webhook-message", nil
+	}
+	t.Cleanup(func() { sendRichSlackIncomingWebhook = oldSend })
+
+	ctx := context.WithValue(context.Background(), BotNotificationDestinationKey, &services.NotificationDestination{
+		UserID:               "user-1",
+		RunSummaryChannels:   []string{"gmail"},
+		RunSummaryRecipients: []string{"team@example.com"},
+		SlackWebhook:         &services.SlackWebhookDest{URL: "https://hooks.slack.com/services/test"},
+	})
+	if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{
+		"email_subject":     "Notification routing test",
+		"message_for_user":  "Run complete",
+		"notification_kind": "run_summary",
+	}); err != nil {
+		t.Fatalf("run summary notification: %v", err)
+	}
+	select {
+	case <-gmailCh:
+	default:
+		t.Fatal("configured Gmail delivery did not run")
+	}
+	if webhookCalled {
+		t.Fatal("Gmail-only Run summary must not reach the workflow Slack webhook")
+	}
+}
+
+// PLAT-825-102: a configured default address is not consent to owner summaries.
+// An explicit team recipient or explicit self-selection remains deliverable.
+func TestRunSummaryEmailRequiresExplicitRecipients(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		recipients []string
+		want       string
+	}{
+		{name: "no automatic owner email"},
+		{name: "configured team", recipients: []string{"team@example.com"}, want: "team@example.com"},
+		{name: "explicit self", recipients: []string{"owner@example.com"}, want: "owner@example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			manager := services.GetNotificationManager()
+			ch := make(chan *services.NotificationDestination, 1)
+			manager.RegisterConnector(&testUserNotificationConnector{name: "gmail", ch: ch})
+			t.Cleanup(func() { manager.UnregisterConnector("gmail") })
+			ctx := context.WithValue(context.Background(), BotNotificationDestinationKey, &services.NotificationDestination{
+				UserID: "owner", Gmail: &services.GmailDest{Email: "owner@example.com"}, RunSummaryRecipients: tc.recipients,
+			})
+			if _, err := DeliverWorkflowNotification(ctx, map[string]interface{}{"message_for_user": "Run finished", "email_subject": "Run outcome", "notification_kind": "run_summary"}); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case dest := <-ch:
+				if tc.want == "" {
+					t.Fatal("default owner address received an automatic summary")
+				}
+				if dest.Gmail == nil || dest.Gmail.Email != tc.want {
+					t.Fatalf("wrong configured recipient: %+v", dest.Gmail)
+				}
+			default:
+				if tc.want != "" {
+					t.Fatal("configured recipient did not receive the summary")
+				}
+			}
+		})
 	}
 }

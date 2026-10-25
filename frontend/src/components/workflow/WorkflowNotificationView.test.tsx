@@ -20,6 +20,7 @@ import { workflowManifestApi } from '../../services/api'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const info = {
+  breakAlerts: true,
   scopeLabel: 'Shop',
   effectiveState: 'ready',
   slackWebhook: { secret_name: 'SLACK_MAIN' },
@@ -28,16 +29,11 @@ const info = {
     { id: 'gmail_002', email: 'other@x.com', ready: true },
   ] },
   runSummaryInstructions: 'Summarize the run.',
-  pulseSummaryInstructions: '',
   runSummaryChannels: ['slack'],
-  pulseSummaryChannels: [],
   runSummaryRecipients: [],
   gmailConnectionId: '',
   runSummaryGmailConnectionIds: [],
-  pulseSummaryGmailConnectionIds: [],
-  pulseSummaryRecipients: [],
   runSummarySlackWebhooks: [],
-  pulseSummarySlackWebhooks: [],
   excludeChannels: [],
   blockRecipients: [],
 }
@@ -81,7 +77,7 @@ it('lays summaries out as labeled Channels, From, and To lines', async () => {
   try {
     expect(host.textContent).toContain('Run summary')
     expect(host.textContent).toContain('Channels')
-    expect(host.textContent).toContain('To')
+    expect(host.textContent).not.toContain('→ me@x.com')
     expect(host.textContent).toContain('me@x.com')
   } finally {
     await unmount()
@@ -91,12 +87,11 @@ it('lays summaries out as labeled Channels, From, and To lines', async () => {
 it('asks per channel and per summary from chat commands', async () => {
   const { host, unmount } = await mount()
   try {
-    expect(host.querySelectorAll('[data-testid="ask-ai"]').length).toBe(5)
+    expect(host.querySelectorAll('[data-testid="ask-ai"]').length).toBe(4)
     expect(askMessages).toContain('/notify')
     expect(askMessages.some(message => message.includes('Slack notifications'))).toBe(true)
     expect(askMessages.some(message => message.includes('Gmail notifications'))).toBe(true)
     expect(askMessages.some(message => message.includes('run summary'))).toBe(true)
-    expect(askMessages.some(message => message.includes('autopilot review'))).toBe(true)
   } finally {
     await unmount()
   }
@@ -120,4 +115,15 @@ it('saves one Notify sender without constraining workflow Gmail actions', async 
   } finally {
     await unmount()
   }
+})
+
+it('saves the Goal failure alert setting through the existing manifest endpoint', async () => {
+  vi.mocked(workflowManifestApi.updateWorkflowManifest).mockClear()
+  const { host, unmount } = await mount()
+  try {
+    const checkbox = host.querySelector('input[type="checkbox"]') as HTMLInputElement
+    expect(checkbox.checked).toBe(true)
+    await act(async () => checkbox.click())
+    expect(workflowManifestApi.updateWorkflowManifest).toHaveBeenCalledWith({ workspace_path: 'Workflow/test', break_alerts: false })
+  } finally { await unmount() }
 })

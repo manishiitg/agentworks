@@ -58,7 +58,7 @@ func (api *StreamingAPI) externalAgentMessageState(w http.ResponseWriter, r *htt
 			start = 0
 		}
 		for _, m := range c.Messages[start:] {
-			messages = append(messages, map[string]any{"message_id": m.ID, "sequence": m.Sequence, "delivery": m.Delivery, "delivery_error": m.Error, "sent_at": m.SentAt, "incoming": m.From != side, "wakeup": m.Wakeup})
+			messages = append(messages, map[string]any{"message_id": m.ID, "sequence": m.Sequence, "delivery": m.Delivery, "delivery_error": m.Error, "sent_at": m.SentAt, "incoming": m.From != side})
 		}
 		rows = append(rows, map[string]any{"inbox_id": c.ID, "session_id": c.Endpoints[side].Session, "chat_key": c.Endpoints[side].ChatKey, "messages": messages, "message_count": len(c.Messages), "older_messages_omitted": start > 0})
 	}
@@ -69,12 +69,6 @@ func (api *StreamingAPI) externalAgentMessageState(w http.ResponseWriter, r *htt
 	end := after + limit
 	if end > total {
 		end = total
-	}
-	wakeups := []map[string]any{}
-	for _, wake := range store.Wakeups {
-		if matches(wake.Endpoint) {
-			wakeups = append(wakeups, map[string]any{"wakeup_id": wake.ID, "session_id": wake.Endpoint.Session, "status": wake.Status, "due_at": wake.Due})
-		}
 	}
 	// A detach/reassignment during the read cannot release an owner projection.
 	current, e := api.externalMessageTargetForOperation(r.Context(), claims, args, false)
@@ -89,5 +83,5 @@ func (api *StreamingAPI) externalAgentMessageState(w http.ResponseWriter, r *htt
 		externalError(w, 404, "not_found", "Message state is unavailable or access denied.")
 		return
 	}
-	externalJSON(w, map[string]any{"conversations": rows[after:end], "next_cursor": end, "has_more": end < total, "total": total, "wakeups": wakeups, "note": fmt.Sprintf("Owner-only delivery metadata for %s; message bodies are excluded.", target.Label)})
+	externalJSON(w, map[string]any{"conversations": rows[after:end], "next_cursor": end, "has_more": end < total, "total": total, "note": fmt.Sprintf("Owner-only delivery metadata for %s; message bodies are excluded.", target.Label)})
 }

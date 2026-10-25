@@ -57,12 +57,12 @@ const options: LLMOption[] = ['opus', 'sonnet', 'haiku'].flatMap(model => ['low'
 })))
 
 const uniform = (value: AgentLLMConfig): PresetLLMConfig => ({
-  schema_version: 2, mode: 'explicit', builder_llm: value, pulse_llm: value,
+  schema_version: 2, mode: 'explicit', builder_llm: value, background_llm: value,
   tiered_config: { tier_1: value, tier_2: value, tier_3: value },
 })
 
 const differing: PresetLLMConfig = {
-  schema_version: 2, mode: 'explicit', builder_llm: claude('sonnet', 'high'), pulse_llm: claude('opus', 'high'),
+  schema_version: 2, mode: 'explicit', builder_llm: claude('sonnet', 'high'), background_llm: claude('opus', 'high'),
   tiered_config: { tier_1: claude('opus', 'high'), tier_2: claude('sonnet', 'low'), tier_3: claude('haiku', 'low') },
 }
 
@@ -107,7 +107,7 @@ describe('workflow role models', () => {
       expect(onChange).toHaveBeenCalledTimes(1)
       const next = onChange.mock.calls[0][0] as PresetLLMConfig
       const want = claude('sonnet', 'high')
-      for (const role of [next.builder_llm, next.pulse_llm, next.tiered_config?.tier_1, next.tiered_config?.tier_2, next.tiered_config?.tier_3]) {
+      for (const role of [next.builder_llm, next.background_llm, next.tiered_config?.tier_1, next.tiered_config?.tier_2, next.tiered_config?.tier_3]) {
         expect(role).toMatchObject(want)
       }
     } finally { await unmount() }
@@ -122,7 +122,7 @@ describe('workflow role models', () => {
       await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Set reasoning effort to High"]')!.click())
       const next = onChange.mock.calls[0][0] as PresetLLMConfig
       expect(next.mode).toBe('explicit')
-      for (const role of [next.builder_llm, next.pulse_llm, next.tiered_config?.tier_1, next.tiered_config?.tier_2, next.tiered_config?.tier_3]) {
+      for (const role of [next.builder_llm, next.background_llm, next.tiered_config?.tier_1, next.tiered_config?.tier_2, next.tiered_config?.tier_3]) {
         expect(role).toMatchObject({ ...claude('sonnet', 'high'), connection_id: 'private-a' })
       }
     } finally { await unmount() }
@@ -155,7 +155,7 @@ describe('workflow role models', () => {
       expect(next.tiered_config?.tier_1).toEqual(differing.tiered_config?.tier_1)
       expect(next.tiered_config?.tier_2).toEqual(differing.tiered_config?.tier_2)
       expect(next.builder_llm).toEqual(differing.builder_llm)
-      expect(next.pulse_llm).toEqual(differing.pulse_llm)
+      expect(next.background_llm).toEqual(differing.background_llm)
     } finally { await unmount() }
   })
 

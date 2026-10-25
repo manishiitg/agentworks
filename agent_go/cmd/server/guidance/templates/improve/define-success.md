@@ -1,5 +1,5 @@
 Set up outcome goals and measurable progress for this workflow. This is the
-shared flow for /setup-goals, legacy /define-success, and first-time Autopilot setup.
+shared flow for /setup-goals, legacy /define-success, and first-time AgentWorks setup.
 {{if .Focus}}
 User context: {{.Focus}}
 {{end}}
@@ -60,13 +60,13 @@ the user's agreement. Keep goal priorities in this canonical objective section,
 not a duplicate database or report. Metrics retain their separate typed contract.
 
 Preserve user constraints under ## Constraints. Give every constraint its
-provenance and class so Autopilot can tell a real boundary from an old choice:
+provenance and class so AgentWorks can tell a real boundary from an old choice:
 end the bullet with `(user request, YYYY-MM-DD)` when the user stated or
 confirmed it, and mark its class `[boundary]` (safety, legal, ethics, account
 safety, no fabrication, spend limits) or `[choice]` (theme, format, length,
 cadence, channel, audience, pricing, tone). A constraint the user has not
 confirmed stays without a user-request marker; ask the user to confirm or remove
-it rather than inventing provenance. When the user answers an Autopilot
+it rather than inventing provenance. When the user answers an AgentWorks
 constraint challenge with "change", apply exactly the agreed revision here with
 the new date, keep the old wording in the changelog, and report what changed in the conversation. "keep" leaves the constraint unchanged.
 
@@ -108,7 +108,7 @@ Reruns reuse unchanged IDs and preserve historical data; never reset history.
 ## Connect and verify collection
 Add collection to the canonical workflow using managed plan/config tools. Prefer
 scripted reads/calculations for deterministic work. Collect independently of
-whether Autopilot reviews run. Use record_goal_observations with metric=id, the exact
+whether AgentWorks reviews run. Use record_goal_observations with metric=id, the exact
 criterion_id/unit/route/environment, source run_id, actual observed_at (RFC3339),
 value and evidence. For unavailable measurements omit value and supply status;
 never report zero for failed/missing collection. Discover the tool's live schema
@@ -124,12 +124,7 @@ its source. A saved definition alone does not prove collection works. If source
 access or instrumentation is missing, report exactly what is needed and retain
 "Measurement setup needed"; do not claim completion.
 
-If this was invoked to enable Autopilot, after the goal/definitions are agreed call
-update_workflow_config(pulse_enabled=true). Existing runs must not be disabled
-while measurement is being configured. Baseline collection may continue after
-Autopilot is enabled; no fabricated baseline or target is required to enable it.
-
 ## Finish
 Summarize the primary/secondary goals, primary metrics and their supporting measurements, sources, verified collection,
 backfill coverage and any outstanding decisions. No separate Markdown review,
-HTML dashboard or manual chart: Autopilot renders the typed data automatically.
+HTML dashboard or manual chart: The Goals & metrics view and report widgets read these saved measurements.

@@ -146,8 +146,7 @@ migrations are complete. Direct API/webhook triggers also remain fail-closed on
 an incompatible contract.
 
 Answered-decision preflight turns temporarily use `workshop_mode = workshop`
-because they are explicitly allowed to update workflow artifacts. Post-run
-Pulse turns also use Workshop mode. The scheduler switches modes per turn, so a
+because they are explicitly allowed to update workflow artifacts. Backup/publish housekeeping uses a short Builder turn. The scheduler switches modes per turn, so a
 normal unattended run never inherits the maintenance surface.
 
 Multi-agent schedules remain separate under `_users/{userID}/multiagent-schedules.json`.
@@ -235,7 +234,7 @@ The API response shape is a compatibility wrapper around:
 
 A product can declare recurring jobs of its own in `product.yaml`, under
 `profile.schedules`. They are not workflow schedules: there is no manifest,
-no run folder and no Pulse review. Each one runs the product's agent profile
+no workflow run folder. Each one runs the product's agent profile
 for a user by sending its messages one at a time into that user's product
 conversation, the same conversation the product surface shows.
 

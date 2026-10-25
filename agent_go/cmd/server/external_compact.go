@@ -135,7 +135,6 @@ func externalCompactWorkflow(item DiscoveredWorkflow) map[string]any {
 			view["owners"] = m.Access.Owners
 		}
 		view["schedules"], view["schedules_enabled"] = len(m.Schedules), enabled
-		view["pulse_enabled"] = m.PulseEnabled()
 	}
 	return view
 }

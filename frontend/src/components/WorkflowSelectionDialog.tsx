@@ -5,13 +5,12 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { loadProductProjects } from '../platform/chat/productProjects'
 import { WORK_PROFILE_ID, WORK_PROJECTS_ROOT } from '../products/work/workData'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
-import { PulseIcon } from './workflow/pulseIcon'
 
 interface WorkflowItem {
   presetId: string
   label: string
   workspacePath: string
-  kind: 'workflow' | 'crew' | 'pulse'
+  kind: 'workflow' | 'crew'
   icon?: string
   secondaryLabel?: string
   shared?: boolean
@@ -25,8 +24,6 @@ interface WorkflowSelectionDialogProps {
   onSelectWorkflow: (workflow: WorkflowItem) => void
   searchQuery: string
   position: { bottom: number; left: number }
-  // In a Builder chat, the workflow's Pulse is the first entry: #pulse asks it.
-  includePulse?: boolean
 }
 
 let lastReferences: { userID?: string; workflows: WorkflowItem[]; crews: WorkflowItem[] } | null = null
@@ -37,7 +34,6 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   onSelectWorkflow,
   searchQuery: externalSearchQuery,
   position,
-  includePulse = false
 }) => {
   const listID = useId()
   const rowID = (item: WorkflowItem) => `${listID}-${encodeURIComponent(referenceRowKey(item))}`
@@ -121,9 +117,8 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   }, [isOpen, userID])
   const allReferences = useMemo(() => {
     const items = isOpen && referenceResult?.userID === userID ? referenceResult?.items || [] : []
-    if (!isOpen || !includePulse) return items
-    return [{ presetId: 'pulse', label: 'pulse', secondaryLabel: 'Ask this workflow\'s Autopilot', workspacePath: '', kind: 'pulse' as const }, ...items]
-  }, [includePulse, isOpen, referenceResult, userID])
+    return items
+  }, [isOpen, referenceResult, userID])
 
   const query = localQuery.toLowerCase().trim()
   const projectMatches = (project: WorkflowItem) => !query ||
@@ -281,7 +276,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
               onMouseEnter={() => setSelectedPresetId(referenceRowKey(workflow))}
               onMouseDown={e => { e.preventDefault(); onSelectWorkflow(workflow) }}
             >
-              {workflow.kind === 'pulse' ? <PulseIcon className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" /> : <EntityIdentityIcon icon={workflow.icon} label={workflow.label} />}
+              <EntityIdentityIcon icon={workflow.icon} label={workflow.label} />
               <div className="flex-1 min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="truncate font-medium">{workflow.label}</div>

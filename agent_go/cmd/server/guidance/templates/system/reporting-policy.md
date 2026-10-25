@@ -111,7 +111,7 @@ runtime; a dashboard edit does not authorize plan or execution changes.
   array and render each entry's label, title, status, message, fields, and
   sections; do not merge same-named routes or attribute shared facts to a
   specific route. `branch` choices are not separate
-  sub-workflows. Use the same grouping for any Autopilot-summary history.
+  sub-workflows. Use the same grouping for any AgentWorks-summary history.
   Check the real schema first: absent table/column or older rows use the old
   message and explicit legacy Route field, with scope shown as not recorded
   when absent. Never backfill route identity from prose, show an unreviewed
@@ -252,7 +252,7 @@ Dashboard-owned approval buttons are supported: update an existing business row
 scoped agent request using `sendChatMessage` below. This does not replace the
 platform's human-decision lifecycle. Platform decisions created through
 `create_human_input_request` retain their options, answers, consumption, and
-audit trail in the Autopilot panel/chat; do not edit `report_human_inputs` through
+audit trail in AgentWorks panel/chat; do not edit `report_human_inputs` through
 the business-field write API or invent a duplicate platform decision store.
 
 ### Live data from a script: `window.report.run`
@@ -337,7 +337,7 @@ for real).
 
 ### Sending a Dashboard request to the workflow agent
 
-When choosing between a business approval, an Autopilot decision, a blocking
+When choosing between a business approval, an AgentWorks decision, a blocking
 checkpoint, and an agent request, read
 `read_skill(skills=[{"name":"builder-reference","path":"references/human-in-the-loop.md"}])`.
 The API details below implement the Dashboard-to-chat pattern.
@@ -420,7 +420,7 @@ Keep Dashboard-only changes presentational unless the user also asked to change
 workflow behavior or evaluation. Run mode never authors Dashboard pages; it only
 produces the durable data those pages read.
 
-Platform human-decision lifecycles stay in the Autopilot panel and chat. A Dashboard
+Platform human-decision lifecycles stay in AgentWorks panel and chat. A Dashboard
 can expose its own business approval buttons using `updateField`/`updateFields`
 and hand a specific request to the workflow agent using `sendChatMessage`.
 See "Writing back" and "Sending a Dashboard request" above.
@@ -432,7 +432,7 @@ route entries once, or the complete message as a fallback, never both.
 ### Goal progress: shared data and an optional ready-made widget
 
 Dashboards can show the same primary metric, supporting metrics, and measured history
-as Autopilot. No additional collector, table, chart library, or custom CSS is needed:
+as AgentWorks. No additional collector, table, chart library, or custom CSS is needed:
 
 ```html
 <section id="goal-progress"></section>
@@ -456,7 +456,7 @@ For a custom layout, `await window.report.getGoalMetrics()` returns
 measurement remains unavailable rather than falling back to an older good value.
 History includes up to 120 comparable observations per active metric, with scope,
 unit, and evidence preserved. Use `window.report.query` against
-`workflow_goal_metrics` and `pulse_goal_observations` for a longer/custom history;
+`workflow_goal_metrics` and `goal_observations` for a longer/custom history;
 check `sqlite_master` first for workflows that have not configured measurements.
 These are platform-owned, read-only tables for Dashboards; use the managed goal tools
 for changes, not `updateField`/`updateFields` or direct SQL writes. Run `/setup-goals`
@@ -527,7 +527,7 @@ window.report.ready(async function () {
   filter box matching every cell; `sortable` makes headers toggle
   ascending/descending sort. `query` is required.
 - `renderActivity(target, { limit })` renders the policy-required activity
-  section from the run and Autopilot summaries already in
+  section from the run outcomes already in
   `org_dashboard_notifications`, route-grouped via `route_summaries_json`
   and markdown-rendered, with the execution-log fallback built in. Zero
   config: `limit` (1–100, default 30) is the only option. Missing history

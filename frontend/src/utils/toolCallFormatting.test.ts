@@ -168,11 +168,11 @@ describe('bridge tool failures that exit 0', () => {
   // stdout: the curl succeeded, so exit_code is 0 and every exit-code check
   // reports success. One day of codex rollouts (2026-08-01) held 34 of these,
   // all rendered with a green check — 46 get_api_spec rejections, 14 failed
-  // mark_pulse_module_result calls, 8 get_pulse_review_result misses.
+  // mark_pulse_module_result calls, 8 get_goal_update_result misses.
   it('flags a failed tool call carried in stdout with exit_code 0', () => {
     const result = formatToolCallResult(JSON.stringify({
       stdout: 'ERROR: tool execution failed: layer=custom_tool_handler '
-        + 'tool=get_pulse_review_result session=abc: sql: no rows in result set',
+        + 'tool=get_goal_update_result session=abc: sql: no rows in result set',
       stderr: '',
       exit_code: 0,
       execution_time_ms: 25,

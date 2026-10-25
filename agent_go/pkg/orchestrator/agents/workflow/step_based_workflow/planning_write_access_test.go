@@ -163,28 +163,6 @@ func TestParsePlanDependencySurfaceReviewsRequiresEverySurface(t *testing.T) {
 	}
 }
 
-func TestParsePlanDependencySurfaceReviewsRequiresIssueForUnresolvedSurface(t *testing.T) {
-	complete := map[string]interface{}{}
-	for _, surface := range requiredPlanDependencySurfaces {
-		complete[surface] = map[string]interface{}{
-			"disposition": "already_compatible",
-			"evidence":    []interface{}{"checked the canonical consumer"},
-		}
-	}
-	complete["reporting"] = map[string]interface{}{
-		"disposition": "broken",
-		"evidence":    []interface{}{"dashboard still reads the retired field"},
-	}
-	if _, err := parsePlanDependencySurfaceReviews(complete); err == nil || !strings.Contains(err.Error(), "durable Autopilot issue") {
-		t.Fatalf("broken surface without lifecycle issue was accepted: %v", err)
-	}
-	complete["reporting"].(map[string]interface{})["issue_ids"] = []interface{}{"PUL-1234ABCD"}
-	got, err := parsePlanDependencySurfaceReviews(complete)
-	if err != nil || len(got["reporting"].IssueIDs) != 1 {
-		t.Fatalf("linked broken surface rejected: reviews=%+v err=%v", got, err)
-	}
-}
-
 func TestManagedRetentionManifestWriteIsScoped(t *testing.T) {
 	hcpo, dir := newPreValidationConcernTestOrchestrator(t)
 	const sessionID = "retention-config-write"

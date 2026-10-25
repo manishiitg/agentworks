@@ -6,7 +6,7 @@ model — use it to investigate.
 
 ## Workshop investigation workflow
 
-1. Read real outputs, logs and validation evidence to identify the failing contract. Investigate and repair it in the current Builder conversation. Autopilot sends evidence and the expected result to Builder; there is no Bug Review/Fixer handoff.
+1. Read real outputs, logs and validation evidence to identify the failing contract. Investigate and repair it in the current Builder conversation. AgentWorks sends evidence and the expected result to Builder; there is no Bug Review/Fixer handoff.
 2. Use the matching step/plan/configuration tool for a justified repair within current permissions. For a strategy gap, agree the intended goal outcome before changing the approach.
 3. Verify the affected scope with a targeted run when it would resolve uncertainty. Continue useful independent work while an admitted background run finishes.
 
@@ -31,7 +31,7 @@ with the correct approach.
 3. If a step already completed or failed, use
    `debug_step(step_id, group_name=...)` plus targeted reads of run
    outputs/log summaries. For whole-run questions, use
-   the relevant timing, cost, eval, report, and Goal Advisor reviews.
+   the relevant timing, cost, eval, report, and goal reviews.
 4. Explain the observed failure or data gap in plain English and offer
    retry/skip/help when appropriate.
 5. If the right action is a targeted retry, utility check, or one-off
@@ -67,10 +67,10 @@ The fix should be one of:
 - Update `validation_schema`.
 - Fix context dependencies.
 - Correct workflow skills.
-- Ask Builder to apply an Autopilot repair with its evidence.
+- Ask Builder to apply an AgentWorks repair with its evidence.
 - Make an authorized goal-aligned plan change.
 
-**Act on the evidence.** Builder applies authorized changes with its normal tools and verifies them. Autopilot records the actual result and follows through on goal effects; sending the request alone is not completion.
+**Act on the evidence.** Builder applies authorized changes with its normal tools and verifies them. AgentWorks records the actual result and follows through on goal effects; sending the request alone is not completion.
 
 ## Run mode fix options
 

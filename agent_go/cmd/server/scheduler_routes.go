@@ -178,10 +178,6 @@ type UpdateScheduleRequest struct {
 	AfterRun *ScheduleAfterRun `json:"after_run,omitempty"`
 }
 
-type TriggerPulseRequest struct {
-	WorkspacePath string `json:"workspace_path"`
-}
-
 func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched WorkflowSchedule, state ScheduleRuntimeState, missed WorkflowScheduleMissedStatus) ScheduledJobResponse {
 	maxConcurrency := 0
 	collisionPolicy := sched.CollisionPolicy
@@ -437,7 +433,6 @@ func SchedulerRoutes(router *mux.Router, svc *SchedulerService) {
 		}).Methods("POST", "OPTIONS")
 	}
 	apiRouter.HandleFunc("/jobs/{id}/trigger", triggerScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflows/pulse-run", requireWorkflowWriteAccess(triggerWorkflowPulseHandler(svc))).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/stop", stopScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/reset-history", resetHistoryScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/runs", getScheduledJobRunsHandler(svc)).Methods("GET", "OPTIONS")
@@ -481,38 +476,6 @@ func cleanupScheduledJobRunsHandler(svc *SchedulerService) http.HandlerFunc {
 		_ = json.NewEncoder(w).Encode(map[string]any{"deleted_count": deleted, "workspace_path": workspacePath})
 	}
 }
-
-func triggerWorkflowPulseHandler(svc *SchedulerService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		var req TriggerPulseRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if strings.TrimSpace(req.WorkspacePath) == "" {
-			http.Error(w, "workspace_path is required", http.StatusBadRequest)
-			return
-		}
-
-		runID, err := svc.TriggerPulseNow(req.WorkspacePath)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"run_id": runID})
-	}
-}
-
-// triggerWorkflowGoalCheckHandler starts Pulse's daily goal check now (PLAT-697),
-// e.g. to see it while schedules are globally paused, when the daily launcher
-// skips it. It uses the same run as the scheduled check.
 
 // WorkflowScheduleSummary is the header-level schedule count summary shown
 // before the schedules popup is opened. Mirrors the frontend's previous
@@ -804,7 +767,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			policy := stepworkflow.ScheduleRuntimePolicy{}
 			if req.AfterRun != nil {
 				policy.SetAfterRun = true
-				policy.AfterRun = stepworkflow.ScheduleAfterRunOptions{Backup: req.AfterRun.Backup, Publish: req.AfterRun.Publish, Notify: req.AfterRun.Notify}
+				policy.AfterRun = stepworkflow.ScheduleAfterRunOptions{Backup: req.AfterRun.Backup, Publish: req.AfterRun.Publish}
 			}
 			applyScheduleAfterRunPolicy(&newSched, policy, true)
 		}
@@ -988,7 +951,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 		if req.AfterRun != nil {
 			policy := stepworkflow.ScheduleRuntimePolicy{SetAfterRun: true,
-				AfterRun: stepworkflow.ScheduleAfterRunOptions{Backup: req.AfterRun.Backup, Publish: req.AfterRun.Publish, Notify: req.AfterRun.Notify}}
+				AfterRun: stepworkflow.ScheduleAfterRunOptions{Backup: req.AfterRun.Backup, Publish: req.AfterRun.Publish}}
 			applyScheduleAfterRunPolicy(sched, policy, false)
 		}
 		if req.ExecutionMode != nil {

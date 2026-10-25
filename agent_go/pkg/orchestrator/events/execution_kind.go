@@ -43,9 +43,6 @@ const (
 	// ExecutionKindMainAgent is the user's own chat agent for a session.
 	ExecutionKindMainAgent ExecutionKind = "main_agent"
 
-	// ExecutionKindFullRun is a whole workflow run (scheduled, Pulse, or manual).
-	// It is a CONTAINER, not an agent: it has no conversation of its own, and
-	// must never occupy a rail slot beside the real agents it contains.
 	ExecutionKindFullRun ExecutionKind = "full_run"
 
 	// ExecutionKindSubAgent is a delegated LLM agent (call_sub_agent,
@@ -135,11 +132,11 @@ func ParseExecutionKind(value string) ExecutionKind {
 		// Sub-agent aliases are numerous because five call sites each invented
 	// their own: controller_agent_delegation declares workflow_sub_agent /
 	// workflow_generic_agent, interactive_workshop_manager declares
-	// generic_agent / pulse_reviewer, the delegate tool declares delegation,
+	// generic_agent / workshop_background, the delegate tool declares delegation,
 	// and cmd/server defaults anything unlabelled to workshop_background.
 	case "sub_agent", "subagent", "delegation", "background_agent", "background",
 		"workflow_sub_agent", "workflow_generic_agent", "generic_agent",
-		"pulse_reviewer", "workshop_background":
+		"workshop_background":
 		return ExecutionKindSubAgent
 	case "agent", "message_sequence", "message-sequence", "orchestrator", "todo_task":
 		return ExecutionKindAgent
