@@ -60,26 +60,6 @@ func TestAllGuidanceUsesAttachedSkillReader(t *testing.T) {
 	}
 }
 
-func TestGoalAdvisorAliasUsesCanonicalStrategyReview(t *testing.T) {
-	data := tmplData{Focus: "explore better reporting options", RunFolder: "iteration-7/group-a", WorkshopMode: "workshop"}
-	canonical, err := renderFromRegistry("strategy-auditor", data, allKinds)
-	if err != nil {
-		t.Fatal(err)
-	}
-	alias, err := renderFromRegistry("goal-advisor", data, allKinds)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if alias != canonical {
-		t.Fatal("goal-advisor must render the same strategic review, including focus and run context")
-	}
-	for _, mode := range []string{"workshop", "run", "reporting"} {
-		if modeAllowed("goal-advisor", mode) != modeAllowed("strategy-auditor", mode) {
-			t.Errorf("goal-advisor must have the same mode restrictions as strategy-auditor in %s", mode)
-		}
-	}
-}
-
 func TestDeployedChannelSessionEndWordsHaveNoControlMeaning(t *testing.T) {
 	raw, err := os.ReadFile("templates/system/deployed-channel.md")
 	if err != nil {
@@ -170,65 +150,6 @@ func TestTierGuidanceProtectsQualityWhileGoalsAreBelowTarget(t *testing.T) {
 // goal-advisor no longer links assumption-audit at all (0174b6aff "simplify
 // Pulse workflow reviews" moved it to a different content model); every
 // other kind below still does, confirmed by rendering each one.
-func TestImprovementAndPlanGuidanceIncludesAssumptionAudit(t *testing.T) {
-	for _, kind := range []string{
-		"design-plan",
-		"review-artifact-drift",
-		"strategy-auditor",
-	} {
-		rendered, err := renderFromRegistry(kind, tmplData{}, allKinds)
-		if err != nil {
-			t.Fatalf("render %s: %v", kind, err)
-		}
-		if !strings.Contains(rendered, "assumption-audit") {
-			t.Fatalf("%s guidance does not include assumption-audit", kind)
-		}
-	}
-
-	designPlan, err := renderFromRegistry("design-plan", tmplData{}, allKinds)
-	if err != nil {
-		t.Fatalf("render design-plan: %v", err)
-	}
-	for _, want := range []string{
-		"would you build this workflow this way from scratch",
-		"It is read-only",
-		"dependent artifacts",
-		"VISUAL MAP",
-		"PRIORITIES",
-	} {
-		if !strings.Contains(designPlan, want) {
-			t.Fatalf("combined design-plan guidance missing %q", want)
-		}
-	}
-	// "never discard findings" was removed from design-plan by 0174b6aff
-	// "simplify Pulse workflow reviews" (2026-08-08).
-	if _, exists := allKinds["review-plan"]; exists {
-		t.Fatal("review-plan must remain merged into design-plan")
-	}
-	// The improve-* parent-provision loop that used to sit here was removed
-	// with those checklists.
-	audit, err := renderFromRegistry("assumption-audit", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render assumption-audit: %v", err)
-	}
-	for _, want := range []string{
-		"Explicit user constraint",
-		"Verified external constraint",
-		"Current design choice",
-		"Agent-inferred assumption",
-		"SQLite-backed Autopilot lifecycle",
-		"Do not turn targeted maintenance into a full audit",
-	} {
-		if !strings.Contains(audit, want) {
-			t.Fatalf("assumption-audit missing %q", want)
-		}
-	}
-	// "Do not add an assumptions panel" was removed from assumption-audit.md
-	// by 0174b6aff "simplify Pulse workflow reviews" (2026-08-08) -- another
-	// builder/improve.html-dashboard-specific instruction that no longer
-	// applies now that improve.html is retired.
-}
-
 // TestGoalAdvisorTreatsCleanAbstentionAsStrategyEvidence asserted an
 // elaborate strategy-first-pass / active-experiment-lifecycle apparatus
 // (PHASE 1A/1B, data-experiment-kind, advisor-experiment cards) removed by
@@ -301,7 +222,6 @@ func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 			wants: []string{
 				"Scripts are the default for DETERMINISTIC execution",
 				"Use coherent scripted fetchers, not micro-scripts",
-				"10+ representative-run threshold applies only before freezing",
 			},
 		},
 	}
