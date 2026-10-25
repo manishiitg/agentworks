@@ -21,6 +21,7 @@ vi.mock('../../../stores/useWorkflowManifestStore', () => ({
   useWorkflowManifestStore: (selector: (state: unknown) => unknown) => selector({ workflows: [], refreshWorkflows: vi.fn(), updateWorkflow: vi.fn() }),
 }))
 vi.mock('../../integrations/PersonalAccountsPanel', () => ({ default: () => <div>Saved account picker</div> }))
+vi.mock('../../../utils/projectIntegrationNavigation', () => ({ openProjectIntegrations: vi.fn() }))
 vi.mock('../../workspace/WorkspacePanelNavigation', () => ({ useWorkspacePanelHosted: () => false }))
 vi.mock('../AskAIButton', () => ({ AskAIButton: () => null }))
 vi.mock('./GmailSetupGuide', () => ({ GmailSetupGuide: () => null }))
