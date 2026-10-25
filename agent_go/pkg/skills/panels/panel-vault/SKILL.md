@@ -20,10 +20,9 @@ Use admitted perform_ui_action with view=mcp, action=open and target=connected,
 available, secrets, gmail, slack-account or laptop. Slack bot uses the existing
 slack-bot target for Crew and slack for Goal. Opening changes presentation only.
 
-MCPs includes its tool lists, catalog and account setup in chat. Secrets includes
-project add/replace/remove controls and the full scoped server inventory of
-shared names; shared values stay hidden and project_select owns the ticks.
-Account/secret sharing is beside MCPs/Secrets. Google/Slack sign-in, reconnection
+MCPs includes its tool lists, catalog and account setup in chat. Secrets shows one list of project and shared names with their source,
+plus project add/replace/remove controls; shared values stay hidden and project_select owns the ticks.
+Add and Sharing use the panel header, alongside contextual Ask AI. There is no second account/sharing list below MCPs or Secrets. Sharing is managed from the visible chat with existing tools. Google/Slack sign-in, reconnection
 and permissions are under that provider’s Connect or manage accounts. Company
 OAuth setup remains administrator-only on that provider panel. Slack bot keeps
 its bot editor, setup/test controls and administrator-only company bot. Local

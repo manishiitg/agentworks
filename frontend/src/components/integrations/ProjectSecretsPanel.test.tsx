@@ -18,7 +18,7 @@ import { ProjectSecretsPanel } from './ProjectSecretsPanel'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let cleanup = () => {}
-const scoped = Array.from({ length: 18 }, (_, index) => ({ id: `VLT_team__KEY_${index}`, name: `KEY_${index}`, kind: 'shared_secret', status: 'stored', selected: false, can_select: index !== 17 }))
+const scoped = Array.from({ length: 18 }, (_, index) => ({ id: index===0?'VLT_team__PROJECT_KEY':`VLT_team__KEY_${index}`, name: index===0?'PROJECT_KEY':`KEY_${index}`, kind: 'shared_secret', status: 'stored', selected: false, can_select: index !== 17 }))
 const inventory = { notices: [], selected_servers:[],selected_secrets:['PROJECT_KEY'], selected_global_secret_names: [], vaults: [{ id: 'team', name: 'Team vault', sharing: 'Shared with you', items: [{id:'PROJECT_KEY',name:'PROJECT_KEY',kind:'project_secret',selected:true,can_select:true},...scoped, ...['FIRST_GLOBAL', 'SECOND_GLOBAL'].map(name => ({ id: name, name, kind: 'shared_secret', selected: false, can_select: true })), { id: 'app', name: 'App is separate', kind: 'mcp', selected: false }] }] }
 beforeEach(() => {
   vi.clearAllMocks()
@@ -43,12 +43,13 @@ it('uses the full native inventory for shared-secret ticks, including scoped Vau
   expect(vault.querySelectorAll('[role="checkbox"]')).toHaveLength(21)
   expect(vault.textContent).not.toContain('App is separate')
   expect(mocks.globals).not.toHaveBeenCalled()
-  expect(vault.querySelector('[aria-label="Reveal KEY_0"]')).toBeNull()
+  expect(vault.querySelector('[data-item-kind="shared_secret"][data-item-id="VLT_team__PROJECT_KEY"] [aria-label="Reveal PROJECT_KEY"]')).toBeNull()
+  expect(vault.querySelectorAll('[title="PROJECT_KEY"]')).toHaveLength(2)
   expect(vault.querySelector('form, input[type="password"]')).toBeNull()
   expect(vault.querySelector('[aria-label="Reveal PROJECT_KEY"]')).not.toBeNull()
   expect(host.textContent).not.toContain('sealed-project-value')
   expect(vault.querySelector('[aria-label="Use KEY_17 from Team vault"]')?.hasAttribute('disabled')).toBe(true)
-  await act(async () => vault.querySelector<HTMLButtonElement>('[aria-label="Use KEY_0 from Team vault"]')!.click())
+  await act(async () => vault.querySelector<HTMLButtonElement>('[aria-label="Use PROJECT_KEY from Team vault"]')!.click())
   expect(mocks.select).toHaveBeenCalledWith('Crew/example', scoped[0])
   expect(saved).toHaveBeenCalledWith(expect.objectContaining({selected_global_secret_names:[scoped[0].id]}))
   expect(local).not.toHaveBeenCalled()
@@ -57,6 +58,6 @@ it('retains shared Vault names if the project secret store cannot load', async (
   mocks.project.mockRejectedValue(new Error('Project secrets unavailable'))
   const { host } = await mount()
   expect(host.querySelector('[role="alert"]')?.textContent).toContain('Project secrets unavailable')
-  expect(host.querySelector('[aria-label="Secret list"]')?.textContent).toContain('KEY_0')
+  expect(host.querySelector('[aria-label="Secret list"]')?.textContent).toContain('PROJECT_KEY')
   expect(host.querySelector('[aria-label="Secret list"] [role="alert"]')).toBeNull()
 })

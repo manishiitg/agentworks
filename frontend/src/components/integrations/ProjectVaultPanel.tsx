@@ -75,7 +75,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
           const Icon = secret ? KeyRound : item.kind === 'computer' ? Laptop : Plug
           const healthy = item.status === 'connected' || item.status === 'online'
           const status = item.kind === 'computer' ? healthy ? 'Online' : 'Offline' : healthy ? 'Connected' : 'Needs attention'
-          return <div key={`${item.kind}:${item.id}`} className="flex min-h-12 flex-wrap items-center gap-3 px-3 py-2">
+          return <div key={`${item.kind}:${item.id}`} data-item-kind={item.kind} data-item-id={item.id} className="flex min-h-12 flex-wrap items-center gap-3 px-3 py-2">
             <Checkbox aria-label={`Use ${item.name || item.provider} from ${groupName}`} checked={item.selected} disabled={disabled || busy || !item.can_select} onCheckedChange={() => { void toggle(item) }} />
             <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <button type="button" disabled={disabled} onClick={() => { void setup.open(vaultItemDraft(item, groupName)) }} className={`min-w-0 flex-1 truncate text-left hover:underline ${secret ? 'font-mono text-xs' : ''}`} title={item.name || item.provider}>{item.name || item.provider}</button>
