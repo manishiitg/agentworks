@@ -50,7 +50,11 @@ requested scope first.
   this project's selection. For a Goal, update its selected skills through
   `settings action=update` using the current settings version. The same
   selection is managed through chat. **Build > Skills** (or Recent) shows
-  installed custom skills for reading; it has no select or uninstall buttons.
+  installed custom skills. In a Crew, owners can open a skill in Files to edit
+  it, or uninstall it from this panel; selection is managed through chat.
+  Crew-local copies of another product's skills are ordinary project files:
+  edit or remove those copies without changing the original product. Only
+  the current product's built-in platform guides remain protected.
 - When the user explicitly asks to preserve or improve a repeatable procedure,
   create or update a focused custom skill inside this project project at
   `skills/<skill-name>/SKILL.md`. This is project-local durable knowledge, like
