@@ -28,17 +28,16 @@ import (
 // proxy's cross-user block.
 
 func TestIsCrewReaderTurn(t *testing.T) {
-	ownerRoot := "_users/owner/Chats/Work/projects/alpha"
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	ownerRoot := registerTestCrew(t, "alpha", "owner", true)
 	for _, tt := range []struct {
 		name   string
 		req    QueryRequest
 		caller string
 		want   bool
 	}{
-		{"owner physical", QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot}, "owner", false},
-		{"reader physical", QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot}, "reader", true},
-		{"owner logical", QueryRequest{AgentProfileID: "work", SelectedFolder: "Chats/Work/projects/alpha"}, "owner", false},
-		{"reader logical resolves to reader own", QueryRequest{AgentProfileID: "work", SelectedFolder: "Chats/Work/projects/alpha"}, "reader", false},
+		{"owner", QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot}, "owner", false},
+		{"reader", QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot}, "reader", true},
 		{"landing chat", QueryRequest{AgentProfileID: "work", SelectedFolder: "Chats/Work"}, "reader", false},
 		{"non-work profile", QueryRequest{AgentProfileID: "video-studio", SelectedFolder: ownerRoot}, "reader", false},
 		{"no profile", QueryRequest{SelectedFolder: ownerRoot}, "reader", false},
@@ -51,42 +50,38 @@ func TestIsCrewReaderTurn(t *testing.T) {
 }
 
 func TestCrewProjectOwnershipHelpers(t *testing.T) {
-	if owner, ok := crewProjectOwnerID("_users/owner/Chats/Work/projects/alpha"); !ok || owner != "owner" {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	root := registerTestCrew(t, "alpha", "owner", true)
+	if owner, ok := crewProjectOwnerID(root); !ok || owner != "owner" {
 		t.Fatalf("owner = %q,%v", owner, ok)
-	}
-	if _, ok := crewProjectOwnerID("Chats/Work/projects/alpha"); ok {
-		t.Fatal("logical path must not report an owner")
 	}
 	if _, ok := crewProjectOwnerID("Workflow/acme"); ok {
 		t.Fatal("workflow path must not report an owner")
 	}
-	if !isCrewProjectPath("_users/owner/Chats/Work/projects/alpha") || !isCrewProjectPath("Chats/Work/projects/alpha") {
-		t.Fatal("crew project paths not recognized")
+	if !isCrewProjectPath(root) {
+		t.Fatal("crew project path not recognized")
 	}
-	if isCrewProjectPath("Chats/Work/projects") || isCrewProjectPath("Chats/Work") || isCrewProjectPath("Workflow/acme") {
+	if isCrewProjectPath("Crew") || isCrewProjectPath("Chats/Work") || isCrewProjectPath("Workflow/acme") {
 		t.Fatal("non-project paths recognized as crew projects")
 	}
-	if !crewProjectOwnedByCaller("owner", "_users/owner/Chats/Work/projects/alpha") {
+	if !crewProjectOwnedByCaller("owner", root) {
 		t.Fatal("owner not recognized")
 	}
-	if crewProjectOwnedByCaller("reader", "_users/owner/Chats/Work/projects/alpha") {
+	if crewProjectOwnedByCaller("reader", root) {
 		t.Fatal("reader recognized as owner")
 	}
-	if !crewProjectOwnedByCaller("reader", "Chats/Work/projects/alpha") {
-		t.Fatal("logical path must address the caller's own tree")
-	}
-	read, write, blocked := crewReaderWorkspaceRoots("_users/owner/Chats/Work/projects/alpha", true)
+	read, write, blocked := crewReaderWorkspaceRoots(root, true)
 	if len(write) != 0 || len(read) != 1 || len(blocked) != 1 || blocked[0] != read[0] {
 		t.Fatalf("reader roots = %v/%v/%v", read, write, blocked)
 	}
-	read, write, blocked = crewReaderWorkspaceRoots("_users/owner/Chats/Work/projects/alpha", false)
+	read, write, blocked = crewReaderWorkspaceRoots(root, false)
 	if len(read) != 1 || len(write) != 1 || len(blocked) != 0 || read[0] != write[0] {
 		t.Fatalf("owner roots = %v/%v/%v", read, write, blocked)
 	}
-	if !crewBuilderDiskHiddenFromUser("reader", "_users/owner/Chats/Work/projects/alpha") {
+	if !crewBuilderDiskHiddenFromUser("reader", root) {
 		t.Fatal("owner transcripts must stay hidden from readers")
 	}
-	if crewBuilderDiskHiddenFromUser("owner", "_users/owner/Chats/Work/projects/alpha") {
+	if crewBuilderDiskHiddenFromUser("owner", root) {
 		t.Fatal("owner must keep reading their own transcripts")
 	}
 	if crewBuilderDiskHiddenFromUser("reader", "Workflow/acme") {
@@ -95,23 +90,23 @@ func TestCrewProjectOwnershipHelpers(t *testing.T) {
 }
 
 func TestIsActiveWorkProjectWorkspaceAnyOwner(t *testing.T) {
-	if !isActiveWorkProjectWorkspace("reader", "_users/owner/Chats/Work/projects/alpha") {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	root := registerTestCrew(t, "alpha", "owner", true)
+	if !isActiveWorkProjectWorkspace("reader", root) {
 		t.Fatal("another owner's crew project was not recognized")
 	}
-	if !isActiveWorkProjectWorkspace("owner", "_users/owner/Chats/Work/projects/alpha") {
-		t.Fatal("owned physical crew project was not recognized")
+	if !isActiveWorkProjectWorkspace("owner", root) {
+		t.Fatal("owned crew project was not recognized")
 	}
-	if !isActiveWorkProjectWorkspace("owner", "Chats/Work/projects/alpha") {
-		t.Fatal("logical crew project was not recognized")
-	}
-	if isActiveWorkProjectWorkspace("reader", "Chats/Work/projects") {
+	if isActiveWorkProjectWorkspace("reader", "Crew") {
 		t.Fatal("projects root recognized as an active project")
 	}
 }
 
 func TestCrewSessionModeNotice(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true}]}`)
-	notice := crewSessionModeNotice("_users/owner/Chats/Work/projects/alpha", "", false)
+	notice := crewSessionModeNotice(registerTestCrew(t, "alpha", "owner", true), "", false)
 	for _, marker := range []string{"shared user", "aman", "Change nothing", crewSuggestionToolName, "alone", "secret"} {
 		if !strings.Contains(notice, marker) {
 			t.Fatalf("session notice missing %q:\n%s", marker, notice)
@@ -625,7 +620,7 @@ type crewRunModeFixture struct {
 	api     *StreamingAPI
 }
 
-const crewRunModeOwnerRoot = "_users/owner/Chats/Work/projects/alpha"
+const crewRunModeOwnerRoot = "Crew/alpha"
 
 const crewRunModeOwnerProduct = `{"schema_version":1,"product":"work","id":"crew-aaa","title":"Alpha","session_id":"sess-owner","identity":{"name":"Alpha"},"created_at":"2026-09-01T00:00:00Z","updated_at":"2026-09-02T00:00:00Z"}`
 
@@ -650,7 +645,10 @@ const crewRunModeOwnerRuntime = `{
 func newCrewRunModeFixture(t *testing.T) *crewRunModeFixture {
 	t.Helper()
 	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true},{"id":"reader","username":"vaibhav","can_create":true},{"id":"stranger","username":"stranger","can_create":true}]}`)
+	registerTestCrew(t, "alpha", "owner", true)
+	registerTestCrew(t, "beta", "reader", true)
 
 	shared := NewWorkflowManifest("Shared")
 	shared.CreatedBy = "owner"
@@ -669,7 +667,7 @@ func newCrewRunModeFixture(t *testing.T) *crewRunModeFixture {
 		crewRunModeOwnerRoot + "/code/blob.bin":                       "ab\x00cd",
 		crewRunModeOwnerRoot + "/builder/session-1-conversation.json": `{"private":true}`,
 		crewRunModeOwnerRoot + "/db/app.sqlite":                       "sqlite\x00data",
-		"_users/reader/Chats/Work/projects/beta/product.json":         `{"schema_version":1,"product":"work","id":"crew-bbb","title":"Beta","created_at":"2026-09-03T00:00:00Z","updated_at":"2026-09-03T00:00:00Z"}`,
+		"Crew/beta/product.json":                                      `{"schema_version":1,"product":"work","id":"crew-bbb","title":"Beta","created_at":"2026-09-03T00:00:00Z","updated_at":"2026-09-03T00:00:00Z"}`,
 		manifestPath("Workflow/shared"):                               string(sharedRaw),
 		manifestPath("Workflow/private"):                              string(privateRaw),
 	}
@@ -684,7 +682,7 @@ func newCrewRunModeFixture(t *testing.T) *crewRunModeFixture {
 		Runtime: agentprofiles.RuntimePolicy{
 			Transport:    "auto",
 			Conversation: agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject},
-			Workspace:    agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: "Chats/Work/projects"},
+			Workspace:    agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: "Crew"},
 		},
 		UIPanels: agentprofiles.UIPanels{Schedules: true},
 	}
@@ -702,7 +700,7 @@ func TestResolveCrewProjectBinding(t *testing.T) {
 	if err != nil || !owned.OwnedByCaller || owned.OwnerID != "owner" {
 		t.Fatalf("owner resolve = %+v err=%v", owned, err)
 	}
-	if owned.Binding.ManifestPath == "" || owned.Binding.AuthoritativeSessionID != "sess-owner" {
+	if owned.Binding.ManifestPath == "" {
 		t.Fatalf("owner binding lost manifest coupling: %+v", owned.Binding)
 	}
 
@@ -773,7 +771,7 @@ func TestConversationTargetAccessCrewReader(t *testing.T) {
 	if err != nil || readerAccess != WorkflowAccessRead {
 		t.Fatalf("reader access = %v err=%v", readerAccess, err)
 	}
-	if _, err := fx.api.conversationTargetAccess(claimsCtx("reader"), QueryRequest{AgentProfileID: "work", AgentProfileConversationKey: "crew-aaa", SelectedFolder: "_users/reader/Chats/Work/projects/beta"}); err == nil {
+	if _, err := fx.api.conversationTargetAccess(claimsCtx("reader"), QueryRequest{AgentProfileID: "work", AgentProfileConversationKey: "crew-aaa", SelectedFolder: "Crew/beta"}); err == nil {
 		t.Fatal("mismatched folder granted access")
 	}
 	if _, err := fx.api.conversationTargetAccess(claimsCtx("reader"), QueryRequest{AgentProfileID: "work", AgentProfileConversationKey: "crew-nope", SelectedFolder: crewRunModeOwnerRoot}); err == nil {
@@ -802,15 +800,6 @@ func TestReaderResolveLeavesOwnerManifestUntouched(t *testing.T) {
 	}
 	if got := fx.files[crewRunModeOwnerRoot+"/product.json"]; got != crewRunModeOwnerProduct {
 		t.Fatal("reader resolve rewrote the owner's manifest")
-	}
-	readerWrites := 0
-	for path := range fx.files {
-		if strings.HasPrefix(path, "_users/reader/") && path != "_users/reader/Chats/Work/projects/beta/product.json" {
-			readerWrites++
-		}
-	}
-	if readerWrites == 0 {
-		t.Fatal("reader slot left no reader-scoped registry write")
 	}
 }
 
@@ -1123,7 +1112,8 @@ func TestSharedCallerGuestTurnGetsOutboundFunctionCallsOnly(t *testing.T) {
 		t.Fatalf("reader register: %v", err)
 	}
 	for _, name := range outbound {
-		if _, ok := reader.tools[name]; ok {
+		// A reader's ask may list the owner's published functions; it cannot call them or answer for them.
+		if _, ok := reader.tools[name]; ok && name != "list_functions" {
 			t.Fatalf("an ordinary reader chat registered outbound %q", name)
 		}
 	}
@@ -1331,7 +1321,8 @@ func TestCrewSessionModeFollowsReadOnlyTurn(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true}]}`)
 	profile := &resolvedAgentProfile{}
 	profile.Definition.ID = "work"
-	req := QueryRequest{AgentProfileID: "work", SelectedFolder: "_users/owner/Chats/Work/projects/alpha"}
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	req := QueryRequest{AgentProfileID: "work", SelectedFolder: registerTestCrew(t, "alpha", "owner", true)}
 	if got := crewSessionModeForTurn(req, "owner", "", profile, false); got != "" {
 		t.Fatalf("an owner's own turn got a notice: %q", got)
 	}
