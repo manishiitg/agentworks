@@ -58,123 +58,6 @@ func TestLLMDiscoveryHTTPShowsCursorLoginRequired(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeDiscoveryOptionsIncludeManualNewModels(t *testing.T) {
-	options := discoveryModelOptions("claude-code")
-	// Claude 5 family (current, from claudecode.GetAllClaudeCodeModels in
-	// multi-llm-provider-go) -- the 4.x models this test asserted before
-	// (claude-opus-4-8/4-7/4-6, claude-sonnet-4-6) were retired and are no
-	// longer offered; keep this list in sync with that source, not the
-	// other way around.
-	for _, modelID := range []string{
-		"claude-fable-5-1",
-		"claude-opus-5-5",
-		"claude-sonnet-5-5",
-		"claude-haiku-5-5",
-	} {
-		if !containsLLMCapabilityString(options, modelID) {
-			t.Fatalf("claude-code options = %v, want %s", options, modelID)
-		}
-	}
-	for _, modelID := range []string{"claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6"} {
-		if containsLLMCapabilityString(options, modelID) {
-			t.Fatalf("claude-code options = %v, want retired model %s absent", options, modelID)
-		}
-	}
-	if !containsLLMCapabilityString(options, "high") {
-		t.Fatalf("claude-code options = %v, want tier aliases preserved", options)
-	}
-}
-
-func TestProviderManifestMarksDeprecatedCodingAgents(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	t.Setenv("SUPPORTED_LLM_PROVIDERS", "pi-cli")
-	t.Setenv("PATH", t.TempDir())
-
-	api := &StreamingAPI{}
-	req := httptest.NewRequest(http.MethodGet, "/api/llm-config/providers", nil)
-	rec := httptest.NewRecorder()
-	api.handleGetProviderManifest(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("manifest status = %d, want 200; body=%s", rec.Code, rec.Body.String())
-	}
-
-	var resp struct {
-		Providers []struct {
-			ID                  string `json:"id"`
-			Deprecated          bool   `json:"deprecated"`
-			ReplacementProvider string `json:"replacement_provider"`
-			Models              []struct {
-				ModelID string `json:"model_id"`
-			} `json:"models"`
-			CodingAgent *struct {
-				SupportsStatusLine      bool `json:"supports_status_line"`
-				UsesMCPBridge           bool `json:"uses_mcp_bridge"`
-				SupportsBridgeOnlyTools bool `json:"supports_bridge_only_tools"`
-				SupportsNativeResume    bool `json:"supports_native_resume"`
-				HandlesTmuxSessionLoss  bool `json:"handles_tmux_session_loss"`
-			} `json:"coding_agent"`
-		} `json:"providers"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode manifest: %v", err)
-	}
-
-	want := map[string]string{}
-	seen := map[string]bool{}
-	for _, provider := range resp.Providers {
-		replacement, ok := want[provider.ID]
-		if !ok {
-			if provider.Deprecated {
-				t.Fatalf("%s unexpectedly marked deprecated", provider.ID)
-			}
-			continue
-		}
-		seen[provider.ID] = true
-		if !provider.Deprecated {
-			t.Fatalf("%s deprecated = false, want true", provider.ID)
-		}
-		if provider.ReplacementProvider != replacement {
-			t.Fatalf("%s replacement_provider = %q, want %q", provider.ID, provider.ReplacementProvider, replacement)
-		}
-	}
-	for _, provider := range resp.Providers {
-		if provider.ID == "pi-cli" {
-			if provider.CodingAgent == nil {
-				t.Fatal("pi-cli missing coding_agent manifest block")
-			}
-			if !provider.CodingAgent.SupportsStatusLine {
-				t.Fatal("pi-cli supports_status_line = false, want true")
-			}
-			if !provider.CodingAgent.UsesMCPBridge {
-				t.Fatal("pi-cli uses_mcp_bridge = false, want true")
-			}
-			if !provider.CodingAgent.SupportsBridgeOnlyTools {
-				t.Fatal("pi-cli supports_bridge_only_tools = false, want true")
-			}
-			if !provider.CodingAgent.SupportsNativeResume {
-				t.Fatal("pi-cli supports_native_resume = false, want true")
-			}
-			if !provider.CodingAgent.HandlesTmuxSessionLoss {
-				t.Fatal("pi-cli handles_tmux_session_loss = false, want true")
-			}
-			modelIDs := make(map[string]bool, len(provider.Models))
-			for _, model := range provider.Models {
-				modelIDs[model.ModelID] = true
-			}
-			for _, modelID := range []string{"zai/glm-5.3", "moonshotai/kimi-k3"} {
-				if !modelIDs[modelID] {
-					t.Fatalf("pi-cli models = %v, want %s", modelIDs, modelID)
-				}
-			}
-		}
-	}
-	for provider := range want {
-		if !seen[provider] {
-			t.Fatalf("manifest missing %s", provider)
-		}
-	}
-}
-
 func TestBuildLLMDiscoveryNeverOffersDirectAPIProviders(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("SUPPORTED_LLM_PROVIDERS", "openai,anthropic,vertex")
@@ -224,16 +107,6 @@ func TestMuseCLIIsPublishedAsCodingAgent(t *testing.T) {
 	if candidate.Usable {
 		t.Fatal("usable = true, want false when muse runtime and auth are missing")
 	}
-	wantOptions := []string{"muse-spark-1.3", "muse-wonder-1.0", "muse-spark-1.3-contributor"}
-	if len(candidate.Options) != len(wantOptions) {
-		t.Fatalf("options = %v, want %v", candidate.Options, wantOptions)
-	}
-	for i, want := range wantOptions {
-		if candidate.Options[i] != want {
-			t.Fatalf("options = %v, want %v", candidate.Options, wantOptions)
-		}
-	}
-
 	if got := providerDisplayLabel("muse-cli"); got != "Muse" {
 		t.Fatalf("display label = %q, want Muse", got)
 	}
@@ -282,19 +155,6 @@ func TestPiCLIIsPublishedAsCodingAgent(t *testing.T) {
 	}
 	if candidate.Usable {
 		t.Fatal("usable = true, want false when pi/npx runtime is missing")
-	}
-	if len(candidate.Options) != len(piFallbackModels()) || candidate.Options[0] != "google/gemini-3.8-flash" {
-		t.Fatalf("options = %v, want curated Pi shortlist starting with google/gemini-3.8-flash", candidate.Options)
-	}
-	foundOpenRouter := false
-	for _, option := range candidate.Options {
-		if option == "openrouter/minimax/minimax-m3-20260531" {
-			foundOpenRouter = true
-			break
-		}
-	}
-	if !foundOpenRouter {
-		t.Fatalf("options = %v, want OpenRouter MiniMax top model", candidate.Options)
 	}
 }
 

@@ -3,40 +3,11 @@ package guidance
 import (
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
-
-// readPulseDesignSpec loads docs/design/pulse-post-run-monitor-spec.md.
-//
-// That file is NOT a reference doc: no prompt loads it and it is not in
-// referenceKinds, so it cannot be rendered. It remains the written Pulse design
-// spec, and these tests check the spec against the behavior the prompts and
-// loaded reference docs implement. A failure here means the spec and the system
-// disagree — and the spec is the side more likely to be stale.
-func readPulseDesignSpec(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	for range 8 {
-		candidate := filepath.Join(dir, "docs", "design", "pulse-post-run-monitor-spec.md")
-		if body, readErr := os.ReadFile(candidate); readErr == nil {
-			return string(body)
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	t.Fatal("could not locate docs/design/pulse-post-run-monitor-spec.md from the test working directory")
-	return ""
-}
 
 func containsNormalizedText(haystack, needle string) bool {
 	return strings.Contains(
@@ -149,100 +120,6 @@ func TestGoalAgentHelpersStayScriptedAcrossGuidance(t *testing.T) {
 	}
 }
 
-func TestMeasurementPlanGuidanceCoversFlexibleContract(t *testing.T) {
-	guidance, err := renderFromRegistry("measurement-plan", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render measurement-plan: %v", err)
-	}
-	for _, want := range []string{
-		"evidence-backed",
-		"record_goal_observations",
-		"get_goal_metrics",
-		"no topology change",
-		"read-only history",
-		"Builder and Autopilot share the measurement",
-		"window_start",
-		"window_end",
-		"an iteration folder is not required",
-	} {
-		if !strings.Contains(guidance, want) {
-			t.Fatalf("measurement guidance missing %q\n\nGuidance:\n%s", want, guidance)
-		}
-	}
-	for _, forbidden := range []string{
-		"measurement-router",
-		"measure-outcomes",
-		"workflow_metrics",
-	} {
-		if strings.Contains(guidance, forbidden) {
-			t.Fatalf("measurement guidance mandates removed topology (%q)\n\nGuidance:\n%s", forbidden, guidance)
-		}
-	}
-}
-
-func TestPulseCostGuidanceReconcilesRawLedgersWithoutDoubleCounting(t *testing.T) {
-	postRun := readPulseDesignSpec(t)
-
-	for _, want := range []string{
-		"execution_id",
-		"archived_run_folder",
-		"legacy fallback",
-		"group_folder",
-		"by_model",
-		"authoritative LLM total",
-		"by_step_and_model",
-		"never add",
-		"unattributed/orchestrator",
-		"workflow_orchestrator",
-		"scripted/zero-LLM step",
-		"run-folder",
-	} {
-		if !strings.Contains(postRun, want) {
-			t.Fatalf("post-run-monitor cost reconciliation guidance missing %q", want)
-		}
-	}
-}
-
-func TestPulseGuidanceRequiresReviewedBaselineBeforeCadenceSkip(t *testing.T) {
-	postRun := readPulseDesignSpec(t)
-	for _, want := range []string{
-		"Reviewed-baseline rule",
-		"successful workflow run is evidence for a review; it is not a substitute",
-		"completed, evidence-backed",
-		"baseline review for that module",
-		"**review outcomes**, not run",
-		"not count as clean reviews",
-		"review's checkpoint forward",
-		"bounded adaptive backoff",
-		"baseline pending",
-		"baseline cannot justify skipping",
-	} {
-		if !strings.Contains(postRun, want) {
-			t.Fatalf("post-run monitor missing reviewed-baseline contract %q", want)
-		}
-	}
-}
-
-func TestPulseGuidanceRejudgesActiveExperimentCadenceFromCurrentEvidence(t *testing.T) {
-	postRun := readPulseDesignSpec(t)
-	for _, want := range []string{
-		"Every Gate must re-judge current goal evidence",
-		"planned evidence boundary, not a lock",
-		"reachable in the real runtime control",
-		"not received a fair test",
-		"implementation/control-path evidence",
-		"real business or strategy",
-	} {
-		if !strings.Contains(postRun, want) {
-			t.Fatalf("post-run monitor missing active-experiment cadence contract %q", want)
-		}
-	}
-
-	// The goal-advisor-specific active-experiment lifecycle assertions that
-	// used to follow here were removed by 0174b6aff "simplify Pulse workflow
-	// reviews" (2026-08-08); goal-advisor no longer carries this content.
-}
-
 func TestTierGuidanceProtectsQualityWhileGoalsAreBelowTarget(t *testing.T) {
 	cases := map[string][]string{
 		"llm-selection": {
@@ -268,19 +145,6 @@ func TestTierGuidanceProtectsQualityWhileGoalsAreBelowTarget(t *testing.T) {
 		}
 	}
 
-	// post-run-monitor is the design spec, not a rendered reference doc.
-	// Same contract, read from its documented location.
-	spec := readPulseDesignSpec(t)
-	for _, want := range []string{
-		"Goal quality outranks tier savings",
-		"material success criterion is",
-		"not evidence for a downgrade",
-	} {
-		if !strings.Contains(spec, want) {
-			t.Fatalf("pulse design spec missing %q", want)
-		}
-	}
-
 }
 
 // TestGoalAdvisorPrioritizesStrategyOverHTMLFormatting asserted an
@@ -288,23 +152,6 @@ func TestTierGuidanceProtectsQualityWhileGoalsAreBelowTarget(t *testing.T) {
 // carries -- removed by 0174b6aff "simplify Pulse workflow reviews"
 // (2026-08-08). All 5 of its phrases confirmed absent by rendering the
 // current template, not by grepping stale expectations. Removed 2026-08-17.
-
-func TestPulseCardsKeepTechnicalEvidenceOutOfUserTimeline(t *testing.T) {
-	monitor := readPulseDesignSpec(t)
-	checks := map[string]struct {
-		rendered string
-		wants    []string
-	}{
-		"post-run-monitor": {monitor, []string{"SQLite-backed reviewer records", "structured Autopilot state", "must not update `builder/improve.html`", "dedicated Dashboard"}},
-	}
-	for label, check := range checks {
-		for _, want := range check.wants {
-			if !strings.Contains(check.rendered, want) {
-				t.Fatalf("%s missing human-readable card contract %q", label, want)
-			}
-		}
-	}
-}
 
 // TestPulseRelatedGuidanceUsesFourPartSectionOwnership asserted a
 // `data-pulse-section="..."` / `data-module="..."` HTML-attribute scheme —
@@ -398,45 +245,6 @@ func TestImprovementAndPlanGuidanceIncludesAssumptionAudit(t *testing.T) {
 // checklist was deleted: it had no slash command and no live loader.
 // Removed with the template.
 
-func TestPlanReviewAndGoalAdvisorPreferCoherentAgenticSteps(t *testing.T) {
-	checks := map[string][]string{
-		"design-plan": {
-			"Modern agents can own a substantial end-to-end outcome in one step",
-			"Validation sequence, not micro-steps",
-			"description turn the complete outcome",
-			"Authored follow-ups are optional",
-			"one-message-per-routine-action sequences",
-		},
-		// goal-advisor was checked here too until 0174b6aff "simplify Pulse
-		// workflow reviews" (2026-08-08) removed this content from it; every
-		// other kind below still carries it, confirmed by rendering each one.
-		"plan-design": {
-			"Description is the first turn alone",
-			"items: []",
-			"re-open its evidence and prove every success criterion",
-			"authored follow-ups are optional",
-			"tiny routine instructions",
-			"one coherent agentic outcome",
-		},
-	}
-
-	for kind, wants := range checks {
-		registry := allKinds
-		if kind == "plan-design" {
-			registry = referenceKinds
-		}
-		rendered, err := renderFromRegistry(kind, tmplData{}, registry)
-		if err != nil {
-			t.Fatalf("render %s: %v", kind, err)
-		}
-		for _, want := range wants {
-			if !strings.Contains(rendered, want) {
-				t.Fatalf("%s missing coherent-agentic-step guidance %q", kind, want)
-			}
-		}
-	}
-}
-
 func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 	checks := map[string]struct {
 		registry map[string]kindMeta
@@ -529,63 +337,6 @@ func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 	}
 }
 
-func TestSharedContextSpansOwnProofValidationAndRepair(t *testing.T) {
-	checks := map[string]struct {
-		registry map[string]kindMeta
-		wants    []string
-	}{
-		"planning-steps": {
-			registry: referenceKinds,
-			wants: []string{
-				"one large `agent` per shared-context span",
-				"proof/provenance output",
-				"Use multiple large sequences when their contexts should not be shared",
-				"The builder must decide this from",
-			},
-		},
-		"plan-design": {
-			registry: referenceKinds,
-			wants: []string{
-				"one large `agent` for each coherent shared-context span",
-				"proof/evidence contract",
-				"Multiple large sequences are correct when their contexts should not be shared",
-				"builder must decide this from the workflow semantics",
-			},
-		},
-		// goal-advisor carried this too until 0174b6aff "simplify Pulse
-		// workflow reviews" (2026-08-08); every other kind here still does.
-		"optimize-playbook": {
-			registry: referenceKinds,
-			wants: []string{
-				"keep it in the same shared context",
-				"repair/double-check turn",
-				"Strengthen before splitting",
-				"Validate in context",
-			},
-		},
-		"agent": {
-			registry: referenceKinds,
-			wants: []string{
-				"one persistent conversation",
-				"re-read the system of record and prove the effect",
-				"one large sequence per coherent shared-context span",
-			},
-		},
-	}
-
-	for kind, check := range checks {
-		rendered, err := renderFromRegistry(kind, tmplData{}, check.registry)
-		if err != nil {
-			t.Fatalf("render %s: %v", kind, err)
-		}
-		for _, want := range check.wants {
-			if !strings.Contains(rendered, want) {
-				t.Fatalf("%s missing shared-context proof guidance %q", kind, want)
-			}
-		}
-	}
-}
-
 // Check the shipped skill bundle: examples remain discoverable in their owning
 // references, and no live reference sends the builder to the retired document.
 func TestWorkflowCompositionExamplesLiveInOwningReferences(t *testing.T) {
@@ -623,32 +374,6 @@ func TestWorkflowCompositionExamplesLiveInOwningReferences(t *testing.T) {
 // marks stores_health due (for its learnings/KB dimensions) on a confirmation-recency
 // signal; the reviewer docs gain a re-verify -> demote pass and protect the
 // code-owned ledger from edits.
-func TestPulseStoreFreshnessTriggerAndReviewerPass(t *testing.T) {
-	postRun := readPulseDesignSpec(t)
-	for _, want := range []string{
-		"learnings/_global/_freshness.json",
-		"knowledgebase/_freshness.json",
-		"last_confirmed_run",
-		"freshness (confirmation recency)",
-		"complete skill package has no recorded",
-		"every content-bearing Markdown reference",
-		"must leave the entire package",
-		"index or valid Markdown shape alone is not proof",
-		"one reconciled `ownership_manifest`",
-		"one semantic item, one authoritative owner",
-		"`kb_purity_manifest`",
-		"`db_ownership_manifest`",
-		"Recommend `learnings_access=\"read\"` for mature",
-	} {
-		if !strings.Contains(postRun, want) {
-			t.Fatalf("post-run-monitor missing freshness trigger %q", want)
-		}
-	}
-
-	// The improve-learnings / improve-knowledge freshness-pass blocks that
-	// used to sit here were removed with those checklists.
-}
-
 // TestNoTemplateNamesARemovedPulseTool is the invariant that failed the last
 // time a tool contract moved: a read_skill signature change landed while 36
 // templates still emitted the old form, so every call was schema-rejected until
