@@ -376,6 +376,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           {view === 'dashboard' && <ReportView
             workspacePath={workspacePath}
             dashboardConversation
+            crewConversationPane={readOnly}
             emptyDescription={readOnly ? "No dashboard is available right now. Check again, or ask the project owner for help." : 'Live data, forms, agent actions and visual stories. Describe what your team needs in chat.'}
             emptyAction={!readOnly && <DashboardCreateDraftButton target={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }} />}
             sendChatMessage={sendDashboardMessage}
