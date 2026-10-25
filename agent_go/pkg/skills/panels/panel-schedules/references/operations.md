@@ -4,6 +4,10 @@
 
 - A project schedule contains exactly one message sent to this project's chat.
   It is not an AgentWorks workflow, route, phase, or execution.
+- A schedule runs in the main chat unless it names a tab: pass `chat_id` (a tab
+  from the project's chat list) on create or update to run it in that tab, and
+  an empty `chat_id` on update to move it back to the main chat. A schedule
+  created from inside a tab already runs in that tab.
 - Use `list_project_schedules` before updating, deleting, or triggering. Use the
   exact returned schedule ID.
 - For a recurring schedule, provide a clear name, one complete message, a

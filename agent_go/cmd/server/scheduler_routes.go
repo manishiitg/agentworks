@@ -128,6 +128,8 @@ type CreateScheduleRequest struct {
 
 	AfterRun       *ScheduleAfterRun `json:"after_run,omitempty"`
 	RunDestination string            `json:"run_destination,omitempty"`
+	// ChatID is the project tab a Crew schedule runs in; empty is the main chat.
+	ChatID string `json:"chat_id,omitempty"`
 }
 
 // UpdateScheduleRequest is the request body for updating a schedule.
@@ -152,12 +154,14 @@ type UpdateScheduleRequest struct {
 	ConcurrencyMode          *string                `json:"concurrency_mode,omitempty"`
 	ParallelRiskAcknowledged *bool                  `json:"parallel_risk_acknowledged,omitempty"`
 	RunDestination           *string                `json:"run_destination,omitempty"`
-	MaxStartDelayMinutes     *int                   `json:"max_start_delay_minutes,omitempty"`
-	AfterScheduleID          *string                `json:"after_schedule_id,omitempty"`
-	AfterScheduleIDs         []string               `json:"after_schedule_ids,omitempty"`
-	AfterTerminalStatus      *string                `json:"after_terminal_status,omitempty"`
-	AfterDelayMinutes        *int                   `json:"after_delay_minutes,omitempty"`
-	DependencyDeadline       *string                `json:"dependency_deadline,omitempty"`
+	// ChatID moves a Crew schedule to a project tab; "" moves it back to the main chat.
+	ChatID               *string  `json:"chat_id,omitempty"`
+	MaxStartDelayMinutes *int     `json:"max_start_delay_minutes,omitempty"`
+	AfterScheduleID      *string  `json:"after_schedule_id,omitempty"`
+	AfterScheduleIDs     []string `json:"after_schedule_ids,omitempty"`
+	AfterTerminalStatus  *string  `json:"after_terminal_status,omitempty"`
+	AfterDelayMinutes    *int     `json:"after_delay_minutes,omitempty"`
+	DependencyDeadline   *string  `json:"dependency_deadline,omitempty"`
 
 	AfterRun *ScheduleAfterRun `json:"after_run,omitempty"`
 }
@@ -695,9 +699,18 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			job, err := svc.api.productSchedules.CreateProjectSchedule(r.Context(), productWorkspaceUserID(r.Context()), req.ProductProfileID, req.ProductProjectID, productschedule.Schedule{
+			ownerID := productWorkspaceUserID(r.Context())
+			chatKey, err := projectScheduleChatKey(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, req.ChatID)
+			if err == nil && chatKey != "" && isolated {
+				err = fmt.Errorf("an isolated schedule has its own conversation; use either chat_id or run_destination isolated")
+			}
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			job, err := svc.api.productSchedules.CreateProjectSchedule(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, productschedule.Schedule{
 				Name: req.Name, Description: req.Description, Enabled: req.Enabled,
-				CronExpression: req.CronExpression, Timezone: scheduleTimezoneOrDefault(req.Timezone), Messages: req.Messages, Isolated: isolated,
+				CronExpression: req.CronExpression, Timezone: scheduleTimezoneOrDefault(req.Timezone), Messages: req.Messages, Isolated: isolated, ChatKey: chatKey,
 			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1528,7 +1541,22 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			}
 			requestedIsolation = &isolated
 		}
+		var requestedChatKey *string
+		if req.ChatID != nil {
+			key, chatErr := projectScheduleChatKey(ctx, userID, job.Profile.ID, job.ProjectID, *req.ChatID)
+			if chatErr != nil {
+				http.Error(w, chatErr.Error(), http.StatusBadRequest)
+				return true
+			}
+			requestedChatKey = &key
+		}
 		updated, err := ps.UpdateProjectSchedule(ctx, userID, id, func(schedule *productschedule.Schedule) {
+			if requestedChatKey != nil {
+				schedule.ChatKey = *requestedChatKey
+				if *requestedChatKey != "" {
+					schedule.Isolated = false
+				}
+			}
 			if req.Name != "" {
 				schedule.Name = req.Name
 			}

@@ -93,6 +93,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				"timezone":        map[string]interface{}{"type": "string", "description": "IANA timezone, for example Asia/Kolkata. Required with cron_expression; for a one-time schedule it only sets how the time is shown."},
 				"enabled":         map[string]interface{}{"type": "boolean"},
 				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationCrewChat, runDestinationIsolated}, "description": "Where runs execute. Defaults to crew_chat."},
+				"chat_id":         map[string]interface{}{"type": "string", "description": "Run in this tab of the project (a chat_id from the project's chat list) instead of the main chat. Omit to use the chat this is called from."},
 			},
 			"required": []string{"name", "message"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -122,7 +123,16 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			// Set from a project side chat (tab), it runs back in that chat
 			// (owner, 2026-10-07); from the main chat it runs in the main chat.
 			chatKey := ""
-			if !isolated && isProjectProfileID(profileID) {
+			if chatID, _ := args["chat_id"].(string); strings.TrimSpace(chatID) != "" {
+				if isolated {
+					return "", fmt.Errorf("an isolated schedule has its own conversation; use either chat_id or run_destination isolated")
+				}
+				key, chatErr := projectScheduleChatKey(ctx, userID, profileID, projectID, chatID)
+				if chatErr != nil {
+					return "", chatErr
+				}
+				chatKey = key
+			} else if !isolated && isProjectProfileID(profileID) {
 				if project, chatErr := api.codeChatsFor(internalBotRequestContext(ctx, userID), userID, sessionID, workspacePath); chatErr == nil && !project.Self.IsMain {
 					chatKey = project.Self.Key
 				}
@@ -147,6 +157,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				"in_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "Make it one-time: run once this many minutes from now. Replaces the recurring timing."},
 				"run_at":     map[string]interface{}{"type": "string", "description": "Make it one-time: run once at this RFC3339 moment. Replaces the recurring timing."}, "enabled": map[string]interface{}{"type": "boolean"},
 				"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationCrewChat, runDestinationIsolated}},
+				"chat_id":         map[string]interface{}{"type": "string", "description": "Move the schedule to this tab of the project (a chat_id from the project's chat list). An empty string moves it back to the main chat."},
 			},
 			"required": []string{"id"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -163,7 +174,21 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				}
 				requestedIsolation = &isolated
 			}
+			var requestedChatKey *string
+			if value, ok := args["chat_id"].(string); ok {
+				key, chatErr := projectScheduleChatKey(ctx, userID, profileID, projectID, value)
+				if chatErr != nil {
+					return "", chatErr
+				}
+				requestedChatKey = &key
+			}
 			job, err := api.productSchedules.UpdateProjectSchedule(ctx, userID, resolveID(id), func(schedule *productschedule.Schedule) {
+				if requestedChatKey != nil {
+					schedule.ChatKey = *requestedChatKey
+					if *requestedChatKey != "" {
+						schedule.Isolated = false
+					}
+				}
 				if value, ok := args["name"].(string); ok && strings.TrimSpace(value) != "" {
 					schedule.Name = strings.TrimSpace(value)
 				}

@@ -1710,6 +1710,20 @@ func projectChatExists(ctx context.Context, userID, profileID, projectID, chatKe
 	return false
 }
 
+// projectScheduleChatKey turns a tab's chat id (from the project's chat list)
+// into the key a project schedule runs in. An empty id is the main chat.
+func projectScheduleChatKey(ctx context.Context, userID, profileID, projectID, chatID string) (string, error) {
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" {
+		return "", nil
+	}
+	key := strings.TrimSpace(projectID) + codeChatSideMarker + chatID
+	if !projectChatExists(ctx, userID, profileID, projectID, key) {
+		return "", fmt.Errorf("chat_id %q is not a tab of this project; list the tabs first, and leave chat_id empty for the main chat", chatID)
+	}
+	return key, nil
+}
+
 func (s *ProductScheduleService) executeAutomationTurn(ctx context.Context, request map[string]interface{}, sessionID, userID string) (internalSessionTurnResult, error) {
 	if s.automationTurnRunner != nil {
 		return s.automationTurnRunner(ctx, request, sessionID, userID)
