@@ -87,11 +87,15 @@ prefer `query` when the data is already stored in `db/`.
 - `updateField` and `updateFields` support explicit edits of business fields
   on existing rows. Schema and permission checks are enforced by the backend;
   these APIs are not raw SQL writes or the platform human-decision lifecycle.
-- `sendChatMessage(message, { requestId })` sends a contextual request to the
-  workflow chat. Call it only from a user action, never during rendering or
-  polling. Save a Dashboard-owned approval first, identify the exact item,
-  version and intended route, and distinguish a queued request from completion.
-  Load `builder-reference/references/human-in-the-loop.md` for decision APIs.
+- `report.sendChatMessage(message, { requestId })` sends a contextual request
+  directly to the project's chat from an explicit click or form submission;
+  `AskButton`/`report.chat.open()` only open the composer. Never send during
+  rendering, loading or polling. Identify the exact item and requested action,
+  and distinguish queued from completed. Ordinary chat actions need no extra
+  approval record. For a requested approval workflow, save its decision before
+  requesting execution and read `builder-reference/references/human-in-the-loop.md`.
+  Read “Buttons that send a message to chat” in dashboard-authoring for the
+  example and preview/static export/MCP App limitations.
 - For recordings under `db/assets/`, persist the workspace-relative file path.
   Request `mediaUrl(path)` when opening a native `<video controls>` or
   `<audio controls>` player. URLs expire; obtain a fresh one on retry rather

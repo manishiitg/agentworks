@@ -258,6 +258,56 @@ scripts can execute. Connections without authoring consent cannot edit or publis
 consent adds no authority; reconnect for existing product authoring consent.
 Connections gain no new scopes automatically; expiry and revocation remain enforced.
 
+## Buttons that send a message to chat
+
+A dashboard button or link **can send a predefined request directly to the
+project's chat**. In managed TSX use `report.sendChatMessage(message, options?)`
+from the supplied `report` prop; existing HTML uses `window.report.sendChatMessage`.
+`AskButton`, `ChatPanel` and `report.chat.open()` are separate conversation
+widgets: opening them does not submit anything. Their Run-only visibility and
+`report.chat.available` do not decide whether a direct chat action can send.
+Do not tell Builders that dashboard actions are unavailable merely because
+those widgets are hidden beside their existing chat.
+
+Send only from an explicit click or form submission, never from render,
+loadData, effects, page load, refresh or polling. The click is the person's
+request; ordinary chat actions need no extra approval record or confirmation.
+For an approval workflow the person actually requested, use its existing
+decision tools and save the decision before requesting its execution.
+Include the selected item's identity and the requested action in the message.
+
+```tsx
+import { useState } from 'react';
+import { Button } from '@agentworks/dashboard';
+export function ReviewAction({ report, item }) {
+  const [notice, setNotice] = useState('');
+  async function review() {
+    try {
+      await report.sendChatMessage(`Review item ${item.id}: ${item.title}`);
+      setNotice('Sent to chat. Follow progress there.');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not send to chat.');
+    }
+  }
+  return <>
+    <Button label="Review this item" onPress={() => { void review(); }}/>
+    <p role="status">{notice}</p>
+  </>;
+}
+```
+
+The live website returns a `status: 'queued'` receipt; accepted or queued does
+not mean the work completed. An embedded Crew dashboard uses the chat beside
+it. Other website hosts use their supplied project-chat handler; the dashboard
+does not choose another project, user or session, or gain new permissions.
+Where the host supports it, optional `{requestId}` deduplicates the same
+item/version/action within that view; it is not a durable execution guarantee.
+
+Preview and static exports cannot send messages. In the external MCP App,
+`sendChatMessage` opens Ask with the message drafted and tells the person to
+press Send; do not report that draft as sent. Surface the host's error or next
+step rather than silently falling back or claiming completion.
+
 ## Existing HTML: optional native chat widgets
 
 In a managed Crew or workflow<!-- product:relays --> or Flow<!-- /product --> dashboard, the designer may add an open
@@ -288,7 +338,9 @@ After the runtime is ready, `window.report.chat` exposes only:
 Call these from `window.report.ready` or an explicit button action and catch
 rejections. Do not repeatedly open chat on data refresh. Opening/mounting only
 opens the conversation; it never submits a question. The person types and sends
-through the native composer. There is no widget `send`/`ask(text)` method.
+through the native composer. There is no `report.chat.send`/`ask(text)` method.
+This restriction is only for the widget namespace: the separate
+`report.sendChatMessage` action above sends directly in the live website.
 Selectors resolve within this dashboard, and callers cannot choose another
 project, account or chat. Native Ask rechecks current project access and uses
 the signed-in person's existing conversation on both app dashboards and shared
