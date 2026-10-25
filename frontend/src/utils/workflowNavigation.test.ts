@@ -86,6 +86,9 @@ describe('workflow navigation coordinator', () => {
   it('reveals a selected workflow from settings or Providers without losing the session', async () => {
     const { useLLMStore } = await import('../stores/useLLMStore')
     const { useAppStore } = await import('../stores/useAppStore')
+    const { useWorkflowStore } = await import('../stores/useWorkflowStore')
+    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true })
+    useWorkflowStore.getState().setFocusedPane('preview')
     const tab = workflowTab('workflow-a', 'tab-a')
     useChatStore.setState({ chatTabs: { [tab.tabId]: tab } })
     useAppStore.getState().setShowWorkflowsOverview(true)
@@ -93,6 +96,7 @@ describe('workflow navigation coordinator', () => {
     useAppStore.getState().setAdminPage('mcp')
     useLLMStore.getState().setShowLLMModal(true)
     expect(navigation.activateWorkflowTab(tab.tabId)).toBe(true)
+    expect(useWorkflowStore.getState().focusedPane).toBe('chat')
     expect(useLLMStore.getState().showLLMModal).toBe(false)
     expect(useAppStore.getState().showWorkflowsOverview).toBe(false)
     expect(useAppStore.getState().showSchedulesOverview).toBe(false)

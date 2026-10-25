@@ -98,6 +98,9 @@ export function selectWorkflowPreset(presetOrId: CustomPreset | PredefinedPreset
     useModeStore.getState().setModeCategory('workflow')
   }
   useWorkflowStore.getState().setShowChatArea(true)
+  // Selecting a Goal/Flow on a phone opens its conversation. A deliberate
+  // panel link calls openWorkspaceView after selection and still wins.
+  if (window.innerWidth < 768) useWorkflowStore.getState().setFocusedPane('chat')
   return true
 }
 
