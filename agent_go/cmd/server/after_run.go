@@ -9,77 +9,23 @@ import (
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
 // After-run options run backup and publish after ordinary Goal runs.
 // Notifications use the configured channels and recipients. Backup and publish
 // start a short provider turn only when their source files have changed.
 
-// ScheduleAfterRun is a schedule's after-run options.
-type ScheduleAfterRun struct {
-	Backup  bool `json:"backup"`
-	Publish bool `json:"publish"`
+// afterRunOptions selects configured housekeeping after every full Goal run.
+type afterRunOptions struct {
+	Backup, Publish bool
 }
 
-// Any reports whether any option is on.
-func (a ScheduleAfterRun) Any() bool { return a.Backup || a.Publish }
-
-// EffectiveAfterRun reads the canonical housekeeping settings. The raw manifest
-// stores explicit choices; the one-off data migration preserves old choices.
-func (m *WorkflowManifest) EffectiveAfterRun(schedule WorkflowSchedule) ScheduleAfterRun {
-	if m == nil || m.Kind == "relay" || strings.EqualFold(strings.TrimSpace(schedule.ScheduleType), "webhook") || schedule.AfterRun == nil {
-		return ScheduleAfterRun{}
-	}
-	return *schedule.AfterRun
-}
-
-// EffectiveManualAfterRun returns the after-run options for manual full runs:
-// after_manual_run, or what the backup and publish configs' own
-// after_manual_run triggers asked for before.
-func (m *WorkflowManifest) EffectiveManualAfterRun() ScheduleAfterRun {
+func (m *WorkflowManifest) afterRunOptions() afterRunOptions {
 	if m == nil || m.Kind == "relay" {
-		return ScheduleAfterRun{}
+		return afterRunOptions{}
 	}
-	if m.AfterManualRun != nil {
-		return *m.AfterManualRun
-	}
-	return ScheduleAfterRun{
-		Backup:  m.Backup != nil && m.Backup.Enabled && m.Backup.Triggers.AfterManualRun,
-		Publish: m.Publish != nil && m.Publish.Enabled && m.Publish.Triggers.AfterManualRun,
-	}
-}
-
-func setScheduleAfterRun(schedule *WorkflowSchedule, options ScheduleAfterRun) {
-	copied := options
-	schedule.AfterRun = &copied
-}
-
-// applyScheduleAfterRunPolicy defaults new schedules to backup and publish.
-func applyScheduleAfterRunPolicy(schedule *WorkflowSchedule, policy stepworkflow.ScheduleRuntimePolicy, creating bool) {
-	if schedule == nil {
-		return
-	}
-	switch {
-	case policy.SetAfterRun:
-		setScheduleAfterRun(schedule, ScheduleAfterRun{Backup: policy.AfterRun.Backup, Publish: policy.AfterRun.Publish})
-	case creating:
-		setScheduleAfterRun(schedule, ScheduleAfterRun{Backup: true, Publish: true})
-	}
-}
-
-// effectiveScheduleAfterRun reads the schedule from the freshly read manifest,
-// so a change saved during a run applies when that run finishes.
-func effectiveScheduleAfterRun(sctx *ScheduleContext, manifest *WorkflowManifest) ScheduleAfterRun {
-	if sctx == nil || manifest == nil || sctx.WebhookInput != nil || sctx.Schedule.ScheduleType == "webhook" {
-		return ScheduleAfterRun{}
-	}
-	for _, schedule := range manifest.Schedules {
-		if schedule.ID != "" && schedule.ID == sctx.Schedule.ID {
-			return manifest.EffectiveAfterRun(schedule)
-		}
-	}
-	return manifest.EffectiveAfterRun(sctx.Schedule)
+	return afterRunOptions{Backup: m.Backup != nil && m.Backup.AfterRuns,
+		Publish: m.Publish != nil && m.Publish.AfterRuns}
 }
 
 // afterRunWork is what the code check found for backup and publish.
@@ -90,9 +36,11 @@ type afterRunWork struct {
 
 // afterRunWorkDue decides in code whether backup and publish have anything
 // to do. Unchanged sources need no agent.
-func (s *SchedulerService) afterRunWorkDue(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, options ScheduleAfterRun) afterRunWork {
+func (s *SchedulerService) afterRunWorkDue(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, options afterRunOptions) afterRunWork {
 	var work afterRunWork
-	if options.Backup {
+	if options.Backup && (manifest == nil || manifest.Backup == nil || !manifest.Backup.Enabled) {
+		work.Notes = append(work.Notes, "backup skipped: backup is not set up")
+	} else if options.Backup {
 		// The managed SQLite snapshot is part of the backup source hash; make
 		// it current first so a database-only change counts.
 		_ = s.prepareWorkflowDatabaseBackupSnapshot(ctx, sctx)
@@ -125,7 +73,7 @@ func (s *SchedulerService) afterRunWorkDue(ctx context.Context, sctx *ScheduleCo
 // changes the run's recorded result; a failed housekeeping turn makes the
 // scheduled job partial, as the basic finalizer did.
 func (s *SchedulerService) runAfterRunOptions(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, status, errMsg, runFolder, sessionID, runID string, duration time.Duration) afterRunResult {
-	options := effectiveScheduleAfterRun(sctx, manifest)
+	options := manifest.afterRunOptions()
 	result := afterRunNotRun
 	if strings.TrimSpace(runFolder) != "" && (options.Backup || options.Publish) {
 		work := s.afterRunWorkDue(ctx, sctx, manifest, options)
@@ -280,7 +228,7 @@ const manualAfterRunScheduleID = "manual-after-run"
 
 var manualAfterRunInflight sync.Map // workspace path -> true
 
-// runManualAfterRunOptions applies the workflow's manual-run options after a
+// runManualAfterRunOptions applies the Goal's settings after a
 // full run started from a chat. Scheduled runs are handled by the scheduler.
 func (s *SchedulerService) runManualAfterRunOptions(workspacePath, runFolder, status, sessionID string) {
 	if s == nil || s.api == nil || strings.TrimSpace(workspacePath) == "" {
@@ -294,7 +242,7 @@ func (s *SchedulerService) runManualAfterRunOptions(workspacePath, runFolder, st
 	if err != nil || !found {
 		return
 	}
-	options := manifest.EffectiveManualAfterRun()
+	options := manifest.afterRunOptions()
 	if _, busy := manualAfterRunInflight.LoadOrStore(workspacePath, true); busy {
 		return
 	}
@@ -350,7 +298,7 @@ func (s *SchedulerService) runAfterRunNow(workspacePath, option string) (bool, [
 	sctx := buildScheduleContext(workspacePath, manifest, sched)
 	sctx.TriggerSource = "manual"
 	sctx.ProducedRunEvidence = true
-	work := s.afterRunWorkDue(ctx, sctx, manifest, ScheduleAfterRun{Backup: option == "backup", Publish: option == "publish"})
+	work := s.afterRunWorkDue(ctx, sctx, manifest, afterRunOptions{Backup: option == "backup", Publish: option == "publish"})
 	if !work.Backup && !work.Publish {
 		return false, work.Notes, nil
 	}

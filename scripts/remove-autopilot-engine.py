@@ -65,9 +65,43 @@ def retire_manifest_bookkeeping(document):
     return document
 
 
-def migrate_manifest(document):
+def consolidate_after_run_settings(document):
+    """One-off consolidation; a current explicit false is never re-enabled."""
+    schedules = document.get("schedules") or []
+    manual = document.get("after_manual_run")
+    is_flow = document.get("kind") == "relay"
+    receipt = {"kind": "flow" if is_flow else "goal"}
+    for option in ("backup", "publish"):
+        config = document.get(option)
+        if config is None:
+            config = {}
+        if not isinstance(config, dict):
+            raise ValueError(option + " configuration is not an object; correct it before migrating")
+        triggers = config.get("triggers") or {}
+        scheduled = sum(bool(item.get("enabled") and not item.get("pulse_review_only") and
+            str(item.get("schedule_type", "")).lower() != "webhook" and
+            (item.get("after_run") or {}).get(option)) for item in schedules)
+        manual_on = bool(manual.get(option)) if isinstance(manual, dict) else bool(config.get("enabled") and triggers.get("after_manual_run"))
+        if is_flow:
+            config["after_runs"] = False
+        elif "after_runs" not in config:
+            config["after_runs"] = bool(scheduled or manual_on)
+        receipt[option] = {"after_runs": config["after_runs"], "enabled_schedule_choices": scheduled,
+                           "manual_choice": manual_on}
+        config.pop("triggers", None)
+        document[option] = config
+    document.pop("after_manual_run", None)
+    for schedule in schedules:
+        schedule.pop("after_run", None)
+    return receipt
+
+
+def migrate_manifest(document, consolidation=None):
     document = retire_manifest_bookkeeping(document)
     if document.get("kind") == "relay":
+        receipt = consolidate_after_run_settings(document)
+        if consolidation is not None:
+            consolidation.update(receipt)
         return document
     # Retiring a delivery reference must not turn its webhook credential into
     # an agent-visible selected secret (the existing backend-only boundary).
@@ -90,13 +124,14 @@ def migrate_manifest(document):
     for schedule in schedules:
         if schedule.get("pulse_review_only"):
             continue
-        if schedule.get("after_run") is None:
+        if schedule.get("after_run") is None and (inherited or "pulse_mode" in schedule):
             mode = str(schedule.get("pulse_mode", "")).strip().lower()
             enabled = False if mode == "off" else True if mode in ("basic", "full") else inherited
             if str(schedule.get("schedule_type", "")).lower() == "webhook":
                 enabled = False
             schedule["after_run"] = dict.fromkeys(("backup", "publish"), enabled)
-        schedule["after_run"].pop("notify", None)
+        if isinstance(schedule.get("after_run"), dict):
+            schedule["after_run"].pop("notify", None)
         for key in ("pulse_mode", "pulse_mode_reason", "pulse_review_only"):
             schedule.pop(key, None)
         kept.append(schedule)
@@ -115,6 +150,9 @@ def migrate_manifest(document):
         publish["targets"] = [target for target in targets if not retired(target)]
         if targets and not publish["targets"]:
             publish["enabled"] = False
+    receipt = consolidate_after_run_settings(document)
+    if consolidation is not None:
+        consolidation.update(receipt)
     return rename_config(document)
 
 
@@ -205,13 +243,15 @@ def migrate(root, backups):
     for path in manifests:
         before = path.read_text()
         document = json.loads(before)
-        document = migrate_manifest(document)
+        consolidation = {}
+        document = migrate_manifest(document, consolidation)
         if document != json.loads(before):
             destination = backups / path.relative_to(root)
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, destination)
             path.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
             workflows += 1
+            print(json.dumps({"event": "after_runs_consolidated", "workspace": str(path.parent.relative_to(root)), **consolidation}))
         database = path.parent / "db" / "db.sqlite"
         if database.exists():
             count = migrate_database(database, backups / database.relative_to(root))

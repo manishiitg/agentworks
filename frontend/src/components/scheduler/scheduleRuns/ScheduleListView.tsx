@@ -20,13 +20,12 @@ import {
 import type { ScheduleRunsPanelState } from './useScheduleRunsData'
 import { ScheduleRowActions } from './ScheduleRowActions'
 import { ScheduleExecutionHistoryList } from '../../ScheduleExecutionHistoryList'
-import { ScheduleAfterRunControls } from './ScheduleAfterRunControls'
 
 type ScheduleListViewProps = {
   panel: Pick<ScheduleRunsPanelState,
     | 'filteredJobs' | 'presetMap' | 'showWorkflowIdentityInScheduleRows' | 'isReadOnlyUser'
     | 'handleStopRun' | 'handleTrigger' | 'triggering' | 'handleToggle'
-    | 'handleRunDestination' | 'handleAfterRun'
+    | 'handleRunDestination'
     | 'openActionMenuJobId' | 'setOpenActionMenuJobId' | 'handleDelete'
     | 'expandedRunHistoryJobIds' | 'runsByJob' | 'runsLoadingJobIds' | 'deletingRunSessionIds'
     | 'toggleRunHistory' | 'openScheduledRun' | 'deleteScheduledRunSession'
@@ -44,7 +43,6 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
     triggering,
     handleToggle,
     handleRunDestination,
-    handleAfterRun,
     openActionMenuJobId,
     setOpenActionMenuJobId,
     handleDelete,
@@ -127,7 +125,6 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                   </select>
                 </label>
               )}
-              <ScheduleAfterRunControls job={job} disabled={isReadOnlyUser} onChange={handleAfterRun} />
             </div>
 
             {dependencyNames.length > 0 && <p className="text-xs text-muted-foreground">Waits for: {dependencyNames.join(', ')}</p>}

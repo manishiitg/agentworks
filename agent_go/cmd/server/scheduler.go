@@ -202,9 +202,11 @@ type dueRegisteredJob struct {
 // the current wall-clock time. This approach is immune to macOS App Nap and sleep/wake
 // issues that wedge monotonic-clock-based timers (like gocron).
 type SchedulerService struct {
-	api  *StreamingAPI
-	mu   sync.Mutex
-	jobs map[string]*registeredJob // scoped schedule key → job
+	// The provider-turn boundary; automatic choices and freshness stay in the scheduler.
+	housekeepingTurn func(context.Context, map[string]interface{}, string, string) error
+	api              *StreamingAPI
+	mu               sync.Mutex
+	jobs             map[string]*registeredJob // scoped schedule key → job
 	// scheduleFingerprints tracks the persisted config loaded for each scoped
 	// schedule, including disabled and calendar schedules with no future items.
 	scheduleFingerprints map[string]string
@@ -2506,7 +2508,13 @@ func (s *SchedulerService) runAfterRunHousekeeping(ctx context.Context, sctx *Sc
 		req := cloneStringInterfaceMap(s.buildWorkshopRequest(ctx, sctx, scheduleRunID))
 
 		req["query"] = fmt.Sprintf("AFTER-RUN CONTEXT. workspace_path=%q evidence_status=%q run_folder=%q.\n\n", sctx.WorkspacePath, runStatus, runFolder) + step.query + s.prepareWorkflowDatabaseBackupSnapshot(ctx, sctx)
-		if err := s.api.startSessionInternal(ctx, req, sessionID, sctx.OwnerUserID, nil); err != nil {
+		runner := s.housekeepingTurn
+		if runner == nil {
+			runner = func(ctx context.Context, request map[string]interface{}, session, user string) error {
+				return s.api.startSessionInternal(ctx, request, session, user, nil)
+			}
+		}
+		if err := runner(ctx, req, sessionID, sctx.OwnerUserID); err != nil {
 			s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping unfinished: %v", err)
 			if errors.Is(err, context.Canceled) || errors.Is(err, errWorkshopSequenceInterrupted) {
 				return afterRunStopped
@@ -2533,7 +2541,7 @@ func (s *SchedulerService) prepareWorkflowDatabaseBackupSnapshot(ctx context.Con
 		s.logf(sctx, "[BACKUP] could not inspect workflow backup config before finalization: %v", err)
 		return fmt.Sprintf("\n\nMANAGED DATABASE SNAPSHOT. The backend could not inspect workflow backup config: %v. Keep backup status truthful, but continue independently through Publish; the platform records the run outcome.", err)
 	}
-	if !exists || !workflowBackupRequiresDatabaseSnapshot(manifest.Backup, sctx.TriggerSource) {
+	if !exists || !workflowBackupRequiresDatabaseSnapshot(manifest.Backup) {
 		return ""
 	}
 
@@ -2548,15 +2556,8 @@ func (s *SchedulerService) prepareWorkflowDatabaseBackupSnapshot(ctx context.Con
 	return fmt.Sprintf("\n\nMANAGED DATABASE SNAPSHOT. The backend already created and integrity-checked the current SQLite backup image at %q (sha256 %s, %d bytes). Stage that snapshot and its checksum at %q for every destination covering db-sqlite; never read or stage live db/db.sqlite. Publish and run-outcome recording are independent of the Backup result.", result.SnapshotPath, result.SHA256, result.SizeBytes, result.ChecksumPath)
 }
 
-func workflowBackupRequiresDatabaseSnapshot(config *WorkflowBackupConfig, triggerSource string) bool {
+func workflowBackupRequiresDatabaseSnapshot(config *WorkflowBackupConfig) bool {
 	if config == nil || !config.Enabled {
-		return false
-	}
-	manual := strings.EqualFold(strings.TrimSpace(triggerSource), "manual")
-	if manual && !config.Triggers.AfterManualRun {
-		return false
-	}
-	if !manual && !config.Triggers.AfterScheduledRun {
 		return false
 	}
 	for _, destination := range config.Destinations {

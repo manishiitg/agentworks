@@ -213,7 +213,7 @@ func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
 	if w := save("leader", m.Team, 0); w.Code != 409 {
 		t.Fatal("stale team policy accepted")
 	}
-	sched := WorkflowSchedule{ID: "route-schedule", Name: "Route schedule", CronExpression: "0 9 * * *", Timezone: "UTC", GroupNames: []string{"default"}, RouteSelections: map[string]string{"parent": "first-route"}, TeamAuthorizedBy: "first", TeamPolicyRevision: 1, AfterRun: &ScheduleAfterRun{}}
+	sched := WorkflowSchedule{ID: "route-schedule", Name: "Route schedule", CronExpression: "0 9 * * *", Timezone: "UTC", GroupNames: []string{"default"}, RouteSelections: map[string]string{"parent": "first-route"}, TeamAuthorizedBy: "first", TeamPolicyRevision: 1}
 	if e := teamScheduleAuthority(m.Team, "first", sched); e == nil {
 		t.Fatal("editing implicitly granted schedule management")
 	}
@@ -222,10 +222,6 @@ func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
 	f.manifest(t, m)
 	if e := validateTeamScheduleFire(context.Background(), teamTestRoot, sched); e != nil {
 		t.Fatal(e)
-	}
-	sched.AfterRun = &ScheduleAfterRun{Publish: true}
-	if e := teamScheduleAuthority(m.Team, "first", sched); e == nil {
-		t.Fatal("schedule grant implicitly granted publication")
 	}
 	m.Team.Contributors[0].ManageSchedules = false
 	f.manifest(t, m)

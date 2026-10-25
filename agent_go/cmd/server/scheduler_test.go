@@ -1174,31 +1174,20 @@ func TestPostRunMonitorPrependsArtifactPurityUpgradeForVersion120Manifest(t *tes
 	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.20"}, "1.0.20")
 }
 
-func TestWorkflowBackupRequiresDatabaseSnapshotOnlyForDueTriggerAndCoverage(t *testing.T) {
-	config := &WorkflowBackupConfig{
-		Enabled:  true,
-		Triggers: WorkflowBackupTriggers{AfterScheduledRun: true},
-		Destinations: []WorkflowBackupDestination{{
-			ID: "config-repo", Covers: []string{"workflow", "db-sqlite"},
-		}},
-	}
-	if !workflowBackupRequiresDatabaseSnapshot(config, "cron") {
-		t.Fatal("scheduled db-sqlite backup did not require a managed snapshot")
-	}
-	if workflowBackupRequiresDatabaseSnapshot(config, "manual") {
-		t.Fatal("manual trigger incorrectly used after_scheduled_run")
-	}
-	config.Triggers.AfterManualRun = true
-	if !workflowBackupRequiresDatabaseSnapshot(config, "manual") {
-		t.Fatal("manual db-sqlite backup did not require a managed snapshot")
+func TestWorkflowBackupRequiresDatabaseSnapshotForConfiguredCoverage(t *testing.T) {
+	config := &WorkflowBackupConfig{Enabled: true, AfterRuns: false,
+		Destinations: []WorkflowBackupDestination{{ID: "config-repo", Covers: []string{"workflow", "db-sqlite"}}}}
+	// Explicit Backup now still needs its snapshot when automatic Backup is off.
+	if !workflowBackupRequiresDatabaseSnapshot(config) {
+		t.Fatal("configured db-sqlite backup did not require a managed snapshot")
 	}
 	config.Destinations[0].Covers = []string{"workflow"}
-	if workflowBackupRequiresDatabaseSnapshot(config, "cron") {
+	if workflowBackupRequiresDatabaseSnapshot(config) {
 		t.Fatal("backup without db-sqlite coverage requested a database snapshot")
 	}
 	config.Enabled = false
 	config.Destinations[0].Covers = []string{"db-sqlite"}
-	if workflowBackupRequiresDatabaseSnapshot(config, "cron") {
+	if workflowBackupRequiresDatabaseSnapshot(config) {
 		t.Fatal("disabled backup requested a database snapshot")
 	}
 }

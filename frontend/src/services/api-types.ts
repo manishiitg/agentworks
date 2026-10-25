@@ -2389,14 +2389,9 @@ export interface PlanChangelogResponse {
 export interface WorkflowBackupConfig {
   enabled: boolean
   mode?: string
-  triggers?: WorkflowBackupTriggers
+  after_runs?: boolean
   destinations?: WorkflowBackupDestination[]
   notes?: string
-}
-
-export interface WorkflowBackupTriggers {
-  after_scheduled_run?: boolean
-  after_manual_run?: boolean
 }
 
 export interface WorkflowBackupDestination {
@@ -2463,7 +2458,7 @@ export interface WorkflowPublishConfig {
   targets?: Array<string | { id?: string; artifact?: string; [k: string]: unknown }>
   dashboard_mode?: string     // "snapshot"
   url?: string
-  triggers?: WorkflowBackupTriggers
+  after_runs?: boolean
   destinations?: WorkflowPublishDestination[]
   notes?: string
 }
@@ -2707,16 +2702,8 @@ export interface WorkflowNotificationInfoResponse {
 }
 
 // Scheduled Jobs
-/** What runs after a schedule's run (PLAT-697 phase 0); replaces pulse_mode. */
-export interface ScheduleAfterRun {
-  backup: boolean
-  publish: boolean
-}
-
 export interface ScheduledJob {
   kind?: string
-  after_run?: ScheduleAfterRun
-  /** Legacy, read for one release; kept in step with after_run. */
 
   id: string
   name: string
@@ -2794,7 +2781,6 @@ export interface ScheduledJob {
 }
 
 export interface CreateScheduledJobRequest {
-  after_run?: ScheduleAfterRun
 
   run_destination?: 'crew_chat' | 'isolated'
   name: string
@@ -2830,7 +2816,6 @@ export interface CreateScheduledJobRequest {
 }
 
 export interface UpdateScheduledJobRequest {
-  after_run?: ScheduleAfterRun
 
   name?: string
   description?: string
@@ -2961,9 +2946,7 @@ export interface WorkflowManifest {
   updated_at?: string
   run_retention_count?: number
   backup?: WorkflowBackupConfig
-  publish?: { enabled?: boolean; triggers?: WorkflowBackupTriggers }
-  /** After-run options for runs started from a chat (PLAT-697 phase 0). */
-  after_manual_run?: ScheduleAfterRun
+  publish?: WorkflowPublishConfig
   knowledgebase_sources?: KnowledgebaseSource[]
   folder_access?: WorkflowFolderGrant[]
   folder_access_requests?: WorkflowFolderAccessRequest[]
@@ -3116,6 +3099,8 @@ export interface CreateWorkflowManifestRequest {
 }
 
 export interface UpdateWorkflowManifestRequest {
+  backup?: { after_runs: boolean }
+  publish?: { after_runs: boolean }
   workspace_path: string
   relay_output_step_id?: string
   relay_durability?: 'dbos' | ''
@@ -3127,8 +3112,6 @@ export interface UpdateWorkflowManifestRequest {
   schedules?: WorkflowScheduleEntry[]
   workshop_mode?: string // Standalone patch — avoids zeroing out other execution_defaults fields
   run_retention_count?: number
-  /** After-run options for runs started from a chat (PLAT-697 phase 0). */
-  after_manual_run?: ScheduleAfterRun
   run_notification_instructions?: string
   run_notification_channels?: string[]
   // Send an empty array to clear a recipient list back to the account default;

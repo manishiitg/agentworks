@@ -12510,8 +12510,6 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				}
 				sb.WriteString(fmt.Sprintf("- **Timezone**: %s\n", sched.Timezone))
 				sb.WriteString(fmt.Sprintf("- **Status**: %s\n", status))
-				afterRun := manifest.EffectiveAfterRun(sched)
-				sb.WriteString(fmt.Sprintf("- **After run**: backup=%v, publish=%v\n", afterRun.Backup, afterRun.Publish))
 				if api.scheduler != nil {
 					state := api.scheduler.GetRuntimeStateForWorkflow(workspacePath, sched.ID)
 					if state.LastStatus != "" {
@@ -12626,7 +12624,6 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if err := validateScheduleRuntimePolicy(newSched); err != nil {
 				return "", err
 			}
-			applyScheduleAfterRunPolicy(&newSched, policy, true)
 			manifest.Schedules = append(manifest.Schedules, newSched)
 			if err := ValidateManifest(manifest); err != nil {
 				return "", err
@@ -12711,7 +12708,6 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if err := validateScheduleRuntimePolicy(newSched); err != nil {
 				return "", err
 			}
-			applyScheduleAfterRunPolicy(&newSched, policy, true)
 			manifest.Schedules = append(manifest.Schedules, newSched)
 			if err := ValidateManifest(manifest); err != nil {
 				return "", err
@@ -12851,7 +12847,6 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				if err := validateScheduleRuntimePolicy(*sched); err != nil {
 					return "", err
 				}
-				applyScheduleAfterRunPolicy(sched, *policy, false)
 			}
 			if manifest.Kind != "relay" {
 				validGroupNames, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, sched.GroupNames)

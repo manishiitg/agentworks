@@ -238,6 +238,10 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 
 // --- Update manifest ---
 
+type WorkflowAfterRunsUpdate struct {
+	AfterRuns *bool `json:"after_runs,omitempty"`
+}
+
 type UpdateWorkflowManifestRequest struct {
 	KnowledgebaseSources *[]workflowtypes.KnowledgebaseSource `json:"knowledgebase_sources,omitempty"`
 	// KBWriteGrants replaces the complete list of other workflow IDs allowed to
@@ -260,9 +264,8 @@ type UpdateWorkflowManifestRequest struct {
 	FolderAccess         *[]workflowtypes.WorkflowFolderGrant         `json:"folder_access,omitempty"`
 	FolderAccessRequests *[]workflowtypes.WorkflowFolderAccessRequest `json:"folder_access_requests,omitempty"`
 	WorkflowContextPaths *[]string                                    `json:"workflow_context_paths,omitempty"`
-	// AfterManualRun sets the after-run options for runs started from a chat
-	// (PLAT-697 phase 0). Schedules carry their own after_run.
-	AfterManualRun *ScheduleAfterRun `json:"after_manual_run,omitempty"`
+	Backup               *WorkflowAfterRunsUpdate                     `json:"backup,omitempty"`
+	Publish              *WorkflowAfterRunsUpdate                     `json:"publish,omitempty"`
 	// Notification instruction fields are standalone patches so the Notify
 	// popup can update content guidance without replacing workflow capabilities.
 	RunNotificationInstructions *string   `json:"run_notification_instructions,omitempty"`
@@ -493,9 +496,23 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		manifest.WorkflowContextPaths = normalized
 	}
 
-	if req.AfterManualRun != nil {
-		copied := *req.AfterManualRun
-		manifest.AfterManualRun = &copied
+	if req.Backup != nil || req.Publish != nil {
+		if manifest.Kind == "relay" {
+			http.Error(w, "After every run is a Goal setting. Use this Flow's existing run actions instead.", http.StatusBadRequest)
+			return
+		}
+		if req.Backup != nil && req.Backup.AfterRuns != nil {
+			if manifest.Backup == nil {
+				manifest.Backup = &WorkflowBackupConfig{}
+			}
+			manifest.Backup.AfterRuns = *req.Backup.AfterRuns
+		}
+		if req.Publish != nil && req.Publish.AfterRuns != nil {
+			if manifest.Publish == nil {
+				manifest.Publish = &WorkflowPublishConfig{}
+			}
+			manifest.Publish.AfterRuns = *req.Publish.AfterRuns
+		}
 	}
 
 	if req.BreakAlerts != nil {

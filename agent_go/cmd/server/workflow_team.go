@@ -870,13 +870,6 @@ func teamScheduleAuthority(t *WorkflowTeam, actor string, s WorkflowSchedule) er
 			return fmt.Errorf("schedule selects a route not assigned to you")
 		}
 	}
-	if s.AfterRun == nil {
-		return fmt.Errorf("Contributor schedules require explicit after_run choices")
-	}
-	a := *s.AfterRun
-	if a.Backup && !member.Backup || a.Publish && !member.Publish {
-		return fmt.Errorf("after-run action requires its own grant")
-	}
 	return nil
 }
 

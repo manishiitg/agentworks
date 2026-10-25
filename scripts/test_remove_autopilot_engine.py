@@ -79,11 +79,11 @@ class RetireEngineTest(unittest.TestCase):
             self.assertFalse({"oversight_mode", "knowledgebase_migration", "contract_upgrade_history", "workflow_skills_migration"}.intersection(saved))
             self.assertNotIn("pulse", saved)
             self.assertNotIn("post_run_monitor", saved)
-            self.assertEqual(saved["schedules"][0], {"id": "daily", "after_run": {"backup": True}})
+            self.assertEqual(saved["schedules"][0], {"id": "daily"})
             self.assertEqual([item["id"] for item in saved["schedules"]], ["daily", "off", "basic", "hook"])
-            self.assertEqual(saved["schedules"][1]["after_run"], dict.fromkeys(("backup", "publish"), False))
-            self.assertEqual(saved["schedules"][2]["after_run"], dict.fromkeys(("backup", "publish"), True))
-            self.assertFalse(saved["schedules"][3]["after_run"]["backup"])
+            self.assertTrue(all("after_run" not in item for item in saved["schedules"]))
+            self.assertFalse(saved["backup"]["after_runs"])
+            self.assertFalse(saved["publish"]["after_runs"])
             self.assertEqual(saved["publish"]["targets"], ["report"])
             self.assertEqual(saved["capabilities"]["notifications"]["run_summary_recipients"], ["team@example.com"])
             self.assertFalse(any(key.startswith(("pulse_summary", "goal_update", "daily_digest")) for key in saved["capabilities"]["notifications"]))
@@ -104,6 +104,35 @@ class RetireEngineTest(unittest.TestCase):
             self.assertEqual(second["workflow_configs"], 0)
             self.assertEqual(second["databases"], 0)
             self.assertFalse((Path(directory) / "second-backup").exists())
+
+    def test_consolidates_after_run_choices_once_with_backup_and_flow_exclusion(self):
+        # PLAT-825-112: paused schedules do not turn automation on; current
+        # explicit false survives stale fields, and Flow never gains housekeeping.
+        with tempfile.TemporaryDirectory() as directory:
+            root, backup = Path(directory) / "workspace", Path(directory) / "backup"
+            cases = {
+                "scheduled": {"schedules": [{"id": "on", "enabled": True, "after_run": {"backup": True}}, {"id": "paused", "enabled": False, "after_run": {"publish": True}}]},
+                "manual": {"after_manual_run": {"publish": True}, "backup": {"enabled": True, "triggers": {"after_manual_run": True}}, "schedules": []},
+                "trigger": {"backup": {"enabled": True, "triggers": {"after_manual_run": True}}, "schedules": []},
+                "current": {"backup": {"after_runs": False}, "schedules": [{"enabled": True, "after_run": {"backup": True}}]},
+                "flow": {"kind": "relay", "backup": {"enabled": True, "destinations": [{"id": "keep"}], "triggers": {"after_manual_run": True}}, "after_manual_run": {"backup": True}, "schedules": [{"enabled": True, "after_run": {"publish": True}}]},
+            }
+            for name, config in cases.items():
+                path = root / "Workflow" / name / "workflow.json"
+                path.parent.mkdir(parents=True); path.write_text(json.dumps(config))
+            removal.migrate(root, backup)
+            for name, expected in {"scheduled": (True, False), "manual": (False, True), "trigger": (True, False), "current": (False, False), "flow": (False, False)}.items():
+                path = Path("Workflow") / name / "workflow.json"
+                saved = json.loads((root/path).read_text())
+                self.assertEqual((saved["backup"]["after_runs"], saved["publish"]["after_runs"]), expected, name)
+                self.assertNotIn("after_manual_run", saved)
+                self.assertTrue(all("after_run" not in row for row in saved.get("schedules", [])))
+                self.assertTrue(all("triggers" not in saved[option] for option in ("backup", "publish")))
+                self.assertEqual(json.loads((backup/path).read_text()), cases[name])
+            self.assertEqual(json.loads((root/"Workflow/flow/workflow.json").read_text())["backup"]["destinations"], [{"id": "keep"}])
+            rerun = removal.migrate(root, Path(directory)/"again")
+            self.assertEqual(rerun["workflow_configs"], 0)
+            self.assertFalse((Path(directory)/"again").exists())
 
 
 if __name__ == "__main__":

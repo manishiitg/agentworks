@@ -51,8 +51,11 @@ loadData when the person wants it available in the static snapshot too.
 ## Refresh through Publish automation
 
 Every Publish pass, including after-run auto-publish, calls export_dashboard_static
-again before deploying. Keep `auto_after_run` and the existing schedule/manual
-choices; do not create a second publisher or a new schedule. Source change checks
+again before deploying. After every run is one Goal choice, `publish.after_runs`,
+off for a new Goal. Preserve its existing choice when configuring a destination.
+The Publish panel, MCP update_settings and chat update_workflow_config change
+the same setting. An explicit Publish now action works with automatic publishing
+off; do not create a second publisher or a new schedule. Source change checks
 include managed dashboard revisions and db/code files; generated publish/exports
 folders are excluded. Do not redeploy an older export when current data changed.
 Record the actual destination URL and current source hash in publish/status.json

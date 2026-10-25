@@ -63,9 +63,8 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"stop_shared": names,
 		}, "description": "set/remove store or delete secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
 		"browser_mode": map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
-		"after_manual_run": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only: what runs after a full run you start yourself (schedules have their own after_run in manage_schedules). Backup and publish need to be set up first (in the app's Builder: /backup, /publish).", "properties": map[string]any{
-			"backup": map[string]any{"type": "boolean"}, "publish": map[string]any{"type": "boolean"},
-		}},
+		"backup":       map[string]any{"type": "object", "additionalProperties": false, "description": "Goals only: after_runs runs configured Backup after every full run; off by default. Does not create or enable a destination.", "properties": map[string]any{"after_runs": map[string]any{"type": "boolean"}}},
+		"publish":      map[string]any{"type": "object", "additionalProperties": false, "description": "Goals only: after_runs refreshes configured publishing after every full run; off by default. Does not create or enable a destination.", "properties": map[string]any{"after_runs": map[string]any{"type": "boolean"}}},
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
 			"run_instructions": map[string]any{"type": "string", "maxLength": 4000},
 			"run_channels":     names,
@@ -478,7 +477,6 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 				view["vault"] = vault
 			}
 		}
-		view["after_manual_run"] = manifest.EffectiveManualAfterRun()
 		// Backup, publish and notify status, as the app's views show them.
 		for key, handler := range map[string]http.HandlerFunc{"backup": api.handleGetWorkflowBackup, "publish": api.handleGetWorkflowPublish, "notify": api.handleGetWorkflowNotifications} {
 			if status, body := scheduleHandler(r, handler, http.MethodGet, "/api/workflow/"+key, nil, url.Values{"workspace_path": {workflow.WorkspacePath}}, nil); status == http.StatusOK && json.Valid(body) {
@@ -521,15 +519,21 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		}
 		changed = append(changed, "notifications")
 	}
-	if after, ok := args["after_manual_run"].(map[string]any); ok {
-		current := manifest.EffectiveManualAfterRun()
-		for key, target := range map[string]*bool{"backup": &current.Backup, "publish": &current.Publish} {
-			if v, ok := after[key].(bool); ok {
-				*target = v
+	for key, target := range map[string]**WorkflowAfterRunsUpdate{"backup": &req.Backup, "publish": &req.Publish} {
+		if raw, provided := args[key]; provided {
+			option, ok := raw.(map[string]any)
+			if !ok {
+				externalError(w, 400, "invalid_settings", key+" must contain after_runs as true or false.")
+				return
 			}
+			value, ok := option["after_runs"].(bool)
+			if !ok {
+				externalError(w, 400, "invalid_settings", key+".after_runs must be true or false.")
+				return
+			}
+			*target = &WorkflowAfterRunsUpdate{AfterRuns: &value}
+			changed = append(changed, key)
 		}
-		req.AfterManualRun = &current
-		changed = append(changed, "after_manual_run")
 	}
 
 	if len(changed) == 0 {
@@ -556,6 +560,18 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	view := api.externalSettingsView(ctx, claims.UserID, target, externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: caps.SelectedServers,
 		Tools: caps.SelectedTools, Skills: caps.SelectedSkills, Secrets: caps.SelectedSecrets, GlobalSecrets: caps.SelectedGlobalSecretNames,
 		BrowserMode: caps.BrowserMode}, notifications(caps))
+	view["backup"] = map[string]any{"config": manifest.Backup}
+	view["publish"] = map[string]any{"config": manifest.Publish}
+	notes := []string{}
+	if manifest.Backup != nil && manifest.Backup.AfterRuns && !manifest.Backup.Enabled {
+		notes = append(notes, "Backup after every run is saved. Set up a backup destination in the Backup panel or ask me to set it up.")
+	}
+	if manifest.Publish != nil && manifest.Publish.AfterRuns && !manifest.Publish.Enabled {
+		notes = append(notes, "Publish after every run is saved. Set up publishing in the Publish panel or ask me to set it up.")
+	}
+	if len(notes) > 0 {
+		view["notes"] = notes
+	}
 	view["changed"] = changed
 	if len(pending) > 0 {
 		view["pending_sign_in"] = pending
@@ -635,9 +651,11 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		return
 	}
 
-	if _, ok := args["after_manual_run"]; ok {
-		externalError(w, 400, "invalid_settings", "after_manual_run applies to workflows only.")
-		return
+	for _, key := range []string{"backup", "publish"} {
+		if _, ok := args[key]; ok {
+			externalError(w, 400, "invalid_settings", "After every run applies to Goals. Use this Crew's existing Backup or Publish actions instead.")
+			return
+		}
 	}
 	if expected := externalArg(args, "expected_version"); expected != "" && expected != state.version() {
 		externalError(w, 409, "version_conflict", "Settings changed since you read them; read them again (settings action=get) and reapply your change.")

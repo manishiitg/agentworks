@@ -19,7 +19,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 
@@ -39,7 +38,8 @@ const WorkflowContractCurrentVersion = workflowContractSkillsVersion
 const workflowContractSkillsVersion = step_based_workflow.WorkflowSkillsContractVersion
 const workflowContractGoalAgentVersion = step_based_workflow.GoalAgentContractVersion
 
-const workflowContractExplicitSchedulePulseVersion = schedulepolicy.ExplicitAfterRunContractVersion
+// Historical marker: per-schedule housekeeping choices are retired.
+const workflowContractExplicitSchedulePulseVersion = "1.0.41"
 
 const workflowContractRouteSummariesVersion = "1.0.40"
 
@@ -196,11 +196,6 @@ type WorkflowManifest struct {
 
 	Publish *WorkflowPublishConfig `json:"publish,omitempty"`
 
-	// AfterManualRun is the after-run options for full runs started from a
-	// chat (PLAT-697 phase 0); schedules carry their own after_run. Nil uses
-	// the backup and publish configs' after_manual_run triggers.
-	AfterManualRun *ScheduleAfterRun `json:"after_manual_run,omitempty"`
-
 	// MalformedConfig lists optional config blocks (e.g. "backup", "publish") that
 	// failed to parse and were dropped so the workflow could still load. Transient
 	// (never serialized): set during ReadWorkflowManifest, used to avoid clobbering
@@ -222,14 +217,9 @@ type InstalledPlaybook struct {
 type WorkflowBackupConfig struct {
 	Enabled      bool                        `json:"enabled"`
 	Mode         string                      `json:"mode,omitempty"` // "agent" (default)
-	Triggers     WorkflowBackupTriggers      `json:"triggers,omitempty"`
+	AfterRuns    bool                        `json:"after_runs"`
 	Destinations []WorkflowBackupDestination `json:"destinations,omitempty"`
 	Notes        string                      `json:"notes,omitempty"`
-}
-
-type WorkflowBackupTriggers struct {
-	AfterScheduledRun bool `json:"after_scheduled_run,omitempty"`
-	AfterManualRun    bool `json:"after_manual_run,omitempty"`
 }
 
 type WorkflowBackupDestination struct {
@@ -259,7 +249,7 @@ type WorkflowPublishConfig struct {
 	Targets       []json.RawMessage            `json:"targets,omitempty"`        // report targets, as strings or objects
 	DashboardMode string                       `json:"dashboard_mode,omitempty"` // "snapshot" (static HTML)
 	URL           string                       `json:"url,omitempty"`            // last published URL (agent-written, mirror of status)
-	Triggers      WorkflowBackupTriggers       `json:"triggers,omitempty"`
+	AfterRuns     bool                         `json:"after_runs"`
 	Destinations  []WorkflowPublishDestination `json:"destinations,omitempty"`
 	Notes         string                       `json:"notes,omitempty"`
 }
@@ -455,12 +445,11 @@ type WorkflowSchedule struct {
 	Messages []string              `json:"messages,omitempty"` // Predefined message queue for workshop schedules (sent one-by-one)
 	// DirectMessagesReason records why a schedule-local conversation is preferable
 	// to a canonical route despite its weaker step-level lifecycle.
-	WorkshopMode         string            `json:"workshop_mode,omitempty"` // Scheduled session mode: workshop or run.
-	DirectMessagesReason string            `json:"direct_messages_reason,omitempty"`
-	Query                string            `json:"query,omitempty"`           // Message to execute (multi-agent mode)
-	ResumePrevious       *bool             `json:"resume_previous,omitempty"` // Coding-agent CLI only: resume the latest prior thread (same provider) instead of a fresh session each run. nil = default (fresh session); explicit true opts in.
-	AfterRun             *ScheduleAfterRun `json:"after_run,omitempty"`
-	ExecutionMode        string            `json:"execution_mode,omitempty"`
+	WorkshopMode         string `json:"workshop_mode,omitempty"` // Scheduled session mode: workshop or run.
+	DirectMessagesReason string `json:"direct_messages_reason,omitempty"`
+	Query                string `json:"query,omitempty"`           // Message to execute (multi-agent mode)
+	ResumePrevious       *bool  `json:"resume_previous,omitempty"` // Coding-agent CLI only: resume the latest prior thread (same provider) instead of a fresh session each run. nil = default (fresh session); explicit true opts in.
+	ExecutionMode        string `json:"execution_mode,omitempty"`
 	// CollisionPolicy controls what happens when the workflow is already owned
 	// by another scheduled/execution run. Empty/"skip" preserves the default;
 	// "queue_latest" durably retains the newest occurrence for a later retry.
@@ -1158,7 +1147,8 @@ func manifestContentUnchanged(previous, next []byte) bool {
 // prune detected every unknown key but the writer kept them all, so a workflow with a retired "objective" was rewritten on
 // every read (about 270 times a minute) and nothing was ever removed. Add a key here when the product retires one.
 var retiredManifestTopLevelKeys = map[string]bool{
-	"objective": true, "success_criteria": true,
+	"after_manual_run": true,
+	"objective":        true, "success_criteria": true,
 	"oversight_mode": true, "knowledgebase_migration": true, "contract_upgrade_history": true,
 }
 
@@ -1292,35 +1282,6 @@ func stripOptionalConfigBlocks(content []byte) ([]byte, []string) {
 		return content, nil
 	}
 	return stripped, dropped
-}
-
-// withoutScheduleAfterRunFields drops each schedule's after_run, pulse_mode
-// and pulse_mode_reason from a workflow.json text before it is compared for
-// the changelog. Unparseable text is returned unchanged.
-func withoutScheduleAfterRunFields(text string) string {
-	if strings.TrimSpace(text) == "" {
-		return text
-	}
-	var document map[string]interface{}
-	if json.Unmarshal([]byte(text), &document) != nil {
-		return text
-	}
-	schedules, ok := document["schedules"].([]interface{})
-	if !ok {
-		return text
-	}
-	for _, raw := range schedules {
-		if schedule, ok := raw.(map[string]interface{}); ok {
-			delete(schedule, "after_run")
-
-		}
-	}
-	delete(document, "after_manual_run")
-	out, err := json.Marshal(document)
-	if err != nil {
-		return text
-	}
-	return string(out)
 }
 
 func workflowManifestChangelogChanges(previous, current string) []step_based_workflow.PlanFieldChange {
@@ -1491,10 +1452,7 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 	}
 
 	if !previousExists || previous != string(data) {
-		// A schedule's after-run options (and their legacy pulse_mode mirror)
-		// are not part of the plan either (PLAT-697 phase 0): the pulse_mode ->
-		// after_run migration and a checkbox toggle must not start a review.
-		if changes := workflowManifestChangelogChanges(withoutScheduleAfterRunFields(previous), withoutScheduleAfterRunFields(string(data))); len(changes) > 0 {
+		if changes := workflowManifestChangelogChanges(previous, string(data)); len(changes) > 0 {
 			logCtx := ctx
 			if m.Team != nil {
 				// This typed save already passed policy validation. Its audit

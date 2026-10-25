@@ -20,7 +20,7 @@ const job = (overrides: Partial<ScheduledJob> & { id: string; name: string }): S
   ...overrides,
 })
 
-function stubPanel(filteredJobs: ScheduledJob[], handleAfterRun: (job: ScheduledJob, next: NonNullable<ScheduledJob['after_run']>) => Promise<void> = async () => {}) {
+function stubPanel(filteredJobs: ScheduledJob[]) {
   const noop = () => {}
   const asyncNoop = async () => {}
   return {
@@ -33,7 +33,6 @@ function stubPanel(filteredJobs: ScheduledJob[], handleAfterRun: (job: Scheduled
     triggering: null,
     handleToggle: asyncNoop,
     handleRunDestination: asyncNoop,
-    handleAfterRun,
     openActionMenuJobId: null,
     setOpenActionMenuJobId: noop,
     handleDelete: asyncNoop,
@@ -47,11 +46,11 @@ function stubPanel(filteredJobs: ScheduledJob[], handleAfterRun: (job: Scheduled
   }
 }
 
-async function renderList(filteredJobs: ScheduledJob[], handleAfterRun?: (job: ScheduledJob, next: NonNullable<ScheduledJob['after_run']>) => Promise<void>) {
+async function renderList(filteredJobs: ScheduledJob[]) {
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
-  await act(async () => root.render(<ScheduleListView panel={stubPanel(filteredJobs, handleAfterRun)} />))
+  await act(async () => root.render(<ScheduleListView panel={stubPanel(filteredJobs)} />))
   return { host, unmount: async () => { await act(async () => root.unmount()); host.remove() } }
 }
 
@@ -144,28 +143,4 @@ describe('ScheduleListView declutter', () => {
     }
   })
 
-  it('keeps after-run settings compact, saves a switch and dismisses with Escape', async () => {
-    const handleAfterRun = vi.fn(async () => {})
-    const { host, unmount } = await renderList([
-      job({ id: 'a', name: 'Daily', after_run: { backup: true, publish: false } }),
-    ], handleAfterRun)
-    try {
-      const trigger = host.querySelector<HTMLButtonElement>('[aria-label^="After-run actions for Daily:"]')!
-      expect(document.querySelector('[role="dialog"]')).toBeNull()
-      expect(host.querySelector('input[type="checkbox"]')).toBeNull()
-      await act(async () => { trigger.click() })
-      const dialog = document.querySelector('[role="dialog"]')!
-      const switches = Array.from(dialog.querySelectorAll<HTMLButtonElement>('[role="switch"]'))
-      expect(switches.map(control => control.getAttribute('aria-checked'))).toEqual(['true', 'false'])
-      expect(switches[1].getAttribute('aria-label')).toBe('Publish report')
-      expect(dialog.textContent).toContain('Refresh the configured published report')
-      await act(async () => { switches[1].click() })
-      expect(handleAfterRun).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), { backup: true, publish: true })
-      await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
-      expect(document.querySelector('[role="dialog"]')).toBeNull()
-      expect(document.activeElement).toBe(trigger)
-    } finally {
-      await unmount()
-    }
-  })
 })

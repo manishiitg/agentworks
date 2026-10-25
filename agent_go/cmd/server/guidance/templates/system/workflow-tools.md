@@ -141,7 +141,6 @@ Run mode consumes existing attachments; configuration changes require Workshop.
   { "id": "...", "name": "...", "description": "...",
     "cron_expression": "0 9 * * 1-5", "timezone": "UTC",
     "enabled": true, "trigger_payload": {},
-    "after_run": {"backup": true, "publish": true},
     "group_names": ["customer-prod"],
     "mode": "workshop", "workshop_mode": "workshop" }
   ```
@@ -161,7 +160,6 @@ Every schedule in `workflow.json` has a `schedule_type` — `"cron"` (default) o
 
 ```
 { "name": "March content calendar", "timezone": "Asia/Kolkata",
-  "after_run": {"backup": true, "publish": true},
   "group_names": ["group-1"], "mode": "workshop", "workshop_mode": "workshop",
   "calendar_items": [
     { "date": "2026-03-03", "time": "09:00", "description": "Optional note" },
@@ -182,13 +180,13 @@ Workflow schedules always use the workshop builder execution path. Do not create
 
 **Default mode rule:** create workflow schedules with `mode="workshop"`. New schedules should never use `mode="workflow"`.
 
-**After each run:** `after_run` has `{backup, publish}`. Backup saves changed workflow state; publish refreshes the configured report. New schedules default to both. Manual full runs use `after_manual_run`, saved with `update_workflow_config`. Run outcomes are recorded in Activity independently. Configured team messages remain; there is no automatic owner email or daily digest. “Tell me when something breaks” (`break_alerts`) controls informational failures in Needs you. AgentWorks handles progress reports through ordinary Crew chats and schedules. Existing execution validation and access checks still apply.
+**After every run:** Backup and Publish are Goal settings, `backup.after_runs` and `publish.after_runs`, off for a new Goal. Change them with `update_workflow_config` (or MCP `update_settings`), passing `backup: {after_runs: true}` or `publish: {after_runs: true}`. Each applies after every full run, including runs started in chat. Only configured destinations are used and unchanged files are skipped; creating a schedule does not enable either action. Run outcomes are recorded in Activity independently. Configured team messages remain; there is no automatic owner email or daily digest. “Tell me when something breaks” (`break_alerts`) controls informational failures in Needs you. AgentWorks handles progress reports through ordinary Crew chats and schedules. Existing execution validation and access checks still apply.
 
 ### Back up scheduled workflows
 
 Scheduled runs execute unattended and accumulate state (`workflow.json`, `planning/`, `knowledgebase/`, `learnings/`, `db/`, reports) that otherwise lives only on local disk. **Whenever you set up a recurring schedule, also arrange a backup** so each run persists its output off-box. Load `read_skill(skills=[{"name":"builder-reference","path":"references/backup-strategy.md"}])`, follow it once to initialise the workflow's backup destination, and persist the result in `workflow.json.backup`.
 
-- Set `workflow.json.backup.enabled=true`, `mode="agent"`, `triggers.after_scheduled_run=true`, and a `destinations` entry for each backup target (git/github for config, R2/S3/B2/HuggingFace for large artifacts as needed).
+- Set `workflow.json.backup.enabled=true`, `mode="agent"`, the existing `after_runs` choice, and a `destinations` entry for each backup target (git/github for config, R2/S3/B2/HuggingFace for large artifacts as needed).
 - After each backup attempt, write `backup/status.json` with the destination results, timestamps, summary, and errors. Do not put changing backup status in `workflow.json`.
 - If you rely on the default full-workflow message, the auto-notification after `run_full_workflow` will still ask the builder to honor `workflow.json.backup` and write `backup/status.json`.
 

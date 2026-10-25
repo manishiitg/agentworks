@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 vi.mock('../../services/api', () => ({
   agentApi: { getWorkflowPublish: vi.fn(), getWorkflowPublishSecret: vi.fn(), getShareTunnelStatus: vi.fn() },
+  workflowManifestApi: { getWorkflowManifest: vi.fn().mockResolvedValue({ manifest: { kind: 'workflow' } }), updateWorkflowManifest: vi.fn() },
   getApiBaseUrl: () => '',
   getAuthToken: () => '',
 }))

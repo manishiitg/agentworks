@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,5 +73,50 @@ func TestScheduledOutcomeOnlyDeliversFailuresAndStatusChanges(t *testing.T) {
 	f.write(t, "Workflow/invoices/schedule-runs.json", string(data))
 	if !shouldDeliverRunOutcome(t.Context(), "Workflow/invoices", "daily", "current", "success") {
 		t.Fatal("recovery was suppressed")
+	}
+}
+
+// PLAT-825-112: both full-run finalizers use the Goal selection. Only the
+// provider turn is replaced; workspace reads, configuration, freshness and
+// housekeeping dispatch are real. The replacement writes an actual artifact.
+func TestGoalAfterRunsDispatchesConfiguredBackupForScheduledAndManualRuns(t *testing.T) {
+	server, store := newFakeWorkspaceServer(t)
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	t.Setenv("MULTI_USER_MODE", "false")
+	const path = "Workflow/after-runs"
+	api := &StreamingAPI{}
+	svc := NewSchedulerService(api)
+	api.scheduler = svc
+	marker := path + "/backup/qa-result.txt"
+	svc.housekeepingTurn = func(ctx context.Context, request map[string]interface{}, session, user string) error {
+		if !strings.Contains(request["query"].(string), "backup-strategy.md") {
+			t.Fatal("housekeeping lost the configured backup action")
+		}
+		return writeFileToWorkspace(ctx, marker, "saved current Goal data")
+	}
+	manifest := NewWorkflowManifest("After runs")
+	manifest.Backup = &WorkflowBackupConfig{Enabled: true, Destinations: []WorkflowBackupDestination{{ID: "local", Type: "local_zip", Covers: []string{"workflow"}}}}
+	for _, enabled := range []bool{true, false} {
+		manifest.Backup.AfterRuns = enabled
+		raw, _ := json.Marshal(manifest)
+		store.files[manifestPath(path)] = string(raw)
+		for _, manual := range []bool{false, true} {
+			delete(store.files, marker)
+			if manual {
+				svc.runManualAfterRunOptions(path, "iteration-1/default", "success", "builder-after-runs")
+			} else {
+				sctx := buildScheduleContext(path, manifest, WorkflowSchedule{ID: "daily", ScheduleType: "cron"})
+				svc.runAfterRunOptions(context.Background(), sctx, manifest, "success", "", "iteration-1/default", "scheduled-after-runs", "run-1", time.Second)
+			}
+			if _, exists := store.files[marker]; exists != enabled {
+				t.Fatalf("automatic Backup enabled=%v manual=%v: artifact present=%v", enabled, manual, exists)
+			}
+		}
+	}
+	// Selecting an unconfigured destination must never start an agent to create one.
+	manifest.Backup.Enabled = false
+	manifest.Backup.AfterRuns = true
+	if work := svc.afterRunWorkDue(context.Background(), &ScheduleContext{WorkspacePath: path}, manifest, manifest.afterRunOptions()); work.Backup {
+		t.Fatal("unconfigured automatic Backup was dispatched")
 	}
 }

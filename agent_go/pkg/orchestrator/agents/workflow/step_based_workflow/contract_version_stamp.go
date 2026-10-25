@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/scriptdb"
 )
 
@@ -111,9 +110,6 @@ func CheckContractStamp(version, workflowDir string, manifestJSON []byte, readPl
 	var manifest map[string]interface{}
 	if err := json.Unmarshal(manifestJSON, &manifest); err != nil {
 		return fmt.Errorf("parse workflow.json: %w", err)
-	}
-	if err := schedulepolicy.ValidateAfterRunStamp(manifestJSON, version); err != nil {
-		return fmt.Errorf("the schedule after-run migration is incomplete: %w", err)
 	}
 	if err := validateContractVersionStampPrerequisites(version, manifest); err != nil {
 		return fmt.Errorf("the nested Agent artifact migration is incomplete: %w", err)

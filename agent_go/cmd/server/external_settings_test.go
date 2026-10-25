@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 // write-only: an owner can store one, but no reply ever carries it back.
 func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing.T) {
 	f := newExternalToolsFixture(t)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner"],"readers":["reader"]},"backup":{"enabled":false,"destinations":[{"id":"keep-backup","type":"git","repo":"example/backup"}]},"publish":{"enabled":true,"destinations":[{"id":"keep-publish","provider":"example"}]}}`)
 	t.Setenv("AUTH_SECRET", "external-settings-test-auth-secret-0123456789")
 	store, err := chathistory.NewFilesystemStore(t.TempDir())
 	if err != nil {
@@ -53,13 +55,16 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	const value = "sk-settings-test-value-0042"
 
-	if w := f.call(t, "reader", "update_settings", map[string]any{"workflow_id": "invoices", "browser_mode": "headless"}); w.Code != 403 {
+	if w := f.call(t, "reader", "update_settings", map[string]any{"workflow_id": "invoices", "backup": map[string]any{"after_runs": true}}); w.Code != 403 {
 		t.Fatalf("reader changed settings: %d %s", w.Code, w.Body)
 	}
-	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "browser_mode": "headless",
+	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "browser_mode": "headless", "backup": map[string]any{"after_runs": true}, "publish": map[string]any{"after_runs": false},
 		"secrets": map[string]any{"set": map[string]any{"API_KEY": value}}, "chat_instructions": "  Explain the source of each number.  "})
 	if w.Code != 200 || strings.Contains(w.Body.String(), value) {
 		t.Fatalf("owner update: %d %s", w.Code, w.Body)
+	}
+	if !strings.Contains(w.Body.String(), `"after_runs":true`) || !strings.Contains(w.Body.String(), "Set up a backup destination") {
+		t.Fatal("settings reply omitted the saved selection or its next step")
 	}
 	w = f.call(t, "owner", "get_settings", map[string]any{"workflow_id": "invoices"})
 	body := w.Body.String()
@@ -72,6 +77,10 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 	}
 	if view["chat_instructions"] != "Explain the source of each number." {
 		t.Fatalf("guidance not persisted: %v", view["chat_instructions"])
+	}
+	manifest, found, err := ReadWorkflowManifest(context.Background(), "Workflow/invoices")
+	if err != nil || !found || manifest.Backup == nil || !manifest.Backup.AfterRuns || manifest.Backup.Enabled || len(manifest.Backup.Destinations) != 1 || manifest.Backup.Destinations[0].ID != "keep-backup" || manifest.Publish == nil || !manifest.Publish.Enabled || len(manifest.Publish.Destinations) != 1 || manifest.Publish.AfterRuns {
+		t.Fatalf("after-run patch changed configuration authority or lost selections: %+v %v", manifest, err)
 	}
 	before := projectChatInstructionsKey("Workflow/invoices")
 	if before == "" {

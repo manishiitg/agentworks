@@ -30,7 +30,7 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 	m.ID, m.CreatedBy = "invoices", "owner"
 	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Editors: []string{"outsider"}, Readers: []string{"reader"}}
 	m.Schedules = []WorkflowSchedule{{ID: "route-clock", Name: "Reviewed clock", CronExpression: "0 9 * * *", Timezone: "UTC", Enabled: false,
-		GroupNames: []string{"default"}, RouteSelections: map[string]string{"parent": "first"}, AfterRun: &ScheduleAfterRun{Backup: true}}}
+		GroupNames: []string{"default"}, RouteSelections: map[string]string{"parent": "first"}}}
 	b, _ := json.Marshal(m)
 	f.write(t, "Workflow/invoices/workflow.json", string(b))
 	ownerToken, owner := f.issue(t, "owner")
@@ -140,7 +140,8 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 	f.call(t, guarded, "workflow_team", map[string]any{"action": "get"}, 200)
 	foreign := issue("owner", builderConsentScopes, []string{"secret"}, nil)
 	f.call(t, foreign, "workflow_team", map[string]any{"action": "get"}, 200)
-	// Transfer must preserve the former Leader and must revoke their management rights.
+	// PLAT-825-112: the 23 October co-owner model (61ce3d2351) keeps
+	// existing owners when the team Leader changes; it is not an ownership transfer.
 	// Legacy connection issuance replaces the owner's earlier grant; renew it
 	// after the current-role connection checks above.
 	_, owner = f.issue(t, "owner")
@@ -149,13 +150,26 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 	transfer.Contributors = []WorkflowContributor{{UserID: "owner"}, {UserID: "reader"}}
 	transfer.Routes = []WorkflowRouteAssignment{}
 	update(owner, &transfer, 1, 200)
-	update(owner, &transfer, 2, 403)
-	update(contributor, &transfer, 2, 200)
-	if saved := read(); saved.Team.LeaderID != "outsider" || saved.Team.Revision != 3 || len(saved.Access.Owners) != 1 || saved.Access.Owners[0] != "outsider" {
-		t.Fatalf("ownership transfer did not persist: %+v", saved)
+	update(owner, &transfer, 2, 200)
+	update(contributor, &transfer, 3, 200)
+	if saved := read(); saved.Team.LeaderID != "outsider" || saved.Team.Revision != 4 || len(saved.Access.Owners) != 2 || !containsID(saved.Access.Owners, "owner") || !containsID(saved.Access.Owners, "outsider") {
+		t.Fatalf("co-owners were lost while changing the Leader: %+v", saved)
 	}
+	// Removing a listed owner is different from changing the team Leader.
+	// Retain them as a Contributor so the refusal must be management authority,
+	// rather than losing discovery of the workflow altogether.
+	removed := read()
+	removed.Access.Owners = []string{"outsider"}
+	body, err := json.Marshal(removed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, "Workflow/invoices/workflow.json", string(body))
+	invalidateWorkflowManifestIndex()
+	update(owner, &transfer, 4, 403)
+	update(contributor, &transfer, 4, 200)
 	if err := store.Revoke(t.Context(), contributorToken.ID, "outsider", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	update(contributor, &transfer, 3, 401)
+	update(contributor, &transfer, 5, 401)
 }

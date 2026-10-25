@@ -31,7 +31,7 @@ func externalScheduleDefinitions(add func(string, string, bool, bool, map[string
 		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
 		"action":      map[string]any{"type": "string", "enum": externalScheduleActions},
 		"schedule_id": externalString("Schedule ID from action list; required except for list and create."),
-		"schedule":    map[string]any{"type": "object", "description": "For create and update: the schedule's fields, as the Schedules page saves them. name, schedule_type (cron or calendar), cron_expression, timezone, calendar_items, enabled, messages (a Crew schedule needs exactly one), description; a Crew schedule also chat_id (the tab it runs in, from workspace action=chats; empty is the main chat); workflows also group_names, route_selections, collision_policy, after_run (backup/publish), after_schedule_ids. update replaces the fields you send."},
+		"schedule":    map[string]any{"type": "object", "description": "For create and update: the schedule's fields, as the Schedules page saves them. name, schedule_type (cron or calendar), cron_expression, timezone, calendar_items, enabled, messages (a Crew schedule needs exactly one), description; a Crew schedule also chat_id (the tab it runs in, from workspace action=chats; empty is the main chat); workflows also group_names, route_selections, collision_policy, after_schedule_ids. update replaces the fields you send."},
 		"limit":       externalInteger(1, 200),
 		"offset":      externalInteger(0, 1000000),
 	}, "action")

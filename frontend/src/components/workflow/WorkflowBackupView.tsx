@@ -1,3 +1,4 @@
+import { GoalAfterRunToggle } from './GoalAfterRunToggle'
 import React, { useCallback } from 'react'
 import { agentApi } from '../../services/api'
 import type { WorkflowBackupInfoResponse, WorkflowBackupStrategyInfo } from '../../services/api-types'
@@ -80,13 +81,13 @@ const WorkflowBackupView: React.FC<WorkflowBackupViewProps> = ({
       fallbackStrategies={FALLBACK_SUPPORTED_STRATEGIES}
       subtitle="Remote backups"
       emptyDestinationsText="No backup destinations yet — set one up with /backup in chat."
-      destinationsHelp="Status updates automatically after each run."
+      destinationsHelp="After every run refreshes a configured backup only when something changed."
       askContext={{
         workspacePath,
         strategyVerb: 'back up this workflow with',
       }}
       getSummary={getBackupSummary}
-      headerAction={headerAction}
+      headerAction={<>{headerAction}<GoalAfterRunToggle workspacePath={workspacePath} option="backup" /></>}
     />
   )
 }

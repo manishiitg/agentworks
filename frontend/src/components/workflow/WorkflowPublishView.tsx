@@ -1,3 +1,4 @@
+import { GoalAfterRunToggle } from './GoalAfterRunToggle'
 import React, { useCallback, useEffect, useState } from 'react'
 import { Globe } from 'lucide-react'
 import { agentApi } from '../../services/api'
@@ -102,12 +103,12 @@ const WorkflowPublishView: React.FC<WorkflowPublishViewProps> = ({ workspacePath
       fallbackStrategies={FALLBACK_SUPPORTED}
       subtitle="Publish this automation's dashboards at a public URL"
       emptyDestinationsText="No hosts yet — share the dashboard with /share in chat."
-      destinationsHelp="Deploys update automatically."
+      destinationsHelp="After every run refreshes a configured publication only when something changed."
       askContext={{ workspacePath, strategyVerb: 'publish this workflow to' }}
       supportedHelp="Suggestions, not a limit — any static host works."
       defaultTargetLabel="dashboard"
       getSummary={getPublishSummary}
-      headerAction={headerAction}
+      headerAction={<>{headerAction}<GoalAfterRunToggle workspacePath={workspacePath} option="publish" /></>}
     />
     <InternetShareSection />
     </div>

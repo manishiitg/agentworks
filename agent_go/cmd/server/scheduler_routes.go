@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
@@ -99,11 +98,9 @@ type ScheduledJobResponse struct {
 	// pauseProduct is the pause group of a workflow schedule ("relays" or "agentworks").
 	pauseProduct string
 
-	// AfterRun is the schedule's effective after-run options (PLAT-697 phase 0).
-	AfterRun       *ScheduleAfterRun `json:"after_run,omitempty"`
-	CreatedAt      string            `json:"created_at,omitempty"`
-	UpdatedAt      string            `json:"updated_at,omitempty"`
-	RunDestination string            `json:"run_destination,omitempty"`
+	CreatedAt      string `json:"created_at,omitempty"`
+	UpdatedAt      string `json:"updated_at,omitempty"`
+	RunDestination string `json:"run_destination,omitempty"`
 }
 
 // CreateScheduleRequest is the request body for creating a schedule.
@@ -138,8 +135,7 @@ type CreateScheduleRequest struct {
 	AfterDelayMinutes        int                    `json:"after_delay_minutes,omitempty"`
 	DependencyDeadline       string                 `json:"dependency_deadline,omitempty"`
 
-	AfterRun       *ScheduleAfterRun `json:"after_run,omitempty"`
-	RunDestination string            `json:"run_destination,omitempty"`
+	RunDestination string `json:"run_destination,omitempty"`
 	// ChatID is the project tab a Crew schedule runs in; empty is the main chat.
 	ChatID string `json:"chat_id,omitempty"`
 }
@@ -174,8 +170,6 @@ type UpdateScheduleRequest struct {
 	AfterTerminalStatus  *string  `json:"after_terminal_status,omitempty"`
 	AfterDelayMinutes    *int     `json:"after_delay_minutes,omitempty"`
 	DependencyDeadline   *string  `json:"dependency_deadline,omitempty"`
-
-	AfterRun *ScheduleAfterRun `json:"after_run,omitempty"`
 }
 
 func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched WorkflowSchedule, state ScheduleRuntimeState, missed WorkflowScheduleMissedStatus) ScheduledJobResponse {
@@ -243,20 +237,9 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		LatestMissedRunAt:        missed.LatestMissedRunAt,
 		MissedRunReason:          missed.MissedRunReason,
 
-		AfterRun:  scheduleAfterRunForResponse(manifest, sched),
 		CreatedAt: manifest.CreatedAt,
 		UpdatedAt: manifest.UpdatedAt,
 	}
-}
-
-// scheduleAfterRunForResponse is the schedule's effective after-run options,
-// or nil for a schedule that has none (webhooks, Flows).
-func scheduleAfterRunForResponse(manifest *WorkflowManifest, sched WorkflowSchedule) *ScheduleAfterRun {
-	if manifest == nil || manifest.Kind == "relay" || strings.EqualFold(strings.TrimSpace(sched.ScheduleType), "webhook") {
-		return nil
-	}
-	options := manifest.EffectiveAfterRun(sched)
-	return &options
 }
 
 func runtimeStateForScheduleResult(svc *SchedulerService, result *ScheduleSearchResult, scheduleID string) ScheduleRuntimeState {
@@ -763,14 +746,6 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			AfterDelayMinutes:        req.AfterDelayMinutes,
 			DependencyDeadline:       strings.TrimSpace(req.DependencyDeadline),
 		}
-		if !strings.EqualFold(strings.TrimSpace(newSched.ScheduleType), "webhook") {
-			policy := stepworkflow.ScheduleRuntimePolicy{}
-			if req.AfterRun != nil {
-				policy.SetAfterRun = true
-				policy.AfterRun = stepworkflow.ScheduleAfterRunOptions{Backup: req.AfterRun.Backup, Publish: req.AfterRun.Publish}
-			}
-			applyScheduleAfterRunPolicy(&newSched, policy, true)
-		}
 
 		manifest.Schedules = append(manifest.Schedules, newSched)
 		if err := ValidateManifest(manifest); err != nil {
@@ -948,11 +923,6 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 		if req.ResumePrevious != nil {
 			sched.ResumePrevious = req.ResumePrevious
-		}
-		if req.AfterRun != nil {
-			policy := stepworkflow.ScheduleRuntimePolicy{SetAfterRun: true,
-				AfterRun: stepworkflow.ScheduleAfterRunOptions{Backup: req.AfterRun.Backup, Publish: req.AfterRun.Publish}}
-			applyScheduleAfterRunPolicy(sched, policy, false)
 		}
 		if req.ExecutionMode != nil {
 			sched.ExecutionMode = strings.TrimSpace(*req.ExecutionMode)

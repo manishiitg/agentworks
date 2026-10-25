@@ -27,7 +27,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -3986,12 +3985,22 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 			if content, err := ctrl.ReadWorkspaceFile(ctx, "workflow.json"); err == nil {
 				var manifest struct {
+					Kind   string `json:"kind"`
+					Backup struct {
+						AfterRuns bool `json:"after_runs"`
+					} `json:"backup"`
+					Publish struct {
+						AfterRuns bool `json:"after_runs"`
+					} `json:"publish"`
 					Access *struct {
 						AllowedKBWriters []string `json:"allowed_kb_writers"`
 					} `json:"access"`
 					CrewAttachments []workflowtypes.CrewAttachment `json:"crew_attachments"`
 				}
 				if json.Unmarshal([]byte(content), &manifest) == nil {
+					if manifest.Kind != "relay" {
+						sb.WriteString(fmt.Sprintf("\n### After every run\nBackup: %v. Publish: %v. Change with update_workflow_config backup/publish.after_runs; configured destinations stay unchanged.\n", manifest.Backup.AfterRuns, manifest.Publish.AfterRuns))
+					}
 					sb.WriteString("\n### KB write grants (this workflow's own knowledgebase)\n")
 					if manifest.Access == nil || len(manifest.Access.AllowedKBWriters) == 0 {
 						sb.WriteString("No other workflow may write into this workflow's knowledgebase/notes/. Grant with update_workflow_config(kb_write_grants=[...]).\n")
@@ -4449,15 +4458,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"description": "Email addresses the workflow run summary is sent TO, stored in workflow.json capabilities.notifications.run_summary_recipients and applied automatically to every run_summary send. This is the positive 'send here' list — set it when the user names who should receive this workflow's run emails. Omit to leave unchanged; pass an empty array to stop summary emails. Never blocks anything: the account-wide and per-workflow denylists are still applied on top, so a blocked address listed here is skipped rather than unblocked.",
 				},
 
-				"after_manual_run": map[string]interface{}{
-					"type":                 "object",
-					"additionalProperties": false,
-					"description":          "What happens after a full run started from a chat (not a schedule): backup saves workflow state when it changed, publish refreshes the published report when it changed, notify sends the run summary. Each schedule has its own after_run (create_schedule/update_schedule).",
-					"properties": map[string]interface{}{
-						"backup":  map[string]interface{}{"type": "boolean"},
-						"publish": map[string]interface{}{"type": "boolean"},
-					},
-				},
+				"backup":  map[string]interface{}{"type": "object", "additionalProperties": false, "description": "Goal Backup settings. after_runs runs configured Backup after every full run; off by default. Destinations are unchanged.", "properties": map[string]interface{}{"after_runs": map[string]interface{}{"type": "boolean"}}},
+				"publish": map[string]interface{}{"type": "object", "additionalProperties": false, "description": "Goal Publish settings. after_runs refreshes configured publishing after every full run; off by default. Destinations are unchanged.", "properties": map[string]interface{}{"after_runs": map[string]interface{}{"type": "boolean"}}},
 				"notification_gmail_connection_id": map[string]interface{}{
 					"type":        "string",
 					"description": "One enabled Gmail connection ID to send this workflow's workflow summary delivery emails FROM for configured team run messages. Inspect available IDs with get_workflow_config. Stored in workflow.json capabilities.notifications.gmail_connection_id; clears legacy per-summary sender overrides. Omit to leave unchanged; pass an empty string to inherit the account default Gmail sender. This does not change recipients or the Gmail connection_id chosen by ordinary workflow and Builder email actions.",
@@ -5112,12 +5114,24 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				logger.Info(fmt.Sprintf("Updated workflow notification instructions: run_configured=%v run_recipients=%d", strings.TrimSpace(runInstructions) != "", len(runRecipients)))
 			}
 
-			// --- After a manual run: backup, publish, notify (PLAT-697 phase 0) ---
-			if raw, provided := args["after_manual_run"]; provided && raw != nil {
+			// Automatic housekeeping uses the same Goal settings for every full run.
+			afterRunUpdates := map[string]bool{}
+			for _, option := range []string{"backup", "publish"} {
+				raw, provided := args[option]
+				if !provided {
+					continue
+				}
 				opts, ok := raw.(map[string]interface{})
 				if !ok {
-					return "Error: after_manual_run must be an object {backup, publish}.", nil
+					return "Error: " + option + " must contain after_runs as true or false.", nil
 				}
+				enabled, ok := opts["after_runs"].(bool)
+				if !ok {
+					return "Error: " + option + ".after_runs must be true or false.", nil
+				}
+				afterRunUpdates[option] = enabled
+			}
+			if len(afterRunUpdates) > 0 {
 				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
 				if readErr != nil {
 					return fmt.Sprintf("Failed to read workflow.json: %v", readErr), nil
@@ -5126,21 +5140,20 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if parseErr := json.Unmarshal([]byte(content), &manifest); parseErr != nil {
 					return fmt.Sprintf("Failed to parse workflow.json: %v", parseErr), nil
 				}
-				current, _ := manifest["after_manual_run"].(map[string]interface{})
-				next := map[string]interface{}{"backup": false, "publish": false}
-				for key := range next {
-					if v, ok := current[key].(bool); ok {
-						next[key] = v
-					}
-					if v, given := opts[key]; given {
-						b, isBool := v.(bool)
-						if !isBool {
-							return fmt.Sprintf("Error: after_manual_run.%s must be true or false.", key), nil
-						}
-						next[key] = b
-					}
+				if manifest["kind"] == "relay" {
+					return "After every run is a Goal setting. Use this Flow's existing run actions instead.", nil
 				}
-				manifest["after_manual_run"] = next
+				for option, enabled := range afterRunUpdates {
+					config, ok := manifest[option].(map[string]interface{})
+					if !ok && manifest[option] != nil {
+						return "Error: correct the existing " + option + " configuration before changing After every run.", nil
+					}
+					if config == nil {
+						config = map[string]interface{}{}
+					}
+					config["after_runs"] = enabled
+					manifest[option] = config
+				}
 				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 				updated, marshalErr := json.MarshalIndent(manifest, "", "  ")
 				if marshalErr != nil {
@@ -5150,10 +5163,17 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
 				}
 				anyChanged = true
-				sb.WriteString(fmt.Sprintf("\n### After a manual run (updated)\nbackup=%v publish=%v\n", next["backup"], next["publish"]))
+				for _, option := range []string{"backup", "publish"} {
+					if enabled, ok := afterRunUpdates[option]; ok {
+						sb.WriteString(fmt.Sprintf("\n%s after every run: %v\n", option, enabled))
+						config, _ := manifest[option].(map[string]interface{})
+						if enabled && config["enabled"] != true {
+							sb.WriteString("Set up the destination in its panel or ask me to set it up.\n")
+						}
+					}
+				}
 			}
 
-			// --- Workflow-scoped one-way Slack webhook ---
 			if raw, provided := args["slack_webhook_secret_name"]; provided && raw != nil {
 				secretName, isString := raw.(string)
 				if !isString {
@@ -5782,9 +5802,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if err := json.Unmarshal([]byte(content), &manifest); err != nil {
 				return fmt.Sprintf("Failed to parse workflow.json: %v", err), nil
 			}
-			if err := schedulepolicy.ValidateAfterRunStamp([]byte(content), version); err != nil {
-				return fmt.Sprintf("Refused: schedule after-run migration is incomplete: %v", err), nil
-			}
 			if err := validateContractVersionStampPrerequisites(version, manifest); err != nil {
 				return fmt.Sprintf("Refused: nested Agent artifact migration is incomplete: %v", err), nil
 			}
@@ -5918,7 +5935,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip create_schedule registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"create_schedule",
-		"Create a new cron schedule for this workflow. Workflow schedules use mode='workshop' with workshop_mode='workshop'; read-only access is pinned to Run by the server. Messages are optional; when omitted, the scheduler asks the Builder to execute the full workflow. Before adding, inspect existing schedules and choose a useful run time using goal evidence. Set after_run (backup, publish) for what runs after each run; it defaults to both. Basic validation and the unreadable-input guard still apply. For the full contract (collision/dependency policy design, when direct messages vs. route_selections is correct, resume_previous tradeoffs): read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
+		"Create a new cron schedule for this workflow. Workflow schedules use mode='workshop' with workshop_mode='workshop'; read-only access is pinned to Run by the server. Messages are optional; when omitted, the scheduler asks the Builder to execute the full workflow. Before adding, inspect existing schedules and choose a useful run time using goal evidence. Basic validation and the unreadable-input guard still apply. For the full contract (collision/dependency policy design, when direct messages vs. route_selections is correct, resume_previous tradeoffs): read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -5966,14 +5983,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				"resume_previous": map[string]interface{}{
 					"type":        "boolean",
 					"description": "Optional opt-in when this workflow runs on a coding-agent CLI (claude-code, cursor-cli, codex-cli, pi-cli). When true, each scheduled run resumes the previous run's thread (same CLI) instead of starting a fresh session, so the agent keeps prior context across runs. API model providers and non-resumable runs start fresh. Defaults to false; omit for fresh sessions.",
-				},
-				"after_run": map[string]interface{}{
-					"type":        "object",
-					"description": "After-run housekeeping: backup saves changed workflow state; publish refreshes the configured report. New schedules enable both. Run outcomes and configured team messages are independent of these options.",
-					"properties": map[string]interface{}{
-						"backup":  map[string]interface{}{"type": "boolean"},
-						"publish": map[string]interface{}{"type": "boolean"},
-					},
 				},
 				"execution_mode": map[string]interface{}{
 					"type": "string", "enum": []string{"close_only"},
@@ -6082,7 +6091,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 
 			policy := ScheduleRuntimePolicy{}
 
-			policy.AfterRun, policy.SetAfterRun = scheduleAfterRunArgument(args)
 			policy.ExecutionMode, _ = args["execution_mode"].(string)
 			policy.CollisionPolicy, _ = args["collision_policy"].(string)
 			policy.ConcurrencyMode, _ = args["concurrency_mode"].(string)
@@ -6109,18 +6117,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip create_calendar_schedule registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"create_calendar_schedule",
-		"Create a dated calendar schedule for this workflow, such as a full-month Instagram content calendar. Set after_run (backup, publish); it defaults to both. Use this when the user provides specific dates/times instead of a repeating cron pattern. Workflow calendar schedules use mode='workshop' and workshop_mode='workshop'; read-only access is pinned to Run by the server. For the full contract: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
+		"Create a dated calendar schedule for this workflow, such as a full-month Instagram content calendar. Use this when the user provides specific dates/times instead of a repeating cron pattern. Workflow calendar schedules use mode='workshop' and workshop_mode='workshop'; read-only access is pinned to Run by the server. For the full contract: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"after_run": map[string]interface{}{
-					"type":        "object",
-					"description": "After-run housekeeping: backup saves changed workflow state; publish refreshes the configured report. New schedules enable both. Run outcomes and configured team messages are independent of these options.",
-					"properties": map[string]interface{}{
-						"backup":  map[string]interface{}{"type": "boolean"},
-						"publish": map[string]interface{}{"type": "boolean"},
-					},
-				},
 
 				"name":        map[string]interface{}{"type": "string", "description": "Display name for the calendar schedule."},
 				"timezone":    map[string]interface{}{"type": "string", "description": "Required IANA timezone (e.g. 'UTC', 'America/New_York', 'Asia/Kolkata')."},
@@ -6211,7 +6211,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			directMessagesReason, _ := args["direct_messages_reason"].(string)
 			policy := ScheduleRuntimePolicy{}
 
-			policy.AfterRun, policy.SetAfterRun = scheduleAfterRunArgument(args)
 			policy.CollisionPolicy, _ = args["collision_policy"].(string)
 			policy.ConcurrencyMode, _ = args["concurrency_mode"].(string)
 			policy.ParallelRiskAcknowledged, _ = args["parallel_risk_acknowledged"].(bool)
@@ -6292,14 +6291,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				"direct_messages_reason": map[string]interface{}{
 					"type":        "string",
 					"description": "Set or clear the rationale for an intentional direct schedule sequence.",
-				},
-				"after_run": map[string]interface{}{
-					"type":        "object",
-					"description": "After-run housekeeping: backup saves changed workflow state; publish refreshes the configured report. New schedules enable both. Run outcomes and configured team messages are independent of these options.",
-					"properties": map[string]interface{}{
-						"backup":  map[string]interface{}{"type": "boolean"},
-						"publish": map[string]interface{}{"type": "boolean"},
-					},
 				},
 				"execution_mode": map[string]interface{}{
 					"type": "string", "description": "Set close_only, or an empty string to clear the backend-enforced execution mode.",
@@ -6446,11 +6437,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if _, ok7 := args["dependency_deadline"]; ok7 && policy == nil {
 				policy = &ScheduleRuntimePolicy{}
 			}
-			if _, ok := args["after_run"]; ok && policy == nil {
-				policy = &ScheduleRuntimePolicy{}
-			}
 			if policy != nil {
-				policy.AfterRun, policy.SetAfterRun = scheduleAfterRunArgument(args)
 
 				_, policy.SetExecutionMode = args["execution_mode"]
 				_, policy.SetCollisionPolicy = args["collision_policy"]
