@@ -258,6 +258,9 @@ func (s *SchedulerService) sendAfterRunNotification(ctx context.Context, sctx *S
 	// Manual outcomes are recorded only; explicit workflow/team messages remain independent.
 	external := sctx.TriggerSource != "manual" && shouldDeliverRunOutcome(ctx, sctx.WorkspacePath, sctx.Schedule.ID, runID, status)
 	_, err := virtualtools.DeliverWorkflowNotification(nctx, afterRunNotificationArgs(firstNonEmptyString(manifest.Label, sctx.WorkflowLabel), sctx.Schedule.Name, status, errMsg, duration, external))
+	// Correlate the delivery decision with the durable Activity entry without
+	// logging message content, addresses, webhook values or provider errors.
+	s.logf(sctx, "[RUN STATUS] run=%s schedule=%s outcome=%s external_delivery=%t finished=%t", runID, sctx.Schedule.ID, status, external, err == nil)
 	return err
 }
 
