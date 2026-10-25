@@ -122,7 +122,7 @@ export function AppSidebar() {
     className="inline-flex h-11 w-11 md:h-7 md:w-auto shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
     {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />}
   </button>
-  const leading = <div className="flex shrink-0 items-center gap-2 md:hidden">{home}{toggle}</div>
+  const leading = <div className="flex shrink-0 items-center gap-1 md:hidden">{home}{toggle}</div>
   return <CompactProductNavigationContext.Provider value={true}>
       <div data-terminal-focus-chrome="header" data-app-sidebar data-product-navigation-mode={navigationMode}
         style={{ '--chat-sidebar-width': `${width}px` } as CSSProperties}

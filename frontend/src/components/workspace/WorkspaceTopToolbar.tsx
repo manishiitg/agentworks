@@ -36,7 +36,7 @@ export function WorkspaceTopToolbar({ className = '', children, navigationKind =
       // Below md the tabs and toolbar controls wrap onto a second row instead
       // of overflowing over the tabs (a 390 px phone hid the project tab and
       // covered "+ New chat" with Dashboard). Desktop keeps one nowrap row.
-      className={cn('relative z-[35] flex min-h-10 min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 overflow-visible md:gap-x-3 border-b border-border bg-background py-1.5 md:flex-nowrap', WORKSPACE_PAGE_GUTTER, className)}
+      className={cn('relative z-[35] flex min-h-10 min-w-0 flex-wrap items-center gap-x-1 gap-y-1.5 overflow-visible md:gap-x-3 border-b border-border bg-background py-1.5 md:flex-nowrap', WORKSPACE_PAGE_GUTTER, className)}
     >
       {/* Display contents prevents a hidden mobile launcher reserving a flex gap on desktop. */}
       {showNavigation && <div ref={registerLeading} data-product-navigation-leading-slot className="contents empty:hidden" />}
