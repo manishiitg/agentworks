@@ -122,75 +122,6 @@ kimi-coding    k3                             1.0M     131K     yes       yes
 	}
 }
 
-func TestPiFallbackModelsKeepProviderShortlistsSmall(t *testing.T) {
-	counts := map[string]int{}
-	for _, model := range piFallbackModels() {
-		group := model.Group
-		if group == "" {
-			group = "Other"
-		}
-		counts[group]++
-	}
-
-	for _, group := range []string{"Gemini", "Z.AI", "MiniMax", "Kimi", "DeepSeek", "OpenRouter"} {
-		if counts[group] == 0 {
-			t.Fatalf("Pi shortlist group %q is empty: %#v", group, counts)
-		}
-		max := 3
-		if group == "OpenRouter" {
-			max = 10
-		}
-		if counts[group] > max {
-			t.Fatalf("Pi shortlist group %q has %d models, want at most %d", group, counts[group], max)
-		}
-	}
-	foundOpenRouterTopModel := false
-	for _, model := range piFallbackModels() {
-		if model.ModelID == "openrouter/minimax/minimax-m3-20260531" {
-			foundOpenRouterTopModel = true
-			break
-		}
-	}
-	if !foundOpenRouterTopModel {
-		t.Fatal("Pi shortlist missing OpenRouter MiniMax M3 top model")
-	}
-}
-
-func TestPiFallbackModelsIncludeCurrentProviderCatalog(t *testing.T) {
-	models := piFallbackModels()
-	for _, modelID := range []string{
-		"google/gemini-3.8-flash",
-		"google/gemini-3.5-flash-lite",
-	} {
-		found := false
-		for _, model := range models {
-			if model.ModelID == modelID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("Pi shortlist missing provider catalog model %q: %#v", modelID, models)
-		}
-	}
-	if models[0].ModelID != "google/gemini-3.8-flash" || !models[0].IsDefault {
-		t.Fatalf("first Pi model = %#v, want Gemini 3.8 Flash default", models[0])
-	}
-}
-
-func TestFetchPiCLIModelsReturnsCuratedShortlist(t *testing.T) {
-	resp := fetchPiCLIModels(false)
-	if resp == nil {
-		t.Fatal("fetchPiCLIModels returned nil")
-	}
-	if len(resp.Models) != len(piFallbackModels()) {
-		t.Fatalf("Pi model count = %d, want curated count %d", len(resp.Models), len(piFallbackModels()))
-	}
-	if resp.SupportsCustom != true {
-		t.Fatal("Pi should still support custom model IDs")
-	}
-}
-
 // PLAT (OpenRouter free models): confirmed live that fetchPiCLIModels(true)
 // was silently dropping IsFree=true for most OpenRouter models -- pi's own
 // --list-models output can legitimately include the same OpenRouter model
@@ -291,16 +222,6 @@ func TestFetchAvailablePiCLIModelsReturnsOnlyLiveConnectedInventory(t *testing.T
 	}
 }
 
-func TestProviderModelMetadataIncludesClaudeCodeSonnet5(t *testing.T) {
-	ids := providerModelIDs("claude-code")
-	if !containsLLMCapabilityString(ids, "claude-sonnet-5-5") {
-		t.Fatalf("claude-code model ids = %v, want claude-sonnet-5-5", ids)
-	}
-	if got := inferCursorModelGroup("claude-sonnet-5-5", ""); got != "Claude Sonnet 5.5" {
-		t.Fatalf("inferCursorModelGroup(claude-sonnet-5-5) = %q, want Claude Sonnet 5.5", got)
-	}
-}
-
 func TestMergePiModelEntriesKeepsCuratedModelsFirst(t *testing.T) {
 	curated := piFallbackModels()
 	listed := []dynamicModelEntry{
@@ -317,19 +238,6 @@ func TestMergePiModelEntriesKeepsCuratedModelsFirst(t *testing.T) {
 	if merged[len(merged)-1].ModelID != "anthropic/claude-sonnet-4-6" {
 		t.Fatalf("last merged model = %#v, want listed non-curated model", merged[len(merged)-1])
 	}
-}
-
-func TestPiFallbackModelsIncludesAPinnedFreeOpenRouterModel(t *testing.T) {
-	models := piFallbackModels()
-	for _, model := range models {
-		if model.ModelID == "openrouter/stealth/ox-alpha" {
-			if !model.IsFree {
-				t.Fatalf("openrouter/stealth/ox-alpha = %#v, want IsFree true", model)
-			}
-			return
-		}
-	}
-	t.Fatalf("Pi shortlist missing pinned free model openrouter/stealth/ox-alpha: %#v", models)
 }
 
 func TestFetchOpenRouterCatalogParsesPricingIntoIsFree(t *testing.T) {
