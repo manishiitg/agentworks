@@ -6,6 +6,7 @@ import { ProductSlackPanel } from './ProductSlackPanel'
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), draft: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: { get: api.get, post: api.post }, agentApi: {} }))
+vi.mock('../../stores/useWorkspaceConnectionStore',()=>({useWorkspaceConnectionStore:(select:any)=>select({activeWorkspaceId:'server'})}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:(select:any)=>select({user:{is_admin:false}})}))
 vi.mock('./useVaultSetupDraft',()=>({useVaultSetupDraft:()=>({open:api.draft,error:''})}))
 vi.mock('./VaultSlackBots',()=>({VaultSlackBots:()=> <div data-bot-editor/>}))

@@ -1,3 +1,4 @@
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import SlackAdminPanel from '../admin/SlackAdminPanel'
 import { VaultSlackBots } from './VaultSlackBots'
@@ -25,12 +26,14 @@ export const slackBotsApi = {
 
 /** One product page. Personal account grants and bot management remain separate server permissions. */
 export function ProductSlackPanel({ workspacePath, noun = 'Crew', allowBots = true, section }: { workspacePath: string; noun?: string; allowBots?: boolean; section?: 'account' | 'bot' }) {
+ const actor=useAuthStore(state=>state.user?.id)
+ const server=useWorkspaceConnectionStore(state=>state.activeWorkspaceId)
  return <div className="w-full max-w-3xl space-y-5">
   {section !== 'bot' && <section aria-label="Send as me" className="space-y-2"><h3 className="text-sm font-semibold">Send as me</h3>
    <p className="text-xs text-muted-foreground">Let this {noun} send Slack messages as you. Only you can read or search your Slack.</p>
    <SlackAccountsPanel workspacePath={workspacePath}/>
   </section>}
-  {section !== 'account' && allowBots && <SlackBotChoice workspacePath={workspacePath} noun={noun}/>}
+  {section !== 'account' && allowBots && <SlackBotChoice key={`${server}:${actor}:${workspacePath}`} workspacePath={workspacePath} noun={noun}/>}
  </div>
 }
 

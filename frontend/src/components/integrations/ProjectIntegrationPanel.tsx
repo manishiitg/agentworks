@@ -1,4 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { Button } from '../ui/Button'
 import WorkflowEmailPanel from '../workflow/WorkflowEmailPanel'
 import { ProjectMcpPanel } from './ProjectMcpPanel'
@@ -17,11 +19,17 @@ export type ProjectSecretControls = {
   onSharedSecretsSaved?: (names: string[]) => void
 }
 
-/** Familiar menu entries open the same native editors directly. Vault is storage, not navigation. */
-export function ProjectIntegrationPanel({ workspacePath, tabId, placeNoun, section = 'connected', canEdit, onAsk, laptop, onAppsSaved, ...secrets }: ProjectSecretControls & {
+type Props = ProjectSecretControls & {
   workspacePath: string; placeNoun: string; section?: IntegrationSection; canEdit: boolean; tabId?: string
   onAsk: (message: string) => Promise<void>; laptop?: ReactNode; onAppsSaved?: (servers: string[]) => void
-}) {
+}
+/** Familiar menu entries open the same native editors directly. */
+export function ProjectIntegrationPanel(props: Props) {
+  const actor = useAuthStore(state => state.user?.id)
+  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  return <ProjectIntegrationContents key={`${server}:${actor}:${props.workspacePath}`} {...props} />
+}
+function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section = 'connected', canEdit, onAsk, laptop, onAppsSaved, ...secrets }: Props) {
   const [apps, setApps] = useState<'connected' | 'available'>(section === 'available' ? 'available' : 'connected')
   useEffect(() => { if (section === 'connected' || section === 'available') setApps(section) }, [section])
   if (!canEdit) return <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled />

@@ -2,6 +2,8 @@
 import {act} from 'react'
 import {createRoot} from 'react-dom/client'
 import {afterEach,expect,it,vi} from 'vitest'
+vi.mock('../../stores/useAuthStore',()=>({useAuthStore:(select:any)=>select({user:{id:'owner'}})}))
+vi.mock('../../stores/useWorkspaceConnectionStore',()=>({useWorkspaceConnectionStore:(select:any)=>select({activeWorkspaceId:'server'})}))
 vi.mock('./ProjectMcpPanel',()=>({ProjectMcpPanel:()=> <div data-editor="mcps"/>}))
 vi.mock('./ProjectSecretsPanel',()=>({ProjectSecretsPanel:()=> <div data-editor="secrets"/>}))
 vi.mock('../workflow/WorkflowEmailPanel',()=>({default:()=> <div data-editor="google"/>}))
