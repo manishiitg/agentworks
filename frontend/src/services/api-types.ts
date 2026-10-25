@@ -2840,6 +2840,10 @@ export interface ScheduledJob {
   built_in?: boolean
   managed_by?: 'built-in' | 'slash-command' | string
   run_destination?: 'crew_chat' | 'isolated'
+  /** The tab a Crew schedule runs in; empty is the main chat. */
+  chat_id?: string
+  /** Where this Crew schedule can run, listed by the server: main chat, each tab, own conversation. */
+  run_destinations?: { id: string; label: string }[]
 }
 
 export interface CreateScheduledJobRequest {
@@ -2907,6 +2911,8 @@ export interface UpdateScheduledJobRequest {
   timezone?: string
   enabled?: boolean
   run_destination?: 'crew_chat' | 'isolated'
+  /** Move a Crew schedule to a tab (its chat id); an empty string moves it back to the main chat. */
+  chat_id?: string
 }
 
 export interface CalendarScheduleItem {

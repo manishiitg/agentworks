@@ -1617,6 +1617,8 @@ func (s *ProductScheduleService) jobResponse(job productScheduleJob, runsWorkspa
 	resp := ScheduledJobResponse{
 		ID:                  job.ID(),
 		ChatKey:             scheduleChatKey(job),
+		ChatID:              strings.TrimPrefix(scheduleChatKey(job), strings.TrimSpace(job.ProjectID)+codeChatSideMarker),
+		RunDestinations:     projectRunDestinations(job),
 		Name:                sched.Name,
 		Description:         sched.Description,
 		EntityType:          "product",
@@ -1708,6 +1710,31 @@ func projectChatExists(ctx context.Context, userID, profileID, projectID, chatKe
 		}
 	}
 	return false
+}
+
+// projectRunDestinations lists the places a project schedule can run: the main chat, each of the
+// person's own tabs by its name (the same name the Crew's tab list shows), and the schedule's own
+// conversation.
+func projectRunDestinations(job productScheduleJob) []ScheduleRunDestination {
+	if strings.TrimSpace(job.ProjectID) == "" {
+		return nil
+	}
+	out := []ScheduleRunDestination{{ID: "main", Label: "Main chat"}}
+	tabs := []ScheduleRunDestination{}
+	if chats, err := crewOwnerChatRecords(context.Background(), job.UserID, job.Profile.ID, job.ProjectID, job.WorkspacePath); err == nil {
+		side := strings.TrimSpace(job.ProjectID) + codeChatSideMarker
+		for _, chat := range chats {
+			key := chat.Record.ConversationKey
+			if chat.OwnerID != job.UserID || !strings.HasPrefix(key, side) {
+				continue
+			}
+			id := strings.TrimPrefix(key, side)
+			tabs = append(tabs, ScheduleRunDestination{ID: id, Label: firstNonEmptyTrimmed(chat.Identity.Name, "Chat "+id)})
+		}
+	}
+	sort.Slice(tabs, func(i, j int) bool { return strings.ToLower(tabs[i].Label) < strings.ToLower(tabs[j].Label) })
+	out = append(out, tabs...)
+	return append(out, ScheduleRunDestination{ID: "isolated", Label: "Own conversation"})
 }
 
 // projectScheduleChatKey turns a tab's chat id (from the project's chat list)

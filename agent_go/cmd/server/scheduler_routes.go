@@ -18,45 +18,57 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
 
+// ScheduleRunDestination is one place a Crew schedule can run. ID "main" is the main chat, "isolated" is
+// its own conversation, anything else is a tab's chat id.
+type ScheduleRunDestination struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
 // ScheduledJobResponse is the API response for a scheduled job.
 // Designed to be backward-compatible with the old DB-based ScheduledJob shape.
 type ScheduledJobResponse struct {
 	// ChatKey is the Code side chat (tab) a project schedule runs in; empty is the main chat.
-	ChatKey              string                 `json:"chat_key,omitempty"`
-	Kind                 string                 `json:"kind,omitempty"`
-	StepID               string                 `json:"step_id,omitempty"`
-	ID                   string                 `json:"id"`
-	Name                 string                 `json:"name"`
-	Description          string                 `json:"description"`
-	EntityType           string                 `json:"entity_type"`
-	WorkspacePath        string                 `json:"workspace_path"`
-	WorkflowID           string                 `json:"workflow_id,omitempty"`
-	WorkflowLabel        string                 `json:"workflow_label,omitempty"`
-	PresetQueryID        string                 `json:"preset_query_id,omitempty"` // empty — kept for frontend compat
-	TriggerPayload       json.RawMessage        `json:"trigger_payload,omitempty"`
-	GroupNames           []string               `json:"group_names,omitempty"`
-	RouteSelections      map[string]string      `json:"route_selections,omitempty"`
-	Mode                 string                 `json:"mode,omitempty"`
-	Messages             []string               `json:"messages,omitempty"` // Predefined messages for workshop schedules
-	DirectMessagesReason string                 `json:"direct_messages_reason,omitempty"`
-	WorkshopMode         string                 `json:"workshop_mode,omitempty"`   // workshop for writable users; Run is access-derived
-	ResumePrevious       bool                   `json:"resume_previous,omitempty"` // Coding-agent CLI only: opt in to resume latest prior thread instead of fresh session
-	ScheduleType         string                 `json:"schedule_type,omitempty"`
-	CalendarItems        []CalendarScheduleItem `json:"calendar_items,omitempty"`
-	CronExpression       string                 `json:"cron_expression"`
-	Timezone             string                 `json:"timezone"`
-	Enabled              bool                   `json:"enabled"`
-	CadenceHours         int                    `json:"cadence_hours,omitempty"` // a product cadence schedule's interval, after the person's override
-	LastRunAt            *time.Time             `json:"last_run_at,omitempty"`
-	NextRunAt            *time.Time             `json:"next_run_at,omitempty"`
-	LastSessionID        string                 `json:"last_session_id,omitempty"`
-	LastStatus           string                 `json:"last_status,omitempty"`
-	LastError            string                 `json:"last_error,omitempty"`
-	LastDurationMs       *int64                 `json:"last_duration_ms,omitempty"`
-	AvgDurationMs        *int64                 `json:"avg_duration_ms,omitempty"`
-	AvgDurationSamples   int                    `json:"avg_duration_samples,omitempty"`
-	RunCount             int                    `json:"run_count"`
-	ConsecutiveFailures  int                    `json:"consecutive_failures"`
+	ChatKey string `json:"chat_key,omitempty"`
+	// ChatID is the tab's id (the part of ChatKey after ":chat:"); empty is the main chat.
+	ChatID string `json:"chat_id,omitempty"`
+	// RunDestinations lists where this Crew schedule can run: the main chat, each tab by name and its
+	// own conversation. The server decides the list; the screen only shows it.
+	RunDestinations      []ScheduleRunDestination `json:"run_destinations,omitempty"`
+	Kind                 string                   `json:"kind,omitempty"`
+	StepID               string                   `json:"step_id,omitempty"`
+	ID                   string                   `json:"id"`
+	Name                 string                   `json:"name"`
+	Description          string                   `json:"description"`
+	EntityType           string                   `json:"entity_type"`
+	WorkspacePath        string                   `json:"workspace_path"`
+	WorkflowID           string                   `json:"workflow_id,omitempty"`
+	WorkflowLabel        string                   `json:"workflow_label,omitempty"`
+	PresetQueryID        string                   `json:"preset_query_id,omitempty"` // empty — kept for frontend compat
+	TriggerPayload       json.RawMessage          `json:"trigger_payload,omitempty"`
+	GroupNames           []string                 `json:"group_names,omitempty"`
+	RouteSelections      map[string]string        `json:"route_selections,omitempty"`
+	Mode                 string                   `json:"mode,omitempty"`
+	Messages             []string                 `json:"messages,omitempty"` // Predefined messages for workshop schedules
+	DirectMessagesReason string                   `json:"direct_messages_reason,omitempty"`
+	WorkshopMode         string                   `json:"workshop_mode,omitempty"`   // workshop for writable users; Run is access-derived
+	ResumePrevious       bool                     `json:"resume_previous,omitempty"` // Coding-agent CLI only: opt in to resume latest prior thread instead of fresh session
+	ScheduleType         string                   `json:"schedule_type,omitempty"`
+	CalendarItems        []CalendarScheduleItem   `json:"calendar_items,omitempty"`
+	CronExpression       string                   `json:"cron_expression"`
+	Timezone             string                   `json:"timezone"`
+	Enabled              bool                     `json:"enabled"`
+	CadenceHours         int                      `json:"cadence_hours,omitempty"` // a product cadence schedule's interval, after the person's override
+	LastRunAt            *time.Time               `json:"last_run_at,omitempty"`
+	NextRunAt            *time.Time               `json:"next_run_at,omitempty"`
+	LastSessionID        string                   `json:"last_session_id,omitempty"`
+	LastStatus           string                   `json:"last_status,omitempty"`
+	LastError            string                   `json:"last_error,omitempty"`
+	LastDurationMs       *int64                   `json:"last_duration_ms,omitempty"`
+	AvgDurationMs        *int64                   `json:"avg_duration_ms,omitempty"`
+	AvgDurationSamples   int                      `json:"avg_duration_samples,omitempty"`
+	RunCount             int                      `json:"run_count"`
+	ConsecutiveFailures  int                      `json:"consecutive_failures"`
 	// DeferredReason is set while a due product schedule is held back by its
 	// quiet rule (the user is active); empty otherwise.
 	DeferredReason           string     `json:"deferred_reason,omitempty"`

@@ -55,6 +55,25 @@ async function renderList(filteredJobs: ScheduledJob[], handleAfterRun?: (job: S
   return { host, unmount: async () => { await act(async () => root.unmount()); host.remove() } }
 }
 
+describe('ScheduleListView run destination', () => {
+  // PLAT-825-96: a Crew schedule can run in a tab, so the menu lists the tabs the server names and shows the current one.
+  it('lists the tabs the server returns and selects the one the schedule runs in', async () => {
+    const { host, unmount } = await renderList([
+      job({
+        id: 'p', name: 'Upwork check', entity_type: 'product', run_destination: 'crew_chat', chat_id: 'abc12345',
+        run_destinations: [{ id: 'main', label: 'Main chat' }, { id: 'abc12345', label: 'Upwork' }, { id: 'isolated', label: 'Own conversation' }],
+      }),
+    ])
+    try {
+      const select = host.querySelector('select[aria-label="Run destination for Upwork check"]') as HTMLSelectElement
+      expect(Array.from(select.options).map(option => option.textContent)).toEqual(['Main chat', 'Upwork', 'Own conversation'])
+      expect(select.value).toBe('abc12345')
+    } finally {
+      await unmount()
+    }
+  })
+})
+
 describe('ScheduleListView declutter', () => {
   it('hides a single group but shows multiple groups', async () => {
     const { host, unmount } = await renderList([

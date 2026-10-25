@@ -116,13 +116,14 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                   <span>Runs in</span>
                   <select
                     aria-label={`Run destination for ${job.name}`}
-                    value={job.run_destination || 'crew_chat'}
+                    value={job.run_destination === 'isolated' ? 'isolated' : job.chat_id || 'main'}
                     disabled={isReadOnlyUser || isRunningJob}
-                    onChange={event => void handleRunDestination(job, event.target.value as 'crew_chat' | 'isolated')}
+                    onChange={event => void handleRunDestination(job, event.target.value)}
                     className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-foreground disabled:opacity-50"
                   >
-                    <option value="crew_chat">Main chat</option>
-                    <option value="isolated">Own conversation</option>
+                    {(job.run_destinations?.length ? job.run_destinations : [{ id: 'main', label: 'Main chat' }, { id: 'isolated', label: 'Own conversation' }]).map(item => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
                   </select>
                 </label>
               )}

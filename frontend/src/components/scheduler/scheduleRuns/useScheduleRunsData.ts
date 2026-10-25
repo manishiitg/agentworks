@@ -506,13 +506,20 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     } catch { /* ignore */ }
   }
 
-  const handleRunDestination = async (job: ScheduledJob, runDestination: 'crew_chat' | 'isolated') => {
+  // destination is "main", "isolated" or a tab's chat id (the server lists the choices).
+  const handleRunDestination = async (job: ScheduledJob, destination: string) => {
     try {
-      const updated = await schedulerApi.updateJob(job.id, { run_destination: runDestination })
+      const request = destination === 'isolated'
+        ? { run_destination: 'isolated' as const }
+        : { run_destination: 'crew_chat' as const, chat_id: destination === 'main' ? '' : destination }
+      const updated = await schedulerApi.updateJob(job.id, request)
       setJobs(previous => previous.map(candidate => candidate.id === job.id ? retainDurationAverage(updated, candidate) : candidate))
-      useChatStore.getState().addToast(runDestination === 'isolated'
+      const label = job.run_destinations?.find(item => item.id === destination)?.label
+      useChatStore.getState().addToast(destination === 'isolated'
         ? `“${job.name}” will run in its own automation conversation.`
-        : `“${job.name}” will queue in the Crew chat.`, 'success')
+        : destination === 'main'
+          ? `“${job.name}” will run in the main chat.`
+          : `“${job.name}” will run in the ${label || 'chosen'} tab.`, 'success')
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unable to change run destination'
       useChatStore.getState().addToast(detail, 'error')
