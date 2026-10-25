@@ -28,39 +28,20 @@ type nativeCostState struct {
 	Contexts          map[string]costledger.Entry `json:"source_contexts"`
 }
 type nativeCostAccountant struct {
-	mu    sync.Mutex
-	api   *StreamingAPI
-	state nativeCostState
-	file  string
-	done  chan struct{}
-	gap   string
-	usage nativeusage.PrivateUsage
-	stamp string
+	mu      sync.Mutex
+	api     *StreamingAPI
+	state   nativeCostState
+	file    string
+	done    chan struct{}
+	gap     string
+	usage   nativeusage.PrivateUsage
+	stamp   string
+	retired bool
 }
 
 func (api *StreamingAPI) initNativeCostAccounting() {
 	costobserver.SetNativeAccountingFactory(func(base costledger.Entry, provider, model string) costobserver.NativeAccounting {
-		if base.SessionID == "" || base.UserID == "" || api.costLedger == nil {
-			return nil
-		}
-		api.nativeCostsMu.Lock()
-		defer api.nativeCostsMu.Unlock()
-		if api.nativeCosts == nil {
-			api.nativeCosts = map[string]*nativeCostAccountant{}
-		}
-		a := api.nativeCosts[base.SessionID]
-		if a == nil {
-			root, err := workflowCLIStateRoot()
-			if err != nil {
-				return nil
-			}
-			hash := sha256.Sum256([]byte(base.SessionID))
-			a = &nativeCostAccountant{api: api, state: nativeCostState{Current: base, Provider: provider, Floor: base.Timestamp, Contexts: map[string]costledger.Entry{}}, file: filepath.Join(root, "native-cost", fmt.Sprintf("%x.json", hash[:20])), done: make(chan struct{})}
-			api.nativeCosts[base.SessionID] = a
-			go a.run()
-		}
-		a.Begin(base)
-		return a
+		return api.nativeCostAccounting(base, provider)
 	})
 	root, err := workflowCLIStateRoot()
 	if err != nil {
@@ -89,6 +70,43 @@ func (api *StreamingAPI) initNativeCostAccounting() {
 		go a.run()
 		log.Printf("[NATIVE_COST] restored session=%s provider=%s native=%s", s.Current.SessionID, s.Provider, s.NativeID)
 	}
+}
+
+func (api *StreamingAPI) nativeCostAccounting(base costledger.Entry, provider string) costobserver.NativeAccounting {
+	if base.SessionID == "" || base.UserID == "" || api.costLedger == nil {
+		return nil
+	}
+	api.nativeCostsMu.Lock()
+	defer api.nativeCostsMu.Unlock()
+	if api.nativeCosts == nil {
+		api.nativeCosts = map[string]*nativeCostAccountant{}
+	}
+	a := api.nativeCosts[base.SessionID]
+	if a != nil {
+		a.mu.Lock()
+		changed := a.state.Provider != provider || a.state.Current.AccountID != base.AccountID
+		if changed {
+			a.retired = true
+			close(a.done)
+		}
+		a.mu.Unlock()
+		if changed {
+			log.Printf("[NATIVE_COST] runtime_reset session=%s provider=%s reason=provider_or_account_changed", base.SessionID, provider)
+			a = nil
+		}
+	}
+	if a == nil {
+		root, err := workflowCLIStateRoot()
+		if err != nil {
+			return nil
+		}
+		hash := sha256.Sum256([]byte(base.SessionID))
+		a = &nativeCostAccountant{api: api, state: nativeCostState{Current: base, Provider: provider, Floor: base.Timestamp, Contexts: map[string]costledger.Entry{}}, file: filepath.Join(root, "native-cost", fmt.Sprintf("%x.json", hash[:20])), done: make(chan struct{})}
+		api.nativeCosts[base.SessionID] = a
+		go a.run()
+	}
+	a.Begin(base)
+	return a
 }
 
 func (api *StreamingAPI) stopNativeCostAccounting() {
@@ -125,6 +143,9 @@ func (a *nativeCostAccountant) reportGap(reason string) {
 func (a *nativeCostAccountant) Begin(base costledger.Entry) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.retired {
+		return
+	}
 	base.Provider = a.state.Provider
 	if base.ModelID == "" {
 		base.ModelID = a.state.Current.ModelID
@@ -149,7 +170,7 @@ func (a *nativeCostAccountant) bind() error {
 			if string(h.Provider.Provider) != a.state.Provider {
 				return fmt.Errorf("provider changed")
 			}
-			a.state.NativeID = h.Provider.NativeSessionID
+			a.bindNativeID(h.Provider.NativeSessionID)
 			a.state.WorkingDir = h.Provider.WorkingDir
 			o := nativeTerminalObserver{api: a.api, provider: a.state.Provider, nativeID: a.state.NativeID, workingDir: a.state.WorkingDir}
 			a.state.Path = o.nativeRecordPath()
@@ -157,6 +178,23 @@ func (a *nativeCostAccountant) bind() error {
 	}
 	return nil
 }
+
+// bindNativeID is called with a.mu held. A new CLI runtime cannot inherit the
+// old runtime's usage windows, source ownership or scan cursor.
+func (a *nativeCostAccountant) bindNativeID(id string) {
+	if a.state.NativeID != "" && a.state.NativeID != id {
+		a.state.Contexts = map[string]costledger.Entry{}
+		a.state.Floor = a.state.Current.Timestamp
+		a.state.Path, a.state.WorkingDir = "", ""
+		a.state.PendingForeground = false
+		a.usage = nativeusage.PrivateUsage{}
+		a.stamp = ""
+		a.gap = ""
+		log.Printf("[NATIVE_COST] runtime_reset session=%s provider=%s reason=native_session_changed", a.state.Current.SessionID, a.state.Provider)
+	}
+	a.state.NativeID = id
+}
+
 func (a *nativeCostAccountant) read() (nativeusage.Snapshot, error) {
 	if err := a.bind(); err != nil {
 		return nativeusage.Snapshot{}, err
@@ -248,6 +286,9 @@ func nativeSourceRewound(c costledger.NativeCoverage, s nativeusage.Snapshot) bo
 func (a *nativeCostAccountant) Record(base costledger.Entry) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.retired {
+		return false
+	}
 	s, err := a.read()
 	c, e := a.api.costLedger.NativeCoverage(a.runtimeKey())
 	if e != nil {
@@ -364,6 +405,9 @@ func (a *nativeCostAccountant) run() {
 func (a *nativeCostAccountant) poll() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.retired {
+		return
+	}
 	if session, ok := mcpagent.LookupSession(a.state.Current.SessionID); ok && session.ActiveTurnID() != "" {
 		return
 	}

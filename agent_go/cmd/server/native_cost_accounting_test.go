@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
 )
 
 // PLAT-872 B1/B2: a partial native message grows once across restart; an
@@ -161,5 +163,84 @@ func TestNativeAccountingConservesGrowingUsageAndForegroundFallback(t *testing.T
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The visible conversation survives provider/account changes. Its native
+// accounting context and private usage must belong to the newly admitted CLI.
+func TestNativeAccountingResetsWhenRuntimeChanges(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AGENTWORKS_STATE_ROOT", dir)
+	ledger, err := costledger.NewSQLiteLedger(filepath.Join(dir, "costs.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	api := &StreamingAPI{costLedger: ledger}
+	defer api.stopNativeCostAccounting()
+	now := time.Now().UTC()
+	base := costledger.Entry{Timestamp: now, SessionID: "native-switch-example", UserID: "alice", AccountID: "account-a", Scope: "builder", ModelID: "unknown-example-model"}
+	seed := func(a *nativeCostAccountant) {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		a.state.NativeID, a.state.Path = "old-native", "/old-source"
+		a.state.Contexts["old-turn"] = base
+		a.usage = nativeusage.PrivateUsage{ContextUsed: 100, Limits: []nativeusage.Limit{{Name: "private-old-limit"}}}
+		a.stamp = "old-stamp"
+	}
+	clean := func(a *nativeCostAccountant) {
+		t.Helper()
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if a.usage.ContextUsed != 0 || len(a.usage.Limits) != 0 || len(a.state.Contexts) != 0 || a.state.Path != "" || a.stamp != "" {
+			t.Fatal("new runtime inherited private usage or source ownership")
+		}
+	}
+	first := api.nativeCostAccounting(base, "claude-code").(*nativeCostAccountant)
+	seed(first)
+	base.Timestamp = now.Add(time.Second)
+	second := api.nativeCostAccounting(base, "codex-cli").(*nativeCostAccountant)
+	if first == second {
+		t.Fatal("provider change kept accountant")
+	}
+	select {
+	case <-first.done:
+	default:
+		t.Fatal("old provider reader still active")
+	}
+	clean(second)
+	seed(second)
+	oldAccount := base
+	base.AccountID = "account-b"
+	base.Timestamp = now.Add(2 * time.Second)
+	third := api.nativeCostAccounting(base, "codex-cli").(*nativeCostAccountant)
+	if second == third {
+		t.Fatal("account change kept accountant")
+	}
+	select {
+	case <-second.done:
+	default:
+		t.Fatal("old account reader still active")
+	}
+	clean(third)
+	seed(third)
+	third.mu.Lock()
+	third.bindNativeID("new-native")
+	third.mu.Unlock()
+	clean(third)
+	// The same source id under different accounts names distinct admitted
+	// usage. Replay after the switch never relabels or adds either charge.
+	for _, owner := range []costledger.Entry{oldAccount, base, base} {
+		e := costobserver.NativeEntry(owner, "codex-cli", nativeusage.Record{ID: "response", NativeSessionID: "native", Timestamp: now, Model: "unknown-example-model", Input: 2, Output: 1})
+		if err := ledger.CommitNativeUsage(owner.AccountID, []costledger.Entry{e}, costledger.NativeCoverage{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	summary, err := ledger.Summarize(now.Format("2006-01-02"), now.Format("2006-01-02"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Total.CallCount != 2 || summary.Total.PromptTokens != 4 || summary.Total.CompletionTokens != 2 {
+		t.Fatalf("switch lost/duplicated charges %+v", summary.Total)
 	}
 }
