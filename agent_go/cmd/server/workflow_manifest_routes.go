@@ -247,6 +247,7 @@ type UpdateWorkflowManifestRequest struct {
 	KBWriteGrants        *[]string                                    `json:"kb_write_grants,omitempty"`
 	WorkspacePath        string                                       `json:"workspace_path"`
 	Label                *string                                      `json:"label,omitempty"`
+	ChatInstructions     *string                                      `json:"chat_instructions,omitempty"`
 	Description          *string                                      `json:"description,omitempty"`
 	RelayOutputStepID    *string                                      `json:"relay_output_step_id,omitempty"`
 	RelayDurability      *string                                      `json:"relay_durability,omitempty"`
@@ -396,6 +397,18 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 			manifest.Access = &WorkflowAccess{}
 		}
 		manifest.Access.AllowedKBWriters = append([]string{}, (*req.KBWriteGrants)...)
+	}
+	if req.ChatInstructions != nil {
+		if workflowAccessForManifest(GetUserFromContext(r.Context()), manifest) != WorkflowAccessOwner {
+			writeWorkflowPermissionDenied(w, "owner")
+			return
+		}
+		value, err := workflowtypes.NormalizeChatInstructions(*req.ChatInstructions)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		manifest.ChatInstructions = value
 	}
 	previousFolderAccess := append([]workflowtypes.WorkflowFolderGrant(nil), manifest.FolderAccess...)
 

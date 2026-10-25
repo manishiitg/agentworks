@@ -11,6 +11,7 @@ import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { AskAIButton } from './AskAIButton'
+import { ChatInstructionsCard } from './ChatInstructionsCard'
 import { SoulViewer } from './SoulViewer'
 import { StatusBanner } from './bots/StatusBanner'
 import { IconUploadField } from '../ui/IconUploadField'
@@ -136,6 +137,8 @@ export default function WorkflowIdentityPanel({ workspacePath, relayMode = false
       >
         <SoulViewer workspacePath={workspacePath} embedded />
       </SettingsCard>}
+
+      <ChatInstructionsCard workspacePath={workspacePath} />
 
       <SettingsCard
         icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}

@@ -236,9 +236,10 @@ type workIdentity struct {
 }
 
 type workProjectManifest struct {
-	Description string        `json:"description,omitempty"`
-	Identity    *workIdentity `json:"identity,omitempty"`
-	UpdatedAt   string        `json:"updated_at,omitempty"`
+	Description      string        `json:"description,omitempty"`
+	ChatInstructions string        `json:"chat_instructions,omitempty"`
+	Identity         *workIdentity `json:"identity,omitempty"`
+	UpdatedAt        string        `json:"updated_at,omitempty"`
 }
 
 const (
@@ -559,7 +560,7 @@ func ProjectPromptVariables(workspaceAPIURL string, allowMissing bool) agentprof
 		result, err := client.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: path.Join(runtime.WorkspacePath, "product.json")})
 		if err != nil {
 			if allowMissing && workspace.IsFileNotFound(err) {
-				return map[string]string{"WORK_IDENTITY": "", "WORK_IDENTITY_KEY": "\n"}, nil
+				return map[string]string{"WORK_IDENTITY": "", "WORK_IDENTITY_KEY": "\n", "CHAT_INSTRUCTIONS": ""}, nil
 			}
 			return nil, fmt.Errorf("read Crew identity: %w", err)
 		}
@@ -580,9 +581,12 @@ func ProjectPromptVariables(workspaceAPIURL string, allowMissing bool) agentprof
 			}
 		}
 		// Always return the key because the Crew prompt uses missingkey=error.
-		// WORK_IDENTITY_KEY carries just the purpose so the agent session
-		// fingerprint relaunches retained sessions when the Crew's purpose
-		// changes, without churning on cosmetic icon/name edits.
-		return map[string]string{"WORK_IDENTITY": identity, "WORK_IDENTITY_KEY": purpose}, nil
+		// Refresh retained sessions for behavioral guidance, not cosmetic edits.
+		instructions := strings.TrimSpace(manifest.ChatInstructions)
+		key := purpose
+		if instructions != "" {
+			key += "\nchat_instructions:\n" + instructions
+		}
+		return map[string]string{"WORK_IDENTITY": identity, "WORK_IDENTITY_KEY": key, "CHAT_INSTRUCTIONS": workflowtypes.ChatInstructionsPrompt(instructions)}, nil
 	}
 }

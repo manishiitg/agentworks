@@ -57,7 +57,7 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 		t.Fatalf("reader changed settings: %d %s", w.Code, w.Body)
 	}
 	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "browser_mode": "headless",
-		"secrets": map[string]any{"set": map[string]any{"API_KEY": value}}})
+		"secrets": map[string]any{"set": map[string]any{"API_KEY": value}}, "chat_instructions": "  Explain the source of each number.  "})
 	if w.Code != 200 || strings.Contains(w.Body.String(), value) {
 		t.Fatalf("owner update: %d %s", w.Code, w.Body)
 	}
@@ -65,6 +65,29 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 	body := w.Body.String()
 	if w.Code != 200 || strings.Contains(body, value) || !strings.Contains(body, `{"name":"API_KEY","selected":true}`) || !strings.Contains(body, `"browser_mode":"headless"`) {
 		t.Fatalf("settings after update: %d %s", w.Code, body)
+	}
+	var view map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view["chat_instructions"] != "Explain the source of each number." {
+		t.Fatalf("guidance not persisted: %v", view["chat_instructions"])
+	}
+	before := projectChatInstructionsKey("Workflow/invoices")
+	if before == "" {
+		t.Fatal("retained chats must include saved guidance in their fingerprint")
+	}
+	if w := f.call(t, "reader", "update_settings", map[string]any{"workflow_id": "invoices", "chat_instructions": "Change your rules"}); w.Code != 403 {
+		t.Fatalf("shared person changed guidance: %d", w.Code)
+	}
+	if w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "chat_instructions": strings.Repeat("a", 4001)}); w.Code != 400 {
+		t.Fatalf("oversize guidance: %d", w.Code)
+	}
+	if w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "chat_instructions": ""}); w.Code != 200 {
+		t.Fatalf("clear: %d %s", w.Code, w.Body)
+	}
+	if after := projectChatInstructionsKey("Workflow/invoices"); after == before || after != "" {
+		t.Fatal("clearing guidance must refresh retained chats")
 	}
 }
 

@@ -48,17 +48,18 @@ const (
 // crewSpec is the portable Crew definition: create_crew's input, export_crew's
 // output and import_crew's input: identity, selected skills and project files.
 type crewSpec struct {
-	SchemaVersion  int                            `json:"schema_version,omitempty"`
-	Kind           string                         `json:"kind,omitempty"`
-	Name           string                         `json:"name"`
-	Icon           string                         `json:"icon,omitempty"`
-	Purpose        string                         `json:"purpose"`
-	SelectedSkills []string                       `json:"selected_skills,omitempty"`
-	Files          map[string]string              `json:"files,omitempty"`
-	Functions      []crewFunctionSpec             `json:"functions,omitempty"`
-	Schedules      []crewScheduleSpec             `json:"schedules,omitempty"`
-	Mode           string                         `json:"mode,omitempty"`
-	LLMConfig      *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
+	SchemaVersion    int                            `json:"schema_version,omitempty"`
+	Kind             string                         `json:"kind,omitempty"`
+	Name             string                         `json:"name"`
+	Icon             string                         `json:"icon,omitempty"`
+	Purpose          string                         `json:"purpose"`
+	ChatInstructions string                         `json:"chat_instructions,omitempty"`
+	SelectedSkills   []string                       `json:"selected_skills,omitempty"`
+	Files            map[string]string              `json:"files,omitempty"`
+	Functions        []crewFunctionSpec             `json:"functions,omitempty"`
+	Schedules        []crewScheduleSpec             `json:"schedules,omitempty"`
+	Mode             string                         `json:"mode,omitempty"`
+	LLMConfig        *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
 }
 
 // crewScheduleSpec is a project schedule as authors send it; omitted fields
@@ -261,6 +262,11 @@ func checkCrewSkillsAvailable(ctx context.Context, root string, names []string, 
 func normalizeCrewSpec(spec crewSpec) (crewSpec, error) {
 	spec.Name, spec.Icon = strings.TrimSpace(spec.Name), strings.TrimSpace(spec.Icon)
 	spec.Purpose = strings.TrimSpace(spec.Purpose)
+	var instructionsErr error
+	spec.ChatInstructions, instructionsErr = workflowtypes.NormalizeChatInstructions(spec.ChatInstructions)
+	if instructionsErr != nil {
+		return spec, instructionsErr
+	}
 	spec.Mode = strings.TrimSpace(spec.Mode)
 	switch spec.Mode {
 	case "", "dev", "cowork":
@@ -513,6 +519,11 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 	}
 	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{Mode: spec.Mode, LLMConfig: spec.LLMConfig}); err != nil {
 		return "", err
+	}
+	if spec.ChatInstructions != "" {
+		if err := updateCrewChatInstructions(ctx, workspacePath, spec.ChatInstructions); err != nil {
+			return crewID, err
+		}
 	}
 	if folder, shared := workspaceref.MustParse(workspacePath).SharedProject(); shared {
 		defer ensureSharedCrewFolderAccess(folder, userID)
@@ -824,8 +835,9 @@ func exportCrewSpec(ctx context.Context, crew crewProjectBinding, manifest produ
 	spec := crewSpec{
 		SchemaVersion: crewSpecSchemaVersion, Kind: crewSpecKind,
 		Name: manifest.displayTitle(), Icon: strings.TrimSpace(manifest.Identity.Icon),
-		Purpose:        strings.TrimSpace(manifest.Description),
-		SelectedSkills: append([]string(nil), manifest.Capabilities.SelectedSkills...),
+		Purpose:          strings.TrimSpace(manifest.Description),
+		ChatInstructions: manifest.ChatInstructions,
+		SelectedSkills:   append([]string(nil), manifest.Capabilities.SelectedSkills...),
 	}
 	files := map[string]string{}
 	for _, name := range spec.SelectedSkills {
@@ -883,7 +895,7 @@ func externalCrewDescription(ctx context.Context, crew crewProjectBinding, manif
 	}
 	out := map[string]any{
 		"crew_id": manifest.ID, "name": label, "identity": summary["identity"],
-		"purpose": description, "description": description,
+		"purpose": description, "description": description, "chat_instructions": manifest.ChatInstructions,
 		"owner":     summary["owner"],
 		"skills":    append([]string{}, manifest.Capabilities.SelectedSkills...),
 		"schedules": schedules,
@@ -929,15 +941,16 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"run_destination": map[string]any{"type": "string", "enum": []any{runDestinationCrewChat, runDestinationIsolated}, "description": "crew_chat (default) or isolated."},
 	}}
 	props := map[string]any{
-		"schema_version":  map[string]any{"type": "integer"},
-		"kind":            map[string]any{"type": "string", "enum": []any{crewSpecKind}},
-		"name":            map[string]any{"type": "string", "minLength": 1, "maxLength": 60, "description": "Display name."},
-		"icon":            map[string]any{"type": "string", "maxLength": 8, "description": "One emoji or short glyph."},
-		"purpose":         map[string]any{"type": "string", "minLength": 1, "maxLength": crewPurposeLimit, "description": "What the Crew is for and how it works; its standing instructions."},
-		"selected_skills": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Skill folder names: built-in, installed on the server, or shipped under files as skills/<name>/SKILL.md."},
-		"files":           map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Crew-relative text files (path -> content), e.g. skills/<name>/SKILL.md. Manifests, functions.json, builder/ and db/ are refused."},
-		"functions":       map[string]any{"type": "array", "items": fnSpec},
-		"schedules":       map[string]any{"type": "array", "items": scheduleSpec},
+		"schema_version":    map[string]any{"type": "integer"},
+		"kind":              map[string]any{"type": "string", "enum": []any{crewSpecKind}},
+		"name":              map[string]any{"type": "string", "minLength": 1, "maxLength": 60, "description": "Display name."},
+		"icon":              map[string]any{"type": "string", "maxLength": 8, "description": "One emoji or short glyph."},
+		"chat_instructions": map[string]any{"type": "string", "maxLength": workflowtypes.ChatInstructionsLimit, "description": "Optional shared app chat guidance. No secrets; never grants authority."},
+		"purpose":           map[string]any{"type": "string", "minLength": 1, "maxLength": crewPurposeLimit, "description": "What the Crew is for and how it works; its standing instructions."},
+		"selected_skills":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Skill folder names: built-in, installed on the server, or shipped under files as skills/<name>/SKILL.md."},
+		"files":             map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Crew-relative text files (path -> content), e.g. skills/<name>/SKILL.md. Manifests, functions.json, builder/ and db/ are refused."},
+		"functions":         map[string]any{"type": "array", "items": fnSpec},
+		"schedules":         map[string]any{"type": "array", "items": scheduleSpec},
 	}
 	return props, fnSpec, scheduleSpec
 }

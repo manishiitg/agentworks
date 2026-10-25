@@ -108,6 +108,22 @@ func TestWorkIdentityToolPersistsAndPromptVariablesReloadIt(t *testing.T) {
 		t.Fatalf("identity key should carry only the purpose: %q", got)
 	}
 
+	// Behavioral guidance changes the retained-session key; cosmetic identity does not.
+	mu.Lock()
+	var guided map[string]any
+	_ = json.Unmarshal([]byte(manifest), &guided)
+	guided["chat_instructions"] = "Explain the source of each number."
+	encoded, _ := json.Marshal(guided)
+	manifest = string(encoded)
+	mu.Unlock()
+	next, err := registry.PromptVariables(context.Background(), "work", agentprofiles.RuntimeContext{UserID: "user-1", SessionID: "session-1", WorkspacePath: projectPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(next["CHAT_INSTRUCTIONS"], "Explain the source of each number.") || next["WORK_IDENTITY_KEY"] == variables["WORK_IDENTITY_KEY"] {
+		t.Fatal("saved app guidance must reach the prompt and refresh retained sessions")
+	}
+
 	if _, err := tool.Execute(context.Background(), map[string]interface{}{"operation": "clear"}); err != nil {
 		t.Fatalf("clear Crew identity: %v", err)
 	}

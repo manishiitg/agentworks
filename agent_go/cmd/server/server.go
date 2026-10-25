@@ -3064,6 +3064,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/chats", api.handleGoalOwnerTabs).Methods("POST")
 	apiRouter.HandleFunc("/dashboards", api.handleDashboards).Methods("POST")
 	api.registerDashboardQuestionRoutes(apiRouter)
+	apiRouter.HandleFunc("/project-chat-instructions", api.handleProjectChatInstructions).Methods(http.MethodGet, http.MethodPut)
 	api.registerDashboardFunctionRoutes(apiRouter)
 	api.registerDefaultDashboardRoutes(apiRouter)
 	api.registerDashboardShortLinkRoutes(apiRouter)
@@ -7511,6 +7512,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					"WorkspacePath":               phaseWorkspacePath,
 					"IsCodeExecutionMode":         fmt.Sprintf("%v", phaseIsCodeExec),
 					"UseProjectedReferenceSkills": "true", // legacy template key; mcpagent read_skill is transport-neutral
+				}
+				if manifest, found, err := ReadWorkflowManifest(r.Context(), phaseWorkspacePath); err == nil && found {
+					phaseTemplateVars["CHAT_INSTRUCTIONS"] = manifest.ChatInstructions
 				}
 				if relayChat {
 					phaseTemplateVars["WorkflowKind"] = "relay"

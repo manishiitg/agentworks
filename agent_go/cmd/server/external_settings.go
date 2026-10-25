@@ -48,11 +48,12 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 	add("get_secret_sources", "Explain this product's saved secret choices by name: its own copy, the company Vault copy and which takes priority. Values, token validity and account identities are not checked. Does not change selections or stored copies. Pass workflow_id or crew_id.", false, false, sourceTarget)
 	props := target()
 	for key, value := range map[string]any{
-		"expected_version": externalString("Version from settings action=get; the update is refused if the settings changed since."),
-		"models":           map[string]any{"type": "object", "description": "The models object from get_settings with your changes. Replaces it whole; every account (connection_id) must be one you may use."},
-		"mcp_servers":      map[string]any{"type": "object", "additionalProperties": false, "description": "Attach/detach MCP servers, or replace the complete selection. NO_SERVERS explicitly turns off automatic Vault connections.", "properties": map[string]any{"add": names, "remove": names, "replace": names}},
-		"tools":            addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),
-		"skills":           addRemove("Installed or built-in skills to use or stop using."),
+		"chat_instructions": map[string]any{"type": "string", "maxLength": workflowtypes.ChatInstructionsLimit, "description": "Optional short instructions for the app chat: behavior, tone and what to do first. Visible to people who can use the app; no secrets. Empty clears. Owner only; never grants tools or permissions."},
+		"expected_version":  externalString("Version from settings action=get; the update is refused if the settings changed since."),
+		"models":            map[string]any{"type": "object", "description": "The models object from get_settings with your changes. Replaces it whole; every account (connection_id) must be one you may use."},
+		"mcp_servers":       map[string]any{"type": "object", "additionalProperties": false, "description": "Attach/detach MCP servers, or replace the complete selection. NO_SERVERS explicitly turns off automatic Vault connections.", "properties": map[string]any{"add": names, "remove": names, "replace": names}},
+		"tools":             addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),
+		"skills":            addRemove("Installed or built-in skills to use or stop using."),
 		"secrets": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 			"set":         map[string]any{"type": "object", "maxProperties": 20, "additionalProperties": map[string]any{"type": "string", "minLength": 1, "maxLength": 65536}, "description": "NAME: value. Stores the value (write-only, owner only) and selects the secret. To add it to Vault for other projects, then call manage_vault_secret_access operation=share (a Vault administrator)."},
 			"remove":      names,
@@ -82,13 +83,14 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 // externalSettingsState is the part of a workflow's or Crew's capabilities
 // these tools read and change.
 type externalSettingsState struct {
-	LLMConfig     *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
-	Servers       []string                       `json:"selected_servers,omitempty"`
-	Tools         []string                       `json:"selected_tools,omitempty"`
-	Skills        []string                       `json:"selected_skills,omitempty"`
-	Secrets       []string                       `json:"selected_secrets,omitempty"`
-	GlobalSecrets *[]string                      `json:"selected_global_secret_names,omitempty"`
-	BrowserMode   string                         `json:"browser_mode,omitempty"`
+	ChatInstructions string                         `json:"chat_instructions,omitempty"`
+	LLMConfig        *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
+	Servers          []string                       `json:"selected_servers,omitempty"`
+	Tools            []string                       `json:"selected_tools,omitempty"`
+	Skills           []string                       `json:"selected_skills,omitempty"`
+	Secrets          []string                       `json:"selected_secrets,omitempty"`
+	GlobalSecrets    *[]string                      `json:"selected_global_secret_names,omitempty"`
+	BrowserMode      string                         `json:"browser_mode,omitempty"`
 }
 
 func (s externalSettingsState) version() string {
@@ -127,7 +129,7 @@ func (api *StreamingAPI) externalSettingsView(ctx context.Context, userID string
 		available = append(available, secret.Name)
 	}
 	view := map[string]any{
-		"kind": t.kind, "version": s.version(), "my_access": t.access,
+		"kind": t.kind, "version": s.version(), "my_access": t.access, "chat_instructions": s.ChatInstructions,
 		"models": s.LLMConfig, "mcp_servers": nonNilStrings(s.Servers), "tools": nonNilStrings(s.Tools),
 		"skills": nonNilStrings(s.Skills),
 		"secrets": map[string]any{"stored": stored, "shared_selected": shared, "shared_available": available,
@@ -188,6 +190,21 @@ func settingsInvalid(format string, a ...any) *externalSettingsError {
 func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID string, t externalSettingsTarget, s *externalSettingsState, args map[string]any) ([]string, []PendingConnection, *externalSettingsError) {
 	changed := []string{}
 	var pending []PendingConnection
+	if raw, ok := args["chat_instructions"]; ok {
+		if !t.owner {
+			return nil, nil, &externalSettingsError{403, "forbidden", "Only the project's owner can change Chat instructions."}
+		}
+		text, ok := raw.(string)
+		if !ok {
+			return nil, nil, settingsInvalid("Chat instructions must be text")
+		}
+		value, err := workflowtypes.NormalizeChatInstructions(text)
+		if err != nil {
+			return nil, nil, settingsInvalid("%v", err)
+		}
+		s.ChatInstructions = value
+		changed = append(changed, "chat_instructions")
+	}
 
 	// Models: every named account must be one this person may use here.
 	if raw, ok := args["models"]; ok {
@@ -444,7 +461,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		target.kind = "relay"
 	}
 	caps := manifest.Capabilities
-	state := externalSettingsState{LLMConfig: caps.LLMConfig, Servers: append([]string{}, caps.SelectedServers...),
+	state := externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: append([]string{}, caps.SelectedServers...),
 		Tools: append([]string{}, caps.SelectedTools...), Skills: append([]string{}, caps.SelectedSkills...),
 		Secrets: append([]string{}, caps.SelectedSecrets...), GlobalSecrets: caps.SelectedGlobalSecretNames, BrowserMode: caps.BrowserMode}
 	notifications := func(c WorkflowCapabilities) map[string]any {
@@ -483,6 +500,9 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	caps.LLMConfig, caps.SelectedServers, caps.SelectedTools, caps.SelectedSkills = state.LLMConfig, state.Servers, state.Tools, state.Skills
 	caps.SelectedSecrets, caps.SelectedGlobalSecretNames, caps.BrowserMode = state.Secrets, state.GlobalSecrets, state.BrowserMode
 	req := UpdateWorkflowManifestRequest{WorkspacePath: workflow.WorkspacePath, Capabilities: &caps}
+	if _, ok := args["chat_instructions"]; ok {
+		req.ChatInstructions = &state.ChatInstructions
+	}
 	if n, ok := args["notifications"].(map[string]any); ok {
 		if v, ok := n["run_instructions"].(string); ok {
 			req.RunNotificationInstructions = &v
@@ -533,7 +553,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		caps = updated.Capabilities
 		manifest = updated
 	}
-	view := api.externalSettingsView(ctx, claims.UserID, target, externalSettingsState{LLMConfig: caps.LLMConfig, Servers: caps.SelectedServers,
+	view := api.externalSettingsView(ctx, claims.UserID, target, externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: caps.SelectedServers,
 		Tools: caps.SelectedTools, Skills: caps.SelectedSkills, Secrets: caps.SelectedSecrets, GlobalSecrets: caps.SelectedGlobalSecretNames,
 		BrowserMode: caps.BrowserMode}, notifications(caps))
 	view["changed"] = changed
@@ -587,6 +607,7 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 	if encoded, err := json.Marshal(capabilities); err == nil {
 		_ = json.Unmarshal(encoded, &state)
 	}
+	state.ChatInstructions = project.ChatInstructions
 	access := "member"
 	if crew.OwnedByCaller {
 		access = "owner"
@@ -630,6 +651,12 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 	if len(changed) == 0 {
 		externalError(w, 400, "invalid_settings", "Nothing to change; send at least one setting.")
 		return
+	}
+	if _, ok := args["chat_instructions"]; ok {
+		if err := updateCrewChatInstructions(ctx, root, state.ChatInstructions); err != nil {
+			externalError(w, 502, "workspace_unavailable", "Chat instructions could not be saved.")
+			return
+		}
 	}
 	// Write only the keys that changed, so fields the Crew panels own and
 	// this tool does not know keep their exact stored form.

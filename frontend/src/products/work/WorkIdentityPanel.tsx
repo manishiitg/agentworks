@@ -22,6 +22,7 @@ import { loadWorkSessions } from './workSessions'
 import { useProjectProduct } from './projectProduct'
 import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
+import { ChatInstructionsCard } from '../../components/workflow/ChatInstructionsCard'
 import { ProjectInstructionsCard } from './ProjectInstructionsCard'
 import type { WorkRuntimeSelection } from './workTabs'
 import { useChatStore } from '../../stores/useChatStore'
@@ -334,6 +335,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
+        {activeTab === 'general' && product.hasIdentity && <ChatInstructionsCard workspacePath={workspacePath} />}
         {activeTab === 'general' &&  <ModeRow sessionId={sessionId} />}
         {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
         {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} workspaceName={projectIdentity?.name?.trim() || projectTitle} /></Suspense>}

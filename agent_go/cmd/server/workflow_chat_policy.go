@@ -23,11 +23,12 @@ type workflowChatPolicy struct {
 	// message into an existing chat: that turn keeps the role (origin and authority) of the chat's last other turn, so
 	// it does not look like a different chat (PLAT-548, round 2). Origin itself stays "notification" for provenance and
 	// for the checks that only a typed turn passes.
-	RoleOrigin       string
-	Capabilities     map[string]bool
-	AuthorityKey     string
-	ProductProfileID string
-	KnowledgeKey     string
+	RoleOrigin          string
+	Capabilities        map[string]bool
+	AuthorityKey        string
+	ProductProfileID    string
+	ChatInstructionsKey string
+	KnowledgeKey        string
 }
 
 // readOnlyForRequest decides whether a turn runs with read-only treatment.
@@ -78,7 +79,7 @@ func resolveWorkflowChatPolicy(session string, req QueryRequest, active *ActiveS
 	} else if strings.TrimSpace(session) != "" {
 		chatPolicyRoles.Store(session, chatPolicyRoleSnapshot{Origin: origin, Authority: authority})
 	}
-	return workflowChatPolicy{KnowledgeKey: knowledgeRuntimeConfigKey(workspace), Mode: normalized, Origin: origin, RoleOrigin: roleOrigin, Capabilities: agentworksproduct.ChatCapabilities(normalized, roleOrigin, readOnly), AuthorityKey: authority, ProductProfileID: strings.TrimSpace(req.AgentProfileID)}
+	return workflowChatPolicy{ChatInstructionsKey: projectChatInstructionsKey(workspace), KnowledgeKey: knowledgeRuntimeConfigKey(workspace), Mode: normalized, Origin: origin, RoleOrigin: roleOrigin, Capabilities: agentworksproduct.ChatCapabilities(normalized, roleOrigin, readOnly), AuthorityKey: authority, ProductProfileID: strings.TrimSpace(req.AgentProfileID)}
 }
 
 // describe is the readable form of the parts that make up sessionKey, for the log line that says why a chat's native
@@ -144,6 +145,9 @@ func (p workflowChatPolicy) sessionKey() string {
 		roleOrigin = "interactive"
 	}
 	identity := p.Mode + "|" + roleOrigin + "|" + strings.Join(names, ",")
+	if p.ChatInstructionsKey != "" {
+		identity += "|chat_instructions:" + p.ChatInstructionsKey
+	}
 	if p.KnowledgeKey != "" {
 		identity += "|knowledge:" + p.KnowledgeKey
 	}

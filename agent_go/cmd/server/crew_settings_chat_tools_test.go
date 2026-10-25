@@ -65,6 +65,18 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 					t.Fatalf("%s chat and MCP differ for %s", name, person)
 				}
 			}
+
+			// The existing native settings tool and MCP/app adapters share storage.
+			if _, err := panels.tools["settings"].exec(ctx, map[string]any{"action": "update", "chat_instructions": "  Ask which date range to compare.  "}); err != nil {
+				t.Fatal(err)
+			}
+			raw, found, err := readFileFromWorkspace(ctx, externalCommandCrewRoot+"/product.json")
+			if err != nil || !found || !strings.Contains(raw, "Ask which date range to compare.") {
+				t.Fatalf("native guidance was not saved: %v", err)
+			}
+			if _, err := panels.tools["settings"].exec(ctx, map[string]any{"action": "update", "chat_instructions": ""}); err != nil {
+				t.Fatal(err)
+			}
 			profile, err := f.api.agentProfiles.Resolve(crewProfileID, 0, claims.UserID)
 			if err != nil {
 				t.Fatal(err)
