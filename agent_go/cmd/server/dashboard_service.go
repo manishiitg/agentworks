@@ -385,7 +385,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 			}
 			// Legacy documents remain available through the same validation/preview/link service.
 			if !strings.HasPrefix(p, dashboards.Prefix) {
-				api.dashboardDocumentAction(w, r, target, args.Action, p, args.Theme, args.Width)
+				api.dashboardDocumentAction(w, r, target, args.Action, p, args.Theme, args.Width, "")
 				return
 			}
 		}
@@ -422,14 +422,21 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	if args.Action == "validate" || args.Action == "preview" || args.Action == "link" {
 		p := result.ResolvedPath
+		shortURL := ""
 		if args.Action == "link" {
 			if result.Dashboard.Published == "" {
 				externalError(w, 404, "not_published", "publish the dashboard before sharing its live link")
 				return
 			}
 			p = result.Dashboard.DocumentPath
+			// A managed dashboard has a short /d/<code> link; people get that one, not the long path.
+			if result.Dashboard.Managed {
+				row := dashboardDiscoveryRow(target, *result.Dashboard)
+				addDashboardQuestionResources(r.Context(), []dashboardQuestionDiscovery{{target, *result.Dashboard, row}})
+				shortURL, _ = row["short_url"].(string)
+			}
 		}
-		api.dashboardDocumentAction(w, r, target, args.Action, p, args.Theme, args.Width)
+		api.dashboardDocumentAction(w, r, target, args.Action, p, args.Theme, args.Width, shortURL)
 		return
 	}
 	if args.Action == "list" {
@@ -485,7 +492,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	externalJSON(w, result)
 }
-func (api *StreamingAPI) dashboardDocumentAction(w http.ResponseWriter, r *http.Request, target dashboardTarget, action, p, theme, width string) {
+func (api *StreamingAPI) dashboardDocumentAction(w http.ResponseWriter, r *http.Request, target dashboardTarget, action, p, theme, width, shortURL string) {
 	claims := GetUserFromContext(r.Context())
 	switch action {
 	case "get":
@@ -534,6 +541,9 @@ func (api *StreamingAPI) dashboardDocumentAction(w http.ResponseWriter, r *http.
 			return
 		}
 		out := map[string]any{"url": parsed, "document_path": p, "workspace": target.Root, "authentication": "Recipients must sign in and have current project access. This URL grants no access."}
+		if shortURL != "" {
+			out["long_url"], out["url"] = parsed, shortURL
+		}
 		addShareabilityMetadata(out, base)
 		externalJSON(w, out)
 	}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bot, MessageSquare, Users } from 'lucide-react'
+import { Bot, Link2, MessageSquare, Users, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import api, { authApi } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -17,6 +17,10 @@ type ShareState = {
 type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean }
 const who = (person: Person) => person.email || person.username || person.id
 const audience = (state: ShareState) => state.mode === 'everyone' ? 'Everyone' : state.mode === 'people' ? 'Chosen people' : 'Only owners'
+const errorText = (cause: unknown, fallback: string) => {
+  const data = (cause as { response?: { data?: { error?: { message?: string } | string; message?: string } } })?.response?.data
+  return (typeof data?.error === 'string' ? data.error : data?.error?.message) || data?.message || fallback
+}
 export const ACCESS_CHAT_REQUEST = 'Help me change access to this project. Show who can build it, who can use it and which existing agents are shared, then ask what I want to change.'
 
 /** One Access overview. Changes use the project's visible chat and its existing server tools. */
@@ -37,6 +41,10 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
   const [ownersError, setOwnersError] = useState('')
   const [asking, setAsking] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [pickedPeople, setPickedPeople] = useState(false)
+  const [email, setEmail] = useState('')
   const trigger = useRef<HTMLButtonElement>(null)
   const isPanel = variant === 'panel'
   const expanded = isPanel || open
@@ -84,6 +92,43 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
   if (!state.can_share) return isPanel ? <p className="text-sm text-muted-foreground">Ask a project owner to change access.</p> : null
   if (variant === 'row') return <Row icon={Users} detail={audience(state)} onClick={() => onOpen?.()}>{label}</Row>
   const selected = (state.agents || []).filter(agent => agent.selected)
+  const emails = (state.people || []).map(person => person.email).filter((value): value is string => !!value)
+  const mode = pickedPeople ? 'people' : state.mode
+  /** The server decides: it takes the mode and the full list of people and answers with the saved state. */
+  const save = async (next: ShareState['mode'], list?: string[]) => {
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const { data } = await api.post<ShareState & { unknown?: string[] }>('/api/dashboards', { workspace: workspacePath, action: 'share', mode: next, ...(list ? { emails: list } : {}) })
+      setSnapshot({ scope, state: data }); setPickedPeople(false); setEmail('')
+      if (data.unknown?.length) setNotice(`No account for ${data.unknown.join(', ')}.`)
+    } catch (cause) { setError(errorText(cause, 'Could not change access.')) }
+    finally { setBusy(false) }
+  }
+  const choose = (next: ShareState['mode']) => {
+    if (next === 'people') { if (emails.length) void save('people', emails); else setPickedPeople(true) } else void save(next)
+  }
+  const add = () => {
+    const value = email.trim().toLowerCase()
+    if (!value) return
+    if (emails.includes(value)) { setEmail(''); return }
+    void save('people', [...emails, value])
+  }
+  const remove = (value: string) => {
+    const rest = emails.filter(item => item !== value)
+    void save(rest.length ? 'people' : 'private', rest.length ? rest : undefined)
+  }
+  const copyLink = async () => {
+    setError(''); setNotice('')
+    try {
+      const { data } = await api.post<{ dashboards?: { dashboard_id?: string; short_url?: string; url?: string }[] }>('/api/dashboards', { workspace: workspacePath, action: 'list' })
+      const rows = (data.dashboards || []).filter(row => row.short_url || row.url)
+      const row = rows.find(item => item.dashboard_id === 'overview') || rows[0]
+      const link = row?.short_url || row?.url
+      if (!link) { setError('There is no published dashboard to link to yet.'); return }
+      await navigator.clipboard.writeText(link)
+      setNotice('Link copied. People still need access to open it.')
+    } catch (cause) { setError(errorText(cause, 'Could not copy the link.')) }
+  }
   const content = <div className="space-y-6 text-sm">
     <section aria-label="Who can build" className="space-y-3">
       <h3 className="font-semibold">Who can build</h3>
@@ -94,9 +139,28 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
       {ownersError && <p role="alert" className="text-xs text-destructive">{ownersError} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
       <p className="text-xs text-muted-foreground">Owners share the project and its history. Each controls their own chat tabs.</p>
     </section>
-    <section aria-label="Who can use" className="space-y-2 border-t border-border pt-4">
-      <h3 className="font-semibold">Who can use</h3><p>{audience(state)}</p>
-      {state.mode === 'people' && <ul className="space-y-1 text-xs text-muted-foreground">{state.people?.map(person => <li key={person.id} className="break-words">{who(person)}</li>)}</ul>}
+    <section aria-label="Who can use" className="space-y-3 border-t border-border pt-4">
+      <h3 className="font-semibold">Who can use</h3>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="sr-only" htmlFor="general-access">General access</label>
+        <select id="general-access" value={mode} disabled={busy} onChange={event => choose(event.target.value as ShareState['mode'])} className="h-9 min-w-0 rounded-md border border-border bg-background px-2 text-sm">
+          <option value="private">Only owners</option>
+          <option value="people">Chosen people</option>
+          <option value="everyone">Everyone</option>
+        </select>
+        <button type="button" onClick={() => void copyLink()} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm hover:bg-muted"><Link2 aria-hidden="true" className="h-4 w-4" />Copy link</button>
+      </div>
+      {mode === 'people' && <div className="space-y-2">
+        <ul aria-label="People with access" className="space-y-1">{(state.people || []).map(person => <li key={person.id} className="flex min-w-0 items-center gap-2 text-sm">
+          <span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>
+          {person.email && <button type="button" aria-label={`Remove ${who(person)}`} disabled={busy} onClick={() => remove(person.email as string)} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>}
+        </li>)}</ul>
+        <form onSubmit={event => { event.preventDefault(); add() }} className="flex gap-2">
+          <input type="email" aria-label="Add a person by email" placeholder="Add a person by email" value={email} disabled={busy} onChange={event => setEmail(event.target.value)} className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm" />
+          <button type="button" onClick={add} disabled={busy || !email.trim()} className="h-9 rounded-md border border-border px-3 text-sm hover:bg-muted disabled:opacity-50">Add</button>
+        </form>
+      </div>}
+      {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
       <p className="text-xs text-muted-foreground">People you share with can use the dashboard and ask for work from the website, their Crew or MCP.</p>
     </section>
     {state.agents && <section aria-label="Shared agents" className="space-y-3 border-t border-border pt-4">
