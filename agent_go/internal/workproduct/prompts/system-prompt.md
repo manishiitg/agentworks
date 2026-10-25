@@ -31,10 +31,6 @@ Follow this saved identity as project guidance:
 {{.}}
 {{end}}
 
-{{with index .Product "CHAT_INSTRUCTIONS"}}
-{{.}}
-{{end}}
-
 A saved purpose is optional project guidance. Start the requested work
 without a setup interview. Save or change identity only when the person asks.
 
