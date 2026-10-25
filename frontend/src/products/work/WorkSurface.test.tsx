@@ -65,7 +65,7 @@ describe('Crew native tab dragging', () => {
       expect(host.querySelector('[data-chat-tab-id="research"] [role="button"]')?.getAttribute('aria-label')).toContain('alex.taylor@example.com')
       expect(host.textContent).not.toContain('me@example.com')
       await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
-      const menu = host.querySelector('[aria-label="Agents"]')!
+      const menu = document.querySelector('[role="dialog"][aria-label="Agents"]')!
       expect(menu.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
       expect(menu.querySelector('button[title="Research · alex.taylor@example.com"]')).not.toBeNull()
       expect(menu.querySelector('[aria-label="Rename Research"]')).toBeNull()
@@ -93,15 +93,15 @@ describe('Crew native tab dragging', () => {
     const root = createRoot(host)
     try {
       await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
-      const ids = (selector: string, attribute: string) => [...host.querySelectorAll(selector)].map(node => node.getAttribute(attribute))
+      const ids = (selector: string, attribute: string, scope: ParentNode = host) => [...scope.querySelectorAll(selector)].map(node => node.getAttribute(attribute))
       expect(ids('[data-chat-tab-id]', 'data-chat-tab-id')).toEqual(['main', 'b', 'a', 'bot', 'schedule'])
       const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
       expect(menu.textContent).toBe('')
       expect(menu.getAttribute('aria-label')).toBe('Agents: switch, reorder or close (4)')
       await act(async () => menu.click())
-      expect(ids('[data-chat-list-id]', 'data-chat-list-id')).toEqual(['main', 'b', 'a', 'z', 'bot', 'schedule'])
-      expect(host.querySelector('[aria-label="Agents"] [title="Close activity view"]')).not.toBeNull()
-      expect(host.querySelector('[aria-label="Close Crew"]')).toBeNull()
+      expect(ids('[data-chat-list-id]', 'data-chat-list-id', document)).toEqual(['main', 'b', 'a', 'z', 'bot', 'schedule'])
+      expect(document.querySelector('[aria-label="Agents"] [title="Close activity view"]')).not.toBeNull()
+      expect(document.querySelector('[aria-label="Agents"] [aria-label="Close Crew"]')).toBeNull()
     } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore() }
   })
 
@@ -130,11 +130,12 @@ describe('Crew native tab dragging', () => {
       expect(menu.textContent).toBe('')
       expect(menu.getAttribute('aria-label')).toBe('Agents: switch, reorder or close (3)')
       await act(async () => menu.click())
-      expect(host.querySelector('[aria-label="Agents"]')?.textContent).toContain('a')
-      expect(host.querySelector('[aria-label="Unpin a"]')).not.toBeNull()
-      expect(host.querySelector('[aria-label="Move a earlier"]')).toBeNull()
-      expect([...host.querySelectorAll('button')].some(button => button.textContent === 'Reorder')).toBe(false)
-      expect(host.querySelector('[aria-label="Close a"]')).not.toBeNull()
+      const popover = document.querySelector('[role="dialog"][aria-label="Agents"]')!
+      expect(popover.textContent).toContain('a')
+      expect(popover.querySelector('[aria-label="Unpin a"]')).not.toBeNull()
+      expect(popover.querySelector('[aria-label="Move a earlier"]')).toBeNull()
+      expect([...popover.querySelectorAll('button')].some(button => button.textContent === 'Reorder')).toBe(false)
+      expect(popover.querySelector('[aria-label="Close a"]')).not.toBeNull()
     } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore(); order.mockRestore() }
   })
 
@@ -150,19 +151,20 @@ describe('Crew native tab dragging', () => {
     try {
       await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
       await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
-      const reorder = [...host.querySelectorAll('button')].find(button => button.textContent === 'Reorder')
+      const menu = document.querySelector('[role="dialog"][aria-label="Agents"]')!
+      const reorder = [...menu.querySelectorAll('button')].find(button => button.textContent === 'Reorder')
       expect(Boolean(reorder)).toBe(count > 5)
-      expect(host.querySelector('[aria-label="Agents"] .lucide-grip-vertical')).toBeNull()
+      expect(menu.querySelector('.lucide-grip-vertical')).toBeNull()
       if (reorder) {
         await act(async () => reorder.click())
-        const earlier = host.querySelector<HTMLButtonElement>('[aria-label="Move agent-1 earlier"]')!
+        const earlier = menu.querySelector<HTMLButtonElement>('[aria-label="Move agent-1 earlier"]')!
         expect(earlier).not.toBeNull()
-        expect(host.querySelector<HTMLButtonElement>('[aria-label="Move agent-0 earlier"]')!.disabled).toBe(true)
+        expect(menu.querySelector<HTMLButtonElement>('[aria-label="Move agent-0 earlier"]')!.disabled).toBe(true)
         await act(async () => earlier.click())
         expect(order).toHaveBeenCalledWith('work', 'crew', ['crew:chat:agent-1', 'crew:chat:agent-0', ...listed.slice(2).map(chat => chat.conversation_key)])
-        await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Done')!.click())
-        expect(host.querySelector('[aria-label="Rename agent-0"]')).not.toBeNull()
-        expect(host.querySelector('[aria-label="Move agent-0 earlier"]')).toBeNull()
+        await act(async () => [...menu.querySelectorAll('button')].find(button => button.textContent === 'Done')!.click())
+        expect(menu.querySelector('[aria-label="Rename agent-0"]')).not.toBeNull()
+        expect(menu.querySelector('[aria-label="Move agent-0 earlier"]')).toBeNull()
       }
     } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore(); order.mockRestore() }
   })
