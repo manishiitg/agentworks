@@ -72,6 +72,10 @@ const NON_TRANSCRIPT_TYPES = new Set([
   // row. Remove it before grouping so invisible phase updates between tools
   // cannot split one consecutive batch into several adjacent chips.
   'turn_phase',
+  // Native CLI records (one per tool call, usage update or helper state) are
+  // status metadata for the server and the clean view; here they would split
+  // one batch of tool calls the same way (PLAT-872).
+  'coding_agent_native_activity',
   // Provider/setup diagnostics belong in Terminal, not in the readable
   // conversation. Their useful human content is already represented by the
   // user_message and final-answer events beside them.

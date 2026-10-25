@@ -965,20 +965,21 @@ describe('tool grouping across repeated assistant updates', () => {
     }))
   }
 
-  it('groups calls across invisible server phase updates, including an update inside a tool pair', () => {
+  // turn_phase split groups on 2026-10-19 (3c5efea0e); native CLI records did the same on 2026-10-25 (PLAT-872).
+  it.each([
+    ['turn_phase', { phase: 'running', text: 'Working', since: '2026-10-19T15:46:47Z' }],
+    ['coding_agent_native_activity', { record: { kind: 'tool', state: 'completed' } }],
+  ])('groups calls across invisible %s events, including one inside a tool pair', (type, data) => {
     const events = Array.from({ length: 6 }, (_, index) => {
       const [start, end] = call(`call-${index}`)
-      return [start, evt({
-        id: `phase-${index}`, session_id: 's1', type: 'turn_phase',
-        data: { data: { phase: 'running', text: 'Working', since: '2026-10-19T15:46:47Z' } } as never,
-      }), end]
+      return [start, evt({ id: `hidden-${index}`, session_id: 's1', type, data: { data } as never }), end]
     }).flat()
     const items = buildTranscriptItems(events)
     expect(items).toHaveLength(1)
     expect(items[0]).toMatchObject({ kind: 'tools', toolCount: 6 })
     if (items[0].kind === 'tools') {
       expect(pairToolCalls(items[0].events)).toHaveLength(6)
-      expect(items[0].events.some(event => event.type === 'turn_phase')).toBe(false)
+      expect(items[0].events.some(event => event.type === type)).toBe(false)
     }
   })
 
