@@ -51,12 +51,12 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
     add('publish', 'Setup', 'Publish', Globe)
     add('notify', 'Setup', 'Notify', BellRing)
   }
-  if (!relayMode) add('mcp', 'Integrations', 'My Vault', Vault, 'vault')
+  add('mcp', 'Integrations', 'My Vault', Vault, 'vault')
   for (const item of projectConnectionSections({ allowedProducts, relayMode, onOpen: () => {} })) {
-    if (!relayMode && ['mcp:connected', 'mcp:secrets', 'mcp:gmail'].includes(item.id)) continue
     add('mcp', 'Integrations', item.label, item.icon, item.id.slice(4), item.subgroup)
   }
-  if (relayMode) add('mcp', 'Integrations', 'Slack account', MessageSquareText, 'slack')
+  add('mcp', 'Integrations', 'Slack account', MessageSquareText, 'slack-account')
+  if (!relayMode) add('mcp', 'Integrations', 'Local laptop', Laptop, 'laptop')
   if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Integrations', 'AgentBridge', Cable, 'agentbridge')
   add('identity', 'Setup', 'Settings', Settings, 'general')
   add('identity', 'Setup', 'Models', Cpu, 'llm')

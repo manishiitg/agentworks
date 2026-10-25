@@ -87,7 +87,7 @@ describe('Workflow MCP panel layout', () => {
     expect(panel).not.toContain('<IntegrationSectionPicker')
     expect(panel).toContain('tabs={section ===')
     expect(panel).toContain('<ProjectPluginsPanel')
-    expect(panel).toContain('connections={view => <ProjectMcpPanel')
+    expect(panel).toContain('projectControls={<ProjectVaultControls')
     expect(panel).toContain('<ProductSlackPanel')
     expect(panel).toContain("shareChannel === 'slack'")
     expect(panel).toContain("allowBots={!relayMode}")

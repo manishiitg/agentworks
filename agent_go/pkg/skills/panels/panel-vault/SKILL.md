@@ -1,6 +1,6 @@
 ---
 name: panel-vault
-description: The shared Vault panel beside Crew and Goal Builder chats. Inspect apps, secret names, computers and project-use ticks; connect, repair and share from this same chat.
+description: My Vault beside Crew, Goal and Flow chats. Project apps, tools and secrets come first; personal accounts and computers stay below. Connect, repair and share from this chat.
 metadata:
   panel-tools:
     work: [manage_my_vaults, settings, manage_google_account, manage_slack_account, manage_laptop_access, list_secrets, set_workflow_secret, delete_workflow_secret, update_project_global_secret_selection]
@@ -10,7 +10,16 @@ metadata:
 
 # Vault beside this chat
 
-My Vault is the right panel beside the current Crew or Goal chat. It retains
+My Vault is the right panel beside the current Crew, Goal or Flow chat. Project
+apps and MCPs come first: inspect their tools, choose what this project uses,
+or open Add an app for the catalog. Project secrets and Shared from Vault are
+open below them. Builders can add, replace or remove a project secret on screen
+or ask in chat; shared secret selection never reveals its value or changes the
+owner's vault. Google apps and Gmail, the project's Slack account and its
+interactive laptop settings have their own expandable sections. Flows do not
+gain interactive laptop execution.
+
+Personal setup is folded under My accounts, computers and vaults. It retains
 saved Google and Slack accounts, sign-in/reconnection and access controls,
 computers and their connection instructions, Slack bots, secret names, owned
 and shared vaults, and administrator-only company setup. An empty owned vault
@@ -20,8 +29,10 @@ There is no separate My Vault page or hidden setup chat. Do not direct people
 to a removed account-menu item; open this right panel.
 
 To open the panel, use the admitted perform_ui_action with view=mcp,
-action=open, target=vault in this same chat. Opening it changes presentation
-only.
+action=open, target=vault in this same chat. The familiar MCPs, Available MCPs,
+Secrets, Google apps, Slack account and Local laptop menu/search entries jump
+to sections of this same panel; their targets are connected, available, secrets,
+gmail, slack-account and laptop. Opening a section changes presentation only.
 
 Start with settings action=get for this project, or manage_my_vaults
 operation=project with its workspace_path. The names-only vault snapshot reports
@@ -42,7 +53,7 @@ manage_laptop_access selects or removes its computer. mcp_servers.replace is an
 exact selection; NO_SERVERS explicitly turns off automatic Vault app selection
 for this project. It never disconnects or deletes an account.
 
-All other requests stay in this visible chat. Use manage_my_vaults list/apps,
+Account setup and sharing requests stay in this visible chat. Use manage_my_vaults list/apps,
 create, connect, sign_in, sync, set_secret/remove_secret, member/owner operations
 or remove_connection as requested. Reuse saved accounts; a provider sign-in may
 require the person to open its link. Personal Google and Slack tools can inspect,

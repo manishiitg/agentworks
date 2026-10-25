@@ -27,9 +27,9 @@ async function mount() {
   await update()
   return { host, update }
 }
-it('shows names, sharing and connection health with project vaults folded and no setup forms', async () => {
+it('shows project resources open with named connection health', async () => {
   const { host } = await mount()
-  expect([...host.querySelectorAll('details')].map(el => el.open)).toEqual([true, false])
+  expect([...host.querySelectorAll('details')].map(el => el.open)).toEqual([true, true])
   expect(host.textContent).toContain('You + 1 person')
   expect(host.querySelector('[aria-label="Needs attention"]')).not.toBeNull()
   expect(host.querySelector('[aria-label="Offline"]')).not.toBeNull()

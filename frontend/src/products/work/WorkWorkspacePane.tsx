@@ -352,6 +352,9 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         />}
         {view === 'mcp' && <WorkIntegrationsPanel
           canEdit={canEditConnections}
+          accessLoading={!shared && projectAccess?.key !== accessKey}
+          selectedSecrets={selectedSecrets} selectedGlobalSecrets={selectedGlobalSecrets}
+          onSelectedSecretsChange={onSelectedSecretsChange} onSelectedGlobalSecretsChange={onSelectedGlobalSecretsChange}
           key={workspacePath}
           workspacePath={workspacePath}
           projectId={projectId}

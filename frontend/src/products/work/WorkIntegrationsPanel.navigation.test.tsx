@@ -15,7 +15,7 @@ vi.mock('../../components/workflow/ShareDashboardButton', () => ({ ShareDashboar
 vi.mock('../../components/integrations/ProjectMcpPanel', () => ({ ProjectMcpPanel: ({ view }: any) => <div data-content="mcp">{view} MCP content</div> }))
 vi.mock('../../components/integrations/ProjectSecretsPanel', () => ({ ProjectSecretsPanel: () => <div data-content="secrets">Existing secrets</div> }))
 vi.mock('../../components/skills/SkillsManagerPanel', () => ({ default: () => <div data-content="skills">Existing skills</div> }))
-vi.mock('../../components/integrations/MyVaultPanel', () => ({ MyVaultPanel: () => <div data-content="vault">Full My Vault and project selections</div> }))
+vi.mock('../../components/integrations/MyVaultPanel', () => ({ MyVaultPanel: ({projectControls}: any) => <div data-content="vault">{projectControls}</div> }))
 vi.mock('../../components/workflow/ProjectKnowledgebasePanel', () => ({ ProjectKnowledgebasePanel: () => <div data-content="brain">Existing Brain settings</div> }))
 vi.mock('./WorkIdentityPanel', () => ({ WorkFoldersSection: () => <div data-content="folders">Existing folder access</div> }))
 vi.mock('../../components/workflow/WorkflowBotsPanel', () => ({ default: ({ fixedChannel, channelOnly, ownBotOnly }: any) => <div data-content={fixedChannel} data-channel-only={String(channelOnly)} data-own-bot-only={String(ownBotOnly)}>Existing {fixedChannel}</div> }))
@@ -24,6 +24,7 @@ vi.mock('../../components/integrations/ProjectMcpSetupPanel', () => ({ ProjectMc
 vi.mock('./CrewPublishedAgents', () => ({ CrewPublishedAgents: () => <div data-content="agents">Chats from your computer</div> }))
 vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))
+vi.mock('../../components/integrations/ProjectVaultControls', () => ({ ProjectVaultControls: ({section}: any) => <section data-vault-section={section}>Project apps and secrets</section> }))
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
 import { CREW_PRODUCT, ProjectProductProvider } from './projectProduct'
 
@@ -68,4 +69,12 @@ it('retains feature and Builder access checks for direct targets', async () => {
   const host = await mount(CREW_PRODUCT, new Set(['secrets']), false)
   for (const target of ['slack', 'slack-bot', 'whatsapp', 'agents']) await act(async () => state.target(target))
   expect([...host.querySelectorAll('[data-content]')].map(el => el.getAttribute('data-content'))).toEqual(['vault'])
+})
+
+it('restores resource deep links inside My Vault', async () => {
+ const host = await mount()
+ for (const target of ['connected','available','secrets','gmail','slack-account','laptop']) {
+  await act(async () => state.target(target))
+  expect(host.querySelector('[data-vault-section]')?.getAttribute('data-vault-section')).toBe(target)
+ }
 })

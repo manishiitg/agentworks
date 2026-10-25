@@ -72,7 +72,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false }: Pr
     {!data && !error && <p role="status" className="text-muted-foreground">Loading your vaults…</p>}
     {data?.notices.map(notice => <p key={notice} role="status" className="text-xs text-muted-foreground">{notice}</p>)}
     {data?.vaults.length === 0 && <p className="py-4 text-muted-foreground">No accounts or secrets yet. Ask this chat to connect your first app or create a vault.</p>}
-    {data?.vaults.map(vault => <details key={`${scope}:${vault.id}`} open={!vault.project} className="overflow-hidden rounded-lg border border-border">
+    {data?.vaults.map(vault => <details key={`${scope}:${vault.id}`} open className="overflow-hidden rounded-lg border border-border">
       <summary className="cursor-pointer px-3 py-2.5"><span className="font-medium">{vault.name}</span><span className="ml-2 text-xs text-muted-foreground">{vault.sharing}</span></summary>
       <div className="divide-y divide-border border-t border-border">
         {vault.items.map(item => {
@@ -84,7 +84,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false }: Pr
             <Checkbox aria-label={`Use ${item.name || item.provider} from ${vault.name}`} checked={item.selected} disabled={disabled || busy || !item.can_select} onCheckedChange={() => { void toggle(item) }} />
             <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <button type="button" disabled={disabled} onClick={() => { void setup.open(vaultItemDraft(item, vault.name)) }} className={`min-w-0 flex-1 truncate text-left hover:underline ${secret ? 'font-mono text-xs' : ''}`} title={item.name || item.provider}>{item.name || item.provider}</button>
-            {!secret && <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={status}><span aria-label={status} className={`h-2 w-2 rounded-full ${healthy ? 'bg-emerald-500' : 'bg-red-500'}`} />{item.kind === 'computer' && status}</span>}
+            {!secret && <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={status}><span aria-label={status} className={`h-2 w-2 rounded-full ${healthy ? 'bg-emerald-500' : 'bg-red-500'}`} />{status}</span>}
           </div>
         })}
       </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { KeyRound, MessageCircle, Plug, RefreshCw, Users } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -19,7 +19,7 @@ interface VaultView {
   connections?: { id: string; label: string; provider: string; status: string; sign_in_error?: string }[]
   secret_names: string[]
 }
-type Props = { workspacePath: string; tabId?: string; disabled?: boolean }
+type Props = { workspacePath: string; tabId?: string; disabled?: boolean; projectControls?: ReactNode }
 
 /** The complete My Vault lives beside the current chat, with no separate page or chat. */
 export function MyVaultPanel(props: Props) {
@@ -29,7 +29,7 @@ export function MyVaultPanel(props: Props) {
   return <MyVaultContents key={`${server}:${actor}:${props.workspacePath}`} {...props} />
 }
 
-function MyVaultContents({ workspacePath, tabId }: Props) {
+function MyVaultContents({ workspacePath, tabId, projectControls }: Props) {
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const setup = useVaultSetupDraft(tabId)
   const streaming = useChatStore(state => Boolean(tabId && state.chatTabs[tabId]?.isStreaming))
@@ -59,6 +59,12 @@ function MyVaultContents({ workspacePath, tabId }: Props) {
   }, [streaming, refresh])
 
   return <section aria-label="My Vault" className="space-y-5 text-sm">
+    <section aria-label="This project's connections" className="space-y-3">
+      {projectControls || <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} />}
+    </section>
+    <details className="rounded-lg border border-border p-3" aria-label="My accounts, computers and vaults">
+      <summary className="cursor-pointer font-semibold">My accounts, computers and vaults</summary>
+      <div className="space-y-5 pt-4">
     <div className="flex items-start justify-between gap-3">
       <div><h2 className="font-semibold">Accounts, computers and secrets</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">Connect once, then choose where to use each account or computer.</p></div>
       <Button size="sm" variant="ghost" aria-label="Refresh My Vault" onClick={() => { void refresh() }}><RefreshCw className="h-4 w-4" /></Button>
@@ -92,16 +98,13 @@ function MyVaultContents({ workspacePath, tabId }: Props) {
       </details>)}
     </section>
 
-    <section aria-label="Used by this project" className="space-y-3 border-t border-border pt-4">
-      <h2 className="font-semibold">Used by this project</h2>
-      <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} />
-    </section>
-
     {isAdmin && <details className="rounded-lg border border-border p-3">
       <summary className="cursor-pointer font-medium">Company sign-in apps</summary>
       <p className="mt-2 text-xs text-muted-foreground">Set up the company app used when people connect their accounts.</p>
       <Button size="sm" variant="outline" className="mt-3" onClick={() => { void setup.open('Help me configure a company OAuth sign-in app. Inspect the existing setup, ask for the required client ID and secret, store them securely and never repeat secret values. Preserve existing accounts and grants.') }}>Configure in chat</Button>
     </details>}
     {isAdmin && <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer font-medium">Company Slack bot</summary><div className="mt-3"><SlackAdminPanel /></div></details>}
+      </div>
+    </details>
   </section>
 }

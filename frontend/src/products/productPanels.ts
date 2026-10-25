@@ -41,7 +41,7 @@ export const WORK_PANELS: Record<'views' | 'ops' | 'setup', ProductPanel<WorkWor
   ],
   setup: [
     { id: 'identity', label: 'Settings', icon: Fingerprint },
-    { id: 'mcp', label: 'Vault', icon: Server },
+    { id: 'mcp', label: 'My Vault', icon: Server },
   ],
 }
 
@@ -76,7 +76,7 @@ export const INTEGRATION_SECTIONS: PanelSection[] = [
   ...projectPluginTabs().map(tab => ({ id: tab.value, label: tab.label, keywords: 'mcp tools' })),
 ]
 /** Integrations sections a Relay offers (its panel shows only these). */
-export const RELAY_INTEGRATION_SECTION_IDS = new Set(['share', 'agentbridge', 'cli', 'apps', 'gmail', 'slack', 'whatsapp', ...projectPluginTabs().map(tab => tab.value)])
+export const RELAY_INTEGRATION_SECTION_IDS = new Set(['share', 'agentbridge', 'cli', 'vault', 'slack-account', 'apps', 'gmail', 'slack', 'whatsapp', ...projectPluginTabs().map(tab => tab.value)])
 
 export const WORKFLOW_IDENTITY_SECTIONS: PanelSection[] = [
   { id: 'general', label: 'General', keywords: 'name soul persona identity' },
@@ -113,11 +113,11 @@ export const VAULT_PEOPLE_SECTIONS: PanelSection[] = [
 
 /** Sections by panel id, per product. */
 export const WORKFLOW_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = {
-  mcp: [{ id: 'vault', label: 'Vault', keywords: 'apps secrets computers accounts laptop share' }, ...INTEGRATION_SECTIONS.filter(section => !['connected', 'available', 'secrets', 'gmail'].includes(section.id))], identity: WORKFLOW_IDENTITY_SECTIONS, workshop: AUTOMATION_SECTIONS,
+  mcp: [{ id: 'vault', label: 'My Vault', keywords: 'apps secrets computers accounts laptop share' }, { id: 'laptop', label: 'Local laptop', keywords: 'computer folders terminal' }, { id: 'slack-account', label: 'Slack account', keywords: 'personal slack' }, ...INTEGRATION_SECTIONS], identity: WORKFLOW_IDENTITY_SECTIONS, workshop: AUTOMATION_SECTIONS,
   knowledge: KNOWLEDGE_SECTIONS, access: ACCESS_SECTIONS,
 }
 export const WORK_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = {
-  mcp: [{ id: 'vault', label: 'Vault', keywords: 'apps secrets computers accounts laptop share' }, ...INTEGRATION_SECTIONS.filter(section => !['skills', 'connected', 'available', 'secrets', 'gmail'].includes(section.id))], identity: WORK_IDENTITY_SECTIONS, schedules: AUTOMATION_SECTIONS.filter(section => section.id !== 'bots' && section.id !== 'chats'),
+  mcp: [{ id: 'vault', label: 'My Vault', keywords: 'apps secrets computers accounts laptop share' }, { id: 'laptop', label: 'Local laptop', keywords: 'computer folders terminal' }, { id: 'slack-account', label: 'Slack account', keywords: 'personal slack' }, ...INTEGRATION_SECTIONS.filter(section => section.id !== 'skills')], identity: WORK_IDENTITY_SECTIONS, schedules: AUTOMATION_SECTIONS.filter(section => section.id !== 'bots' && section.id !== 'chats'),
   memory: [{ id: 'memory', label: 'Memory' }, { id: 'skills', label: 'Skills' }],
 }
 export const VAULT_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = { people: VAULT_PEOPLE_SECTIONS }

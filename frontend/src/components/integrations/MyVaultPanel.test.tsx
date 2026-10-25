@@ -31,6 +31,8 @@ async function mount(disabled = false) {
 
 it('keeps full My Vault management beside the current chat, separate from project-use ticks', async () => {
   const host = await mount()
+  expect(host.querySelector('[aria-label="This project\'s connections"]')?.compareDocumentPosition(host.querySelector('[aria-label="My accounts, computers and vaults"]')!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  expect((host.querySelector('[aria-label="My accounts, computers and vaults"]') as HTMLDetailsElement).open).toBe(false)
   expect(host.querySelector('[aria-label="Saved Google and Slack accounts"]')?.getAttribute('data-scope')).toBe('personal')
   expect(host.querySelector('[aria-label="Your computers"]')).not.toBeNull()
   expect(host.querySelector('[aria-label="Slack bots"]')).not.toBeNull()

@@ -6,7 +6,6 @@ import { LoaderCircle, Plus, Save, Users } from 'lucide-react'
 import { WorkspacePanelBack, useWorkspacePanelChatDraft } from '../workspace/WorkspacePanelNavigation'
 import SkillsManagerPanel from '../skills/SkillsManagerPanel'
 import PlaybooksPanel from '../playbooks/PlaybooksPanel'
-import { ProjectSecretsPanel } from '../integrations/ProjectSecretsPanel'
 import WorkflowLLMConfigurationPanel from './WorkflowLLMConfigurationPanel'
 import WorkflowBotsPanel from './WorkflowBotsPanel'
 import WorkflowEmailPanel from './WorkflowEmailPanel'
@@ -17,9 +16,10 @@ import { ProjectAgentBridgePanel } from '../workspace/ProjectAgentBridgePanel'
 import { ShareDashboardButton } from './ShareDashboardButton'
 import { integrationProductAvailable, projectIntegrationSections } from '../integrations/integrationSections'
 import { ProjectPluginsPanel, projectPluginTabs, type PluginTab } from '../integrations/ProjectPluginsPanel'
+import { ProjectVaultControls, type VaultSection } from '../integrations/ProjectVaultControls'
+import { CodeLocalFilesSettings } from '../../products/work/CodeFilesPanel'
 import { MyVaultPanel } from '../integrations/MyVaultPanel'
 import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
-import { ProjectMcpPanel } from '../integrations/ProjectMcpPanel'
 import { agentApi, workflowManifestApi } from '../../services/api'
 import type { WorkflowCapabilities } from '../../services/api-types'
 import { useMCPStore } from '../../stores/useMCPStore'
@@ -129,6 +129,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const activeMcpTab = mcpTabs.some(option => option.value === tab) ? tab : mcpTabs[0].value
   const [preferredPluginTab, setPluginTab] = useState<PluginTab>('connected')
   const [sharing, setSharing] = useState(false)
+  const [vaultSection, setVaultSection] = useState<VaultSection>('vault')
   const [shareChannel, setShareChannel] = useState<ProjectChannel | 'agentbridge'>('cli')
   const pluginTabs = projectPluginTabs(allowedProducts)
   const pluginTab = pluginTabs.some(option => option.value === preferredPluginTab) ? preferredPluginTab : pluginTabs[0].value
@@ -137,8 +138,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
   const navigationOptions = integrationNavigationOptions(mcpTabs, pluginTabs)
   const selectConnection = (target: string) => {
-    if (target === 'vault') { setSharing(false); setTab('apps'); setPluginTab('connected'); return }
-    if (!relayMode && ['connected', 'available', 'secrets', 'gmail'].includes(target)) return
+    if (['vault', 'connected', 'available', 'secrets', 'gmail', 'slack-account', ...(!relayMode ? ['laptop'] : [])].includes(target)) { setSharing(false); setTab('apps'); setPluginTab('connected'); setVaultSection(target as VaultSection); return }
     if (target === 'share' || target === 'agentbridge' && integrationProductAvailable('bullpen', allowedProducts) || target === 'cli' || (target === 'slack' && mcpTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && mcpTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel | 'agentbridge'); return }
     if (target === 'overview' || target === 'apps') { setSharing(false); setTab('apps'); setPluginTab(pluginTabs.some(option => option.value === 'connected') ? 'connected' : pluginTabs[0].value); return }
     if (!mcpTabs.some(option => option.value === target) && !pluginTabs.some(option => option.value === target)) return
@@ -152,7 +152,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
     await prepareDraft(message)
   }
   const activeConnection = activeMcpTab === 'apps' ? pluginTab : activeMcpTab
-  const connectionLabel = !relayMode && activeMcpTab === 'apps' && pluginTab !== 'skills' ? 'My Vault' : navigationOptions.find(option => option.value === (activeConnection === 'available' ? 'connected' : activeConnection))?.label ?? 'MCPs'
+  const connectionLabel = activeMcpTab === 'apps' && pluginTab !== 'skills' ? 'My Vault' : navigationOptions.find(option => option.value === (activeConnection === 'available' ? 'connected' : activeConnection))?.label ?? 'MCPs'
   const serverTabs = pluginTabs.filter(option => option.value === 'connected' || option.value === 'available').map(option => ({ ...option, label: option.value === 'connected' ? 'Connected' : 'Available' }))
   // Existing bubble and Ctrl+K targets open their resource directly.
   useWorkspaceViewTarget('mcp', selectConnection, section === 'mcp')
@@ -378,17 +378,21 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 {sharing ? <>
                   {workspacePath && (shareChannel === 'agentbridge' ? <ProjectAgentBridgePanel target={`workflow:${presetQueryId}`} tabId={vaultTabId} onAsk={askInCurrentChat} /> : shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={vaultTabId} onAsk={askInCurrentChat} /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun={relayMode ? 'Flow' : 'Goal'} allowBots={!relayMode} /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" />}</>)}
                 </> : <>
-                {!relayMode && activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <MyVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} />}
-                {activeMcpTab === 'apps' && workspacePath && (relayMode || pluginTab === 'skills') && <ProjectPluginsPanel tab={pluginTab}
-                  connections={view => <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun={relayMode ? 'Flow' : 'workflow'} canEdit={canWriteWorkflow}
-                      selectedServers={capabilities.selected_servers}
-                      onSelectedServersChange={async selected_servers => { const next = { ...latest.current.capabilities, selected_servers }; await persist(next, true); setCapabilities(next) }} />}
-                  secrets={<ProjectSecretsPanel placeNoun={relayMode ? 'Flow' : 'Workflow'}
-                  workspacePath={workspacePath || ''} selectedSecrets={capabilities.selected_secrets}
-                  selectedGlobalSecrets={capabilities.selected_global_secret_names ?? []}
-                  onSecretChange={async selected_secrets => { const next = { ...latest.current.capabilities, selected_secrets }; await persist(next,true);setCapabilities(next) }}
-                  onGlobalSecretChange={async names => { const next = { ...latest.current.capabilities, selected_global_secret_names:names ?? [] }; await persist(next,true);setCapabilities(next) }} />}
-                  skills={<SkillsManagerPanel
+                {activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <MyVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} projectControls={<ProjectVaultControls workspacePath={workspacePath} placeNoun={relayMode ? 'Flow' : 'Goal'} section={vaultSection} canEdit={canWriteWorkflow} onAsk={askInCurrentChat}
+                  onAppsSaved={selected_servers => {
+                    const next = { ...latest.current.capabilities, selected_servers }
+                    latest.current.capabilities = next
+                    latest.current.loaded = { ...latest.current.loaded, selected_servers }
+                    setCapabilities(next); setLoaded(latest.current.loaded)
+                    const store = useWorkflowManifestStore.getState()
+                    const current = store.getWorkflowByPath(workspacePath)
+                    if (current) store.replaceWorkflowManifest(workspacePath, { ...current.manifest, capabilities: { ...current.manifest.capabilities, selected_servers } })
+                  }}
+                  selectedSecrets={capabilities.selected_secrets} selectedGlobalSecrets={capabilities.selected_global_secret_names || []}
+                  onSelectedSecretsChange={async selected_secrets => { const next = { ...latest.current.capabilities, selected_secrets }; await persist(next, true); setCapabilities(next) }}
+                  onSelectedGlobalSecretsChange={async names => { const next = { ...latest.current.capabilities, selected_global_secret_names: names }; await persist(next, true); setCapabilities(next) }}
+                  laptop={!relayMode ? <CodeLocalFilesSettings workflowPath={workspacePath} /> : undefined} />} />}
+                {activeMcpTab === 'apps' && workspacePath && pluginTab === 'skills' && <ProjectPluginsPanel tab="skills" skills={<SkillsManagerPanel
                       compact
                       manageOwnScroll={false}
                       customOnly
@@ -420,9 +424,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                           useChatStore.getState().addToast(err instanceof Error ? err.message : 'Failed to open chat.', 'error')
                         })
                       }}
-                    />}
-                  vault={<MyVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} />}
-                />}
+                    />} />}
                 {!relayMode && activeMcpTab === 'brain' && workspacePath && (
                   <ProjectKnowledgebasePanel workspacePath={workspacePath} disabled={!canWriteWorkflow} />
                 )}
