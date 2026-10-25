@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Bot } from 'lucide-react'
+import { Bot, ChevronDown, ChevronRight } from 'lucide-react'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { PulseIcon } from './workflow/pulseIcon'
 import { ShowFullContentButton, useChatArtifactText, type ChatArtifactRef } from './ChatArtifactExpander'
@@ -15,41 +15,36 @@ export function agentInboxMessage(metadata?: Record<string, unknown>) {
 }
 
 type AgentInboxContent = NonNullable<ReturnType<typeof agentInboxMessage>>
-const PREVIEW_LIMIT = 600
 // Plain words for the sender kind the server stamps; an unknown or empty kind adds nothing.
 const KIND_LABEL: Record<string, string> = { agent: 'Agent', crew: 'Crew', goal: 'Goal', flow: 'Flow', code: 'Crew', pulse: 'Autopilot' }
 const BODY_ARTIFACT_KEYS = ['metadata.display_content'] as const
 
+// A message another agent sent into this chat: one quiet row, like "Message to X sent", opened on request.
 export function AgentInboxMessage({ message, timestamp, artifact = null }: { message: AgentInboxContent; timestamp: string; artifact?: ChatArtifactRef | null }) {
-  const [expanded, setExpanded] = useState(false)
+  const [open, setOpen] = useState(false)
   const full = useChatArtifactText(artifact, BODY_ARTIFACT_KEYS)
   const body = full.text || message.body
-  const long = body.length > PREVIEW_LIMIT
   const Icon = message.kind === 'pulse' || /\b(?:Pulse|Autopilot)(?: chat)?$/i.test(message.sender) ? PulseIcon : Bot
   const kind = KIND_LABEL[message.kind]
   const showKind = kind && !message.sender.toLowerCase().startsWith(kind.toLowerCase())
   return (
-    <article data-testid="agent-inbox-message" className="my-3 w-[min(92%,52rem)] border-l-2 border-primary/50 pl-3 text-left">
-      <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pb-1 text-xs">
-        <Icon className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-        <span className="min-w-0 break-words text-muted-foreground">From <span className="font-medium text-foreground">{showKind ? `${kind} · ${message.sender}` : message.sender}</span> to this chat</span>
-        {timestamp && <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{timestamp}</span>}
-      </header>
-      <div className="min-w-0 pb-1">
-        <div className="break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] [&_li]:!text-[length:calc(13px*var(--chat-scale,1))] [&_p]:!text-[length:calc(13px*var(--chat-scale,1))] [&_li]:!leading-[calc(20px*var(--chat-scale,1))] [&_p]:!leading-[calc(20px*var(--chat-scale,1))]">
-          {long && !expanded
-            ? <p className="whitespace-pre-wrap">{body.slice(0, PREVIEW_LIMIT).trimEnd()}…</p>
-            : <ConversationMarkdownRenderer content={body} framed={false} maxHeight="none" copyableCode />}
+    <article data-testid="agent-inbox-message" className="my-3 border-y border-border/60 py-2 text-left">
+      <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open}
+        className="flex w-full items-center gap-2 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground">
+        <Icon className="h-3.5 w-3.5 shrink-0 text-primary/70" aria-hidden="true" />
+        <span className="truncate">Message from <span className="font-medium text-foreground/85">{showKind ? `${kind} · ${message.sender}` : message.sender}</span></span>
+        {timestamp && <span className="ml-auto shrink-0 tabular-nums">{timestamp}</span>}
+        {open ? <ChevronDown className={`${timestamp ? '' : 'ml-auto '}h-3.5 w-3.5 shrink-0`} /> : <ChevronRight className={`${timestamp ? '' : 'ml-auto '}h-3.5 w-3.5 shrink-0`} />}
+      </button>
+      {open && <div className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted/60 p-3 [&_li]:!text-[12px] [&_p]:!text-[12px]">
+        <div data-testid="agent-inbox-body" className="min-w-0 break-words">
+          <ConversationMarkdownRenderer content={body} framed={false} maxHeight="none" copyableCode />
         </div>
-        {long && <button type="button" onClick={() => setExpanded(value => !value)} aria-expanded={expanded}
-          className="mt-2 rounded text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
-          {expanded ? 'Show less' : 'Show full message'}
-        </button>}
         {/* Legacy summaries lack the body marker: retain their existing access
             to full content rather than treating an unknown body as complete. */}
         {artifact && message.bodyTruncated !== false && !full.text && <ShowFullContentButton ref_={artifact} loading={full.loading} error={full.error}
-          label="Load full message" onLoad={() => { void full.load().then(() => setExpanded(true)) }} />}
-      </div>
+          label="Load full message" onLoad={() => { void full.load() }} />}
+      </div>}
     </article>
   )
 }
