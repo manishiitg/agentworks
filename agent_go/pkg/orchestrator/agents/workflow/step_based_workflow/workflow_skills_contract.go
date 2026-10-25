@@ -387,7 +387,7 @@ func createMigrateWorkflowSkillsExecutor(workspacePath string, logger loggerv2.L
 			return "", err
 		}
 		configRaw, readErr := readFile(ctx, configPath)
-		configRaw, err = goalAgentConfigForMigration(configRaw, readErr)
+		configRaw, err = workflowSkillsConfigForMigration(configRaw, readErr)
 		if err != nil {
 			return "", err
 		}
@@ -632,4 +632,11 @@ func ValidateWorkflowSkillsStamp(workflowDir string) error {
 		}
 	}
 	return nil
+}
+
+func workflowSkillsConfigForMigration(content string, readErr error) (string, error) {
+	if readErr != nil && workspacepkg.IsFileNotFound(readErr) {
+		return `{"steps":[]}`, nil
+	}
+	return content, readErr
 }

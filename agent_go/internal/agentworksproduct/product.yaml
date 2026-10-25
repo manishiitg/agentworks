@@ -158,9 +158,6 @@ chat:
       - agent_browser
       - convert_routing_branch_step_type
       - maintain_plan
-      - migrate_agent_code_items
-      - migrate_agent_steps
-      - migrate_goal_agents
       - migrate_workflow_skills
       - configure_slack_bot
       - manage_slack_bot
@@ -313,7 +310,6 @@ chat:
       - request_clarification
       - scan_workflow_script_db_usage
       - send_message
-      - set_code_layout_version
       - set_workflow_llm_config
       - test_llm
     prompt:

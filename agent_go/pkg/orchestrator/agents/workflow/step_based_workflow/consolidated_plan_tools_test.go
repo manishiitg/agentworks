@@ -33,7 +33,7 @@ func TestConsolidatedPlanRegistryHidesNativeAliases(t *testing.T) {
 	d := consolidatedPlanDraft(t, newExternalPlanTestFiles(t, regularStep("fetch")))
 	for _, name := range []string{
 		"add_step", "update_step", "manage_step_route", "convert_routing_branch_step_type", "maintain_plan",
-		"migrate_agent_code_items", "migrate_agent_steps", "migrate_goal_agents", "migrate_workflow_skills",
+		"migrate_workflow_skills",
 		"create_plan", "delete_plan_steps", "validate_plan_change", "update_validation_schema", "record_plan_drift_review",
 	} {
 		if _, ok := d.tools[name]; !ok {

@@ -2,8 +2,6 @@ package server
 
 import (
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,9 +9,8 @@ import (
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 )
 
-// Real MCP, native migration tool, Builder stamp checks and disk. An owner
-// prepares a legacy workflow before the 1.0.45 and 1.0.46 checks, then moves it to 1.0.47 without a model turn; the Builder's
-// ordering and role rules still hold.
+// Real MCP, Builder stamp checks and disk. Deployment has prepared the plan;
+// remaining semantic upgrades retain their ordering, access and grant checks.
 func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	f := newBuilderOperationFixture(t)
 	router := gin.New()
@@ -24,7 +21,7 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","version":"1.0.44","code_layout_version":1,"access":{"owners":["owner"],"editors":["outsider"],"readers":["reader"]}}`)
-	f.write(t, "Workflow/invoices/planning/plan.json", `{"steps":[{"id":"chat","type":"orchestrator","title":"Chat","description":"Talk to the person","items":[{"id":"hello","type":"user_message","message":"Hello"}]}]}`)
+	f.write(t, "Workflow/invoices/planning/plan.json", `{"steps":[{"id":"chat","type":"agent","title":"Chat","description":"Talk to the person","items":[{"id":"hello","type":"user_message","message":"Hello"}]}]}`)
 	_, owner := f.issue(t, "owner")
 	_, reader := f.issue(t, "reader")
 
@@ -32,23 +29,11 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	if !strings.Contains(status, `"version":"1.0.46"`) || !strings.Contains(status, `"version":"1.0.47"`) || !strings.Contains(status, "upgrade-agent-step") {
 		t.Fatalf("status did not list the owed migration: %s", status)
 	}
-	// Status stays read-only; explicit preparation uses the existing raw JSON
-	// migration before any typed checker, without moving the contract stamp.
-	if !strings.Contains(f.read(t, "Workflow/invoices/planning/plan.json"), `"type":"orchestrator"`) {
+	// Reading status leaves the already prepared plan unchanged.
+	if !strings.Contains(f.read(t, "Workflow/invoices/planning/plan.json"), `"type":"agent"`) {
 		t.Fatal("status mutated the saved plan")
 	}
-	f.call(t, reader, "workflow_upgrade", map[string]any{"action": "prepare"}, 403)
-	prepared := externalTestBody(t, f.call(t, owner, "workflow_upgrade", map[string]any{"action": "prepare"}, 200), 200)["result"].(string)
-	if !strings.Contains(prepared, `"agent_steps"`) || !strings.Contains(prepared, `migrated`) {
-		t.Fatalf("preparation omitted the migration receipt: %s", prepared)
-	}
-	if !strings.Contains(f.read(t, "Workflow/invoices/workflow.json"), `"1.0.44"`) {
-		t.Fatal("preparation stamped a version")
-	}
-	noOp := f.call(t, owner, "workflow_upgrade", map[string]any{"action": "prepare"}, 200).Body.String()
-	if !strings.Contains(noOp, "no_op") {
-		t.Fatalf("repeated preparation was not a no-op: %s", noOp)
-	}
+	f.call(t, owner, "workflow_upgrade", map[string]any{"action": "prepare"}, 400)
 	f.write(t, "Workflow/invoices/code/check/main.py", "import sqlite3\nconn = sqlite3.connect('db/db.sqlite')\n")
 	managedStamp := map[string]any{"action": "stamp", "version": "1.0.45", "confirm": "invoices"}
 	f.call(t, owner, "workflow_upgrade", managedStamp, 409)
@@ -64,12 +49,6 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	stamp := map[string]any{"action": "stamp", "version": "1.0.47", "confirm": "invoices"}
 	if !strings.Contains(f.read(t, "Workflow/invoices/workflow.json"), `"1.0.46"`) {
 		t.Fatal("a refused stamp changed the workflow")
-	}
-
-	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
-	f.call(t, owner, "plan", map[string]any{"action": "migrate_agent_steps", "arguments": map[string]any{}, "expected_revision": revision, "request_id": "migrate-agent-steps"}, 200)
-	if !strings.Contains(f.read(t, "Workflow/invoices/planning/plan.json"), `"type": "agent"`) && !strings.Contains(f.read(t, "Workflow/invoices/planning/plan.json"), `"type":"agent"`) {
-		t.Fatal("the saved step type was not migrated")
 	}
 
 	f.call(t, owner, "workflow_upgrade", map[string]any{"action": "stamp", "version": "1.0.47", "confirm": "someone-else"}, 400)
@@ -122,44 +101,22 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 		t.Fatal("resource-intent stamp changed configured access")
 	}
 	after = f.call(t, owner, "workflow_upgrade", map[string]any{"action": "status"}, 200).Body.String()
-	if !strings.Contains(after, "upgrade-goal-agent") {
-		t.Fatalf("Goal agent review is not due: %s", after)
+	if !strings.Contains(after, "upgrade-workflow-skills") || strings.Contains(after, "upgrade-goal-agent") {
+		t.Fatalf("only the remaining skills upgrade should follow resource review: %s", after)
 	}
-	f.write(t, "Workflow/invoices/planning/step_config.json", `{"steps":[{"id":"chat","agent_configs":{"learning_objective":"Keep reusable greeting technique","learnings_access":"read-write","knowledgebase_access":"none"}}]}`)
-	goalStamp := map[string]any{"action": "stamp", "version": "1.0.50", "confirm": "invoices"}
-	f.call(t, owner, "workflow_upgrade", goalStamp, 409)
+	skillsStamp := map[string]any{"action": "stamp", "version": "1.0.51", "confirm": "invoices"}
+	f.call(t, reader, "workflow_upgrade", skillsStamp, 403)
+	f.call(t, owner, "workflow_upgrade", skillsStamp, 409) // copies and review are still required
+	// PLAT-825-111: the retired no-op 1.0.50 rung must not strand a Goal
+	// reviewed through 1.0.47 -> 1.0.48 -> 1.0.49. The next stamp is 1.0.51.
+	if strings.Contains(after, `"version":"1.0.50"`) {
+		t.Fatal("status still requires the retired conversion", after)
+	}
 	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
-	f.call(t, owner, "plan", map[string]any{"action": "migrate_goal_agents", "arguments": map[string]any{}, "expected_revision": revision, "request_id": "migrate-goal-agents"}, 200)
-	migratedPlan := f.read(t, "Workflow/invoices/planning/plan.json")
-	migratedConfig := f.read(t, "Workflow/invoices/planning/step_config.json")
-	if !strings.Contains(migratedPlan, "Keep reusable greeting technique") || !strings.Contains(migratedPlan, "learnings/_global") || strings.Contains(migratedConfig, "learning_objective") || !strings.Contains(migratedConfig, `"learnings_access": "read-write"`) {
-		t.Fatal("native MCP migration lost audit text or changed configured access")
-	}
-	f.call(t, reader, "workflow_upgrade", goalStamp, 403)
-	f.call(t, owner, "workflow_upgrade", goalStamp, 200)
+	f.call(t, owner, "plan", map[string]any{"action": "migrate_workflow_skills", "arguments": map[string]any{}, "expected_revision": revision, "request_id": "skills-after-reviewed-resource-intent"}, 200)
+	f.call(t, owner, "workflow_upgrade", skillsStamp, 200)
 	after = f.call(t, owner, "workflow_upgrade", map[string]any{"action": "status"}, 200).Body.String()
-	if !strings.Contains(after, "upgrade-workflow-skills") {
-		t.Fatalf("skills migration should follow Goal agent review: %s", after)
+	if !strings.Contains(after, `"version":"1.0.51"`) || !strings.Contains(after, `"pending":[]`) {
+		t.Fatal("reviewed Goal did not reach the current contract directly", after)
 	}
-
-	// A valid Goal need not have per-step overrides. Missing config stays absent,
-	// while malformed config is not mistaken for defaults by the stamp.
-	manifest = strings.Replace(f.read(t, "Workflow/invoices/workflow.json"), `"version": "1.0.50"`, `"version": "1.0.49"`, 1)
-	f.write(t, "Workflow/invoices/workflow.json", manifest)
-	f.write(t, "Workflow/invoices/planning/step_config.json", `{broken`)
-	f.call(t, owner, "workflow_upgrade", goalStamp, 409)
-	configPath := filepath.Join(f.docs, "Workflow/invoices/planning/step_config.json")
-	if err := os.Remove(configPath); err != nil {
-		t.Fatal(err)
-	}
-	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
-	f.call(t, owner, "plan", map[string]any{"action": "migrate_goal_agents", "arguments": map[string]any{}, "expected_revision": revision, "request_id": "migrate-goal-agents-no-config"}, 200)
-	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
-		t.Fatalf("migration created config or could not check absence: %v", err)
-	}
-	f.call(t, owner, "workflow_upgrade", goalStamp, 200)
-	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
-		t.Fatalf("stamp created config or could not check absence: %v", err)
-	}
-
 }

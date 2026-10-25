@@ -127,7 +127,7 @@ func describeWorkflowContractUpgrades(ctx context.Context, workspacePath string)
 	if len(pending) == 0 {
 		if manifestContractIsExecutionCompatible(manifest) && manifest.CodeLayoutVersion != 1 {
 			sb.WriteString("## Manual code-layout migration required\n\n")
-			sb.WriteString("The contract version is current, but `code_layout_version` is not `1`. Inspect every scripted bundle and authored path assumption, migrate scripts to the canonical `code/<step-id>/` tree, run focused checks without executing external side effects, then call `set_code_layout_version(code_layout_version=1)`. Re-read `workflow.json` and the migrated files before finishing. Do not stamp another contract version; this workflow already has the current version.\n")
+			sb.WriteString("The contract version is current, but `code_layout_version` is not `1`. Inspect every scripted bundle and authored path assumption, migrate scripts to the canonical `code/<step-id>/` tree, run focused checks without executing external side effects, ask the server administrator to complete the source-layout update. Re-read `workflow.json` and the prepared source files before continuing. The current version does not prove that its source layout is complete.\n")
 			return sb.String(), nil
 		}
 		sb.WriteString("No pending migrations — this workflow is execution-compatible with the current contract. Retired no-op checkpoints do not block it.\n")

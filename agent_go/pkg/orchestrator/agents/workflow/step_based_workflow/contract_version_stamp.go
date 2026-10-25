@@ -3,7 +3,6 @@ package step_based_workflow
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
@@ -54,7 +53,7 @@ func validateContractVersionStampPrerequisites(version string, manifest map[stri
 	}
 	codeLayout, ok := manifest["code_layout_version"].(float64)
 	if !ok || codeLayout != 1 {
-		return fmt.Errorf("contract %s requires code_layout_version=1; migrate every scripted bundle to code/<step-id>/ and call set_code_layout_version(code_layout_version=1) before stamping", version)
+		return fmt.Errorf("contract %s requires code_layout_version=1; migrate every scripted bundle to code/<step-id>/ and ask the server administrator to complete its source-layout update before stamping", version)
 	}
 	return nil
 }
@@ -133,20 +132,6 @@ func CheckContractStamp(version, workflowDir string, manifestJSON []byte, readPl
 	}
 	if version == WorkflowSkillsContractVersion {
 		if err := ValidateWorkflowSkillsStamp(workflowDir); err != nil {
-			return err
-		}
-	}
-	if version == GoalAgentContractVersion {
-		content, err := readPlan()
-		if err != nil {
-			return err
-		}
-		rawConfig, readErr := os.ReadFile(filepath.Join(workflowDir, "planning", "step_config.json"))
-		cfg, err := goalAgentConfigForMigration(string(rawConfig), readErr)
-		if err != nil {
-			return err
-		}
-		if err := validateGoalAgentContractStamp(content, cfg); err != nil {
 			return err
 		}
 	}

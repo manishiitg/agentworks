@@ -39,7 +39,6 @@ func workflowContractVersionIsExecutionCompatible(version string) bool {
 
 var goalsOnlyWorkflowUpgrades = map[string]bool{
 	"upgrade-workflow-skills": true,
-	"upgrade-goal-agent":      true,
 }
 
 var relayStoreUpgrades = map[string]bool{
@@ -141,7 +140,7 @@ There is no runtime fallback to flattened step-*-sub-*, step-*-generic-*, execut
 
 Read workflow.json, planning/plan.json, planning/step_config.json, and every workflow-authored script or referenced instruction that names runtime paths. Replace hardcoded legacy execution paths with STEP_OUTPUT_DIR for the current invocation, STEP_EXECUTION_DIR or declared context dependencies for reads, and the nested layout only where an explicit relative artifact reference is unavoidable. Do not alter business behavior.
 
-Every scripted step must use the canonical source code/<script-step-id>/main.py with code/<script-step-id>/ as its working directory. If workflow.json.code_layout_version is not 1, perform the deliberate code-layout migration: copy and verify every complete scripted bundle (main.py, helpers, and script_metadata.json) under code/<step-id>/, then switch with set_code_layout_version(code_layout_version=1). Do not leave a scripted step available only under learnings/.
+Every scripted step must use the canonical source code/<script-step-id>/main.py with code/<script-step-id>/ as its working directory. If workflow.json.code_layout_version is not 1, ask the server administrator to complete its source-layout update first. Do not leave a scripted step available only under learnings/.
 
 Validate the changed plan/config and run focused script checks without executing the workflow's external side effects. Re-read every changed artifact. If a hardcoded legacy path is ambiguous or a scripted bundle cannot be migrated safely, report the exact blocker and do not stamp. Otherwise call set_workflow_contract_version(version="1.0.44") and stop.`
 
@@ -167,7 +166,7 @@ If a script cannot be converted without a product decision (it needs a PRAGMA, A
 
 const upgradeStepDescriptionLayout = `WORKFLOW CONTRACT UPGRADE: STEP DESCRIPTIONS USE THE STANDARD LAYOUT.
 
-Before any plan checker, call migrate_agent_steps to prepare saved records as canonical agent steps. This raw-JSON prerequisite works on earlier contract versions and does not stamp 1.0.47; keep stamps in order. If preparation fails, stop and report it.
+Deployment prepares saved records as canonical agent steps without changing their contract versions. If the plan still has a retired shape, ask the server administrator to complete that preparation before reviewing it.
 
 Do only the description migration after preparation. Every agent step's description (type agent, nested sub-agent steps included) now uses the section layout from builder-reference references/step-description.md ("Use this section layout"), in this order:
 ## Goal       — what the step achieves, in one to three sentences
@@ -259,9 +258,6 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 	if rank < 48 {
 		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractResourceIntentVersion, label: "upgrade-resource-intent", query: upgradeResourceIntent})
 	}
-	if rank < 49 {
-		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractGoalAgentVersion, label: "upgrade-goal-agent", query: upgradeGoalAgent})
-	}
 	if rank < 50 {
 		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractSkillsVersion, label: "upgrade-workflow-skills", query: upgradeWorkflowSkills})
 	}
@@ -283,9 +279,9 @@ const manualUpgradeTurnNote = `
 
 EXECUTION CONTEXT. This is a manual platform migration started by the workflow operator in Workshop chat. Complete and verify this migration before stamping it. If a genuine product, business, or safety choice is required, do not guess and do not stamp: explain the exact choice in this conversation and ask the operator.`
 
-const upgradeAgentStep = `WORKFLOW CONTRACT UPGRADE: ONE AGENT STEP TYPE.
+const upgradeAgentStep = `WORKFLOW CONTRACT UPGRADE: CANONICAL AGENT STEPS (1.0.47).
 
-Do only this migration. Conversational steps now use type agent with items and optional predefined_routes. Call migrate_agent_steps once. It rewrites message_sequence, orchestrator and todo_task records, including nested and orphan agents, to agent; legacy messages become items. Routes, IDs, wiring, validation and unknown fields are preserved. Do not edit plan.json by hand or run the workflow. If the migration reports an error, do not stamp. Otherwise call set_workflow_contract_version(version="1.0.47") and stop.`
+Deployment converts saved step shapes before the app starts. Inspect the prepared plan: conversational steps use type agent with items. Keep IDs, routes, wiring and validation unchanged. If a retired shape remains, ask the server administrator to complete the deployment preparation. Stamp 1.0.47 only after the prepared plan passes the existing checks; do not run the workflow.`
 
 const upgradeDescriptionFirst = `WORKFLOW CONTRACT UPGRADE: DESCRIPTION FIRST, OPTIONAL FOLLOW-UPS (1.0.48).
 
@@ -313,16 +309,6 @@ Say read or write exactly as the step's actual grants allow; never claim a write
 LIMITS. (1) No new access. Describe only resources the step already has. Naming a workflow path (learnings/, knowledgebase/, code/shared/, soul/, db/README.md) or a brain: note in Inputs, Resources or Guides grants read access, so do not write such a reference in a step that does not already name it; describe the resource by purpose instead. Never edit access, grants, store modes or secret selections. If a description needs a resource the step cannot reach, do not fix it: report it to the operator. (2) Definitions only: no data moves between stores, no database schema change, no learnings rewrite. (3) Do not change scripts, validation, wiring, routes, items, ordering or optional sequence semantics. (4) Existing wording and policies in each description stay unless they contradict a grant.
 
 Read back the plan and show the operator the full description diff before stamping, and name any step whose description_reviewed mark was cleared because its description changed (the plan tools do that on purpose). Once every ordinary agent is reviewed, call set_workflow_contract_version(version="1.0.49"). The stamp refuses an agent whose ## Resources does not state all four resources, or says none for a resource its Inputs, Resources or Guides name; it does not judge your wording. Workflows on 1.0.48 keep running until migrated. Stop after stamping.`
-
-const upgradeGoalAgent = `WORKFLOW CONTRACT UPGRADE: EXPLICIT GOAL AGENT TASKS (1.0.50).
-
-Read planning/plan.json and planning/step_config.json first. Call migrate_goal_agents. It retires only LLM specialist routes and automatic reflection objectives, preserving their original names, instructions and destinations verbatim in each step's goal_agent_migration audit note and the plan changelog. Scripted routes with typed I/O remain callable helpers. IDs, explicit access settings, authored message phases, outputs, data and run history stay. Configured access modes are unchanged. Former objective-inferred write access is recorded in the audit note, never converted into a standing grant; let the owner decide if an explicit task needs a new write grant.
-
-Read the resulting notes. For every former learning_objective or knowledgebase_contribution, tell the owner what it used to contribute and its destination. If that contribution is required by the goal, move it into the relevant task description (respect the existing store grants); otherwise explain that Builder or Crew can do it explicitly. No automatic post-validation reflection turn remains, including scripted post-processing and restart recovery.
-
-Keep explicitly authored follow-up phases. Do not collapse an authored sequence by guessing; remove only reviewed redundant platform scaffolding, preserving any unique requirement in the task and describing each edit in the changelog. Do not convert to a new agent type or rewrite the Goal runner. For retired LLM specialist routes, record an AgentWorks issue suggesting an explicit Crew step; do not create a Crew automatically. Keep the retired route instructions in the audit note, outside executable descriptions.
-
-Read back the full plan/config diff. Preserve validation with bounded repair in the same conversation, resource grants, tools/secrets, real outputs, logs, costs and metric history. Do not run a business workflow as part of migration. When review is complete call set_workflow_contract_version(version="1.0.50") and stop. Older compatible workflows may still run, but LLM specialist spawning and automatic reflection are retired at runtime even before this explicit migration.`
 
 const upgradeWorkflowSkills = `WORKFLOW CONTRACT UPGRADE: KNOWLEDGE BASE AND SKILLS.
 

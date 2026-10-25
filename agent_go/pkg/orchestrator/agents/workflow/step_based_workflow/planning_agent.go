@@ -2277,23 +2277,7 @@ func readPlanFromFileWithGraphValidation(ctx context.Context, workspacePath stri
 		validate = validateLoadedPlanStructure
 	}
 	if err := validate(&plan); err != nil {
-		// A plan whose only defect is a pre-v1.0.10 agent "code"
-		// item can still be LOADED here for editing — e.g. so
-		// delete_plan_steps or update_agent_step can remove or
-		// repair the offending step — even though it fails strict
-		// validation. It can never execute or be persisted in this state:
-		// execution's own preflight and every
-		// writePlanToFile call independently enforce the strict validator.
-		// The shared current-plan reader uses this fallback so mutation tools
-		// aren't the one path left
-		// unable to even open a legacy plan to fix it.
-		validateLegacy := validateLoadedPlanStructureCoreAllowLegacyAgentCode
-		if validateGraph {
-			validateLegacy = validateLoadedPlanStructureAllowLegacyAgentCode
-		}
-		if legacyErr := validateLegacy(&plan); legacyErr != nil {
-			return nil, fmt.Errorf("plan.json uses an invalid or legacy format: %w", err)
-		}
+		return nil, fmt.Errorf("plan.json uses an invalid or legacy format: %w", err)
 	}
 
 	return &plan, nil
@@ -5013,7 +4997,7 @@ func createAddAgentStepExecutor(workspacePath string, logger loggerv2.Logger, re
 
 // Returns an error message suitable for returning as a tool response if validation fails
 
-func validateAgentDelegationRoutes(title, stepID string, routes []PlanOrchestrationRoute, allowLegacyCode bool) error {
+func validateAgentDelegationRoutes(title, stepID string, routes []PlanOrchestrationRoute) error {
 	for i, route := range routes {
 		if route.RouteID == "" {
 			return fmt.Errorf("step (title: %q, ID: %s) has predefined_route[%d] with missing required route_id field", title, stepID, i)
@@ -5035,7 +5019,7 @@ func validateAgentDelegationRoutes(title, stepID string, routes []PlanOrchestrat
 		}
 		switch subStep := route.SubAgentStep.(type) {
 		case *AgentPlanStep:
-			if err := validateAgentStepFieldsTypedWithOptions(subStep, allowLegacyCode); err != nil {
+			if err := validateAgentStepFieldsTyped(subStep); err != nil {
 				return fmt.Errorf("step (title: %q, ID: %s) predefined_route[%d] (route_id: %s): %w", title, stepID, i, route.RouteID, err)
 			}
 		case *ScriptedPlanStep:
@@ -5048,10 +5032,6 @@ func validateAgentDelegationRoutes(title, stepID string, routes []PlanOrchestrat
 }
 
 func validateAgentStepFieldsTyped(step *AgentPlanStep) error {
-	return validateAgentStepFieldsTypedWithOptions(step, false)
-}
-
-func validateAgentStepFieldsTypedWithOptions(step *AgentPlanStep, allowLegacyCode bool) error {
 	if step == nil {
 		return fmt.Errorf("agent step is nil")
 	}
@@ -5114,10 +5094,7 @@ func validateAgentStepFieldsTypedWithOptions(step *AgentPlanStep, allowLegacyCod
 				return fmt.Errorf("agent step %q item %q is a user_message but message is empty", step.ID, item.ID)
 			}
 		case "code":
-			if allowLegacyCode {
-				continue
-			}
-			return fmt.Errorf("agent step %q item %q uses removed type \"code\"; upgrade this workflow to contract v1.0.10 so migrate_agent_code_items can convert it to a standalone scripted step", step.ID, item.ID)
+			return fmt.Errorf("agent step %q item %q uses removed type \"code\"; ask Builder to replace it with a standalone scripted step", step.ID, item.ID)
 		case "prevalidation":
 			if item.ValidationSchema == nil && item.Prevalidation == nil && step.ValidationSchema == nil {
 				return fmt.Errorf("agent step %q item %q is prevalidation but no validation_schema/prevalidation exists", step.ID, item.ID)
@@ -5146,7 +5123,7 @@ func validateAgentStepFieldsTypedWithOptions(step *AgentPlanStep, allowLegacyCod
 		// item kind can auto-grant via resolveAgentItemWriteAccess. The
 		// authoring contract is carried by guidance, not a prose regex.
 	}
-	if err := validateAgentDelegationRoutes(step.Title, step.ID, step.PredefinedRoutes, allowLegacyCode); err != nil {
+	if err := validateAgentDelegationRoutes(step.Title, step.ID, step.PredefinedRoutes); err != nil {
 		return err
 	}
 	if err := validateAgentNestingDepth(step, 0); err != nil {
@@ -5497,21 +5474,12 @@ func registerNativePlanModificationTools(
 	agentName string, // e.g., "planning agent" or "plan improvement agent"
 ) error {
 	mcpAgent = planChangeOriginRegistrar{DefinitionToolRegistrar: mcpAgent, agentName: agentName}
-	rawWriteFile := writeFile
 	writeFile = withPlanMutationWriteAccess(workspacePath, writeFile)
 
 	// Note: human_feedback is already registered via WorkspaceTools (created by createCustomTools in server.go)
 	// No need to register it again here to avoid duplicate registration errors
 
-	if err := mcpAgent.RegisterCustomTool("migrate_agent_steps", "Migrate saved agent step types to agent/items without changing routes, contracts, or user text. Call first at the start of an explicit workflow upgrade, before get_contract_upgrades or any typed plan checker. Works on earlier contract versions, returns no_op when nothing needs conversion, and never stamps a version; the later v1.0.47 stamp remains in order.", objectToolSchema(map[string]interface{}{}), createMigrateAgentStepsExecutor(workspacePath, logger, readFile, writeFile), "workflow"); err != nil {
-		return err
-	}
-
-	if err := mcpAgent.RegisterCustomTool("migrate_goal_agents", "Review-preserving Goal contract migration: retire automatic contribution objectives and LLM routes; retain scripted helpers, authored phases, configured access and original instructions in audit notes. Call only during workflow_upgrade to 1.0.50.", objectToolSchema(map[string]interface{}{}), createMigrateGoalAgentsExecutor(workspacePath, logger, readFile, writeFile), "workflow"); err != nil {
-		return err
-	}
-
-	if err := mcpAgent.RegisterCustomTool("migrate_workflow_skills", "Preserve workflow how-to guides and assets in one private workflow-local skill, retain original files and copy hashes, retire learnings access without changing KB grants. Call during the explicit 1.0.51 workflow upgrade after the existing code-layout upgrade.", objectToolSchema(map[string]interface{}{}), createMigrateWorkflowSkillsExecutor(workspacePath, logger, readFile, writeFile), "workflow"); err != nil {
+	if err := mcpAgent.RegisterCustomTool("migrate_workflow_skills", "Temporary one-time upgrade for older Goals, removed once every Goal has moved. Preserve workflow how-to guides and assets in one private workflow-local skill, retain original files and copy hashes, retire learnings access without changing KB grants. Call during the explicit 1.0.51 workflow upgrade after the existing code-layout upgrade.", objectToolSchema(map[string]interface{}{}), createMigrateWorkflowSkillsExecutor(workspacePath, logger, readFile, writeFile), "workflow"); err != nil {
 		return err
 	}
 
@@ -5558,20 +5526,6 @@ func registerNativePlanModificationTools(
 		"workflow",
 	); err != nil {
 		return fmt.Errorf("failed to register validate_plan_change tool: %w", err)
-	}
-
-	migrateSequenceCodeParams, err := parseSchemaForToolParameters(`{"type":"object","properties":{}}`)
-	if err != nil {
-		return fmt.Errorf("failed to parse migrate_agent_code_items schema: %w", err)
-	}
-	if err := mcpAgent.RegisterCustomTool(
-		"migrate_agent_code_items",
-		"Product-managed workflow-version migration for issue #170. Converts only unambiguous top-level agent steps containing code + prevalidation items into visible standalone scripted steps. It copies scripts to code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py), preserves durable dependencies/outputs/validation, and updates plan/config with rollback on a config-write failure. Mixed conversational/code or nested sequences are rejected without changing plan/config. Call only during the v1.0.10 workflow preflight.",
-		migrateSequenceCodeParams,
-		createMigrateAgentCodeItemsExecutor(workspacePath, logger, readFile, rawWriteFile),
-		"workflow",
-	); err != nil {
-		return fmt.Errorf("failed to register migrate_agent_code_items tool: %w", err)
 	}
 
 	// Register workflow-specific plan update tools with "workflow" category

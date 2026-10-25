@@ -151,17 +151,8 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	}
 	// Migration notes must survive saved plans without becoming task instructions.
 	for _, typ := range []string{"agent", "scripted"} {
-		notePlan := `{"steps":[{"id":"research","title":"Research","type":"` + typ + `","prompt_contract":"description-first-v1","description":"Measure the current source."`
-		if typ == "agent" {
-			notePlan += `,"predefined_routes":[{"route_id":"retired","route_name":"Retired","sub_agent_step":{"id":"retired","title":"Retired","type":"agent","description":"ARCHIVE_ONLY_ROUTE_INSTRUCTION"}}]`
-		}
-		notePlan += `}]}`
-		noteConfig := `{"steps":[{"id":"research","agent_configs":{"learning_objective":"ARCHIVE_ONLY_OBJECTIVE_INSTRUCTION","learnings_access":"read-write"}}]}`
-		migrated, config, err := migrateGoalAgentContent(notePlan, noteConfig)
-		if err != nil {
-			t.Fatal(err)
-		}
-		files["planning/plan.json"], files["planning/step_config.json"] = migrated, config
+		files["planning/plan.json"] = `{"steps":[{"id":"research","title":"Research","type":"` + typ + `","prompt_contract":"description-first-v1","description":"Measure the current source.","goal_agent_migration":{"version":"1.0.50","learning_objective":"ARCHIVE_ONLY_OBJECTIVE_INSTRUCTION","retired_routes":[{"route_id":"retired","sub_agent_step":{"id":"retired","type":"agent","description":"ARCHIVE_ONLY_ROUTE_INSTRUCTION"}}]}}]}`
+		files["planning/step_config.json"] = `{"steps":[{"id":"research","agent_configs":{"learnings_access":"read-write"}}]}`
 		result, err = tool.Execute(ctx, map[string]interface{}{"step_id": "research"})
 		if err != nil {
 			t.Fatal(err)

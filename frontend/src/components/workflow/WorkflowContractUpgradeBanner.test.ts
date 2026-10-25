@@ -10,7 +10,6 @@ describe('workflow contract upgrade banner', () => {
   it('shows pending upgrades above chat and starts them manually', () => {
     expect(source).toContain('contractUpgrade && hasWorkflowContractUpgrade(contractUpgrade)')
     expect(source).toContain('!hasWorkflowContractUpgrade(contractUpgrade)')
-    expect(source).toContain('Schedules keep running the saved version and will not update it automatically.')
     expect(source).toContain('Update workflow')
     expect(source).toContain('sendWorkspacePaneMessageToChat')
     expect(upgradeMessage).toContain('Use get_contract_upgrades')

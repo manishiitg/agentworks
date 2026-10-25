@@ -93,7 +93,7 @@ func TestLoadedPlanRejectsInvalidScriptParameterContract(t *testing.T) {
 			"market-name": {Type: "string", Description: "Market"},
 		},
 	}}
-	err := validateLoadedPlanStepWithOptions(step, 0, false)
+	err := validateLoadedPlanStep(step, 0)
 	if err == nil || !strings.Contains(err.Error(), "must match") {
 		t.Fatalf("error = %v, want invalid parameter-name failure", err)
 	}

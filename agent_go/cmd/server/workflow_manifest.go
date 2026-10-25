@@ -1513,60 +1513,6 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 	return nil
 }
 
-// SetWorkflowCodeLayoutVersion is the one supported way to change an existing
-// workflow's code_layout_version. WriteWorkflowManifest's ordinary update path
-// deliberately preserves this field (see the comment above it: "source layout
-// is a creation-time contract, not an editable capability") -- this is the
-// separate, explicit override for an authorized migration, per
-// code-authoring.md's "Deliberate migration to code/" guidance (PLAT-298).
-//
-// This does not touch, move, or verify any step source itself. The caller (an
-// authoring/repair agent following that skill) is responsible for staging a
-// complete code/<step-id>/main.py (and script_metadata.json) for every
-// scripted-type step BEFORE switching to 1 -- the runtime resolves canonical
-// source from this field immediately on the next execution, with no
-// execution-copy fallback for anything left in learnings/. Nothing under
-// learnings/ is ever deleted by this call, so switching back to 0 is an
-// instant, safe rollback if something is wrong after a switch to 1.
-func SetWorkflowCodeLayoutVersion(ctx context.Context, workspacePath string, version int) error {
-	if version != 0 && version != 1 {
-		return fmt.Errorf("unsupported code_layout_version %d", version)
-	}
-	previous, previousExists, readErr := readFileFromWorkspace(ctx, manifestPath(workspacePath))
-	if readErr != nil {
-		return fmt.Errorf("read existing workflow.json: %w", readErr)
-	}
-	if !previousExists {
-		return fmt.Errorf("workflow.json not found under %s", workspacePath)
-	}
-	var m WorkflowManifest
-	if err := json.Unmarshal([]byte(previous), &m); err != nil {
-		return fmt.Errorf("parse existing workflow.json: %w", err)
-	}
-	if m.CodeLayoutVersion == version {
-		return fmt.Errorf("code_layout_version is already %d", version)
-	}
-	m.CodeLayoutVersion = version
-	m.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if err := ValidateManifest(&m); err != nil {
-		return fmt.Errorf("manifest validation failed: %w", err)
-	}
-	data, err := json.MarshalIndent(&m, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal workflow.json: %w", err)
-	}
-	if err := writeFileToWorkspace(ctx, manifestPath(workspacePath), string(data)); err != nil {
-		return fmt.Errorf("failed to write workflow.json: %w", err)
-	}
-	step_based_workflow.LogCanonicalArtifactChange(
-		ctx, workspacePath, "set_code_layout_version",
-		fmt.Sprintf("Switched code_layout_version to %d.", version),
-		workflowManifestChangelogChanges(previous, string(data)), workflowManifestChangelogReader, writeFileToWorkspace, createServerLogger(),
-		"workflow.json", previous, string(data),
-	)
-	return nil
-}
-
 // workflowManifestChangelogReader adapts the server's three-result read to the
 // two-result shape the changelog writer expects. A missing file reads as empty,
 // which is how the changelog writer creates its first entry.

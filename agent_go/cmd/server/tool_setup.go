@@ -274,19 +274,6 @@ func createCustomTools(workflowMode bool, sessionInfo ...string) ([]llmtypes.Too
 			toolCategories[name] = category
 		}
 
-		// PLAT-298. The one supported way to switch this workflow's
-		// code_layout_version -- see workflow_manifest.go's
-		// SetWorkflowCodeLayoutVersion and code-authoring.md's "Deliberate
-		// migration to code/".
-		codeLayoutRegistry := virtualtools.CreateCodeLayoutToolRegistry(sessionID, SetWorkflowCodeLayoutVersion)
-		allTools = append(allTools, codeLayoutRegistry.Tools...)
-		for name, executor := range codeLayoutRegistry.Executors {
-			allExecutors[name] = executor
-		}
-		for name, category := range codeLayoutRegistry.Categories {
-			toolCategories[name] = category
-		}
-
 		// PLAT-428. The scripts that still open the database themselves, for the
 		// contract 1.0.45 migration to the agentworks_db helper.
 		scriptDBRegistry := virtualtools.CreateScriptDBToolRegistry(sessionID)

@@ -1193,7 +1193,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 	planMod := []string{
 		"create_plan",
 		"validate_plan_change",
-		"migrate_agent_code_items", "migrate_agent_steps", "migrate_goal_agents", "migrate_workflow_skills",
+		"migrate_workflow_skills",
 		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
 
 		"add_agent_route", "update_agent_route", "delete_agent_route",
@@ -5746,7 +5746,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip set_workflow_contract_version registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"set_workflow_contract_version",
-		"Stamp workflow.json with a completed workflow contract version after the operator started a manual upgrade in this chat and that migration's work has been verified. Use get_contract_upgrades to see what is pending, do the migration the instruction describes, then stamp that same version. Stamp one version at a time, in order; the version is the record that the migration happened, so never stamp work that was not performed. Schedules never authorize or perform migrations. This changes workflow.json.version and updated_at and appends the applied timestamp to contract_upgrade_history; it cannot change plans, schedules, capabilities, or notifications.",
+		"Temporary one-time upgrade tool for older Goals, removed once every Goal has moved. Stamp workflow.json with a completed workflow contract version after the operator started a manual upgrade in this chat and that migration's work has been verified. Use get_contract_upgrades to see what is pending, do the migration the instruction describes, then stamp that same version. Stamp one version at a time, in order; the version is the record that the migration happened, so never stamp work that was not performed. Schedules never authorize or perform migrations. This changes workflow.json.version and updated_at; it cannot change plans, schedules, capabilities, or notifications.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -5802,20 +5802,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 			if version == WorkflowSkillsContractVersion {
 				if err := ValidateWorkflowSkillsStamp(filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {
-					return "", err
-				}
-			}
-			if version == GoalAgentContractVersion {
-				plan, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
-				if err != nil {
-					return "", err
-				}
-				rawConfig, readErr := iwm.controller.ReadWorkspaceFile(ctx, "planning/step_config.json")
-				cfg, err := goalAgentConfigForMigration(rawConfig, readErr)
-				if err != nil {
-					return "", err
-				}
-				if err := validateGoalAgentContractStamp(plan, cfg); err != nil {
 					return "", err
 				}
 			}
@@ -5908,7 +5894,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 	// Tool: get_contract_upgrades — show pending platform migrations
 	if err := mcpAgent.RegisterCustomTool(
 		"get_contract_upgrades",
-		"Show this workflow's platform contract status: its current version, every migration still owed with full manual instructions, and historical failed upgrade attempts. Use when the owner asks why an interactive run or webhook is blocked, why the version is behind, or what an upgrade will change. Upgrades are started manually in this Builder chat, one at a time in order. Cron/calendar and trigger_schedule runs keep using the saved contract and never authorize, apply, or stamp migrations; direct webhooks remain fail-closed until required migrations are complete.",
+		"Temporary one-time upgrade status for older Goals, removed once every Goal has moved. Show this workflow's platform contract status: its current version, every migration still owed with full manual instructions, and historical failed upgrade attempts. Use when the owner asks why an interactive run or webhook is blocked, why the version is behind, or what an upgrade will change. Upgrades are started manually in this Builder chat, one at a time in order. Cron/calendar and trigger_schedule runs keep using the saved contract and never authorize, apply, or stamp migrations; direct webhooks remain fail-closed until required migrations are complete.",
 		map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},

@@ -2,7 +2,6 @@ package step_based_workflow
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,9 +9,6 @@ import (
 	"reflect"
 	"strings"
 	"time"
-
-	workspacepkg "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
-	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
 const AgentStepContractVersion = "1.0.47"
@@ -39,7 +35,7 @@ func ValidateAgentStepContractStamp(content string) error {
 		return err
 	}
 	if count != 0 {
-		return fmt.Errorf("run migrate_agent_steps before stamping %s: %d saved agent records still need migration", AgentStepContractVersion, count)
+		return fmt.Errorf("complete the server deployment preparation before stamping %s: %d saved agent records still need conversion", AgentStepContractVersion, count)
 	}
 	return nil
 }
@@ -264,36 +260,4 @@ func MigrateAgentStepContent(content string) (string, int, error) {
 	}
 	data, err := json.MarshalIndent(plan, "", "  ")
 	return string(data), count, err
-}
-
-func createMigrateAgentStepsExecutor(workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error) func(context.Context, map[string]interface{}) (string, error) {
-	return func(ctx context.Context, _ map[string]interface{}) (string, error) {
-		path := normalizePathForWorkspaceAPI("planning/plan.json", workspacePath)
-		before, err := readFile(ctx, path)
-		if err != nil {
-			return "", err
-		}
-		after, count, err := MigrateAgentStepContent(before)
-		if err != nil {
-			return "", err
-		}
-		if count == 0 {
-			return `{"status":"no_op"}`, nil
-		}
-		var plan PlanningResponse
-		if err := json.Unmarshal([]byte(after), &plan); err != nil {
-			return "", err
-		}
-		if err := ValidatePlanStructure(&plan); err != nil {
-			return "", err
-		}
-		if err := writeFile(workspacepkg.WithSystemManagedWritePaths(ctx, path), path, after); err != nil {
-			return "", err
-		}
-		logPlanChange(ctx, workspacePath, PlanChangelogEntry{
-			Tool: "migrate_agent_steps", Reason: "PLAT-851: unify saved agent step types without changing their items or routes.",
-			BeforeSnapshot: json.RawMessage(before), AfterSnapshot: json.RawMessage(after),
-		}, readFile, withPlanMutationWriteAccess(workspacePath, writeFile), logger)
-		return fmt.Sprintf(`{"status":"migrated","agent_steps":%d}`, count), nil
-	}
 }

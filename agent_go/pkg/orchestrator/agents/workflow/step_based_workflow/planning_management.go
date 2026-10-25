@@ -185,7 +185,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) checkExistingPlan(ctx context.Context
 	return true, &planResponse, nil
 }
 
-func validateLoadedPlanStepWithOptions(typedStep PlanStepInterface, stepIndex int, allowLegacyAgentCode bool) error {
+func validateLoadedPlanStep(typedStep PlanStepInterface, stepIndex int) error {
 	switch step := typedStep.(type) {
 	case *ScriptedPlanStep:
 		if err := validateScriptParameterContract(&step.CommonStepFields); err != nil {
@@ -194,12 +194,12 @@ func validateLoadedPlanStepWithOptions(typedStep PlanStepInterface, stepIndex in
 		return nil
 
 	case *AgentPlanStep:
-		if err := validateAgentStepFieldsTypedWithOptions(step, allowLegacyAgentCode); err != nil {
+		if err := validateAgentStepFieldsTyped(step); err != nil {
 			return err
 		}
 		for i, route := range step.PredefinedRoutes {
 			if route.SubAgentStep != nil {
-				if err := validateLoadedPlanStepWithOptions(route.SubAgentStep, i, allowLegacyAgentCode); err != nil {
+				if err := validateLoadedPlanStep(route.SubAgentStep, i); err != nil {
 					return fmt.Errorf("predefined_route[%d] (route_id: %s): %w", i, route.RouteID, err)
 				}
 			}
@@ -221,19 +221,7 @@ func validateLoadedPlanStepWithOptions(typedStep PlanStepInterface, stepIndex in
 }
 
 func validateLoadedPlanStructure(plan *PlanningResponse) error {
-	return validateLoadedPlanStructureWithOptions(plan, false)
-}
-
-// validateLoadedPlanStructureAllowLegacyAgentCode exists only so a
-// workflow-version preflight can open a pre-v1.0.10 plan and call the trusted
-// migration tool. Execution and every persisted plan write use the strict
-// validator above, so a legacy code item can never execute or be saved again.
-func validateLoadedPlanStructureAllowLegacyAgentCode(plan *PlanningResponse) error {
-	return validateLoadedPlanStructureWithOptions(plan, true)
-}
-
-func validateLoadedPlanStructureWithOptions(plan *PlanningResponse, allowLegacyAgentCode bool) error {
-	if err := validateLoadedPlanStructureCoreWithOptions(plan, allowLegacyAgentCode); err != nil {
+	if err := validateLoadedPlanStructureCore(plan); err != nil {
 		return err
 	}
 	if err := validateNextStepIDReferences(plan); err != nil {
@@ -250,23 +238,6 @@ func validateLoadedPlanStructureWithOptions(plan *PlanningResponse, allowLegacyA
 // read mode so they can load and repair a graph left dangling by older code;
 // every write still calls ValidatePlanStructure and therefore remains atomic.
 func validateLoadedPlanStructureCore(plan *PlanningResponse) error {
-	return validateLoadedPlanStructureCoreWithOptions(plan, false)
-}
-
-// validateLoadedPlanStructureCoreAllowLegacyAgentCode is the
-// readPlanForMutation-side counterpart to
-// validateLoadedPlanStructureAllowLegacyAgentCode above: it lets a
-// pre-v1.0.10 plan be loaded (not persisted) by mutation tools — e.g. so
-// delete_plan_steps or update_agent_step can remove or repair the
-// offending step — without also re-validating cross-step graph references
-// that only the full read path checks. Every write still calls
-// ValidatePlanStructure, so a legacy code item can never execute or be
-// saved again.
-func validateLoadedPlanStructureCoreAllowLegacyAgentCode(plan *PlanningResponse) error {
-	return validateLoadedPlanStructureCoreWithOptions(plan, true)
-}
-
-func validateLoadedPlanStructureCoreWithOptions(plan *PlanningResponse, allowLegacyAgentCode bool) error {
 	if plan == nil {
 		return fmt.Errorf("plan is nil")
 	}
@@ -277,12 +248,12 @@ func validateLoadedPlanStructureCoreWithOptions(plan *PlanningResponse, allowLeg
 		return err
 	}
 	for i, step := range plan.Steps {
-		if err := validateLoadedPlanStepWithOptions(step, i, allowLegacyAgentCode); err != nil {
+		if err := validateLoadedPlanStep(step, i); err != nil {
 			return fmt.Errorf("steps[%d] (id=%s): %w", i, step.GetID(), err)
 		}
 	}
 	for i, step := range plan.OrphanSteps {
-		if err := validateLoadedPlanStepWithOptions(step, i, allowLegacyAgentCode); err != nil {
+		if err := validateLoadedPlanStep(step, i); err != nil {
 			return fmt.Errorf("orphan_steps[%d] (id=%s): %w", i, step.GetID(), err)
 		}
 	}
@@ -553,7 +524,7 @@ func populateRuntimeFields(typedStep PlanStepInterface, stepConfigs []StepConfig
 func IsPlanModificationTool(name string) bool {
 	return name == "add_step" || name == "update_step" || name == "manage_step_route" || name == "manage_group" || name == "maintain_plan" || name == "update_scripted_step" || name == "update_routing_step" || name == "update_branch_step" || name == "update_agent_step" || name == "update_crew_step" || name == "delete_plan_steps" || name == "add_scripted_step" || name == "add_routing_step" || name == "add_branch_step" || name == "add_agent_step" || name == "add_crew_step" ||
 		name == "update_validation_schema" ||
-		name == "add_agent_route" || name == "update_agent_route" || name == "delete_agent_route" || name == "migrate_agent_steps" || name == "migrate_goal_agents" || name == "migrate_workflow_skills" ||
+		name == "add_agent_route" || name == "update_agent_route" || name == "delete_agent_route" || name == "migrate_workflow_skills" ||
 		name == "convert_routing_branch_step_type"
 }
 

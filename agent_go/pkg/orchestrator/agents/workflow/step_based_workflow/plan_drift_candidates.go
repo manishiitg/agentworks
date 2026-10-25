@@ -211,8 +211,8 @@ func planDriftPlainFileReader(_ context.Context, workspaceRelativePath string) (
 
 // planStepIDsFromPlanJSON returns every step id declared in plan.json's
 // top-level "steps" array, recursing into routing/branch sub-agent steps the
-// same way collectRawPlanStepIDs already does for the agent code
-// migration. Deliberately excludes "orphan_steps" — those are detached,
+// same way collectRawPlanStepIDs does for nested routes.
+// Deliberately excludes "orphan_steps" — those are detached,
 // non-executing steps, not live plan surface a drift review needs to cover.
 func planStepIDsFromPlanJSON(planContent string) (map[string]bool, error) {
 	var document map[string]json.RawMessage
@@ -441,4 +441,26 @@ func hasDriftDueItem(items []PlanDriftDueItem, id string) bool {
 		}
 	}
 	return false
+}
+
+func collectRawPlanStepIDs(raw json.RawMessage, ids map[string]bool) {
+	var step map[string]json.RawMessage
+	if json.Unmarshal(raw, &step) != nil {
+		return
+	}
+	var id string
+	_ = json.Unmarshal(step["id"], &id)
+	if id != "" {
+		ids[id] = true
+	}
+	var routes []struct {
+		SubAgentStep json.RawMessage `json:"sub_agent_step"`
+	}
+	if json.Unmarshal(step["predefined_routes"], &routes) == nil {
+		for _, route := range routes {
+			if len(route.SubAgentStep) > 0 {
+				collectRawPlanStepIDs(route.SubAgentStep, ids)
+			}
+		}
+	}
 }
