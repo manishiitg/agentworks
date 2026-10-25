@@ -71,10 +71,10 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
       </div>
     ))
 
-  const renderGroup = (label: string, description: string, references: AdditionalReadOnlyReference[], available: AdditionalReadOnlyReference[], placeholder: string, canAdd = !hideAdd) => (
+  const renderGroup = (label: string, description: string, references: AdditionalReadOnlyReference[], available: AdditionalReadOnlyReference[], placeholder: string, canAdd = !hideAdd) => !canAdd && !references.some(reference => normalizedSelected.includes(reference.path)) ? null : (
     <div className="rounded-md border border-border/80 bg-background/50 p-3">
       <div className="text-xs font-medium text-foreground">{label}</div>
-      <p className="mt-0.5 text-[11px] text-muted-foreground">{description}</p>
+      {!hideAdd && <p className="mt-0.5 text-[11px] text-muted-foreground">{description}</p>}
       {references.some(reference => normalizedSelected.includes(reference.path)) && (
         <div className="mt-2 space-y-2">{renderSelected(references)}</div>
       )}
@@ -100,10 +100,11 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
         <Link2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
         <div>
           <h3 className="text-sm font-medium text-foreground">Work linked here</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Link your other workflows, Crews or projects so this one can look at them. Access is checked again on every run.</p>
+          <p className="mt-1 text-xs text-muted-foreground">{normalizedSelected.length} linked · Access checked on every run.</p>
         </div>
       </div>
       <div className="mt-3 grid gap-3">
+        {hideAdd && !normalizedSelected.length && <p className="text-xs text-muted-foreground">No linked work. Use Ask AI to link a project.</p>}
         {renderGroup('Workflows', 'Reusable automations you have built.', workflowReferences, availableWorkflows, 'Attach a workflow…')}
         {showAdditionalGroup && renderGroup(additionalLabel, 'Your other Crews.', crewReferences, availableCrew, `Attach ${additionalLabel}…`)}
         {extraGroups.map((group, index) => <div key={group.label}>{renderGroup(group.label, group.description, extraReferences[index], extraReferences[index].filter(reference => !normalizedSelected.includes(reference.path)), group.placeholder, true)}</div>)}

@@ -1,3 +1,4 @@
+import { useWorkspacePanelHosted } from '../../workspace/WorkspacePanelNavigation'
 import { openProjectIntegrations } from '../../../utils/projectIntegrationNavigation'
 import { Loader2, Mail } from 'lucide-react'
 import { agentApi } from '../../../services/api'
@@ -37,6 +38,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
   scopeNoun?: 'workflow' | 'project' | 'relay'
   onAsk?: (message: string) => void | Promise<void>
 }) {
+  const hosted = useWorkspacePanelHosted()
   const {
     gmailConnectionsReadOnly: readOnly, gmailSettingsReadOnly, canRemoveGmailConnection,
     gmailConfig, setGmailConfig, gmailBlockedText, setGmailBlockedText,
@@ -66,9 +68,8 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 <span>Gmail</span>
               </span>
             }
-            description="Google accounts added to this item. The agent uses these accounts through the server."
             actions={
-              <AskAIButton
+              !hosted && <AskAIButton
                 workspacePath={workspacePath}
                 onAsk={onAsk}
                 label={scopeNoun === 'project' ? 'Ask Crew to set up Gmail' : 'Ask Builder to set up Gmail'}
@@ -88,23 +89,26 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 onReconnect={() => openProjectIntegrations('gmail')} onRemove={handleRemoveMailbox} onChangeAccess={() => openProjectIntegrations('gmail')}
               /></div>}
           </FormSection>
+          <details className="rounded-lg border border-border p-3">
+          <summary className="cursor-pointer text-sm font-medium">Company delivery defaults · {gmailConfig.enabled ? 'On' : 'Off'}{gmailSettingsReadOnly ? ' · Admin managed' : ''}</summary>
           <FormSection
+            className="mt-3"
             title="Company delivery defaults"
-            description={scopeNoun === 'workflow' ? "Company-wide workflow email defaults are managed by an administrator. To use your own email, add your Google account above and choose it in Notify; this switch can stay off." : "Company-wide workflow email defaults are managed by an administrator. Your personal Google account is managed above and does not need this switch."}
+            description="Company sender and recipients. Personal Google accounts work independently."
           >
-            {gmailSettingsReadOnly && <p className="mb-3 text-xs text-muted-foreground" role="status">Only an admin can change company email defaults or send a company test email.</p>}
+            {gmailSettingsReadOnly && <p className="mb-3 text-xs text-muted-foreground" role="status">Company settings are managed by an administrator.</p>}
             {gmailError && <StatusBanner tone="error">{gmailError}</StatusBanner>}
             {gmailSuccess && <StatusBanner tone="success">{gmailSuccess}</StatusBanner>}
             <Card className="p-4">
               <ToggleRow
                 label="Workflow email notifications (company default)"
-                description="Controls the company default sender for workflow summaries. An item’s selected personal sender does not need this switch."
+                description="Use the company sender for workflow summaries."
                 checked={gmailConfig.enabled}
                 onCheckedChange={checked => setGmailConfig({ ...gmailConfig, enabled: checked })}
                 disabled={gmailSettingsReadOnly || (!gmailConfig.enabled && !gmailCanEnable)}
                 disabledTitle={gmailSettingsReadOnly ? READ_ONLY_TITLE : undefined}
               />
-              {!gmailConfig.enabled && !gmailCanEnable && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">The company default sender is not ready. Your own Google accounts above work independently of company email defaults.</p>}
+              {!gmailConfig.enabled && !gmailCanEnable && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">Company sender not ready. Personal accounts are unaffected.</p>}
             </Card>
             <Card className="space-y-3 p-4">
                 <div>
@@ -112,7 +116,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                   {/* Deliberately type="text": type="email" rejects a comma-separated
                       list, which is the whole point of this field. */}
                   <Input type="text" inputMode="email" value={gmailConfig.default_to || ''} onChange={event => setGmailConfig({ ...gmailConfig, default_to: event.target.value })} disabled={gmailSettingsReadOnly} placeholder="you@example.com, teammate@example.com" aria-label="Default recipients" />
-                  <p className="mt-1 text-xs text-muted-foreground">Where notifications are emailed when a workflow has no recipients of its own. Separate several addresses with commas.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Fallback recipients · Separate addresses with commas.</p>
                 </div>
                 <div>
                   <Label className="mb-2 block">Disallowed recipients</Label>
@@ -126,6 +130,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 <Button onClick={saveGmail} disabled={gmailSettingsReadOnly || !gmailHasChanges || gmailSaving || gmailLoading || gmailDefaultIsBlocked || (gmailConfig.enabled && !gmailCanEnable)} title={gmailSettingsReadOnly ? READ_ONLY_TITLE : undefined}>{gmailSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : 'Save'}</Button>
               </div>
           </FormSection>
+          </details>
           </>
         )}
     </div>

@@ -22,15 +22,13 @@ export function ProjectMcpSetupPanel({ workspacePath }: { workspacePath: string 
   if (!project) return <p role="status" className="text-sm text-muted-foreground">Loading project connection…</p>
   const endpoint = access === 'use' ? project.use_url : project.view_url
   return <div className="space-y-4">
-    <div><h3 className="text-base font-semibold">Connect just this project</h3>
-      <p className="mt-1 text-sm text-muted-foreground">{project.title} only. Other projects stay outside this connection.</p></div>
-    <label className="flex items-center gap-3 text-sm">Access
-      <select aria-label="Project MCP access" value={access} onChange={event => setAccess(event.target.value as 'view' | 'use')} className="rounded-md border border-border bg-background p-2">
-        <option value="view">View</option><option value="use">Use</option>
-      </select>
-    </label>
-    <p className="text-xs text-muted-foreground">{access === 'view' ? 'Read this project’s permitted files, results and dashboards.' : 'View this project and start permitted runs and call published functions. Existing roles and function permissions still apply.'} Project settings and building access are excluded.</p>
-    <p className="text-xs text-muted-foreground">Share the project with the person first, then send them this MCP URL. They sign in with their own account. The URL grants no access, and removing their project access disconnects them.</p>
+    <section aria-label="Project connection" className="space-y-3 rounded-lg border border-border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><span className="text-xs text-muted-foreground">Project</span><h3 className="font-semibold">{project.title}</h3></div>
+        <label className="flex items-center gap-2 text-sm">Access<select aria-label="Project MCP access" value={access} onChange={event => setAccess(event.target.value as 'view' | 'use')} className="rounded-md border border-border bg-background p-2"><option value="view">View</option><option value="use">Use</option></select></label>
+      </div>
+      <p className="text-xs text-muted-foreground">{access === 'view' ? 'Read permitted files, results and dashboards.' : 'View results, start permitted runs and call published functions.'} This project only.</p>
+      <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Access and sharing</summary><p className="mt-2">Share this project first. They sign in with their own account. The URL grants no access. Existing roles and function permissions apply; settings and building are excluded. Removing project access disconnects the person.</p></details>
+    </section>
     <CliMcpSetupPanel key={endpoint} endpoint={endpoint} projectName={project.title} connectionName={`agentworks-${project.kind}-${project.id}`} />
   </div>
 }

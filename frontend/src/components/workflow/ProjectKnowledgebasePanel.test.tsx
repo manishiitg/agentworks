@@ -6,9 +6,10 @@ import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
 import { knowledgebaseApi } from '../../services/knowledgebaseApi'
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (state: { user: null }) => unknown) => selector({ user: null }) }))
 vi.mock('../../services/knowledgebaseApi', () => ({
-  knowledgebaseApi: { bootstrap: vi.fn(), project: vi.fn(), setProjectAccess: vi.fn() },
+  knowledgebaseApi: { bootstrap: vi.fn(), project: vi.fn(), setProjectAccess: vi.fn(), folders: vi.fn(), entries: vi.fn() },
   knowledgebaseError: (error: Error) => error.message,
 }))
+vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: any) => select({ activeWorkspaceId: 'local' }) }))
 vi.mock('./AskAIButton', () => ({ AskAIButton: ({ label }: { label: string }) => <button>{label}</button> }))
 let root: Root
 let container: HTMLDivElement
@@ -17,21 +18,26 @@ beforeEach(() => {
   vi.stubEnv('VITE_DEPLOYMENT_MODE', 'server')
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase'] }
   vi.mocked(knowledgebaseApi.bootstrap).mockResolvedValue({} as never)
+  vi.mocked(knowledgebaseApi.folders).mockResolvedValue({ folders: [{ path: 'guides', name: 'Team guides', effective_role: 'reader' }] })
+  vi.mocked(knowledgebaseApi.entries).mockResolvedValue({ entries: [] })
   container = document.createElement('div'); document.body.append(container); root = createRoot(container)
 })
 
-it.each(['bootstrap', 'project'] as const)('keeps Brain guidance visible when %s returns 404 and recovers on refresh', async endpoint => {
+it.each(['bootstrap', 'project'] as const)('reports unavailable Brain access when %s returns 404 and recovers on refresh', async endpoint => {
   const missing = Object.assign(new Error('Brain not found'), { response: { status: 404 } })
   vi.mocked(knowledgebaseApi.project).mockResolvedValue({ manifest_version: 'v1', brain_access: 'read', can_manage: false })
   vi.mocked(knowledgebaseApi[endpoint]).mockRejectedValueOnce(missing)
   await act(async () => root.render(<ProjectKnowledgebasePanel workspacePath="Workflow/payments"/>))
-  expect(container.querySelector('[aria-label="About Brain"]')).not.toBeNull()
-  expect(container.textContent).toContain('Share knowledge with your team')
+  expect(container.querySelector('[aria-label="Brain"]')).not.toBeNull()
+  expect(container.querySelector('[aria-label="Knowledge available to you"]')).toBeNull()
   expect(container.querySelector('[role="alert"]')?.textContent).toContain('Brain could not be loaded for this project')
   expect(container.querySelector('[role="radiogroup"]')).toBeNull()
   expect(knowledgebaseApi.setProjectAccess).not.toHaveBeenCalled()
   await act(async () => (container.querySelector('[aria-label="Refresh Brain"]') as HTMLButtonElement).click())
   expect(container.querySelector('[role="alert"]')).toBeNull()
+  expect(container.textContent).toContain('Team guides')
+  expect(container.textContent).toContain('Available to you')
+  expect(container.textContent).not.toContain('Share knowledge with your team')
   const radios = [...container.querySelectorAll('input[type="radio"]')] as HTMLInputElement[]
   expect(radios.find(radio => radio.checked)?.value).toBe('read')
   expect(radios.every(radio => radio.disabled)).toBe(true)
@@ -45,6 +51,9 @@ it('offers off, read and read & write only, and shows a legacy folders project a
   vi.mocked(knowledgebaseApi.project).mockResolvedValue({ manifest_version: 'v1', brain_access: 'folders', can_manage: true })
   vi.mocked(knowledgebaseApi.setProjectAccess).mockResolvedValue({ brain_access: 'read', manifest_version: 'v2' })
   await act(async () => root.render(<ProjectKnowledgebasePanel workspacePath="Workflow/payments"/>))
+  expect(container.textContent).toContain('Team guides')
+  expect(container.textContent).toContain('Available to you')
+  expect(container.textContent).not.toContain('Share knowledge with your team')
   const radios = [...container.querySelectorAll('input[type="radio"]')] as HTMLInputElement[]
   expect(radios.map(radio => radio.value)).toEqual(['write', 'read', 'off'])
   expect(radios.find(radio => radio.checked)?.value).toBe('write')

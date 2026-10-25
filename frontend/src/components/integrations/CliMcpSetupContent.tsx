@@ -112,7 +112,7 @@ export function CliMcpSetupContent({ target = 'agentworks', endpoint, projectNam
   if (useLocalToken) return <LocalMcpTokenPanel endpoint={mcpUrl} origin={origin} />
 
   return <div className="space-y-5">
-    <div><h3 className="text-base font-semibold text-foreground">Use {projectName || serviceName} in your AI app</h3><p className="mt-1 text-sm text-muted-foreground">{target === 'vault' ? 'Let your AI app use the tools and secrets allowed by your Vault access.' : projectName ? `Connect your AI app to ${projectName}. Access is limited to this project.` : 'Let your AI app work with the projects, knowledge and tools you can access.'}</p></div>
+    {!projectName && <div><h3 className="text-base font-semibold text-foreground">Use {serviceName} in your AI app</h3><p className="mt-1 text-sm text-muted-foreground">{target === 'vault' ? 'Let your AI app use the tools and secrets allowed by your Vault access.' : projectName ? `Connect your AI app to ${projectName}. Access is limited to this project.` : 'Let your AI app work with the projects, knowledge and tools you can access.'}</p></div>}
     <AiAppPicker value={app} localOnly={isLoopbackOrigin} onChange={next => { setApp(next); if (isHostedAiApp(next)) { setDestination('hosted-assistant'); setHostedClient(next) } else if (next) { setDestination('local-assistant'); setLocalClient(next) } }} />
     {app && <>
     {destination === 'hosted-assistant' ? <HostedAiAppGuide app={hostedClient} endpoint={mcpUrl} serviceName={serviceName} localServer={isLoopbackOrigin}>

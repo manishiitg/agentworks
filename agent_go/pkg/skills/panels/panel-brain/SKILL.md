@@ -40,3 +40,9 @@ Use brain_update/brain_skills for requested shared content or skill changes,
 within current folder permissions. Goal-local Knowledge base, Crew Memory and
 shared Brain are different stores. Never edit another product's files or infer
 access from a link, selected item or loaded skill.
+
+The panel leads with the saved project mode and an authorized library browser
+labeled Available to you. That list is the person's library, not evidence of
+what the project has used or a grant to its output audience. Inspect project
+and folder access before claiming a project can use an item. Use the header
+Ask AI for guidance/setup; Open Brain opens the full library.

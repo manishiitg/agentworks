@@ -16,7 +16,8 @@ it.each(['work', 'code', 'workflow', 'relay'])('uses the server-resolved %s proj
   try {
     await act(async () => root.render(<ProjectMcpSetupPanel workspacePath="current/workspace" />))
     expect(api.get).toHaveBeenCalledWith('/api/oauth/mcp/project', { params: { workspace: 'current/workspace' } })
-    expect(host.textContent).toContain('Connect just this project')
+    expect(host.querySelector('[aria-label="Project connection"]')).not.toBeNull()
+    expect(host.textContent).toContain('This project only.')
     expect(host.textContent).toContain('They sign in with their own account')
     expect(host.querySelector('[data-endpoint]')?.getAttribute('data-endpoint')).toBe(`${resource}/use`)
     const access = host.querySelector('select')!; access.value = 'view'

@@ -78,7 +78,7 @@ export default function WorkflowFunctionsView({ workspacePath, relayMode = false
 
   return <div className="h-full min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background">
     <div className="space-y-4 p-4" data-testid="workflow-functions">
-      <p className="text-xs leading-relaxed text-muted-foreground">{relayMode ? 'Publish a Flow version before calling its function triggers with a JSON INPUT object. An external access token with runs:execute can start a published run and poll its durable run ID. Anyone with access to this Flow may execute it using the owner’s configured credentials. Publishing and editing require write access. Builder edits stay in the draft until the next publish.' : "Functions are how other Crews, workflows and MCP/CLI tools call this workflow. Callers are identified by the platform: no URL or secret. A typed function sets its inputs as the run's variables and refuses a call missing a required input before anything runs."}</p>
+      <p className="text-xs text-muted-foreground">{loaded ? `${functions.length} functions · ${functions.filter(item => item.enabled).length} enabled` : 'Loading functions…'}</p>
       {relayMode && <section className="rounded-lg border border-border p-3 text-xs" data-testid="relay-release-status">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div><span className="font-medium">API release</span> <span className="text-muted-foreground">{releases?.active_error ? `Unavailable ${releases.active_version || "release"}` : releases?.active_version ? `Published ${releases.active_version}` : 'Draft only'}</span></div>
@@ -119,7 +119,7 @@ export default function WorkflowFunctionsView({ workspacePath, relayMode = false
             <h3 className="truncate font-mono text-sm font-medium">ask</h3>
             <span className="shrink-0 text-[11px] text-muted-foreground">Built in</span>
           </div>
-          <p className="text-muted-foreground">Free text to this workflow's assistant (Run mode). Each caller gets one continuing thread, shown in Chats as "Asked by …". It answers questions and starts runs with the right variables; it can't edit the workflow, so requested changes arrive as suggestions in Human decisions.</p>
+          <p className="text-muted-foreground">Questions and permitted runs through the assistant. Each caller keeps a continuing chat; workflow edits stay with the Builder.</p>
         </section>}
         {loaded && functions.length === 0 && <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
           <p>{relayMode ? 'No Flow trigger yet. Add a function with a required INPUT object to call this graph.' : "No typed functions yet. Expose a route with required inputs so callers can't run it without them."}</p>

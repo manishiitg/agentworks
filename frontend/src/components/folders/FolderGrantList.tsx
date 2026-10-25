@@ -38,13 +38,13 @@ export function FolderGrantList<T extends FolderGrantItem>({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-foreground">{grant.alias}</span>
-                <code className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">linked://{grant.alias}/</code>
+
                 {grant.available === false && (
                   <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive">Unavailable</span>
                 )}
               </div>
               <div className="mt-1 truncate text-xs text-muted-foreground" title={grant.path}>{grant.path}</div>
-              {grant.reason && <div className="mt-1 text-xs text-muted-foreground">{grant.reason}</div>}
+              <details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer">Folder details</summary><code className="block pt-1">linked://{grant.alias}/</code>{grant.reason && <p className="pt-1">{grant.reason}</p>}</details>
             </div>
             {onAccessChange ? (
               <select
