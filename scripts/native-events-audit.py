@@ -42,10 +42,20 @@ for file in glob.glob(os.path.join(c["state_root"],"native-reply-claims","*.json
     except (OSError,ValueError):claims["unreadable"]+=1
 result.update(owned_runtime_states=dict(states),native_work_states=dict(helpers),publication_claims=dict(claims))
 accepted={}; saved=set(); committed=set(); followups=set(); gaps=collections.Counter(); unknown=collections.Counter(); invalid=identity=0
+cost_events=collections.Counter(); cost_gaps=collections.Counter()
 try:
     with open(c["log_path"],"rb") as f:
         f.seek(0,2); size=f.tell(); f.seek(max(0,size-(8<<20))); lines=f.read().decode("utf-8","replace").splitlines()
     for line in lines:
+        if "[NATIVE_COST]" in line:
+            fields=dict(re.findall(r"\b([a-z_]+)=([^\s]+)",line))
+            if " gap " in line:
+                reason=fields.get("reason","")
+                cost_gaps[reason if re.fullmatch("[a-z_]+",reason) else "reader_error"]+=1
+            else:
+                kind="generation" if " generation " in line else "handoff" if " handoff " in line else "runtime_saved" if " runtime_saved " in line else "restored" if " restored " in line else "other"
+                mode=fields.get("mode","")
+                cost_events[kind+(":"+mode if mode in ("native","foreground") else "")]+=1
         if "[NATIVE_RECORD]" not in line:continue
         fields=dict(re.findall(r"\b([a-z_]+)=([^\s]+)",line))
         if " accepted " in line and fields.get("event"):
@@ -70,7 +80,8 @@ try:
     missing=followups-saved-committed
     result.update(observed_events=dict(kinds),gap_reasons=dict(gaps),unknown_kinds=dict(unknown),invalid_records=invalid,identity_gaps=identity,
                   followups_without_saved_reply=[{"native_session_id":n,"native_turn_id":t,"state":"AWAITING OR MISSING; inspect server evidence"} for n,t in sorted(missing)],
-                  saved_observer_turns=len(saved),committed_foreground_turns=len(committed))
+                  saved_observer_turns=len(saved),committed_foreground_turns=len(committed),
+                  native_cost_events=dict(cost_events),native_cost_gap_reasons=dict(cost_gaps))
 except OSError:result["log_status"]="UNAVAILABLE"
 release=c.get("release_path")
 if release:
