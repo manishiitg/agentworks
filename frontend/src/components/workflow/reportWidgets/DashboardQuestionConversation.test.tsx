@@ -222,3 +222,14 @@ it('keeps an embedded dashboard message in its current project pane conversation
  expect(openAsk).not.toHaveBeenCalled()
  expect(send).not.toHaveBeenCalled()
 })
+
+
+it('mounts the existing Ask dialog to consume a standalone Relay UI message', async () => {
+ get.mockResolvedValue({ data: { ...view, product: 'relay', capability: { can_view: true, can_ask: true, mode: 'question_only' } } })
+ openAsk.mockResolvedValue('relay-personal-chat'); send.mockResolvedValue({ tabId: 'relay-personal-chat', reused: true, queuedBehindRunningTurn: false })
+ await mount('relay', 'question_only')
+ const options = install.mock.calls.at(-1)![1]
+ await act(async () => { await options.dataApi.sendChatMessage('Explain this result') })
+ expect(document.querySelector('dialog [data-native-tab]')?.getAttribute('data-native-tab')).toBe('relay-personal-chat')
+ expect(send).toHaveBeenCalledWith(expect.objectContaining({ tabId: 'relay-personal-chat' }))
+})

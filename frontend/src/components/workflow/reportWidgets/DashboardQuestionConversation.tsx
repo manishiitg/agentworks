@@ -1,10 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type CSSProperties } from 'react'
-import { MessageCircle, X, Zap } from 'lucide-react'
+import { MessageCircle, Zap } from 'lucide-react'
 import api from '../../../services/api'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import { openProjectAskConversation } from '../../../utils/projectAskConversation'
 import { sendWorkspacePaneMessageToChat } from '../../../utils/workspacePaneChat'
-import ModalPortal from '../../ui/ModalPortal'
+import { DashboardChatDialog } from './DashboardChatDialog'
 import { WorkingTipsContext } from '../../chat/workingTipsContext'
 import type { CommandDefinition } from '../../../commands'
 import { ReportChatRequestController } from './reportChatRequest'
@@ -39,7 +39,6 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const [error, setError] = useState<string | null>(null)
   const generation = useRef(0)
   const container = useRef<HTMLDivElement>(null)
-  const dialog = useRef<HTMLDialogElement>(null)
   const widgetApi = useRef<ReturnType<typeof installDashboardChatWidgets>["api"] | null>(null)
   const revealWidgets = useRef<(() => void) | null>(null)
   const accepted = useRef(new Map<string, string>())
@@ -133,11 +132,16 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   }, [showChatWidgets, canUseFunctions, viewer, resourceId])
   const messageController = useMemo(() => new ReportChatRequestController(workspacePath, async ({ message }) => {
     const tabId = await opener.current()
+    // Mount the same native conversation that consumes its normal queue.
+    // Reuse the designer's slot or existing Ask dialog, as selected questions do.
+    if (!conversationPane) {
+      if (showChatWidgets && revealWidgets.current) revealWidgets.current()
+      else setPopup(true)
+    }
     return sendWorkspacePaneMessageToChat({ tabId, message })
-  }), [workspacePath, resourceId, viewer])
+  }), [workspacePath, resourceId, viewer, conversationPane, showChatWidgets])
   useEffect(() => { messageController.activate(); return messageController.dispose }, [messageController])
   const runtime = useMemo(() => data ? { data: { ...data, sendChatMessage: sendChatMessage ?? messageController.request }, chatWidgets } : null, [data, chatWidgets, messageController, sendChatMessage])
-  useEffect(() => { if (popup) dialog.current?.showModal() }, [popup])
 
   const submitQuestion = async (question: string, context: ReportContentContext, submissionId: string) => {
     const message = reportContentQuestion(question, frame.title, frame.documentPath, workspacePath, context, { resourceId, revision })
@@ -176,12 +180,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
       {error && !conversationPane && <p role="alert" className="absolute bottom-2 left-2 z-40 rounded-md border border-border bg-background px-2 py-1 text-sm text-destructive">{error}</p>}
       </div>
     </div>
-    {popup && canAsk && !conversationPane && <ModalPortal><dialog ref={dialog} aria-label="Dashboard chat" style={theme.vars as CSSProperties} onCancel={() => setPopup(false)} className={`${modeClass(theme.mode)} m-auto h-[min(80vh,42rem)] w-[calc(100%_-_2rem)] max-w-xl overflow-hidden rounded-xl border border-border bg-background p-3 text-foreground shadow-xl backdrop:bg-black/50`}>
-      <div className="flex h-full min-h-0 flex-col">
-        <header className="mb-2 flex items-center justify-between"><span>Ask</span><button type="button" aria-label="Close chat" onClick={() => setPopup(false)}><X className="h-4 w-4" /></button></header>
-        <div className="min-h-0 flex-1">{conversation}</div>
-      </div>
-    </dialog></ModalPortal>}
+    {popup && canAsk && !conversationPane && <DashboardChatDialog theme={theme} onClose={() => setPopup(false)}>{conversation}</DashboardChatDialog>}
     {action && canUseFunctions && <ReportActionDialog resourceId={resourceId} request={action} theme={theme} asUser={asUser} onClose={() => setAction(null)} />}
   </ReportEmbedProvider>
 }

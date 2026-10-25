@@ -22,6 +22,7 @@ import { createReportQuery } from './reportWidgets/reportQuery'
 import { isStreamableReportMediaPath } from './reportWidgets/reportMedia'
 import { allowedReportPath, normalizeReportSource, renderReportMarkdown, reportMarkdownBasePath } from './reportWidgets/reportMarkdown'
 import { useReportChat } from './reportWidgets/useReportChat'
+import { DashboardChatDialog } from './reportWidgets/DashboardChatDialog'
 
 import { WORKFLOW_REPORT_REFRESH_EVENT } from './reportRefreshEvent'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
@@ -44,6 +45,7 @@ type ReportDocument = {
   questions?: { resourceId: string; revision: string; projectId: string; workspacePath: string; capability: DashboardQuestionCapability; product: string }
 }
 
+const DashboardChatArea = lazy(() => import('../ChatArea'))
 const DefaultRelayDashboard = lazy(() => import('./reportWidgets/DefaultRelayDashboard'))
 
 interface ReportViewerProps {
@@ -356,6 +358,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
               : <ReportQuestionFrame key={report.path} html={report.html} title={report.label} documentPath={report.path} allowQuestions={allowContentQuestions} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />)}
           </div>
         </div>
+        {reportChat.tabId && !report?.questions && <DashboardChatDialog onClose={reportChat.close}><Suspense fallback={<p>Opening chat…</p>}><DashboardChatArea tabId={reportChat.tabId} compact hideHeader previousChatsWorkspacePath={workspacePath} landingContent={<div />} composerPlaceholder="Ask a question…" /></Suspense></DashboardChatDialog>}
         <FilePreviewModal />
       </div>
     </ReportEmbedProvider>
