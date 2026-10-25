@@ -1155,6 +1155,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if err := constrainProductChatModel(ctx, &query); err != nil {
 		return QueryRequest{}, err
 	}
+	applyUserViewChat(&query, userID, conversation.ConversationKey, conversation.WorkspacePath)
 	// A chat has one account, and only the person's choice in Models changes it (owner, 2026-10-07).
 	// When neither the request nor the chat names one for this provider (a new chat, or the first
 	// turn after a provider switch), it is resolved here once, the same way the turn itself would

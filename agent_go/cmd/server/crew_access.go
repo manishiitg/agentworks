@@ -443,3 +443,22 @@ func crewResourceProjectID(conversationKey string) string {
 	}
 	return key
 }
+
+// userViewChatPrefix starts the id of a side chat an owner opens to try their Crew the way a shared person would.
+const userViewChatPrefix = "asuser-"
+
+// isUserViewConversationKey reports a "<project>:chat:asuser-<id>" side chat. The choice lives in the key the server
+// stores, so it survives a refresh and holds for every entry point (the app, agent messages, WhatsApp).
+func isUserViewConversationKey(key string) bool {
+	_, chatID, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
+	return ok && strings.HasPrefix(chatID, userViewChatPrefix)
+}
+
+// applyUserViewChat makes a turn in the owner's user-view chat a Run-mode ask: read-only, the owner's published
+// functions, no authoring. It only narrows: another person's turn is already Run mode and is left as it is.
+func applyUserViewChat(query *QueryRequest, userID, conversationKey, workspacePath string) {
+	if !isUserViewConversationKey(conversationKey) || !crewProjectOwnedByCaller(userID, workspacePath) {
+		return
+	}
+	query.PinRunMode, query.CrewGuestCaller, query.CrewAskReadOnly = true, userID, true
+}

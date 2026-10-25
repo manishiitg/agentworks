@@ -4,8 +4,10 @@ import { useChatStore } from '../../stores/useChatStore'
 import {
   applyWorkProjectRuntimeSelection,
   findCanonicalWorkProjectTab,
+  isUserViewChatKey,
   markWorkProjectRuntimeDirty,
   setWorkProjectRuntimeSelection,
+  workUserViewChatKey,
 } from './workTabs'
 
 function tab(overrides: Partial<ChatTab> & Pick<ChatTab, 'tabId'>): ChatTab {
@@ -88,4 +90,11 @@ describe('persistent Work runtime', () => {
     expect(useChatStore.getState().chatTabs.current.metadata?.agentProfileEngine).toBe('cursor-cli')
     expect(useChatStore.getState().chatTabs.global.metadata?.agentProfileEngine).toBeUndefined()
   })
+})
+
+it('marks the owner\'s "as a user" side chat by its key, so it survives a refresh', () => {
+  expect(workUserViewChatKey('p1', 'ab12cd34')).toBe('p1:chat:asuser-ab12cd34')
+  expect(isUserViewChatKey('p1:chat:asuser-ab12cd34')).toBe(true)
+  expect(isUserViewChatKey('p1:chat:ab12cd34')).toBe(false)
+  expect(isUserViewChatKey('p1')).toBe(false)
 })
