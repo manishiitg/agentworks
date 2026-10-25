@@ -38,7 +38,7 @@ async function mount() {
 it('uses the full native inventory for shared-secret ticks, including scoped Vault names', async () => {
   const { host, local, saved } = await mount()
   const project = host.querySelector('section[aria-label="For this Crew"]')!
-  const vault = host.querySelector('section[aria-label="Shared from Vault"]')!
+  const vault = host.querySelector('section[aria-label="Shared secrets"]')!
   expect(project.compareDocumentPosition(vault) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   expect(vault.querySelectorAll('[role="checkbox"]')).toHaveLength(20)
   expect(vault.textContent).not.toContain('App is separate')
@@ -56,6 +56,6 @@ it('retains shared Vault names if the project secret store cannot load', async (
   mocks.project.mockRejectedValue(new Error('Project secrets unavailable'))
   const { host } = await mount()
   expect(host.querySelector('section[aria-label="For this Crew"] [role="alert"]')?.textContent).toContain('Project secrets unavailable')
-  expect(host.querySelector('section[aria-label="Shared from Vault"]')?.textContent).toContain('KEY_0')
-  expect(host.querySelector('section[aria-label="Shared from Vault"] [role="alert"]')).toBeNull()
+  expect(host.querySelector('section[aria-label="Shared secrets"]')?.textContent).toContain('KEY_0')
+  expect(host.querySelector('section[aria-label="Shared secrets"] [role="alert"]')).toBeNull()
 })

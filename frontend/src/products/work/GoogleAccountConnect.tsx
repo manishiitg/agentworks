@@ -19,7 +19,7 @@ const errorText = (cause: unknown, fallback: string) => {
 export function GoogleAccountConnect({ onChanged, canConnect = true, initiallyExpanded = true }: { onChanged?: () => void; canConnect?: boolean; initiallyExpanded?: boolean }) {
   const workspacePath = ''
   const readOnly = false
-  const lockedReason = 'Manage your personal Google account in My Vault.'
+  const lockedReason = 'Manage your personal Google account in Integrations → Google apps.'
   const [configured, setConfigured] = useState<boolean | null>(null)
   const [clients, setClients] = useState<{ name: string }[]>([])
   const [source, setSource] = useState('')

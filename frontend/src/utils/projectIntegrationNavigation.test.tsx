@@ -15,7 +15,7 @@ vi.mock('./productWorkspaceNavigation', () => ({ openProductWorkspace: mocks.rev
 vi.mock('./workspaceViewPreference', () => ({ writeWorkspaceViewPreference: mocks.preference }))
 vi.mock('../hooks/useWorkspaceViewTarget', () => ({ setWorkspaceViewTarget: mocks.target }))
 vi.mock('./workspacePaneChat', () => ({ openWorkspacePaneChatWithDraft: mocks.draft }))
-import { isProjectVaultChat, openLastProjectVaultChat } from './projectVaultNavigation'
+import { isProjectIntegrationChat, openLastProjectIntegrationChat } from './projectIntegrationNavigation'
 import { useVaultSetupDraft } from '../components/integrations/useVaultSetupDraft'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => { vi.clearAllMocks(); mocks.state.chatTabs = {}; document.body.innerHTML = '' })
@@ -35,17 +35,17 @@ it('drafts only into the exact visible owned tab and reveals its product surface
   expect(host.textContent).toContain('Open your own Crew or Goal chat')
   await act(async () => root.unmount())
 })
-it('My vaults opens the last accessible actual project chat with Vault showing', async () => {
+it('Integrations opens the last accessible project chat on its MCP panel', async () => {
   mocks.state.chatTabs = { active: { ...crew('active'), metadata: { isViewOnly: true } }, own: crew('own'), other: { ...crew('other', false), lastAccessedAt: 100 } }
-  expect(await openLastProjectVaultChat()).toBe('own')
+  expect(await openLastProjectIntegrationChat()).toBe('own')
   expect(mocks.activate).toHaveBeenCalledWith('own')
-  expect(mocks.target).toHaveBeenCalledWith('mcp', 'vault')
+  expect(mocks.target).toHaveBeenCalledWith('mcp', 'connected')
   expect(mocks.preference).toHaveBeenCalledWith('work', 'team', 'mcp')
   mocks.state.chatTabs = {}
-  await expect(openLastProjectVaultChat()).rejects.toThrow('Open a Crew or Goal chat first')
+  await expect(openLastProjectIntegrationChat()).rejects.toThrow('Open a Crew or Goal chat first')
 })
 it('keeps execution and scheduled Goal chats out of Vault setup', () => {
   const goal = { ...crew('active'), metadata: { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'goal' } } as any
-  expect(isProjectVaultChat(goal)).toBe(true)
-  expect(isProjectVaultChat({ ...goal, metadata: { ...goal.metadata, isScheduledRun: true } })).toBe(false)
+  expect(isProjectIntegrationChat(goal)).toBe(true)
+  expect(isProjectIntegrationChat({ ...goal, metadata: { ...goal.metadata, isScheduledRun: true } })).toBe(false)
 })

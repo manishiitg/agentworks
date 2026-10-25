@@ -1,0 +1,39 @@
+import { useEffect, useState, type ReactNode } from 'react'
+import { Button } from '../ui/Button'
+import WorkflowEmailPanel from '../workflow/WorkflowEmailPanel'
+import { ProjectMcpPanel } from './ProjectMcpPanel'
+import { ProjectSecretsPanel } from './ProjectSecretsPanel'
+import PersonalAccountsPanel from './PersonalAccountsPanel'
+import { ProjectAccountSharingPanel, CompanySignInSetup } from './ProjectAccountSharingPanel'
+import { ProjectVaultPanel } from './ProjectVaultPanel'
+
+export type IntegrationSection = 'connected' | 'available' | 'secrets' | 'gmail' | 'slack-account' | 'laptop'
+export const INTEGRATION_LABELS: Record<IntegrationSection, string> = {
+  connected: 'MCPs', available: 'Available MCPs', secrets: 'Secrets', gmail: 'Google apps', 'slack-account': 'Slack account', laptop: 'Local laptop',
+}
+export type ProjectSecretControls = {
+  selectedSecrets: string[]
+  onSelectedSecretsChange: (names: string[]) => Promise<unknown> | void
+  onSharedSecretsSaved?: (names: string[]) => void
+}
+
+/** Familiar menu entries open the same native editors directly. Vault is storage, not navigation. */
+export function ProjectIntegrationPanel({ workspacePath, tabId, placeNoun, section = 'connected', canEdit, onAsk, laptop, onAppsSaved, ...secrets }: ProjectSecretControls & {
+  workspacePath: string; placeNoun: string; section?: IntegrationSection; canEdit: boolean; tabId?: string
+  onAsk: (message: string) => Promise<void>; laptop?: ReactNode; onAppsSaved?: (servers: string[]) => void
+}) {
+  const [apps, setApps] = useState<'connected' | 'available'>(section === 'available' ? 'available' : 'connected')
+  useEffect(() => { if (section === 'connected' || section === 'available') setApps(section) }, [section])
+  if (!canEdit) return <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled />
+  return <div className="space-y-5" aria-label={INTEGRATION_LABELS[section]}>
+    {(section === 'connected' || section === 'available') && <>
+      <div className="flex justify-end"><Button size="sm" variant="outline" onClick={() => setApps(apps === 'connected' ? 'available' : 'connected')}>{apps === 'connected' ? 'Add an app' : 'Back to connected apps'}</Button></div>
+      <ProjectMcpPanel view={apps} workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} canEdit={canEdit} onAsk={onAsk} onSelectionSaved={onAppsSaved} />
+      <ProjectAccountSharingPanel workspacePath={workspacePath} tabId={tabId} kind="apps" />
+    </>}
+    {section === 'secrets' && <><ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} selectedSecrets={secrets.selectedSecrets} onSecretChange={secrets.onSelectedSecretsChange} onSharedSecretsSaved={secrets.onSharedSecretsSaved} /><ProjectAccountSharingPanel workspacePath={workspacePath} tabId={tabId} kind="secrets" /></>}
+    {section === 'gmail' && <><WorkflowEmailPanel workspacePath={workspacePath} scopeNoun={placeNoun === 'Flow' ? 'relay' : 'project'} onAsk={onAsk} /><CompanySignInSetup provider="Google" tabId={tabId} /></>}
+    {section === 'slack-account' && <><PersonalAccountsPanel workspacePath={workspacePath} provider="slack" /><CompanySignInSetup provider="Slack" tabId={tabId} /></>}
+    {section === 'laptop' && laptop}
+  </div>
+}

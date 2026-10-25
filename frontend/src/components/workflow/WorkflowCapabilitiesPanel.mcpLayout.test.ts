@@ -80,14 +80,14 @@ describe('Workflow MCP panel layout', () => {
     // The section list (Vault, Slack, WhatsApp, Google apps, Use in AI apps) is shared with Crew and Code.
     const sections = readFileSync('src/components/integrations/integrationSections.ts', 'utf8')
     expect(sections).toMatch(/'apps'[\s\S]*?'slack'[\s\S]*?'whatsapp'[\s\S]*?'gmail'/)
-    expect(sections).toContain("{ value: 'apps', label: 'Vault'")
+    expect(sections).toContain("{ value: 'apps', label: 'Integrations'")
     // One resource navigation replaces the old intermediate section directory.
     expect(panel).not.toContain('<IntegrationNavigation')
     expect(panel).not.toContain('ConnectedProjectAccounts')
     expect(panel).not.toContain('<IntegrationSectionPicker')
     expect(panel).toContain('tabs={section ===')
     expect(panel).toContain('<ProjectPluginsPanel')
-    expect(panel).toContain('projectControls={<ProjectVaultControls')
+    expect(panel).toContain('<ProjectIntegrationPanel')
     expect(panel).toContain('<ProductSlackPanel')
     expect(panel).toContain("shareChannel === 'slack'")
     expect(panel).toContain("allowBots={!relayMode}")

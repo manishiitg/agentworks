@@ -63,7 +63,7 @@ const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; 
   },
   slack: {
     label: 'Slack',
-    summary: "Help me choose the Slack account this workflow uses to read or send messages. Explain current account permissions before changing the selection. Act in Slack and the bot choice share this Slack page. Use manage_slack_account to attach a saved personal account and manage_slack_bot to choose an existing bot from My Vault. Flows offer Act in Slack only.",
+    summary: "Help me choose the Slack account this workflow uses to read or send messages. Explain current account permissions before changing the selection. Act in Slack and the bot choice share this Slack page. Use manage_slack_account to attach a saved personal account and manage_slack_bot to choose an existing saved Slack bot. Flows offer Act in Slack only.",
     instructions: "Inspect authorized personal Slack accounts and current project selection. Preserve the server's account send/read rules. Manage tokens through Vault chat and never repeat their values.",
   },
   whatsapp: {

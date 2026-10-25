@@ -1,6 +1,6 @@
 # Saved Google accounts
 
-List saved accounts and reuse the requested login. My Vault owns the saved
+List saved accounts and reuse the requested login. Integrations → Google apps owns the saved
 connection; Use here/Remove here selects it for this project through
 manage_google_account attach/detach. Connect or reconnect returns the actual
 provider sign-in link; do not create another MCP connection for Gmail.

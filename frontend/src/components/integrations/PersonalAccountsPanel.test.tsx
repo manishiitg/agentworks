@@ -21,8 +21,8 @@ it.each(['google', 'slack'] as const)('uses the same saved-account actions for %
     expect(host.textContent).not.toContain('Disconnect everywhere')
     await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Use here')!.click())
     expect(mocks.post).toHaveBeenLastCalledWith(`/api/integrations/${provider}/accounts`, { action: 'attach', workspace_path: 'Workflow/orders', connection_id: 'saved', connection_owner: 'builder' })
-    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Manage accounts in My Vault')!.click())
-    expect(mocks.openVault).toHaveBeenCalledWith('vaults')
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === `Connect or manage ${provider === 'google' ? 'Google' : 'Slack'} accounts`)!.click())
+    expect(mocks.get).toHaveBeenCalledWith(`/api/integrations/${provider}/accounts`, {params: {workspace_path: ''}})
   } finally { act(() => root.unmount()) }
 })
 
@@ -31,7 +31,7 @@ it('manages personal accounts centrally without selecting a product', async () =
   const host = document.createElement('div'); const root = createRoot(host)
   try {
     await act(async () => root.render(<PersonalAccountsPanel />))
-    expect(host.textContent).toContain('separate from your shared vaults')
+    expect(host.textContent).toContain('Choose which projects can use each account.')
     expect(host.textContent).toContain('Central Google sign-in')
     await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Connect Slack account')!.click())
     expect(mocks.post).toHaveBeenLastCalledWith('/api/integrations/slack/accounts', { action: 'connect', workspace_path: '', connection_id: undefined, connection_owner: undefined })

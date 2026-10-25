@@ -10,7 +10,7 @@ import { StatusBanner } from '../workflow/bots/StatusBanner'
 import { SlackAppSetupSteps, SlackChecksView, SlackManifestSetup, SlackPermissionsChecklist, SlackTokenHint } from '../workflow/bots/SlackAppSetupSteps'
 
 /**
- * My Vault → Company Slack bot (admins): the platform side of Slack. The shared bot is the
+ * Integrations → Slack bot → Company Slack bot (admins): the platform side of Slack. The shared bot is the
  * default app every workflow without its own bot answers through, in the
  * channels routed to it. Workflows and crew projects set up their own bots
  * and shared-bot channels from their own Slack tab.

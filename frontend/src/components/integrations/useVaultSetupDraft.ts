@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useChatStore } from '../../stores/useChatStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
-import { isProjectVaultChat, revealProjectVaultChat } from '../../utils/projectVaultNavigation'
+import { isProjectIntegrationChat, revealProjectIntegrationChat } from '../../utils/projectIntegrationNavigation'
 
 /** Setup always belongs to the displayed project's exact tab. */
 export function useVaultSetupDraft(tabId?: string) {
@@ -11,8 +11,8 @@ export function useVaultSetupDraft(tabId?: string) {
     try {
       const state = useChatStore.getState()
       const tab = state.chatTabs[tabId ?? state.activeTabId ?? '']
-      if (!isProjectVaultChat(tab, true)) throw new Error('Open your own Crew or Goal chat to manage Vault here.')
-      revealProjectVaultChat(tab)
+      if (!isProjectIntegrationChat(tab, true)) throw new Error('Open your own Crew or Goal chat to manage Vault here.')
+      revealProjectIntegrationChat(tab)
       await openWorkspacePaneChatWithDraft({ tabId: tab.tabId, message })
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not open this project chat.') }
   }

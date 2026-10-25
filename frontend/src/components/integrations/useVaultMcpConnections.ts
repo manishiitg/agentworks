@@ -14,7 +14,7 @@ export function useVaultMcpConnections(workspacePath?: string) {
  },[workspacePath])
  useEffect(() => { void refresh(); const focus=()=>void refresh(); window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus) },[refresh])
  return { loading, refresh, items, notices: error ? [{ message:error,retry:()=>void refresh() }] : [],
-  servers:items.map(server=>({id:`vault_${server.id}`,name:server.label,provider:server.provider,source:'Vault',status:server.status==='active'?'Connected':server.status==='authentication_required'?'Sign-in required':'Not connected',toolCount:server.tools.length,
+  servers:items.map(server=>({id:`vault_${server.id}`,name:server.label,provider:server.provider,source:'Saved account',status:server.status==='active'?'Connected':server.status==='authentication_required'?'Sign-in required':'Not connected',toolCount:server.tools.length,
    tools:server.tools.map(tool=>({id:tool.name,name:tool.name.split('__').slice(1).join('__')||tool.name,description:tool.description,rawSchema:tool.input_schema})),
   })) satisfies McpConnectionRow[],
  }

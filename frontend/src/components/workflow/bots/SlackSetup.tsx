@@ -1,7 +1,7 @@
 import type { WorkflowBots } from './useWorkflowBots'
 import { ProductSlackPanel } from '../../integrations/ProductSlackPanel'
 
-/** Automation hosts use the same page as the product menu. Credentials live in My Vault. */
+/** Automation hosts use the same page as the product menu. Credentials stay in the existing encrypted account store. */
 export function SlackSetup({ bots }: { bots: Pick<WorkflowBots, 'slackTarget'> }) {
  const target = bots.slackTarget
  return target ? <ProductSlackPanel workspacePath={target.workspace_path} noun={target.profile_id ? 'Crew' : 'Goal'} /> : <p className="text-xs text-muted-foreground">Open a Crew or Goal to set up Slack.</p>

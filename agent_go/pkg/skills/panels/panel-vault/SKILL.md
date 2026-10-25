@@ -1,6 +1,6 @@
 ---
 name: panel-vault
-description: My Vault beside Crew, Goal and Flow chats. Project apps, tools and secrets come first; personal accounts and computers stay below. Connect, repair and share from this chat.
+description: Familiar Integrations panels for MCPs, Secrets, Google apps, Slack and Local laptop. Connect, repair and share through their existing native tools.
 metadata:
   panel-tools:
     work: [manage_my_vaults, settings, manage_google_account, manage_slack_account, manage_laptop_access, list_secrets, set_workflow_secret, delete_workflow_secret, update_project_global_secret_selection]
@@ -8,31 +8,27 @@ metadata:
   external-tools: [get_settings, update_settings, workflow_google_account, workflow_slack_account, manage_laptop_access]
 ---
 
-# Vault beside this chat
+# Integrations beside this chat
 
-My Vault is the right panel beside the current Crew, Goal or Flow chat. Project
-apps and MCPs come first: inspect their tools, choose what this project uses,
-or open Add an app for the catalog. Project secrets and Shared from Vault are
-open below them. Builders can add, replace or remove a project secret on screen
-or ask in chat; shared secret selection never reveals its value or changes the
-owner's vault. Google apps and Gmail, the project's Slack account and its
-interactive laptop settings have their own expandable sections. Flows do not
-gain interactive laptop execution.
+Use familiar product menu entries: MCPs, Secrets, Google apps, Slack account,
+Slack bot and Local laptop. Each opens its native panel directly in the current
+Crew or Goal workspace; Flows retain their existing exclusions. Vault remains
+the backend account/secret store, not a destination people need to learn.
+There is no My Vault page, tab or menu entry.
 
-Personal setup is folded under My accounts, computers and vaults. It retains
-saved Google and Slack accounts, sign-in/reconnection and access controls,
-computers and their connection instructions, Slack bots, secret names, owned
-and shared vaults, and administrator-only company setup. An empty owned vault
-is still available to manage. The panel also shows what this project uses;
-its ticks change project use separately from connecting a saved account.
-There is no separate My Vault page or hidden setup chat. Do not direct people
-to a removed account-menu item; open this right panel.
+Use admitted perform_ui_action with view=mcp, action=open and target=connected,
+available, secrets, gmail, slack-account or laptop. Slack bot uses the existing
+slack-bot target for Crew and slack for Goal. Opening changes presentation only.
 
-To open the panel, use the admitted perform_ui_action with view=mcp,
-action=open, target=vault in this same chat. The familiar MCPs, Available MCPs,
-Secrets, Google apps, Slack account and Local laptop menu/search entries jump
-to sections of this same panel; their targets are connected, available, secrets,
-gmail, slack-account and laptop. Opening a section changes presentation only.
+MCPs includes its tool lists, catalog and account setup in chat. Secrets includes
+project add/replace/remove controls and the full scoped server inventory of
+shared names; shared values stay hidden and project_select owns the ticks.
+Account/secret sharing is beside MCPs/Secrets. Google/Slack sign-in, reconnection
+and permissions are under that provider’s Connect or manage accounts. Company
+OAuth setup remains administrator-only on that provider panel. Slack bot keeps
+its bot editor, setup/test controls and administrator-only company bot. Local
+laptop includes connection instructions and project folder/command settings.
+No connection selection, grant or execution rule changes with this navigation.
 
 Start with settings action=get for this project, or manage_my_vaults
 operation=project with its workspace_path. The names-only vault snapshot reports

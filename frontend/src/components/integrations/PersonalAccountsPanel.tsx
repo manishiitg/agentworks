@@ -1,4 +1,3 @@
-import { openMyVaults } from '../../utils/projectVaultNavigation'
 import { useCallback, useEffect, useState } from 'react'
 import api, { getApiBaseUrl } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -25,10 +24,11 @@ const errorText = (cause: unknown) => {
 /** Personal records stay in their existing stores. Products only select those records. */
 export default function PersonalAccountsPanel({ workspacePath, provider, onChanged }: { workspacePath?: string; provider?: Provider; onChanged?: () => void }) {
   const actor = useAuthStore(state => state.user?.id)
+  const [managementOpen, setManagementOpen] = useState(false)
   return <section aria-label={workspacePath ? 'Saved personal accounts' : 'Your connected accounts'} className="space-y-4">
-    {!workspacePath && <div><h2 className="text-base font-semibold">Your connected accounts</h2><p className="mt-1 text-xs text-muted-foreground">Sign in once. Choose Use here in each product that should use an account. These accounts stay separate from your shared vaults.</p></div>}
+    {!workspacePath && <div><h2 className="text-base font-semibold">Your connected accounts</h2><p className="mt-1 text-xs text-muted-foreground">Sign in once. Choose Use here in each product that should use an account. Choose which projects can use each account.</p></div>}
     {(['google', 'slack'] as Provider[]).filter(item => !provider || item === provider).map(item => <ProviderAccounts key={`${getApiBaseUrl()}:${actor}:${item}:${workspacePath || ''}`} provider={item} workspacePath={workspacePath} onChanged={onChanged} />)}
-    {workspacePath && <Button variant="outline" size="sm" onClick={() => openMyVaults()}>Manage accounts in My Vault</Button>}
+    {workspacePath && <div className="space-y-3"><Button variant="outline" size="sm" aria-expanded={managementOpen} onClick={() => setManagementOpen(open => !open)}>Connect or manage {provider === 'google' ? 'Google' : provider === 'slack' ? 'Slack' : 'your'} accounts</Button>{managementOpen && <PersonalAccountsPanel provider={provider} onChanged={onChanged} />}</div>}
   </section>
 }
 
@@ -75,7 +75,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
     {error && <div role="alert" className="text-xs text-destructive">{error} <Button variant="ghost" size="xs" onClick={() => void refresh()}>Retry</Button></div>}
     {message && <p role="status" className="text-xs">{message}</p>}
     {!data && !error && <p role="status" className="text-xs text-muted-foreground">Loading accounts…</p>}
-    {data?.accounts.length === 0 && <p className="text-xs text-muted-foreground">{central ? `No ${label} account saved yet.` : `No saved ${label} account available. Connect one in My Vault.`}</p>}
+    {data?.accounts.length === 0 && <p className="text-xs text-muted-foreground">{central ? `No ${label} account saved yet.` : `No saved ${label} account available. Use Connect or manage accounts below.`}</p>}
     {data?.accounts.map(account => <div key={`${account.owner}:${account.id}`} className="rounded-md border border-border p-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0 flex-1"><p className="break-all text-sm font-medium">{account.label || account.google?.display_name || `Your ${label}`}</p><p className="mt-1 text-xs text-muted-foreground">{account.google?.enabled === false ? 'Paused' : account.google?.auth?.checking ? 'Checking sign-in…' : account.connected ? 'Connected' : 'Needs sign-in'}{account.google?.personal === false && ' · Company account'}{!central && (account.selected ? ' · Used here' : ' · Not used here')}</p></div>
@@ -90,7 +90,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
     </div>)}
     {central && provider === 'google' && data && (data.can_connect || data.accounts.some(account => account.can_reconnect)) && <GoogleAccountConnect initiallyExpanded={data.accounts.length === 0} canConnect={data.can_connect} onChanged={() => { void refresh(); onChanged?.() }} />}
     {central && provider === 'slack' && data?.can_connect && !data.accounts.some(account => account.mine) && <Button variant="outline" size="sm" disabled={busy || data.sign_in_ready === false} onClick={() => void act('connect')}>Connect Slack account</Button>}
-    {central && data?.sign_in_ready === false && <p className="text-xs text-muted-foreground">An administrator needs to open My Vault → Company sign-in apps → Slack and save this server’s Slack app before you connect your account.</p>}
+    {central && data?.sign_in_ready === false && <p className="text-xs text-muted-foreground">An administrator needs to open Integrations → Slack account → Company sign-in setup and save this server’s Slack app before you connect your account.</p>}
   </div>
 }
 
@@ -107,6 +107,6 @@ function GooglePermissions({ account }: { account: GmailConnection }) {
         return <tr key={service.key} className="border-t border-border"><th className="py-2 font-normal">{service.label}</th><td className="py-2">{googleAccessLabel(service.key, allowed)}</td><td className="py-2">{actualLabel}</td></tr>
       })}
     </tbody></table>
-    <p className="mt-1 text-muted-foreground">Change access in My Vault to update AgentWorks permissions and approve them with Google.</p>
+    <p className="mt-1 text-muted-foreground">Use Change access under Connect or manage Google accounts to update AgentWorks permissions and approve them with Google.</p>
   </details>
 }

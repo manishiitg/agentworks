@@ -17,8 +17,8 @@ export function ProjectSecretsPanel({ workspacePath, placeNoun, selectedSecrets,
     <SecretSelectionSection workflowPath={workspacePath} selectedSecrets={selectedSecrets}
       onSecretChange={onSecretChange} showGlobalSecrets={false} projectSource="project"
       workspaceSecretHeading={`For this ${placeNoun}`} allowGlobalPromotion={false} />
-    <section aria-label="Shared from Vault" className="space-y-3 border-t border-border pt-4">
-      <h3 className="text-sm font-medium">Shared from Vault</h3>
+    <section aria-label="Shared secrets" className="space-y-3 border-t border-border pt-4">
+      <h3 className="text-sm font-medium">Shared secrets</h3>
       <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled={!canWrite} itemKinds={['shared_secret']} onSelectionSaved={inventory => onSharedSecretsSaved?.(inventory.selected_global_secret_names)} />
     </section>
   </div>

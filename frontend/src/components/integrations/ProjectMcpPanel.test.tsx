@@ -37,5 +37,5 @@ it('uses only Vault and starts setup in chat without credential forms',async()=>
  expect(host.textContent).toContain('Example app')
  const button=[...host.querySelectorAll('button')].find(b=>b.textContent?.includes('Connect an app in chat'))!
  await act(async()=>button.click())
- expect(ask).toHaveBeenCalledWith(expect.stringContaining('using Vault'))
+ expect(ask).toHaveBeenCalledWith(expect.stringContaining('to this project'))
 })

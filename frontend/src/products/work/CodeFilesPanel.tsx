@@ -1,4 +1,4 @@
-import { openMyVaults } from '../../utils/projectVaultNavigation'
+import { LaptopAccountsPanel } from '../../components/integrations/LaptopAccountsPanel'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Check, Copy, Laptop, RefreshCw, Terminal, Folder, ArrowUp, X } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
@@ -78,7 +78,7 @@ export function LaptopConnectionSetup({ connected }: { connected: boolean }) {
 // What the person sees after pressing Check connection.
 function connectionNote(listed: LocalFileDevice[], chosen: string) {
   if (chosen) return listed.some(item => item.device_id === chosen) ? `${chosen} is connected.` : `${chosen} is not connected. Run agentworks start on that computer.`
-  return listed.length ? `Connected: ${listed.map(item => item.device_id).join(', ')}. Choose it above.` : 'No computer is connected yet. Open My Vault to connect it once.'
+  return listed.length ? `Connected: ${listed.map(item => item.device_id).join(', ')}. Choose it above.` : 'No computer is connected yet. Open Connect a computer below.'
 }
 
 interface LaptopFolder { id: string; path: string; access: 'read' | 'write' }
@@ -91,6 +91,7 @@ export function CodeLocalFilesSettings({ sessionId, workflowPath }: { sessionId?
   const project = tab?.metadata?.agentProfileProjectId
   const profile = tab?.metadata?.agentProfileId
   const endpoint = laptopSettingsEndpoint(workflowPath, profile, project)
+  const [computerSetupOpen, setComputerSetupOpen] = useState(false)
   const [settings, setSettings] = useState<LaptopSettings>({ device_id: '', folders: [], commands: false })
   const [directory, setDirectory] = useState<LaptopDirectory>()
   const [path, setPath] = useState('')
@@ -128,10 +129,10 @@ export function CodeLocalFilesSettings({ sessionId, workflowPath }: { sessionId?
   const needle = folderFilter.trim().toLowerCase()
   const visibleFolders = (directory?.folders ?? []).filter(name => (showHidden || needle.startsWith('.') || !name.startsWith('.')) && (!needle || name.toLowerCase().includes(needle)))
   const join = (root: string, child: string) => `${root.replace(/[\\/]$/, '')}${root.includes('\\') ? '\\' : '/'}${child}`
-  return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Laptop access" description="Choose a computer from My Vault and the folders this project can use.">
+  return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Laptop access" description="Choose your computer and the folders this project can use.">
     <div className="space-y-4">
       <p className="text-xs leading-5 text-muted-foreground">This project runs on the server. Builders share its laptop connection and can use it in their own interactive chat while AgentWorks is connected. Steps, schedules, Autopilot and people using the shared dashboard stay on the server. AgentBridge uses the same connection.</p>
-      <Button size="sm" variant="outline" onClick={() => openMyVaults()}>Connect a computer in My Vault</Button>
+      <details className="rounded-lg border border-border p-3" onToggle={event => setComputerSetupOpen(event.currentTarget.open)}><summary className="cursor-pointer text-sm font-medium">Connect a computer</summary>{computerSetupOpen && <div className="mt-3"><LaptopAccountsPanel /></div>}</details>
       <label htmlFor="crew-laptop-device" className="block text-xs font-medium">Your computer</label>
       <select id="crew-laptop-device" value={settings.device_id} disabled={busy || !loaded} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => { setDirectory(undefined); void save({ device_id: event.target.value, folders: [], commands: false }) }}>
         <option value="">No laptop access</option>

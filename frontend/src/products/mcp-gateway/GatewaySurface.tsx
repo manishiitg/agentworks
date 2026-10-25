@@ -30,7 +30,7 @@ import { useLLMStore } from '../../stores/useLLMStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 type VaultPage = 'audit' | 'connect'
-import { openLastProjectVaultChat } from '../../utils/projectVaultNavigation'
+import { openLastProjectIntegrationChat } from '../../utils/projectIntegrationNavigation'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
 
@@ -60,7 +60,7 @@ function GatewayAdminWorkspace({ base, standalone, page, onPage }: { base: strin
   }, [setPanel, onPage])
   const addCustomServer = async () => {
     try {
-      const tabId = await openLastProjectVaultChat()
+      const tabId = await openLastProjectIntegrationChat()
       await openWorkspacePaneChatWithDraft({ tabId, message: 'Help me connect a custom MCP app in Vault. Ask for its name and URL, then guide setup in this chat.' })
     } catch (error) { useChatStore.getState().addToast(error instanceof Error ? error.message : 'Open a Crew or Goal chat to set up Vault.', 'error') }
   }
@@ -69,7 +69,7 @@ function GatewayAdminWorkspace({ base, standalone, page, onPage }: { base: strin
     onOpenChat={() => {}} onOpenWorkspace={() => {}} toolbar={null} workspace={null} divider={null}
     chatProps={{ 'aria-label': 'Vault management' }}
     tabs={<div className="flex min-w-0 flex-1 items-center gap-2"><ProductBreadcrumb surface="mcp-gateway" standalone={standalone} section={title} menuItems={[
-      { id: 'my-vaults', label: 'My vaults', icon: Vault, onSelect: () => { void openLastProjectVaultChat().catch(error => useChatStore.getState().addToast(error.message, 'error')) } },
+      { id: 'integrations', label: 'Integrations', icon: Vault, onSelect: () => { void openLastProjectIntegrationChat().catch(error => useChatStore.getState().addToast(error.message, 'error')) } },
       ...gatewayPanels.map(item => ({ ...item, active: !page && panel === item.id, onSelect: () => openPanel(item.id) })),
       { id: 'audit', label: 'Audit logs', icon: ScrollText, active: page === 'audit', onSelect: () => onPage('audit') },
       { id: 'connect', label: 'Vault MCP endpoint', icon: PlugZap, active: page === 'connect', onSelect: () => onPage('connect') },

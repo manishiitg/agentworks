@@ -15,7 +15,7 @@ vi.mock('./GatewayWorkspacePane', () => ({ gatewayPanels: [{ id: 'servers', labe
 vi.mock('./GatewayAuditPanel', () => ({ GatewayAuditPanel: () => null }))
 vi.mock('./GatewayConnectPanel', () => ({ GatewayConnectPanel: () => null }))
 vi.mock('../../components/workspace/ProductBreadcrumb', () => ({ ProductBreadcrumb: ({ menuItems }: any) => <nav>{menuItems.map((item: any) => <button key={item.id} onClick={item.onSelect}>{item.label}</button>)}</nav> }))
-vi.mock('../../utils/projectVaultNavigation', () => ({ openLastProjectVaultChat: mocks.open }))
+vi.mock('../../utils/projectIntegrationNavigation', () => ({ openLastProjectIntegrationChat: mocks.open }))
 vi.mock('../../utils/workspacePaneChat', () => ({ openWorkspacePaneChatWithDraft: vi.fn() }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => select({ user: mocks.user, checkAuth: vi.fn() }) }))
 vi.mock('../../stores/useAppStore', () => ({ useAppStore: (select: any) => select({ adminPage: null, showSchedulesOverview: false }) }))

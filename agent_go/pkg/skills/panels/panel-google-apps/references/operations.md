@@ -6,7 +6,7 @@
   prove Gmail consent. If no connection is returned, say no account is connected;
   ask which account the user wants to connect without suggesting a provider email.
 
-- Gmail uses saved Google accounts in **My Vault → Your connected accounts**,
+- Gmail uses saved Google accounts in **Integrations → Google apps → Connect or manage accounts**,
   selected with **Use here** in this project’s **Integrations → Google apps** (or Recent);
   it is not an MCP server. Company incoming email is stored in this agent’s dedicated Inbox and optional normal Python Watchers start work. Personal Gmail connects through gog. An explicitly requested personal Gmail Watcher can pass selected new mail to the owner’s Crew chat; it never fills the shared Inbox. Check `list_gmail_connections`
   before searching the MCP catalog or claiming Gmail is unavailable.
@@ -33,4 +33,4 @@
   This is off by default and separate from workflow run summaries; never remove the
   Gmail send guard or treat `gmail.send` alone as agent-write permission.
 - Gmail notifications and agent-authored sends are outbound operations.
-  Gmail accounts are managed in My Vault using gog. On servers, choose one account with Use for Crew inboxes to supply your Crew addresses; receiving is on by default per Crew and its owner can turn it off. Read get_agent_inbox and use normal Python Watchers for actions.
+  Gmail accounts are managed in Integrations → Google apps using gog. On servers, choose one account with Use for Crew inboxes to supply your Crew addresses; receiving is on by default per Crew and its owner can turn it off. Read get_agent_inbox and use normal Python Watchers for actions.

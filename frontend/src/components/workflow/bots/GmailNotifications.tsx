@@ -1,4 +1,4 @@
-import { openMyVaults } from '../../../utils/projectVaultNavigation'
+import { openProjectIntegrations } from '../../../utils/projectIntegrationNavigation'
 import { Loader2, Mail } from 'lucide-react'
 import { agentApi } from '../../../services/api'
 import { Button } from '../../ui/Button'
@@ -85,7 +85,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 onSendTest={conn => runGmailConnectionAction(conn.id, () => agentApi.testGmailConnectionById(conn.id, gmailConfig.default_to || undefined))}
                 onSetDefault={conn => runGmailConnectionAction(conn.id, () => agentApi.setDefaultGmailConnection(conn.id))}
                 onToggle={conn => runGmailConnectionAction(conn.id, () => agentApi.updateGmailConnection(conn.id, { enabled: !conn.enabled }))}
-                onReconnect={() => openMyVaults()} onRemove={handleRemoveMailbox} onChangeAccess={() => openMyVaults()}
+                onReconnect={() => openProjectIntegrations('gmail')} onRemove={handleRemoveMailbox} onChangeAccess={() => openProjectIntegrations('gmail')}
               /></div>}
           </FormSection>
           <FormSection
