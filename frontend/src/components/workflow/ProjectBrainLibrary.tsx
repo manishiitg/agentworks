@@ -37,7 +37,7 @@ export function ProjectBrainLibrary() {
   return <section aria-label="Knowledge available to you" className="overflow-hidden rounded-lg border border-border">
     <div className="space-y-1 border-b border-border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">Available to you</h3>{!loading && !error && <span className="text-muted-foreground">{folders.length} folders · {entries.length} items{cursors.folders || cursors.entries ? ' shown' : ''}</span>}</div>
-      <p className="text-muted-foreground">Your Brain library. Project use follows its access above.</p>
+      <p className="text-muted-foreground">Your folders and items. Project agents can use them only when the project allows it and everyone seeing its output has access.</p>
       {folder && <button className="flex items-center gap-1 pt-1 text-primary" onClick={() => setFolder(folder.split('/').slice(0, -1).join('/'))}><ArrowLeft className="h-3 w-3"/> {folder}</button>}
     </div>
     {error && <div role="alert" className="p-3 text-destructive">{error} <Button size="sm" variant="ghost" onClick={() => setRevision(value => value + 1)}>Retry</Button></div>}
@@ -46,7 +46,7 @@ export function ProjectBrainLibrary() {
       {entries.map(item => <li key={item.entry_id} className="flex items-center gap-2 px-3 py-2.5"><FileText className="h-4 w-4 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1 truncate" title={item.path}>{item.title || item.filename}</span><span className="text-muted-foreground">{item.type}</span>{item.updated_at && <time dateTime={item.updated_at} className="text-muted-foreground">{new Date(item.updated_at).toLocaleDateString()}</time>}</li>)}
     </ul>
     {loading && <p role="status" className="p-3 text-muted-foreground">Loading knowledge…</p>}
-    {!loading && !error && !folders.length && !entries.length && <p className="p-4 text-muted-foreground">No knowledge in this folder. Ask AI to help add notes, files or skills.</p>}
+    {!loading && !error && !folders.length && !entries.length && !cursors.folders && !cursors.entries && <p className="p-4 text-muted-foreground">No knowledge in this folder. Ask AI to help add notes, files or skills.</p>}
     {(cursors.folders || cursors.entries) && <Button size="sm" variant="ghost" disabled={loading} onClick={() => void more()}>Show more</Button>}
   </section>
 }

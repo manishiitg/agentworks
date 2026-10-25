@@ -60,3 +60,15 @@ it('offers off, read and read & write only, and shows a legacy folders project a
   await act(async () => radios[1].click())
   expect(knowledgebaseApi.setProjectAccess).toHaveBeenCalledWith(expect.objectContaining({ workspace_path: 'Workflow/payments', mode: 'read', expected_manifest_version: 'v1' }))
 })
+
+it('offers the next library page instead of claiming an empty folder', async () => {
+  vi.mocked(knowledgebaseApi.project).mockResolvedValue({ manifest_version: 'v1', brain_access: 'read', can_manage: false })
+  vi.mocked(knowledgebaseApi.folders).mockResolvedValue({ folders: [] })
+  vi.mocked(knowledgebaseApi.entries).mockResolvedValueOnce({ entries: [{ folder_path: 'nested' } as never], next_cursor: 'next' }).mockResolvedValue({ entries: [{ entry_id: 'note', folder_path: '', path: 'handbook.md', title: 'Team handbook', type: 'note' } as never] })
+  await act(async () => root.render(<ProjectKnowledgebasePanel workspacePath="Crew/example"/>))
+  expect(container.textContent).not.toContain('No knowledge in this folder')
+  const more = [...container.querySelectorAll('button')].find(button => button.textContent === 'Show more')!
+  await act(async () => more.click())
+  expect(container.textContent).toContain('Team handbook')
+  expect(knowledgebaseApi.setProjectAccess).not.toHaveBeenCalled()
+})

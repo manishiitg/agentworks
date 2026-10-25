@@ -6,6 +6,7 @@ import { AskAIButton } from './AskAIButton'
 import { WORKFLOW_KNOWLEDGE_SOURCES_REFRESH_EVENT } from './workflowEvents'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { buildAskAIMessage } from '../../utils/askAIMessage'
 import { ProjectBrainLibrary } from './ProjectBrainLibrary'
 import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -24,7 +25,7 @@ export function ProjectKnowledgebasePanel(props: Props) {
 function ProjectBrainContents({ workspacePath, disabled = false, onAsk }: Props) {
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const brainAvailable = integrationProductAvailable('knowledgebase', allowedProducts)
-  const aboutMessage = 'Inspect this project’s Brain access and the knowledge available to me. Help me find, add or reuse notes, files and skills. Explain which knowledge the project can use under its owner and output audience permissions. If I ask to change project access, use inspect_project and set_project_access with the current manifest version. For workflow steps, keep references under Inputs or Guides, writes under Output and limits under Rules. Do not change folder grants unless I ask.'
+  const aboutMessage = buildAskAIMessage({ view: 'Brain', summary: 'Help me find or use knowledge in Brain for this project.', instructions: 'Read the panel-brain skill. Inspect this project’s Brain access and the knowledge available to me. Help me find, add or reuse notes, files and skills. Explain which knowledge the project can use under its owner and output audience permissions. If I ask to change project access, use inspect_project and set_project_access with the current manifest version. For workflow steps, keep references under Inputs or Guides, writes under Output and limits under Rules. Do not change folder grants unless I ask.' })
   const assistantInHeader = useWorkspacePanelAssistant(brainAvailable ? { workspacePath, message: aboutMessage } : undefined)
   const [project, setProject] = useState<KnowledgeProject | null>(null)
   const [loading, setLoading] = useState(true)
