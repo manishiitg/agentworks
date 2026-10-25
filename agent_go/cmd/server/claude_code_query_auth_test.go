@@ -12,10 +12,10 @@ import (
 // principal admission before the exact preflight used by handleQuery.
 func TestClaudeCodeQueryAuthenticationUsesOnlyAdmittedAccount(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
-	t.Setenv("AGENT_PRODUCTS", "code,work")
-	profile := &resolvedAgentProfile{Definition: agentprofiles.Profile{ID: "code"}}
+	t.Setenv("AGENT_PRODUCTS", "work")
+	profile := &resolvedAgentProfile{Definition: agentprofiles.Profile{ID: "work", Runtime: agentprofiles.RuntimePolicy{RequireProviderToken: true}}}
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Private Claude", "auth_method": "cli_login"})
-	scope := providerAccountScope{Principal: "alice", Product: "code"}
+	scope := providerAccountScope{Principal: "alice", Product: "work"}
 	record, err := env.api.admitProviderAccount(context.Background(), scope, "claude-code", account.ID)
 	if err != nil {
 		t.Fatal(err)

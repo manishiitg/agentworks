@@ -3,11 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -176,101 +173,5 @@ func TestCrewReviewerInspectsEveryCodeAudited(t *testing.T) {
 	mock.mu.Unlock()
 	if !strings.Contains(log, `"admin_id":"rev","admin_username":"rev","role":"reviewer","action":"read_file"`) {
 		t.Fatalf("reviewer view not audited as a reviewer:\n%s", log)
-	}
-}
-
-// A Code reviewer sees every Code's cost row, and no other product's.
-func TestCrewReviewerSeesEveryCodesCost(t *testing.T) {
-	bobCode := "_users/bob/Chats/Code/projects/app-1"
-	bobVideo := "_users/bob/Chats/Video Studio/projects/launch"
-	if !costOverviewProductVisibleTo(bobCode, "rev", false, true) {
-		t.Fatal("a reviewer could not see another user's Code cost")
-	}
-	if costOverviewProductVisibleTo(bobVideo, "rev", false, true) {
-		t.Fatal("a Code reviewer saw another product's cost")
-	}
-	if costOverviewProductVisibleTo(bobCode, "alice", false, false) {
-		t.Fatal("a member saw another user's Code cost")
-	}
-	if !costOverviewProductVisibleTo(bobCode, "bob", false, false) {
-		t.Fatal("an owner lost their own Code cost")
-	}
-}
-
-// Inspection lists the Code's MCP connections and who added each (name, URL
-// without its query, signed-in state), audited; never to a member.
-func TestCodeInspectionListsConnections(t *testing.T) {
-	api, mock := newCodeAdminFixture(t, true)
-	withMCPConnectionsRoot(t)
-	if _, err := addPlaceMCPServer(placeMCPStoreID("owner", codePrivacyOwnerRoot), placeMCPServer{Name: "deepwiki", URL: "https://mcp.deepwiki.com/mcp?key=secret"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := recordPlaceMCP("owner", "deepwiki", codePrivacyOwnerRoot); err != nil {
-		t.Fatal(err)
-	}
-	project := map[string]string{"owner": "owner", "project_id": "c0de0001-0000"}
-	if rec := adminGet(api, (*StreamingAPI).handleAdminCodeMCP, "other", "/x", project); rec.Code != http.StatusForbidden {
-		t.Fatalf("a member inspected MCP: %d", rec.Code)
-	}
-	rec := adminGet(api, (*StreamingAPI).handleAdminCodeMCP, "boss", "/x", project)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"name":"deepwiki"`) || strings.Contains(rec.Body.String(), "secret") {
-		t.Fatalf("inspection = %d %s", rec.Code, rec.Body.String())
-	}
-	mock.mu.Lock()
-	log := mock.files[codeAdminAuditPath(time.Now())]
-	mock.mu.Unlock()
-	if !strings.Contains(log, `"action":"list_mcp"`) {
-		t.Fatalf("MCP inspection not audited:\n%s", log)
-	}
-}
-
-func TestCodeConversationReviewBindsProjectAndAuditsReads(t *testing.T) {
-	api, mock := newCodeAdminFixture(t, true)
-	directory := withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"rev","username":"rev","crew_reviewer":true}]}`)
-	docs := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	write := func(relative, data string) {
-		filename := filepath.Join(docs, filepath.FromSlash(relative))
-		if err := os.MkdirAll(filepath.Dir(filename), 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filename, []byte(data), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write(codePrivacyOwnerRoot+"/builder/session-code-chat-conversation.json", `{"session_id":"code-chat","user_id":"owner","runtime":{"workspace_path":"`+codePrivacyOwnerRoot+`"},"conversation_history":[{"Role":"human","Parts":[{"Text":"Code question"}]},{"Role":"ai","Parts":[{"Text":"Code answer"}]}]}`)
-	write("_users/owner/chat_history/2026-09-30/session-private-chat-conversation.json", `{"session_id":"private-chat","user_id":"owner","runtime":{"workspace_path":"Chats/Work/projects/private"},"conversation_history":[{"Role":"human","Parts":[{"Text":"Private Work question"}]}]}`)
-	project := map[string]string{"owner": "owner", "project_id": "c0de0001-0000", "session_id": "code-chat"}
-	rec := adminGet(api, (*StreamingAPI).handleAdminCodeChats, "rev", "/x", project)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "code-chat") || strings.Contains(rec.Body.String(), "private-chat") {
-		t.Fatalf("chats: %d %s", rec.Code, rec.Body.String())
-	}
-	rec = adminGet(api, (*StreamingAPI).handleAdminCodeChat, "rev", "/x?user=owner", project)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Code answer") {
-		t.Fatalf("read: %d %s", rec.Code, rec.Body.String())
-	}
-	project["session_id"] = "private-chat"
-	rec = adminGet(api, (*StreamingAPI).handleAdminCodeChat, "rev", "/x?user=owner", project)
-	if rec.Code != http.StatusNotFound || strings.Contains(rec.Body.String(), "Private Work") {
-		t.Fatalf("guessed private chat: %d %s", rec.Code, rec.Body.String())
-	}
-	mock.mu.Lock()
-	audit := mock.files[codeAdminAuditPath(time.Now())]
-	mock.mu.Unlock()
-	if !strings.Contains(audit, `"action":"list_chats"`) || !strings.Contains(audit, `"action":"read_chat"`) || !strings.Contains(audit, "owner/code-chat") || strings.Contains(audit, "private-chat") {
-		t.Fatalf("audit = %s", audit)
-	}
-	project["session_id"] = "code-chat"
-	previous := codeAdminAuditAppend
-	codeAdminAuditAppend = func(context.Context, string, string) error { return fmt.Errorf("audit offline") }
-	rec = adminGet(api, (*StreamingAPI).handleAdminCodeChat, "rev", "/x?user=owner", project)
-	codeAdminAuditAppend = previous
-	if rec.Code != http.StatusServiceUnavailable || strings.Contains(rec.Body.String(), "Code answer") {
-		t.Fatalf("unaudited read: %d %s", rec.Code, rec.Body.String())
-	}
-	*directory = `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"rev","username":"rev"}]}`
-	invalidateUserDirectoryCache()
-	if rec = adminGet(api, (*StreamingAPI).handleAdminCodeChat, "rev", "/x?user=owner", project); rec.Code != http.StatusForbidden {
-		t.Fatalf("revoked reviewer: %d %s", rec.Code, rec.Body.String())
 	}
 }

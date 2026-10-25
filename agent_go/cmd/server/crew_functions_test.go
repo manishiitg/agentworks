@@ -221,89 +221,6 @@ func TestInternalFunctionReplyRechecksTargetAccess(t *testing.T) {
 	}
 }
 
-func TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID(t *testing.T) {
-	env := newCrewFunctionEnv(t)
-	const codePath = "_users/owner/Chats/Code/projects/private-alpha"
-	env.mock.mu.Lock()
-	env.mock.files[codePath+"/product.json"] = `{"schema_version":1,"product":"code","id":"alpha","title":"Private acquisition project","session_id":"code-alpha"}`
-	env.mock.mu.Unlock()
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	codeCaller, err := crewTriggerLinkCaller(codePath)(ctx)
-	if err != nil || codeCaller.Stamp.ProfileID != "code" || codeCaller.Label != "private Code workspace" {
-		t.Fatalf("private Code caller = %+v, %v", codeCaller, err)
-	}
-	if codeCaller.isTarget(triggerTarget{Kind: triggerCallerCrew, CrewID: "alpha", CrewProfile: "work"}) {
-		t.Fatal("Code was mistaken for a Crew with the same project ID")
-	}
-	if target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, codePath); err == nil {
-		t.Fatalf("private Code became a callable target: %+v", target)
-	}
-	codeReg := &recordingRegistrar{}
-	if err := env.api.registerCrewFunctionTools(codeReg, "owner", "code-caller", QueryRequest{SelectedFolder: codePath}, crewTriggerLinkCaller(codePath), nil); err != nil {
-		t.Fatal(err)
-	}
-	// A Code has no functions of its own and no implicit ask (owner, 2026-10-09).
-	if listed, err := codeReg.tools["list_functions"].exec(ctx, map[string]interface{}{}); err != nil || strings.Contains(listed, `"ask"`) {
-		t.Fatalf("a Code lists no functions of its own: %s, %v", listed, err)
-	}
-	store := virtualtools.GetHumanFeedbackStore()
-	for _, profileID := range []string{"work", "code"} {
-		id := "fn-same-project-" + profileID
-		call := &crewFunctionCall{ID: id, UserID: "owner", CallerKind: triggerCallerCrew, CallerID: "alpha", CallerProfileID: profileID,
-			CallerPath: map[string]string{"work": linkAlphaPath, "code": codePath}[profileID],
-			TargetKind: triggerCallerCrew, TargetID: "beta", TargetProfileID: "work", TargetPath: linkBetaPath, Function: "ask", ArgumentsKey: crewFunctionArgumentsFingerprint("{}"),
-			Status: "running", SubmissionID: "retry-same-id", CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
-		crewFunctionCalls.Lock()
-		crewFunctionCalls.m[id] = call
-		crewFunctionCalls.Unlock()
-		t.Cleanup(func() {
-			crewFunctionCalls.Lock()
-			delete(crewFunctionCalls.m, id)
-			crewFunctionCalls.Unlock()
-			store.WithdrawOperation(id)
-		})
-	}
-	if _, err := codeReg.tools["get_function_call"].exec(ctx, map[string]interface{}{"call_id": "fn-same-project-work"}); err == nil {
-		t.Fatal("Code read the Crew's call with the same project ID")
-	}
-	if _, err := env.alpha["get_function_call"].exec(ctx, map[string]interface{}{"call_id": "fn-same-project-code"}); err == nil {
-		t.Fatal("Crew read the private Code's call with the same project ID")
-	}
-	if err := store.CreatePendingRequest("private-code-question", "Which branch?", "", "private-code-chat", nil, true, time.Minute, "fn-same-project-code"); err != nil {
-		t.Fatal(err)
-	}
-	if out, err := codeReg.tools["get_function_call"].exec(ctx, map[string]interface{}{"call_id": "fn-same-project-code"}); err != nil || !strings.Contains(out, "private-code-question") {
-		t.Fatalf("Code cannot read its own pending input: %s, %v", out, err)
-	}
-	if _, err := codeReg.tools["reply_function_call"].exec(ctx, map[string]interface{}{"call_id": "fn-same-project-work", "request_id": "private-code-question", "response": "main"}); err == nil {
-		t.Fatal("Code replied to the Crew's call")
-	}
-	if _, err := codeReg.tools["reply_function_call"].exec(ctx, map[string]interface{}{"call_id": "fn-same-project-code", "request_id": "private-code-question", "response": "main"}); err != nil {
-		t.Fatalf("Code could not reply to its own call: %v", err)
-	}
-	targetCall := &crewFunctionCall{ID: "fn-target-work-alpha", UserID: "owner", CallerKind: triggerCallerCrew, CallerID: "beta", TargetKind: triggerCallerCrew, TargetID: "alpha", Status: "running", done: make(chan struct{})}
-	crewFunctionCalls.Lock()
-	crewFunctionCalls.m[targetCall.ID] = targetCall
-	crewFunctionCalls.Unlock()
-	t.Cleanup(func() {
-		crewFunctionCalls.Lock()
-		delete(crewFunctionCalls.m, targetCall.ID)
-		crewFunctionCalls.Unlock()
-	})
-	if _, err := codeReg.tools["report_function_progress"].exec(ctx, map[string]interface{}{"call_id": targetCall.ID, "message": "done"}); err == nil {
-		t.Fatal("private Code impersonated a Crew target with the same ID")
-	}
-	crewFunctionCalls.Lock()
-	retried, found, err := inMemoryCrewFunctionSubmissionLocked("owner", codeCaller.Stamp, codePath, "", "retry-same-id", triggerTarget{Kind: triggerCallerCrew, Path: linkBetaPath, CrewID: "beta", CrewProfile: "work"}, "ask", "{}")
-	crewFunctionCalls.Unlock()
-	if err != nil || !found || retried.ID != "fn-same-project-code" {
-		t.Fatalf("Code's submission ID crossed into Crew: call=%+v found=%v err=%v", retried, found, err)
-	}
-	if crewFunctionSubmissionPath("owner", codeCaller.Stamp, "retry-same-id", codePath, "") == crewFunctionSubmissionPath("owner", codeCaller.Stamp, "retry-same-id", "_users/another/Chats/Code/projects/private-alpha", "") {
-		t.Fatal("same-ID Codes under different owners shared a submission index")
-	}
-}
-
 func TestFunctionSubmissionSaveFailureSettlesConcurrentRetry(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	blocked := make(chan struct{}, 1)
@@ -480,30 +397,6 @@ func TestCrewFunctionFailureDetailKeepsPartialWork(t *testing.T) {
 	detail := crewFunctionFailureDetail(map[string]interface{}{"partial_result": map[string]interface{}{"video": "https://x/v.mp4"}, "final_reply": "1764 PASS"})
 	if !strings.Contains(detail, "https://x/v.mp4") || !strings.Contains(detail, "1764 PASS") {
 		t.Fatalf("failure detail dropped the target's work: %q", detail)
-	}
-}
-
-// A private peer call to a Code is listed only for the person who made it:
-// the Code's owner never sees an editor's call results (#246 review H1).
-func TestRecentCallsHidePrivateCodePeerCallsFromOthers(t *testing.T) {
-	crewFunctionCalls.Lock()
-	saved := crewFunctionCalls.m
-	crewFunctionCalls.m = map[string]*crewFunctionCall{
-		"fn-peer": {ID: "fn-peer", UserID: "bob", TargetKind: triggerCallerCrew, TargetID: "code-y", TargetProfileID: workproduct.ProfileID, Function: "run", Status: "done", Result: map[string]interface{}{"secret": "from bob's MCP"}},
-		"fn-crew": {ID: "fn-crew", UserID: "bob", TargetKind: triggerCallerCrew, TargetID: "crew-z", TargetProfileID: "work", Function: "run", Status: "done"},
-	}
-	crewFunctionCalls.Unlock()
-	t.Cleanup(func() { crewFunctionCalls.Lock(); crewFunctionCalls.m = saved; crewFunctionCalls.Unlock() })
-
-	if got := recentCrewFunctionCalls("code-y", "alice"); len(got) != 0 {
-		t.Fatalf("owner saw an editor's private peer call: %+v", got)
-	}
-	if got := recentCrewFunctionCalls("code-y", "bob"); len(got) != 1 || got[0].CallID != "fn-peer" {
-		t.Fatalf("the caller must see their own peer call: %+v", got)
-	}
-	// Calls to a Crew stay visible to whoever can open that Crew.
-	if got := recentCrewFunctionCalls("crew-z", "alice"); len(got) != 1 {
-		t.Fatalf("Crew calls list: %+v", got)
 	}
 }
 

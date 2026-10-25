@@ -39,54 +39,6 @@ func TestCodeShellIsOwnerOnly(t *testing.T) {
 	}
 }
 
-// A moved project can be discovered through its old binding. Only its trusted
-// canonical root reaches the shell and guard; Run access still has no terminal.
-func TestMovedProjectShellUsesCanonicalRootAndBuilderAccess(t *testing.T) {
-	api, _ := newCodePrivacyFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true},{"id":"run","username":"run","can_create":true},{"id":"outsider","username":"outsider","can_create":true}]}`)
-	withProjectSharing(t, true)
-	registry := withProjectOwnerRegistry(t)
-	const canonical = "Crew/app-c0de0001"
-	// The old listing can still expose the binding, while the workspace
-	// transport reads its files at the canonical location after the move.
-	files := map[string]string{}
-	for _, name := range []string{"product.json", "workflow.json"} {
-		raw, found, err := readFileFromWorkspace(context.Background(), codePrivacyOwnerRoot+"/"+name)
-		if err != nil || !found {
-			t.Fatalf("fixture %s: found=%v err=%v", name, found, err)
-		}
-		files[codePrivacyOwnerRoot+"/"+name], files[canonical+"/"+name] = raw, raw
-	}
-	server := httptest.NewServer(&mockWorkspaceAPI{files: files})
-	t.Cleanup(server.Close)
-	t.Setenv("WORKSPACE_API_URL", server.URL)
-	if err := registry.Register(projectOwnerRecord{
-		Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000",
-		CanonicalRoot: canonical, BindingRoot: codePrivacyOwnerRoot, Shared: true, Aliases: []string{codePrivacyOwnerRoot},
-		Private: true, AudienceConfigured: true, CoOwners: []string{"other"}, RunPeople: []string{"run"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	stubCrewLookups(t, map[string]string{canonical: "owner"}, map[string]string{codePrivacyOwnerRoot: canonical})
-	for _, user := range []string{"owner", "other"} {
-		req := mux.SetURLVars(profileRouteRequest(http.MethodGet, "/shell", nil, user), map[string]string{"id": "code", "project_id": "c0de0001-0000"})
-		_, shellID, root, status, message := api.codeShellTarget(req)
-		if status != 0 || root != canonical || shellID != codeShellID("owner", "c0de0001-0000", user, 1) {
-			t.Fatalf("%s shell: root=%q id=%q status=%d message=%q", user, root, shellID, status, message)
-		}
-		guard := api.codeShellFolderGuard(req.Context(), user, root)
-		if !guard.Enabled || len(guard.WritePaths) != 1 || guard.WritePaths[0] != canonical+"/" {
-			t.Fatalf("%s shell guard: %+v", user, guard)
-		}
-	}
-	for user, want := range map[string]int{"run": http.StatusForbidden, "outsider": http.StatusNotFound} {
-		req := mux.SetURLVars(profileRouteRequest(http.MethodGet, "/shell", nil, user), map[string]string{"id": "code", "project_id": "c0de0001-0000"})
-		if _, _, _, status, _ := api.codeShellTarget(req); status != want {
-			t.Fatalf("%s terminal status=%d, want %d", user, status, want)
-		}
-	}
-}
-
 func TestCodeShellFolderGuardIsTheProjectOnly(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})

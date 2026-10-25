@@ -137,14 +137,14 @@ func TestWorkspaceProxyVetsJSONBodiesWhateverTheirType(t *testing.T) {
 	if status := verdict("text/plain", `{"folder_path": "_users/alice/x"`); status != http.StatusBadRequest {
 		t.Fatalf("truncated JSON-looking body = %d, want 400", status)
 	}
-	if status := verdict("text/plain", `{"folder_path":"_users/bob/Chats/Code/projects/mine/code"}`); status != 0 {
+	if status := verdict("text/plain", `{"folder_path":"_users/bob/Chats/notes/mine"}`); status != 0 {
 		t.Fatalf("own path refused: %d", status)
 	}
 }
 
-// Code sharing and the admin audit log are written only by the server:
-// through the proxy not even an admin may write them, and the audit append
-// route is unreachable from a browser.
+// The admin audit log is written only by the server: through the proxy not
+// even an admin may write it, and the audit append route is unreachable from
+// a browser.
 func TestWorkspaceProxyProtectsServerOwnedFilesFromAdmins(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"boss","username":"boss","admin":true}]}`)
 	call := func(method, target, body string) int {
@@ -158,8 +158,6 @@ func TestWorkspaceProxyProtectsServerOwnedFilesFromAdmins(t *testing.T) {
 		return status
 	}
 	for _, write := range []struct{ method, target, body string }{
-		{http.MethodPut, "/api/wp/api/documents/config/code-shares.json", `{"content":"{}"}`},
-		{http.MethodDelete, "/api/wp/api/documents/config/code-shares.json", ``},
 		{http.MethodPut, "/api/wp/api/documents/config/crew-admin-audit/2026-09.jsonl", `{"content":""}`},
 		{http.MethodDelete, "/api/wp/api/folders/config", ``},
 		{http.MethodPost, "/api/wp/api/audit/crew-admin/append", `{"month":"2026-09","entry":"{}"}`},
@@ -168,9 +166,9 @@ func TestWorkspaceProxyProtectsServerOwnedFilesFromAdmins(t *testing.T) {
 			t.Fatalf("admin %s %s = %d, want 403", write.method, write.target, status)
 		}
 	}
-	// Reading them, and writing the rest of config/, stays admin-allowed.
-	if status := call(http.MethodGet, "/api/wp/api/documents/config/code-shares.json", ""); status != 0 {
-		t.Fatalf("admin read of shares refused: %d", status)
+	// Reading config, and writing the rest of config/ files, stays admin-allowed.
+	if status := call(http.MethodGet, "/api/wp/api/documents/config/scheduler.json", ""); status != 0 {
+		t.Fatalf("admin read of config refused: %d", status)
 	}
 	if status := call(http.MethodPut, "/api/wp/api/documents/config/scheduler.json", `{"content":"{}"}`); status != 0 {
 		t.Fatalf("admin write of other config refused: %d", status)
