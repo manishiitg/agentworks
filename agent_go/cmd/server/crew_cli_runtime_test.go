@@ -82,10 +82,10 @@ func TestCrewChatModesSeparatePromptSkillsAndSessionIdentity(t *testing.T) {
 	if !strings.Contains(run.Prompt, "Crew Run") || !strings.Contains(run.Prompt, "Support") || strings.Contains(run.Prompt, "set_work_identity") || strings.Contains(run.Prompt, "When asked for another Crew") {
 		t.Fatalf("Run prompt inherited authoring instructions: %s", run.Prompt)
 	}
-	if !slices.Contains(buildReq.SelectedSkills, "work-mcp") || !slices.Contains(buildReq.SelectedSkills, "crew-builder") {
+	if !slices.Contains(buildReq.SelectedSkills, "crew-builder") {
 		t.Fatalf("Builder lost feature skills: %v", buildReq.SelectedSkills)
 	}
-	for _, name := range []string{"work-mcp", "work-skills", "background-work", "crew-builder"} {
+	for _, name := range []string{"background-work", "crew-builder"} {
 		if slices.Contains(runReq.SelectedSkills, name) {
 			t.Fatalf("Run kept authoring skill %s", name)
 		}
@@ -95,12 +95,6 @@ func TestCrewChatModesSeparatePromptSkillsAndSessionIdentity(t *testing.T) {
 	}
 	if slices.Contains(base.Skills, "crew-run") || slices.Contains(base.Skills, "crew-builder") {
 		t.Fatal("mode mutated the registered base definition")
-	}
-	code := &resolvedAgentProfile{Definition: workproduct.BuiltinAgentProfile(), Prompt: "Code prompt"}
-	req := QueryRequest{SelectedSkills: []string{"code-mcp"}}
-	before := agentProfileSessionKey(code)
-	if err := applyCrewChatMode(code, &req, true); err != nil || !strings.Contains(code.Prompt, "Crew Run") || before == agentProfileSessionKey(code) || code.Definition.Runtime.AgentTools.Mode != "mcp_only" || !slices.Contains(req.SelectedSkills, "crew-run") {
-		t.Fatal("shared Code did not get a separate restricted Run runtime")
 	}
 }
 

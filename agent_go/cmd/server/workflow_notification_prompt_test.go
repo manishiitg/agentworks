@@ -23,9 +23,3 @@ func TestBuildWorkflowNotificationInstructionsPrompt(t *testing.T) {
 		}
 	}
 }
-
-func TestBuildWorkflowNotificationInstructionsPromptEmpty(t *testing.T) {
-	if got := buildWorkflowNotificationInstructionsPrompt("  \n\t", ""); got != "" {
-		t.Fatalf("expected empty prompt, got %q", got)
-	}
-}

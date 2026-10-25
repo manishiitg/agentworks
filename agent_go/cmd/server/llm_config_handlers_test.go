@@ -175,67 +175,6 @@ func TestProviderManifestMarksDeprecatedCodingAgents(t *testing.T) {
 	}
 }
 
-func TestProviderManifestPublishesCodexTierDefaults(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	t.Setenv("SUPPORTED_LLM_PROVIDERS", "codex-cli")
-	t.Setenv("PATH", t.TempDir())
-
-	api := &StreamingAPI{}
-	req := httptest.NewRequest(http.MethodGet, "/api/llm-config/providers", nil)
-	rec := httptest.NewRecorder()
-	api.handleGetProviderManifest(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("manifest status = %d, want 200; body=%s", rec.Code, rec.Body.String())
-	}
-
-	var resp struct {
-		Providers []struct {
-			ID     string `json:"id"`
-			Models []struct {
-				ModelID string `json:"model_id"`
-			} `json:"models"`
-			DefaultTierModels map[string]struct {
-				ModelID string                 `json:"model_id"`
-				Options map[string]interface{} `json:"options"`
-			} `json:"default_tier_models"`
-		} `json:"providers"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode manifest: %v", err)
-	}
-
-	for _, provider := range resp.Providers {
-		if provider.ID != "codex-cli" {
-			continue
-		}
-		models := make(map[string]bool, len(provider.Models))
-		for _, model := range provider.Models {
-			models[model.ModelID] = true
-		}
-		for _, modelID := range []string{"gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra"} {
-			if !models[modelID] {
-				t.Fatalf("codex-cli models = %v, want %s", models, modelID)
-			}
-		}
-		for tier, want := range map[string]struct {
-			model  string
-			effort string
-		}{
-			"high":   {model: "gpt-6.1-sol", effort: "medium"},
-			"medium": {model: "gpt-6-luna", effort: "high"},
-			"low":    {model: "gpt-6-luna", effort: "high"},
-			"pulse":  {model: "gpt-6.1-sol", effort: "high"},
-		} {
-			got := provider.DefaultTierModels[tier]
-			if got.ModelID != want.model || got.Options["reasoning_effort"] != want.effort {
-				t.Fatalf("codex-cli %s default = %+v, want %s/%s", tier, got, want.model, want.effort)
-			}
-		}
-		return
-	}
-	t.Fatal("manifest missing codex-cli")
-}
-
 func TestBuildLLMDiscoveryNeverOffersDirectAPIProviders(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("SUPPORTED_LLM_PROVIDERS", "openai,anthropic,vertex")

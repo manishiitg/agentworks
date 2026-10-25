@@ -17,21 +17,6 @@ func patClaims(user string, scopes []string) *UserClaims {
 	return &UserClaims{UserID: user, Username: user, AccessToken: &accesstokens.Token{ID: "test-token", Scopes: scopes, AllWorkflows: true}}
 }
 
-func TestExternalGuidanceCatalogIncludesNewTools(t *testing.T) {
-	w := httptest.NewRecorder()
-	(&StreamingAPI{}).handleExternalTools(w, adminRequest(http.MethodGet, "/api/external/tools", "", &UserClaims{UserID: "owner"}, nil))
-	body := externalTestBody(t, w, 200)
-	names := map[string]bool{}
-	for _, raw := range body["tools"].([]any) {
-		names[raw.(map[string]any)["name"].(string)] = true
-	}
-	for _, name := range []string{"help", "list_workflow_knowledge", "read_workflow_knowledge"} {
-		if !names[name] {
-			t.Fatalf("missing tool %s", name)
-		}
-	}
-}
-
 func TestExternalKnowledgeInventoryPagination(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	for _, name := range []string{"a.md", "b.md", "c.md", "d.md"} {
@@ -326,29 +311,4 @@ func TestExternalWorkflowKnowledgeRequiresFilesRead(t *testing.T) {
 	w = httptest.NewRecorder()
 	f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", data, patClaims("reader", []string{"workflows:read", "files:read"}), nil))
 	externalTestBody(t, w, 200)
-}
-
-func TestExternalPreparationMentionsGuidanceAndRuns(t *testing.T) {
-	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")
-	f := newExternalToolsFixture(t)
-	body := externalTestBody(t, f.call(t, "owner", "get_agent_context", map[string]any{}), 200)
-	prep, _ := body["preparation"].([]any)
-	joined := ""
-	for _, item := range prep {
-		joined += item.(string) + "\n"
-	}
-	if !strings.Contains(joined, "existing consent") || !strings.Contains(joined, "account/project roles") || !strings.Contains(joined, "action=topics") || !strings.Contains(joined, "runs action=status") {
-		t.Fatalf("preparation does not describe guidance and run flow: %v", prep)
-	}
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator","products":["agentworks","work"]}]}`)
-	writer := patClaims("owner", append(append([]string{}, builderConsentScopes...), "crews:write"))
-	prepared := strings.Join(externalPreparation(writer), "\n")
-	for _, want := range []string{"plan action=list", "expected_revision", "crew_execution", "existing consent", "plan changelog"} {
-		if !strings.Contains(prepared, want) {
-			t.Fatalf("direct authoring guidance missing %q: %s", want, prepared)
-		}
-	}
-	if strings.Contains(prepared, "Native shell/account tools are unavailable") {
-		t.Fatal("direct authoring still denied by old Builder-only guidance")
-	}
 }

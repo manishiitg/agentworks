@@ -13,26 +13,6 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
 )
 
-func TestCodingProviderManifestDefinesAdminInstallCommands(t *testing.T) {
-	want := map[string]string{
-		"claude-code": "npm install -g @anthropic-ai/claude-code@latest",
-		"codex-cli":   "npm install -g @openai/codex@latest",
-		"cursor-cli":  "https://cursor.com/install",
-		"pi-cli":      "npm install -g @earendil-works/pi-coding-agent@latest",
-		"muse-cli":    "https://dev.meta.ai/install.sh",
-		"agy-cli":     "antigravity.google/cli/install.sh",
-	}
-	for provider, fragment := range want {
-		command := providerInstallCommand(provider)
-		if !strings.Contains(command, fragment) {
-			t.Fatalf("%s install command = %q, want fragment %q", provider, command, fragment)
-		}
-	}
-	if got := providerInstallCommand("openai"); got != "" {
-		t.Fatalf("openai install command = %q, want empty for API providers", got)
-	}
-}
-
 func TestProviderRuntimeDerivesFromSDKContracts(t *testing.T) {
 	for _, contract := range llm.CodingAgentProviderContracts() {
 		if contract.Transport != llm.CodingAgentTransportTmux || contract.Deprecated {

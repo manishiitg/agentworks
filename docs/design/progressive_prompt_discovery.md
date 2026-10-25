@@ -131,40 +131,14 @@ its previous-migration success is not a qualification of this change. Cursor,
 Muse and Agy remain unqualified for this second migration. Full business flows,
 OAuth onboarding, total turn cost and latency are still evidence gaps.
 
-### Reproduce a readable local system prompt
+### Historical Code prompt capture
 
-Use owned worktrees and a Go workspace pointing to the owned dependencies.
-Run the Code-only capture in AgentWorks' `agent_go`:
-
-```sh
-PROMPT_SNAPSHOT_DIR=/absolute/output/directory go test ./cmd/server -run '^TestCodePreparedSystemPrompt$' -v -count=1
-```
-
-This test sends a request through the real `handleQuery`: it resolves the
-project binding, profile/access, provider and native-tool mode, registers the
-actual permitted tools, attaches current skills, and calls `FinalizeDefinition`.
-A narrow internal test seam captures the finalized agent and stops before a turn
-starts. mcpagent's read-only `ReadAgentSystemPrompt` facade invokes the same
-outbound composer used by model requests. No prompt logic is copied into the
-fixture, and no CLI process or model call is started.
-
-`code.system.md` is the complete outgoing system text for the mocked user/project;
-`code.skills.json` holds attached metadata and on-demand bodies; `summary.json`
-records byte/character counts and registered tools. Only external state (workspace
-API, user, saved project, MCP configuration and credentials) is mocked. Paths and
-local time come from the actual handler. This is not a snapshot of a specific
-live user's configuration; provider-owned prompts, native tool schemas, history
-and native skill indexes can add context outside this text.
-
-A captured Claude Code fixture measured 8,295 UTF-8 bytes / 8,293 characters,
-13 attached skills (including a mock project reviewer) and 47 registered tools.
-This corrected capture is not comparable to the earlier hand-assembled sample
-as a reduction measurement: it includes the real handler's live context.
-
-The earlier two-stage export was removed: it combined base profile data with a
-fresh runtime and missed Code's resolved `hybrid` native-tool mode. The handler
-capture asserts the enabled native-read policy. Discovery sessions also remove
-stale `<available_tools>` catalogs: the runtime block already owns that guidance.
+The synthetic standalone Code capture fixture was retired with the separate
+Code routing. It is no longer a supported reproduction command. Current Crew
+runtime tests exercise the real admission, Builder/Run separation, skill loading
+and private native-session paths; the shared workflow composer retains its
+size and unavailable-reference regression checks. Historical fixture sizes are
+not measurements of a current person's outbound provider request.
 
 Full server checks reproduced six unrelated failures on the unchanged baseline:
 sales-Crew catalog, delegation tier defaults, two playbook catalog cases, native

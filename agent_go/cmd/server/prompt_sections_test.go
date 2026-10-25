@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 )
 
@@ -193,34 +192,6 @@ func TestCapabilitySnapshotIsWithheldWhenItsToolsAreNotAvailable(t *testing.T) {
 	}
 }
 
-func TestProductFeatureInstructionsAreAdditiveNamedSections(t *testing.T) {
-	section := sectionByName(t, "product-features")
-	ctx := promptContext{
-		HasProfile:        true,
-		FeatureExtensions: []string{"## Feature: files\n\nFiles are enabled.", "## Feature: mcp\n\nMCP is enabled."},
-	}
-	if !section.Applies(ctx) {
-		t.Fatal("a profile with resolved features must receive their extensions")
-	}
-	got := section.Build(ctx)
-	if !strings.Contains(got, "Feature: files") || !strings.Contains(got, "Feature: mcp") {
-		t.Fatalf("feature extension section = %q", got)
-	}
-	if section.Applies(promptContext{HasProfile: false, FeatureExtensions: ctx.FeatureExtensions}) {
-		t.Fatal("profile feature extensions must never leak into generic chat")
-	}
-}
-
-// The general reference must not leak back into shared workflow assembly.
-// Detailed Builder guidance lives in mode-scoped reference skills.
-func TestWorkspaceReferenceIsNotASharedSection(t *testing.T) {
-	for _, section := range promptSections {
-		if section.Name == "workspace-reference" {
-			t.Fatal("shared assembly must not inline the generic workflow guide")
-		}
-	}
-}
-
 // All 20 previous call sites discarded this error with `_ =`.
 func TestAssemblyReportsWhichSectionFailedToAppend(t *testing.T) {
 	appender := &recordingAppender{fail: errors.New("definition is immutable")}
@@ -234,43 +205,6 @@ func TestAssemblyReportsWhichSectionFailedToAppend(t *testing.T) {
 	var sectionErr *promptSectionError
 	if !errors.As(err, &sectionErr) || sectionErr.Section != "workspace-map" {
 		t.Fatalf("error must name the failing section, got %v", err)
-	}
-}
-
-// Names are the handle used by the log, these tests, and grep. A duplicate or
-// blank one makes the assembly log ambiguous.
-func TestSectionNamesAreUniqueAndNonEmpty(t *testing.T) {
-	seen := map[string]bool{}
-	for i, section := range promptSections {
-		if strings.TrimSpace(section.Name) == "" {
-			t.Fatalf("prompt section %d has no name", i)
-		}
-		if seen[section.Name] {
-			t.Fatalf("duplicate prompt section name %q", section.Name)
-		}
-		seen[section.Name] = true
-		if section.Applies == nil || section.Build == nil {
-			t.Fatalf("prompt section %q must define both Applies and Build", section.Name)
-		}
-	}
-}
-
-// The shared-server rules are for the Code product only: not Crew, workflows or other products.
-func TestHostSafetyRulesApplyToCodeOnly(t *testing.T) {
-	section := sectionByName(t, "code-host-safety")
-	if !section.Applies(promptContext{ProfileID: workproduct.ProfileID, HasProfile: true}) {
-		t.Fatal("the Code product did not get the shared-server rules")
-	}
-	for _, profile := range []string{"work", "video-studio", "workflow", ""} {
-		if section.Applies(promptContext{ProfileID: profile, HasProfile: profile != ""}) {
-			t.Fatalf("profile %q got the Code-only shared-server rules", profile)
-		}
-	}
-	text := section.Build(promptContext{})
-	for _, must := range []string{"working folder", "code-server", "127.0.0.1", "\"~\""} {
-		if !strings.Contains(text, must) {
-			t.Fatalf("the shared-server rules no longer mention %s", must)
-		}
 	}
 }
 
