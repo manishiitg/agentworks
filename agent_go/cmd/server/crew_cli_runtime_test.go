@@ -64,6 +64,9 @@ func TestCrewAdmissionAndRetainedInputKeepTrustedMode(t *testing.T) {
 
 func TestCrewChatModesSeparatePromptSkillsAndSessionIdentity(t *testing.T) {
 	base := workproduct.BuiltinAgentProfile()
+	// Start with the owner's native tools enabled, as workspace admission can.
+	// Run mode must downgrade this profile rather than inherit those tools.
+	base.Runtime.AgentTools.Mode = "full"
 	context := agentprofiles.PromptContext{ProjectTitle: "Support", Product: map[string]string{"WORK_IDENTITY": "Role: Support\nPurpose: Help customers"}}
 	newProfile := func(readOnly bool) (*resolvedAgentProfile, QueryRequest) {
 		t.Helper()
