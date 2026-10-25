@@ -7,6 +7,7 @@ import { ProjectMcpPanel } from './ProjectMcpPanel'
 import { ProjectSecretsPanel } from './ProjectSecretsPanel'
 import PersonalAccountsPanel from './PersonalAccountsPanel'
 import { ProjectAccountSharingPanel, CompanySignInSetup } from './ProjectAccountSharingPanel'
+import type { VaultItemKind } from '../../api/projectVault'
 import { ProjectVaultPanel } from './ProjectVaultPanel'
 
 export type IntegrationSection = 'connected' | 'available' | 'secrets' | 'gmail' | 'slack-account' | 'laptop'
@@ -32,7 +33,8 @@ export function ProjectIntegrationPanel(props: Props) {
 function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section = 'connected', canEdit, onAsk, laptop, onAppsSaved, ...secrets }: Props) {
   const [apps, setApps] = useState<'connected' | 'available'>(section === 'available' ? 'available' : 'connected')
   useEffect(() => { if (section === 'connected' || section === 'available') setApps(section) }, [section])
-  if (!canEdit) return <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled />
+  const kinds: Record<IntegrationSection, VaultItemKind[]> = {connected:['mcp'],available:['mcp'],secrets:['project_secret','shared_secret'],gmail:['google'],'slack-account':['slack'],laptop:['computer']}
+  if (!canEdit) return <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled title={INTEGRATION_LABELS[section]} itemKinds={kinds[section]} />
   return <div className="space-y-5" aria-label={INTEGRATION_LABELS[section]}>
     {(section === 'connected' || section === 'available') && <>
       <div className="flex justify-end"><Button size="sm" variant="outline" onClick={() => setApps(apps === 'connected' ? 'available' : 'connected')}>{apps === 'connected' ? 'Add an app' : 'Back to connected apps'}</Button></div>

@@ -42,7 +42,7 @@ it('Integrations opens the last accessible project chat on its MCP panel', async
   expect(mocks.target).toHaveBeenCalledWith('mcp', 'connected')
   expect(mocks.preference).toHaveBeenCalledWith('work', 'team', 'mcp')
   mocks.state.chatTabs = {}
-  await expect(openLastProjectIntegrationChat()).rejects.toThrow('Open a Crew or Goal chat first')
+  await expect(openLastProjectIntegrationChat()).rejects.toThrow('Open a Crew, Goal or Flow chat first')
 })
 it('keeps execution and scheduled Goal chats out of Vault setup', () => {
   const goal = { ...crew('active'), metadata: { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'goal' } } as any

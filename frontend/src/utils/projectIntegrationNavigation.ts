@@ -36,10 +36,10 @@ export async function openLastProjectIntegrationChat(targetSection: IntegrationS
   await waitForChatStoreHydration()
   const state = useChatStore.getState()
   if (!useGlobalPresetStore.getState().workflowPresetsLoaded && Object.values(state.chatTabs).some(tab => tab.metadata?.phaseId === 'workflow-builder')) await useGlobalPresetStore.getState().refreshPresets()
-  const candidates = Object.values(state.chatTabs).filter(tab => isProjectIntegrationChat(tab))
+  const candidates = Object.values(state.chatTabs).filter(tab => isProjectIntegrationChat(tab, true))
   const target = candidates.find(tab => tab.tabId === state.activeTabId)
     ?? candidates.sort((a, b) => (b.lastAccessedAt ?? b.createdAt) - (a.lastAccessedAt ?? a.createdAt))[0]
-  if (!target) throw new Error('Open a Crew or Goal chat first, then choose Integrations. Setup happens in that chat.')
+  if (!target) throw new Error('Open a Crew, Goal or Flow chat first, then choose Integrations. Setup happens in that chat.')
   revealProjectIntegrationChat(target, true, targetSection)
   return target.tabId
 }
