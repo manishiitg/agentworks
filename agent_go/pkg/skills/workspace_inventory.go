@@ -57,7 +57,7 @@ type WorkspaceInventory struct {
 // Custom means extra files in the workspace, not proof that the person
 // installed them. Old provider projections alone do not establish provenance.
 func (s Skill) IsCustomWorkspaceSkill(workspacePath string) bool {
-	if s.Managed || s.FileManaged || s.Builtin || s.FilePath == "" || s.FilePath == "Platform" {
+	if s.Managed || s.FileManaged || s.FilePath == "" || s.FilePath == "Platform" {
 		return false
 	}
 	if s.Source != "" || s.SourceURL != "" || s.BrainSource != "" {
@@ -100,7 +100,10 @@ func DiscoverSkillsIn(workspaceAPIURL, workspacePath string) (*WorkspaceInventor
 			// the failure rather than silently losing it from the Skills panel.
 			parsed = &Skill{Frontmatter: SkillFrontmatter{Name: doc.Name}, FolderName: doc.Name, FilePath: doc.FilePath, Content: doc.Document, ValidationError: err.Error()}
 		}
-		parsed.Managed = doc.Managed || IsBuiltinSkill(doc.Name)
+		// Ownership comes from the workspace's managed-file marker. An
+		// imported file may share a name with a registered product procedure;
+		// that does not make this physical copy a platform-managed file.
+		parsed.Managed = doc.Managed
 		parsed.FileManaged, parsed.Builtin = doc.Managed, IsBuiltinSkill(doc.Name)
 		parsed.UsedBy = doc.UsedBy
 		parsed.BrainSource, parsed.BrainEdited = doc.BrainSource, doc.BrainEdited

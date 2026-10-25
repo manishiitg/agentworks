@@ -132,7 +132,7 @@ export default function SkillsManagerPanel({
   const completeInventory: Skill[] = [...allSkills, ...[...defaultModes.keys()]
     .filter(name => !allSkills.some(skill => skill.folder_name === name))
     .map(name => Object.values(defaults?.definitionsByMode || {}).flat().find(skill => skill.folder_name === name) || { folder_name: name, file_path: '', frontmatter: { name, description: '' }, content: '' })]
-  const isPlatform = (skill: Skill) => skill.managed || skill.file_managed || skill.builtin || defaultModes.has(skill.folder_name)
+  const isPlatform = (skill: Skill) => skill.managed || skill.file_managed || defaultModes.has(skill.folder_name)
   const isCustom = (skill: Skill) => {
     if (isPlatform(skill) || !skill.file_path || skill.file_path === 'Platform') return false
     if (skill.source || skill.source_url || skill.brain_source) return true
@@ -161,7 +161,7 @@ export default function SkillsManagerPanel({
         else setViewedSkill(skill.folder_name)
       }} reader={reader}
       defaultDefinitions={Object.entries(defaults?.definitionsByMode || {}).flatMap(([mode, definitions]) => definitions.filter(definition => definition.folder_name === skill.folder_name).map(definition => ({ mode, skill: definition })))}
-      onDelete={!customOnly && installed && !skill.managed && !included ? () => { void uninstall(skill.folder_name) } : undefined}
+      onDelete={!customOnly && installed && !skill.managed && !skill.builtin && !included ? () => { void uninstall(skill.folder_name) } : undefined}
       inventoryOnly={customOnly}
       selected={selectable && onToggleSkill ? selectedSkills.includes(skill.folder_name) : undefined}
       onToggleSelect={selectable && onToggleSkill ? () => { if (!readOnly && defaults && loadedScope === activeScope.current) onToggleSkill(skill.folder_name) } : undefined}

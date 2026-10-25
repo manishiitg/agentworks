@@ -21,7 +21,7 @@ vi.mock('../../stores/useWorkspaceConnectionStore', async () => {
   return { useWorkspaceConnectionStore: create(() => ({ activeWorkspaceId: 'local' })) }
 })
 
-it('shows only user-installed custom files across Crew, Goals and Relay without changing platform skills or access', async () => {
+it('shows imported files including matching builtin names across Crew, Goals and Relay without changing platform skills or access', async () => {
   const skill = (name: string, file_path: string, fields = {}) => ({ folder_name: name, file_path, frontmatter: { name, description: `Instructions for ${name}` }, content: 'Read this custom skill', ...fields })
   const files = [
     skill('written-in-chat', 'skills/written-in-chat/SKILL.md'),
@@ -42,7 +42,7 @@ it('shows only user-installed custom files across Crew, Goals and Relay without 
       await act(async () => root.render(<SkillsManagerPanel customOnly profileId={profileId} workspacePath={scope} selectedSkills={['written-in-chat', 'declared-default']} onToggleSkill={selection} additionalSkills={[skill('nested-project-skill', 'skills/custom/nested-project-skill/SKILL.md')]} />))
       expect(host.textContent).toContain('Custom skills')
       expect([...host.querySelectorAll('[aria-label^="Read skill "]')].map(item => item.getAttribute('aria-label'))).toEqual([
-        'Read skill copied-from-brain', 'Read skill imported-native', 'Read skill nested-project-skill', 'Read skill written-in-chat',
+        'Read skill builtin-file', 'Read skill copied-from-brain', 'Read skill imported-native', 'Read skill nested-project-skill', 'Read skill written-in-chat',
       ])
       expect(host.textContent).not.toContain('Platform skills')
       expect(host.textContent).not.toContain('declared-default')
