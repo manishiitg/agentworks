@@ -35,6 +35,7 @@ func TestBackgroundAgentLogWorkspacePathRequiresAWorkflowScopedActiveSession(t *
 	}
 }
 
+// PLAT-825: a fresh Goal must retain background history after engine removal.
 // TestBackgroundAgentLogRecordsStartThenCompletionInOneRow pins PLAT-114: a
 // background agent's start and completion upsert the SAME durable row, not
 // two, so a row that only ever reaches "running" is itself real evidence —

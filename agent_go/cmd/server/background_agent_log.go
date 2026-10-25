@@ -93,6 +93,24 @@ func ensureBackgroundAgentLogColumns(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
+// openBackgroundAgentLogWriter owns the shared lifecycle schema. It must not
+// depend on the retired review engine to initialize a newly created Goal.
+func openBackgroundAgentLogWriter(ctx context.Context, workspacePath string) (*sql.DB, error) {
+	_, db, err := openWorkflowStoreDB(ctx, workspacePath, true)
+	if err != nil || db == nil {
+		return db, err
+	}
+	if _, err := db.ExecContext(ctx, backgroundAgentLogSchema); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := ensureBackgroundAgentLogColumns(ctx, db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
 // backgroundAgentLogWorkspacePath resolves which workflow's database a
 // session's background-agent activity belongs to. A session with no
 // workspace (plain chat) has nothing to log against — that is intentional,
@@ -121,7 +139,7 @@ func (api *StreamingAPI) recordBackgroundAgentLogStarted(sessionID, agentID, nam
 		return
 	}
 	ctx := context.Background()
-	_, db, err := openWorkflowStoreDB(ctx, workspacePath, true)
+	db, err := openBackgroundAgentLogWriter(ctx, workspacePath)
 	if err != nil || db == nil {
 		if err != nil {
 			log.Printf("[BG_AGENT_LOG] failed to open db for %s: %v", workspacePath, err)
@@ -152,7 +170,7 @@ func (api *StreamingAPI) recordBackgroundAgentLogCompleted(sessionID, agentID, n
 		return
 	}
 	ctx := context.Background()
-	_, db, err := openWorkflowStoreDB(ctx, workspacePath, true)
+	db, err := openBackgroundAgentLogWriter(ctx, workspacePath)
 	if err != nil || db == nil {
 		if err != nil {
 			log.Printf("[BG_AGENT_LOG] failed to open db for %s: %v", workspacePath, err)
@@ -186,7 +204,7 @@ func (api *StreamingAPI) recordBackgroundAgentTranscriptPath(sessionID, agentID,
 		return
 	}
 	ctx := context.Background()
-	_, db, err := openWorkflowStoreDB(ctx, workspacePath, true)
+	db, err := openBackgroundAgentLogWriter(ctx, workspacePath)
 	if err != nil || db == nil {
 		if err != nil {
 			log.Printf("[BG_AGENT_LOG] failed to open db for %s: %v", workspacePath, err)

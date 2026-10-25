@@ -34,6 +34,24 @@ func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
 		}
 	}
 	manifest("alice", "workflow")
+	// PLAT-825: a fresh Goal may have a database before any background work.
+	// Inspection stays an empty read; it must not require the retired engine.
+	_, freshDB, err := openWorkflowStoreDB(context.Background(), "Workflow/example", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	freshDB.Close()
+	if rows, err := backgroundAgentLogForSession(context.Background(), "Workflow/example", "never-started"); err != nil || len(rows) != 0 {
+		t.Fatalf("fresh log read: %v %v", rows, err)
+	}
+	emptyRequest := httptest.NewRequest("GET", "/api/workflow/step-inspections?workspace_path=Workflow%2Fexample", nil)
+	emptyRequest = emptyRequest.WithContext(context.WithValue(emptyRequest.Context(), UserContextKey, &UserClaims{UserID: "alice", Username: "alice"}))
+	emptyReply := httptest.NewRecorder()
+	api.handleWorkspaceStepInspections(emptyReply, emptyRequest)
+	var emptyResponse workspaceStepInspectionsResponse
+	if emptyReply.Code != 200 || json.Unmarshal(emptyReply.Body.Bytes(), &emptyResponse) != nil || len(emptyResponse.Items) != 0 {
+		t.Fatalf("fresh inspection: %d %s", emptyReply.Code, emptyReply.Body)
+	}
 	step := func(session, id, parent, kind string) {
 		t.Helper()
 		api.bgAgentRegistry.Register(session, &BackgroundAgent{ID: id, Name: "Research MCP_API_TOKEN=fixture-secret", Kind: kind, ParentExecutionID: parent, Status: BGAgentRunning, CreatedAt: time.Now(), Metadata: map[string]string{"step_id": "research"}})
