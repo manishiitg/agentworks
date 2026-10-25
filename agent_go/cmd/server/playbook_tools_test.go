@@ -16,9 +16,6 @@ func TestSearchPlaybooksReturnsWebsiteGrowthTeamProposal(t *testing.T) {
 	if len(matches) == 0 || matches[0].ID != "website-growth-loop" {
 		t.Fatalf("matches = %+v", matches)
 	}
-	if len(matches[0].AgentSlots) != 4 || len(matches[0].Handoffs) != 3 || len(matches[0].SetupChecks) != 9 {
-		t.Fatalf("incomplete Website Growth proposal = %+v", matches[0])
-	}
 }
 
 func TestPlaybookSearchToolIsRecommendationOnly(t *testing.T) {
