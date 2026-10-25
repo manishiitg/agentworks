@@ -354,3 +354,38 @@ func TestSteerTakenMidAnswerKeepsItsSendTime(t *testing.T) {
 		t.Fatalf("question dated %s, want its send time %s before the reply %s", got, sent, rows["answer-b"].Timestamp)
 	}
 }
+
+// A message sent while the previous answer was finishing and taken by the CLI only after that answer ended
+// (local, 2026-10-25: queued at 17:52:15.7, answer ended 17:52:15.87, its end row recorded 17:52:17.5). The user
+// row is written behind the end row, so it must not be dated before it: the chat's live merge orders by time and
+// showed the message above the reply it follows.
+func TestSteerTakenAfterTheAnswerEndedIsNotDatedBeforeThatAnswer(t *testing.T) {
+	store := NewEventStore(100)
+	defer store.Stop()
+	sent := time.Date(2026, 10, 25, 12, 22, 15, 0, time.UTC)
+
+	store.AddEvent("chat", steerUser("user:a"))
+	store.AddEvent("chat", steerRow("tool-a", "tool_call_start"))
+	user := UserMessageAt(steerUser("user:b"), sent)
+	store.BeginDeferredSteer("chat", user)
+
+	done := make(chan struct{})
+	go func() {
+		store.CompleteDeferredSteer("chat", UserMessageAt(user, sent.Add(200*time.Millisecond))) // the ack, before the end row
+		close(done)
+	}()
+	time.Sleep(100 * time.Millisecond)
+	end := steerCompletion("completion-a")
+	end.Timestamp = sent.Add(1500 * time.Millisecond)
+	store.AddEvent("chat", end)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the acked steer never completed")
+	}
+	rows := liveEvents(store, "chat")
+	if got, endAt := rows["user:b"].Timestamp, rows["completion-a"].Timestamp; got.Before(endAt) {
+		t.Fatalf("question dated %s, before the end of the answer it follows (%s)", got, endAt)
+	}
+	expectIDs(t, store, "chat", "user:a", "tool-a", "completion-a", "user:b")
+}

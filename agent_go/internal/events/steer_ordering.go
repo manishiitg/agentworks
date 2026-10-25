@@ -68,6 +68,9 @@ type deferredSteerHold struct {
 	// answerEnded is closed once the in-flight answer's end row has been recorded.
 	answerEnded     chan struct{}
 	answerEndedOnce sync.Once
+	// answerEndedAt is the time of that end row. A user row written after it must not be dated before it:
+	// the chat's live merge orders by time, so a message the CLI took after the answer ended sorted above it.
+	answerEndedAt time.Time
 	pending         []*pendingSteer
 	boundaryPassed  bool
 	releasing       bool
@@ -207,6 +210,12 @@ func (es *EventStore) CompleteDeferredSteer(sessionID string, user Event) {
 	} else {
 		user = datedBeforeHeldAnswer(user, hold.held)
 	}
+	// The row is written after the end row of the answer that was running, so it is dated no earlier than that
+	// row (equal times fall back to journal sequence, where the end row comes first). A message the CLI took only
+	// after that answer ended showed above the reply it follows, because it kept its send time.
+	if !hold.answerEndedAt.IsZero() && user.Timestamp.Before(hold.answerEndedAt) {
+		user = UserMessageAt(user, hold.answerEndedAt)
+	}
 	state.mu.Unlock()
 	_ = es.addEventUnheld(sessionID, user)
 	if remaining == 0 {
@@ -344,6 +353,7 @@ func (es *EventStore) holdForDeferredSteer(sessionID string, event Event) bool {
 	if hold == nil || !answerRow {
 		if hold != nil && ends && !hold.boundaryPassed {
 			hold.boundaryPassed = true
+			hold.answerEndedAt = event.Timestamp
 			es.armSteerHoldTimerLocked(sessionID, hold)
 		}
 		return false
@@ -357,6 +367,7 @@ func (es *EventStore) holdForDeferredSteer(sessionID string, event Event) bool {
 		// Rows up to the in-flight answer's end belong to that answer.
 		if ends {
 			hold.boundaryPassed = true
+			hold.answerEndedAt = event.Timestamp
 			es.armSteerHoldTimerLocked(sessionID, hold)
 		}
 		return false
