@@ -175,7 +175,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <ProjectWorkspaceTitle name={projectName} surface={surface} />
-      <div ref={stripRef} className="flex min-w-12 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
+      <div ref={stripRef} className="flex min-w-[84px] flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
         const targetKey = key || (tab.tabId === canonicalTabId ? listed?.[0]?.conversation_key : undefined)
@@ -289,7 +289,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
 
       {allowSideChats && newTabName !== null && (
         <form
-          className="flex shrink-0 items-center"
+          className="absolute inset-x-3 top-full z-40 flex items-center rounded-lg border border-border bg-background p-2 shadow-lg md:static md:shrink-0 md:border-0 md:bg-transparent md:p-0 md:shadow-none"
           onSubmit={event => { event.preventDefault(); void submitNewAgent(newTabName) }}
         >
           <input
@@ -302,7 +302,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
             disabled={opening}
             placeholder="Name this agent, e.g. research"
             aria-label="Agent name"
-            className="h-10 w-28 sm:h-7 sm:w-48 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-11 w-full md:h-7 md:w-48 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             data-testid="work-new-chat-tab-name"
           />
         </form>
