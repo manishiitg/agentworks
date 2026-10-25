@@ -40,7 +40,7 @@ export function intermediateUpdateFromTranscriptChunk(event: PollingEvent): Poll
         content,
         result: content,
         status: 'completed',
-        restored_intermediate_update: true,
+        restored_intermediate_update: metadata.native_continuation !== true,
       },
     } as PollingEvent['data'],
   }
@@ -56,7 +56,10 @@ export function normalizeTranscriptChunkEvents(events: PollingEvent[]): PollingE
   const normalized: PollingEvent[] = []
   for (const raw of events) {
     const event = intermediateUpdateFromTranscriptChunk(raw) || raw
-    if (!isTranscriptChunkUpdate(event)) {
+    const inner = (event.data as { data?: Record<string, unknown> } | undefined)?.data
+    const metadata = inner?.metadata as Record<string, unknown> | undefined
+    const nativeReply = event.type === 'llm_generation_end' && metadata?.native_continuation === true
+    if (!isTranscriptChunkUpdate(event) && !nativeReply) {
       normalized.push(event)
       continue
     }

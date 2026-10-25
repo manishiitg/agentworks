@@ -41,6 +41,8 @@ type nativeTerminalObserver struct {
 	previous                                 []builderConversationMessage
 	lastRead                                 time.Time
 	nativeRecords                            *nativeCodingRecordState
+	done                                     chan struct{}
+	stop                                     sync.Once
 }
 
 func (api *StreamingAPI) ensureNativeTerminalObserver(snapshot terminals.Snapshot) {
@@ -56,7 +58,7 @@ func (api *StreamingAPI) ensureNativeTerminalObserver(snapshot terminals.Snapsho
 		<-existing.ready
 		return
 	}
-	o := &nativeTerminalObserver{api: api, snapshot: snapshot, ready: make(chan struct{}),
+	o := &nativeTerminalObserver{api: api, snapshot: snapshot, ready: make(chan struct{}), done: make(chan struct{}),
 		nativeCounts: map[string]int{}, coveredCounts: map[string]int{}, eventCounts: map[string]int{}}
 	api.nativeObservers[snapshot.SessionID] = o
 	api.nativeObserversMu.Unlock()
@@ -78,7 +80,12 @@ func (o *nativeTerminalObserver) run() {
 	}()
 	var checkedAt time.Time
 	misses := 0
-	for range ticker.C {
+	for {
+		select {
+		case <-o.done:
+			return
+		case <-ticker.C:
+		}
 		if time.Since(checkedAt) >= 3*time.Second {
 			ctx, cancel := context.WithTimeout(context.Background(), terminalTmuxActionTimeout)
 			tmux := o.snapshot.TmuxSession
@@ -192,6 +199,10 @@ func nativeTerminalFileStamp(path string) string {
 }
 
 func (o *nativeTerminalObserver) poll(prime bool) {
+	if _, warm := mcpagent.LookupSession(o.snapshot.SessionID); !warm && o.nativeRecords != nil && !tmuxinput.Default.HasInteractiveSubmissions(o.snapshot.TmuxSession) {
+		o.pollNativeCodingRecords()
+		return
+	}
 	messages, path, ok := o.read()
 	o.pollNativeCodingRecords()
 	if !ok {

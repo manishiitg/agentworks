@@ -84,7 +84,22 @@ func (api *StreamingAPI) registerWorkBackgroundToolSet(registrar definitionToolR
 			if tierConfig != nil {
 				ctx = context.WithValue(ctx, virtualtools.DelegationTierConfigKey, tierConfig)
 			}
-			return captured(ctx, args)
+			output, err := captured(ctx, args)
+			if err != nil || internalName != "list_background_agents" {
+				return output, err
+			}
+			var result map[string]interface{}
+			if json.Unmarshal([]byte(output), &result) != nil {
+				return output, nil
+			}
+			// Same server projection as the chat. Native CLI helpers are not
+			// delegated executions and do not acquire platform stop/query controls.
+			result["native_work"] = api.nativeCodingBackgroundWork(sessionID)
+			encoded, err := json.Marshal(result)
+			if err != nil {
+				return "", err
+			}
+			return string(encoded), nil
 		}
 		if err := registrar.RegisterCustomToolWithTimeout(publicName, description, parameters, wrapped, 0, category); err != nil {
 			return fmt.Errorf("register %s: %w", publicName, err)

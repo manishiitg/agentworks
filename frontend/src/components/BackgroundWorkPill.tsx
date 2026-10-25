@@ -18,6 +18,7 @@ export function backgroundWorkLabel(item: SessionBackgroundWorkItem): string {
 }
 
 function elapsed(startedAt: string, now: number): string {
+	if (!startedAt || startedAt.startsWith('0001-')) return ''
   const started = Date.parse(startedAt)
   if (!Number.isFinite(started)) return ''
   const seconds = Math.max(0, Math.floor((now - started) / 1000))

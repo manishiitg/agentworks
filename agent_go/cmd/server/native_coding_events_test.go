@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeevents"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/nativereplies"
 )
 
@@ -87,5 +89,79 @@ func TestNativeContinuationDurableReplyOnce(t *testing.T) {
 	_ = json.Unmarshal([]byte(workspace.files[conversation]), &after)
 	if len(after.History) != 1 {
 		t.Fatal("observer republished foreground output")
+	}
+}
+
+func TestNativeStartupObservesWithoutNewEvents(t *testing.T) {
+	const sessionID = "native-startup-chat"
+	const userID = "alice"
+	const project = "Workflow/project"
+	const conversation = "Workflow/project/builder/conversation/2026-10-25/session-native-startup-chat-conversation.json"
+	raw, _ := json.Marshal(map[string]interface{}{"session_id": sessionID, "user_id": userID, "agent_mode": "workflow_phase", "conversation_history": []interface{}{}})
+	workspace := &mockWorkspaceAPI{files: map[string]string{conversation: string(raw)}}
+	server := httptest.NewServer(workspace)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	dir := t.TempDir()
+	t.Setenv("AGENTWORKS_STATE_ROOT", dir)
+	if err := nativereplies.Configure(filepath.Join(dir, "claims")); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = nativereplies.Configure("") })
+	path := filepath.Join(dir, "owned-native.jsonl")
+	rows := `{"type":"user","uuid":"u","origin":{"kind":"human"}}
+{"type":"assistant","uuid":"a","parentUuid":"u","message":{"content":[{"type":"tool_use","id":"tool1","name":"Agent"}]}}
+{"type":"user","uuid":"launch","parentUuid":"a","toolUseResult":{"agentId":"task1"},"message":{"content":[{"type":"tool_result","tool_use_id":"tool1"}]}}
+{"type":"user","uuid":"notice","parentUuid":"launch","turnOrigin":"task_notification","origin":{"kind":"task-notification"},"message":{"content":"<task-notification><task-id>task1</task-id><status>completed</status></task-notification>"}}
+{"type":"assistant","uuid":"answer","parentUuid":"notice","message":{"content":[{"type":"text","text":"Restart follow-up"}]}}
+`
+	if err := os.WriteFile(path, []byte(rows), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := &nativeCodingRecordState{SessionID: sessionID, OwnerID: userID, Workspace: project, Provider: "claude-code", NativeID: "native", Path: path, Primed: true, Cursor: nativeevents.Cursor{}, filename: filepath.Join(dir, "native-records", "owned.json")}
+	if err := saveNativeCodingState(state); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := storeevents.OpenSQLiteEventJournal(filepath.Join(dir, "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	store := storeevents.NewEventStore(100)
+	defer store.Stop()
+	store.SetDurableJournal(journal)
+	store.SetSessionOwner(sessionID, userID)
+	if err := store.SetSessionPersistenceClass(sessionID, storeevents.SessionPersistenceInteractiveChat); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{eventStore: store, sessionWorkspaceFolders: map[string]string{}}
+	api.restoreNativeCodingObservers()
+	defer api.stopNativeCodingObservers()
+	api.nativeObserversMu.Lock()
+	observer := api.nativeObservers[sessionID]
+	api.nativeObserversMu.Unlock()
+	if observer == nil {
+		t.Fatal("startup waited for a browser or streaming event")
+	}
+	select {
+	case <-observer.ready:
+	case <-time.After(3 * time.Second):
+		t.Fatal("startup observer did not read owned source")
+	}
+	page, err := journal.ReadPage(sessionID, storeevents.DurableEventPageOptions{Limit: 30, FromStart: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	answers := 0
+	for _, event := range page.Events {
+		if storeevents.IsTranscriptMessage(event) {
+			answers++
+		}
+		if event.Type == "user_message" {
+			t.Fatal("helper notification became human input")
+		}
+	}
+	if answers != 1 {
+		t.Fatalf("startup delivered %d replies", answers)
 	}
 }

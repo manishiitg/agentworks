@@ -17,6 +17,9 @@ The six adapters expose only fields their stored records actually contain:
 | Agy | Selected conversation SQLite steps | Committed reply steps, tool state, error/notice observations | No fabricated native usage, model, timestamp or turn completion |
 
 An initial baseline supplies identity context without importing old chat.
+If no checkpoint exists, observation starts from that baseline; it does not
+repair historical replies. Saved owned checkpoints are restored at server
+startup even when no browser is open and no new event arrives.
 Subsequent complete records advance a private durable cursor only after
 acceptance. Source replacement, truncation, malformed rows and unknown schema
 kinds are reported as coverage gaps. Live SQLite readers use normal read-only
@@ -39,6 +42,8 @@ Native helpers appear in the existing background work list as **native_helper**;
 they are separate from platform delegated work. They do not enter the execution
 registry, deploy drain, or platform Stop route. The UI shows the server's state.
 The normal journal and saved conversation checkpoints restore replies on reload.
+The existing background-agent chat/MCP tool exposes the same native work under
+`native_work`, separately from delegated platform executions.
 
 This observer currently publishes late replies into the owning in-app chat.
 Delivery of a late observer-owned reply to a *previously returned* Ask, Slack,

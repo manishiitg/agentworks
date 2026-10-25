@@ -2307,6 +2307,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Pulse Goal Work reaches other workflows and Crews through the external API.
 	pulsePlatformAPI = api
 	runningServerAPI = api
+	mcpagent.SetNativeRuntimeObserver(api.observeNativeHandle)
+	defer mcpagent.SetNativeRuntimeObserver(nil)
+	defer api.stopNativeCodingObservers()
+	api.restoreNativeCodingObservers()
 	events.SetTurnDiagnostics(api.turnDiagnostics)
 	mcpagent.SetAccountPhraseResolver(api.accountPhraseForSession)
 	// An MCP connection's header secrets are its Crew's, Code's or workflow's
