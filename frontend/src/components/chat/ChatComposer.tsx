@@ -20,7 +20,7 @@ export function ChatComposerArea({ product = false, className, ...props }: HTMLA
   return <div
     data-tour="chat-input-area"
     data-testid="tour-chat-input-area"
-    className={cn('px-3', product ? 'py-1.5' : 'pt-1 pb-2', className)}
+    className={cn('min-w-0 px-2 sm:px-3 pb-[env(safe-area-inset-bottom)]', product ? 'py-1.5' : 'pt-1 pb-2', className)}
     {...props}
   />
 }
@@ -38,7 +38,7 @@ export const ChatComposerTextarea = forwardRef<HTMLTextAreaElement, React.Compon
   ({ product = false, className, ...props }, ref) => <Textarea
     ref={ref}
     rows={1}
-    className={cn(product ? '!min-h-[32px] max-h-[100px] !border-0 !bg-transparent !px-1.5 !py-1 text-sm text-foreground !shadow-none focus-visible:!ring-0 placeholder:text-sm placeholder:text-muted-foreground resize-none overflow-y-auto leading-[1.3]' : '!min-h-[36px] max-h-[100px] !border-0 !bg-transparent !py-1.5 !px-2 text-xs !shadow-none focus-visible:!ring-0 placeholder:text-xs resize-none overflow-y-auto leading-[1.3]', className)}
+    className={cn('!text-base md:!text-sm', product ? '!min-h-[32px] max-h-[100px] !border-0 !bg-transparent !px-1.5 !py-1 text-sm text-foreground !shadow-none focus-visible:!ring-0 placeholder:text-sm placeholder:text-muted-foreground resize-none overflow-y-auto leading-[1.3]' : '!min-h-[36px] max-h-[100px] !border-0 !bg-transparent !py-1.5 !px-2 text-xs !shadow-none focus-visible:!ring-0 placeholder:text-xs resize-none overflow-y-auto leading-[1.3]', className)}
     {...props}
   />,
 )
@@ -55,7 +55,7 @@ export const ChatComposerSendButton = forwardRef<HTMLButtonElement, ButtonProps 
 ChatComposerSendButton.displayName = 'ChatComposerSendButton'
 
 export function ChatComposerControls({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex justify-between items-center', className)} {...props} />
+  return <div className={cn('flex min-w-0 flex-wrap justify-between items-center gap-y-1', className)} {...props} />
 }
 
 /** Keep the default 40px floor and avoid a layout write on single-line typing. */

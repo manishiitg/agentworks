@@ -87,7 +87,7 @@ function ProjectBrainContents({ workspacePath, disabled = false, onAsk }: Props)
       <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">Project access</h3>{project && <span className="rounded bg-muted px-2 py-1">{options.find(option => option.value === mode)?.label}</span>}</div>
       {error && <p role="alert" className="text-destructive">{error}</p>}
       {loading ? <p role="status" className="text-muted-foreground">Loading your access…</p> : project ? <>
-        <div role="radiogroup" aria-label="Brain access" className="grid grid-cols-3 gap-2">
+        <div role="radiogroup" aria-label="Brain access" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {options.map(option => <label key={option.value} title={option.hint} className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 ${mode === option.value ? 'border-primary bg-primary/5' : 'border-border'} ${blocked ? 'cursor-not-allowed opacity-70' : ''}`}>
             <input type="radio" name={`brain-access-${workspacePath}`} value={option.value} checked={mode === option.value} disabled={blocked} onChange={() => void changeMode(option.value)}/>{option.label}
           </label>)}

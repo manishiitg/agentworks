@@ -3,6 +3,7 @@ import { useProductNavigationToolbarStore } from '../../stores/useProductNavigat
 import { useAppStore } from '../../stores/useAppStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { cn } from '../../lib/utils'
+import { MobileWorkspaceNavigation } from './MobileWorkspaceNavigation'
 import { WORKSPACE_PAGE_GUTTER } from './WorkspacePageContent'
 
 /** Shared AgentWorks toolbar row used above chat/workspace split surfaces. */
@@ -35,12 +36,13 @@ export function WorkspaceTopToolbar({ className = '', children, navigationKind =
       // Below md the tabs and toolbar controls wrap onto a second row instead
       // of overflowing over the tabs (a 390 px phone hid the project tab and
       // covered "+ New chat" with Dashboard). Desktop keeps one nowrap row.
-      className={cn('relative z-[35] flex min-h-10 min-w-0 flex-wrap items-center gap-3 overflow-visible border-b border-border bg-background py-1.5 md:flex-nowrap', WORKSPACE_PAGE_GUTTER, className)}
+      className={cn('relative z-[35] flex min-h-10 min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 overflow-visible md:gap-x-3 border-b border-border bg-background py-1.5 md:flex-nowrap', WORKSPACE_PAGE_GUTTER, className)}
     >
       {/* Display contents prevents a hidden mobile launcher reserving a flex gap on desktop. */}
       {showNavigation && <div ref={registerLeading} data-product-navigation-leading-slot className="contents empty:hidden" />}
       {children}
       {showNavigation && <div ref={register} data-product-navigation-slot className="ml-auto flex min-w-0 max-w-full flex-wrap items-center empty:hidden" />}
+      <MobileWorkspaceNavigation />
     </div>
   )
 }

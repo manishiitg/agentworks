@@ -1858,3 +1858,16 @@
 [data-app-shell]:has([data-terminal-focus="true"]) > [data-app-sidebar] {
   display: none;
 }
+
+/* Phone workspaces: touch targets and scrolling stay inside the active pane. */
+@media (max-width: 767px) {
+  [data-app-shell] { padding-top: env(safe-area-inset-top); }
+  [data-app-main] input, [data-app-main] textarea, [data-app-main] select { font-size: 16px; }
+  [data-terminal-focus-chrome="toolbar"] button,
+  [data-testid="workspace-panel-header"] button,
+  [data-tour="chat-input-area"] button { min-height: 40px; min-width: 40px; }
+  [data-testid="workspace-panel-header"] { gap: 4px; }
+  [data-testid="workspace-panel-header"] > :first-child { min-width: 0; }
+  [data-testid="workspace-panel-header"] > :last-child { flex-wrap: wrap; }
+  [data-app-main] table { max-width: 100%; }
+}

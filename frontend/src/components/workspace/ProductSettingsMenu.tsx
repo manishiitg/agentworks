@@ -55,7 +55,7 @@ export function ProductSettingsMenu({ children, activity, accountTrigger }: { ch
         {children}
       </div>
     </SettingsMenuContext.Provider>, target)
-  const menu = <div ref={root} data-product-settings className={accountMenu && !sidebarTarget && !compactTarget ? 'fixed bottom-3 left-3 z-40 md:left-2' : 'relative'}>
+  const menu = <div ref={root} data-product-settings className={accountMenu && !sidebarTarget && !compactTarget ? 'fixed bottom-3 left-3 z-40 hidden md:block md:left-2' : 'relative'}>
     <button ref={trigger} data-product-settings-trigger type="button" aria-label={menuLabel} aria-haspopup="menu" aria-expanded={open} aria-controls={id}
       onClick={() => { window.dispatchEvent(new Event('close-workspace-picker')); setOpen(value => !value) }}
       onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); focusFirst() } }}

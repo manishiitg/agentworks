@@ -954,6 +954,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
+  const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
+  const openChatPane = useCallback(() => { setChatOpen(true); setMobilePane('chat') }, [])
   const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
   const [viewNavigationRevision, setViewNavigationRevision] = useState(0)
   useProductUrlView(product.profileId, { id: selected?.id, view: selected ? workspaceView : undefined }, viewNavigationRevision)
@@ -981,6 +983,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     const allowedView = isWorkWorkspaceViewEnabled(view, undefined) ? view : 'files'
     setWorkspaceView(allowedView)
     setPanelOpen(true)
+    setMobilePane('workspace')
     if (navigation) setViewNavigationRevision(value => value + 1)
     writeWorkWorkspaceView(selected?.id, product.profileId, allowedView)
   }, [selected?.id, product.profileId])
@@ -1170,6 +1173,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     splitRatioRef.current = nextRatio
     setSplitRatioState(nextRatio)
     setReportPreviewPreference(readReportPreviewPreference(selected?.workspacePath))
+    setMobilePane(savedView && savedView !== 'context' ? 'workspace' : 'chat')
   }, [product.defaultView, product.profileId, selected?.id, selected?.shared, selected?.workspacePath])
 
   useWorkspaceReturn(product.profileId, selected?.id, selected ? workspaceView : undefined,
@@ -1406,9 +1410,11 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               toolbarWhenPanelClosed={!isWorkSessionRun(selected)}
               chatOpen={!isShared && chatOpen} panelOpen={isShared || workspaceView === 'dashboard' || panelOpen} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
               showChatReopenControl={!isShared}
+              mobilePane={mobilePane}
+              onMobilePaneChange={pane => { setMobilePane(pane); if (pane === 'chat') setChatOpen(true); else setPanelOpen(true) }}
               laptopPreview={workspaceView === 'dashboard' && reportPreviewPreference === 'desktop'}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
-              onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
+              onOpenChat={openChatPane} onOpenWorkspace={() => setPanelOpen(true)}
               tabs={!isShared && tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats /> : <div className="min-w-0 flex-1" />}
               toolbar={<><WorkWorkspaceToolbar projectId={selected.id} sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} /></>}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
@@ -1457,7 +1463,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         projectDescription={selected.description}
                         projectIdentity={selected.identity}
                         tabId={tabId ?? ''}
-                        onOpenChat={() => setChatOpen(true)}
+                        onOpenChat={openChatPane}
                         view={workspaceView}
                         onViewChange={selectWorkspaceView}
                         enabledPanels={workspacePanels}

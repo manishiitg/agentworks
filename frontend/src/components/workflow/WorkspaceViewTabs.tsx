@@ -31,7 +31,7 @@ export function WorkspaceViewTabs({
   inset = false,
 }: WorkspaceViewTabsProps) {
   return (
-    <div className="flex items-center gap-1 overflow-x-auto" role="tablist" aria-label={ariaLabel}>
+    <div className="flex min-w-0 max-w-full items-center gap-1 overflow-x-auto overscroll-x-contain" role="tablist" aria-label={ariaLabel}>
       {options.map(option => {
         const selected = option.value === value
         const Icon = option.icon
@@ -43,7 +43,7 @@ export function WorkspaceViewTabs({
             aria-selected={selected}
             title={option.label}
             onClick={() => onChange(option.value)}
-            className={`inline-flex shrink-0 items-center gap-2 border-b-2 ${WORKSPACE_PAGE_GUTTER} ${inset ? 'first:pl-0 last:pr-0' : ''} py-1.5 text-xs font-medium transition-colors ${
+            className={`inline-flex min-h-11 shrink-0 items-center md:min-h-0 gap-2 border-b-2 ${WORKSPACE_PAGE_GUTTER} ${inset ? 'first:pl-0 last:pr-0' : ''} py-1.5 text-xs font-medium transition-colors ${
               selected
                 ? 'border-primary text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground'

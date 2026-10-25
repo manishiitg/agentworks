@@ -300,6 +300,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       generation: state.generation + 1,
     }))
     setOpening(row.id)
+    window.dispatchEvent(new Event('close-app-sidebar'))
     try {
       if (row.tabId) {
         openProductWorkspace(row.surface)
@@ -485,6 +486,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       title={`Crew · ${workspace.title}`}
       onClick={() => {
         useProductSurfaceStore.getState().setSelectedWorkProjectId(workspace.id.slice('work:'.length))
+        window.dispatchEvent(new Event('close-app-sidebar'))
         openProductWorkspace('work')
       }}
       className="mb-2 flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

@@ -175,7 +175,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <ProjectWorkspaceTitle name={projectName} surface={surface} />
-      <div ref={stripRef} className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
+      <div ref={stripRef} className="flex min-w-12 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map(tab => {
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
         const targetKey = key || (tab.tabId === canonicalTabId ? listed?.[0]?.conversation_key : undefined)
@@ -302,7 +302,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
             disabled={opening}
             placeholder="Name this agent, e.g. research"
             aria-label="Agent name"
-            className="h-7 w-48 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-10 w-28 sm:h-7 sm:w-48 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             data-testid="work-new-chat-tab-name"
           />
         </form>
@@ -321,7 +321,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         >
           {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
           {/* Labelled until the first side chat exists, then a browser-style "+" next to the tabs. */}
-          {sideChats.length === 0 && <span>New agent</span>}
+          {sideChats.length === 0 && <span className="hidden sm:inline">New agent</span>}
         </button>
       )}
     </div>

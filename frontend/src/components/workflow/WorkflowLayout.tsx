@@ -21,6 +21,7 @@ import { resolveWorkflowHistoryPath } from '../../utils/workflowHistoryPath'
 import ChatArea, { type ChatAreaRef } from '../ChatArea'
 import { useWorkflowProductCommands } from '../../commands/useWorkflowProductCommands'
 import { WorkflowChatTabs } from './WorkflowChatTabs'
+import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { resolveWorkspaceLayout } from './workspaceLayoutResolver'
 import { useRunningWorkflowsStore, useShowRunningDrawer } from '../../stores/useRunningWorkflowsStore'
 import { useAppStore } from '../../stores/useAppStore'
@@ -2291,7 +2292,16 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   }
 
   return (
-    <div className={`relative flex flex-col h-full ${className}`}>
+    <MobileWorkspaceNavigationContext.Provider value={{
+      pane: showChatArea && (!workspacePaneVisible || focusedPane === 'chat') ? 'chat' : 'workspace',
+      onChange: pane => {
+        if (pane === 'chat') {
+          if (!showChatArea) handleToggleChatArea()
+          setFocusedPane('chat')
+        } else { setShowWorkspacePane(true); setFocusedPane('preview') }
+      },
+    }}>
+    <div className={`relative flex min-h-0 min-w-0 flex-col h-full ${className}`}>
       {/* Right-edge tab to re-open the preview pane after it's been collapsed
           (the on-pane collapse button hides it). Only when chat is shown and the
           pane is hidden. */}
@@ -2320,16 +2330,11 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         </button>
       )}
       {/* Main Content */}
-      {/* Narrow layouts show one pane at a time, so clicks choose that pane.
-          Desktop keeps both panes visible and must not mutate focus on ordinary
-          clicks: that store update can make stateful workspace views repaint. */}
+      {/* Mobile navigation selects one pane; desktop keeps both mounted and visible. */}
       <div
         ref={splitLayoutRef}
         className={layout.splitLayoutClassName}
         style={layout.splitLayoutStyle}
-        onMouseDownCapture={showChatArea && workspacePaneVisible ? () => {
-          if (window.innerWidth < 768) setFocusedPane('preview')
-        } : undefined}
       >
         {layout.renderCanvasStandalone && canvasElement}
 
@@ -2436,6 +2441,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
 
       </div>
     </div>
+    </MobileWorkspaceNavigationContext.Provider>
   )
 }
 
