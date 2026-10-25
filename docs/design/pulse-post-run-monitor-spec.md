@@ -3,8 +3,8 @@
 # Pulse scheduled review lifecycle — historical design spec
 
 **This document is not delivered to any agent.** It was a `builder-reference`
-reference doc until 2026-08-05; it is now a design spec kept for humans and for
-the contract tests.
+reference doc until 2026-08-05; it is kept as historical context for humans.
+Its wording is not a runtime contract.
 
 Why it moved: no production prompt ever loaded it. Pulse orchestration lives in
 the per-module prompts in `cmd/server/scheduler.go`, in the focused reference
