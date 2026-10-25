@@ -108,7 +108,7 @@ describe('Gmail management permissions with either OAuth source', () => {
     access.user.is_admin = true
     vi.mocked(agentApi.listGmailConnections).mockResolvedValueOnce({ can_add: true, connections: [{
       id: 'gmail_002', display_name: 'Test mailbox', email: 'owner@example.com', client_name: 'test-client', can_manage: true, can_reconnect: true,
-      enabled: true, ready: false, allow_read_access: false, allow_agent_write_access: false, services: [{ service: 'docs', write: true }],
+      enabled: true, is_default: false, auth: { authenticated: false, has_gmail_scope: true, gws_installed: true }, ready: false, allow_read_access: false, allow_agent_write_access: false, services: [{ service: 'docs', write: true }],
     }] })
     const popup = { opener: {}, closed: false, location: { href: '' }, close: vi.fn() }
     const open = vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
