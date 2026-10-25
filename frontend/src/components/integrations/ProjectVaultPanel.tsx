@@ -37,7 +37,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
     try {
       const inventory = await loadProjectVault(workspacePath)
       if (generation.current === version) { setResult({ scope, inventory }); setError('') }
-    } catch { if (generation.current === version) setError('Your Vault could not be loaded. Ask in chat to check the connection.') }
+    } catch { if (generation.current === version) setError('Your integrations could not be loaded. Ask in chat to check the connection.') }
   }, [scope, workspacePath])
   useEffect(() => {
     void refresh()
@@ -69,12 +69,12 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
     } finally { setBusy(false) }
   }
 
-  return <section aria-label={title || "Project Vault"} className="space-y-4 text-sm">
-    <p className="text-xs text-muted-foreground">{secretsOnly ? 'Choose the shared secrets this project can use. Values stay hidden.' : 'Tick what this project uses. Ask in chat to connect apps, add secrets or share a vault.'}</p>
+  return <section aria-label={title || (secretsOnly ? "Shared secrets" : "Integrations")} className="space-y-4 text-sm">
+    <p className="text-xs text-muted-foreground">{secretsOnly ? 'Choose the shared secrets this project can use. Values stay hidden.' : 'Tick what this project uses. Ask in chat to connect apps, add secrets or share an account.'}</p>
     {(error || setup.error) && <p role="alert" className="text-xs text-destructive">{error || setup.error}</p>}
     {!data && !error && <p role="status" className="text-muted-foreground">Loading your vaults…</p>}
     {data?.notices.map(notice => <p key={notice} role="status" className="text-xs text-muted-foreground">{notice}</p>)}
-    {groups?.length === 0 && <p className="py-4 text-muted-foreground">{secretsOnly ? 'No shared secrets are available to this project yet.' : 'No accounts or secrets yet. Ask this chat to connect your first app or create a vault.'}</p>}
+    {groups?.length === 0 && <p className="py-4 text-muted-foreground">{secretsOnly ? 'No shared secrets are available to this project yet.' : 'No accounts or secrets yet. Ask this chat to connect your first app or share an account.'}</p>}
     {groups?.map(vault => <details key={`${scope}:${vault.id}`} open className="overflow-hidden rounded-lg border border-border">
       <summary className="cursor-pointer px-3 py-2.5"><span className="font-medium">{vault.name}</span><span className="ml-2 text-xs text-muted-foreground">{vault.sharing}</span></summary>
       <div className="divide-y divide-border border-t border-border">

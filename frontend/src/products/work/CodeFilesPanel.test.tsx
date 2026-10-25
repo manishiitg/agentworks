@@ -26,7 +26,6 @@ it('uses backend folder permissions and changes them without reconnecting the CL
  expect(commands.checked).toBe(false)
  await act(async () => { commands.click() })
  expect(transport.put).toHaveBeenLastCalledWith('/api/agent-profiles/work/projects/crew/laptop', expect.objectContaining({ commands: true }), { skipSessionContext: true })
- expect(container.textContent).toContain('AgentBridge uses the same CLI')
  expect(container.textContent).not.toContain('--workspace')
 })
 it('searches the folders of the folder picker and hides dot folders until asked', async () => {

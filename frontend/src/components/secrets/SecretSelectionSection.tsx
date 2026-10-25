@@ -29,7 +29,7 @@ export function SecretSelectionSection({selectedSecrets,onSecretChange,selectedG
  const canWrite=useCanWriteWorkflow(workflowPath||undefined)
  const shared=mode!=='project'||projectSource==='vault'
  const canManage=mode==='vault'||mode==='project'&&!shared&&canWrite
- const load=useCallback(async()=>{setLoading(true);try{setRows(shared?await secretsApi.getGlobalSecrets(mode==='vault'):await secretsApi.listWorkflowSecrets(workflowPath));setError('')}catch(cause){setError(cause instanceof Error?cause.message:'Vault secrets are unavailable.')}finally{setLoading(false)}},[shared,mode,workflowPath])
+ const load=useCallback(async()=>{setLoading(true);try{setRows(shared?await secretsApi.getGlobalSecrets(mode==='vault'):await secretsApi.listWorkflowSecrets(workflowPath));setError('')}catch(cause){setError(cause instanceof Error?cause.message:'Secrets are unavailable.')}finally{setLoading(false)}},[shared,mode,workflowPath])
  useEffect(()=>{void load();window.addEventListener(PROJECT_SECRETS_REFRESH_EVENT,load);return()=>window.removeEventListener(PROJECT_SECRETS_REFRESH_EVENT,load)},[load])
  const ask=async(message:string)=>{try{
   const store=useChatStore.getState();const active=store.activeTabId?store.chatTabs[store.activeTabId]:undefined
@@ -65,17 +65,17 @@ export function SecretSelectionSection({selectedSecrets,onSecretChange,selectedG
   catch(cause){setError(cause instanceof Error?cause.message:'Could not remove this secret.')}
   finally{setSaving(false)}
  }
- return <section className="space-y-3" aria-label={workspaceSecretHeading||'Vault secrets'}>
-  <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-medium">{workspaceSecretHeading||'Vault secrets'}</h3><Button size="sm" variant="ghost" aria-label="Refresh secrets" onClick={()=>void load()}><RefreshCw className="h-3.5 w-3.5"/></Button></div>
+ return <section className="space-y-3" aria-label={workspaceSecretHeading||'Secrets'}>
+  <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-medium">{workspaceSecretHeading||'Secrets'}</h3><Button size="sm" variant="ghost" aria-label="Refresh secrets" onClick={()=>void load()}><RefreshCw className="h-3.5 w-3.5"/></Button></div>
   <p className="text-xs text-muted-foreground">Choose the secrets this project uses. Add or replace a project secret here, or manage sharing in chat. Saved values stay hidden.</p>
   {error&&<p role="alert" className="text-xs text-destructive">{error}</p>}
-  {loading?<p className="text-xs text-muted-foreground">Loading Vault secrets…</p>:<div className="divide-y divide-border rounded-md border border-border">
+  {loading?<p className="text-xs text-muted-foreground">Loading Secrets…</p>:<div className="divide-y divide-border rounded-md border border-border">
    {rows.map(row=><div key={row.name} className="space-y-2 px-3 py-2.5"><div className="flex flex-wrap items-center gap-2">
     {mode!=='vault'&&<Checkbox aria-label={`Use ${displayName(row.name)}`} checked={workspaceSecretsAlwaysEnabled||selected.includes(row.name)} disabled={workspaceSecretsAlwaysEnabled||mode==='project'&&!canWrite} onCheckedChange={()=>void toggle(row.name)}/>}
     <KeyRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1 break-all font-mono text-xs" title={row.name}>{displayName(row.name)}</span>
     {canManage&&<><Button size="xs" variant="ghost" aria-label={`Reveal ${displayName(row.name)}`} onClick={()=>void reveal(row)}><Eye className="h-3.5 w-3.5"/></Button>{!shared&&!row.managed&&<><Button size="xs" variant="outline" disabled={saving} onClick={()=>edit(row.name)}>Replace</Button><Button size="xs" variant="ghost" disabled={saving} onClick={()=>void removeSecret(row.name)}>Remove secret</Button></>}<Button size="xs" variant="ghost" onClick={()=>void ask(`Manage the Vault secret ${row.name}${workflowPath?' for this project':''}. Help me rotate, remove or share it through the existing Vault tools. Never repeat its value; preserve existing permissions.`)}>Manage in chat</Button></>}
    </div>{revealed[row.name]!==undefined&&<div className="flex gap-2"><code className="min-w-0 flex-1 break-all text-xs">{revealed[row.name]}</code><Button size="xs" variant="ghost" aria-label={`Copy ${displayName(row.name)}`} onClick={()=>void navigator.clipboard.writeText(revealed[row.name])}><Copy className="h-3.5 w-3.5"/></Button><Button size="xs" variant="ghost" onClick={()=>setRevealed(old=>{const next={...old};delete next[row.name];return next})}>Hide</Button></div>}</div>)}
-   {!rows.length&&<p className="p-3 text-xs text-muted-foreground">No Vault secrets available here yet.</p>}
+   {!rows.length&&<p className="p-3 text-xs text-muted-foreground">No Secrets available here yet.</p>}
   </div>}
   {canManage&&!shared&&<Button size="sm" variant="outline" onClick={()=>edit()}>Add a secret</Button>}
   {canManage&&<Button size="sm" variant="ghost" onClick={()=>void ask(`Add a secret in Vault${workflowPath?' for this project':''}. Ask for its name and value, store it with the existing secret tool, and select it here. Never repeat the value or change unrelated grants.`)}><MessageCircle className="mr-2 h-3.5 w-3.5"/>Add a secret in chat</Button>}

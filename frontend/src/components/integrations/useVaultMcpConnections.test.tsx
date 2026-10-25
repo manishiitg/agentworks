@@ -34,6 +34,6 @@ it('does not display connections absent from authorized inventory', async () => 
 it('reports unavailable Vault without substituting platform connections', async () => {
  get.mockRejectedValue(new Error('offline'))
  const { host } = await mount()
- expect(host.querySelector('[role="alert"]')?.textContent).toContain('Vault is unavailable')
+ expect(host.querySelector('[role="alert"]')?.textContent).toContain('Apps are unavailable')
  expect(host.querySelector('input[type="checkbox"]')).toBeNull()
 })

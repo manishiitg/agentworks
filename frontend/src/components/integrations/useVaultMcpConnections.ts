@@ -9,7 +9,7 @@ export function useVaultMcpConnections(workspacePath?: string) {
  const refresh = useCallback(async () => {
   setLoading(true)
   try { setItems(await vaultConnectionsApi.list(workspacePath)); setError(null) }
-  catch { setError('Vault is unavailable. Refresh to check your connections.') }
+  catch { setError('Apps are unavailable. Refresh to check your connections.') }
   finally { setLoading(false) }
  },[workspacePath])
  useEffect(() => { void refresh(); const focus=()=>void refresh(); window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus) },[refresh])

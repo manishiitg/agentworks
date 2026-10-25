@@ -22,7 +22,7 @@ export function ProjectMcpPanel({view='connected',workspacePath,tabId,canEdit,on
  const wasStreaming=useRef(false)
  useEffect(()=>{if(wasStreaming.current&&!streaming){void vault.refresh();void refreshSelection()}wasStreaming.current=streaming},[streaming,vault.refresh,refreshSelection])
  const [catalog,setCatalog]=useState<VaultCatalogApp[]>([])
- useEffect(()=>{if(view!=='available')return;let current=true;void vaultConnectionsApi.catalog().then(apps=>{if(current)setCatalog(apps)}).catch(()=>{if(current)setError('Could not load the Vault catalog. You can still connect an app through chat.')});return()=>{current=false}},[view])
+ useEffect(()=>{if(view!=='available')return;let current=true;void vaultConnectionsApi.catalog().then(apps=>{if(current)setCatalog(apps)}).catch(()=>{if(current)setError('Could not load the app catalog. You can still connect an app through chat.')});return()=>{current=false}},[view])
  const ask=async(message:string)=>{
   try {if(onAsk){await onAsk(message);return}
    const tabs=useChatStore.getState();const active=tabs.activeTabId?tabs.chatTabs[tabs.activeTabId]:undefined
