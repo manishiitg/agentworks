@@ -1,25 +1,14 @@
 import { SecretSelectionSection } from '../secrets/SecretSelectionSection'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { ProjectVaultPanel } from './ProjectVaultPanel'
+import type { ProjectVaultInventory } from '../../api/projectVault'
 
-
-/** One ordered secrets view for workflows, Relay, Crew and Code. */
-export function ProjectSecretsPanel({ workspacePath, placeNoun, selectedSecrets, onSecretChange, onSharedSecretsSaved, tabId }: {
-  workspacePath: string
-  tabId?: string
-  placeNoun: string
-  selectedSecrets: string[]
-  onSecretChange: (names: string[]) => void | Promise<unknown>
-  onSharedSecretsSaved?: (names: string[]) => void
+export function ProjectSecretsPanel({ workspacePath, selectedSecrets, onSecretChange, onSelectionSaved, tabId }: {
+ workspacePath:string; placeNoun:string;tabId?:string;selectedSecrets:string[]
+ onSecretChange:(names:string[])=>void|Promise<unknown>
+ onSelectionSaved?:(inventory:ProjectVaultInventory)=>void
 }) {
-  const canWrite = useCanWriteWorkflow(workspacePath)
-  return <div className="space-y-4">
-    <SecretSelectionSection workflowPath={workspacePath} selectedSecrets={selectedSecrets}
-      onSecretChange={onSecretChange} showGlobalSecrets={false} projectSource="project"
-      workspaceSecretHeading={`For this ${placeNoun}`} allowGlobalPromotion={false} />
-    <section aria-label="Shared secrets" className="space-y-3 border-t border-border pt-4">
-      <h3 className="text-sm font-medium">Shared secrets</h3>
-      <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled={!canWrite} itemKinds={['shared_secret']} onSelectionSaved={inventory => onSharedSecretsSaved?.(inventory.selected_global_secret_names)} />
-    </section>
-  </div>
+ const canWrite=useCanWriteWorkflow(workspacePath)
+ return <SecretSelectionSection workflowPath={workspacePath} selectedSecrets={selectedSecrets} onSecretChange={onSecretChange} workspaceSecretHeading="Secrets"
+  inventory={actions=><ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled={!canWrite} title="Secrets" flat itemKinds={['project_secret','shared_secret']} onSelectionSaved={onSelectionSaved} renderItemActions={item=>item.kind==='project_secret'?actions(item.id):null}/>} />
 }

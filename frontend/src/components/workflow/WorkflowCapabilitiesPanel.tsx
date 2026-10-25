@@ -16,7 +16,7 @@ import { ProjectAgentBridgePanel } from '../workspace/ProjectAgentBridgePanel'
 import { ShareDashboardButton } from './ShareDashboardButton'
 import { integrationProductAvailable, projectIntegrationSections } from '../integrations/integrationSections'
 import { ProjectPluginsPanel, projectPluginTabs, type PluginTab } from '../integrations/ProjectPluginsPanel'
-import { ProjectIntegrationPanel, INTEGRATION_LABELS, type IntegrationSection } from '../integrations/ProjectIntegrationPanel'
+import { ProjectIntegrationPanel, INTEGRATION_LABELS, integrationPanelQuestion, type IntegrationSection } from '../integrations/ProjectIntegrationPanel'
 import { CodeLocalFilesSettings } from '../../products/work/CodeFilesPanel'
 import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
 import { agentApi, workflowManifestApi } from '../../services/api'
@@ -336,12 +336,12 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
           hideHeader={skillsView}
           icon={section === 'mcp' && sharing ? Users : SectionIcon}
           title={section === 'mcp' && sharing ? shareChannel === 'agentbridge' ? 'AgentBridge' : projectChannelLabel(shareChannel) : section === 'mcp' ? connectionLabel : copy.title}
-          actions={section === 'mcp' && !relayMode && !sharing && activeMcpTab === 'apps' && pluginTab !== 'skills' ? undefined : (
+          actions={(
             <WorkspaceViewActions
               workspacePath={workspacePath}
               onAsk={section === 'mcp' && sharing && (shareChannel === 'share' || shareChannel === 'agentbridge') ? askInCurrentChat : undefined}
               message={section === 'mcp'
-                ? sharing ? shareChannel === 'agentbridge' ? 'Show the agents this project can reach, its own named agents and recent AgentBridge messages. Help me contact an agent.' : 'Help me share this project with people or make it available through its existing channels. Explain current access before changing sharing, routes or permissions.' : relayMode && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available')
+                ? !sharing && activeMcpTab==='apps' && pluginTab!=='skills' ? integrationPanelQuestion(integrationSection,connectionLabel) : sharing ? shareChannel === 'agentbridge' ? 'Show the agents this project can reach, its own named agents and recent AgentBridge messages. Help me contact an agent.' : 'Help me share this project with people or make it available through its existing channels. Explain current access before changing sharing, routes or permissions.' : relayMode && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available')
                   ? 'Help me choose from the MCP servers and tools already connected to this platform for this Flow. Explain what each agent can use before changing the selection.'
                   : relayMode && activeMcpTab === 'gmail'
                     ? 'Help me connect Google apps to this Flow, including Drive, Sheets, Calendar or Gmail. Inspect the authorized connections and service grants, explain what its agents can use, and ask which access is needed. Plan creation needs no Google credentials.'
@@ -392,7 +392,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                   onAppsSaved={selected_servers => syncVaultSelections({ selected_servers })}
                   selectedSecrets={capabilities.selected_secrets}
                   onSelectedSecretsChange={async selected_secrets => { const next = { ...latest.current.capabilities, selected_secrets }; await persist(next, true); setCapabilities(next) }}
-                  onSharedSecretsSaved={selected_global_secret_names => syncVaultSelections({ selected_global_secret_names })}
+                  onSecretSelectionSaved={inventory => syncVaultSelections({ selected_secrets: inventory.selected_secrets, selected_global_secret_names: inventory.selected_global_secret_names })}
                   laptop={!relayMode ? <CodeLocalFilesSettings workflowPath={workspacePath} /> : undefined} />}
                 {activeMcpTab === 'apps' && workspacePath && pluginTab === 'skills' && <ProjectPluginsPanel tab="skills" skills={<SkillsManagerPanel
                       compact

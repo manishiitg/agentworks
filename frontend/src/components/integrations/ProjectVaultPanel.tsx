@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { KeyRound, Laptop, Plug } from 'lucide-react'
 import { loadProjectVault, selectProjectVaultItem, type ProjectVaultInventory, type ProjectVaultItem, type VaultItemKind } from '../../api/projectVault'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
+import { PROJECT_SECRETS_REFRESH_EVENT } from '../../utils/secretMutationRefresh'
 import { Checkbox } from '../ui/checkbox'
 import { useVaultSetupDraft } from './useVaultSetupDraft'
 
-type Props = { workspacePath: string; tabId?: string; disabled?: boolean; itemKinds?: VaultItemKind[]; title?: string; onSelectionSaved?: (inventory: ProjectVaultInventory) => void }
+type Props = { flat?: boolean; renderItemActions?: (item:ProjectVaultItem)=>ReactNode; workspacePath: string; tabId?: string; disabled?: boolean; itemKinds?: VaultItemKind[]; title?: string; onSelectionSaved?: (inventory: ProjectVaultInventory) => void }
 
 export function vaultItemDraft(item: ProjectVaultItem, vaultName: string): string {
   const name = item.name || item.provider || 'this app'
@@ -18,7 +19,7 @@ export function vaultItemDraft(item: ProjectVaultItem, vaultName: string): strin
 }
 
 /** One metadata view; its only settings controls are project-use checkboxes. */
-export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, itemKinds, title, onSelectionSaved }: Props) {
+export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, itemKinds, title, onSelectionSaved, flat=false, renderItemActions }: Props) {
   const actor = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = `${server}:${actor}:${workspacePath}`
@@ -42,8 +43,8 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
   useEffect(() => {
     void refresh()
     const focus = () => { void refresh() }
-    window.addEventListener('focus', focus)
-    return () => { generation.current++; window.removeEventListener('focus', focus) }
+    window.addEventListener('focus', focus); window.addEventListener(PROJECT_SECRETS_REFRESH_EVENT, focus)
+    return () => { generation.current++; window.removeEventListener('focus', focus); window.removeEventListener(PROJECT_SECRETS_REFRESH_EVENT, focus) }
   }, [refresh])
   useEffect(() => {
     if (wasStreaming.current && !streaming) void refresh()
@@ -69,27 +70,32 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
     } finally { setBusy(false) }
   }
 
-  return <section aria-label={title || (secretsOnly ? "Shared secrets" : "Integrations")} className="space-y-4 text-sm">
-    <p className="text-xs text-muted-foreground">{secretsOnly ? 'Choose the shared secrets this project can use. Values stay hidden.' : 'Tick what this project uses. Ask in chat to connect apps, add secrets or share an account.'}</p>
-    {(error || setup.error) && <p role="alert" className="text-xs text-destructive">{error || setup.error}</p>}
-    {!data && !error && <p role="status" className="text-muted-foreground">Loading integrations…</p>}
-    {data?.notices.map(notice => <p key={notice} role="status" className="text-xs text-muted-foreground">{notice}</p>)}
-    {groups?.length === 0 && <p className="py-4 text-muted-foreground">{secretsOnly ? 'No shared secrets are available to this project yet.' : 'No accounts or secrets yet. Ask this chat to connect your first app or share an account.'}</p>}
-    {groups?.map(vault => <details key={`${scope}:${vault.id}`} open className="overflow-hidden rounded-lg border border-border">
-      <summary className="cursor-pointer px-3 py-2.5"><span className="font-medium">{vault.name}</span><span className="ml-2 text-xs text-muted-foreground">{vault.sharing}</span></summary>
-      <div className="divide-y divide-border border-t border-border">
-        {vault.items.map(item => {
+  const row = (item:ProjectVaultItem, groupName:string) => {
           const secret = item.kind === 'project_secret' || item.kind === 'shared_secret'
           const Icon = secret ? KeyRound : item.kind === 'computer' ? Laptop : Plug
           const healthy = item.status === 'connected' || item.status === 'online'
           const status = item.kind === 'computer' ? healthy ? 'Online' : 'Offline' : healthy ? 'Connected' : 'Needs attention'
-          return <div key={`${item.kind}:${item.id}`} className="flex min-h-12 items-center gap-3 px-3 py-2">
-            <Checkbox aria-label={`Use ${item.name || item.provider} from ${vault.name}`} checked={item.selected} disabled={disabled || busy || !item.can_select} onCheckedChange={() => { void toggle(item) }} />
+          return <div key={`${item.kind}:${item.id}`} className="flex min-h-12 flex-wrap items-center gap-3 px-3 py-2">
+            <Checkbox aria-label={`Use ${item.name || item.provider} from ${groupName}`} checked={item.selected} disabled={disabled || busy || !item.can_select} onCheckedChange={() => { void toggle(item) }} />
             <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <button type="button" disabled={disabled} onClick={() => { void setup.open(vaultItemDraft(item, vault.name)) }} className={`min-w-0 flex-1 truncate text-left hover:underline ${secret ? 'font-mono text-xs' : ''}`} title={item.name || item.provider}>{item.name || item.provider}</button>
+            <button type="button" disabled={disabled} onClick={() => { void setup.open(vaultItemDraft(item, groupName)) }} className={`min-w-0 flex-1 truncate text-left hover:underline ${secret ? 'font-mono text-xs' : ''}`} title={item.name || item.provider}>{item.name || item.provider}</button>
+            {flat&&<span className="text-xs text-muted-foreground">{item.kind==='project_secret'?'This project':groupName}</span>}
+            {renderItemActions?.(item)}
             {!secret && <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={status}><span aria-label={status} className={`h-2 w-2 rounded-full ${healthy ? 'bg-emerald-500' : 'bg-red-500'}`} />{status}</span>}
           </div>
-        })}
+  }
+  const seen = new Set<string>()
+  const flatRows = groups?.flatMap(group => group.items.map(item=>({item,groupName:group.name}))).filter(({item})=>{const key=`${item.kind}:${item.id}`;if(seen.has(key))return false;seen.add(key);return true})
+  return <section aria-label={title || (secretsOnly ? "Shared secrets" : "Integrations")} className="space-y-4 text-sm">
+    <p className="text-xs text-muted-foreground">{secretsOnly ? 'Choose the secrets this project can use. Their source is shown beside each name; saved values stay hidden.' : 'Tick what this project uses. Ask in chat to connect apps, add secrets or share an account.'}</p>
+    {(error || setup.error) && <p role="alert" className="text-xs text-destructive">{error || setup.error}</p>}
+    {!data && !error && <p role="status" className="text-muted-foreground">Loading integrations…</p>}
+    {data?.notices.map(notice => <p key={notice} role="status" className="text-xs text-muted-foreground">{notice}</p>)}
+    {groups?.length === 0 && <p className="py-4 text-muted-foreground">{secretsOnly ? 'No secrets are available to this project yet.' : 'No accounts or secrets yet. Ask this chat to connect your first app or share an account.'}</p>}
+    {flat?<div className="divide-y divide-border rounded-lg border border-border" aria-label="Secret list">{flatRows?.map(({item,groupName})=>row(item,groupName))}</div>:groups?.map(vault => <details key={`${scope}:${vault.id}`} open className="overflow-hidden rounded-lg border border-border">
+      <summary className="cursor-pointer px-3 py-2.5"><span className="font-medium">{vault.name}</span><span className="ml-2 text-xs text-muted-foreground">{vault.sharing}</span></summary>
+      <div className="divide-y divide-border border-t border-border">
+        {vault.items.map(item=>row(item,vault.name))}
       </div>
     </details>)}
   </section>

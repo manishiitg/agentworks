@@ -19,7 +19,7 @@ import { ProjectSecretsPanel } from './ProjectSecretsPanel'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let cleanup = () => {}
 const scoped = Array.from({ length: 18 }, (_, index) => ({ id: `VLT_team__KEY_${index}`, name: `KEY_${index}`, kind: 'shared_secret', status: 'stored', selected: false, can_select: index !== 17 }))
-const inventory = { notices: [], selected_global_secret_names: [], vaults: [{ id: 'team', name: 'Team vault', sharing: 'Shared with you', items: [...scoped, ...['FIRST_GLOBAL', 'SECOND_GLOBAL'].map(name => ({ id: name, name, kind: 'shared_secret', selected: false, can_select: true })), { id: 'app', name: 'App is separate', kind: 'mcp', selected: false }] }] }
+const inventory = { notices: [], selected_servers:[],selected_secrets:['PROJECT_KEY'], selected_global_secret_names: [], vaults: [{ id: 'team', name: 'Team vault', sharing: 'Shared with you', items: [{id:'PROJECT_KEY',name:'PROJECT_KEY',kind:'project_secret',selected:true,can_select:true},...scoped, ...['FIRST_GLOBAL', 'SECOND_GLOBAL'].map(name => ({ id: name, name, kind: 'shared_secret', selected: false, can_select: true })), { id: 'app', name: 'App is separate', kind: 'mcp', selected: false }] }] }
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.project.mockResolvedValue([{ name: 'PROJECT_KEY', encrypted_value: 'sealed-project-value' }])
@@ -32,30 +32,31 @@ async function mount() {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanup = () => { act(() => root.unmount()); host.remove() }
-  await act(async () => root.render(<ProjectSecretsPanel workspacePath="Crew/example" placeNoun="Crew" selectedSecrets={['PROJECT_KEY']} onSecretChange={local} onSharedSecretsSaved={saved} />))
+  await act(async () => root.render(<ProjectSecretsPanel workspacePath="Crew/example" placeNoun="Crew" selectedSecrets={['PROJECT_KEY']} onSecretChange={local} onSelectionSaved={saved} />))
   return { host, local, saved }
 }
 it('uses the full native inventory for shared-secret ticks, including scoped Vault names', async () => {
   const { host, local, saved } = await mount()
-  const project = host.querySelector('section[aria-label="For this Crew"]')!
-  const vault = host.querySelector('section[aria-label="Shared secrets"]')!
-  expect(project.compareDocumentPosition(vault) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  expect(vault.querySelectorAll('[role="checkbox"]')).toHaveLength(20)
+  const vault = host.querySelector('[aria-label="Secret list"]')!
+  expect(host.querySelectorAll('[aria-label="Secret list"]')).toHaveLength(1)
+  expect(host.textContent).not.toContain('Shared from Vault')
+  expect(vault.querySelectorAll('[role="checkbox"]')).toHaveLength(21)
   expect(vault.textContent).not.toContain('App is separate')
   expect(mocks.globals).not.toHaveBeenCalled()
   expect(vault.querySelector('[aria-label="Reveal KEY_0"]')).toBeNull()
   expect(vault.querySelector('form, input[type="password"]')).toBeNull()
+  expect(vault.querySelector('[aria-label="Reveal PROJECT_KEY"]')).not.toBeNull()
   expect(host.textContent).not.toContain('sealed-project-value')
   expect(vault.querySelector('[aria-label="Use KEY_17 from Team vault"]')?.hasAttribute('disabled')).toBe(true)
   await act(async () => vault.querySelector<HTMLButtonElement>('[aria-label="Use KEY_0 from Team vault"]')!.click())
   expect(mocks.select).toHaveBeenCalledWith('Crew/example', scoped[0])
-  expect(saved).toHaveBeenCalledWith([scoped[0].id])
+  expect(saved).toHaveBeenCalledWith(expect.objectContaining({selected_global_secret_names:[scoped[0].id]}))
   expect(local).not.toHaveBeenCalled()
 })
 it('retains shared Vault names if the project secret store cannot load', async () => {
   mocks.project.mockRejectedValue(new Error('Project secrets unavailable'))
   const { host } = await mount()
-  expect(host.querySelector('section[aria-label="For this Crew"] [role="alert"]')?.textContent).toContain('Project secrets unavailable')
-  expect(host.querySelector('section[aria-label="Shared secrets"]')?.textContent).toContain('KEY_0')
-  expect(host.querySelector('section[aria-label="Shared secrets"] [role="alert"]')).toBeNull()
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('Project secrets unavailable')
+  expect(host.querySelector('[aria-label="Secret list"]')?.textContent).toContain('KEY_0')
+  expect(host.querySelector('[aria-label="Secret list"] [role="alert"]')).toBeNull()
 })

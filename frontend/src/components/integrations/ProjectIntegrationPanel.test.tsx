@@ -8,7 +8,7 @@ vi.mock('./ProjectMcpPanel',()=>({ProjectMcpPanel:()=> <div data-editor="mcps"/>
 vi.mock('./ProjectSecretsPanel',()=>({ProjectSecretsPanel:()=> <div data-editor="secrets"/>}))
 vi.mock('../workflow/WorkflowEmailPanel',()=>({default:()=> <div data-editor="google"/>}))
 vi.mock('./PersonalAccountsPanel',()=>({default:()=> <div data-editor="slack"/>}))
-vi.mock('./ProjectAccountSharingPanel',()=>({ProjectAccountSharingPanel:()=> <div data-sharing/>,CompanySignInSetup:()=> <div data-provider-setup/>}))
+vi.mock('./CompanySignInSetup',()=>({CompanySignInSetup:()=> <div data-provider-setup/>}))
 vi.mock('./ProjectVaultPanel',()=>({ProjectVaultPanel:()=> <div data-restricted/>}))
 import {ProjectIntegrationPanel,type IntegrationSection} from './ProjectIntegrationPanel'
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})

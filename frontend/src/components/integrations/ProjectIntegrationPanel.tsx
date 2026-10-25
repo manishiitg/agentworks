@@ -1,12 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { buildAskAIMessage } from '../../utils/askAIMessage'
 import { Button } from '../ui/Button'
 import WorkflowEmailPanel from '../workflow/WorkflowEmailPanel'
 import { ProjectMcpPanel } from './ProjectMcpPanel'
 import { ProjectSecretsPanel } from './ProjectSecretsPanel'
 import PersonalAccountsPanel from './PersonalAccountsPanel'
-import { ProjectAccountSharingPanel, CompanySignInSetup } from './ProjectAccountSharingPanel'
+import { CompanySignInSetup } from './CompanySignInSetup'
+import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
+import type { ProjectVaultInventory } from '../../api/projectVault'
 import type { VaultItemKind } from '../../api/projectVault'
 import { ProjectVaultPanel } from './ProjectVaultPanel'
 
@@ -14,10 +17,13 @@ export type IntegrationSection = 'connected' | 'available' | 'secrets' | 'gmail'
 export const INTEGRATION_LABELS: Record<IntegrationSection, string> = {
   connected: 'MCPs', available: 'Available MCPs', secrets: 'Secrets', gmail: 'Google apps', 'slack-account': 'Slack account', laptop: 'Local laptop',
 }
+export function integrationPanelQuestion(section: string, label: string): string {
+ return buildAskAIMessage({view:label,summary:`Help me with ${label.toLowerCase()} for this project.`,instructions:`Read the relevant integration panel skill and inspect this project's current settings and canonical project inventory before advising. The current panel is ${section}. Explain saved accounts, selected resources and existing access in plain words. Use the familiar Integrations entries, not a My Vault destination. Help with the requested setup or sharing using existing native tools and permission checks; never repeat secret values.`})
+}
 export type ProjectSecretControls = {
   selectedSecrets: string[]
   onSelectedSecretsChange: (names: string[]) => Promise<unknown> | void
-  onSharedSecretsSaved?: (names: string[]) => void
+  onSecretSelectionSaved?: (inventory: ProjectVaultInventory) => void
 }
 
 type Props = ProjectSecretControls & {
@@ -36,12 +42,13 @@ function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section =
   const kinds: Record<IntegrationSection, VaultItemKind[]> = {connected:['mcp'],available:['mcp'],secrets:['project_secret','shared_secret'],gmail:['google'],'slack-account':['slack'],laptop:['computer']}
   if (!canEdit) return <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled title={INTEGRATION_LABELS[section]} itemKinds={kinds[section]} />
   return <div className="space-y-5" aria-label={INTEGRATION_LABELS[section]}>
+    {(section==='connected'||section==='available'||section==='secrets')&&<WorkspacePanelActions><Button size="sm" variant="outline" onClick={()=>void onAsk(buildAskAIMessage({view:INTEGRATION_LABELS[section],summary:`Help me share these ${section==='secrets'?'secrets':'app accounts'} with someone.`,instructions:"Inspect this project's current resources and existing sharing, including empty groups. Use the existing native tools and permission checks. Change only what I request and never repeat secret values."}))}>Sharing</Button></WorkspacePanelActions>}
     {(section === 'connected' || section === 'available') && <>
-      <div className="flex justify-end"><Button size="sm" variant="outline" onClick={() => setApps(apps === 'connected' ? 'available' : 'connected')}>{apps === 'connected' ? 'Add an app' : 'Back to connected apps'}</Button></div>
+      <WorkspacePanelActions><Button size="sm" variant="outline" onClick={() => setApps(apps === 'connected' ? 'available' : 'connected')}>{apps === 'connected' ? 'Add an app' : 'Back to connected apps'}</Button></WorkspacePanelActions>
       <ProjectMcpPanel view={apps} workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} canEdit={canEdit} onAsk={onAsk} onSelectionSaved={onAppsSaved} />
-      <ProjectAccountSharingPanel workspacePath={workspacePath} tabId={tabId} kind="apps" />
+
     </>}
-    {section === 'secrets' && <><ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} selectedSecrets={secrets.selectedSecrets} onSecretChange={secrets.onSelectedSecretsChange} onSharedSecretsSaved={secrets.onSharedSecretsSaved} /><ProjectAccountSharingPanel workspacePath={workspacePath} tabId={tabId} kind="secrets" /></>}
+    {section === 'secrets' && <><ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} selectedSecrets={secrets.selectedSecrets} onSecretChange={secrets.onSelectedSecretsChange} onSelectionSaved={secrets.onSecretSelectionSaved} /></>}
     {section === 'gmail' && <><WorkflowEmailPanel workspacePath={workspacePath} scopeNoun={placeNoun === 'Flow' ? 'relay' : 'project'} onAsk={onAsk} /><CompanySignInSetup provider="Google" tabId={tabId} /></>}
     {section === 'slack-account' && <><PersonalAccountsPanel workspacePath={workspacePath} provider="slack" /><CompanySignInSetup provider="Slack" tabId={tabId} /></>}
     {section === 'laptop' && laptop}
