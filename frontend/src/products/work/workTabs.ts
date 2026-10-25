@@ -63,11 +63,6 @@ export const USER_VIEW_CHAT_PREFIX = 'asuser-'
 export function workUserViewChatKey(projectId: string, id: string): string {
   return workSideChatKey(projectId, `${USER_VIEW_CHAT_PREFIX}${id}`)
 }
-export function isUserViewChatKey(key: string | undefined): boolean {
-  return !!key && new RegExp(`:chat:${USER_VIEW_CHAT_PREFIX}[^:]+$`).test(key)
-}
-/** The Access panel asks the project on screen to open its "as a user" chat. */
-export const OPEN_USER_VIEW_EVENT = 'agentworks:open-user-view'
 
 export function isWorkSideChatTab(tab: ChatTab | undefined, projectId?: string): boolean {
   const key = tab?.metadata?.agentProfileConversationKey

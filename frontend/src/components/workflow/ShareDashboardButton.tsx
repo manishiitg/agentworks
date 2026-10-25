@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bot, Eye, Link2, MessageSquare, Users, X } from 'lucide-react'
+import { Bot, Link2, MessageSquare, Users, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import api, { authApi } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -7,7 +7,6 @@ import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnection
 import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
-import { OPEN_USER_VIEW_EVENT } from '../../products/work/workTabs'
 
 type Person = { id: string; email?: string; username?: string }
 type ShareState = {
@@ -93,7 +92,6 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
   if (!state.can_share) return isPanel ? <p className="text-sm text-muted-foreground">Ask a project owner to change access.</p> : null
   if (variant === 'row') return <Row icon={Users} detail={audience(state)} onClick={() => onOpen?.()}>{label}</Row>
   const selected = (state.agents || []).filter(agent => agent.selected)
-  const isCrew = /(?:^|\/)Crew\//.test(workspacePath)
   const emails = (state.people || []).map(person => person.email).filter((value): value is string => !!value)
   const mode = pickedPeople ? 'people' : state.mode
   /** The server decides: it takes the mode and the full list of people and answers with the saved state. */
@@ -151,7 +149,6 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
           <option value="everyone">Everyone</option>
         </select>
         <button type="button" onClick={() => void copyLink()} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm hover:bg-muted"><Link2 aria-hidden="true" className="h-4 w-4" />Copy link</button>
-        {isCrew && <button type="button" title="Open a chat that works the way a shared person's does, to try this out" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_USER_VIEW_EVENT, { detail: { workspacePath } }))} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm hover:bg-muted"><Eye aria-hidden="true" className="h-4 w-4" />Open as a user</button>}
       </div>
       {mode === 'people' && <div className="space-y-2">
         <ul aria-label="People with access" className="space-y-1">{(state.people || []).map(person => <li key={person.id} className="flex min-w-0 items-center gap-2 text-sm">
@@ -164,7 +161,7 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
         </form>
       </div>}
       {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
-      <p className="text-xs text-muted-foreground">People you share with can use the dashboard and ask for work from the website, their Crew or MCP.</p>
+      <p className="text-xs text-muted-foreground">People you share with can use the dashboard and ask for work from the website, their Crew or MCP. The link opens the dashboard as a user, also for you, so you can try it the way they will.</p>
     </section>
     {state.agents && <section aria-label="Shared agents" className="space-y-3 border-t border-border pt-4">
       <h3 className="font-semibold">Shared agents <span className="font-normal text-muted-foreground">{selected.length}</span></h3>

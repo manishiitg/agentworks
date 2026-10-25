@@ -4,7 +4,6 @@ import { useChatStore } from '../../stores/useChatStore'
 import {
   applyWorkProjectRuntimeSelection,
   findCanonicalWorkProjectTab,
-  isUserViewChatKey,
   markWorkProjectRuntimeDirty,
   setWorkProjectRuntimeSelection,
   workUserViewChatKey,
@@ -92,9 +91,6 @@ describe('persistent Work runtime', () => {
   })
 })
 
-it('marks the owner\'s "as a user" side chat by its key, so it survives a refresh', () => {
-  expect(workUserViewChatKey('p1', 'ab12cd34')).toBe('p1:chat:asuser-ab12cd34')
-  expect(isUserViewChatKey('p1:chat:asuser-ab12cd34')).toBe(true)
-  expect(isUserViewChatKey('p1:chat:ab12cd34')).toBe(false)
-  expect(isUserViewChatKey('p1')).toBe(false)
+it('marks the owner\'s "as a user" chat by its key, which the server runs in Run mode', () => {
+  expect(workUserViewChatKey('p1', 'main')).toBe('p1:chat:asuser-main')
 })

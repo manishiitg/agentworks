@@ -52,7 +52,7 @@ import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
-import { belongsToWorkProject, findCanonicalWorkProjectTab, isUserViewChatKey, isWorkSideChatTab, markWorkProjectRuntimeDirty, OPEN_USER_VIEW_EVENT, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, workUserViewChatKey, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
+import { belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
 import { productMode, updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode } from '../../platform/chat/productProjects'
 import { type RunsOnSelection } from './RunsOnPicker'
 import { rememberRunsOn } from './runsOnMemory'
@@ -586,8 +586,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   }
   // A side chat is a second full Builder chat in the same project: same
   // folder, model, MCPs and skills as the primary, its own conversation.
-  const openSideChat = (requestedName: string) => createSideChat(requestedName, false)
-  const createSideChat = async (requestedName: string, userView: boolean) => {
+  const openSideChat = async (requestedName: string) => {
     const name = requestedName.trim()
     if (!name || opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT) return false
     const primary = chatTabs[canonicalTabId]
@@ -595,7 +594,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     setOpening(true)
     try {
       const id = globalThis.crypto.randomUUID().slice(0, 8)
-      const key = userView ? workUserViewChatKey(projectId, id) : workSideChatKey(projectId, id)
+      const key = workSideChatKey(projectId, id)
       // The server names the new tab's agent and its chat title from this name.
       const conversation = await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: key, name })
       // The server now holds this chat; show its row at once rather than after the next list.
@@ -628,23 +627,6 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     openingRef.current = false
     void syncRef.current()
   }
-  // "Open as a user" (Access panel): the owner's chat that runs the way a shared person's would. Reuse the one already open.
-  const openUserViewRef = useRef<() => void>(() => {})
-  openUserViewRef.current = () => {
-    const existing = Object.values(useChatStore.getState().chatTabs).find(tab => isUserViewChatKey(tab.metadata?.agentProfileConversationKey) && tab.metadata?.agentProfileProjectId === projectId)
-    if (existing) activateTab(existing.tabId)
-    else void createSideChat('As a user', true)
-  }
-  useEffect(() => {
-    if (!allowSideChats) return
-    const open = (event: Event) => {
-      const wanted = ((event as CustomEvent<{ workspacePath?: string }>).detail?.workspacePath || '').replace(/^\/+|\/+$/g, '')
-      const own = (useChatStore.getState().chatTabs[canonicalTabId]?.metadata?.agentProfileWorkspace || '').replace(/^\/+|\/+$/g, '')
-      if (wanted && own && wanted === own) openUserViewRef.current()
-    }
-    window.addEventListener(OPEN_USER_VIEW_EVENT, open)
-    return () => window.removeEventListener(OPEN_USER_VIEW_EVENT, open)
-  }, [allowSideChats, canonicalTabId])
   // A tab another chat opened (open_project_chat, the code tool) is known to the server only: open the ones this browser
   // does not show yet, on load and while the project is on screen. The active tab stays the one the person is in.
   const openingRef = useRef(false)

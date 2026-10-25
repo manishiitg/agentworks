@@ -30,12 +30,6 @@ it('shows owners, audience and agents; changes sharing, adds a person and copies
     await act(async () => button('Copy link').click())
     expect(writeText).toHaveBeenCalledExactlyOnceWith('https://example.com/d/abc23')
 
-    const opened = vi.fn()
-    window.addEventListener('agentworks:open-user-view', opened)
-    await act(async () => button('Open as a user').click())
-    window.removeEventListener('agentworks:open-user-view', opened)
-    expect((opened.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({ workspacePath: 'Crew/example' })
-
     const input = host.querySelector<HTMLInputElement>('input[type="email"]')!
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'New@Example.com')
