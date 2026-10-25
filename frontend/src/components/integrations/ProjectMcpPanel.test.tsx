@@ -7,7 +7,7 @@ const mocks=vi.hoisted(()=>({get:vi.fn(),post:vi.fn(),inventory:vi.fn(),select:v
 vi.mock('../../api/projectVault',()=>({loadProjectVault:mocks.inventory,selectProjectVaultItem:mocks.select}))
 vi.mock('../../services/api',()=>({default:{get:mocks.get,post:mocks.post},getApiBaseUrl:()=>'',getAuthToken:()=>null}))
 vi.mock('./useVaultSetupDraft', () => ({ useVaultSetupDraft: () => ({ open: vi.fn(), error: '' }) }))
-vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: vi.fn() } }))
+vi.mock('../../stores/useChatStore', () => ({ useChatStore: Object.assign((select: any) => select({ chatTabs: {} }), { getState: vi.fn() }) }))
 vi.mock('../../utils/workspacePaneChat', () => ({ openWorkspacePaneChatWithDraft: vi.fn() }))
 import { ProjectMcpPanel } from './ProjectMcpPanel'
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { KeyRound, Laptop, Plug } from 'lucide-react'
-import { loadProjectVault, selectProjectVaultItem, type ProjectVaultInventory, type ProjectVaultItem } from '../../api/projectVault'
+import { loadProjectVault, selectProjectVaultItem, type ProjectVaultInventory, type ProjectVaultItem, type VaultItemKind } from '../../api/projectVault'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -8,7 +8,7 @@ import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { Checkbox } from '../ui/checkbox'
 import { useVaultSetupDraft } from './useVaultSetupDraft'
 
-type Props = { workspacePath: string; tabId?: string; disabled?: boolean }
+type Props = { workspacePath: string; tabId?: string; disabled?: boolean; itemKinds?: VaultItemKind[]; onSelectionSaved?: (inventory: ProjectVaultInventory) => void }
 
 export function vaultItemDraft(item: ProjectVaultItem, vaultName: string): string {
   const name = item.name || item.provider || 'this app'
@@ -18,7 +18,7 @@ export function vaultItemDraft(item: ProjectVaultItem, vaultName: string): strin
 }
 
 /** One metadata view; its only settings controls are project-use checkboxes. */
-export function ProjectVaultPanel({ workspacePath, tabId, disabled = false }: Props) {
+export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, itemKinds, onSelectionSaved }: Props) {
   const actor = useAuthStore(state => state.user?.id)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = `${server}:${actor}:${workspacePath}`
@@ -30,6 +30,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false }: Pr
   const streaming = useChatStore(state => Boolean(tabId && state.chatTabs[tabId]?.isStreaming))
   const wasStreaming = useRef(false)
   const data = result?.scope === scope ? result.inventory : undefined
+  const groups = data?.vaults.map(vault => ({ ...vault, items: vault.items.filter(item => !itemKinds || itemKinds.includes(item.kind)) })).filter(vault => vault.items.length > 0)
   const refresh = useCallback(async () => {
     const version = ++generation.current
     try {
@@ -58,6 +59,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false }: Pr
       if (identity === `${useWorkspaceConnectionStore.getState().activeWorkspaceId}:${useAuthStore.getState().user?.id}:${workspacePath}`) {
         generation.current++
         setResult({ scope, inventory })
+        onSelectionSaved?.(inventory)
         if (item.kind === 'computer') window.dispatchEvent(new Event('crew-laptop-settings-changed'))
       }
     } catch (cause) {
@@ -67,12 +69,12 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false }: Pr
   }
 
   return <section aria-label="Project Vault" className="space-y-4 text-sm">
-    <p className="text-xs text-muted-foreground">Tick what this project uses. Ask in chat to connect apps, add secrets or share a vault.</p>
+    <p className="text-xs text-muted-foreground">{itemKinds ? 'Choose the shared secrets this project can use. Values stay hidden.' : 'Tick what this project uses. Ask in chat to connect apps, add secrets or share a vault.'}</p>
     {(error || setup.error) && <p role="alert" className="text-xs text-destructive">{error || setup.error}</p>}
     {!data && !error && <p role="status" className="text-muted-foreground">Loading your vaults…</p>}
     {data?.notices.map(notice => <p key={notice} role="status" className="text-xs text-muted-foreground">{notice}</p>)}
-    {data?.vaults.length === 0 && <p className="py-4 text-muted-foreground">No accounts or secrets yet. Ask this chat to connect your first app or create a vault.</p>}
-    {data?.vaults.map(vault => <details key={`${scope}:${vault.id}`} open className="overflow-hidden rounded-lg border border-border">
+    {groups?.length === 0 && <p className="py-4 text-muted-foreground">{itemKinds ? 'No shared secrets are available to this project yet.' : 'No accounts or secrets yet. Ask this chat to connect your first app or create a vault.'}</p>}
+    {groups?.map(vault => <details key={`${scope}:${vault.id}`} open className="overflow-hidden rounded-lg border border-border">
       <summary className="cursor-pointer px-3 py-2.5"><span className="font-medium">{vault.name}</span><span className="ml-2 text-xs text-muted-foreground">{vault.sharing}</span></summary>
       <div className="divide-y divide-border border-t border-border">
         {vault.items.map(item => {

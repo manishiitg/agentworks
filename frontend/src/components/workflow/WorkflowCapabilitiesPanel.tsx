@@ -166,6 +166,17 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
 
   const latest = useRef({ workspacePath, capabilities, loaded, saving })
   latest.current = { workspacePath, capabilities, loaded, saving }
+  // Native Vault writes return saved selections; mirror them without a second write.
+  const syncVaultSelections = (patch: Partial<WorkflowCapabilities>) => {
+    const next = { ...latest.current.capabilities, ...patch }
+    latest.current.capabilities = next
+    latest.current.loaded = { ...latest.current.loaded, ...patch }
+    setCapabilities(next); setLoaded(latest.current.loaded)
+    if (!workspacePath) return
+    const store = useWorkflowManifestStore.getState()
+    const current = store.getWorkflowByPath(workspacePath)
+    if (current) store.replaceWorkflowManifest(workspacePath, { ...current.manifest, capabilities: { ...current.manifest.capabilities, ...patch } })
+  }
   const loadVersion = useRef(0)
   const saveVersion = useRef(0)
   const saveQueue = useRef<Promise<void>>(Promise.resolve())
@@ -378,19 +389,11 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 {sharing ? <>
                   {workspacePath && (shareChannel === 'agentbridge' ? <ProjectAgentBridgePanel target={`workflow:${presetQueryId}`} tabId={vaultTabId} onAsk={askInCurrentChat} /> : shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={vaultTabId} onAsk={askInCurrentChat} /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun={relayMode ? 'Flow' : 'Goal'} allowBots={!relayMode} /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" />}</>)}
                 </> : <>
-                {activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <MyVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} projectControls={<ProjectVaultControls workspacePath={workspacePath} placeNoun={relayMode ? 'Flow' : 'Goal'} section={vaultSection} canEdit={canWriteWorkflow} onAsk={askInCurrentChat}
-                  onAppsSaved={selected_servers => {
-                    const next = { ...latest.current.capabilities, selected_servers }
-                    latest.current.capabilities = next
-                    latest.current.loaded = { ...latest.current.loaded, selected_servers }
-                    setCapabilities(next); setLoaded(latest.current.loaded)
-                    const store = useWorkflowManifestStore.getState()
-                    const current = store.getWorkflowByPath(workspacePath)
-                    if (current) store.replaceWorkflowManifest(workspacePath, { ...current.manifest, capabilities: { ...current.manifest.capabilities, selected_servers } })
-                  }}
-                  selectedSecrets={capabilities.selected_secrets} selectedGlobalSecrets={capabilities.selected_global_secret_names || []}
+                {activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <MyVaultPanel workspacePath={workspacePath} tabId={vaultTabId} disabled={!canWriteWorkflow} projectControls={<ProjectVaultControls workspacePath={workspacePath} tabId={vaultTabId} placeNoun={relayMode ? 'Flow' : 'Goal'} section={vaultSection} canEdit={canWriteWorkflow} onAsk={askInCurrentChat}
+                  onAppsSaved={selected_servers => syncVaultSelections({ selected_servers })}
+                  selectedSecrets={capabilities.selected_secrets}
                   onSelectedSecretsChange={async selected_secrets => { const next = { ...latest.current.capabilities, selected_secrets }; await persist(next, true); setCapabilities(next) }}
-                  onSelectedGlobalSecretsChange={async names => { const next = { ...latest.current.capabilities, selected_global_secret_names: names }; await persist(next, true); setCapabilities(next) }}
+                  onSharedSecretsSaved={selected_global_secret_names => syncVaultSelections({ selected_global_secret_names })}
                   laptop={!relayMode ? <CodeLocalFilesSettings workflowPath={workspacePath} /> : undefined} />} />}
                 {activeMcpTab === 'apps' && workspacePath && pluginTab === 'skills' && <ProjectPluginsPanel tab="skills" skills={<SkillsManagerPanel
                       compact

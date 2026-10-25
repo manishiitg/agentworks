@@ -7,8 +7,9 @@ import { useChatStore } from '../../stores/useChatStore'
 import { loadProjectVault, selectProjectVaultItem, type ProjectVaultInventory } from '../../api/projectVault'
 
 /** Vault is the only connection source across Crew, Goals and Flows. */
-export function ProjectMcpPanel({view='connected',workspacePath,canEdit,onAsk,onSelectionSaved}: {
+export function ProjectMcpPanel({view='connected',workspacePath,tabId,canEdit,onAsk,onSelectionSaved}: {
  view?: 'connected'|'available'; chatSessionId?:string;workspacePath:string;placeNoun:string;canEdit:boolean;onAsk?:(message:string)=>Promise<void>
+ tabId?: string
  onSelectionSaved?: (servers:string[])=>void
 }) {
  const vault=useVaultMcpConnections(workspacePath)
@@ -17,6 +18,9 @@ export function ProjectMcpPanel({view='connected',workspacePath,canEdit,onAsk,on
  const generation=useRef(0)
  const refreshSelection=useCallback(async()=>{const version=++generation.current;try{const inventory=await loadProjectVault(workspacePath);if(version===generation.current){setSelection({root:workspacePath,inventory});setError('')}}catch{if(version===generation.current)setError('Project app selections could not be loaded. Refresh to try again.')}},[workspacePath])
  useEffect(()=>{void refreshSelection();const focus=()=>void refreshSelection();window.addEventListener('focus',focus);return()=>{generation.current++;window.removeEventListener('focus',focus)}},[refreshSelection])
+ const streaming=useChatStore(state=>Boolean(tabId&&state.chatTabs[tabId]?.isStreaming))
+ const wasStreaming=useRef(false)
+ useEffect(()=>{if(wasStreaming.current&&!streaming){void vault.refresh();void refreshSelection()}wasStreaming.current=streaming},[streaming,vault.refresh,refreshSelection])
  const [catalog,setCatalog]=useState<VaultCatalogApp[]>([])
  useEffect(()=>{if(view!=='available')return;let current=true;void vaultConnectionsApi.catalog().then(apps=>{if(current)setCatalog(apps)}).catch(()=>{if(current)setError('Could not load the Vault catalog. You can still connect an app through chat.')});return()=>{current=false}},[view])
  const ask=async(message:string)=>{

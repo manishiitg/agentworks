@@ -8,14 +8,14 @@ import PersonalAccountsPanel from './PersonalAccountsPanel'
 export type VaultSection = 'vault' | 'connected' | 'available' | 'secrets' | 'gmail' | 'slack-account' | 'laptop'
 export type ProjectSecretControls = {
   selectedSecrets: string[]
-  selectedGlobalSecrets: string[]
   onSelectedSecretsChange: (names: string[]) => Promise<unknown> | void
-  onSelectedGlobalSecretsChange: (names: string[]) => Promise<unknown> | void
+  onSharedSecretsSaved?: (names: string[]) => void
 }
 
 /** Same existing project editors for Crew, Goals and Flows; navigation only chooses a section. */
-export function ProjectVaultControls({ workspacePath, placeNoun, section = 'vault', canEdit, onAsk, laptop, onAppsSaved, ...secrets }: ProjectSecretControls & {
+export function ProjectVaultControls({ workspacePath, tabId, placeNoun, section = 'vault', canEdit, onAsk, laptop, onAppsSaved, ...secrets }: ProjectSecretControls & {
   workspacePath: string; placeNoun: string; section?: VaultSection; canEdit: boolean
+  tabId?: string
   onAsk: (message: string) => Promise<void>; laptop?: ReactNode; onAppsSaved?: (servers: string[]) => void
 }) {
   const [apps, setApps] = useState<'connected' | 'available'>(section === 'available' ? 'available' : 'connected')
@@ -35,13 +35,12 @@ export function ProjectVaultControls({ workspacePath, placeNoun, section = 'vaul
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Apps &amp; MCPs</h2>
         <Button size="sm" variant="outline" onClick={() => setApps(apps === 'connected' ? 'available' : 'connected')}>{apps === 'connected' ? 'Add an app' : 'Back to connected apps'}</Button>
       </div>
-      <ProjectMcpPanel view={apps} workspacePath={workspacePath} placeNoun={placeNoun} canEdit={canEdit} onAsk={onAsk} onSelectionSaved={onAppsSaved} />
+      <ProjectMcpPanel view={apps} workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} canEdit={canEdit} onAsk={onAsk} onSelectionSaved={onAppsSaved} />
     </section>
     <section ref={secretRef} aria-label="Secrets" className="space-y-3 border-t border-border pt-4">
       <h2 className="font-semibold">Secrets</h2>
-      <ProjectSecretsPanel workspacePath={workspacePath} placeNoun={placeNoun}
-        selectedSecrets={secrets.selectedSecrets} selectedGlobalSecrets={secrets.selectedGlobalSecrets}
-        onSecretChange={secrets.onSelectedSecretsChange} onGlobalSecretChange={names => secrets.onSelectedGlobalSecretsChange(names || [])} />
+      <ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun}
+        selectedSecrets={secrets.selectedSecrets} onSecretChange={secrets.onSelectedSecretsChange} onSharedSecretsSaved={secrets.onSharedSecretsSaved} />
     </section>
     <details ref={googleRef} className="rounded-lg border border-border p-3"><summary className="cursor-pointer font-medium">Google apps &amp; Gmail</summary><div className="pt-3"><WorkflowEmailPanel workspacePath={workspacePath} scopeNoun={placeNoun === 'Flow' ? 'relay' : 'project'} onAsk={onAsk} /></div></details>
     <details ref={slackRef} className="rounded-lg border border-border p-3"><summary className="cursor-pointer font-medium">Slack account used here</summary><div className="pt-3"><PersonalAccountsPanel workspacePath={workspacePath} provider="slack" /></div></details>
