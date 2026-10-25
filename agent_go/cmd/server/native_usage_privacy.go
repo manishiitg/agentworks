@@ -134,6 +134,25 @@ func (api *StreamingAPI) nativeUsageSnapshot(ctx context.Context, s terminals.Sn
 
 var nativeContextSegment = regexp.MustCompile(`(?i)^ctx\s+(\d+(?:\.\d+)?)\s*%$`)
 
+// Context belongs to the chat, including runtimes with no terminal snapshot.
+// Account plan limits stay out of this shared session projection.
+func (api *StreamingAPI) nativeSessionContextPercent(session string) *int {
+	api.nativeCostsMu.Lock()
+	a := api.nativeCosts[session]
+	api.nativeCostsMu.Unlock()
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	usage := a.usage
+	a.mu.Unlock()
+	percent, known := nativeContextPercent(map[string]interface{}{"context_used_tokens": usage.ContextUsed, "context_window_tokens": usage.ContextWindow})
+	if !known {
+		return nil
+	}
+	return &percent
+}
+
 // Normalize only numbers reported by the current runtime. Model guesses and
 // account plan windows are not context usage.
 func nativeContextPercent(meta map[string]interface{}) (int, bool) {

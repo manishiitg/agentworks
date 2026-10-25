@@ -142,9 +142,9 @@ describe('terminal toolbar shared tools', () => {
   })
   it('shows the reported context while idle and working, hides unknown usage and obeys the personal display choice', async () => {
     contextPreference.show = true
-    const snapshot = { terminal_id: 'A-session:main:A-session', session_id: 'A-session', execution_kind: 'main_agent', active: false, status: { status_meta: { context_usage_percent: 42 } } }
-    vi.mocked(agentApi.listTerminals).mockResolvedValue({ terminals: [snapshot] } as never)
+    vi.mocked(agentApi.listTerminals).mockResolvedValue({ terminals: [] } as never)
     await act(async () => {
+      useChatStore.setState({ activeSessionsCache: [{ session_id: 'A-session', status: 'completed', context_usage_percent: 42 }] as never })
       useChatStore.getState().setTabViewMode('A', 'formatted')
       renderComposer('A', false)
     })
@@ -154,8 +154,8 @@ describe('terminal toolbar shared tools', () => {
     expect(host.querySelector('[aria-label="Context 42%"]')).not.toBeNull()
     await act(async () => { contextPreference.show = false; renderComposer('A', false) })
     expect(host.querySelector('[aria-label="Context 42%"]')).toBeNull()
-    vi.mocked(agentApi.listTerminals).mockResolvedValue({ terminals: [{ ...snapshot, status: {} }] } as never)
     await act(async () => {
+      useChatStore.setState({ activeSessionsCache: [] })
       contextPreference.show = true; renderComposer('A', false)
     })
     await act(async () => { await client.refetchQueries({ queryKey: ['chat-input-statusline', 'A-session'] }) })

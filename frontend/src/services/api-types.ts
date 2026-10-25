@@ -983,6 +983,7 @@ export interface ListTerminalsResponse {
 
 // Active Session Management Types
 export interface ActiveSessionInfo {
+  context_usage_percent?: number
   session_id: string
   parent_session_id?: string
   session_kind?: string

@@ -1375,7 +1375,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       ? rawExtras.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
       : []
   }, [chatInputMainTerminal])
-  const contextPercent = chatInputMainTerminal?.status?.status_meta?.context_usage_percent
+  const contextPercent = activeSession?.context_usage_percent ?? chatInputMainTerminal?.status?.status_meta?.context_usage_percent
   const chatInputStatusLine = showChatInputStatusChip ? chatInputStatusExtras.join(' · ') : ''
   // Plan usage windows with reset times in the browser's timezone, appended
   // to the terminal icon's hover text.
