@@ -55,7 +55,7 @@ export const ChatComposerSendButton = forwardRef<HTMLButtonElement, ButtonProps 
 ChatComposerSendButton.displayName = 'ChatComposerSendButton'
 
 export function ChatComposerControls({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex min-w-0 flex-wrap justify-between items-center gap-y-1 [&_button>svg]:!h-3 [&_button>svg]:!w-3', className)} {...props} />
+  return <div className={cn('flex min-w-0 flex-wrap justify-between items-center gap-y-1 [&_button]:min-h-7 [&_button]:min-w-7 [&_button>svg]:!h-3 [&_button>svg]:!w-3', className)} {...props} />
 }
 
 /** Keep the default 40px floor and avoid a layout write on single-line typing. */

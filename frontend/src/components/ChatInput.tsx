@@ -3189,7 +3189,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               </div>
             )}
 <ChatComposerControls>
-              <div className={nativeTerminalTools ? 'hidden' : 'flex min-w-0 max-w-full flex-wrap items-center gap-1.5'}>
+              <div className={nativeTerminalTools ? 'hidden' : 'flex min-w-0 max-w-full flex-wrap items-center gap-1'}>
                 {chatInputStatusLine && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -3209,7 +3209,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 )}
                 {/* Server and LLM Selection — hidden in workflow phase chat (servers come from preset) */}
                 {(
-                  <div data-tour="chat-input-tools" data-testid="tour-chat-input-tools" className="flex min-w-0 max-w-full flex-wrap items-center gap-1 sm:gap-2">
+                  <div data-tour="chat-input-tools" data-testid="tour-chat-input-tools" className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
                       {isProductSurface && newConversationEnabled && (
                         <NewChatControl
                           engines={engineOptions.map(option => ({ id: option.id, label: option.label || option.id }))}
