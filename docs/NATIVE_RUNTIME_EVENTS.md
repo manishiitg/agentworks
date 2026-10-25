@@ -58,6 +58,11 @@ Run `python3 scripts/native-events-audit.py --targets /private/targets.json
 candidate. Keep real server names, SSH arguments, instance IDs and paths in the
 private deployments repository. Example target structure:
 
+For SSM running as root, set a private target's `command_prefix` to run the
+probe as the application's service user (for example `sudo -u service env
+HOME=/srv/service/home`). The probe uses deployed tools plus that user's
+local binary directory; version discovery does not sign in to an account.
+
 ```json
 [
   {"name":"example","transport":"ssh","ssh":["ssh","operator@example.com"],"state_root":"/srv/app/state","log_path":"/srv/app/logs/agent.log","release_path":"/srv/app/current"},

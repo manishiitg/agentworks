@@ -18,11 +18,14 @@ PROBE = r'''
 import collections,glob,json,os,re,shutil,subprocess,sys
 from pathlib import Path
 c=json.loads(sys.argv[1]); result={"name":c["name"],"transport_reachable":True,"audit_schema":"1","providers":{},"log_window":"last 8 MiB"}
+runtime_root=Path(c["state_root"]).parent
+probe_env=dict(os.environ)
+probe_env["PATH"]=os.pathsep.join(str(runtime_root/p) for p in ("tools/node/bin","tools/bin","home/.local/bin"))+os.pathsep+str(Path.home()/".local/bin")+os.pathsep+probe_env.get("PATH","")
 for provider,binary in {"claude-code":"claude","codex-cli":"codex","cursor-cli":"cursor-agent","pi-cli":"pi","muse-cli":"muse","agy-cli":"agy"}.items():
-    entry={"found_on_probe_path":bool(shutil.which(binary)),"account":"NOT VERIFIED","live_scenario":"NOT RUN"}
+    entry={"found_on_probe_path":bool(shutil.which(binary,path=probe_env["PATH"])),"account":"NOT VERIFIED","live_scenario":"NOT RUN"}
     if entry["found_on_probe_path"]:
         try:
-            p=subprocess.run([binary,"--version"],capture_output=True,text=True,timeout=5)
+            p=subprocess.run([binary,"--version"],capture_output=True,text=True,timeout=5,env=probe_env)
             versions=re.findall(r"\b\d+\.\d+(?:\.\d+)?(?:[-+][A-Za-z0-9.]+)?",p.stdout[:2048])
             entry["version"]=versions[0] if versions else "UNKNOWN"
         except (OSError,subprocess.TimeoutExpired):entry["version"]="UNAVAILABLE"
@@ -88,6 +91,8 @@ def audit(target):
         config["release_path"] = target["release_path"]
     code = "import base64;exec(base64.b64decode(" + repr(base64.b64encode(PROBE.encode()).decode()) + "))"
     command = "python3 -c " + shlex.quote(code) + " " + shlex.quote(json.dumps(config))
+    if target.get("command_prefix"):
+        command = shlex.join(target["command_prefix"]) + " " + command
     try:
         if target["transport"] == "ssh":
             output = run([*target["ssh"], command])
