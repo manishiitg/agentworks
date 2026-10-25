@@ -1044,7 +1044,6 @@ type productProjectManifest struct {
 	SharedKnowledgebase          json.RawMessage `json:"shared_knowledgebase,omitempty"`
 	KnowledgebaseMode            string          `json:"knowledgebase_mode,omitempty"`
 	BrainAccess                  string          `json:"brain_access,omitempty"`
-	KnowledgebaseMigration       json.RawMessage `json:"knowledgebase_migration,omitempty"`
 	SchemaVersion                int             `json:"schema_version"`
 	Product                      string          `json:"product,omitempty"`
 	// OwnerID is the project's owner (PLAT-442): carried so manifest rewrites keep it.
@@ -1225,7 +1224,6 @@ func resolveProductProjectBindingInRoot(
 				manifest.SharedKnowledgebase = runtimeManifest.SharedKnowledgebase
 				manifest.KnowledgebaseMode = runtimeManifest.KnowledgebaseMode
 				manifest.BrainAccess = runtimeManifest.BrainAccess
-				manifest.KnowledgebaseMigration = runtimeManifest.KnowledgebaseMigration
 				manifest.KnowledgebaseContractHistory = runtimeManifest.KnowledgebaseContractHistory
 				manifest.WorkflowContextPaths = runtimeManifest.WorkflowContextPaths
 			}

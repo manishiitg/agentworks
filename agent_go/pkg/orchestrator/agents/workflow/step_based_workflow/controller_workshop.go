@@ -632,8 +632,6 @@ func resolveInnerStepPath(topLevelSteps []PlanStepInterface, info *WorkshopStepI
 
 	location := info.NestedLocation
 	switch {
-	case location == "todo_task_step":
-		return filepath.Join(parentRoot, "agents", workflowSafeIDPart(info.Step.GetID(), "nested"), "calls", "workshop")
 	case strings.HasPrefix(location, "route:"):
 		routeID := strings.TrimPrefix(location, "route:")
 		return todoSubAgentArtifactFolderName(parentID, parentRoot, routeID, "workshop", isScriptedStep(info.Step))

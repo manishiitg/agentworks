@@ -18,7 +18,9 @@ class RetireEngineTest(unittest.TestCase):
             backup = Path(directory) / "backup"
             goal = root / "Workflow" / "example"
             (goal / "db").mkdir(parents=True)
-            manifest = {"id": "example", "pulse": {"enabled": True}, "post_run_monitor": True, "capabilities": {
+            manifest = {"id": "example", "version": "1.0.51", "oversight_mode": "supervised",
+                "knowledgebase_migration": {"done": True}, "contract_upgrade_history": [{"version": "1.0.51"}],
+                "workflow_skills_migration": {"version": "1.0.51", "folder": "workflow-how-to"}, "pulse": {"enabled": True}, "post_run_monitor": True, "capabilities": {
                 "selected_secrets": ["RETIRED_WEBHOOK", "APP_TOKEN"], "selected_global_secret_names": ["RETIRED_WEBHOOK", "TEAM_TOKEN"],
                 "llm_config": {"pulse_llm": {"provider": "example", "model_id": "selected"}},
                 "notifications": {"pulse_summary_slack_webhook_secret_names": ["RETIRED_WEBHOOK"], "daily_digest_off": True, "goal_update_channels": ["gmail"], "run_summary_recipients": ["team@example.com"], "pulse_summary_recipients": ["owner@example.com"], "wake_tab": {"crew_id": "crew", "chat_id": "tab"}}},
@@ -51,7 +53,22 @@ class RetireEngineTest(unittest.TestCase):
                 db.execute("CREATE TABLE schedule_runs (run_id TEXT, state TEXT, completed_at TEXT, updated_at TEXT, error_message TEXT)")
                 db.execute("INSERT INTO schedule_runs VALUES ('review', 'pulse_running', NULL, '', '')")
                 db.execute("INSERT INTO schedule_runs VALUES ('work', 'workflow_running', NULL, '', '')")
+            # PLAT-825-103: an in-progress skills receipt survives for a Flow
+            # still owing the upgrade; a completed receipt and unused fields go.
+            for version in ("1.0.49", "1.0.51"):
+                relay = root / "Workflow" / ("flow-" + version)
+                relay.mkdir()
+                (relay / "workflow.json").write_text(json.dumps({"kind": "relay", "version": version,
+                    "code_layout_version": 1, "oversight_mode": "manual", "contract_upgrade_history": [],
+                    "knowledgebase_migration": {}, "workflow_skills_migration": {"keep": "unfinished"}}))
             first = removal.migrate(root, backup)
+            for version in ("1.0.49", "1.0.51"):
+                path = Path("Workflow") / ("flow-" + version) / "workflow.json"
+                flow = json.loads((root / path).read_text())
+                self.assertEqual(flow["code_layout_version"], 1)
+                self.assertEqual("workflow_skills_migration" in flow, version == "1.0.49")
+                self.assertFalse({"oversight_mode", "knowledgebase_migration", "contract_upgrade_history"}.intersection(flow))
+                self.assertIn("oversight_mode", json.loads((backup / path).read_text()))
             self.assertEqual(first["retired_scheduler_runs"], 1)
             with sqlite3.connect(scheduler) as db:
                 self.assertEqual(db.execute("SELECT state FROM schedule_runs WHERE run_id='review'").fetchone(), ("interrupted",))
@@ -59,6 +76,7 @@ class RetireEngineTest(unittest.TestCase):
             saved = json.loads((goal / "workflow.json").read_text())
             self.assertEqual(saved["capabilities"]["selected_secrets"], ["APP_TOKEN"])
             self.assertEqual(saved["capabilities"]["selected_global_secret_names"], ["TEAM_TOKEN"])
+            self.assertFalse({"oversight_mode", "knowledgebase_migration", "contract_upgrade_history", "workflow_skills_migration"}.intersection(saved))
             self.assertNotIn("pulse", saved)
             self.assertNotIn("post_run_monitor", saved)
             self.assertEqual(saved["schedules"][0], {"id": "daily", "after_run": {"backup": True}})

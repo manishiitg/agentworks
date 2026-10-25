@@ -44,13 +44,10 @@ func TestAgentStepMigrationPreservesNestedRoutesAndContracts(t *testing.T) {
 	if again, count, err := MigrateAgentStepContent(output); err != nil || count != 0 || again != output {
 		t.Fatalf("migration is not idempotent: count=%d err=%v", count, err)
 	}
-	// Reading an old plan directly yields the exact same canonical runtime shape.
+	// PLAT-825-103: conversion is explicit, never a runtime read fallback.
 	var old PlanningResponse
-	if err := json.Unmarshal([]byte(input), &old); err != nil {
-		t.Fatal(err)
-	}
-	if got := old.Steps[0].(*AgentPlanStep); got.Items[0].Type != "user_message" || got.StepType() != StepTypeAgent {
-		t.Fatalf("legacy read did not normalize: %#v", got)
+	if err := json.Unmarshal([]byte(input), &old); err == nil {
+		t.Fatal("legacy plan was accepted without the explicit migration")
 	}
 }
 

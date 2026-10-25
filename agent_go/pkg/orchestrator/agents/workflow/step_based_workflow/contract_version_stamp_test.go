@@ -4,29 +4,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
 )
-
-func TestAppendContractUpgradeHistoryRecordsFirstAppliedTime(t *testing.T) {
-	manifest := map[string]interface{}{}
-	first := time.Date(2026, time.September, 22, 9, 30, 0, 0, time.FixedZone("IST", 5*60*60+30*60))
-	if err := appendContractUpgradeHistory(manifest, "1.0.44", first); err != nil {
-		t.Fatal(err)
-	}
-	if err := appendContractUpgradeHistory(manifest, "1.0.44", first.Add(time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	history, ok := manifest[contractUpgradeHistoryField].([]interface{})
-	if !ok || len(history) != 1 {
-		t.Fatalf("history = %#v", manifest[contractUpgradeHistoryField])
-	}
-	entry := history[0].(map[string]interface{})
-	if got := entry["applied_at"]; got != "2026-09-22T04:00:00Z" {
-		t.Fatalf("applied_at = %v", got)
-	}
-}
 
 // scheduledSession claims a session for the scheduler, as a scheduled run does
 // for its whole lifecycle. The stamp fence binds only claimed sessions.

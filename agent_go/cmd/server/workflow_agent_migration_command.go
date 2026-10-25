@@ -25,12 +25,14 @@ var migrateWorkflowAgentStepsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, roots []string) error {
 		apply, _ := cmd.Flags().GetBool("apply")
 		drained, _ := cmd.Flags().GetBool("server-drained")
-		_, err := migrateWorkflowAgentStepsFromDisk(roots, apply, drained, cmd.OutOrStdout())
+		prepareOnly, _ := cmd.Flags().GetBool("prepare-only")
+		_, err := migrateWorkflowAgentStepsFromDisk(roots, apply, drained, prepareOnly, cmd.OutOrStdout())
 		return err
 	},
 }
 
 func init() {
+	migrateWorkflowAgentStepsCmd.Flags().Bool("prepare-only", false, "convert saved agent shapes without changing any contract version")
 	migrateWorkflowAgentStepsCmd.Flags().Bool("apply", false, "apply the reviewed batch; default is dry-run")
 	migrateWorkflowAgentStepsCmd.Flags().Bool("server-drained", false, "confirm all runs and writers are stopped")
 	ServerCmd.AddCommand(migrateWorkflowAgentStepsCmd)
@@ -48,9 +50,9 @@ type agentMigrationCandidate struct {
 	steps          int
 }
 
-// This command has no startup hook. It changes only live native workflow plans
-// and their final contract rung, after every candidate passes preflight.
-func migrateWorkflowAgentStepsFromDisk(roots []string, apply, drained bool, out io.Writer) (int, error) {
+// One-off deploy tool: remove after every installation has moved. Preparation
+// converts only saved plan shapes; version stamping still follows its ladder.
+func migrateWorkflowAgentStepsFromDisk(roots []string, apply, drained, prepareOnly bool, out io.Writer) (int, error) {
 	if apply && !drained {
 		return 0, fmt.Errorf("--apply requires --server-drained; stop all executions and document writers first")
 	}
@@ -108,11 +110,28 @@ func migrateWorkflowAgentStepsFromDisk(roots []string, apply, drained bool, out 
 			if err := json.Unmarshal(manifest.before, &kind); err != nil {
 				return err
 			}
-			if kind.Kind == "relay" {
+			if kind.Kind == "relay" && !prepareOnly {
 				_, err := fmt.Fprintf(out, "skip Flow: %s (use its own contract migration)\n", identity)
 				return err
 			}
-			planAfter, manifestAfter, count, err := stepworkflow.MigrateAgentStepDeployment(string(plan.before), string(manifest.before), now)
+			var planAfter, manifestAfter string
+			var count int
+			if prepareOnly {
+				planAfter, count, err = stepworkflow.MigrateAgentStepContent(string(plan.before))
+				if err == nil && count == 0 {
+					return nil // Canonical plans keep their bytes and changelog.
+				}
+				if err == nil {
+					var parsed stepworkflow.PlanningResponse
+					err = json.Unmarshal([]byte(planAfter), &parsed)
+					if err == nil {
+						err = stepworkflow.ValidatePlanStructure(&parsed)
+					}
+				}
+				manifestAfter = string(manifest.before)
+			} else {
+				planAfter, manifestAfter, count, err = stepworkflow.MigrateAgentStepDeployment(string(plan.before), string(manifest.before), now)
+			}
 			if err != nil {
 				return fmt.Errorf("%s: %w", identity, err)
 			}
@@ -144,7 +163,11 @@ func migrateWorkflowAgentStepsFromDisk(roots []string, apply, drained bool, out 
 		if apply {
 			mode = "apply"
 		}
-		if _, err := fmt.Fprintf(out, "%s: %s: %d agent records, checked contract %s\n", mode, candidate.plan.name, candidate.steps, stepworkflow.AgentStepContractVersion); err != nil {
+		contract := "checked contract " + stepworkflow.AgentStepContractVersion
+		if prepareOnly {
+			contract = "prepared; contract version unchanged"
+		}
+		if _, err := fmt.Fprintf(out, "%s: %s: %d agent records, %s\n", mode, candidate.plan.name, candidate.steps, contract); err != nil {
 			return 0, err
 		}
 		if !apply {
@@ -241,7 +264,7 @@ func agentMigrationWriteReceipt(candidate agentMigrationCandidate, now time.Time
 	}
 	entry := stepworkflow.PlanChangelogEntry{
 		ChangeID: uuid.NewString(), Timestamp: now.Format(time.RFC3339), Tool: "migrate_agent_steps",
-		Reason: "PLAT-861/PLAT-851: drained deployment batch for contract v1.0.47.", Target: "planning/plan.json",
+		Reason: "PLAT-825/PLAT-851: explicit saved agent shape conversion; contract stamps follow the ordered prerequisites.", Target: "planning/plan.json",
 		BeforeRef: fmt.Sprintf("sha256:%x", sha256.Sum256(candidate.plan.before)), AfterRef: fmt.Sprintf("sha256:%x", sha256.Sum256(candidate.plan.after)),
 		NoOp: bytes.Equal(candidate.plan.before, candidate.plan.after), Actor: "system", DependencyClass: "plan",
 		Origin: stepworkflow.PlanChangeOrigin{Type: "system", AgentName: "drained deployment migration"},

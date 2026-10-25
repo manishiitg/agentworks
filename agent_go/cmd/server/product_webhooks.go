@@ -536,7 +536,6 @@ func (s *ProductScheduleService) findProductWebhook(ctx context.Context, id stri
 				manifest.SharedKnowledgebase = runtimeManifest.SharedKnowledgebase
 				manifest.KnowledgebaseMode = runtimeManifest.KnowledgebaseMode
 				manifest.BrainAccess = runtimeManifest.BrainAccess
-				manifest.KnowledgebaseMigration = runtimeManifest.KnowledgebaseMigration
 				manifest.KnowledgebaseContractHistory = runtimeManifest.KnowledgebaseContractHistory
 			} else {
 				runtimePath = candidate

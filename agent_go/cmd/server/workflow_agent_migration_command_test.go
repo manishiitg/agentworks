@@ -38,10 +38,10 @@ func TestWorkflowAgentDeploymentBatchPreflightsAndStampsLast(t *testing.T) {
 	pinned := save("Workflow/.relay_releases/example/v1", plan, manifest)
 	relay := save("Workflow/relay", plan, `{"kind":"relay","version":"1.0.1"}`)
 	var out bytes.Buffer
-	if _, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, false, &out); err == nil {
+	if _, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, false, false, &out); err == nil {
 		t.Fatal("apply without a drain admitted")
 	}
-	if _, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, true, &out); err == nil || !strings.Contains(err.Error(), "1.0.46") {
+	if _, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, true, false, &out); err == nil || !strings.Contains(err.Error(), "1.0.46") {
 		t.Fatalf("earlier checkpoint admitted: %v", err)
 	}
 	for _, name := range []string{a, b} {
@@ -53,14 +53,14 @@ func TestWorkflowAgentDeploymentBatchPreflightsAndStampsLast(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(b, "workflow.json"), []byte(manifest), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := migrateWorkflowAgentStepsFromDisk([]string{root}, false, false, &out); err != nil || n != 2 {
+	if n, err := migrateWorkflowAgentStepsFromDisk([]string{root}, false, false, false, &out); err != nil || n != 2 {
 		t.Fatalf("dry-run %d %v", n, err)
 	}
 	original, _ := os.ReadFile(filepath.Join(a, "planning/plan.json"))
 	if string(original) != plan {
 		t.Fatal("dry-run wrote")
 	}
-	if n, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, true, &out); err != nil || n != 2 {
+	if n, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, true, false, &out); err != nil || n != 2 {
 		t.Fatalf("apply %d %v", n, err)
 	}
 	for _, dir := range []string{a, b} {
@@ -69,7 +69,7 @@ func TestWorkflowAgentDeploymentBatchPreflightsAndStampsLast(t *testing.T) {
 			t.Fatalf("legacy plan: %s", raw)
 		}
 		cfg, _ := os.ReadFile(filepath.Join(dir, "workflow.json"))
-		if !strings.Contains(string(cfg), "1.0.47") || !strings.Contains(string(cfg), "9007199254740993") || !strings.Contains(string(cfg), "contract_upgrade_history") {
+		if !strings.Contains(string(cfg), "1.0.47") || !strings.Contains(string(cfg), "9007199254740993") || strings.Contains(string(cfg), "contract_upgrade_history") {
 			t.Fatalf("stamp lost metadata: %s", cfg)
 		}
 		backup, _ := os.ReadFile(filepath.Join(dir, "planning/plan.json.pre-agent-v1.0.47.bak"))
@@ -92,14 +92,57 @@ func TestWorkflowAgentDeploymentBatchPreflightsAndStampsLast(t *testing.T) {
 			t.Fatal("historical or Relay plan changed")
 		}
 	}
-	if n, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, true, &out); err != nil || n != 0 {
+	if n, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, true, false, &out); err != nil || n != 0 {
 		t.Fatalf("retry %d %v", n, err)
 	}
 	// An already-stamped legacy plan is a broken checkpoint, not a valid no-op.
 	if err := os.WriteFile(filepath.Join(a, "planning/plan.json"), []byte(plan), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := migrateWorkflowAgentStepsFromDisk([]string{root}, false, false, &out); err == nil || !strings.Contains(err.Error(), "inconsistent checkpoint") {
+	if _, err := migrateWorkflowAgentStepsFromDisk([]string{root}, false, false, false, &out); err == nil || !strings.Contains(err.Error(), "inconsistent checkpoint") {
 		t.Fatalf("bad stamp admitted: %v", err)
 	}
+	// PLAT-825-103: prepare an old Goal and Flow without skipping their
+	// unfinished contract upgrades. This uses the same explicit converter.
+	root, err = filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	goalConfig := `{"version":"1.0.44","code_layout_version":1}`
+	flowConfig := `{"kind":"relay","version":"1.0.45","code_layout_version":1}`
+	goal := save("Workflow/old-goal", plan, goalConfig)
+	flow := save("Workflow/old-flow", plan, flowConfig)
+	broken := save("Workflow/invalid", `{"steps":"invalid"}`, goalConfig)
+	if _, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, true, true, &out); err == nil {
+		t.Fatal("preparation ignored a conversion error")
+	}
+	if raw, _ := os.ReadFile(filepath.Join(goal, "planning/plan.json")); string(raw) != plan {
+		t.Fatal("failed preflight wrote a plan")
+	}
+	if err := os.RemoveAll(broken); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, true, true, &out); err != nil || n != 2 {
+		t.Fatalf("prepare old Goal/Flow: %d %v", n, err)
+	}
+	for dir, config := range map[string]string{goal: goalConfig, flow: flowConfig} {
+		raw, _ := os.ReadFile(filepath.Join(dir, "workflow.json"))
+		if string(raw) != config {
+			t.Fatal("preparation changed contract or manifest")
+		}
+		backup, _ := os.ReadFile(filepath.Join(dir, "planning/plan.json.pre-agent-v1.0.47.bak"))
+		if string(backup) != plan {
+			t.Fatal("preparation did not back up original plan")
+		}
+		before, _ := os.ReadFile(filepath.Join(dir, "planning/plan.json"))
+		if n, err := migrateWorkflowAgentStepsFromDisk([]string{dir}, true, true, true, &out); err != nil || n != 0 {
+			t.Fatalf("canonical preparation: %d %v", n, err)
+		}
+		after, _ := os.ReadFile(filepath.Join(dir, "planning/plan.json"))
+		logs, _ := filepath.Glob(filepath.Join(dir, "planning/changelog/*.json"))
+		if !bytes.Equal(before, after) || len(logs) != 1 {
+			t.Fatal("canonical preparation wrote plan or changelog")
+		}
+	}
+
 }

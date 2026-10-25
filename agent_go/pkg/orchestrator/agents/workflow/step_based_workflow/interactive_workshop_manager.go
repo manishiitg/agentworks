@@ -144,7 +144,7 @@ type WorkshopStepInfo struct {
 	Step           PlanStepInterface
 	ParentID       string // empty for top-level steps
 	ParentType     StepType
-	NestedLocation string // e.g. "route:route-id" or "todo_task_step"
+	NestedLocation string // e.g. "route:route-id"
 	TopIndex       int    // 1-based index of the top-level step this belongs to (-1 if inner)
 	IsOrphan       bool   // true for orphan steps (workshop-only, not in main execution flow)
 }
@@ -5861,9 +5861,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			appliedAt := time.Now().UTC()
 			manifest["version"] = version
 			manifest["updated_at"] = appliedAt.Format(time.RFC3339)
-			if err := appendContractUpgradeHistory(manifest, version, appliedAt); err != nil {
-				contractupgrade.Restore(sessionID, version)
-				return fmt.Sprintf("Failed to record contract upgrade history: %v", err), nil
+			delete(manifest, "contract_upgrade_history")
+			if UsesWorkflowSkills(version) {
+				delete(manifest, "workflow_skills_migration")
 			}
 			updated, err := json.MarshalIndent(manifest, "", "  ")
 			if err != nil {

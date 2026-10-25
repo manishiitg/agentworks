@@ -15,23 +15,10 @@ function formatUpgradeLabel(label: string): string {
     .join(' ')
 }
 
-function formatAppliedAt(value: string): string | null {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  return date.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 function UpgradeRow({ item, state }: { item: WorkflowContractUpgradeItem; state: 'pending' | 'applied' }) {
   const [expanded, setExpanded] = useState(false)
   const pending = state === 'pending'
   const Icon = pending ? Clock3 : CheckCircle2
-  const appliedAt = item.applied_at ? formatAppliedAt(item.applied_at) : null
   return (
     <li>
       <div className="flex items-start gap-3 px-4 py-3">
@@ -42,7 +29,6 @@ function UpgradeRow({ item, state }: { item: WorkflowContractUpgradeItem; state:
           <p className="text-sm font-medium text-foreground">{formatUpgradeLabel(item.label)}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Contract {item.target_version}
-            {!pending && <> · {appliedAt ? `Applied ${appliedAt}` : 'Applied date unavailable'}</>}
           </p>
         </div>
         <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${pending ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>

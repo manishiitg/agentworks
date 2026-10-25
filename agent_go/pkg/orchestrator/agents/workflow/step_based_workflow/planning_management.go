@@ -553,7 +553,6 @@ func populateRuntimeFields(typedStep PlanStepInterface, stepConfigs []StepConfig
 func IsPlanModificationTool(name string) bool {
 	return name == "add_step" || name == "update_step" || name == "manage_step_route" || name == "manage_group" || name == "maintain_plan" || name == "update_scripted_step" || name == "update_routing_step" || name == "update_branch_step" || name == "update_agent_step" || name == "update_crew_step" || name == "delete_plan_steps" || name == "add_scripted_step" || name == "add_routing_step" || name == "add_branch_step" || name == "add_agent_step" || name == "add_crew_step" ||
 		name == "update_validation_schema" ||
-		name == "add_todo_task_route" ||
 		name == "add_agent_route" || name == "update_agent_route" || name == "delete_agent_route" || name == "migrate_agent_steps" || name == "migrate_goal_agents" || name == "migrate_workflow_skills" ||
 		name == "convert_routing_branch_step_type"
 }

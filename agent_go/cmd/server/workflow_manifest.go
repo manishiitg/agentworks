@@ -114,26 +114,23 @@ const (
 
 // WorkflowManifest is the top-level workflow.json structure that lives in each workspace.
 type WorkflowManifest struct {
-	WorkflowSkillsMigration      json.RawMessage                     `json:"workflow_skills_migration,omitempty"`
 	Team                         *WorkflowTeam                       `json:"team,omitempty"`
 	KnowledgebaseContractHistory json.RawMessage                     `json:"knowledgebase_contract_history,omitempty"`
 	SharedKnowledgebase          []knowledgebase.Binding             `json:"shared_knowledgebase,omitempty"`
 	KnowledgebaseMode            string                              `json:"knowledgebase_mode,omitempty"`
 	BrainAccess                  string                              `json:"brain_access,omitempty"` // off, read or write (legacy "folders" reads as write); server-managed
-	KnowledgebaseMigration       json.RawMessage                     `json:"knowledgebase_migration,omitempty"`
 	KnowledgebaseSources         []workflowtypes.KnowledgebaseSource `json:"knowledgebase_sources,omitempty"`
 	CodeLayoutVersion            int                                 `json:"code_layout_version,omitempty"` // 0: legacy learnings; 1: persistent code tree
 	SchemaVersion                int                                 `json:"schema_version"`
 	ID                           string                              `json:"id"`
 	// Kind distinguishes a Flow from a general workflow while reusing the
 	// same manifest, schedules, access rules, runner, and run history.
-	Kind                   string                                `json:"kind,omitempty"`
-	RelayRuntime           string                                `json:"relay_runtime,omitempty"`
-	RelayDurability        string                                `json:"relay_durability,omitempty"`
-	RelayOutputStepID      string                                `json:"relay_output_step_id,omitempty"`
-	Version                string                                `json:"version,omitempty"`
-	ContractUpgradeHistory []WorkflowContractUpgradeHistoryEntry `json:"contract_upgrade_history,omitempty"`
-	Label                  string                                `json:"label"`
+	Kind              string `json:"kind,omitempty"`
+	RelayRuntime      string `json:"relay_runtime,omitempty"`
+	RelayDurability   string `json:"relay_durability,omitempty"`
+	RelayOutputStepID string `json:"relay_output_step_id,omitempty"`
+	Version           string `json:"version,omitempty"`
+	Label             string `json:"label"`
 	// Description is one short line about what the workflow is for. Shown next to the name in Slack's "who should answer"
 	// picker, MCP lists and the Slack target list. Optional.
 	Description      string                    `json:"description,omitempty"`
@@ -177,8 +174,6 @@ type WorkflowManifest struct {
 	// per-step runtime skill selections.
 	InstalledPlaybooks []InstalledPlaybook `json:"installed_playbooks,omitempty"`
 
-	OversightMode OversightMode `json:"oversight_mode,omitempty"`
-
 	// PaceOnLowQuota spreads a run out rather than racing into a provider
 	// capacity wall. Opt-in per workflow, because it is only ever the right
 	// trade for workflows whose consumption is large relative to the provider
@@ -211,11 +206,6 @@ type WorkflowManifest struct {
 	// (never serialized): set during ReadWorkflowManifest, used to avoid clobbering
 	// the on-disk config on write-back and to flag the issue.
 	MalformedConfig []string `json:"-"`
-}
-
-type WorkflowContractUpgradeHistoryEntry struct {
-	Version   string `json:"version"`
-	AppliedAt string `json:"applied_at"`
 }
 
 type InstalledPlaybook struct {
@@ -903,14 +893,6 @@ func ValidateManifest(m *WorkflowManifest) error {
 		}
 	}
 
-	// Validate auto-improvement framework enum fields if set.
-	if m.OversightMode != "" {
-		switch m.OversightMode {
-		case OversightManual, OversightSupervised, OversightAutonomous:
-		default:
-			return fmt.Errorf("invalid oversight_mode: %s", m.OversightMode)
-		}
-	}
 	return nil
 }
 
@@ -1175,7 +1157,10 @@ func manifestContentUnchanged(previous, next []byte) bool {
 // older app version) is kept by the writer (keepUnmodelledManifestFields) and is never treated as stale. Before 2026-10-16 the
 // prune detected every unknown key but the writer kept them all, so a workflow with a retired "objective" was rewritten on
 // every read (about 270 times a minute) and nothing was ever removed. Add a key here when the product retires one.
-var retiredManifestTopLevelKeys = map[string]bool{"objective": true, "success_criteria": true}
+var retiredManifestTopLevelKeys = map[string]bool{
+	"objective": true, "success_criteria": true,
+	"oversight_mode": true, "knowledgebase_migration": true, "contract_upgrade_history": true,
+}
 
 var (
 	staleManifestPruneMu sync.Mutex
@@ -1465,7 +1450,6 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		m.SharedKnowledgebase = prior.SharedKnowledgebase
 		m.KnowledgebaseMode = prior.KnowledgebaseMode
 		m.BrainAccess = prior.BrainAccess
-		m.KnowledgebaseMigration = prior.KnowledgebaseMigration
 		m.KnowledgebaseContractHistory = prior.KnowledgebaseContractHistory
 	}
 	ctx = context.WithValue(ctx, teamManifestPermitKey{}, true)
@@ -1632,10 +1616,6 @@ func applyManifestDefaults(m *WorkflowManifest) {
 			m.Schedules[i].ID = uuid.New().String()
 		}
 	}
-
-	if m.OversightMode == "" {
-		m.OversightMode = OversightSupervised
-	}
 }
 
 // ensureManifestSlices ensures all slice fields are non-nil so they serialize as [] not null.
@@ -1791,8 +1771,14 @@ func keepUnmodelledManifestFields(previous, written []byte) []byte {
 	if json.Unmarshal(previous, &before) != nil || json.Unmarshal(written, &after) != nil {
 		return written
 	}
+	var version string
+	_ = json.Unmarshal(after["version"], &version)
 	kept := false
 	for key, value := range before {
+		// The one-off skills upgrade uses a raw receipt until its stamp succeeds.
+		if key == "workflow_skills_migration" && step_based_workflow.UsesWorkflowSkills(version) {
+			continue
+		}
 		if workflowManifestKnownKeys[key] || retiredManifestTopLevelKeys[key] {
 			continue
 		}

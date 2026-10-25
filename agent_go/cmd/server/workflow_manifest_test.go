@@ -454,6 +454,8 @@ func TestReadWorkflowManifestPrunesRetiredTopLevelFieldsOnce(t *testing.T) {
 	manifestJSON, err := json.Marshal(map[string]interface{}{
 		"schema_version": 1, "id": "wf_x", "version": "1.0.20", "label": "x-post-drafts",
 		"objective": "retired objective text", "success_criteria": []string{"retired"},
+		"oversight_mode": "supervised", "knowledgebase_migration": map[string]string{"unused": "record"},
+		"contract_upgrade_history": []interface{}{}, "workflow_skills_migration": map[string]string{"folder": "unfinished"},
 		"future_field": map[string]string{"kept": "by the writer"},
 		"capabilities": map[string]interface{}{}, "schedules": []interface{}{},
 	})
@@ -474,11 +476,11 @@ func TestReadWorkflowManifestPrunesRetiredTopLevelFieldsOnce(t *testing.T) {
 	workspace.mu.Lock()
 	first := workspace.files[workspacePath+"/workflow.json"]
 	workspace.mu.Unlock()
-	if strings.Contains(first, "objective") || strings.Contains(first, "success_criteria") {
+	if strings.Contains(first, "objective") || strings.Contains(first, "success_criteria") || strings.Contains(first, "oversight_mode") || strings.Contains(first, "knowledgebase_migration") || strings.Contains(first, "contract_upgrade_history") {
 		t.Fatalf("the prune did not remove the retired top-level fields: %s", first)
 	}
 	// Only the RETIRED keys go: a key the schema merely does not model (another subsystem, another app version) stays.
-	if !strings.Contains(first, "future_field") {
+	if !strings.Contains(first, "future_field") || !strings.Contains(first, "workflow_skills_migration") {
 		t.Fatalf("the prune deleted a top-level key that is not on the retired list: %s", first)
 	}
 	// A second read finds nothing stale and writes nothing: the file is byte-for-byte what the first read left.

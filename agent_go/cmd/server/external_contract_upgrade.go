@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -149,15 +148,7 @@ func (api *StreamingAPI) externalContractUpgradeCall(w http.ResponseWriter, r *h
 		externalError(w, 409, "stamp_refused", refusal)
 		return
 	}
-	appliedAt := time.Now().UTC().Format(time.RFC3339)
 	current.Version = version
-	known := false
-	for _, entry := range current.ContractUpgradeHistory {
-		known = known || entry.Version == version
-	}
-	if !known {
-		current.ContractUpgradeHistory = append(current.ContractUpgradeHistory, WorkflowContractUpgradeHistoryEntry{Version: version, AppliedAt: appliedAt})
-	}
 	if err := WriteWorkflowManifest(ctx, rootPath, current); err != nil {
 		externalError(w, 502, "stamp_failed", "The contract version could not be saved; nothing was recorded.")
 		return
@@ -165,5 +156,5 @@ func (api *StreamingAPI) externalContractUpgradeCall(w http.ResponseWriter, r *h
 	if api.logger != nil {
 		api.logger.Info("workflow contract stamped over MCP workflow=" + workflow.Manifest.ID + " version=" + version + " user=" + live.UserID)
 	}
-	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": version, "applied": true, "applied_at": appliedAt})
+	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": version, "applied": true})
 }

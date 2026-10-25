@@ -459,25 +459,9 @@ type ScriptParameterDefinition struct {
 	Enum        []interface{} `json:"enum,omitempty"`
 }
 
-// StepSharing defines which orchestrators in the same plan may reuse an orphan step.
+// StepSharing defines which agents in the same plan may reuse an orphan step.
 type StepSharing struct {
 	AgentIDs []string `json:"agent_ids,omitempty"`
-}
-
-// UnmarshalJSON accepts only the retired sharing key at the saved-data boundary.
-func (s *StepSharing) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		AgentIDs  []string `json:"agent_ids"`
-		LegacyIDs []string `json:"orchestrator_ids"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	s.AgentIDs = raw.AgentIDs
-	if s.AgentIDs == nil {
-		s.AgentIDs = raw.LegacyIDs
-	}
-	return nil
 }
 
 // PlanStepInterface is the interface that all step types must implement
@@ -773,10 +757,6 @@ func (m *AgentPlanStep) MarshalJSON() ([]byte, error) {
 // agent plan step; the routes only add bounded, agent-decided
 // delegation capabilities to its conversation.
 func (m *AgentPlanStep) UnmarshalJSON(data []byte) error {
-	data, _, err := canonicalAgentStepJSON(data)
-	if err != nil {
-		return err
-	}
 	type agentSequenceAlias struct {
 		Type StepType `json:"type"`
 		CommonStepFields

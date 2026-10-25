@@ -85,15 +85,13 @@ func MigrateAgentStepDeployment(planContent, manifestContent string, appliedAt t
 	}
 	manifest["version"] = AgentStepContractVersion
 	manifest["updated_at"] = appliedAt.UTC().Format(time.RFC3339)
-	if err := appendContractUpgradeHistory(manifest, AgentStepContractVersion, appliedAt); err != nil {
-		return "", "", 0, err
-	}
+	delete(manifest, "contract_upgrade_history")
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	return after, string(data) + "\n", count, err
 }
 
-// canonicalAgentStepJSON is the read boundary for retired saved step shapes.
-// Runtime and authoring only use AgentPlanStep; saving emits type=agent/items.
+// canonicalAgentStepJSON is used only by the explicit saved-plan migration.
+// Runtime and authoring accept AgentPlanStep with type=agent/items.
 func canonicalAgentStepJSON(data []byte) ([]byte, bool, error) {
 	var step map[string]json.RawMessage
 	if err := json.Unmarshal(data, &step); err != nil {

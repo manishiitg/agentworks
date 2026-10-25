@@ -81,8 +81,8 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 		t.Fatalf("stamp not applied: %s", done)
 	}
 	manifest := f.read(t, "Workflow/invoices/workflow.json")
-	if !strings.Contains(manifest, `"1.0.47"`) || !strings.Contains(manifest, "contract_upgrade_history") {
-		t.Fatalf("manifest not stamped with history: %s", manifest)
+	if !strings.Contains(manifest, `"1.0.47"`) || strings.Contains(manifest, "contract_upgrade_history") {
+		t.Fatalf("manifest not stamped without obsolete history: %s", manifest)
 	}
 	again := f.call(t, owner, "workflow_upgrade", stamp, 200).Body.String()
 	if !strings.Contains(again, `"applied":false`) {

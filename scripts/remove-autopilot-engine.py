@@ -56,7 +56,17 @@ def rename_config(value):
     return out
 
 
+def retire_manifest_bookkeeping(document):
+    for key in ("oversight_mode", "knowledgebase_migration", "contract_upgrade_history"):
+        document.pop(key, None)
+    version = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", str(document.get("version", "")))
+    if version and tuple(map(int, version.groups())) >= (1, 0, 51):
+        document.pop("workflow_skills_migration", None)
+    return document
+
+
 def migrate_manifest(document):
+    document = retire_manifest_bookkeeping(document)
     if document.get("kind") == "relay":
         return document
     # Retiring a delivery reference must not turn its webhook credential into

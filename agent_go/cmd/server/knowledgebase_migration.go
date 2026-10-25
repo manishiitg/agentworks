@@ -453,7 +453,7 @@ func knowledgeMigrationPreview(ctx context.Context, service *knowledgebase.Servi
 		return nil, err
 	}
 	original := map[string]json.RawMessage{}
-	for _, key := range []string{"shared_knowledgebase", "knowledgebase_mode", "knowledgebase_migration", "knowledgebase_contract_history", "brain_access"} {
+	for _, key := range []string{"shared_knowledgebase", "knowledgebase_mode", "knowledgebase_contract_history", "brain_access"} {
 		original[key] = project.Raw[key]
 	}
 	receipt := &knowledgeMigrationReceipt{RequiredOwners: project.Owners, RequiredReaders: project.Audience, ID: id, Owner: p.IdentityID, Workspace: project.Workspace, ProjectID: project.ID, PreviewHash: knowledgeHash(args), ManifestVersion: project.Version, Original: original, Binding: binding, Destination: destination, SourceHash: sourceHash, Files: files, Skipped: skipped, Folders: map[string]string{}, State: "PREVIEWED"}
@@ -568,7 +568,6 @@ func knowledgeMigrationCutover(ctx context.Context, service *knowledgebase.Servi
 	project.Raw["brain_access"], _ = json.Marshal("write")
 	project.Raw["knowledgebase_mode"], _ = json.Marshal("shared")
 	r.CutoverTime = time.Now().UTC().Format(time.RFC3339Nano)
-	project.Raw["knowledgebase_migration"], _ = json.Marshal(map[string]any{"contract": sharedKnowledgebaseContract, "migration_id": r.ID, "source_hash": r.SourceHash, "folder_id": r.Binding.FolderID, "applied_at": r.CutoverTime})
 	var history []map[string]any
 	if prior := project.Raw["knowledgebase_contract_history"]; prior != nil {
 		if err := json.Unmarshal(prior, &history); err != nil {

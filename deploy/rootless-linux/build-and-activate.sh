@@ -420,6 +420,14 @@ python3 "$BUILD_DIR/migrations/agentbridge-receipts.py" "$REMOTE_APP/data/docs/_
 python3 "$BUILD_DIR/migrations/retire-agent-server-relay.py" --state-root "$REMOTE_APP/state" --mailbox "$REMOTE_APP/data/docs/_system/agent_messages/conversations.json"
 python3 "$BUILD_DIR/migrations/fold-crew-role.py" --workspace-root "$REMOTE_APP/data/docs" --state-root "$REMOTE_APP/state"
 python3 "$BUILD_DIR/migrations/remove-autopilot-engine.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/remove-autopilot-$(date -u +%Y%m%dT%H%M%SZ)"
+# One-off saved-agent shape preparation, with backups/changelog and no stamps.
+agent_plan_roots=()
+for agent_plan_root in "$REMOTE_APP/data/docs/Workflow" "$REMOTE_APP/data/docs/_users/"*/Workflow; do
+  if [[ -d "$agent_plan_root" ]]; then agent_plan_roots+=("$agent_plan_root"); fi
+done
+if (( ${#agent_plan_roots[@]} )); then
+  "$BUILD_DIR/bin/$PRODUCT-agent" server migrate-workflow-agent-steps "${agent_plan_roots[@]}" --prepare-only --apply --server-drained
+fi
 MIGRATION_STOPPED_AGENT=0
 ln -sfn "$BUILD_DIR" "$REMOTE_APP/current"
 MIGRATION_STOPPED_AGENT=1

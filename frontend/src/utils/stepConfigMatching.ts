@@ -87,7 +87,6 @@ export interface ConsistencyRule {
 
 export interface StepSharing {
   agent_ids?: string[];
-  orchestrator_ids?: string[]; // Saved legacy sharing metadata only.
 }
 
 // Common fields shared by all step types

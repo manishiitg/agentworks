@@ -152,6 +152,9 @@ func TestWorkflowSkillsMigrationOverMCPAndBuilder(t *testing.T) {
 	}
 	f.write(t, copyPath, prose)
 	f.call(t, owner, "workflow_upgrade", stamp, 200)
+	if strings.Contains(f.read(t, "Workflow/invoices/workflow.json"), "workflow_skills_migration") {
+		t.Fatal("completed skills upgrade retained its temporary receipt")
+	}
 	status := f.call(t, owner, "workflow_upgrade", map[string]any{"action": "status"}, 200).Body.String()
 	if !strings.Contains(status, `"pending":[]`) {
 		t.Fatal(status)

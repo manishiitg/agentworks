@@ -204,7 +204,6 @@ chat:
       - list_executions
       - list_gmail_connections
       - get_agent_inbox
-      - configure_agent_inbox
       - list_mcp_servers
       - list_schedules
       - list_secrets
@@ -307,14 +306,12 @@ chat:
       - query_workflow_costs
       - query_workflow_db
       - read_agent_messages
-      - read_crew_calls
       - read_image
       - record_goal_observations
       - reply_function_call
       - report_function_progress
       - request_clarification
       - scan_workflow_script_db_usage
-      - search_platform
       - send_message
       - set_code_layout_version
       - set_workflow_llm_config
@@ -339,7 +336,6 @@ chat:
       - get_goal_metrics
       - query_workflow_db
       - query_workflow_costs
-      - read_crew_calls
       - brain_browse
       - brain_read
       - brain_update
@@ -417,7 +413,6 @@ chat:
       - get_goal_metrics
       - query_workflow_db
       - query_workflow_costs
-      - read_crew_calls
       - google_workspace_cli
       - list_mcp_servers
       - send_email

@@ -13,13 +13,10 @@ func TestGetWorkflowManifestIncludesManualContractUpgradeStatus(t *testing.T) {
 	manifestJSON, _ := json.Marshal(map[string]interface{}{
 		"schema_version": 1,
 		"id":             "wf_manual_upgrade",
-		"version":        "1.0.20",
+		"version":        "1.0.48",
 		"label":          "Manual upgrade",
 		"capabilities":   map[string]interface{}{},
 		"schedules":      []interface{}{},
-		"contract_upgrade_history": []map[string]string{
-			{"version": workflowContractEvalVerdictSchemaVersion, "applied_at": "2026-09-22T04:00:00Z"},
-		},
 	})
 	workspace := &mockWorkspaceAPI{files: map[string]string{
 		workspacePath + "/workflow.json": string(manifestJSON),
@@ -50,7 +47,7 @@ func TestGetWorkflowManifestIncludesManualContractUpgradeStatus(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !response.ContractUpgrade.Required || response.ContractUpgrade.CurrentVersion != "1.0.20" || response.ContractUpgrade.PlatformVersion != WorkflowContractCurrentVersion || response.ContractUpgrade.PendingCount == 0 || response.ContractUpgrade.NextLabel == "" {
+	if !response.ContractUpgrade.Required || response.ContractUpgrade.CurrentVersion != "1.0.48" || response.ContractUpgrade.PlatformVersion != WorkflowContractCurrentVersion || response.ContractUpgrade.PendingCount == 0 || response.ContractUpgrade.NextLabel == "" {
 		t.Fatalf("unexpected contract upgrade status: %+v", response.ContractUpgrade)
 	}
 	if len(response.ContractUpgrade.Pending) == 0 || len(response.ContractUpgrade.Applied) == 0 || response.ContractUpgrade.HistoryBasis != "contract_version" {
@@ -61,15 +58,6 @@ func TestGetWorkflowManifestIncludesManualContractUpgradeStatus(t *testing.T) {
 	}
 	if response.ContractUpgrade.Pending[0].Details == "" {
 		t.Fatal("pending migration details are empty")
-	}
-	foundDatedApplied := false
-	for _, item := range response.ContractUpgrade.Applied {
-		if item.TargetVersion == workflowContractEvalVerdictSchemaVersion && item.AppliedAt == "2026-09-22T04:00:00Z" {
-			foundDatedApplied = true
-		}
-	}
-	if !foundDatedApplied {
-		t.Fatalf("applied history date missing: %+v", response.ContractUpgrade.Applied)
 	}
 }
 

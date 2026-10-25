@@ -10,7 +10,6 @@ type workflowContractUpgradeListItem struct {
 	Label         string `json:"label"`
 	TargetVersion string `json:"target_version"`
 	Details       string `json:"details"`
-	AppliedAt     string `json:"applied_at,omitempty"`
 }
 
 func workflowContractUpgradeDetails(upgrade workflowVersionUpgrade) string {
@@ -64,19 +63,12 @@ func workflowContractUpgradeLists(manifest *WorkflowManifest) (pending, applied 
 	for _, upgrade := range pendingPlan {
 		pendingLabels[upgrade.label] = struct{}{}
 	}
-	appliedAtByVersion := make(map[string]string, len(manifest.ContractUpgradeHistory))
-	for _, entry := range manifest.ContractUpgradeHistory {
-		if version, appliedAt := strings.TrimSpace(entry.Version), strings.TrimSpace(entry.AppliedAt); version != "" && appliedAt != "" {
-			appliedAtByVersion[version] = appliedAt
-		}
-	}
 
 	for _, upgrade := range allActive {
 		item := workflowContractUpgradeListItem{
 			Label:         upgrade.label,
 			TargetVersion: upgrade.to,
 			Details:       workflowContractUpgradeDetails(upgrade),
-			AppliedAt:     appliedAtByVersion[upgrade.to],
 		}
 		targetRank, targetKnown := workflowContractVersionRank(upgrade.to)
 		if targetKnown && targetRank <= currentRank {
