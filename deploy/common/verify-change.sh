@@ -116,8 +116,9 @@ if [[ "$go_needed" == true ]]; then
     case "$line" in
       'workspace '*|'mcp-gateway '*)
         module="${line%% *}"; args="${line#* }"
-        run "go test ($module) $args" bash -c "cd '$WORK/repo/$module' && eval \"go test $args -count=1\"" ;;
-      *) run "go test $line" bash -c "eval \"go test $line -count=1\"" ;;
+        # The line goes in through the environment, not the -c string, so its own quotes survive (same eval as the GitHub workflow).
+        run "go test ($module) $args" env VERIFY_DIR="$WORK/repo/$module" VERIFY_ARGS="$args" bash -c 'cd "$VERIFY_DIR" && eval "go test $VERIFY_ARGS -count=1"' ;;
+      *) run "go test $line" env VERIFY_ARGS="$line" bash -c 'eval "go test $VERIFY_ARGS -count=1"' ;;
     esac
   done < <(grep -E '^Verify-Test:' "$WORK/message.txt" | sed 's/^Verify-Test:[[:space:]]*//' || true)
 fi
