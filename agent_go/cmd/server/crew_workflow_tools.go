@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
 
 var crewWorkflowExecutionMembers = map[string]bool{
@@ -99,6 +101,52 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		}
 		encoded, err := json.MarshalIndent(map[string]interface{}{"workflows": attached}, "", "  ")
 		return string(encoded), err
+	}); err != nil {
+		return err
+	}
+
+	// Reading a linked project's database: the same read-only, row-bounded query
+	// the dashboards and MCP query_database use. It needs the project to be one
+	// of this Crew's saved links AND the person to own or edit it (rechecked on
+	// every call), and it can never change a row.
+	if err := register("query_linked_workflow_db", "Read the database of one linked workflow you own or edit, read-only. Pass its exact workspace_path from list_attached_workflows and sql (one SELECT, WITH or EXPLAIN statement), or action=describe (optional table) for tables and columns. Row-bounded: give the query an ORDER BY and pass offset for the next page. It cannot change data.", map[string]interface{}{
+		"type": "object", "required": []string{"workspace_path"}, "properties": map[string]interface{}{
+			"workspace_path": map[string]interface{}{"type": "string", "description": "The linked workflow's exact workspace_path from list_attached_workflows."},
+			"action":         map[string]interface{}{"type": "string", "enum": []string{"query", "describe", "integrity_check"}},
+			"sql":            map[string]interface{}{"type": "string", "description": "One SELECT, WITH or EXPLAIN statement; ? placeholders bind params."},
+			"params":         map[string]interface{}{"type": "array"},
+			"table":          map[string]interface{}{"type": "string", "description": "For describe: one table."},
+			"max_rows":       map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 500},
+			"offset":         map[string]interface{}{"type": "integer", "minimum": 0},
+		},
+	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		ctx = withClaims(ctx)
+		target, _ := args["workspace_path"].(string)
+		target = strings.TrimSuffix(strings.TrimSpace(target), "/")
+		refs, err := readWorkWorkflowReferences(ctx, workspacePath)
+		if err != nil {
+			return "", fmt.Errorf("Crew references are unavailable")
+		}
+		linked := false
+		for _, ref := range refs {
+			if strings.TrimSuffix(strings.TrimSpace(ref), "/") == target && target != "" {
+				linked = true
+			}
+		}
+		if !linked {
+			return "", fmt.Errorf("%q is not linked to this Crew; use the exact workspace_path from list_attached_workflows (link it first with attach_workflow_reference)", target)
+		}
+		if _, err := attached(ctx, target); err != nil {
+			return "", err
+		}
+		query := map[string]interface{}{}
+		for _, key := range []string{"sql", "params", "action", "table", "max_rows", "offset"} {
+			if value, ok := args[key]; ok {
+				query[key] = value
+			}
+		}
+		client := api.reportPreviewWorkspaceClient(ctx, GetUserFromContext(ctx), target)
+		return virtualtools.RunWorkflowDBQuery(ctx, client, target+"/db/db.sqlite", query)
 	}); err != nil {
 		return err
 	}
