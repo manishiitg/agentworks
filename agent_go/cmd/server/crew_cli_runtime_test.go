@@ -76,6 +76,9 @@ func TestCrewChatModesSeparatePromptSkillsAndSessionIdentity(t *testing.T) {
 	}
 	builder, buildReq := newProfile(false)
 	run, runReq := newProfile(true)
+	if run.Definition.Runtime.AgentTools.Mode != "mcp_only" || builder.Definition.Runtime.AgentTools.Mode == "mcp_only" {
+		t.Fatal("Run must not inherit the Builder native shell and file tools")
+	}
 	if builder.Prompt == run.Prompt || agentProfileSessionKey(builder) == agentProfileSessionKey(run) {
 		t.Fatal("Run shares Builder prompt or session fingerprint")
 	}
