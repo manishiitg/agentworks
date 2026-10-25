@@ -25,6 +25,12 @@ operation=project with its workspace_path. The names-only vault snapshot reports
 actual selections, sharing counts and connection status. Never infer a secret
 value or credentials from this inventory.
 
+Company Google accounts also appear here using the same project-scoped list as
+list_gmail_connections. Their ticks show the existing default account and cannot
+be changed with personal-account attach/detach. Inspect or manage company setup
+in this chat using the existing Google tools and administrator checks. An absent
+personal Google account does not mean company Google access is unavailable.
+
 For a tick, use manage_my_vaults operation=project_select with workspace_path,
 kind, item_id and selected from the snapshot. It uses the same settings and
 account services as the panel. For external MCP, settings updates the project

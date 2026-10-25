@@ -8,7 +8,64 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 )
+
+// The merged Vault panel must retain the company accounts the project's
+// Google tools already expose, without turning private accounts into shared ones.
+func TestProjectVaultShowsCompanyGoogleWithoutPrivateAccounts(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("CAPLAYER_SERVICE_URL", "")
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", "")
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	f, _ := newExternalCrewCommandFixture(t)
+	config := services.GmailConfig{DefaultConnectionID: "company", Connections: []services.GmailConnection{
+		{ID: "company", DisplayName: "Company Google", Enabled: true, Status: services.GmailConnectionConnected},
+		{ID: "disabled", DisplayName: "Disabled company account", Status: services.GmailConnectionConnected},
+		{ID: "personal", DisplayName: "Another person's Google", Personal: true, OwnerID: "other", Enabled: true},
+		{ID: "private", DisplayName: "Private project Google", ScopeWorkspace: "Crew/other-project", OwnerID: "other", Enabled: true},
+	}}
+	raw, _ := json.Marshal(config)
+	f.write(t, "config/gmail-config.json", string(raw))
+	previous := services.GetGmailService()
+	t.Cleanup(func() { services.SetGmailService(previous) })
+	if _, err := services.InitGmailService(); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"})
+	r := httptest.NewRequest(http.MethodPost, "/api/my-vaults/op", strings.NewReader(`{"operation":"project","workspace_path":"Crew/test-team"}`)).WithContext(ctx)
+	w := httptest.NewRecorder()
+	f.api.handleMyVaultsOp(w, r)
+	var response struct {
+		Result string `json:"result"`
+	}
+	var inventory projectVaultInventory
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &response) != nil || json.Unmarshal([]byte(response.Result), &inventory) != nil {
+		t.Fatalf("Vault response: %d %s", w.Code, w.Body.String())
+	}
+	var accounts []projectVaultItem
+	for _, group := range inventory.Vaults {
+		if group.ID == "company-google" {
+			accounts = group.Items
+		}
+	}
+	if len(accounts) != 2 || accounts[0].ID != "company" || accounts[0].Status != "connected" || !accounts[0].Selected || accounts[0].CanSelect || accounts[1].Status != "needs_attention" {
+		t.Fatalf("company accounts omitted or changed authority: %+v", accounts)
+	}
+	if strings.Contains(response.Result, "Another person's Google") || strings.Contains(response.Result, "Private project Google") {
+		t.Fatal("Vault leaked a private Google account")
+	}
+	if _, err := f.api.selectProjectVaultItem(ctx, "owner", externalCommandCrewRoot, "google", "company", false); err == nil {
+		t.Fatal("company row changed a personal-account selection")
+	}
+	// MCP settings exposes the same names-only inventory as the website.
+	w = httptest.NewRecorder()
+	f.api.externalCrewSettingsCall(w, httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx), "get_settings", map[string]any{"crew_id": "team"})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Company Google") || strings.Contains(w.Body.String(), "Another person's Google") {
+		t.Fatalf("MCP inventory differs: %d %s", w.Code, w.Body.String())
+	}
+}
 
 // Actual workspace + HTTP/native settings writers: one unchecked app must not
 // turn every app back on, and a co-owner must not see unrelated owner accounts.

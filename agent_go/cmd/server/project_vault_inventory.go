@@ -11,6 +11,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 )
 
 // The panel and chat read the same names-only snapshot. Selection still uses
@@ -297,6 +299,25 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 		}
 	}
 	groups[projectSecrets.ID] = projectSecrets
+	// Shared Google connections use the existing company registry, rather than
+	// personal list_saved. Show the same project-scoped accounts as the Google
+	// tools without making them attachable through personal-account controls.
+	if google := services.GetGmailService(); google != nil {
+		company := &projectVaultGroup{ID: "company-google", Name: "Company Google accounts", Sharing: "Managed in chat", Items: []projectVaultItem{}}
+		scope := gmailToolScope(root)
+		current, _ := google.ConnectionForScope("", scope)
+		for _, account := range google.ConnectionsUsableFrom(scope) {
+			if account.IsPrivate() {
+				continue
+			}
+			status := "needs_attention"
+			if account.Enabled && account.Status == services.GmailConnectionConnected {
+				status = "connected"
+			}
+			company.Items = append(company.Items, projectVaultItem{ID: account.ID, Name: account.DisplayName, Provider: "Google", Kind: "google", Status: status, Selected: account.ID == current.ID})
+		}
+		groups[company.ID] = company
+	}
 	personal := projectVaultGroup{ID: "personal", Name: "Your accounts and computers", Sharing: "Only you", Items: []projectVaultItem{}}
 	if data, e := api.personalGoogleOperation(r, root, map[string]any{"action": "list_saved"}); e == nil {
 		encoded, _ := json.Marshal(data)
