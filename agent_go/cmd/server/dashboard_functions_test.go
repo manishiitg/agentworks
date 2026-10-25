@@ -3,10 +3,13 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -84,5 +87,127 @@ func TestDashboardFunctionRoutesFollowTheDashboardProject(t *testing.T) {
 	}
 	if status, _ := do("reader", http.MethodGet, base+"/function-calls/does-not-exist", nil); status != 404 {
 		t.Fatalf("an unknown call must be refused: %d", status)
+	}
+}
+
+// Exercise the real typed dispatcher and scheduler ingress. Executor contract
+// preflight deliberately fails before a model starts; the stored delivery still
+// proves publication and caller provenance, without an external side effect.
+func TestDashboardRelayFunctionsUsePublishedVersionAndRealCaller(t *testing.T) {
+	f := newExternalRelayFixture(t)
+	t.Setenv("AUTH_SECRET", "dashboard-relay-test-secret")
+	f.mock.mu.Lock()
+	var live WorkflowManifest
+	_ = json.Unmarshal([]byte(f.mock.files["Workflow/invoices/workflow.json"]), &live)
+	live.CodeLayoutVersion = 0
+	encoded, _ := json.Marshal(live)
+	f.mock.files["Workflow/invoices/workflow.json"] = string(encoded)
+	f.mock.mu.Unlock()
+	release, err := publishRelayRelease(t.Context(), "Workflow/invoices")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "runs.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	f.api.scheduler = NewSchedulerService(f.api)
+	f.api.scheduler.stateStore = store
+	// An unpublished new draft function and description must not change the form.
+	f.mock.mu.Lock()
+	live.Schedules[0].Function.Description = "Unpublished draft description"
+	live.Schedules = append(live.Schedules, WorkflowSchedule{ID: "draft-only", Name: "Draft only", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, Function: &WorkflowFunctionSpec{Name: "draft_only", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}})
+	encoded, _ = json.Marshal(live)
+	f.mock.files["Workflow/invoices/workflow.json"] = string(encoded)
+	f.mock.mu.Unlock()
+	resolved := resolvedDashboardQuestion{Target: dashboardTarget{Kind: "relay", ID: "invoices", Root: "Workflow/invoices"}}
+	router := mux.NewRouter()
+	router.HandleFunc("/functions/{action}", func(w http.ResponseWriter, r *http.Request) {
+		tool := "list_workflow_functions"
+		args := map[string]any{}
+		if mux.Vars(r)["action"] == "call" {
+			tool = "call_workflow_function"
+			args = map[string]any{"function": "process", "args": map[string]any{"INPUT": map[string]any{"name": "Sample"}}, "submission_id": "relay-dashboard-sample", "wait_seconds": 0}
+		}
+		f.api.dashboardFunctionDispatch(w, r, resolved, "", tool, args)
+	})
+	server := httptest.NewServer(AuthMiddleware(router))
+	defer server.Close()
+	call := func(action string) (int, map[string]any) {
+		t.Helper()
+		token, _ := GenerateJWT("reader", "reader", "")
+		request, _ := http.NewRequest(http.MethodPost, server.URL+"/functions/"+action, nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		response, err := server.Client().Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		var out map[string]any
+		if err := json.NewDecoder(response.Body).Decode(&out); err != nil {
+			t.Fatal(err)
+		}
+		return response.StatusCode, out
+	}
+	status, listed := call("list")
+	if status != 200 {
+		t.Fatalf("list: %d %v", status, listed)
+	}
+	functions := listed["functions"].([]any)
+	if len(functions) != 1 || functions[0].(map[string]any)["name"] != "process" || functions[0].(map[string]any)["description"] == "Unpublished draft description" {
+		t.Fatalf("draft reached published form: %v", listed)
+	}
+	status, started := call("call")
+	if status != 200 {
+		t.Fatalf("call: %d %v", status, started)
+	}
+	functionCall := lookupCrewFunctionCall(started["call_id"].(string))
+	if functionCall == nil {
+		t.Fatal("missing typed call")
+	}
+	functionCall.mu.Lock()
+	runID, callerID := functionCall.RunID, functionCall.CallerID
+	functionCall.mu.Unlock()
+	if callerID != "reader" || runID == "" {
+		t.Fatalf("lost actual caller or dispatch: caller=%s run=%s result=%v", callerID, runID, started)
+	}
+	run, err := store.GetRun(t.Context(), runID)
+	if err != nil || run.ScopeID != relayReleaseWorkspace("Workflow/invoices", release.Version) {
+		t.Fatalf("dashboard ran draft rather than published version: %+v %v", run, err)
+	}
+	raw, found, err := readFileFromWorkspace(t.Context(), webhookInputPath(run.ScopeID, runID))
+	if err != nil || !found {
+		t.Fatalf("delivery missing: %v", err)
+	}
+	var delivery WorkflowWebhookDelivery
+	_ = json.Unmarshal([]byte(raw), &delivery)
+	var payload struct {
+		Version string        `json:"relay_version"`
+		Caller  triggerCaller `json:"relay_trigger_caller"`
+	}
+	_ = json.Unmarshal(delivery.Payload, &payload)
+	if payload.Version != release.Version || payload.Caller.Type != triggerCallerUser || payload.Caller.ID != "reader" {
+		t.Fatalf("wrong delivery provenance: %+v", payload)
+	}
+	// Remove product sharing: neither listing nor another call is available.
+	f.mock.mu.Lock()
+	live.Access.Readers = nil
+	encoded, _ = json.Marshal(live)
+	f.mock.files["Workflow/invoices/workflow.json"] = string(encoded)
+	f.mock.mu.Unlock()
+	if status, _ := call("list"); status != 404 {
+		t.Fatalf("revoked share still lists: %d", status)
+	}
+	if status, _ := call("call"); status != 404 {
+		t.Fatalf("revoked share still calls: %d", status)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for !schedulerstate.IsTerminal(run.State) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		run, _ = store.GetRun(t.Context(), runID)
+	}
+	if !schedulerstate.IsTerminal(run.State) {
+		t.Fatal("fixture executor did not settle")
 	}
 }

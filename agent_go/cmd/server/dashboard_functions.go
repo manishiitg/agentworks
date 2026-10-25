@@ -46,13 +46,47 @@ func (api *StreamingAPI) dashboardFunctionDispatch(w http.ResponseWriter, r *htt
 
 		args["crew_id"] = workspaceExternalID(origin, resolved.Target.ID)
 		api.externalCrewCall(rec, req, crewTool, args)
-	case "workflow":
+	case "workflow", "relay":
 		access, manifest := workflowAccessForWorkspacePath(ctx, claims, resolved.Target.Root)
-		if manifest == nil || manifest.Kind == "relay" || access == WorkflowAccessNone {
+		if manifest == nil || access == WorkflowAccessNone {
 			externalError(w, 404, "not_found", "This dashboard has no functions to call.")
 			return
 		}
+
+		live := manifest
+		if manifest.Kind == "relay" && (workflowTool == "list_workflow_functions" || workflowTool == "call_workflow_function") {
+			// Forms use the active published input contract, never draft edits.
+			// Dispatch still rechecks the live share/function and executes the
+			// existing published-version function path with the actual caller.
+			release, root, err := resolveRelayRelease(ctx, resolved.Target.Root, "")
+			if err != nil {
+				externalError(w, 409, "not_published", "Publish this app before using its functions.")
+				return
+			}
+			manifest, _, err = ReadWorkflowManifest(ctx, root)
+			if err != nil || manifest == nil || manifest.ID != live.ID || verifyRelayRelease(ctx, release, root) != nil {
+				externalError(w, 409, "published_version_unavailable", "The published functions are unavailable. Ask the owner to publish again.")
+				return
+			}
+		}
 		api.externalWorkflowFunctionCall(rec, req, workflowTool, args, DiscoveredWorkflow{WorkspacePath: resolved.Target.Root, Manifest: manifest}, access)
+		if live.Kind == "relay" && workflowTool == "list_workflow_functions" && rec.Code == http.StatusOK {
+			var listed struct {
+				WorkflowID string           `json:"workflow_id"`
+				Functions  []map[string]any `json:"functions"`
+			}
+			if json.Unmarshal(rec.Body.Bytes(), &listed) != nil {
+				externalError(w, 502, "invalid_functions", "Functions could not be read.")
+				return
+			}
+			for _, fn := range listed.Functions {
+				name, _ := fn["name"].(string)
+				schedule, err := findWorkflowFunctionTrigger(live, name)
+				fn["can_call"] = err == nil && relayFunctionCallerAllowed(live, schedule.Function, externalCrewCaller(claims).Stamp)
+			}
+			externalJSON(w, listed)
+			return
+		}
 	default:
 		externalError(w, 404, "not_found", "This dashboard has no functions to call.")
 		return

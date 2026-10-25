@@ -153,7 +153,7 @@ it.each(['crew', 'code', 'workflow'])('renders %s native chat in a designer-sele
   expect(send).not.toHaveBeenCalled()
 })
 
-it.each([['crew', 'owner'], ['code', 'owner'], ['crew', 'question_only'], ['code', 'question_only']])('uses the same native function form and chat menu for a %s-origin Crew in %s mode', async (product, mode) => {
+it.each([['crew', 'owner'], ['code', 'owner'], ['crew', 'question_only'], ['code', 'question_only'], ['relay', 'question_only']])('uses the same native function form and chat menu for a %s-origin Crew in %s mode', async (product, mode) => {
   const functions = [{ name: 'count_items', input_schema: { type: 'object', properties: { count: { type: 'integer' } }, required: ['count'] } }, { name: 'restricted', can_call: false }]
   get.mockImplementation(async (url: string) => ({ data: url.endsWith('/functions') ? { functions } : { ...view, product, capability: { can_view: true, can_ask: true, mode } } }))
   post.mockResolvedValue({ data: { status: 'completed', result: { count: 3 } } })

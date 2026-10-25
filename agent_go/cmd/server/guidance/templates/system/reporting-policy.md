@@ -554,3 +554,8 @@ are the designer's choice. Both Crew project origins and workflow dashboards
 support these buttons. The chat’s `/` menu lists the same published functions.
 Current project access and each function’s allowed people are checked by the
 server when called.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product -->
+
+
+Dashboard `sendChatMessage(message, {requestId})` uses the current person's normal project chat, including standalone links and shared recipients. It does not select a workflow Builder tab by a path. A queued receipt is acceptance, not a finished action: show progress/results from the existing chat, function call or data refresh. Ask widgets and direct message buttons use the same conversation. Keep placement and appearance in the designer's control.
+
+Relay `FunctionButton` uses its active published version and input schema (the object argument is normally named `INPUT`). New draft code or function declarations do not change the shared form until published. Existing sharing and live function checks still decide who can call; a removed share stops access. Use the current function catalog rather than inventing a function or a second Python runner.

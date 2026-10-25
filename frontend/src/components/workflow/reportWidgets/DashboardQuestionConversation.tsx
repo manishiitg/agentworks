@@ -53,7 +53,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const showChatWidgets = canAsk && capability.mode === 'question_only' && !conversationPane
   // Function buttons run the project's published functions as this person; the
   // server resolves the project from the dashboard record, including either Crew origin.
-  const canUseFunctions = Boolean(viewer && capability.can_view && ['crew', 'code', 'workflow'].includes(product))
+  const canUseFunctions = Boolean(viewer && capability.can_view && ['crew', 'code', 'workflow', 'relay'].includes(product))
   // "/" in this chat lists the project's published functions (not the person's own
   // commands); choosing one opens the same form as a function button.
   const [functionList, setFunctionList] = useState<{ name: string; description?: string }[]>([])
