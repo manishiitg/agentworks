@@ -167,7 +167,7 @@ export default function SkillsManagerPanel({
       onToggleSelect={selectable && onToggleSkill ? () => { if (!readOnly && defaults && loadedScope === activeScope.current) onToggleSkill(skill.folder_name) } : undefined}
       onRequestAdd={selectable && onToggleSkill && onAddViaChat ? () => { if (!readOnly && defaults && loadedScope === activeScope.current) onAddViaChat(skill) } : undefined}
       inclusionLabels={(defaultModes.get(skill.folder_name) || []).map(defaultSkillLabel)}
-      platformStatus={skill.builtin ? 'Provided by platform' : skill.file_managed ? 'Platform-managed file' : skill.managed ? 'Managed by platform' : undefined}
+      platformStatus={skill.builtin ? (skill.file_path === 'Platform' ? 'Provided by platform' : 'Platform version runs') : skill.file_managed ? 'Platform-managed file' : skill.managed ? 'Managed by platform' : undefined}
       onOpenFile={onOpenFile && skill.file_path && skill.file_path !== 'Platform' ? () => onOpenFile(skill.file_path) : undefined}
       readable={groupBySource}
       readOnly={readOnly || uninstalling || !defaults} selectionScopeLabel={selectionScopeLabel} />
