@@ -236,8 +236,14 @@ func TestWorkflowBuilderFollowUpKeepsPulseAndLaptopPolicy(t *testing.T) {
 	docs.files["Workflow/test/workflow.json"] = `{"id":"wf_test","access":{"owners":["owner"]},"pulse":{"enabled":true,"autonomy":{"level":3}}}`
 	docs.files["Workflow/test/soul/soul.md"] = "Grow subscribers to 100 by December."
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	req := QueryRequest{SelectedFolder: "Workflow/test", AgentMode: "workflow_phase", PhaseID: "workflow-builder", admittedWorkflowPhase: true}
+	req := QueryRequest{SelectedFolder: "Workflow/test", AgentMode: "workflow_phase", PhaseID: "workflow-builder"}
 	api := &StreamingAPI{lastChatPolicyBySession: map[string]string{}}
+	if _, _, err := api.admitQueryTarget(ctx, &req, "owner", "chat"); err != nil {
+		t.Fatal(err)
+	}
+	if !req.admittedWorkflowPhase {
+		t.Fatal("phase admission was not recorded before the retained gate")
+	}
 	suffix := pulsePolicyKeySuffix("chat", req.PhaseID, req.SelectedFolder)
 	if suffix == "" {
 		t.Fatal("an Autopilot workflow's Builder chat must carry the Autopilot part of the key")

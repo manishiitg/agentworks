@@ -81,7 +81,7 @@ func (api *StreamingAPI) workflowRetainedCompatibility(ctx context.Context, sess
 	var runtime *ChatHistoryAgentRuntime
 	if known {
 		if previous != key {
-			logfWithContext(ctx, "[RETAINED_POLICY] session=%s decision=refresh reason=policy_key_changed previous=%s current=%s", session, previous, key)
+			logfWithContext(requestLogContext(ctx, req, session), "[RETAINED_POLICY] session=%s decision=refresh reason=policy_key_changed previous=%s current=%s", session, previous, key)
 			return false, false, nil
 		}
 	} else {

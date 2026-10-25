@@ -4673,7 +4673,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// on main (only on the separate, unmerged feature/chief-of-staff-product
 	// branch) — see frontend/src/utils/agentModeDescriptions.ts.
 	isWorkflowPhase := req.AgentMode == "workflow_phase"
-	req.admittedWorkflowPhase = isWorkflowPhase
 	relayRunChat := false // a non-owner's chat on a Flow (856-78)
 	workflowPhaseID := req.PhaseID
 	workflowPhaseFolder := "" // The preset's SelectedFolder — used to auto-grant write access in FolderGuard
@@ -14117,6 +14116,9 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	if err := applyCrewChatMode(resolvedProfile, req, crewReadOnly); err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
 	}
+	// Retained delivery runs before phase setup rewrites AgentMode. Preserve
+	// the admitted phase here so launch and follow-ups use the same policy.
+	req.admittedWorkflowPhase = req.admittedWorkflowPhase || req.AgentMode == "workflow_phase"
 	return resolvedProfile, access, nil
 }
 
