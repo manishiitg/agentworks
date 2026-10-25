@@ -336,11 +336,14 @@ def main() -> int:
     parser.add_argument("--skills-root", type=Path, default=ROOT.parent / "agent_go/internal/workproduct/skills", help="Source of the built-in skill procedures when validating a copied playbook package")
     args = parser.parse_args()
     errors: list[str] = []
-    packages = sorted(
+    # Either entry identifies a package, so a missing manifest cannot silently
+    # remove a skill from whole-library validation.
+    packages = sorted({
         path.parent
-        for path in ROOT.rglob("playbook.json")
+        for entry in ("playbook.json", "SKILL.md")
+        for path in ROOT.rglob(entry)
         if "templates" not in path.parts
-    )
+    })
     if not packages:
         print("No playbook packages found", file=sys.stderr)
         return 1
