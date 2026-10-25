@@ -309,6 +309,7 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 	ctx := context.WithValue(r.Context(), common.ChatSessionIDKey, session)
 	ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, session)
 	ctx = context.WithValue(ctx, common.UserIDKey, claims.UserID)
+	ctx = workspace.WithDatabaseCaller(ctx, claims.UserID)
 	ctx = context.WithValue(ctx, externalCrewMCPPlaceKey{}, root)
 	ctx = context.WithValue(ctx, externalCrewDirectAuthorityKey{}, externalCrewDirectAuthority{crewID: id, root: root, user: claims.UserID})
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(claims.UserID), workspace.WithDefaultWorkingDir(root))

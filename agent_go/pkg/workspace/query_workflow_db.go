@@ -62,7 +62,11 @@ func (c *Client) QueryAuthorizedWorkflowDB(ctx context.Context, params QueryWork
 }
 
 func (c *Client) queryWorkflowDB(ctx context.Context, params QueryWorkflowDBParams) (QueryWorkflowDBResult, error) {
-
+	bound, err := c.bindDatabaseParams(ctx, params.Params)
+	if err != nil {
+		return QueryWorkflowDBResult{}, err
+	}
+	params.Params = bound
 	respBody, err := c.request(ctx, "POST", "/api/query", params)
 	if err != nil {
 		return QueryWorkflowDBResult{}, err
@@ -114,6 +118,22 @@ type mutationAPIResponse struct {
 // mutation tool. The trusted registration is the capability check; the
 // workspace service independently requires its internal API token.
 func (c *Client) MutateAuthorizedWorkflowDB(ctx context.Context, params MutateWorkflowDBParams) (MutateWorkflowDBResult, error) {
+	params.Statements = append([]WorkflowDBMutationStatement(nil), params.Statements...)
+	for i := range params.Statements {
+		statement := &params.Statements[i]
+		var err error
+		statement.Params, err = c.bindDatabaseParams(ctx, statement.Params)
+		if err != nil {
+			return MutateWorkflowDBResult{}, err
+		}
+		statement.ParamSets = append([][]interface{}(nil), statement.ParamSets...)
+		for j := range statement.ParamSets {
+			statement.ParamSets[j], err = c.bindDatabaseParams(ctx, statement.ParamSets[j])
+			if err != nil {
+				return MutateWorkflowDBResult{}, err
+			}
+		}
+	}
 	respBody, err := c.request(ctx, "POST", "/api/mutate", params)
 	if err != nil {
 		return MutateWorkflowDBResult{}, err

@@ -52,3 +52,5 @@ Dashboard work stays in the project's dashboard list. “Move this dashboard to 
 Before authoring a dashboard, Read [the detailed procedure](references/authoring.md).
 
 When playback, a motion dashboard or a video export is requested, Read [the detailed procedure](references/motion-guide.md). Set motion=true through create/update for interactive playback pages and publish to list them under Motion dashboards. The label alone does not animate a page. Use the shared MotionControls toolbar by default, floating within the authored playback area; its placement, appearance and controls stay customizable. MP4 export is optional.
+
+For a list of the current person’s projects, read the “Projects created by the current person” section in references/authoring.md. Use the server-bound `{"$current_user_id":true}` SQL parameter on `created_by_user_id`, across dashboard, chat and MCP; keep existing shared access.

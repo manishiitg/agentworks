@@ -58,6 +58,7 @@ type Client struct {
 	HTTPClient        *http.Client
 	FolderGuard       *FolderGuardConfig
 	UserID            string            // User ID for auth/database scoping
+	DatabaseCallerID  string            // Requesting person for data parameters; does not change workspace authority
 	ExtraEnv          map[string]string // Extra env vars to inject into shell commands (e.g., MCP_API_URL, MCP_API_TOKEN). Guarded by extraEnvMu; read via extraEnvSnapshot.
 	extraEnvMu        sync.RWMutex
 	DefaultWorkingDir string // Default working directory for shell commands (relative to docs-dir)
@@ -130,6 +131,12 @@ func WithUserID(userID string) ClientOption {
 	return func(c *Client) {
 		c.UserID = userID
 	}
+}
+
+// WithDatabaseCallerID keeps the signed-in person when workspace resolution
+// uses a Crew owner's account (for example a co-owner opening a dashboard).
+func WithDatabaseCallerID(userID string) ClientOption {
+	return func(c *Client) { c.DatabaseCallerID = strings.TrimSpace(userID) }
 }
 
 // WithExtraEnv sets extra environment variables to inject into shell commands.

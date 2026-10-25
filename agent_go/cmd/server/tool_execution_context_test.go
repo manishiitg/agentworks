@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,6 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -400,5 +403,43 @@ func TestKnowledgebaseToolExecutionRejectsForeignIdentity(t *testing.T) {
 	}
 	if _, err := bound(executor.WithSessionID(t.Context(), "foreign-chat"), "brain_read"); err == nil {
 		t.Fatal("foreign session admitted")
+	}
+}
+
+// The dashboard owner testing as a user remains that owner; an owner-lent
+// published function records the original caller, without changing authority.
+func TestToolExecutionContextBindsDatabaseCallerAcrossTransports(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "false")
+	api := &StreamingAPI{eventStore: events.NewEventStore(10)}
+	api.eventStore.SetSessionOwner("data-builder", "owner")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body workspace.QueryWorkflowDBParams
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		if r.Header.Get("X-User-ID") != "owner" {
+			t.Error("changed runtime authority")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": workspace.QueryWorkflowDBResult{Rows: []map[string]interface{}{{"creator": body.Params[0]}}}})
+	}))
+	defer upstream.Close()
+	client := workspace.NewClient(upstream.URL, workspace.WithUserID("owner"))
+	for _, actor := range []string{"owner", "caller"} {
+		request := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Provider: "local"})
+		if actor != "owner" {
+			request = costActivityContext(request, actor, "function_call", "fn-example")
+		}
+		resolve := api.bindToolExecutionContext(request, "data-builder", QueryRequest{}, false)
+		for _, incoming := range []context.Context{context.Background(), executor.WithSessionID(context.Background(), "data-builder")} {
+			ctx, err := resolve(incoming, "query_workflow_db")
+			if err != nil {
+				t.Fatal(err)
+			}
+			rows, err := client.QueryAuthorizedWorkflowDB(ctx, workspace.QueryWorkflowDBParams{Params: []interface{}{map[string]interface{}{"$current_user_id": true}}})
+			if err != nil || len(rows.Rows) != 1 || rows.Rows[0]["creator"] != actor {
+				t.Fatalf("actor=%s rows=%+v err=%v", actor, rows, err)
+			}
+		}
 	}
 }

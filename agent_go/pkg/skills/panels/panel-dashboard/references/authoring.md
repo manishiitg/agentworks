@@ -384,3 +384,28 @@ and whether to include motion or export controls belong to the user.
 ## External static publishing
 
 Use export_dashboard_static for Surge, Vercel, Netlify, Cloudflare Pages, GitHub Pages or any static host. It exports the same saved dashboard, shared platform runtimes and real authorized data calls. Deploy every returned file; do not copy managed index.html alone or reverse-engineer SQL from TSX/minified JavaScript. Put data needed by all views, images and files in loadData. Local interactions use the frozen results; new backend reads require the signed-in live dashboard. The export includes an Updated-at notice and live link; native Ask/function/write authority remains in AgentWorks. Each existing Publish automation pass exports afresh and applies the saved provider/visibility/encryption policy. No extra npm app, service, raw DB, preview token or private chat is published.
+
+
+### Projects created by the current person
+
+For a Crew dashboard's personal project list, use a normal `created_by_user_id`
+column and the shared database parameter `{"$current_user_id":true}`. The backend
+resolves it from the signed-in website/MCP caller or the person whose function
+is executing, even when the Crew owner's account supplies execution resources.
+Do not ask a person for their internal ID or save the Crew owner as every creator.
+
+```tsx
+export async function loadData(report) {
+  return report.query(
+    'SELECT * FROM projects WHERE created_by_user_id = ? ORDER BY updated_at DESC',
+    [{"$current_user_id": true}],
+  );
+}
+```
+
+Use the same parameter in `query_workflow_db`, `mutate_workflow_db` (including
+batch/param_sets), the external MCP `query_database` and `agentworks_db` scripts.
+For creation, bind it into `created_by_user_id`; preserve that field on updates.
+Shared tables, files, skills, functions and chats keep their existing access.
+This is a default list filter, not a private workspace or row-level permission.
+Explicit queries without the filter still use the existing shared access rules.

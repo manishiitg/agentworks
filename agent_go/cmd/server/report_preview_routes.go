@@ -211,13 +211,15 @@ func reportPreviewWorkspaceErrorStatus(err error) int {
 // and their Vault/MCP calls retain the viewer's execution authority.
 func (api *StreamingAPI) reportPreviewWorkspaceClient(ctx context.Context, claims *UserClaims, workspacePath string) *workspace.Client {
 	userID := GetDefaultUserID()
+	callerID := ""
 	if claims != nil && claims.UserID != "" {
 		userID = claims.UserID
+		callerID = claims.UserID
 	}
 	if crew, ok := resolveCrewPath(ctx, userID, workspacePath); ok && crew.Rest == "" && !crew.Shared && crew.OwnerID != "" {
 		userID = crew.OwnerID
 	}
-	return workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
+	return workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID), workspace.WithDatabaseCallerID(callerID))
 }
 
 // GET /api/workflow/report-preview/file?workspace=Workflow/x&path=db/reports/index.html

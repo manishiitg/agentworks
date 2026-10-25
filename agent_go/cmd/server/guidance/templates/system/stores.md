@@ -154,3 +154,5 @@ a second result store just for reporting. Domain observations belong in
 workflow-local skill index. Use the existing store rules above instead of
 adding a separate step automatically for each store.
 <!-- /product -->
+
+For caller-specific Crew project lists, store `created_by_user_id`. In managed query/mutation `params` (also report.query and agentworks_db), `{"$current_user_id":true}` binds the requesting person automatically. Use it for creation and default lists, preserving the creator on updates. It does not restrict shared access or change file/chat storage. See panel-dashboard/references/authoring.md.

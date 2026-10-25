@@ -6,6 +6,7 @@ import type { ReportDataApi } from './reportEmbedContext'
 
 it('keeps bindings through the authored HTML bootstrap, host and shared query transport', async () => {
   const value = "a' OR 1=1 --"
+  const caller = { $current_user_id: true }
   const post = vi.fn(async () => ({ success: true, data: { rows: [{ name: value }] } }))
   const frame = document.createElement('iframe')
   document.body.replaceChildren(frame)
@@ -13,11 +14,11 @@ it('keeps bindings through the authored HTML bootstrap, host and shared query tr
   const stub = withReportBootstrap('<div></div>').match(/<script>([\s\S]*?)<\/script>/)![1]
   new Function('window', 'document', stub)(win, doc)
   const reportWindow = win as unknown as { report: { query: ReportDataApi['query'] } }
-  const pending = reportWindow.report.query('SELECT name FROM items WHERE name = ?', [value])
+  const pending = reportWindow.report.query('SELECT name FROM items WHERE name = ? AND created_by_user_id = ?', [value, caller])
   const data = { workspacePath: 'Workflow/relay', query: createReportQuery('Workflow/relay', post) } as ReportDataApi
   installReportHost(frame, { title: 'Bindings', dataApi: data, theme: 'light', tokenSource: null, dispatchData: true })
   await expect(pending).resolves.toEqual([{ name: value }])
-  expect(post).toHaveBeenCalledWith({ workspace: 'Workflow/relay', sql: 'SELECT name FROM items WHERE name = ?', params: [value] })
+  expect(post).toHaveBeenCalledWith({ workspace: 'Workflow/relay', sql: 'SELECT name FROM items WHERE name = ? AND created_by_user_id = ?', params: [value, caller] })
   frame.remove()
 })
 

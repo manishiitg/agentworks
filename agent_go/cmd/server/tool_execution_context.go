@@ -9,7 +9,9 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	stepbased "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -35,6 +37,13 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			copy.ExecutionPrincipal = &principal
 		}
 		bound = &copy
+	}
+	// Typed functions may execute with the Crew owner's authority while their
+	// records belong to the original caller. This trusted attribution already
+	// survives queued turns; never accept a user ID from function arguments.
+	dataCaller := costobserver.AttributionFromContext(requestCtx).ActorID
+	if dataCaller == "" && bound != nil {
+		dataCaller = firstNonEmptyTrimmed(crewGuestCallerForTurn(req, bound.UserID), bound.UserID)
 	}
 	return func(ctx context.Context, tool string) (context.Context, error) {
 		if bound == nil || strings.TrimSpace(bound.UserID) == "" || strings.TrimSpace(authoritySession) == "" || strings.TrimSpace(toolSession) == "" {
@@ -138,6 +147,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		}
 		ctx = context.WithValue(ctx, UserContextKey, &copy)
 		ctx = context.WithValue(ctx, common.UserIDKey, copy.UserID)
+		ctx = workspace.WithDatabaseCaller(ctx, dataCaller)
 		// All registered step/delegated tool sessions retain the authenticated
 		// root controller. A child may not invent a different browser owner.
 		ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, authoritySession)

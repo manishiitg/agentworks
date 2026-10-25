@@ -19,7 +19,7 @@ func externalDatabaseDefinitions(add func(string, string, bool, bool, map[string
 		"workflow_id": externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
 		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
 		"sql":         map[string]any{"type": "string", "minLength": 1, "maxLength": 20000},
-		"params":      map[string]any{"type": "array", "maxItems": 100},
+		"params":      map[string]any{"type": "array", "maxItems": 100, "description": `For the signed-in caller, pass {"$current_user_id":true} as a params value; the server binds the person ID, including when a function runs with its Crew owner's authority. This filters data without changing shared access.`},
 		"action":      map[string]any{"type": "string", "enum": []any{"query", "describe", "integrity_check"}},
 		"table":       externalString("For describe: one table."),
 		"max_rows":    externalInteger(1, 500),
