@@ -1,49 +1,44 @@
-import { agentApi } from '../services/api'
+import api from '../services/api'
 import { useChatStore, waitForChatStoreHydration } from '../stores/useChatStore'
-import { useModeStore } from '../stores/useModeStore'
-import { useAppStore } from '../stores/useAppStore'
+import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { assertChatIdentityCurrent, captureChatIdentity } from './chatIdentity'
 import { hydrateTabEvents } from './sessionRestore'
-import { resolveWorkspacePaneChatTab } from './workspacePaneChat'
-import { workUserViewChatKey } from '../products/work/workTabs'
 
-/** Open the ordinary project conversation, including its existing history.
- * A dashboard is another view of this chat, never a new session or tool mode. */
-export async function openProjectAskConversation(project: { product: string; projectId: string; workspacePath: string }, options?: { activate?: boolean; userView?: boolean }): Promise<string> {
+type ProjectChat = {
+  product: string; project_id: string; workspace: string; mode: 'run' | 'builder'; profile_id: string
+  conversation: { session_id: string; conversation_key: string; conversation_id?: string; provider?: string; connection_id?: string }
+}
+
+/** The backend resolves project, caller, role and durable conversation. The
+ * browser presents that conversation and sends through the normal chat queue. */
+export async function openProjectAskConversation(project: { product?: string; projectId?: string; workspacePath: string }, options?: { activate?: boolean; userView?: boolean }): Promise<string> {
   const identity = captureChatIdentity()
   await waitForChatStoreHydration()
   assertChatIdentityCurrent(identity)
-  if (project.product === 'crew' || project.product === 'code') {
-    const profileId = project.product === 'code' ? 'code' : 'work'
-    // Explicitly omit the unrelated active tab's session. The standard profile
-    // endpoint resolves this caller's canonical project conversation.
-    // An owner on a dashboard link gets the chat a shared person would have: the server runs this key in Run mode.
-    const conversation = options?.userView && profileId === 'work'
-      ? await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: workUserViewChatKey(project.projectId, 'main'), name: 'As a user' }, null)
-      : await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: project.projectId }, null)
-    assertChatIdentityCurrent(identity)
-    const store = useChatStore.getState()
-    const tabId = await store.createChatTab('Chat', {
-      mode: 'multi-agent', agentProfileId: profileId, agentProfileBuilder: false,
-      agentProfileWorkspace: project.workspacePath, agentProfileProjectId: project.projectId,
-      agentProfileConversationKey: conversation.conversation_key,
-      agentProfileConversationId: conversation.conversation_id, agentProfileChatContract: 'profile-v1',
-      agentProfileChatProvider: conversation.provider, agentProfileChatConnectionID: conversation.connection_id,
-    }, conversation.session_id, { activate: options?.activate !== false })
-    assertChatIdentityCurrent(identity)
-    if (options?.activate !== false) {
-      useModeStore.getState().setModeCategory('multi-agent')
-      useAppStore.getState().setAgentMode('multi-agent')
-    }
-    if ((useChatStore.getState().tabEvents[conversation.session_id]?.length ?? 0) === 0) {
-      await hydrateTabEvents(conversation.session_id, { workspacePath: project.workspacePath, fallbackToChatHistory: true, preferChatHistory: true })
-      assertChatIdentityCurrent(identity)
-    }
-    return tabId
-  }
-  if (project.product !== 'workflow' && project.product !== 'relay') throw new Error('Ask is unavailable for this project.')
-  const target = await resolveWorkspacePaneChatTab({ workspacePath: project.workspacePath, message: '' }, options)
+  const { data: target } = await api.post<ProjectChat>('/api/project-ask/conversation', { workspace: project.workspacePath, ...(options?.userView ? { as_user: true } : {}) })
   assertChatIdentityCurrent(identity)
-  if (target.targetTab.metadata?.presetQueryId !== project.projectId) throw new Error('The project conversation changed. Reopen the dashboard.')
-  return target.tabId
+  if (project.projectId && target.project_id !== project.projectId) throw new Error('The project conversation changed. Reopen the dashboard.')
+  const conversation = target.conversation
+  const store = useChatStore.getState()
+  if (!target.profile_id && !useGlobalPresetStore.getState().workflowPresets.some(preset => preset.id === target.project_id)) {
+    await useGlobalPresetStore.getState().refreshPresets()
+    assertChatIdentityCurrent(identity)
+  }
+  const metadata = target.profile_id ? {
+    mode: 'multi-agent' as const, agentProfileId: target.profile_id, agentProfileBuilder: false,
+    agentProfileWorkspace: target.workspace, agentProfileProjectId: target.project_id,
+    agentProfileConversationKey: conversation.conversation_key, agentProfileConversationId: conversation.conversation_id,
+    agentProfileChatContract: 'profile-v1' as const, agentProfileChatProvider: conversation.provider,
+    agentProfileChatConnectionID: conversation.connection_id,
+  } : {
+    mode: 'workflow' as const, presetQueryId: target.project_id, phaseId: 'workflow-builder', phaseName: 'Chat',
+    workshopMode: target.mode === 'run' ? 'run' as const : 'workshop' as const,
+  }
+  const tabId = await store.createChatTab('Chat', metadata, conversation.session_id, { activate: options?.activate !== false })
+  assertChatIdentityCurrent(identity)
+  if ((useChatStore.getState().tabEvents[conversation.session_id]?.length ?? 0) === 0) {
+    await hydrateTabEvents(conversation.session_id, { workspacePath: target.workspace, fallbackToChatHistory: true, preferChatHistory: true })
+    assertChatIdentityCurrent(identity)
+  }
+  return tabId
 }

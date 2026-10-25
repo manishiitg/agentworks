@@ -5,14 +5,14 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { DashboardQuestionConversation } from './DashboardQuestionConversation'
 import { ReportEmbedProvider, type ReportDataApi } from './reportEmbedContext'
 
-const { get, post, openAsk, send, auth } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), openAsk: vi.fn(), send: vi.fn(), auth: { id: 'reader' } }))
+const { get, post, openAsk, send, install, auth } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), openAsk: vi.fn(), send: vi.fn(), install: vi.fn(), auth: { id: 'reader' } }))
 vi.mock('../../../services/api', () => ({ default: { get, post } }))
 vi.mock('../../../utils/projectAskConversation', () => ({ openProjectAskConversation: openAsk }))
 vi.mock('../../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: send }))
 vi.mock('../../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: auth.id } }) }))
 vi.mock('../../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
 vi.mock('../../ChatArea', () => ({ default: ({ tabId, slashCommands = [] }: { tabId: string; slashCommands?: { command: string; execute: () => void }[] }) => <div data-native-tab={tabId}>Existing project history and replies{slashCommands.map(command => <button key={command.command} onClick={command.execute}>/{command.command}</button>)}</div> }))
-vi.mock('./reportHostRuntime', () => ({ withReportBootstrap: (html: string) => html, applyReportTheme: vi.fn(), installReportHost: vi.fn() }))
+vi.mock('./reportHostRuntime', () => ({ withReportBootstrap: (html: string) => html, applyReportTheme: vi.fn(), installReportHost: install }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); vi.resetAllMocks(); auth.id = 'reader' })
@@ -195,4 +195,19 @@ it.each(['crew', 'code', 'workflow', 'relay'])('withholds authored %s Ask widget
   expect(current.frame.contentDocument!.head.textContent).toContain('display: none !important')
   expect(openAsk).not.toHaveBeenCalled()
   expect(send).not.toHaveBeenCalled()
+})
+
+
+it.each(['owner', 'question_only'])('routes a %s standalone UI send through the same native chat as Ask, preserving the user view', async mode => {
+ get.mockResolvedValue({ data: { ...view, product: 'crew', capability: { can_view: true, can_ask: true, mode } } })
+ openAsk.mockResolvedValue('recipient-chat'); send.mockResolvedValue({ tabId: 'recipient-chat', reused: true, queuedBehindRunningTurn: false })
+ await mount('crew', mode, true, '<p id="total">42</p>', true)
+ const options = install.mock.calls.at(-1)![1]
+ await act(async () => {
+  const receipt = await options.dataApi.sendChatMessage('Explain this result', { requestId: 'row-42' })
+  expect(receipt.status).toBe('queued')
+ })
+ expect(send).toHaveBeenCalledWith(expect.objectContaining({ tabId: 'recipient-chat', message: expect.stringContaining('Explain this result') }))
+ expect(send.mock.calls[0][0]).not.toHaveProperty('workspacePath')
+ expect(openAsk).toHaveBeenLastCalledWith(expect.objectContaining({ product: 'crew' }), mode === 'owner' ? { activate: false, userView: true } : { activate: false })
 })

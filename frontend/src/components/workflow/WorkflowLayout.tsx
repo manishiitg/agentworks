@@ -2304,7 +2304,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   // retained a Builder pane. The common Flow Run chat policy is still pending;
   // neither legacy HTML actions nor selection may open its Builder conversation.
   if (relayMode && workspacePath && activeWorkflowAccess !== 'owner' && activeWorkflowAccess !== 'write') {
-    return <ReportView workspacePath={workspacePath} defaultRelayDashboard dashboardConversation allowContentQuestions={false} sendChatMessage={async () => { throw new Error('Ask is unavailable for this Flow.') }} />
+    return <ReportView workspacePath={workspacePath} defaultRelayDashboard dashboardConversation allowContentQuestions={false} />
   }
 
   return (

@@ -59,6 +59,7 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 		routes := router.PathPrefix("/api").Subrouter()
 		routes.HandleFunc("/dashboards", api.handleDashboards).Methods(http.MethodPost)
 		api.registerDashboardQuestionRoutes(routes)
+		routes.HandleFunc("/project-ask/conversation", api.handleProjectAskConversation).Methods(http.MethodPost)
 		server := httptest.NewServer(AuthMiddleware(router))
 		t.Cleanup(server.Close)
 		return server
@@ -136,6 +137,28 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 	if readonlyView["capability"].(map[string]any)["mode"] != "question_only" {
 		t.Fatal("read-only account gained full owner mode")
 	}
+
+	// Standalone sends resolve the current person's own conversation, never a
+	// cached workflow Builder tab. Every later query still uses normal admission.
+	ownerChat := call("owner", http.MethodPost, "/api/project-ask/conversation", map[string]any{"workspace": root}, 200)
+	readerChat := call("reader", http.MethodPost, "/api/project-ask/conversation", map[string]any{"workspace": root}, 200)
+	ownerSession := ownerChat["conversation"].(map[string]any)["session_id"]
+	readerSession := readerChat["conversation"].(map[string]any)["session_id"]
+	if readerChat["mode"] != "run" || ownerChat["mode"] != "builder" || readerSession == ownerSession {
+		t.Fatalf("caller role/session mismatch: %v %v", ownerChat, readerChat)
+	}
+	repeated := call("reader", http.MethodPost, "/api/project-ask/conversation", map[string]any{"workspace": root}, 200)
+	if repeated["conversation"].(map[string]any)["session_id"] != readerSession {
+		t.Fatal("reopened dashboard created a different personal conversation")
+	}
+	call("outsider", http.MethodPost, "/api/project-ask/conversation", map[string]any{"workspace": root}, 404)
+	call("reader", http.MethodPost, "/api/project-ask/conversation", map[string]any{"workspace": root, "session_id": ownerSession, "user_id": "owner"}, 400)
+	readerRequest := QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder", PresetQueryID: "invoices", SelectedFolder: root}
+	readerCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "reader", Username: "reader"})
+	_, access, admitErr := api.admitQueryTarget(readerCtx, &readerRequest, "reader", readerSession.(string))
+	if admitErr != nil || !readOnlyForRequest(access, readerRequest) {
+		t.Fatalf("shared send acquired authoring: access=%s err=%v", access, admitErr)
+	}
 	call("", http.MethodGet, base, nil, 401)
 	call("outsider", http.MethodGet, base, nil, 404)
 	second := op("create", root, "summary", "", "Second dashboard")
@@ -159,6 +182,7 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 	call("reader", http.MethodGet, base, nil, 200)
 	// Removing sharing rechecks access even for a previously discovered resource.
 	f.write(t, root+"/workflow.json", `{"id":"invoices","created_by":"owner","access":{"owners":["owner"]}}`)
+	call("reader", http.MethodPost, "/api/project-ask/conversation", map[string]any{"workspace": root}, 404)
 	call("reader", http.MethodGet, base, nil, 404)
 	// The unused question execution routes are gone. Native Ask is the one path.
 	for _, path := range []string{base + "/questions", base + "/questions/old", base + "/questions/old/cancel", base + "/conversations/old"} {

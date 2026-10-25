@@ -7,6 +7,7 @@ import { sendWorkspacePaneMessageToChat } from '../../../utils/workspacePaneChat
 import ModalPortal from '../../ui/ModalPortal'
 import { WorkingTipsContext } from '../../chat/workingTipsContext'
 import type { CommandDefinition } from '../../../commands'
+import { ReportChatRequestController } from './reportChatRequest'
 import { ReportEmbedProvider, useReportDataApi } from './reportEmbedContext'
 import { installDashboardChatWidgets, type ChatWidgetSlot, type ReportTheme } from './dashboardChatWidgets'
 import { installDashboardActionButtons, type ActionRequest } from './reportActionButtons'
@@ -129,7 +130,12 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
     revealWidgets.current = binding.reveal
     return { api: binding.api, dispose: () => { binding.dispose(); buttons.dispose(); if (widgetApi.current === binding.api) { widgetApi.current = null; revealWidgets.current = null } } }
   }, [showChatWidgets, canUseFunctions, viewer, resourceId])
-  const runtime = useMemo(() => data ? { data, chatWidgets } : null, [data, chatWidgets])
+  const messageController = useMemo(() => new ReportChatRequestController(workspacePath, async ({ message }) => {
+    const tabId = await opener.current()
+    return sendWorkspacePaneMessageToChat({ tabId, message })
+  }), [workspacePath, resourceId, viewer])
+  useEffect(() => { messageController.activate(); return messageController.dispose }, [messageController])
+  const runtime = useMemo(() => data ? { data: { ...data, sendChatMessage: messageController.request }, chatWidgets } : null, [data, chatWidgets, messageController])
   useEffect(() => { if (popup) dialog.current?.showModal() }, [popup])
 
   const submitQuestion = async (question: string, context: ReportContentContext, submissionId: string) => {
