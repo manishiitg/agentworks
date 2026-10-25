@@ -48,6 +48,11 @@ func (api *StreamingAPI) registerWorkGlobalSecretSelectionTool(registrar definit
 			return "", fmt.Errorf("read Crew global secret selection: %w", readErr)
 		}
 		if action == "select" && canonical == "" {
+			for _, name := range globalSecretNamesWithoutValue(ctx, userID) {
+				if strings.EqualFold(name, requested) {
+					return "", fmt.Errorf("%s exists in Vault but has no value yet, so it cannot be switched on. Ask the person to add its value in the Vault panel (they paste it once), then select it again", name)
+				}
+			}
 			return "", fmt.Errorf("global secret %q is not available; call list_secrets and use an exact name from global.names", requested)
 		}
 		if action == "deselect" && canonical == "" {

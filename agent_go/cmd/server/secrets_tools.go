@@ -89,6 +89,9 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 					"read_only": true,
 					"source":    "server environment and encrypted managed globals",
 					"names":     globalNames,
+					// Names that exist in Vault for this person but have no stored value yet. They cannot be selected until a
+					// value is added in the Vault panel.
+					"needs_value": globalSecretNamesWithoutValue(ctx, userID),
 				},
 				"workflow": map[string]interface{}{
 					"read_only":     false,
@@ -96,7 +99,7 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 					"workflow_path": sourcePath,
 					"names":         workflowNames,
 				},
-				"note": "Secret VALUES are never returned by any tool. In a workflow builder, attach an existing name with update_workflow_config(add_secrets=[...]). In an active Crew project, select an existing global with update_project_global_secret_selection(action=\"select\", name=\"...\").",
+				"note": "Secret VALUES are never returned by any tool. A name in global.needs_value exists in Vault for this person but has no stored value yet: it cannot be selected until they add its value in the Vault panel, so tell them that. In a workflow builder, attach an existing name with update_workflow_config(add_secrets=[...]). In an active Crew project, select an existing global with update_project_global_secret_selection(action=\"select\", name=\"...\").",
 			}, "", "  ")
 			return string(out), nil
 		},

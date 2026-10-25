@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -124,6 +125,21 @@ func permittedGlobalSecrets(ctx context.Context, userID string) ([]globalSecretE
 	if !vaultConfigured() {
 		return all, nil
 	}
+	allowed, err := vaultPermittedSecretNames(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	rows := []globalSecretEntry{}
+	for _, s := range all {
+		if allowed[s.Name] {
+			rows = append(rows, s)
+		}
+	}
+	return rows, nil
+}
+
+// vaultPermittedSecretNames are the secret names Vault lets this person use, whether or not a value is stored yet.
+func vaultPermittedSecretNames(ctx context.Context, userID string) (map[string]bool, error) {
 	data, err := vaultRuntimeRequest(ctx, userID, "/api/admin/runtime/secrets")
 	if err != nil {
 		return nil, err
@@ -140,14 +156,40 @@ func permittedGlobalSecrets(ctx context.Context, userID string) ([]globalSecretE
 	for _, s := range out.Secrets {
 		allowed[s.Name] = true
 	}
-	rows := []globalSecretEntry{}
-	for _, s := range all {
-		if allowed[s.Name] {
-			rows = append(rows, s)
+	return allowed, nil
+}
+
+// secretNamesWithoutValue are the permitted names that have no stored value, sorted. Such a name exists in Vault but
+// is not loaded, so a Builder's secret list would otherwise never show it and could not say why it cannot be selected.
+func secretNamesWithoutValue(allowed map[string]bool, loaded []globalSecretEntry) []string {
+	have := map[string]bool{}
+	for _, entry := range loaded {
+		if strings.TrimSpace(entry.Value) != "" {
+			have[entry.Name] = true
 		}
 	}
-	return rows, nil
+	out := []string{}
+	for name := range allowed {
+		if !have[name] {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
+
+// globalSecretNamesWithoutValue is that list for this person; empty when Vault is not in use or cannot be asked.
+func globalSecretNamesWithoutValue(ctx context.Context, userID string) []string {
+	if !productEnabled("mcp-gateway") || !vaultConfigured() {
+		return []string{}
+	}
+	allowed, err := vaultPermittedSecretNames(ctx, userID)
+	if err != nil {
+		return []string{}
+	}
+	return secretNamesWithoutValue(allowed, getGlobalSecrets())
+}
+
 func visibleGlobalSecrets(ctx context.Context, userID string) []globalSecretEntry {
 	rows, _ := permittedGlobalSecrets(ctx, userID)
 	return rows
