@@ -58,6 +58,15 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 			accounts = append(accounts, personalGoogleAccountRow{personalConnectionPermissions: permissions, ID: c.ID, Owner: c.OwnerID, Label: conn.Email, Selected: selected, Connected: conn.Auth.Authenticated, Mine: c.OwnerID == actor, Google: conn})
 		}
 		result := map[string]any{"accounts": accounts, "can_connect": personalAccountManagementScope(r, workspace, true) == nil, "notice": googleAccountSharingNotice, "inbox_available": !IsLocalMode()}
+		// Which Google account this item actually uses for its Google apps, so the screen can say so
+		// even when the answer is the company default and no personal account is attached here.
+		if workspace != "" {
+			if effective, scopeErr := svc.ConnectionForScope("", scope); scopeErr == nil {
+				if conn := projectGmailConnection(r, svc, effective, svc.GetConfig().DefaultConnectionID); conn.Auth.Authenticated {
+					result["in_use"] = map[string]any{"id": effective.ID, "email": conn.Email, "company_default": !effective.IsPrivate()}
+				}
+			}
+		}
 
 		return result, nil
 	case "attach", "detach":

@@ -15,7 +15,7 @@ interface Account {
   problem?: string
   google?: GmailConnection
 }
-interface Accounts { accounts: Account[]; can_connect: boolean; notice: string; sign_in_ready?: boolean; inbox_available?: boolean }
+interface Accounts { accounts: Account[]; can_connect: boolean; notice: string; sign_in_ready?: boolean; inbox_available?: boolean; in_use?: { id: string; email: string; company_default: boolean } }
 const errorText = (cause: unknown) => {
   const data = (cause as { response?: { data?: { error?: string } | string } })?.response?.data
   return typeof data === 'string' ? data : data?.error || 'Could not update your accounts. Please try again.'
@@ -75,6 +75,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
     {error && <div role="alert" className="text-xs text-destructive">{error} <Button variant="ghost" size="xs" onClick={() => void refresh()}>Retry</Button></div>}
     {message && <p role="status" className="text-xs">{message}</p>}
     {!data && !error && <p role="status" className="text-xs text-muted-foreground">Loading accounts…</p>}
+    {!central && provider === 'google' && data?.in_use && <p role="status" className="text-xs">This project uses the Google account <strong>{data.in_use.email}</strong>{data.in_use.company_default ? ' (the company default account)' : ''} for its Google apps.</p>}
     {data?.accounts.length === 0 && <p className="text-xs text-muted-foreground">{central ? `No ${label} account saved yet.` : `No saved ${label} account available. Use Connect or manage accounts below.`}</p>}
     {data?.accounts.map(account => <div key={`${account.owner}:${account.id}`} className="rounded-md border border-border p-3">
       <div className="flex flex-wrap items-center gap-2">
