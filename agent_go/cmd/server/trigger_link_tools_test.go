@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	linkAlphaPath = "_users/owner/Chats/Work/projects/alpha"
-	linkBetaPath  = "_users/owner/Chats/Work/projects/beta"
-	linkGammaPath = "_users/other/Chats/Work/projects/gamma"
+	linkAlphaPath = "Crew/alpha"
+	linkBetaPath  = "Crew/beta"
+	linkGammaPath = "Crew/gamma"
 )
 
 type triggerLinkEnv struct {
@@ -27,7 +27,11 @@ type triggerLinkEnv struct {
 func newTriggerLinkEnv(t *testing.T) triggerLinkEnv {
 	t.Helper()
 	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true}]}`)
+	registerTestCrew(t, "alpha", "owner", true)
+	registerTestCrew(t, "beta", "owner", true)
+	registerTestCrew(t, "gamma", "other", true)
 
 	registry := agentprofiles.NewRegistry()
 	if err := registry.RegisterProfile(agentprofiles.Profile{
@@ -35,7 +39,7 @@ func newTriggerLinkEnv(t *testing.T) triggerLinkEnv {
 		Runtime: agentprofiles.RuntimePolicy{
 			Transport:    "auto",
 			Conversation: agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject},
-			Workspace:    agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: "Chats/Work/projects"},
+			Workspace:    agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: "Crew"},
 		},
 		Features: []agentprofiles.FeatureBinding{{ID: "triggers"}},
 		UIPanels: agentprofiles.UIPanels{Schedules: true},
