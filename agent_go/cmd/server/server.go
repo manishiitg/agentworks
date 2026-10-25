@@ -8041,10 +8041,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind) +
 				pulsePolicyKeySuffix(sessionID, req.PhaseID, req.SelectedFolder)
-			laptopPolicy := ""
-			if resolvedProfile == nil && req.admittedWorkflowPhase && req.PhaseID == "workflow-builder" {
-				laptopPolicy = api.goalLaptopPolicyKey(GetUserFromContext(r.Context()), req.SelectedFolder, currentUserIsReadOnly)
-			}
+			laptopPolicy := api.workflowChatLaptopPolicyKey(r.Context(), req, currentUserIsReadOnly)
 			policyKey += laptopPolicy
 			policyRoleKey := currentPolicy.sessionKey() + laptopPolicy
 			codingProvider := common.IsCLIProvider(finalProvider)

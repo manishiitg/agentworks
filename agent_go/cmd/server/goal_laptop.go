@@ -96,6 +96,15 @@ func (api *StreamingAPI) goalLaptopPolicyKey(caller *UserClaims, root string, re
 	return fmt.Sprintf(":laptop:%x", sha256.Sum256([]byte(key)))
 }
 
+// Launch and retained delivery must fingerprint the same server-admitted
+// laptop grants. Omitting this suffix cancelled unchanged Builder follow-ups.
+func (api *StreamingAPI) workflowChatLaptopPolicyKey(ctx context.Context, req QueryRequest, readOnly bool) string {
+	if req.AgentProfileID != "" || !req.admittedWorkflowPhase || req.PhaseID != "workflow-builder" {
+		return ""
+	}
+	return api.goalLaptopPolicyKey(GetUserFromContext(ctx), req.SelectedFolder, readOnly)
+}
+
 func (api *StreamingAPI) personalLaptopConnections(caller *UserClaims) map[string]any {
 	devices := api.localDeviceListForOwner(caller)
 	return map[string]any{"devices": devices, "setup": laptopSetupSteps(len(devices) == 0), "next": "Connect your computer once in My Vault, then select it with manage_laptop_access in any Goal or Crew you build. Each project chooses folders and terminal commands. Steps, schedules and Autopilot never inherit laptop access."}

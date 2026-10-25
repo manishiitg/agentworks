@@ -102,8 +102,11 @@ func TestRelayPanelToolsKeepDashboardSharing(t *testing.T) {
 	if err := f.api.registerWorkspacePanelChatTools(reg, nil, "owner", session, root, "relays"); err != nil {
 		t.Fatal(err)
 	}
-	if len(reg.tools) != 5 {
-		t.Fatalf("unexpected Relay adapter surface: %v", reg.tools)
+	if reg.tools["settings"].exec == nil || reg.tools["manage_project"].exec == nil || reg.tools["chat_preferences"].exec == nil {
+		t.Fatal("Relay lost settings, sharing or personal display controls")
+	}
+	if reg.tools["workflow_team"].exec != nil || reg.tools["manage_pulse"].exec != nil {
+		t.Fatal("Relay exposed Goal-only controls")
 	}
 	for _, action := range []string{"get_access", "set_access"} {
 		if _, err := reg.tools["manage_project"].exec(ctx, map[string]any{"action": action, "owners": []any{"owner", "another"}}); err == nil {

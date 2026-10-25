@@ -73,13 +73,15 @@ func (api *StreamingAPI) workflowRetainedCompatibility(ctx context.Context, sess
 	// follow-up to a Pulse workflow's Builder chat looked like a policy change
 	// and cancelled the running turn (local 2026-10-08).
 	key := api.chatPolicySessionKey(resolveWorkflowChatPolicy(session, req, active, readOnlyForRequest(access, req)), workflowKind) +
-		pulsePolicyKeySuffix(session, req.PhaseID, folder)
+		pulsePolicyKeySuffix(session, req.PhaseID, folder) +
+		api.workflowChatLaptopPolicyKey(validated, req, readOnlyForRequest(access, req))
 	api.conversationMux.RLock()
 	previous, known := api.lastChatPolicyBySession[session]
 	api.conversationMux.RUnlock()
 	var runtime *ChatHistoryAgentRuntime
 	if known {
 		if previous != key {
+			logfWithContext(ctx, "[RETAINED_POLICY] session=%s decision=refresh reason=policy_key_changed previous=%s current=%s", session, previous, key)
 			return false, false, nil
 		}
 	} else {

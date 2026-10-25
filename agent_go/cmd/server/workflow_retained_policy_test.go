@@ -228,7 +228,7 @@ func TestWorkflowEffortChangeRefreshesRetainedLiveInput(t *testing.T) {
 // but the follow-up check rebuilt it without, so every follow-up to a Pulse
 // workflow's Builder chat counted as a policy change and cancelled the running
 // turn. Both must use the same key.
-func TestPulseWorkflowBuilderFollowUpKeepsTheRunningTurn(t *testing.T) {
+func TestWorkflowBuilderFollowUpKeepsPulseAndLaptopPolicy(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_edit":true}]}`)
 	ws, docs := newFakeWorkspaceServer(t)
@@ -236,14 +236,21 @@ func TestPulseWorkflowBuilderFollowUpKeepsTheRunningTurn(t *testing.T) {
 	docs.files["Workflow/test/workflow.json"] = `{"id":"wf_test","access":{"owners":["owner"]},"pulse":{"enabled":true,"autonomy":{"level":3}}}`
 	docs.files["Workflow/test/soul/soul.md"] = "Grow subscribers to 100 by December."
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	req := QueryRequest{SelectedFolder: "Workflow/test", PhaseID: "workflow-builder"}
+	req := QueryRequest{SelectedFolder: "Workflow/test", AgentMode: "workflow_phase", PhaseID: "workflow-builder", admittedWorkflowPhase: true}
 	api := &StreamingAPI{lastChatPolicyBySession: map[string]string{}}
 	suffix := pulsePolicyKeySuffix("chat", req.PhaseID, req.SelectedFolder)
 	if suffix == "" {
 		t.Fatal("an Autopilot workflow's Builder chat must carry the Autopilot part of the key")
 	}
-	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", req, nil, false)) + suffix
+	// PLAT-872: the actual launch key includes :laptop: even with no laptop
+	// selected. The retained gate omitted it and cancelled every follow-up.
+	laptop := api.goalLaptopPolicyKey(GetUserFromContext(ctx), req.SelectedFolder, false)
+	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", req, nil, false)) + suffix + laptop
 	if compatible, err := api.workflowRetainedPolicyCompatible(ctx, "chat", req); err != nil || !compatible {
 		t.Fatal("an unchanged Autopilot workflow's follow-up was treated as a policy change", compatible, err)
+	}
+	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", req, nil, false)) + suffix + api.goalLaptopPolicyKey(GetUserFromContext(ctx), req.SelectedFolder, true)
+	if compatible, err := api.workflowRetainedPolicyCompatible(ctx, "chat", req); err != nil || compatible {
+		t.Fatal("changed laptop authority retained its old admission", compatible, err)
 	}
 }
