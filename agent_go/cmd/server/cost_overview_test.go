@@ -11,6 +11,8 @@ import (
 )
 
 func TestBuildCostOverviewFoldsAndFiltersByAccess(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	registerTestCrew(t, "writer-ab12", "alice", true)
 	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -32,7 +34,7 @@ func TestBuildCostOverviewFoldsAndFiltersByAccess(t *testing.T) {
 	add("e1", "Workflow/sales", "workflow_execution", "claude-code", "opus", 2)
 	add("e2", "Workflow/sales/runs/iteration-3", "pulse", "codex-cli", "gpt", 1)
 	add("e3", "Workflow/secret", "workflow_execution", "claude-code", "opus", 5)
-	add("e4", "_users/alice/Chats/Work/projects/writer-ab12/code", "chat", "claude-code", "sonnet", 0.5)
+	add("e4", "Crew/writer-ab12/code", "chat", "claude-code", "sonnet", 0.5)
 	add("e5", "_users/alice/Chats", "chat", "claude-code", "sonnet", 3)
 	add("e6", "", "unknown", "claude-code", "sonnet", 4)
 
@@ -65,7 +67,7 @@ func TestBuildCostOverviewFoldsAndFiltersByAccess(t *testing.T) {
 		t.Fatalf("visible source totals = %+v, want only visible usage and one shared run across path aliases", sales.BySource)
 	}
 	crew := member.Items[1]
-	if crew.ID != "_users/alice/Chats/Work/projects/writer-ab12" || crew.Kind != costOverviewKindCrew || crew.OwnerID != "alice" || crew.Name != "writer-ab12" {
+	if crew.ID != "Crew/writer-ab12" || crew.Kind != costOverviewKindCrew || crew.OwnerID != "alice" {
 		t.Fatalf("crew row = %+v", crew)
 	}
 	if member.Total.TotalCostUSD != 3.5 {

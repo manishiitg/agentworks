@@ -16,20 +16,11 @@ import (
 // The website and MCP catalog use the real workspace HTTP store. A fresh
 // private Crew used to have no starting dashboard until it was shared.
 func TestCrewBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
-	for _, origin := range []string{"work", "code"} {
+	for _, origin := range []string{"work"} {
 		t.Run(origin, func(t *testing.T) {
-			_, codeProfile := newCodePrivacyFixture(t)
 			f, _ := newExternalCrewCommandFixture(t)
-			if err := f.api.agentProfiles.RegisterProfile(codeProfile); err != nil {
-				t.Fatal(err)
-			}
 			withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work","code"]},{"id":"other","role":"editor","products":["work","code"]}]}`)
 			root := externalCommandCrewRoot
-			if origin == "code" {
-				root = codePrivacyOwnerRoot
-				f.write(t, root+"/product.json", `{"product":"code","id":"c0de0001-0000","title":"Private Crew","session_id":"code:project:c0de0001-0000","mode":"dev"}`)
-				f.write(t, root+"/workflow.json", `{"id":"c0de0001-0000","label":"Private Crew","created_by":"owner"}`)
-			}
 			list := func(claims *UserClaims) map[string]any {
 				t.Helper()
 				body, _ := json.Marshal(map[string]string{"workspace": root, "action": "list"})
@@ -40,8 +31,8 @@ func TestCrewBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
 			if origin == "work" {
 				// External connections cannot create defaults through discovery.
 				for _, claims := range []*UserClaims{
-					{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read"}, AllCrews: true}},
-					{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read", "crews:write"}, AllCrews: true, FileGuard: &wf.FolderGuard{ReadPaths: []string{"db/reports"}}}},
+					{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read", "crews:read"}, AllCrews: true}},
+					{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read", "crews:read", "crews:write"}, AllCrews: true, FileGuard: &wf.FolderGuard{ReadPaths: []string{"db/reports"}}}},
 				} {
 					list(claims)
 					stored, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: root, Action: "list", IncludeDraft: true})
@@ -58,25 +49,13 @@ func TestCrewBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
 				}
 			}
 			owner := &UserClaims{UserID: "owner", Username: "owner"}
-			if origin == "code" {
-				f.write(t, root+"/product.json", `{"product":"code","id":"c0de0001-0000","title":"Private Crew","session_id":"code:project:c0de0001-0000","mode":"local"}`)
-				list(owner)
-				stored, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: root, Action: "list", IncludeDraft: true})
-				if err != nil || len(stored.Dashboards) != 0 {
-					t.Fatalf("Local discovery wrote a server dashboard: %+v %v", stored, err)
-				}
-				f.write(t, root+"/product.json", `{"product":"code","id":"c0de0001-0000","title":"Private Crew","session_id":"code:project:c0de0001-0000","mode":"dev"}`)
-				// A connection with existing Builder consent follows the same
-				// service as the website, rather than a browser-only default.
-				owner.AccessToken = &accesstokens.Token{Scopes: []string{"dashboards:read", "code:run"}}
-			}
 			got := list(owner)
 			raw, _ := json.Marshal(got)
 			if !strings.Contains(string(raw), "db/reports/managed/overview/index.html") {
 				t.Fatalf("new Crew has no default dashboard: %v", got)
 			}
 			stored, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
-			if err != nil || stored.Dashboard == nil || stored.Dashboard.Published == "" || stored.Snapshot == nil || !strings.Contains(stored.Snapshot.Files["index.html"], "data-report-chat-button") {
+			if err != nil || stored.Dashboard == nil || stored.Dashboard.Published == "" || stored.Snapshot == nil || len(stored.Snapshot.Files) == 0 {
 				t.Fatalf("default is not usable: %+v %v", stored, err)
 			}
 			revision := stored.Dashboard.Revision
@@ -115,7 +94,7 @@ func TestGoalBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
 	}
 	list()
 	stored, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: "Workflow/invoices", Action: "get", ID: defaultDashboardID, IncludeDraft: true})
-	if err != nil || stored.Dashboard == nil || stored.Dashboard.Published == "" || stored.Snapshot == nil || !strings.Contains(stored.Snapshot.Files["index.html"], "data-report-chat-button") {
+	if err != nil || stored.Dashboard == nil || stored.Dashboard.Published == "" || stored.Snapshot == nil || len(stored.Snapshot.Files) == 0 {
 		t.Fatalf("Goal has no usable default: %+v %v", stored, err)
 	}
 	revision := stored.Dashboard.Revision

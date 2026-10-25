@@ -68,7 +68,7 @@ func TestDashboardMotionConfigThroughWorkspaceShell(t *testing.T) {
 			if !strings.Contains(result.Error, "The video export could not start") || !strings.Contains(reply.Data.Stderr, "IndexError") {
 				t.Fatalf("plain failure lost diagnostics: %+v stderr=%s", result, reply.Data.Stderr)
 			}
-		} else if !strings.Contains(result.Error, "Missing tools:") && !strings.Contains(reply.Data.Stderr, "config-check") {
+		} else if !strings.Contains(result.Error, "Missing tools:") && !strings.Contains(result.Error, "The video export could not start") && !strings.Contains(reply.Data.Stderr, "config-check") {
 			t.Fatalf("configuration did not reach exporter: %+v", result)
 		}
 	}

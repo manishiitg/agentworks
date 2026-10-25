@@ -15,7 +15,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	agentevents "github.com/manishiitg/mcpagent/events"
@@ -1051,52 +1050,6 @@ func TestListWorkflowChatHistorySessionsUsesIndexWithoutParsingConversation(t *t
 	}
 }
 
-func TestListWorkspaceChatHistoryIncludesCentralProductConversations(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-
-	workspacePath := "Chats/Work/projects/demo-12345678"
-	if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(workspacePath)), 0o755); err != nil {
-		t.Fatalf("mkdir product workspace: %v", err)
-	}
-	conversationDir := filepath.Join(root, "_users", "default", "chat_history", "2026-09-14")
-	if err := os.MkdirAll(conversationDir, 0o755); err != nil {
-		t.Fatalf("mkdir chat history: %v", err)
-	}
-	writeProductChat := func(sessionID, runtimeWorkspace, updatedAt string) {
-		t.Helper()
-		data := fmt.Sprintf(`{
-  "session_id": %q,
-  "agent_mode": "multi-agent",
-  "conversation_history": [
-    {"Role":"human","Parts":[{"Text":"hello from product chat"}]},
-    {"Role":"ai","Parts":[{"Text":"hello"}]}
-  ],
-  "runtime": {
-    "kind": "coding_agent",
-    "provider": "muse-cli",
-    "workspace_path": %q
-  },
-  "updated_at": %q
-}`, sessionID, runtimeWorkspace, updatedAt)
-		filename := "session-" + sessionID + "-conversation.json"
-		if err := os.WriteFile(filepath.Join(conversationDir, filename), []byte(data), 0o600); err != nil {
-			t.Fatalf("write product conversation: %v", err)
-		}
-	}
-
-	writeProductChat("product-matching", "_users/default/"+workspacePath, "2026-09-14T10:00:00Z")
-	writeProductChat("product-other", "_users/default/Chats/Work/projects/other", "2026-09-14T11:00:00Z")
-
-	sessions, err := ListChatHistorySessionsByKind("default", "chat", 10, 0, workspacePath)
-	if err != nil {
-		t.Fatalf("list product project chats: %v", err)
-	}
-	if len(sessions) != 1 || sessions[0].SessionID != "product-matching" {
-		t.Fatalf("sessions = %#v, want only exact workspace-bound product chat", sessions)
-	}
-}
-
 func TestListWorkProjectChatHistoryResolvesOwnedProjectStorage(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
@@ -1193,87 +1146,6 @@ func TestAppendLiveInputUsesOwnedWorkProjectConversation(t *testing.T) {
 	}
 	if len(record.ConversationHistory) != 2 || len(record.ConversationHistory[1].Parts) != 1 || chatHistoryPartText(record.ConversationHistory[1].Parts[0]) != "resumed follow-up" {
 		t.Fatalf("persisted Work history = %#v, want resumed follow-up appended", record.ConversationHistory)
-	}
-}
-
-func TestWorkProjectChatHistoryConversationPathUsesProjectBuilderFolder(t *testing.T) {
-	timestamp := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
-
-	got, ok := workProjectChatHistoryConversationPath(
-		"default",
-		"_users/default/Chats/Work/projects/demo-12345678",
-		"product-chat-1",
-		timestamp,
-	)
-	if !ok {
-		t.Fatal("expected Work project workspace to use project-owned chat history")
-	}
-	want := "_users/default/Chats/Work/projects/demo-12345678/builder/conversation/2026-09-14/session-product-chat-1-conversation.json"
-	if got != want {
-		t.Fatalf("conversation path = %q, want %q", got, want)
-	}
-
-	got, ok = workProjectChatHistoryConversationPath(
-		"alice",
-		"Chats/Work/projects/demo-12345678",
-		"product-chat-2",
-		timestamp,
-	)
-	if !ok || !strings.HasPrefix(got, "_users/alice/Chats/Work/projects/demo-12345678/builder/conversation/") {
-		t.Fatalf("unscoped Work path = %q, ok=%v", got, ok)
-	}
-
-	if got, ok := workProjectChatHistoryConversationPath("default", "Chats/Video/projects/demo", "chat-3", timestamp); ok || got != "" {
-		t.Fatalf("other product path = %q, ok=%v; want unchanged global storage", got, ok)
-	}
-}
-
-func TestWorkspaceSharedConversationHistoryUsesCallerStoreAndAuthoritativeBuilderRoot(t *testing.T) {
-	f := newMultiUserFixture(t, legacyIdentityLayout())
-	now := time.Now()
-	for _, origin := range []struct{ profile, root, folder string }{
-		{"code", f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder), fixtureCodeFolder},
-		{"work", f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), fixtureCrewFolder},
-	} {
-		if got, ok := workProjectChatHistoryConversationPath(fixtureUserB, origin.root, "run-chat", now); ok || got != "" {
-			t.Fatalf("%s Run history entered Builder storage: %s", origin.profile, got)
-		}
-		if _, err := defaultProjectOwners().AddCoOwner(origin.profile, origin.folder, fixtureUserB); err != nil {
-			t.Fatal(err)
-		}
-		got, ok := workProjectChatHistoryConversationPath(fixtureUserB, origin.root, "builder-chat", now)
-		if !ok || !strings.HasPrefix(got, origin.root+"/builder/conversation/") || strings.Count(got, "_users/") != 1 {
-			t.Fatalf("%s co-owner history lost the authoritative root: %s", origin.profile, got)
-		}
-		if _, err := defaultProjectOwners().RemoveCoOwner(origin.profile, origin.folder, fixtureUserB); err != nil {
-			t.Fatal(err)
-		}
-	}
-	root := f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)
-	var event internalevents.Event
-	if err := json.Unmarshal([]byte(`{"type":"unified_completion","sequence":7,"data":{"type":"unified_completion","data":{"final_result":"Run reply","metadata":{"turn_id":"query-run"}}}}`), &event); err != nil {
-		t.Fatal(err)
-	}
-	history := []llmtypes.MessageContent{{Role: llmtypes.ChatMessageTypeAI, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Run reply"}}}}
-	f.API.persistChatConversationToPathWithTerminalSession("run-chat", "", "multi-agent", fixtureUserB, history, &ChatHistoryAgentRuntime{WorkspacePath: root}, []internalevents.Event{event}, "")
-	items, last, err := codeChatTranscript(f.Ctx(fixtureUserB), fixtureUserB, "run-chat", root, 0, 100)
-	if err != nil || len(items) != 1 || items[0].Role != "assistant" || items[0].Text != "Run reply" || last != 7 {
-		t.Fatalf("caller could not read its shared Code reply: %v %d %v", items, last, err)
-	}
-	if _, err := ReadChatHistoryConversation(fixtureUserA, "run-chat", root); err == nil {
-		t.Fatal("the project owner read the Run person's private conversation")
-	}
-	legacy := workspaceref.PhysicalPath(fixtureUserB, canonicalChatHistoryWorkspacePath(fixtureUserB, root))
-	legacyRecord := `{"session_id":"legacy-run","user_id":"` + fixtureUserB + `","runtime":{"workspace_path":"` + root + `"},"updated_at":"2026-10-16T12:00:00Z","conversation_history":[]}`
-	f.put(workflowBuilderConversationLogPath(legacy, "legacy-run", now), legacyRecord)
-	if data, err := ReadChatHistoryConversation(fixtureUserB, "legacy-run", root); err != nil || !strings.Contains(string(data), "legacy-run") {
-		t.Fatalf("previous shared history disappeared: %s %v", data, err)
-	}
-	// A stale legacy copy must not replace the current central transcript.
-	f.put(workflowBuilderConversationLogPath(legacy, "run-chat", now), strings.ReplaceAll(legacyRecord, "legacy-run", "run-chat"))
-	items, _, err = codeChatTranscript(f.Ctx(fixtureUserB), fixtureUserB, "run-chat", root, 0, 100)
-	if err != nil || len(items) != 1 || items[0].Text != "Run reply" {
-		t.Fatalf("legacy copy hid the current reply: %v %v", items, err)
 	}
 }
 
@@ -2089,12 +1961,13 @@ func TestRenameWorkChatBeforeFirstPersistenceRetainsTitle(t *testing.T) {
 	server := httptest.NewServer(workspace)
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	const (
-		userID        = "rename-before-save-user"
-		sessionID     = "product-rename-before-save"
-		workspacePath = "Chats/Work/projects/new-project"
-		title         = "Latency investigation"
+		userID    = "rename-before-save-user"
+		sessionID = "product-rename-before-save"
+		title     = "Latency investigation"
 	)
+	workspacePath := registerTestCrew(t, "new-project", userID, true)
 
 	if err := RenameChatHistorySession(userID, sessionID, workspacePath, title); err != nil {
 		t.Fatalf("rename before first save: %v", err)
@@ -3191,5 +3064,20 @@ func TestAgentProfileRuntimeKeepsActualTurnAdmission(t *testing.T) {
 	runtime := api.captureChatHistoryAgentRuntime("crew", "muse-cli", "test-model", "Chats/Work/projects/example", agent)
 	if runtime.AgentProfileKey != "scope-used-by-this-turn" {
 		t.Fatal("canceled turn stamped its old native handle with the next request's admission")
+	}
+}
+
+// The owner's Crew chat history is kept in the Crew's Builder folder; another person's Run chats never enter it.
+func TestCrewChatHistoryPathFollowsOwnership(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	crew := registerTestCrew(t, "demo-12345678", "alice", true)
+	at := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	got, ok := workProjectChatHistoryConversationPath("alice", crew, "chat-1", at)
+	want := crew + "/builder/conversation/2026-09-14/session-chat-1-conversation.json"
+	if !ok || !strings.HasSuffix(got, want) {
+		t.Fatalf("owner path = %q ok=%v, want it to end with %q", got, ok, want)
+	}
+	if got, ok := workProjectChatHistoryConversationPath("bob", crew, "chat-1", at); ok || got != "" {
+		t.Fatalf("a Run person's chat entered Builder storage: %q", got)
 	}
 }
