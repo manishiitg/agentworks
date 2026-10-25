@@ -7,6 +7,7 @@ import { WorkspacePanelBack, useWorkspacePanelChatDraft } from '../workspace/Wor
 import SkillsManagerPanel from '../skills/SkillsManagerPanel'
 import PlaybooksPanel from '../playbooks/PlaybooksPanel'
 import WorkflowLLMConfigurationPanel from './WorkflowLLMConfigurationPanel'
+import { ChatDisplayPreferences } from '../chat/ChatDisplayPreferences'
 import WorkflowBotsPanel from './WorkflowBotsPanel'
 import WorkflowEmailPanel from './WorkflowEmailPanel'
 import { ProjectMcpSetupPanel } from '../integrations/ProjectMcpSetupPanel'
@@ -448,6 +449,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                   <WorkflowIdentityPanel workspacePath={workspacePath} relayMode={relayMode} />
                 )}
                 {activeIdentityTab === 'llm' && (
+                  <><ChatDisplayPreferences />
                   <WorkflowLLMConfigurationPanel
                     workspacePath={workspacePath}
                     llmConfig={capabilities.llm_config}
@@ -458,7 +460,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                       setCapabilities(next)
                       void persist(next)
                     }}
-                  />
+                  /></>
                 )}
 
                 {!relayMode && activeIdentityTab === 'upgrades' && (
