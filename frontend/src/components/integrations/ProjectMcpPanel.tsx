@@ -35,7 +35,7 @@ export function ProjectMcpPanel({view='connected',workspacePath,canEdit,onAsk,on
   }},
   actions:canEdit?[{label:'Manage in chat',run:()=>ask(`Manage the Vault connection ${server.id} for this project. Inspect its saved status and complete any requested setup in chat; reuse this exact account and preserve existing grants.`)}]:[],
  }))} loading={vault.loading} notices={[...vault.notices,...(error?[{message:error}]:[])]} refresh={()=>{void vault.refresh();void refreshSelection()}} showTools
-  description="All connections are stored in Vault. Add accounts, sign in, update credentials or remove connections through chat."
+  description="Choose the apps this project can use. Open an app to see its tools, or add another account."
   addCustom={canEdit?{label:'Connect an app in chat',run:()=>ask('Connect an app to this project using Vault. Guide setup here, including API keys or OAuth app details when needed. Return the real sign-in link, verify discovery and finish selection. Keep existing accounts and permissions.')}:undefined}
  />
 }

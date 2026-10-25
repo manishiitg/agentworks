@@ -294,6 +294,11 @@ describe('updateProductProjectSelections', () => {
     expect(manifest.capabilities).toEqual({ selected_servers: ['vault_saved'], selected_skills: ['saved-skill'], selected_secrets: ['NEW_KEY'], selected_global_secret_names: ['SAVED_SHARED'] })
     expect(manifest.workflow_context_paths).toEqual(['Crew/reference'])
     expect(updated.selectedServers).toEqual(['vault_saved'])
+    getPlannerFileContent.mockResolvedValueOnce({ success: true, data: { content: JSON.stringify({ capabilities: {} }) } })
+    await updateProductProjectSelections(project, { selectedSecrets: ['NEW_KEY'] }, 'Update secrets', 'workflow.json')
+    const minimal = JSON.parse(updatePlannerFile.mock.calls.at(-1)![1] as string)
+    expect(minimal.capabilities).toEqual({ selected_secrets: ['NEW_KEY'] })
+    expect(minimal).not.toHaveProperty('workflow_context_paths')
   })
 
   it('persists Work runtime selections in workflow.json while preserving other capabilities', async () => {

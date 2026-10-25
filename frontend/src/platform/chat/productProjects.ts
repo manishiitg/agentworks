@@ -534,18 +534,20 @@ export async function updateProductProjectSelections<P extends string>(
     // Vault or another settings view may have saved since this project was
     // listed. Keep untouched selections from the manifest we just read.
     const saved = (key: string): string[] => Array.isArray(capabilities[key]) ? capabilities[key] as string[] : []
-    const selectedServers = patch.selectedServers === undefined ? saved('selected_servers') : normalize(patch.selectedServers)
-    const selectedSkills = patch.selectedSkills === undefined ? saved('selected_skills') : normalize(patch.selectedSkills)
-    const selectedSecrets = patch.selectedSecrets === undefined ? saved('selected_secrets') : normalize(patch.selectedSecrets)
-    const selectedGlobalSecrets = patch.selectedGlobalSecrets === undefined ? saved('selected_global_secret_names') : normalize(patch.selectedGlobalSecrets)
+    if (patch.selectedServers !== undefined) capabilities.selected_servers = normalize(patch.selectedServers)
+    if (patch.selectedSkills !== undefined) capabilities.selected_skills = normalize(patch.selectedSkills)
+    if (patch.selectedSecrets !== undefined) capabilities.selected_secrets = normalize(patch.selectedSecrets)
+    if (patch.selectedGlobalSecrets !== undefined) capabilities.selected_global_secret_names = normalize(patch.selectedGlobalSecrets)
+    if (patch.workflowContextPaths !== undefined) {
+      if (runtimeManifestName) manifest.workflow_context_paths = normalize(patch.workflowContextPaths)
+      else capabilities.workflow_context_paths = normalize(patch.workflowContextPaths)
+    }
+    const selectedServers = saved('selected_servers')
+    const selectedSkills = saved('selected_skills')
+    const selectedSecrets = saved('selected_secrets')
+    const selectedGlobalSecrets = saved('selected_global_secret_names')
     const savedContextPaths = runtimeManifestName ? manifest.workflow_context_paths : capabilities.workflow_context_paths
-    const workflowContextPaths = patch.workflowContextPaths === undefined ? (Array.isArray(savedContextPaths) ? savedContextPaths as string[] : []) : normalize(patch.workflowContextPaths)
-    capabilities.selected_servers = selectedServers
-    capabilities.selected_skills = selectedSkills
-    capabilities.selected_secrets = selectedSecrets
-    capabilities.selected_global_secret_names = selectedGlobalSecrets
-    if (runtimeManifestName) manifest.workflow_context_paths = workflowContextPaths
-    else capabilities.workflow_context_paths = workflowContextPaths
+    const workflowContextPaths = Array.isArray(savedContextPaths) ? savedContextPaths as string[] : []
     const updatedAt = new Date().toISOString()
     manifest.capabilities = capabilities
     manifest.updated_at = updatedAt
