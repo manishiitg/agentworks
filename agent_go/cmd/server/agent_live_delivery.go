@@ -56,7 +56,7 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	var args map[string]any
-	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label", "inbox"}, externalArg(args, "action")) {
+	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label", "inbox", "inspect"}, externalArg(args, "action")) {
 		externalError(w, 400, "invalid_arguments", "Choose attach or detach for this exact native session.")
 		return
 	}
