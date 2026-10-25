@@ -1147,6 +1147,9 @@ func requireReason(args map[string]interface{}) (string, error) {
 // logPlanChange is the non-fatal wrapper every plan-mod executor calls after a
 // successful writePlanToFile. A changelog write failure is logged at warn
 // level but never blocks the actual plan mutation.
+// planChangelogWritingKey marks a context that is inside writePlanChangelogEntry.
+type planChangelogWritingKey struct{}
+
 func logPlanChange(
 	ctx context.Context,
 	workspacePath string,
@@ -1173,6 +1176,12 @@ func writePlanChangelogEntry(
 	writeFile func(context.Context, string, string) error,
 	logger loggerv2.Logger,
 ) error {
+	// Writing the changelog file can itself rewrite workflow.json (a manifest read that migrates it), which logs a change
+	// of its own. That nested entry is part of this one: it must not wait on the lock this call already holds.
+	if ctx.Value(planChangelogWritingKey{}) != nil {
+		return nil
+	}
+	ctx = context.WithValue(ctx, planChangelogWritingKey{}, true)
 	planChangelogSessionMutex.Lock()
 	defer planChangelogSessionMutex.Unlock()
 

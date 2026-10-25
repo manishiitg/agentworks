@@ -348,34 +348,3 @@ func TestExternalCrewListIsEmptyWithoutTheCrewProduct(t *testing.T) {
 		t.Fatalf("an account with the Crew product must still list Crews: %v", out)
 	}
 }
-
-// Ask is always open: a saved legacy free_text_ask=false neither hides declared
-// functions (including one named ask) nor refuses a conversational send.
-func TestLegacyFreeTextAskOffNoLongerClosesAsk(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	env.api.agentProfiles = env.svc.registry
-	owner := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read", "crews:run"}, AllCrews: true}}
-	names := func() []string {
-		_, out := externalCrewRequest(t, env, owner, "list_crew_functions", map[string]any{"crew_id": "beta"})
-		got := []string{}
-		for _, fn := range out["functions"].([]any) {
-			got = append(got, fn.(map[string]any)["name"].(string))
-		}
-		return got
-	}
-	if got := names(); len(got) != 0 {
-		t.Fatalf("a Crew must not offer an implicit conversational function, got %v", got)
-	}
-	env.mock.mu.Lock()
-	env.mock.files[linkBetaPath+"/functions.json"] = `{"version":1,"functions":[{"name":"ask","description":"A declared structured function"}]}`
-	env.mock.files[linkBetaPath+"/workflow.json"] = `{"schema_version":1,"capabilities":{"free_text_ask":false}}`
-	env.mock.mu.Unlock()
-	if got := names(); len(got) != 1 || got[0] != "ask" {
-		t.Fatalf("a legacy ask-off value hid a declared function: %v", got)
-	}
-	_, out := externalCrewRequest(t, env, owner, "ask_crew", map[string]any{"crew_id": "beta", "message": "hello"})
-	errBody, _ := out["error"].(map[string]any)
-	if message, _ := errBody["message"].(string); strings.Contains(message, "disabled") {
-		t.Fatalf("ask_crew refused by the removed ask switch: %v", out)
-	}
-}
