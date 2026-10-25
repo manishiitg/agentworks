@@ -1,5 +1,10 @@
 import { useWorkspacePanelHosted } from '../../workspace/WorkspacePanelNavigation'
-import { openProjectIntegrations } from '../../../utils/projectIntegrationNavigation'
+import { useEffect, useState } from 'react'
+import { prepareSignInWindow } from '../../../utils/signInWindow'
+import { googleAppApi } from '../../../api/googleApp'
+import { GoogleAccountConnect } from '../../../products/work/GoogleAccountConnect'
+import { changeGoogleAccountAccess } from '../../../products/work/googleAccountAccess'
+import type { GmailConnection } from '../../../services/api-types'
 import { Loader2, Mail } from 'lucide-react'
 import { agentApi } from '../../../services/api'
 import { Button } from '../../ui/Button'
@@ -39,6 +44,14 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
   onAsk?: (message: string) => void | Promise<void>
 }) {
   const hosted = useWorkspacePanelHosted()
+  const [signInUrl, setSignInUrl] = useState('')
+  const [tabOpened, setTabOpened] = useState(false)
+  useEffect(() => {
+    if (!signInUrl) return
+    const refresh = () => { void bots.loadGmailConnections() }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [signInUrl, bots.loadGmailConnections])
   const {
     gmailConnectionsReadOnly: readOnly, gmailSettingsReadOnly, canRemoveGmailConnection,
     gmailConfig, setGmailConfig, gmailBlockedText, setGmailBlockedText,
@@ -48,6 +61,19 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
     runGmailConnectionAction,
     gmailOAuthClientError, removeGmailMailboxAndClient,
   } = bots
+
+  const reconnect = (conn: GmailConnection) => {
+    if (readOnly || conn.can_manage === false || conn.can_reconnect === false) return
+    const signIn = prepareSignInWindow()
+    setSignInUrl('')
+    void runGmailConnectionAction(conn.id, async () => {
+      const result = await googleAppApi.reconnect(conn.id, {
+        workspace_path: workspacePath || '', services: conn.services || [],
+        allow_read_access: !!conn.allow_read_access, allow_agent_write_access: !!conn.allow_agent_write_access,
+      })
+      setTabOpened(signIn.open(result.auth_url)); setSignInUrl(result.auth_url)
+    }).then(ok => { if (!ok) signIn.close() })
+  }
 
   const handleRemoveMailbox = (conn: { id: string; display_name: string; client_name?: string; personal?: boolean }) => {
     if (!window.confirm(conn.personal ? `Remove "${conn.display_name}" from this item? Other items stay connected.` : `Remove "${conn.display_name}"?`)) return
@@ -86,8 +112,10 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 onSendTest={conn => runGmailConnectionAction(conn.id, () => agentApi.testGmailConnectionById(conn.id, gmailConfig.default_to || undefined))}
                 onSetDefault={conn => runGmailConnectionAction(conn.id, () => agentApi.setDefaultGmailConnection(conn.id))}
                 onToggle={conn => runGmailConnectionAction(conn.id, () => agentApi.updateGmailConnection(conn.id, { enabled: !conn.enabled }))}
-                onReconnect={() => openProjectIntegrations('gmail')} onRemove={handleRemoveMailbox} onChangeAccess={() => openProjectIntegrations('gmail')}
+                onReconnect={reconnect} onRemove={handleRemoveMailbox} onChangeAccess={conn => changeGoogleAccountAccess(conn, workspacePath || '')}
               /></div>}
+              {!readOnly && gmailConnections.some(conn => !conn.personal && conn.can_manage !== false && conn.can_reconnect !== false) && <GoogleAccountConnect workspacePath={workspacePath || ''} canConnect={false} readOnly={readOnly} onChanged={bots.loadGmailConnections} />}
+              {signInUrl && <div className="mt-3 text-xs"><p role="status">{tabOpened ? 'Finish signing in with Google, then return here.' : 'Your browser blocked the sign-in tab. Open Google sign-in below.'}</p><a href={signInUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-primary underline">Open Google sign-in</a></div>}
           </FormSection>
           <details className="rounded-lg border border-border p-3">
           <summary className="cursor-pointer text-sm font-medium">Company delivery defaults · {gmailConfig.enabled ? 'On' : 'Off'}{gmailSettingsReadOnly ? ' · Admin managed' : ''}</summary>

@@ -3,6 +3,7 @@ import { ArrowRight, Check, ChevronDown, Loader2, Minus, Plus, ShieldCheck } fro
 import { Button } from '../../components/ui/Button'
 import ConnectionIcon from '../../components/connectors/ConnectionIcon'
 import { GmailSetupGuide } from '../../components/workflow/bots/GmailSetupGuide'
+import { prepareSignInWindow } from '../../utils/signInWindow'
 import { googleAppApi } from '../../api/googleApp'
 import { CHANGE_GOOGLE_ACCESS_EVENT, GOOGLE_ACCESS_SERVICES, GOOGLE_SERVICES, googleAccessLabel, type GoogleAccessLevel } from './googleAccountAccess'
 
@@ -16,9 +17,7 @@ const errorText = (cause: unknown, fallback: string) => {
 }
 
 /** One permission form for company OAuth apps, named JSON uploads and existing accounts. */
-export function GoogleAccountConnect({ onChanged, canConnect = true, initiallyExpanded = true }: { onChanged?: () => void; canConnect?: boolean; initiallyExpanded?: boolean }) {
-  const workspacePath = ''
-  const readOnly = false
+export function GoogleAccountConnect({ onChanged, canConnect = true, initiallyExpanded = true, workspacePath = '', readOnly = false }: { onChanged?: () => void; canConnect?: boolean; initiallyExpanded?: boolean; workspacePath?: string; readOnly?: boolean }) {
   const lockedReason = 'Manage your personal Google account in Integrations → Google apps.'
   const [configured, setConfigured] = useState<boolean | null>(null)
   const [clients, setClients] = useState<{ name: string }[]>([])
@@ -31,6 +30,7 @@ export function GoogleAccountConnect({ onChanged, canConnect = true, initiallyEx
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState(false)
+  const [tabOpened, setTabOpened] = useState(false)
   const [authUrl, setAuthUrl] = useState('')
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(initiallyExpanded)
@@ -77,6 +77,7 @@ export function GoogleAccountConnect({ onChanged, canConnect = true, initiallyEx
 
   const connect = useCallback(async () => {
     if (readOnly || busy || (!changing && !canConnect)) return
+    const signIn = prepareSignInWindow()
     setBusy(true); setError(null); setOpened(false)
     try {
       const services = SERVICES.filter(s => (levels[s.key] ?? 'off') !== 'off').map(s => ({ service: s.key, write: levels[s.key] === 'write' }))
@@ -108,7 +109,7 @@ export function GoogleAccountConnect({ onChanged, canConnect = true, initiallyEx
         if (!name) throw new Error('Choose a Google sign-in app first.')
         result = await googleAppApi.connectWithClient(name, request)
       }
-      window.open(result.auth_url, '_blank', 'noopener')
+      setTabOpened(signIn.open(result.auth_url))
       setOpened(true); setAuthUrl(result.auth_url); setCopied(false)
       if (changing) setChanging({ ...changing, gmail, levels: { ...levels } })
       // The account list refreshes when the person comes back from Google, not before.
@@ -117,6 +118,7 @@ export function GoogleAccountConnect({ onChanged, canConnect = true, initiallyEx
       focusListener.current = onFocus
       window.addEventListener('focus', onFocus)
     } catch (cause) {
+      signIn.close()
       setError(errorText(cause, 'Could not start the Google sign-in.'))
     } finally {
       setBusy(false)
@@ -135,6 +137,7 @@ export function GoogleAccountConnect({ onChanged, canConnect = true, initiallyEx
     setExpanded(false)
   }
 
+  if (!canConnect && !changing) return null
   return (
     <section ref={sectionRef} data-testid="google-account-connect" className={`mb-4 min-w-0 rounded-lg border p-4 ${changing ? 'border-primary' : 'border-border'}`}>
       <div className="flex items-start gap-3">
@@ -215,7 +218,8 @@ export function GoogleAccountConnect({ onChanged, canConnect = true, initiallyEx
       <p className="mt-3 text-xs leading-5 text-muted-foreground">Gmail can still send workflow notifications when agent access is removed.</p>
       {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
       {opened && <div className="mt-2 text-xs text-muted-foreground">
-        <p role="status">Finish signing in on the Google tab that opened. This list updates when you come back.</p>
+        <p role="status">{tabOpened ? 'Finish signing in with Google, then return here. This list updates when you come back.' : 'Your browser blocked the sign-in tab. Open Google sign-in below.'}</p>
+        <a href={authUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-primary underline">Open Google sign-in</a>
         <button type="button" className="mt-1 text-primary underline" onClick={() => { void navigator.clipboard.writeText(authUrl).then(() => setCopied(true)).catch(() => setError('Could not copy the sign-in link.')) }}>{copied ? 'Link copied' : 'Copy sign-in link'}</button>
         <p className="mt-1">Use this link if the account is in a different browser profile.</p>
       </div>}

@@ -182,8 +182,28 @@ describe('GoogleAccountConnect', () => {
       allow_read_access: true,
       allow_agent_write_access: false,
     })
-    expect(open).toHaveBeenCalledWith('https://accounts.google.com/o/oauth2/auth?x=1', '_blank', 'noopener')
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank')
+    expect(host.querySelector('a[href="https://accounts.google.com/o/oauth2/auth?x=1"]')).not.toBeNull()
+    expect(host.textContent).toContain('blocked the sign-in tab')
     open.mockRestore()
+  })
+
+  it('uses the Electron system browser instead of a blocked renderer popup', async () => {
+    status.mockResolvedValue({ configured: true })
+    connect.mockResolvedValue({ id: 'c1', auth_url: 'https://accounts.google.com/auth' })
+    const external = vi.fn()
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'electronAPI')
+    Object.defineProperty(window, 'electronAPI', { value: { openExternal: external }, configurable: true })
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    try {
+      const host = await render()
+      await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('Connect Google account'))!.click())
+      expect(external).toHaveBeenCalledWith('https://accounts.google.com/auth')
+      expect(open).not.toHaveBeenCalled()
+    } finally {
+      if (descriptor) Object.defineProperty(window, 'electronAPI', descriptor)
+      else delete window.electronAPI
+    }
   })
 
   it('sends the write grants the person chose and reports a failure', async () => {

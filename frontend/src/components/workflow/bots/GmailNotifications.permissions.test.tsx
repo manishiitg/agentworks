@@ -50,6 +50,8 @@ vi.mock('../../../services/api', () => ({
 }))
 
 import { agentApi } from '../../../services/api'
+import { googleAppApi } from '../../../api/googleApp'
+import { openProjectIntegrations } from '../../../utils/projectIntegrationNavigation'
 import { GmailNotifications } from './GmailNotifications'
 import { useWorkflowBots, type WorkflowBots } from './useWorkflowBots'
 
@@ -100,6 +102,37 @@ describe('Gmail management permissions with either OAuth source', () => {
     await act(async () => button('Remove').click())
     expect(agentApi.deleteGmailConnection).toHaveBeenCalledWith('gmail_002')
     expect(agentApi.deleteGmailOAuthClient).not.toHaveBeenCalled()
+  })
+
+  it('starts sign-in for the existing company account instead of navigating to the same panel', async () => {
+    access.user.is_admin = true
+    vi.mocked(agentApi.listGmailConnections).mockResolvedValueOnce({ can_add: true, connections: [{
+      id: 'gmail_002', display_name: 'Test mailbox', email: 'owner@example.com', client_name: 'test-client', can_manage: true, can_reconnect: true,
+      enabled: true, ready: false, allow_read_access: false, allow_agent_write_access: false, services: [{ service: 'docs', write: true }],
+    }] })
+    const popup = { opener: {}, closed: false, location: { href: '' }, close: vi.fn() }
+    const open = vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
+    vi.mocked(googleAppApi.reconnect).mockResolvedValueOnce({ id: 'gmail_002', auth_url: 'https://accounts.google.com/auth' })
+    await render()
+    await act(async () => button('Sign in again').click())
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank')
+    expect(open.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(googleAppApi.reconnect).mock.invocationCallOrder[0])
+    expect(googleAppApi.reconnect).toHaveBeenCalledWith('gmail_002', { workspace_path: 'Workflow/test', services: [{ service: 'docs', write: true }], allow_read_access: false, allow_agent_write_access: false })
+    expect(popup.opener).toBeNull()
+    expect(popup.location.href).toBe('https://accounts.google.com/auth')
+    expect(openProjectIntegrations).not.toHaveBeenCalled()
+    expect(host.querySelector('a[href="https://accounts.google.com/auth"]')).not.toBeNull()
+  })
+
+  it('opens company access changes in the same workspace without granting new access', async () => {
+    access.user.is_admin = true
+    await render()
+    expect(host.querySelector('[data-testid="google-account-connect"]')).toBeNull()
+    await act(async () => button('Change access').click())
+    expect(host.querySelector('[data-testid="google-account-connect"]')).not.toBeNull()
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="Gmail access"]')!.value).toBe('off')
+    expect(openProjectIntegrations).not.toHaveBeenCalled()
+    expect(googleAppApi.reconnect).not.toHaveBeenCalled()
   })
 
   it('allows an admin to remove an unused company client', async () => {
