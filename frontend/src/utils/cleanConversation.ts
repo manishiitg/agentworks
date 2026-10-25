@@ -1,6 +1,7 @@
 import { codingAgentQuestionCards, type CodingAgentQuestionPrompt } from './codingAgentQuestions'
 export type { CodingAgentQuestionPrompt } from './codingAgentQuestions'
 import { normalizeTranscriptChunkEvents } from './transcriptChunkUpdates'
+import { nativeActivityText } from './nativeActivityText'
 import type { PollingEvent } from '../services/api-types'
 import { askAIDisplayText } from './askAIMessage'
 import { appendStreamingText } from './streamingStatus'
@@ -216,11 +217,8 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
     if (event.type === 'coding_agent_native_activity') {
       const record = asRecord(payload.record)
       const kind = firstText(record?.kind)
-      const state = firstText(record?.state)
-      if (['helper', 'compaction', 'retry', 'error', 'question', 'notice'].includes(kind)) {
-        const label = kind === 'helper' ? 'Coding agent helper' : kind === 'question' ? 'Coding agent question' : kind === 'notice' ? 'Coding agent' : kind === 'error' ? 'Coding agent error' : kind === 'compaction' ? 'Context compaction' : 'Coding agent retry'
-        items.push({ id: event.id, role: kind === 'error' ? 'error' : 'background', content: `${label} · ${state.replaceAll('_', ' ')}`, timestamp: event.timestamp })
-      }
+      const content = nativeActivityText(record || undefined)
+      if (content) items.push({ id: event.id, role: kind === 'error' ? 'error' : 'background', content, timestamp: event.timestamp })
       continue
     }
 

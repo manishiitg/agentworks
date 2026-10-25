@@ -38,7 +38,7 @@ type nativeCodingRecordState struct {
 	Path        string                           `json:"path"`
 	Cursor      nativeevents.Cursor              `json:"cursor"`
 	Primed      bool                             `json:"primed"`
-	Helpers     map[string]llmtypes.NativeRecord `json:"helpers"`
+	Work        map[string]llmtypes.NativeRecord `json:"work"`
 	Turns       map[string]llmtypes.NativeRecord `json:"turns"`
 	filename    string
 	lastError   string
@@ -202,7 +202,10 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		if err != nil {
 			return
 		}
-		key := sha256.Sum256([]byte(o.snapshot.SessionID + "\x00" + o.provider + "\x00" + o.nativeID))
+		// One current binding per platform chat. A replaced native runtime
+		// overwrites this checkpoint instead of leaving several candidates for
+		// startup to choose between.
+		key := sha256.Sum256([]byte(o.snapshot.SessionID))
 		baseline := time.Now()
 		if !o.snapshot.CreatedAt.IsZero() && time.Since(o.snapshot.CreatedAt) < 5*time.Second {
 			baseline = o.snapshot.CreatedAt
@@ -210,7 +213,7 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		o.api.sessionWorkspaceMu.RLock()
 		workspace := o.api.sessionWorkspaceFolders[o.snapshot.SessionID]
 		o.api.sessionWorkspaceMu.RUnlock()
-		s = &nativeCodingRecordState{SessionID: o.snapshot.SessionID, OwnerID: o.api.eventStore.GetSessionOwner(o.snapshot.SessionID), Workspace: workspace, WorkingDir: o.workingDir, TmuxSession: o.snapshot.TmuxSession, Provider: o.provider, NativeID: o.nativeID, Path: path, BaselineAt: baseline, Helpers: map[string]llmtypes.NativeRecord{}, Turns: map[string]llmtypes.NativeRecord{}, filename: filepath.Join(root, "native-records", fmt.Sprintf("%x.json", key[:20]))}
+		s = &nativeCodingRecordState{SessionID: o.snapshot.SessionID, OwnerID: o.api.eventStore.GetSessionOwner(o.snapshot.SessionID), Workspace: workspace, WorkingDir: o.workingDir, TmuxSession: o.snapshot.TmuxSession, Provider: o.provider, NativeID: o.nativeID, Path: path, BaselineAt: baseline, Work: map[string]llmtypes.NativeRecord{}, Turns: map[string]llmtypes.NativeRecord{}, filename: filepath.Join(root, "native-records", fmt.Sprintf("%x.json", key[:20]))}
 		if raw, err := os.ReadFile(s.filename); err == nil {
 			var saved nativeCodingRecordState
 			if json.Unmarshal(raw, &saved) == nil && saved.Provider == s.Provider && saved.NativeID == s.NativeID && saved.Path == path {
@@ -218,8 +221,8 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 				s = &saved
 			}
 		}
-		if s.Helpers == nil {
-			s.Helpers = map[string]llmtypes.NativeRecord{}
+		if s.Work == nil {
+			s.Work = map[string]llmtypes.NativeRecord{}
 		}
 		if s.Turns == nil {
 			s.Turns = map[string]llmtypes.NativeRecord{}
@@ -230,8 +233,8 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		o.nativeCodingGap(s, "source_path_changed")
 		return
 	}
-	if s.Helpers == nil {
-		s.Helpers = map[string]llmtypes.NativeRecord{}
+	if s.Work == nil {
+		s.Work = map[string]llmtypes.NativeRecord{}
 	}
 	if s.Turns == nil {
 		s.Turns = map[string]llmtypes.NativeRecord{}
@@ -304,8 +307,8 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 			return
 		}
 		record.Text = ""
-		if record.Kind == "helper" && record.TaskID != "" {
-			s.Helpers[record.TaskID] = record
+		if (record.Kind == "helper" || record.Kind == "background_command") && record.TaskID != "" {
+			s.Work[record.TaskID] = record
 		}
 		if record.Kind == "turn" && record.Origin == "helper_finished" && record.TurnID != "" {
 			s.Turns[record.TurnID] = record
@@ -474,9 +477,13 @@ func (api *StreamingAPI) nativeCodingBackgroundWork(sessionID string) []SessionB
 	for _, o := range observers {
 		o.mu.Lock()
 		if s := o.nativeRecords; s != nil {
-			for id, r := range s.Helpers {
-				if r.State == "started" || r.State == "scheduled" || r.State == "proposed" {
-					items = append(items, SessionBackgroundWorkItem{ID: "native-helper:" + id, Kind: "native_helper", Label: "Coding agent helper", StartedAt: r.Timestamp, CanStop: false, Status: r.State})
+			for id, r := range s.Work {
+				if r.State == "started" {
+					kind, label := "native_helper", "Coding agent helper"
+					if r.Kind == "background_command" {
+						kind, label = "native_command", "Background command"
+					}
+					items = append(items, SessionBackgroundWorkItem{ID: "native-work:" + id, Kind: kind, Label: label, StartedAt: r.Timestamp, CanStop: false, Status: r.State})
 				}
 			}
 			for id, r := range s.Turns {

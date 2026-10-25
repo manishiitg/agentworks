@@ -92,6 +92,30 @@ func TestNativeContinuationDurableReplyOnce(t *testing.T) {
 	}
 }
 
+func TestNativeWorkDoesNotBecomePlatformExecution(t *testing.T) {
+	api := &StreamingAPI{nativeObservers: map[string]*nativeTerminalObserver{
+		"chat": {snapshot: terminals.Snapshot{SessionID: "chat"}, nativeRecords: &nativeCodingRecordState{Work: map[string]llmtypes.NativeRecord{
+			"helper":   {Kind: "helper", State: "started"},
+			"command":  {Kind: "background_command", State: "started"},
+			"proposal": {Kind: "helper", State: "proposed"},
+		}}},
+	}}
+	items := api.sessionBackgroundWork("chat")
+	if len(items) != 2 {
+		t.Fatalf("running native work=%d, expected helper and command only", len(items))
+	}
+	kinds := map[string]bool{}
+	for _, item := range items {
+		kinds[item.Kind] = true
+		if item.CanStop || api.stopSessionBackgroundWorkItem("chat", item.ID) {
+			t.Fatal("native observation gained platform stop authority")
+		}
+	}
+	if !kinds["native_helper"] || !kinds["native_command"] || api.bgAgentRegistry != nil {
+		t.Fatal("native work was conflated with platform execution")
+	}
+}
+
 func TestNativeStartupObservesWithoutNewEvents(t *testing.T) {
 	const sessionID = "native-startup-chat"
 	const userID = "alice"

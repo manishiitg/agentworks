@@ -1,4 +1,5 @@
 import React from 'react'
+import { nativeActivityText } from '../../utils/nativeActivityText'
 import { WorkingStatus } from '../chat/WorkingStatus'
 import { InspectExecutionButton } from '../chat/InspectExecutionButton'
 import type { PollingEvent } from '../../services/api-types'
@@ -412,8 +413,9 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   if (event.type === 'coding_agent_native_activity') {
     const envelope = event.data as { data?: { record?: Record<string, unknown> } } | undefined
     const record = envelope?.data?.record || {}
-    if (record.kind === 'reply' || record.kind === 'usage' || record.kind === 'turn' || record.kind === 'runtime') return null
-    return <CompactWrapper compact={compact}><div className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground">Coding agent {String(record.kind || 'activity')} · {String(record.state || 'observed').replaceAll('_', ' ')}</div></CompactWrapper>
+    const content = nativeActivityText(record)
+    if (!content) return null
+    return <CompactWrapper compact={compact}><div className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground">{content}</div></CompactWrapper>
   }
   if (event.type === 'coding_agent_background_task') {
     const envelope = event.data as { data?: Record<string, unknown> } | undefined

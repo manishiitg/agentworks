@@ -43,6 +43,10 @@ type claudeTranscriptEntry struct {
 	Timestamp  string          `json:"timestamp"`
 	Message    json.RawMessage `json:"message"`
 	Attachment json.RawMessage `json:"attachment"`
+	Origin     *struct {
+		Kind string `json:"kind"`
+	} `json:"origin"`
+	TurnOrigin string `json:"turnOrigin"`
 }
 
 type claudeTranscriptMessage struct {
@@ -542,6 +546,12 @@ func readNewClaudeTranscriptMessages(path string, since time.Time) ([]builderCon
 			continue
 		}
 		if entry.Type != "user" && entry.Type != "assistant" && entry.Type != "attachment" {
+			continue
+		}
+		// Native helper notifications use a user-role storage envelope. They
+		// never represent a person typing into the terminal and must not enter
+		// ObserveNativeInput or its human-message recovery path.
+		if entry.Type == "user" && ((entry.Origin != nil && entry.Origin.Kind == "task-notification") || entry.TurnOrigin == "task_notification") {
 			continue
 		}
 		ts, err := time.Parse(time.RFC3339Nano, entry.Timestamp)

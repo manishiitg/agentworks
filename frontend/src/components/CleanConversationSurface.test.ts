@@ -14,6 +14,14 @@ function event(id: string, type: string, data: Record<string, unknown>, extra: P
 }
 
 describe('buildCleanConversationItems', () => {
+  it('labels native background commands plainly and leaves compaction/questions to existing cards', () => {
+    const items = buildCleanConversationItems([
+      event('command', 'coding_agent_native_activity', { record: { kind: 'background_command', state: 'finished' } }),
+      event('compaction', 'coding_agent_native_activity', { record: { kind: 'compaction', state: 'installed' } }),
+      event('question', 'coding_agent_native_activity', { record: { kind: 'question', state: 'requested' } }),
+    ])
+    expect(items.map(item => item.content)).toEqual(['Background command · finished'])
+  })
   it('renders a saved native continuation as a reply without creating a user turn', () => {
     const items = buildCleanConversationItems([
       event('helper', 'coding_agent_native_activity', { record: { kind: 'helper', state: 'finished' } }),

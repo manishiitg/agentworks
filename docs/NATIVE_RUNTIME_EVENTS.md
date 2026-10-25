@@ -38,8 +38,11 @@ late continuation as an ordinary durable assistant message. Failed or restarted
 foreground turns release unfinished claims. A saved foreground completion keeps
 its claim. No helper notification is represented as a person typing a prompt.
 
-Native helpers appear in the existing background work list as **native_helper**;
-they are separate from platform delegated work. They do not enter the execution
+Native helpers and background commands appear in the existing work list as
+**native_helper** and **native_command**. A committed `backgroundTaskId` proves
+a background command even when its initial input did not request background
+execution. To-do items and merely proposed tasks do not count as running work.
+These are separate from platform delegated work. They do not enter the execution
 registry, deploy drain, or platform Stop route. The UI shows the server's state.
 The normal journal and saved conversation checkpoints restore replies on reload.
 The existing background-agent chat/MCP tool exposes the same native work under

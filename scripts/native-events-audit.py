@@ -34,13 +34,13 @@ states=collections.Counter(); helpers=collections.Counter(); claims=collections.
 for file in glob.glob(os.path.join(c["state_root"],"native-records","*.json")):
     try:
         state=json.loads(Path(file).read_text()); provider=state.get("provider","unknown"); states[provider]+=1
-        for record in state.get("helpers",{}).values(): helpers[provider+":"+record.get("state","unknown")]+=1
+        for record in state.get("work",{}).values(): helpers[provider+":"+record.get("kind","unknown")+":"+record.get("state","unknown")]+=1
     except (OSError,ValueError):states["unreadable"]+=1
 for file in glob.glob(os.path.join(c["state_root"],"native-reply-claims","*.json")):
     try:
         claim=json.loads(Path(file).read_text());claims[claim.get("owner","unknown")+(":committed" if claim.get("committed") else ":unfinished")]+=1
     except (OSError,ValueError):claims["unreadable"]+=1
-result.update(owned_runtime_states=dict(states),helper_states=dict(helpers),publication_claims=dict(claims))
+result.update(owned_runtime_states=dict(states),native_work_states=dict(helpers),publication_claims=dict(claims))
 accepted={}; saved=set(); committed=set(); followups=set(); gaps=collections.Counter(); unknown=collections.Counter(); invalid=identity=0
 try:
     with open(c["log_path"],"rb") as f:

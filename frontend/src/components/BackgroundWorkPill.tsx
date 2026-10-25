@@ -9,12 +9,14 @@ const KIND_PREFIX: Record<SessionBackgroundWorkItem['kind'], string> = {
   workflow_run: 'Workflow run',
   sub_agent: 'Sub-agent',
   crew_call: 'Call',
-  native_helper: 'Helper',
-  native_turn: 'Follow-up',
+  native_helper: '',
+  native_command: '',
+  native_turn: '',
 }
 
 export function backgroundWorkLabel(item: SessionBackgroundWorkItem): string {
-  return `${KIND_PREFIX[item.kind] ?? 'Background'}: ${item.label}`
+  const prefix = KIND_PREFIX[item.kind] ?? 'Background'
+  return `${prefix ? `${prefix}: ` : ''}${item.label}`
 }
 
 function elapsed(startedAt: string, now: number): string {
