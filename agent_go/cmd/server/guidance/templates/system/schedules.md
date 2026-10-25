@@ -62,7 +62,7 @@ immutable `iteration-N-hook` folder. When four are already active, the receiver
 returns HTTP 503 with `Retry-After: 30`; retry with the same delivery ID so
 idempotency prevents duplicate execution.
 
-`workflow.json::run_retention_count` applies uniformly: the server keeps that many completed plain Builder archives, that many completed `-sched` runs, and that many completed `-hook` runs as independent families (default 10). Schedule/webhook pruning removes the `runs/` folder and preserves durable history with `artifacts_expired=true`; active runs are never pruned.
+The server keeps ten completed plain Builder archives, ten completed `-sched` runs, and ten completed `-hook` runs as independent families. Schedule/webhook pruning removes the `runs/` folder and preserves durable history with `artifacts_expired=true`; active runs are never pruned.
 
 - **Workshop** (`mode=workshop`, `workshop_mode=workshop`) — writable scheduled execution for approved human-decision application and normal workflow work. Scheduled sessions never authorize, apply, or stamp contract migrations; pending upgrades are started manually in the interactive Builder chat and do not block schedules. Prefer an empty queue plus `group_names`/`route_selections` for durable workflow behavior: canonical steps receive their normal learning, validation/retry, repair, and run attribution lifecycle. Direct messages remain valid for genuinely schedule-specific conversation, but require `direct_messages_reason` and do not automatically gain that step-level lifecycle. The server pins read-only workflow users to Run.
 

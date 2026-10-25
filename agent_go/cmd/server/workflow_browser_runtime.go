@@ -44,7 +44,7 @@ func workflowBrowserExecutors(sessionID, workspacePath string, readManifest func
 			case "", "none", "auto", "headless", "cdp":
 				mode = effectiveWorkspaceBrowserMode(manifest.Capabilities.BrowserMode)
 			}
-			ports = configuredCDPPortsForMode(mode, nil, manifest.Capabilities.CDPPorts)
+			ports = configuredCDPPortsForMode(mode, nil, nil)
 		}
 		execs := virtualtools.CreateWorkspaceBrowserToolExecutorsWithRuntime(sessionID, browser.NewBrowserRuntimeConfig(mode, ports))
 		return execs["agent_browser"](ctx, args)

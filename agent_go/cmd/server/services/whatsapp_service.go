@@ -1293,12 +1293,9 @@ func listWhatsAppOtherCrews(ctx context.Context, userID string) []WhatsAppOtherC
 }
 
 type whatsappWorkflowManifest struct {
-	ID            string `json:"id"`
-	Label         string `json:"label"`
-	Kind          string `json:"kind"`
-	ExecutionDefs struct {
-		WorkshopMode string `json:"workshop_mode"`
-	} `json:"execution_defaults"`
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Kind  string `json:"kind"`
 }
 
 type whatsappDocumentListResponse struct {
@@ -1615,7 +1612,7 @@ func (w *WhatsAppService) discoverDestinationCandidates(ctx context.Context, own
 			Label:         label,
 			WorkspacePath: workspacePath,
 			Slug:          slugifyWhatsAppWorkflow(label),
-			WorkshopMode:  strings.TrimSpace(manifest.ExecutionDefs.WorkshopMode),
+			WorkshopMode:  "run",
 		})
 	}
 

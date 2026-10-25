@@ -13,8 +13,8 @@ interface BrowserWorkspacePanelProps {
   workspacePath: string | null
   browserMode: BrowserAutomationMode
   onBrowserModeChange: (mode: BrowserAutomationMode) => void
-  cdpPort: number
-  onCdpPortChange: (port: number) => void
+  cdpPort?: number
+  onCdpPortChange?: (port: number) => void
   cdpConnected: boolean | null
   cdpError: string | null
   cdpChecking: boolean

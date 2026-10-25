@@ -282,36 +282,6 @@ func withStepConfigMutationWriteAccess(ctx context.Context, workspacePath, confi
 	return withPlanningFileMutationWriteAccess(ctx, workspacePath, "step_config.json")
 }
 
-// ReadStepOverrides reads step overrides from workflow.json execution_defaults.
-// Returns nil if no overrides are configured.
-func (hcpo *StepBasedWorkflowOrchestrator) ReadStepOverrides(ctx context.Context) (*AgentConfigs, error) {
-	manifestContent, err := hcpo.ReadWorkspaceFile(ctx, "workflow.json")
-	if err != nil {
-		return nil, nil
-	}
-
-	var manifest struct {
-		ExecutionDefaults struct {
-			DisableParallelToolExecution *bool    `json:"disable_parallel_tool_execution"`
-			EnabledCustomTools           []string `json:"enabled_custom_tools"`
-		} `json:"execution_defaults"`
-	}
-	if err := json.Unmarshal([]byte(manifestContent), &manifest); err != nil {
-		return nil, nil
-	}
-
-	ed := manifest.ExecutionDefaults
-	if ed.DisableParallelToolExecution == nil && len(ed.EnabledCustomTools) == 0 {
-		return nil, nil
-	}
-
-	hcpo.GetLogger().Info("📁 Using step overrides from workflow.json execution_defaults")
-	return &AgentConfigs{
-		DisableParallelToolExecution: ed.DisableParallelToolExecution,
-		EnabledCustomTools:           ed.EnabledCustomTools,
-	}, nil
-}
-
 // MatchStepConfigs matches new plan steps with existing configs by ID only
 // Returns a map of step index -> matched AgentConfigs
 // Returns an error if any step is missing a required ID field
@@ -543,32 +513,6 @@ func ApplyStepConfigFromFile(
 			MergeAgentConfigFields(agentConfigs, matchedConfig, step.GetID(), orchestrator.GetLogger())
 		}
 
-	}
-
-	// Apply global overrides from workflow.json execution_defaults (highest priority)
-	// This must run even when no step_config.json match exists, since execution_defaults
-	// (e.g., disable_parallel_tool_execution) apply to ALL steps regardless of per-step config.
-	overrides, err := orchestrator.ReadStepOverrides(ctx)
-	if err != nil {
-		orchestrator.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to read step_override.json in ApplyStepConfigFromFile: %v", err))
-	} else if overrides != nil {
-		currentConfigs := getAgentConfigs(step)
-		if currentConfigs == nil {
-			// Set overrides as the config
-			switch s := step.(type) {
-			case *ScriptedPlanStep:
-				s.AgentConfigs = overrides
-			case *RoutingPlanStep:
-				s.AgentConfigs = overrides
-			case *BranchPlanStep:
-				s.AgentConfigs = overrides
-			case *AgentPlanStep:
-				s.AgentConfigs = overrides
-			}
-		} else {
-			MergeAgentConfigFields(currentConfigs, overrides, step.GetID(), orchestrator.GetLogger())
-		}
-		orchestrator.GetLogger().Info(fmt.Sprintf("🔧 Applied global overrides for step %s (ID: %s)", step.GetTitle(), step.GetID()))
 	}
 
 	return nil

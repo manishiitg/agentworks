@@ -52,7 +52,6 @@ const workflowManifestToPreset = (manifest: WorkflowManifest, workspacePath: str
     selectedSecrets: caps?.selected_secrets || [],
     selectedGlobalSecretNames: caps?.selected_global_secret_names ?? [],
     browserMode: (caps?.browser_mode || 'auto') as CustomPreset['browserMode'],
-    cdpPorts: caps?.cdp_ports || [],
     useCodeExecutionMode: caps?.use_code_execution_mode || false,
     llmConfig: caps?.llm_config ? { ...caps.llm_config } : undefined,
     employee_id: manifest.ownership?.employee_id ?? undefined,
@@ -308,7 +307,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     selectedSecrets?: string[],
     selectedGlobalSecretNames?: string[] | null,
     browserMode?: 'none' | 'auto' | 'headless' | 'cdp',
-    cdpPorts?: number[],
     icon?: string,
     workflowKind?: 'relay' | 'workflow'
   ) => {
@@ -339,7 +337,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
             selected_secrets: selectedSecrets || [],
             selected_global_secret_names: globalSecretNamesForBackend,
             browser_mode: browserMode || 'auto',
-            cdp_ports: editingPreset.workflowKind === 'relay' ? [] : (browserMode === 'cdp' || browserMode === 'auto' ? (cdpPorts || []) : []),
             use_code_execution_mode: useCodeExecutionMode || false,
             llm_config: llmConfig || undefined,
           },
@@ -365,7 +362,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
         selectedSecrets,
         selectedGlobalSecretNames,
         browserMode,
-        workflowKind === 'relay' ? [] : cdpPorts,
         icon,
         workflowKind
       )

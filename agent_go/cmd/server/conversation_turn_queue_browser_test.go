@@ -47,13 +47,13 @@ func TestProjectBrowserQueueReplayWithoutCDP(t *testing.T) {
 	if _, err := api.resolveAgentProfileForQuery(ctx, &incoming, "owner", "chat"); err != nil {
 		t.Fatal(err)
 	}
-	if incoming.BrowserMode != "auto" || incoming.CdpPort != nil || len(incoming.CdpPorts) != 0 {
-		t.Fatalf("enriched browser settings: mode=%s port=%v ports=%v", incoming.BrowserMode, incoming.CdpPort, incoming.CdpPorts)
+	if incoming.BrowserMode != "auto" || incoming.CdpPort != nil || len(incoming.resolvedCDPPorts) != 0 {
+		t.Fatalf("enriched browser settings: mode=%s port=%v ports=%v", incoming.BrowserMode, incoming.CdpPort, incoming.resolvedCDPPorts)
 	}
 	// Even a later enrichment must never become persisted caller input.
 	stalePort := 9222
 	incoming.CdpPort = &stalePort
-	incoming.CdpPorts = []int{stalePort}
+	incoming.resolvedCDPPorts = []int{stalePort}
 	if _, _, err := api.enqueueConversationTurn(ctx, "owner", "chat", incoming); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestProjectBrowserQueueReplayWithoutCDP(t *testing.T) {
 	}
 	restarted := newConversationTurnQueueTestAPI(files)
 	for _, queued := range restarted.mustReadTurnQueueForTest(t, "owner") {
-		if queued.Request.CdpPort != nil || len(queued.Request.CdpPorts) > 0 || queued.Request.BrowserMode != "" {
+		if queued.Request.CdpPort != nil || len(queued.Request.resolvedCDPPorts) > 0 || queued.Request.BrowserMode != "" {
 			t.Fatal("live-input continuation persisted runtime browser fields")
 		}
 	}
@@ -85,7 +85,7 @@ func TestProjectBrowserQueueReplayWithoutCDP(t *testing.T) {
 	if err := json.Unmarshal(raw, &replay); err != nil {
 		t.Fatal(err)
 	}
-	if replay.BrowserMode != "" || replay.CdpPort != nil || len(replay.CdpPorts) > 0 {
+	if replay.BrowserMode != "" || replay.CdpPort != nil || len(replay.resolvedCDPPorts) > 0 {
 		t.Fatal("queue persisted runtime browser enrichment")
 	}
 	if err := validateRequestedCDPPorts(replay); err != nil {

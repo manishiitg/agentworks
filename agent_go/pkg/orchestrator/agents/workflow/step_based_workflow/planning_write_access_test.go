@@ -170,7 +170,7 @@ func TestManagedRetentionManifestWriteIsScoped(t *testing.T) {
 	workspacepkg.SetSessionFolderGuard(sessionID, []string{root}, []string{root + "/runs"})
 	defer workspacepkg.ClearSessionShellConfig(sessionID)
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sessionID)
-	manifest := `{"run_retention_count":10,"label":"keep"}`
+	manifest := `{"label":"keep"}`
 	if err := hcpo.WriteWorkspaceFile(ctx, "workflow.json", manifest); err == nil {
 		t.Fatal("raw manifest write must stay denied")
 	}

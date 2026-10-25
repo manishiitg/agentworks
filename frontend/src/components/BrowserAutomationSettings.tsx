@@ -25,8 +25,8 @@ export type BrowserChoice = BrowserAutomationMode | 'extension'
 interface BrowserAutomationSettingsProps {
   browserMode: BrowserAutomationMode
   onBrowserModeChange: (mode: BrowserAutomationMode) => void
-  cdpPort: number
-  onCdpPortChange: (port: number) => void
+  cdpPort?: number
+  onCdpPortChange?: (port: number) => void
   cdpConnected: boolean | null
   cdpError: string | null
   cdpChecking: boolean
@@ -84,7 +84,7 @@ const CommandBlock: React.FC<CommandBlockProps> = ({ command, label }) => {
 const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
   browserMode,
   onBrowserModeChange,
-  cdpPort,
+  cdpPort = 9222,
   onCdpPortChange,
   cdpConnected,
   cdpError,
@@ -160,7 +160,7 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <label className="block sm:w-40">
+              {onCdpPortChange && <label className="block sm:w-40">
                 <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Chrome CDP port</span>
                 <Input
                   type="number"
@@ -171,7 +171,7 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
                   max={65535}
                   aria-label="Chrome CDP port"
                 />
-              </label>
+              </label>}
               <Button
                 type="button"
                 variant="outline"

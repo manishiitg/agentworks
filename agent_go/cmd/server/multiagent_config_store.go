@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"time"
 )
@@ -17,9 +18,14 @@ import (
 // This is the chat-mode parallel to a workflow's workflow.json capabilities.
 // It is intentionally scoped to generic AgentWorks chat configuration.
 // (whose Capabilities block governs scheduled runs).
+type MultiAgentChatCapabilities struct {
+	WorkflowCapabilities
+	Notifications *services.MultiAgentNotificationConfig `json:"notifications,omitempty"`
+}
+
 type MultiAgentChatConfig struct {
-	Capabilities WorkflowCapabilities `json:"capabilities"`
-	UpdatedAt    string               `json:"updated_at,omitempty"`
+	Capabilities MultiAgentChatCapabilities `json:"capabilities"`
+	UpdatedAt    string                     `json:"updated_at,omitempty"`
 }
 
 func multiAgentConfigPath(userID string) string {
@@ -35,7 +41,7 @@ func ReadMultiAgentChatConfig(ctx context.Context, userID string) (*MultiAgentCh
 		return nil, false, fmt.Errorf("failed to read multiagent-config.json for user %s: %w", userID, err)
 	}
 	if !exists {
-		return &MultiAgentChatConfig{Capabilities: WorkflowCapabilities{}}, false, nil
+		return &MultiAgentChatConfig{Capabilities: MultiAgentChatCapabilities{}}, false, nil
 	}
 
 	var c MultiAgentChatConfig
@@ -47,7 +53,7 @@ func ReadMultiAgentChatConfig(ctx context.Context, userID string) (*MultiAgentCh
 
 // WriteMultiAgentChatConfig persists the user's chat capabilities, stamping
 // UpdatedAt at write time.
-func WriteMultiAgentChatConfig(ctx context.Context, userID string, caps WorkflowCapabilities) error {
+func WriteMultiAgentChatConfig(ctx context.Context, userID string, caps MultiAgentChatCapabilities) error {
 	c := MultiAgentChatConfig{
 		Capabilities: caps,
 		UpdatedAt:    time.Now().UTC().Format(time.RFC3339),

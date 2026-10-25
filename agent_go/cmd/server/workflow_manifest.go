@@ -109,7 +109,6 @@ const workflowContractDeclaredExecutionModeStrippedVersion = "1.0.39"
 
 const (
 	DefaultRunRetentionCount = 10
-	MaxRunRetentionCount     = 50
 )
 
 // WorkflowManifest is the top-level workflow.json structure that lives in each workspace.
@@ -133,12 +132,11 @@ type WorkflowManifest struct {
 	Label             string `json:"label"`
 	// Description is one short line about what the workflow is for. Shown next to the name in Slack's "who should answer"
 	// picker, MCP lists and the Slack target list. Optional.
-	Description      string                    `json:"description,omitempty"`
-	ChatInstructions string                    `json:"chat_instructions,omitempty"`
-	Icon             string                    `json:"icon,omitempty"`
-	Capabilities     WorkflowCapabilities      `json:"capabilities"`
-	ExecutionDefs    WorkflowExecutionDefaults `json:"execution_defaults"`
-	Schedules        []WorkflowSchedule        `json:"schedules"`
+	Description      string               `json:"description,omitempty"`
+	ChatInstructions string               `json:"chat_instructions,omitempty"`
+	Icon             string               `json:"icon,omitempty"`
+	Capabilities     WorkflowCapabilities `json:"capabilities"`
+	Schedules        []WorkflowSchedule   `json:"schedules"`
 	// CreatedBy is the user ID that created this workflow, stamped once at
 	// creation time (handleCreateWorkflowManifest) from the authenticated
 	// request. Scheduled/cron runs have no logged-in user of their own --
@@ -158,7 +156,6 @@ type WorkflowManifest struct {
 	Access               *WorkflowAccess                             `json:"access,omitempty"`
 	CreatedAt            string                                      `json:"created_at,omitempty"`
 	UpdatedAt            string                                      `json:"updated_at,omitempty"`
-	RunRetentionCount    *int                                        `json:"run_retention_count,omitempty"`
 	FolderAccess         []workflowtypes.WorkflowFolderGrant         `json:"folder_access,omitempty"`
 	FolderAccessRequests []workflowtypes.WorkflowFolderAccessRequest `json:"folder_access_requests,omitempty"`
 	// CrewAttachments exposes Crew project workspaces under stable aliases,
@@ -275,7 +272,6 @@ type WorkflowCapabilities struct {
 	SelectedSecrets           []string                       `json:"selected_secrets"`
 	SelectedGlobalSecretNames *[]string                      `json:"selected_global_secret_names"` // nil = none, [] = none
 	BrowserMode               string                         `json:"browser_mode"`
-	CDPPorts                  []int                          `json:"cdp_ports,omitempty"`
 	UseCodeExecutionMode      bool                           `json:"use_code_execution_mode"`
 	LLMConfig                 *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
 	Notifications             *WorkflowNotificationConfig    `json:"notifications,omitempty"`
@@ -318,68 +314,15 @@ type WorkflowWakeTab struct {
 }
 
 type WorkflowNotificationConfig struct {
-	SlackWebhookSecretName string `json:"slack_webhook_secret_name,omitempty"`
-
-	// Per-summary Slack channels. A Slack Incoming Webhook is bound to ONE
-	// channel when it is created and ignores a channel field in the payload, so
-	// "send this summary to a different channel" means "post it through a
-	// different webhook". Each entry names an encrypted secret holding a
-	// complete webhook URL; listing several fans that summary out to several
-	// channels. An empty list falls back to SlackWebhookSecretName, so a
-	// workflow that never split its channels behaves exactly as before.
-	RunSummarySlackWebhookSecretNames []string `json:"run_summary_slack_webhook_secret_names,omitempty"`
-
-	// RunSummaryInstructions controls the execution/outcome section of a
-	// Both are ordinary workflow configuration, never secrets, recipients, or
-	// delivery credentials.
 	RunSummaryInstructions string   `json:"run_summary_instructions,omitempty"`
 	RunSummaryChannels     []string `json:"run_summary_channels,omitempty"`
-
-	BreakAlerts *bool `json:"break_alerts,omitempty"`
-
-	// WakeTab is a Crew tab that is told straight away when a run of this
-	// workflow fails, stops partway, or never actually ran (wake_agent_tab.go).
-	// Nil means no one is woken.
-	WakeTab *WorkflowWakeTab `json:"wake_tab,omitempty"`
-
-	// Instructions is the legacy shared content preference. Keep it as a
-	// fallback so workflows that saved the original single field retain their
-	// behavior until the owner saves separate preferences.
-	Instructions string `json:"instructions,omitempty"`
-
-	// ExcludeChannels lists account-level delivery channels this workflow opts
-	// OUT of, by connector name ("gmail", "slack", "whatsapp"). A channel enabled
-	// account-wide is inherited by every workflow; naming it here suppresses it
-	// for THIS workflow only, without changing the account-wide configuration.
-	ExcludeChannels []string `json:"exclude_channels,omitempty"`
-
-	// GmailConnectionID selects WHICH configured Gmail account sends this
-	// workflow's email — the sender, orthogonal to every recipient field here.
-	// Empty means "inherit the account-level default connection", so existing
-	// workflows are unaffected. An unknown or disabled connection is a
-	// configuration error that fails the send: it never falls back to another
-	// account, because delivering from an unintended identity is worse than not
-	// delivering. An identifier, never a secret.
-	GmailConnectionID string `json:"gmail_connection_id,omitempty"`
-
-	// Legacy per-summary sender overrides. New Notify settings save one
-	// GmailConnectionID and clear these fields. A legacy list with multiple
-	// senders is refused at delivery rather than sending duplicate messages.
-	RunSummaryGmailConnectionIDs []string `json:"run_summary_gmail_connection_ids,omitempty"`
-
-	// BlockRecipients is a per-workflow email denylist, unioned with the
-	// account-wide GmailConfig.BlockedRecipients at send time. It can only block
-	// MORE addresses for this workflow, never unblock a globally-blocked one.
-	BlockRecipients []string `json:"block_recipients,omitempty"`
-
-	// email goes, selected by record_summary's kind — the positive
-	// counterpart to BlockRecipients, which only ever says where it must not go.
-	// Empty means "inherit the account-level default recipient", so an existing
-	// workflow keeps its current behavior. These never widen permission: the
-	// account-wide denylist and BlockRecipients are still applied on top and
-	// still win, so naming a blocked address here skips the send rather than
-	// unblocking it.
+	// Explicit team recipients. Empty disables summary email delivery.
 	RunSummaryRecipients []string `json:"run_summary_recipients,omitempty"`
+	// Sender selected from the accounts already added to this product.
+	GmailConnectionID string           `json:"gmail_connection_id,omitempty"`
+	ExcludeChannels   []string         `json:"exclude_channels,omitempty"`
+	BreakAlerts       *bool            `json:"break_alerts,omitempty"`
+	WakeTab           *WorkflowWakeTab `json:"wake_tab,omitempty"`
 }
 
 func (c *WorkflowNotificationConfig) BreakAlertsEnabled() bool {
@@ -395,9 +338,6 @@ func (c *WorkflowNotificationConfig) EffectiveRunSummaryInstructions() string {
 	if value := strings.TrimSpace(c.RunSummaryInstructions); value != "" {
 		return value
 	}
-	if value := strings.TrimSpace(c.Instructions); value != "" {
-		return value
-	}
 	return ""
 }
 
@@ -406,16 +346,6 @@ func runSummaryInstructionsOrDefault(c *WorkflowNotificationConfig) string {
 		return value
 	}
 	return defaultRunSummaryInstructions
-}
-
-// WorkflowExecutionDefaults stores workflow-wide execution settings. Run-folder
-// selection is intentionally absent: full runs always use the current slot.
-type WorkflowExecutionDefaults struct {
-	// Global step overrides (replaces step_override.json)
-	DisableLearning              *bool    `json:"disable_learning,omitempty"`
-	DisableParallelToolExecution *bool    `json:"disable_parallel_tool_execution,omitempty"`
-	EnabledCustomTools           []string `json:"enabled_custom_tools,omitempty"`
-	WorkshopMode                 string   `json:"workshop_mode,omitempty"` // Session mode: "workshop" or "run". Every retired name (builder, optimizer, reporting, eval, output, ask, debugger, runner) normalizes to one of those two.
 }
 
 // WorkflowSchedule represents a clock or webhook trigger stored in the manifest.
@@ -653,8 +583,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 				return strings.EqualFold(strings.TrimSpace(channel), "whatsapp") || strings.EqualFold(strings.TrimSpace(channel), "slack")
 			})
 		}
-		if unsupportedChannel(notifications.RunSummaryChannels) ||
-			strings.TrimSpace(notifications.SlackWebhookSecretName) != "" {
+		if unsupportedChannel(notifications.RunSummaryChannels) {
 			return fmt.Errorf("Flows do not support Slack or WhatsApp notifications")
 		}
 	}
@@ -663,11 +592,6 @@ func ValidateManifest(m *WorkflowManifest) error {
 	}
 	if reason := workflowtypes.ValidateIcon(m.Icon); reason != "" {
 		return fmt.Errorf("%s", reason)
-	}
-	if m.RunRetentionCount != nil {
-		if *m.RunRetentionCount < 1 || *m.RunRetentionCount > MaxRunRetentionCount {
-			return fmt.Errorf("run_retention_count must be between 1 and %d", MaxRunRetentionCount)
-		}
 	}
 	seenFolderGrantIDs := make(map[string]struct{}, len(m.FolderAccess))
 	seenFolderGrantAliases := make(map[string]struct{}, len(m.FolderAccess))
@@ -767,22 +691,6 @@ func ValidateManifest(m *WorkflowManifest) error {
 		if !validModes[m.Capabilities.BrowserMode] {
 			return fmt.Errorf("invalid browser_mode: %s", m.Capabilities.BrowserMode)
 		}
-	}
-	if len(m.Capabilities.CDPPorts) > maxCDPPortsPerRun {
-		return fmt.Errorf("capabilities.cdp_ports supports at most %d ports", maxCDPPortsPerRun)
-	}
-	if len(m.Capabilities.CDPPorts) > 0 && m.Capabilities.BrowserMode != "cdp" && m.Capabilities.BrowserMode != "auto" {
-		return fmt.Errorf("capabilities.cdp_ports requires browser_mode %q or %q", "cdp", "auto")
-	}
-	seenCDPPorts := make(map[int]bool, len(m.Capabilities.CDPPorts))
-	for _, port := range m.Capabilities.CDPPorts {
-		if port < 1 || port > 65535 {
-			return fmt.Errorf("invalid capabilities.cdp_ports entry %d: port must be between 1 and 65535", port)
-		}
-		if seenCDPPorts[port] {
-			return fmt.Errorf("duplicate capabilities.cdp_ports entry: %d", port)
-		}
-		seenCDPPorts[port] = true
 	}
 
 	// Hyphen and underscore server names are compatibility aliases throughout
@@ -993,10 +901,9 @@ func NewWorkflowManifest(label string) *WorkflowManifest {
 			SelectedGlobalSecretNames: &noGlobalSecrets,
 			BrowserMode:               "auto",
 		},
-		ExecutionDefs: WorkflowExecutionDefaults{},
-		Schedules:     []WorkflowSchedule{},
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		Schedules: []WorkflowSchedule{},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
@@ -1097,8 +1004,8 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	// json.Unmarshal above already silently dropped it from m, but nothing ever
 	// rewrites the file to match. Detect that drift on every open/run so stale
 	// prose can't sit there implying behavior it no longer has.
-	staleTopLevel, staleExecutionDefaults, staleCapabilities := staleManifestFields([]byte(content))
-	hasStaleFields := len(staleTopLevel) > 0 || len(staleExecutionDefaults) > 0 || len(staleCapabilities) > 0
+	staleTopLevel, staleCapabilities := staleManifestFields([]byte(content))
+	hasStaleFields := len(staleTopLevel) > 0 || len(staleCapabilities) > 0
 
 	// Persist auto-assigned schedule IDs (and any stale-field prune) so
 	// subsequent lookups see the cleaned-up manifest. Skip the write-back when
@@ -1116,8 +1023,8 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	mayPersistManifestMigrations := persistMigrations && heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
 	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) && len(m.MalformedConfig) == 0 {
 		if hasStaleFields {
-			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v execution_defaults=%v capabilities=%v",
-				workspacePath, staleTopLevel, staleExecutionDefaults, staleCapabilities)
+			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v capabilities=%v",
+				workspacePath, staleTopLevel, staleCapabilities)
 		}
 		if hasStaleFields && !claimStaleManifestPrune(workspacePath) {
 			// Pruned (or tried) a moment ago and the fields are still there: do not write on every read.
@@ -1147,8 +1054,8 @@ func manifestContentUnchanged(previous, next []byte) bool {
 // prune detected every unknown key but the writer kept them all, so a workflow with a retired "objective" was rewritten on
 // every read (about 270 times a minute) and nothing was ever removed. Add a key here when the product retires one.
 var retiredManifestTopLevelKeys = map[string]bool{
-	"after_manual_run": true,
-	"objective":        true, "success_criteria": true,
+	"after_manual_run": true, "execution_defaults": true, "run_retention_count": true,
+	"objective": true, "success_criteria": true,
 	"oversight_mode": true, "knowledgebase_migration": true, "contract_upgrade_history": true,
 }
 
@@ -1194,27 +1101,20 @@ func workflowLabelFromWorkspacePath(workspacePath string) string {
 
 // staleManifestFields reports JSON object keys present in raw workflow.json
 // content but absent from the current Go schema, scoped to the top-level
-// manifest plus its two plain nested config objects, execution_defaults and
-// capabilities — the two places retired per-field knobs have historically
+// manifest and its capabilities object, where retired per-field knobs have historically
 // accumulated. backup, publish, pulse, and schedules are deliberately NOT
 // inspected here: those are agent-authored blocks that intentionally allow
 // shapes the Go structs don't fully model (see stripOptionalConfigBlocks),
 // so treating their contents as "stale" would risk deleting live data.
-func staleManifestFields(content []byte) (topLevel, executionDefaults, capabilities []string) {
+func staleManifestFields(content []byte) (topLevel, capabilities []string) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(content, &top); err != nil {
-		return nil, nil, nil
+		return nil, nil
 	}
 	known := knownJSONFieldNames(reflect.TypeOf(WorkflowManifest{}))
 	for _, key := range unknownManifestKeys(top, known) {
 		if retiredManifestTopLevelKeys[key] {
 			topLevel = append(topLevel, key)
-		}
-	}
-	if raw, ok := top["execution_defaults"]; ok {
-		var obj map[string]json.RawMessage
-		if json.Unmarshal(raw, &obj) == nil {
-			executionDefaults = unknownManifestKeys(obj, knownJSONFieldNames(reflect.TypeOf(WorkflowExecutionDefaults{})))
 		}
 	}
 	if raw, ok := top["capabilities"]; ok {
@@ -1223,7 +1123,7 @@ func staleManifestFields(content []byte) (topLevel, executionDefaults, capabilit
 			capabilities = unknownManifestKeys(obj, knownJSONFieldNames(reflect.TypeOf(WorkflowCapabilities{})))
 		}
 	}
-	return topLevel, executionDefaults, capabilities
+	return topLevel, capabilities
 }
 
 // knownJSONFieldNames returns the set of JSON key names a struct type declares

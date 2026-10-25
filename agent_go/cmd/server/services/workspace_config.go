@@ -193,7 +193,6 @@ type MultiAgentChatCapabilities struct {
 	SelectedSecrets           []string                       `json:"selected_secrets"`
 	SelectedGlobalSecretNames *[]string                      `json:"selected_global_secret_names"`
 	BrowserMode               string                         `json:"browser_mode"`
-	CDPPorts                  []int                          `json:"cdp_ports,omitempty"`
 	UseCodeExecutionMode      bool                           `json:"use_code_execution_mode"`
 	LLMConfig                 *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
 	Notifications             *MultiAgentNotificationConfig  `json:"notifications,omitempty"`

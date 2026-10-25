@@ -88,7 +88,7 @@ type queuedBrowserInput struct {
 }
 
 func withQueuedBrowserInput(ctx context.Context, req QueryRequest) context.Context {
-	input := queuedBrowserInput{Mode: req.BrowserMode, Ports: append([]int(nil), req.CdpPorts...)}
+	input := queuedBrowserInput{Mode: req.BrowserMode, Ports: append([]int(nil), req.resolvedCDPPorts...)}
 	if req.CdpPort != nil {
 		port := *req.CdpPort
 		input.Port = &port
@@ -104,7 +104,7 @@ func sanitizedQueuedConversationRequest(ctx context.Context, req QueryRequest) Q
 		input, captured = *req.callerBrowserInput, true
 	}
 	if captured {
-		req.BrowserMode, req.CdpPort, req.CdpPorts = input.Mode, input.Port, input.Ports
+		req.BrowserMode, req.CdpPort, req.resolvedCDPPorts = input.Mode, input.Port, input.Ports
 	}
 	// Queue documents live in the workspace. Persist selectors and encrypted
 	// secret names, never resolved values. handleQuery resolves current values

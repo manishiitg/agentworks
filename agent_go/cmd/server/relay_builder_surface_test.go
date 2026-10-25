@@ -57,6 +57,25 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	gate := newProductToolGateForAllowlist("relays", tools)
+	filtered := map[string]recordedTool{}
+	for name, tool := range draft.tools {
+		if gate.Allows(name) {
+			filtered[name] = tool
+		}
+	}
+	logConfigurationCatalog(t, "flow-builder-phase", filtered)
+	runTools, err := relayproduct.RunTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGate := newProductToolGateForAllowlist("relays-run", runTools)
+	runFiltered := map[string]recordedTool{}
+	for name, tool := range draft.tools {
+		if runGate.Allows(name) {
+			runFiltered[name] = tool
+		}
+	}
+	logConfigurationCatalog(t, "flow-run", runFiltered)
 	if !gate.Admit("test_relay") || !gate.Admit("publish_relay") || !gate.Admit("preview_report") || !gate.Admit("query_workflow_db") || gate.Admit("create_slack_bot_route") {
 		t.Fatal("Relay tool admission differs from product.yaml")
 	}

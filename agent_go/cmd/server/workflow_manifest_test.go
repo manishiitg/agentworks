@@ -170,25 +170,6 @@ func TestWorkflowManifestChangelogChangesCreationAndCorruptPriorState(t *testing
 	}
 }
 
-func TestValidateManifestCDPPorts(t *testing.T) {
-	manifest := NewWorkflowManifest("Multi-profile browser")
-	manifest.Capabilities.BrowserMode = "cdp"
-	manifest.Capabilities.CDPPorts = []int{9222, 9333}
-	if err := ValidateManifest(manifest); err != nil {
-		t.Fatalf("valid multi-profile CDP ports rejected: %v", err)
-	}
-
-	manifest.Capabilities.CDPPorts = []int{9222, 9222}
-	if err := ValidateManifest(manifest); err == nil {
-		t.Fatal("duplicate CDP ports should be rejected")
-	}
-
-	manifest.Capabilities.CDPPorts = []int{9222, 9333, 9444, 9555, 9666}
-	if err := ValidateManifest(manifest); err == nil {
-		t.Fatal("more than four CDP ports should be rejected")
-	}
-}
-
 func TestValidateManifestRejectsEquivalentMCPServerAliases(t *testing.T) {
 	manifest := NewWorkflowManifest("Duplicate MCP aliases")
 	manifest.Capabilities.SelectedServers = []string{"google_sheets", "google-sheets"}
@@ -360,14 +341,14 @@ func TestReadWorkflowManifestMigratesMissingLabelFromWorkspacePath(t *testing.T)
 	}
 }
 
-func TestReadWorkflowManifestPrunesRetiredExecutionDefaultsFields(t *testing.T) {
+func TestReadWorkflowManifestPrunesRetiredDefaultsAndPreservesCurrentSettings(t *testing.T) {
 	const workspacePath = "Workflow/linkedin"
 	manifestJSON, err := json.Marshal(map[string]interface{}{
 		"schema_version": 1,
 		"id":             "wf_linkedin",
 		"version":        "1.0.20",
 		"label":          "linkedin",
-		"capabilities":   map[string]interface{}{},
+		"capabilities":   map[string]interface{}{"browser_mode": "headless"},
 		"execution_defaults": map[string]interface{}{
 			"always_use_same_run":    true,
 			"global_skill_objective": "retired field text",
@@ -390,8 +371,8 @@ func TestReadWorkflowManifestPrunesRetiredExecutionDefaultsFields(t *testing.T) 
 	if err != nil || !found {
 		t.Fatalf("ReadWorkflowManifest() found=%v err=%v", found, err)
 	}
-	if manifest.ExecutionDefs.WorkshopMode != "optimizer" {
-		t.Fatalf("known execution_defaults fields not preserved: %+v", manifest.ExecutionDefs)
+	if manifest.Capabilities.BrowserMode != "headless" {
+		t.Fatalf("current browser setting lost: %+v", manifest.Capabilities)
 	}
 
 	workspace.mu.Lock()
@@ -400,8 +381,8 @@ func TestReadWorkflowManifestPrunesRetiredExecutionDefaultsFields(t *testing.T) 
 	if strings.Contains(persistedJSON, "global_skill_objective") || strings.Contains(persistedJSON, "always_use_same_run") {
 		t.Fatalf("persisted manifest still contains retired execution defaults: %s", persistedJSON)
 	}
-	if !strings.Contains(persistedJSON, "\"workshop_mode\": \"optimizer\"") {
-		t.Fatalf("persisted manifest lost known field workshop_mode: %s", persistedJSON)
+	if strings.Contains(persistedJSON, "execution_defaults") {
+		t.Fatalf("retired defaults container remains: %s", persistedJSON)
 	}
 }
 

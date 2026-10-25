@@ -710,21 +710,10 @@ func summaryChannelsForKind(dest *services.NotificationDestination, kind string)
 	}
 }
 
-// webhooksForKind picks which Slack channels this notification posts to. A
-// Slack Incoming Webhook is bound to one channel, so choosing a channel means
-// choosing a webhook. When the kind has no channels of its own it falls back to
-// the workflow's single configured webhook, which is the pre-split behavior.
-func webhooksForKind(dest *services.NotificationDestination, kind string) []services.SlackWebhookDest {
+// webhooksForKind returns the optional generic-chat webhook. Goals use their saved team channels.
+func webhooksForKind(dest *services.NotificationDestination, _ string) []services.SlackWebhookDest {
 	if dest == nil {
 		return nil
-	}
-	var configured []services.SlackWebhookDest
-	switch kind {
-	case "run_summary":
-		configured = dest.RunSummaryWebhooks
-	}
-	if len(configured) > 0 {
-		return configured
 	}
 	if dest.SlackWebhook != nil && strings.TrimSpace(dest.SlackWebhook.URL) != "" {
 		return []services.SlackWebhookDest{*dest.SlackWebhook}
@@ -768,22 +757,10 @@ func summaryRecipientsForKind(dest *services.NotificationDestination, kind strin
 // function: one decides which mailbox sends, the other who receives, and a
 // change to either must not be able to silently move the other.
 //
-// Precedence: the per-summary sender, then the workflow-wide one, then "" which
-// means inherit the account default connection.
-func notificationSenderForKind(dest *services.NotificationDestination, kind string) (string, error) {
+// Empty inherits the account default sender.
+func notificationSenderForKind(dest *services.NotificationDestination, _ string) (string, error) {
 	if dest == nil {
 		return "", nil
-	}
-	var perSummary []string
-	switch kind {
-	case "run_summary":
-		perSummary = dest.RunSummaryGmailConnectionIDs
-	}
-	if len(perSummary) > 0 {
-		if len(perSummary) > 1 {
-			return "", fmt.Errorf("Notify has multiple Gmail senders configured for %s; select one sender in Notify settings", kind)
-		}
-		return strings.TrimSpace(perSummary[0]), nil
 	}
 	if dest.Gmail != nil && len(dest.Gmail.ConnectionIDs) > 0 {
 		if len(dest.Gmail.ConnectionIDs) > 1 {
@@ -1129,15 +1106,13 @@ func cloneNotificationDestination(dest *services.NotificationDestination) *servi
 		return nil
 	}
 	clone := &services.NotificationDestination{
-		UserID:                       dest.UserID,
-		WorkflowName:                 dest.WorkflowName,
-		WorkspacePath:                dest.WorkspacePath,
-		RouteSelections:              maps.Clone(dest.RouteSelections),
-		ExcludeChannels:              append([]string(nil), dest.ExcludeChannels...),
-		RunSummaryChannels:           append([]string(nil), dest.RunSummaryChannels...),
-		RunSummaryGmailConnectionIDs: append([]string(nil), dest.RunSummaryGmailConnectionIDs...),
-		RunSummaryRecipients:         append([]string(nil), dest.RunSummaryRecipients...),
-		RunSummaryWebhooks:           append([]services.SlackWebhookDest(nil), dest.RunSummaryWebhooks...),
+		UserID:               dest.UserID,
+		WorkflowName:         dest.WorkflowName,
+		WorkspacePath:        dest.WorkspacePath,
+		RouteSelections:      maps.Clone(dest.RouteSelections),
+		ExcludeChannels:      append([]string(nil), dest.ExcludeChannels...),
+		RunSummaryChannels:   append([]string(nil), dest.RunSummaryChannels...),
+		RunSummaryRecipients: append([]string(nil), dest.RunSummaryRecipients...),
 	}
 	if dest.Slack != nil {
 		clone.Slack = &services.SlackDest{
@@ -1210,7 +1185,5 @@ func notificationDestinationEmpty(dest *services.NotificationDestination) bool {
 			(dest.Gmail == nil || dest.Gmail.Email == "") &&
 			len(dest.ExcludeChannels) == 0 &&
 			len(dest.RunSummaryChannels) == 0 &&
-			len(dest.RunSummaryGmailConnectionIDs) == 0 &&
-			len(dest.RunSummaryRecipients) == 0 &&
-			len(dest.RunSummaryWebhooks) == 0)
+			len(dest.RunSummaryRecipients) == 0)
 }

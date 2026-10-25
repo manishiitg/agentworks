@@ -138,8 +138,7 @@ Rules that keep a multi-path trigger debuggable:
 
 ### Retention, concurrency, progress and runtime inputs
 
-- The server uses `workflow.json::run_retention_count` (default 10) for webhook
-  runs too, retaining that many terminal `-hook` folders independently of the
+- The server keeps ten terminal `-hook` folders independently of the
   same-sized Builder and saved-schedule families. Active hooks are never pruned.
   Older run history remains; status shows artifacts_expired=true and downloads
   return 410 Gone. Do not promise permanent video/artifact storage; CI should

@@ -581,8 +581,6 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 			notifications = *sctx.Capabilities.Notifications
 		}
 		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "slack", "whatsapp")
-		notifications.SlackWebhookSecretName = ""
-		notifications.RunSummarySlackWebhookSecretNames = nil
 		sctx.Capabilities.Notifications = &notifications
 	}
 
@@ -3439,14 +3437,6 @@ func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *Sched
 		reqMap["cost_source_id"] = workflowScheduleCostSourceID(sctx.WorkspacePath, id)
 		reqMap["cost_source_label"] = firstNonEmptyTrimmed(sctx.Schedule.Name, "Scheduled run")
 		reqMap["cost_source_run_id"] = strings.TrimSpace(costRunID)
-	}
-	if len(sctx.Capabilities.CDPPorts) > 0 {
-		reqMap["cdp_ports"] = append([]int(nil), sctx.Capabilities.CDPPorts...)
-	}
-	if sctx.Capabilities.Notifications != nil {
-		if secretName := strings.TrimSpace(sctx.Capabilities.Notifications.SlackWebhookSecretName); secretName != "" {
-			reqMap["notification_slack_webhook_secret_name"] = secretName
-		}
 	}
 
 	s.applyLLMAndSecretsToReqMap(ctx, reqMap, sctx)

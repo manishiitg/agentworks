@@ -852,10 +852,8 @@ type QueryRequest struct {
 	oauthRedirectURI string `json:"-"`
 	// CDP port for connecting to an existing Chrome browser (local mode only)
 	CdpPort *int `json:"cdp_port,omitempty"` // When set and > 0, connect to Chrome via CDP on this port instead of launching headless
-	// Explicitly authorized CDP browsers for specialized multi-profile testing.
-	// Each port must belong to a separate Chrome --user-data-dir. The legacy
-	// cdp_port remains the primary/first port for backward compatibility.
-	CdpPorts []int `json:"cdp_ports,omitempty"`
+	// Browser candidates resolved by the backend, never a request field.
+	resolvedCDPPorts []int
 	// Selected skills to include in chat context
 	SelectedSkills []string `json:"selected_skills,omitempty"` // Array of skill folder names
 	// BotPlatform identifies the chat channel the session is talking through
@@ -877,25 +875,17 @@ type QueryRequest struct {
 	BotUserID    string `json:"bot_user_id,omitempty"`
 	BotUserName  string `json:"bot_user_name,omitempty"`
 	BotUserEmail string `json:"bot_user_email,omitempty"`
-	// Internal workflow wire field: name of the selected encrypted secret that
+	// Generic-chat wire field: name of the selected encrypted secret that
 	// contains a Slack Incoming Webhook URL. The URL itself is never serialized.
-	NotificationSlackWebhookSecretName       string   `json:"notification_slack_webhook_secret_name,omitempty"`
-	NotificationRunSummaryInstructions       string   `json:"notification_run_summary_instructions,omitempty"`
-	NotificationRunSummaryChannels           []string `json:"notification_run_summary_channels,omitempty"`
-	NotificationExcludeChannels              []string `json:"notification_exclude_channels,omitempty"`
-	NotificationBlockRecipients              []string `json:"notification_block_recipients,omitempty"`
-	NotificationGmailConnectionID            string   `json:"notification_gmail_connection_id,omitempty"`
-	NotificationRunSummaryGmailConnectionIDs []string `json:"notification_run_summary_gmail_connection_ids,omitempty"`
-	NotificationRunSummaryRecipients         []string `json:"notification_run_summary_recipients,omitempty"`
-	// Per-summary Slack channels, as encrypted-secret names holding webhook URLs.
-	NotificationRunSummarySlackWebhookSecretNames []string `json:"notification_run_summary_slack_webhook_secret_names,omitempty"`
+	NotificationSlackWebhookSecretName string   `json:"notification_slack_webhook_secret_name,omitempty"`
+	NotificationRunSummaryInstructions string   `json:"notification_run_summary_instructions,omitempty"`
+	NotificationRunSummaryChannels     []string `json:"notification_run_summary_channels,omitempty"`
+	NotificationExcludeChannels        []string `json:"notification_exclude_channels,omitempty"`
+	NotificationGmailConnectionID      string   `json:"notification_gmail_connection_id,omitempty"`
+	NotificationRunSummaryRecipients   []string `json:"notification_run_summary_recipients,omitempty"`
 	// Internal-only resolved notification credentials. Unlike DecryptedSecrets,
 	// these values are never serialized, prompted, or injected as SECRET_*.
-	// notificationSlackWebhookURL is the default/fallback webhook;
-	// notificationSlackWebhookURLs holds every resolved webhook by secret name,
-	// including the per-summary channels.
-	notificationSlackWebhookURL  string            `json:"-"`
-	notificationSlackWebhookURLs map[string]string `json:"-"`
+	notificationSlackWebhookURL string `json:"-"`
 	// Delegation tier configuration: Maps reasoning levels (high/medium/low) to specific provider/model pairs
 	DelegationTierConfig *virtualtools.DelegationTierConfig `json:"delegation_tier_config,omitempty"`
 	// Decrypted secrets to inject into agent system prompt
@@ -1015,51 +1005,24 @@ func notificationDestinationFromQuery(req QueryRequest, userID string) *services
 			URL:        req.notificationSlackWebhookURL,
 		}
 	}
-	// Per-summary Slack channels. A name whose secret did not resolve is dropped
-	// rather than carried as an empty URL, so a missing credential shows up as
-	// "this channel was skipped" instead of a silent post to nowhere.
-	webhooksFor := func(names []string) []services.SlackWebhookDest {
-		var webhooks []services.SlackWebhookDest
-		for _, name := range uniqueNonEmpty(names) {
-			url := strings.TrimSpace(req.notificationSlackWebhookURLs[name])
-			if url == "" {
-				continue
-			}
-			webhooks = append(webhooks, services.SlackWebhookDest{SecretName: name, URL: url})
-		}
-		return webhooks
-	}
-	dest.RunSummaryWebhooks = webhooksFor(req.NotificationRunSummarySlackWebhookSecretNames)
 	// Per-workflow notification preferences (workflow.json notifications.*).
 	if len(req.NotificationExcludeChannels) > 0 {
 		dest.ExcludeChannels = append([]string(nil), req.NotificationExcludeChannels...)
 	}
 	dest.RunSummaryChannels = append([]string(nil), req.NotificationRunSummaryChannels...)
-	dest.RunSummaryGmailConnectionIDs = append([]string(nil), req.NotificationRunSummaryGmailConnectionIDs...)
 	dest.RunSummaryRecipients = append([]string(nil), req.NotificationRunSummaryRecipients...)
-	if len(req.NotificationBlockRecipients) > 0 {
-		if dest.Gmail == nil {
-			dest.Gmail = &services.GmailDest{}
-		}
-		dest.Gmail.BlockedRecipients = append(dest.Gmail.BlockedRecipients, req.NotificationBlockRecipients...)
-	}
-	// Sender selection rides the same path as the recipient denylist, but stays
-	// a separate field: one says which account sends, the other says who must
-	// not receive. Resolution and validation happen in the Gmail service.
+	// Sender selection is validated by the Gmail service independently of recipients.
 	if connID := strings.TrimSpace(req.NotificationGmailConnectionID); connID != "" {
 		if dest.Gmail == nil {
 			dest.Gmail = &services.GmailDest{}
 		}
 		dest.Gmail.ConnectionIDs = []string{connID}
 	}
-	if dest.Gmail != nil || len(dest.RunSummaryGmailConnectionIDs) > 0 {
-		if dest.Gmail == nil {
-			dest.Gmail = &services.GmailDest{}
-		}
+	if dest.Gmail != nil {
 		dest.Gmail.Workspace = req.notificationItemWorkspace
 	}
 	if dest.UserID == "" && dest.WorkspacePath == "" && dest.Slack == nil && dest.SlackWebhook == nil && dest.WhatsApp == nil && dest.Gmail == nil &&
-		len(dest.ExcludeChannels) == 0 && len(dest.RunSummaryRecipients) == 0 && len(dest.RunSummaryGmailConnectionIDs) == 0 && len(dest.RunSummaryWebhooks) == 0 {
+		len(dest.ExcludeChannels) == 0 && len(dest.RunSummaryRecipients) == 0 {
 		return nil
 	}
 	return dest
@@ -1073,15 +1036,11 @@ func (api *StreamingAPI) resolveNotificationSecretForRequest(ctx context.Context
 	if api == nil || req == nil {
 		return
 	}
-	// Every configured webhook is a delivery credential, including the
-	// per-summary channel webhooks. They must ALL be stripped from agent-visible
-	// injection, not just the default one — otherwise adding a second channel
-	// would quietly turn its URL into a SECRET_* variable the agent can read.
+	// Generic chat webhook credentials stay outside agent-visible secret injection.
 	defaultSecretName := strings.TrimSpace(req.NotificationSlackWebhookSecretName)
-	secretNames := uniqueNonEmpty(append([]string{defaultSecretName}, req.NotificationRunSummarySlackWebhookSecretNames...))
+	secretNames := uniqueNonEmpty([]string{defaultSecretName})
 	if len(secretNames) == 0 {
 		req.notificationSlackWebhookURL = ""
-		req.notificationSlackWebhookURLs = nil
 		return
 	}
 
@@ -1125,7 +1084,6 @@ func (api *StreamingAPI) resolveNotificationSecretForRequest(ctx context.Context
 			}
 		}
 	}
-	req.notificationSlackWebhookURLs = resolved
 	req.notificationSlackWebhookURL = resolved[defaultSecretName]
 }
 
@@ -1177,11 +1135,11 @@ func getCdpPorts(req QueryRequest) []int {
 	if mode == "none" || mode == "headless" {
 		return nil
 	}
-	candidates := make([]int, 0, 1+len(req.CdpPorts))
+	candidates := make([]int, 0, 1+len(req.resolvedCDPPorts))
 	if req.CdpPort != nil {
 		candidates = append(candidates, *req.CdpPort)
 	}
-	candidates = append(candidates, req.CdpPorts...)
+	candidates = append(candidates, req.resolvedCDPPorts...)
 	seen := make(map[int]bool, len(candidates))
 	ports := make([]int, 0, len(candidates))
 	for _, port := range candidates {
@@ -1202,12 +1160,12 @@ func getCdpPorts(req QueryRequest) []int {
 
 func validateRequestedCDPPorts(req QueryRequest) error {
 	if !browser.CDPEnabled() {
-		if strings.EqualFold(strings.TrimSpace(req.BrowserMode), "cdp") || req.CdpPort != nil || len(req.CdpPorts) > 0 {
+		if strings.EqualFold(strings.TrimSpace(req.BrowserMode), "cdp") || req.CdpPort != nil || len(req.resolvedCDPPorts) > 0 {
 			return fmt.Errorf("CDP is disabled for this server deployment; use browser_mode auto, headless, or none without CDP ports")
 		}
 		return nil
 	}
-	candidates := append([]int{}, req.CdpPorts...)
+	candidates := append([]int{}, req.resolvedCDPPorts...)
 	if req.CdpPort != nil {
 		candidates = append([]int{*req.CdpPort}, candidates...)
 	}
@@ -1268,7 +1226,7 @@ func buildChatBrowserConfig(req QueryRequest) browserinstructions.BrowserConfig 
 	}
 	ports := getCdpPorts(req)
 	if mode == "auto" {
-		ports = configuredCDPPortsForMode(mode, req.CdpPort, req.CdpPorts)
+		ports = configuredCDPPortsForMode(mode, req.CdpPort, req.resolvedCDPPorts)
 	}
 	primary := 0
 	if len(ports) > 0 {
@@ -1313,17 +1271,12 @@ func applyMultiAgentCapabilitiesToRequest(req *QueryRequest, caps WorkflowCapabi
 	req.SelectedSkills = append([]string(nil), caps.SelectedSkills...)
 	req.UseCodeExecutionMode = caps.UseCodeExecutionMode
 	req.BrowserMode = strings.ToLower(strings.TrimSpace(caps.BrowserMode))
-	req.CdpPorts = append([]int(nil), caps.CDPPorts...)
 	if caps.Notifications != nil {
-		req.NotificationSlackWebhookSecretName = strings.TrimSpace(caps.Notifications.SlackWebhookSecretName)
 		req.NotificationRunSummaryInstructions = caps.Notifications.EffectiveRunSummaryInstructions()
 		req.NotificationRunSummaryChannels = append([]string(nil), caps.Notifications.RunSummaryChannels...)
 		req.NotificationExcludeChannels = append([]string(nil), caps.Notifications.ExcludeChannels...)
-		req.NotificationBlockRecipients = append([]string(nil), caps.Notifications.BlockRecipients...)
 		req.NotificationGmailConnectionID = caps.Notifications.GmailConnectionID
-		req.NotificationRunSummaryGmailConnectionIDs = append([]string(nil), caps.Notifications.RunSummaryGmailConnectionIDs...)
 		req.NotificationRunSummaryRecipients = append([]string(nil), caps.Notifications.RunSummaryRecipients...)
-		req.NotificationRunSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.RunSummarySlackWebhookSecretNames...)
 	}
 	if req.BrowserMode == "" || req.BrowserMode == "none" {
 		req.BrowserMode = "auto"
@@ -4709,15 +4662,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.BotConnectionID = strings.TrimSpace(manifest.Capabilities.SlackConnectionID)
 				}
 				if manifest.Capabilities.Notifications != nil {
-					req.NotificationSlackWebhookSecretName = strings.TrimSpace(manifest.Capabilities.Notifications.SlackWebhookSecretName)
 					req.NotificationRunSummaryInstructions = manifest.Capabilities.Notifications.EffectiveRunSummaryInstructions()
 					req.NotificationRunSummaryChannels = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryChannels...)
 					req.NotificationExcludeChannels = append([]string(nil), manifest.Capabilities.Notifications.ExcludeChannels...)
-					req.NotificationBlockRecipients = append([]string(nil), manifest.Capabilities.Notifications.BlockRecipients...)
 					req.NotificationGmailConnectionID = manifest.Capabilities.Notifications.GmailConnectionID
-					req.NotificationRunSummaryGmailConnectionIDs = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryGmailConnectionIDs...)
 					req.NotificationRunSummaryRecipients = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryRecipients...)
-					req.NotificationRunSummarySlackWebhookSecretNames = append([]string(nil), manifest.Capabilities.Notifications.RunSummarySlackWebhookSecretNames...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, resolvedWPath, &req)
 				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
@@ -4732,7 +4681,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				if manifest.Capabilities.BrowserMode != "" {
 					req.BrowserMode = manifest.Capabilities.BrowserMode
-					req.CdpPorts = append([]int(nil), manifest.Capabilities.CDPPorts...)
 				}
 			}
 		}
@@ -4859,22 +4807,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.BotConnectionID = strings.TrimSpace(caps.SlackConnectionID)
 				}
 				if caps.Notifications != nil {
-					req.NotificationSlackWebhookSecretName = strings.TrimSpace(caps.Notifications.SlackWebhookSecretName)
 					req.NotificationRunSummaryInstructions = caps.Notifications.EffectiveRunSummaryInstructions()
 					req.NotificationRunSummaryChannels = append([]string(nil), caps.Notifications.RunSummaryChannels...)
 					req.NotificationExcludeChannels = append([]string(nil), caps.Notifications.ExcludeChannels...)
-					req.NotificationBlockRecipients = append([]string(nil), caps.Notifications.BlockRecipients...)
 					req.NotificationGmailConnectionID = caps.Notifications.GmailConnectionID
-					req.NotificationRunSummaryGmailConnectionIDs = append([]string(nil), caps.Notifications.RunSummaryGmailConnectionIDs...)
 					req.NotificationRunSummaryRecipients = append([]string(nil), caps.Notifications.RunSummaryRecipients...)
-					req.NotificationRunSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.RunSummarySlackWebhookSecretNames...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, manifestWorkspacePath, &req)
 				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
 					http.Error(w, err.Error(), http.StatusForbidden)
 					return
 				}
-				req.CdpPorts = append([]int(nil), caps.CDPPorts...)
 
 				// Browser mode from manifest
 				if caps.BrowserMode != "" && caps.BrowserMode != "none" && (req.BrowserMode == "" || req.BrowserMode == "none") {
@@ -4903,7 +4846,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if workflowBrowserMode == "auto" || workflowBrowserMode == "headless" || workflowBrowserMode == "cdp" {
 			wfCdpPorts := getCdpPorts(req)
 			if workflowBrowserMode == "auto" {
-				wfCdpPorts = configuredCDPPortsForMode(workflowBrowserMode, req.CdpPort, req.CdpPorts)
+				wfCdpPorts = configuredCDPPortsForMode(workflowBrowserMode, req.CdpPort, req.resolvedCDPPorts)
 			}
 
 			browserCategory := virtualtools.GetWorkspaceBrowserToolCategory()
@@ -5082,7 +5025,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Propagate authorized CDP profiles for browser prompts and execution agents.
 		orchestratorCDPPorts := getCdpPorts(req)
 		if workflowBrowserMode == "auto" {
-			orchestratorCDPPorts = configuredCDPPortsForMode(workflowBrowserMode, req.CdpPort, req.CdpPorts)
+			orchestratorCDPPorts = configuredCDPPortsForMode(workflowBrowserMode, req.CdpPort, req.resolvedCDPPorts)
 		}
 		if cdpPorts := orchestratorCDPPorts; len(cdpPorts) > 0 {
 			workflowOrchestrator.SetCdpPorts(cdpPorts)
@@ -6816,7 +6759,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				browserPorts := getCdpPorts(req)
 				if getBrowserMode(req) == "auto" {
-					browserPorts = configuredCDPPortsForMode(getBrowserMode(req), req.CdpPort, req.CdpPorts)
+					browserPorts = configuredCDPPortsForMode(getBrowserMode(req), req.CdpPort, req.resolvedCDPPorts)
 				}
 				if err := registerCodingBrowserTools(llmAgent, sessionID, getBrowserMode(req), browserPorts, browserGuard); err != nil {
 					log.Printf("[BROWSER TOOLS ERROR] %v", err)
@@ -7684,7 +7627,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						phaseManifest, phaseFound, phaseMErr := ReadWorkflowManifest(context.Background(), phaseWorkspacePath)
 						if phaseMErr == nil && phaseFound {
 							configuredBrowserMode := strings.ToLower(strings.TrimSpace(phaseManifest.Capabilities.BrowserMode))
-							phaseConfiguredCDPPorts := configuredCDPPortsForMode(configuredBrowserMode, req.CdpPort, append(append([]int{}, req.CdpPorts...), phaseManifest.Capabilities.CDPPorts...))
+							phaseConfiguredCDPPorts := configuredCDPPortsForMode(configuredBrowserMode, req.CdpPort, req.resolvedCDPPorts)
 
 							// Browser mode is configured intent. In auto mode the executor
 							// checks CDP live; no resolved cdp/headless result is persisted
@@ -12249,7 +12192,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 			// Store configured browser intent only. Auto mode is resolved live by
 			// agent_browser status/actions, never persisted as cdp or headless.
 			configuredBrowserMode := strings.ToLower(strings.TrimSpace(caps.BrowserMode))
-			workshopConfiguredCDPPorts := configuredCDPPortsForMode(configuredBrowserMode, req.CdpPort, append(append([]int{}, req.CdpPorts...), caps.CDPPorts...))
+			workshopConfiguredCDPPorts := configuredCDPPortsForMode(configuredBrowserMode, req.CdpPort, req.resolvedCDPPorts)
 			cfg.BrowserRuntime = browser.NewBrowserRuntimeConfig(configuredBrowserMode, workshopConfiguredCDPPorts)
 			if configuredBrowserMode != "" {
 				common.SetSessionBrowserMode(sessionID, configuredBrowserMode)

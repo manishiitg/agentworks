@@ -677,7 +677,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
 
   // Get selected run folder and workspace functions (defined early for use in useEffect)
   const selectedRunFolder = useWorkflowStore(state => state.selectedRunFolder)
-  const setStepOverride = useWorkflowStore(state => state.setStepOverride)
   const selectedGroupIds = useWorkflowStore(state => state.selectedGroupIds)
   const variablesManifest = useWorkflowStore(state => state.variablesManifest)
   const { fetchFiles, setExpandedFolders } = useWorkspaceStore(useShallow(state => ({
@@ -1120,28 +1119,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     }
     previousWorkspacePaneHiddenByFocus.current = workspacePaneHiddenByFocus
   }, [workspacePaneHiddenByFocus])
-
-  // Load execution_defaults from workflow.json when workspace changes
-  useEffect(() => {
-    if (!workspacePath) return
-    workflowManifestApi.getWorkflowManifest(workspacePath)
-      .then(response => {
-        const defaults = response?.manifest?.execution_defaults
-        if (!defaults) return
-        // Load global step overrides from execution_defaults
-        const hasOverrides = defaults.disable_parallel_tool_execution !== undefined ||
-          (defaults.enabled_custom_tools && defaults.enabled_custom_tools.length > 0)
-        if (hasOverrides) {
-          setStepOverride({
-            disable_parallel_tool_execution: defaults.disable_parallel_tool_execution !== undefined ? defaults.disable_parallel_tool_execution : undefined,
-            enabled_custom_tools: defaults.enabled_custom_tools,
-          })
-        } else {
-          setStepOverride(null)
-        }
-      })
-      .catch(() => { /* manifest may not exist yet, use defaults */ })
-  }, [workspacePath, setStepOverride])
 
   // Auto-expand selectedRunFolder and selected groups in workspace sidebar whenever they change
   useEffect(() => {

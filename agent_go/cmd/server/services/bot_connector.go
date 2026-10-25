@@ -3425,9 +3425,6 @@ func (m *BotConversationManager) buildQueryRequest(query string, userID string, 
 		if savedCaps.BrowserMode != "" {
 			req["browser_mode"] = savedCaps.BrowserMode
 		}
-		if len(savedCaps.CDPPorts) > 0 {
-			req["cdp_ports"] = savedCaps.CDPPorts
-		}
 		req["use_code_execution_mode"] = savedCaps.UseCodeExecutionMode
 		if llmConfig := multiAgentChatLLMConfigForRequest(savedCaps.LLMConfig); llmConfig != nil {
 			req["llm_config"] = llmConfig

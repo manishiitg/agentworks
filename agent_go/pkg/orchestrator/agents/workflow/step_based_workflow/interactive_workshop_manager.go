@@ -38,8 +38,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const maxCDPPortsPerWorkflow = 4
-
 const statusPollWindow = 60 * time.Second
 
 const statusPollNextAction = `**NEXT ACTION: End the current agent turn now.**
@@ -929,15 +927,6 @@ func notificationRecipientSummary(recipients []string) string {
 	return strings.Join(recipients, ", ")
 }
 
-// notificationWebhookSummary renders the Slack channels configured for one
-// summary. Each entry is a webhook secret, and a webhook is one channel.
-func notificationWebhookSummary(secretNames []string) string {
-	if len(secretNames) == 0 {
-		return "not configured (uses the workflow's single Slack webhook, if any)"
-	}
-	return strings.Join(secretNames, ", ")
-}
-
 // persistWorkflowConfigToManifest writes the current in-memory workflow config
 // (servers, tools, skills, secrets) back to workflow.json so changes survive
 // session end.
@@ -991,11 +980,6 @@ func (iwm *InteractiveWorkshopManager) persistWorkflowConfigToManifest(ctx conte
 		caps["browser_mode"] = mode
 	} else if _, exists := caps["browser_mode"]; !exists {
 		caps["browser_mode"] = "none"
-	}
-	if ports := iwm.controller.GetCdpPorts(); len(ports) > 0 {
-		caps["cdp_ports"] = ports
-	} else {
-		delete(caps, "cdp_ports")
 	}
 
 	// Persist the remaining workflow-level KB configuration. Remove the retired
@@ -4056,11 +4040,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				mode = "none"
 			}
 			sb.WriteString(fmt.Sprintf("- browser_mode: %s\n", mode))
-			if ports := ctrl.GetCdpPorts(); len(ports) > 0 {
-				sb.WriteString(fmt.Sprintf("- cdp_ports: %v (independent Chrome profiles/login identities)\n", ports))
-			} else {
-				sb.WriteString("- cdp_ports: (default single port when CDP is selected)\n")
-			}
 
 			// --- Secrets (names only) ---
 			secrets := ctrl.GetSecrets()
@@ -4076,30 +4055,22 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 
 			// --- One-way notifications (secret references only) ---
 			sb.WriteString("\n### Notifications\n")
-			var slackWebhookSecretName string
 			var runNotificationInstructions string
 			breakAlerts := true
 			var runNotificationChannels []string
 			var notificationExcludeChannels []string
-			var notificationBlockRecipients []string
 			var notificationGmailConnectionID string
 			var runNotificationRecipients []string
-			var runNotificationWebhooks []string
 			if content, readErr := ctrl.ReadWorkspaceFile(ctx, "workflow.json"); readErr == nil {
 				var manifest struct {
 					Capabilities struct {
 						Notifications struct {
 							BreakAlerts            *bool    `json:"break_alerts"`
-							SlackWebhookSecretName string   `json:"slack_webhook_secret_name"`
 							RunSummaryInstructions string   `json:"run_summary_instructions"`
 							RunSummaryChannels     []string `json:"run_summary_channels"`
-							Instructions           string   `json:"instructions"`
 							ExcludeChannels        []string `json:"exclude_channels"`
-							BlockRecipients        []string `json:"block_recipients"`
 							GmailConnectionID      string   `json:"gmail_connection_id"`
 							RunSummaryRecipients   []string `json:"run_summary_recipients"`
-
-							RunSummarySlackWebhookSecretNames []string `json:"run_summary_slack_webhook_secret_names"`
 						} `json:"notifications"`
 					} `json:"capabilities"`
 				}
@@ -4107,27 +4078,15 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					if enabled := manifest.Capabilities.Notifications.BreakAlerts; enabled != nil {
 						breakAlerts = *enabled
 					}
-					slackWebhookSecretName = strings.TrimSpace(manifest.Capabilities.Notifications.SlackWebhookSecretName)
 					runNotificationInstructions = strings.TrimSpace(manifest.Capabilities.Notifications.RunSummaryInstructions)
-					legacyInstructions := strings.TrimSpace(manifest.Capabilities.Notifications.Instructions)
-					if runNotificationInstructions == "" {
-						runNotificationInstructions = legacyInstructions
-					}
 
 					notificationExcludeChannels = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.ExcludeChannels)
-					notificationBlockRecipients = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.BlockRecipients)
 					notificationGmailConnectionID = strings.TrimSpace(manifest.Capabilities.Notifications.GmailConnectionID)
 					runNotificationRecipients = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.RunSummaryRecipients)
-					runNotificationWebhooks = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.RunSummarySlackWebhookSecretNames)
 					runNotificationChannels = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.RunSummaryChannels)
 				}
 			}
 			sb.WriteString(fmt.Sprintf("- Tell me when something breaks: %v\n", breakAlerts))
-			if slackWebhookSecretName == "" {
-				sb.WriteString("- Slack Incoming Webhook: not configured\n")
-			} else {
-				sb.WriteString(fmt.Sprintf("- Slack Incoming Webhook: configured via encrypted secret **%s** (one-way workflow summary delivery delivery; URL hidden)\n", slackWebhookSecretName))
-			}
 			if runNotificationInstructions == "" {
 				sb.WriteString("- Workflow run summary instructions: not configured\n")
 			} else {
@@ -4140,9 +4099,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 
 			if len(notificationExcludeChannels) > 0 {
 				sb.WriteString(fmt.Sprintf("- Excluded channels: %s\n", strings.Join(notificationExcludeChannels, ", ")))
-			}
-			if len(notificationBlockRecipients) > 0 {
-				sb.WriteString(fmt.Sprintf("- Blocked recipients: %s\n", strings.Join(notificationBlockRecipients, ", ")))
 			}
 			// Show the saved sender and enabled choices so Builder can configure it.
 			if gmailSvc := services.GetGmailService(); gmailSvc != nil {
@@ -4187,9 +4143,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 			// Summaries email only explicitly configured recipients.
 			sb.WriteString(fmt.Sprintf("- Workflow run summary recipients: %s\n", notificationRecipientSummary(runNotificationRecipients)))
-			if len(runNotificationWebhooks) > 0 {
-				sb.WriteString(fmt.Sprintf("- Workflow run summary Slack channels: %s\n", notificationWebhookSummary(runNotificationWebhooks)))
-			}
 
 			// Show available secrets that can be added
 			if iwm.listAvailableSecrets != nil {
@@ -4243,22 +4196,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				sb.WriteString(" (default — not explicitly set)")
 			}
 			sb.WriteString("\n")
-			runRetentionCount := defaultRunRetentionCount
-			runRetentionNote := " (default)"
-			if content, err := ctrl.ReadWorkspaceFile(ctx, "workflow.json"); err == nil {
-				var manifest struct {
-					RunRetentionCount *int `json:"run_retention_count"`
-				}
-				if json.Unmarshal([]byte(content), &manifest) == nil && manifest.RunRetentionCount != nil {
-					if *manifest.RunRetentionCount >= 1 && *manifest.RunRetentionCount <= maxRunRetentionCount {
-						runRetentionCount = *manifest.RunRetentionCount
-						runRetentionNote = ""
-					} else {
-						runRetentionNote = fmt.Sprintf(" (invalid; runtime uses default %d)", defaultRunRetentionCount)
-					}
-				}
-			}
-			sb.WriteString(fmt.Sprintf("- run_retention_count: %d%s\n", runRetentionCount, runRetentionNote))
+			sb.WriteString(fmt.Sprintf("- Completed run archives retained per family: %d\n", defaultRunRetentionCount))
 
 			// Preset-level defaults
 			sb.WriteString("\n**Preset Defaults**:\n")
@@ -4364,17 +4302,15 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 	// Tool: update_workflow_config — add/remove MCP servers, skills, secrets, and workflow-level knobs
 	browserModeValues := []interface{}{"none", "auto", "headless", "cdp"}
 	browserModeDescription := "Workflow-level browser automation mode. 'none' disables browser capability; 'auto' uses the operator's shared Chrome through CDP when reachable and otherwise headless agent_browser; 'headless' forces isolated agent_browser; 'cdp' requires the operator's shared Chrome. For steps that actually drive the browser, also set update_step_config(enabled_custom_tools=[...]) and enabled_skills=['agent-browser']."
-	cdpPortsDescription := "Optional specialized CDP browser ports (maximum 4). Use multiple ports only when one workflow needs independent Chrome profiles/login identities, such as testing two accounts on the same site. Each port must be launched with a distinct --user-data-dir. Normal concurrent workflows should share the default single CDP browser."
 	if !browser.CDPEnabled() {
 		browserModeValues = []interface{}{"none", "auto", "headless"}
 		browserModeDescription = "Workflow-level browser automation mode for this server deployment. CDP is disabled: 'auto' and 'headless' both use managed headless Chromium; 'none' disables browser capability. The 'cdp' mode is unavailable and cannot be forced."
-		cdpPortsDescription = "Unavailable on this server deployment because CDP is disabled. Omit this field."
 	}
 	if iwm.isRunModeRestricted() {
 		// PLAT-262: skip update_workflow_config registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"update_workflow_config",
-		"Update workflow configuration: add/remove MCP servers, workflow-level tool allowlist entries, skills and secrets; save workflow-scoped notification content instructions and one Gmail notification sender; configure a one-way Slack Incoming Webhook by encrypted secret name; set browser mode and optional specialized multi-profile CDP ports; set run retention. Use get_workflow_config to inspect current workflow settings and list_skills to discover installed skill folder names. Most changes take effect immediately for subsequent steps; changing cdp_ports or Slack webhook configuration takes effect on the next workflow execution.",
+		"Update workflow configuration: add/remove MCP servers, workflow-level tool allowlist entries, skills and secrets; save workflow-scoped notification content instructions and one Gmail notification sender; set browser mode; inspect configured delivery. Use get_workflow_config to inspect current workflow settings and list_skills to discover installed skill folder names. Most changes take effect immediately for subsequent steps; browser changes take effect on the next workflow execution.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -4426,10 +4362,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"items":       map[string]interface{}{"type": "string"},
 					"description": "Secret names to remove/disable from the workflow",
 				},
-				"slack_webhook_secret_name": map[string]interface{}{
-					"type":        "string",
-					"description": "Name of an existing encrypted secret containing a complete Slack Incoming Webhook URL. This converts the credential into backend-only notification configuration and removes it from selected_secrets, selected_global_secret_names, and SECRET_* injection. The server sends a rich Block Kit card to it automatically and applies the change in the current builder turn; human_feedback never does because webhooks are one-way. Pass an empty string to disable workflow webhook delivery. Never put the URL itself in workflow.json or post to it directly.",
-				},
 				"break_alerts": map[string]interface{}{
 					"type": "boolean", "description": "Tell me when something breaks: show run failures in Needs you. Enabled by default. Does not change configured team messages or decisions that need an answer.",
 				},
@@ -4446,51 +4378,23 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"description": "Channels for the workflow run summary only. The backend enforces this allowlist. Omit to retain the current/default routing.",
 				},
 
-				"run_notification_slack_webhooks": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Which Slack CHANNEL(S) the workflow run summary posts to, as names of existing encrypted secrets that each hold a complete Slack Incoming Webhook URL. A webhook is bound to one channel when it is created and cannot be retargeted, so a different channel means a different webhook secret — store each with set_workflow_secret, then list its name here. Listing several posts the run summary to several channels. Stored in workflow.json capabilities.notifications.run_summary_slack_webhook_secret_names. Omit to leave unchanged; pass an empty array to fall back to the workflow's single slack_webhook_secret_name.",
-				},
-
 				"run_notification_recipients": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
-					"description": "Email addresses the workflow run summary is sent TO, stored in workflow.json capabilities.notifications.run_summary_recipients and applied automatically to every run_summary send. This is the positive 'send here' list — set it when the user names who should receive this workflow's run emails. Omit to leave unchanged; pass an empty array to stop summary emails. Never blocks anything: the account-wide and per-workflow denylists are still applied on top, so a blocked address listed here is skipped rather than unblocked.",
+					"description": "Email addresses the workflow run summary is sent TO, stored in workflow.json capabilities.notifications.run_summary_recipients and applied automatically to every run_summary send. This is the positive 'send here' list — set it when the user names who should receive this workflow's run emails. Omit to leave unchanged; pass an empty array to stop summary emails. Never blocks anything: the account-wide denylist are still applied on top, so a blocked address listed here is skipped rather than unblocked.",
 				},
 
 				"backup":  map[string]interface{}{"type": "object", "additionalProperties": false, "description": "Goal Backup settings. after_runs runs configured Backup after every full run; off by default. Destinations are unchanged.", "properties": map[string]interface{}{"after_runs": map[string]interface{}{"type": "boolean"}}},
 				"publish": map[string]interface{}{"type": "object", "additionalProperties": false, "description": "Goal Publish settings. after_runs refreshes configured publishing after every full run; off by default. Destinations are unchanged.", "properties": map[string]interface{}{"after_runs": map[string]interface{}{"type": "boolean"}}},
 				"notification_gmail_connection_id": map[string]interface{}{
 					"type":        "string",
-					"description": "One enabled Gmail connection ID to send this workflow's workflow summary delivery emails FROM for configured team run messages. Inspect available IDs with get_workflow_config. Stored in workflow.json capabilities.notifications.gmail_connection_id; clears legacy per-summary sender overrides. Omit to leave unchanged; pass an empty string to inherit the account default Gmail sender. This does not change recipients or the Gmail connection_id chosen by ordinary workflow and Builder email actions.",
+					"description": "One enabled Gmail connection ID to send this workflow's workflow summary delivery emails FROM for configured team run messages. Inspect available IDs with get_workflow_config. Stored in workflow.json capabilities.notifications.gmail_connection_id. Omit to leave unchanged; pass an empty string to inherit the account default Gmail sender. This does not change recipients or the Gmail connection_id chosen by ordinary workflow and Builder email actions.",
 				},
 
 				"browser_mode": map[string]interface{}{
 					"type":        "string",
 					"enum":        browserModeValues,
 					"description": browserModeDescription,
-				},
-				"cdp_ports": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 65535},
-					"maxItems":    maxCDPPortsPerWorkflow,
-					"uniqueItems": true,
-					"description": cdpPortsDescription,
-				},
-				"run_retention_count": map[string]interface{}{
-					"type":        "integer",
-					"minimum":     1,
-					"maximum":     maxRunRetentionCount,
-					"description": "Number of completed run/eval folders to keep independently for plain Builder archives, saved-schedule -sched runs, and webhook -hook runs, excluding active iteration-0. Defaults to 10 when omitted. Raise this when reviewing progress needs a wider evidence window.",
-				},
-				"disable_parallel_tool_execution": map[string]interface{}{
-					"type":        "boolean",
-					"description": "Workflow-level default (stored in execution_defaults, applies to EVERY step unless a step overrides it) forcing one tool call per turn. Use only when most steps in this workflow need strictly sequential tool calls (e.g. a workflow that is browser-driven throughout); prefer per-step tuning via update_step_config when only some steps need it. Pass null to clear the workflow-level default.",
-				},
-				"enabled_custom_tools": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Workflow-level optional workspace/custom tools (stored in execution_defaults, applies to EVERY step unless a step sets its own enabled_custom_tools). Execution agents already receive workspace_advanced. Human tools are not baseline: name send_email, send_slack_message or create_human_input_request when steps need them. Add only capabilities nearly every step needs. Legacy human_tools:* grants nothing. Prefer per-step tuning otherwise. Pass an empty array to clear the workflow-level additions.",
 				},
 			},
 		},
@@ -5043,7 +4947,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 						}
 					}
 				}
-				delete(notifications, "instructions")
 				for key, value := range map[string]string{
 					"run_summary_instructions": strings.TrimSpace(runInstructions),
 				} {
@@ -5073,7 +4976,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					} else {
 						notifications["gmail_connection_id"] = senderID
 					}
-					delete(notifications, "run_summary_gmail_connection_ids")
 				}
 				if len(notifications) == 0 {
 					delete(caps, "notifications")
@@ -5174,306 +5076,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 
-			if raw, provided := args["slack_webhook_secret_name"]; provided && raw != nil {
-				secretName, isString := raw.(string)
-				if !isString {
-					return "Error: slack_webhook_secret_name must be a string.", nil
-				}
-				secretName = strings.TrimSpace(secretName)
-				var secretValue string
-				if secretName != "" {
-					if iwm.resolveSecretValues != nil {
-						secretValue = iwm.resolveSecretValues(ctx, []string{secretName})[secretName]
-					}
-					if strings.TrimSpace(secretValue) == "" {
-						for _, secret := range iwm.controller.GetSecrets() {
-							if secret.Name == secretName {
-								secretValue = secret.Value
-								break
-							}
-						}
-					}
-					if strings.TrimSpace(secretValue) == "" {
-						return fmt.Sprintf("Error: Slack webhook secret %q has no stored value. Save the full Incoming Webhook URL with set_workflow_secret first.", secretName), nil
-					}
-					if validateErr := services.ValidateSlackIncomingWebhookURL(secretValue); validateErr != nil {
-						return fmt.Sprintf("Error: secret %q is not a valid Slack Incoming Webhook URL: %v", secretName, validateErr), nil
-					}
-				}
-
-				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if readErr != nil {
-					return fmt.Sprintf("Failed to read workflow.json: %v", readErr), nil
-				}
-				var manifest map[string]interface{}
-				if parseErr := json.Unmarshal([]byte(content), &manifest); parseErr != nil {
-					return fmt.Sprintf("Failed to parse workflow.json: %v", parseErr), nil
-				}
-				caps, _ := manifest["capabilities"].(map[string]interface{})
-				if caps == nil {
-					caps = make(map[string]interface{})
-				}
-				if secretName == "" {
-					if notifications, ok := caps["notifications"].(map[string]interface{}); ok {
-						delete(notifications, "slack_webhook_secret_name")
-						if len(notifications) == 0 {
-							delete(caps, "notifications")
-						} else {
-							caps["notifications"] = notifications
-						}
-					}
-				} else {
-					notifications, _ := caps["notifications"].(map[string]interface{})
-					if notifications == nil {
-						notifications = make(map[string]interface{})
-					}
-					notifications["slack_webhook_secret_name"] = secretName
-					caps["notifications"] = notifications
-				}
-				// A webhook referenced by Notifications is backend-only. Remove any
-				// legacy/auto-attached copies from both secret selection lists so
-				// future builders and workflow steps never receive SECRET_<NAME>.
-				if secretName != "" {
-					for _, key := range []string{"selected_secrets", "selected_global_secret_names"} {
-						if rawSelected, ok := caps[key].([]interface{}); ok {
-							filtered := make([]interface{}, 0, len(rawSelected))
-							for _, entry := range rawSelected {
-								if name, _ := entry.(string); strings.TrimSpace(name) != secretName {
-									filtered = append(filtered, entry)
-								}
-							}
-							caps[key] = filtered
-						}
-					}
-				}
-				manifest["capabilities"] = caps
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-				updated, marshalErr := json.MarshalIndent(manifest, "", "  ")
-				if marshalErr != nil {
-					return fmt.Sprintf("Failed to marshal workflow.json: %v", marshalErr), nil
-				}
-				if writeErr := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); writeErr != nil {
-					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
-				}
-
-				if secretName != "" {
-					currentSecrets := iwm.controller.GetSecrets()
-					filtered := make([]orchestrator.SecretEntry, 0, len(currentSecrets))
-					for _, secret := range currentSecrets {
-						if strings.TrimSpace(secret.Name) != secretName {
-							filtered = append(filtered, secret)
-						}
-					}
-					iwm.controller.SetSecrets(filtered)
-					if iwm.workshopConfig != nil {
-						iwm.workshopConfig.Secrets = append([]orchestrator.SecretEntry(nil), filtered...)
-					}
-					if envRef := iwm.controller.GetWorkspaceEnvRef(); envRef != nil {
-						iwm.controller.LockWorkspaceEnv()
-						delete(envRef, "SECRET_"+secretName)
-						iwm.controller.UnlockWorkspaceEnv()
-					}
-				}
-				// Refresh the current builder turn immediately. The agent still never
-				// sees the URL; only workflow summary delivery's destination context receives it.
-				if destination, ok := ctx.Value(virtualtools.BotNotificationDestinationKey).(*services.NotificationDestination); ok && destination != nil {
-					if secretName == "" {
-						destination.SlackWebhook = nil
-					} else {
-						destination.SlackWebhook = &services.SlackWebhookDest{SecretName: secretName, URL: secretValue}
-					}
-				}
-				var currentWebhook *services.SlackWebhookDest
-				if secretName != "" {
-					currentWebhook = &services.SlackWebhookDest{SecretName: secretName, URL: secretValue}
-				}
-				virtualtools.UpdateSessionSlackWebhook(iwm.sessionID, currentWebhook)
-
-				anyChanged = true
-				if secretName == "" {
-					sb.WriteString("\n### Slack Incoming Webhook (disabled)\nWorkflow workflow summary delivery calls no longer send to a dedicated Slack webhook. Interactive Slack bot behavior is unchanged.\n")
-				} else {
-					sb.WriteString(fmt.Sprintf("\n### Slack Incoming Webhook (configured)\n- Encrypted backend-only secret: %s\n- Applies to recorded summaries and future workflow runs. workflow summary delivery renders rich Block Kit by default; the agent never receives the URL. It is one-way and is not used for human_feedback.\n", secretName))
-				}
-				logger.Info(fmt.Sprintf("Updated workflow Slack webhook secret reference: configured=%v", secretName != ""))
-			}
-
-			// --- Per-summary Slack channels (one webhook == one channel) ---
-			runWebhooksRaw, runWebhooksProvided := args["run_notification_slack_webhooks"]
-			if runWebhooksProvided && runWebhooksRaw != nil {
-				// Validate before writing anything: a name with no stored value, or
-				// one holding something that is not a webhook URL, would persist as a
-				// channel that silently never receives a message.
-				resolveWebhookSecret := func(name string) (string, error) {
-					var value string
-					if iwm.resolveSecretValues != nil {
-						value = iwm.resolveSecretValues(ctx, []string{name})[name]
-					}
-					if strings.TrimSpace(value) == "" {
-						for _, secret := range iwm.controller.GetSecrets() {
-							if secret.Name == name {
-								value = secret.Value
-								break
-							}
-						}
-					}
-					if strings.TrimSpace(value) == "" {
-						return "", fmt.Errorf("Slack webhook secret %q has no stored value. Save the full Incoming Webhook URL with set_workflow_secret first", name)
-					}
-					if validateErr := services.ValidateSlackIncomingWebhookURL(value); validateErr != nil {
-						return "", fmt.Errorf("secret %q is not a valid Slack Incoming Webhook URL: %w", name, validateErr)
-					}
-					return value, nil
-				}
-				parseWebhooks := func(argName string, raw interface{}, provided bool) ([]string, map[string]string, error) {
-					if !provided || raw == nil {
-						return nil, nil, nil
-					}
-					values, ok := raw.([]interface{})
-					if !ok {
-						return nil, nil, fmt.Errorf("%s must be an array of secret names", argName)
-					}
-					names := make([]string, 0, len(values))
-					resolved := map[string]string{}
-					seen := map[string]bool{}
-					for _, rawValue := range values {
-						name, ok := rawValue.(string)
-						if !ok {
-							return nil, nil, fmt.Errorf("%s must contain only secret names", argName)
-						}
-						name = strings.TrimSpace(name)
-						if name == "" || seen[name] {
-							continue
-						}
-						value, resolveErr := resolveWebhookSecret(name)
-						if resolveErr != nil {
-							return nil, nil, resolveErr
-						}
-						seen[name] = true
-						names = append(names, name)
-						resolved[name] = value
-					}
-					return names, resolved, nil
-				}
-				runWebhookNames, runWebhookValues, parseErr := parseWebhooks("run_notification_slack_webhooks", runWebhooksRaw, runWebhooksProvided)
-				if parseErr != nil {
-					return "Error: " + parseErr.Error() + ".", nil
-				}
-
-				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if readErr != nil {
-					return fmt.Sprintf("Failed to read workflow.json: %v", readErr), nil
-				}
-				var manifest map[string]interface{}
-				if parseErr := json.Unmarshal([]byte(content), &manifest); parseErr != nil {
-					return fmt.Sprintf("Failed to parse workflow.json: %v", parseErr), nil
-				}
-				caps, _ := manifest["capabilities"].(map[string]interface{})
-				if caps == nil {
-					caps = make(map[string]interface{})
-				}
-				notifications, _ := caps["notifications"].(map[string]interface{})
-				if notifications == nil {
-					notifications = make(map[string]interface{})
-				}
-				applyWebhookNames := func(key string, names []string, provided bool) {
-					if !provided {
-						return
-					}
-					if len(names) == 0 {
-						delete(notifications, key)
-						return
-					}
-					notifications[key] = names
-				}
-				applyWebhookNames("run_summary_slack_webhook_secret_names", runWebhookNames, runWebhooksProvided)
-				if len(notifications) == 0 {
-					delete(caps, "notifications")
-				} else {
-					caps["notifications"] = notifications
-				}
-
-				// Same backend-only guarantee the single webhook gets: a credential
-				// referenced by notifications must never reach the agent as SECRET_*.
-				backendOnly := runWebhookNames
-				if len(backendOnly) > 0 {
-					blocked := map[string]bool{}
-					for _, name := range backendOnly {
-						blocked[name] = true
-					}
-					for _, key := range []string{"selected_secrets", "selected_global_secret_names"} {
-						if rawSelected, ok := caps[key].([]interface{}); ok {
-							filtered := make([]interface{}, 0, len(rawSelected))
-							for _, entry := range rawSelected {
-								if name, _ := entry.(string); !blocked[strings.TrimSpace(name)] {
-									filtered = append(filtered, entry)
-								}
-							}
-							caps[key] = filtered
-						}
-					}
-				}
-				manifest["capabilities"] = caps
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-				updated, marshalErr := json.MarshalIndent(manifest, "", "  ")
-				if marshalErr != nil {
-					return fmt.Sprintf("Failed to marshal workflow.json: %v", marshalErr), nil
-				}
-				if writeErr := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); writeErr != nil {
-					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
-				}
-
-				if len(backendOnly) > 0 {
-					blocked := map[string]bool{}
-					for _, name := range backendOnly {
-						blocked[name] = true
-					}
-					currentSecrets := iwm.controller.GetSecrets()
-					filtered := make([]orchestrator.SecretEntry, 0, len(currentSecrets))
-					for _, secret := range currentSecrets {
-						if !blocked[strings.TrimSpace(secret.Name)] {
-							filtered = append(filtered, secret)
-						}
-					}
-					iwm.controller.SetSecrets(filtered)
-					if iwm.workshopConfig != nil {
-						iwm.workshopConfig.Secrets = append([]orchestrator.SecretEntry(nil), filtered...)
-					}
-					if envRef := iwm.controller.GetWorkspaceEnvRef(); envRef != nil {
-						iwm.controller.LockWorkspaceEnv()
-						for name := range blocked {
-							delete(envRef, "SECRET_"+name)
-						}
-						iwm.controller.UnlockWorkspaceEnv()
-					}
-				}
-
-				// Apply to the live builder turn so a test workflow summary delivery right after
-				// this call already posts to the newly chosen channels.
-				toWebhookDests := func(names []string, values map[string]string) []services.SlackWebhookDest {
-					var dests []services.SlackWebhookDest
-					for _, name := range names {
-						dests = append(dests, services.SlackWebhookDest{SecretName: name, URL: values[name]})
-					}
-					return dests
-				}
-				if destination, ok := ctx.Value(virtualtools.BotNotificationDestinationKey).(*services.NotificationDestination); ok && destination != nil {
-					if runWebhooksProvided {
-						destination.RunSummaryWebhooks = toWebhookDests(runWebhookNames, runWebhookValues)
-					}
-
-				}
-
-				anyChanged = true
-				sb.WriteString("\n### Slack channels per summary (updated)\n")
-				if runWebhooksProvided {
-					sb.WriteString(fmt.Sprintf("- Workflow run summary channels: %s\n", notificationWebhookSummary(runWebhookNames)))
-				}
-
-				sb.WriteString("Each webhook is one Slack channel. The agent never receives these URLs; the backend posts through them by notification_kind.\n")
-				logger.Info(fmt.Sprintf("Updated per-summary Slack webhooks: run=%d", len(runWebhookNames)))
-			}
-
 			// --- Browser mode ---
 			if raw, ok := args["browser_mode"]; ok && raw != nil {
 				mode, _ := raw.(string)
@@ -5492,163 +5094,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				anyChanged = true
 				sb.WriteString(fmt.Sprintf("\n### Browser Mode (updated)\n- %s\n", mode))
 				logger.Info(fmt.Sprintf("Updated workflow browser_mode=%s", mode))
-			}
-
-			// --- Specialized multi-profile CDP ports ---
-			if raw, ok := args["cdp_ports"]; ok && raw != nil {
-				if !browser.CDPEnabled() {
-					return "Error: cdp_ports is unavailable because CDP is disabled for this server deployment.", nil
-				}
-				arr, ok := raw.([]interface{})
-				if !ok {
-					return "Error: cdp_ports must be an array of integer ports.", nil
-				}
-				if len(arr) > maxCDPPortsPerWorkflow {
-					return fmt.Sprintf("Error: cdp_ports supports at most %d ports.", maxCDPPortsPerWorkflow), nil
-				}
-				ports := make([]int, 0, len(arr))
-				seen := make(map[int]bool, len(arr))
-				for _, item := range arr {
-					value, ok := item.(float64)
-					if !ok || value != float64(int(value)) || value < 1 || value > 65535 {
-						return "Error: every cdp_ports entry must be an integer between 1 and 65535.", nil
-					}
-					port := int(value)
-					if seen[port] {
-						return fmt.Sprintf("Error: duplicate cdp_ports entry %d.", port), nil
-					}
-					seen[port] = true
-					ports = append(ports, port)
-				}
-				mode := strings.ToLower(strings.TrimSpace(iwm.controller.GetBrowserMode()))
-				if len(ports) > 0 && mode != "cdp" && mode != "auto" {
-					return "Error: non-empty cdp_ports requires browser_mode='cdp' or browser_mode='auto'. Set both in the same update_workflow_config call if needed.", nil
-				}
-				iwm.controller.SetCdpPorts(ports)
-				anyChanged = true
-				sb.WriteString(fmt.Sprintf("\n### CDP Profiles (updated)\n- Authorized ports: %v\n- Each port must use a distinct Chrome --user-data-dir. The change applies to the next workflow execution.\n", ports))
-				logger.Info(fmt.Sprintf("Updated workflow cdp_ports=%v", ports))
-			}
-
-			// --- Run Retention ---
-			if raw, ok := args["run_retention_count"]; ok && raw != nil {
-				parseRetention := func(raw interface{}) (int, bool) {
-					switch v := raw.(type) {
-					case int:
-						return v, true
-					case int64:
-						return int(v), true
-					case float64:
-						if v == float64(int(v)) {
-							return int(v), true
-						}
-					case json.Number:
-						if n, err := v.Int64(); err == nil {
-							return int(n), true
-						}
-					}
-					return 0, false
-				}
-
-				count, ok := parseRetention(raw)
-				if !ok || count < 1 || count > maxRunRetentionCount {
-					return fmt.Sprintf("Error: run_retention_count must be an integer between 1 and %d.", maxRunRetentionCount), nil
-				}
-
-				content, err := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if err != nil {
-					return fmt.Sprintf("Failed to read workflow.json: %v", err), nil
-				}
-				var manifest map[string]interface{}
-				if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-					return fmt.Sprintf("Failed to parse workflow.json: %v", err), nil
-				}
-				manifest["run_retention_count"] = count
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-
-				out, err := json.MarshalIndent(manifest, "", "  ")
-				if err != nil {
-					return fmt.Sprintf("Failed to marshal workflow.json: %v", err), nil
-				}
-				if err := iwm.controller.writeManagedWorkflowManifest(ctx, string(out)); err != nil {
-					return fmt.Sprintf("Failed to write workflow.json: %v", err), nil
-				}
-
-				anyChanged = true
-				sb.WriteString(fmt.Sprintf("\n### Run Retention (updated)\nKeeping %d completed run/eval folder(s) independently for Builder archives, saved schedules, and webhooks, excluding active iteration-0.\n", count))
-				logger.Info(fmt.Sprintf("Updated workflow run_retention_count=%d", count))
-			}
-
-			// --- Execution Defaults (workflow-level overrides applied to every step) ---
-			_, hasDisableParallel := args["disable_parallel_tool_execution"]
-			_, hasEnabledCustomTools := args["enabled_custom_tools"]
-			if hasDisableParallel || hasEnabledCustomTools {
-				content, err := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if err != nil {
-					return fmt.Sprintf("Failed to read workflow.json: %v", err), nil
-				}
-				var manifest map[string]interface{}
-				if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-					return fmt.Sprintf("Failed to parse workflow.json: %v", err), nil
-				}
-				execDefaults, _ := manifest["execution_defaults"].(map[string]interface{})
-				if execDefaults == nil {
-					execDefaults = map[string]interface{}{}
-				}
-
-				var summary []string
-
-				if hasDisableParallel {
-					raw := args["disable_parallel_tool_execution"]
-					if raw == nil {
-						delete(execDefaults, "disable_parallel_tool_execution")
-						summary = append(summary, "disable_parallel_tool_execution: cleared")
-					} else {
-						disabled, isBool := raw.(bool)
-						if !isBool {
-							return "Error: disable_parallel_tool_execution must be a boolean (or null to clear).", nil
-						}
-						execDefaults["disable_parallel_tool_execution"] = disabled
-						state := "disabled — steps emit one tool call per turn"
-						if !disabled {
-							state = "explicitly enabled — parallel tool calls allowed"
-						}
-						summary = append(summary, fmt.Sprintf("disable_parallel_tool_execution: %t (%s, applies to every step)", disabled, state))
-					}
-				}
-
-				if hasEnabledCustomTools {
-					tools := extractStringArray("enabled_custom_tools")
-					if len(tools) == 0 {
-						delete(execDefaults, "enabled_custom_tools")
-						summary = append(summary, "enabled_custom_tools: cleared (steps use their own/preset tools)")
-					} else {
-						execDefaults["enabled_custom_tools"] = tools
-						summary = append(summary, fmt.Sprintf("enabled_custom_tools: %v (applies to every step)", tools))
-					}
-				}
-
-				if len(execDefaults) == 0 {
-					delete(manifest, "execution_defaults")
-				} else {
-					manifest["execution_defaults"] = execDefaults
-				}
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-
-				out, err := json.MarshalIndent(manifest, "", "  ")
-				if err != nil {
-					return fmt.Sprintf("Failed to marshal workflow.json: %v", err), nil
-				}
-				if err := iwm.controller.writeManagedWorkflowManifest(ctx, string(out)); err != nil {
-					return fmt.Sprintf("Failed to write workflow.json: %v", err), nil
-				}
-
-				anyChanged = true
-				sb.WriteString("\n### Execution Defaults (updated)\n")
-				for _, line := range summary {
-					sb.WriteString(fmt.Sprintf("- %s\n", line))
-				}
-				logger.Info(fmt.Sprintf("Updated workflow execution_defaults: %v", summary))
 			}
 
 			if raw, provided := args["knowledgebase_sources"]; provided {
@@ -5742,7 +5187,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			if !anyChanged {
-				return "No changes applied. Provide at least one of: knowledgebase_sources, kb_write_grants, add_servers, remove_servers, add_tools, remove_tools, add_skills, remove_skills, add_secrets, remove_secrets, run_notification_instructions, run_notification_channels, slack_webhook_secret_name, browser_mode, cdp_ports, run_retention_count.", nil
+				return "No changes applied. Provide at least one of: knowledgebase_sources, kb_write_grants, add_servers, remove_servers, add_tools, remove_tools, add_skills, remove_skills, add_secrets, remove_secrets, run_notification_instructions, run_notification_channels, browser_mode.", nil
 			}
 
 			// Persist config changes to workflow.json manifest (file-backed)

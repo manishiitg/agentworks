@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { useChatStore } from './useChatStore'
 import { workflowManifestApi } from '../services/api'
-import type { WorkflowManifest, DiscoveredWorkflow, WorkflowCapabilities, WorkflowExecutionDefaults, WorkflowOwnership, WorkflowScheduleEntry } from '../services/api-types'
+import type { WorkflowManifest, DiscoveredWorkflow, WorkflowCapabilities, WorkflowOwnership, WorkflowScheduleEntry } from '../services/api-types'
 import { normalizeWorkspacePath } from '../utils/workspacePathUtils'
 
 // Discard discovery responses started before a confirmed deletion.
@@ -31,7 +31,6 @@ export interface WorkflowManifestState {
     icon?: string
     query?: string
     capabilities?: WorkflowCapabilities
-    execution_defaults?: WorkflowExecutionDefaults
     ownership?: WorkflowOwnership
     schedules?: WorkflowScheduleEntry[]
   }) => Promise<WorkflowManifest>

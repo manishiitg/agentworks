@@ -8,13 +8,6 @@ function safeCdpPort(port: number): number {
   return Number.isFinite(port) && port >= 1 && port <= 65535 ? Math.trunc(port) : defaultCdpPort
 }
 
-export function mergeCdpPorts(primaryPort: number, existingPorts: number[] = []): number[] {
-  const ports = [safeCdpPort(primaryPort), ...existingPorts]
-  return Array.from(new Set(
-    ports.filter((port) => Number.isFinite(port) && port >= 1 && port <= 65535).map(Math.trunc),
-  )).slice(0, 4)
-}
-
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }

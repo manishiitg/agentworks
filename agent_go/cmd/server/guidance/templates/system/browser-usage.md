@@ -69,7 +69,7 @@ to open the foreground UI.
 `status.cdp_supported` is the deployment authority. When it is `false`, CDP
 is disabled on that server: do not probe ports, install/launch CDP Chrome, or
 pass `--cdp`. Use managed headless Chromium. In that deployment, workflow
-`auto` mode is intentionally headless-only and `cdp`/`cdp_ports` updates are
+`auto` mode is intentionally headless-only and `cdp` updates are
 rejected. Desktop/local deployments may still report CDP as supported.
 
 ## Runtime modes
@@ -207,8 +207,7 @@ curl -fsSL 'https://raw.githubusercontent.com/manishiitg/coding-agent-loop/main/
 After installation, agents verify reachability with `agent_browser status`;
 they must not probe Chrome's `/json/version` endpoint through shell.
 
-After it is reachable, configure the workflow with that port, for example
-`cdp_ports=[9222,9333]`. Do not add profiles for ordinary workflow concurrency.
+Workflows use the standard Chrome connection. A Crew may select its existing browser connection; use only the endpoint authorized for the current run.
 
 ### QA evidence and network debugging
 

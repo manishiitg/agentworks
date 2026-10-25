@@ -106,6 +106,17 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 			if err := f.api.registerCrewSettingsChatTools(reg, newProductToolGate(resolved), resolved, claims, false, chat.SessionID, externalCommandCrewRoot, "https://example.com"); err != nil {
 				t.Fatal(err)
 			}
+			if person == "owner" {
+				captured := map[string]recordedTool{}
+				for name, tool := range panels.tools {
+					captured[name] = tool
+				}
+				for name, tool := range reg.tools {
+					captured[name] = tool
+				}
+				logConfigurationCatalog(t, "crew-builder", captured)
+				logExternalConfigurationCatalog(t)
+			}
 			for _, name := range []string{"browser_connections", "get_crew_costs", "manage_crew_model"} {
 				tool, ok := reg.tools[name]
 				if !ok {
@@ -189,6 +200,9 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 			run := &recordingRegistrar{}
 			if err := f.api.registerCrewSettingsChatTools(run, nil, resolved, claims, true, chat.SessionID, externalCommandCrewRoot, "https://example.com"); err != nil || len(run.tools) != 0 {
 				t.Fatalf("Run acquired settings tools: %+v %v", run.tools, err)
+			}
+			if person == "owner" {
+				logConfigurationCatalog(t, "crew-run-ask", run.tools)
 			}
 			if person == "other" {
 				if _, err := defaultProjectOwners().RemoveCoOwner("work", "test-team", person); err != nil {

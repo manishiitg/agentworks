@@ -434,31 +434,27 @@ func TestSlackRetentionPreservesActiveUnknownAndOtherRunFamilies(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("workflow.json", `{"run_retention_count":1}`)
-	for _, name := range []string{"iteration-1-slack-a1", "iteration-2-slack-a2", "iteration-3-slack-a3", "iteration-4-slack-a4"} {
+	for i := 1; i <= 12; i++ {
+		name := fmt.Sprintf("iteration-%d-slack-a%d", i, i)
 		write("runs/"+name+"/.slack-run-id", name)
+		write("runs/"+name+"/group/run_metadata.json", fmt.Sprintf(`{"status":"completed","completed_at":"2026-09-%02dT00:00:00Z"}`, i))
 	}
-	// Legacy evaluation evidence is inert: retention prunes runs/ only.
+	// Keep active Slack work, other run families and past evaluation evidence.
+	write("runs/iteration-13-slack-active/.slack-run-id", "active")
 	write("evaluation/runs/iteration-1-slack-a1/artifact", "evaluation")
-	write("runs/iteration-1-slack-a1/group/run_metadata.json", `{"status":"completed","completed_at":"2026-09-01T00:00:00Z"}`)
-	write("runs/iteration-2-slack-a2/group/run_metadata.json", `{"status":"completed","completed_at":"2026-09-02T00:00:00Z"}`)
-	write("runs/iteration-3-slack-a3/group/run_metadata.json", `{"status":"completed","completed_at":"2026-08-01T00:00:00Z"}`)
 	write("runs/iteration-0/artifact", "builder")
-	write("runs/iteration-5-sched/artifact", "schedule")
+	write("runs/iteration-14-sched/artifact", "schedule")
 	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{"active": {Status: "running"}}}
-	api.scheduleInvocations.Store("active", &stepworkflow.ExternalInvocation{Kind: "slack", RunFolder: "iteration-3-slack-a3"})
+	api.scheduleInvocations.Store("active", &stepworkflow.ExternalInvocation{Kind: "slack", RunFolder: "iteration-13-slack-active"})
 	if err := api.pruneSlackRuns(workspace); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"runs/iteration-1-slack-a1"} {
+	for _, path := range []string{"runs/iteration-1-slack-a1", "runs/iteration-2-slack-a2"} {
 		if _, err := os.Stat(filepath.Join(docs, workspace, path)); !os.IsNotExist(err) {
 			t.Fatalf("expired path remains: %s %v", path, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(docs, workspace, "evaluation/runs/iteration-1-slack-a1/artifact")); err != nil {
-		t.Fatalf("legacy evaluation evidence was disturbed: %v", err)
-	}
-	for _, path := range []string{"runs/iteration-0/artifact", "runs/iteration-5-sched/artifact", "runs/iteration-2-slack-a2", "runs/iteration-3-slack-a3", "runs/iteration-4-slack-a4"} {
+	for _, path := range []string{"evaluation/runs/iteration-1-slack-a1/artifact", "runs/iteration-0/artifact", "runs/iteration-14-sched/artifact", "runs/iteration-3-slack-a3", "runs/iteration-12-slack-a12", "runs/iteration-13-slack-active"} {
 		if _, err := os.Stat(filepath.Join(docs, workspace, path)); err != nil {
 			t.Fatalf("protected path lost: %s %v", path, err)
 		}

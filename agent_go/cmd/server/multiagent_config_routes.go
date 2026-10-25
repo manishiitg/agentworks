@@ -56,7 +56,7 @@ func saveMultiAgentChatCapabilitiesHandler() http.HandlerFunc {
 		}
 		userID := resolveChatConfigUserID(r)
 
-		var caps WorkflowCapabilities
+		var caps MultiAgentChatCapabilities
 		if err := json.NewDecoder(r.Body).Decode(&caps); err != nil {
 			http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
 			return

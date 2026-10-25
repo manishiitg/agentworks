@@ -36,7 +36,6 @@ const manifest = (provider: LLMProvider): WorkflowManifest => ({
       provider,
     },
   },
-  execution_defaults: {},
   ownership: { employee_id: null },
   schedules: [],
 })

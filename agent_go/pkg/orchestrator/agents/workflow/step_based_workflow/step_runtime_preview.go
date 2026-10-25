@@ -80,13 +80,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 	} else if readErr != nil && !strings.Contains(strings.ToLower(readErr.Error()), "not exist") && !strings.Contains(strings.ToLower(readErr.Error()), "not found") {
 		return nil, fmt.Errorf("read current step config: %w", readErr)
 	}
-	if overrides, _ := hcpo.ReadStepOverrides(ctx); overrides != nil {
-		if getAgentConfigs(step) == nil {
-			setPreviewStepConfig(step, overrides)
-		} else {
-			MergeAgentConfigFields(getAgentConfigs(step), overrides, step.GetID(), hcpo.GetLogger())
-		}
-	}
 	stepConfig := getAgentConfigs(step)
 	result := &stepRuntimePreview{StepID: step.GetID(), ParallelToolCalls: true, Unresolved: []string{
 		"Preview of current construction, not execution or a historical run. Runtime may select another run/group.",

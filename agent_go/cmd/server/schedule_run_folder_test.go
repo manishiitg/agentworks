@@ -44,7 +44,7 @@ func TestAllocateScheduledRunFolderIsImmutableAndSharesNumericNamespace(t *testi
 	}
 }
 
-func TestScheduledRetentionUsesWorkflowCount(t *testing.T) {
+func TestScheduledRetentionKeepsTenCompletedRunsAndHistory(t *testing.T) {
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	workspace := "Workflow/demo"
@@ -52,7 +52,7 @@ func TestScheduledRetentionUsesWorkflowCount(t *testing.T) {
 	if err := os.MkdirAll(root, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "workflow.json"), []byte(`{"schema_version":1,"id":"demo","label":"Demo","run_retention_count":2}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "workflow.json"), []byte(`{"schema_version":1,"id":"demo","label":"Demo"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "state.sqlite"))
@@ -63,7 +63,7 @@ func TestScheduledRetentionUsesWorkflowCount(t *testing.T) {
 	svc := &SchedulerService{stateStore: store}
 	ctx := context.Background()
 	var folders []string
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 12; i++ {
 		runID := fmt.Sprintf("schedule-run-%d", i)
 		folder, allocationErr := allocateScheduledRunFolder(workspace, runID)
 		if allocationErr != nil {

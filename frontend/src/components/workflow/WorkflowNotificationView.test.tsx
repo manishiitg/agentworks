@@ -23,7 +23,6 @@ const info = {
   breakAlerts: true,
   scopeLabel: 'Shop',
   effectiveState: 'ready',
-  slackWebhook: { secret_name: 'SLACK_MAIN' },
   gmail: { state: 'ready', default_recipient: 'me@x.com', blocked_recipients: [], default_sender: 'me@x.com', sender_choices: [
     { id: 'gmail_001', email: 'me@x.com', ready: true },
     { id: 'gmail_002', email: 'other@x.com', ready: true },
@@ -32,10 +31,7 @@ const info = {
   runSummaryChannels: ['slack'],
   runSummaryRecipients: [],
   gmailConnectionId: '',
-  runSummaryGmailConnectionIds: [],
-  runSummarySlackWebhooks: [],
   excludeChannels: [],
-  blockRecipients: [],
 }
 
 async function mount() {
@@ -87,7 +83,6 @@ it('lays summaries out as labeled Channels, From, and To lines', async () => {
 it('asks per channel and per summary from chat commands', async () => {
   const { host, unmount } = await mount()
   try {
-    expect(host.querySelectorAll('[data-testid="ask-ai"]').length).toBe(4)
     expect(askMessages).toContain('/notify')
     expect(askMessages.some(message => message.includes('Slack notifications'))).toBe(true)
     expect(askMessages.some(message => message.includes('Gmail notifications'))).toBe(true)

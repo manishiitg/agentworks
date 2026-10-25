@@ -117,7 +117,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [cdpPort, setCdpPort] = useState(9222)
   const [cdpConnected, setCdpConnected] = useState<boolean | null>(null)
   const [cdpError, setCdpError] = useState<string | null>(null)
   const [cdpChecking, setCdpChecking] = useState(false)
@@ -196,7 +195,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
       const next = { ...EMPTY_CAPABILITIES, ...response.manifest.capabilities }
       setCapabilities(background ? mergeRemoteCapabilities(latest.current.capabilities, latest.current.loaded, next) : next)
       setLoaded(next)
-      setCdpPort(response.manifest.capabilities.cdp_ports?.[0] || 9222)
     } catch (cause) {
       if (latest.current.workspacePath === workspacePath && version === loadVersion.current) {
         setError(cause instanceof Error ? cause.message : 'Unable to load workflow capabilities')
@@ -474,11 +472,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 workspacePath={workspacePath}
                 browserMode={capabilities.browser_mode as BrowserAutomationMode}
                 onBrowserModeChange={(browser_mode) => setCapabilities(current => ({ ...current, browser_mode }))}
-                cdpPort={cdpPort}
-                onCdpPortChange={(port) => {
-                  setCdpPort(port)
-                  setCapabilities(current => ({ ...current, cdp_ports: [port] }))
-                }}
                 cdpConnected={cdpConnected}
                 cdpError={cdpError}
                 cdpChecking={cdpChecking}

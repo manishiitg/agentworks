@@ -106,11 +106,11 @@ func TestUpdateWorkflowConfigDoesNotExposeRetiredKnowledgebaseLock(t *testing.T)
 	}
 }
 
-func TestUpdateWorkflowConfigClearsNotificationSenderAndLegacyOverrides(t *testing.T) {
+func TestUpdateWorkflowConfigClearsSenderAndPreservesRecipients(t *testing.T) {
 	agent := newWorkshopDefinitionDraft()
 	controller, workspacePath := newPreValidationConcernTestOrchestrator(t)
 	manifestPath := filepath.Join(workspacePath, "workflow.json")
-	initial := `{"id":"notify-test","capabilities":{"notifications":{"gmail_connection_id":"old","run_summary_gmail_connection_ids":["old"],"run_summary_recipients":["ops@example.com"]}}}`
+	initial := `{"id":"notify-test","capabilities":{"notifications":{"gmail_connection_id":"old","run_summary_recipients":["ops@example.com"]}}}`
 	if err := os.WriteFile(manifestPath, []byte(initial), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -141,10 +141,8 @@ func TestUpdateWorkflowConfigClearsNotificationSenderAndLegacyOverrides(t *testi
 	if err := json.Unmarshal(data, &saved); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"gmail_connection_id", "run_summary_gmail_connection_ids"} {
-		if _, ok := saved.Capabilities.Notifications[key]; ok {
-			t.Errorf("legacy sender setting %q was retained", key)
-		}
+	if _, ok := saved.Capabilities.Notifications["gmail_connection_id"]; ok {
+		t.Error("cleared sender was retained")
 	}
 	if _, ok := saved.Capabilities.Notifications["run_summary_recipients"]; !ok {
 		t.Fatal("changing sender removed existing recipients")

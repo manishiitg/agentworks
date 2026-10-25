@@ -88,7 +88,7 @@ func (api *StreamingAPI) pruneSlackRuns(workspace string) error {
 		}
 	}
 	sort.Slice(completed, func(i, j int) bool { return completed[i].at.After(completed[j].at) })
-	keep := configuredTriggerRetentionCount(root)
+	keep := DefaultRunRetentionCount
 	if len(completed) <= keep {
 		return nil
 	}

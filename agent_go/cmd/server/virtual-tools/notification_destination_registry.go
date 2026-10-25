@@ -57,15 +57,11 @@ func RegisterSessionNotificationDestination(sessionID string, dest *services.Not
 	if len(incoming.RunSummaryChannels) > 0 {
 		current.RunSummaryChannels = incoming.RunSummaryChannels
 	}
-	if len(incoming.RunSummaryGmailConnectionIDs) > 0 {
-		current.RunSummaryGmailConnectionIDs = incoming.RunSummaryGmailConnectionIDs
-	}
+
 	if len(incoming.RunSummaryRecipients) > 0 {
 		current.RunSummaryRecipients = incoming.RunSummaryRecipients
 	}
-	if len(incoming.RunSummaryWebhooks) > 0 {
-		current.RunSummaryWebhooks = incoming.RunSummaryWebhooks
-	}
+
 	sessionNotificationDestinations.values[sessionID] = current
 }
 
@@ -92,31 +88,6 @@ func InheritSessionNotificationDestination(parentSessionID, childSessionID strin
 	return true
 }
 
-// UpdateSessionSlackWebhook applies a workflow webhook change immediately to
-// subsequent workflow summary delivery calls in the same coding-agent session. The URL stays
-// in backend memory and is never returned to the model.
-func UpdateSessionSlackWebhook(sessionID string, webhook *services.SlackWebhookDest) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return
-	}
-	sessionNotificationDestinations.Lock()
-	defer sessionNotificationDestinations.Unlock()
-	dest := cloneNotificationDestination(sessionNotificationDestinations.values[sessionID])
-	if dest == nil {
-		dest = &services.NotificationDestination{}
-	}
-	if webhook == nil {
-		dest.SlackWebhook = nil
-	} else {
-		dest.SlackWebhook = &services.SlackWebhookDest{
-			SecretName: webhook.SecretName,
-			URL:        webhook.URL,
-		}
-	}
-	sessionNotificationDestinations.values[sessionID] = dest
-}
-
 // UpdateSessionGmailSender applies a validated workflow sender edit to the
 // current session only. Children created afterward inherit this new selection.
 // Explicit clear must replace, rather than merge, the old sender and overrides.
@@ -139,7 +110,6 @@ func UpdateSessionGmailSender(sessionID, workspacePath, senderID string) bool {
 	if senderID = strings.TrimSpace(senderID); senderID != "" {
 		dest.Gmail.ConnectionIDs = []string{senderID}
 	}
-	dest.RunSummaryGmailConnectionIDs = nil
 	sessionNotificationDestinations.values[sessionID] = dest
 	return true
 }

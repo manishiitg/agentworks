@@ -118,13 +118,12 @@ func (api *StreamingAPI) handleGetWorkflowManifest(w http.ResponseWriter, r *htt
 // --- Create workflow with manifest ---
 
 type CreateWorkflowManifestRequest struct {
-	Label                     string                     `json:"label"`
-	Kind                      string                     `json:"kind,omitempty"`
-	Icon                      string                     `json:"icon,omitempty"`
-	WorkspacePath             string                     `json:"workspace_path"`
-	Capabilities              *WorkflowCapabilities      `json:"capabilities,omitempty"`
-	ExecutionDefaults         *WorkflowExecutionDefaults `json:"execution_defaults,omitempty"`
-	HumanVerificationRequired bool                       `json:"human_verification_required"`
+	Label                     string                `json:"label"`
+	Kind                      string                `json:"kind,omitempty"`
+	Icon                      string                `json:"icon,omitempty"`
+	WorkspacePath             string                `json:"workspace_path"`
+	Capabilities              *WorkflowCapabilities `json:"capabilities,omitempty"`
+	HumanVerificationRequired bool                  `json:"human_verification_required"`
 }
 
 func enforceDeploymentBrowserCapability(capabilities *WorkflowCapabilities) error {
@@ -134,10 +133,6 @@ func enforceDeploymentBrowserCapability(capabilities *WorkflowCapabilities) erro
 	if strings.EqualFold(strings.TrimSpace(capabilities.BrowserMode), "cdp") {
 		return fmt.Errorf("CDP is disabled for this server deployment; use browser_mode auto, headless, or none")
 	}
-	// CDP ports have no meaning on a deployment that cannot use CDP. Clearing
-	// legacy candidates lets a user move an old workflow to auto/headless in a
-	// single save instead of being trapped by stale configuration.
-	capabilities.CDPPorts = nil
 	return nil
 }
 
@@ -195,9 +190,6 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 	}
 	if req.Capabilities != nil {
 		manifest.Capabilities = *req.Capabilities
-	}
-	if req.ExecutionDefaults != nil {
-		manifest.ExecutionDefs = *req.ExecutionDefaults
 	}
 	// A new workflow copies the workflows product default into its own
 	// settings, so a later default change never switches it.
@@ -257,10 +249,7 @@ type UpdateWorkflowManifestRequest struct {
 	RelayDurability      *string                                      `json:"relay_durability,omitempty"`
 	Icon                 *string                                      `json:"icon,omitempty"`
 	Capabilities         *WorkflowCapabilities                        `json:"capabilities,omitempty"`
-	ExecutionDefaults    *WorkflowExecutionDefaults                   `json:"execution_defaults,omitempty"`
 	Schedules            *[]WorkflowSchedule                          `json:"schedules,omitempty"`
-	WorkshopMode         *string                                      `json:"workshop_mode,omitempty"` // Standalone patch — avoids zeroing out other ExecutionDefaults fields
-	RunRetentionCount    *int                                         `json:"run_retention_count,omitempty"`
 	FolderAccess         *[]workflowtypes.WorkflowFolderGrant         `json:"folder_access,omitempty"`
 	FolderAccessRequests *[]workflowtypes.WorkflowFolderAccessRequest `json:"folder_access_requests,omitempty"`
 	WorkflowContextPaths *[]string                                    `json:"workflow_context_paths,omitempty"`
@@ -276,17 +265,11 @@ type UpdateWorkflowManifestRequest struct {
 	// empty crew_id clears it.
 	WakeTab *WorkflowWakeTab `json:"wake_tab,omitempty"`
 	// Recipient lists are pointers so an explicitly sent empty array clears them
-	// (back to the account default) while omission leaves them untouched.
+	// (stopping summary email) while omission leaves them untouched.
 	RunNotificationRecipients *[]string `json:"run_notification_recipients,omitempty"`
 	// One sender for this workflow's Gmail notifications. Empty inherits the
-	// account default. Saving it clears legacy per-summary sender overrides.
+	// account default.
 	NotificationGmailConnectionID *string `json:"notification_gmail_connection_id,omitempty"`
-	// Legacy per-summary sender overrides. New clients select one sender with
-	// NotificationGmailConnectionID, which clears these lists.
-	RunNotificationGmailConnectionIDs *[]string `json:"run_notification_gmail_connection_ids,omitempty"`
-	// NotificationInstructions is retained for older clients that still send a
-	// single preference. New clients should use the two scoped fields above.
-	NotificationInstructions *string `json:"notification_instructions,omitempty"`
 }
 
 func mergeWorkflowCapabilitiesUpdate(existing WorkflowCapabilities, incoming *WorkflowCapabilities) WorkflowCapabilities {
@@ -299,27 +282,16 @@ func mergeWorkflowCapabilitiesUpdate(existing WorkflowCapabilities, incoming *Wo
 	// reference unless the caller explicitly sends that newer field.
 	if updated.Notifications == nil {
 		updated.Notifications = existing.Notifications
-	} else if strings.TrimSpace(updated.Notifications.SlackWebhookSecretName) == "" &&
-		strings.TrimSpace(updated.Notifications.RunSummaryInstructions) == "" &&
-		strings.TrimSpace(updated.Notifications.Instructions) == "" &&
+	} else if strings.TrimSpace(updated.Notifications.RunSummaryInstructions) == "" &&
 		len(updated.Notifications.RunSummaryChannels) == 0 &&
 		len(updated.Notifications.ExcludeChannels) == 0 &&
-		len(updated.Notifications.BlockRecipients) == 0 &&
 		strings.TrimSpace(updated.Notifications.GmailConnectionID) == "" &&
-		len(updated.Notifications.RunSummaryGmailConnectionIDs) == 0 &&
 		len(updated.Notifications.RunSummaryRecipients) == 0 &&
-		len(updated.Notifications.RunSummarySlackWebhookSecretNames) == 0 && updated.Notifications.BreakAlerts == nil && updated.Notifications.WakeTab == nil {
-		// An explicitly supplied empty object (no webhook, no exclude/block
-		// preferences) disables the workflow-specific notification config.
+		updated.Notifications.BreakAlerts == nil && updated.Notifications.WakeTab == nil {
+		// An explicitly supplied empty object clears workflow notification preferences.
 		updated.Notifications = nil
 	}
-	if updated.Notifications != nil {
-		updated.SelectedSecrets = removeString(updated.SelectedSecrets, updated.Notifications.SlackWebhookSecretName)
-		if updated.SelectedGlobalSecretNames != nil {
-			filtered := removeString(*updated.SelectedGlobalSecretNames, updated.Notifications.SlackWebhookSecretName)
-			updated.SelectedGlobalSecretNames = &filtered
-		}
-	}
+
 	return updated
 }
 
@@ -363,9 +335,7 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 	if req.NotificationGmailConnectionID != nil {
 		senderIDs = append(senderIDs, *req.NotificationGmailConnectionID)
 	}
-	if req.RunNotificationGmailConnectionIDs != nil {
-		senderIDs = append(senderIDs, (*req.RunNotificationGmailConnectionIDs)...)
-	}
+
 	if len(normalizeGmailConnectionIDs(senderIDs)) > 0 {
 		gmail, gmailErr := ensureGmailService()
 		if gmailErr != nil {
@@ -447,9 +417,6 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 			return
 		}
 	}
-	if req.ExecutionDefaults != nil {
-		manifest.ExecutionDefs = *req.ExecutionDefaults
-	}
 	if req.Schedules != nil {
 		manifest.Schedules = *req.Schedules
 		if manifest.Team != nil {
@@ -458,12 +425,6 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 				manifest.Schedules[i].TeamPolicyRevision = manifest.Team.Revision
 			}
 		}
-	}
-	if req.WorkshopMode != nil {
-		manifest.ExecutionDefs.WorkshopMode = *req.WorkshopMode
-	}
-	if req.RunRetentionCount != nil {
-		manifest.RunRetentionCount = req.RunRetentionCount
 	}
 	if req.FolderAccess != nil {
 		normalized, normalizeErr := normalizeWorkflowFolderGrants(*req.FolderAccess, manifest.FolderAccess)
@@ -536,8 +497,7 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 	if req.RunNotificationInstructions != nil ||
 		req.RunNotificationChannels != nil ||
 		req.RunNotificationRecipients != nil ||
-		req.NotificationGmailConnectionID != nil ||
-		req.RunNotificationGmailConnectionIDs != nil {
+		req.NotificationGmailConnectionID != nil {
 		runInstructions := ""
 		if manifest.Capabilities.Notifications != nil {
 			runInstructions = manifest.Capabilities.Notifications.EffectiveRunSummaryInstructions()
@@ -548,33 +508,20 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		if manifest.Capabilities.Notifications == nil && (runInstructions != "" ||
 			req.RunNotificationChannels != nil ||
 			req.RunNotificationRecipients != nil ||
-			req.NotificationGmailConnectionID != nil ||
-			req.RunNotificationGmailConnectionIDs != nil) {
+			req.NotificationGmailConnectionID != nil) {
 			manifest.Capabilities.Notifications = &WorkflowNotificationConfig{}
 		}
 		if manifest.Capabilities.Notifications != nil {
 			manifest.Capabilities.Notifications.RunSummaryInstructions = runInstructions
-			manifest.Capabilities.Notifications.Instructions = ""
 			if req.RunNotificationChannels != nil {
 				manifest.Capabilities.Notifications.RunSummaryChannels = normalizeNotificationChannels(*req.RunNotificationChannels)
 			}
 			if req.RunNotificationRecipients != nil {
 				manifest.Capabilities.Notifications.RunSummaryRecipients = normalizeNotificationRecipients(*req.RunNotificationRecipients)
 			}
-			if req.RunNotificationGmailConnectionIDs != nil {
-				manifest.Capabilities.Notifications.RunSummaryGmailConnectionIDs = normalizeGmailConnectionIDs(*req.RunNotificationGmailConnectionIDs)
-			}
 			if req.NotificationGmailConnectionID != nil {
 				setWorkflowNotificationSender(manifest.Capabilities.Notifications, *req.NotificationGmailConnectionID)
 			}
-		}
-	} else if req.NotificationInstructions != nil {
-		instructions := strings.TrimSpace(*req.NotificationInstructions)
-		if manifest.Capabilities.Notifications == nil && instructions != "" {
-			manifest.Capabilities.Notifications = &WorkflowNotificationConfig{}
-		}
-		if manifest.Capabilities.Notifications != nil {
-			manifest.Capabilities.Notifications.Instructions = instructions
 		}
 	}
 
@@ -618,7 +565,6 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 
 func setWorkflowNotificationSender(config *WorkflowNotificationConfig, connectionID string) {
 	config.GmailConnectionID = strings.TrimSpace(connectionID)
-	config.RunSummaryGmailConnectionIDs = nil
 }
 
 func normalizeWorkflowFolderGrants(requested, previous []workflowtypes.WorkflowFolderGrant) ([]workflowtypes.WorkflowFolderGrant, error) {

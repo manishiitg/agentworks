@@ -246,7 +246,7 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 					caps := refreshManifest.Capabilities
 					selectedServers = caps.SelectedServers
 					configuredBrowserMode := strings.ToLower(strings.TrimSpace(caps.BrowserMode))
-					configuredBrowserPorts := configuredCDPPortsForMode(configuredBrowserMode, nil, caps.CDPPorts)
+					configuredBrowserPorts := configuredCDPPortsForMode(configuredBrowserMode, nil, nil)
 					workshopSession.UpdateBrowserRuntime(configuredBrowserMode, configuredBrowserPorts)
 					common.SetSessionBrowserMode(sessionID, configuredBrowserMode)
 					log.Printf("[WORKFLOW_PHASE] Refreshed dynamic browser config: configured_mode=%s candidate_cdp_ports=%v", configuredBrowserMode, configuredBrowserPorts)

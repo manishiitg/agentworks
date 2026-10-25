@@ -93,7 +93,7 @@ describe('terminal toolbar shared tools', () => {
         useAuthStore.setState({ user: { id: 'person-one', username: 'builder' } })
         useGlobalPresetStore.setState({ activePresetIds: { ...presets.activePresetIds, workflow: 'goal-one' } })
         useWorkflowManifestStore.setState({ workflows: [{ workspace_path: 'Workflow/project', manifest: {
-          schema_version: 1, id: 'goal-one', label: 'Goal', execution_defaults: {}, ownership: { employee_id: null }, schedules: [],
+          schema_version: 1, id: 'goal-one', label: 'Goal', ownership: { employee_id: null }, schedules: [],
           capabilities: { selected_servers: [], selected_tools: [], selected_skills: [], selected_secrets: [], selected_global_secret_names: [], browser_mode: 'none', use_code_execution_mode: false,
             llm_config: { schema_version: 2, mode: 'explicit', builder_llm: { provider: 'codex-cli', model_id: 'builder-model' } } },
         } }] })

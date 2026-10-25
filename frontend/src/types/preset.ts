@@ -19,7 +19,6 @@ export interface CustomPreset {
   useCodeExecutionMode?: boolean; // MCP code execution mode
   enableBrowserAccess?: boolean; // Deprecated: use browserMode
   browserMode?: 'none' | 'auto' | 'headless' | 'cdp'; // Browser mode (source of truth)
-  cdpPorts?: number[]; // Specialized independent Chrome profiles for multi-login testing
   employee_id?: string; // Assigned employee ID
 }
 
@@ -39,6 +38,5 @@ export interface PredefinedPreset {
   useCodeExecutionMode?: boolean; // MCP code execution mode
   enableBrowserAccess?: boolean; // Deprecated: use browserMode
   browserMode?: 'none' | 'auto' | 'headless' | 'cdp'; // Browser mode (source of truth)
-  cdpPorts?: number[];
   employee_id?: string; // Assigned employee ID
 }

@@ -23,14 +23,13 @@ import type { LLMOption } from '../types/llm';
 import ModalPortal from './ui/ModalPortal';
 import { getWorkflowLLMOptions, getWorkflowLLMTierDefaults, getWorkflowProviderOptions } from '../utils/workflowLLMTierDefaults';
 import { llmOptionMatchesRef } from '../utils/llmConfigDisplay';
-import { mergeCdpPorts } from '../utils/cdpSetup';
 import { useChatStore } from '../stores/useChatStore';
 
 
 interface PresetModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (label: string, query: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'auto' | 'headless' | 'cdp', cdpPorts?: number[], icon?: string, workflowKind?: 'relay' | 'workflow') => boolean | void | Promise<boolean | void>;
+  onSave: (label: string, query: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'auto' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => boolean | void | Promise<boolean | void>;
   editingPreset?: CustomPreset | null;
   availableServers?: string[];
   hideAgentModeSelection?: boolean;
@@ -71,7 +70,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
   // Browser mode and CDP port are edited in the workflow panel now; this
   // dialog only carries the saved values through.
   const [browserMode, setBrowserModeState] = useState<'none' | 'auto' | 'headless' | 'cdp'>('auto');
-  const [cdpPort, setCdpPort] = useState(9222);
   const [showDeleteWorkflowConfirm, setShowDeleteWorkflowConfirm] = useState(false);
   const [deletingWorkflow, setDeletingWorkflow] = useState(false);
 
@@ -261,7 +259,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
           setBrowserModeState('auto');
         }
       }
-      setCdpPort(editingPreset.cdpPorts?.[0] || 9222);
       // Load agent-specific configs if available
       setBuilderLLM(presetLLM.builder_llm || null);
       setMaintenanceLLM(presetLLM.maintenance_llm || null);
@@ -294,7 +291,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
       };
       setLlmConfig(defaultLLM);
       setBrowserModeState('auto'); // Prefer connected CDP, otherwise headless
-      setCdpPort(9222);
       // Initialize agent-specific configs to null (will use legacy default)
       setBuilderLLM(null);
       setMaintenanceLLM(null);
@@ -439,9 +435,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         effectiveTier3LLM: effectiveTier3LLM || undefined,
         finalLLMConfig: finalLLMConfig,
       });
-      const cdpPorts = browserMode === 'auto' || browserMode === 'cdp'
-        ? mergeCdpPorts(cdpPort, editingPreset?.cdpPorts)
-        : [];
       const saved = await onSave(
         label.trim(),
         effectiveAgentMode === 'workflow' ? '' : query.trim(),
@@ -455,7 +448,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         selectedSecrets, // Secret names for workflow injection
         selectedGlobalSecrets, // Per-preset global secret selection (null=all)
         browserMode, // Browser mode: none|auto|headless|cdp
-        cdpPorts,
         icon.trim(),
         workflowKind
       );
@@ -476,7 +468,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
     } finally {
       setIsSavingPreset(false);
     }
-  }, [label, icon, query, effectiveAgentMode, selectedFolder, selectedServers, selectedTools, selectedSkills, selectedSecrets, selectedGlobalSecrets, llmConfig, builderLLM, effectiveBuilderLLM, maintenanceLLM, effectiveMaintenanceLLM, backgroundLLM, effectiveBackgroundLLM, browserMode, cdpPort, editingPreset, onSave, onClose, defaultAgentLLM, effectiveTier1LLM, effectiveTier2LLM, effectiveTier3LLM, showWorkflowLLMAdvanced, unsavedCredentialProvider, showRunsOn, runsOn, workflowKind]);
+  }, [label, icon, query, effectiveAgentMode, selectedFolder, selectedServers, selectedTools, selectedSkills, selectedSecrets, selectedGlobalSecrets, llmConfig, builderLLM, effectiveBuilderLLM, maintenanceLLM, effectiveMaintenanceLLM, backgroundLLM, effectiveBackgroundLLM, browserMode, editingPreset, onSave, onClose, defaultAgentLLM, effectiveTier1LLM, effectiveTier2LLM, effectiveTier3LLM, showWorkflowLLMAdvanced, unsavedCredentialProvider, showRunsOn, runsOn, workflowKind]);
 
   // Close modal on escape key
   useEffect(() => {

@@ -117,7 +117,7 @@ func TestWorkflowStepBrowserHTTPBridgeKeepsAccountExtension(t *testing.T) {
 	requestCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice", Provider: "local"})
 	executors := api.bindWorkflowBrowserExecutors(requestCtx, parent, QueryRequest{}, false,
 		workflowBrowserExecutors(parent, workspace, func(context.Context, string) (*WorkflowManifest, bool, error) {
-			return &WorkflowManifest{Capabilities: WorkflowCapabilities{BrowserMode: "cdp", CDPPorts: []int{9222}}}, true, nil
+			return &WorkflowManifest{Capabilities: WorkflowCapabilities{BrowserMode: "cdp"}}, true, nil
 		}))
 	logger := loggerv2.NewNoop()
 	handlers := executor.NewExecutorHandlers("", logger)

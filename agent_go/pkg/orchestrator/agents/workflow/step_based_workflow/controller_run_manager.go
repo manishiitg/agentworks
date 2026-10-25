@@ -2,7 +2,6 @@ package step_based_workflow
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -13,12 +12,11 @@ import (
 
 const (
 	defaultRunRetentionCount = 10
-	maxRunRetentionCount     = 50
 )
 
 // prepareCurrentRun rotates the previous iteration-0 into an archive, then
-// returns the fresh current run slot. workflow.json run_retention_count controls
-// the number of archives retained.
+// returns the fresh current run slot. The platform keeps ten completed
+// archives in each run family.
 func (hcpo *StepBasedWorkflowOrchestrator) prepareCurrentRun(ctx context.Context, workspacePath string) (string, error) {
 	if opts := hcpo.GetExecutionOptions(); opts != nil && opts.WebhookInputFile != "" {
 		if !regexp.MustCompile(`^iteration-[0-9]+-(?:hook|slack-[a-f0-9]+)$`).MatchString(opts.SelectedRunFolder) {
@@ -33,36 +31,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCurrentRun(ctx context.Context
 		return opts.SelectedRunFolder, hcpo.createRunFolderStructure(ctx, filepath.Join(workspacePath, "runs", opts.SelectedRunFolder))
 	}
 	runsPath := fmt.Sprintf("%s/runs", workspacePath)
-	runRetentionCount := hcpo.resolveRunRetentionCount(ctx)
+	runRetentionCount := defaultRunRetentionCount
 	if err := hcpo.rotateIterationZero(ctx, runsPath, runRetentionCount); err != nil {
 		return "", err
 	}
 	hcpo.GetLogger().Info(fmt.Sprintf("Using iteration-0 for workflow execution (keeping %d backup iteration(s))", runRetentionCount))
 	return currentWorkflowRunFolder, nil
-}
-
-func (hcpo *StepBasedWorkflowOrchestrator) resolveRunRetentionCount(ctx context.Context) int {
-	content, err := hcpo.ReadWorkspaceFile(ctx, "workflow.json")
-	if err != nil {
-		hcpo.GetLogger().Warn(fmt.Sprintf("Could not read workflow.json for run retention, using default %d: %v", defaultRunRetentionCount, err))
-		return defaultRunRetentionCount
-	}
-
-	var manifest struct {
-		RunRetentionCount *int `json:"run_retention_count,omitempty"`
-	}
-	if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-		hcpo.GetLogger().Warn(fmt.Sprintf("Could not parse workflow.json run_retention_count, using default %d: %v", defaultRunRetentionCount, err))
-		return defaultRunRetentionCount
-	}
-	if manifest.RunRetentionCount == nil {
-		return defaultRunRetentionCount
-	}
-	if *manifest.RunRetentionCount < 1 || *manifest.RunRetentionCount > maxRunRetentionCount {
-		hcpo.GetLogger().Warn(fmt.Sprintf("Invalid workflow.json run_retention_count=%d, using default %d", *manifest.RunRetentionCount, defaultRunRetentionCount))
-		return defaultRunRetentionCount
-	}
-	return *manifest.RunRetentionCount
 }
 
 // rotateIterationZero rotates the workflow runs tree's iteration-0 to the next

@@ -710,11 +710,10 @@ func TestHandleNotifyUserUsesSameSessionWebhookAcrossBridgeContext(t *testing.T)
 	DeleteSessionNotificationDestination(sessionID)
 	t.Cleanup(func() { DeleteSessionNotificationDestination(sessionID) })
 
-	RegisterSessionNotificationDestination(sessionID, &services.NotificationDestination{UserID: "user-1"})
-	UpdateSessionSlackWebhook(sessionID, &services.SlackWebhookDest{
+	RegisterSessionNotificationDestination(sessionID, &services.NotificationDestination{UserID: "user-1", SlackWebhook: &services.SlackWebhookDest{
 		SecretName: "SLACK_NOTIFICATION_WEBHOOK_URL",
 		URL:        "https://hooks.slack.com/services/T123/B456/session-secret",
-	})
+	}})
 
 	original := sendRichSlackIncomingWebhook
 	t.Cleanup(func() { sendRichSlackIncomingWebhook = original })
@@ -989,34 +988,6 @@ func TestConfiguredRecipientsKeepWorkflowDenylist(t *testing.T) {
 // A Slack Incoming Webhook is bound to one channel, so per-summary channels are
 // per-summary webhooks. The kind selects the set; a kind with none configured
 // falls back to the workflow's single webhook rather than posting nowhere.
-func TestWebhooksForKindSelectsChannelsAndFallsBack(t *testing.T) {
-	runHook := services.SlackWebhookDest{SecretName: "SLACK_RUNS", URL: "https://hooks.slack.com/services/T/B/runs"}
-	fallback := services.SlackWebhookDest{SecretName: "SLACK_DEFAULT", URL: "https://hooks.slack.com/services/T/B/default"}
-
-	dest := &services.NotificationDestination{
-		SlackWebhook:       &fallback,
-		RunSummaryWebhooks: []services.SlackWebhookDest{runHook},
-	}
-
-	if got := webhooksForKind(dest, "run_summary"); len(got) != 1 || got[0].SecretName != "SLACK_RUNS" {
-		t.Fatalf("run_summary webhooks = %#v, want the run channel", got)
-	}
-
-	// "general" has no configured channel of its own, and a kind whose list is
-	// empty must not go silent — both fall back to the single workflow webhook.
-	if got := webhooksForKind(dest, "general"); len(got) != 1 || got[0].SecretName != "SLACK_DEFAULT" {
-		t.Fatalf("general webhooks = %#v, want the fallback channel", got)
-	}
-
-	// No webhook at all anywhere means no Slack post, not a post to an empty URL.
-	if got := webhooksForKind(&services.NotificationDestination{}, "run_summary"); len(got) != 0 {
-		t.Fatalf("no webhooks configured = %#v, want none", got)
-	}
-}
-
-// The delivery report is what the agent repeats back to the user. Adding
-// per-channel routing must not rename the single-channel result, or every
-// existing workflow's report silently changes shape.
 func TestWebhookResultChannelLabel(t *testing.T) {
 	hook := services.SlackWebhookDest{SecretName: "SLACK_RUNS"}
 	if got := webhookResultChannel(hook, false); got != "slack_webhook" {
@@ -1039,16 +1010,15 @@ func TestNotificationRouteFromSelections(t *testing.T) {
 
 func TestNotifyUsesOnlyOneConfiguredGmailSender(t *testing.T) {
 	dest := &services.NotificationDestination{
-		Gmail:                        &services.GmailDest{ConnectionIDs: []string{"gmail_default"}},
-		RunSummaryGmailConnectionIDs: []string{"gmail_run"},
+		Gmail: &services.GmailDest{ConnectionIDs: []string{"gmail_run"}},
 	}
 	if got, err := notificationSenderForKind(dest, "run_summary"); err != nil || got != "gmail_run" {
 		t.Fatalf("run sender = %q, %v", got, err)
 	}
 
-	dest.RunSummaryGmailConnectionIDs = []string{"gmail_run", "gmail_other"}
+	dest.Gmail.ConnectionIDs = []string{"gmail_run", "gmail_other"}
 	if _, err := notificationSenderForKind(dest, "run_summary"); err == nil {
-		t.Fatal("legacy multi-sender Notify setting must not fan out")
+		t.Fatal("multi-sender Notify setting must not fan out")
 	}
 }
 

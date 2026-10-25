@@ -176,8 +176,8 @@ List workflows with ` + "`execute_shell_command(command: \"ls " + absWorkflow + 
 Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 
 **Planning & config:**
-- ` + "`soul/soul.md`" + ` — canonical stable workflow intent: ` + "`## Objective`" + `, ` + "`## Success Criteria`" + `, and optional explicit user-approved constraints. Read before review, improve, measure, harden, and ambiguous execution decisions. **Do not store architecture, current step design, provider/tool choices, implementation details, historical decisions, references, agent-inferred assumptions, or notification preferences in soul.md** — per-workflow notification preferences live in workflow.json notifications: run_summary_instructions, run_summary_channels, run_summary_recipients and run_summary_slack_webhook_secret_names configure team run messages. No configured recipients means no summary email; never fall back to the owner's address. The break_alerts setting (“Tell me when something breaks”) controls informational failures in Needs you. Questions requiring an answer and failed Gmail notices remain visible. AgentWorks handles progress reporting; there is no per-Goal digest or Autopilot reporting stream. gmail_connection_id selects the sending Gmail account with existing account access checks. Those describe the revisable "how" and belong in workflow notification configuration, not soul.md. **Stays Markdown — never create a ` + "`soul.html`" + `, a "readable mirror", or any HTML copy.** It is parsed as Markdown (the framework-health check and run-time objective injection read the ` + "`## Objective`" + ` / ` + "`## Success Criteria`" + ` headings), and AgentWorks renders it directly in Goal. Typed AgentWorks records store time-based review, analysis, and improvement history; they may report evidence-stamped goal progress but must not copy a Goal/Profile card. soul.md is the single source; leave it Markdown.
-- ` + "`workflow.json`" + ` — workflow-level config: schedules, MCP servers, skills, LLM config, optional ` + "`run_retention_count`" + ` (completed run folders to keep per Builder, schedule, and webhook family; default 10). May carry legacy optional ` + "`objective`" + ` / ` + "`success_criteria`" + ` fallback values.
+- ` + "`soul/soul.md`" + ` — canonical stable workflow intent: ` + "`## Objective`" + `, ` + "`## Success Criteria`" + `, and optional explicit user-approved constraints. Read before review, improve, measure, harden, and ambiguous execution decisions. **Do not store architecture, current step design, provider/tool choices, implementation details, historical decisions, references, agent-inferred assumptions, or notification preferences in soul.md** — per-workflow notification preferences live in workflow.json notifications: run_summary_instructions, run_summary_channels, run_summary_recipients configure team run messages. No configured recipients means no summary email; never fall back to the owner's address. The break_alerts setting (“Tell me when something breaks”) controls informational failures in Needs you. Questions requiring an answer and failed Gmail notices remain visible. AgentWorks handles progress reporting; there is no per-Goal digest or Autopilot reporting stream. gmail_connection_id selects the sending Gmail account with existing account access checks. Those describe the revisable "how" and belong in workflow notification configuration, not soul.md. **Stays Markdown — never create a ` + "`soul.html`" + `, a "readable mirror", or any HTML copy.** It is parsed as Markdown (the framework-health check and run-time objective injection read the ` + "`## Objective`" + ` / ` + "`## Success Criteria`" + ` headings), and AgentWorks renders it directly in Goal. Typed AgentWorks records store time-based review, analysis, and improvement history; they may report evidence-stamped goal progress but must not copy a Goal/Profile card. soul.md is the single source; leave it Markdown.
+- ` + "`workflow.json`" + ` — workflow-level config: schedules, MCP servers, skills, LLM config. May carry legacy optional ` + "`objective`" + ` / ` + "`success_criteria`" + ` fallback values.
 - ` + "`planning/plan.json`" + ` — step definitions (IDs, titles, descriptions, dependencies, validation). It no longer owns root objective/success fields; use ` + "`soul/soul.md`" + ` for that.
 - ` + "`planning/step_config.json`" + ` — per-step settings. Each step's ` + "`agent_configs`" + ` object controls execution mode:
   - ` + "`use_code_execution_mode`" + ` (bool) — ` + "`false`" + ` = direct tool calls, ` + "`true`" + ` = scripted Python (main.py)
@@ -192,7 +192,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - ` + "`code/<step-id>/script_metadata.json (legacy: learnings/<step-id>/script_metadata.json)`" + ` — version history + run stats for the saved script
 
 **Runs (execution output):**
-- ` + "`runs/iteration-0/`" + ` — mutable Builder/manual-workflow slot. A new Builder full run rotates the previous slot to plain ` + "`iteration-{N}`" + `. Producing saved schedules use immutable ` + "`iteration-{N}-sched`" + ` folders and webhooks use ` + "`iteration-{N}-hook`" + `. ` + "`workflow.json::run_retention_count`" + ` controls how many completed run folders are kept independently for each family; default 10.
+- ` + "`runs/iteration-0/`" + ` — mutable Builder/manual-workflow slot. A new Builder full run rotates the previous slot to plain ` + "`iteration-{N}`" + `. Producing saved schedules use immutable ` + "`iteration-{N}-sched`" + ` folders and webhooks use ` + "`iteration-{N}-hook`" + `. The server keeps ten completed run folders independently for each family.
 - ` + "`runs/iteration-{N}/{group-name}/execution/{step-id}/`" + ` — per-step execution outputs, keyed by the declared ID in ` + "`planning/plan.json`" + ` (when variable groups are in use, each group runs in its own subfolder)
 - ` + "`runs/iteration-{N}/{group-name}/execution/{step-id}/code/main.py`" + ` — per-run working copy of the ` + "`scripted`" + ` script
 - ` + "`runs/iteration-{N}/{group-name}/logs/{step-id}/`" + ` — per-step logs (see Log Layout below). Generated nested routes may use composite folders; inspect the actual directory for those executions.
@@ -211,7 +211,6 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 
 **Operating model and run history:**
 - ` + "`/define-success`" + ` records the confirmed operating-model assessment (primary type, secondary traits, plan stability, runtime mode, business-context accumulation, and cadence) as a typed decision record. It is historical reasoning, not a permanent Goal/Profile card. Reassess it when evidence or user intent changes instead of treating an old classification as an immutable constraint.
-- ` + "`run_retention_count`" + ` (in ` + "`workflow.json`" + `) — optional integer, 1-50. Number of completed run folders to keep independently for plain Builder archives, saved-schedule ` + "`-sched`" + ` runs, and webhook ` + "`-hook`" + ` runs, excluding active ` + "`iteration-0`" + `. Default: 10. Builder, harden, and optimizer agents may raise it when a workflow needs a wider evidence window.
 ### Log Layout (inside ` + "`runs/iteration-{N}/{group-name}/logs/{step-id}/`" + `)
 - ` + "`validation-{N}.json`" + ` — validation attempts for the step
 - ` + "`execution/execution-attempt-{A}-iteration-{I}.json`" + ` — execution result per attempt
@@ -381,7 +380,6 @@ Workflow-level manifest. **Required fields**: ` + "`schema_version`" + ` (int, 1
     "use_code_execution_mode": false,
     "llm_config": null
   },
-  "execution_defaults": {},
   "schedules": []
 }
 ` + "```" + `
@@ -392,13 +390,10 @@ Workflow-level manifest. **Required fields**: ` + "`schema_version`" + ` (int, 1
 - ` + "`selected_skills`" + ` — skill folder names to auto-activate
 - ` + "`selected_secrets`" + ` — secret names the workflow needs; values resolve at runtime from workflow-scoped secrets or GLOBAL_SECRET_* / managed globals
 - ` + "`browser_mode`" + ` — ` + "`none`" + ` | ` + "`auto`" + ` | ` + "`headless`" + ` | ` + "`cdp`" + `
-- ` + "`cdp_ports`" + ` — optional list of up to four CDP ports for specialized multi-profile/login testing within one workflow; each port must use a distinct Chrome ` + "`--user-data-dir`" + `. Omit for normal single-browser workflow concurrency.
-- Server deployments may disable CDP. Treat the live ` + "`agent_browser status`" + ` field ` + "`cdp_supported`" + ` and the dynamic ` + "`update_workflow_config`" + ` schema as authoritative. When disabled, use ` + "`auto`" + ` (managed headless), ` + "`headless`" + `, or ` + "`none`" + ` and omit ` + "`cdp_ports`" + `.
+- Server deployments may disable CDP. Treat the live ` + "`agent_browser status`" + ` field ` + "`cdp_supported`" + ` and the dynamic ` + "`update_workflow_config`" + ` schema as authoritative. When disabled, use ` + "`auto`" + ` (managed headless), ` + "`headless`" + `, or ` + "`none`" + `.
 - ` + "`use_code_execution_mode`" + ` — ` + "`true`" + ` if steps should run scripted Python; ` + "`false`" + ` for direct tool calls
 - ` + "`llm_config`" + ` — set to ` + "`null`" + ` unless the user asked for a specific provider/model
 
-**Optional workflow-level fields**:
-- ` + "`run_retention_count`" + ` — number of completed run folders to keep independently for Builder archives, saved schedules, and webhooks, excluding active ` + "`iteration-0`" + `. Omit for the default 10; set 1-50 when the workflow needs a wider or narrower evidence window.
 
 **` + "`schedules`" + `** is an array; leave empty ` + "`[]`" + ` unless the user asked for cron scheduling. Each schedule (if any) needs: ` + "`id`" + `, ` + "`name`" + `, ` + "`cron_expression`" + `, ` + "`timezone`" + `, ` + "`enabled`" + ` (bool), ` + "`group_names`" + ` (array).
 

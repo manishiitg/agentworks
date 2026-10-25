@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   Loader2,
   Mail,
-  Webhook,
 } from 'lucide-react'
 import {
   loadWorkflowNotificationInfo,
@@ -62,7 +61,7 @@ export default function WorkflowNotificationView({
     try {
       const next = loadInfo ? await loadInfo() : await loadWorkflowNotificationInfo(workspacePath as string)
       setInfo(next)
-      setSenderSelection(next.runSummaryGmailConnectionIds.length ? '__legacy__' : (next.gmailConnectionId || ''))
+      setSenderSelection(next.gmailConnectionId || '')
       onStateLoaded?.(next.effectiveState)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load notification status')
@@ -123,7 +122,6 @@ export default function WorkflowNotificationView({
   const gmailBlocked = info?.gmail?.blocked_recipients || []
   const gmailSender = info?.gmail?.default_sender?.trim() || ''
   const gmailSenderChoices = info?.gmail?.sender_choices || []
-  const hasLegacySenders = Boolean(info && (info.runSummaryGmailConnectionIds.length))
   const scopeName = info?.scopeLabel || workspacePath?.split('/').filter(Boolean).pop() || 'Workflow'
   const senderLabel = (id: string) => {
     const choice = gmailSenderChoices.find(entry => entry.id === id)
@@ -138,14 +136,13 @@ export default function WorkflowNotificationView({
       title: 'Run summary',
       instructions: info.runSummaryInstructions.trim(),
       channels: info.runSummaryChannels,
-      senders: info.runSummaryGmailConnectionIds.map(senderLabel),
+      senders: info.gmailConnectionId ? [senderLabel(info.gmailConnectionId)] : [],
       recipients: info.runSummaryRecipients,
-      slackWebhooks: info.runSummarySlackWebhooks,
     },
   ] : []
   const overrides = info ? [
     ...info.excludeChannels.map(channel => ({ key: `x-${channel}`, text: `No ${channel}` })),
-    ...[...gmailBlocked, ...info.blockRecipients].map(email => ({ key: `b-${email}`, text: `Never to ${email}` })),
+    ...gmailBlocked.map(email => ({ key: `b-${email}`, text: `Never to ${email}` })),
   ] : []
   // Colour carries meaning, sparingly: channels sky, sender violet, recipients
   // green, warnings amber, everything else neutral -- so a row can be read by
@@ -207,17 +204,9 @@ export default function WorkflowNotificationView({
                   <h3 className={sectionHeadClass}><span className="h-2 w-2 rounded-full bg-sky-500" />Channels</h3>
                   <div className="divide-y divide-border">
                     <div className={rowClass}>
-                      <span className={labelClass}><Webhook className="h-3.5 w-3.5 text-sky-500" />Workflow Slack webhook</span>
-                      {info.slackWebhook.secret_name
-                        ? <span className={`${chipChannel} font-mono`}>{info.slackWebhook.secret_name}</span>
-                        : <span className={chipMuted}>None</span>}
-                      <span className="ml-auto">
-                        <AskAIButton
-                          workspacePath={workspacePath}
-                          iconOnly
-                          message={`Help me with Slack notifications for ${scopeName}: setup, secrets, and delivery. Explain what I need and walk me through it.`}
-                        />
-                      </span>
+                      <span className={labelClass}>Slack</span>
+                      <span className="text-xs text-muted-foreground">Ask to set up team messages</span>
+                      <span className="ml-auto"><AskAIButton workspacePath={workspacePath} iconOnly message={`Help me with Slack notifications for ${scopeName}: connect an account, choose a channel, and check delivery.`} /></span>
                     </div>
                     <div className={rowClass}>
                       <span className={labelClass}><Mail className="h-3.5 w-3.5 text-violet-500" />Gmail</span>
@@ -246,8 +235,7 @@ export default function WorkflowNotificationView({
                         className="min-w-0 max-w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="">Use account default{gmailSender ? ` — ${gmailSender}` : ' — none configured'}</option>
-                        {hasLegacySenders && <option value="__legacy__" disabled>Older run sender settings</option>}
-                        {senderSelection && senderSelection !== '__legacy__' && !gmailSenderChoices.some(choice => choice.id === senderSelection) &&
+                        {senderSelection && !gmailSenderChoices.some(choice => choice.id === senderSelection) &&
                           <option value={senderSelection} disabled>Unavailable: {senderSelection}</option>}
                         {gmailSenderChoices.map(choice => (
                           <option key={choice.id} value={choice.id} disabled={!choice.ready}>
@@ -257,7 +245,6 @@ export default function WorkflowNotificationView({
                       </select>
                       {senderSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Saving sender" />}
                       <span className="text-xs text-muted-foreground">One account for Notify. Workflow and Builder Gmail actions choose independently.</span>
-                      {hasLegacySenders && <span className={chipWarn}>Older run sender overrides are active; choose one account to replace them.</span>}
                       {senderError && <span role="alert" className="text-xs text-destructive">{senderError}</span>}
                     </div>
                     {overrides.length > 0 && (
@@ -288,7 +275,6 @@ export default function WorkflowNotificationView({
                             {summary.channels.length > 0
                               ? summary.channels.map(channel => <span key={channel} className={`${chipChannel} capitalize`}>{channel}</span>)
                               : <span className={chipChannel}>All channels</span>}
-                            {summary.slackWebhooks.map(secret => <span key={secret} className={`${chipChannel} font-mono`} title="Slack webhook secret">#{secret}</span>)}
                           </div>
                           {summary.senders.length > 0 && (
                             <div className="flex flex-wrap items-center gap-1.5">

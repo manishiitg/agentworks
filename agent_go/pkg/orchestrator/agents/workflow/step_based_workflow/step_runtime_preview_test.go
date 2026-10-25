@@ -24,9 +24,8 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	controller.variableValues = map[string]string{"TOPIC": "private runtime topic"}
 	controller.SetSecrets([]orchestrator.SecretEntry{{Name: "EXAMPLE_TOKEN", Value: "synthetic-secret-for-preview"}})
 	files := map[string]string{
-		"workflow.json":             `{"execution_defaults":{"disable_parallel_tool_execution":true}}`,
 		"planning/plan.json":        `{"steps":[{"id":"research","title":"Research","type":"agent","description":"Research {{TOPIC}}. synthetic-secret-for-preview","context_output":"research.json","items":[{"id":"work","type":"user_message","message":"Research and verify {{TOPIC}}."}]}]}`,
-		"planning/step_config.json": `{"steps":[{"id":"research","agent_configs":{"enabled_skills":["builder-reference","agent-browser"],"enabled_custom_tools":["workspace_browser:agent_browser"],"knowledgebase_access":"none","learnings_access":"none"}}]}`,
+		"planning/step_config.json": `{"steps":[{"id":"research","agent_configs":{"disable_parallel_tool_execution":true,"enabled_skills":["builder-reference","agent-browser"],"enabled_custom_tools":["workspace_browser:agent_browser"],"knowledgebase_access":"none","learnings_access":"none"}}]}`,
 	}
 	before := map[string]string{}
 	for key, value := range files {

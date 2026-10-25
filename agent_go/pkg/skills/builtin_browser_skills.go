@@ -137,10 +137,9 @@ curl http://127.0.0.1:9333/json/version
 ` + "```" + `
 
 Do not run the installer yourself unless the user explicitly asks you to
-install and open a visible local browser. After the endpoint is reachable, the
-workflow builder must add it to ` + "`cdp_ports`" + `; the current run cannot
-invent or use a port that its prompt did not authorize. Extra profiles are for
-specialized multi-login testing, not ordinary workflow concurrency.
+install and open a visible local browser. Workflows use the standard Chrome connection. A Crew may select its existing
+browser connection. The current run must use only the endpoint its prompt
+authorizes.
 
 Tab handling is mandatory in shared CDP mode:
 

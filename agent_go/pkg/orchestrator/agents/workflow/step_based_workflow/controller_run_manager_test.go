@@ -6,12 +6,6 @@ import (
 	"testing"
 )
 
-func TestDefaultRunRetentionCountIsTen(t *testing.T) {
-	if defaultRunRetentionCount != 10 {
-		t.Fatalf("defaultRunRetentionCount = %d, want 10", defaultRunRetentionCount)
-	}
-}
-
 func TestIsPartialGroupRun(t *testing.T) {
 	hcpo := &StepBasedWorkflowOrchestrator{
 		variablesManifest: &VariablesManifest{Groups: []VariableGroup{

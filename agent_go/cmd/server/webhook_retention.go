@@ -13,23 +13,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
-func configuredTriggerRetentionCount(root *os.Root) int {
-	if root == nil {
-		return DefaultRunRetentionCount
-	}
-	raw, err := root.ReadFile("workflow.json")
-	if err != nil {
-		return DefaultRunRetentionCount
-	}
-	var manifest struct {
-		RunRetentionCount *int `json:"run_retention_count,omitempty"`
-	}
-	if json.Unmarshal(raw, &manifest) != nil || manifest.RunRetentionCount == nil || *manifest.RunRetentionCount < 1 || *manifest.RunRetentionCount > MaxRunRetentionCount {
-		return DefaultRunRetentionCount
-	}
-	return *manifest.RunRetentionCount
-}
-
 func (s *SchedulerService) pruneWebhookRuns(workspace string) {
 	if err := s.pruneWebhookRunsChecked(workspace); err != nil {
 		scheduleLogf("[WEBHOOK_RETENTION] cleanup failed for %s: %v", workspace, err)
@@ -72,7 +55,7 @@ func (s *SchedulerService) pruneWebhookRunsChecked(workspace string) error {
 		}
 	}
 	sort.Slice(completed, func(i, j int) bool { return completed[i].CompletedAt.After(*completed[j].CompletedAt) })
-	keep := configuredTriggerRetentionCount(root)
+	keep := DefaultRunRetentionCount
 	if len(completed) <= keep {
 		return nil
 	}
@@ -149,7 +132,7 @@ func (s *SchedulerService) pruneScheduledRunsChecked(workspace string) error {
 		}
 	}
 	sort.Slice(completed, func(i, j int) bool { return completed[i].CompletedAt.After(*completed[j].CompletedAt) })
-	keep := configuredTriggerRetentionCount(root)
+	keep := DefaultRunRetentionCount
 	if len(completed) <= keep {
 		return nil
 	}

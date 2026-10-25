@@ -165,9 +165,6 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 		manifest, _, err = ReadWorkflowManifest(r.Context(), physical)
 		if manifest != nil {
 			settings.Mode = effectiveWorkspaceBrowserMode(manifest.Capabilities.BrowserMode)
-			if len(manifest.Capabilities.CDPPorts) > 0 {
-				settings.Port = manifest.Capabilities.CDPPorts[0]
-			}
 		}
 	} else {
 		settings, err = readWorkspaceBrowserSettings(r.Context(), physical)
@@ -200,15 +197,14 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 				return
 			}
 			settings = workspaceBrowserSettings{Mode: req.Mode, Port: req.Port}
+			if workflow {
+				settings.Port = defaultCDPPort
+			}
 			if isProjectWorkspacePath(workspace) && settings.Mode == "auto" {
 				settings.Mode = "headless"
 			}
 			if workflow {
 				manifest.Capabilities.BrowserMode = settings.Mode
-				manifest.Capabilities.CDPPorts = nil
-				if browser.CDPEnabled() && (settings.Mode == "auto" || settings.Mode == "cdp") {
-					manifest.Capabilities.CDPPorts = []int{settings.Port}
-				}
 				err = WriteWorkflowManifest(r.Context(), physical, manifest)
 			} else {
 				data, _ := json.Marshal(settings)

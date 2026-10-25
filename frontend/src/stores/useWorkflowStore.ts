@@ -320,7 +320,6 @@ interface WorkflowStore {
   setWorkshopMode: (mode: WorkshopMode) => void
 
   // Global step override (from step_override.json - applies to all steps)
-  stepOverride: AgentConfigs | null
 
   // === ACTIONS ===
   // Constants
@@ -387,7 +386,6 @@ interface WorkflowStore {
   checkTabCompletion: (tabId: string, events: Array<{ type: string }>) => boolean
 
   // Global step override
-  setStepOverride: (override: AgentConfigs | null) => void
 
   // Workflow Mode Actions
   setWorkflowMode: (mode: 'plan') => void
@@ -565,7 +563,6 @@ export const useWorkflowStore = create<WorkflowStore>()(
       },
 
       // Global step override
-      stepOverride: null,
 
       // === Actions ===
 
@@ -1276,9 +1273,6 @@ export const useWorkflowStore = create<WorkflowStore>()(
       },
 
       // Global step override
-      setStepOverride: (override: AgentConfigs | null) => {
-        set({ stepOverride: override })
-      },
 
       // Workflow Mode Actions
       // workflowMode='plan' is the only value; all workshop modes live under it.

@@ -10,9 +10,9 @@ const defaultCDPPort = 9222
 
 func configuredCDPPorts(primary *int, additional []int) []int {
 	return getCdpPorts(QueryRequest{
-		BrowserMode: "cdp",
-		CdpPort:     primary,
-		CdpPorts:    additional,
+		BrowserMode:      "cdp",
+		CdpPort:          primary,
+		resolvedCDPPorts: additional,
 	})
 }
 
@@ -35,7 +35,7 @@ func hostDownloadsBrowserMode(req QueryRequest) string {
 		return "headless"
 	}
 	mode := getBrowserMode(req)
-	if mode == "auto" && len(configuredCDPPortsForMode(mode, req.CdpPort, req.CdpPorts)) > 0 {
+	if mode == "auto" && len(configuredCDPPortsForMode(mode, req.CdpPort, req.resolvedCDPPorts)) > 0 {
 		return "cdp"
 	}
 	return mode

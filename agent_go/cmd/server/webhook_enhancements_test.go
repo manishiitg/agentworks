@@ -159,14 +159,14 @@ func TestActiveWebhookDeliveryCountIsScopedToTrigger(t *testing.T) {
 		t.Fatalf("active review deliveries = %d, want %d", got, maxWebhookConcurrency)
 	}
 }
-func TestWebhookRetentionUsesWorkflowRunRetentionCountAndPreservesActiveRuns(t *testing.T) {
+func TestWebhookRetentionKeepsTenCompletedRunsAndPreservesActiveRuns(t *testing.T) {
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	workspace := "Workflow/test"
 	if err := os.MkdirAll(filepath.Join(docs, workspace, "runs/iteration-0"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(docs, workspace, "workflow.json"), []byte(`{"schema_version":1,"id":"test","label":"Test","run_retention_count":4}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(docs, workspace, "workflow.json"), []byte(`{"schema_version":1,"id":"test","label":"Test"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "state.sqlite"))
@@ -203,7 +203,7 @@ func TestWebhookRetentionUsesWorkflowRunRetentionCountAndPreservesActiveRuns(t *
 	}
 	for i, folder := range folders {
 		_, err := os.Stat(filepath.Join(docs, workspace, "runs", folder))
-		if i < 9 {
+		if i < 3 {
 			if !os.IsNotExist(err) || !webhookArtifactsExpired(workspace, fmt.Sprintf("run-%d", i)) {
 				t.Fatalf("old run retained: %s %v", folder, err)
 			}

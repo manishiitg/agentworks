@@ -239,11 +239,6 @@ func createWorkflowAutoNotificationFixture(workspaceDocs string, keep bool, prov
 				},
 			},
 		},
-		"execution_defaults": map[string]interface{}{
-			"always_use_same_run": true,
-			"disable_learning":    true,
-			"workshop_mode":       "run",
-		},
 		"ownership":  map[string]interface{}{},
 		"schedules":  []interface{}{},
 		"created_at": now,

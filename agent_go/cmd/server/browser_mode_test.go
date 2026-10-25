@@ -22,7 +22,7 @@ func TestConfiguredCDPPortsForAutoRemainCandidates(t *testing.T) {
 }
 
 func TestHostDownloadsBrowserModeResolvesRestoredAutoSessionToCDP(t *testing.T) {
-	req := QueryRequest{BrowserMode: "auto", CdpPorts: []int{9222}}
+	req := QueryRequest{BrowserMode: "auto", resolvedCDPPorts: []int{9222}}
 	if got := hostDownloadsBrowserMode(req); got != "cdp" {
 		t.Fatalf("host Downloads mode = %q, want cdp", got)
 	}
@@ -33,7 +33,7 @@ func TestHostDownloadsBrowserModeResolvesRestoredAutoSessionToCDP(t *testing.T) 
 
 func TestGetCdpPortsPreservesPrimaryAndDeduplicates(t *testing.T) {
 	primary := 9333
-	ports := getCdpPorts(QueryRequest{BrowserMode: "cdp", CdpPort: &primary, CdpPorts: []int{9222, 9333, -1, 9444}})
+	ports := getCdpPorts(QueryRequest{BrowserMode: "cdp", CdpPort: &primary, resolvedCDPPorts: []int{9222, 9333, -1, 9444}})
 	want := []int{9333, 9222, 9444}
 	if !reflect.DeepEqual(ports, want) {
 		t.Fatalf("getCdpPorts() = %v, want %v", ports, want)
@@ -44,7 +44,7 @@ func TestGetCdpPortsIgnoresStalePortsOutsideCDPModes(t *testing.T) {
 	for _, mode := range []string{"none", "headless"} {
 		t.Run(mode, func(t *testing.T) {
 			primary := 9222
-			ports := getCdpPorts(QueryRequest{BrowserMode: mode, CdpPort: &primary, CdpPorts: []int{9333}})
+			ports := getCdpPorts(QueryRequest{BrowserMode: mode, CdpPort: &primary, resolvedCDPPorts: []int{9333}})
 			if len(ports) != 0 {
 				t.Fatalf("getCdpPorts() = %v for mode %q, want no CDP authorization", ports, mode)
 			}
@@ -174,7 +174,7 @@ func TestApplyMultiAgentCapabilitiesMigratesLegacyNoneToAuto(t *testing.T) {
 
 func TestApplyMultiAgentCapabilitiesToRequestEnablesBrowserForAuto(t *testing.T) {
 	req := QueryRequest{}
-	applyMultiAgentCapabilitiesToRequest(&req, WorkflowCapabilities{BrowserMode: "auto", CDPPorts: []int{9222, 9333}})
+	applyMultiAgentCapabilitiesToRequest(&req, WorkflowCapabilities{BrowserMode: "auto"})
 
 	if req.BrowserMode != "auto" {
 		t.Fatalf("browser mode = %q, want auto", req.BrowserMode)
@@ -182,7 +182,5 @@ func TestApplyMultiAgentCapabilitiesToRequestEnablesBrowserForAuto(t *testing.T)
 	if req.EnableBrowserAccess == nil || !*req.EnableBrowserAccess {
 		t.Fatalf("EnableBrowserAccess = %v, want true for auto", req.EnableBrowserAccess)
 	}
-	if !reflect.DeepEqual(req.CdpPorts, []int{9222, 9333}) {
-		t.Fatalf("CdpPorts = %v, want saved multi-profile ports", req.CdpPorts)
-	}
+
 }

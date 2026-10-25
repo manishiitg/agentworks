@@ -121,7 +121,6 @@ export interface AgentQueryRequest {
   // CDP port for connecting to an existing Chrome browser (local mode only)
   cdp_port?: number
   // Specialized multi-profile CDP testing. Each port uses a distinct Chrome profile.
-  cdp_ports?: number[]
   // Selected skills to include in the chat context
   selected_skills?: string[] // Array of skill folder names
   // Delegation tier configuration: Maps reasoning levels to specific provider/model pairs
@@ -2694,11 +2693,8 @@ export interface WorkflowNotificationInfoResponse {
   /** One sender selected for this workflow's Notify emails; empty inherits the account default. */
   gmail_connection_id?: string
   /** Legacy per-summary sender overrides; Notify now selects one sender. */
-  run_summary_gmail_connection_ids?: string[]
   // Slack channels per summary, as webhook secret names (one webhook = one channel).
-  run_summary_slack_webhooks?: string[]
   exclude_channels?: string[]
-  block_recipients?: string[]
 }
 
 // Scheduled Jobs
@@ -2937,14 +2933,12 @@ export interface WorkflowManifest {
   label: string
   icon?: string
   capabilities: WorkflowCapabilities
-  execution_defaults: WorkflowExecutionDefaults
   ownership: WorkflowOwnership
   schedules: WorkflowScheduleEntry[]
   /** Who owns and who may read this workflow (workflow_access.go). */
   access?: { owners: string[]; readers: string[]; allowed_kb_writers?: string[] }
   created_at?: string
   updated_at?: string
-  run_retention_count?: number
   backup?: WorkflowBackupConfig
   publish?: WorkflowPublishConfig
   knowledgebase_sources?: KnowledgebaseSource[]
@@ -2992,7 +2986,6 @@ export interface WorkflowCapabilities {
   selected_secrets: string[]
   selected_global_secret_names: string[] | null // null = none, [] = none
   browser_mode: string
-  cdp_ports?: number[]
   use_code_execution_mode: boolean
   llm_config?: PresetLLMConfig
   notifications?: WorkflowNotificationConfig
@@ -3012,14 +3005,6 @@ export interface WorkflowNotificationConfig {
   instructions?: string
   run_summary_instructions?: string
   run_summary_channels?: string[]
-}
-
-export interface WorkflowExecutionDefaults {
-  // Global step overrides (replaces step_override.json)
-  disable_learning?: boolean
-  disable_parallel_tool_execution?: boolean
-  enabled_custom_tools?: string[]
-  workshop_mode?: string // Workshop builder mode: "builder", "optimizer", or "run"
 }
 
 export interface WorkflowOwnership {
@@ -3094,7 +3079,6 @@ export interface CreateWorkflowManifestRequest {
   icon?: string
   workspace_path: string
   capabilities?: Partial<WorkflowCapabilities>
-  execution_defaults?: Partial<WorkflowExecutionDefaults>
   human_verification_required?: boolean
 }
 
@@ -3107,11 +3091,8 @@ export interface UpdateWorkflowManifestRequest {
   label?: string
   icon?: string
   capabilities?: WorkflowCapabilities
-  execution_defaults?: WorkflowExecutionDefaults
   ownership?: WorkflowOwnership
   schedules?: WorkflowScheduleEntry[]
-  workshop_mode?: string // Standalone patch — avoids zeroing out other execution_defaults fields
-  run_retention_count?: number
   run_notification_instructions?: string
   run_notification_channels?: string[]
   // Send an empty array to clear a recipient list back to the account default;

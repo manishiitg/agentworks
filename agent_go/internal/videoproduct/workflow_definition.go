@@ -6,7 +6,7 @@ const routeStepID = "route"
 
 func videoStudioWorkflowManifest(projectID, title string) map[string]interface{} {
 	product := mustVideoStudioManifest()
-	return map[string]interface{}{"schema_version": 1, "id": "video-" + projectID, "version": "1.0.0", "label": title, "capabilities": map[string]interface{}{"selected_servers": []string{}, "selected_tools": []string{}, "selected_skills": append([]string(nil), product.Workflows.SelectedSkills...), "selected_secrets": []string{}, "browser_mode": product.Workflows.BrowserMode, "use_code_execution_mode": true, "llm_config": videoWorkflowLLMConfig()}, "execution_defaults": map[string]interface{}{"always_use_same_run": true, "workshop_mode": "run"}, "schedules": []interface{}{}, "created_at": time.Now().UTC().Format(time.RFC3339), "updated_at": time.Now().UTC().Format(time.RFC3339)}
+	return map[string]interface{}{"schema_version": 1, "id": "video-" + projectID, "version": "1.0.0", "label": title, "capabilities": map[string]interface{}{"selected_servers": []string{}, "selected_tools": []string{}, "selected_skills": append([]string(nil), product.Workflows.SelectedSkills...), "selected_secrets": []string{}, "browser_mode": product.Workflows.BrowserMode, "use_code_execution_mode": true, "llm_config": videoWorkflowLLMConfig()}, "schedules": []interface{}{}, "created_at": time.Now().UTC().Format(time.RFC3339), "updated_at": time.Now().UTC().Format(time.RFC3339)}
 }
 func videoAgentLLMConfig() map[string]interface{} {
 	return map[string]interface{}{"provider": "claude-code", "model_id": DefaultClaudeModel}
