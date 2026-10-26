@@ -113,10 +113,20 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 			return
 		}
 	}
+	settings, err := readWorkspaceBrowserSettings(r.Context(), physical)
+	if err != nil {
+		http.Error(w, "Cannot load project browser settings", 502)
+		return
+	}
+	status := browserrelay.Default.Status(user, scope)
+	if settings.Mode != "extension" {
+		status.Selected, status.Connected = false, false
+	}
 	json.NewEncoder(w).Encode(struct {
 		browserrelay.Status
+		Mode         string   `json:"mode"`
 		AllowedModes []string `json:"allowed_modes"`
-	}{browserrelay.Default.Status(user, scope), browser.VisibleModes()})
+	}{status, settings.Mode, browser.VisibleModes()})
 }
 func (api *StreamingAPI) handleBrowserExtensionConnect(w http.ResponseWriter, r *http.Request) {
 	browserrelay.Default.ServeExtensionAuthorizedWithNames(w, r, func(user, scope, workspace, profile string) error {

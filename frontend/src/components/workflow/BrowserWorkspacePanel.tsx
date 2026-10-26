@@ -39,6 +39,7 @@ export function BrowserWorkspacePanel({
   const extensionProfile = profileId || (workspacePath?.startsWith('Workflow/') ? 'workflow' : undefined)
   const extensionAvailable = ['work', 'workflow'].includes(extensionProfile || '') && !!workspacePath && !readOnly
   const connection = useChromeExtensionConnection(workspacePath, extensionProfile, !extensionAvailable)
+  const displayMode = !dirty && connection.status.mode ? connection.status.mode : browserMode
   const directMode = connection.status.allowed_modes?.find(mode => mode !== 'extension')
   const directLabel = directMode === 'cdp' ? 'Local Chrome · direct connection' : 'In-app browser'
   const useWorkspaceBrowser = async () => {
@@ -47,20 +48,20 @@ export function BrowserWorkspacePanel({
     onBrowserModeChange(directMode)
   }
   const selection = !readOnly && workspacePath ? <div className="shrink-0 border-b border-border px-3 py-2">
-    {extensionAvailable && <ChromeExtensionConnection connection={connection} workspaceBrowser={directMode ? { label: directLabel, selected: !connection.status.selected && browserMode === directMode, onSelect: useWorkspaceBrowser } : undefined} />}
-    {directMode === 'cdp' && browserMode === 'cdp' && !connection.status.selected && <details className="mt-2 text-xs">
+    {extensionAvailable && <ChromeExtensionConnection connection={connection} workspaceBrowser={directMode ? { label: directLabel, selected: !connection.status.selected && displayMode === directMode, onSelect: useWorkspaceBrowser } : undefined} />}
+    {directMode === 'cdp' && displayMode === 'cdp' && !connection.status.selected && <details className="mt-2 text-xs">
       <summary className="cursor-pointer text-muted-foreground">Advanced connection</summary>
-      <div className="pt-3"><BrowserAutomationSettings browserMode={browserMode} onBrowserModeChange={onBrowserModeChange} cdpPort={cdpPort} onCdpPortChange={onCdpPortChange} cdpConnected={cdpConnected} cdpError={cdpError} cdpChecking={cdpChecking} onCheckCdpConnection={onCheckCdpConnection} readOnly={readOnly || connection.busy} scopeNoun={scopeNoun} /></div>
+      <div className="pt-3"><BrowserAutomationSettings browserMode={displayMode} onBrowserModeChange={onBrowserModeChange} cdpPort={cdpPort} onCdpPortChange={onCdpPortChange} cdpConnected={cdpConnected} cdpError={cdpError} cdpChecking={cdpChecking} onCheckCdpConnection={onCheckCdpConnection} readOnly={readOnly || connection.busy} scopeNoun={scopeNoun} /></div>
     </details>}
     {onSave && (dirty || saving) && <div className="mt-2 flex justify-end"><Button type="button" size="sm" disabled={!dirty || saving} onClick={onSave}>{saving ? 'Saving…' : 'Save browser choice'}</Button></div>}
   </div> : null
   const emptyBrowser = !readOnly && workspacePath ? ({ startBrowser, startingBrowser, canStart }: BrowserEmptyStateActions) => <div className="space-y-4 text-left" aria-label="Open a browser">
     <div className="space-y-2">
-      <h3 className="text-base font-semibold">{browserMode === 'extension' || browserMode === 'none' ? 'Choose a browser above' : 'Your browser will appear here'}</h3>
+      <h3 className="text-base font-semibold">{displayMode === 'extension' || displayMode === 'none' ? 'Choose a browser above' : 'Your browser will appear here'}</h3>
       <p className="text-sm leading-relaxed text-muted-foreground">Open a browser or ask your agent to visit a website. You can both click and type here while it works.</p>
       {connection.status.account_connected && <p className="text-xs text-muted-foreground">Your saved browser is connected. Choose it above to use it in this {scopeNoun}.</p>}
     </div>
-    {canStart && (browserMode === 'headless' || browserMode === 'cdp') && <Button type="button" disabled={startingBrowser || connection.busy} onClick={() => { void startBrowser() }} className="w-full gap-2">
+    {canStart && (displayMode === 'headless' || displayMode === 'cdp') && <Button type="button" disabled={startingBrowser || connection.busy} onClick={() => { void startBrowser() }} className="w-full gap-2">
       {startingBrowser ? <Loader2 className="h-4 w-4 animate-spin" /> : <Monitor className="h-4 w-4" />}
       {startingBrowser ? 'Opening browser…' : directMode === 'cdp' ? 'Connect to local Chrome' : 'Open in-app browser'}
     </Button>}
