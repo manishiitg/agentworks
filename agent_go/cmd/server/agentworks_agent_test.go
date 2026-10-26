@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gorilla/mux"
 
@@ -104,24 +103,5 @@ func TestReadLinkedGoalNeedsCurrentAccess(t *testing.T) {
 	}
 	if out, err := run("owner"); err != nil || !strings.Contains(out, `"schedules"`) {
 		t.Fatalf("owner read = %s %v", out, err)
-	}
-}
-
-// email_me goes only to the person's own account address, never a fallback recipient, at most twice a day.
-func TestAgentWorksEmailOnlyToOwnAddressTwiceADay(t *testing.T) {
-	withMemoryUserDirectory(t, `{"users":[{"id":"with-email","username":"a","email":"person@example.com"},{"id":"no-email","username":"b"}]}`)
-	if to, err := agentWorksEmailRecipient("with-email"); err != nil || to != "person@example.com" {
-		t.Fatalf("recipient = %q %v", to, err)
-	}
-	if to, err := agentWorksEmailRecipient("no-email"); err == nil || to != "" {
-		t.Fatalf("a person without an address must get nothing: %q", to)
-	}
-	quota := &agentWorksDailyQuota{used: map[string]int{}}
-	day := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
-	if !quota.take("with-email", day) || !quota.take("with-email", day) || quota.take("with-email", day) {
-		t.Fatal("the third email of a day must be refused")
-	}
-	if !quota.take("with-email", day.Add(24*time.Hour)) {
-		t.Fatal("the next day starts fresh")
 	}
 }

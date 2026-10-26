@@ -76,7 +76,7 @@ func agentWorksMainSchedules() []productschedule.Schedule {
 			"Morning roll-up. Read notes/overview.md. For each linked Goal, say in a line what changed since yesterday and its measurement health (read_linked_goal). Then list what needs the person and at most three suggestions with evidence. Keep notes/overview.md current.",
 		}},
 		{ID: "aw-evening", Name: "Evening summary", Enabled: true, CronExpression: "30 20 * * *", Timezone: agentWorksTimezone, Messages: []string{
-			"Evening summary. From today's runs of each linked Goal (read_linked_goal) and what the daily check found, write a short summary readable on a phone: what happened, what was fixed, and what the person needs to decide. Send it with email_me. If nothing changed today, send one line saying so.",
+			"Evening summary. From today's runs of each linked Goal (read_linked_goal) and what the daily check found, write a short summary readable on a phone: what happened, what was fixed, and what the person needs to decide. Email it to the person with integrations google (Gmail) through this Crew's own Google account; if this Crew has no Google account attached, leave the summary here and say once that attaching one lets you email them. If nothing changed today, send one line saying so.",
 		}},
 	}
 }
