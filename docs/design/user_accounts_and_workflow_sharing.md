@@ -165,9 +165,8 @@ workflow/project** from removal **for everyone on the server**.
 
 ## Video Studio: users log in as themselves
 
-The gateway's shared `ACCESS_PASSWORD` cookie is replaced by the app's own
-login. The gateway already has this mode (`GATEWAY_DISABLE_PASSWORD_GATE`,
-live on Dominion). With it on, the browser talks to the agent API with a
+The gateway's shared-password cookie is replaced by the app's own login
+(the password gate has since been removed from the gateway). The browser talks to the agent API with a
 real per-user JWT, `MULTI_USER_MODE=true`, and each user gets their own
 `_users/<id>` tree: own projects, own secrets, own Claude token, own history.
 Product access is checked at `/api/agent-profiles/{id}/...`: a user without

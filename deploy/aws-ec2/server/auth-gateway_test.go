@@ -38,10 +38,7 @@ func TestGatewayRequestLogCapturesPublicTimingAndCorrelationWithoutQuerySecrets(
 	log.SetOutput(&logs)
 	defer log.SetOutput(previousOutput)
 
-	gw := &gateway{
-		agent:               proxyFor(upstream.URL),
-		disablePasswordGate: true,
-	}
+	gw := &gateway{agent: proxyFor(upstream.URL)}
 	req := httptest.NewRequest(http.MethodGet, "/api/health?token=must-not-appear", nil)
 	req.Header.Set(requestIDHeader, "edge-request-123")
 	req.Header.Set("X-Forwarded-For", "203.0.113.7, 127.0.0.1")
@@ -135,8 +132,9 @@ func TestServeAgentForwardsQueryTokenAsBearerCredential(t *testing.T) {
 		t.Fatalf("parse upstream URL: %v", err)
 	}
 	gateway := &gateway{
-		secret: []byte("test-secret-that-is-long-enough"),
-		agent:  httputil.NewSingleHostReverseProxy(target),
+		secret:  []byte("test-secret-that-is-long-enough"),
+		agent:   httputil.NewSingleHostReverseProxy(target),
+		ssoOnly: true,
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/public/file?token=workspace-user-token", nil)
@@ -152,7 +150,7 @@ func TestServeAgentForwardsQueryTokenAsBearerCredential(t *testing.T) {
 }
 
 func TestUnauthenticatedAPIRequestReturnsExplicitLoginSignal(t *testing.T) {
-	gateway := &gateway{secret: []byte("test-secret-that-is-long-enough")}
+	gateway := &gateway{secret: []byte("test-secret-that-is-long-enough"), ssoOnly: true}
 	req := httptest.NewRequest(http.MethodGet, "/api/health?full=1", nil)
 	req.Header.Set("Referer", "https://example.com/projects/123?tab=chat")
 	response := httptest.NewRecorder()
@@ -180,7 +178,7 @@ func TestGmailOAuthCallbackIsPublicAtGateway(t *testing.T) {
 }
 
 func TestUnauthenticatedAPIRequestIgnoresExternalReferer(t *testing.T) {
-	gateway := &gateway{secret: []byte("test-secret-that-is-long-enough")}
+	gateway := &gateway{secret: []byte("test-secret-that-is-long-enough"), ssoOnly: true}
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	req.Header.Set("Referer", "https://attacker.example/steal")
 	response := httptest.NewRecorder()
@@ -193,7 +191,7 @@ func TestUnauthenticatedAPIRequestIgnoresExternalReferer(t *testing.T) {
 }
 
 func TestUnauthenticatedAPIRequestDoesNotNestLoginReferer(t *testing.T) {
-	gateway := &gateway{secret: []byte("test-secret-that-is-long-enough")}
+	gateway := &gateway{secret: []byte("test-secret-that-is-long-enough"), ssoOnly: true}
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	req.Header.Set("Referer", "https://video.example/login?next=%2Flogin%3Fnext%3D%252F")
 	response := httptest.NewRecorder()
@@ -206,7 +204,7 @@ func TestUnauthenticatedAPIRequestDoesNotNestLoginReferer(t *testing.T) {
 }
 
 func TestUnauthenticatedFrontendRequestStillRedirectsToLogin(t *testing.T) {
-	gateway := &gateway{secret: []byte("test-secret-that-is-long-enough")}
+	gateway := &gateway{secret: []byte("test-secret-that-is-long-enough"), ssoOnly: true}
 	req := httptest.NewRequest(http.MethodGet, "/projects/123", nil)
 	response := httptest.NewRecorder()
 
@@ -217,35 +215,6 @@ func TestUnauthenticatedFrontendRequestStillRedirectsToLogin(t *testing.T) {
 	}
 	if got := response.Header().Get("Location"); got != "/login?next=%2Fprojects%2F123" {
 		t.Fatalf("location = %q", got)
-	}
-}
-
-func TestAuthenticatedRequestRefreshesSessionNearExpiry(t *testing.T) {
-	gateway := &gateway{
-		secret:        []byte("test-secret-that-is-long-enough"),
-		frontendDir:   t.TempDir(),
-		sessionCookie: sessionCookieName("video-studio"),
-	}
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.AddCookie(&http.Cookie{Name: gateway.sessionCookie, Value: gateway.signedSession(time.Now().Add(time.Hour))})
-	response := httptest.NewRecorder()
-
-	gateway.ServeHTTP(response, req)
-
-	result := response.Result()
-	defer result.Body.Close()
-	var refreshed *http.Cookie
-	for _, cookie := range result.Cookies() {
-		if cookie.Name == gateway.sessionCookie {
-			refreshed = cookie
-			break
-		}
-	}
-	if refreshed == nil {
-		t.Fatal("expected a refreshed session cookie")
-	}
-	if remaining := time.Until(refreshed.Expires); remaining < 11*time.Hour || remaining > 13*time.Hour {
-		t.Fatalf("refreshed session lifetime = %s", remaining)
 	}
 }
 
@@ -263,17 +232,16 @@ func TestGatewaySSOOnlyRemovesPasswordLogin(t *testing.T) {
 	}
 }
 
-func TestNewGatewaySSOOnlyNeedsNoSharedPassword(t *testing.T) {
+func TestNewGatewaySSOOnlyReadsApprovedEmails(t *testing.T) {
 	t.Setenv("AUTH_SECRET", "test-secret-that-is-long-enough-x")
-	t.Setenv("ACCESS_PASSWORD", "")
 	t.Setenv("GATEWAY_SSO_ONLY", "true")
 	t.Setenv("GATEWAY_SSO_SUPABASE_URL", "https://example.supabase.co")
 	t.Setenv("GATEWAY_SSO_SUPABASE_ANON_KEY", "public-key")
 	t.Setenv("GATEWAY_SSO_REDIRECT_URL", "https://sparkquill.example/auth/google/callback")
 	t.Setenv("GATEWAY_SSO_ALLOWED_EMAILS", " Member@example.com, owner@example.com ")
 	g := newGateway()
-	if !g.ssoOnly || len(g.password) != 0 || !g.ssoAllowedEmail["member@example.com"] || !g.ssoAllowedEmail["owner@example.com"] {
-		t.Fatal("SSO gateway did not enable the two approved emails without a shared password")
+	if !g.ssoOnly || !g.ssoAllowedEmail["member@example.com"] || !g.ssoAllowedEmail["owner@example.com"] {
+		t.Fatal("SSO gateway did not enable the two approved emails")
 	}
 }
 
@@ -365,15 +333,6 @@ func TestGoogleSSOGatewayAllowsOnlyApprovedEmailAndSurvivesRestart(t *testing.T)
 		t.Fatalf("removed email still has access: status=%d location=%q", denied.Code, denied.Header().Get("Location"))
 	}
 
-	// A previously issued shared-password cookie must not bypass SSO.
-	legacy := httptest.NewRequest(http.MethodGet, "/", nil)
-	legacy.AddCookie(&http.Cookie{Name: g.sessionCookie, Value: g.signedSession(time.Now().Add(time.Hour))})
-	legacyResult := httptest.NewRecorder()
-	g.ServeHTTP(legacyResult, legacy)
-	if legacyResult.Code != http.StatusSeeOther {
-		t.Fatalf("old password cookie status = %d", legacyResult.Code)
-	}
-
 	secondStart := httptest.NewRecorder()
 	g.ServeHTTP(secondStart, httptest.NewRequest(http.MethodGet, "/auth/google/start", nil))
 	secondCallback := httptest.NewRequest(http.MethodGet, "/auth/google/callback?code=test-code", nil)
@@ -392,7 +351,7 @@ func TestGoogleSSOGatewayAllowsOnlyApprovedEmailAndSurvivesRestart(t *testing.T)
 
 func TestSessionCookieNameNamespacesByGatewayIdentity(t *testing.T) {
 	if got := sessionCookieName("video-studio"); got != "video_studio_session" {
-		t.Errorf("sessionCookieName(%q) = %q, want the original literal so an already-running Video Studio deployment's browser sessions survive a redeploy of this now-parameterized binary", "video-studio", got)
+		t.Errorf("sessionCookieName(%q) = %q, want video_studio_session", "video-studio", got)
 	}
 	if got := sessionCookieName("dominion"); got != "dominion_session" {
 		t.Errorf("sessionCookieName(%q) = %q, want dominion_session", "dominion", got)
@@ -401,7 +360,6 @@ func TestSessionCookieNameNamespacesByGatewayIdentity(t *testing.T) {
 
 func TestNewGatewayDerivesSessionCookieFromGatewayUserID(t *testing.T) {
 	t.Setenv("AUTH_SECRET", "test-secret-that-is-long-enough-x")
-	t.Setenv("ACCESS_PASSWORD", "pw")
 	t.Setenv("GATEWAY_USER_ID", "dominion")
 
 	gw := newGateway()
@@ -411,39 +369,25 @@ func TestNewGatewayDerivesSessionCookieFromGatewayUserID(t *testing.T) {
 	}
 }
 
-func TestNewGatewayKeepsThePasswordGateByDefault(t *testing.T) {
+// The shared-password gate is gone: without GATEWAY_SSO_ONLY the app's own
+// sign-in is the only gate, and no password setting is needed.
+func TestNewGatewayHasNoGateByDefault(t *testing.T) {
 	t.Setenv("AUTH_SECRET", "test-secret-that-is-long-enough-x")
-	t.Setenv("ACCESS_PASSWORD", "pw")
 
-	gw := newGateway()
-
-	if gw.disablePasswordGate {
-		t.Fatal("disablePasswordGate should default to false so every existing deployment keeps its current behavior")
+	if gw := newGateway(); gw.ssoOnly {
+		t.Fatal("a gateway without GATEWAY_SSO_ONLY must leave sign-in to the app")
 	}
 }
 
-func TestNewGatewayCanDisableThePasswordGateExplicitly(t *testing.T) {
-	t.Setenv("AUTH_SECRET", "test-secret-that-is-long-enough-x")
-	t.Setenv("ACCESS_PASSWORD", "pw")
-	t.Setenv("GATEWAY_DISABLE_PASSWORD_GATE", "true")
-
-	gw := newGateway()
-
-	if !gw.disablePasswordGate {
-		t.Fatal("GATEWAY_DISABLE_PASSWORD_GATE=true should disable the password gate")
-	}
-}
-
-func TestDisabledPasswordGateRoutesWithoutAnySessionCookie(t *testing.T) {
+func TestNoGateRoutesWithoutAnySessionCookie(t *testing.T) {
 	frontendDir := t.TempDir()
 	if err := os.WriteFile(frontendDir+"/index.html", []byte("<html></html>"), 0o644); err != nil {
 		t.Fatalf("write index.html: %v", err)
 	}
 	gw := &gateway{
-		secret:              []byte("test-secret-that-is-long-enough"),
-		frontendDir:         frontendDir,
-		sessionCookie:       sessionCookieName("dominion"),
-		disablePasswordGate: true,
+		secret:        []byte("test-secret-that-is-long-enough"),
+		frontendDir:   frontendDir,
+		sessionCookie: sessionCookieName("dominion"),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/projects/123", nil)
@@ -451,22 +395,21 @@ func TestDisabledPasswordGateRoutesWithoutAnySessionCookie(t *testing.T) {
 
 	gw.ServeHTTP(response, req)
 
-	// No session cookie, and no password gate to reject it: this must reach
-	// serveFrontend's SPA fallback (200, index.html), never the /login
-	// redirect a password-gated deployment would produce here.
+	// No session cookie and no gate to reject it: this must reach
+	// serveFrontend's SPA fallback (200, index.html), never a /login redirect.
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d (SPA fallback, no login redirect)", response.Code, http.StatusOK)
 	}
 	if got := response.Header().Get("Location"); got != "" {
-		t.Fatalf("unexpected redirect to %q -- the password gate should be fully bypassed", got)
+		t.Fatalf("unexpected redirect to %q", got)
 	}
 }
 
-// With the password gate off the gateway must NOT lend its service identity
+// Without Google sign-in in front, the gateway must NOT lend its service identity
 // to anonymous callers (the pre-2026-09-02 behaviour, which let anyone act
 // as the fixed product user). Public app routes pass through untouched;
 // everything else needs the caller's own app JWT.
-func TestDisabledPasswordGateNeverMintsAFallbackToken(t *testing.T) {
+func TestNoGateNeverMintsAFallbackToken(t *testing.T) {
 	var gotAuthorization string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuthorization = r.Header.Get("Authorization")
@@ -479,9 +422,8 @@ func TestDisabledPasswordGateNeverMintsAFallbackToken(t *testing.T) {
 	}
 
 	gw := &gateway{
-		secret:              []byte("test-secret-that-is-long-enough"),
-		agent:               httputil.NewSingleHostReverseProxy(target),
-		disablePasswordGate: true,
+		secret: []byte("test-secret-that-is-long-enough"),
+		agent:  httputil.NewSingleHostReverseProxy(target),
 	}
 
 	response := httptest.NewRecorder()
@@ -500,18 +442,18 @@ func TestDisabledPasswordGateNeverMintsAFallbackToken(t *testing.T) {
 	}
 }
 
-// With the password gate off, the gateway must never lend its service
+// Without Google sign-in in front, the gateway must never lend its service
 // identity: an unauthenticated API request is refused, a valid app JWT is
 // forwarded with X-User-ID stamped from the token (never from the client),
 // and the login/mode routes the app needs beforehand still pass.
-func TestDisabledGateRequiresUserTokenAndStampsUser(t *testing.T) {
+func TestNoGateRequiresUserTokenAndStampsUser(t *testing.T) {
 	var seenAuth, seenUser string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seenAuth, seenUser = r.Header.Get("Authorization"), r.Header.Get("X-User-ID")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()
-	g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), userID: "video-studio", disablePasswordGate: true}
+	g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), userID: "video-studio"}
 	g.agent = proxyFor(upstream.URL)
 
 	for _, path := range []string{"/api/agent-profiles/video-studio/query", "/api/wp/api/documents/x"} {
@@ -560,7 +502,7 @@ func TestWorkflowWebhookPreservesCredentialsAndBodyWithoutAppLogin(t *testing.T)
 			w.WriteHeader(http.StatusAccepted)
 		}))
 		target, _ := url.Parse(upstream.URL)
-		g := &gateway{disablePasswordGate: disableGate, agent: httputil.NewSingleHostReverseProxy(target)}
+		g := &gateway{ssoOnly: !disableGate, agent: httputil.NewSingleHostReverseProxy(target)}
 		req := httptest.NewRequest(http.MethodPost, "/api/hooks/workflow/trigger-id", strings.NewReader(`{"event":"test"}`))
 		req.Header.Set("Authorization", "Bearer trigger-secret")
 		req.Header.Set("X-Hub-Signature-256", "sha256=original")
@@ -651,7 +593,7 @@ func TestAccessTokenReachesAppWithoutGatewaySession(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer upstream.Close()
-		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), disablePasswordGate: disableGate}
+		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), ssoOnly: !disableGate}
 		g.agent = proxyFor(upstream.URL)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/external/v1/tools", nil)
@@ -690,7 +632,7 @@ func TestMCPOAuthDiscoveryAndChallengeReachAgentWithoutGatewaySession(t *testing
 			}
 			w.WriteHeader(http.StatusOK)
 		}))
-		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), disablePasswordGate: disableGate}
+		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), ssoOnly: !disableGate}
 		g.agent = proxyFor(upstream.URL)
 		for _, path := range []string{
 			"/.well-known/oauth-protected-resource/api/external/v1/mcp",
@@ -751,7 +693,7 @@ func TestAccessTokenStaysOutOfWorkspaceRoutes(t *testing.T) {
 	}))
 	defer upstream.Close()
 	for _, disableGate := range []bool{false, true} {
-		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), disablePasswordGate: disableGate}
+		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), ssoOnly: !disableGate}
 		g.agent = proxyFor(upstream.URL)
 		req := httptest.NewRequest(http.MethodGet, "/api/wp/api/documents/x", nil)
 		req.Header.Set("Authorization", "Bearer aw_pat_test-token")
@@ -764,7 +706,7 @@ func TestAccessTokenStaysOutOfWorkspaceRoutes(t *testing.T) {
 }
 
 func TestNonTokenBearerStillRejectedWithoutSession(t *testing.T) {
-	g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), disablePasswordGate: true}
+	g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef")}
 	for _, bearer := range []string{"Bearer garbage", "Bearer aw_pat", "Bearer x.aw_pat_y.z"} {
 		req := httptest.NewRequest(http.MethodGet, "/api/external/v1/tools", nil)
 		req.Header.Set("Authorization", bearer)
@@ -837,7 +779,7 @@ func TestWorkspaceRoutesGoThroughAgent(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer agent.Close()
-	g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), userID: "video-studio", disablePasswordGate: true}
+	g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), userID: "video-studio"}
 	g.agent = proxyFor(agent.URL)
 	token, err := g.agentToken()
 	if err != nil {
@@ -863,7 +805,7 @@ func TestSandboxedLessonMediaUsesJWTWithoutLoginCookie(t *testing.T) {
 		_, _ = w.Write([]byte("MP4!"))
 	}))
 	defer agent.Close()
-	g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), userID: "family-user"}
+	g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), userID: "family-user", ssoOnly: true}
 	g.agent = proxyFor(agent.URL)
 	token, err := g.agentToken()
 	if err != nil {
@@ -923,7 +865,7 @@ func TestGatewayEventStreamsRejectQueryTokens(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		}))
 		defer upstream.Close()
-		g := &gateway{agent: proxyFor(upstream.URL), disablePasswordGate: disableGate}
+		g := &gateway{agent: proxyFor(upstream.URL), ssoOnly: !disableGate}
 		for _, path := range []string{"/api/live", "/api/sessions/chat/events/stream"} {
 			for _, header := range []string{"", "Bearer aw_pat_fixture"} {
 				req := httptest.NewRequest(http.MethodGet, path+"?token=fixture-sign-in", nil)
@@ -957,7 +899,7 @@ func TestMCPAppsFrameBypassesOnlyExactAnonymousGET(t *testing.T) {
 			w.Header().Set("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'")
 			_, _ = w.Write([]byte("inert frame"))
 		}))
-		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), disablePasswordGate: disabled, agent: proxyFor(upstream.URL)}
+		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), ssoOnly: !disabled, agent: proxyFor(upstream.URL)}
 		for _, item := range []struct {
 			method, path string
 			want         int

@@ -538,7 +538,7 @@ if [[ "${PUBLIC_CHECKS:-true}" == false ]]; then
   echo "public checks skipped (PUBLIC_CHECKS=false: no DNS/HTTPS for $DOMAIN yet)"
 else
 # Not `curl -f`: whether /api/health is reachable through the gateway without
-# auth depends on its gate model (GATEWAY_DISABLE_PASSWORD_GATE in .env) --
+# auth depends on its gate (GATEWAY_SSO_ONLY in .env) --
 # see the matching comment in deploy.sh. Only a connection failure or a 5xx
 # means the gateway itself is broken.
 public_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://$DOMAIN/api/health")"

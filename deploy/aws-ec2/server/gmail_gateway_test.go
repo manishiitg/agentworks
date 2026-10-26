@@ -8,7 +8,7 @@ import (
 )
 
 func TestGmailPushBypassesBrowserGatePreservingGoogleIdentity(t *testing.T) {
-	for _, passwordGateOff := range []bool{false, true} {
+	for _, googleGate := range []bool{true, false} {
 		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Header.Get("Authorization") != "Bearer google-oidc" {
 				t.Error("gateway replaced Google identity")
@@ -18,7 +18,7 @@ func TestGmailPushBypassesBrowserGatePreservingGoogleIdentity(t *testing.T) {
 			}
 			w.WriteHeader(204)
 		}))
-		gw := &gateway{agent: proxyFor(upstream.URL), disablePasswordGate: passwordGateOff}
+		gw := &gateway{agent: proxyFor(upstream.URL), ssoOnly: googleGate}
 		req := httptest.NewRequest("POST", "/api/hooks/gmail/events", nil)
 		req.Header.Set("Authorization", "Bearer google-oidc")
 		req.Header.Set("X-User-ID", "admin")
@@ -52,7 +52,7 @@ func TestGmailSetupBrowserRoundTripBypassesOnlyItsReviewAndCallbacks(t *testing.
 			}
 			http.Error(w, "Setup review expired", http.StatusGone)
 		}))
-		gw := httptest.NewServer(&gateway{agent: proxyFor(upstream.URL), disablePasswordGate: gateOff})
+		gw := httptest.NewServer(&gateway{agent: proxyFor(upstream.URL), ssoOnly: !gateOff})
 		for _, check := range []struct {
 			method, path string
 			status       int

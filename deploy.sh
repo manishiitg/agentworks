@@ -386,10 +386,10 @@ if [[ "${PUBLIC_CHECKS:-true}" == false ]]; then
   exit 0
 fi
 # Not `curl -f`: whether /api/health is reachable without auth depends on the
-# gateway's own gate model (GATEWAY_DISABLE_PASSWORD_GATE in .env) -- a
-# per-user-JWT deployment like confida exempts it (200), a shared-password
-# deployment like sparkquill does not (401). Either is a live, correctly
-# routed gateway; only a connection failure or a 5xx means something is wrong.
+# gateway's gate -- an app sign-in deployment exempts it (200), a Google
+# sign-in gateway (GATEWAY_SSO_ONLY) does not (401). Either is a live,
+# correctly routed gateway; only a connection failure or a 5xx means
+# something is wrong.
 public_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://$DOMAIN/api/health")"
 echo "public /api/health: $public_code"
 if [[ -n "${PUBLIC_HEALTH_STATUS:-}" ]]; then

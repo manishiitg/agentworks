@@ -61,23 +61,17 @@ The three configured GitHub repositories must be readable by the server.
 
 ## Per-user accounts (since 2026-09-02)
 
-Visitors sign in with their own AgentWorks account instead of the shared
-gateway password. The gateway runs with `GATEWAY_DISABLE_PASSWORD_GATE=true`
-and verifies the app's own JWT on every `/api` and `/api/wp` request (401
+Visitors sign in with their own AgentWorks account. Unless
+`GATEWAY_SSO_ONLY` puts Google sign-in in front of a single-user app, the
+gateway verifies the app's own JWT on every `/api` and `/api/wp` request (401
 otherwise, apart from the login/mode/health routes), stamping `X-User-ID`
 from the token. Accounts live in `config/users.json` on the box and are
 managed by an admin in the app ("Users & access" in the workflow toolbar)
 — see `docs/design/user_accounts_and_workflow_sharing.md` and
 `docs/core/multi_user_authentication.md`.
 
-The one-time switch-over from the shared password (done on server A in
-September 2026; the script has since been removed) set `MULTI_USER_MODE`, `ADMIN_USERS`, a bootstrap `AUTH_USERS` (initial
-password = the old `ACCESS_PASSWORD`; remove that line once the admin has
-logged in), `GATEWAY_DISABLE_PASSWORD_GATE`, and moves everything the shared
-identity owned (`_users/default`: projects, history, secrets) to the admin's
-own user id. Each user then gets their own projects tree; the admin adds
-users and ticks `video-studio` for them. `ACCESS_PASSWORD` must still be
-present (the gateway refuses to start without it) but is no longer asked for.
+The gateway's shared-password gate was removed in October 2026; no
+deployment used it after the switch to per-user accounts.
 
 The agent binary is built natively with cgo and GCC on the Linux server
 (`build/build-linux-agent.sh`). Video Studio's

@@ -24,8 +24,6 @@ import (
 )
 
 const (
-	sessionDuration      = 12 * time.Hour
-	sessionRefreshWindow = 6 * time.Hour
 	ssoSessionDuration   = 30 * 24 * time.Hour
 	ssoFlowDuration      = 10 * time.Minute
 	authRequiredHeader   = "X-AgentWorks-Login"
@@ -112,22 +110,15 @@ func (w *gatewayResponseRecorder) Unwrap() http.ResponseWriter {
 
 type gateway struct {
 	secret        []byte
-	password      []byte
 	frontendDir   string
 	appName       string
 	userID        string
 	username      string
 	sessionCookie string
 	agent         *httputil.ReverseProxy
-	// disablePasswordGate skips the shared-password session entirely,
-	// relying solely on the inner app's own per-user auth. Zero value
-	// (false) preserves the shared-password gate every existing deployment
-	// (Video Studio, and every gateway{...} literal in this package's own
-	// tests) already depends on -- this is opt-in per deployment via
-	// GATEWAY_DISABLE_PASSWORD_GATE, never a default.
-	disablePasswordGate bool
-	// ssoOnly replaces the shared password with Google sign-in via Supabase,
-	// while keeping this product's existing single family workspace.
+	// ssoOnly puts Google sign-in via Supabase in front of a single-user app
+	// (one family workspace under the gateway identity). Without it the app's
+	// own per-user sign-in is the only gate.
 	ssoOnly         bool
 	ssoURL          string
 	ssoAnonKey      string
@@ -137,18 +128,15 @@ type gateway struct {
 }
 
 // sessionCookieName derives a product-namespaced cookie name from the
-// gateway's identity instead of a separate env var, so two gateways sharing
-// a browser origin family never collide on cookie name. The default input
-// "video-studio" reproduces the original hardcoded "video_studio_session"
-// literal byte for byte, so an already-running Video Studio deployment's
-// logged-in sessions survive a redeploy of this now-parameterized binary.
+// gateway's identity, so two gateways sharing a browser origin family never
+// collide on cookie name.
 func sessionCookieName(userID string) string {
 	return strings.ReplaceAll(userID, "-", "_") + "_session"
 }
 
 // gatewayClaims deliberately mirrors only the identity fields consumed by the
-// agent API. The password session remains the public-facing authentication
-// boundary; this signed, short-lived token is created server-side solely for
+// agent API. The Google sign-in session remains the public-facing
+// authentication boundary; this signed, short-lived token is created server-side solely for
 // the loopback hop from the gateway to the agent API.
 type gatewayClaims struct {
 	UserID    string `json:"user_id"`
@@ -239,10 +227,9 @@ func gatewayClientIP(r *http.Request) string {
 
 func newGateway() *gateway {
 	secret := os.Getenv("AUTH_SECRET")
-	password := os.Getenv("ACCESS_PASSWORD")
 	ssoOnly := gatewayBoolEnv("GATEWAY_SSO_ONLY")
-	if len(secret) < 32 || (!ssoOnly && password == "") {
-		log.Fatal("AUTH_SECRET (32+ chars) and ACCESS_PASSWORD (unless GATEWAY_SSO_ONLY=true) are required")
+	if len(secret) < 32 {
+		log.Fatal("AUTH_SECRET (32+ chars) is required")
 	}
 	allowed := make(map[string]bool)
 	for _, email := range strings.Split(os.Getenv("GATEWAY_SSO_ALLOWED_EMAILS"), ",") {
@@ -252,8 +239,8 @@ func newGateway() *gateway {
 	}
 	ssoURL := strings.TrimRight(os.Getenv("GATEWAY_SSO_SUPABASE_URL"), "/")
 	ssoRedirectURL := os.Getenv("GATEWAY_SSO_REDIRECT_URL")
-	if ssoOnly && (gatewayBoolEnv("GATEWAY_DISABLE_PASSWORD_GATE") || len(allowed) == 0 || ssoURL == "" || os.Getenv("GATEWAY_SSO_SUPABASE_ANON_KEY") == "" || ssoRedirectURL == "") {
-		log.Fatal("GATEWAY_SSO_ONLY needs its Supabase URL, anon key, redirect URL and allowed emails, and cannot use GATEWAY_DISABLE_PASSWORD_GATE")
+	if ssoOnly && (len(allowed) == 0 || ssoURL == "" || os.Getenv("GATEWAY_SSO_SUPABASE_ANON_KEY") == "" || ssoRedirectURL == "") {
+		log.Fatal("GATEWAY_SSO_ONLY needs its Supabase URL, anon key, redirect URL and allowed emails")
 	}
 	if ssoOnly {
 		providerURL, providerErr := url.Parse(ssoURL)
@@ -261,25 +248,22 @@ func newGateway() *gateway {
 		if providerErr != nil || callbackErr != nil || providerURL.Scheme != "https" || providerURL.Host == "" || providerURL.User != nil || providerURL.Path != "" || providerURL.RawQuery != "" || providerURL.Fragment != "" || callbackURL.Scheme != "https" || callbackURL.Host == "" || callbackURL.User != nil || callbackURL.Path != "/auth/google/callback" || callbackURL.RawQuery != "" || callbackURL.Fragment != "" {
 			log.Fatal("GATEWAY_SSO_SUPABASE_URL and GATEWAY_SSO_REDIRECT_URL must be valid HTTPS URLs, with the callback ending at /auth/google/callback")
 		}
-		password = ""
 	}
 	userID := gatewayEnv("GATEWAY_USER_ID", "video-studio")
 	return &gateway{
-		secret:              []byte(secret),
-		password:            []byte(password),
-		frontendDir:         os.Getenv("FRONTEND_DIR"),
-		appName:             gatewayEnv("APP_NAME", "Video Studio"),
-		userID:              userID,
-		username:            gatewayEnv("GATEWAY_USERNAME", "video-studio"),
-		sessionCookie:       sessionCookieName(userID),
-		agent:               proxyFor(gatewayEnv("AGENT_API_URL", "http://127.0.0.1:8000")),
-		disablePasswordGate: gatewayBoolEnv("GATEWAY_DISABLE_PASSWORD_GATE"),
-		ssoOnly:             ssoOnly,
-		ssoURL:              ssoURL,
-		ssoAnonKey:          os.Getenv("GATEWAY_SSO_SUPABASE_ANON_KEY"),
-		ssoRedirectURL:      ssoRedirectURL,
-		ssoAllowedEmail:     allowed,
-		ssoClient:           &http.Client{Timeout: 10 * time.Second},
+		secret:          []byte(secret),
+		frontendDir:     os.Getenv("FRONTEND_DIR"),
+		appName:         gatewayEnv("APP_NAME", "Video Studio"),
+		userID:          userID,
+		username:        gatewayEnv("GATEWAY_USERNAME", "video-studio"),
+		sessionCookie:   sessionCookieName(userID),
+		agent:           proxyFor(gatewayEnv("AGENT_API_URL", "http://127.0.0.1:8000")),
+		ssoOnly:         ssoOnly,
+		ssoURL:          ssoURL,
+		ssoAnonKey:      os.Getenv("GATEWAY_SSO_SUPABASE_ANON_KEY"),
+		ssoRedirectURL:  ssoRedirectURL,
+		ssoAllowedEmail: allowed,
+		ssoClient:       &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -313,11 +297,6 @@ func (g *gateway) serveFrontend(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(g.frontendDir, "index.html"))
 }
 
-func (g *gateway) signedSession(expires time.Time) string {
-	payload := strconv.FormatInt(expires.Unix(), 10)
-	return g.signCookiePayload(payload)
-}
-
 func (g *gateway) signCookiePayload(payload string) string {
 	mac := hmac.New(sha256.New, g.secret)
 	_, _ = mac.Write([]byte(payload))
@@ -334,53 +313,26 @@ func (g *gateway) sessionExpiry(r *http.Request) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	parts := strings.Split(cookie.Value, ".")
-	if g.ssoOnly {
-		if len(parts) != 4 || parts[0] != "s" {
-			return time.Time{}, false
-		}
-		decoded, err := base64.RawURLEncoding.DecodeString(parts[1])
-		if err != nil || !g.ssoAllowedEmail[strings.ToLower(string(decoded))] {
-			return time.Time{}, false
-		}
-		expires, err := strconv.ParseInt(parts[2], 10, 64)
-		if err != nil || !time.Now().Before(time.Unix(expires, 0)) {
-			return time.Time{}, false
-		}
-		expiresAt := time.Unix(expires, 0)
-		want := g.signedSSOSession(expiresAt, string(decoded))
-		return expiresAt, subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(want)) == 1
-	}
-	if len(parts) != 2 {
+	if len(parts) != 4 || parts[0] != "s" {
 		return time.Time{}, false
 	}
-	expires, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || time.Now().After(time.Unix(expires, 0)) {
+	decoded, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || !g.ssoAllowedEmail[strings.ToLower(string(decoded))] {
+		return time.Time{}, false
+	}
+	expires, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil || !time.Now().Before(time.Unix(expires, 0)) {
 		return time.Time{}, false
 	}
 	expiresAt := time.Unix(expires, 0)
-	want := g.signedSession(expiresAt)
-	if subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(want)) != 1 {
-		return time.Time{}, false
-	}
-	return expiresAt, true
+	want := g.signedSSOSession(expiresAt, string(decoded))
+	return expiresAt, subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(want)) == 1
 }
 
 func (g *gateway) setSSOSessionCookie(w http.ResponseWriter, expires time.Time, email string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     g.sessionCookie,
 		Value:    g.signedSSOSession(expires, email),
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  expires,
-	})
-}
-
-func (g *gateway) setSessionCookie(w http.ResponseWriter, expires time.Time) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     g.sessionCookie,
-		Value:    g.signedSession(expires),
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   true,
@@ -497,7 +449,7 @@ func isAccessTokenCredential(r *http.Request) bool {
 
 // agentPublicPath mirrors the agent API's own unauthenticated routes
 // (auth_middleware.go shouldSkipAuth): what a browser needs before it has a
-// token. Everything else needs one when the password gate is off.
+// token. Everything else needs one unless Google sign-in fronts the app.
 func agentPublicPath(path string) bool {
 	if isMCPOAuthDiscoveryPath(path) || isMCPOAuthPublicAPIPath(path) {
 		return true
@@ -518,8 +470,7 @@ func agentPublicPath(path string) bool {
 	return strings.HasPrefix(path, "/api/shared/") || strings.HasPrefix(path, "/api/downloads/")
 }
 
-// requireUserToken is the per-user gate used when the shared password gate
-// is off: the request must carry a valid app JWT, whose user id is stamped
+// requireUserToken is the per-user gate when no Google sign-in fronts the app: the request must carry a valid app JWT, whose user id is stamped
 // onto X-User-ID so the workspace API never trusts a client-chosen header.
 // Returns false after writing the 401.
 func (g *gateway) requireUserToken(w http.ResponseWriter, r *http.Request) bool {
@@ -550,12 +501,11 @@ func (g *gateway) requireUserToken(w http.ResponseWriter, r *http.Request) bool 
 }
 
 func (g *gateway) serveAgent(w http.ResponseWriter, r *http.Request) {
-	// With the shared password gate off, every user signs in to the app
-	// itself and arrives with their own JWT. The gateway then never mints
-	// its service identity: an unauthenticated request is refused here
-	// (apart from the login/mode/health routes the app needs beforehand),
-	// so nobody can act as the fixed "video-studio" user any more.
-	if g.disablePasswordGate {
+	// Without Google sign-in in front, every user signs in to the app itself
+	// and arrives with their own JWT. The gateway then never mints its
+	// service identity: an unauthenticated request is refused here (apart
+	// from the login/mode/health routes the app needs beforehand).
+	if !g.ssoOnly {
 		if !agentPublicPath(r.URL.Path) && !g.requireUserToken(w, r) {
 			return
 		}
@@ -572,7 +522,7 @@ func (g *gateway) serveAgent(w http.ResponseWriter, r *http.Request) {
 	// the public file handler reads from.
 	//
 	// Browser users without either token authenticate through the HttpOnly
-	// password-session cookie, so the gateway supplies the signed internal
+	// Google sign-in cookie, so the gateway supplies the signed internal
 	// token required by the agent API on their behalf.
 	if r.Header.Get("Authorization") == "" {
 		if token := strings.TrimSpace(r.URL.Query().Get("token")); token != "" {
@@ -604,31 +554,13 @@ func safeNext(next string) string {
 
 func (g *gateway) login(w http.ResponseWriter, r *http.Request) {
 	next := safeNext(r.URL.Query().Get("next"))
-	if g.ssoOnly {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Password login is unavailable", http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		fmt.Fprintf(w, "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'><title>%s</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#101827;color:#eef2ff;font:16px system-ui}main{width:min(360px,calc(100%% - 48px));padding:32px;border:1px solid #334155;border-radius:16px;background:#172033}a{display:block;text-align:center;padding:12px;border-radius:8px;background:#38bdf8;color:#082f49;font-weight:700;text-decoration:none}a:hover{background:#7dd3fc}p{color:#cbd5e1}</style></head><body><main><h1>%s</h1><p>Sign in with an approved Google account.</p><a href='/auth/google/start?next=%s'>Continue with Google</a></main></body></html>", g.appName, g.appName, url.QueryEscape(next))
+	if r.Method != http.MethodGet {
+		http.Error(w, "Password login is unavailable", http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Method == http.MethodPost {
-		if err := r.ParseForm(); err == nil && subtle.ConstantTimeCompare([]byte(r.Form.Get("password")), g.password) == 1 {
-			expires := time.Now().Add(sessionDuration)
-			g.setSessionCookie(w, expires)
-			http.Redirect(w, r, safeNext(r.Form.Get("next")), http.StatusSeeOther)
-			return
-		}
-		w.WriteHeader(http.StatusUnauthorized)
-	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'><title>%s</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#101827;color:#eef2ff;font:16px system-ui}main{width:min(360px,calc(100%% - 48px));padding:32px;border:1px solid #334155;border-radius:16px;background:#172033}input,button{width:100%%;box-sizing:border-box;padding:12px;border-radius:8px;font:inherit}input{border:1px solid #475569;background:#0f172a;color:white;margin:16px 0}button{border:0;background:#38bdf8;color:#082f49;font-weight:700;cursor:pointer}.error{color:#fda4af}</style></head><body><main><h1>%s</h1><p>Enter the shared access password.</p>", g.appName, g.appName)
-	if r.Method == http.MethodPost {
-		fmt.Fprint(w, "<p class=error>Incorrect password. Try again.</p>")
-	}
-	fmt.Fprintf(w, "<form method=post><input type=hidden name=next value=%q><input type=password name=password autofocus required><button type=submit>Continue</button></form></main></body></html>", next)
+	w.Header().Set("Cache-Control", "no-store")
+	fmt.Fprintf(w, "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'><title>%s</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#101827;color:#eef2ff;font:16px system-ui}main{width:min(360px,calc(100%% - 48px));padding:32px;border:1px solid #334155;border-radius:16px;background:#172033}a{display:block;text-align:center;padding:12px;border-radius:8px;background:#38bdf8;color:#082f49;font-weight:700;text-decoration:none}a:hover{background:#7dd3fc}p{color:#cbd5e1}</style></head><body><main><h1>%s</h1><p>Sign in with an approved Google account.</p><a href='/auth/google/start?next=%s'>Continue with Google</a></main></body></html>", g.appName, g.appName, url.QueryEscape(next))
 }
 
 type gatewaySSOFlow struct {
@@ -852,7 +784,7 @@ func isMCPAppsFrameRequest(r *http.Request) bool {
 
 func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	// Do not promote a browser stream's URL credential to a bearer header.
-	// Enforce this before either shared-password or per-user authentication.
+	// Enforce this before either Google sign-in or per-user authentication.
 	if (r.URL.Path == "/api/live" || strings.HasPrefix(r.URL.Path, "/api/sessions/") && strings.HasSuffix(r.URL.Path, "/events/stream")) && r.URL.Query().Has("token") {
 		http.Error(w, "Use an Authorization header for event streams", http.StatusBadRequest)
 		return
@@ -862,11 +794,9 @@ func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		g.agent.ServeHTTP(w, r)
 		return
 	}
-	if g.disablePasswordGate {
-		// No shared-password session to check or renew -- the inner app's
-		// own per-user auth is the sole gate. /login and /logout have
-		// nothing to do in this mode, so they fall through to routing like
-		// any other path (serveFrontend's SPA fallback handles them).
+	if !g.ssoOnly {
+		// The app's own per-user sign-in is the sole gate. /login and
+		// /logout are the app's pages here (serveFrontend's SPA fallback).
 		g.route(w, r)
 		return
 	}
@@ -887,8 +817,7 @@ func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	expiresAt, authenticated := g.sessionExpiry(r)
-	if !authenticated {
+	if _, authenticated := g.sessionExpiry(r); !authenticated {
 		// Sandboxed lesson previews have an opaque origin, so SameSite login
 		// cookies are absent on their media requests. rawUrl carries the app
 		// JWT instead. Admit only authenticated raw reads here; the agent still
@@ -929,12 +858,6 @@ func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, loginURL, http.StatusSeeOther)
 		return
 	}
-	// Renew an active browser session before it expires. This prevents regular
-	// users from being asked for the shared password repeatedly while still
-	// allowing an idle browser to expire normally.
-	if !g.ssoOnly && time.Until(expiresAt) < sessionRefreshWindow {
-		g.setSessionCookie(w, time.Now().Add(sessionDuration))
-	}
 	g.route(w, r)
 }
 
@@ -947,9 +870,9 @@ func (g *gateway) route(w http.ResponseWriter, r *http.Request) {
 		// Workspace calls go through the agent API's /api/wp proxy, never to
 		// the workspace service directly: the agent verifies the caller,
 		// enforces per-user and per-workflow access, and holds the workspace
-		// service token. Without the password gate the user's JWT is still
+		// service token. Without Google sign-in in front the user's JWT is
 		// required here (never a CLI access token).
-		if g.disablePasswordGate && !g.requireUserToken(w, r) {
+		if !g.ssoOnly && !g.requireUserToken(w, r) {
 			return
 		}
 		g.serveAgent(w, r)
