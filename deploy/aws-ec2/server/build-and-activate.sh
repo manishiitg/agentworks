@@ -90,10 +90,9 @@ install -m 0755 "$REPO_ROOT/scripts/remove-autopilot-engine.py" "$BUILD_DIR/migr
 install -m 0755 "$REPO_ROOT/scripts/group-platform-tool-selections.py" "$BUILD_DIR/migrations/group-platform-tool-selections.py"
 install -m 0755 "$REPO_ROOT/scripts/simplify-workflow-settings.py" "$BUILD_DIR/migrations/simplify-workflow-settings.py"
 install -m 0755 "$REPO_ROOT/scripts/migrate-project-schedules.py" "$BUILD_DIR/migrations/migrate-project-schedules.py"
-install -m 0644 "$REPO_ROOT/agent_go/pkg/platformtools/dashboard-actions.json" "$BUILD_DIR/migrations/dashboard-actions.json"
-install -m 0644 "$REPO_ROOT/agent_go/pkg/platformtools/configuration-actions.json" "$BUILD_DIR/migrations/configuration-actions.json"
-install -m 0644 "$REPO_ROOT/agent_go/pkg/platformtools/data-actions.json" "$BUILD_DIR/migrations/data-actions.json"
-install -m 0644 "$REPO_ROOT/agent_go/pkg/platformtools/agent-actions.json" "$BUILD_DIR/migrations/agent-actions.json"
+for grouped_tool_catalog in "$REPO_ROOT/agent_go/pkg/platformtools/catalog/"*-actions.json; do
+  install -m 0644 "$grouped_tool_catalog" "$BUILD_DIR/migrations/$(basename "$grouped_tool_catalog")"
+done
 cleanup_build() {
   if declare -F vault_recover >/dev/null; then vault_recover; fi
   rm -f "$GLOBAL_FILE" "$REMOTE_APP/.globals-$RELEASE_ID" "$BUILD_DIR/.deploying"

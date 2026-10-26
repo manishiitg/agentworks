@@ -7,9 +7,9 @@ import unittest
 spec = importlib.util.spec_from_file_location("grouping", Path(__file__).parents[2] / "scripts/group-platform-tool-selections.py")
 grouping = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(grouping)
-catalog = Path(__file__).parents[2] / "agent_go/pkg/platformtools/dashboard-actions.json"
-agent_catalog = Path(__file__).parents[2] / "agent_go/pkg/platformtools/agent-actions.json"
-data_catalog = Path(__file__).parents[2] / "agent_go/pkg/platformtools/data-actions.json"
+catalog = Path(__file__).parents[2] / "agent_go/pkg/platformtools/catalog/dashboard-actions.json"
+agent_catalog = Path(__file__).parents[2] / "agent_go/pkg/platformtools/catalog/agent-actions.json"
+data_catalog = Path(__file__).parents[2] / "agent_go/pkg/platformtools/catalog/data-actions.json"
 
 
 class PlatformSelections(unittest.TestCase):

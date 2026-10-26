@@ -21,7 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
+	platformtools "github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
 	"github.com/spf13/cobra"
 )
 

@@ -1,4 +1,4 @@
-package platformtools
+package catalog
 
 import (
 	"reflect"

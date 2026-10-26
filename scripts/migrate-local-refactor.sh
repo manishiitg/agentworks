@@ -25,7 +25,7 @@ python3 "$migration_repo/scripts/migrations/retire-agent-server-relay.py" --stat
 python3 "$migration_repo/scripts/migrations/fold-crew-role.py" --workspace-root "$migration_docs" --state-root "$migration_state"
 python3 "$migration_repo/scripts/remove-autopilot-engine.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/remove-autopilot"
 migration_catalogs=()
-for migration_catalog in "$migration_repo/agent_go/pkg/platformtools/"*-actions.json; do
+for migration_catalog in "$migration_repo/agent_go/pkg/platformtools/catalog/"*-actions.json; do
   if [[ -f "$migration_catalog" ]]; then migration_catalogs+=(--catalog "$migration_catalog"); fi
 done
 python3 "$migration_repo/scripts/group-platform-tool-selections.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/group-platform-tools" "${migration_catalogs[@]}" --native-namespace workspace_advanced
