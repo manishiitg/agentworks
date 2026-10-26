@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
 import { renderReportActivity, renderReportTable } from "./reportComposition";
-import { installReportHost, withReportBootstrap } from "./reportHostRuntime";
+import { installReportDocumentHost, withReportBootstrap } from "./reportHostRuntime";
 import type { ReportDataApi } from "./reportEmbedContext";
 
 function api(
@@ -231,7 +231,7 @@ it("replays composition widgets called before host injection", async () => {
     report.renderTable("#t", { query: "SELECT 1" }),
     report.renderActivity("#a"),
   ];
-  installReportHost(frame, {
+  installReportDocumentHost(frame.contentDocument!, {
     dataApi: api([{ one: 1 }], ["org_dashboard_notifications"]),
     title: "Test",
     theme: "light",

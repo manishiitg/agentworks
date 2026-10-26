@@ -78,16 +78,15 @@ export function readChatStyle(el: Element): { palette?: string; vars?: Record<st
   const modeAttr = (el.getAttribute(CHAT_MODE_ATTR) || '').trim().toLowerCase()
   return { palette: PALETTES.has(palette) ? palette : undefined, vars: Object.keys(vars).length ? vars : undefined, fit, mode: modeAttr === 'light' || modeAttr === 'dark' ? modeAttr : undefined }
 }
-type Options = {
-  available: boolean; visible?: boolean; container: HTMLElement; openConversation: () => Promise<unknown>
+export type DashboardChatDocumentOptions = {
+  available: boolean; visible?: boolean; viewportHeight?: () => number; openConversation: () => Promise<unknown>
   changed: (slots: ChatWidgetSlot[], authored: boolean) => void; popup: (open: boolean) => void; error: (message: string) => void
   /** The dashboard's own --report-* theme, for native UI that is not a chat panel (the function form, the chat dialog). */
   themeChanged?: (theme: ReportTheme) => void
 }
 
 /** Only selectors and controls cross the report boundary; native chat stays in the host. */
-export function installDashboardChatWidgets(frame: HTMLIFrameElement, options: Options) {
-  const doc = frame.contentDocument!
+export function installDashboardChatWidgets(doc: Document, options: DashboardChatDocumentOptions) {
   const win = doc.defaultView!
   // Suppress marked controls in old HTML and dynamically mounted React pages.
   // This changes presentation only; native chat permissions are unchanged.
@@ -119,15 +118,14 @@ export function installDashboardChatWidgets(frame: HTMLIFrameElement, options: O
       if (!disabled.has(button)) disabled.set(button, button.disabled)
       if (!options.available) button.disabled = true
     }
-    const frameBox = frame.getBoundingClientRect(), hostBox = options.container.getBoundingClientRect()
-    const sx = frame.clientWidth > 0 ? frameBox.width / frame.clientWidth : 1
-    const sy = frame.clientHeight > 0 ? frameBox.height / frame.clientHeight : 1
+    const frameBox = { left: 0, top: 0, right: win.innerWidth, bottom: win.innerHeight }
+    const hostBox = { left: 0, top: 0 }
+    const sx = 1, sy = 1
     const slots: ChatWidgetSlot[] = []
     const rootStyle = win.getComputedStyle(doc.documentElement)
     const reportTheme = readReportTheme(name => rootStyle.getPropertyValue(name))
     const themeKey = JSON.stringify(reportTheme)
     if (themeKey !== lastTheme) { lastTheme = themeKey; options.themeChanged?.(reportTheme) }
-    if (!observed.has(frame)) { observed.add(frame); resize?.observe(frame) }
     for (const el of keys.keys()) if (!panels.includes(el as HTMLElement)) { resize?.unobserve(el); observed.delete(el); keys.delete(el) }
     for (const el of options.visible === false ? [] : panels) {
       if (!keys.has(el)) keys.set(el, ++nextKey)
@@ -139,7 +137,7 @@ export function installDashboardChatWidgets(frame: HTMLIFrameElement, options: O
       const chatStyle = readChatStyle(el)
       // Fit to window: keep the panel inside the visible area so its composer is never below the fold.
       if (chatStyle.fit === 'viewport') {
-        const room = window.innerHeight - 8 - top
+        const room = (options.viewportHeight?.() ?? win.innerHeight) - 8 - top
         if (room < height) height = Math.max(200, room)
       }
       let clipLeft = Math.max(left, frameBox.left, 0), clipTop = Math.max(top, frameBox.top, 0)

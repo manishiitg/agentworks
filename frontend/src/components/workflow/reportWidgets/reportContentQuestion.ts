@@ -48,9 +48,7 @@ export function reportContentContext(doc: Document, target: EventTarget | null):
 
 export type ReportContentMenu = { context: ReportContentContext; x: number; y: number }
 
-export function bindReportContentMenu(frame: HTMLIFrameElement, open: (menu: ReportContentMenu) => void, enabled = () => true): () => void {
-  const doc = frame.contentDocument
-  if (!doc) return () => {}
+export function bindReportContentMenu(doc: Document, open: (menu: ReportContentMenu) => void, enabled = () => true): () => void {
   let lastPointerType = ''
   const pointerDown = (event: PointerEvent) => { if (event.isTrusted) lastPointerType = event.pointerType }
   const handler = (event: MouseEvent) => {
@@ -59,11 +57,10 @@ export function bindReportContentMenu(frame: HTMLIFrameElement, open: (menu: Rep
     const context = reportContentContext(doc, event.target)
     if (!context) return
     event.preventDefault()
-    const rect = frame.getBoundingClientRect()
     const targetRect = (event.target as Element).getBoundingClientRect()
     const x = event.clientX || targetRect.left
     const y = event.clientY || targetRect.bottom
-    open({ context, x: rect.left + x * (rect.width / (frame.clientWidth || rect.width || 1)), y: rect.top + y * (rect.height / (frame.clientHeight || rect.height || 1)) })
+    open({ context, x, y })
   }
   doc.addEventListener('pointerdown', pointerDown)
   doc.addEventListener('contextmenu', handler)

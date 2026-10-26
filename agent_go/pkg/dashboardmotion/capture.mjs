@@ -53,7 +53,7 @@ async function prepareDashboard(page) {
   const captured = await previewFrame.evaluate(async () => {
     if (window.__reportPreview.getState().previewState !== 'ready') throw new Error('The dashboard could not load. Check its preview before exporting again.')
     await document.fonts.ready
-    return { data: await window.__reportPreview.freeze(), motion: window.__reportPreview.motion(), state: window.__reportPreview.getState(), renderer: document.querySelector('iframe')?.contentDocument?.documentElement.dataset.reportRenderer }
+    return { data: await window.__reportPreview.freeze(), motion: await window.__reportPreview.motion(), state: window.__reportPreview.getState(), renderer: window.__reportPreview.getState().report.renderer }
   })
   motionCount = captured.motion.length
   if (!config.duration_s && motionCount) duration = Math.max(...captured.motion.map(player => player.duration))
@@ -83,8 +83,8 @@ async function beforeCapture(page, time) {
     await prepareDashboard(page)
     const frames = Math.max(1, Math.ceil(duration * fps))
     const last = (frames - 1) / fps
-    const error = await previewFrame.evaluate(seconds => {
-      window.__reportPreview.seek(seconds)
+    const error = await previewFrame.evaluate(async seconds => {
+      await window.__reportPreview.seek(seconds)
       const state = window.__reportPreview.getState()
       if (state.previewState !== 'ready' || state.report.state === 'error') return state.report.errors[0] || 'Check its preview before exporting again.'
       return null

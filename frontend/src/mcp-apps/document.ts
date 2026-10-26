@@ -1,30 +1,13 @@
+import { ReportDocumentBridge } from '../components/workflow/reportWidgets/reportDocumentBridge'
 import type { ReportDataApi } from '../components/workflow/reportWidgets/reportEmbedContext'
 import { applyReportDocumentTheme, installReportDocumentHost } from '../components/workflow/reportWidgets/reportHostRuntime'
 import { renderReportMarkdown } from '../components/workflow/reportWidgets/reportMarkdown'
 
 type Configuration = { channel: string; title: string; workspacePath: string; theme: 'dark' | 'light'; canAsk: boolean }
 const config = JSON.parse(document.getElementById('aw-document-config')!.textContent!) as Configuration
-let sequence = 0
-let parentOrigin: string | undefined
-const pending = new Map<number, { resolve: (value: unknown) => void; reject: (reason: Error) => void }>()
-function request(method: string, args: unknown[] = []): Promise<unknown> {
-  const id = ++sequence
-  return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject })
-    window.parent.postMessage({ channel: config.channel, id, method, args }, '*')
-  })
-}
-window.addEventListener('message', event => {
-  if (event.source !== window.parent || event.data?.channel !== config.channel) return
-  if (parentOrigin && event.origin !== parentOrigin) return
-  if (event.origin !== 'null') parentOrigin = event.origin
-  if (event.data.method === 'theme') { applyReportDocumentTheme(document, null, event.data.theme === 'dark' ? 'dark' : 'light', true); return }
-  const item = pending.get(event.data.id)
-  if (!item) return
-  pending.delete(event.data.id)
-  if (event.data.error) item.reject(new Error(event.data.error))
-  else item.resolve(event.data.value)
-})
+const documentBridge = new ReportDocumentBridge(() => window.parent, config.channel)
+const request = (method: string, args: unknown[] = []) => documentBridge.request(method, args)
+documentBridge.handle('theme', theme => { applyReportDocumentTheme(document, null, theme === 'dark' ? 'dark' : 'light', true) })
 const unavailable = async () => { throw new Error('Open the dashboard in AgentWorks for scripts or database changes. Use this dashboard’s Ask and published action buttons.') }
 async function file(path: string) {
   const data = await request('file', [path]) as { content_base64: string; mime_type: string }

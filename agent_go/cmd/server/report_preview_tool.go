@@ -309,7 +309,7 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 					log.Printf("[REPORT_PREVIEW] set width %d: %v", px, err)
 				}
 				time.Sleep(400 * time.Millisecond)
-				if raw, err := eval("JSON.stringify(window.__reportPreview.getUIChecks())"); err != nil {
+				if raw, err := eval("(async()=>JSON.stringify(await window.__reportPreview.getUIChecks()))()"); err != nil {
 					check.Error = "Could not inspect the rendered dashboard."
 				} else if err := json.Unmarshal([]byte(raw), &check); err != nil {
 					check.Error = "Could not read dashboard UI measurements."

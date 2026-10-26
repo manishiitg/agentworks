@@ -8,6 +8,7 @@ function fixture(available = true) {
   const host = document.createElement('div'), frame = document.createElement('iframe')
   host.append(frame); document.body.append(host)
   const doc = frame.contentDocument!
+  Object.defineProperties(doc.defaultView!, { innerWidth: { value: 600, configurable: true }, innerHeight: { value: 500, configurable: true } })
   doc.body.innerHTML = '<section id="mine" data-report-chat-panel></section><button data-report-chat-button data-report-chat-target="#mine">Help me</button>'
   const slot = doc.querySelector<HTMLElement>('#mine')!
   let box = { left: 210, top: 30, width: 280, height: 360 }
@@ -17,7 +18,7 @@ function fixture(available = true) {
   const openConversation = vi.fn().mockResolvedValue('native-tab'), popup = vi.fn(), error = vi.fn()
   let positions: ChatWidgetSlot[] = []
   const changed = vi.fn((next: ChatWidgetSlot[]) => { positions = next })
-  const binding = installDashboardChatWidgets(frame, { available, container: host, openConversation, popup, error, changed })
+  const binding = installDashboardChatWidgets(frame.contentDocument!, { available,  openConversation, popup, error, changed })
   dispose.push(binding.dispose)
   return { ...binding, doc, slot, openConversation, popup, error, changed, positions: () => positions, move: async (value: typeof box) => { box = value; doc.defaultView!.dispatchEvent(new Event('resize')); await new Promise<void>(resolve => doc.defaultView!.requestAnimationFrame(() => resolve())) } }
 }
@@ -26,10 +27,10 @@ it('uses designer slot geometry, only exposes four controls, tracks visibility a
   const f = fixture()
   expect(Object.keys(f.api).sort()).toEqual(['available', 'close', 'mount', 'open'])
   expect(Object.isFrozen(f.api)).toBe(true)
-  expect(f.positions()[0]).toMatchObject({ left: 215, top: 40, width: 280, height: 360, visible: true })
+  expect(f.positions()[0]).toMatchObject({ left: 210, top: 30, width: 280, height: 360, visible: true })
   expect(f.openConversation).toHaveBeenCalledTimes(1) // opens history; no send API exists.
   await f.move({ left: 30, top: 15, width: 450, height: 250 })
-  expect(f.positions()[0]).toMatchObject({ left: 35, top: 25, width: 450, height: 250 })
+  expect(f.positions()[0]).toMatchObject({ left: 30, top: 15, width: 450, height: 250 })
   const count = f.changed.mock.calls.length
   await f.move({ left: 30, top: 15, width: 450, height: 250 })
   expect(f.changed).toHaveBeenCalledTimes(count)

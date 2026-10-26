@@ -21,8 +21,7 @@ function parseDefaults(raw: string | null): Record<string, unknown> | undefined 
  * opens its own form for that function of this dashboard's project. The page
  * can pre-fill defaults, but only the person's click and Submit run anything:
  * there is no script method that runs a function. */
-export function installDashboardActionButtons(frame: HTMLIFrameElement, options: Options) {
-  const doc = frame.contentDocument!
+export function installDashboardActionButtons(doc: Document, options: Options) {
   const disabled = new Map<HTMLButtonElement, boolean>()
   // Functions the server says this person may not call (its can_call is false):
   // the button stays visible, disabled, with a plain reason. The server decides.

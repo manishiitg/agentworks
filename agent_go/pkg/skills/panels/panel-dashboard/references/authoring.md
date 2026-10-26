@@ -48,6 +48,8 @@ preview readiness or freezing export data. Use React state for local navigation,
 filters and interactions. Put initial data reads in loadData, not an untracked
 effect or top-level asynchronous call. Do not start business actions on page load.
 
+Keep the compiled page below 1.5 MB. Store large datasets in project files or the database and load them through `report.get` or `report.query`; keep library assets separate. Oversized pages show a size error in the app and preview. This source limit does not restrict the data those APIs return.
+
 ```tsx
 import { Card, Grid, Metric, Table, AskButton, RefreshButton } from '@agentworks/dashboard';
 type Summary = { total: number; rows: (string | number)[][] };

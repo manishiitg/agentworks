@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
-import { installReportHost } from './reportHostRuntime'
+import { installReportDocumentHost } from './reportHostRuntime'
 import type { ReportDataApi } from './reportEmbedContext'
 
 afterEach(() => { document.body.innerHTML = '' })
@@ -10,7 +10,7 @@ function mountReport(html: string) {
   document.body.appendChild(frame)
   frame.contentDocument!.body.innerHTML = html
   const dataApi = { workspacePath: '_users/m/Chats/Code/projects/p1' } as unknown as ReportDataApi
-  installReportHost(frame, { title: 't', dataApi, tokenSource: null, theme: 'light', dispatchData: false } as Parameters<typeof installReportHost>[1])
+  installReportDocumentHost(frame.contentDocument!, { title: 't', dataApi, tokenSource: null, theme: 'light', dispatchData: false } as Parameters<typeof installReportDocumentHost>[1])
   return frame
 }
 

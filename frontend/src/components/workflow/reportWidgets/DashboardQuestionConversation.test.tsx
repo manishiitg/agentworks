@@ -1,18 +1,19 @@
 // @vitest-environment happy-dom
+import { fixtureInstalls } from './reportFrameFixture'
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { DashboardQuestionConversation } from './DashboardQuestionConversation'
 import { ReportEmbedProvider, type ReportDataApi } from './reportEmbedContext'
 
-const { get, post, openAsk, send, install, auth } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), openAsk: vi.fn(), send: vi.fn(), install: vi.fn(), auth: { id: 'reader' } }))
+const { get, post, openAsk, send, auth } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), openAsk: vi.fn(), send: vi.fn(), auth: { id: 'reader' } }))
 vi.mock('../../../services/api', () => ({ default: { get, post } }))
 vi.mock('../../../utils/projectAskConversation', () => ({ openProjectAskConversation: openAsk }))
 vi.mock('../../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: send }))
 vi.mock('../../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: auth.id } }) }))
 vi.mock('../../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
 vi.mock('../../ChatArea', () => ({ default: ({ tabId, slashCommands = [] }: { tabId: string; slashCommands?: { command: string; execute: () => void }[] }) => <div data-native-tab={tabId}>Existing project history and replies{slashCommands.map(command => <button key={command.command} onClick={command.execute}>/{command.command}</button>)}</div> }))
-vi.mock('./reportHostRuntime', () => ({ withReportBootstrap: (html: string) => html, applyReportTheme: vi.fn(), installReportHost: install }))
+vi.mock('./opaqueReportFrame', () => import('./reportFrameFixture'))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); vi.resetAllMocks(); auth.id = 'reader' })
@@ -202,9 +203,9 @@ it.each(['owner', 'question_only'])('routes a %s standalone UI send through the 
  get.mockResolvedValue({ data: { ...view, product: 'crew', capability: { can_view: true, can_ask: true, mode } } })
  openAsk.mockResolvedValue('recipient-chat'); send.mockResolvedValue({ tabId: 'recipient-chat', reused: true, queuedBehindRunningTurn: false })
  await mount('crew', mode, true, '<p id="total">42</p>', true)
- const options = install.mock.calls.at(-1)![1]
+ const options = fixtureInstalls.at(-1)!
  await act(async () => {
-  const receipt = await options.dataApi.sendChatMessage('Explain this result', { requestId: 'row-42' })
+  const receipt = await options.dataApi!.sendChatMessage('Explain this result', { requestId: 'row-42' })
   expect(receipt.status).toBe('queued')
  })
  expect(send).toHaveBeenCalledWith(expect.objectContaining({ tabId: 'recipient-chat', message: expect.stringContaining('Explain this result') }))
@@ -216,8 +217,8 @@ it.each(['owner', 'question_only'])('routes a %s standalone UI send through the 
 it('keeps an embedded dashboard message in its current project pane conversation', async () => {
  const sender = vi.fn().mockResolvedValue({ status: 'queued', tabId: 'current-side-chat', reused: true, queuedBehindRunningTurn: false })
  await mount('crew', 'owner', true, '<p id="total">42</p>', false, sender)
- const options = install.mock.calls.at(-1)![1]
- await act(async () => { await options.dataApi.sendChatMessage('Explain the selection', { requestId: 'selection' }) })
+ const options = fixtureInstalls.at(-1)!
+ await act(async () => { await options.dataApi!.sendChatMessage('Explain the selection', { requestId: 'selection' }) })
  expect(sender).toHaveBeenCalledWith('Explain the selection', { requestId: 'selection' })
  expect(openAsk).not.toHaveBeenCalled()
  expect(send).not.toHaveBeenCalled()
@@ -228,8 +229,8 @@ it('mounts the existing Ask dialog to consume a standalone Relay UI message', as
  get.mockResolvedValue({ data: { ...view, product: 'relay', capability: { can_view: true, can_ask: true, mode: 'question_only' } } })
  openAsk.mockResolvedValue('relay-personal-chat'); send.mockResolvedValue({ tabId: 'relay-personal-chat', reused: true, queuedBehindRunningTurn: false })
  await mount('relay', 'question_only')
- const options = install.mock.calls.at(-1)![1]
- await act(async () => { await options.dataApi.sendChatMessage('Explain this result') })
+ const options = fixtureInstalls.at(-1)!
+ await act(async () => { await options.dataApi!.sendChatMessage('Explain this result') })
  expect(document.querySelector('dialog [data-native-tab]')?.getAttribute('data-native-tab')).toBe('relay-personal-chat')
  expect(send).toHaveBeenCalledWith(expect.objectContaining({ tabId: 'relay-personal-chat' }))
 })

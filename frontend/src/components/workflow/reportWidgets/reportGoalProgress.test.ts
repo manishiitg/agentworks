@@ -5,7 +5,7 @@ import {
   getReportGoalMetrics,
   renderReportGoalProgress,
 } from "./reportGoalProgress";
-import { installReportHost, withReportBootstrap } from "./reportHostRuntime";
+import { installReportDocumentHost, withReportBootstrap } from "./reportHostRuntime";
 import type { ReportDataApi } from "./reportEmbedContext";
 const metric: GoalMetric = {
   id: "latency's-p95",
@@ -196,7 +196,7 @@ describe("report goal metrics", () => {
       workspacePath: "Workflow/test",
       query: fixture(),
     } as unknown as ReportDataApi;
-    installReportHost(frame, {
+    installReportDocumentHost(frame.contentDocument!, {
       dataApi,
       theme: "dark",
       tokenSource: null,

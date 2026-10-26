@@ -5,7 +5,7 @@ import {
   getReportCosts,
   renderReportCosts,
 } from "./reportOperationalMetrics";
-import { installReportHost, withReportBootstrap } from "./reportHostRuntime";
+import { installReportDocumentHost, withReportBootstrap } from "./reportHostRuntime";
 import type { ReportDataApi } from "./reportEmbedContext";
 import type {
   CostAggregate,
@@ -126,7 +126,7 @@ it("replays report methods called before host injection", async () => {
     report.getCosts({ days: 7 }),
     report.renderCosts("#cost"),
   ];
-  installReportHost(frame, {
+  installReportDocumentHost(frame.contentDocument!, {
     dataApi: api(),
     title: "Test",
     theme: "light",

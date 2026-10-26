@@ -5,11 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { ReportEmbedProvider, type ReportDataApi } from './reportEmbedContext'
 import { ReportQuestionFrame } from './ReportQuestionFrame'
 
-vi.mock('./reportHostRuntime', () => ({
-  withReportBootstrap: (html: string) => html,
-  applyReportTheme: vi.fn(),
-  installReportHost: vi.fn(),
-}))
+vi.mock('./opaqueReportFrame', () => import('./reportFrameFixture'))
 const { addToast } = vi.hoisted(() => ({ addToast: vi.fn() }))
 vi.mock('../../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast }) } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

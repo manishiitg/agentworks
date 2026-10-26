@@ -1,5 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { WorkflowCostsResponse } from '../../../services/api-types'
+import type { ReportDocumentBridge } from './reportDocumentBridge'
+import type { ReportDocumentContext } from './opaqueReportFrame'
 
 export interface ReportCostOptions { days?: number; before?: string }
 
@@ -78,7 +80,7 @@ export interface ReportDataApi {
 
 export interface ReportRuntime {
   data: ReportDataApi
-  chatWidgets?: (frame: HTMLIFrameElement) => { api: ReportChatWidgetApi; dispose: () => void }
+  chatWidgets?: (frame: HTMLIFrameElement, bridge: ReportDocumentBridge) => { api: ReportChatWidgetApi; context: () => Partial<ReportDocumentContext>; dispose: () => void }
 }
 
 /** Designer controls only; identity, history and native UI stay in the host. */

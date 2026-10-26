@@ -5,13 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readReportTabSelection, restoreReportTabSelection } from './reportTabSelection'
 
 vi.mock('./reportEmbedContext', () => ({ useReportDataApi: () => null, useReportChatWidgetFactory: () => undefined }))
-vi.mock('./reportHostRuntime', () => ({
-  applyReportTheme: vi.fn(),
-  withReportBootstrap: (html: string) => html,
-  installReportHost: (frame: HTMLIFrameElement) => {
-    Object.assign(frame.contentWindow!, { report: {} })
-  },
-}))
+vi.mock('./opaqueReportFrame', () => import('./reportFrameFixture'))
 import { HtmlReportFrame } from './HtmlWidgetFrame'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

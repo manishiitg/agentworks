@@ -14,13 +14,13 @@ const fixture = { name: 'dashboard-motion-fixture', configureServer(server) {
     res.end(await server.transformIndexHtml('/__motion', `<!doctype html>
       <iframe style="width:100%;height:200px"></iframe>
       <script type="module">
-      import { installReportHost } from '/src/components/workflow/reportWidgets/reportHostRuntime.ts';
+      import { installReportDocumentHost } from '/src/components/workflow/reportWidgets/reportHostRuntime.ts';
       const frame = document.querySelector('iframe');
       frame.srcdoc='<div id="value"></div><button id="play">Play</button><button id="pause">Pause</button><input id="seek" type="range" min="0" max="1" step="0.01">';
       frame.onload=()=>{
         window.errors=[];window.paints=0;
         const dataApi={workspacePath:'Workflow/demo'};
-        const install=()=>installReportHost(frame,{title:'Motion',dataApi,theme:'light',tokenSource:null,dispatchData:false});
+        const install=()=>installReportDocumentHost(frame.contentDocument,{title:'Motion',dataApi,theme:'light',tokenSource:null,dispatchData:false});
         install(); window.install=install;
         const win=frame.contentWindow,doc=frame.contentDocument;
         window.make=()=>window.player=win.report.motion.create({id:'history',duration:1,render:s=>{window.paints++;doc.querySelector('#value').textContent=String(Math.floor(s.progress*4));}});

@@ -9,8 +9,10 @@ import { WorkingTipsContext } from '../../chat/workingTipsContext'
 import type { CommandDefinition } from '../../../commands'
 import { ReportChatRequestController } from './reportChatRequest'
 import { ReportEmbedProvider, useReportDataApi, type ReportDataApi } from './reportEmbedContext'
-import { installDashboardChatWidgets, type ChatWidgetSlot, type ReportTheme } from './dashboardChatWidgets'
-import { installDashboardActionButtons, type ActionRequest } from './reportActionButtons'
+import { type ChatWidgetSlot, type ReportTheme } from './dashboardChatWidgets'
+import type { ActionRequest } from './reportActionButtons'
+import { installDashboardWidgetHost } from './dashboardWidgetHost'
+import type { ReportDocumentBridge } from './reportDocumentBridge'
 import { ReportActionDialog } from './ReportActionDialog'
 import { ReportQuestionFrame } from './ReportQuestionFrame'
 import { reportContentQuestion, type ReportContentContext } from './reportContentQuestion'
@@ -39,7 +41,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const [error, setError] = useState<string | null>(null)
   const generation = useRef(0)
   const container = useRef<HTMLDivElement>(null)
-  const widgetApi = useRef<ReturnType<typeof installDashboardChatWidgets>["api"] | null>(null)
+  const widgetApi = useRef<ReturnType<typeof installDashboardWidgetHost>["api"] | null>(null)
   const revealWidgets = useRef<(() => void) | null>(null)
   const accepted = useRef(new Map<string, string>())
   const opening = useRef<Promise<string> | null>(null)
@@ -112,23 +114,23 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
     setPopup(false)
     void opener.current().catch(() => { /* openAsk records the failure for the pane. */ })
   }, [conversationPane, canAsk, viewer, resourceId])
-  const chatWidgets = useCallback((frame: HTMLIFrameElement) => {
-    const binding = installDashboardChatWidgets(frame, {
-      available: showChatWidgets, visible: showChatWidgets, container: container.current!, openConversation: () => opener.current(),
+  const chatWidgets = useCallback((frame: HTMLIFrameElement, bridge: ReportDocumentBridge) => {
+    const binding = installDashboardWidgetHost(frame, bridge, {
+      available: showChatWidgets, visible: showChatWidgets, container: () => container.current, openConversation: () => opener.current(),
+      functionsAvailable: canUseFunctions, openAction: setAction,
       changed: (next, hasWidgets) => { setSlots(next); setAuthored(hasWidgets) }, popup: setPopup, error: setError, themeChanged: setTheme,
     })
-    const buttons = installDashboardActionButtons(frame, { available: canUseFunctions, open: setAction })
     if (canUseFunctions) {
       void (async () => {
         try {
           const { data: listed } = await api.get<{ functions?: { name: string; can_call?: boolean }[] }>(`/api/dashboards/${encodeURIComponent(resourceId)}/functions`)
-          buttons.setBlocked((listed?.functions ?? []).filter(fn => fn.can_call === false).map(fn => fn.name))
+          binding.setBlocked((listed?.functions ?? []).filter(fn => fn.can_call === false).map(fn => fn.name))
         } catch { /* the form still says so if a function is refused */ }
       })()
     }
     widgetApi.current = binding.api
     revealWidgets.current = binding.reveal
-    return { api: binding.api, dispose: () => { binding.dispose(); buttons.dispose(); if (widgetApi.current === binding.api) { widgetApi.current = null; revealWidgets.current = null } } }
+    return { api: binding.api, context: binding.context, dispose: () => { binding.dispose(); if (widgetApi.current === binding.api) { widgetApi.current = null; revealWidgets.current = null } } }
   }, [showChatWidgets, canUseFunctions, viewer, resourceId])
   const messageController = useMemo(() => new ReportChatRequestController(workspacePath, async ({ message }) => {
     const tabId = await opener.current()

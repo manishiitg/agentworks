@@ -55,8 +55,8 @@ export const REPORT_STATE_ATTR = 'data-report-state'
 // correctly too, not just the documented one — the report doesn't need to know
 // injection is asynchronous at all, regardless of which lifecycle hook it used.
 //
-// The theme is read from the host document right away (the sandbox allows
-// same-origin, so the parent is reachable) and stamped onto <html> before the
+// The theme comes from the document bootstrap configuration and is stamped
+// onto <html> before the
 // report's own CSS applies. A report reading window.report.theme at top level,
 // or styling off :root.dark, used to see "light" for one paint even in dark
 // mode.
@@ -102,8 +102,8 @@ export const REPORT_BOOTSTRAP = `<script>(function(){
   };
   var theme = 'light';
   try {
-    var hostRoot = window.parent && window.parent !== window ? window.parent.document.documentElement : null;
-    if (hostRoot && (hostRoot.classList.contains('dark') || hostRoot.classList.contains('dark-plus') || hostRoot.getAttribute('data-theme') === 'dark')) theme = 'dark';
+    var config = document.getElementById('aw-native-document-config') || document.getElementById('aw-document-config');
+    if (config && JSON.parse(config.textContent || '{}').theme === 'dark') theme = 'dark';
   } catch (e) {}
   api.theme = theme;
   try {
@@ -166,7 +166,7 @@ export function injectThemeTokens(host: HTMLElement, doc: Document) {
   style.textContent = `:root{${decls}}`
 }
 
-// Drop the about:srcdoc UA default `body{margin:8px}` so an HTML report renders
+// Drop the document UA default `body{margin:8px}` so an HTML report renders
 // edge-to-edge inside the report pane (we strip all our own chrome for HTML — the
 // 8px UA margin would otherwise read as a stray gap around every side). Inserted
 // as the FIRST <head> child so the report's own CSS (later, equal specificity)
@@ -214,10 +214,6 @@ type AnyWindow = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDocument = any
 
-function reportWindow(frame: HTMLIFrameElement): AnyWindow {
-  return frame.contentWindow as AnyWindow
-}
-
 function setLifecycle(doc: Document, state: ReportHostLifecycle) {
   try {
     doc.documentElement?.setAttribute(REPORT_STATE_ATTR, state)
@@ -231,16 +227,6 @@ function setLifecycle(doc: Document, state: ReportHostLifecycle) {
  * Fires `report:theme` inside the frame only when asked, so an initial
  * application does not double-render a report that also renders on
  * `report:data`. */
-export function applyReportTheme(
-  frame: HTMLIFrameElement,
-  tokenSource: HTMLElement | null,
-  theme: ReportHostTheme,
-  emitChange: boolean,
-): void {
-  const doc = frame.contentDocument
-  if (doc) applyReportDocumentTheme(doc, tokenSource, theme, emitChange)
-}
-
 /** Used inside an isolated document without giving its parent DOM access. */
 export function applyReportDocumentTheme(doc: Document, tokenSource: HTMLElement | null, theme: ReportHostTheme, emitChange: boolean): void {
   const win = doc.defaultView as AnyWindow
@@ -284,11 +270,7 @@ export interface ReportHostInstallOptions {
  * Idempotent per document for the parts that bind listeners; the API object
  * is replaced on every call so a changed dataApi takes effect.
  */
-export function installReportHost(frame: HTMLIFrameElement, options: ReportHostInstallOptions): void {
-  if (frame.contentDocument) installReportDocumentHost(frame.contentDocument, options)
-}
-
-/** Same renderer runtime for native frames and opaque MCP Apps documents. */
+/** Shared renderer runtime, installed by the document itself in native and MCP Apps frames. */
 export function installReportDocumentHost(document: Document, options: ReportHostInstallOptions): void {
   const doc = document as Document & AnyDocument
   const win = doc.defaultView as AnyWindow
@@ -307,9 +289,8 @@ export function installReportDocumentHost(document: Document, options: ReportHos
     })
   }
 
-  // In a srcDoc iframe the base URL is about:srcdoc, so clicking an in-page
-  // `#anchor` link (the report's tab nav) reloads the WHOLE document instead of
-  // scrolling. Intercept those clicks and scroll manually. Bound once per loaded
+  // The isolated document uses a clean asset base URL. Intercept in-page
+  // anchors so they scroll this document instead of navigating to that base. Bound once per loaded
   // document (the flag resets on reload, so a fresh doc re-binds).
   if (!doc.__anchorScrollBound) {
     doc.__anchorScrollBound = true
@@ -349,7 +330,7 @@ export function installReportDocumentHost(document: Document, options: ReportHos
       }
 
       // A relative link would navigate the frame against the app's own URL
-      // (a srcdoc frame inherits the parent's base), and the server answers
+      // (the frame has a clean app asset base), and the server answers
       // an unknown path with the app itself: the whole UI rendered inside
       // the dashboard. Never let the frame navigate; a link to another
       // dashboard view (`tasks.html`, `./tasks.html`) switches to that view.
@@ -437,7 +418,7 @@ export function installReportDocumentHost(document: Document, options: ReportHos
 
   // Images inside rendered markdown (reportMarkdownLinks) carry the
   // workspace path on a data attribute instead of src, because a relative
-  // src resolves to nothing under about:srcdoc. Load each through the
+  // src cannot load authenticated workspace files. Load each through the
   // authenticated file channel, now and whenever the report inserts more
   // markdown later (a tab switch, a data refresh).
   if (dataApi && !doc.__reportImageResolverBound) {
@@ -655,14 +636,17 @@ export interface ReportHostState {
 }
 
 /** What an outside observer can learn about a loaded report document. */
-export function readReportHostState(frame: HTMLIFrameElement | null): ReportHostState {
-  const doc = frame?.contentDocument
-  const win = frame ? reportWindow(frame) : null
+export function readReportDocumentState(doc: Document | null): ReportHostState {
+  const win = doc?.defaultView as AnyWindow | null
   if (!doc?.documentElement) {
     return { state: 'unloaded', errors: [], title: '', tabs: [], loadingTexts: [], markdownTexts: [], height: 0 }
   }
   const state = (doc.documentElement.getAttribute(REPORT_STATE_ATTR) as ReportHostLifecycle | null) ?? 'loading'
   const errors: string[] = Array.isArray(win?.__reportHostErrors) ? [...win.__reportHostErrors] : []
+  if (state === 'error' && !errors.length) {
+    const message = doc.querySelector('[data-report-error]')?.textContent?.trim()
+    if (message) errors.push(message.slice(0, 2000))
+  }
   const tabs = Array.from(doc.querySelectorAll('[role="tab"], [data-tab], nav button, nav a, .tabs button, .tab-bar button'))
     .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
     .filter((text, index, all) => text && text.length <= 40 && all.indexOf(text) === index)

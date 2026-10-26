@@ -1,3 +1,4 @@
+import { isReportDocumentMessage } from '../components/workflow/reportWidgets/reportDocumentBridge'
 import { DashboardHostBridge, resultData } from './bridge'
 import { withReportBootstrap } from '../components/workflow/reportWidgets/reportHostRuntime'
 import { actionArgs, buildActionFields } from '../components/workflow/reportWidgets/reportActionForm'
@@ -196,9 +197,9 @@ function receive(value: { _meta?: Record<string, unknown> }) {
   else { renderDocument(); if (dashboard.capability.can_ask) void listFunctions().catch(error) }
 }
 bridge.onResult = receive
-bridge.onContext = context => { theme = context.theme ?? theme; document.body.classList.toggle('dark', theme === 'dark'); frame?.contentWindow?.postMessage({ channel, method: 'theme', theme }, '*') }
+bridge.onContext = context => { theme = context.theme ?? theme; document.body.classList.toggle('dark', theme === 'dark'); frame?.contentWindow?.postMessage({ channel, method: 'theme', args: [theme] }, '*') }
 window.addEventListener('message', async event => {
-  if (!dashboard || event.source !== frame?.contentWindow || event.data?.channel !== channel) return
+  if (!dashboard || !isReportDocumentMessage(event, frame?.contentWindow ?? null, channel)) return
   const { id, method, args } = event.data as { id: number; method: string; args: unknown[] }
   const target = event.source as Window
   const requestChannel = channel

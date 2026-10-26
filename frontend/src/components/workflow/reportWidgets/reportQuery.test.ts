@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from 'vitest'
 import { createReportQuery } from './reportQuery'
-import { installReportHost, withReportBootstrap } from './reportHostRuntime'
+import { installReportDocumentHost, withReportBootstrap } from './reportHostRuntime'
 import type { ReportDataApi } from './reportEmbedContext'
 
 it('keeps bindings through the authored HTML bootstrap, host and shared query transport', async () => {
@@ -16,7 +16,7 @@ it('keeps bindings through the authored HTML bootstrap, host and shared query tr
   const reportWindow = win as unknown as { report: { query: ReportDataApi['query'] } }
   const pending = reportWindow.report.query('SELECT name FROM items WHERE name = ? AND created_by_user_id = ?', [value, caller])
   const data = { workspacePath: 'Workflow/relay', query: createReportQuery('Workflow/relay', post) } as ReportDataApi
-  installReportHost(frame, { title: 'Bindings', dataApi: data, theme: 'light', tokenSource: null, dispatchData: true })
+  installReportDocumentHost(frame.contentDocument!, { title: 'Bindings', dataApi: data, theme: 'light', tokenSource: null, dispatchData: true })
   await expect(pending).resolves.toEqual([{ name: value }])
   expect(post).toHaveBeenCalledWith({ workspace: 'Workflow/relay', sql: 'SELECT name FROM items WHERE name = ? AND created_by_user_id = ?', params: [value, caller] })
   frame.remove()
@@ -37,7 +37,7 @@ it('delivers recorded Relay history through the authored bootstrap and host', as
   new Function('window', 'document', stub)(win, doc)
   const read = vi.fn(async () => ({ version: 'v2', runs: [{ status: 'completed', attempt: 2 }] }))
   const pending = (win as unknown as { report: { getRelayRuns: NonNullable<ReportDataApi['getRelayRuns']> } }).report.getRelayRuns({ version: 'v2', limit: 5 })
-  installReportHost(frame, { title: 'Relay history', dataApi: { workspacePath: 'Workflow/relay', getRelayRuns: read } as unknown as ReportDataApi, theme: 'dark', tokenSource: null, dispatchData: true })
+  installReportDocumentHost(frame.contentDocument!, { title: 'Relay history', dataApi: { workspacePath: 'Workflow/relay', getRelayRuns: read } as unknown as ReportDataApi, theme: 'dark', tokenSource: null, dispatchData: true })
   await expect(pending).resolves.toEqual({ version: 'v2', runs: [{ status: 'completed', attempt: 2 }] })
   expect(read).toHaveBeenCalledWith({ version: 'v2', limit: 5 })
   frame.remove()
