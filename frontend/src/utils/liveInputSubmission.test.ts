@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  chatOffersLiveTerminal,
   chatUsesStructuredTransport,
   createLiveInputSubmissionCoordinator,
   shouldRouteChatInputToLiveTransport,
@@ -133,5 +134,18 @@ describe('shouldAppendOptimisticLiveInputMessage', () => {
 
     expect(shouldAppendOptimisticLiveInputMessage(events, 'newer')).toBe(true)
     expect(shouldAppendOptimisticLiveInputMessage([], 'newer')).toBe(true)
+  })
+})
+
+describe('terminal availability after native protocol migration', () => {
+  it('hides the terminal for native sessions while retaining real tmux sessions', () => {
+    for (const transport of ['app-server', 'rpc', 'acp', 'structured']) {
+      expect(chatOffersLiveTerminal(true, transport, true)).toBe(false)
+    }
+    expect(chatOffersLiveTerminal(true, 'tmux', true)).toBe(true)
+    expect(chatOffersLiveTerminal(true, 'tmux', false)).toBe(false)
+    expect(chatOffersLiveTerminal(true, '', false)).toBe(false)
+    expect(chatOffersLiveTerminal(true, '', true)).toBe(true)
+    expect(chatOffersLiveTerminal(false, 'tmux', true)).toBe(false)
   })
 })

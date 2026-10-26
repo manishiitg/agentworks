@@ -57,6 +57,7 @@ type providerManifestEntry struct {
 type providerCodingAgentInfo struct {
 	Transport               string `json:"transport"`
 	SupportsLiveInput       bool   `json:"supports_live_input"`
+	SupportsTerminalStream  bool   `json:"supports_terminal_stream"`
 	SupportsInterrupt       bool   `json:"supports_interrupt"`
 	SupportsStatusLine      bool   `json:"supports_status_line"`
 	UsesMCPBridge           bool   `json:"uses_mcp_bridge"`
@@ -188,6 +189,7 @@ func providerCodingAgentManifestInfo(provider, modelID string) *providerCodingAg
 		SupportsLiveInput:       contract.SupportsLiveInput,
 		SupportsInterrupt:       contract.SupportsInterrupt,
 		SupportsStatusLine:      contract.SupportsStatusLine,
+		SupportsTerminalStream:  contract.SupportsTerminalStream,
 		UsesMCPBridge:           contract.UsesMCPBridge,
 		SupportsBridgeOnlyTools: contract.SupportsBridgeOnlyTools,
 		SupportsNativeResume:    contract.SupportsNativeResume,

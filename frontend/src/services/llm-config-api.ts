@@ -151,6 +151,7 @@ export interface ProviderManifestEntry {
   coding_agent?: {
     transport: 'tmux' | string
     supports_live_input: boolean
+    supports_terminal_stream: boolean
     supports_interrupt: boolean
     supports_status_line?: boolean
     uses_mcp_bridge?: boolean

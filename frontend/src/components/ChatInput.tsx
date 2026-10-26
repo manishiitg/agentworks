@@ -55,7 +55,7 @@ import { isAccessRefusal } from '../platform/chat/submissionFailure'
 import { liveTerminalControlKey } from '../utils/liveTerminalKeys'
 import type { DurableChatQueueHandle } from './chat/DurableChatQueue'
 import { recordChatSubmissionTelemetry } from '../utils/chatDeliveryTelemetry'
-import { chatUsesStructuredTransport, shouldRouteChatInputToLiveTransport, shouldShowLiveTerminalControl } from '../utils/liveInputSubmission'
+import { chatOffersLiveTerminal, chatUsesStructuredTransport, shouldRouteChatInputToLiveTransport, shouldShowLiveTerminalControl } from '../utils/liveInputSubmission'
 import { effectiveLLMUnderLock, effectiveProviderUnderLock, runtimeStatusLLMChoice } from '../utils/effectiveLLM'
 import { normalizeEventViewMode, type ChatTabConfig } from '../stores/useChatStore'
 import { getComposerTrigger, replaceComposerTrigger, formatFileReference, removeFileReferences, reconcileFileReferences, isPlainPickerKey, type ComposerTrigger } from '../utils/composerReferences'
@@ -858,7 +858,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     providerUsesStructuredTransport: false,
   })
   // Offered in Local Code too, view-only (the server refuses typed input there; MainAgentTerminal is read-only).
-  const liveTerminalOffered = mainTerminalAvailable && !currentChatUsesStructuredTransport
+  const liveTerminalOffered = chatOffersLiveTerminal(
+    mainTerminalAvailable,
+    activeReportedTransport,
+    providerManifest.find(provider => provider.id === (effectiveProviderForSteer || activeSession?.runtime?.provider))?.coding_agent?.supports_terminal_stream === true,
+  )
   useEffect(() => {
     if (!providerManifestLoaded) {
       void loadProviderManifest()

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 )
 
@@ -24,6 +25,8 @@ func TestRetainedTerminalGoneStartsANewTurnInsteadOfDeliveryUncertain(t *testing
 	for name, deliverErr := range map[string]error{
 		"muse registry gone": errors.New("failed to submit live input to muse-cli: no active Muse interactive session registered for owner session " + sessionID),
 		"session closed":     errors.New("muse session is closed"),
+		// PLAT-872-24: an idle native process is alive but has no turn to steer.
+		"native turn completed": &mcpagent.CodingAgentDeliveryError{Kind: mcpagent.DeliveryErrorKindNoSession, Provider: llmproviders.ProviderCodexCLI, Reason: "no turn is running to take the message; start a new turn"},
 	} {
 		api := &StreamingAPI{
 			internalChatSubmissionStore: newTestChatSubmissionStore(),

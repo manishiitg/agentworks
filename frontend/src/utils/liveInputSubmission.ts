@@ -113,3 +113,10 @@ export function shouldAppendOptimisticLiveInputMessage(
     return metadata?.message_id === wanted
   })
 }
+
+// PLAT-872-23: live input support does not imply a terminal. Native protocol
+// sessions use question/tool events; only the server's terminal capability
+// and the actual runtime transport admit the live terminal view.
+export function chatOffersLiveTerminal(hasSession: boolean, reportedTransport: string, supportsTerminalStream: boolean): boolean {
+  return hasSession && supportsTerminalStream && (!reportedTransport || reportedTransport === 'tmux')
+}
