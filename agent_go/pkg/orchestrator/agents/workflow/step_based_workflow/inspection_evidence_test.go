@@ -16,7 +16,9 @@ import (
 	"github.com/gin-gonic/gin"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/executioninspection"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	orchevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	workspaceclient "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/spf13/viper"
 )
@@ -26,10 +28,17 @@ import (
 func TestScriptInspectionFreezesExecutedSourceAndOutput(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	t.Setenv("WORKSPACE_API_TOKEN", "fixture-workspace-token")
 	previous := viper.Get("docs-dir")
 	viper.Set("docs-dir", root)
 	t.Cleanup(func() { viper.Set("docs-dir", previous) })
 	workspace := "Workflow/test-flow"
+	outputRel := workspace + "/runs/iteration-0/default/execution/task"
+	// PLAT-861-343: a function parent grants the whole Goal; a saved script must
+	// post its own current-run/shared-area guard instead.
+	parentSession := "function-parent-inspection"
+	common.SetSessionFolderGuard(parentSession, []string{workspace}, []string{workspace})
+	t.Cleanup(func() { common.ClearSessionShellConfig(parentSession) })
 	sourceRel := workspace + "/code/task/main.py"
 	sourcePath := filepath.Join(root, sourceRel)
 	if err := os.MkdirAll(filepath.Dir(sourcePath), 0755); err != nil {
@@ -39,6 +48,9 @@ func TestScriptInspectionFreezesExecutedSourceAndOutput(t *testing.T) {
 	if err := os.WriteFile(sourcePath, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(root, workspace, "reference.md"), []byte("workflow reference"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	router := gin.New()
 	router.GET("/api/documents", workspacehandlers.ListDocuments)
 	router.POST("/api/folders", workspacehandlers.CreateFolder)
@@ -46,12 +58,42 @@ func TestScriptInspectionFreezesExecutedSourceAndOutput(t *testing.T) {
 	router.PUT("/api/documents/*filepath", workspacehandlers.HandleDocumentRequest)
 	router.POST("/api/execute", func(c *gin.Context) {
 		var request struct {
-			Command string `json:"command"`
+			Command     string                             `json:"command"`
+			FolderGuard *workspaceclient.FolderGuardConfig `json:"folder_guard"`
+			ExtraEnv    map[string]string                  `json:"extra_env"`
 		}
 		if err := json.NewDecoder(c.Request.Body).Decode(&request); err != nil {
 			t.Error(err)
 			c.Status(400)
 			return
+		}
+		if c.GetHeader("X-Workspace-Token") != "fixture-workspace-token" || c.GetHeader("X-User-ID") != "runner" {
+			t.Error("script dispatch lost workspace authentication or caller identity")
+		}
+		guard := request.FolderGuard
+		if guard == nil || !guard.Enabled {
+			t.Error("script dispatched without its step guard")
+			c.Status(400)
+			return
+		}
+		has := func(paths []string, want string) bool {
+			for _, path := range paths {
+				if path == want {
+					return true
+				}
+			}
+			return false
+		}
+		for _, target := range []string{outputRel, workspace + "/runs/iteration-0/default", workspace + "/db/assets", workspace + "/reports", workspace + "/tool_output_folder"} {
+			if !has(guard.WritePaths, target) {
+				t.Errorf("step cannot write current/shared path %s: %v", target, guard.WritePaths)
+			}
+		}
+		if has(guard.WritePaths, workspace) || !has(guard.ReadPaths, workspace+"/code") || !has(guard.ReadPaths, workspace+"/reference.md") {
+			t.Errorf("script borrowed parent writes or lost workflow reads: %+v", guard)
+		}
+		if !strings.HasPrefix(request.ExtraEnv["MCP_SESSION_ID"], "script-step-task-") {
+			t.Error("shell and bridge do not use the registered step session")
 		}
 		if !strings.Contains(request.Command, sourcePath) {
 			t.Errorf("unexpected command %s", request.Command)
@@ -87,10 +129,11 @@ func TestScriptInspectionFreezesExecutedSourceAndOutput(t *testing.T) {
 	if err := controller.WriteWorkspaceFile(context.Background(), path, content); err != nil {
 		t.Fatal(err)
 	}
-	ctx := virtualtools.WithBackgroundAgentID(context.Background(), owner)
+	ctx := context.WithValue(context.Background(), common.UserIDKey, "runner")
+	ctx = virtualtools.WithBackgroundAgentID(context.WithValue(ctx, common.ChatSessionIDKey, parentSession), owner)
 	controller.recordInspectionMode(ctx, "script")
 	step := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "task", Title: "Task"}}
-	output, code, err := controller.execScriptedScript(ctx, step, 0, "step-1", sourcePath, nil, filepath.Join(root, workspace, "runs/iteration-0/default/execution/task"), filepath.Dir(sourcePath), "runs/iteration-0/default/execution/task", DBAccessNone)
+	output, code, err := controller.execScriptedScript(ctx, step, 0, "step-1", sourcePath, nil, filepath.Join(root, workspace, "runs/iteration-0/default/execution/task"), filepath.Dir(sourcePath), outputRel, DBAccessNone)
 	if err != nil || code != 0 || !strings.Contains(output, "first source") {
 		t.Fatalf("execution code=%d output=%q err=%v", code, output, err)
 	}

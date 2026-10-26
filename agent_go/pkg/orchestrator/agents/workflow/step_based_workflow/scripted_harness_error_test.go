@@ -60,24 +60,6 @@ func TestScriptedNonzeroExitCannotBePromotedByValidation(t *testing.T) {
 	}
 }
 
-// The controller must run a saved script through the same client the agent's own
-// execute_shell_command uses. When it hand-rolled its own request it silently
-// dropped X-Workspace-Token and X-User-ID, so the agent's self-test passed and
-// only the real run failed — leaving the agent to "fix" a script that worked.
-func TestScriptedRunGoesThroughTheSharedWorkspaceClient(t *testing.T) {
-	src := readSourceFile(t, "controller_scripted.go")
-	fn := scriptedExecFunc(t, src)
-
-	if !strings.Contains(fn, "hcpo.WorkspaceClient.ExecuteShellCommand(ctx, reqParams)") {
-		t.Fatal("the saved script must be dispatched via workspace.Client.ExecuteShellCommand")
-	}
-	for _, banned := range []string{"http.DefaultClient", "http.NewRequestWithContext", "X-Workspace-Token"} {
-		if strings.Contains(fn, banned) {
-			t.Fatalf("execScriptedScript must not build its own request (%q) — that is how the two paths diverged", banned)
-		}
-	}
-}
-
 // A request that never became a process must be reported as a harness rejection,
 // whatever shape the failure arrives in.
 func TestTransportAndAPIFailuresBothReadAsHarnessRejection(t *testing.T) {

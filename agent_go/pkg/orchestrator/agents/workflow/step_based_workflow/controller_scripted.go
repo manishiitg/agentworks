@@ -1082,9 +1082,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		FolderGuard:      guard,
 		ExtraEnv:         extraEnv,
 		DBReadSnapshot:   dbAccess == DBAccessRead,
-		// The script calls the bridge as its step session (the one granted DB
-		// access), which the orchestrator's own env names; the shell itself
-		// keeps running under the context's session.
+		// The bridge and shell use this step session and its existing grants.
 		BridgeSessionID: strings.TrimSpace(extraEnv["MCP_SESSION_ID"]),
 	}
 
@@ -1121,7 +1119,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		}
 		hcpo.recordInspectionEvents(ctx, scriptInspectionEnd(snapshotStart, stdout, stderr, exitCode, status, execErr)...)
 	}()
-	result, err := hcpo.WorkspaceClient.ExecuteShellCommand(ctx, reqParams)
+	// PLAT-861-343: the client resolves policy by session, overriding request
+	// guards. Use the registered step session rather than the parent function's
+	// whole-project guard; identity, cancellation and inspection stay on ctx.
+	shellCtx := ctx
+	if sessionID := strings.TrimSpace(extraEnv["MCP_SESSION_ID"]); sessionID != "" {
+		shellCtx = context.WithValue(ctx, common.ChatSessionIDKey, sessionID)
+	}
+	result, err := hcpo.WorkspaceClient.ExecuteShellCommand(shellCtx, reqParams)
 	if err != nil {
 		// Transport failure or a non-2xx status: the request never became a
 		// process, so this is the harness failing, not the script.
