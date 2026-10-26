@@ -233,6 +233,15 @@ for raw_provider in "${provider_list[@]}"; do
       -run "$test_regex" -count=1 -timeout=35m -args -coding-cli-p0-live
   fi
 
+  if [[ "$provider" == "codex-cli" ]]; then
+    # The SDK registry includes both retained app-server turns and bounded
+    # calls. Agent-reviewed captures cover tool recovery and output quality.
+    sdk_regex="$(go -C "$MCPAGENT_DIR" run ./cmd/coding-agent-tests -provider Codex)"
+    RUN_MCPAGENT_REAL_BRIDGE_E2E=1 RUN_MCPAGENT_STEER_E2E=1 MCPAGENT_REAL_BRIDGE_ONLY=codex \
+      run_required_go_tests go -C "$MCPAGENT_DIR" test -json ./agent \
+        -run "$sdk_regex" -count=1 -timeout=40m
+  fi
+
   # Sandbox contract (PLAT-394): the same file-access checks against every CLI
   # in Full CLI mode through the real launch options, under the lock the host
   # applies (Seatbelt on a Mac, Landlock on Linux via AGENTWORKS_LANDLOCK_RUNNER).
