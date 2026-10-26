@@ -175,41 +175,24 @@ export function WorkModelsPanel({
 
   const readyProviders = useMemo(() => accounts === null ? [] : readyCodingProviders(providerManifest, accounts), [providerManifest, accounts])
   const cursorReady = readyProviders.some(provider => provider.id === 'cursor-cli')
-  useEffect(() => {
-    let cancelled = false
-    setCursorModels([])
-    if (cursorReady) {
-      void llmConfigService.getProviderModels('cursor-cli').then(result => {
-        if (!cancelled) setCursorModels(result.models || [])
-      }).catch(() => undefined)
-    }
-    return () => { cancelled = true }
-  }, [cursorReady, accounts, workspacePath, effectiveProfileId])
-
   const modelCatalog = useMemo(() => {
-    const models = readyProviders.flatMap(provider => provider.models || [])
-    if (!cursorReady) return models
-    const known = new Set(models.filter(model => model.provider === 'cursor-cli').map(model => model.model_id))
-    // The installed CLI can offer additional models beyond the curated catalog.
-    // Keep curated metadata/pricing for known IDs, and retain the exact CLI ID
-    // for new choices rather than converting them into the Auto router.
+    const models = readyProviders.flatMap(provider => provider.id === 'cursor-cli' ? [] : provider.models || [])
+    // Cursor's selected-account inventory is authoritative. Static metadata
+    // must not reintroduce unavailable models (PLAT-872 / PLAT-387).
     for (const model of cursorModels) {
-      if (!model.model_id || known.has(model.model_id)) continue
-      known.add(model.model_id)
       models.push({
         provider: 'cursor-cli', model_id: model.model_id, model_name: model.model_name,
-        context_window: model.context_window || 0, input_cost_per_1m: 0, output_cost_per_1m: 0,
+        context_window: model.context_window || 0, input_cost_per_1m: model.cost_input || 0, output_cost_per_1m: model.cost_output || 0,
       })
     }
     return models
-  }, [readyProviders, cursorReady, cursorModels])
+  }, [readyProviders, cursorModels])
   const engineGroups = useMemo(
-    // Work intentionally offers the full platform catalog for each CLI. The
-    // profile's model list may be present in an older running server until it
-    // restarts, so do not let that stale curation hide the new project picker.
+    // Use the platform catalog; Cursor's catalog comes from this account.
+    // Do not reinsert a profile default that Cursor did not offer.
     () => buildAgentProfileEngineGroups(options
       .filter(option => readyProviders.some(provider => provider.id === option.provider))
-      .map(option => ({ ...option, models: undefined })), modelCatalog),
+      .map(option => ({ ...option, models: undefined, model_id: option.provider === 'cursor-cli' ? '' : option.model_id })), modelCatalog),
     [readyProviders, modelCatalog, options],
   )
   // Only providers this person may run here: one with a usable account (the server's, if it is available to them,
@@ -250,6 +233,21 @@ export function WorkModelsPanel({
   const inUseConnectionId = selectedConnectionId || recordedConnectionId || ownDefaultConnectionId
   // A model key account (PLAT-717): its own models (the person's picks), with the live catalog's free and price data.
   const inUseAccount = accounts?.find(account => account.id === inUseConnectionId)
+  const cursorAccountId = cursorReady && selectedOption?.provider === 'cursor-cli' ? inUseConnectionId || 'global:cursor-cli' : undefined
+  const [cursorModelsError, setCursorModelsError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    setCursorModels([]); setCursorModelsError('')
+    if (cursorAccountId) {
+      void llmConfigService.getProviderModels('cursor-cli', false, false, {
+        connection_id: cursorAccountId, workspace_path: workspacePath, product: effectiveAccountProduct,
+      }).then(result => {
+        if (!cancelled) setCursorModels(result.models || [])
+      }).catch(() => { if (!cancelled) setCursorModelsError('Cursor models could not be loaded. Check this account in Providers, then refresh.') })
+    }
+    return () => { cancelled = true }
+  }, [cursorAccountId, accounts, workspacePath, effectiveAccountProduct])
+
   const keyService = selectedOption?.provider === 'pi-cli' ? byokServiceOf(inUseAccount) : undefined
   const [keyModels, setKeyModels] = useState<ByokModel[]>([])
   const [keyBrowserOpen, setKeyBrowserOpen] = useState(false)
@@ -500,6 +498,7 @@ export function WorkModelsPanel({
                   <button type="button" disabled={keyPicksDraft.length === 0} onClick={() => void saveKeyPicks(keyPicksDraft)} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">Save picks</button>
                 </div>
               )}
+              {cursorModelsError && <p role="alert" className="text-sm text-destructive">{cursorModelsError}</p>}
               <TierModelSelector
                 models={selectableModels}
                 selectedModelId={currentModelId}

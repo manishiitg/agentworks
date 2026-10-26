@@ -477,6 +477,11 @@ func (api *StreamingAPI) handleGetProviderModels(w http.ResponseWriter, r *http.
 		return
 	}
 
+	if provider == "cursor-cli" && r.URL.Query().Get("latest") == "true" {
+		api.handleCursorModelPicker(w, r)
+		return
+	}
+
 	mode := providerModelSelectionMode(provider)
 
 	if mode == "dynamic" {
@@ -726,7 +731,7 @@ func parseCursorModelList(output string) ([]dynamicModelEntry, []string) {
 			ModelID:   modelID,
 			ModelName: modelName,
 			Group:     group,
-			IsDefault: modelID == "composer-2-fast" || modelID == "auto",
+			IsDefault: strings.Contains(strings.ToLower(modelName), "default"),
 		})
 	}
 

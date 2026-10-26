@@ -151,6 +151,16 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
 
   // Before the timeout check: a CLI stuck on its own login screen times out
   // too, but the fix is signing in, not retrying (issue #252).
+  if (/API_KEY_INVALID|API key not valid|invalid API key/i.test(raw)) {
+    return {
+      code: 'authentication_failed',
+      title: `${providerLabel} API key was rejected`,
+      message: 'Update this account’s API key under Providers, or choose another configured account. Ask an admin to update the key if you use the shared account.',
+      provider,
+      retryable: false,
+      technicalDetails,
+    }
+  }
   if (normalizedCode === 'authentication_failed' || /\[auth\]|(?:authentication|authorization) (?:failed|required)|invalid (?:api )?(?:key|token)|login required|not (?:authenticated|logged in|signed in)|setup token (?:missing|invalid|required|expired)|account with subscription/i.test(raw)) {
     return {
       code: 'authentication_failed',

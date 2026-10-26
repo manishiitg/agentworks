@@ -386,10 +386,11 @@ export const llmConfigService = {
   },
 
   // Get dynamic model list for a provider (cursor-cli, pi-cli, etc.)
-  getProviderModels: async (provider: string, full?: boolean, availableOnly?: boolean): Promise<DynamicModelsResponse> => {
+  getProviderModels: async (provider: string, full?: boolean, availableOnly?: boolean, account?: { connection_id: string; workspace_path: string; product: string }): Promise<DynamicModelsResponse> => {
     const query = new URLSearchParams()
     if (full) query.set('full', 'true')
     if (availableOnly) query.set('available_only', 'true')
+    if (account) { query.set('latest', 'true'); Object.entries(account).forEach(([key, value]) => query.set(key, value)) }
     const suffix = query.size > 0 ? `?${query.toString()}` : ''
     const url = `/api/llm-config/providers/${provider}/models${suffix}`
     const response = await llmConfigApi.get(url)
