@@ -7643,6 +7643,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						phaseManifest, phaseFound, phaseMErr := ReadWorkflowManifest(context.Background(), phaseWorkspacePath)
 						if phaseMErr == nil && phaseFound {
 							configuredBrowserMode := strings.ToLower(strings.TrimSpace(phaseManifest.Capabilities.BrowserMode))
+							if configuredBrowserMode == "cdp" && phaseManifest.Capabilities.BrowserCDPPort > 0 {
+								port := phaseManifest.Capabilities.BrowserCDPPort
+								req.CdpPort = &port
+							}
 							phaseConfiguredCDPPorts := configuredCDPPortsForMode(configuredBrowserMode, req.CdpPort, req.resolvedCDPPorts)
 
 							// Browser mode is configured intent. In auto mode the executor
@@ -7653,7 +7657,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 								phaseBrowserCfg.CdpPort = phaseConfiguredCDPPorts[0]
 							}
 							switch configuredBrowserMode {
-							case "auto", "cdp", "headless":
+							case "extension", "auto", "cdp", "headless":
 								phaseBrowserCfg.HasAgentBrowser = true
 							}
 							if phaseBrowserCfg.HasAgentBrowser {
