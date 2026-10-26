@@ -82,7 +82,7 @@ func migrateWorkflowAgentStepsFromDisk(roots []string, apply, drained, prepareOn
 			}
 			if entry.IsDir() {
 				switch entry.Name() {
-				case "runs", "releases", "versions", "backup", "backups", "moved-workflows", ".trash", ".calls", ".relay_releases", ".git", "node_modules", ".sandbox-cache":
+				case "runs", "releases", "versions", "backup", "backups", "migration-backups", "moved-workflows", ".trash", ".calls", ".relay_releases", ".git", "node_modules", ".sandbox-cache":
 					return fs.SkipDir
 				}
 				return nil
