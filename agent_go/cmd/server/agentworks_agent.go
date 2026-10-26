@@ -438,6 +438,11 @@ func (api *StreamingAPI) reconcileAgentWorksGoals(ctx context.Context, userID st
 		// 3. Notes.
 		if entry.Notes == "" {
 			entry.Notes = "notes/tab-" + slugifyCrewTitle(label) + ".md"
+			for otherID, other := range state.Goals {
+				if otherID != id && other.Notes == entry.Notes {
+					entry.Notes = "notes/tab-" + slugifyCrewTitle(label) + "-" + id[:min(6, len(id))] + ".md"
+				}
+			}
 		}
 		if _, found, readErr := readFileFromWorkspace(ctx, root+"/"+entry.Notes); readErr == nil && !found {
 			if err := writeCrewSpecFiles(ctx, root, map[string]string{entry.Notes: agentWorksTabNotes(label, entry.Path)}); err != nil {
