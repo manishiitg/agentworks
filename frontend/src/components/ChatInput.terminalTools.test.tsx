@@ -168,9 +168,15 @@ describe('terminal toolbar shared tools', () => {
     await vi.waitFor(() => expect(host.querySelector('[aria-label^="Context "]')).toBeNull())
   })
   it('sends the selected Queue next intent by click and Enter while a turn is running', async () => {
-    useChatStore.getState().setTabConfig('A', { sendDeliveryMode: 'queue' })
     useChatStore.getState().setTabStreaming('A', true)
     await act(async () => renderComposer(undefined, false))
+    expect(host.querySelector('[aria-label^="Send options:"]')).toBeNull()
+    await act(async () => {
+      const add = host.querySelector<HTMLElement>('[aria-label="Add files and actions"]')!
+      add.focus(); add.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    })
+    const queue = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(row => row.textContent?.includes('Queue next'))!
+    await act(async () => { queue.focus(); queue.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
     const submit = host.querySelector<HTMLButtonElement>('[data-testid="chat-submit-button"]')!
     expect(submit.getAttribute('aria-label')).toBe('Queue next')
     await act(async () => submit.click())
@@ -247,7 +253,7 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => command.click())
     expect(send).toHaveBeenCalledWith('review via menu', expect.objectContaining({ sourceTabId: 'A' }))
   })
-  it('keeps chat and background actions inside the arrow menu and stops only the selected work', async () => {
+  it('keeps chat and background actions inside the add menu and stops only the selected work', async () => {
     let items = [
       { id: 'task-1', kind: 'sub_agent' as const, label: 'code review', started_at: new Date().toISOString(), can_stop: true, status: 'Reading files' },
       { id: 'task-2', kind: 'step' as const, label: 'refresh', started_at: new Date().toISOString(), can_stop: true },
@@ -271,7 +277,7 @@ describe('terminal toolbar shared tools', () => {
       expect(document.querySelector('[data-testid="chat-new-chat"]')).toBeNull()
       expect(document.querySelector('[data-testid="chat-stop-button"]')).toBeNull()
       const openMenu = async () => act(async () => {
-        const trigger = host.querySelector<HTMLElement>('[aria-label="Send options: Steer"]')!
+        const trigger = host.querySelector<HTMLElement>('[aria-label="Add files and actions"]')!
         trigger.focus(); trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
       })
       const openTasks = async (count: number) => act(async () => {

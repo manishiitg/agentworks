@@ -3185,6 +3185,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     ? () => chooseViewMode(activeTabId, 'terminal') : undefined}
                   liveViewTitle={[mainAgentRuntimeLabel, ...terminalUsage.map(line => line.text), ...terminalSessionUsage].filter(Boolean).join('\n')}
                   showAgents={agentProfileId === 'work' || isGoalBuilderChat}
+                  onOpenChange={setSendOptionsOpen}
+                  sendOptions={{
+                    mode: deliveryMode,
+                    busy: isStreaming || transcriptTurnActive,
+                    onModeChange: mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) },
+                    onNewChat: showNewChatAction ? onNewChat : undefined,
+                    onStop: showStopButton && foregroundTurnActive ? onStopStreaming : undefined,
+                    backgroundWork,
+                  }}
                 />}
                 {chatInputStatusLine && (
                   <Tooltip>
@@ -3582,8 +3591,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </Tooltip>
                 )}
                 {!compactComposerActions && attachmentEl}
-              </div>
-              <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
                 {isGoalBuilderChat && goalModelLabel && (
                   <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" aria-label={`Model: ${goalModelLabel}`} title={goalModelLabel}>
                     {goalModelLabel}
@@ -3600,6 +3607,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
                   || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} />
+              </div>
+              <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
                       {!nativeTerminalTools && micEl}
@@ -3608,6 +3617,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         {deliveryMode === 'queue' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
                       </Button>}>
                       <ChatSendModeButton
+                        showOptions={!compactComposerActions}
                         mode={deliveryMode}
                         busy={isStreaming || transcriptTurnActive}
                         disabled={submitButtonDisabled}
