@@ -16,6 +16,8 @@ import type { ExecutionOptions } from '../../../services/api-types'
 import { TooltipProvider } from '../../ui/tooltip'
 import { GlobalActivityMonitor } from '../../GlobalActivityMonitor'
 import { useModeStore } from '../../../stores/useModeStore'
+import { ShareDashboardButton } from '../ShareDashboardButton'
+import { openWorkspacePaneChatWithDraft } from '../../../utils/workspacePaneChat'
 import { WorkspaceTopToolbar } from '../../workspace/WorkspaceTopToolbar'
 import { useRegisterPanelSwitcher, type PanelSwitcherPanel } from '../../../stores/usePanelSwitcherStore'
 
@@ -45,6 +47,7 @@ interface WorkflowToolbarProps {
   // workflow chat tabs + new-chat share one row with the status/tools instead of
   // sitting in a separate bar below.
   chatTabsSlot?: React.ReactNode
+  chatTabId?: string
   // Whether Pulse review is enabled for this workflow -- owned by the host
   // (shared with the pane's PulseView), just read here for the badge.
   className?: string
@@ -58,6 +61,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   variablesManifest,
   isLoadingWorkspaceState = false,
   chatTabsSlot,
+  chatTabId,
   showChatArea,
   onToggleChatArea,
   className = ''
@@ -246,11 +250,13 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
       </div>
 
       {/* Right side - View controls */}
-      <div data-tour="workflow-tools" data-testid="tour-workflow-tools" className="ml-auto flex shrink-0 items-center gap-1">
+      <div data-tour="workflow-tools" data-testid="tour-workflow-tools" className="order-last ml-auto flex shrink-0 items-center gap-1">
         <TooltipProvider delayDuration={150}>
           {workflowMode && !globalPageOpen && !providersOpen && <GlobalActivityMonitor />}
 
         </TooltipProvider>
+        {workspacePath && !globalPageOpen && !providersOpen && <ShareDashboardButton workspacePath={workspacePath} tabId={chatTabId}
+          onAsk={message => openWorkspacePaneChatWithDraft(chatTabId ? { tabId: chatTabId, message } : { workspacePath, message })} />}
       </div>
     </WorkspaceTopToolbar>
     {/* Access: this workflow's sharing + (admins) the deployment's users */}

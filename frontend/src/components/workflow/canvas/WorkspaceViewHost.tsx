@@ -529,6 +529,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
               onToggleChatArea={onToggleChatArea}
               onExport={onExport}
               chatTabsSlot={chatTabsSlot}
+              chatTabId={panelChatTabId}
             />
           </div>
         )}
