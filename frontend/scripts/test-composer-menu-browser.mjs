@@ -14,10 +14,10 @@ try {
   page = await browser.newPage(); page.setDefaultTimeout(15000)
   const errors = []; page.on('pageerror', error => errors.push(error.message))
   const geometry = []
-  for (const [name, width, height, zoom] of [['desktop', 1280, 720, 1], ['short-phone', 390, 360, 1], ['zoomed', 1280, 720, 1.5]]) {
+  // Browser/Electron page zoom reduces the CSS viewport; the app does not use CSS zoom.
+  for (const [name, width, height] of [['desktop', 1280, 720], ['short-phone', 390, 360], ['zoom-equivalent', 853, 480]]) {
     await page.setViewportSize({ width, height })
     await page.goto(server.resolvedUrls.local[0] + 'scripts/test-fixtures/composer-menu-qa.html')
-    await page.evaluate(value => { document.documentElement.style.zoom = String(value) }, zoom)
     await page.getByRole('button', { name: 'Add files and actions', exact: true }).click()
     const menu = page.getByRole('menu', { name: 'Add files and actions' })
     await menu.waitFor()
