@@ -15,7 +15,7 @@
     "family": "schedules",
     "name": "create",
     "member": "project_schedules_create",
-    "description": "Use this project\u2019s create schedule action with its current access.",
+    "description": "Create repeating work first: every 5 minutes uses cron_expression \"*/5 * * * *\" and timezone; every hour uses \"0 * * * *\". in_minutes is ONLY a one-time reminder, never recurrence. Confirm the saved timing_summary, not the intended cadence.",
     "source": "manage_schedules",
     "source_action": "create",
     "aliases": [

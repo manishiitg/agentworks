@@ -54,6 +54,7 @@ type ScheduledJobResponse struct {
 	ResumePrevious       bool                     `json:"resume_previous,omitempty"` // Coding-agent CLI only: opt in to resume latest prior thread instead of fresh session
 	ScheduleType         string                   `json:"schedule_type,omitempty"`
 	CalendarItems        []CalendarScheduleItem   `json:"calendar_items,omitempty"`
+	TimingSummary        string                   `json:"timing_summary,omitempty"`
 	CronExpression       string                   `json:"cron_expression"`
 	Timezone             string                   `json:"timezone"`
 	Enabled              bool                     `json:"enabled"`

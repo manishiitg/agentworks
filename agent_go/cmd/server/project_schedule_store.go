@@ -280,9 +280,14 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 			if err != nil {
 				return err
 			}
-			record.When.Timezone = "UTC"
+			record.When.Timezone = scheduleTimezoneOrDefault(s.Timezone)
+			loc, err := time.LoadLocation(record.When.Timezone)
+			if err != nil {
+				return err
+			}
+			at = at.In(loc)
 			record.When.Cron = ""
-			record.When.Dates = []projectactions.Date{{Date: at.UTC().Format("2006-01-02"), Time: at.UTC().Format("15:04")}}
+			record.When.Dates = []projectactions.Date{{Date: at.Format("2006-01-02"), Time: at.Format("15:04")}}
 		}
 		records = append(records, record)
 	}

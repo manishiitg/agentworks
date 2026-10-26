@@ -12491,6 +12491,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 					sb.WriteString(fmt.Sprintf("- **Cron**: `%s`\n", sched.CronExpression))
 				}
 				sb.WriteString(fmt.Sprintf("- **Timezone**: %s\n", sched.Timezone))
+				sb.WriteString("- **Timing**: " + scheduleTimingSummary(ScheduledJobResponse{ScheduleType: scheduleType, CronExpression: sched.CronExpression, CalendarItems: sched.CalendarItems, Timezone: sched.Timezone}) + "\n")
 				sb.WriteString(fmt.Sprintf("- **Status**: %s\n", status))
 				if api.scheduler != nil {
 					state := api.scheduler.GetRuntimeStateForWorkflow(workspacePath, sched.ID)
@@ -12626,6 +12627,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				nextRunStr = nextRun.Format(time.RFC3339)
 			}
 			result := fmt.Sprintf("Schedule created and activated.\n- **ID**: `%s`\n- **Name**: %s\n- **Cron**: `%s`\n- **Timezone**: %s\n- **Next Run**: %s", newSched.ID, name, cronExpr, timezone, nextRunStr)
+			result += "\n- **Timing**: " + scheduleTimingSummary(ScheduledJobResponse{ScheduleType: "cron", CronExpression: cronExpr, Timezone: timezone})
 			if advisory := scheduleMessagesAdvisory(messages, directMessagesReason); advisory != "" {
 				result += "\n- **Execution model**: " + advisory
 			}
@@ -12709,6 +12711,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				nextRunStr = nextRun.Format(time.RFC3339)
 			}
 			result := fmt.Sprintf("Calendar schedule created and activated.\n- **ID**: `%s`\n- **Name**: %s\n- **Items**: %d\n- **Timezone**: %s\n- **Next Run**: %s", newSched.ID, name, len(calendarItems), timezone, nextRunStr)
+			result += "\n- **Timing**: " + scheduleTimingSummary(ScheduledJobResponse{ScheduleType: "calendar", CalendarItems: calendarItems, Timezone: timezone})
 			if advisory := scheduleMessagesAdvisory(allMessages, directMessagesReason); advisory != "" {
 				result += "\n- **Execution model**: " + advisory
 			}
@@ -12854,6 +12857,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				nextRunStr = nextRun.Format(time.RFC3339)
 			}
 			result := fmt.Sprintf("Schedule updated.\n- **ID**: `%s`\n- **Name**: %s\n- **Cron**: `%s`\n- **Enabled**: %v\n- **Next Run**: %s", sched.ID, sched.Name, sched.CronExpression, sched.Enabled, nextRunStr)
+			result += "\n- **Timing**: " + scheduleTimingSummary(ScheduledJobResponse{ScheduleType: sched.ScheduleType, CronExpression: sched.CronExpression, CalendarItems: sched.CalendarItems, Timezone: sched.Timezone})
 			if advisory := scheduleMessagesAdvisory(sched.Messages, sched.DirectMessagesReason); advisory != "" {
 				result += "\n- **Execution model**: " + advisory
 			}

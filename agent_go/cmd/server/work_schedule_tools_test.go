@@ -1,6 +1,8 @@
 package server
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,4 +146,111 @@ func TestScheduleCreatedFromMigratedMainUsesTheMainAddress(t *testing.T) {
 		}
 	}
 	t.Fatal("created schedule missing")
+}
+
+// PLAT-871-23: "in five minutes" must never be reported as "every five minutes".
+func TestCreatedScheduleReplyDistinguishesRepeatFromOneTime(t *testing.T) {
+	previousLocal := time.Local
+	time.Local = time.FixedZone("server-local", 3600)
+	t.Cleanup(func() { time.Local = previousLocal })
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	ctx := internalBotRequestContext(t.Context(), "owner")
+	reg := &recordingRegistrar{}
+	if err := env.api.registerWorkScheduleTools(reg, "work", "owner", "", linkBetaPath, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, summary string
+		timing        map[string]interface{}
+		repeats       bool
+	}{
+		{"Recurring check", "Repeats every 5 minutes", map[string]interface{}{"cron_expression": "*/5 * * * *", "timezone": "UTC"}, true},
+		{"Daily check", "Repeats every day at 09:30", map[string]interface{}{"cron_expression": "30 9 * * *", "timezone": "Asia/Kolkata"}, true},
+		{"Weekday check", "Repeats on weekdays at 09:30", map[string]interface{}{"cron_expression": "30 9 * * 1-5", "timezone": "Asia/Kolkata"}, true},
+		{"One check without a zone", "One time at", map[string]interface{}{"in_minutes": float64(5)}, false},
+		{"One check", "One time at", map[string]interface{}{"in_minutes": float64(5), "timezone": "Asia/Kolkata"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args := map[string]interface{}{"name": tc.name, "message": "Check status"}
+			for key, value := range tc.timing {
+				args[key] = value
+			}
+			out, err := reg.tools["create_project_schedule"].exec(ctx, args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var reply struct {
+				TimingSummary string `json:"timing_summary"`
+			}
+			if err := json.Unmarshal([]byte(out), &reply); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(reply.TimingSummary, tc.summary) || (!tc.repeats && !strings.Contains(reply.TimingSummary, "does not repeat")) {
+				t.Fatalf("missing or incorrect saved timing summary: %q", reply.TimingSummary)
+			}
+			zone, _ := tc.timing["timezone"].(string)
+			if zone == "" {
+				zone = "UTC"
+			}
+			if !strings.Contains(reply.TimingSummary, "("+zone+")") {
+				t.Fatalf("saved timing summary lost the chosen timezone: %q", reply.TimingSummary)
+			}
+			records, err := readProjectSchedules(ctx, linkBetaPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, record := range records {
+				if record.Name != tc.name {
+					continue
+				}
+				found = true
+				if record.When.Timezone != zone {
+					t.Fatalf("chosen timezone not saved: %+v", record.When)
+				}
+				if tc.repeats {
+					if record.When.Cron != tc.timing["cron_expression"].(string) || len(record.When.Dates) != 0 {
+						t.Fatalf("recurrence not saved: %+v", record.When)
+					}
+				} else {
+					if record.When.Cron != "" || len(record.When.Dates) != 1 {
+						t.Fatalf("one-time timing not saved: %+v", record.When)
+					}
+					date := record.When.Dates[0]
+					if !strings.Contains(reply.TimingSummary, date.Date+" "+date.Time) {
+						t.Fatalf("reply differs from saved local date: summary=%q saved=%+v", reply.TimingSummary, record.When)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("saved schedule missing")
+			}
+			listed, err := reg.tools["list_project_schedules"].exec(ctx, map[string]interface{}{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var page struct {
+				Schedules []struct {
+					Name          string `json:"name"`
+					TimingSummary string `json:"timing_summary"`
+				} `json:"schedules"`
+			}
+			if err := json.Unmarshal([]byte(listed), &page); err != nil {
+				t.Fatal(err)
+			}
+			matched := false
+			for _, job := range page.Schedules {
+				if job.Name == tc.name {
+					matched = true
+					if job.TimingSummary != reply.TimingSummary {
+						t.Fatalf("saved list timing differs from creation: list=%q created=%q", job.TimingSummary, reply.TimingSummary)
+					}
+				}
+			}
+			if !matched {
+				t.Fatal("saved schedule absent from list")
+			}
+		})
+	}
 }
