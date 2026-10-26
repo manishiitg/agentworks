@@ -11,7 +11,7 @@ vi.hoisted(() => {
 })
 vi.mock('../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn((surface: string) => { window.history.pushState({}, '', `/${surface === 'work' ? 'crew' : surface === 'agentworks' ? 'goals' : surface}`) }) }))
 vi.mock('./WelcomeAiReadiness', () => ({ default: ({ onSetup, crewReadyView }: { onSetup: () => void; crewReadyView?: unknown }) => readiness.crewReady ? crewReadyView : <button onClick={onSetup}>Review AI setup</button> }))
-vi.mock('../services/api', () => ({ default: { post: vi.fn() } }))
+vi.mock('../services/api', async importOriginal => ({ ...await importOriginal<typeof import('../services/api')>(), default: { post: vi.fn() } }))
 const readiness = vi.hoisted(() => ({ crewReady: false }))
 
 import { WelcomeHome, WELCOME_HOME_DISMISSED_KEY } from './WelcomeHome'
