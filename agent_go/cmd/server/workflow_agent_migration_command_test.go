@@ -112,6 +112,12 @@ func TestWorkflowAgentDeploymentBatchPreflightsAndStampsLast(t *testing.T) {
 	flowConfig := `{"kind":"relay","version":"1.0.45","code_layout_version":1}`
 	goal := save("Workflow/old-goal", plan, goalConfig)
 	flow := save("Workflow/old-flow", plan, flowConfig)
+	// PLAT-871-18: real local data had old plan folders with no manifest.
+	// Skip those without changing their plan; malformed real Goals still fail.
+	orphan := save("Workflow/no-manifest", plan, goalConfig)
+	if err := os.Remove(filepath.Join(orphan, "workflow.json")); err != nil {
+		t.Fatal(err)
+	}
 	broken := save("Workflow/invalid", `{"steps":"invalid"}`, goalConfig)
 	if _, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, true, true, &out); err == nil {
 		t.Fatal("preparation ignored a conversion error")
@@ -124,6 +130,12 @@ func TestWorkflowAgentDeploymentBatchPreflightsAndStampsLast(t *testing.T) {
 	}
 	if n, err := migrateWorkflowAgentStepsFromDisk([]string{root}, true, true, true, &out); err != nil || n != 2 {
 		t.Fatalf("prepare old Goal/Flow: %d %v", n, err)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(orphan, "planning/plan.json")); string(raw) != plan {
+		t.Fatal("orphan plan changed")
+	}
+	if !strings.Contains(out.String(), "skip folder without workflow.json") {
+		t.Fatal("missing manifest skip was not reported")
 	}
 	for dir, config := range map[string]string{goal: goalConfig, flow: flowConfig} {
 		raw, _ := os.ReadFile(filepath.Join(dir, "workflow.json"))

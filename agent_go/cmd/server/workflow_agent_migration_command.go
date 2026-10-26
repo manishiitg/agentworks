@@ -101,6 +101,10 @@ func migrateWorkflowAgentStepsFromDisk(roots []string, apply, drained, prepareOn
 				return fmt.Errorf("%s: %w", identity, err)
 			}
 			manifest, err := agentMigrationReadFile(root, manifestName)
+			if errors.Is(err, fs.ErrNotExist) {
+				_, err := fmt.Fprintf(out, "skip folder without workflow.json: %s\n", path.Dir(manifestName))
+				return err
+			}
 			if err != nil {
 				return fmt.Errorf("%s: %w", manifestName, err)
 			}
