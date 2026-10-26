@@ -124,11 +124,16 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 				line += " (" + action.Scope + ")"
 			}
 			line += ": " + action.Description
-			if required, ok := member.tool.InputSchema["required"].([]any); ok && len(required) > 0 {
-				fields := []string{}
+			fields := []string{}
+			switch required := member.tool.InputSchema["required"].(type) {
+			case []string:
+				fields = required
+			case []any:
 				for _, field := range required {
 					fields = append(fields, fmt.Sprint(field))
 				}
+			}
+			if len(fields) > 0 {
 				line += " Requires " + strings.Join(fields, ", ") + "."
 			}
 			lines = append(lines, line)
