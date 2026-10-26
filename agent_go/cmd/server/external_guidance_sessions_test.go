@@ -134,7 +134,16 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	// Dashboard preparation includes shared panel, authoring and motion skills.
 	prepared := map[string]bool{}
 	for _, raw := range prep["guidance_skills"].([]any) {
-		prepared[raw.(map[string]any)["name"].(string)] = true
+		item := raw.(map[string]any)
+		prepared[item["name"].(string)] = true
+		if item["name"] == "panel-dashboard" {
+			for _, rawFile := range item["files"].([]any) {
+				file := rawFile.(map[string]any)
+				if file["path"] != "SKILL.md" && file["content"] != nil {
+					t.Fatal("area reference bodies were eagerly loaded")
+				}
+			}
+		}
 	}
 	// Other admitted actions may contribute their own guidance (for example
 	// the static-publishing procedure); keep the relevant-skill rule, not a count.

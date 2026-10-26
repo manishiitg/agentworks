@@ -502,7 +502,26 @@ func (api *StreamingAPI) externalGuidanceTopicBody(w http.ResponseWriter, r *htt
 		externalError(w, 404, "unknown_topic", "Topic is not part of the external guidance profile. Use help action=topics.")
 		return
 	}
-	version := externalTopicVersionFor(GetUserFromContext(r.Context()), *allowed)
+	claims := GetUserFromContext(r.Context())
+	version := externalTopicVersionFor(claims, *allowed)
+	// A topic receipt does not say that a particular reference was loaded.
+	// Explicit file reads always return the requested canonical bundle member.
+	if path := externalArg(args, "path"); path != "" {
+		files, err := externalGuidanceSkillFiles(claims, *allowed)
+		if err != nil {
+			externalError(w, 500, "guidance_unavailable", "Guidance could not be rendered.")
+			return
+		}
+		for _, raw := range files {
+			file := raw.(map[string]any)
+			if file["path"] == path {
+				externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersionFor(claims), "topic": name, "version": version, "path": path, "content": file["content"]})
+				return
+			}
+		}
+		externalError(w, 404, "unknown_reference", "That file is not bundled with this guide. Read help action=topic without path, then choose a listed reference.")
+		return
+	}
 	if known := externalArg(args, "known_version"); known != "" && known == version {
 		externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersionFor(GetUserFromContext(r.Context())), "topic": name, "version": version, "unchanged": true})
 		return

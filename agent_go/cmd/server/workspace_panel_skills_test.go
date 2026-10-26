@@ -50,7 +50,7 @@ func TestPanelToolMappingsRespectProductAdmission(t *testing.T) {
 			}
 		}
 	}
-	panel := skills.BuiltinDefinition("panel-google-apps")
+	panel := skills.BuiltinDefinition("panel-channels")
 	if panel == nil {
 		t.Fatal("missing shared Google panel procedure")
 	}

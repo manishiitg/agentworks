@@ -43,8 +43,8 @@ are no Help popups or tours. Explain directly and load the relevant attached
 | `costs`, `execution-logs` | Recorded Costs and usage, or Run logs for real work. |
 | `playbooks`, `publish`, `notify`, `backup` | The corresponding Setup page. |
 
-Use `panel-goal-plan`/`panel-goal-execution` for Goal execution,
-`panel-decisions` for decisions, and the matching
+Use `panel-plan`/`panel-runs` for Goal execution,
+`panel-access` for decisions, and the matching
 shared panel skill for other tasks. Inspect the actual question before answering
 a decision. Discussion alone does not select an option; saving an answer and
 implementing the chosen change are separate results.
@@ -70,13 +70,13 @@ The website can offer a destination before a running server advertises its
 UI target. Do not invent support or retry a rejected target under another name.
 Explain the concrete limitation and use the project's visible menu if useful.
 Vault holds app/Google/Slack account selections, secret names and computers;
-MCP access connects an external AI app to AgentWorks. Read `panel-vault` and
-`panel-mcp-access` for those distinct jobs. Do not send people to retired
+MCP access connects an external AI app to AgentWorks. Read `panel-access` and
+`panel-access` for those distinct jobs. Do not send people to retired
 Connected/Available/Secrets tab rows merely because an older target still exists.
 
 ## Flows and boundaries
 
-Flows use `relay-builder`, `panel-relay-code` and `panel-relay-runs`: a Python/DBOS
+Flows use `relay-builder`, `panel-plan` and `panel-runs`: a Python/DBOS
 graph, source code and versioned calls, not a Goal step plan.
 Only the Flow's advertised inventory is available. Crew navigation belongs
 to the separate `work-ui-control` skill and its own panel IDs.
@@ -89,6 +89,6 @@ to the separate `work-ui-control` skill and its own panel IDs.
   result; do not blindly replay with a new key.
 - Builder and Run visibility, personal accounts, unshared chats and tab control
   remain governed by existing server checks. An open view is no access grant.
-- Open Browser once for actual browser work. Read `panel-browser` and its
+- Open Browser once for actual browser work. Read `panel-settings` and its
   relevant browser procedure; Builders can interact while work continues,
   and shared Run users keep their existing watch-only presentation.

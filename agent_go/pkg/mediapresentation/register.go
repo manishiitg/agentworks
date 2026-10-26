@@ -33,7 +33,7 @@ func Register(registry *agentprofiles.Registry, endpoint string) error {
 			if err != nil {
 				return spec, err
 			}
-			spec.Description += " Read panel-dashboard/references/media.md before use. Optional collection_id groups results in the dashboard."
+			spec.Description += " Read panel-dashboard/references/dashboard/references/media.md before use. Optional collection_id groups results in the dashboard."
 			spec.Parameters["properties"].(map[string]interface{})["collection_id"] = map[string]interface{}{"type": "string", "description": "Optional stable group ID for related results."}
 			execute := spec.Execute
 			spec.Execute = func(ctx context.Context, args map[string]interface{}) (string, error) {

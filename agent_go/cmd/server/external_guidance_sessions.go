@@ -160,8 +160,8 @@ func externalGuidanceVersions(claims *UserClaims, names []string) map[string]str
 	return versions
 }
 
-// Selected schema preparation serves full canonical skills once per delivered
-// topic/version. Metadata discovery never creates a delivery record. An explicit
+// Selected schema preparation serves canonical guides once per delivered
+// topic/version, with area references listed for on-demand reads. Metadata discovery never creates a delivery record. An explicit
 // full help fetch ignores the receipt, so a compacted context can reload it.
 func (api *StreamingAPI) externalPrepareGuidance(r *http.Request, value map[string]any, handle string) {
 	topics := []string{}
@@ -199,6 +199,14 @@ func (api *StreamingAPI) externalPrepareGuidance(r *http.Request, value map[stri
 		if err != nil {
 			continue
 		}
+		if topic.Source == "panel" {
+			for _, raw := range body {
+				file := raw.(map[string]any)
+				if file["path"] != "SKILL.md" {
+					delete(file, "content")
+				}
+			}
+		}
 		files = append(files, map[string]any{"name": item.Name, "version": item.Version, "files": body})
 		delivered[item.Name] = true
 	}
@@ -233,7 +241,7 @@ func (api *StreamingAPI) externalGuidanceResponse(w http.ResponseWriter, r *http
 			if rec.status >= 200 && rec.status < 300 && name == "get_guidance_topic" {
 				topic, _ := value["topic"].(string)
 				content, _ := value["content"].(string)
-				if content != "" {
+				if path := externalArg(args, "path"); content != "" && (path == "" || path == "SKILL.md") {
 					if canonical := externalGuidanceTopicByName(topic); canonical != nil {
 						topics = append(topics, canonical.Name)
 						delivered[canonical.Name] = true

@@ -41,6 +41,7 @@ func init() {
 		}
 		var header struct {
 			Metadata struct {
+				Version       string              `yaml:"version"`
 				Tools         map[string][]string `yaml:"panel-tools"`
 				ExternalTools []string            `yaml:"external-tools"`
 			} `yaml:"metadata"`
@@ -76,7 +77,7 @@ func init() {
 			panic(err)
 		}
 		if err := RegisterBuiltin(&llmtypes.Skill{Name: name, Description: parsed.Frontmatter.Description,
-			Content: parsed.Content, SupportingFiles: supporting, Source: llmtypes.SkillSource{Origin: "builtin"}}); err != nil {
+			Content: parsed.Content, SupportingFiles: supporting, Metadata: map[string]string{"version": header.Metadata.Version}, Source: llmtypes.SkillSource{Origin: "builtin"}}); err != nil {
 			panic(err)
 		}
 	}
@@ -116,15 +117,15 @@ func WorkspacePanelToolGuidance(tool, description string, attached []*llmtypes.S
 			continue
 		}
 		for _, tools := range workspacePanelTools[skill.Name] {
-			if slices.Contains(tools, tool) && !slices.Contains(names, skill.Name) {
+			if slices.ContainsFunc(tools, func(source string) bool { return source == tool || platformtools.PublicName(source) == tool }) && !slices.Contains(names, skill.Name) {
 				names = append(names, skill.Name)
 			}
 		}
 	}
-	if len(names) == 0 || strings.Contains(description, "Before changing this panel, read the matching attached skill") {
+	if len(names) == 0 || strings.Contains(description, "Read the relevant attached guide with read_skill") {
 		return description
 	}
-	return description + "\nBefore changing this panel, read the matching attached skill with read_skill (choose the relevant one): " + strings.Join(names, ", ") + "."
+	return description + "\nRead the relevant attached guide with read_skill (choose the area for this action): " + strings.Join(names, ", ") + "."
 }
 
 func WorkspacePanelNames() []string {

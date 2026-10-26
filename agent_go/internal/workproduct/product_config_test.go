@@ -27,7 +27,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 	if manifest.Profile.Scope != agentprofiles.ProfileScopeProject {
 		t.Fatalf("work must declare scope: project, got %q", manifest.Profile.Scope)
 	}
-	for _, want := range []string{"agent-browser", "panel-secrets", "panel-functions", "panel-skills", "panel-watchers", "panel-dashboard", "work-ui-control", "background-work"} {
+	for _, want := range []string{"agent-browser", "panel-access", "panel-dashboard", "panel-data", "panel-automations", "panel-dashboard", "work-ui-control", "background-work"} {
 		if !contains(manifest.Profile.Skills, want) {
 			t.Fatalf("work feature bundles omitted skill %q: %v", want, manifest.Profile.Skills)
 		}
@@ -314,7 +314,7 @@ func TestRenderPromptSucceedsAgainstAPromptContext(t *testing.T) {
 		"general-purpose",
 		"Read the relevant attached skill",
 		"Read `crew-builder`",
-		"panel-functions",
+		"panel-dashboard",
 		"## How to talk to the user",
 		"runs a small business and is not technical",
 		"Use business words, never platform words alone",

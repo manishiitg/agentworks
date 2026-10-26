@@ -127,6 +127,14 @@ func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 	if same["unchanged"] != true || same["content"] != nil {
 		t.Fatalf("unchanged topic was resent: %v", same)
 	}
+	// PLAT-825-113: an area router fetch must not require loading every procedure.
+	area := externalTestBody(t, f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "panel-dashboard"}), 200)
+	path := "references/dashboard/SKILL.md"
+	ref := externalTestBody(t, f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "panel-dashboard", "path": path, "known_version": area["version"]}), 200)
+	if ref["path"] != path || ref["content"] == "" || ref["content"] == area["content"] || ref["unchanged"] == true {
+		t.Fatalf("reference was not independently readable: %v", ref)
+	}
+	externalTestBody(t, f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "panel-dashboard", "path": "../workflow.json"}), 404)
 	// A topic outside the external profile is rejected even though it exists
 	// in the builder reference.
 	unknown := f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "plan-editing-tools"})

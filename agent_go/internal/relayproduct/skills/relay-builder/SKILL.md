@@ -238,6 +238,6 @@ external services using ordinary Python clients.
 
 ## Watchers
 
-Read `panel-watchers` for the caller setup. A Relay Watcher invokes a published
+Read `panel-automations` for the caller setup. A Relay Watcher invokes a published
 Flow function with the event payload as INPUT; it does not add polling, a Goal
 plan, DB/KB/learnings stages or automatic closing work to Flow execution.

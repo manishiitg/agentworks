@@ -18,7 +18,7 @@ chat:
     external_tools: [create_relay, update_relay, builder_chat, builder_tabs, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, get_relay_releases, relay_owners, publish_relay, test_relay, run_relay, get_relay_run, list_relay_runs]
     prompt:
       file: prompts/builder.md
-    skills: [relay-builder, panel-dashboard, panel-functions, panel-skills, panel-files, panel-browser, panel-chat-history, panel-watchers, panel-webhooks, panel-mcp-access, panel-mcp-connections, panel-secrets, panel-brain, panel-linked-folders, panel-google-apps, panel-slack-account, panel-whatsapp, panel-agentbridge, panel-sharing, panel-settings, panel-models, panel-costs, panel-relay-code, panel-relay-runs]
+    skills: [relay-builder, panel-dashboard, panel-data, panel-settings, panel-runs, panel-automations, panel-access, panel-channels, panel-plan]
     tools:
       # MCP Builder turns use the shared guarded revision/audit file tools.
       - settings

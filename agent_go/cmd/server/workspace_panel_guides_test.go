@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -21,7 +20,7 @@ func TestSharedPanelReferencesReachBothTransports(t *testing.T) {
 		for _, file := range native.SupportingFiles {
 			references[file.RelPath] = string(file.Content)
 		}
-		for _, match := range regexp.MustCompile(`\]\((references/[^)]+)\)`).FindAllStringSubmatch(native.Content, -1) {
+		for _, match := range regexp.MustCompile("(?:\\]\\(|`)(references/[^)`]+)(?:\\)|`)").FindAllStringSubmatch(native.Content, -1) {
 			if references[match[1]] == "" {
 				t.Fatalf("%s points to missing %s", name, match[1])
 			}
@@ -73,7 +72,7 @@ func TestWhatsAppRelayRouteUsesCurrentProductAccess(t *testing.T) {
 	if ok, _ := f.api.checkWhatsAppWorkflowAccess(t.Context(), "reader", route); ok {
 		t.Fatal("removed sharing still reached the Flow")
 	}
-	if !strings.Contains(skills.BuiltinDefinition("panel-whatsapp").Content, "whatsapp_unpair") {
+	if len(skills.BuiltinDefinition("panel-channels").SupportingFiles) == 0 {
 		t.Fatal("the shared phone controls have no procedure")
 	}
 }

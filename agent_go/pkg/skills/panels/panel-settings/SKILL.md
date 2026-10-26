@@ -1,36 +1,66 @@
 ---
 name: panel-settings
-description: Instructions and identity panel in Goals and Crews. Change the project name, purpose, instructions
-  or settings.
+description: Change project settings or models, inspect usage, or use the browser,
+  terminal and a connected computer.
 metadata:
+  version: 2.0.0
   panel-tools:
     work:
     - set_work_identity
     - manage_custom_commands
     - execute_shell_command
     - settings
+    - models
+    - costs
+    - manage_laptop_access
+    - perform_ui_action
+    - browser_connections
+    - agent_browser
     agentworks:
     - manage_custom_commands
     - execute_shell_command
     - manage_project
     - settings
+    - models
+    - costs
+    - manage_laptop_access
+    - browser_connections
+    - agent_browser
+    - get_contract_upgrades
+    - set_workflow_contract_version
+    - migrate_workflow_skills
     relays:
     - manage_custom_commands
     - execute_shell_command
     - manage_project
     - settings
+    - models
+    - costs
+    - browser_connections
+    - agent_browser
   external-tools:
   - settings
-  - manage_project
+  - workspace
+  - models
+  - settings.chat
+  - costs
+  - terminal
+  - browser
+  - workflow_upgrade
 ---
 
-# Instructions and identity
+# Settings
 
-Read current project identity and instructions first. Crew uses set_work_identity plus its scoped instruction file tools; Goals and Relays use settings action=get/update and manage_project for label/description/icon. Use settings for its offered connection, knowledge-link, secret-name and notification fields. Use models for model choices. Preserve unrelated settings and verify the saved result. Discover the current schema; never edit provider secrets or managed runtime configuration files directly.
+Change project settings or models, inspect usage, or use the browser, terminal and a connected computer.
 
+Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name and path; over MCP use `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
 
-## App chat instructions
+- Settings: read `references/settings/SKILL.md` when needed.
+- Models: read `references/models/SKILL.md` when needed.
+- Costs: read `references/costs/SKILL.md` when needed.
+- Local laptop: read `references/local-laptop/SKILL.md` when needed.
+- Terminal: read `references/terminal/SKILL.md` when needed.
+- Browser: read `references/browser/SKILL.md` when needed.
+- Upgrades: read `references/upgrades/SKILL.md` when needed.
 
-Use `settings` action=get to read the optional `chat_instructions` on a Goal, Crew or Relay. When its owner asks, set it with action=update and `chat_instructions` (empty clears; omitted preserves). The same field appears as **Chat instructions** beside Purpose in Settings. Keep it under 4,000 characters: useful behavior, tone and what to ask first, in plain words. It is visible to people who can use the app; never store secrets here. It is shared app guidance composed with Purpose and platform policy, not a complete system prompt override, tool grant or replacement for Builder instruction files. Existing permissions and confirmation rules still apply. Verify the saved value; a changed instruction refreshes retained chat guidance on the next turn.
-
-Use `settings action=variables` only where offered to change declared workflow variables. `settings action=chat` reads or changes the personal Context display; it does not change project access. Model choices use `models action=get/set`, with an offered `scope` of project or tab.
+Verify the saved result or returned run result, then give the person one clear next step. Keep their existing notes and omitted settings.

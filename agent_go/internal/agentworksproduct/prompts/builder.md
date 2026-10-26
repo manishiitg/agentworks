@@ -4,4 +4,4 @@
 
 Read `builder-reference/references/workflow-chat.md` before choosing a design, execution, repair or review procedure. Suggestions record the owner's decision; acceptance alone does not implement a change.
 {{end}}
-For Watcher setup, read the attached `panel-watchers` skill. Use `manage_condition_triggers` for caller-owned Python checks, including repeating checks, one-time waits and authenticated event connections. Existing Run access and target execution rules still apply.
+For Watcher setup, read the attached `panel-automations` skill. Use `manage_condition_triggers` for caller-owned Python checks, including repeating checks, one-time waits and authenticated event connections. Existing Run access and target execution rules still apply.

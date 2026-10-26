@@ -140,7 +140,7 @@ func TestWorkflowReferencesProjectScopedCrewInvocationTools(t *testing.T) {
 	if got := strings.Join(FeaturePromptExtensions(profile), "\n"); !strings.Contains(got, "Crew-scoped secretless internal trigger") || !strings.Contains(got, "public webhook triggers") {
 		t.Fatalf("workflow-reference constraints must preserve the invocation boundary: %q", got)
 	}
-	if got := profile.ResolvedFeatures[0].PromptExtension; !strings.Contains(got, "panel-functions") || strings.Contains(got, "project_functions_call") {
+	if got := profile.ResolvedFeatures[0].PromptExtension; !strings.Contains(got, "panel-dashboard") || strings.Contains(got, "project_functions_call") {
 		t.Fatalf("feature metadata must route procedures to its skill: %q", got)
 	}
 }
@@ -155,7 +155,7 @@ func TestBotsProjectSharedGmailTools(t *testing.T) {
 			t.Fatalf("bots feature omitted %s: %v", tool, profile.ToolPolicy.Enabled)
 		}
 	}
-	for _, skill := range []string{"panel-google-apps"} {
+	for _, skill := range []string{"panel-channels"} {
 		if !containsString(profile.Skills, skill) {
 			t.Fatalf("bots feature omitted operating skill %q: %v", skill, profile.Skills)
 		}
@@ -241,7 +241,7 @@ func TestMCPFeatureScope(t *testing.T) {
 	feature := personal.ResolvedFeatures[0]
 	// The platform-wide tools go; the skill stays (the product supplies the
 	// text for its own kind of connection) and the guidance names the tool.
-	if len(feature.Tools) != 0 || !containsString(feature.Skills, "panel-mcp-connections") || !containsString(feature.Skills, "panel-mcp-access") || !strings.Contains(feature.PromptExtension, "install_mcp_server") {
+	if len(feature.Tools) != 0 || !containsString(feature.Skills, "panel-access") || !containsString(feature.Skills, "panel-access") || !strings.Contains(feature.PromptExtension, "install_mcp_server") {
 		t.Fatalf("personal MCP = %+v", feature)
 	}
 	if _, err := resolve("everyone"); err == nil {

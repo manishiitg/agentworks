@@ -56,22 +56,22 @@ Use attached skills and live schemas, including product-specific differences.
 | Panel or task | Read |
 |---|---|
 | Dashboards, TSX conversion, live data, actions, motion or video | `panel-dashboard` and its relevant authoring/motion reference |
-| Plan & progress; starting, stopping or investigating Goal work | `panel-goal-plan`, `panel-goal-execution`, `panel-run-logs` |
+| Plan & progress; starting, stopping or investigating Goal work | `panel-plan`, `panel-runs`, `panel-runs` |
 | Goals & metrics | `references/measurement-plan.md`; define and edit with Builder |
-| Pending Decisions | `panel-decisions` |
-| Functions; schedules; Watchers; webhooks | `panel-functions`, `panel-schedules`, `panel-watchers`, `panel-webhooks` |
-| Email inbox or personal Gmail monitoring, when offered | `panel-inbox`, `panel-google-apps`, `panel-watchers`; respect each product's supported source |
-| Files, Database or the Goal's Knowledge base | `panel-files`, `panel-database`, `panel-knowledgebase` |
-| Chat history and named agent tabs | `panel-chat-history` |
-| Vault: apps, saved accounts, secrets and computers used here | `panel-vault`; then `panel-mcp-connections`, `panel-secrets`, `panel-google-apps` or `panel-slack-account` as needed; computer grants use `panel-vault` and the admitted `manage_laptop_access` schema |
-| Brain, Linked work, or reusable Skills | `panel-brain`, `panel-linked-folders`, `panel-skills` |
-| Browser, live interaction or saving a reusable browser procedure | `panel-browser` |
-| Access: owners, audience and selected shared Crew agents | `panel-sharing`; shared agents keep the existing product's supported contract |
-| Goal execution Team | `panel-team`; execution assignments are separate from Share |
-| AgentBridge or Chats from your computer | `panel-agentbridge`; messages and computer connection grants remain separate |
-| Slack bot, WhatsApp or connecting an external AI app | `panel-slack-bot`, `panel-whatsapp`, `panel-mcp-access` |
-| Settings, instructions, Models, Costs and usage | `panel-settings`, `panel-models`, `panel-costs` |
-| Workflow playbooks, Publish, Notify, Backup, Upgrades | `panel-playbooks`, `panel-publish`, `panel-notify`, `panel-backup`, `panel-upgrades` |
+| Pending Decisions | `panel-access` |
+| Functions; schedules; Watchers; webhooks | `panel-dashboard`, `panel-automations`, `panel-automations`, `panel-automations` |
+| Email inbox or personal Gmail monitoring, when offered | `panel-channels`, `panel-channels`, `panel-automations`; respect each product's supported source |
+| Files, Database or the Goal's Knowledge base | `panel-data`, `panel-data`, `panel-data` |
+| Chat history and named agent tabs | `panel-runs` |
+| Vault: apps, saved accounts, secrets and computers used here | `panel-access`; then `panel-access`, `panel-access`, `panel-channels` or `panel-channels` as needed; computer grants use `panel-access` and the admitted `manage_laptop_access` schema |
+| Brain, Linked work, or reusable Skills | `panel-data`, `panel-access`, `panel-data` |
+| Browser, live interaction or saving a reusable browser procedure | `panel-settings` |
+| Access: owners, audience and selected shared Crew agents | `panel-access`; shared agents keep the existing product's supported contract |
+| Goal execution Team | `panel-access`; execution assignments are separate from Share |
+| AgentBridge or Chats from your computer | `panel-access`; messages and computer connection grants remain separate |
+| Slack bot, WhatsApp or connecting an external AI app | `panel-channels`, `panel-channels`, `panel-access` |
+| Settings, instructions, Models, Costs and usage | `panel-settings`, `panel-settings`, `panel-settings` |
+| Workflow playbooks, Publish, Notify, Backup, Upgrades | `panel-data`, `panel-dashboard`, `panel-channels`, `panel-dashboard`, `panel-settings` |
 
 ## Current navigation and assistance
 
@@ -100,7 +100,7 @@ state the exact limitation and give the current menu destination when useful.
 - Goals have executable plans, steps and AgentWorks. Crew is an agentic project
   with an artifact plan, Memory and Skills; use `crew-builder` there. Flows
   (Relays internally) use their Python/DBOS graph, code and versioned runs; use
-  `relay-builder`, `panel-relay-code` and `panel-relay-runs`. Do not turn one
+  `relay-builder`, `panel-plan` and `panel-runs`. Do not turn one
   product's plan, run or view contract into another's.
 - Run callers use shared entry points. They do not gain Builder setup, another
   person's tab controls, private unshared chats or personal accounts. Selected
