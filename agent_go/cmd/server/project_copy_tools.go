@@ -168,13 +168,30 @@ func (api *StreamingAPI) externalCopyProjectFiles(w http.ResponseWriter, r *http
 		externalError(w, 403, "protected_path", "Destination is protected or outside write grants.")
 		return
 	}
-	listing, err := externalFileRequest(r.Context(), wf.Request{Root: source, Operation: "list", Path: p, Depth: 64, Limit: 10000})
+	// The file reader serves at most 200 entries and 8 levels per page; read
+	// every page so a large folder is copied whole.
+	listing, err := externalFileRequest(r.Context(), wf.Request{Root: source, Operation: "list", Path: p, Depth: 8, Limit: 200})
 	if err != nil {
 		externalFailure(w, err)
 		return
 	}
-	if listing.Truncated || listing.DepthLimited || listing.NextOffset != 0 {
-		externalError(w, 400, "copy_limit", "This folder is too large to copy in one go; copy its subfolders one at a time.")
+	for next := listing.NextOffset; next != 0; {
+		page, pageErr := externalFileRequest(r.Context(), wf.Request{Root: source, Operation: "list", Path: p, Depth: 8, Limit: 200, Offset: next})
+		if pageErr != nil {
+			externalFailure(w, pageErr)
+			return
+		}
+		listing.Entries = append(listing.Entries, page.Entries...)
+		listing.DepthLimited = listing.DepthLimited || page.DepthLimited
+		listing.Truncated = page.Truncated
+		next = page.NextOffset
+	}
+	if listing.Truncated {
+		externalError(w, 400, "copy_limit", "This folder is too large to list in full; copy its subfolders one at a time.")
+		return
+	}
+	if listing.DepthLimited {
+		externalError(w, 400, "copy_limit", "This folder is nested more than 8 levels deep; copy its subfolders one at a time.")
 		return
 	}
 	files := []projectCopyFile{}
