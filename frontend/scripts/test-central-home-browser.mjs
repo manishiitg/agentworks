@@ -42,6 +42,17 @@ try {
   assert.match(await draft.inputValue(), /research, prepare documents/)
   assert.equal(sent.length, 0, 'use case only fills a request')
   await page.screenshot({ path: path.join(output, 'central-home-desktop.png') })
+  const footerGeometry = () => home.evaluate(element => {
+    element.scrollTop = element.scrollHeight
+    return element.getBoundingClientRect().bottom - element.querySelector('[aria-labelledby="welcome-tools"]').getBoundingClientRect().bottom
+  })
+  // Include the real global modal CSS: its child height cap used to swallow Home's padding.
+  await home.locator(':scope > div').evaluate(element => element.classList.remove('max-h-none'))
+  assert.ok(await footerGeometry() < 1, 'reproduce the former clipped footer with the global modal height cap')
+  await home.locator(':scope > div').evaluate(element => element.classList.add('max-h-none'))
+  assert.ok(await footerGeometry() >= 47, 'desktop retains 48px below the final card')
+  await page.screenshot({ path: path.join(output, 'central-home-desktop-bottom.png') })
+  await home.evaluate(element => { element.scrollTop = 0 })
   assert.equal(await home.getByLabel('Direct product creation').getByRole('button', { name: /^Open/ }).count(), 0)
   for (const [button, heading] of [['Create a Goal', 'Add Automation'], ['Create a Flow', 'Add Flow']]) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -83,6 +94,8 @@ try {
     await page.setViewportSize({ width, height: 844 }); await page.goto(url); await draft.waitFor()
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
     await page.screenshot({ path: path.join(output, `central-home-mobile-${width}.png`) })
+    assert.ok(await footerGeometry() >= 47, `${width}px phone retains 48px below the final card`)
+    await page.screenshot({ path: path.join(output, `central-home-mobile-${width}-bottom.png`) })
   }
   ready = false
   await page.setViewportSize({ width: 1440, height: 1000 }); await page.goto(url)

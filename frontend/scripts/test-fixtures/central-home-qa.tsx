@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import { useEffect, useState } from 'react'
 import '../../src/index.css'
+import '../../src/App.css'
 import { AppShell } from '../../src/components/workspace/AppShell'
 import { WelcomeHome } from '../../src/components/WelcomeHome'
 import { useAuthStore } from '../../src/stores/useAuthStore'
