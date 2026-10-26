@@ -42,6 +42,7 @@ beforeEach(() => {
   useWorkspaceStore.setState({ files: [{ filepath: 'Workflow', type: 'folder', children: [{ filepath: 'Workflow/report.md', type: 'file' }] }, { filepath: 'plan.json', type: 'file' }] })
   setProductCommands(toAgentworksCommandDefinitions([
     { name: 'design-plan', description: 'Review', icon: 'check-circle', aliases: ['review-plan'], menuHidden: false, prompt: 'Review {{context}}.' },
+    { name: 'draft-summary', description: 'Summarize notes', icon: 'file', aliases: [], menuHidden: false, prompt: 'Summarize {{context}}.' },
   ]))
 })
 afterEach(async () => {
