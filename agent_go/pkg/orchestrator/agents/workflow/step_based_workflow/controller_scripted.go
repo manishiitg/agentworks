@@ -14,6 +14,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	orchevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	toolcatalog "github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/agent/codeexec"
@@ -916,6 +917,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(step Pla
 		if fn, ok := executor.(func(context.Context, map[string]interface{}) (string, error)); ok {
 			bridgeTools[name] = fn
 			allow[name] = true
+		}
+	}
+	// Saved scripts and the built-in helpers call the public family names (database, metrics, ...).
+	for family, fn := range toolcatalog.ScriptFamilies(bridgeTools) {
+		if _, taken := bridgeTools[family]; !taken {
+			bridgeTools[family] = fn
+			allow[family] = true
 		}
 	}
 	codeexec.InitRegistryForSession(sessionID, bridgeTools, hcpo.GetLogger())
