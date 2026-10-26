@@ -2988,6 +2988,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	api.scheduler = schedulerSvc
 	productScheduleSvc := NewProjectActionDispatcher(api, profileRegistry)
 	api.projectActions = productScheduleSvc
+	// A saved Goal tells its owners' AgentWorks to catch up (PLAT-825-99).
+	agentWorksGoalChanged = func(manifest *WorkflowManifest) { api.refreshAgentWorksSoon(agentWorksGoalOwners(manifest)...) }
 	// Recover accepted conversation turns before either scheduler can compete
 	// for those same session lanes. Both services are already wired so a
 	// recovered turn sees the normal runtime capabilities.

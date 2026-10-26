@@ -273,6 +273,7 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 		writeAgentProfileError(w, http.StatusInternalServerError, externalCrewCreateError(id, err))
 		return
 	}
+	api.refreshAgentWorksSoon(claims.UserID)
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": true, "id": id, "workspace_path": created["workspace_path"]})
 }
 

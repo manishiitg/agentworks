@@ -179,6 +179,7 @@ func (api *StreamingAPI) externalCreateProject(w http.ResponseWriter, r *http.Re
 			externalError(w, 400, "creation_failed", externalCrewCreateError(id, setupErr))
 			return
 		}
+		api.refreshAgentWorksSoon(claims.UserID)
 		out := map[string]any{"workspace_id": crewProfileID + ":" + id, "crew_id": id, "id": id, "name": value.Name}
 		if setupErr != nil {
 			out["warnings"] = []string{projectCreationWarning(setupErr)}

@@ -437,6 +437,7 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 			return "", err
 		}
 		updateWorkSessionWorkflowGuard(sessionID, nil, path, removedReadRoot)
+		api.agentWorksGoalDetached(ctx, userID, workspacePath, path)
 		api.emitAgentProfileEvent(sessionID, map[string]interface{}{"type": "work_workflow_references_updated", "workflow_context_paths": paths})
 		return "Project reference detached. Access is revoked now.", nil
 	})

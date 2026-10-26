@@ -207,7 +207,11 @@ func saveWorkflowTimerActions(ctx context.Context, root string, manifest *Workfl
 		}
 		records = append(records, record)
 	}
-	return writeProjectSchedules(ctx, root, records)
+	if err := writeProjectSchedules(ctx, root, records); err != nil {
+		return err
+	}
+	notifyAgentWorksGoalChanged(manifest)
+	return nil
 }
 
 func loadCrewTimerActions(ctx context.Context, root string, manifest *productProjectManifest) error {

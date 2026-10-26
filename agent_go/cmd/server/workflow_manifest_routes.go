@@ -735,6 +735,7 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 	markPhase("remove_folder")
 
 	deleteWorkflowRuntime(manifest.ID)
+	api.refreshAgentWorksSoon(agentWorksGoalOwners(manifest)...)
 
 	api.workflowOrchestratorContextMux.Lock()
 	cancelFunc := api.workflowOrchestratorContexts[manifest.ID]
