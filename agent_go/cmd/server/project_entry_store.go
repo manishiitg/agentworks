@@ -139,7 +139,7 @@ func workflowFunctionExecutionView(fn projectFunctionDefinition) (WorkflowSchedu
 	if err := json.Unmarshal(fn.Input, &input); err != nil {
 		return WorkflowSchedule{}, err
 	}
-	spec := &WorkflowFunctionSpec{Name: fn.Name, Description: fn.Description, AllowedCallers: fn.AllowedCallers}
+	spec := &WorkflowFunctionSpec{Name: fn.Name, Description: fn.Description, AllowedCallers: fn.AllowedCallers, InputSchema: fn.InputSchema}
 	required := map[string]bool{}
 	// JSON decoding and native authoring may use either of these slice types.
 	switch values := fn.InputSchema["required"].(type) {

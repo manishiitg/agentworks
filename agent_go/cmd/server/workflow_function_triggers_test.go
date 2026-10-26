@@ -170,7 +170,7 @@ func TestCrewSeesWorkflowFunctions(t *testing.T) {
 	}
 	// The same Builder can now define a whole-plan entry through the common
 	// service. This is saved configuration only; no plan is executed here.
-	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]interface{}{"project": "#workflow:Reports", "definition": map[string]interface{}{"name": "run_report", "action": map[string]interface{}{"type": "run"}, "input_schema": map[string]interface{}{"type": "object"}}}); err != nil {
+	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]interface{}{"project": "#workflow:Reports", "definition": map[string]interface{}{"name": "run_report", "action": map[string]interface{}{"type": "run"}, "input": map[string]interface{}{"groups": []string{"default"}}, "input_schema": map[string]interface{}{"type": "object"}}}); err != nil {
 		t.Fatalf("define on owned Goal: %v", err)
 	}
 
@@ -351,5 +351,66 @@ func TestWorkflowFunctionCallStatusAndResultSize(t *testing.T) {
 		len(decoded.Steps) != 1 || decoded.Steps[0].StepID != "review" || len(decoded.Steps[0].Files) != 1 ||
 		decoded.Steps[0].Files[0].Name != "findings.json" || decoded.Steps[0].Files[0].Size != int64(len(big)) {
 		t.Fatalf("result = %s err=%v", encoded, err)
+	}
+}
+
+// PLAT-871: a manifest save must retain authored constraints, and calls must enforce them.
+func TestGoalFunctionSchemaSurvivesManifestSaveAndValidatesCalls(t *testing.T) {
+	env := newCrewFunctionEnv(t)
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	env.mock.mu.Lock()
+	env.mock.files["Workflow/reports/variables/variables.json"] = `{"variables":[{"name":"INPUT","value":""}],"groups":[{"name":"default"}]}`
+	env.mock.mu.Unlock()
+	schema := map[string]interface{}{
+		"type": "object", "required": []interface{}{"INPUT"}, "additionalProperties": false,
+		"properties": map[string]interface{}{"INPUT": map[string]interface{}{
+			"type": "object", "required": []interface{}{"count", "code"},
+			"properties": map[string]interface{}{
+				"count": map[string]interface{}{"type": "integer", "minimum": float64(1)},
+				"code":  map[string]interface{}{"type": "string", "pattern": "^ok-"},
+			},
+		}},
+	}
+	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]interface{}{
+		"project": "#workflow:Reports", "definition": map[string]interface{}{
+			"name": "constrained", "action": map[string]interface{}{"type": "run"}, "input_schema": schema,
+			"input": map[string]interface{}{"groups": []string{"default"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, _, err := ReadWorkflowManifest(ctx, "Workflow/reports")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.Label = "Reports renamed"
+	if err := WriteWorkflowManifest(ctx, "Workflow/reports", manifest); err != nil {
+		t.Fatal(err)
+	}
+	records, err := readProjectFunctionDefinitions(ctx, "Workflow/reports")
+	if err != nil || len(records) != 1 {
+		t.Fatalf("saved function records=%v err=%v", records, err)
+	}
+	want, _ := json.Marshal(schema)
+	got, _ := json.Marshal(records[0].InputSchema)
+	if string(got) != string(want) {
+		t.Fatalf("authored schema lost on manifest save: got=%s want=%s", got, want)
+	}
+	view, err := workflowFunctionExecutionView(records[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := map[string]interface{}{"INPUT": map[string]interface{}{"count": float64(2), "code": "ok-run"}}
+	variables, _, err := workflowFunctionArgs(view, valid)
+	if err != nil || !strings.Contains(variables["INPUT"], `"code":"ok-run"`) {
+		t.Fatalf("valid schema input rejected: variables=%v err=%v", variables, err)
+	}
+	for _, input := range []map[string]interface{}{
+		{"count": float64(0), "code": "ok-run"},
+		{"count": float64(2), "code": "wrong"},
+	} {
+		if _, _, err := workflowFunctionArgs(view, map[string]interface{}{"INPUT": input}); err == nil || !strings.Contains(err.Error(), "function input:") {
+			t.Fatalf("schema constraint not enforced: input=%v err=%v", input, err)
+		}
 	}
 }

@@ -377,6 +377,32 @@ func TestCrewFunctionsHTTPListAndDelete(t *testing.T) {
 	if _, err := env.alpha["project_functions_define"].exec(ctx, loginFlowArgs); err != nil {
 		t.Fatal(err)
 	}
+	// PLAT-871: deleting a callable function must not erase a disabled sibling.
+	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]interface{}{
+		"project": "Beta", "definition": map[string]interface{}{
+			"name": "paused_flow", "description": "A paused function", "enabled": false,
+			"action": map[string]interface{}{"type": "message"},
+			"input":  map[string]interface{}{"messages": []string{"Keep these saved instructions."}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ownerCtx := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner"})
+	target := triggerTarget{Kind: triggerCallerCrew, Path: linkBetaPath, CrewOwner: "owner"}
+	root := crewFunctionRoot(ownerCtx, target)
+	before, err := readProjectFunctionDefinitions(ownerCtx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pausedBefore []byte
+	for _, fn := range before {
+		if fn.Name == "paused_flow" {
+			pausedBefore, _ = json.Marshal(fn)
+		}
+	}
+	if len(pausedBefore) == 0 {
+		t.Fatal("disabled sibling was not saved by setup")
+	}
 	router := muxRouterForCrewFunctions(env.svc)
 	get := httptest.NewRequest(http.MethodGet, "/api/crew-functions?profile_id=work&project_id=beta", nil)
 	get = get.WithContext(context.WithValue(get.Context(), UserContextKey, &UserClaims{UserID: "owner"}))
@@ -417,6 +443,15 @@ func TestCrewFunctionsHTTPListAndDelete(t *testing.T) {
 			t.Fatalf("delete %s = %d, want %d: %s", tc.name, recorder.Code, tc.code, recorder.Body.String())
 		}
 	}
+	after, err := readProjectFunctionDefinitions(ownerCtx, root)
+	if err != nil || len(after) != 1 {
+		t.Fatalf("disabled sibling lost after HTTP deletion: records=%v err=%v", after, err)
+	}
+	pausedAfter, _ := json.Marshal(after[0])
+	if string(pausedAfter) != string(pausedBefore) {
+		t.Fatalf("disabled sibling changed: before=%s after=%s", pausedBefore, pausedAfter)
+	}
+
 }
 
 func TestCrewFunctionFailureDetailKeepsPartialWork(t *testing.T) {

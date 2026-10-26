@@ -34,6 +34,8 @@ type WorkflowFunctionSpec struct {
 	Name        string                  `json:"name"`
 	Description string                  `json:"description,omitempty"`
 	Inputs      []WorkflowFunctionInput `json:"inputs,omitempty"`
+	// InputSchema is the authored contract; Inputs only maps names to run variables.
+	InputSchema map[string]interface{} `json:"input_schema,omitempty"`
 	// AllowedCallers limits who may call; empty means anyone who can run
 	// the workflow.
 	AllowedCallers []triggerCaller `json:"allowed_callers,omitempty"`
@@ -96,10 +98,18 @@ func validateWorkflowFunctionSpec(spec *WorkflowFunctionSpec) error {
 			return fmt.Errorf("function input %q is listed twice", input.Name)
 		}
 		seen[input.Name] = true
+		if spec.InputSchema != nil {
+			continue // The full schema, including nested types, is checked below.
+		}
 		switch strings.ToLower(strings.TrimSpace(input.Type)) {
 		case "", "string", "integer", "number", "boolean", "object":
 		default:
 			return fmt.Errorf("function input %q: type must be string, integer, number, boolean or object", input.Name)
+		}
+	}
+	if spec.InputSchema != nil {
+		if _, err := compilePythonRelaySchema(spec.InputSchema); err != nil {
+			return fmt.Errorf("function input_schema: %w", err)
 		}
 	}
 	for _, caller := range spec.AllowedCallers {
@@ -125,6 +135,9 @@ func workflowFunctionInputNames(spec *WorkflowFunctionSpec) []string {
 // workflowFunctionInputSchema is the JSON Schema callers see and that call
 // arguments are validated against.
 func workflowFunctionInputSchema(sched WorkflowSchedule) map[string]interface{} {
+	if sched.Function.InputSchema != nil {
+		return sched.Function.InputSchema
+	}
 	properties := map[string]interface{}{}
 	required := []interface{}{}
 	for _, input := range sched.Function.Inputs {
@@ -259,6 +272,18 @@ func sharedFunctionCallerAllowed(live *WorkflowManifest, spec *WorkflowFunctionS
 // and turns them into the run's variables and group. Unknown, missing or
 // mistyped inputs fail before anything runs.
 func workflowFunctionArgs(sched WorkflowSchedule, args map[string]interface{}) (map[string]string, string, error) {
+	if sched.Function.InputSchema != nil {
+		schema, err := compilePythonRelaySchema(sched.Function.InputSchema)
+		if err != nil {
+			return nil, "", fmt.Errorf("function input_schema: %w", err)
+		}
+		if args == nil {
+			args = map[string]interface{}{}
+		}
+		if err := schema.Validate(args); err != nil {
+			return nil, "", fmt.Errorf("function input: %w", err)
+		}
+	}
 	inputs := map[string]WorkflowFunctionInput{}
 	for _, input := range sched.Function.Inputs {
 		inputs[input.Name] = input
@@ -281,7 +306,24 @@ func workflowFunctionArgs(sched WorkflowSchedule, args map[string]interface{}) (
 			problems = append(problems, fmt.Sprintf("unknown input %q", name))
 			continue
 		}
-		value, err := workflowFunctionInputValue(input, raw)
+		var value string
+		var err error
+		if sched.Function.InputSchema != nil {
+			// Validation uses the authored schema. Serialization must not apply
+			// the reduced variable projection as a second, different contract.
+			if text, ok := raw.(string); ok {
+				value = text
+			} else {
+				var encoded []byte
+				encoded, err = json.Marshal(raw)
+				value = string(encoded)
+			}
+			if len(value) > 16384 {
+				err = fmt.Errorf("input %s exceeds 16 KiB", name)
+			}
+		} else {
+			value, err = workflowFunctionInputValue(input, raw)
+		}
 		if err != nil {
 			problems = append(problems, err.Error())
 			continue

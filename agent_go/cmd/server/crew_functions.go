@@ -233,9 +233,16 @@ func writeCrewFunctions(ctx context.Context, target triggerTarget, functions []c
 	if err != nil {
 		return err
 	}
+	replaced := map[string]bool{}
+	for _, fn := range functions {
+		replaced[fn.Name] = true
+	}
 	keptBindings := []projectFunctionDefinition{}
 	for _, record := range records {
-		if record.InputMapping != nil {
+		// The authoring list contains callable functions only. Its omissions
+		// cannot delete disabled definitions (PLAT-871); an explicit upsert of
+		// the same name replaces the saved definition instead of duplicating it.
+		if record.InputMapping != nil || (!record.Enabled && !replaced[record.Name]) {
 			keptBindings = append(keptBindings, record)
 		}
 	}
