@@ -41,7 +41,7 @@ func (api *StreamingAPI) registerUIControlToolsForContract(registrar definitionT
 		"expected_state_revision": map[string]interface{}{"type": "integer", "minimum": 0},
 	}
 	schema := func(p map[string]interface{}, required ...string) map[string]interface{} {
-		return map[string]interface{}{"type": "object", "properties": p, "required": required, "additionalProperties": false}
+		return map[string]interface{}{"type": "object", "properties": p, "required": append([]string{}, required...), "additionalProperties": false}
 	}
 	if err := registrar.RegisterCustomTool("list_ui_capabilities", "Discover presentation-only actions on the bound "+contract.Product+" workspace. Only advertised actions are implemented; never infer support for another view or target. No MCP connections or external sends.", schema(map[string]interface{}{}), func(context.Context, map[string]interface{}) (string, error) {
 		_, err := b.snapshot(session)
