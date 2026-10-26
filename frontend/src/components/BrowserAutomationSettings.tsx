@@ -19,7 +19,6 @@ import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 
 export type BrowserAutomationMode = 'none' | 'extension' | 'auto' | 'headless' | 'cdp'
-export type BrowserChoice = BrowserAutomationMode | 'extension'
 
 interface BrowserAutomationSettingsProps {
   browserMode: BrowserAutomationMode
@@ -30,12 +29,6 @@ interface BrowserAutomationSettingsProps {
   cdpError: string | null
   cdpChecking: boolean
   onCheckCdpConnection: (port: number) => void
-  browserChoice?: BrowserChoice
-  onBrowserChoiceChange?: (choice: BrowserChoice) => void
-  allowAutomatic?: boolean
-  extensionAvailable?: boolean
-  extensionConnected?: boolean
-  extensionContent?: React.ReactNode
   readOnly?: boolean
   scopeNoun?: 'workflow' | 'project'
 }

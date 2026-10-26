@@ -13,15 +13,11 @@ import (
 func TestCDPEnabledOnlyOnLocalInstallation(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	if !CDPEnabled() {
-		t.Fatal("empty/unset-compatible capability must preserve desktop CDP support")
+		t.Fatal("local installations support CDP")
 	}
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if CDPEnabled() {
-		t.Fatal("false must disable CDP")
-	}
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if CDPEnabled() {
-		t.Fatal("an invalid explicit capability value must fail closed")
+		t.Fatal("server installations must disable CDP")
 	}
 }
 
