@@ -4,9 +4,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	llm "github.com/manishiitg/multi-llm-provider-go"
 )
 
 func engineModelTestProfile() agentprofiles.Profile {
@@ -270,5 +272,26 @@ func TestProfileQueryDropsInheritedAccountOnProviderSwitch(t *testing.T) {
 	req, err = queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: "hi", Engine: "codex-cli", ConnectionID: "acct-codex"}, conversation)
 	if err != nil || req.ConnectionID != "acct-codex" {
 		t.Fatalf("an explicit account is kept, got %q %v", req.ConnectionID, err)
+	}
+}
+
+// PLAT-872: provider tests pinned Composer while the actual Crew/Brain switch
+// selected unavailable Auto. Exercise the shipped profile and request mapper.
+func TestCursorProductSwitchUsesCertifiedDefault(t *testing.T) {
+	for _, load := range []func() (agentprofiles.ProductManifest, error){workproduct.WorkManifest, knowledgebaseproduct.Manifest} {
+		manifest, err := load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run(manifest.Profile.ID, func(t *testing.T) {
+			conversation := ProductConversationRecord{SessionID: "test", WorkspacePath: "Chats/Test", ConversationKey: "test"}
+			req, err := queryRequestForAgentProfileChat(manifest.Profile, AgentProfileChatRequest{Message: "hello", Engine: "cursor-cli"}, conversation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if req.Provider != "cursor-cli" || req.ModelID != llm.DefaultCursorCLIModel {
+				t.Fatalf("provider switch selected %s/%s instead of the certified default %s", req.Provider, req.ModelID, llm.DefaultCursorCLIModel)
+			}
+		})
 	}
 }
