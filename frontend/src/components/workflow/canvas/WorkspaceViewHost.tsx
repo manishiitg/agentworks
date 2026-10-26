@@ -539,7 +539,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
           data-testid="tour-workflow-canvas-pane"
           className={`${gridToolbar ? 'flex-1 col-start-1 row-start-2 md:col-start-2' : 'flex-1'} ${paneClassName} relative flex min-h-0 flex-col ${isInspectorKind && effectiveView !== 'context' ? 'overflow-hidden border-l border-border' : ''}`}
         >
-          <WorkspacePanelFrame><WorkspacePanelNavigationProvider workspacePath={workspacePath} view={effectiveView} chatTarget={panelChatTabId ? { tabId: panelChatTabId } : undefined}>
+          <WorkspacePanelFrame showCloseControl={effectiveView === 'context'}><WorkspacePanelNavigationProvider workspacePath={workspacePath} view={effectiveView} chatTarget={panelChatTabId ? { tabId: panelChatTabId } : undefined}>
             {workspacePath && effectiveView !== 'context' && <WorkspacePanelAssistant workspacePath={workspacePath} message={getWorkspaceAskAIMessage(effectiveView)} />}
             {!embeddedPlanOnly && !toolbarOnly && <WorkspacePanelHeader workspacePath={workspacePath} view={effectiveView} title={getWorkspaceView(effectiveView).label} contextAllowed={canWrite} onBack={() => useWorkflowStore.getState().openWorkspaceView('context')} />}
             <div className={`min-h-0 flex-1 ${effectiveView === 'workshop' ? 'flex overflow-hidden' : ''}`}>{body}</div>

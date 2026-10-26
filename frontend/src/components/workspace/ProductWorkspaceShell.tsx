@@ -10,7 +10,7 @@ import { WorkspacePanelFrame, WorkspacePanelReopen, WorkspacePanelVisibilityCont
 export function ProductWorkspaceShell({
   chatOpen, panelOpen, splitRatio, mobilePreview = false, laptopPreview = false, mobilePaneWidth, mobilePane, onMobilePaneChange, splitRef,
   onOpenChat, onOpenWorkspace, onCloseWorkspace, tabs, toolbar, chat, workspace, divider,
-  chatProps, workspaceProps, testId, compactContext = false, toolbarWhenPanelClosed = false, navigationActive = true, retainChat = false, retainWorkspace = false, showChatReopenControl = true,
+  chatProps, workspaceProps, testId, compactContext = false, toolbarWhenPanelClosed = false, navigationActive = true, retainChat = false, retainWorkspace = false, showChatReopenControl = true, showPanelCloseControl = true,
 }: {
   chatOpen: boolean; panelOpen: boolean; splitRatio: number; mobilePreview?: boolean; laptopPreview?: boolean; mobilePaneWidth?: number | null
   /** Products with a phone pane switch keep both panes mounted while hiding the inactive one. */
@@ -29,6 +29,8 @@ export function ProductWorkspaceShell({
   retainChat?: boolean
   /** Secondary panels keep their draft and mounted content while closed. */
   retainWorkspace?: boolean
+  /** Detail pages use their Back action; only the landing menu needs the close chevron. */
+  showPanelCloseControl?: boolean
   /** Products with an explicit Assistant action do not need the edge tab. */
   showChatReopenControl?: boolean
 }) {
@@ -53,7 +55,7 @@ export function ProductWorkspaceShell({
       <WorkspacePanelReopen />
       {(layout.showChat || retainChat) && <main {...chatProps} hidden={!layout.showChat} style={{ ...chatProps?.style, ...(!layout.showChat ? { display: 'none' } : {}) }} className={chatClassName}>{chat}</main>}
       {layout.showDivider && divider}
-      {(layout.showPanel || retainWorkspace) && <aside {...workspaceProps} hidden={!layout.showPanel} style={{ ...workspaceProps?.style, ...(!layout.showPanel ? { display: 'none' } : {}) }} className={workspaceClassName}><WorkspacePanelFrame>{workspace}</WorkspacePanelFrame></aside>}
+      {(layout.showPanel || retainWorkspace) && <aside {...workspaceProps} hidden={!layout.showPanel} style={{ ...workspaceProps?.style, ...(!layout.showPanel ? { display: 'none' } : {}) }} className={workspaceClassName}><WorkspacePanelFrame showCloseControl={showPanelCloseControl}>{workspace}</WorkspacePanelFrame></aside>}
     </div>
   </div></MobileWorkspaceNavigationContext.Provider></WorkspacePanelVisibilityContext.Provider>
 }

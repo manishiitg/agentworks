@@ -19,11 +19,11 @@ export function WorkspacePanelToggle() {
 }
 
 /** Keep the control beside the content, outside its heading and scroll area. */
-export function WorkspacePanelFrame({ children }: { children: ReactNode }) {
+export function WorkspacePanelFrame({ children, showCloseControl = true }: { children: ReactNode; showCloseControl?: boolean }) {
   const panel = useContext(WorkspacePanelVisibilityContext)
   if (!panel) return <>{children}</>
   return <div className="flex h-full min-h-0 min-w-0">
-    {panel?.open && <div data-workspace-panel-edge className="hidden shrink-0 pt-3 md:block"><WorkspacePanelToggle /></div>}
+    {panel.open && showCloseControl && <div data-workspace-panel-edge className="hidden shrink-0 pt-3 md:block"><WorkspacePanelToggle /></div>}
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
   </div>
 }
