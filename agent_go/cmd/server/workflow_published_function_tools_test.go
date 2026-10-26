@@ -30,6 +30,9 @@ func TestWorkflowRunAskPublishedFunctionBoundary(t *testing.T) {
 		env.mock.mu.Lock()
 		env.mock.files[manifestPath(root)] = string(raw)
 		env.mock.mu.Unlock()
+		if err := saveWorkflowEntryActions(ctx, root, manifest); err != nil {
+			t.Fatal(err)
+		}
 	}
 	save()
 	reg := &recordingRegistrar{}
@@ -39,13 +42,13 @@ func TestWorkflowRunAskPublishedFunctionBoundary(t *testing.T) {
 	if len(reg.tools) != 4 {
 		t.Fatalf("expected only four published-function tools: %v", reg.tools)
 	}
-	if got, err := reg.tools["list_workflow_functions"].exec(ctx, nil); err != nil || !strings.Contains(got, "review_pr") {
+	if got, err := reg.tools["project_functions_list"].exec(ctx, nil); err != nil || !strings.Contains(got, "review_pr") {
 		t.Fatalf("list: %s %v", got, err)
 	}
-	if _, err := reg.tools["call_workflow_function"].exec(ctx, map[string]any{"function": "review_pr"}); err == nil || !strings.Contains(err.Error(), "missing required input") {
+	if _, err := reg.tools["project_functions_call"].exec(ctx, map[string]any{"function": "review_pr"}); err == nil || !strings.Contains(err.Error(), "missing required input") {
 		t.Fatalf("Run must reach input validation: %v", err)
 	}
-	if _, err := reg.tools["call_workflow_function"].exec(ctx, map[string]any{"function": "review_pr", "args": "wrong"}); err == nil || !strings.Contains(err.Error(), "JSON object") {
+	if _, err := reg.tools["project_functions_call"].exec(ctx, map[string]any{"function": "review_pr", "input": "wrong"}); err == nil || !strings.Contains(err.Error(), "JSON object") {
 		t.Fatalf("malformed args: %v", err)
 	}
 
@@ -59,23 +62,23 @@ func TestWorkflowRunAskPublishedFunctionBoundary(t *testing.T) {
 	crewFunctionCalls.m[call.ID] = call
 	crewFunctionCalls.Unlock()
 	t.Cleanup(func() { crewFunctionCalls.Lock(); delete(crewFunctionCalls.m, call.ID); crewFunctionCalls.Unlock() })
-	input := map[string]any{"function": "review_pr", "args": args, "submission_id": "review-42"}
-	got, err := reg.tools["call_workflow_function"].exec(ctx, input)
+	input := map[string]any{"function": "review_pr", "input": args, "submission_id": "review-42"}
+	got, err := reg.tools["project_functions_call"].exec(ctx, input)
 	if err != nil || !strings.Contains(got, call.ID) || !strings.Contains(got, "completed") {
 		t.Fatalf("completed retry: %s %v", got, err)
 	}
-	got, err = reg.tools["get_workflow_function_call"].exec(ctx, map[string]any{"call_id": call.ID})
+	got, err = reg.tools["project_functions_get_call"].exec(ctx, map[string]any{"call_id": call.ID})
 	if err != nil || !strings.Contains(got, call.ID) {
 		t.Fatalf("own result: %s %v", got, err)
 	}
 	args["PR_NUMBER"] = float64(43)
-	if _, err := reg.tools["call_workflow_function"].exec(ctx, input); err == nil {
+	if _, err := reg.tools["project_functions_call"].exec(ctx, input); err == nil {
 		t.Fatal("conflicting submission ID accepted")
 	}
 	call.mu.Lock()
 	call.UserID = "other"
 	call.mu.Unlock()
-	if _, err := reg.tools["reply_workflow_function_call"].exec(ctx, map[string]any{"call_id": call.ID, "request_id": "question", "response": "yes"}); err == nil || !strings.Contains(err.Error(), "not_found") {
+	if _, err := reg.tools["project_functions_reply"].exec(ctx, map[string]any{"call_id": call.ID, "request_id": "question", "response": "yes"}); err == nil || !strings.Contains(err.Error(), "not_found") {
 		t.Fatalf("another person's input: %v", err)
 	}
 
@@ -87,17 +90,17 @@ func TestWorkflowRunAskPublishedFunctionBoundary(t *testing.T) {
 	args["PR_NUMBER"] = float64(42)
 	manifest.Schedules[0].Function.AllowedCallers = []triggerCaller{{Type: triggerCallerUser, ID: "other"}}
 	save()
-	if got, err := reg.tools["call_workflow_function"].exec(ctx, input); err != nil || !strings.Contains(got, call.ID) || !strings.Contains(got, "completed") {
+	if got, err := reg.tools["project_functions_call"].exec(ctx, input); err != nil || !strings.Contains(got, call.ID) || !strings.Contains(got, "completed") {
 		t.Fatalf("shared person retry: %s %v", got, err)
 	}
 	manifest.Schedules[0].Enabled = false
 	save()
-	if _, err := reg.tools["call_workflow_function"].exec(ctx, input); err == nil || !strings.Contains(err.Error(), "no function") {
+	if _, err := reg.tools["project_functions_call"].exec(ctx, input); err == nil || !strings.Contains(err.Error(), "no function") {
 		t.Fatalf("disabled function: %v", err)
 	}
 	manifest.Access.Readers = nil
 	save()
-	if _, err := reg.tools["list_workflow_functions"].exec(ctx, nil); err == nil || !strings.Contains(err.Error(), "no longer use") {
+	if _, err := reg.tools["project_functions_list"].exec(ctx, nil); err == nil || !strings.Contains(err.Error(), "no longer use") {
 		t.Fatalf("revoked share: %v", err)
 	}
 
@@ -108,12 +111,12 @@ func TestWorkflowRunAskPublishedFunctionBoundary(t *testing.T) {
 	manifest.Schedules[0].Enabled = true
 	manifest.Schedules[0].Function.AllowedCallers = nil
 	save()
-	if _, err := reg.tools["list_workflow_functions"].exec(ctx, nil); err == nil {
+	if _, err := reg.tools["project_functions_list"].exec(ctx, nil); err == nil {
 		t.Fatal("native workflow tools must not acquire a Relay target")
 	}
 	req := httptest.NewRequest("POST", "/api/external/call", nil).WithContext(ctx)
 	rec := httptest.NewRecorder()
-	env.api.externalWorkflowFunctionCall(rec, req, "call_workflow_function", map[string]any{"function": "review_pr", "args": args, "submission_id": "unpublished-relay"}, DiscoveredWorkflow{WorkspacePath: root, Manifest: manifest}, WorkflowAccessRead)
+	env.api.externalWorkflowFunctionCall(rec, req, "project_functions_call", map[string]any{"function": "review_pr", "input": args, "submission_id": "unpublished-relay"}, DiscoveredWorkflow{WorkspacePath: root, Manifest: manifest}, WorkflowAccessRead)
 	var reply map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &reply); err != nil {
 		t.Fatal(err)
@@ -151,7 +154,7 @@ func TestWorkflowRunAskPreservesTokenAuthority(t *testing.T) {
 	if err := env.api.registerWorkflowPublishedFunctionTools(ctx, reg, "owner", "pat-ask", "Workflow/shared"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.tools["list_workflow_functions"].exec(context.Background(), nil); err != nil {
+	if _, err := reg.tools["project_functions_list"].exec(context.Background(), nil); err != nil {
 		t.Fatalf("live token refused: %v", err)
 	}
 	if err := store.Revoke(context.Background(), token.ID, "owner", now); err != nil {
@@ -159,7 +162,7 @@ func TestWorkflowRunAskPreservesTokenAuthority(t *testing.T) {
 	}
 	// A later full-account tool context cannot lift the captured token's limits.
 	fullAccount := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	if _, err := reg.tools["list_workflow_functions"].exec(fullAccount, nil); err == nil {
+	if _, err := reg.tools["project_functions_list"].exec(fullAccount, nil); err == nil {
 		t.Fatal("revoked token upgraded to a full account")
 	}
 	token.Scopes = []string{"workflows:read"}
@@ -167,7 +170,7 @@ func TestWorkflowRunAskPreservesTokenAuthority(t *testing.T) {
 	if err := env.api.registerWorkflowPublishedFunctionTools(ctx, reg, "owner", "pat-ask-no-run", "Workflow/shared"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.tools["call_workflow_function"].exec(fullAccount, map[string]any{"function": "review_pr"}); err == nil || !strings.Contains(err.Error(), "connection") {
+	if _, err := reg.tools["project_functions_call"].exec(fullAccount, map[string]any{"function": "review_pr"}); err == nil || !strings.Contains(err.Error(), "connection") {
 		t.Fatalf("token without run consent: %v", err)
 	}
 }

@@ -54,7 +54,7 @@ func (api *StreamingAPI) dashboardFunctionDispatch(w http.ResponseWriter, r *htt
 		}
 
 		live := manifest
-		if manifest.Kind == "relay" && (workflowTool == "list_workflow_functions" || workflowTool == "call_workflow_function") {
+		if manifest.Kind == "relay" && (workflowTool == "project_functions_list" || workflowTool == "project_functions_call") {
 			// Forms use the active published input contract, never draft edits.
 			// Dispatch still rechecks the live share/function and executes the
 			// existing published-version function path with the actual caller.
@@ -70,7 +70,7 @@ func (api *StreamingAPI) dashboardFunctionDispatch(w http.ResponseWriter, r *htt
 			}
 		}
 		api.externalWorkflowFunctionCall(rec, req, workflowTool, args, DiscoveredWorkflow{WorkspacePath: resolved.Target.Root, Manifest: manifest}, access)
-		if live.Kind == "relay" && workflowTool == "list_workflow_functions" && rec.Code == http.StatusOK {
+		if live.Kind == "relay" && workflowTool == "project_functions_list" && rec.Code == http.StatusOK {
 			var listed struct {
 				WorkflowID string           `json:"workflow_id"`
 				Functions  []map[string]any `json:"functions"`
@@ -107,7 +107,7 @@ func (api *StreamingAPI) handleDashboardFunctionList(w http.ResponseWriter, r *h
 	if !ok {
 		return
 	}
-	api.dashboardFunctionDispatch(w, r, resolved, "list_crew_functions", "list_workflow_functions", map[string]any{})
+	api.dashboardFunctionDispatch(w, r, resolved, "project_functions_list", "project_functions_list", map[string]any{})
 }
 
 func (api *StreamingAPI) handleDashboardFunctionCall(w http.ResponseWriter, r *http.Request) {
@@ -129,12 +129,12 @@ func (api *StreamingAPI) handleDashboardFunctionCall(w http.ResponseWriter, r *h
 	}
 	args := map[string]any{"function": body.Function, "submission_id": body.SubmissionID, "wait_seconds": 2}
 	if body.Args != nil {
-		args["args"] = body.Args
+		args["input"] = body.Args
 	}
 	if body.AsUser && resolved.Capability.Mode == "owner" && resolved.Target.Kind == "crew" {
 		args["run_mode"] = true
 	}
-	api.dashboardFunctionDispatch(w, r, resolved, "call_crew_function", "call_workflow_function", args)
+	api.dashboardFunctionDispatch(w, r, resolved, "project_functions_call", "project_functions_call", args)
 }
 
 func (api *StreamingAPI) handleDashboardFunctionCallRead(w http.ResponseWriter, r *http.Request) {
@@ -169,5 +169,5 @@ func (api *StreamingAPI) handleDashboardFunctionCallRead(w http.ResponseWriter, 
 			wait = 25
 		}
 	}
-	api.dashboardFunctionDispatch(w, r, resolved, "get_crew_function_call", "get_workflow_function_call", map[string]any{"call_id": callID, "wait_seconds": wait})
+	api.dashboardFunctionDispatch(w, r, resolved, "project_functions_get_call", "project_functions_get_call", map[string]any{"call_id": callID, "wait_seconds": wait})
 }

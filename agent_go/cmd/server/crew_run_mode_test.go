@@ -1090,7 +1090,7 @@ func TestSharedCallerGuestTurnGetsOutboundFunctionCallsOnly(t *testing.T) {
 	resolved := &resolvedAgentProfile{Definition: workproduct.BuiltinAgentProfile()}
 	api := &StreamingAPI{agentProfiles: registry, projectActions: &ProjectActionDispatcher{}}
 	api.scheduler = NewSchedulerService(api)
-	outbound := []string{"list_functions", "call_function", "get_function_call", "reply_function_call"}
+	outbound := []string{"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply"}
 
 	guest := &recordingRegistrar{}
 	guestReq := QueryRequest{AgentProfileID: "work", SelectedFolder: crewRunModeOwnerRoot, CrewGuestCaller: "stranger", PinRunMode: true}
@@ -1102,7 +1102,7 @@ func TestSharedCallerGuestTurnGetsOutboundFunctionCallsOnly(t *testing.T) {
 			t.Fatalf("a shared caller's turn is missing %q: %v", want, keysOf(guest.tools))
 		}
 	}
-	for _, denied := range []string{"define_function", "delete_function", "ask_function_update", "create_project_schedule", "update_project_skill_selection", "set_work_identity"} {
+	for _, denied := range []string{"project_functions_define", "project_functions_delete", "ask_function_update", "create_project_schedule", "update_project_skill_selection", "set_work_identity"} {
 		if _, ok := guest.tools[denied]; ok {
 			t.Fatalf("a shared caller's turn registered %q", denied)
 		}
@@ -1114,7 +1114,7 @@ func TestSharedCallerGuestTurnGetsOutboundFunctionCallsOnly(t *testing.T) {
 	}
 	for _, name := range outbound {
 		// A reader's ask may list the owner's published functions; it cannot call them or answer for them.
-		if _, ok := reader.tools[name]; ok && name != "list_functions" {
+		if _, ok := reader.tools[name]; ok && name != "project_functions_list" {
 			t.Fatalf("an ordinary reader chat registered outbound %q", name)
 		}
 	}
@@ -1333,7 +1333,7 @@ func TestCrewSessionModeFollowsReadOnlyTurn(t *testing.T) {
 	if !strings.Contains(got, "Run mode") || !strings.Contains(got, "shared chat channel") || strings.Contains(got, "alone") {
 		t.Fatalf("read-only channel turn (running as the owner) notice = %q", got)
 	}
-	if got := crewSessionModeForTurn(req, "owner", "", profile, true); !strings.Contains(got, "alone") || strings.Contains(got, "call_function") {
+	if got := crewSessionModeForTurn(req, "owner", "", profile, true); !strings.Contains(got, "alone") || strings.Contains(got, "project_functions_call") {
 		t.Fatalf("read-only web turn notice = %q", got)
 	}
 	// A shared caller's function call or ask (it runs as the owner for the guest) is told it may call other functions, with the
@@ -1341,7 +1341,7 @@ func TestCrewSessionModeFollowsReadOnlyTurn(t *testing.T) {
 	guestReq := req
 	guestReq.CrewGuestCaller = "someone"
 	got = crewSessionModeForTurn(guestReq, "owner", "", profile, true)
-	if !strings.Contains(got, "call_function") || !strings.Contains(got, "owner's authority") || !strings.HasSuffix(got, sessionModeClose) {
+	if !strings.Contains(got, "project_functions_call") || !strings.Contains(got, "owner's authority") || !strings.HasSuffix(got, sessionModeClose) {
 		t.Fatalf("shared caller notice = %q", got)
 	}
 	code := &resolvedAgentProfile{}

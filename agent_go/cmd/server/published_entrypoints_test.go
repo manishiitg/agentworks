@@ -14,7 +14,7 @@ import (
 func TestInteractiveBuilderCallsOwnDeclaredFunction(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	ctx := context.Background()
-	if _, err := env.alpha["define_function"].exec(ctx, map[string]any{"name": "own_fn", "description": "Own function", "instructions": "Return the result."}); err != nil {
+	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]any{"definition": map[string]any{"name": "own_fn", "description": "Own function", "action": map[string]any{"type": "message"}, "input": map[string]any{"messages": []string{"Return the result."}}}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, trigger := range []string{"function", "schedule", "notification", "trigger", "interactive"} {
@@ -24,7 +24,7 @@ func TestInteractiveBuilderCallsOwnDeclaredFunction(t *testing.T) {
 			if err := env.api.registerCrewFunctionToolSet(reg, "owner", "sess-builder", req, crewTriggerLinkCaller(linkAlphaPath), nil, crewFunctionToolOptions{InteractiveOwnCalls: publishedBuilderHandoff(&req, false)}); err != nil {
 				t.Fatal(err)
 			}
-			out, err := reg.tools["call_function"].exec(ctx, map[string]any{"target": "Alpha", "function": "own_fn", "notify": false})
+			out, err := reg.tools["project_functions_call"].exec(ctx, map[string]any{"project": "Alpha", "function": "own_fn", "notify": false})
 			if trigger != "interactive" {
 				if err == nil || !strings.Contains(err.Error(), "own function") {
 					t.Fatalf("execution self-call guard changed: %s %v", out, err)
@@ -48,7 +48,7 @@ func TestInteractiveBuilderCallsOwnDeclaredFunction(t *testing.T) {
 			if call.CallerKind != triggerCallerUser || call.CallerID != "owner" || call.UserID != "owner" || !call.IsolatedExecution || call.TargetID != "alpha" {
 				t.Fatalf("interactive call lost the real person/isolated target: %+v", call.snapshot())
 			}
-			if _, err := reg.tools["get_function_call"].exec(ctx, map[string]any{"call_id": call.ID}); err != nil {
+			if _, err := reg.tools["project_functions_get_call"].exec(ctx, map[string]any{"call_id": call.ID}); err != nil {
 				t.Fatalf("Builder cannot follow its own typed call: %v", err)
 			}
 		})

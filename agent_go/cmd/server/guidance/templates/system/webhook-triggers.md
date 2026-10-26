@@ -74,7 +74,7 @@ Example: `{"action":"create","kind":"function","name":"Review PR","enabled":true
 "PR_NUMBER","type":"integer","required":true}]}}`
 
 Builder chat calls a Crew or another workflow through its functions:
-`list_functions`, then `call_function` (every Crew has `ask` for free-form
+`functions action=list`, then `functions action=call` (every Crew has `ask` for free-form
 tasks; a workflow's `ask` reaches its assistant). A quick call returns its result directly; a long one comes back to this
 chat as an [AUTO-NOTIFICATION]. A called Crew runs it in its own continuing
 conversation with this workflow, never in its main chat. A workflow may bind another workflow as an internal
@@ -109,7 +109,7 @@ root). What the file holds depends on the path:
 - **Bearer / MCP call**: with raw input the body is `payload` as sent; with
   `input_mode="envelope"` the declared `variables` and the free `payload` are
   separate.
-- **Function call** (Crew, MCP/CLI `call_function`): `variables` holds the
+- **Function call** (Crew, MCP/CLI `functions action=call`): `variables` holds the
   declared inputs (for example `GITHUB_OWNER`, `GITHUB_REPO`, `PR_NUMBER`), already
   validated. `payload` is the call envelope `{function, args, from, call_id}`, and
   `args` repeats the same inputs. The values are never at the top level of `payload`.
@@ -130,7 +130,7 @@ Rules that keep a multi-path trigger debuggable:
   and whether `$WORKFLOW_TRIGGER_INPUT_FILE` was set) in the step's output so the
   caller and the next reader can tell a skipped PR from a broken trigger.
 - Do not assume the path from the shape of one example. Test each path you claim
-  to support (`manage_workflow_webhook` for provider webhooks, `call_function` for
+  to support (`manage_workflow_webhook` for provider webhooks, `functions action=call` for
   functions) and read the step output of each run.
 - A tool error such as `caller does not own this tool session` is a platform
   fault, not a script bug: retrying does not change it. Report the run and the

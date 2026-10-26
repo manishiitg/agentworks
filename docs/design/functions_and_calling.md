@@ -13,7 +13,7 @@ functions with some inputs**. Today each path looks different:
 
 - **Over MCP, Crews and workflows use different tool sets.** Crews have
   `get_crew` and `ask_crew`. Workflows have `get_workflow`, no
-  `ask_workflow`, and two ways to ask: `call_workflow_function` with
+  `ask_workflow`, and two ways to ask: `functions action=call` with
   `function: "ask"`, and the older `chat` plus `run_status`. The connection's
   instructions describe workflow functions as typed runs only ("never a
   free-text task"), so agents don't offer to ask a workflow at all.
@@ -57,13 +57,13 @@ approve one by one. Everything else stays behind the gateway.
 |---|---|
 | `list_agents` | Who is there, what each can do, who is busy |
 | `ask` | Free-text question; one conversation per caller per target; `about: call_id` reaches running work |
-| `call_function` | Typed run, inputs checked first; a refusal teaches the inputs |
+| `functions action=call` | Typed run, inputs checked first; a refusal teaches the inputs |
 | `get_call` | Progress and result of either, including late and interrupted calls |
 | `get_api_spec` / `call_tool` | Everything else: runs, files, plans, knowledge, `chat`, per-function tools |
 
-A token without run permission doesn't see `ask` or `call_function`.
+A token without run permission doesn't see `ask` or `functions action=call`.
 There is no `get_agent`: `list_agents` carries everything needed to call, and
-`call_function`'s refusal carries the full input details.
+`functions action=call`'s refusal carries the full input details.
 
 **Agents.** Crews and workflows are both *agents*. The kind is known from the
 ID (workflow IDs start with `wf_`; Crew IDs are UUIDs) or from the name.
@@ -93,7 +93,7 @@ Kept minimal, around 40–60 tokens per agent:
       "about": "Runs live Playwright checks of server A flows and reports with video evidence."
     }
   ],
-  "next": "ask(name, message) for anything; call_function(name, function, args) to run one."
+  "next": "ask(name, message) for anything; functions action=call(name, function, args) to run one."
 }
 ```
 
@@ -127,7 +127,7 @@ Responses:
 - `{status: "refused", reason}`: unknown or ambiguous target, no permission,
   empty message. Nothing started.
 
-### `call_function(target, function, args, wait_seconds?)`
+### `functions action=call(target, function, args, wait_seconds?)`
 
 Responses use the same statuses:
 - `completed`, with `result`, plus `run` for a workflow;
@@ -191,15 +191,15 @@ Rules:
 
 The old tools keep working as aliases through `call_tool`, with the same
 handlers and responses: `list_crews`, `list_workflows`, `get_crew`,
-`get_workflow`, `ask_crew`, `call_crew_function`, `call_workflow_function`,
-`ask_function_update`, `get_crew_function_call` and
-`get_workflow_function_call`. They are left out of the instructions. Old names
+`get_workflow`, `ask_crew`, `functions action=call`, `functions action=call`,
+`ask_function_update`, `functions action=status` and
+`functions action=status`. They are left out of the instructions. Old names
 are removed after one release with no recorded use.
 
 ### Connection instructions
 
 > Crews and workflows are both *agents*. `list_agents` shows them. Ask
-> anything with `ask`; run a specific function with `call_function`. If you
+> anything with `ask`; run a specific function with `functions action=call`. If you
 > get a `call_id`, check it with `get_call` and tell the user the progress.
 > Use `get_api_spec` for anything else.
 
@@ -237,7 +237,7 @@ workflows. The built-in `ask` is always listed first.
 | **Webhook** | A URL for outside systems, with a mapping from payload fields to inputs (e.g. `pull_request.number` → `PR_NUMBER`) and the existing auth modes. |
 | **Slack** | Channels or apps that may start it, e.g. a message such as "review PR 149" in a routed channel. |
 | **Callers** | Crews, people and connections allowed to call it (`allowed_callers`), plus each caller's continuing conversation. |
-| **Copy call** | The same call as an MCP `call_function`, a curl command against the external API, or a Slack message. |
+| **Copy call** | The same call as an MCP `functions action=call`, a curl command against the external API, or a Slack message. |
 
 **Who can use Run now:** people with run access to the workflow, and the
 owner and editors of a Crew. Read-only viewers see the card but not the Run
@@ -281,7 +281,7 @@ the same way for every caller.
 - Nothing is converted automatically.
 
 **Crews:** schedules on a Crew already deliver a prompt. A Crew function
-schedule delivers `call_function` with fixed inputs, into the schedule's own
+schedule delivers `functions action=call` with fixed inputs, into the schedule's own
 caller conversation.
 
 ### `ask` picks the function
@@ -304,7 +304,7 @@ A Crew's `ask` already sees its functions in its own chat; no change.
 |---|---|---|---|
 | 1 | `default` on inputs, applied before validation | S | Server only. Unblocks the short calls. |
 | 2 | Helpful refusals: schema, defaults, corrected call | S | Server only; all callers benefit. |
-| 3 | MCP: `list_agents`, `ask`, `call_function`, `get_call` as real MCP tools; name resolution; aliases; new instructions | M | Mostly wrappers over existing handlers. |
+| 3 | MCP: `list_agents`, `ask`, `functions action=call`, `get_call` as real MCP tools; name resolution; aliases; new instructions | M | Mostly wrappers over existing handlers. |
 | 4 | Function card: Run now form, defaults, copy call | M | Frontend plus one "run as viewer" endpoint that reuses `startCrewFunctionCall`. |
 | 5 | Workflow `ask` prompt lists functions and asks for missing inputs | S | Prompt text plus a test. |
 | 6 | Generated per-function names in `get_api_spec` | S | |
@@ -319,7 +319,7 @@ biggest gain for people in the UI.
   - `list_agents` returns both kinds.
   - `ask` by name reaches a Crew and a workflow, and continues the same
     conversation.
-  - `call_function` with a missing input returns the schema and a corrected
+  - `functions action=call` with a missing input returns the schema and a corrected
     call.
   - `get_call` returns progress, then the result.
   - The old names still work.

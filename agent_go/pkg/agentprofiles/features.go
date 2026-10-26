@@ -148,7 +148,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Administrator-authorized attached folders are enabled. Read `panel-linked-folders` before managing grants and `panel-files` before reading attached content. Use the least access required and inspect the current grants before changing them.",
 	},
 	"workflow-references": {
-		Tools:           []string{"list_accessible_workflows", "attach_workflow_reference", "detach_workflow_reference", "list_attached_workflows", "query_linked_workflow_db", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run", "define_function", "delete_function", "list_functions", "call_function", "get_function_call", "reply_function_call", "ask_function_update", "report_function_progress", "return_function_result"},
+		Tools:           []string{"list_accessible_workflows", "attach_workflow_reference", "detach_workflow_reference", "list_attached_workflows", "query_linked_workflow_db", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run", "project_functions_define", "project_functions_delete", "project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "ask_function_update", "report_function_progress", "return_function_result"},
 		Skills:          []string{"panel-linked-folders", "panel-functions", "panel-files"},
 		Capabilities:    map[string]CapabilityRequirement{"workflow_references": CapabilityPreferred},
 		PromptExtension: "Crew and workflow references and functions are enabled. Read `panel-linked-folders` before discovering or attaching referenced projects, `panel-files` before reading their files, and `panel-functions` before invoking a project or answering incoming function calls.",
@@ -374,7 +374,7 @@ func RenderFeatureText(profileID, productName, text string) string {
 // direction=outbound may call Crews and workflows but is never itself
 // callable, so it cannot define or answer functions.
 var workflowReferenceCalleeTools = map[string]bool{
-	"define_function": true, "delete_function": true,
+	"project_functions_define": true, "project_functions_delete": true,
 	"report_function_progress": true, "return_function_result": true,
 }
 

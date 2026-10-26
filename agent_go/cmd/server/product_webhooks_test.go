@@ -1,7 +1,7 @@
 package server
 
 import (
-	"encoding/json"
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -83,21 +83,17 @@ func TestProductWebhookRunStatusDTO(t *testing.T) {
 	}
 }
 
-func TestProductManifestStoresTriggersWithoutPlaintextSecret(t *testing.T) {
-	manifest := productProjectManifest{Product: "work", ID: "project-1"}
-	manifest.Triggers = []productWebhookTrigger{{
-		ID: "4c98bba9-b433-4bf8-b1de-68eebd143a6c", Name: "Deploy", Enabled: true,
-		Message: "Inspect this deployment", Webhook: &WorkflowWebhookConfig{AuthMode: "github", EncryptedSecret: "encrypted-value"},
-	}}
-	raw, err := json.Marshal(manifest)
-	if err != nil {
+// PLAT-871-15: moving authentication out of the manifest must keep only ciphertext.
+func TestProjectWebhookFileStoresOnlyEncryptedSecret(t *testing.T) {
+	_, _ = newScheduleRunWorkspaceStub(t)
+	manifest := productProjectManifest{Product: "work", ID: "project-1", OwnerID: "owner"}
+	manifest.Triggers = []productWebhookTrigger{{ID: "4c98bba9-b433-4bf8-b1de-68eebd143a6c", Name: "Deploy", Enabled: true, Message: "Inspect this deployment", Webhook: &WorkflowWebhookConfig{AuthMode: "github", EncryptedSecret: "encrypted-value"}}}
+	ctx := context.Background()
+	if err := saveCrewEntryActions(ctx, "Crew/project-1", manifest); err != nil {
 		t.Fatal(err)
 	}
-	text := string(raw)
-	if !strings.Contains(text, `"triggers"`) || !strings.Contains(text, `"encrypted_secret":"encrypted-value"`) {
-		t.Fatalf("manifest omitted trigger: %s", text)
-	}
-	if strings.Contains(text, `"secret"`) {
-		t.Fatalf("manifest exposed a plaintext secret field: %s", text)
+	raw, found, err := readFileFromWorkspace(ctx, "Crew/project-1/webhooks.json")
+	if err != nil || !found || !strings.Contains(raw, `"encrypted_secret": "encrypted-value"`) || strings.Contains(raw, `"secret"`) {
+		t.Fatalf("webhook encryption storage contract: found=%v err=%v", found, err)
 	}
 }

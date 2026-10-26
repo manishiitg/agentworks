@@ -37,7 +37,7 @@ conversations. Agents can still use declared functions; human app chat is unchan
 ## Crew functions
 
 Ask the Crew's owner chat to expose a named task with declared inputs and optional
-output schema. Invoke it internally with `call_function`, through MCP
+output schema. Invoke it internally with `functions action=call`, through MCP
 `functions action=call`, or with `agentworks crews call`.
 
 - Inputs are checked before dispatch. Missing, unknown or mistyped inputs are
@@ -56,7 +56,7 @@ output schema. Invoke it internally with `call_function`, through MCP
   can be answered through the matching function reply tool.
 
 For MCP use `functions action=status` and action=read with `call_id` plus a file
-name. Legacy `get_crew_function_call` accepts the same status/file-read fields.
+name. Legacy `functions action=status` accepts the same status/file-read fields.
 For CLI use `agentworks crews call-status --call <id>` or
 `agentworks crews call-file --call <id> --file <name>`. Reads are bounded and paged;
 text uses `content`, binary uses `content_base64`.
@@ -82,8 +82,8 @@ checks and raw payload rules.
 
 ## Calls from executing workflow agents
 
-Workflow `agent` steps can use `list_functions`, `call_function`,
-`get_function_call` and `reply_function_call`. Calls identify the source workflow;
+Workflow `agent` steps can use `functions action=list`, `functions action=call`,
+`functions action=status` and `functions action=reply`. Calls identify the source workflow;
 external MCP calls identify their signed-in user. Both use the same backend and
 retain their own access rules. Execution agents poll for completion and use
 run/step/group-scoped retry IDs. See [agent steps](workflow/agent_step_design.md#calling-other-projects)

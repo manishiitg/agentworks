@@ -94,7 +94,7 @@ func projectMCPToolAllowed(kind, name string) bool {
 	if kind == "work" {
 		switch name {
 		case "workspace", "list_crews", "get_crew", "list_crew_files", "search_crew_files", "read_crew_file",
-			"list_crew_functions", "call_crew_function", "get_crew_function_call", "list_crew_function_calls", "reply_crew_function_call":
+			"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_calls", "project_functions_reply":
 			return true
 		}
 		return false
@@ -102,7 +102,7 @@ func projectMCPToolAllowed(kind, name string) bool {
 	switch name {
 	case "list_workflows", "get_workflow", "get_plan", "list_files", "search_files", "read_file", "list_step_code",
 		"list_runs", "get_run", "get_logs", "run_status", "list_executions", "run_reply_input", "stop_step", "stop_all_executions",
-		"list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call",
+		"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply",
 		"list_workflow_knowledge", "read_workflow_knowledge":
 		return true
 	case "run_relay", "get_relay_run", "list_relay_runs", "get_relay_releases":

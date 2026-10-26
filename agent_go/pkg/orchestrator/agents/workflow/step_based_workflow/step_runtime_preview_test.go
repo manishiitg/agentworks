@@ -53,8 +53,8 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 		if scope.WorkspacePath != controller.GetWorkspacePath() || scope.StepID != "research" {
 			t.Fatal("preview lost function source identity")
 		}
-		return []llmtypes.Tool{{Type: "function", Function: &llmtypes.FunctionDefinition{Name: "call_function"}}}, map[string]interface{}{
-			"call_function": func(context.Context, map[string]interface{}) (string, error) {
+		return []llmtypes.Tool{{Type: "function", Function: &llmtypes.FunctionDefinition{Name: "project_functions_call"}}}, map[string]interface{}{
+			"project_functions_call": func(context.Context, map[string]interface{}) (string, error) {
 				t.Error("preview executed a function")
 				return "", nil
 			},
@@ -92,7 +92,7 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	if preview.ParallelToolCalls || preview.ItemID != "work" || !strings.Contains(preview.UserMessage, "<VARIABLE:TOPIC>") || !strings.Contains(preview.UserMessage, "Research and verify") || len(preview.Unresolved) == 0 {
 		t.Fatal("preview omitted current config, selected item, instructions or unresolved context")
 	}
-	if strings.Contains(strings.Join(preview.Tools, ","), "call_function") {
+	if strings.Contains(strings.Join(preview.Tools, ","), "project_functions_call") {
 		t.Fatal("ordinary step preview exposed Crew function tools")
 	}
 	counts := map[string]int{}
@@ -127,7 +127,7 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	if err := json.Unmarshal([]byte(result), &preview); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(strings.Join(preview.Tools, ","), "call_function") {
+	if strings.Contains(strings.Join(preview.Tools, ","), "project_functions_call") {
 		t.Fatal("scripted preview exposed agent function tools")
 	}
 	files["planning/plan.json"] = `{"steps":[{"id":"research","title":"Research","type":"agent","description":"Coordinate {{TOPIC}}.","items":[{"id":"work","type":"user_message","message":"Verify the work."}],"predefined_routes":[{"route_id":"worker","route_name":"Worker","sub_agent_step":{"id":"worker","title":"Work","type":"scripted","description":"Produce verified data."}}]}]}`

@@ -164,9 +164,9 @@ func TestExternalProjectTransportUsesAdmittedToolsOnly(t *testing.T) {
 	if code || len(names) != 1 || names[0] != "list_project_chats" {
 		t.Fatalf("wrong token project bridge: code=%v names=%v", code, names)
 	}
-	gate.Declare("list_functions") // Product factories resolve names after the initial transport.
+	gate.Declare("project_functions_list") // Product factories resolve names after the initial transport.
 	_, names = externalProjectTransport(claims, gate)
-	if !slices.Contains(names, "list_functions") {
+	if !slices.Contains(names, "project_functions_list") {
 		t.Fatal("late-declared product tool lost from final bridge")
 	}
 	if code, names := externalProjectTransport(&UserClaims{}, gate); !code || len(names) != 0 {

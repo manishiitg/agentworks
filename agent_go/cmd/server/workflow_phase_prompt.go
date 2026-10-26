@@ -56,7 +56,7 @@ func buildWorkflowPhaseSystemPrompt(phase string, vars map[string]string, ctx pr
 		if guidance := workflowtypes.ChatInstructionsPrompt(vars["CHAT_INSTRUCTIONS"]); guidance != "" {
 			parts.parts = append(parts.parts, guidance)
 		}
-		parts.parts = append(parts.parts, publishedFunctionAskGuidance("workflow", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call"))
+		parts.parts = append(parts.parts, publishedFunctionAskGuidance("workflow", "project_functions_list", "project_functions_call", "project_functions_get_call"))
 	}
 	// Other phase templates keep their existing reference contract. Builder
 	// (including Run) is the skill-backed surface migrated here.

@@ -439,6 +439,20 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.actions != nil {
 		return externalMergedAllows(c, tool)
 	}
+	if projectFunctionTool(tool.Name) {
+		if c.AccessToken == nil {
+			return true
+		}
+		t := c.AccessToken
+		switch tool.Name {
+		case "project_functions_define", "project_functions_delete":
+			return t.Allows("crews:write") || t.BuilderAccess() || t.RelayBuilderAccess()
+		case "project_functions_call", "project_functions_reply":
+			return t.Allows("crews:run") || t.Allows("runs:execute")
+		default:
+			return t.Allows("crews:read") || t.Allows("crews:run") || t.Allows("workflows:read") || t.Allows("runs:execute")
+		}
+	}
 	if tool.Name == "messages" {
 		if c.AccessToken != nil && c.AccessToken.ProjectKind != "" {
 			return false
@@ -531,10 +545,8 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 			// Discovery includes list for readers; dispatch checks the action,
 			// live ownership and authoring consent before any mutation.
 			return t.Allows("crews:read") || t.Allows("crews:write")
-		case "call_crew_function", "ask_crew", "reply_crew_function_call", "suggest_crew_change":
+		case "ask_crew", "suggest_crew_change":
 			return t.Allows("crews:run")
-		case "get_crew_function_call":
-			return t.Allows("crews:read") || t.Allows("crews:run")
 		case "write_crew_file":
 			// Anyone who runs a Crew may drop a file in their own shared/<id>/ folder (crews:run); writing anywhere else
 			// in the Crew is the owner's and needs crews:write (checked with the path).

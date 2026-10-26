@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -20,26 +21,58 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 		return
 	}
 	if token := claims.AccessToken; token != nil && (!token.AllowsWorkflow(manifest.ID) ||
-		(name == "call_workflow_function" || name == "reply_workflow_function_call") && !token.Allows("runs:execute")) {
+		(name == "project_functions_call" || name == "project_functions_reply") && !token.Allows("runs:execute")) {
 		externalError(w, 403, "forbidden", "This connection cannot run this workflow's functions.")
 		return
 	}
 	switch name {
-	case "list_workflow_functions":
+	case "project_functions_list":
+		live := manifest
+		if manifest.Kind == "relay" {
+			release, root, err := resolveRelayRelease(ctx, selected.WorkspacePath, "")
+			if err != nil || verifyRelayRelease(ctx, release, root) != nil {
+				externalError(w, 409, "not_published", "Publish this Flow before using its functions.")
+				return
+			}
+			published, _, err := ReadWorkflowManifest(ctx, root)
+			if err != nil || published == nil || published.ID != manifest.ID {
+				externalError(w, 409, "published_version_unavailable", "Published functions are unavailable.")
+				return
+			}
+			manifest = published
+		}
 		functions := workflowFunctions(manifest)
 		listed := make([]map[string]any, 0, len(functions))
 		for _, fn := range functions {
 			// can_call lets a screen say "not on this function's list" before a
-			// run is tried; call_workflow_function still decides.
+			// run is tried; project_functions_call still decides.
 			canCall := true
-			if manifest.Kind != "relay" {
-				schedule, err := findWorkflowFunctionTrigger(manifest, fn.Name)
-				canCall = err == nil && sharedFunctionCallerAllowed(manifest, schedule.Function, externalCrewCaller(claims).Stamp)
-			}
+			schedule, err := findWorkflowFunctionTrigger(live, fn.Name)
+			canCall = err == nil && sharedFunctionCallerAllowed(live, schedule.Function, externalCrewCaller(claims).Stamp)
 			listed = append(listed, map[string]any{"name": fn.Name, "description": fn.Description, "input_schema": fn.InputSchema, "can_call": canCall})
 		}
 		externalJSON(w, map[string]any{"workflow_id": manifest.ID, "functions": listed})
-	case "get_workflow_function_call", "reply_workflow_function_call":
+	case "project_functions_calls":
+		loadExternalSavedFunctionCalls(ctx)
+		crewFunctionCalls.Lock()
+		saved := make([]*crewFunctionCall, 0, len(crewFunctionCalls.m))
+		for _, call := range crewFunctionCalls.m {
+			saved = append(saved, call)
+		}
+		crewFunctionCalls.Unlock()
+		calls := []map[string]interface{}{}
+		for _, call := range saved {
+			call.mu.Lock()
+			match := call.TargetKind == triggerCallerWorkflow && call.TargetID == manifest.ID
+			call.mu.Unlock()
+			if match {
+				calls = append(calls, call.snapshot())
+			}
+		}
+		sort.Slice(calls, func(i, j int) bool { return fmt.Sprint(calls[i]["started_at"]) > fmt.Sprint(calls[j]["started_at"]) })
+		calls = calls[:min(len(calls), externalInt(args, "limit", 25))]
+		externalJSON(w, map[string]interface{}{"project": manifest.ID, "calls": calls})
+	case "project_functions_get_call", "project_functions_reply":
 		callID, _ := args["call_id"].(string)
 		call := lookupCrewFunctionCall(strings.TrimSpace(callID))
 		if call == nil {
@@ -49,13 +82,13 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 		call.mu.Lock()
 		mine := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser
 		// Shared project members may read its results; pending replies still belong to the caller (PLAT-750-22).
-		owned := call.TargetKind == triggerCallerWorkflow && call.TargetID == manifest.ID && (mine || name == "get_workflow_function_call")
+		owned := call.TargetKind == triggerCallerWorkflow && call.TargetID == manifest.ID && (mine || name == "project_functions_get_call")
 		call.mu.Unlock()
 		if !owned {
 			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
-		if name == "reply_workflow_function_call" {
+		if name == "project_functions_reply" {
 			requestID, _ := args["request_id"].(string)
 			response, _ := args["response"].(string)
 			replyFunctionCallInput(w, call, strings.TrimSpace(requestID), response)
@@ -67,11 +100,11 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 		}
 		out["can_reply"] = mine
 		externalJSON(w, out)
-	case "call_workflow_function":
+	case "project_functions_call":
 		fnName, _ := args["function"].(string)
 		fn, found := findCrewFunction(workflowFunctions(manifest), fnName)
 		if !found {
-			externalError(w, 404, "not_found", "The workflow has no function "+strings.TrimSpace(fnName)+"; see list_workflow_functions.")
+			externalError(w, 404, "not_found", "The workflow has no function "+strings.TrimSpace(fnName)+"; see functions action=list.")
 			return
 		}
 		if manifest.Kind != "relay" {
@@ -81,9 +114,9 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 				return
 			}
 		}
-		callArgs, _ := args["args"].(map[string]interface{})
-		if raw, present := args["args"]; present && raw != nil && callArgs == nil {
-			externalError(w, 400, "invalid_arguments", "args must be a JSON object.")
+		callArgs, _ := args["input"].(map[string]interface{})
+		if raw, present := args["input"]; present && raw != nil && callArgs == nil {
+			externalError(w, 400, "invalid_arguments", "input must be a JSON object.")
 			return
 		}
 		target := triggerTarget{Kind: triggerCallerWorkflow, Path: selected.WorkspacePath, Label: firstNonEmptyTrimmed(manifest.Label, manifest.ID), Manifest: manifest}
@@ -102,7 +135,7 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 func externalWorkflowCallResponse(ctx context.Context, call *crewFunctionCall, wait time.Duration) map[string]interface{} {
 	out := externalCrewCallResponse(ctx, call, wait)
 	if _, running := out["next"]; running {
-		out["next"] = fmt.Sprintf("Still running. Call get_workflow_function_call with this call_id and wait_seconds=%d: it returns as soon as the call finishes, or after that long with the progress so far, so poll again.", externalCrewMaxWaitSeconds)
+		out["next"] = fmt.Sprintf("Still running. Call functions action=status with this call_id and wait_seconds=%d: it returns as soon as the call finishes, or after that long with the progress so far, so poll again.", externalCrewMaxWaitSeconds)
 	}
 	return out
 }

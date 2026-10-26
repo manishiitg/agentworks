@@ -25,7 +25,7 @@ import (
 // portable spec. Every write reuses the path the app already uses for that
 // part of a Crew: the server-side creation layout (writeCrewCreationManifests),
 // the capability selection writer, the
-// functions.json writer with define_function's checks, and the project
+// functions.json writer with project_functions_define's checks, and the project
 // schedule service.
 //
 // Access: Crews have one owner (crew_access.go). Only the owner edits a Crew,

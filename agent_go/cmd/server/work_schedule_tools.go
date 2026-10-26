@@ -50,7 +50,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 	// Only a Crew is callable through functions; a Code never is.
 	crewFunctionsHint := ""
 	if strings.EqualFold(profileID, "work") {
-		crewFunctionsHint = " Other Crews, workflows and external connections do not need a webhook: they call this Crew's functions (call_function; `ask` is always available), which sets up their binding automatically."
+		crewFunctionsHint = " Other Crews, workflows and external connections do not need a webhook: they call this Crew's functions (functions action=call; `ask` is always available), which sets up their binding automatically."
 	}
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
 		return registrar.RegisterCustomTool(name, description, parameters, execute, "work_schedule_tools")

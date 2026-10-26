@@ -3,8 +3,8 @@
 External Crew and workflow functions continue to run after the MCP request that
 started them returns. Their blocking questions belong to the function `call_id`
 and `request_id`, not the original HTTP connection or a client-supplied chat
-session. Callers can always poll `get_crew_function_call` or
-`get_workflow_function_call` and answer through the corresponding
+session. Callers can always poll `functions action=status` or
+`functions action=status` and answer through the corresponding
 `reply_*_function_call` tool.
 
 On the hosted Streamable HTTP endpoint, a client using MCP 2026-07-28 or later

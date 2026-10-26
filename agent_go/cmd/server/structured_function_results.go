@@ -384,7 +384,7 @@ func structuredFunctionInlineResult(call *crewFunctionCall, result interface{}) 
 	if len(encoded) <= structuredFunctionInlineCap {
 		return result
 	}
-	return map[string]interface{}{"file": "result.json", "bytes": len(encoded), "read_with": "get_function_call(call_id, file, offset, limit)"}
+	return map[string]interface{}{"file": "result.json", "bytes": len(encoded), "read_with": "functions action=status(call_id, file, offset, limit)"}
 }
 func structuredFunctionFinalJSON(answer string) (interface{}, bool) {
 	text := strings.TrimSpace(answer)

@@ -12,7 +12,7 @@ func TestGuestMessagingOnlyRepliesWithinExistingInbox(t *testing.T) {
 	reg := agentReplyOnlyRegistrar{inner}
 	calls := 0
 	execute := func(context.Context, map[string]interface{}) (string, error) { calls++; return "accepted", nil }
-	for _, name := range []string{"send_message", "read_agent_messages", "schedule_message_wakeup", "call_function", "return_function_result"} {
+	for _, name := range []string{"send_message", "read_agent_messages", "schedule_message_wakeup", "project_functions_call", "return_function_result"} {
 		if err := reg.RegisterCustomTool(name, "", nil, execute, ""); err != nil {
 			t.Fatal(err)
 		}

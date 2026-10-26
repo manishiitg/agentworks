@@ -1040,7 +1040,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 				log.Printf("[CREW RUN MODE] No file link tool for %s: %v", workspacePath, err)
 			}
 		} else {
-			gate.Declare("list_functions")
+			gate.Declare("project_functions_list")
 			if err := api.registerCrewFunctionTools(crewFunctionListOnlyRegistrar{registrar}, userID, sessionID, QueryRequest{SelectedFolder: workspacePath}, crewTriggerLinkCaller(workspacePath), nil); err != nil {
 				return err
 			}
@@ -1071,7 +1071,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			// A shared caller's turn (a function call; a free-text ask only reads) uses the Crew with the owner's authority (856-59, owner
 			// decision 2026-10-12): it may call the functions of other Crews and workflows. Defining or deleting functions
 			// stays with the owner; the callee's own allowed-caller check and the depth limit still decide what it reaches.
-			for _, name := range []string{"list_functions", "call_function", "get_function_call", "reply_function_call"} {
+			for _, name := range []string{"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply"} {
 				gate.Declare(name)
 			}
 			if err := api.registerCrewFunctionTools(crewFunctionCallOnlyRegistrar{registrar}, userID, sessionID, messageReq, crewTriggerLinkCaller(workspacePath), nil); err != nil {

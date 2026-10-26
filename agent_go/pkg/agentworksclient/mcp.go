@@ -47,7 +47,7 @@ func NewMCPServer(ctx context.Context, client ToolCaller, extra ...server.Server
 	for _, definition := range definitions {
 		// The server omits run tools from catalogs whose token lacks
 		// runs:execute, so execute_step's presence proves this bridge runs.
-		if definition.Name == "execute_step" || definition.Name == "call_crew_function" || definition.Name == "ask_crew" || definition.Name == "manage_vault_access" || definition.Name == "crew" || definition.Name == "functions" || definition.Name == "sessions" || strings.HasPrefix(definition.Name, "crew_") || definition.Name == "manage_crew_commands" {
+		if definition.Name == "execute_step" || definition.Name == "project_functions_call" || definition.Name == "ask_crew" || definition.Name == "manage_vault_access" || definition.Name == "crew" || definition.Name == "functions" || definition.Name == "sessions" || strings.HasPrefix(definition.Name, "crew_") || definition.Name == "manage_crew_commands" {
 			instructions = MCPInstructions
 			break
 		}

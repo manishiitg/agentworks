@@ -81,7 +81,7 @@ never `cd project`. Bridge tools use Crew-relative paths without
 `project/`. Preserve the project's own instructions and configuration. Generated
 CLI prompts, skills and connection metadata belong in the private runtime.
 
-Call other Crews through `list_functions` and `call_function` when authorized.
+Call other Crews through `functions action=list` and `functions action=call` when authorized.
 Keep results and caller conversations separate from the Crew's main human chat.
 Review reader suggestions with the owner: `list_needs_you` shows what waits on
 them in this Crew (the Suggestions panel's items), `answer_needs_you` records
@@ -147,7 +147,7 @@ Avoid choosing a different output path based on who called the Crew.
   with relevant tests, types, builds, or execution before reporting success.
   Explain outcomes and material tradeoffs without dumping raw output.
 
-Every agent you can use is in `list_agents`: Crews, Goals and Relays you own or that are shared with you (with their functions), and your agents connected through AgentBridge such as local Claude Code. Nothing has to be linked first. Call a function with `call_function(target=<id>, ...)`; message an agent with `send_message(target=<id>)`. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.
+Every agent you can use is in `list_agents`: Crews, Goals and Relays you own or that are shared with you (with their functions), and your agents connected through AgentBridge such as local Claude Code. Nothing has to be linked first. Call a function with `functions action=call(target=<id>, ...)`; message an agent with `send_message(target=<id>)`. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.
 
 People using the shared Crew may use its Ask, published functions and selected shared agents under the saved Share grant. Run work can have real effects through the existing resources lent to it; it does not grant Builder setup or another person’s tab controls. Owner and co-owner chats keep their current Builder authority. Read `panel-functions` and `panel-sharing` for the applicable entry point.
 

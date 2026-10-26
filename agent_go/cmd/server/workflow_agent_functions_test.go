@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -68,7 +67,7 @@ func TestWorkflowAgentFunctionToolsReachAgentInitialization(t *testing.T) {
 
 func TestWorkflowAgentFunctionAdmissionReadsProductYAML(t *testing.T) {
 	env := newCrewFunctionEnv(t)
-	for _, toolList := range []string{"[list_functions, get_function_call]", "[]"} {
+	for _, toolList := range []string{"[project_functions_list, project_functions_get_call]", "[]"} {
 		t.Run(toolList, func(t *testing.T) {
 			// A narrowed/disabled declaration must change the actual registered
 			// surface, without editing the Go implementation inventory.
@@ -105,9 +104,9 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 		return internalSessionTurnResult{FinalResponse: "Checked build."}, nil
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	if _, err := env.alpha["define_function"].exec(ctx, map[string]interface{}{
-		"target": "Beta", "name": "check_build", "description": "Check a build.", "instructions": "Check this build.",
-		"input_schema": map[string]interface{}{"type": "object", "required": []interface{}{"build"}, "properties": map[string]interface{}{"build": map[string]interface{}{"type": "string"}}},
+	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]interface{}{
+		"project": "Beta", "definition": map[string]interface{}{"name": "check_build", "description": "Check a build.", "action": map[string]interface{}{"type": "message"}, "input": map[string]interface{}{"messages": []string{"Check this build."}},
+			"input_schema": map[string]interface{}{"type": "object", "required": []interface{}{"build"}, "properties": map[string]interface{}{"build": map[string]interface{}{"type": "string"}}}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -126,11 +125,11 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 		}
 		return result, err
 	}
-	args := map[string]interface{}{"target": "Beta", "function": "check_build", "args": map[string]interface{}{"build": "7"}, "wait_seconds": 3}
-	if _, err := invoke(executors, "call_function", map[string]interface{}{"target": "Beta", "function": "check_build"}); err == nil || !strings.Contains(err.Error(), "build") {
+	args := map[string]interface{}{"project": "Beta", "function": "check_build", "input": map[string]interface{}{"build": "7"}, "wait_seconds": 3}
+	if _, err := invoke(executors, "project_functions_call", map[string]interface{}{"project": "Beta", "function": "check_build"}); err == nil || !strings.Contains(err.Error(), "build") {
 		t.Fatalf("missing input was not refused: %v", err)
 	}
-	first, err := invoke(executors, "call_function", args)
+	first, err := invoke(executors, "project_functions_call", args)
 	if err != nil || first["status"] != "completed" || first["answer"] != "Checked build." || first["auto_notification"] != nil {
 		t.Fatalf("function outcome = %v %v", first, err)
 	}
@@ -144,7 +143,7 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 	crewFunctionCalls.Lock()
 	delete(crewFunctionCalls.m, id)
 	crewFunctionCalls.Unlock()
-	retry, err := invoke(executors, "call_function", args)
+	retry, err := invoke(executors, "project_functions_call", args)
 	if err != nil || retry["call_id"] != id {
 		t.Fatalf("retry after reload = %v %v", retry, err)
 	}
@@ -156,16 +155,16 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := invoke(other, "get_function_call", map[string]interface{}{"call_id": id}); err == nil || !strings.Contains(err.Error(), "another execution") {
+		if _, err := invoke(other, "project_functions_get_call", map[string]interface{}{"call_id": id}); err == nil || !strings.Contains(err.Error(), "another execution") {
 			t.Fatalf("foreign execution read result: %v", err)
 		}
-		fresh, err := invoke(other, "call_function", args)
+		fresh, err := invoke(other, "project_functions_call", args)
 		if err != nil || fresh["call_id"] == id || fresh["status"] != "completed" {
 			t.Fatalf("new execution reused old work: %v %v", fresh, err)
 		}
 	}
 	args["notify"] = true
-	if _, err := invoke(executors, "call_function", args); err == nil || !strings.Contains(err.Error(), "notify must be false") {
+	if _, err := invoke(executors, "project_functions_call", args); err == nil || !strings.Contains(err.Error(), "notify must be false") {
 		t.Fatalf("execution installed a chat completion watcher: %v", err)
 	}
 	// A user allow-list must not admit the same user's workflow caller.
@@ -178,9 +177,12 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 	targetJSON, _ := json.Marshal(targetManifest)
 	env.mock.files[manifestPath("Workflow/pipeline")] = string(targetJSON)
 	env.mock.mu.Unlock()
-	refused, err := invoke(executors, "call_function", map[string]interface{}{
-		"target": "Pipeline", "function": "review_pr",
-		"args": map[string]interface{}{"GITHUB_OWNER": "example", "GITHUB_REPO": "app", "PR_NUMBER": 7, "group": "staging"},
+	if err := saveWorkflowEntryActions(ctx, "Workflow/pipeline", &targetManifest); err != nil {
+		t.Fatal(err)
+	}
+	refused, err := invoke(executors, "project_functions_call", map[string]interface{}{
+		"project": "Pipeline", "function": "review_pr",
+		"input": map[string]interface{}{"GITHUB_OWNER": "example", "GITHUB_REPO": "app", "PR_NUMBER": 7, "group": "staging"},
 	})
 	if err != nil || refused["status"] != "failed" || !strings.Contains(refused["error"].(string), "no longer names this caller") || refused["run_id"] != "" {
 		t.Fatalf("workflow function admitted the wrong caller kind: %v %v", refused, err)
@@ -192,7 +194,7 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 	encoded, _ := json.Marshal(manifest)
 	env.mock.files[manifestPath(scope.WorkspacePath)] = string(encoded)
 	env.mock.mu.Unlock()
-	if _, err := invoke(executors, "get_function_call", map[string]interface{}{"call_id": id}); err == nil {
+	if _, err := invoke(executors, "project_functions_get_call", map[string]interface{}{"call_id": id}); err == nil {
 		t.Fatal("revoked source workflow still read function results")
 	}
 }
@@ -200,7 +202,7 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 func TestWorkflowAgentFunctionCallsPreserveMCPConsentAndBounds(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
+	// Keep the isolated state root that contains this fixture's Crew owner registry.
 	t.Setenv("AUTH_SECRET", "workflow-function-test-signing-secret")
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 	source, err := workflowTriggerLinkCaller("Workflow/reports")(ctx)
@@ -234,25 +236,25 @@ func TestWorkflowAgentFunctionCallsPreserveMCPConsentAndBounds(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			list := tools["list_functions"].(func(context.Context, map[string]interface{}) (string, error))
-			_, err = list(context.Background(), map[string]interface{}{"target": "Beta"})
+			list := tools["project_functions_list"].(func(context.Context, map[string]interface{}) (string, error))
+			_, err = list(context.Background(), map[string]interface{}{"project": "Beta"})
 			if (err == nil) != tc.allowed {
 				t.Fatalf("Crew bounds: allowed=%v err=%v", tc.allowed, err)
 			}
 			if tc.name == "crew-reader" {
-				call := tools["call_function"].(func(context.Context, map[string]interface{}) (string, error))
-				if _, err := call(context.Background(), map[string]interface{}{"target": "Beta", "function": "check_build"}); err == nil || !strings.Contains(err.Error(), "crews:run") {
+				call := tools["project_functions_call"].(func(context.Context, map[string]interface{}) (string, error))
+				if _, err := call(context.Background(), map[string]interface{}{"project": "Beta", "function": "check_build"}); err == nil || !strings.Contains(err.Error(), "crews:run") {
 					t.Fatalf("reader called a Crew function: %v", err)
 				}
 			}
 			// Even a workflow owner cannot reach another workflow outside the grant.
-			if _, err := list(context.Background(), map[string]interface{}{"target": "Pipeline"}); err == nil {
+			if _, err := list(context.Background(), map[string]interface{}{"project": "Pipeline"}); err == nil {
 				t.Fatal("workflow connection bound was dropped")
 			}
 			if err := store.Revoke(ctx, token.ID, "owner", time.Now()); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := list(context.Background(), map[string]interface{}{"target": "Beta"}); err == nil {
+			if _, err := list(context.Background(), map[string]interface{}{"project": "Beta"}); err == nil {
 				t.Fatal("revoked MCP connection still used runtime function tools")
 			}
 		})

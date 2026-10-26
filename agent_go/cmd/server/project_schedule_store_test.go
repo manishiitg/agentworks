@@ -152,3 +152,44 @@ func TestProjectScheduleCallerCannotBeChangedByEditingFiles(t *testing.T) {
 		})
 	}
 }
+
+// PLAT-871-15: the shared file conversion must retain the real saved Goal
+// step binding, typed arguments/caller list and encrypted webhook settings.
+func TestProjectEntryFilesPreserveContractsAndEncryptedAuthentication(t *testing.T) {
+	_, _ = newScheduleRunWorkspaceStub(t)
+	ctx := context.Background()
+	root := "Workflow/example"
+	manifest := &WorkflowManifest{ID: "example", CreatedBy: "owner", Schedules: []WorkflowSchedule{
+		{ID: "typed-entry", Name: "Inspect", Enabled: true, ScheduleType: "webhook", Kind: triggerKindFunction, Function: &WorkflowFunctionSpec{Name: "inspect", Inputs: []WorkflowFunctionInput{{Name: "query", Type: "string", Required: true, Enum: []string{"one", "two"}}}, AllowedCallers: []triggerCaller{{Type: triggerCallerWorkflow, ID: "source"}}}, GroupNames: []string{"default", "other"}, RouteSelections: map[string]string{"router": "report"}, Webhook: &WorkflowWebhookConfig{StepID: "inspect-step"}},
+		{ID: "event", Name: "Event", Enabled: true, ScheduleType: "webhook", Webhook: &WorkflowWebhookConfig{AuthMode: "github", EncryptedSecret: "opaque-fixture", InputMode: "envelope", AllowedVariables: []string{"query"}}},
+	}}
+	if err := saveWorkflowEntryActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Schedules = nil
+	if err := loadWorkflowEntryActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	fn, err := findWorkflowFunctionTrigger(manifest, "inspect")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fn.ID != "typed-entry" || fn.Webhook.StepID != "inspect-step" || fn.RouteSelections["router"] != "report" || !workflowFunctionCallerAllowed(fn.Function, triggerCaller{Type: triggerCallerWorkflow, ID: "source"}) || workflowFunctionCallerAllowed(fn.Function, triggerCaller{Type: triggerCallerWorkflow, ID: "other"}) {
+		t.Fatalf("function contract changed: %+v", fn)
+	}
+	if _, _, err := workflowFunctionArgs(*fn, map[string]interface{}{}); err == nil {
+		t.Fatal("required function argument lost")
+	}
+	variables, group, err := workflowFunctionArgs(*fn, map[string]interface{}{"query": "two", "group": "other"})
+	if err != nil || variables["query"] != "two" || group != "other" {
+		t.Fatalf("typed execution input changed: %v %s %v", variables, group, err)
+	}
+	hooks, err := readProjectWebhookDefinitions(ctx, root)
+	if err != nil || len(hooks) != 1 || hooks[0].Path != "/api/hooks/event" || hooks[0].Auth.EncryptedSecret != "opaque-fixture" || hooks[0].Auth.Mode != "github" || hooks[0].InputMapping.Mode != "envelope" {
+		t.Fatalf("webhook settings changed: %+v %v", hooks, err)
+	}
+	manifest.CreatedBy = "other"
+	if err := loadWorkflowEntryActions(ctx, root, manifest); err == nil {
+		t.Fatal("a webhook file supplied another owner's authority")
+	}
+}

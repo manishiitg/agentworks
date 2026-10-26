@@ -2591,7 +2591,7 @@ func compactScheduledAutoNotificationResult(sessionID string, snap BackgroundAge
 	}
 	inspectHint := fmt.Sprintf("Inspect execution %q or its persisted run artifacts for the complete result.", snap.ID)
 	if callID := strings.TrimSpace(snap.Metadata["call_id"]); callID != "" {
-		inspectHint = fmt.Sprintf("Use get_function_call(call_id=%q) for the complete saved result.", callID)
+		inspectHint = fmt.Sprintf("Use functions action=status(call_id=%q) for the complete saved result.", callID)
 	} else if stepID != "" {
 		inspectHint = fmt.Sprintf("Use query_step(step_id=%q, execution_id=%q) or inspect its persisted run artifacts for the complete result.", stepID, snap.ID)
 	}

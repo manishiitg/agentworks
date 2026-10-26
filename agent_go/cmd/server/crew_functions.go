@@ -21,7 +21,7 @@ import (
 
 // Crew functions (PLAT-841): a Crew or workflow declares typed functions in
 // <target>/functions.json; other Crews and workflows call them with
-// call_function (or a generated per-function tool). Arguments and results
+// project_functions_call (or a generated per-function tool). Arguments and results
 // are validated against the declared schemas. A call rides the existing
 // internal-trigger binding (see trigger_link_tools.go), so it gets the same
 // durable run and notification paths as any internal trigger. Each function
@@ -38,7 +38,7 @@ const (
 	crewFunctionActivityEventsScan = 80
 )
 
-// crewFunctionFastWait is the longest call_function will wait for a result
+// crewFunctionFastWait is the longest project_functions_call will wait for a result
 // (wait_seconds) before returning {status:"running"} and notifying later.
 // The default is no wait: functions are agentic and usually take minutes,
 // and a caller whose request is cut short (a shell curl with its own
@@ -46,7 +46,7 @@ const (
 // tests.
 var crewFunctionFastWait = 120 * time.Second
 
-// crewFunctionWait reads call_function's optional wait_seconds, capped at
+// crewFunctionWait reads project_functions_call's optional wait_seconds, capped at
 // crewFunctionFastWait; absent means return at once.
 func crewFunctionWait(raw interface{}) time.Duration {
 	var seconds float64
@@ -139,14 +139,23 @@ func readCrewFunctionSource(ctx context.Context, target triggerTarget, publicati
 	if !exists || strings.TrimSpace(raw) == "" {
 		return nil, nil
 	}
-	var doc crewFunctionsDoc
+	var doc projectFunctionsDocument
 	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
-		return nil, fmt.Errorf("functions.json of %s %q is not valid JSON: %w", target.Kind, target.Label, err)
+		return nil, fmt.Errorf("read project functions: %w", err)
 	}
-	for i := range doc.Functions {
-		doc.Functions[i].publication = publication
+	out := []crewFunction{}
+	for _, record := range doc.Functions {
+		if !record.Enabled || record.InputMapping != nil {
+			continue
+		}
+		fn, err := crewFunctionExecutionView(record)
+		if err != nil {
+			return nil, err
+		}
+		fn.publication = publication
+		out = append(out, fn)
 	}
-	return doc.Functions, nil
+	return out, nil
 }
 
 func readCrewFunctions(ctx context.Context, target triggerTarget) ([]crewFunction, error) {
@@ -224,15 +233,29 @@ func writeCrewFunctions(ctx context.Context, target triggerTarget, functions []c
 	functions = kept
 
 	sort.Slice(functions, func(i, j int) bool { return functions[i].Name < functions[j].Name })
-	encoded, err := json.MarshalIndent(crewFunctionsDoc{Version: 1, Functions: functions}, "", "  ")
+	root := crewFunctionRoot(ctx, target)
+	records, err := readProjectFunctionDefinitions(ctx, root)
 	if err != nil {
 		return err
 	}
-	return writeFileToWorkspace(ctx, crewFunctionsPath(ctx, target), string(encoded)+"\n")
+	keptBindings := []projectFunctionDefinition{}
+	for _, record := range records {
+		if record.InputMapping != nil {
+			keptBindings = append(keptBindings, record)
+		}
+	}
+	for _, fn := range functions {
+		record, err := crewFunctionDefinition(root, fn)
+		if err != nil {
+			return err
+		}
+		keptBindings = append(keptBindings, record)
+	}
+	return writeProjectFunctionDefinitions(ctx, root, keptBindings)
 }
 
 // crewFunctionSpec is one function definition as its author sends it. The
-// define_function tool and the external Crew authoring tools share it, so
+// project_functions_define tool and the external Crew authoring tools share it, so
 // both apply the same checks.
 type crewFunctionSpec struct {
 	Name         string                 `json:"name"`
@@ -333,7 +356,7 @@ func offeredCrewFunctions(_ context.Context, _ triggerTarget, functions []crewFu
 	return functions
 }
 
-// errWorkflowFunctionsAreTriggers refuses define/delete_function on a
+// errWorkflowFunctionsAreTriggers refuses define/project_functions_delete on a
 // workflow: its functions are function triggers owned by its Builder.
 func errWorkflowFunctionsAreTriggers(target triggerTarget) error {
 	return fmt.Errorf("workflow %q defines its functions as function triggers in its Builder chat (manage_workflow_webhook kind=function: a route plus typed inputs bound to workflow variables); ask its Builder to add or change one", target.Label)
@@ -701,7 +724,7 @@ func (c *crewFunctionCall) snapshot() map[string]interface{} {
 	if c.Joined > 0 {
 		out["joined"] = c.Joined
 		if _, ok := out["note"]; !ok {
-			out["note"] = "An identical call (same function and arguments) was already running, so this is that call, not a new run. Do not call again; wait for its result or use get_function_call."
+			out["note"] = "An identical call (same function and arguments) was already running, so this is that call, not a new run. Do not call again; wait for its result or use functions action=status."
 		}
 	}
 	return out
@@ -722,7 +745,7 @@ func crewFunctionFailureDetail(snapshot map[string]interface{}) string {
 }
 
 // persist keeps a JSON copy next to the target's functions, so
-// get_function_call can still answer after a server restart.
+// project_functions_get_call can still answer after a server restart.
 func (c *crewFunctionCall) persist() {
 	c.mu.Lock()
 	encoded, err := json.MarshalIndent(c, "", "  ")
@@ -782,7 +805,7 @@ func (c *crewFunctionCall) targetChainKeyLocked() string {
 
 // crewFunctionChainFor returns the call chain the caller is currently part
 // of: the longest chain among in-flight calls whose target is the caller. A
-// caller that is not a specific chat (a Code's call_function) is part of the
+// caller that is not a specific chat (a Code's project_functions_call) is part of the
 // chains of calls into any of its chats.
 func crewFunctionChainFor(callerKey string, sessionIDs ...string) (chain []string, root string) {
 	crewFunctionCalls.Lock()
@@ -819,6 +842,10 @@ func crewFunctionChainCalls(root string) int {
 // --- dispatch ---
 
 type crewRunModeKey struct{}
+
+// A declared function dispatch carries its server-created typed admission.
+// A public internal-trigger request cannot borrow that admission by ID.
+type declaredFunctionDispatchKey struct{}
 
 // withCrewRunMode marks a Crew call to run its turn in Run mode, as a guest's would, whoever calls (PLAT-756).
 func withCrewRunMode(ctx context.Context) context.Context {
@@ -895,7 +922,7 @@ func crewFunctionPlaceText(call *crewFunctionCall) string {
 // starts its supervisor.
 func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, fn crewFunction, args map[string]interface{}, timeout time.Duration, submissionIDs ...string) (*crewFunctionCall, error) {
 	if isBuiltinConversationalFunction(target, fn) || target.Chat != nil {
-		return nil, fmt.Errorf("conversations use send_message; call_function accepts declared internal triggers only")
+		return nil, fmt.Errorf("conversations use send_message; functions action=call accepts declared internal triggers only")
 	}
 	if caller.isTarget(target) {
 		return nil, fmt.Errorf("a %s cannot call its own function", target.Kind)
@@ -968,18 +995,13 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	if crewFunctionChainCalls(root) >= crewFunctionChainBudget {
 		return nil, fmt.Errorf("refused: this call chain already made %d function calls", crewFunctionChainBudget)
 	}
-	// A Crew call rides this caller's binding on the Crew; a workflow
-	// function runs its own function trigger.
+	// A declared function is its own stable entry point; calling it never
+	// creates or saves a caller-specific internal trigger.
 	triggerID := fn.TriggerID
-	// A person's ask runs in their own chat, and a sibling chat call in that
-	// chat, not through a trigger binding.
-	if target.Kind != triggerCallerWorkflow {
-		var err error
-		triggerID, _, err = api.connectTriggerTarget(ctx, userID, caller, target)
-		if err != nil {
-			return nil, err
-		}
+	if triggerID == "" {
+		return nil, fmt.Errorf("function %s has no saved identity", fn.Name)
 	}
+
 	now := time.Now().UTC()
 	call := &crewFunctionCall{
 		ID: id, Function: fn.Name, UserID: userID,
@@ -1066,7 +1088,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 			err = crewWorkflowRunError(err)
 		}
 	} else {
-		delivery, err = api.dispatchTargetTrigger(ctx, userID, caller, target, triggerID, id, crewFunctionEvent, body)
+		delivery, err = api.dispatchTargetTrigger(context.WithValue(ctx, declaredFunctionDispatchKey{}, call), userID, caller, target, triggerID, id, crewFunctionEvent, body)
 	}
 	if err != nil {
 		releaseStructuredFunctionAdmission(call)
@@ -1253,7 +1275,7 @@ func (api *StreamingAPI) startCrewFunctionWatch(parentReq QueryRequest, sessionI
 		select {
 		case <-call.done:
 		case <-runCtx.Done():
-			notifier.OnExecutionComplete(executionID, name, "", nil, fmt.Errorf("function call %s did not settle; check it with get_function_call", call.ID))
+			notifier.OnExecutionComplete(executionID, name, "", nil, fmt.Errorf("function call %s did not settle; check it with functions action=status", call.ID))
 			return
 		}
 		completeCrewFunctionNotification(notifier, executionID, name, call)
@@ -1429,8 +1451,8 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 				return nil
 			}
 			category = options.FunctionTools.Category
-			if name == "call_function" {
-				description = "Call a declared function of another Crew, workflow or published Flow. Inputs and declared results are validated. Returns a call_id; poll get_function_call until it settles before using the result. With no submission_id, identical target, function and arguments within the same run, step and group reuse the first call, including its completed result. Use a new explicit submission_id for intentionally repeated work; reuse that ID after an uncertain retry. No chat auto-notification is scheduled."
+			if name == "project_functions_call" {
+				description = "Call a declared function of another Crew, workflow or published Flow. Inputs and declared results are validated. Returns a call_id; poll functions action=status until it settles before using the result. With no submission_id, identical target, function and arguments within the same run, step and group reuse the first call, including its completed result. Use a new explicit submission_id for intentionally repeated work; reuse that ID after an uncertain retry. No chat auto-notification is scheduled."
 				parameters["properties"].(map[string]interface{})["notify"] = map[string]interface{}{"type": "boolean", "enum": []interface{}{false}, "description": "Execution agents poll results; only false is accepted."}
 			}
 		}
@@ -1461,7 +1483,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		if options.ExecutionScope != "" {
 			ctx = context.WithValue(ctx, structuredFunctionExecutionScopeKey{}, options.ExecutionScope)
 			if notify {
-				return "", fmt.Errorf("execution agents poll get_function_call; notify must be false")
+				return "", fmt.Errorf("execution agents poll functions action=status; notify must be false")
 			}
 			if len(submissionID) > 128 || submissionID != "" && strings.TrimSpace(submissionID) == "" {
 				return "", fmt.Errorf("submission_id must be nonblank and at most 128 characters")
@@ -1525,15 +1547,15 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		addFunctionCallPending(response, call)
 		response["status"] = "running"
 		if _, joined := response["joined"]; !joined {
-			response["note"] = "Started; the target is working on it. Poll with get_function_call, or ask a Crew target for an update with ask_function_update. Do not call again for the same work."
+			response["note"] = "Started; the target is working on it. Poll with functions action=status, or ask a Crew target for an update with ask_function_update. Do not call again for the same work."
 			if options.ExecutionScope != "" {
-				response["note"] = "Started; poll get_function_call until the target finishes. Do not call again for the same work."
+				response["note"] = "Started; poll functions action=status until the target finishes. Do not call again for the same work."
 			}
 		}
 		if notify {
 			executionID, watchErr := api.startCrewFunctionWatch(parentReq, sessionID, userID, call, timeout)
 			if watchErr != nil {
-				response["auto_notification"] = "unavailable: " + watchErr.Error() + "; poll with get_function_call"
+				response["auto_notification"] = "unavailable: " + watchErr.Error() + "; poll with functions action=status"
 			} else {
 				response["auto_notification"] = map[string]interface{}{"execution_id": executionID}
 				response["next"] = "Tell the user what was called and end your turn; the result arrives as an [AUTO-NOTIFICATION] in this chat."
@@ -1541,114 +1563,41 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		}
 		return jsonOut(response)
 	}
-	schemaSchema := map[string]interface{}{"type": "object", "description": "JSON Schema subset: type object|array|string|number|integer|boolean, properties, required, items, enum."}
-
-	if err := register("define_function", "Declare or update a typed function on this workspace (omit target), or another Crew. Project functions work privately or through Share. Workflow functions are managed in the workflow Builder. Callers use call_function and receive a result validated against result_schema.", map[string]interface{}{
-		"type": "object", "required": []string{"name", "description", "instructions"}, "properties": map[string]interface{}{
-			"target":        targetSchema,
-			"name":          map[string]interface{}{"type": "string", "description": "snake_case name, e.g. run_login_flow."},
-			"description":   map[string]interface{}{"type": "string", "description": "What the function does, for callers."},
-			"instructions":  map[string]interface{}{"type": "string", "description": "What the target Crew does when this function is called."},
-			"input_schema":  schemaSchema,
-			"result_schema": schemaSchema,
-			"execution":     map[string]interface{}{"type": "string", "enum": []interface{}{"tab", "fresh"}, "description": crewFunctionExecutionHelp},
-			"agent":         map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes, "description": crewFunctionAgentHelp},
-		},
-	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx = withClaims(ctx)
-		caller, err := resolveCaller(ctx)
-		if err != nil {
-			return "", err
+	for _, operation := range []string{"define", "delete"} {
+		operation := operation
+		schema := projectFunctionAuthoringSchema()
+		if operation == "delete" {
+			schema = map[string]interface{}{"type": "object", "required": []string{"name"}, "properties": map[string]interface{}{"project": targetSchema, "name": map[string]interface{}{"type": "string"}}}
 		}
-		target, err := resolveOptionalTarget(ctx, caller, args["target"])
-		if err != nil {
-			return "", err
-		}
-		inputSchema, _ := args["input_schema"].(map[string]interface{})
-		resultSchema, _ := args["result_schema"].(map[string]interface{})
-		spec := crewFunctionSpec{InputSchema: inputSchema, ResultSchema: resultSchema}
-		spec.Name, _ = args["name"].(string)
-		spec.Description, _ = args["description"].(string)
-		spec.Instructions, _ = args["instructions"].(string)
-		spec.Execution, _ = args["execution"].(string)
-		spec.Agent, _ = args["agent"].(string)
-		spec = spec.normalized()
-		if err := spec.validate(); err != nil {
-			return "", err
-		}
-		name := spec.Name
-		if target.Kind == triggerCallerWorkflow {
-			return "", errWorkflowFunctionsAreTriggers(target)
-		}
-		if !crewProjectOwnedByCaller(userID, target.Path) {
-			return "", fmt.Errorf("Only a project Builder can change its functions")
-		}
-		functions, err := readCrewFunctions(ctx, target)
-		if err != nil {
-			return "", err
-		}
-		creator := caller.Stamp.Type + ":" + caller.Stamp.ID + " (" + caller.Label + ")"
-		functions, updated := upsertCrewFunction(functions, spec, creator, time.Now().UTC())
-		if err := writeCrewFunctions(ctx, target, functions); err != nil {
-			return "", err
-		}
-		return jsonOut(map[string]interface{}{"target": target.describe(), "function": name, "updated": updated})
-	}); err != nil {
-		return err
-	}
-
-	if err := register("delete_function", "Remove a function from this Crew/workflow (omit target) or from another Crew or editable workflow.", map[string]interface{}{
-		"type": "object", "required": []string{"name"}, "properties": map[string]interface{}{"target": targetSchema, "name": map[string]interface{}{"type": "string"}},
-	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx = withClaims(ctx)
-		caller, err := resolveCaller(ctx)
-		if err != nil {
-			return "", err
-		}
-		target, err := resolveOptionalTarget(ctx, caller, args["target"])
-		if err != nil {
-			return "", err
-		}
-		name, _ := args["name"].(string)
-		if target.Kind == triggerCallerWorkflow {
-			return "", errWorkflowFunctionsAreTriggers(target)
-		}
-		if !crewProjectOwnedByCaller(userID, target.Path) {
-			return "", fmt.Errorf("Only a project Builder can change its functions")
-		}
-		functions, err := readCrewFunctions(ctx, target)
-		if err != nil {
-			return "", err
-		}
-		kept := functions[:0]
-		removed := false
-		for _, fn := range functions {
-			if fn.Name == strings.TrimSpace(name) {
-				removed = true
-				continue
+		if err := register("project_functions_"+operation, "Create, replace or remove this project's function using its saved action and typed input contract.", schema, func(ctx context.Context, args map[string]interface{}) (string, error) {
+			ctx = withClaims(ctx)
+			caller, err := resolveCaller(ctx)
+			if err != nil {
+				return "", err
 			}
-			kept = append(kept, fn)
+			target, err := resolveOptionalTarget(ctx, caller, args["project"])
+			if err != nil {
+				return "", err
+			}
+			out, err := manageProjectFunction(ctx, claims, target, args, operation == "delete")
+			if err != nil {
+				return "", err
+			}
+			return jsonOut(out)
+		}); err != nil {
+			return err
 		}
-		if !removed {
-			return "", fmt.Errorf("%s %q has no function %q", target.Kind, target.Label, name)
-		}
-		if err := writeCrewFunctions(ctx, target, kept); err != nil {
-			return "", err
-		}
-		return jsonOut(map[string]interface{}{"target": target.describe(), "removed": strings.TrimSpace(name)})
-	}); err != nil {
-		return err
 	}
 
-	if err := register("list_functions", "List the typed functions a Crew or workflow offers (name, description, input and result schemas). Omit target for this workspace's own functions.", map[string]interface{}{
-		"type": "object", "properties": map[string]interface{}{"target": targetSchema},
+	if err := register("project_functions_list", "List the typed functions a Crew or workflow offers (name, description, input and result schemas). Omit target for this workspace's own functions.", map[string]interface{}{
+		"type": "object", "properties": map[string]interface{}{"project": targetSchema},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
 		caller, err := resolveCaller(ctx)
 		if err != nil {
 			return "", err
 		}
-		target, err := resolveOptionalTarget(ctx, caller, args["target"])
+		target, err := resolveOptionalTarget(ctx, caller, args["project"])
 		if err != nil {
 			return "", err
 		}
@@ -1665,16 +1614,16 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		for _, fn := range functions {
 			listed = append(listed, map[string]interface{}{"name": fn.Name, "description": fn.Description, "input_schema": fn.InputSchema, "result_schema": fn.ResultSchema, "created_by": fn.CreatedBy})
 		}
-		return jsonOut(map[string]interface{}{"target": target.describe(), "functions": listed, "call_with": "call_function(target, function, args)"})
+		return jsonOut(map[string]interface{}{"target": target.describe(), "functions": listed, "call_with": "functions action=call(project, function, input)"})
 	}); err != nil {
 		return err
 	}
 
-	if err := register("call_function", "Call a declared function of a Crew or workflow. In an interactive Builder chat you may also call this Crew's own published functions as the signed-in person. Arguments are validated against its input schema; the target follows its declared execution policy and returns its final message plus file outputs. Crew functions default to their own named tab, retain earlier calls and queue to take turns; execution=fresh starts a new chat per call. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
-		"type": "object", "required": []string{"target", "function"}, "properties": map[string]interface{}{
-			"target":          targetSchema,
-			"function":        map[string]interface{}{"type": "string", "description": "Function name from list_functions."},
-			"args":            map[string]interface{}{"type": "object", "description": "Arguments matching the function's input schema."},
+	if err := register("project_functions_call", "Call a declared function of a Crew or workflow. In an interactive Builder chat you may also call this Crew's own published functions as the signed-in person. Arguments are validated against its input schema; the target follows its declared execution policy and returns its final message plus file outputs. Crew functions default to their own named tab, retain earlier calls and queue to take turns; execution=fresh starts a new chat per call. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Reuse submission_id after an uncertain retry. Poll with functions action=status and answer pending_inputs with functions action=reply.", map[string]interface{}{
+		"type": "object", "required": []string{"project", "function"}, "properties": map[string]interface{}{
+			"project":         targetSchema,
+			"function":        map[string]interface{}{"type": "string", "description": "Function name from functions action=list."},
+			"input":           map[string]interface{}{"type": "object", "description": "Arguments matching the function's input schema."},
 			"submission_id":   map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this intended call; reuse it after an uncertain retry to get the original call_id."},
 			"notify":          map[string]interface{}{"type": "boolean", "description": "Resume this chat with the result when it arrives (default true)."},
 			"wait_seconds":    map[string]interface{}{"type": "integer", "minimum": 0, "maximum": int(crewFunctionFastWait / time.Second), "description": "Wait up to this long for the result before returning status=running (default 0: return at once)."},
@@ -1686,15 +1635,15 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		if err != nil {
 			return "", err
 		}
-		raw, _ := args["target"].(string)
+		raw, _ := args["project"].(string)
 		target, err := resolveFunctionTarget(ctx, claims, caller, raw)
 		if err != nil {
 			return "", err
 		}
 		function, _ := args["function"].(string)
-		callArgs, _ := args["args"].(map[string]interface{})
-		if raw, present := args["args"]; present && raw != nil && callArgs == nil {
-			return "", fmt.Errorf("args must be a JSON object")
+		callArgs, _ := args["input"].(map[string]interface{})
+		if raw, present := args["input"]; present && raw != nil && callArgs == nil {
+			return "", fmt.Errorf("input must be a JSON object")
 		}
 		notify := options.ExecutionScope == ""
 		if value, ok := args["notify"].(bool); ok {
@@ -1757,9 +1706,9 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 
 		return crewFunctionKey(call.TargetKind, call.TargetProfileID, call.TargetID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID)
 	}
-	callIDSchema := map[string]interface{}{"type": "string", "description": "call_id from call_function, or from the [Function call ...] task you received."}
+	callIDSchema := map[string]interface{}{"type": "string", "description": "call_id from functions action=call, or from the [Function call ...] task you received."}
 
-	if err := register("get_function_call", "Check a function call you made: status, result or error, pending_inputs, the target's latest progress reports, and a short tail of what the target is doing right now. Answer a pending request with reply_function_call. Does not interrupt the target.", map[string]interface{}{
+	if err := register("project_functions_get_call", "Check a function call you made: status, result or error, pending_inputs, the target's latest progress reports, and a short tail of what the target is doing right now. Answer a pending request with functions action=reply. Does not interrupt the target.", map[string]interface{}{
 		"type": "object", "required": []string{"call_id"}, "properties": map[string]interface{}{"call_id": callIDSchema, "file": map[string]interface{}{"type": "string"}, "offset": map[string]interface{}{"type": "integer"}, "limit": map[string]interface{}{"type": "integer"}, "after": map[string]interface{}{"type": "integer"}, "after_event": map[string]interface{}{"type": "integer"}},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
@@ -1807,10 +1756,10 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return err
 	}
 
-	if err := register("reply_function_call", "Answer a pending input request on a function call you made. Use the request_id in get_function_call.pending_inputs; a listed choice must match exactly. Works for Crew and workflow targets.", map[string]interface{}{
+	if err := register("project_functions_reply", "Answer a pending input request on a function call you made. Use the request_id in functions action=status.pending_inputs; a listed choice must match exactly. Works for Crew and workflow targets.", map[string]interface{}{
 		"type": "object", "required": []string{"call_id", "request_id", "response"}, "properties": map[string]interface{}{
 			"call_id":    callIDSchema,
-			"request_id": map[string]interface{}{"type": "string", "description": "Pending request ID from get_function_call."},
+			"request_id": map[string]interface{}{"type": "string", "description": "Pending request ID from functions action=status."},
 			"response":   map[string]interface{}{"type": "string", "description": "Answer or exact listed choice."},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -1840,7 +1789,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return err
 	}
 
-	if err := register("ask_function_update", "Ask a Crew that is running your function call how it is going. The question is delivered into its running turn (Crew targets only; workflow runs do not take mid-run messages). It answers with report_function_progress; read the answer with get_function_call, or it arrives with the final result.", map[string]interface{}{
+	if err := register("ask_function_update", "Ask a Crew that is running your function call how it is going. The question is delivered into its running turn (Crew targets only; workflow runs do not take mid-run messages). It answers with report_function_progress; read the answer with functions action=status, or it arrives with the final result.", map[string]interface{}{
 		"type": "object", "required": []string{"call_id", "question"}, "properties": map[string]interface{}{
 			"call_id":  callIDSchema,
 			"question": map[string]interface{}{"type": "string", "description": "What you want to know, self-contained."},
@@ -1855,10 +1804,10 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 			return "", fmt.Errorf("only the caller of function call %s can ask for an update", call.ID)
 		}
 		if call.TargetKind != triggerCallerCrew {
-			return "", fmt.Errorf("workflow runs do not accept mid-run messages; use get_function_call for status and progress")
+			return "", fmt.Errorf("workflow runs do not accept mid-run messages; use functions action=status for status and progress")
 		}
 		if call.TargetChat != "" {
-			return "", fmt.Errorf("a chat of this Code takes no mid-turn questions; read its progress and recent activity with get_function_call")
+			return "", fmt.Errorf("a chat of this Code takes no mid-turn questions; read its progress and recent activity with functions action=status")
 		}
 		question, _ := args["question"].(string)
 		if strings.TrimSpace(question) == "" {
@@ -1868,7 +1817,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		terminal, runID := call.terminalLocked() && !call.acceptsLateLocked(), call.RunID
 		call.mu.Unlock()
 		if terminal {
-			return "", fmt.Errorf("function call %s already finished; read it with get_function_call", call.ID)
+			return "", fmt.Errorf("function call %s already finished; read it with functions action=status", call.ID)
 		}
 		message := fmt.Sprintf("[Update request for function call %s] %s\nAnswer with report_function_progress(call_id=%q, message=...) and keep working on the call.", call.ID, strings.TrimSpace(question), call.ID)
 		result, err := api.sendToCrewTriggerRun(ctx, userID, call.caller, call.target, call.TriggerID, runID, message)
@@ -1876,7 +1825,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 			return "", err
 		}
 		result["call_id"] = call.ID
-		result["next"] = "The answer arrives as a progress report: read it with get_function_call."
+		result["next"] = "The answer arrives as a progress report: read it with functions action=status."
 		return jsonOut(result)
 	}); err != nil {
 		return err

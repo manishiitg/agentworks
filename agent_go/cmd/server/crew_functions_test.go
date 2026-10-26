@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -90,6 +91,29 @@ func (env crewFunctionEnv) functionTools(t *testing.T, crewPath, sessionID strin
 	return reg.tools
 }
 
+// Fixtures create a real declared entry before calling it; runtime calls no
+// longer synthesize a saved caller-specific trigger as a side effect.
+func savedFunctionForTest(t *testing.T, ctx context.Context, target triggerTarget, fn crewFunction) crewFunction {
+	t.Helper()
+	functions, err := readCrewFunctions(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	functions = append(functions, fn)
+	if err := writeCrewFunctions(ctx, target, functions); err != nil {
+		t.Fatal(err)
+	}
+	functions, err = readCrewFunctions(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, found := findCrewFunction(functions, fn.Name)
+	if !found {
+		t.Fatal("declared function missing")
+	}
+	return saved
+}
+
 func TestInternalFunctionCallPendingInputAndReplyAcrossCallerKinds(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
@@ -142,30 +166,30 @@ func TestInternalFunctionCallPendingInputAndReplyAcrossCallerKinds(t *testing.T)
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { store.WithdrawOperation("fn-other-call") })
-			polled, err := tc.tools["get_function_call"].exec(ctx, map[string]interface{}{"call_id": call.ID})
+			polled, err := tc.tools["project_functions_get_call"].exec(ctx, map[string]interface{}{"call_id": call.ID})
 			if err != nil || !strings.Contains(polled, tc.requestID) || strings.Contains(polled, foreignRequestID) {
 				t.Fatalf("pending input missing: %s, %v", polled, err)
 			}
 			args := map[string]interface{}{"call_id": call.ID, "request_id": tc.requestID, "response": "main"}
-			if _, err := env.beta["reply_function_call"].exec(ctx, args); err == nil {
+			if _, err := env.beta["project_functions_reply"].exec(ctx, args); err == nil {
 				t.Fatal("target Crew answered the caller's pending input")
 			}
 			args["request_id"] = foreignRequestID
-			if _, err := tc.tools["reply_function_call"].exec(ctx, args); err == nil {
+			if _, err := tc.tools["project_functions_reply"].exec(ctx, args); err == nil {
 				t.Fatal("another call's question was answered")
 			}
 			args["request_id"] = tc.requestID
 			args["response"] = "wrong"
-			if _, err := tc.tools["reply_function_call"].exec(ctx, args); err == nil {
+			if _, err := tc.tools["project_functions_reply"].exec(ctx, args); err == nil {
 				t.Fatal("invalid choice accepted")
 			}
 			// A stray space or newline around an exact choice does not matter,
 			// whichever tool answers.
 			args["response"] = " main\n"
-			if _, err := tc.tools["reply_function_call"].exec(ctx, args); err != nil {
+			if _, err := tc.tools["project_functions_reply"].exec(ctx, args); err != nil {
 				t.Fatalf("valid answer refused: %v", err)
 			}
-			if _, err := tc.tools["reply_function_call"].exec(ctx, args); err == nil {
+			if _, err := tc.tools["project_functions_reply"].exec(ctx, args); err == nil {
 				t.Fatal("duplicate answer accepted")
 			}
 		})
@@ -214,7 +238,7 @@ func TestInternalFunctionReplyRechecksTargetAccess(t *testing.T) {
 	}
 	manifest.Access.Editors = nil
 	writeManifest()
-	if _, err := reg.tools["reply_function_call"].exec(ctx, map[string]interface{}{
+	if _, err := reg.tools["project_functions_reply"].exec(ctx, map[string]interface{}{
 		"call_id": call.ID, "request_id": "revoked-target-request", "response": "yes",
 	}); err == nil || !strings.Contains(err.Error(), "access denied") {
 		t.Fatalf("revoked editor answered target question: %v", err)
@@ -248,9 +272,10 @@ func TestFunctionSubmissionSaveFailureSettlesConcurrentRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fn := savedFunctionForTest(t, ctx, target, crewFunction{Name: "status", Instructions: "Check status."})
 	firstErr := make(chan error, 1)
 	start := func() (*crewFunctionCall, error) {
-		return env.api.startCrewFunctionCall(ctx, "owner", caller, target, crewFunction{Name: "status", Instructions: "Check status."}, map[string]interface{}{}, time.Minute, "same-submission")
+		return env.api.startCrewFunctionCall(ctx, "owner", caller, target, fn, map[string]interface{}{}, time.Minute, "same-submission")
 	}
 	go func() { _, err := start(); firstErr <- err }()
 	select {
@@ -281,29 +306,30 @@ func TestFunctionSubmissionSaveFailureSettlesConcurrentRetry(t *testing.T) {
 }
 
 var loginFlowArgs = map[string]interface{}{
-	"target": "Beta", "name": "run_login_flow", "description": "Run the login flow against a build.",
-	"instructions": "Run tests/login.py with the build and report the failing step.",
-	"input_schema": map[string]interface{}{"type": "object", "required": []interface{}{"build"}, "properties": map[string]interface{}{
-		"build": map[string]interface{}{"type": "string"}, "env": map[string]interface{}{"type": "string", "enum": []interface{}{"staging", "prod"}},
-	}},
-	"result_schema": map[string]interface{}{"type": "object", "required": []interface{}{"passed"}, "properties": map[string]interface{}{
-		"passed": map[string]interface{}{"type": "boolean"}, "failed_step": map[string]interface{}{"type": "integer"},
-	}},
-}
+	"project": "Beta", "definition": map[string]interface{}{"name": "run_login_flow", "description": "Run the login flow against a build.",
+		"action": map[string]interface{}{"type": "message"},
+		"input":  map[string]interface{}{"messages": []string{"Run tests/login.py with the build and report the failing step."}},
+		"input_schema": map[string]interface{}{"type": "object", "required": []interface{}{"build"}, "properties": map[string]interface{}{
+			"build": map[string]interface{}{"type": "string"}, "env": map[string]interface{}{"type": "string", "enum": []interface{}{"staging", "prod"}},
+		}},
+		"result_schema": map[string]interface{}{"type": "object", "required": []interface{}{"passed"}, "properties": map[string]interface{}{
+			"passed": map[string]interface{}{"type": "boolean"}, "failed_step": map[string]interface{}{"type": "integer"},
+		}},
+	}}
 
 // Self-calls, cycles and deep chains are refused; mid-run questions are for
 // Crew targets only.
 func TestCrewFunctionGuards(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	ctx := context.Background()
-	if _, err := env.alpha["define_function"].exec(ctx, loginFlowArgs); err != nil {
+	if _, err := env.alpha["project_functions_define"].exec(ctx, loginFlowArgs); err != nil {
 		t.Fatal(err)
 	}
-	own := map[string]interface{}{"name": "own_fn", "description": "d", "instructions": "i"}
-	if _, err := env.alpha["define_function"].exec(ctx, own); err != nil {
+	own := map[string]interface{}{"definition": map[string]interface{}{"name": "own_fn", "description": "d", "action": map[string]interface{}{"type": "message"}, "input": map[string]interface{}{"messages": []string{"i"}}}}
+	if _, err := env.alpha["project_functions_define"].exec(ctx, own); err != nil {
 		t.Fatalf("define own: %v", err)
 	}
-	if _, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Alpha", "function": "own_fn"}); err == nil || !strings.Contains(err.Error(), "cannot call itself") && !strings.Contains(err.Error(), "own function") {
+	if _, err := env.alpha["project_functions_call"].exec(ctx, map[string]interface{}{"project": "Alpha", "function": "own_fn"}); err == nil || !strings.Contains(err.Error(), "cannot call itself") && !strings.Contains(err.Error(), "own function") {
 		t.Fatalf("self call: err = %v", err)
 	}
 
@@ -319,13 +345,13 @@ func TestCrewFunctionGuards(t *testing.T) {
 		delete(crewFunctionCalls.m, inflight.ID)
 		crewFunctionCalls.Unlock()
 	})
-	if _, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "1"}}); err == nil || !strings.Contains(err.Error(), "already in this call chain") {
+	if _, err := env.alpha["project_functions_call"].exec(ctx, map[string]interface{}{"project": "Beta", "function": "run_login_flow", "input": map[string]interface{}{"build": "1"}}); err == nil || !strings.Contains(err.Error(), "already in this call chain") {
 		t.Fatalf("cycle: err = %v", err)
 	}
 	inflight.mu.Lock()
 	inflight.Chain = []string{"crew:work:x1", "crew:work:x2", "crew:work:x3", "crew:work:alpha"}
 	inflight.mu.Unlock()
-	if _, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "1"}}); err == nil || !strings.Contains(err.Error(), "depth limit") {
+	if _, err := env.alpha["project_functions_call"].exec(ctx, map[string]interface{}{"project": "Beta", "function": "run_login_flow", "input": map[string]interface{}{"build": "1"}}); err == nil || !strings.Contains(err.Error(), "depth limit") {
 		t.Fatalf("depth: err = %v", err)
 	}
 	inflight.finish("completed", nil, "")
@@ -348,7 +374,7 @@ func TestCrewFunctionGuards(t *testing.T) {
 func TestCrewFunctionsHTTPListAndDelete(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	ctx := context.Background()
-	if _, err := env.alpha["define_function"].exec(ctx, loginFlowArgs); err != nil {
+	if _, err := env.alpha["project_functions_define"].exec(ctx, loginFlowArgs); err != nil {
 		t.Fatal(err)
 	}
 	router := muxRouterForCrewFunctions(env.svc)
@@ -447,5 +473,25 @@ func TestCrewFunctionRunsInItsNamedTabByDefault(t *testing.T) {
 	spec := crewFunctionSpec{Name: "triage", Description: "d", Instructions: "i", Execution: "sometimes"}.normalized()
 	if spec.validate() == nil {
 		t.Fatal("an unknown execution was accepted")
+	}
+}
+
+// PLAT-871-15: a normal function's stable ID is not an internal-trigger
+// shortcut around typed input validation and published owner authority.
+func TestDeclaredFunctionCannotBeFiredThroughTheRawTriggerEndpoint(t *testing.T) {
+	env := newCrewFunctionEnv(t)
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := savedFunctionForTest(t, ctx, target, crewFunction{Name: "typed", Description: "Typed", Instructions: "Check typed input.", InputSchema: map[string]interface{}{"type": "object", "required": []interface{}{"query"}, "properties": map[string]interface{}{"query": map[string]interface{}{"type": "string"}}}})
+	_, _, _, view, err := env.svc.findInternalProductTrigger(ctx, "owner", "work", "beta", fn.TriggerID)
+	if err != nil || !view.WorkspaceFunction {
+		t.Fatalf("declared entry setup: %v %v", view, err)
+	}
+	_, err = env.svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{UserID: "owner", ProfileID: "work", ProjectID: "beta", TriggerID: fn.TriggerID, DeliveryID: "forged", Caller: triggerCaller{Type: triggerCallerUser, ID: "owner"}, Event: crewFunctionEvent, Payload: json.RawMessage(`{}`)})
+	if !errors.Is(err, ErrInternalTriggerNotBound) {
+		t.Fatalf("raw trigger bypassed typed function admission: %v", err)
 	}
 }

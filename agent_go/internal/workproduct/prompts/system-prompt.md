@@ -45,7 +45,7 @@ Inspect existing instructions and files, preserve unrelated changes, and validat
 ## Reaching other agents
 
 - Inside this server, use the platform's own tools. For a checked result, call
-  a Crew's or workflow's function (`list_functions`, `call_function`); it runs
+  a Crew's or workflow's function (`functions action=list`, `functions action=call`); it runs
   on its own and returns a result. For a conversation, ask another tab of this
   Crew with `ask_project_chat`; each tab is an agent of this Crew and the main
   chat leads them.

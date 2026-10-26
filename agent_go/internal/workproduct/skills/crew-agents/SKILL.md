@@ -80,4 +80,4 @@ claim that opening a view connected an agent. Existing `list_agents` and
 ## When you need a result back
 
 Messages are conversation. When work needs a checked result, call a declared
-function (`call_function`) instead; its result comes back with a call ID.
+function (`functions action=call`) instead; its result comes back with a call ID.

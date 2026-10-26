@@ -142,11 +142,11 @@ func TestDashboardRelayFunctionsUsePublishedVersionAndRealCaller(t *testing.T) {
 	resolved := resolvedDashboardQuestion{Target: dashboardTarget{Kind: "relay", ID: "invoices", Root: "Workflow/invoices"}}
 	router := mux.NewRouter()
 	router.HandleFunc("/api/functions/{action}", func(w http.ResponseWriter, r *http.Request) {
-		tool := "list_workflow_functions"
+		tool := "project_functions_list"
 		args := map[string]any{}
 		if mux.Vars(r)["action"] == "call" {
-			tool = "call_workflow_function"
-			args = map[string]any{"function": "process", "args": map[string]any{"INPUT": map[string]any{"name": "Sample"}}, "submission_id": "relay-dashboard-sample", "wait_seconds": 0}
+			tool = "project_functions_call"
+			args = map[string]any{"function": "process", "input": map[string]any{"INPUT": map[string]any{"name": "Sample"}}, "submission_id": "relay-dashboard-sample", "wait_seconds": 0}
 		}
 		f.api.dashboardFunctionDispatch(w, r, resolved, "", tool, args)
 	})

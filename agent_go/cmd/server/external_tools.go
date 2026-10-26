@@ -150,7 +150,16 @@ func externalTools() ([]externalTool, error) {
 		p["since_index"] = externalInteger(-1, 1000000000)
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: turn_status (running, waiting_for_input, idle), any pending question, final_answer once idle and executions, without events. Pass false for a size-bounded page of events."}
 		addRun("run_status", "Poll a run session started externally: turn_status, final_answer once the turn is done, pending inputs and its active executions, without events by default (compact: false adds a size-bounded event page).", false, p, "session_id")
-		workflowPublishedFunctionDefinitions(addRun)
+		workflowPublishedFunctionDefinitions(func(name, description string, write bool, props map[string]any, required ...string) {
+			if props == nil {
+				props = map[string]any{}
+			}
+			props["project"] = externalString("Project ID or name; status and reply infer it from call_id.")
+			if name != "project_functions_get_call" && name != "project_functions_reply" {
+				required = append(required, "project")
+			}
+			add(name, description, name == "project_functions_define" || name == "project_functions_delete", false, props, required...)
+		})
 		addRun("suggest_workflow_change", "Suggest a change to a workflow you can use: what it should do differently. It goes to the workflow owner's decisions panel for review; nothing changes until they act. Available to read-only users.", false, map[string]any{
 			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
 			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
@@ -196,21 +205,15 @@ func externalTools() ([]externalTool, error) {
 		add("list_crew_files", "List a Crew's project files (crew-relative paths), paginated. Start from a folder with path, go deeper with depth (up to 8), and find files by name with glob (e.g. **/*Login*). Private areas (chat transcripts under builder/, db/, the Crew's manifests, hidden folders) are never listed. Requires crews:read.", false, false, crewFiles(false), "crew_id")
 		add("search_crew_files", "Search the text inside a Crew's project files for query (case-insensitive), optionally limited to path and glob. Returns matching files and lines, paginated. Private areas are never searched. Requires crews:read.", false, false, crewFiles(true), "crew_id", "query")
 		add("read_crew_file", "Read a Crew project file: text up to 2 MiB returns content and smaller binary files return content_base64. Larger files up to 11 MiB return size/revision metadata without content, for guarded replacement or authenticated download. Private areas and symlinks are refused. Requires crews:read.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path from list_crew_files."), "agent_id": externalString("Optional published agent ID from workspace get.")}), "crew_id", "path")
-		add("list_crew_functions", "List a Crew's functions: name, description, input and result schemas, declared internal triggers only; conversational ask uses messages. Requires crews:read.", false, false, crewID(nil), "crew_id")
 		// crews:run — the call runs as a turn in this user's own continuing
 		// conversation with the Crew, never its main chat.
-		wait := map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the result before returning a call_id to poll (default 0: return at once; max 25, proxies cut requests near 30s)."}
 		submission := map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for one intended call; reuse it on an uncertain retry to get the original call_id, even after completion or restart."}
-		add("call_crew_function", "Call one of a Crew's functions (see list_crew_functions; this is how a non-owner makes a Crew do something, with the owner's authority) with arguments matching its input schema. By default calls use the function's named tab, keep earlier conversation and queue to take turns. A function declared execution=fresh starts a new chat for each call; fresh calls may run in parallel and return busy at the running limit. Each call has its own output folder. Declared output schemas use a validated result file; otherwise the final message is the result. Returns at once with status=running and a call_id for get_crew_function_call (functions take minutes); pass wait_seconds to wait up to 25s for the result. Repeating the same call while it runs returns the same call_id. Requires crews:run.", false, false, crewID(map[string]any{"function": externalString("Function name from list_crew_functions."), "args": map[string]any{"type": "object", "description": "Arguments matching the function's input schema."}, "wait_seconds": wait, "submission_id": submission, "run_mode": map[string]any{"type": "boolean", "description": "Owner only, for testing: run this call in Run mode, as any other caller would experience it (the Crew's files read-only, output only in the call's run folder). Never grants anything."}}), "crew_id", "function")
 		add("ask_crew", "Send a conversational message to a Crew. "+crewAskModelSentence+" Returns inbox_id, conversation_id and message_id, not call_id. The Crew explicitly decides whether to reply; read messages action=read with inbox_id. Agent messaging off refuses incoming messages, including replies. Requires crews:run.", false, false, crewID(map[string]any{"chat_id": externalString("Optional chat_id from messages action=list_agents. Omit for the main Builder chat."), "message": externalString("Conversational message."), "inbox_id": externalString("Inbox from an earlier send; omit for a fresh external conversation."), "submission_id": submission}), "crew_id", "message")
 		add("suggest_crew_change", "Suggest a change to a Crew you use but do not own (its purpose, instructions, skills, functions, schedules or output). The owner reviews it in the Crew's Suggestions view; nothing changes until they act. Requires crews:run.", false, false, crewID(map[string]any{
 			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
 			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
 			"about":      map[string]any{"type": "string", "description": "Optional part of the Crew it concerns, e.g. a function or schedule name.", "maxLength": 200},
 		}), "crew_id", "suggestion")
-		add("get_crew_function_call", "Poll a call started with call_crew_function: status, progress, result or error, and pending_inputs. MCP clients with elicitation support may receive a question form; otherwise answer a pending request_id with reply_crew_function_call. Requires crews:read or crews:run.", false, false, map[string]any{"call_id": externalString("call_id returned by call_crew_function."), "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Wait up to this long for the call to finish; it returns as soon as it does, so a poll costs little. Default: return at once."}}, "call_id")
-		add("list_crew_function_calls", "List recent calls to a Crew's functions, newest first: which function, who called it, status, when it started and finished. The Crew's owner sees every call (not other people's arguments or results); anyone else sees only their own calls, in full. Saved calls and results remain readable after a server restart. Requires crews:read.", false, false, crewID(map[string]any{"limit": externalInteger(1, 25)}), "crew_id")
-		add("reply_crew_function_call", "Answer a pending question on this Crew function call. Use the request_id from get_crew_function_call. Requires crews:run.", false, false, map[string]any{"call_id": externalString("Call ID from call_crew_function."), "request_id": externalString("Pending question ID."), "response": externalString("Answer or exact listed choice.")}, "call_id", "request_id", "response")
 		// Crew authoring (crews:write; owner-only edits). One spec shape
 		// serves create_crew, export_crew and import_crew.
 		specProps, fnSpec, scheduleSpec := externalCrewSpecSchemas()
@@ -348,7 +351,7 @@ func externalTools() ([]externalTool, error) {
 		// yaml admits them. Both mismatch directions fail here so drift
 		// between the two can never ship silently.
 		for i := range defined {
-			if defined[i].Name == "get_crew_function_call" || defined[i].Name == "get_workflow_function_call" {
+			if defined[i].Name == "project_functions_get_call" {
 				props := defined[i].InputSchema["properties"].(map[string]any)
 				props["after"] = externalInteger(-1, 1000000000)
 				props["after_event"] = externalInteger(-1, 1000000000)
@@ -714,6 +717,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalWorkspaceCall(w, r, call.Arguments)
 		return
 	}
+	if projectFunctionTool(tool.Name) {
+		api.externalProjectFunctionCall(w, r, tool.Name, call.Arguments)
+		return
+	}
 	if isExternalCrewTool(tool.Name) {
 		api.externalCrewCall(w, r, tool.Name, call.Arguments)
 		return
@@ -1038,7 +1045,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		}
 	}
 	// Flow chat is Builder-only; direct API tools handle published execution.
-	if selected.Manifest.Kind == "relay" && (tool.Name == "chat" || tool.Name == "call_workflow_function" && externalArg(args, "function") == "ask") {
+	if selected.Manifest.Kind == "relay" && (tool.Name == "chat" || tool.Name == "project_functions_call" && externalArg(args, "function") == "ask") {
 		externalError(w, 400, "relay_builder_only", "Use guarded files to edit Flow source, relay action=test for draft tests, or relay action=run for published versions. Builder chat can delegate edits when requested.")
 		return
 	}
@@ -1091,7 +1098,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		return
 	}
 	switch tool.Name {
-	case "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call":
+	case "project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply":
 		api.externalWorkflowFunctionCall(w, r, tool.Name, args, *selected, access)
 		return
 	}

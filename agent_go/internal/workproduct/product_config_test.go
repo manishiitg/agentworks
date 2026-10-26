@@ -99,7 +99,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 	// Pin the product boundary rather than duplicate every shared feature's
 	// tool list: Crew keeps project operations, while Goal planning/execution
 	// stays with the workflow product.
-	for _, name := range []string{"read_project_files", "execute_shell_command", "read_image", "browser_connections", "manage_crew_model", "list_project_schedules", "create_project_schedule", "manage_condition_triggers", "call_function"} {
+	for _, name := range []string{"read_project_files", "execute_shell_command", "read_image", "browser_connections", "manage_crew_model", "list_project_schedules", "create_project_schedule", "manage_condition_triggers", "project_functions_call"} {
 		if !contains(manifest.Profile.ToolPolicy.Enabled, name) {
 			t.Fatalf("Crew lost project tool %q", name)
 		}

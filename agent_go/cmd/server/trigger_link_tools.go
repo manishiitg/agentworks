@@ -438,7 +438,7 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 		return nil, crewWorkflowRunError(err)
 	}
 	if status.Terminal {
-		return nil, fmt.Errorf("run %s already finished (%s); make a new call_function call", runID, status.Status)
+		return nil, fmt.Errorf("run %s already finished (%s); make a new functions action=call call", runID, status.Status)
 	}
 	if strings.TrimSpace(status.SessionID) == "" || !strings.EqualFold(status.Status, "running") {
 		return nil, fmt.Errorf("run %s has not started yet (%s); wait for it to start or put the details in a new call", runID, status.Status)

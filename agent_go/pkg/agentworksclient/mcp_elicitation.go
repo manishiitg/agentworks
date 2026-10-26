@@ -116,8 +116,7 @@ func elicitationFamilyFor(target string, inputs ...map[string]any) (elicitationF
 	}
 	action, _ := args["action"].(string)
 	if target == "functions" && (action == "call" || action == "status") {
-		workflow, _ := args["workflow_id"].(string)
-		return elicitationFamily{get: target, reply: target, getAction: "status", replyAction: "reply", idField: "call_id", workflow: workflow != "", poll: action == "status"}, true
+		return elicitationFamily{get: target, reply: target, getAction: "status", replyAction: "reply", idField: "call_id", poll: action == "status"}, true
 	}
 	if target == "sessions" && (action == "builder_chat" || action == "builder_status") {
 		return elicitationFamily{get: target, reply: target, getAction: "builder_status", replyAction: "builder_reply_input", idField: "operation_id", workflow: true, poll: action == "builder_status"}, true
@@ -128,10 +127,8 @@ func elicitationFamilyFor(target string, inputs ...map[string]any) (elicitationF
 	// Private backend identities are used by hosted dispatch and stored Tasks.
 	// They are never public aliases on the MCP transport.
 	switch target {
-	case "call_crew_function", "get_crew_function_call":
-		return elicitationFamily{get: "get_crew_function_call", reply: "reply_crew_function_call", idField: "call_id"}, true
-	case "call_workflow_function", "get_workflow_function_call":
-		return elicitationFamily{get: "get_workflow_function_call", reply: "reply_workflow_function_call", idField: "call_id", workflow: true}, true
+	case "project_functions_call", "project_functions_get_call":
+		return elicitationFamily{get: "project_functions_get_call", reply: "project_functions_reply", idField: "call_id"}, true
 	case "builder_status":
 		return elicitationFamily{get: "builder_status", reply: "builder_reply_input", idField: "operation_id", workflow: true}, true
 	case "run_status":
@@ -255,7 +252,7 @@ func (h FunctionElicitationHost) MaybeElicit(ctx context.Context, target string,
 
 // Resume handles a retried call that carries requestState and
 // inputResponses. It never re-runs the original tool (a retried
-// call_crew_function must not start a second call): an accepted answer goes
+// project_functions_call must not start a second call): an accepted answer goes
 // to the call-scoped reply tool, then the call is polled.
 func (h FunctionElicitationHost) Resume(ctx context.Context, target string, args map[string]any, request mcp.CallToolRequest) *mcp.CallToolResult {
 	if !h.ClientCanElicit(ctx) {

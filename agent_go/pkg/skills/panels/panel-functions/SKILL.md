@@ -1,30 +1,20 @@
 ---
 name: panel-functions
-description: Functions panel in Goals and Crews. Publish or change the actions other people and agents can call.
+description: Offer, call or inspect reusable work in Goals, Crews and Flows.
 metadata:
   panel-tools:
-    work:
-    - list_functions
-    - define_function
-    - delete_function
-    - call_function
-    - get_function_call
-    agentworks:
-    - list_functions
-    - define_function
-    - delete_function
-    - manage_workflow_webhook
-    - call_function
-    - get_function_call
-    relays:
-    - manage_workflow_webhook
-  external-tools:
-  - '*workflow_function*'
-  - '*crew_function*'
+    work: [project_functions_list, project_functions_define, project_functions_delete, project_functions_call, project_functions_get_call, project_functions_reply]
+    agentworks: [project_functions_list, project_functions_define, project_functions_delete, project_functions_call, project_functions_get_call, project_functions_reply]
+    relays: [project_functions_list, project_functions_define, project_functions_delete, project_functions_call, project_functions_get_call, project_functions_reply]
+  external-tools: [functions]
 ---
 
 # Functions
 
-List functions before editing. Crew uses define_function/delete_function and list_functions; Goals use manage_workflow_webhook for a typed function route and the registered function tools for calls. Preserve the declared input/result schema and stable entry identity. A real call performs real work. Read the returned execution status/result before claiming success.
+Use the listed `functions` actions in chat or MCP. List before choosing or changing a function. A function says what work is available; a schedule says when to call it; a webhook brings an outside event. They keep the same project access and caller identity.
 
-For incoming/outgoing function calls, tracked results and attached workflow triggers, Read [the detailed procedure](references/calls.md).
+Call with `project`, `function` and `input`. Keep the returned `call_id`; read `functions action=status` until it settles. Answer a pending question with `action=reply` only when you are its caller. Current project members may read shared results. A saved or accepted call is not proof of completion.
+
+Builders use `action=define` to create or replace a `definition` (name, description, action, fixed input and caller input schema); `action=delete` removes it. Crew actions send instructions to the function's named tab, or use a fresh chat when declared. Goal actions run their saved plan/step/routes with declared non-secret variables. Flows use their published version and required INPUT object. Preserve stable identity and caller restrictions when changing a function.
+
+Read [calls and authoring](references/calls.md) for schemas, results, retry IDs and existing saved step bindings.

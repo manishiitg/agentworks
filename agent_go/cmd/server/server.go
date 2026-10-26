@@ -6349,7 +6349,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if isWorkflowPhase && effectiveWorkflowPhaseFolderForWrites != "" {
 				fileContextWriteFolders = append(fileContextWriteFolders, effectiveWorkflowPhaseFolderForWrites+"/")
 				blockedPlanning := effectiveWorkflowPhaseFolderForWrites + "/" + todo_creation_human.PlanningFolderName + "/"
-				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedPlanning, effectiveWorkflowPhaseFolderForWrites+"/schedules.json")
+				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedPlanning, effectiveWorkflowPhaseFolderForWrites+"/schedules.json", effectiveWorkflowPhaseFolderForWrites+"/webhooks.json")
 				log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Write access: %s/ (whole workflow) with blocked-write prefix: %s", effectiveWorkflowPhaseFolderForWrites, blockedPlanning)
 				// workflow.json carries the access record and created_by (whom
 				// schedules run as): only an owner's session may write it, so an
@@ -6526,9 +6526,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						guardBlocked = append(guardBlocked, foreignCrewDBWriteBlockedPaths(profileRoot, workflowReadOnlyFolders)...)
 						// Scheduled callers change only through typed schedule tools,
 						// including in owner Builder shells and attached Crew folders.
-						guardBlocked = append(guardBlocked, profileRoot+"/schedules.json")
+						guardBlocked = append(guardBlocked, profileRoot+"/schedules.json", profileRoot+"/webhooks.json")
 						for _, root := range crewRefWrite {
-							guardBlocked = append(guardBlocked, strings.TrimSuffix(root, "/")+"/schedules.json")
+							guardBlocked = append(guardBlocked, strings.TrimSuffix(root, "/")+"/schedules.json", strings.TrimSuffix(root, "/")+"/webhooks.json")
 						}
 					}
 					if len(guardBlocked) > 0 {

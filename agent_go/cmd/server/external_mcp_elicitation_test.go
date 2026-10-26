@@ -204,9 +204,9 @@ func TestExternalMCPWorkflowReaderDoesNotReceiveElicitation(t *testing.T) {
 		ClientCapabilities: &mcp.ClientCapabilities{Elicitation: &mcp.ElicitationCapability{}},
 	})
 	raw := []byte(`{"call_id":"fn-reader","can_reply":false,"pending_inputs":[{"request_id":"question","message":"Choose a branch","options":["main"],"allow_feedback":false}]}`)
-	allowed := map[string]externalTool{"get_workflow_function_call": {}, "reply_workflow_function_call": {}}
+	allowed := map[string]externalTool{"project_functions_get_call": {}, "project_functions_reply": {}}
 	host := (&StreamingAPI{}).externalMCPElicitation(nil, allowed)
-	if result := host.MaybeElicit(ctx, "get_workflow_function_call", map[string]any{"workflow_id": "invoices"}, raw); result != nil {
+	if result := host.MaybeElicit(ctx, "project_functions_get_call", map[string]any{"workflow_id": "invoices"}, raw); result != nil {
 		t.Fatalf("reader received an unanswerable elicitation: %+v", result)
 	}
 }

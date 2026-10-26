@@ -1233,7 +1233,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		name, description string
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
-	}{"list_agents", "List every agent you can use, in one list: Crews, Goals and Relays you own or that are shared with you (with their functions), and your agents connected through AgentBridge (local Claude Code, Codex, Cursor, Muse, Pi). Nothing has to be linked first. Use an agent's id: call_function(target=<id>, function=<name>) runs one of its functions; send_message(target=<id>) asks it; read the answer with read_agent_messages(inbox_id)", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	}{"list_agents", "List every agent you can use, in one list: Crews, Goals and Relays you own or that are shared with you (with their functions), and your agents connected through AgentBridge (local Claude Code, Codex, Cursor, Muse, Pi). Nothing has to be linked first. Use an agent's id: functions action=call(target=<id>, function=<name>) runs one of its functions; send_message(target=<id>) asks it; read the answer with read_agent_messages(inbox_id)", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
 		claims := GetUserFromContext(ctx)
 		if claims == nil {

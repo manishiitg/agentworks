@@ -53,7 +53,7 @@ func TestStructuredFunctionsIsolateParallelRunsAndKeepOutputsAfterRestart(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	fn := crewFunction{Name: "report", Instructions: "Prepare a report."}
+	fn := savedFunctionForTest(t, ctx, target, crewFunction{Name: "report", Instructions: "Prepare a report.", Execution: "fresh"})
 	calls := make([]*crewFunctionCall, 0, 3)
 	sessions := map[string]bool{}
 	for i := 0; i < 3; i++ {
@@ -177,7 +177,7 @@ func TestStructuredFunctionFileCorrectionUsesSameExecutionAndRejectsInvalidResul
 	}
 	schema := map[string]interface{}{"type": "object", "required": []interface{}{"passed"}, "properties": map[string]interface{}{"passed": map[string]interface{}{"type": "boolean"}}}
 	for _, name := range []string{"valid", "fallback", "invalid"} {
-		call, err := env.api.startCrewFunctionCall(ctx, "owner", caller, target, crewFunction{Name: name, Instructions: "Check the report.", ResultSchema: schema}, nil, time.Minute, name)
+		call, err := env.api.startCrewFunctionCall(ctx, "owner", caller, target, savedFunctionForTest(t, ctx, target, crewFunction{Name: name, Instructions: "Check the report.", ResultSchema: schema}), nil, time.Minute, name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -191,7 +191,7 @@ func TestStructuredFunctionFileCorrectionUsesSameExecutionAndRejectsInvalidResul
 		n := turns[call.ID]
 		mu.Unlock()
 		if n != 2 || len(call.RunIDs) != 1 {
-			t.Fatalf("%s used %d turns / %d runs", name, n, len(call.RunIDs))
+			t.Fatalf("%s used %d turns / %d runs: %v", name, n, len(call.RunIDs), out)
 		}
 		if name == "invalid" {
 			if out["status"] != "failed" || out["final_reply"] != "Still no valid output." {

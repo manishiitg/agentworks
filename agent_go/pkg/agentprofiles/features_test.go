@@ -140,7 +140,7 @@ func TestWorkflowReferencesProjectScopedCrewInvocationTools(t *testing.T) {
 	if got := strings.Join(FeaturePromptExtensions(profile), "\n"); !strings.Contains(got, "Crew-scoped secretless internal trigger") || !strings.Contains(got, "public webhook triggers") {
 		t.Fatalf("workflow-reference constraints must preserve the invocation boundary: %q", got)
 	}
-	if got := profile.ResolvedFeatures[0].PromptExtension; !strings.Contains(got, "panel-functions") || strings.Contains(got, "call_function") {
+	if got := profile.ResolvedFeatures[0].PromptExtension; !strings.Contains(got, "panel-functions") || strings.Contains(got, "project_functions_call") {
 		t.Fatalf("feature metadata must route procedures to its skill: %q", got)
 	}
 }
@@ -173,18 +173,18 @@ func TestFeatureOptionsNarrowToolsForOutboundAndDirectMessageOnly(t *testing.T) 
 	if err := ResolveFeatures(&profile); err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range []string{"list_functions", "call_function", "get_function_call", "reply_function_call", "ask_function_update", "list_accessible_workflows", "run_workflow_trigger", "get_slack_bot_settings"} {
+	for _, tool := range []string{"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "ask_function_update", "list_accessible_workflows", "run_workflow_trigger", "get_slack_bot_settings"} {
 		if !containsString(profile.ToolPolicy.Enabled, tool) {
 			t.Fatalf("narrowed features dropped caller tool %s: %v", tool, profile.ToolPolicy.Enabled)
 		}
 	}
-	for _, tool := range []string{"define_function", "delete_function", "report_function_progress", "return_function_result", "google_workspace_cli", "list_gmail_connections", "create_slack_bot_route", "send_slack_message", "slack"} {
+	for _, tool := range []string{"project_functions_define", "project_functions_delete", "report_function_progress", "return_function_result", "google_workspace_cli", "list_gmail_connections", "create_slack_bot_route", "send_slack_message", "slack"} {
 		if containsString(profile.ToolPolicy.Enabled, tool) {
 			t.Fatalf("narrowed features kept %s: %v", tool, profile.ToolPolicy.Enabled)
 		}
 	}
 	got := strings.Join(FeaturePromptExtensions(profile), "\n")
-	if strings.Contains(got, "Gmail/Google Workspace accounts are enabled") || strings.Contains(got, "define_function") || !strings.Contains(got, "outbound only") {
+	if strings.Contains(got, "Gmail/Google Workspace accounts are enabled") || strings.Contains(got, "project_functions_define") || !strings.Contains(got, "outbound only") {
 		t.Fatalf("prompt extensions still describe removed tools: %q", got)
 	}
 	if FeatureOption(profile, "bots", "dm_only") != "true" {

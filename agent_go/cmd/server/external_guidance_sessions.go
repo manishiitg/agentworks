@@ -82,7 +82,7 @@ func externalOperationHasGuidance(tool externalTool, args map[string]any) bool {
 	if isDashboardTool(tool.Name) && dashboardActions[tool.Name] != "list" && dashboardActions[tool.Name] != "get" && dashboardActions[tool.Name] != "link" {
 		return dashboardActions[tool.Name] != "validate" && dashboardActions[tool.Name] != "preview"
 	}
-	if tool.Name == "call_crew_function" || tool.Name == "ask_crew" {
+	if tool.Name == "project_functions_call" || tool.Name == "ask_crew" {
 		return true
 	}
 	if !tool.mutates && !tool.executes {

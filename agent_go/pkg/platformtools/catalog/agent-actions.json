@@ -1129,65 +1129,44 @@
   {
     "family": "functions",
     "name": "list",
-    "member": "list_functions",
+    "member": "project_functions_list",
     "description": "Use the current list function operation; published access and active-call checks still apply.",
-    "aliases": [
-      "list_workflow_functions"
-    ],
-    "external_members": "list_workflow_functions|list_crew_functions"
+    "external_members": "project_functions_list"
   },
   {
     "family": "functions",
     "name": "call",
-    "member": "call_function",
+    "member": "project_functions_call",
     "description": "Use the current call function operation; published access and active-call checks still apply.",
-    "aliases": [
-      "call_workflow_function",
-      "call_published_function"
-    ],
-    "external_members": "call_workflow_function|call_crew_function"
+    "external_members": "project_functions_call"
   },
   {
     "family": "functions",
     "name": "status",
-    "member": "get_function_call",
+    "member": "project_functions_get_call",
     "description": "Use the current status function operation; published access and active-call checks still apply.",
-    "aliases": [
-      "get_workflow_function_call",
-      "get_published_function_call"
-    ],
-    "external_members": "get_workflow_function_call|get_crew_function_call"
+    "external_members": "project_functions_get_call"
   },
   {
     "family": "functions",
     "name": "reply",
-    "member": "reply_function_call",
+    "member": "project_functions_reply",
     "description": "Use the current reply function operation; published access and active-call checks still apply.",
-    "aliases": [
-      "reply_workflow_function_call"
-    ],
-    "external_members": "reply_workflow_function_call|reply_crew_function_call"
+    "external_members": "project_functions_reply"
   },
   {
     "family": "functions",
     "name": "define",
-    "member": "define_function",
+    "member": "project_functions_define",
     "description": "Use the current define function operation; published access and active-call checks still apply.",
-    "external_members": "update_crew"
-  },
-  {
-    "family": "functions",
-    "name": "update",
-    "member": "update_function",
-    "description": "Use the current update function operation; published access and active-call checks still apply.",
-    "external_members": "update_crew"
+    "external_members": "project_functions_define"
   },
   {
     "family": "functions",
     "name": "delete",
-    "member": "delete_function",
+    "member": "project_functions_delete",
     "description": "Use the current delete function operation; published access and active-call checks still apply.",
-    "external_members": "update_crew"
+    "external_members": "project_functions_delete"
   },
   {
     "family": "functions",
@@ -1210,8 +1189,9 @@
   {
     "family": "functions",
     "name": "calls",
-    "member": "list_crew_function_calls",
-    "description": "Read allowed function-call results and history."
+    "member": "project_functions_calls",
+    "description": "Read allowed function-call results and history.",
+    "external_members": "project_functions_calls"
   },
   {
     "family": "functions",

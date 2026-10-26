@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"path"
+	"slices"
 	"strings"
 	"testing"
 
@@ -35,11 +36,14 @@ func TestRelayPublishKeepsRunningVersionSeparateFromDraft(t *testing.T) {
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
 	ctx := context.Background()
+	if err := saveWorkflowEntryActions(ctx, workspace, manifest); err != nil {
+		t.Fatal(err)
+	}
 	v1, err := publishRelayRelease(ctx, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v1.Version != "v1" || v1.Hash == "" || v1.FileCount != 4 {
+	if v1.Version != "v1" || v1.Hash == "" || !slices.Contains(v1.Files, "functions.json") {
 		t.Fatalf("v1 = %+v", v1)
 	}
 	republish, err := publishRelayRelease(ctx, workspace)

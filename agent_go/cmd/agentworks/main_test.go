@@ -80,6 +80,9 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 		{[]string{"messages", "list"}, "", "messages", map[string]any{"action": "list_agents"}},
 		{[]string{"tools", "call", "messages", "--input", "-"}, `{"action":"list_agents"}`, "messages", map[string]any{"action": "list_agents"}},
 		{[]string{"messages", "read", "--agent", "reviewer", "--after", "42", "--wait", "25"}, "", "messages", map[string]any{"action": "read", "agent_name": "reviewer", "after": 42, "wait_seconds": 25}},
+
+		{[]string{"functions", "call", "--project", "crew-sample", "--function", "review", "--function-input", `{"build":"812"}`}, "", "functions", map[string]any{"action": "call", "project": "crew-sample", "function": "review", "input": map[string]any{"build": "812"}}},
+		{[]string{"functions", "call-status", "--call", "call-sample"}, "", "functions", map[string]any{"action": "status", "call_id": "call-sample"}},
 		{[]string{"plan", "get", "--workflow", "wf-1"}, "", "get_plan", map[string]any{"workflow_id": "wf-1"}},
 		{[]string{"plan", "list", "--workflow", "wf-1"}, "", "plan", map[string]any{"workflow_id": "wf-1", "action": "list"}},
 		{[]string{"plan", "edit", "--workflow", "wf-1", "--input", "-"}, `{"action":"update_step","arguments":{"step_id":"fetch","changes":{"title":"Fetch invoices","reason":"Clarify scope"}},"expected_revision":"revision","request_id":"edit-1"}`, "plan", map[string]any{"workflow_id": "wf-1", "action": "update_step", "expected_revision": "revision", "request_id": "edit-1", "arguments": map[string]any{"step_id": "fetch", "changes": map[string]any{"title": "Fetch invoices", "reason": "Clarify scope"}}}},

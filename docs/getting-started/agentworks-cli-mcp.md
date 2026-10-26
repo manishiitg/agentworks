@@ -21,7 +21,7 @@ Run-mode MCP tools inspect data and execute workflows or Crew functions. A
 connection with the explicit Builder grant can also use the Builder tools to
 author workflows it owns or may edit; see [Workflow Builder MCP](../mcp/workflow-builder.md)
 for the grant and operation flow. Function calls that pause for a question
-expose it through `get_crew_function_call` or `get_workflow_function_call` and
+expose it through `functions action=status` or `functions action=status` and
 accept an answer through the matching `reply_*_function_call` tool.
 Pass a unique `submission_id` for each new function call or message; reuse it
 when retrying an uncertain delivery. A function returns `call_id`; a conversational

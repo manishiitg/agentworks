@@ -20,6 +20,7 @@ type Project struct {
 // execution mode. Conversation is only the Crew's existing isolated destination.
 type Action struct {
 	Type         string `json:"type"`
+	Step         string `json:"step,omitempty"`
 	Tab          string `json:"tab,omitempty"`
 	Function     string `json:"function,omitempty"`
 	Conversation string `json:"conversation,omitempty"`

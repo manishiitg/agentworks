@@ -11,7 +11,7 @@ func TestInvocationKeepsSourceSelectorsAndAmbiguousMembers(t *testing.T) {
 	actions := append([]Action{}, Actions...)
 	actions = append(actions,
 		Action{Family: "vault", Name: "add", Member: "vault_add", Source: "manage_vault", SourceKey: "operation", SourceAction: "create"},
-		Action{Family: "functions", Name: "define", Member: "define_function", ExternalMembers: "update_crew"},
+		Action{Family: "functions", Name: "define", Member: "project_functions_define", ExternalMembers: "update_crew"},
 		Action{Family: "functions", Name: "update", Member: "update_function", ExternalMembers: "update_crew"},
 		Action{Family: "sessions", Name: "list", Member: "list_sessions", ExternalMembers: "list_project_sessions"},
 	)

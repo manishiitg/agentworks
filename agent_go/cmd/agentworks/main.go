@@ -71,8 +71,8 @@ var cliOperationGroups = []struct {
 	{"messages", "Register named agents, discover addresses and manage your inbox", []struct{ command, tool string }{{"register", "messages"}, {"unregister", "messages"}, {"list", "messages"}, {"send", "messages"}, {"read", "messages"}, {"count", "messages"}, {"delete", "messages"}, {"clear", "messages"}}},
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skills", "get_guidance_skills"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
-	{"functions", "List and call a workflow's functions (typed, input-checked entry points)", []struct{ command, tool string }{{"list", "list_workflow_functions"}, {"call", "call_workflow_function"}, {"call-status", "get_workflow_function_call"}, {"call-file", "get_workflow_function_call"}, {"suggest", "suggest_workflow_change"}}},
-	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"functions", "list_crew_functions"}, {"call", "call_crew_function"}, {"ask", "ask_crew"}, {"call-status", "get_crew_function_call"}, {"call-file", "get_crew_function_call"}, {"suggest", "suggest_crew_change"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
+	{"functions", "List, call and manage project functions", []struct{ command, tool string }{{"list", "project_functions_list"}, {"call", "project_functions_call"}, {"call-status", "project_functions_get_call"}, {"call-file", "project_functions_get_call"}, {"suggest", "suggest_workflow_change"}}},
+	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"ask", "ask_crew"}, {"suggest", "suggest_crew_change"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
 }
 
 func main() {
@@ -517,29 +517,28 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	// Global guidance topics accept no workflow_id; offering the flag would
 	// only produce an avoidable invalid_arguments response.
 	crewTool := strings.Contains(tool, "crew")
-	if tool != "messages" && tool != "list_workflows" && tool != "list_guidance_topics" && tool != "get_guidance_topic" && tool != "get_guidance_skills" && !crewTool {
+	if strings.HasPrefix(tool, "project_functions_") {
+		f.String("project", "", "Project ID or name")
+	}
+	if tool != "messages" && tool != "list_workflows" && tool != "list_guidance_topics" && tool != "get_guidance_topic" && tool != "get_guidance_skills" && !crewTool && !strings.HasPrefix(tool, "project_functions_") {
 		f.String("workflow", "", "Workflow ID (workflow_id)")
 	}
-	if crewTool && tool != "list_crews" && tool != "get_crew_function_call" && tool != "create_crew" && tool != "import_crew" {
+	if crewTool && tool != "list_crews" && tool != "project_functions_get_call" && tool != "create_crew" && tool != "import_crew" {
 		f.String("crew", "", "Crew ID from crews list (crew_id)")
 	}
 	switch tool {
 	case "create_crew":
 		f.String("idempotency-key", "", "One key per intended Crew; reuse it for an unchanged retry")
-	case "call_crew_function":
-		f.String("function", "", "Function name from crews functions")
-		f.String("args", "", "Function arguments as a JSON object")
+
+	case "project_functions_call":
+		f.String("function", "", "Function name from functions list")
+		f.String("function-input", "", "Function input as a JSON object")
+	case "project_functions_get_call":
+		f.String("call", "", "call_id returned by functions call")
 	case "ask_crew":
 		f.String("message", "", "Conversational message for the Crew; replies are optional")
 		f.String("inbox", "", "Reuse the inbox_id returned by a previous send")
 		f.String("submission-id", "", "Unique message submission ID; reuse after uncertain delivery")
-	case "get_crew_function_call":
-		f.String("call", "", "call_id returned by crews call")
-	case "call_workflow_function":
-		f.String("function", "", "Function name from functions list")
-		f.String("args", "", "Function inputs as a JSON object")
-	case "get_workflow_function_call":
-		f.String("call", "", "call_id returned by functions call")
 	case "suggest_crew_change", "suggest_workflow_change":
 		f.String("suggestion", "", "The change you would like, in plain words")
 		f.String("reason", "", "Optional short reason or example")
@@ -549,7 +548,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 			f.String("step-id", "", "Optional related step ID")
 		}
 	}
-	if tool == "get_crew_function_call" || tool == "get_workflow_function_call" {
+	if tool == "project_functions_get_call" {
 		f.Int("after", -1, "Execution message cursor; start at -1, then use next_after from the previous page")
 		f.Int("after-event", -1, "Conversation text cursor; start at -1, then use next_after_event")
 		f.Int("message-limit", 0, "Maximum execution messages and conversation text events to return")
@@ -561,7 +560,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	if tool == "write_crew_file" {
 		f.String("file", "", "Local file to upload: text or binary, at most 11 MiB. Read here by the CLI, so it is not pasted into the call")
 	}
-	if tool == "call_crew_function" || tool == "call_workflow_function" {
+	if tool == "project_functions_call" {
 		f.Int("wait", 0, "Seconds to wait for the result (max 25) before returning a call_id to poll")
 	}
 	if tool == "" {
@@ -701,7 +700,7 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 			return nil, errors.New("--input must contain exactly one JSON object")
 		}
 	}
-	for flagName, field := range map[string]string{"workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "known-version": "known_version", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id", "idempotency-key": "idempotency_key", "agent": "agent_name"} {
+	for flagName, field := range map[string]string{"project": "project", "workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "known-version": "known_version", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id", "idempotency-key": "idempotency_key", "agent": "agent_name"} {
 		if cmd.Flags().Changed(flagName) {
 			value, _ := cmd.Flags().GetString(flagName)
 			arguments[field] = value
@@ -722,13 +721,13 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 			}
 		}
 	}
-	if cmd.Flags().Lookup("args") != nil && cmd.Flags().Changed("args") {
-		raw, _ := cmd.Flags().GetString("args")
+	if cmd.Flags().Lookup("function-input") != nil && cmd.Flags().Changed("function-input") {
+		raw, _ := cmd.Flags().GetString("function-input")
 		var object map[string]any
 		if err := json.Unmarshal([]byte(raw), &object); err != nil || object == nil {
-			return nil, errors.New("--args must be a JSON object, for example --args '{\"build\":\"812\"}'")
+			return nil, errors.New("--function-input must be a JSON object, for example --function-input '{\"build\":\"812\"}'")
 		}
-		arguments["args"] = object
+		arguments["input"] = object
 	}
 	for flagName, field := range map[string]string{"limit": "limit", "offset": "offset", "depth": "depth", "since-index": "since_index", "wait": "wait_seconds", "after": "after", "message-limit": "message_limit", "after-event": "after_event"} {
 		if cmd.Flags().Changed(flagName) {
@@ -909,11 +908,11 @@ func crewCommandCall(name string, args map[string]any) (string, map[string]any) 
 		family, action = "files", "read"
 	case "write_crew_file":
 		family, action = "files", "write"
-	case "list_crew_functions":
+	case "project_functions_list":
 		family, action = "functions", "list"
-	case "call_crew_function":
+	case "project_functions_call":
 		family, action = "functions", "call"
-	case "get_crew_function_call":
+	case "project_functions_get_call":
 		family, action = "functions", "status"
 	case "suggest_crew_change":
 		family, action = "needs_you", "suggest"

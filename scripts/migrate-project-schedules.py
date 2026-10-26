@@ -11,6 +11,8 @@ import copy
 from datetime import datetime, timezone
 import json
 import os
+import hashlib
+import uuid
 from pathlib import Path
 import shutil
 import sqlite3
@@ -159,8 +161,206 @@ def inspect(root, local_user_id=None):
     for state_path, before, after in states.values():
         if before != after:
             changes.append((state_path, after))
+    changes = entry_changes(root, changes, counts, local_user_id)
     counts["changed_files"] = len(changes)
     return changes, dict(counts)
+
+
+def execution_input(source):
+    return {new: copy.deepcopy(source[old]) for old, new in (
+        ("messages", "messages"), ("group_names", "groups"), ("route_selections", "routes"),
+        ("trigger_payload", "payload"), ("team_authorized_by", "team_authorized_by"),
+        ("team_policy_revision", "team_policy_revision")) if source.get(old) not in (None, "", [], {})}
+
+
+def input_mapping(config):
+    return {new: copy.deepcopy(config[old]) for old, new in (
+        ("input_mode", "mode"), ("allowed_variables", "variables"),
+        ("payload_mappings", "payload")) if config.get(old) not in (None, "", [], {})}
+
+
+def function_schema(source):
+    spec = source.get("function") or {}
+    schema = {"type": "object", "properties": {}}
+    required = []
+    for parameter in spec.get("inputs") or []:
+        field = {"type": parameter.get("type") or "string"}
+        for key in ("description", "enum"):
+            if parameter.get(key):
+                field[key] = copy.deepcopy(parameter[key])
+        schema["properties"][parameter["name"]] = field
+        if parameter.get("required"):
+            required.append(parameter["name"])
+    groups = source.get("group_names") or []
+    if len(groups) > 1:
+        schema["properties"]["group"] = {"type": "string", "enum": groups}
+    if required:
+        schema["required"] = required
+    return schema
+
+
+def function_record(kind, folder, source, binding=False):
+    config = source.get("webhook") or {}
+    spec = source.get("function") or {}
+    if kind == "crew" and not binding:
+        identity = str(uuid.uuid5(uuid.NAMESPACE_OID, folder + "\0" + source["name"]))
+        action = {"type": "message"}
+        if source.get("execution") == "fresh":
+            action["conversation"] = "fresh"
+        else:
+            action["tab"] = source.get("agent") or source["name"]
+        record = {"id": identity, "name": source["name"], "description": source.get("description") or "",
+                  "enabled": True, "action": action, "input": {"messages": [source.get("instructions") or ""]}}
+        for key in ("input_schema", "result_schema", "created_by", "created_at", "updated_at"):
+            if key in source:
+                record[key] = copy.deepcopy(source[key])
+        return record
+    action = {"type": "message" if kind == "crew" else "run"}
+    if config.get("step_id"):
+        action["step"] = config["step_id"]
+    if kind == "crew" and source.get("run_destination", "isolated") == "isolated":
+        action["conversation"] = "isolated"
+    inputs = execution_input(source)
+    if kind == "crew":
+        inputs["messages"] = [source["message"]]
+    name = "binding_" + source["id"].replace("-", "_") if binding else spec["name"]
+    record = {"id": source["id"], "name": name, "description": spec.get("description") or source.get("name") or name,
+              "enabled": bool(source.get("enabled")), "action": action, "input": inputs,
+              "input_schema": {"type": "object"} if binding else function_schema(source)}
+    if binding:
+        record["input_mapping"] = input_mapping(config)
+        if not source.get("caller"):
+            raise ValueError("an explicit saved step binding has no caller")
+        record["allowed_callers"] = [copy.deepcopy(source["caller"])]
+    elif spec.get("allowed_callers"):
+        record["allowed_callers"] = copy.deepcopy(spec["allowed_callers"])
+    if not binding and kind != "relay":
+        record["result_schema"] = {"type": "object", "properties": {"status": {"type": "string"}, "error": {"type": "string"}, "steps": {"type": "array"}}}
+    return record
+
+
+def release_hash(project, release, planned=None):
+    files = release.get("files") or []
+    if not files or len(set(files)) != len(files) or release.get("file_count") != len(files):
+        return None
+    runtime_prefixes = ("runs/", "relay_releases/", "chat/", "chats/", "chat_history/", "backup/", "publish/", "planning/revisions/", "planning/changelog/", "variables/changelog/", "knowledgebase/notes/", ".sandbox-cache/", "costs/", "db/", "config/", "webhooks/", "builder/", "session/", "sessions/", "logs/")
+    runtime_names = {"release.json", "schedule-runs.json", ".webhook-sequence", "workflow.json.kb-lock"}
+    for file in project.rglob("*"):
+        if file.is_symlink():
+            return None
+        if file.is_file():
+            relative = file.relative_to(project).as_posix()
+            if relative not in files and relative not in runtime_names and not relative.startswith(runtime_prefixes):
+                return None
+    digest = hashlib.sha256()
+    for relative in sorted(files):
+        path = Path(relative)
+        if path.is_absolute() or ".." in path.parts or path.as_posix() != relative:
+            return None
+        file = project / relative
+        if planned and file in planned:
+            content = (json.dumps(planned[file], indent=2, ensure_ascii=False) + "\n").encode()
+        elif file.is_file() and not file.is_symlink():
+            content = file.read_bytes()
+        else:
+            return None
+        digest.update(relative.encode() + b"\0" + content + b"\0")
+    return digest.hexdigest()
+
+
+def entry_changes(root, timer_changes, counts, local_user_id=None):
+    planned = dict(timer_changes)
+    skipped_releases = []
+    projects = list(project_roots(root))
+    for base in [root] + [p for p in (root / "_users").glob("*") if p.is_dir() and not p.is_symlink()]:
+        releases = base / "Workflow" / ".relay_releases"
+        if not releases.is_symlink():
+            projects.extend(("Workflow", p.parent) for p in sorted(releases.glob("*/v*/workflow.json")) if not p.is_symlink())
+    for folder_kind, project in projects:
+        release_path = project / "release.json"
+        if release_path.exists():
+            original_release = read_json(release_path, {})
+            if not original_release.get("hash") or release_hash(project, original_release) != original_release["hash"]:
+                counts["flow_releases_skipped_hash_mismatch"] += 1
+                skipped_releases.append(project.relative_to(root).as_posix())
+                continue
+        metadata_path, manifest_path = project / "product.json", project / "workflow.json"
+        metadata = read_json(metadata_path, {})
+        manifest = copy.deepcopy(planned.get(manifest_path, read_json(manifest_path, metadata if folder_kind == "Crew" else {})))
+        if not manifest:
+            continue
+        kind = "crew" if folder_kind == "Crew" else ("relay" if manifest.get("kind") == "relay" else "goal")
+        identity = manifest.get("id") or metadata.get("id")
+        root_key = project.relative_to(root).as_posix()
+        functions_path, hooks_path = project / "functions.json", project / "webhooks.json"
+        old_functions = read_json(functions_path, {})
+        functions = copy.deepcopy(old_functions.get("functions") or [])
+        changed_functions = bool(old_functions) and ("version" in old_functions or any("action" not in fn for fn in functions))
+        if changed_functions:
+            counts[kind + "_function_files_converted"] += len(functions)
+            functions = [function_record(kind, root_key, fn) for fn in functions]
+        source_entries = manifest.get("triggers") or [] if kind == "crew" else [s for s in manifest.get("schedules") or [] if s.get("schedule_type") == "webhook"]
+        if source_entries and hooks_path.exists():
+            raise ValueError("common webhooks and retired entries coexist")
+        hooks = []
+        for source in source_entries:
+            if source.get("workspace_function"):
+                counts["function_adapters_removed"] += 1
+                continue
+            if source.get("kind") in ("internal", "function"):
+                functions.append(function_record(kind, root_key, source, source.get("kind") == "internal"))
+                changed_functions = True
+                counts["explicit_bindings" if source.get("kind") == "internal" else "declared_functions"] += 1
+                continue
+            caller = caller_for(kind, manifest, metadata, local_user_id)
+            if not caller:
+                raise ValueError("a webhook has no recorded caller")
+            config = source.get("webhook") or {}
+            action = {"type": "message" if kind == "crew" or source.get("messages") else "run"}
+            if config.get("step_id"):
+                action["step"] = config["step_id"]
+            if kind == "crew" and source.get("run_destination", "crew_chat") == "isolated":
+                action["conversation"] = "isolated"
+            inputs = execution_input(source)
+            if kind == "crew":
+                inputs["messages"] = [source["message"]]
+            hooks.append({"id": source["id"], "name": source["name"], "project": {"kind": kind, "id": identity},
+                          "enabled": bool(source.get("enabled")), "path": source.get("path") or "/api/hooks/" + source["id"],
+                          "action": action, "input": inputs, "run_as": caller,
+                          "auth": {"mode": config.get("auth_mode") or "", "encrypted_secret": config.get("encrypted_secret") or ""},
+                          "input_mapping": input_mapping(config)})
+        if changed_functions:
+            ids = [fn["id"] for fn in functions]
+            if len(ids) != len(set(ids)):
+                raise ValueError("function identities collide during conversion")
+            planned[functions_path] = {"functions": sorted(functions, key=lambda fn: fn["name"])}
+        if source_entries:
+            if hooks:
+                planned[hooks_path] = {"webhooks": hooks}
+            if kind == "crew":
+                manifest.pop("triggers", None)
+            else:
+                manifest["schedules"] = [s for s in manifest.get("schedules") or [] if s.get("schedule_type") != "webhook"]
+            planned[manifest_path if manifest_path.exists() else metadata_path] = manifest
+        release_path = project / "release.json"
+        if release_path.exists() and (changed_functions or source_entries):
+            release = read_json(release_path, {})
+            files = set(release.get("files") or [])
+            for item in (functions_path, hooks_path):
+                if item in planned:
+                    files.add(item.name)
+            release.update(files=sorted(files), file_count=len(files))
+            digest = hashlib.sha256()
+            for relative in sorted(files):
+                file = project / relative
+                content = (json.dumps(planned[file], indent=2, ensure_ascii=False) + "\n").encode() if file in planned else file.read_bytes()
+                digest.update(relative.encode() + b"\0" + content + b"\0")
+            release["hash"] = digest.hexdigest()
+            planned[release_path] = release
+            counts["flow_releases_converted"] += 1
+    if skipped_releases:
+        counts["flow_release_skip_paths"] = skipped_releases
+    return list(planned.items())
 
 
 def migrate(root, backup=None, check=False, local_user_id=None):

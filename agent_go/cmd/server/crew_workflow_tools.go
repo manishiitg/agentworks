@@ -297,7 +297,7 @@ func crewWorkflowRunCaller(ctx context.Context, crewWorkspacePath string) (trigg
 // crewAttachedWorkflowManifest resolves the workflow a Crew runs as a whole: any workflow the person owns or edits,
 // by workspace_path or by its list_agents id (workflow:<id>). No attachment is needed (PLAT-861-297); running the
 // whole workflow through an internal trigger is the workflow's own plumbing, so it stays with its owner and editors,
-// while anyone it is shared with calls its functions with call_function. The manifest must still exist.
+// while anyone it is shared with calls its functions with project_functions_call. The manifest must still exist.
 func crewAttachedWorkflowManifest(ctx context.Context, _ string, target string) (*WorkflowManifest, error) {
 	path := strings.TrimSuffix(strings.TrimSpace(target), "/")
 	if id, ok := strings.CutPrefix(path, "workflow:"); ok {

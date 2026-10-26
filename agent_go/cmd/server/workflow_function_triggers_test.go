@@ -138,7 +138,7 @@ func TestWorkflowFunctionCallerAllowList(t *testing.T) {
 }
 
 // A Crew sees a workflow's function triggers, no free-text ask, and cannot
-// define functions on it; a call with a missing input fails before any run.
+// manage its owned functions; a call with a missing input fails before any run.
 func TestCrewSeesWorkflowFunctions(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
@@ -154,21 +154,27 @@ func TestCrewSeesWorkflowFunctions(t *testing.T) {
 	env.mock.mu.Lock()
 	env.mock.files[manifestPath("Workflow/reports")] = string(raw)
 	env.mock.mu.Unlock()
+	if err := saveWorkflowEntryActions(ctx, "Workflow/reports", manifest); err != nil {
+		t.Fatal(err)
+	}
 
-	out, err := env.alpha["list_functions"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Reports"})
+	out, err := env.alpha["project_functions_list"].exec(context.Background(), map[string]interface{}{"project": "#workflow:Reports"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out, "review_pr") || strings.Contains(out, `"ask"`) {
 		t.Fatalf("workflow functions = %s, want only the declared review_pr trigger", out)
 	}
-	if _, err := env.alpha["call_function"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Reports", "function": "review_pr", "args": map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app"}}); err == nil || !strings.Contains(err.Error(), "PR_NUMBER") {
+	if _, err := env.alpha["project_functions_call"].exec(context.Background(), map[string]interface{}{"project": "#workflow:Reports", "function": "review_pr", "input": map[string]interface{}{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app"}}); err == nil || !strings.Contains(err.Error(), "PR_NUMBER") {
 		t.Fatalf("missing input must fail before running: err = %v", err)
 	}
-	if _, err := env.alpha["define_function"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Reports", "name": "x", "description": "d", "instructions": "y", "input_schema": map[string]interface{}{"type": "object"}, "result_schema": map[string]interface{}{"type": "object"}}); err == nil || !strings.Contains(err.Error(), "function triggers") {
-		t.Fatalf("define on a workflow: err = %v", err)
+	// The same Builder can now define a whole-plan entry through the common
+	// service. This is saved configuration only; no plan is executed here.
+	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]interface{}{"project": "#workflow:Reports", "definition": map[string]interface{}{"name": "run_report", "action": map[string]interface{}{"type": "run"}, "input_schema": map[string]interface{}{"type": "object"}}}); err != nil {
+		t.Fatalf("define on owned Goal: %v", err)
 	}
-	if _, err := env.alpha["call_function"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Pipeline", "function": "run"}); err == nil || !strings.Contains(err.Error(), "offers no functions") {
+
+	if _, err := env.alpha["project_functions_call"].exec(context.Background(), map[string]interface{}{"project": "#workflow:Pipeline", "function": "run"}); err == nil || !strings.Contains(err.Error(), "offers no functions") {
 		t.Fatalf("workflow without that function: err = %v", err)
 	}
 }
@@ -201,19 +207,19 @@ func TestExternalWorkflowFunctions(t *testing.T) {
 		_ = json.Unmarshal(rec.Body.Bytes(), &out)
 		return rec.Code, out
 	}
-	code, out := request("list_workflow_functions", map[string]any{}, WorkflowAccessOwner)
+	code, out := request("project_functions_list", map[string]any{}, WorkflowAccessOwner)
 	functions, _ := out["functions"].([]any)
 	if code != 200 || len(functions) != 1 || functions[0].(map[string]any)["name"] != "review_pr" {
 		t.Fatalf("list = %d %v", code, out)
 	}
-	code, out = request("call_workflow_function", map[string]any{"function": "review_pr", "args": map[string]any{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app"}}, WorkflowAccessOwner)
+	code, out = request("project_functions_call", map[string]any{"function": "review_pr", "input": map[string]any{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app"}}, WorkflowAccessOwner)
 	if code != 400 || !strings.Contains(fmt.Sprint(out["error"]), "missing required input PR_NUMBER") {
 		t.Fatalf("missing input = %d %v", code, out)
 	}
-	if code, out := request("call_workflow_function", map[string]any{"function": "review_pr"}, WorkflowAccessRead); code != 400 || !strings.Contains(fmt.Sprint(out["error"]), "missing required input") {
+	if code, out := request("project_functions_call", map[string]any{"function": "review_pr"}, WorkflowAccessRead); code != 400 || !strings.Contains(fmt.Sprint(out["error"]), "missing required input") {
 		t.Fatalf("Run call must reach input validation: %d %v", code, out)
 	}
-	if code, _ := request("call_workflow_function", map[string]any{"function": "nope"}, WorkflowAccessOwner); code != 404 {
+	if code, _ := request("project_functions_call", map[string]any{"function": "nope"}, WorkflowAccessOwner); code != 404 {
 		t.Fatalf("unknown function = %d, want 404", code)
 	}
 }

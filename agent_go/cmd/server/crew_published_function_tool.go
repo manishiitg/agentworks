@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	crewPublishedCallToolName = "call_published_function"
-	crewPublishedGetToolName  = "get_published_function_call"
+	crewPublishedCallToolName = "project_functions_call"
+	crewPublishedGetToolName  = "project_functions_get_call"
 )
 
 // registerCrewPublishedFunctionTools gives a non-owner's chat or ask with a Crew its one way to act (856-59, owner
-// 2026-10-13): call a function the Crew's owner published. It is the same call the external call_crew_function tool makes for
+// 2026-10-13): call a function the Crew's owner published. It is the same call the external project_functions_call tool makes for
 // the same person: the person must still be able to use the Crew, the function runs as its own isolated execution with the
 // owner's authority (the owner chose to publish it), and the call is attributed to the person. Only this Crew's functions are
 // reachable (never another Crew's or a workflow's) and a call has no auto-notification, so the chat polls with the second tool.
@@ -38,12 +38,12 @@ func (api *StreamingAPI) registerCrewPublishedFunctionTools(registrar definition
 		return claims, crew, resolved, fmt.Sprint(summary["name"]), nil
 	}
 	if err := registrar.RegisterCustomTool(crewPublishedCallToolName,
-		"Call one of the functions this Crew's owner published (see list_functions). The function runs on its own, with the owner's authority, and may write; you cannot. Arguments are validated against its input schema. Returns status=running and a call_id: poll with "+crewPublishedGetToolName+" (wait_seconds up to 25) until it settles, then tell the user the result. Reuse submission_id after an uncertain retry; never call twice for the same work.",
+		"Call one of the functions this Crew's owner published (see functions action=list). The function runs on its own, with the owner's authority, and may write; you cannot. Arguments are validated against its input schema. Returns status=running and a call_id: poll with "+crewPublishedGetToolName+" (wait_seconds up to 25) until it settles, then tell the user the result. Reuse submission_id after an uncertain retry; never call twice for the same work.",
 		map[string]interface{}{
 			"type": "object", "required": []string{"function"}, "additionalProperties": false,
 			"properties": map[string]interface{}{
-				"function":      map[string]interface{}{"type": "string", "description": "Function name from list_functions."},
-				"args":          map[string]interface{}{"type": "object", "description": "Arguments matching the function's input schema."},
+				"function":      map[string]interface{}{"type": "string", "description": "Function name from functions action=list."},
+				"input":         map[string]interface{}{"type": "object", "description": "Arguments matching the function's input schema."},
 				"submission_id": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this intended call; reuse it after an uncertain retry."},
 				"wait_seconds":  map[string]interface{}{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Wait up to this long for the result before returning status=running (default 0)."},
 			},
@@ -63,14 +63,14 @@ func (api *StreamingAPI) registerCrewPublishedFunctionTools(registrar definition
 			name, _ := args["function"].(string)
 			fn, found := findCrewFunction(offeredCrewFunctions(ctx, target, functions), name)
 			if !found {
-				return "", fmt.Errorf("this Crew has no published function %q; see list_functions", strings.TrimSpace(name))
+				return "", fmt.Errorf("this Crew has no published function %q; see functions action=list", strings.TrimSpace(name))
 			}
 			if isBuiltinConversationalFunction(target, fn) {
 				return "", fmt.Errorf("%q is the Crew's built-in conversation, not a published function: you are already in a conversation with this Crew", fn.Name)
 			}
-			callArgs, _ := args["args"].(map[string]interface{})
-			if raw, present := args["args"]; present && raw != nil && callArgs == nil {
-				return "", fmt.Errorf("args must be a JSON object")
+			callArgs, _ := args["input"].(map[string]interface{})
+			if raw, present := args["input"]; present && raw != nil && callArgs == nil {
+				return "", fmt.Errorf("input must be a JSON object")
 			}
 			submissionID, _ := args["submission_id"].(string)
 			// A call outlives this chat turn, so it must not be cancelled with it.

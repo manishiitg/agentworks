@@ -15,7 +15,7 @@ func TestCrewFunctionSubmissionIDSurvivesCompletionAndRestart(t *testing.T) {
 		return internalSessionTurnResult{FinalResponse: `{ "passed": true }`}, nil
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	if _, err := env.alpha["define_function"].exec(ctx, loginFlowArgs); err != nil {
+	if _, err := env.alpha["project_functions_define"].exec(ctx, loginFlowArgs); err != nil {
 		t.Fatal(err)
 	}
 	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
@@ -66,17 +66,17 @@ func TestInternalCallFunctionPassesSubmissionID(t *testing.T) {
 	env.svc.automationTurnRunner = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
 		return internalSessionTurnResult{FinalResponse: `{ "passed": true }`}, nil
 	}
-	if _, err := env.alpha["define_function"].exec(context.Background(), loginFlowArgs); err != nil {
+	if _, err := env.alpha["project_functions_define"].exec(context.Background(), loginFlowArgs); err != nil {
 		t.Fatal(err)
 	}
-	args := map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "7"}, "submission_id": "crew-retry-7", "notify": false}
-	firstRaw, err := env.alpha["call_function"].exec(context.Background(), args)
+	args := map[string]interface{}{"project": "Beta", "function": "run_login_flow", "input": map[string]interface{}{"build": "7"}, "submission_id": "crew-retry-7", "notify": false}
+	firstRaw, err := env.alpha["project_functions_call"].exec(context.Background(), args)
 	if err != nil {
 		t.Fatal(err)
 	}
 	firstID, _ := decodeToolJSON(t, firstRaw)["call_id"].(string)
 	if firstID == "" {
-		t.Fatalf("call_function omitted call_id: %s", firstRaw)
+		t.Fatalf("project_functions_call omitted call_id: %s", firstRaw)
 	}
 	call := lookupCrewFunctionCall(firstID)
 	if call == nil {
@@ -90,15 +90,15 @@ func TestInternalCallFunctionPassesSubmissionID(t *testing.T) {
 	if call.snapshot()["status"] != "completed" {
 		t.Fatalf("function did not complete: %v", call.snapshot())
 	}
-	secondRaw, err := env.alpha["call_function"].exec(context.Background(), args)
+	secondRaw, err := env.alpha["project_functions_call"].exec(context.Background(), args)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if secondID, _ := decodeToolJSON(t, secondRaw)["call_id"].(string); secondID != firstID {
 		t.Fatalf("completed retry started a new call: %s vs %s", secondID, firstID)
 	}
-	args["args"] = map[string]interface{}{"build": "8"}
-	if _, err := env.alpha["call_function"].exec(context.Background(), args); err == nil {
+	args["input"] = map[string]interface{}{"build": "8"}
+	if _, err := env.alpha["project_functions_call"].exec(context.Background(), args); err == nil {
 		t.Fatal("conflicting reuse of submission_id was accepted")
 	}
 }
@@ -113,7 +113,7 @@ func TestCrewFunctionRunModeIsRecordedAndKeptOutOfTheDelivery(t *testing.T) {
 		return internalSessionTurnResult{FinalResponse: `{ "passed": true }`}, nil
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	if _, err := env.alpha["define_function"].exec(ctx, loginFlowArgs); err != nil {
+	if _, err := env.alpha["project_functions_define"].exec(ctx, loginFlowArgs); err != nil {
 		t.Fatal(err)
 	}
 	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")

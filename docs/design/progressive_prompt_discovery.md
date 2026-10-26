@@ -261,7 +261,7 @@ credential values are included here.
    synthesizes frontmatter from that shorter registered description. Improving
    the file's description alone does not improve discovery.
 2. **Code repeats function and connection procedures.** Its base prompt explains
-   `list_functions`, `call_function`, follow-ups, and peer-Code boundaries;
+   `functions action=list`, `functions action=call`, follow-ups, and peer-Code boundaries;
    `workflow-references` adds another explanation; `code-workflow-files` contains
    the longer procedure. Personal MCP setup similarly appears in the base,
    feature summary, and `code-mcp` skill.

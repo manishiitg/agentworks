@@ -92,7 +92,7 @@ type crewFunctionResultOnlyRegistrar struct{ definitionToolRegistrar }
 // workflows, but never define or delete functions (function definitions are owner-only) or send free messages.
 type crewFunctionCallOnlyRegistrar struct{ definitionToolRegistrar }
 
-var crewFunctionCallTools = map[string]bool{"list_functions": true, "call_function": true, "get_function_call": true, "reply_function_call": true}
+var crewFunctionCallTools = map[string]bool{"project_functions_list": true, "project_functions_call": true, "project_functions_get_call": true, "project_functions_reply": true}
 
 func (r crewFunctionCallOnlyRegistrar) RegisterCustomTool(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), category string) error {
 	if !crewFunctionCallTools[name] {
@@ -113,14 +113,14 @@ func (r crewFunctionCallOnlyRegistrar) RegisterCustomToolWithTimeout(name, descr
 type crewFunctionListOnlyRegistrar struct{ definitionToolRegistrar }
 
 func (r crewFunctionListOnlyRegistrar) RegisterCustomTool(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), category string) error {
-	if name != "list_functions" {
+	if name != "project_functions_list" {
 		return nil
 	}
 	return r.definitionToolRegistrar.RegisterCustomTool(name, description, params, exec, category)
 }
 
 func (r crewFunctionListOnlyRegistrar) RegisterCustomToolWithTimeout(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, category string) error {
-	if name != "list_functions" {
+	if name != "project_functions_list" {
 		return nil
 	}
 	return r.definitionToolRegistrar.RegisterCustomToolWithTimeout(name, description, params, exec, timeout, category)

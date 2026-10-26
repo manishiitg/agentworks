@@ -134,7 +134,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 		if len(order) == 0 {
 			continue
 		}
-		if merge.name == "functions" || merge.name == "files" || merge.name == "share" || merge.name == "settings" || merge.name == "models" || merge.name == "costs" || merge.name == "database" || merge.name == "dashboard" || merge.name == "skills" || merge.name == "mcp" || merge.name == "sessions" {
+		if merge.name == "files" || merge.name == "share" || merge.name == "settings" || merge.name == "models" || merge.name == "costs" || merge.name == "database" || merge.name == "dashboard" || merge.name == "skills" || merge.name == "mcp" || merge.name == "sessions" {
 			props["workspace_id"] = externalString("Stable work:<id> from workspace action=list.")
 		}
 		if merge.name == "functions" {
@@ -275,7 +275,7 @@ func firstSentence(text string) string {
 // fields (including its batch functions patch) from the update_crew executor.
 func externalFunctionProperties(in map[string]any, actions []string, lookup func(string) (externalTool, bool)) map[string]any {
 	out := map[string]any{}
-	for _, key := range []string{"workspace_id", "crew_id", "workflow_id", "function", "args", "wait_seconds", "submission_id", "run_mode", "call_id", "request_id", "response", "limit", "after", "after_event", "message_limit", "file", "offset"} {
+	for _, key := range []string{"project", "definition", "function", "input", "wait_seconds", "submission_id", "run_mode", "call_id", "request_id", "response", "limit", "after", "after_event", "message_limit", "file", "offset"} {
 		if value, ok := in[key]; ok {
 			out[key] = value
 		}
@@ -299,20 +299,7 @@ func externalFunctionProperties(in map[string]any, actions []string, lookup func
 			}
 		}
 	}
-	for _, action := range actions {
-		if action != "define" && action != "update" && action != "delete" {
-			continue
-		}
-		out["crew_id"] = externalString("Crew to edit; alternatively pass workspace_id.")
-		for _, key := range []string{"name", "description", "instructions"} {
-			out[key] = externalString("define/update: function " + key + " (required). delete: only name is required.")
-		}
-		out["input_schema"] = map[string]any{"type": "object"}
-		out["result_schema"] = map[string]any{"type": "object"}
-		out["execution"] = map[string]any{"type": "string", "enum": []any{"tab", "fresh"}, "description": crewFunctionExecutionHelp}
-		out["agent"] = externalString(crewFunctionAgentHelp)
-		break
-	}
+
 	return out
 }
 
@@ -354,26 +341,7 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 		delete(args, "workspace_id")
 	}
 	action := externalArg(args, "action")
-	if tool.Name == "functions" && (action == "define" || action == "update" || action == "delete") {
-		if _, nested := args["functions"]; nested {
-			return tool, args, fmt.Errorf("functions action=%s takes one function using top-level name, description and instructions; use crew action=update for a functions batch", action)
-		}
-		fn := map[string]any{}
-		for _, key := range []string{"name", "description", "instructions", "input_schema", "result_schema", "execution", "agent"} {
-			if v, ok := args[key]; ok {
-				fn[key] = v
-			}
-		}
-		if action == "delete" {
-			args["functions"] = map[string]any{"delete": []any{args["name"]}}
-		} else {
-			args["functions"] = map[string]any{"upsert": []any{fn}}
-		}
-		// These fields describe the function, not the project being updated.
-		for key := range fn {
-			delete(args, key)
-		}
-	}
+
 	if action == "" && len(tool.actionOrder) == 1 {
 		action = tool.actionOrder[0]
 	}
@@ -475,7 +443,7 @@ func projectServiceTool(name string) bool {
 	case "create_workflow", "create_relay", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
 		"ask_crew", "list_crews", "get_crew", "get_crew_costs", "create_crew", "update_crew", "export_crew", "import_crew",
 		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "suggest_crew_change",
-		"list_crew_functions", "call_crew_function", "get_crew_function_call", "reply_crew_function_call", "list_crew_function_calls",
+		"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "project_functions_calls",
 		"list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "list_review_chats", "read_review_chat", "get_review_audit":
 		return true
 	}

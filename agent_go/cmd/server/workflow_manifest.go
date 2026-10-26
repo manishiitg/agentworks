@@ -954,6 +954,9 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 		}
 	}
 
+	if err := loadWorkflowEntryActions(ctx, workspacePath, &m); err != nil {
+		return nil, false, err
+	}
 	if err := loadWorkflowTimerActions(ctx, workspacePath, &m); err != nil {
 		return nil, false, err
 	}
@@ -1308,6 +1311,9 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		if err := json.Unmarshal([]byte(previous), &prior); err != nil {
 			return fmt.Errorf("parse existing workflow.json before update: %w", err)
 		}
+		if err := loadWorkflowEntryActions(ctx, workspacePath, &prior); err != nil {
+			return err
+		}
 		if err := loadWorkflowTimerActions(ctx, workspacePath, &prior); err != nil {
 			return err
 		}
@@ -1340,13 +1346,11 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 	if err := saveWorkflowTimerActions(ctx, workspacePath, m); err != nil {
 		return err
 	}
+	if err := saveWorkflowEntryActions(ctx, workspacePath, m); err != nil {
+		return err
+	}
 	persisted := *m
 	persisted.Schedules = nil
-	for _, schedule := range m.Schedules {
-		if schedule.ScheduleType == "webhook" {
-			persisted.Schedules = append(persisted.Schedules, schedule)
-		}
-	}
 	data, err := json.MarshalIndent(&persisted, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal workflow.json: %w", err)

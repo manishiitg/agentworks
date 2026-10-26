@@ -71,7 +71,7 @@ func ProtectedWrite(p string) bool {
 		return true
 	}
 	for _, part := range strings.Split(strings.ToLower(p), "/") {
-		if part == "planning" || part == "runs" || part == "human_inputs" || part == "chat_history" || part == "knowledgebase" || part == "db" || part == "costs" || part == "workflow.json" || part == "workflow.json.kb-lock" || part == "schedules.json" || part == "schedule-runs.json" || part == "product.json" || part == "functions.json" || part == "plan.json" || part == "step_config.json" || part == ".env" || part == "credentials.json" || part == "token.json" {
+		if part == "planning" || part == "runs" || part == "human_inputs" || part == "chat_history" || part == "knowledgebase" || part == "db" || part == "costs" || part == "workflow.json" || part == "workflow.json.kb-lock" || part == "webhooks.json" || part == "schedules.json" || part == "schedule-runs.json" || part == "product.json" || part == "functions.json" || part == "plan.json" || part == "step_config.json" || part == ".env" || part == "credentials.json" || part == "token.json" {
 			return true
 		}
 		ext := path.Ext(part)

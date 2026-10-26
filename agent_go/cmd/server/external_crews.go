@@ -20,8 +20,8 @@ import (
 // never exposed, whoever owns the Crew.
 
 var externalCrewTools = map[string]bool{
-	"list_crews": true, "get_crew": true, "list_crew_files": true, "search_crew_files": true, "read_crew_file": true, "list_crew_functions": true,
-	"call_crew_function": true, "ask_crew": true, "get_crew_function_call": true, "reply_crew_function_call": true, "list_crew_function_calls": true, "write_crew_file": true, "suggest_crew_change": true,
+	"list_crews": true, "get_crew": true, "list_crew_files": true, "search_crew_files": true, "read_crew_file": true,
+	"ask_crew": true, "write_crew_file": true, "suggest_crew_change": true,
 	// Authoring (external_crew_authoring.go): export reads; the rest need crews:write.
 	"create_crew": true, "update_crew": true, "export_crew": true, "import_crew": true,
 	// Costs of a Crew you own (external_crew_costs.go).
@@ -87,7 +87,7 @@ func externalCrewCallResponse(ctx context.Context, call *crewFunctionCall, wait 
 		if call.IsolatedExecution {
 			where = "in its own isolated run"
 		}
-		out["next"] = fmt.Sprintf("Still running %s. Read the call again with this call_id and wait_seconds=%d (get_crew_function_call, or functions action=status): it returns as soon as the call finishes, or after that long with the progress so far, so poll again.", where, externalCrewMaxWaitSeconds)
+		out["next"] = fmt.Sprintf("Still running %s. Read the call again with this call_id and wait_seconds=%d (functions action=status, or functions action=status): it returns as soon as the call finishes, or after that long with the progress so far, so poll again.", where, externalCrewMaxWaitSeconds)
 	}
 	return out
 }
@@ -217,8 +217,8 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		api.externalCrewCosts(w, r, args)
 		return
 	}
-	if name == "get_crew_function_call" || name == "reply_crew_function_call" {
-		if name == "reply_crew_function_call" && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:run") {
+	if name == "project_functions_get_call" || name == "project_functions_reply" {
+		if name == "project_functions_reply" && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:run") {
 			externalError(w, 403, "insufficient_scope", "Answering a Crew question needs crews:run.")
 			return
 		}
@@ -229,7 +229,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		}
 		call.mu.Lock()
 		// Only this user's own calls to a Crew: a workflow call is read with
-		// get_workflow_function_call, under workflow access. Without the kind
+		// project_functions_get_call, under workflow access. Without the kind
 		// check a Crew-only token read the user's workflow results (PLAT-366).
 		mine := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser
 		isCrew := call.TargetKind == triggerCallerCrew && call.TargetChat == ""
@@ -242,15 +242,16 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		// The caller must still be able to use that Crew now, not only when
 		// the call was made.
 		callCrew, _, _, ok := api.externalCrewResolve(ctx, claims, targetID)
-		if !ok || !mine && (name == "reply_crew_function_call" || !callCrew.OwnedByCaller) {
+		if !ok || !mine && name == "project_functions_reply" {
 			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
-		if name == "reply_crew_function_call" {
+		if name == "project_functions_reply" {
 			replyFunctionCallInput(w, call, str("request_id"), str("response"))
 			return
 		}
 		out := externalCrewCallResponse(ctx, call, externalCrewWait(args))
+		out["can_reply"] = mine
 		if !api.externalFunctionReadDetails(w, ctx, args, call, out) {
 			return
 		}
@@ -298,7 +299,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	case "ask_crew":
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 		api.externalSendMessage(w, r, args, target)
-	case "call_crew_function":
+	case "project_functions_call":
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 		functions, err := readCrewFunctions(ctx, target)
 		if err != nil {
@@ -306,10 +307,10 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			return
 		}
 		fnName := str("function")
-		callArgs, _ := args["args"].(map[string]interface{})
+		callArgs, _ := args["input"].(map[string]interface{})
 		fn, found := findCrewFunction(offeredCrewFunctions(ctx, target, functions), fnName)
 		if !found {
-			externalError(w, 404, "not_found", fmt.Sprintf("Crew %q has no function %q; see list_crew_functions.", label, fnName))
+			externalError(w, 404, "not_found", fmt.Sprintf("Crew %q has no function %q; see functions action=list.", label, fnName))
 			return
 		}
 		// Each declared function gets a fresh isolated trigger execution.
@@ -331,10 +332,10 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		out := externalCrewCallResponse(ctx, call, externalCrewWait(args))
 		api.addCrewCallCommands(ctx, crew.OwnedByCaller, call, out)
 		externalJSON(w, out)
-	case "list_crew_function_calls":
+	case "project_functions_calls":
 		loadExternalSavedFunctionCalls(ctx)
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "calls": externalCrewFunctionCalls(workspaceExternalID(manifest.Product, manifest.ID), claims.UserID, crew.OwnedByCaller, externalInt(args, "limit", crewFunctionRecentCallsLimit))})
-	case "list_crew_functions":
+	case "project_functions_list":
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "functions": externalCrewFunctionSummaries(ctx, crew, manifest, label)})
 	case "list_crew_files", "search_crew_files":
 		// The workflow file engine: folder, depth, glob, pagination and text

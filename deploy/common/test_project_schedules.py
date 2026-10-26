@@ -33,6 +33,28 @@ class ProjectScheduleMigrationTest(unittest.TestCase):
             (relay / "workflow.json").write_text(json.dumps({"id": "relay", "kind": "relay", "created_by": "owner", "schedules": [
                 {"id": "date", "name": "Date", "enabled": True, "schedule_type": "calendar", "timezone": "UTC",
                  "calendar_items": [{"id": "once", "date": "2027-01-01", "time": "10:00", "trigger_payload": {"task": "check"}}]}]}))
+            function = {"id": "typed-entry", "name": "Typed entry", "enabled": True, "schedule_type": "webhook", "kind": "function",
+                        "group_names": ["default", "other"], "route_selections": {"router": "report"}, "webhook": {"step_id": "inspect"},
+                        "function": {"name": "inspect", "allowed_callers": [{"type": "workflow", "id": "source"}],
+                                     "inputs": [{"name": "query", "type": "string", "required": True, "enum": ["one", "two"]}]}}
+            original["schedules"].append(function)
+            (goal / "workflow.json").write_text(json.dumps(original))
+            crew_runtime = json.loads((crew / "workflow.json").read_text())
+            binding = {"id": "bound-step", "name": "Saved step", "enabled": True, "kind": "internal", "message": "Check the input.",
+                       "caller": {"type": "workflow", "id": "source"}, "run_destination": "isolated"}
+            crew_runtime["triggers"] = [binding, {**binding, "id": "generated-adapter", "workspace_function": True}]
+            (crew / "workflow.json").write_text(json.dumps(crew_runtime))
+            (crew / "functions.json").write_text(json.dumps({"version": 1, "functions": [{"name": "research", "instructions": "Research.", "execution": "fresh"}]}))
+            release = root / "Workflow" / ".relay_releases" / "relay" / "v1"
+            release.mkdir(parents=True)
+            (release / "workflow.json").write_text(json.dumps({"id": "relay", "kind": "relay", "schedules": [function]}))
+            original_hash = hashlib.sha256(b"workflow.json\0" + (release / "workflow.json").read_bytes() + b"\0").hexdigest()
+            (release / "release.json").write_text(json.dumps({"version": "v1", "hash": original_hash, "files": ["workflow.json"], "file_count": 1}))
+            corrupt = release.parent / "v2"
+            corrupt.mkdir()
+            (corrupt / "workflow.json").write_bytes((release / "workflow.json").read_bytes())
+            (corrupt / "release.json").write_text(json.dumps({"version": "v2", "hash": "deliberately-wrong", "files": ["workflow.json"], "file_count": 1}))
+            corrupt_before = {file.name: file.read_bytes() for file in corrupt.iterdir()}
             db = root / "_system" / "schedule-state.sqlite"
             with sqlite3.connect(db) as connection:
                 connection.execute("CREATE TABLE receipts (id TEXT, status TEXT)")
@@ -52,7 +74,29 @@ class ProjectScheduleMigrationTest(unittest.TestCase):
             self.assertEqual(saved["run_as"], "owner")
             self.assertFalse(saved["enabled"])
             self.assertNotIn("max_start_delay_minutes", saved)
-            self.assertEqual(json.loads((goal / "workflow.json").read_text())["schedules"], [hook])
+            self.assertEqual(json.loads((goal / "workflow.json").read_text())["schedules"], [])
+            saved_hook = json.loads((goal / "webhooks.json").read_text())["webhooks"][0]
+            self.assertEqual(saved_hook["auth"], {"mode": "bearer", "encrypted_secret": "opaque-fixture"})
+            self.assertEqual(saved_hook["path"], "/api/hooks/external")
+            saved_function = json.loads((goal / "functions.json").read_text())["functions"][0]
+            self.assertEqual(saved_function["action"]["step"], "inspect")
+            self.assertEqual(saved_function["input"]["routes"], {"router": "report"})
+            self.assertEqual(saved_function["allowed_callers"], function["function"]["allowed_callers"])
+            self.assertEqual(saved_function["input_schema"]["required"], ["query"])
+            crew_functions = json.loads((crew / "functions.json").read_text())["functions"]
+            self.assertEqual(len(crew_functions), 2)
+            self.assertEqual(next(fn for fn in crew_functions if fn["name"] == "research")["action"], {"type": "message", "conversation": "fresh"})
+            self.assertEqual(next(fn for fn in crew_functions if fn["id"] == "bound-step")["allowed_callers"], [binding["caller"]])
+            self.assertNotIn("triggers", json.loads((crew / "workflow.json").read_text()))
+            release_metadata = json.loads((release / "release.json").read_text())
+            digest = hashlib.sha256()
+            for relative in release_metadata["files"]:
+                digest.update(relative.encode() + b"\0" + (release / relative).read_bytes() + b"\0")
+            self.assertEqual(release_metadata["hash"], digest.hexdigest())
+            self.assertIn("functions.json", release_metadata["files"])
+            self.assertEqual(counts["flow_releases_skipped_hash_mismatch"], 1)
+            self.assertEqual({file.name: file.read_bytes() for file in corrupt.iterdir()}, corrupt_before)
+            self.assertIn(corrupt.relative_to(root).as_posix(), counts["flow_release_skip_paths"])
             self.assertEqual(json.loads((backup / "Workflow" / "example" / "workflow.json").read_text()), original)
             self.assertEqual(hashlib.sha256(db.read_bytes()).hexdigest(), before_hash)
             with sqlite3.connect(backup / "schedule-state.sqlite") as connection:

@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -11,14 +13,19 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
-// PLAT-366: get_crew_function_call returns only the caller's calls to a Crew.
+// PLAT-366: project_functions_get_call returns only the caller's calls to a Crew.
 // A Crew-only token (AllCrews) must not read the same user's workflow calls,
-// which belong to get_workflow_function_call under workflow access.
+// which belong to project_functions_get_call under workflow access.
 func TestGetCrewFunctionCallRefusesWorkflowCalls(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	seed := func(id, kind, target string) {
-		call := &crewFunctionCall{ID: id, UserID: "owner", CallerKind: triggerCallerUser, TargetKind: kind, TargetID: target,
+		call := &crewFunctionCall{ID: id, UserID: "owner", CallerKind: triggerCallerUser, TargetKind: kind, TargetID: target, TargetPath: func() string {
+			if kind == triggerCallerWorkflow {
+				return "Workflow/reports"
+			}
+			return linkBetaPath
+		}(),
 			Status: "completed", Result: map[string]any{"answer": "secret"}, CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
 		crewFunctionCalls.Lock()
 		crewFunctionCalls.m[id] = call
@@ -29,20 +36,46 @@ func TestGetCrewFunctionCallRefusesWorkflowCalls(t *testing.T) {
 			crewFunctionCalls.Unlock()
 		})
 	}
-	seed("fn-plat366-workflow", triggerCallerWorkflow, "invoices")
+	manifest, _, err := ReadWorkflowManifest(context.Background(), "Workflow/reports")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed("fn-plat366-workflow", triggerCallerWorkflow, manifest.ID)
 	seed("fn-plat366-crew", triggerCallerCrew, "beta")
 	crewToken := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
 
-	if code, out := externalCrewRequest(t, env, crewToken, "get_crew_function_call", map[string]any{"call_id": "fn-plat366-workflow"}); code != 404 {
+	if code, out := externalCrewRequest(t, env, crewToken, "project_functions_get_call", map[string]any{"call_id": "fn-plat366-workflow"}); code != 404 {
 		t.Fatalf("a Crew-only token read a workflow call: %d %v", code, out)
 	}
-	if code, out := externalCrewRequest(t, env, crewToken, "get_crew_function_call", map[string]any{"call_id": "fn-plat366-crew"}); code != 200 {
+	if code, out := externalCrewRequest(t, env, crewToken, "project_functions_get_call", map[string]any{"call_id": "fn-plat366-crew"}); code != 200 {
 		t.Fatalf("the user's own Crew call must stay readable: %d %v", code, out)
 	}
 	other := &UserClaims{UserID: "someone", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
-	if code, _ := externalCrewRequest(t, env, other, "get_crew_function_call", map[string]any{"call_id": "fn-plat366-crew"}); code != 404 {
-		t.Fatalf("another user read the call: %d", code)
+	if code, out := externalCrewRequest(t, env, other, "project_functions_get_call", map[string]any{"call_id": "fn-plat366-crew"}); code != 200 || out["can_reply"] != false {
+		t.Fatalf("a current shared member reads results but cannot reply: %d %v", code, out)
 	}
+	// PLAT-871: the common HTTP family infers the durable target from call_id,
+	// then keeps the target's own scope. Both allowed paths must remain real.
+	workflowToken := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read"}, AllWorkflows: true}}
+	for _, tc := range []struct {
+		claims  *UserClaims
+		id      string
+		allowed bool
+	}{
+		{crewToken, "fn-plat366-crew", true}, {crewToken, "fn-plat366-workflow", false},
+		{workflowToken, "fn-plat366-workflow", true}, {workflowToken, "fn-plat366-crew", false},
+	} {
+		raw, _ := json.Marshal(map[string]interface{}{"name": "functions", "arguments": map[string]interface{}{"action": "status", "call_id": tc.id}})
+		rec := httptest.NewRecorder()
+		env.api.handleExternalCall(rec, adminRequest("POST", "/api/external/v1/call", string(raw), tc.claims, nil))
+		if tc.allowed && rec.Code != 200 {
+			t.Fatalf("allowed call-id lookup: %d %s", rec.Code, rec.Body.String())
+		}
+		if !tc.allowed && (rec.Code != 403 || !strings.Contains(rec.Body.String(), "insufficient_scope")) {
+			t.Fatalf("cross-product scope must refuse explicitly: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+
 }
 
 func TestCrewFunctionQuestionIsBoundToCallAndRunScope(t *testing.T) {
@@ -69,26 +102,26 @@ func TestCrewFunctionQuestionIsBoundToCallAndRunScope(t *testing.T) {
 	}
 	runner := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}, AllCrews: true}}
 	readonly := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
-	if code, out := externalCrewRequest(t, env, runner, "get_crew_function_call", map[string]any{"call_id": "fn-question-a"}); code != 200 || len(out["pending_inputs"].([]any)) != 1 {
+	if code, out := externalCrewRequest(t, env, runner, "project_functions_get_call", map[string]any{"call_id": "fn-question-a"}); code != 200 || len(out["pending_inputs"].([]any)) != 1 {
 		t.Fatalf("call A must see just its question: %d %v", code, out)
 	}
 	args := map[string]any{"call_id": "fn-question-a", "request_id": "request-b", "response": "yes"}
-	if code, _ := externalCrewRequest(t, env, runner, "reply_crew_function_call", args); code != 409 {
+	if code, _ := externalCrewRequest(t, env, runner, "project_functions_reply", args); code != 409 {
 		t.Fatalf("cross-call answer must be refused, got %d", code)
 	}
 	args["request_id"] = "request-a"
 	args["response"] = "wrong"
-	if code, _ := externalCrewRequest(t, env, runner, "reply_crew_function_call", args); code != 409 {
+	if code, _ := externalCrewRequest(t, env, runner, "project_functions_reply", args); code != 409 {
 		t.Fatalf("invalid choice must be refused, got %d", code)
 	}
 	args["response"] = "main"
-	if code, _ := externalCrewRequest(t, env, readonly, "reply_crew_function_call", args); code != 403 {
+	if code, _ := externalCrewRequest(t, env, readonly, "project_functions_reply", args); code != 403 {
 		t.Fatalf("read-only token answered a question: %d", code)
 	}
-	if code, out := externalCrewRequest(t, env, runner, "reply_crew_function_call", args); code != 200 || out["status"] != "submitted" {
+	if code, out := externalCrewRequest(t, env, runner, "project_functions_reply", args); code != 200 || out["status"] != "submitted" {
 		t.Fatalf("valid answer failed: %d %v", code, out)
 	}
-	if code, _ := externalCrewRequest(t, env, runner, "reply_crew_function_call", args); code != 409 {
+	if code, _ := externalCrewRequest(t, env, runner, "project_functions_reply", args); code != 409 {
 		t.Fatalf("duplicate answer must be refused, got %d", code)
 	}
 }
@@ -116,7 +149,7 @@ func TestListCrewFunctionCallsOwnerSeesAllOthersSeeTheirOwn(t *testing.T) {
 		return &UserClaims{UserID: user, AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
 	}
 
-	code, out := externalCrewRequest(t, env, token("owner"), "list_crew_function_calls", map[string]any{"crew_id": "beta"})
+	code, out := externalCrewRequest(t, env, token("owner"), "project_functions_calls", map[string]any{"crew_id": "beta"})
 	calls, _ := out["calls"].([]any)
 	if code != 200 || len(calls) != 2 {
 		t.Fatalf("the owner sees every call: %d %v", code, out)
@@ -130,15 +163,15 @@ func TestListCrewFunctionCallsOwnerSeesAllOthersSeeTheirOwn(t *testing.T) {
 			}
 		}
 	}
-	code, detail := externalCrewRequest(t, env, token("owner"), "get_crew_function_call", map[string]any{"call_id": "fn-list-someone"})
+	code, detail := externalCrewRequest(t, env, token("owner"), "project_functions_get_call", map[string]any{"call_id": "fn-list-someone"})
 	if code != 200 || detail["answer"] != "answer-for-someone" || detail["result"] == nil {
 		t.Fatalf("the owner can directly read another caller's result (PLAT-841): %d %v", code, detail)
 	}
-	code, detail = externalCrewRequest(t, env, token("owner"), "get_crew_function_call", map[string]any{"call_id": "fn-list-owner"})
+	code, detail = externalCrewRequest(t, env, token("owner"), "project_functions_get_call", map[string]any{"call_id": "fn-list-owner"})
 	if code != 200 || detail["result"] == nil || detail["answer"] != nil {
 		t.Fatalf("a legacy call retains its original result envelope: %d %v", code, detail)
 	}
-	code, out = externalCrewRequest(t, env, token("someone"), "list_crew_function_calls", map[string]any{"crew_id": "beta"})
+	code, out = externalCrewRequest(t, env, token("someone"), "project_functions_calls", map[string]any{"crew_id": "beta"})
 	calls, _ = out["calls"].([]any)
 	if code != 200 || len(calls) != 1 || calls[0].(map[string]any)["call_id"] != "fn-list-someone" || calls[0].(map[string]any)["result"] == nil {
 		t.Fatalf("another user sees only their own call, in full: %d %v", code, out)

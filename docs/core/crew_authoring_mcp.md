@@ -18,7 +18,7 @@ admitted by `internal/agentworksproduct/product.yaml` (run `external_tools`).
 | `export_crew` | `crews export --crew ID` | `crews:read` | `{"spec": …}`, portable. |
 | `import_crew` | `crews import --input exported.json` | `crews:write` | New Crew you own from an exported spec. Schedules arrive disabled unless `enable_schedules: true`. |
 
-The existing `list_crews`, `list_crew_functions`, `call_crew_function`,
+The existing `list_crews`, `functions action=list`, `functions action=call`,
 `ask_crew` etc. are unchanged (`list_crews` / `get_crew` now return the
 `identity` object instead of `null`).
 
@@ -48,7 +48,7 @@ One shape serves create, export and import: identity, ordinary skills, files, fu
   panel and `set_work_identity` use.
 - **skills** are names: built-in, installed on the server, or project-local
   (`skills/<name>/SKILL.md`, shipped in `files`). Unknown names fail the call.
-- **functions** go to `functions.json` with `define_function`'s checks.
+- **functions** go to `functions.json` with `functions action=define`'s checks.
 - **schedules** go through the project schedule service (`workflow.json`).
 - **files** are crew-relative text files. Manifests, `functions.json`,
   `builder/`, `db/` and `.git` are refused.

@@ -14,7 +14,7 @@ func noopExecutor(context.Context, map[string]interface{}) (string, error) { ret
 func TestProductAdmissionFiltersEveryToolRegistrationPath(t *testing.T) {
 	allowed := agentworksproduct.ChatTools("builder")
 	w := &LLMAgentWrapper{admitTool: func(name string) bool { return slices.Contains(allowed, name) }}
-	for _, name := range []string{"list_functions", "implementation_only_tool"} {
+	for _, name := range []string{"project_functions_list", "implementation_only_tool"} {
 		if err := w.RegisterCustomTool(name, "normal", nil, noopExecutor, "tools"); err != nil {
 			t.Fatal(err)
 		}
@@ -23,7 +23,7 @@ func TestProductAdmissionFiltersEveryToolRegistrationPath(t *testing.T) {
 		}
 	}
 	direct := w.definition.Tools.Direct
-	if len(direct) != 1 || direct[0].Name != "list_functions" || direct[0].Description != "timed" {
+	if len(direct) != 1 || direct[0].Name != "project_functions_list" || direct[0].Description != "timed" {
 		t.Fatalf("registration bypassed the YAML admission policy: %+v", direct)
 	}
 }

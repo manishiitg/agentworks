@@ -11,15 +11,21 @@ import (
 // The app/Ask bridge and external MCP use the same definitions and execution
 // path. Native tools bind the workflow on the server rather than accepting an ID.
 func workflowPublishedFunctionDefinitions(add func(string, string, bool, map[string]any, ...string)) {
-	add("list_workflow_functions", "List the workflow's functions: typed entry points (a route plus named inputs set as that run's variables) that callers invoke with call_workflow_function.", false, nil)
-	add("call_workflow_function", "Call one of the workflow's functions (see list_workflow_functions). Inputs are checked first: a missing, unknown or mistyped input is refused before anything runs. Returns at once with status=running and a call_id for get_workflow_function_call (functions take minutes); pass wait_seconds to wait up to 25s for the run outcome (status, error, step outputs). Repeating the same call while it runs returns the same call_id. Requires the runs:execute scope and current workflow access. The function’s own caller policy still applies.", true, map[string]any{
-		"function":      externalString("Function name from list_workflow_functions."),
-		"args":          map[string]any{"type": "object", "description": "Inputs matching the function's input schema."},
+	add("project_functions_list", "List the workflow's functions: typed entry points (a route plus named inputs set as that run's variables) that callers invoke with functions action=call.", false, nil)
+	add("project_functions_call", "Call one of the workflow's functions (see functions action=list). Inputs are checked first: a missing, unknown or mistyped input is refused before anything runs. Returns at once with status=running and a call_id for functions action=status (functions take minutes); pass wait_seconds to wait up to 25s for the run outcome (status, error, step outputs). Repeating the same call while it runs returns the same call_id. Requires the runs:execute scope and current workflow access. The function’s own caller policy still applies.", true, map[string]any{
+		"function":      externalString("Function name from functions action=list."),
+		"input":         map[string]any{"type": "object", "description": "Inputs matching the function's input schema."},
 		"wait_seconds":  map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the outcome before returning a call_id to poll (default 0: return at once; max 25)."},
 		"submission_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this intended call. Reuse it to retry uncertain delivery and receive the same call_id, including after completion or restart."},
 	}, "function")
-	add("get_workflow_function_call", "Poll a call started with call_workflow_function: status, outcome, errors and pending_inputs. MCP clients with elicitation support may receive a question form; otherwise answer a pending request_id with reply_workflow_function_call.", false, map[string]any{"call_id": externalString("call_id returned by call_workflow_function."), "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Wait up to this long for the call to finish; it returns as soon as it does, so a poll costs little. Default: return at once."}}, "call_id")
-	add("reply_workflow_function_call", "Answer a pending question on this workflow function call. Use the request_id from get_workflow_function_call. Requires runs:execute and current workflow access. The function’s own caller policy still applies.", true, map[string]any{"call_id": externalString("Call ID from call_workflow_function."), "request_id": externalString("Pending question ID."), "response": externalString("Answer or exact listed choice.")}, "call_id", "request_id", "response")
+	add("project_functions_get_call", "Poll a call started with functions action=call: status, outcome, errors and pending_inputs. MCP clients with elicitation support may receive a question form; otherwise answer a pending request_id with functions action=reply.", false, map[string]any{"call_id": externalString("call_id returned by functions action=call."), "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Wait up to this long for the call to finish; it returns as soon as it does, so a poll costs little. Default: return at once."}}, "call_id")
+	add("project_functions_reply", "Answer a pending question on this workflow function call. Use the request_id from functions action=status. Requires runs:execute and current workflow access. The function’s own caller policy still applies.", true, map[string]any{"call_id": externalString("Call ID from functions action=call."), "request_id": externalString("Pending question ID."), "response": externalString("Answer or exact listed choice.")}, "call_id", "request_id", "response")
+	add("project_functions_calls", "List saved function calls for this project.", false, map[string]any{"limit": externalInteger(1, 25)})
+	schema := projectFunctionAuthoringSchema()
+	properties := schema["properties"].(map[string]interface{})
+	add("project_functions_define", "Create or replace a typed function on a project you build.", true, properties, "definition")
+	add("project_functions_delete", "Remove a function from a project you build.", true, map[string]any{"name": externalString("Function name.")}, "name")
+
 }
 
 func (api *StreamingAPI) registerWorkflowPublishedFunctionTools(ctx context.Context, registrar definitionToolRegistrar, callerID, sessionID, workspace string) error {
@@ -34,7 +40,7 @@ func (api *StreamingAPI) registerWorkflowPublishedFunctionTools(ctx context.Cont
 	}
 	var registerErr error
 	workflowPublishedFunctionDefinitions(func(name, description string, execute bool, properties map[string]any, required ...string) {
-		if registerErr != nil {
+		if registerErr != nil || name == "project_functions_define" || name == "project_functions_delete" || name == "project_functions_calls" {
 			return
 		}
 		if properties == nil {

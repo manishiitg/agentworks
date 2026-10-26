@@ -64,7 +64,7 @@ func TestCrewFunctionResultOnlyRegistrar(t *testing.T) {
 	inner := &recordingRegistrar{}
 	reg := crewFunctionResultOnlyRegistrar{inner}
 	exec := func(context.Context, map[string]interface{}) (string, error) { return "", nil }
-	for _, name := range []string{"call_function", "define_function", "reply_function_call", "report_function_progress", "return_function_result", "list_functions"} {
+	for _, name := range []string{"project_functions_call", "project_functions_define", "project_functions_reply", "report_function_progress", "return_function_result", "project_functions_list"} {
 		_ = reg.RegisterCustomTool(name, "", nil, exec, "")
 		_ = reg.RegisterCustomToolWithTimeout(name, "", nil, exec, time.Second, "")
 	}

@@ -43,7 +43,7 @@ func TestAskCrewDescriptionStatesTheModel(t *testing.T) {
 func TestGuestAskToolSurfaceIsAnExactAllowList(t *testing.T) {
 	want := []string{
 		"EndConversation", "WebSearch", crewAskFilesToolName, "query_workflow_db", "get_api_spec", "get_workflow_trigger_run", "list_accessible_workflows",
-		"list_attached_workflows", "list_functions", "list_mcp_servers", "list_project_schedules", "list_project_triggers",
+		"list_attached_workflows", "project_functions_list", "list_mcp_servers", "list_project_schedules", "list_project_triggers",
 		"list_skills", "list_workflow_triggers", "read_agent_messages", "read_image", "read_skill",
 		"search_skills", "search_tools", "send_message", crewSuggestionToolName,
 		crewPublishedCallToolName, crewPublishedGetToolName, "request_clarification",
@@ -68,7 +68,7 @@ func TestGuestAskRefusesEverythingOutsideTheAllowList(t *testing.T) {
 		t.Fatalf("a function guest turn keeps its outward tools: %q", msg)
 	}
 	common.SetSessionCrewAskReadOnly(sid, true)
-	for _, tool := range []string{"execute_shell_command", "send_slack_message", "google_workspace_cli", "agent_browser", "schedule_message_wakeup", "list_secrets", "call_function", "slack"} {
+	for _, tool := range []string{"execute_shell_command", "send_slack_message", "google_workspace_cli", "agent_browser", "schedule_message_wakeup", "list_secrets", "project_functions_call", "slack"} {
 		if msg := readerDeniedToolRefusal(ctx, tool); msg == "" {
 			t.Errorf("%s must be refused in a read-only ask", tool)
 		}
@@ -123,7 +123,7 @@ func TestGuestAskFilesToolRefusesPrivateAreas(t *testing.T) {
 // Every non-core tool on the allow list is a native bridge tool for a guest's ask (no shell to curl them).
 func TestGuestAskNativeBridgeToolsAreTheAllowListMinusCore(t *testing.T) {
 	got := crewAskNativeBridgeTools()
-	for _, must := range []string{crewAskFilesToolName, "send_message", "read_skill", "list_functions", crewSuggestionToolName, "read_image", "query_workflow_db"} {
+	for _, must := range []string{crewAskFilesToolName, "send_message", "read_skill", "project_functions_list", crewSuggestionToolName, "read_image", "query_workflow_db"} {
 		if !slices.Contains(got, must) {
 			t.Errorf("%s must be a native bridge tool for a guest's ask: %v", must, got)
 		}
@@ -213,7 +213,7 @@ func TestNonOwnerChatsShareOnePolicy(t *testing.T) {
 			t.Errorf("%s must be allowed: it is how a non-owner acts", tool)
 		}
 	}
-	if crewAskAllowedTools["execute_shell_command"] || crewAskAllowedTools["call_function"] {
+	if crewAskAllowedTools["execute_shell_command"] || crewAskAllowedTools["project_functions_call"] {
 		t.Error("no shell and no calls to other Crews or workflows in a non-owner's chat")
 	}
 	if notice := crewAskNotice("Crew/c-1", false); !strings.Contains(notice, "functions` action=call") || !strings.Contains(notice, "Run mode") || !strings.Contains(notice, "check whether one of the Crew's functions answers the question better") || !strings.Contains(notice, "Unknown means ask, not run") {

@@ -358,8 +358,8 @@ rechecks participant accounts and current workflow/Crew identity and access.
 
 ## Structured functions
 
-The shared internal tools are `list_functions`, `call_function`,
-`get_function_call` and `reply_function_call`. External MCP exposes
+The shared internal tools are `functions action=list`, `functions action=call`,
+`functions action=status` and `functions action=reply`. External MCP exposes
 `functions` with `action=list|call|status|read|reply`; the selected target identifies
 the Crew or workflow. CLI exposes corresponding Crew and workflow function
 commands. Discover the current definition before constructing arguments.
@@ -402,11 +402,11 @@ targets. For example, if workflow `Pipeline` declares a `review_pr` function wit
 these inputs:
 
 ```text
-list_functions(target="Pipeline")
-call_function(target="Pipeline", function="review_pr",
+functions action=list(target="Pipeline")
+functions action=call(target="Pipeline", function="review_pr",
               args={"GITHUB_OWNER":"example", "GITHUB_REPO":"app",
                     "PR_NUMBER":7, "group":"staging"})
-get_function_call(call_id="<returned-call-id>")
+functions action=status(call_id="<returned-call-id>")
 ```
 
 For **Workflow A to Workflow B**, B exposes a trigger of kind `function`: a named

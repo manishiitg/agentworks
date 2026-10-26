@@ -28,7 +28,7 @@ func TestAgentFunctionToolsKeepExecutionScope(t *testing.T) {
 		}
 		var tools []llmtypes.Tool
 		executors := map[string]interface{}{}
-		for _, name := range []string{"call_function", "get_function_call", "reply_function_call"} {
+		for _, name := range []string{"project_functions_call", "project_functions_get_call", "project_functions_reply"} {
 			tools = append(tools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: name}})
 			executors[name] = func(context.Context, map[string]interface{}) (string, error) { called = true; return "ok", nil }
 		}
@@ -38,7 +38,7 @@ func TestAgentFunctionToolsKeepExecutionScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"call_function", "reply_function_call", "get_function_call"} {
+	for _, name := range []string{"project_functions_call", "project_functions_reply", "project_functions_get_call"} {
 		called = false
 		_, err := executors[name].(func(context.Context, map[string]interface{}) (string, error))(context.Background(), nil)
 		if err != nil || !called {

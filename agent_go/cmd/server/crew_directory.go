@@ -348,6 +348,15 @@ func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string
 			}
 		}
 	}
+	if isProjectProfileID(profileID) {
+		if err := loadCrewEntryActions(ctx, projectRoot, &manifest); err != nil {
+			return productProjectManifest{}, err
+		}
+		if err := loadCrewTimerActions(ctx, projectRoot, &manifest); err != nil {
+			return productProjectManifest{}, err
+		}
+	}
+
 	return manifest, nil
 }
 

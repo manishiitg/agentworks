@@ -788,6 +788,9 @@ func (s *ProjectActionDispatcher) projectManifest(ctx context.Context, userID, p
 			return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, err
 		}
 		runtimeManifest.OwnerID = manifest.OwnerID
+		if err := loadCrewEntryActions(ctx, filepath.ToSlash(filepath.Dir(runtimePath)), &runtimeManifest); err != nil {
+			return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, err
+		}
 		if err := loadCrewTimerActions(ctx, filepath.ToSlash(filepath.Dir(runtimePath)), &runtimeManifest); err != nil {
 			return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, err
 		}
@@ -805,6 +808,12 @@ func (s *ProjectActionDispatcher) projectManifest(ctx context.Context, userID, p
 }
 
 func (s *ProjectActionDispatcher) writeProjectManifest(ctx context.Context, binding productConversationBinding, manifest productProjectManifest) error {
+	if isProjectProfileID(manifest.Product) || isCrewProjectPath(binding.WorkspacePath) {
+		if err := saveCrewEntryActions(ctx, filepath.ToSlash(filepath.Dir(binding.ManifestPath)), manifest); err != nil {
+			return err
+		}
+		manifest.Triggers = nil
+	}
 	if err := saveCrewTimerActions(ctx, filepath.ToSlash(filepath.Dir(binding.ManifestPath)), manifest); err != nil {
 		return err
 	}

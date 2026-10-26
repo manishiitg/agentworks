@@ -76,7 +76,7 @@ func TestLoadProductManifestExecutionFunctionTools(t *testing.T) {
 	for name, extra := range map[string]string{
 		"omitted":  "",
 		"disabled": "execution:\n  function_tools:\n    tools: []\n",
-		"enabled":  "execution:\n  function_tools:\n    category: workflow_calls\n    tools: [list_functions, get_function_call]\n",
+		"enabled":  "execution:\n  function_tools:\n    category: workflow_calls\n    tools: [project_functions_list, project_functions_get_call]\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			m, err := LoadProductManifest(manifestFS(extra, nil), "product.yaml")
@@ -89,11 +89,11 @@ func TestLoadProductManifestExecutionFunctionTools(t *testing.T) {
 		})
 	}
 	for name, extra := range map[string]string{
-		"missing category": "tools: [list_functions]",
-		"duplicate":        "category: functions\n    tools: [list_functions, list_functions]",
+		"missing category": "tools: [project_functions_list]",
+		"duplicate":        "category: functions\n    tools: [project_functions_list, project_functions_list]",
 		"empty name":       "category: functions\n    tools: ['']",
-		"untrimmed name":   "category: functions\n    tools: [' list_functions']",
-		"unknown field":    "category: functions\n    toolz: [list_functions]",
+		"untrimmed name":   "category: functions\n    tools: [' project_functions_list']",
+		"unknown field":    "category: functions\n    toolz: [project_functions_list]",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := LoadProductManifest(manifestFS("execution:\n  function_tools:\n    "+extra+"\n", nil), "product.yaml"); err == nil {

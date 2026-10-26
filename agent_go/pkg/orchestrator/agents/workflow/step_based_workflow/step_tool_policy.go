@@ -20,7 +20,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) refreshStepGoalPolicy(ctx context.Con
 func (hcpo *StepBasedWorkflowOrchestrator) filterOrdinaryStepTools(tools []llmtypes.Tool, executors map[string]interface{}) ([]llmtypes.Tool, map[string]interface{}) {
 	blocked := map[string]bool{
 		"query_workflow_costs": true, "apply_workflow_db_migration": true,
-		"list_functions": true, "call_function": true, "get_function_call": true, "reply_function_call": true,
+		"project_functions_list": true, "project_functions_call": true, "project_functions_get_call": true, "project_functions_reply": true,
 		"get_goal_metrics": !hcpo.stepHasGoal.Load(), "record_goal_observations": !hcpo.stepHasGoal.Load(),
 	}
 	result := make([]llmtypes.Tool, 0, len(tools))

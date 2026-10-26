@@ -45,6 +45,9 @@ func newExternalRelayFixture(t *testing.T) *externalRelayFixture {
 	ws := httptest.NewServer(mock)
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	if err := saveWorkflowEntryActions(t.Context(), "Workflow/invoices", m); err != nil {
+		t.Fatal(err)
+	}
 	return &externalRelayFixture{f, mock}
 }
 func (f *externalRelayFixture) token(t *testing.T, user string, scopes []string, all bool) (accesstokens.Token, string) {

@@ -12,11 +12,11 @@ import (
 )
 
 // startLoginFlowCall starts Alpha's call of Beta.run_login_flow with a short
-// timeout, bypassing call_function's one-minute minimum.
+// timeout, bypassing project_functions_call's one-minute minimum.
 func startLoginFlowCall(t *testing.T, env crewFunctionEnv, timeout time.Duration) *crewFunctionCall {
 	t.Helper()
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	if _, err := env.alpha["define_function"].exec(ctx, loginFlowArgs); err != nil {
+	if _, err := env.alpha["project_functions_define"].exec(ctx, loginFlowArgs); err != nil {
 		t.Fatal(err)
 	}
 	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
@@ -189,7 +189,7 @@ func TestCrewFunctionCallSurvivesRestartAsInterrupted(t *testing.T) {
 	}
 	record := call.recordPath()
 
-	polled, err := env.alpha["get_function_call"].exec(context.Background(), map[string]interface{}{"call_id": call.ID})
+	polled, err := env.alpha["project_functions_get_call"].exec(context.Background(), map[string]interface{}{"call_id": call.ID})
 	if err != nil {
 		t.Fatalf("lookup after restart: %v", err)
 	}

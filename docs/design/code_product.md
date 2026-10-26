@@ -375,7 +375,7 @@ Code ships a basic setup first; integrations come later. In Code's
     handed. Sign-in imports there; status, send and the Google CLI tool run
     with `--home` pointing there; deleting the connection deletes the store.
   - Decided (user, 2026-09-28): a Code **may call** Crews and workflows (ask /
-    call_function) that use Gmail. They run in their own context with
+    functions action=call) that use Gmail. They run in their own context with
     whatever Gmail they are set up with, never the Code's.
 
 - [ ] **App preview.** When someone builds a web app in a Code, the agent runs

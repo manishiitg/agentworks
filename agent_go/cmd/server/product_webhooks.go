@@ -541,6 +541,12 @@ func (s *ProjectActionDispatcher) findProductWebhook(ctx context.Context, id str
 				runtimePath = candidate
 			}
 		}
+		if isProjectProfileID(profile.ID) {
+			manifest.OwnerID = userID
+			if err := loadCrewEntryActions(ctx, filepath.ToSlash(filepath.Dir(runtimePath)), &manifest); err != nil {
+				return nil
+			}
+		}
 		for _, trigger := range manifest.Triggers {
 			if trigger.ID != id {
 				continue
@@ -791,7 +797,13 @@ func (s *ProjectActionDispatcher) dispatchInternalProductTrigger(ctx context.Con
 	if err != nil {
 		return internalTriggerDeliveryResult{}, err
 	}
-	if !trigger.Caller.matchesAnyPresented(call.Caller) {
+	if trigger.WorkspaceFunction {
+		admission, _ := ctx.Value(declaredFunctionDispatchKey{}).(*crewFunctionCall)
+		if admission == nil || admission.ID != call.DeliveryID || admission.TriggerID != trigger.ID || admission.TargetID != manifest.ID || admission.UserID != call.UserID {
+			return internalTriggerDeliveryResult{}, ErrInternalTriggerNotBound
+		}
+	}
+	if !trigger.WorkspaceFunction && !trigger.Caller.matchesAnyPresented(call.Caller) {
 		return internalTriggerDeliveryResult{}, ErrInternalCallerMismatch
 	}
 	deliveryID := strings.TrimSpace(call.DeliveryID)

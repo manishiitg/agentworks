@@ -33,7 +33,7 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 	}))
 	defer s.Close()
 	c.WorkspaceClient = workspace.NewClient(s.URL)
-	names := []string{"execute_shell_command", "human_feedback", "create_human_input_request", "query_workflow_db", "mutate_workflow_db", "query_workflow_costs", "apply_workflow_db_migration", "list_functions", "call_function", "get_function_call", "reply_function_call", "get_goal_metrics", "record_goal_observations", "send_email", "send_slack_message"}
+	names := []string{"execute_shell_command", "human_feedback", "create_human_input_request", "query_workflow_db", "mutate_workflow_db", "query_workflow_costs", "apply_workflow_db_migration", "project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "get_goal_metrics", "record_goal_observations", "send_email", "send_slack_message"}
 	c.WorkspaceToolExecutors = map[string]interface{}{}
 	cfg := &AgentConfigs{}
 	for _, name := range names {

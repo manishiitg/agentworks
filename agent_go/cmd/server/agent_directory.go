@@ -55,7 +55,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		row := map[string]interface{}{
 			"kind": kind, "type": "Crew", "presence": "Runs when called", "delivery_mode": "on_request", "id": "workspace:" + profileID + ":" + id, "crew_id": id, "name": name, "owner": crew["owner"],
 			"your_access": crew["access"], "description": crew["description"], "functions": agentDirectoryFunctions(functions),
-			"reach": "call_function(target=<id>, function=<name>) for a function; send_message(target=<id>) to ask it",
+			"reach": "functions action=call(target=<id>, function=<name>) for a function; send_message(target=<id>) to ask it",
 		}
 		owned := crewProjectOwnedByCaller(claims.UserID, crewPath)
 		if owned {
@@ -75,7 +75,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			}
 			row["chats"] = selected
 		}
-		row["reach"] = "send_message(target=<id>, chat_id=<chat_id from chats>) messages that existing agent. Functions use call_function; omit chat_id for the Crew ask."
+		row["reach"] = "send_message(target=<id>, chat_id=<chat_id from chats>) messages that existing agent. Functions use functions action=call; omit chat_id for the Crew ask."
 		agents = append(agents, row)
 		if !owned {
 			for _, agent := range row["chats"].([]sharedCrewAgent) {
@@ -105,7 +105,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		row := map[string]interface{}{
 			"kind": kind, "type": map[string]string{"goal": "Goal", "relay": "Relay"}[kind], "presence": "Runs when called", "delivery_mode": "on_request", "id": "workflow:" + manifest.ID, "workflow_id": manifest.ID, "name": firstNonEmptyTrimmed(manifest.Label, workflow.WorkspacePath),
 			"your_access": access, "description": strings.TrimSpace(manifest.Description), "functions": agentDirectoryFunctions(workflowFunctions(manifest)),
-			"reach": "call_function(target=<id>, function=<name>)",
+			"reach": "functions action=call(target=<id>, function=<name>)",
 		}
 		if workflow.MyAccess == WorkflowAccessOwner || workflow.MyAccess == WorkflowAccessWrite {
 			api := &StreamingAPI{}
@@ -118,7 +118,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 				chats = append(chats, map[string]interface{}{"chat_id": tab.ID, "name": tab.Name, "owner_name": tab.OwnerName, "can_write": tab.CanWrite, "is_main": tab.IsMain})
 			}
 			row["chats"] = chats
-			row["reach"] = "send_message(target=<id>, chat_id=<chat_id>) for a named Builder tab; functions use call_function."
+			row["reach"] = "send_message(target=<id>, chat_id=<chat_id>) for a named Builder tab; functions use functions action=call."
 		}
 		agents = append(agents, row)
 	}

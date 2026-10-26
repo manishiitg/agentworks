@@ -140,7 +140,7 @@ func TestExternalMergedCallDropsFieldsOnlyAnotherMemberTakes(t *testing.T) {
 		}
 	}
 	member, rest, err := externalResolveMerged(functions, map[string]any{"action": "status", "crew_id": "c", "call_id": "fn-1", "wait_seconds": 5})
-	if err != nil || member.Name != "get_crew_function_call" {
+	if err != nil || member.Name != "project_functions_get_call" {
 		t.Fatalf("resolved to %s (%v)", member.Name, err)
 	}
 	if _, has := rest["crew_id"]; has {

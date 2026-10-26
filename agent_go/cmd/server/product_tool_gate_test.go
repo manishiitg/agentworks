@@ -174,7 +174,7 @@ func TestAgentWorksChatGateEnforcesYAMLBeforeRegistration(t *testing.T) {
 			if len(reg.admitted) != 0 {
 				t.Fatalf("Go registration bypassed YAML: %v", reg.admitted)
 			}
-			if mode == "run" && gate.Admit("call_function") {
+			if mode == "run" && gate.Admit("project_functions_call") {
 				t.Fatal("execution.function_tools must not grant functions to Run chat")
 			}
 		})

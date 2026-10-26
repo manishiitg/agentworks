@@ -9,7 +9,7 @@ dependencies: {}
 execution:
   function_tools:
     category: crew_function_tools
-    tools: [list_functions, call_function, get_function_call, reply_function_call]
+    tools: [project_functions_list, project_functions_call, project_functions_get_call, project_functions_reply]
 
 prompt:
   file: prompts/system-prompt.md
@@ -278,22 +278,22 @@ chat:
       # happens here before agent construction; executor authority still applies.
       - apply_workflow_db_migration
       - ask_function_update
-      - call_function
+      - project_functions_call
       - configure_goal_metrics
       - create_project
       - copy_project_files
       - create_workflow_database_snapshot
-      - define_function
-      - delete_function
+      - project_functions_define
+      - project_functions_delete
       - diff_patch_workspace_file
       - execute_shell_command
       - generate_text_llm
-      - get_function_call
+      - project_functions_get_call
       - get_goal_metrics
       - image_edit
       - image_gen
       - list_accessible_workflows
-      - list_functions
+      - project_functions_list
       - list_llm_capabilities
       - list_agents
       - list_provider_models
@@ -307,7 +307,7 @@ chat:
       - read_agent_messages
       - read_image
       - record_goal_observations
-      - reply_function_call
+      - project_functions_reply
       - report_function_progress
       - request_clarification
       - scan_workflow_script_db_usage
@@ -321,10 +321,10 @@ chat:
   run:
     # Default workflow phase tools; integration tests compare real registration.
     tools:
-      - list_workflow_functions
-      - call_workflow_function
-      - get_workflow_function_call
-      - reply_workflow_function_call
+      - project_functions_list
+      - project_functions_call
+      - project_functions_get_call
+      - project_functions_reply
       # Coding providers reach the admitted APIs through the guarded shell.
       # These bridge tools stay out of the direct external Run API below.
       - execute_shell_command
@@ -488,10 +488,10 @@ chat:
       - messages
       - run_reply_input
       # Workflow functions (function triggers): typed calls with checked inputs.
-      - list_workflow_functions
-      - call_workflow_function
-      - get_workflow_function_call
-      - reply_workflow_function_call
+      - project_functions_list
+      - project_functions_call
+      - project_functions_get_call
+      - project_functions_reply
       # Suggestions for the owner (reviewed in the decisions panel; change nothing).
       - suggest_workflow_change
       # Crews (crews:read / crews:run, bounded by the token's Crew list).
@@ -502,12 +502,10 @@ chat:
       - list_crew_files
       - search_crew_files
       - read_crew_file
-      - list_crew_functions
-      - call_crew_function
+      - project_functions_calls
+      - project_functions_define
+      - project_functions_delete
       - ask_crew
-      - get_crew_function_call
-      - list_crew_function_calls
-      - reply_crew_function_call
       - suggest_crew_change
       # Crew authoring (crews:write; only the owner edits; export is crews:read).
       - create_crew

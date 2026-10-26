@@ -187,20 +187,20 @@ The runtime also rejects any remaining code item with a precise v1.0.10 upgrade 
 
 ## Calling other projects
 
-Executing agent steps receive `list_functions`, `call_function`,
-`get_function_call` and `reply_function_call` when the server binds the function
+Executing agent steps receive `functions action=list`, `functions action=call`,
+`functions action=status` and `functions action=reply` when the server binds the function
 services. These tools use the same function backend as Builder and external MCP.
 The caller is the source workflow, including for delegated agents. The launch
 account's current access and any MCP connection scopes and target bounds still
 apply; a function's workflow caller allow-list is checked independently.
 
-1. Discover a declared function with `list_functions(target="crew:Review")`.
+1. Discover a declared function with `functions action=list(target="crew:Review")`.
 2. Call it with typed inputs, for example
-   `call_function(target="crew:Review", function="check", args={"build":"7"})`.
-3. Keep the returned `call_id` and poll `get_function_call`. Consume only a
+   `functions action=call(target="crew:Review", function="check", args={"build":"7"})`.
+3. Keep the returned `call_id` and poll `functions action=status`. Consume only a
    completed result; report a failed or interrupted call as such. Read output
-   files through `get_function_call(file="report.json")`.
-4. If the call exposes a pending input, use `reply_function_call` with its
+   files through `functions action=status(file="report.json")`.
+4. If the call exposes a pending input, use `functions action=reply` with its
    matching request ID and response. This does not grant approval authority.
 
 Execution agents poll rather than scheduling a Builder chat notification;
