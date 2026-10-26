@@ -15,14 +15,29 @@ type ScriptExecutor = func(context.Context, map[string]interface{}) (string, err
 func ScriptFamilies(members map[string]ScriptExecutor) map[string]ScriptExecutor {
 	byFamily := map[string]map[string]ScriptExecutor{}
 	for _, action := range Actions {
+		if action.Scope != "" {
+			continue
+		}
 		fn, ok := members[action.Member]
-		if !ok || action.Source != "" || action.Scope != "" {
+		if !ok && action.Source != "" {
+			if source, admitted := members[action.Source]; admitted {
+				parameter, selected := action.SourceParameter(), action.SourceAction
+				fn = func(ctx context.Context, args map[string]interface{}) (string, error) {
+					args[parameter] = selected
+					return source(ctx, args)
+				}
+				ok = true
+			}
+		}
+		if !ok {
 			continue
 		}
 		if byFamily[action.Family] == nil {
 			byFamily[action.Family] = map[string]ScriptExecutor{}
 		}
-		byFamily[action.Family][action.Name] = fn
+		if _, resolved := byFamily[action.Family][action.Name]; !resolved {
+			byFamily[action.Family][action.Name] = fn
+		}
 	}
 	out := make(map[string]ScriptExecutor, len(byFamily))
 	for family, actions := range byFamily {
