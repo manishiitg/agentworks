@@ -13,6 +13,18 @@ import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
 import { compactOwnerChatName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
+import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
+
+function AgentMenuActivity({ tabId, workspaceActivity }: { tabId: string; workspaceActivity?: 'running' | 'waiting' | null }) {
+  const activity = useChatRuntimeActivity(tabId)
+  if (activity.state === 'waiting' || workspaceActivity === 'waiting') {
+    return <span role="img" aria-label="Needs your input" title="Needs your input" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))] motion-safe:animate-pulse" />
+  }
+  if (activity.state === 'running' || workspaceActivity === 'running') {
+    return <Loader2 role="img" aria-label="Working" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
+  }
+  return null
+}
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, allowSideChats, opening, surface,
@@ -269,7 +281,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
                     title={[label, tab.metadata?.agentProfileTabOwnerName].filter(Boolean).join(' · ')}
                     className={`min-w-0 flex-1 rounded py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-foreground/85'}`}
                   >
-                    <span className="flex min-w-0 items-center gap-2"><span className="truncate">{label}</span></span>
+                    <span className="flex min-w-0 items-center gap-2"><AgentMenuActivity tabId={tab.tabId} workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined} /><span className="truncate">{label}</span></span>
                     {!isAgentTab(tab) && <span className="block text-[10px] font-normal text-muted-foreground">Activity</span>}
                   </button>}
                   {reordering && key ? <div className="flex shrink-0 items-center">
