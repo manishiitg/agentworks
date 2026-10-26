@@ -125,7 +125,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 			return
 		}
 		externalJSON(w, map[string]any{"workspace_id": crewProfileID + ":" + crew.CrewID, "crew_id": crew.CrewID, "chat_id": "main", "name": agentWorksName, "created": crew.Created,
-			"next": "Talk to it with workspace action=ask and this workspace_id, or open AgentWorks from the Crew list in the app."})
+			"next": "Talk to it with workspace action=ask and this workspace_id; for its schedules pass project=crew_id. In the app it is AgentWorks in the Crew list."})
 		return
 	}
 

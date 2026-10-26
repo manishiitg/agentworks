@@ -1670,7 +1670,8 @@ func projectRunDestinations(job productScheduleJob) []ScheduleRunDestination {
 		side := strings.TrimSpace(job.ProjectID) + codeChatSideMarker
 		for _, chat := range chats {
 			key := chat.Record.ConversationKey
-			if chat.OwnerID != job.UserID || !strings.HasPrefix(key, side) {
+			// The main chat is listed once, as "main", even when its record sits under a tab key.
+			if chat.OwnerID != job.UserID || chat.Record.IsMainChat || !strings.HasPrefix(key, side) {
 				continue
 			}
 			id := strings.TrimPrefix(key, side)
