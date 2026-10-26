@@ -60,7 +60,7 @@ func TestCodingAgentPersistentInteractiveFlags(t *testing.T) {
 			structured:      true,
 		},
 		{
-			name:            "cursor workflow builder gets persistent tmux",
+			name:            "cursor workflow builder retains ACP",
 			provider:        string(llm.ProviderCursorCLI),
 			allowPersistent: true,
 			wantCursorCLI:   true,
@@ -143,12 +143,12 @@ func TestCodingAgentUsesStructuredTransportForChat(t *testing.T) {
 		interactive    bool
 		wantStructured bool
 	}{
-		{name: "Cursor interactive chat uses tmux", provider: "cursor-cli", interactive: true},
+		{name: "Cursor interactive chat retains ACP", provider: "cursor-cli", interactive: true},
 		{name: "Muse interactive chat uses tmux", provider: "muse-cli", interactive: true},
 		{name: "Claude interactive chat uses tmux", provider: "claude-code", interactive: true},
 		{name: "Codex interactive chat uses app-server", provider: "codex-cli", interactive: true},
 		{name: "Pi interactive chat uses native RPC", provider: "pi-cli", interactive: true},
-		{name: "non-retained Cursor uses structured JSON", provider: "cursor-cli", wantStructured: true},
+		{name: "non-retained Cursor uses bounded ACP", provider: "cursor-cli", wantStructured: true},
 		{name: "non-retained Claude uses structured JSON", provider: "claude-code", wantStructured: true},
 		{name: "API provider is not a structured coding CLI", provider: "openai"},
 	}

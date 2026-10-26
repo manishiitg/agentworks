@@ -37,4 +37,14 @@ describe('CodingAgentQuestionCard', () => {
     expect(html).toContain('Choose up to 3.')
     expect(html).toContain('Use first options')
   })
+  it('renders native text-only input immediately without a selection control', () => {
+    const html = renderToStaticMarkup(<CodingAgentQuestionCard prompt={{
+      ...base, provider: 'pi-cli', questions: [{ ...base.questions[0], options: [], allowOther: true }],
+    }} onAnswer={async () => {}} />)
+    expect(html).toContain('<textarea')
+    expect(html).not.toContain('type="radio"')
+    expect(html).not.toContain('type="checkbox"')
+    expect(html).toMatch(/disabled=""[^>]*>Use first options/)
+  })
+
 })

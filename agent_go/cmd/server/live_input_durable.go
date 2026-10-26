@@ -164,9 +164,6 @@ var durableAckAwaiters = map[llmproviders.Provider]func(ctx context.Context, ses
 	llmproviders.ProviderClaudeCode: func(ctx context.Context, sessionID, message string) (llmtypes.DurableAck, error) {
 		return llm.AwaitClaudeInputDurable(ctx, sessionID, message, 0)
 	},
-	llmproviders.ProviderCursorCLI: func(ctx context.Context, sessionID, message string) (llmtypes.DurableAck, error) {
-		return llm.AwaitCursorInputDurable(ctx, sessionID, message, 0)
-	},
 	llmproviders.ProviderCodexCLI: func(ctx context.Context, sessionID, message string) (llmtypes.DurableAck, error) {
 		return llm.AwaitCodexInputDurable(ctx, sessionID, message, 0)
 	},

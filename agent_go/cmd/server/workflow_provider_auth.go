@@ -305,24 +305,10 @@ func (api *StreamingAPI) workflowHasBusySession(userID, workflowPath string) boo
 	return false
 }
 
-// closeIdleWorkflowCursorCLISessions is the Cursor counterpart. Video Studio
-// drives Cursor over the structured (-p) transport, which starts a fresh
-// process per turn and so picks the new key up on its own; this covers the
-// interactive tmux sessions, which outlive a turn and would otherwise keep
-// running under the replaced credential.
+// closeIdleWorkflowCursorCLISessions closes the account's retained ACP processes.
 func (api *StreamingAPI) closeIdleWorkflowCursorCLISessions(userID, workflowPath, reason string) {
 	for _, sessionID := range api.workflowSessionIDs(userID, workflowPath) {
 		llmproviders.CloseCursorCLIInteractiveSessionForOwner(sessionID, reason)
-		if api.terminalStore == nil {
-			continue
-		}
-		for _, snapshot := range api.terminalStore.ListRaw(sessionID) {
-			if !strings.HasPrefix(strings.TrimSpace(snapshot.TmuxSession), "mlp-cursor") {
-				continue
-			}
-			llmproviders.CloseCursorCLIInteractiveSessionByTmux(snapshot.TmuxSession, reason)
-			api.terminalStore.MarkProcessClosed(snapshot.TerminalID, reason)
-		}
 	}
 }
 

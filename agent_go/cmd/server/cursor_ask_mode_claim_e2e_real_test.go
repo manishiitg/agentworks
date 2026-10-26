@@ -83,13 +83,12 @@ func TestCursorAgentModeWithAndWithoutBridge(t *testing.T) {
 	// This asserts the behavior we want: the same bridge, the same denial of
 	// built-ins, and a completed write. It fails until structured mode is
 	// contained by something other than a read-only mode.
-	t.Run("structured transport must not degrade to ask mode", func(t *testing.T) {
+	t.Run("native ACP must not degrade to ask mode", func(t *testing.T) {
 		workDir := t.TempDir()
 		proof := filepath.Join(workDir, "proof.txt")
 		bridgeURL, token := startProofWritingBridge(t, workDir)
 
-		said := runCursorProbe(t, model, workDir, mcpBridgeConfigJSON(t, bridgeURL, token, true),
-			cursorcliadapter.WithCursorStructuredTransport(true))
+		said := runCursorProbe(t, model, workDir, mcpBridgeConfigJSON(t, bridgeURL, token, true))
 
 		assertNoAskModeClaim(t, model, said)
 		if _, err := os.Stat(proof); err != nil {

@@ -35,7 +35,7 @@ func (api *StreamingAPI) publicationSummary(ctx context.Context, actor, operatio
 	case "claude-code":
 		opts = append(opts, llmproviders.WithClaudeStructuredTransport(true))
 	case "cursor-cli":
-		opts = append(opts, llmproviders.WithCursorStructuredTransport(true))
+		// Bounded native ACP is the default.
 	}
 	if dir, e := record.historyDir(); e == nil {
 		if option := llmproviders.CodingAgentWorkingDirOption(llmproviders.Provider(record.Provider), dir); option != nil {

@@ -41,8 +41,8 @@ func codingAgentClarificationSchema() map[string]interface{} {
 	question := map[string]interface{}{"type": "object", "required": []string{"id", "question", "options"}, "additionalProperties": false, "properties": map[string]interface{}{
 		"id":             map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 100},
 		"header":         map[string]interface{}{"type": "string", "maxLength": 100},
-		"question":       map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 2000},
-		"options":        map[string]interface{}{"type": "array", "minItems": 1, "maxItems": 12, "items": option},
+		"question":       map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 20000},
+		"options":        map[string]interface{}{"type": "array", "minItems": 0, "maxItems": 12, "items": option},
 		"multi_select":   map[string]interface{}{"type": "boolean"},
 		"allow_other":    map[string]interface{}{"type": "boolean"},
 		"min_selections": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 12},
@@ -82,8 +82,8 @@ func parseCodingAgentClarification(args map[string]interface{}) ([]unifiedevents
 	for i := range input.Questions {
 		q := &input.Questions[i]
 		q.ID, q.Question = strings.TrimSpace(q.ID), strings.TrimSpace(q.Question)
-		if q.ID == "" || len(q.ID) > 100 || ids[q.ID] || q.Question == "" || len(q.Question) > 2000 || len(q.Options) == 0 || len(q.Options) > 12 {
-			return nil, fmt.Errorf("each question needs a unique id, text and 1 to 12 options")
+		if q.ID == "" || len(q.ID) > 100 || ids[q.ID] || q.Question == "" || len(q.Question) > 20000 || (len(q.Options) == 0 && !q.AllowOther) || len(q.Options) > 12 {
+			return nil, fmt.Errorf("each question needs a unique id, text, and options or a custom answer field")
 		}
 		ids[q.ID] = true
 		labels := map[string]bool{}
@@ -103,7 +103,7 @@ func parseCodingAgentClarification(args map[string]interface{}) ([]unifiedevents
 		if q.AllowOther {
 			available++
 		}
-		if q.MinSelections < 0 || q.MaxSelections < 0 || min > max || min > len(q.Options) || max > available {
+		if q.MinSelections < 0 || q.MaxSelections < 0 || min > max || min > available || max > available {
 			return nil, fmt.Errorf("invalid selection bounds for %s", q.ID)
 		}
 	}
@@ -213,6 +213,9 @@ func clarificationAnswers(questions []unifiedevents.CodingAgentQuestionPrompt, a
 		var labels []string
 		var other string
 		if auto {
+			if len(q.Options) < min {
+				return nil, fmt.Errorf("type an answer for %s", q.ID)
+			}
 			for _, option := range q.Options[:min] {
 				labels = append(labels, option.Label)
 			}

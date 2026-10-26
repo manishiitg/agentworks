@@ -43,7 +43,7 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
             return { label: text(o.label), description: text(o.description) }
           }).filter(option => option.label),
         }
-      }).filter(q => q.id && q.question && q.options.length)
+      }).filter(q => q.id && q.question && (q.options.length || q.allowOther))
       if (!questions.length) continue
       const prompt: CodingAgentQuestionPrompt = { provider, promptId, state: 'pending', questions, answers: [] }
       cards.set(event.id, prompt)

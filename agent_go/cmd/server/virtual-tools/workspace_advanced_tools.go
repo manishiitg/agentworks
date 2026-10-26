@@ -581,7 +581,7 @@ func structuredOneShotCallOptions(provider llm.Provider) []llmtypes.CallOption {
 	case llm.ProviderCodexCLI:
 		options = append(options, llmproviders.WithCodexStructuredTransport(true))
 	case llm.ProviderCursorCLI:
-		options = append(options, llmproviders.WithCursorStructuredTransport(true))
+		// Cursor uses bounded ACP when no persistent owner is requested.
 	case llm.ProviderPiCLI:
 		// Pi uses bounded RPC when no persistent owner is requested.
 	default:

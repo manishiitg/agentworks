@@ -48,6 +48,21 @@ func TestCodingAgentClarificationCustomAnswersAndBounds(t *testing.T) {
 	if _, err := clarificationAnswers([]unifiedevents.CodingAgentQuestionPrompt{q}, false, custom); err == nil {
 		t.Fatal("custom answer was not counted towards the maximum")
 	}
+	// PLAT-872-21: native input/editor dialogs have no preset choices.
+	textOnly, err := parseCodingAgentClarification(map[string]interface{}{"questions": []map[string]interface{}{
+		{"id": "input", "question": "Describe the change", "options": []map[string]interface{}{}, "allow_other": true},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := clarificationAnswers(textOnly, true, nil); err == nil {
+		t.Fatal("first-options action accepted a text-only question")
+	}
+	answers, err = clarificationAnswers(textOnly, false, []codingAgentQuestionAnswerInput{{ID: "input", OtherText: "line one\nline two"}})
+	if err != nil || answers[0].OtherText != "line one\nline two" {
+		t.Fatalf("text-only answer: %v %v", answers, err)
+	}
+
 }
 
 func pendingClarificationForTest(t *testing.T, api *StreamingAPI, session string) *pendingCodingAgentClarification {
@@ -69,7 +84,7 @@ func pendingClarificationForTest(t *testing.T, api *StreamingAPI, session string
 }
 
 func TestCodingAgentClarificationTwoQuestionsAndSuccessivePrompts(t *testing.T) {
-	for _, provider := range []string{"muse-cli", "claude-code", "codex-cli"} {
+	for _, provider := range []string{"muse-cli", "claude-code", "codex-cli", "cursor-cli", "pi-cli"} {
 		t.Run(provider, func(t *testing.T) {
 			api := &StreamingAPI{eventStore: events.NewEventStore(100)}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -209,7 +209,7 @@ var promptSections = []promptSection{
 When a real user decision needs a choice between options, use AskUserQuestion. Its native questions are connected to selectable cards in this chat, including multi-select and custom text answers. Put related questions in one call and wait for the user's submitted answers before acting. The shared request_clarification bridge tool is also available. An interrupted or expired prompt is not approval. Do not ask for routine implementation choices you can resolve from the user's instructions.`
 			}
 			return `## Clarification choices
-When a real user decision needs a choice between options, call the available request_clarification bridge tool so the user can select answers in this chat. Put related questions in one call, with unique question IDs. Use this shared tool instead of a native terminal question menu or listing options in ordinary prose. Wait for the returned answers before acting; an interrupted or expired prompt is not approval. Do not ask for routine implementation choices you can resolve from the user's instructions.`
+When a real user decision needs a choice between options, use your native question tool or the available request_clarification bridge tool. Native Codex, Cursor and Pi questions appear as answerable cards in this chat. Put related questions in one call, with unique question IDs. Use these tools instead of listing options in ordinary prose. Wait for the returned answers before acting; an interrupted or expired prompt is not approval. Do not ask for routine implementation choices you can resolve from the user's instructions.`
 		},
 	},
 	{

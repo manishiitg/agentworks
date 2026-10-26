@@ -6024,6 +6024,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			req.ExternalBuilderOperationID == "" && isCodingAgentProvider(finalProvider, finalModelID) && toolGate.Admit("request_clarification")
 		if clarificationAvailable {
 			platformBridgeTools = append(platformBridgeTools, "request_clarification")
+			streamCtx = llmtypes.WithCodingAgentQuestionHandler(streamCtx, finalProvider, sessionID, func(ctx context.Context, questions map[string]any) (string, error) {
+				return api.waitForCodingAgentClarification(ctx, sessionID, finalProvider, questions)
+			})
 		}
 		if resolvedProfile != nil {
 			for _, name := range resolvedProfile.Definition.Runtime.BridgeTools {
