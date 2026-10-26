@@ -1,5 +1,5 @@
 import { codingProviderName } from '../utils/codingProviderName'
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowRight, CheckCircle2, KeyRound, Loader2, LogIn, Terminal } from 'lucide-react'
 import { llmConfigService, type ProviderConnection, type ProviderManifestEntry } from '../services/llm-config-api'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -25,6 +25,7 @@ export default function WelcomeAiReadiness({ products, onSetup, crewReadyView }:
   const [check, setCheck] = useState<Check>({ scope, status: 'loading' })
   const [revision, setRevision] = useState(0)
   const refresh = useCallback(() => setRevision(value => value + 1), [])
+  const readyRef = useRef(false)
 
   useEffect(() => {
     let current = true
@@ -43,11 +44,14 @@ export default function WelcomeAiReadiness({ products, onSetup, crewReadyView }:
   }, [scope, productKey, profile?.token, user, revision])
 
   useEffect(() => {
+    // Coming back to the tab rechecks only while no account is ready (one may have just been connected elsewhere);
+    // a ready result stays until the accounts actually change.
+    const refreshUntilReady = () => { if (!readyRef.current) refresh() }
     window.addEventListener('provider-connections-changed', refresh)
-    window.addEventListener('focus', refresh)
+    window.addEventListener('focus', refreshUntilReady)
     return () => {
       window.removeEventListener('provider-connections-changed', refresh)
-      window.removeEventListener('focus', refresh)
+      window.removeEventListener('focus', refreshUntilReady)
     }
   }, [refresh])
 
@@ -57,6 +61,7 @@ export default function WelcomeAiReadiness({ products, onSetup, crewReadyView }:
   const runtime = (account: ProviderConnection) => inventory?.providers.find(provider => provider.id === account.provider)
   const readyProducts = inventory?.accounts.filter(group => group.connections.some(account => eligible(account) && account.configured === true && runtime(account)?.runtime_available === true)) ?? []
   const ready = readyProducts.length > 0
+  readyRef.current = ready
   const accountSummary = [
     { label: 'Personal', relations: ['own'] },
     { label: 'Company', relations: ['server'] },
