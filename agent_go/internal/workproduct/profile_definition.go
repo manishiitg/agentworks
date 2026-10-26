@@ -200,6 +200,19 @@ func RegisterProductSkills() error {
 				{Name: "cowork-assistant", Path: "skills/cowork-assistant/SKILL.md"},
 				{Name: "cowork-browser-tasks", Path: "skills/cowork-browser-tasks/SKILL.md"},
 				{Name: "cowork-automations", Path: "skills/cowork-automations/SKILL.md"},
+				// The person's own AgentWorks Crew (role "agentworks", PLAT-825-99): how it inspects, measures and improves.
+				{Name: "agentworks-add-new-thing", Path: "skills/agentworks-add-new-thing/SKILL.md"},
+				{Name: "agentworks-check-measurement", Path: "skills/agentworks-check-measurement/SKILL.md"},
+				{Name: "agentworks-goal-anatomy", Path: "skills/agentworks-goal-anatomy/SKILL.md"},
+				{Name: "agentworks-improve-goals", Path: "skills/agentworks-improve-goals/SKILL.md"},
+				{Name: "agentworks-inspect-crew", Path: "skills/agentworks-inspect-crew/SKILL.md"},
+				{Name: "agentworks-inspect-goal", Path: "skills/agentworks-inspect-goal/SKILL.md"},
+				{Name: "agentworks-inspect-relay", Path: "skills/agentworks-inspect-relay/SKILL.md"},
+				{Name: "agentworks-review-architecture", Path: "skills/agentworks-review-architecture/SKILL.md"},
+				{Name: "agentworks-review-qa", Path: "skills/agentworks-review-qa/SKILL.md"},
+				{Name: "agentworks-review-strategy", Path: "skills/agentworks-review-strategy/SKILL.md"},
+				{Name: "agentworks-schedules-watchers", Path: "skills/agentworks-schedules-watchers/SKILL.md"},
+				{Name: "agentworks-suggest-and-build", Path: "skills/agentworks-suggest-and-build/SKILL.md"},
 			})
 		}
 	})
