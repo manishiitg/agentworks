@@ -116,7 +116,7 @@ def migrate_manifest(document, consolidation=None):
     old_post_run = document.pop("post_run_monitor", False)
     inherited = bool(old.get("enabled") or old_post_run)
     document.pop("post_run_monitor_mode", None)
-    schedules = document.get("schedules", [])
+    schedules = document.get("schedules") or []
     inherited = inherited or any(item.get("enabled") and
         (item.get("pulse_review_only") or str(item.get("pulse_mode", "")).strip().lower() == "full")
         for item in schedules)

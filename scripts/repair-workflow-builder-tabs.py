@@ -21,7 +21,7 @@ def repair(root, backup=None, check=False):
         if not path.is_file() or path.is_symlink():
             continue
         doc = json.loads(path.read_text())
-        entries = doc.get('entries', {})
+        entries = doc.get('entries') or {}
         if not isinstance(entries, dict):
             raise ValueError('Invalid conversation registry entries')
         removed = [key for key, row in entries.items()
