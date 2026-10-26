@@ -117,7 +117,11 @@ func dataExternalMembers(catalog []externalTool) ([]externalTool, error) {
 				result = append(result, member)
 			}
 			props["action"] = map[string]any{"type": "string", "enum": names}
-			props["arguments"] = map[string]any{"anyOf": schemas}
+			if len(schemas) == 0 {
+				delete(props, "arguments")
+			} else {
+				props["arguments"] = map[string]any{"anyOf": schemas}
+			}
 			tool = public
 		}
 		result = append(result, tool)

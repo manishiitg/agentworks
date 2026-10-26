@@ -916,7 +916,7 @@ func crewCommandCall(name string, args map[string]any) (string, map[string]any) 
 	case "get_crew_function_call":
 		family, action = "functions", "status"
 	case "suggest_crew_change":
-		family, action = "suggest_change", "suggest"
+		family, action = "needs_you", "suggest"
 	default:
 		return name, args
 	}

@@ -7,8 +7,12 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
+func agentCatalogActions() []platformtools.Action {
+	return append(slices.Clone(platformtools.AgentActions), platformtools.ExperienceActions...)
+}
+
 func agentSourceAction(name string) (platformtools.Action, bool) {
-	for _, action := range platformtools.AgentActions {
+	for _, action := range agentCatalogActions() {
 		if action.Member == name && action.Source != "" {
 			return action, true
 		}
@@ -63,9 +67,14 @@ func agentSourceMutates(source, operation string, original bool) bool {
 
 // Keep the original service/tool admission and derive only its actual enum.
 func agentExternalMembers(catalog []externalTool) ([]externalTool, error) {
+	var err error
+	catalog, err = crewIntegrationExternalMembers(catalog)
+	if err != nil {
+		return nil, err
+	}
 	result := []externalTool{}
 	for _, tool := range catalog {
-		for _, action := range platformtools.AgentActions {
+		for _, action := range agentCatalogActions() {
 			if action.Source != tool.Name || !platformtools.OffersSourceAction(tool.InputSchema, action) {
 				continue
 			}
@@ -78,7 +87,14 @@ func agentExternalMembers(catalog []externalTool) ([]externalTool, error) {
 			member.mutates = agentSourceMutates(tool.Name, action.SourceAction, tool.mutates)
 			result = append(result, member)
 		}
-		result = append(result, tool)
+		// A source that already owns a public family is captured by its fixed
+		// members above. Keep one public family entry, not a same-name raw tool.
+		selfSource := slices.ContainsFunc(agentCatalogActions(), func(action platformtools.Action) bool {
+			return action.Source == tool.Name && action.Family == tool.Name
+		})
+		if !selfSource {
+			result = append(result, tool)
+		}
 	}
 	return result, nil
 }
@@ -117,4 +133,41 @@ func agentSourceConsentAllowed(claims *UserClaims, tool externalTool) bool {
 		return claims.AccessToken.Allows(crewChatActionScope(action.SourceAction, ""))
 	}
 	return true
+}
+
+// Capture direct integration members only after the original product group
+// has been admitted. Product declarations remain the source of availability.
+func crewIntegrationExternalMembers(catalog []externalTool) ([]externalTool, error) {
+	result := []externalTool{}
+	for _, source := range catalog {
+		if source.Name == "crew_integrations" {
+			definitions, err := crewIntegrationDefinitions()
+			if err != nil {
+				return nil, err
+			}
+			for _, definition := range definitions {
+				if definition.Function == nil || !platformtools.OffersAction(source.InputSchema, definition.Function.Name) {
+					continue
+				}
+				schema, err := crewExecutionSchema(definition)
+				if err != nil {
+					return nil, err
+				}
+				props, err := externalSchemaProperties(definition.Function.Name, schema)
+				if err != nil {
+					return nil, err
+				}
+				props["crew_id"] = externalString("Crew ID from workspace action=list.")
+				required, _ := schema["required"].([]any)
+				schema["required"] = append([]any{"crew_id"}, required...)
+				member := source
+				member.Name, member.Description, member.InputSchema = definition.Function.Name, definition.Function.Description, schema
+				member.hidden, member.internalOnly, member.mutates = true, true, true
+				result = append(result, member)
+			}
+			source.hidden, source.internalOnly = true, true
+		}
+		result = append(result, source)
+	}
+	return result, nil
 }

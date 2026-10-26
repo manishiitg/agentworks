@@ -31,15 +31,9 @@ var externalToolMerges = []externalToolMerge{
 	{"settings", "Read or change this product's setup, accounts, linked knowledge and team delivery using its existing access.", platformMergeActions("settings")},
 	{"models", "Read or change project model defaults with existing Builder and account access; other model actions appear only where already available.", platformMergeActions("models")},
 	{"costs", "Read recorded usage and attributed spend for products you can access. Summary, queries and drill-down keep their existing product, root and connection checks.", platformMergeActions("costs")},
-	{"needs_you", "Shares Home's question/decision collector. List what is waiting on you across workflows and Crews, then answer or dismiss one; answered decisions awaiting application include apply_message for the Builder. home action=attention also includes failed-run review items.", [][2]string{
-		{"list", "list_needs_you"}, {"answer", "answer_needs_you"}, {"dismiss", "dismiss_needs_you"},
-	}},
-	{"account", "Shared-account token use, daily and weekly limits, and which models an account may use. Limits and models are admin-only.", [][2]string{
-		{"usage", "get_token_usage"}, {"set_limits", "set_token_limits"}, {"set_allowed_models", "set_allowed_models"},
-	}},
-	{"help", "Guidance for using this connection: your access context, guidance topics to load, and the AgentWorks skill to install.", [][2]string{
-		{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skills", "get_guidance_skills"}, {"skill", "get_skill"},
-	}},
+	{"needs_you", "Find and answer the questions waiting on you. Current question, decision and product access still applies.", platformMergeActions("needs_you")},
+	{"account", "Manage company accounts and installed services with the existing administrator permissions.", platformMergeActions("account")},
+	{"help", "Read versioned product and connection guidance.", platformMergeActions("help")},
 	{"workflow", "Find workflows and Flows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
 		{"list", "list_workflows"}, {"get", "get_workflow"}, {"plan", "get_plan"},
 	}},
@@ -50,15 +44,17 @@ var externalToolMerges = []externalToolMerge{
 	{"brain", "Read and maintain shared company knowledge using existing folder roles and project grants.", platformMergeActions("brain")},
 	{"vault", "Select and store secrets and manage allowed connections. Values stay write-only; current project, Vault and administrator checks apply.", platformMergeActions("vault")},
 	{"functions", "Discover, call and maintain offered functions. Published access, caller identity and active-invocation checks still apply.", platformMergeActions("functions")},
-	{"suggest_change", "Suggest a change to a workflow (workflow_id) or a Crew (crew_id) for its owner to review; it never changes anything itself.", [][2]string{
-		{"suggest", "suggest_workflow_change|suggest_crew_change"},
-	}},
 	{"runs", "Start and inspect real workflow runs through their existing execution and access checks.", platformMergeActions("runs")},
 	{"sessions", "Use your project chats and background work. Existing person, project, tab and operation ownership still decides access.", platformMergeActions("sessions")},
-	{"relay", "Flows: create and edit one, test the draft, publish an immutable version, run a published version and read its runs and releases. Edit its code directly with files action=read/write, then test and inspect the draft run.", [][2]string{
-		{"update", "update_relay"}, {"test", "test_relay"}, {"publish", "publish_relay"},
-		{"run", "run_relay"}, {"get_run", "get_relay_run"}, {"runs", "list_relay_runs"}, {"releases", "get_relay_releases"},
-	}},
+	{"relay", "Build, test, publish and use Flows through their current draft and published-run services.", platformMergeActions("relay")},
+	{"messages", "Find agents, exchange messages and use configured delivery channels. Conversations keep their existing participants and sender identity.", platformMergeActions("messages")},
+	{"integrations", "Use and set up selected Google and Slack accounts and bots. Personal account ownership and product selection stay the same.", platformMergeActions("integrations")},
+	{"workspace", "Find, create and manage your projects, attached references and current access.", platformMergeActions("workspace")},
+	{"browser", "Use the current project browser or manage your own browser connections.", platformMergeActions("browser")},
+	{"terminal", "Use the existing project terminal, execution history or granted laptop connection.", platformMergeActions("terminal")},
+	{"ui", "Open and inspect the current app's views using its existing browser acknowledgement.", platformMergeActions("ui")},
+	{"media", "Create or show images, documents and other media with the current provider and presentation tools.", platformMergeActions("media")},
+	{"metrics", "Read and maintain the current Goal's targets and observations.", platformMergeActions("metrics")},
 	{"workspace_review", "Audited inspection of Crew projects for administrators and Crew reviewers: projects, costs, files, chats and the audit log.", [][2]string{
 		{"workspaces", "list_review_workspaces"}, {"costs", "get_review_costs"}, {"files", "list_review_files"}, {"file", "read_review_file"},
 		{"chats", "list_review_chats"}, {"chat", "read_review_chat"}, {"audit", "get_review_audit"},
@@ -345,7 +341,7 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 	if tool.actions == nil {
 		return tool, args, nil
 	}
-	if id := externalArg(args, "workspace_id"); id != "" {
+	if id := externalArg(args, "workspace_id"); id != "" && tool.Name != "workspace" {
 		copyArgs := map[string]any{}
 		for k, v := range args {
 			copyArgs[k] = v
@@ -402,6 +398,8 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 		// and answer handlers recheck the caller and refuse workflow calls;
 		// the typed Crew CLI need not repeat a project ID it never required.
 		name = names[1]
+	} else if experienceFamily(tool.Name) {
+		name = experienceTargetMember(names, args)
 	} else if len(names) == 2 && externalArg(args, "crew_id") != "" {
 		name = names[1]
 	}
@@ -415,6 +413,18 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 	// members that wait. Leave out what this member does not declare but the merged tool does; anything the merged tool
 	// does not know is still passed on and refused by the member's own validation.
 	memberProps, _ := member.InputSchema["properties"].(map[string]any)
+	if tool.Name == "workspace" && externalArg(args, "workspace_id") != "" {
+		source := agentConsentMember(member.Name)
+		if source != "workspace" {
+			if _, crewTarget := memberProps["crew_id"]; crewTarget {
+				if externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" {
+					return tool, args, fmt.Errorf("pass workspace_id or another target, not both")
+				}
+				args["crew_id"] = strings.TrimPrefix(externalArg(args, "workspace_id"), "work:")
+				delete(args, "workspace_id")
+			}
+		}
+	}
 	mergedProps, _ := tool.InputSchema["properties"].(map[string]any)
 	rest := make(map[string]any, len(args))
 	for key, value := range args {
@@ -470,4 +480,28 @@ func projectServiceTool(name string) bool {
 		return true
 	}
 	return false
+}
+
+// Choose among already-admitted product adapters by their existing target
+// fields. Authorization remains in the selected source service.
+func experienceFamily(name string) bool {
+	return slices.ContainsFunc(platformtools.ExperienceActions, func(action platformtools.Action) bool { return action.Family == name })
+}
+func experienceTargetMember(names []string, args map[string]any) string {
+	for _, key := range []string{"crew_id", "workflow_id", "workspace_id", "workspace_path"} {
+		if externalArg(args, key) == "" {
+			continue
+		}
+		for _, name := range names {
+			member, ok := externalCatalogTool(name)
+			if !ok {
+				continue
+			}
+			props, _ := member.InputSchema["properties"].(map[string]any)
+			if _, has := props[key]; has {
+				return name
+			}
+		}
+	}
+	return names[0]
 }

@@ -52,8 +52,8 @@ func mcpURLScope(target string, args map[string]any) (map[string]any, bool) {
 		}
 	}
 	switch target {
-	case "workflow_google_account", "workflow_slack_account":
-		out["account"] = map[string]any{"action": "list_saved"}
+	case "workflow_google_account", "workflow_slack_account", "manage_google_account", "manage_slack_account":
+		out["action"] = "list_saved"
 	case "crew_integrations":
 		out["action"] = args["action"]
 		out["arguments"] = map[string]any{"action": "list_saved"}

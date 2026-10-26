@@ -89,9 +89,19 @@ var AgentActions = func() []Action {
 	return actions
 }()
 
+//go:embed experience-actions.json
+var experienceSource []byte
+var ExperienceActions = func() []Action {
+	var actions []Action
+	if err := json.Unmarshal(experienceSource, &actions); err != nil {
+		panic(err)
+	}
+	return actions
+}()
+
 var Actions = func() []Action {
 	var all []Action
-	for _, group := range [][]Action{DashboardActions, ConfigurationActions, DataActions, ProjectActions, AgentActions} {
+	for _, group := range [][]Action{DashboardActions, ConfigurationActions, DataActions, ProjectActions, AgentActions, ExperienceActions} {
 		all = append(all, group...)
 	}
 	return all

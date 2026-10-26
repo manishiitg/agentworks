@@ -12,6 +12,7 @@ var (
 	DataActions          = catalog.DataActions
 	ProjectActions       = catalog.ProjectActions
 	AgentActions         = catalog.AgentActions
+	ExperienceActions    = catalog.ExperienceActions
 	Actions              = catalog.Actions
 )
 

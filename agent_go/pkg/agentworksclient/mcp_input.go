@@ -15,8 +15,10 @@ type MCPInputService interface {
 func MCPURLSignInCandidate(target string, args map[string]any) bool {
 	var account map[string]any
 	switch target {
-	case "workflow_google_account", "workflow_slack_account":
-		account, _ = args["account"].(map[string]any)
+	case "workflow_google_account", "workflow_slack_account", "manage_google_account", "manage_slack_account":
+		account = args
+	case "integrations":
+		return args["action"] == "google_connect" || args["action"] == "google_reconnect" || args["action"] == "slack_connect" || args["action"] == "slack_reconnect"
 	case "settings":
 		if args["action"] != "google_account" && args["action"] != "slack_account" {
 			return false

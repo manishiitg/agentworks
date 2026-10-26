@@ -86,7 +86,7 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	crewCapabilityHTTP(t, f, shared, "database", map[string]any{"action": "mutate", "sql": "DELETE FROM example"}, 403)
 	guarded := crewWriter("owner")
 	guarded.AccessToken.FileGuard = &wf.FolderGuard{ReadPaths: []string{"code"}, WritePaths: []string{"code"}, ReadOnlyPaths: []string{"code/locked"}, BlockedPaths: []string{"code/private"}}
-	crewCapabilityHTTP(t, f, guarded, "crew_execution", map[string]any{"action": "execute_shell_command", "arguments": map[string]any{"command": "pwd"}}, 200)
+	crewCapabilityHTTP(t, f, guarded, "terminal", map[string]any{"action": "execute", "command": "pwd"}, 200)
 	guard := shellPolicy.FolderGuard
 	if guard == nil || !guard.Enabled || !guard.StrictAllowlist || shellPolicy.WorkingDirectory != externalCommandCrewRoot || shellPolicy.Timeout == nil || *shellPolicy.Timeout != 25 {
 		t.Fatalf("wrong shell policy: %+v", shellPolicy)
@@ -97,7 +97,7 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	if shellSession != "" && common.GetSessionShellConfig(shellSession) != nil {
 		t.Fatal("temporary shell policy leaked")
 	}
-	history := crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "history"}, 200)
+	history := crewCapabilityHTTP(t, f, crewWriter("owner"), "terminal", map[string]any{"action": "history"}, 200)
 	if !strings.Contains(history, "mutate_workflow_db") || !strings.Contains(history, "connection_id") || strings.Contains(history, "saved via MCP") || strings.Contains(history, "INSERT INTO") {
 		t.Fatalf("audit missing or exposed data: %s", history)
 	}
@@ -114,7 +114,7 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	history = crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "history"}, 200)
+	history = crewCapabilityHTTP(t, f, crewWriter("owner"), "terminal", map[string]any{"action": "history"}, 200)
 	if !strings.Contains(history, "previous-owner") || strings.Contains(history, "expired") {
 		t.Fatal(history)
 	}
@@ -152,7 +152,7 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 		t.Fatalf("lock entries leaked: %d", left)
 	}
 
-	crewCapabilityHTTP(t, f, crewWriter("other"), "crew_execution", map[string]any{"action": "history"}, 403)
+	crewCapabilityHTTP(t, f, crewWriter("other"), "terminal", map[string]any{"action": "history"}, 403)
 	for _, denied := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
 		crewCapabilityHTTP(t, f, denied, "database", map[string]any{"action": "mutate", "sql": "DELETE FROM example"}, 403)
 	}

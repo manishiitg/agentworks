@@ -647,6 +647,16 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		resolved, args := agentSourceCall(*tool, call.Arguments)
 		tool, call.Name, call.Arguments = &resolved, resolved.Name, args
 	}
+	if crewIntegrationMembers[tool.Name] {
+		params := map[string]any{}
+		for key, value := range call.Arguments {
+			if key != "crew_id" {
+				params[key] = value
+			}
+		}
+		api.externalCrewExecutionCall(w, r, "crew_integrations", map[string]any{"crew_id": call.Arguments["crew_id"], "action": tool.Name, "arguments": params})
+		return
+	}
 	if native := crewExecutionGroupedMembers[tool.Name]; native != "" {
 		params := map[string]any{}
 		for key, value := range call.Arguments {

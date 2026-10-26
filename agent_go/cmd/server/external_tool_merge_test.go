@@ -69,7 +69,7 @@ func TestExternalMergedToolPicksWorkflowOrCrewMember(t *testing.T) {
 		switch tool.Name {
 		case "files":
 			files = tool
-		case "suggest_change":
+		case "needs_you":
 			suggest = tool
 		}
 	}
@@ -81,8 +81,8 @@ func TestExternalMergedToolPicksWorkflowOrCrewMember(t *testing.T) {
 			t.Fatalf("%s resolved to %s (%v), want %s", args, member.Name, err, want)
 		}
 	}
-	if member, _, err := externalResolveMerged(suggest, map[string]any{"crew_id": "c"}); err != nil || member.Name != "suggest_crew_change" {
-		t.Fatalf("one-action tool: %s %v", member.Name, err)
+	if member, _, err := externalResolveMerged(suggest, map[string]any{"action": "suggest", "crew_id": "c"}); err != nil || member.Name != "suggest_crew_change" {
+		t.Fatalf("suggest action: %s %v", member.Name, err)
 	}
 }
 

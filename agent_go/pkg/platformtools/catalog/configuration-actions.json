@@ -34,30 +34,6 @@
   },
   {
     "family": "settings",
-    "name": "google_account",
-    "member": "workflow_google_account",
-    "description": "Select or remove an existing Google account for this product.",
-    "source": "settings",
-    "source_action": "google_account"
-  },
-  {
-    "family": "settings",
-    "name": "slack_account",
-    "member": "workflow_slack_account",
-    "description": "Select or remove an existing Slack account for this product.",
-    "source": "settings",
-    "source_action": "slack_account"
-  },
-  {
-    "family": "settings",
-    "name": "slack_bot",
-    "member": "workflow_slack_bot",
-    "description": "Read or change this product’s Slack bot setup.",
-    "source": "settings",
-    "source_action": "slack_bot"
-  },
-  {
-    "family": "settings",
     "name": "chat",
     "member": "chat_preferences",
     "description": "Read or change your personal chat display."

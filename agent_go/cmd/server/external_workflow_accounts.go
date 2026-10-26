@@ -19,15 +19,17 @@ func externalWorkflowAccountDefinitions(add func(string, string, bool, bool, map
 	}
 	for _, provider := range []string{"google", "slack"} {
 		tool := reg["manage_"+provider+"_account"]
-		add("workflow_"+provider+"_account", "Manage your saved "+provider+" account for this workflow or Flow, using the same account operations as Settings and My Vault. Pass account with the native action from its schema. Builder access and existing account permissions apply; you can add only your own account. Removing it here leaves other items connected; disconnect removes the saved connection everywhere. Sign-in links still require the person to finish in their browser. "+tool.description, true, true, map[string]any{
-			"account": tool.schema,
-		}, "account")
+		props, err := externalSchemaProperties(tool.description, tool.schema)
+		if err != nil {
+			return err
+		}
+		add("workflow_"+provider+"_account", tool.description, true, true, props, "action")
 	}
 	if err := api.registerSlackVaultBotTool(reg, ""); err != nil {
 		return err
 	}
 	tool := reg["manage_slack_bot"]
-	add("workflow_slack_bot", "Choose a My Vault bot for this Goal with the same operation as its Slack page. Flows support Act in Slack only. "+tool.description, true, true, map[string]any{"bot": tool.schema}, "bot")
+	add("workflow_slack_bot", "Choose a My Vault bot for this Goal with the same operation as its Slack page. Flows support Act in Slack only. "+tool.description, true, true, tool.schema["properties"].(map[string]any), "action")
 	return nil
 }
 
@@ -41,11 +43,11 @@ func (api *StreamingAPI) externalWorkflowAccountCall(w http.ResponseWriter, r *h
 		externalError(w, http.StatusForbidden, "forbidden", err.Error())
 		return
 	}
-	account, _ := args["account"].(map[string]any)
+	account := args
 	var result any
 	var err error
 	if name == "workflow_slack_bot" {
-		bot, _ := args["bot"].(map[string]any)
+		bot := args
 		result, err = api.slackVaultBotOperation(r, workflow.WorkspacePath, bot)
 	} else if name == "workflow_google_account" {
 		result, err = api.personalGoogleOperation(r, workflow.WorkspacePath, account)

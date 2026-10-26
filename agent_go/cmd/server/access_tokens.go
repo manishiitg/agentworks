@@ -407,6 +407,10 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c.AccessToken != nil && c.AccessToken.BoundAgentID != "" {
 		return tool.Name == "messages" && namedAgentOperationAllowed(c, false)
 	}
+	if crewIntegrationMembers[tool.Name] {
+		status, _ := externalCrewAuthorGate(c)
+		return productEnabled(crewProfileID) && status == 0 && (c.AccessToken == nil || c.AccessToken.Allows("crews:write"))
+	}
 	if (isExternalCrewTool(tool.Name) || isExternalCodeReviewTool(tool.Name)) && !productEnabled(crewProfileID) {
 		return false
 	}

@@ -463,10 +463,10 @@ func externalPreparation(claims *UserClaims) []string {
 		steps = append(steps, "For direct workflow edits, plan action=list returns native operation schemas. Read get_plan for expected_revision, then call plan with that revision, a unique request_id and the exact arguments. Existing Builder consent and current owner/editor/team roles apply; native validation and plan changelog remain. Builder action=chat can delegate an editing request to the configured model when requested; poll action=status and answer action=reply_input by operation_id.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "workflow_google_account"}) {
-		steps = append(steps, "For personal Google or Slack accounts on a workflow or Flow, use settings action=google_account or slack_account with workflow_id and account. Start with account.action=list_saved; attach/detach selects a saved account only for this item. connect/reconnect returns a browser link; the person finishes sign-in. disconnect removes the saved connection everywhere. Existing Builder consent, account ownership and current item access apply. Use these direct actions rather than delegated Builder chat for account setup.")
+		steps = append(steps, "For personal Google or Slack accounts, use integrations with workflow_id or crew_id. Start with action=google_list_saved or slack_list_saved. The corresponding attach/detach action changes only this item; connect/reconnect returns a browser sign-in link; disconnect removes the saved connection everywhere. Existing Builder access, account ownership and current item access apply.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "crew_execution"}) {
-		steps = append(steps, "Crew owners with current editable access and crews:write consent use crew_execution and crew_integrations directly. action=list returns enabled native schemas; action=history returns redacted owner audit. manage_crew_chats tools/tool uses only your own named chat; background work needs its initialized native sandbox and UI actions require browser receipts. Human authorization and confirmations remain in their existing app flows.")
+		steps = append(steps, "Crew owners use terminal, browser and integrations for the direct operations offered by get_api_spec. terminal action=history reads existing owner execution records. sessions runtime_tools/runtime_call use only your own chat. Current authoring, selected account, sandbox and browser checks apply.")
 	}
 	if claims != nil && claims.AccessToken != nil {
 		if productEnabled("relays") {

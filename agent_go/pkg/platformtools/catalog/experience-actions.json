@@ -1,0 +1,1464 @@
+[
+  {
+    "family": "browser",
+    "name": "execute",
+    "member": "agent_browser",
+    "description": "Use the current browser execute operation.",
+    "external_members": "crew_execution__agent_browser",
+    "aliases": [
+      "crew_execution__agent_browser"
+    ]
+  },
+  {
+    "family": "needs_you",
+    "name": "answer",
+    "member": "answer_human_input_request",
+    "description": "Use the current needs_you answer operation.",
+    "external_members": "answer_needs_you"
+  },
+  {
+    "family": "workspace",
+    "name": "reference_attach",
+    "member": "attach_workflow_reference",
+    "description": "Use the current workspace reference attach operation."
+  },
+  {
+    "family": "messages",
+    "name": "mail_configure",
+    "member": "configure_agent_inbox",
+    "description": "Use the current messages mail configure operation.",
+    "external_members": "configure_agent_inbox"
+  },
+  {
+    "family": "metrics",
+    "name": "configure",
+    "member": "configure_goal_metrics",
+    "description": "Use the current metrics configure operation."
+  },
+  {
+    "family": "integrations",
+    "name": "slack_bot_configure",
+    "member": "configure_slack_bot",
+    "description": "Use the current integrations slack bot configure operation.",
+    "external_members": "configure_slack_bot"
+  },
+  {
+    "family": "needs_you",
+    "name": "create",
+    "member": "create_human_input_request",
+    "description": "Use the current needs_you create operation."
+  },
+  {
+    "family": "integrations",
+    "name": "slack_route_create",
+    "member": "create_slack_bot_route",
+    "description": "Use the current integrations slack route create operation.",
+    "external_members": "create_slack_bot_route"
+  },
+  {
+    "family": "workspace",
+    "name": "reference_detach",
+    "member": "detach_workflow_reference",
+    "description": "Use the current workspace reference detach operation."
+  },
+  {
+    "family": "needs_you",
+    "name": "dismiss_duplicate",
+    "member": "dismiss_duplicate_human_input_request",
+    "description": "Use the current needs_you dismiss duplicate operation."
+  },
+  {
+    "family": "terminal",
+    "name": "execute",
+    "member": "execute_shell_command",
+    "description": "Use the current terminal execute operation.",
+    "external_members": "crew_execution__execute_shell_command",
+    "aliases": [
+      "crew_execution__execute_shell_command"
+    ]
+  },
+  {
+    "family": "messages",
+    "name": "mail_inbox",
+    "member": "get_agent_inbox",
+    "description": "Use the current messages mail inbox operation.",
+    "external_members": "get_agent_inbox"
+  },
+  {
+    "family": "metrics",
+    "name": "get",
+    "member": "get_goal_metrics",
+    "description": "Use the current metrics get operation."
+  },
+  {
+    "family": "needs_you",
+    "name": "get",
+    "member": "get_human_input_request",
+    "description": "Use the current needs_you get operation."
+  },
+  {
+    "family": "messages",
+    "name": "history",
+    "member": "get_notification_history",
+    "description": "Use the current messages history operation."
+  },
+  {
+    "family": "relay",
+    "name": "releases",
+    "member": "get_relay_releases",
+    "description": "Use the current relay releases operation."
+  },
+  {
+    "family": "relay",
+    "name": "get_run",
+    "member": "get_relay_run",
+    "description": "Use the current relay get run operation."
+  },
+  {
+    "family": "integrations",
+    "name": "slack_bot_credentials",
+    "member": "get_slack_bot_credentials",
+    "description": "Use the current integrations slack bot credentials operation.",
+    "external_members": "get_slack_bot_credentials"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_bot_get",
+    "member": "get_slack_bot_settings",
+    "description": "Use the current integrations slack bot get operation.",
+    "external_members": "get_slack_bot_settings"
+  },
+  {
+    "family": "ui",
+    "name": "get",
+    "member": "get_ui_state",
+    "description": "Use the current ui get operation."
+  },
+  {
+    "family": "help",
+    "name": "command",
+    "member": "get_workflow_command_guidance",
+    "description": "Use the current help command operation."
+  },
+  {
+    "family": "workspace",
+    "name": "team_get",
+    "member": "get_workflow_team",
+    "description": "Use the current workspace team get operation.",
+    "external_members": "workflow_team__get"
+  },
+  {
+    "family": "integrations",
+    "name": "google",
+    "member": "google_workspace_cli",
+    "description": "Use the current integrations google operation.",
+    "external_members": "google_workspace_cli"
+  },
+  {
+    "family": "needs_you",
+    "name": "ask",
+    "member": "human_feedback",
+    "description": "Use the current needs_you ask operation."
+  },
+  {
+    "family": "media",
+    "name": "edit",
+    "member": "image_edit",
+    "description": "Use the current media edit operation."
+  },
+  {
+    "family": "media",
+    "name": "generate",
+    "member": "image_gen",
+    "description": "Use the current media generate operation."
+  },
+  {
+    "family": "workspace",
+    "name": "references_list",
+    "member": "list_accessible_workflows",
+    "description": "Use the current workspace references list operation."
+  },
+  {
+    "family": "messages",
+    "name": "list_agents",
+    "member": "list_agents",
+    "description": "Use the current messages list agents operation.",
+    "external_members": "messages__list_agents"
+  },
+  {
+    "family": "workspace",
+    "name": "references_get",
+    "member": "list_attached_workflows",
+    "description": "Use the current workspace references get operation."
+  },
+  {
+    "family": "integrations",
+    "name": "google_connections",
+    "member": "list_gmail_connections",
+    "description": "Use the current integrations google connections operation.",
+    "external_members": "list_gmail_connections"
+  },
+  {
+    "family": "relay",
+    "name": "runs",
+    "member": "list_relay_runs",
+    "description": "Use the current relay runs operation."
+  },
+  {
+    "family": "ui",
+    "name": "capabilities",
+    "member": "list_ui_capabilities",
+    "description": "Use the current ui capabilities operation."
+  },
+  {
+    "family": "needs_you",
+    "name": "consume",
+    "member": "mark_human_input_consumed",
+    "description": "Use the current needs_you consume operation."
+  },
+  {
+    "family": "relay",
+    "name": "publish",
+    "member": "publish_relay",
+    "description": "Use the current relay publish operation."
+  },
+  {
+    "family": "messages",
+    "name": "read",
+    "member": "read_agent_messages",
+    "description": "Use the current messages read operation.",
+    "external_members": "messages__read"
+  },
+  {
+    "family": "relay",
+    "name": "get",
+    "member": "read_relay",
+    "description": "Use the current relay get operation."
+  },
+  {
+    "family": "metrics",
+    "name": "record",
+    "member": "record_goal_observations",
+    "description": "Use the current metrics record operation."
+  },
+  {
+    "family": "messages",
+    "name": "record_summary",
+    "member": "record_summary",
+    "description": "Use the current messages record summary operation."
+  },
+  {
+    "family": "integrations",
+    "name": "slack_route_delete",
+    "member": "remove_slack_bot_route",
+    "description": "Use the current integrations slack route delete operation.",
+    "external_members": "remove_slack_bot_route"
+  },
+  {
+    "family": "needs_you",
+    "name": "clarify",
+    "member": "request_clarification",
+    "description": "Use the current needs_you clarify operation."
+  },
+  {
+    "family": "relay",
+    "name": "run",
+    "member": "run_relay",
+    "description": "Use the current relay run operation."
+  },
+  {
+    "family": "messages",
+    "name": "email_send",
+    "member": "send_email",
+    "description": "Use the current messages email send operation."
+  },
+  {
+    "family": "messages",
+    "name": "send",
+    "member": "send_message",
+    "description": "Use the current messages send operation.",
+    "external_members": "messages__send"
+  },
+  {
+    "family": "messages",
+    "name": "slack_send",
+    "member": "send_slack_message",
+    "description": "Use the current messages slack send operation.",
+    "external_members": "send_slack_message"
+  },
+  {
+    "family": "media",
+    "name": "character",
+    "member": "show_character",
+    "description": "Use the current media character operation."
+  },
+  {
+    "family": "media",
+    "name": "document",
+    "member": "show_document",
+    "description": "Use the current media document operation."
+  },
+  {
+    "family": "media",
+    "name": "reference",
+    "member": "show_reference",
+    "description": "Use the current media reference operation."
+  },
+  {
+    "family": "media",
+    "name": "video",
+    "member": "show_video",
+    "description": "Use the current media video operation."
+  },
+  {
+    "family": "integrations",
+    "name": "slack",
+    "member": "slack",
+    "description": "Use the current integrations slack operation.",
+    "external_members": "slack"
+  },
+  {
+    "family": "needs_you",
+    "name": "suggest",
+    "member": "submit_workflow_suggestion",
+    "description": "Use the current needs_you suggest operation.",
+    "external_members": "suggest_workflow_change|suggest_crew_change"
+  },
+  {
+    "family": "relay",
+    "name": "test",
+    "member": "test_relay",
+    "description": "Use the current relay test operation."
+  },
+  {
+    "family": "integrations",
+    "name": "slack_bot_test",
+    "member": "test_slack_bot_connection",
+    "description": "Use the current integrations slack bot test operation.",
+    "external_members": "test_slack_bot_connection"
+  },
+  {
+    "family": "integrations",
+    "name": "google_grants",
+    "member": "update_gmail_connection_grants",
+    "description": "Use the current integrations google grants operation.",
+    "external_members": "update_gmail_connection_grants"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_route_update",
+    "member": "update_slack_bot_route_permission",
+    "description": "Use the current integrations slack route update operation.",
+    "external_members": "update_slack_bot_route_permission"
+  },
+  {
+    "family": "needs_you",
+    "name": "withdraw",
+    "member": "withdraw_human_input_request",
+    "description": "Use the current needs_you withdraw operation."
+  },
+  {
+    "family": "browser",
+    "name": "connections_list",
+    "member": "browser_connections__list",
+    "description": "Use the current browser connections list operation.",
+    "source": "browser_connections",
+    "source_action": "list"
+  },
+  {
+    "family": "browser",
+    "name": "connections_setup",
+    "member": "browser_connections__setup",
+    "description": "Use the current browser connections setup operation.",
+    "source": "browser_connections",
+    "source_action": "setup"
+  },
+  {
+    "family": "browser",
+    "name": "connections_select",
+    "member": "browser_connections__select",
+    "description": "Use the current browser connections select operation.",
+    "source": "browser_connections",
+    "source_action": "select"
+  },
+  {
+    "family": "browser",
+    "name": "connections_disconnect",
+    "member": "browser_connections__disconnect",
+    "description": "Use the current browser connections disconnect operation.",
+    "source": "browser_connections",
+    "source_action": "disconnect"
+  },
+  {
+    "family": "ui",
+    "name": "open",
+    "member": "perform_ui_action__open",
+    "description": "Use the current ui open operation.",
+    "source": "perform_ui_action",
+    "source_action": "open"
+  },
+  {
+    "family": "ui",
+    "name": "expand",
+    "member": "perform_ui_action__expand",
+    "description": "Use the current ui expand operation.",
+    "source": "perform_ui_action",
+    "source_action": "expand"
+  },
+  {
+    "family": "ui",
+    "name": "refresh",
+    "member": "perform_ui_action__refresh",
+    "description": "Use the current ui refresh operation.",
+    "source": "perform_ui_action",
+    "source_action": "refresh"
+  },
+  {
+    "family": "workspace",
+    "name": "owners",
+    "member": "crew_owners__list",
+    "description": "Use the current workspace owners operation.",
+    "source": "crew_owners",
+    "source_action": "list"
+  },
+  {
+    "family": "workspace",
+    "name": "owner_add",
+    "member": "crew_owners__add",
+    "description": "Use the current workspace owner add operation.",
+    "source": "crew_owners",
+    "source_action": "add"
+  },
+  {
+    "family": "workspace",
+    "name": "owner_remove",
+    "member": "crew_owners__remove",
+    "description": "Use the current workspace owner remove operation.",
+    "source": "crew_owners",
+    "source_action": "remove"
+  },
+  {
+    "family": "workspace",
+    "name": "rename",
+    "member": "manage_project__rename",
+    "description": "Use the current workspace rename operation.",
+    "source": "manage_project",
+    "source_action": "rename"
+  },
+  {
+    "family": "workspace",
+    "name": "copy",
+    "member": "manage_project__duplicate",
+    "description": "Use the current workspace copy operation.",
+    "source": "manage_project",
+    "source_action": "duplicate"
+  },
+  {
+    "family": "workspace",
+    "name": "delete",
+    "member": "manage_project__delete",
+    "description": "Use the current workspace delete operation.",
+    "source": "manage_project",
+    "source_action": "delete"
+  },
+  {
+    "family": "workspace",
+    "name": "access_get",
+    "member": "manage_project__get_access",
+    "description": "Use the current workspace access get operation.",
+    "source": "manage_project",
+    "source_action": "get_access"
+  },
+  {
+    "family": "workspace",
+    "name": "access_set",
+    "member": "manage_project__set_access",
+    "description": "Use the current workspace access set operation.",
+    "source": "manage_project",
+    "source_action": "set_access"
+  },
+  {
+    "family": "workspace",
+    "name": "team_get",
+    "member": "workflow_team__get",
+    "description": "Use the current workspace team get operation.",
+    "source": "workflow_team",
+    "source_action": "get"
+  },
+  {
+    "family": "workspace",
+    "name": "team_update",
+    "member": "workflow_team__update",
+    "description": "Use the current workspace team update operation.",
+    "source": "workflow_team",
+    "source_action": "update"
+  },
+  {
+    "family": "workspace",
+    "name": "team_reauthorize_schedule",
+    "member": "workflow_team__reauthorize_schedule",
+    "description": "Use the current workspace team reauthorize schedule operation.",
+    "source": "workflow_team",
+    "source_action": "reauthorize_schedule"
+  },
+  {
+    "family": "workspace",
+    "name": "identity_set",
+    "member": "set_work_identity__set",
+    "description": "Use the current workspace identity set operation.",
+    "source": "set_work_identity",
+    "source_action": "set",
+    "source_key": "operation"
+  },
+  {
+    "family": "workspace",
+    "name": "identity_clear",
+    "member": "set_work_identity__clear",
+    "description": "Use the current workspace identity clear operation.",
+    "source": "set_work_identity",
+    "source_action": "clear",
+    "source_key": "operation"
+  },
+  {
+    "family": "workspace",
+    "name": "crew_list",
+    "member": "manage_crew_attachment__list",
+    "description": "Use the current workspace crew list operation.",
+    "source": "manage_crew_attachment",
+    "source_action": "list"
+  },
+  {
+    "family": "workspace",
+    "name": "crew_attach",
+    "member": "manage_crew_attachment__attach",
+    "description": "Use the current workspace crew attach operation.",
+    "source": "manage_crew_attachment",
+    "source_action": "attach"
+  },
+  {
+    "family": "workspace",
+    "name": "crew_detach",
+    "member": "manage_crew_attachment__detach",
+    "description": "Use the current workspace crew detach operation.",
+    "source": "manage_crew_attachment",
+    "source_action": "detach"
+  },
+  {
+    "family": "workspace",
+    "name": "crew_list",
+    "member": "workflow_crews__list",
+    "description": "Use the current workspace crew list operation.",
+    "source": "workflow_crews",
+    "source_action": "list"
+  },
+  {
+    "family": "workspace",
+    "name": "crew_detach",
+    "member": "workflow_crews__detach",
+    "description": "Use the current workspace crew detach operation.",
+    "source": "workflow_crews",
+    "source_action": "detach"
+  },
+  {
+    "family": "workspace",
+    "name": "references_list",
+    "member": "crew_references__list",
+    "description": "Use the current workspace references list operation.",
+    "source": "crew_references",
+    "source_action": "list"
+  },
+  {
+    "family": "workspace",
+    "name": "reference_attach",
+    "member": "crew_references__attach",
+    "description": "Use the current workspace reference attach operation.",
+    "source": "crew_references",
+    "source_action": "attach"
+  },
+  {
+    "family": "workspace",
+    "name": "reference_detach",
+    "member": "crew_references__detach",
+    "description": "Use the current workspace reference detach operation.",
+    "source": "crew_references",
+    "source_action": "detach"
+  },
+  {
+    "family": "integrations",
+    "name": "google_list_saved",
+    "member": "manage_google_account__list_saved",
+    "description": "Use the current integrations google list saved operation.",
+    "source": "manage_google_account",
+    "source_action": "list_saved"
+  },
+  {
+    "family": "integrations",
+    "name": "google_connect",
+    "member": "manage_google_account__connect",
+    "description": "Use the current integrations google connect operation.",
+    "source": "manage_google_account",
+    "source_action": "connect"
+  },
+  {
+    "family": "integrations",
+    "name": "google_attach",
+    "member": "manage_google_account__attach",
+    "description": "Use the current integrations google attach operation.",
+    "source": "manage_google_account",
+    "source_action": "attach"
+  },
+  {
+    "family": "integrations",
+    "name": "google_detach",
+    "member": "manage_google_account__detach",
+    "description": "Use the current integrations google detach operation.",
+    "source": "manage_google_account",
+    "source_action": "detach"
+  },
+  {
+    "family": "integrations",
+    "name": "google_disconnect",
+    "member": "manage_google_account__disconnect",
+    "description": "Use the current integrations google disconnect operation.",
+    "source": "manage_google_account",
+    "source_action": "disconnect"
+  },
+  {
+    "family": "integrations",
+    "name": "google_reconnect",
+    "member": "manage_google_account__reconnect",
+    "description": "Use the current integrations google reconnect operation.",
+    "source": "manage_google_account",
+    "source_action": "reconnect"
+  },
+  {
+    "family": "integrations",
+    "name": "google_set_inbox_account",
+    "member": "manage_google_account__set_inbox_account",
+    "description": "Use the current integrations google set inbox account operation.",
+    "source": "manage_google_account",
+    "source_action": "set_inbox_account"
+  },
+  {
+    "family": "integrations",
+    "name": "google_list_saved",
+    "member": "workflow_google_account__list_saved",
+    "description": "Use the current integrations google list saved operation.",
+    "source": "workflow_google_account",
+    "source_action": "list_saved"
+  },
+  {
+    "family": "integrations",
+    "name": "google_connect",
+    "member": "workflow_google_account__connect",
+    "description": "Use the current integrations google connect operation.",
+    "source": "workflow_google_account",
+    "source_action": "connect"
+  },
+  {
+    "family": "integrations",
+    "name": "google_attach",
+    "member": "workflow_google_account__attach",
+    "description": "Use the current integrations google attach operation.",
+    "source": "workflow_google_account",
+    "source_action": "attach"
+  },
+  {
+    "family": "integrations",
+    "name": "google_detach",
+    "member": "workflow_google_account__detach",
+    "description": "Use the current integrations google detach operation.",
+    "source": "workflow_google_account",
+    "source_action": "detach"
+  },
+  {
+    "family": "integrations",
+    "name": "google_disconnect",
+    "member": "workflow_google_account__disconnect",
+    "description": "Use the current integrations google disconnect operation.",
+    "source": "workflow_google_account",
+    "source_action": "disconnect"
+  },
+  {
+    "family": "integrations",
+    "name": "google_reconnect",
+    "member": "workflow_google_account__reconnect",
+    "description": "Use the current integrations google reconnect operation.",
+    "source": "workflow_google_account",
+    "source_action": "reconnect"
+  },
+  {
+    "family": "integrations",
+    "name": "google_set_inbox_account",
+    "member": "workflow_google_account__set_inbox_account",
+    "description": "Use the current integrations google set inbox account operation.",
+    "source": "workflow_google_account",
+    "source_action": "set_inbox_account"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_list_saved",
+    "member": "manage_slack_account__list_saved",
+    "description": "Use the current integrations slack list saved operation.",
+    "source": "manage_slack_account",
+    "source_action": "list_saved"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_connect",
+    "member": "manage_slack_account__connect",
+    "description": "Use the current integrations slack connect operation.",
+    "source": "manage_slack_account",
+    "source_action": "connect"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_attach",
+    "member": "manage_slack_account__attach",
+    "description": "Use the current integrations slack attach operation.",
+    "source": "manage_slack_account",
+    "source_action": "attach"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_detach",
+    "member": "manage_slack_account__detach",
+    "description": "Use the current integrations slack detach operation.",
+    "source": "manage_slack_account",
+    "source_action": "detach"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_disconnect",
+    "member": "manage_slack_account__disconnect",
+    "description": "Use the current integrations slack disconnect operation.",
+    "source": "manage_slack_account",
+    "source_action": "disconnect"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_reconnect",
+    "member": "manage_slack_account__reconnect",
+    "description": "Use the current integrations slack reconnect operation.",
+    "source": "manage_slack_account",
+    "source_action": "reconnect"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_list_saved",
+    "member": "workflow_slack_account__list_saved",
+    "description": "Use the current integrations slack list saved operation.",
+    "source": "workflow_slack_account",
+    "source_action": "list_saved"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_connect",
+    "member": "workflow_slack_account__connect",
+    "description": "Use the current integrations slack connect operation.",
+    "source": "workflow_slack_account",
+    "source_action": "connect"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_attach",
+    "member": "workflow_slack_account__attach",
+    "description": "Use the current integrations slack attach operation.",
+    "source": "workflow_slack_account",
+    "source_action": "attach"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_detach",
+    "member": "workflow_slack_account__detach",
+    "description": "Use the current integrations slack detach operation.",
+    "source": "workflow_slack_account",
+    "source_action": "detach"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_disconnect",
+    "member": "workflow_slack_account__disconnect",
+    "description": "Use the current integrations slack disconnect operation.",
+    "source": "workflow_slack_account",
+    "source_action": "disconnect"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_reconnect",
+    "member": "workflow_slack_account__reconnect",
+    "description": "Use the current integrations slack reconnect operation.",
+    "source": "workflow_slack_account",
+    "source_action": "reconnect"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_bot_list_saved",
+    "member": "manage_slack_bot__list_saved",
+    "description": "Use the current integrations slack bot list saved operation.",
+    "source": "manage_slack_bot",
+    "source_action": "list_saved"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_bot_select",
+    "member": "manage_slack_bot__select",
+    "description": "Use the current integrations slack bot select operation.",
+    "source": "manage_slack_bot",
+    "source_action": "select"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_bot_list_saved",
+    "member": "workflow_slack_bot__list_saved",
+    "description": "Use the current integrations slack bot list saved operation.",
+    "source": "workflow_slack_bot",
+    "source_action": "list_saved"
+  },
+  {
+    "family": "integrations",
+    "name": "slack_bot_select",
+    "member": "workflow_slack_bot__select",
+    "description": "Use the current integrations slack bot select operation.",
+    "source": "workflow_slack_bot",
+    "source_action": "select"
+  },
+  {
+    "family": "messages",
+    "name": "channels_status",
+    "member": "manage_messaging__status",
+    "description": "Use the current messages channels status operation.",
+    "source": "manage_messaging",
+    "source_action": "status"
+  },
+  {
+    "family": "messages",
+    "name": "channels_set_target",
+    "member": "manage_messaging__set_target",
+    "description": "Use the current messages channels set target operation.",
+    "source": "manage_messaging",
+    "source_action": "set_target"
+  },
+  {
+    "family": "messages",
+    "name": "channels_add_channel",
+    "member": "manage_messaging__add_channel",
+    "description": "Use the current messages channels add channel operation.",
+    "source": "manage_messaging",
+    "source_action": "add_channel"
+  },
+  {
+    "family": "messages",
+    "name": "channels_remove_channel",
+    "member": "manage_messaging__remove_channel",
+    "description": "Use the current messages channels remove channel operation.",
+    "source": "manage_messaging",
+    "source_action": "remove_channel"
+  },
+  {
+    "family": "messages",
+    "name": "channels_use_bot",
+    "member": "manage_messaging__use_bot",
+    "description": "Use the current messages channels use bot operation.",
+    "source": "manage_messaging",
+    "source_action": "use_bot"
+  },
+  {
+    "family": "messages",
+    "name": "channels_whatsapp_link",
+    "member": "manage_messaging__whatsapp_link",
+    "description": "Use the current messages channels whatsapp link operation.",
+    "source": "manage_messaging",
+    "source_action": "whatsapp_link"
+  },
+  {
+    "family": "messages",
+    "name": "channels_whatsapp_status",
+    "member": "manage_messaging__whatsapp_status",
+    "description": "Use the current messages channels whatsapp status operation.",
+    "source": "manage_messaging",
+    "source_action": "whatsapp_status"
+  },
+  {
+    "family": "messages",
+    "name": "channels_whatsapp_routing",
+    "member": "manage_messaging__whatsapp_routing",
+    "description": "Use the current messages channels whatsapp routing operation.",
+    "source": "manage_messaging",
+    "source_action": "whatsapp_routing"
+  },
+  {
+    "family": "messages",
+    "name": "channels_whatsapp_unpair",
+    "member": "manage_messaging__whatsapp_unpair",
+    "description": "Use the current messages channels whatsapp unpair operation.",
+    "source": "manage_messaging",
+    "source_action": "whatsapp_unpair"
+  },
+  {
+    "family": "account",
+    "name": "users_get_workflow_access",
+    "member": "manage_user_access__get_workflow_access",
+    "description": "Use the current account users get workflow access operation.",
+    "source": "manage_user_access",
+    "source_action": "get_workflow_access"
+  },
+  {
+    "family": "account",
+    "name": "users_set_workflow_access",
+    "member": "manage_user_access__set_workflow_access",
+    "description": "Use the current account users set workflow access operation.",
+    "source": "manage_user_access",
+    "source_action": "set_workflow_access"
+  },
+  {
+    "family": "account",
+    "name": "users_list_users",
+    "member": "manage_user_access__list_users",
+    "description": "Use the current account users list users operation.",
+    "source": "manage_user_access",
+    "source_action": "list_users"
+  },
+  {
+    "family": "account",
+    "name": "users_update_user",
+    "member": "manage_user_access__update_user",
+    "description": "Use the current account users update user operation.",
+    "source": "manage_user_access",
+    "source_action": "update_user"
+  },
+  {
+    "family": "account",
+    "name": "users_delete_user",
+    "member": "manage_user_access__delete_user",
+    "description": "Use the current account users delete user operation.",
+    "source": "manage_user_access",
+    "source_action": "delete_user"
+  },
+  {
+    "family": "account",
+    "name": "users_list",
+    "member": "users__list",
+    "description": "Use the current account users list operation.",
+    "source": "users",
+    "source_action": "list"
+  },
+  {
+    "family": "account",
+    "name": "users_get",
+    "member": "users__get",
+    "description": "Use the current account users get operation.",
+    "source": "users",
+    "source_action": "get"
+  },
+  {
+    "family": "account",
+    "name": "users_update",
+    "member": "users__update",
+    "description": "Use the current account users update operation.",
+    "source": "users",
+    "source_action": "update"
+  },
+  {
+    "family": "account",
+    "name": "users_delete",
+    "member": "users__delete",
+    "description": "Use the current account users delete operation.",
+    "source": "users",
+    "source_action": "delete"
+  },
+  {
+    "family": "account",
+    "name": "server_tools",
+    "member": "server_product__tools",
+    "description": "Use the current account server tools operation.",
+    "source": "server_product",
+    "source_action": "tools"
+  },
+  {
+    "family": "account",
+    "name": "server_call",
+    "member": "server_product__call",
+    "description": "Use the current account server call operation.",
+    "source": "server_product",
+    "source_action": "call"
+  },
+  {
+    "family": "account",
+    "name": "usage",
+    "member": "get_token_usage",
+    "description": "Use the current account usage operation."
+  },
+  {
+    "family": "account",
+    "name": "set_limits",
+    "member": "set_token_limits",
+    "description": "Use the current account set limits operation."
+  },
+  {
+    "family": "account",
+    "name": "set_allowed_models",
+    "member": "set_allowed_models",
+    "description": "Use the current account set allowed models operation."
+  },
+  {
+    "family": "help",
+    "name": "context",
+    "member": "get_agent_context",
+    "description": "Use the current help context operation."
+  },
+  {
+    "family": "help",
+    "name": "topics",
+    "member": "list_guidance_topics",
+    "description": "Use the current help topics operation."
+  },
+  {
+    "family": "help",
+    "name": "topic",
+    "member": "get_guidance_topic",
+    "description": "Use the current help topic operation."
+  },
+  {
+    "family": "help",
+    "name": "skills",
+    "member": "get_guidance_skills",
+    "description": "Use the current help skills operation."
+  },
+  {
+    "family": "help",
+    "name": "skill",
+    "member": "get_skill",
+    "description": "Use the current help skill operation."
+  },
+  {
+    "family": "needs_you",
+    "name": "list",
+    "member": "list_needs_you",
+    "description": "Use the current needs_you list operation."
+  },
+  {
+    "family": "needs_you",
+    "name": "answer",
+    "member": "answer_needs_you",
+    "description": "Use the current needs_you answer operation."
+  },
+  {
+    "family": "needs_you",
+    "name": "dismiss",
+    "member": "dismiss_needs_you",
+    "description": "Use the current needs_you dismiss operation."
+  },
+  {
+    "family": "messages",
+    "name": "register",
+    "member": "messages__register",
+    "description": "Use the current messages register operation.",
+    "source": "messages",
+    "source_action": "register"
+  },
+  {
+    "family": "messages",
+    "name": "unregister",
+    "member": "messages__unregister",
+    "description": "Use the current messages unregister operation.",
+    "source": "messages",
+    "source_action": "unregister"
+  },
+  {
+    "family": "messages",
+    "name": "list_agents",
+    "member": "messages__list_agents",
+    "description": "Use the current messages list agents operation.",
+    "source": "messages",
+    "source_action": "list_agents"
+  },
+  {
+    "family": "messages",
+    "name": "send",
+    "member": "messages__send",
+    "description": "Use the current messages send operation.",
+    "source": "messages",
+    "source_action": "send"
+  },
+  {
+    "family": "messages",
+    "name": "read",
+    "member": "messages__read",
+    "description": "Use the current messages read operation.",
+    "source": "messages",
+    "source_action": "read"
+  },
+  {
+    "family": "messages",
+    "name": "state",
+    "member": "messages__state",
+    "description": "Use the current messages state operation.",
+    "source": "messages",
+    "source_action": "state"
+  },
+  {
+    "family": "messages",
+    "name": "ack",
+    "member": "messages__ack",
+    "description": "Use the current messages ack operation.",
+    "source": "messages",
+    "source_action": "ack"
+  },
+  {
+    "family": "messages",
+    "name": "update_purpose",
+    "member": "messages__update_purpose",
+    "description": "Use the current messages update purpose operation.",
+    "source": "messages",
+    "source_action": "update_purpose"
+  },
+  {
+    "family": "messages",
+    "name": "ping_person",
+    "member": "messages__ping_person",
+    "description": "Use the current messages ping person operation.",
+    "source": "messages",
+    "source_action": "ping_person"
+  },
+  {
+    "family": "messages",
+    "name": "get_file",
+    "member": "messages__get_file",
+    "description": "Use the current messages get file operation.",
+    "source": "messages",
+    "source_action": "get_file"
+  },
+  {
+    "family": "messages",
+    "name": "count",
+    "member": "messages__count",
+    "description": "Use the current messages count operation.",
+    "source": "messages",
+    "source_action": "count"
+  },
+  {
+    "family": "messages",
+    "name": "delete",
+    "member": "messages__delete",
+    "description": "Use the current messages delete operation.",
+    "source": "messages",
+    "source_action": "delete"
+  },
+  {
+    "family": "messages",
+    "name": "clear",
+    "member": "messages__clear",
+    "description": "Use the current messages clear operation.",
+    "source": "messages",
+    "source_action": "clear"
+  },
+  {
+    "family": "workspace",
+    "name": "list",
+    "member": "workspace__list",
+    "description": "Use the current workspace list operation.",
+    "source": "workspace",
+    "source_action": "list"
+  },
+  {
+    "family": "workspace",
+    "name": "get",
+    "member": "workspace__get",
+    "description": "Use the current workspace get operation.",
+    "source": "workspace",
+    "source_action": "get"
+  },
+  {
+    "family": "workspace",
+    "name": "create",
+    "member": "workspace__create",
+    "description": "Use the current workspace create operation.",
+    "source": "workspace",
+    "source_action": "create"
+  },
+  {
+    "family": "workspace",
+    "name": "update",
+    "member": "workspace__update",
+    "description": "Use the current workspace update operation.",
+    "source": "workspace",
+    "source_action": "update"
+  },
+  {
+    "family": "workspace",
+    "name": "export",
+    "member": "workspace__export",
+    "description": "Use the current workspace export operation.",
+    "source": "workspace",
+    "source_action": "export"
+  },
+  {
+    "family": "workspace",
+    "name": "import",
+    "member": "workspace__import",
+    "description": "Use the current workspace import operation.",
+    "source": "workspace",
+    "source_action": "import"
+  },
+  {
+    "family": "workspace",
+    "name": "ask",
+    "member": "workspace__ask",
+    "description": "Use the current workspace ask operation.",
+    "source": "workspace",
+    "source_action": "ask"
+  },
+  {
+    "family": "workspace",
+    "name": "reply_input",
+    "member": "workspace__reply_input",
+    "description": "Use the current workspace reply input operation.",
+    "source": "workspace",
+    "source_action": "reply_input"
+  },
+  {
+    "family": "workspace",
+    "name": "chats",
+    "member": "workspace__chats",
+    "description": "Use the current workspace chats operation.",
+    "source": "workspace",
+    "source_action": "chats"
+  },
+  {
+    "family": "workspace",
+    "name": "read_chat",
+    "member": "workspace__read_chat",
+    "description": "Use the current workspace read chat operation.",
+    "source": "workspace",
+    "source_action": "read_chat"
+  },
+  {
+    "family": "workspace",
+    "name": "open_chat",
+    "member": "workspace__open_chat",
+    "description": "Use the current workspace open chat operation.",
+    "source": "workspace",
+    "source_action": "open_chat"
+  },
+  {
+    "family": "workspace",
+    "name": "rename_chat",
+    "member": "workspace__rename_chat",
+    "description": "Use the current workspace rename chat operation.",
+    "source": "workspace",
+    "source_action": "rename_chat"
+  },
+  {
+    "family": "workspace",
+    "name": "close_chat",
+    "member": "workspace__close_chat",
+    "description": "Use the current workspace close chat operation.",
+    "source": "workspace",
+    "source_action": "close_chat"
+  },
+  {
+    "family": "workspace",
+    "name": "new_chat",
+    "member": "workspace__new_chat",
+    "description": "Use the current workspace new chat operation.",
+    "source": "workspace",
+    "source_action": "new_chat"
+  },
+  {
+    "family": "workspace",
+    "name": "delete_chat",
+    "member": "workspace__delete_chat",
+    "description": "Use the current workspace delete chat operation.",
+    "source": "workspace",
+    "source_action": "delete_chat"
+  },
+  {
+    "family": "workspace",
+    "name": "stop",
+    "member": "workspace__stop",
+    "description": "Use the current workspace stop operation.",
+    "source": "workspace",
+    "source_action": "stop"
+  },
+  {
+    "family": "workspace",
+    "name": "message_chat",
+    "member": "workspace__message_chat",
+    "description": "Use the current workspace message chat operation.",
+    "source": "workspace",
+    "source_action": "message_chat"
+  },
+  {
+    "family": "workspace",
+    "name": "chat_tools",
+    "member": "workspace__chat_tools",
+    "description": "Use the current workspace chat tools operation.",
+    "source": "workspace",
+    "source_action": "chat_tools"
+  },
+  {
+    "family": "workspace",
+    "name": "chat_tool",
+    "member": "workspace__chat_tool",
+    "description": "Use the current workspace chat tool operation.",
+    "source": "workspace",
+    "source_action": "chat_tool"
+  },
+  {
+    "family": "workspace",
+    "name": "agents",
+    "member": "workspace__agents",
+    "description": "Use the current workspace agents operation.",
+    "source": "workspace",
+    "source_action": "agents"
+  },
+  {
+    "family": "workspace",
+    "name": "open_agent",
+    "member": "workspace__open_agent",
+    "description": "Use the current workspace open agent operation.",
+    "source": "workspace",
+    "source_action": "open_agent"
+  },
+  {
+    "family": "workspace",
+    "name": "read_saved_chat",
+    "member": "workspace__read_saved_chat",
+    "description": "Use the current workspace read saved chat operation.",
+    "source": "workspace",
+    "source_action": "read_saved_chat"
+  },
+  {
+    "family": "workspace",
+    "name": "storage_preview",
+    "member": "workspace__storage_preview",
+    "description": "Use the current workspace storage preview operation.",
+    "source": "workspace",
+    "source_action": "storage_preview"
+  },
+  {
+    "family": "workspace",
+    "name": "storage_status",
+    "member": "workspace__storage_status",
+    "description": "Use the current workspace storage status operation.",
+    "source": "workspace",
+    "source_action": "storage_status"
+  },
+  {
+    "family": "workspace",
+    "name": "storage_backup",
+    "member": "workspace__storage_backup",
+    "description": "Use the current workspace storage backup operation.",
+    "source": "workspace",
+    "source_action": "storage_backup"
+  },
+  {
+    "family": "workspace",
+    "name": "storage_move",
+    "member": "workspace__storage_move",
+    "description": "Use the current workspace storage move operation.",
+    "source": "workspace",
+    "source_action": "storage_move"
+  },
+  {
+    "family": "terminal",
+    "name": "local_execute",
+    "member": "execute_local_shell_command",
+    "description": "Use the current terminal local execute operation."
+  },
+  {
+    "family": "terminal",
+    "name": "local_files",
+    "member": "list_local_files",
+    "description": "Use the current terminal local files operation."
+  },
+  {
+    "family": "terminal",
+    "name": "local_write",
+    "member": "write_local_file",
+    "description": "Use the current terminal local write operation."
+  },
+  {
+    "family": "terminal",
+    "name": "local_copy",
+    "member": "copy_local_file_to_project",
+    "description": "Use the current terminal local copy operation."
+  },
+  {
+    "family": "terminal",
+    "name": "laptop_get",
+    "member": "manage_laptop_access__get",
+    "description": "Use the current terminal laptop get operation.",
+    "source": "manage_laptop_access",
+    "source_action": "get"
+  },
+  {
+    "family": "terminal",
+    "name": "laptop_devices",
+    "member": "manage_laptop_access__devices",
+    "description": "Use the current terminal laptop devices operation.",
+    "source": "manage_laptop_access",
+    "source_action": "devices"
+  },
+  {
+    "family": "terminal",
+    "name": "laptop_browse",
+    "member": "manage_laptop_access__browse",
+    "description": "Use the current terminal laptop browse operation.",
+    "source": "manage_laptop_access",
+    "source_action": "browse"
+  },
+  {
+    "family": "terminal",
+    "name": "laptop_set",
+    "member": "manage_laptop_access__set",
+    "description": "Use the current terminal laptop set operation.",
+    "source": "manage_laptop_access",
+    "source_action": "set"
+  },
+  {
+    "family": "terminal",
+    "name": "laptop_remove",
+    "member": "manage_laptop_access__remove",
+    "description": "Use the current terminal laptop remove operation.",
+    "source": "manage_laptop_access",
+    "source_action": "remove"
+  },
+  {
+    "family": "browser",
+    "name": "status",
+    "member": "crew_diagnostics__browser",
+    "description": "Use the current browser status operation.",
+    "source": "crew_diagnostics",
+    "source_action": "browser"
+  },
+  {
+    "family": "mcp",
+    "name": "diagnostics",
+    "member": "crew_diagnostics__connections",
+    "description": "Use the current mcp diagnostics operation.",
+    "source": "crew_diagnostics",
+    "source_action": "connections"
+  },
+  {
+    "family": "messages",
+    "name": "mail_inbox",
+    "member": "agent_inbox",
+    "description": "Use the current messages mail inbox operation."
+  },
+  {
+    "family": "relay",
+    "name": "update",
+    "member": "update_relay",
+    "description": "Use the current relay update operation."
+  },
+  {
+    "family": "terminal",
+    "name": "history",
+    "member": "crew_execution__history",
+    "description": "Read the existing owner-only execution history for this Crew.",
+    "source": "crew_execution",
+    "source_action": "history"
+  }
+]
