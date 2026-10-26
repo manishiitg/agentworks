@@ -339,7 +339,7 @@ func loginCommand(o *options) *cobra.Command {
 	var loginName string
 	var noBrowser bool
 	var scopes []string
-	cmd := &cobra.Command{Use: "login", Args: cobra.NoArgs, Short: "Sign in through your browser", Long: "Open AgentWorks in your browser, approve this CLI, and save a private renewable connection. Use --no-browser on a remote terminal and open the printed URL yourself. With --name the connection is saved under that name and never replaces the default login or another named login.", RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "login", Args: cobra.NoArgs, Short: "Sign in through your browser", Long: "Open AgentWorks in your browser, approve this CLI, and save a private renewable connection. Use --no-browser on a remote terminal and open the printed URL yourself. With --name the connection is saved under that name and never replaces the default login or another named login. Saving a named login does not connect any chats; add your chosen chat with agentworks attach --also NAME.", RunE: func(cmd *cobra.Command, _ []string) error {
 		if loginName != "" {
 			if o.configPath != "" || o.getenv("AGENTWORKS_CONFIG") != "" {
 				return errors.New("--name cannot be combined with --config or AGENTWORKS_CONFIG")
@@ -370,7 +370,11 @@ func loginCommand(o *options) *cobra.Command {
 		if err := o.browserLogin(cmd.Context(), cfg, path, scopes, noBrowser); err != nil {
 			return err
 		}
-		connectLiveChats(cmd.Context(), o)
+		// A secondary sign-in is available for explicit per-chat joins. It
+		// must not become the home network of other discovered native chats.
+		if !o.namedLogin {
+			connectLiveChats(cmd.Context(), o)
+		}
 		return o.output(map[string]any{"server": cfg.Server, "logged_in": true, "name": firstNonEmpty(loginName, agentworksclient.DefaultLoginName)})
 	}}
 	cmd.Flags().StringVar(&loginName, "name", "", "Save this login under a name (for example work) instead of replacing the default login")
@@ -499,10 +503,28 @@ func logoutCommand(o *options) *cobra.Command {
 				return err
 			}
 		}
-		if err := stopLaptopConnections(o); err != nil {
+		onlyConfig := ""
+		if name != "" {
+			onlyConfig, err = filepath.Abs(path)
+			if err != nil {
+				return err
+			}
+		}
+		if err := stopLaptopConnections(o, onlyConfig); err != nil {
 			return err
 		}
-		if err := stopAgentBridge(cmd.Context(), "sign_out"); err != nil {
+		if onlyConfig != "" {
+			root, err := agentworksclient.DefaultLocalBridgeRoot()
+			if err != nil {
+				return err
+			}
+			if _, err = agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
+				_, err = agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "shutdown", ShutdownReason: "sign_out", ConfigPath: onlyConfig})
+				if err != nil {
+					return err
+				}
+			}
+		} else if err := stopAgentBridge(cmd.Context(), "sign_out"); err != nil {
 			return err
 		}
 		return o.output(map[string]any{"logged_out": true, "environment_token_active": o.getenv("AGENTWORKS_TOKEN") != ""})

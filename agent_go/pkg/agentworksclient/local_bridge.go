@@ -552,7 +552,9 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 				return
 			}
 			if in.Action == "shutdown" {
-				if !slices.Contains([]string{"stop", "update", "sign_out"}, in.ShutdownReason) {
+				if in.ConfigPath != "" {
+					out = b.handle(ctx, r.Context(), in)
+				} else if !slices.Contains([]string{"stop", "update", "sign_out"}, in.ShutdownReason) {
 					out.Error = "AgentWorks stays connected during ordinary commands. Use agentworks stop to stop messaging."
 					log.Printf("[BRIDGE] ignored shutdown without explicit command pid=%d build=%s", os.Getpid(), b.options.ClientBuild)
 				} else {
@@ -921,6 +923,33 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	}()
 	if b.closed {
 		return LocalBridgeReply{Error: "local bridge stopping"}
+	}
+	if in.Action == "shutdown" {
+		if in.ShutdownReason != "sign_out" || !filepath.IsAbs(in.ConfigPath) || filepath.Clean(in.ConfigPath) != in.ConfigPath {
+			return LocalBridgeReply{Error: "sign-out needs the exact saved login path"}
+		}
+		// A named sign-out ends only connections made from that login. Other
+		// primary chats and joined networks keep their streams and identities.
+		var keys []string
+		for key, session := range b.sessions {
+			if session.ParentConfigPath == in.ConfigPath {
+				keys = append(keys, key)
+			}
+		}
+		if b.stopped == nil {
+			b.stopped = map[string]bool{}
+		}
+		for _, key := range keys {
+			if session := b.sessions[key]; session != nil && session.ParentConfigPath == in.ConfigPath {
+				b.stopped[key] = true
+				b.leaveNetwork(callCtx, key, session, "detach")
+			}
+		}
+		if err := atomicLiveJSON(filepath.Join(b.root, "disconnected.json"), b.stopped); err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		log.Printf("[BRIDGE] sign_out login_connections=%d helper=running", len(keys))
+		return LocalBridgeReply{}
 	}
 	key := localBridgeKey(in.Provider, in.SessionID)
 	primaryKey := key

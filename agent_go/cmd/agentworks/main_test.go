@@ -13,11 +13,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -919,5 +922,116 @@ func TestNamedLoginsAreSeparateAndNeverOverwriteAnother(t *testing.T) {
 	listing := stdout.String()
 	if !strings.Contains(listing, "work\t"+first.URL) || !strings.Contains(listing, "other\t"+second.URL) || strings.Contains(listing, secret) || strings.Contains(listing, home) {
 		t.Fatalf("login listing is wrong or leaks: %q", listing)
+	}
+}
+
+// PLAT-856-372: saving a named login enrolled unrelated live Claude chats in it.
+// Use a real native registration and the actual login -> local HTTP attach path.
+func TestNamedLoginDoesNotConnectOtherNativeChats(t *testing.T) {
+	home, err := os.MkdirTemp("", "aw-login-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(home)
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Setenv("XDG_CACHE_HOME", home)
+	t.Setenv("AGENTWORKS_BRIDGE_ROOT", "")
+	t.Setenv("AGENTWORKS_AUTO_ATTACH", "1")
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerPath := filepath.Join(home, "claude")
+	if err = os.Symlink(sleep, workerPath); err != nil {
+		t.Fatal(err)
+	}
+	worker := exec.Command(workerPath, "60")
+	if err = worker.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = worker.Process.Kill(); _ = worker.Wait() }()
+	socket := filepath.Join(home, "native.sock")
+	native, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer native.Close()
+	if err = os.Chmod(socket, 0600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(home, ".claude", "sessions")
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	const session = "11111111-2222-4333-8444-555555555555"
+	pid := strconv.Itoa(worker.Process.Pid)
+	registration, _ := json.Marshal(claudeSessionRecord{PID: worker.Process.Pid, SessionID: session, Socket: socket})
+	if err = os.WriteFile(filepath.Join(dir, pid+".json"), registration, 0600); err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256([]byte(socket))
+	if err = os.WriteFile(filepath.Join(dir, pid+"."+hex.EncodeToString(hash[:])+".key"), []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	root, err := agentworksclient.DefaultLocalBridgeRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = agentworksclient.PrepareLocalBridgeRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	l, err := net.Listen("unix", filepath.Join(root, "bridge.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(filepath.Join(root, "bridge.sock"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var attaches atomic.Int32
+	var scopedSignOut atomic.Bool
+	bridge := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in agentworksclient.LocalBridgeRequest
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			t.Error(err)
+		}
+		out := agentworksclient.LocalBridgeReply{}
+		if in.Action == "attach" {
+			attaches.Add(1)
+			out.Attached = true
+			if in.SessionID != session || !in.Automatic || in.Also {
+				t.Error("automatic discovery changed the native chat or joined another network")
+			}
+		}
+		if in.Action == "shutdown" {
+			path, _ := agentworksclient.LoginPath("partner")
+			if in.ShutdownReason != "sign_out" || in.ConfigPath != path {
+				t.Error("signing out a named login stopped the entire helper")
+			}
+			scopedSignOut.Store(true)
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	})}
+	go bridge.Serve(l)
+	defer bridge.Close()
+	server := cliOAuthTestServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("unexpected tool call") }), "aw_cli_fixture")
+	defer server.Close()
+	var stdout, stderr bytes.Buffer
+	login := func(args ...string) {
+		t.Helper()
+		if code := run(t.Context(), append([]string{"--server", server.URL, "login", "--no-browser"}, args...), strings.NewReader(""), &stdout, &stderr, func(string) string { return "" }); code != 0 {
+			t.Fatalf("login failed: %s", &stderr)
+		}
+	}
+	login("--name", "partner")
+	if attaches.Load() != 0 {
+		t.Fatal("saving a secondary login connected an unrelated native chat")
+	}
+	login()
+	if attaches.Load() != 1 {
+		t.Fatal("the normal default login no longer connects a verified native chat")
+	}
+	if code := run(t.Context(), []string{"logout", "--name", "partner"}, strings.NewReader(""), &stdout, &stderr, func(string) string { return "" }); code != 0 || !scopedSignOut.Load() {
+		t.Fatalf("named logout did not stop only its own connections: %s", &stderr)
 	}
 }

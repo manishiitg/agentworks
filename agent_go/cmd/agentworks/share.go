@@ -460,12 +460,15 @@ func serveShareCommand(o *options) *cobra.Command {
 	return cmd
 }
 
-func stopLaptopConnections(o *options) error {
+func stopLaptopConnections(o *options, onlyConfig string) error {
 	dir, err := o.shareDir()
 	if err != nil {
 		return err
 	}
 	for key, st := range runningShares(dir) {
+		if onlyConfig != "" && filepath.Clean(st.ConfigPath) != onlyConfig {
+			continue
+		}
 		terminateProcess(st.PID, false)
 		for i := 0; i < 25 && processAlive(st.PID); i++ {
 			time.Sleep(100 * time.Millisecond)
