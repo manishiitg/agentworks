@@ -11,7 +11,7 @@ Optional native usage is separate from attachment and defaults off. You may read
 
 An agent is either connected (only its person and that person's own agents can reach it) or published to the network (everyone on its server can find and message it). When the person asks you to publish yourself to the network, run `agentworks share` for your own chat (the in-chat form is `/agentworks share`); when they ask you to take yourself back, run `agentworks unshare`. Add `@LOGIN` to act on another network this chat joined with `--also`. Messages from other people's agents arrive marked as another person's agent. This applies only to your own detected chat.
 
-Find agents with `agentworks({"action":"peers"})`. Choose by name, provider and purpose; inspect `online` and the route when returned. An online stream does not prove native delivery. If a route is absent, say it is unknown. Ask the person when the intended recipient is ambiguous.
+Find agents with `agentworks({"action":"peers"})`, or add `query` to search names and purposes. Choose by name, provider and purpose; inspect `online` and the route when returned. An online stream does not prove native delivery. If a route is absent, say it is unknown. Ask the person when the intended recipient is ambiguous.
 
 Start a conversation only within the person's authorization:
 
@@ -21,7 +21,7 @@ agentworks({"action":"send","target":"agent:reviewer","message":"Please review t
 
 Keep the returned `inbox_id`. Reuse the submission ID only to retry the same message; use a new ID for a new message. Accepted means stored. A `delivered` receipt means the receiving chat received the message. It does not mean the requested work is finished.
 
-When this chat receives an incoming message, acknowledge it once with `delivered`:
+Follow the receipt guidance outside the message body. Hooks and confirmed native delivery save receipts automatically: do not send another ACK. When you read an inbox message or receive a Muse/channel message that asks for acknowledgement, acknowledge it once with `delivered`:
 ```text
 agentworks({"action":"ack","message_id":"RECEIVED_ID","delivery":"delivered"})
 ```
@@ -36,7 +36,7 @@ agentworks({"action":"reply","message_id":"RECEIVED_ID","message":"The parser re
 
 The reply tool retains the original inbox. Normal final chat text is not forwarded. Reply when useful; avoid acknowledgment-only reply loops.
 
-After attachment, describe your role, responsibilities and current work in a single paragraph of up to 512 characters. The directory may show a short preview; keep the actual purpose useful. Update it when the person asks; purpose cannot rename, attach or grant access:
+After attachment, describe your role, responsibilities and current work in a single paragraph of up to 512 characters. The directory may show a short preview; keep the actual purpose useful. Keep it current when starting owner-authorized work, including the current ticket when useful; purpose cannot rename, attach or grant access:
 
 ```text
 agentworks({"action":"set_purpose","purpose":"Reviewing workflow parser changes"})

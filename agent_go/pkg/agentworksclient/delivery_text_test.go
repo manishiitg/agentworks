@@ -18,7 +18,7 @@ func TestWaitingAndHeldLinesIgnoreStatusLinesAndHideHeldText(t *testing.T) {
 	if got := WaitingLine(messages, now); got != "AgentWorks: 2 messages waiting from agent-a, agent-b (oldest 12 min ago)." {
 		t.Fatalf("waiting line: %q", got)
 	}
-	if got := MessageBlock(messages[2], "att"); !strings.Contains(got, "no reply needed") || strings.Contains(got, "ack:") {
+	if got := MessageBlock(messages[2], "att", "mailbox"); !strings.Contains(got, "no reply needed") || strings.Contains(got, "ack:") {
 		t.Fatalf("a status line must not ask for an ack or reply: %q", got)
 	}
 	held := HeldLine(LocalBridgeReply{Held: 2, HeldNotice: true, HeldDetails: []HeldMessageDetail{{Sender: "sender", Reason: "Sharing has ended.", Next: "Ask the sender to send again after access is restored."}}})

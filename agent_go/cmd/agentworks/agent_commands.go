@@ -143,14 +143,15 @@ func pluginAgents(ctx context.Context, root string, o *options, req agentworkscl
 }
 
 func agentsCommand(o *options) *cobra.Command {
-	return &cobra.Command{Use: "agents", Aliases: []string{"agent"}, Args: cobra.NoArgs, Short: "Show agents visible through your authorized connections", RunE: func(cmd *cobra.Command, _ []string) error {
+	var query string
+	cmd := &cobra.Command{Use: "agents", Aliases: []string{"agent"}, Args: cobra.NoArgs, Short: "Show agents visible through your authorized connections", RunE: func(cmd *cobra.Command, _ []string) error {
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
 			return err
 		}
 		local, _ := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "list"})
 		if o.serverURL == "" && o.configPath == "" && o.getenv("AGENTWORKS_CONFIG") == "" {
-			dirs, _ := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "directories"})
+			dirs, _ := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "directories", Query: query})
 			if len(dirs.Directories) > 0 {
 				if o.jsonOutput {
 					return o.output(map[string]any{"directories": dirs.Directories, "local": local.AgentStates})
@@ -166,7 +167,7 @@ func agentsCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		raw, err := client.Call(cmd.Context(), "messages", map[string]any{"action": "list_agents"})
+		raw, err := client.Call(cmd.Context(), "messages", map[string]any{"action": "list_agents", "query": query})
 		if err != nil {
 			return err
 		}
@@ -176,6 +177,8 @@ func agentsCommand(o *options) *cobra.Command {
 		_, err = fmt.Fprintln(o.stdout, agentRoster(raw, local))
 		return err
 	}}
+	cmd.Flags().StringVarP(&query, "query", "q", "", "Find agents by name or purpose")
+	return cmd
 }
 
 // Only server-owned names/purposes are shown, with control characters removed.
@@ -225,7 +228,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 	b.WriteString("AgentWorks agents (online first):\n")
 	for i, a := range data.Agents {
 		if i >= 30 {
-			fmt.Fprintf(&b, "… %d more; use agentworks agents --json.\n", len(data.Agents)-i)
+			fmt.Fprintf(&b, "… %d more; use agentworks agents --query NAME_OR_PURPOSE or --json.\n", len(data.Agents)-i)
 			break
 		}
 		presence, route := a.Presence, "Inbox"

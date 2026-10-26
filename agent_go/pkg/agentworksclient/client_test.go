@@ -282,3 +282,57 @@ func TestMCPSchemaParityAndDispatch(t *testing.T) {
 		t.Fatalf("MCP error not surfaced: %#v %v", result, err)
 	}
 }
+
+// PLAT-856: temporary restart failures must not require hand-written send loops,
+// duplicate a stored submission, or retry access refusals/unkeyed mutations.
+func TestMessageSendRetriesSameSubmissionOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name, action, submission string
+		status                   int
+		retry                    bool
+	}{
+		{"restart", "send", "stable", 503, true},
+		{"accepted_then_gateway_lost_reply", "send", "stable", 502, true},
+		{"forbidden", "send", "stable", 403, false},
+		{"unkeyed", "send", "", 503, false},
+		{"other_mutation", "delete", "stable", 503, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			attempts, stored := 0, 0
+			seen := map[string]bool{}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body struct{ Arguments map[string]any }
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				if body.Arguments["submission_id"] != tc.submission {
+					t.Error("submission changed")
+				}
+				attempts++
+				if (tc.status == 502 || attempts > 1) && !seen[tc.submission] {
+					seen[tc.submission] = true
+					stored++
+				}
+				if attempts == 1 {
+					w.WriteHeader(tc.status)
+					return
+				}
+				_, _ = w.Write([]byte(`{"message_id":"original","accepted":true}`))
+			}))
+			defer srv.Close()
+			c, _ := New(srv.URL, "token")
+			raw, err := c.Call(context.Background(), "messages", map[string]any{"action": tc.action, "submission_id": tc.submission, "message": "body"})
+			if tc.retry {
+				if err != nil || attempts != 2 || stored != 1 || !strings.Contains(string(raw), "original") {
+					t.Fatalf("retry: %s %v attempts=%d stored=%d", raw, err, attempts, stored)
+				}
+			} else if err == nil || attempts != 1 {
+				t.Fatalf("must refuse once: %v attempts=%d", err, attempts)
+			}
+		})
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	_, err := retryAgentRequest(ctx, "send", func(context.Context) (json.RawMessage, error) { calls++; cancel(); return nil, &APIError{Status: 503} })
+	if err == nil || calls != 1 {
+		t.Fatal("cancelled send retried")
+	}
+}

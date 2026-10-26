@@ -57,6 +57,7 @@ type LocalBridgeRequest struct {
 	// LabelName is the literal NAME supplied at attach, before identity reuse.
 	LabelName     string `json:"label_name,omitempty"`
 	Purpose       string `json:"purpose,omitempty"`
+	Query         string `json:"query,omitempty"`
 	MessageID     string `json:"message_id,omitempty"`
 	Delivery      string `json:"delivery,omitempty"`
 	Transport     string `json:"transport,omitempty"`
@@ -890,6 +891,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error()}
 		}
 	}
+	// One budget includes resolving/validating the attachment and sending.
+	if in.Action == "send" || in.Action == "reply" || in.Action == "reply_inbox" {
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithTimeout(callCtx, 30*time.Second)
+		defer cancel()
+	}
 	if in.Action == "usage_refresh" {
 		b.startUsage(serverCtx)
 		return LocalBridgeReply{}
@@ -1124,7 +1131,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		b.unlocked(func() {
 			for _, request := range requests {
-				raw, err := request.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": request.name})
+				raw, err := request.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": request.name, "query": in.Query})
 				if err == nil {
 					out.Directories = append(out.Directories, LocalAgentDirectory{Server: request.client.baseURL, Agents: directoryWithoutProjectContext(raw)})
 				}
@@ -1717,7 +1724,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				extras = nil
 			}
 			for _, x := range extras {
-				raw, err := x.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": x.Attachment.AgentName})
+				raw, err := x.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": x.Attachment.AgentName, "query": in.Query})
 				if err == nil {
 					reply.Directories = append(reply.Directories, LocalAgentDirectory{Server: x.Network, Agents: directoryWithoutProjectContext(raw)})
 				}
@@ -1926,6 +1933,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	case "reply":
 		return b.replyToMessage(callCtx, key, s, in, out)
 	case "ack":
+		// The hook has already emitted the body. Finish this receipt even if its
+		// short-lived caller exits; only IDs live here, and work is bounded.
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithTimeout(context.WithoutCancel(callCtx), 30*time.Second)
+		defer cancel()
 		if in.Delivery != "delivered" || in.MessageID == "" {
 			return LocalBridgeReply{Error: "Use a message ID and delivery=delivered once this chat receives it."}
 		}
@@ -1954,6 +1966,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				}
 				return LocalBridgeReply{Error: err.Error()}
 			}
+			log.Printf("[BRIDGE-RECEIPT] outcome=recorded message=%s attachment=%s transport=%s", in.MessageID, attachment.ID, transport)
 			out.Result = raw
 			return out
 		}
@@ -2123,7 +2136,7 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 			args["unread_only"] = true
 		}
 	case "peers":
-		args["action"] = "list_agents"
+		args["action"], args["query"] = "list_agents", in.Query
 	case "ping_person":
 		args["action"], args["message_id"] = "ping_person", in.MessageID
 	case "send":
@@ -2169,8 +2182,16 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 			return LocalBridgeReply{Error: attachmentValidationError(in.Action, s.Attachment.ID, validationErr).Error()}
 		}
 	} else {
-		if validationErr := validate(); validationErr != nil {
-			return LocalBridgeReply{Error: attachmentValidationError(in.Action, s.Attachment.ID, validationErr).Error()}
+		var validationErr error
+		if (in.Action == "send" || in.Action == "reply_inbox") && in.SubmissionID != "" {
+			_, validationErr = retryAgentRequest(callCtx, "validate_send", func(ctx context.Context) (json.RawMessage, error) {
+				return s.client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true)
+			})
+		} else {
+			validationErr = validate()
+		}
+		if validationErr != nil {
+			return LocalBridgeReply{Error: attachmentValidationError(in.Action, s.Attachment.ID, validationErr).Error(), serverError: validationErr}
 		}
 		raw, err = s.client.Call(callCtx, "messages", args)
 	}
@@ -2723,7 +2744,9 @@ func (b *localBridge) replyToMessage(ctx context.Context, key string, s *localSe
 // exact attached agent and owner, after checking current sharing and peer access.
 // Historical body admission does not authorize a new reply.
 func authorizedReplyInbox(ctx context.Context, client *Client, att AgentAttachment, id string) (string, error) {
-	raw, err := client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{id}}, true)
+	raw, err := retryAgentRequest(ctx, "resolve_reply", func(ctx context.Context) (json.RawMessage, error) {
+		return client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{id}}, true)
+	})
 	if err != nil {
 		return "", err
 	}

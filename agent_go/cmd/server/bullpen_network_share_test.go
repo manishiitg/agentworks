@@ -1,12 +1,15 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -37,7 +40,35 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 	mux.HandleFunc("/api/external/v1/agents/sharing", env.api.handleAgentSharing)
 	mux.HandleFunc("/api/external/v1/agents/events", env.api.handleAgentEvents)
 	mux.HandleFunc("/api/external/v1/agents/attachment", env.api.handleAgentAttachment)
-	srv := httptest.NewServer(AuthMiddleware(mux))
+	var dropped atomic.Bool
+	var committedID string
+	handler := AuthMiddleware(mux)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/external/v1/call" {
+			body, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			var request struct{ Arguments map[string]any }
+			_ = json.Unmarshal(body, &request)
+			if request.Arguments["submission_id"] == "reply-lost-response" && !dropped.Swap(true) {
+				recorded := httptest.NewRecorder()
+				handler.ServeHTTP(recorded, r) // The real handler saves the message first.
+				var result map[string]any
+				_ = json.Unmarshal(recorded.Body.Bytes(), &result)
+				committedID, _ = result["message_id"].(string)
+				if recorded.Code != 200 || committedID == "" {
+					t.Errorf("original send failed: %d %s", recorded.Code, recorded.Body.String())
+				}
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				_ = conn.Close() // No HTTP response reaches the caller.
+				return
+			}
+		}
+		handler.ServeHTTP(w, r)
+	}))
 	defer srv.Close()
 	t.Setenv("PUBLIC_URL", srv.URL)
 	connect := func(user string) *agentworksclient.Client {
@@ -107,6 +138,25 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 	if err != nil || receipt["state"] != "waiting_offline" {
 		t.Fatalf("the send result must say the receiver is offline: %v %v", receipt, err)
 	}
+	// PLAT-856: repeat a reply after the server committed it but the connection
+	// closed without a response. The real mailbox must retain exactly one copy.
+	retried, e := try(alice, map[string]any{"action": "send", "agent_name": "helper", "inbox_id": receipt["inbox_id"], "message": "one reply across restart", "submission_id": "reply-lost-response"})
+	if e != nil || retried["message_id"] != committedID || committedID == "" {
+		t.Fatalf("lost reply response was not deduplicated: %v %v", retried, e)
+	}
+	mailbox, e := try(bob, map[string]any{"action": "read", "agent_name": "scout", "inbox_id": receipt["inbox_id"]})
+	if e != nil {
+		t.Fatal(e)
+	}
+	copies := 0
+	for _, entry := range mailbox["messages"].([]any) {
+		if entry.(map[string]any)["message_id"] == committedID {
+			copies++
+		}
+	}
+	if copies != 1 {
+		t.Fatalf("stored reply copies=%d", copies)
+	}
 	setDelivery := func(messageID, delivery string) {
 		agentMessageMu.Lock()
 		defer agentMessageMu.Unlock()
@@ -155,6 +205,27 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("list_agents must show a published agent to everyone: %v", listed)
+	}
+	// PLAT-856: searching cannot reveal a private agent or omit matching public names.
+	if _, e := try(alice, map[string]any{"action": "update_purpose", "agent_name": "helper", "purpose": "Reviews parser changes"}); e != nil {
+		t.Fatal(e)
+	}
+	for _, query := range []string{"HELPER", "PARSER", "scout", "no-such-purpose"} {
+		page, e := try(carol, map[string]any{"action": "list_agents", "query": query})
+		if e != nil {
+			t.Fatal(e)
+		}
+		rows := page["agents"].([]any)
+		if (query == "HELPER" || query == "PARSER") && len(rows) != 1 || (query != "HELPER" && query != "PARSER") && len(rows) != 0 {
+			t.Fatalf("query %s: %v", query, rows)
+		}
+	}
+	now := time.Now()
+	for _, age := range []time.Duration{time.Hour, 13 * time.Hour} {
+		// A never-online registration uses CreatedAt, without inventing a last-seen ping.
+		if got := namedAgentDiscoverable(namedMessageAgent{CreatedAt: now.Add(-age)}, now); got != (age < 12*time.Hour) {
+			t.Fatal("never-seen cutoff", age, got)
+		}
 	}
 	// Discovery expires after 12 hours, while the stable address and inbox keep
 	// working. Neither received mail nor directory reads refresh the recipient.

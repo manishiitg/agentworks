@@ -105,7 +105,16 @@ func agentMessageSenderLine(m AgentLiveMessage) string {
 
 // MessageBlock renders one message: sender line, fenced body, and the
 // ack/reply addressing line.
-func MessageBlock(m AgentLiveMessage, attachmentID string) string {
+func AutomaticDeliveryReceipt(transport string) bool {
+	switch transport {
+	case "claude_hook", "codex_hook", "cursor_hook", "agy_hook", "claude_session", "codex_desktop", "codex_queue":
+		return true
+	default:
+		return false
+	}
+}
+
+func MessageBlock(m AgentLiveMessage, attachmentID string, transport string) string {
 	if m.Kind == "status" {
 		// Written by the server, not a peer: a plain status for the chat to pass on. It asks for nothing.
 		body, _ := sanitizeAgentMessageBody(m.Message)
@@ -129,8 +138,12 @@ func MessageBlock(m AgentLiveMessage, attachmentID string) string {
 		fmt.Fprintf(&b, "\n[message truncated: read the full text with the agentworks tool (action=read) inbox %s]", inboxID)
 	}
 	fmt.Fprintf(&b, "\n<<<END %s>>>\n", messageID)
-	fmt.Fprintf(&b, "reply: inbox %s · ack: message %s · connection %s · Acknowledge delivered once when received.",
-		inboxID, messageID, sanitizeAgentMessageToken(attachmentID))
+	fmt.Fprintf(&b, "reply: inbox %s · connection %s", inboxID, sanitizeAgentMessageToken(attachmentID))
+	if AutomaticDeliveryReceipt(transport) {
+		b.WriteString(" · Delivery receipt is handled automatically; do not send an ACK.")
+	} else {
+		fmt.Fprintf(&b, " · ack: message %s · Acknowledge delivered once when received.", messageID)
+	}
 	return b.String()
 }
 

@@ -1198,3 +1198,64 @@ func TestLegacyLifecycleRepairDoesNotReclaimMovedNames(t *testing.T) {
 		t.Fatalf("legacy repair reclaimed a moved name: %+v attaches=%d", out, attaches.Load())
 	}
 }
+
+// PLAT-856: a printed hook message's receipt must outlive the hook process.
+// The same helper must also retry a temporary outage before sending.
+func TestMessagingSurvivesRestartAndHookCallerExit(t *testing.T) {
+	var validates, sends, receipts atomic.Int32
+	accepted := make(chan struct{})
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/attachment") {
+			if validates.Add(1) == 1 {
+				w.WriteHeader(503)
+				return
+			}
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		var body struct{ Arguments map[string]any }
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Arguments["action"] == "ack" {
+			receipts.Add(1)
+			close(accepted)
+			<-release
+			_, _ = w.Write([]byte(`{"status":"acked"}`))
+			return
+		}
+		if body.Arguments["submission_id"] != "stable" {
+			t.Error("lost send identity")
+		}
+		if sends.Add(1) == 1 {
+			w.WriteHeader(502)
+			return
+		}
+		_, _ = w.Write([]byte(`{"accepted":true,"message_id":"original"}`))
+	}))
+	defer server.Close()
+	client, _ := New(server.URL, "token")
+	session := &localSession{Attachment: AgentAttachment{ID: "lease", AgentName: "a", Provider: "claude", SessionID: "s"}, HostKey: "h", client: client}
+	b := &localBridge{sessions: map[string]*localSession{localBridgeKey("claude", "s"): session}, changed: make(chan struct{})}
+	reply := b.mailboxCall(context.Background(), session, LocalBridgeRequest{Action: "send", Target: "agent:peer", Message: "body", SubmissionID: "stable"}, LocalBridgeReply{})
+	if reply.Error != "" || validates.Load() != 2 || sends.Load() != 2 {
+		t.Fatalf("send after restart: %+v validates=%d sends=%d", reply, validates.Load(), sends.Load())
+	}
+	caller, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan LocalBridgeReply, 1)
+	go func() {
+		done <- b.handle(context.Background(), caller, LocalBridgeRequest{Action: "ack", Provider: "claude", SessionID: "s", HostKey: "h", AttachmentID: "lease", MessageID: "original", Delivery: "delivered", Transport: "claude_hook"})
+	}()
+	select {
+	case <-accepted:
+	case <-time.After(time.Second):
+		close(release)
+		t.Fatal("receipt did not reach server")
+	}
+	cancel()
+	close(release)
+	got := <-done
+	if got.Error != "" || !strings.Contains(string(got.Result), "acked") || receipts.Load() != 1 {
+		t.Fatalf("hook exit lost receipt: %+v", got)
+	}
+}

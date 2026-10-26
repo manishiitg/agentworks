@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -223,6 +224,52 @@ func (c *Client) Tools(ctx context.Context) ([]Tool, error) {
 }
 
 func (c *Client) Call(ctx context.Context, name string, arguments map[string]any) (json.RawMessage, error) {
+	action, _ := arguments["action"].(string)
+	submission, _ := arguments["submission_id"].(string)
+	messageID, _ := arguments["message_id"].(string)
+	// Only server-deduplicated messaging writes may be replayed (PLAT-856).
+	if name == "messages" && (action == "send" && strings.TrimSpace(submission) != "" || action == "ack" && messageID != "") {
+		return retryAgentRequest(ctx, action, func(ctx context.Context) (json.RawMessage, error) { return c.callOnce(ctx, name, arguments) })
+	}
+	return c.callOnce(ctx, name, arguments)
+}
+
+// retryAgentRequest keeps retries in the original call, on the same server. No
+// local outbox is created and a failed/uncertain send is never called accepted.
+func retryAgentRequest(ctx context.Context, operation string, run func(context.Context) (json.RawMessage, error)) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	delay := 250 * time.Millisecond
+	for attempt := 1; ; attempt++ {
+		raw, err := run(ctx)
+		if err == nil || ctx.Err() != nil || !transientAgentRequest(err) {
+			return raw, err
+		}
+		log.Printf("[BRIDGE-RETRY] operation=%s attempt=%d delay_ms=%d", operation, attempt, delay.Milliseconds())
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, err
+		case <-timer.C:
+		}
+		delay = min(2*time.Second, delay*2)
+	}
+}
+
+func transientAgentRequest(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Status == http.StatusBadGateway || apiErr.Status == http.StatusServiceUnavailable || apiErr.Status == http.StatusGatewayTimeout
+	}
+	var network *net.OpError
+	return errors.As(err, &network) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
+}
+
+func (c *Client) callOnce(ctx context.Context, name string, arguments map[string]any) (json.RawMessage, error) {
 	if name == "" {
 		return nil, errors.New("tool name is required")
 	}

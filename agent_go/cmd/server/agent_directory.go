@@ -19,6 +19,7 @@ func (api *StreamingAPI) handleAgentDirectory(w http.ResponseWriter, r *http.Req
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	filterAgentDirectory(out, r.URL.Query().Get("query"))
 	externalJSON(w, out)
 }
 
@@ -150,4 +151,29 @@ func agentDirectoryFunctions(functions []crewFunction) []map[string]interface{} 
 		out = append(out, map[string]interface{}{"name": fn.Name, "description": fn.Description})
 	}
 	return out
+}
+
+// Filter only the already-authorized projection; searching never broadens access.
+func filterAgentDirectory(directory map[string]any, query string) {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return
+	}
+	for _, key := range []string{"agents", "chats_inside_agentworks"} {
+		rows, ok := directory[key].([]map[string]any)
+		if !ok {
+			continue
+		}
+		filtered := make([]map[string]any, 0)
+		for _, row := range rows {
+			for _, field := range []string{"agent_name", "name", "label", "purpose", "description", "display"} {
+				value, _ := row[field].(string)
+				if strings.Contains(strings.ToLower(value), query) {
+					filtered = append(filtered, row)
+					break
+				}
+			}
+		}
+		directory[key] = filtered
+	}
 }

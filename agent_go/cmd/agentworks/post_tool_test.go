@@ -72,6 +72,15 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 	})}
 	go srv.Serve(listener)
 	defer srv.Close()
+	// PLAT-856: a hook may consume its whole deadline before printing the body.
+	// Every emitted ID still reaches the helper, even when the old context ended.
+	expired, cancel := context.WithCancel(context.Background())
+	cancel()
+	receiptAfterEmit(expired, root, &options{}, agentworksclient.LocalBridgeRequest{Provider: "claude", SessionID: cursorTestSession, HostKey: "fixture-host", Transport: "claude_hook"}, []agentworksclient.AgentLiveMessage{{MessageID: "message"}, {MessageID: "message"}})
+	if receipts.Load() != 2 {
+		t.Fatal("emitted batch lost receipts to expired hook context")
+	}
+
 	for _, provider := range []string{"claude", "codex", "cursor"} {
 		for i, name := range []string{"empty", "pending", "slow", "refused_receipt", "slow_receipt"} {
 			mode.Store(int32(i))
@@ -115,8 +124,8 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 			if i == 3 && !strings.Contains(trace, `cause=helper_refused detail="fixture receipt refused"`) || i == 4 && !strings.Contains(trace, `cause=context_done detail="context deadline exceeded"`) {
 				t.Fatal("receipt failure cause missing", trace)
 			}
-			if !strings.Contains(output.String(), "MID_TURN_MARKER") || !strings.Contains(strings.ToLower(output.String()), "acknowledge delivered once") {
-				t.Fatal("body or receipt reminder lost", output.String())
+			if !strings.Contains(output.String(), "MID_TURN_MARKER") || strings.Contains(strings.ToLower(output.String()), "acknowledge delivered once") {
+				t.Fatal("body missing or redundant manual receipt requested", output.String())
 			}
 			if provider == "codex" && (!strings.Contains(output.String(), `"hookEventName":"PostToolUse"`) || !strings.Contains(output.String(), `"additionalContext"`)) {
 				t.Fatal(output.String())
