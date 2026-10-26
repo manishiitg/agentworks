@@ -445,6 +445,18 @@ func TestRecordOrQueueBlockedScheduleRetainsLatestOccurrence(t *testing.T) {
 	if len(rows) != 1 || !rows[0].ScheduledFor.Equal(second) {
 		t.Fatalf("queue_latest rows = %+v, want one occurrence at %s", rows, second)
 	}
+	if !rows[0].ExpiresAt.IsZero() {
+		t.Fatal("busy occurrence retained a max-start expiry")
+	}
+	other := *sctx
+	other.Schedule.ID = "another-job"
+	if !svc.recordOrQueueBlockedSchedule(context.Background(), &other, "busy", second) {
+		t.Fatal("other job was not queued")
+	}
+	rows, err = store.ListPendingOccurrences(context.Background())
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("latest occurrence dropped another schedule: %+v, %v", rows, err)
+	}
 }
 
 func TestScheduleDependencyDispositionUsesMatchingOccurrenceAndPolicy(t *testing.T) {

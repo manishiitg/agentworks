@@ -62,11 +62,9 @@ func scheduleMessagesNeedExplicitReason(messages []string) (bool, string) {
 	return false, ""
 }
 
+// Scheduled messages are the person's own instructions, just like a chat turn.
+// PLAT-871-15 removes the extra reason/approval requirement for that action.
 func validateScheduleMessages(messages []string, directMessagesReason string) error {
-	needsReason, signal := scheduleMessagesNeedExplicitReason(messages)
-	if needsReason && strings.TrimSpace(directMessagesReason) == "" {
-		return fmt.Errorf("direct schedule messages are supported, but this queue needs direct_messages_reason because %s; explain why this work is genuinely schedule-specific and acknowledge that it lacks canonical step-level learnings, validation/retry, and run attribution, or move the durable procedure into a planned route", signal)
-	}
 	return nil
 }
 

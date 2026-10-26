@@ -15,7 +15,7 @@ func TestOrganizeBrainScheduleCadenceIsPerPerson(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := map[string]string{}
-	svc := NewProductScheduleService(nil, registry)
+	svc := NewProjectActionDispatcher(nil, registry)
 	svc.users = func(string) []string { return []string{"u1", "u2"} }
 	svc.readFile = func(_ context.Context, path string) (string, bool, error) { c, ok := files[path]; return c, ok, nil }
 	svc.writeFile = func(_ context.Context, path, content string) error { files[path] = content; return nil }

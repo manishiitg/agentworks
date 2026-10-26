@@ -25,7 +25,7 @@ func externalWatcherDefinitions(add func(string, string, bool, bool, map[string]
 
 func (api *StreamingAPI) externalWatcherCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
-	if !externalWatchersAllowed(claims) || api.productSchedules == nil {
+	if !externalWatchersAllowed(claims) || api.projectActions == nil {
 		externalError(w, http.StatusForbidden, "insufficient_scope", "Watchers require the source's execution scope.")
 		return
 	}
@@ -80,7 +80,7 @@ func (api *StreamingAPI) externalWatcherCall(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	out, err := api.productSchedules.conditionService().manage(internalBotRequestContext(ctx, claims.UserID), claims.UserID, profile, project, args)
+	out, err := api.projectActions.conditionService().manage(internalBotRequestContext(ctx, claims.UserID), claims.UserID, profile, project, args)
 	if err != nil {
 		externalError(w, 400, "condition_rejected", err.Error())
 		return
@@ -89,7 +89,7 @@ func (api *StreamingAPI) externalWatcherCall(w http.ResponseWriter, r *http.Requ
 }
 
 func (api *StreamingAPI) registerWorkflowWatcherTools(reg definitionToolRegistrar, owner, workspace string) error {
-	if api.productSchedules == nil {
+	if api.projectActions == nil {
 		return nil
 	}
 	manifest, found, err := ReadWorkflowManifest(context.Background(), workspace)

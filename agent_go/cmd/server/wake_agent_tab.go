@@ -47,7 +47,7 @@ func wakeReasonForRun(status string, producedRunEvidence bool) string {
 // wakeAgentTab messages the workflow's wake tab when its run ended badly. It
 // never changes the run's recorded result and never blocks the scheduler.
 func (s *SchedulerService) wakeAgentTab(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, reason, errMsg, runID string) {
-	if s == nil || s.api == nil || s.api.productSchedules == nil || manifest == nil || sctx == nil {
+	if s == nil || s.api == nil || s.api.projectActions == nil || manifest == nil || sctx == nil {
 		return
 	}
 	if sctx.WebhookInput != nil {
@@ -86,7 +86,7 @@ func (s *SchedulerService) wakeAgentTab(ctx context.Context, sctx *ScheduleConte
 
 	go func() {
 		bg := internalBotRequestContext(context.WithoutCancel(ctx), owner)
-		if err := s.api.productSchedules.wakeCrewTab(bg, owner, wake.CrewID, wake.ChatID, message); err != nil {
+		if err := s.api.projectActions.wakeCrewTab(bg, owner, wake.CrewID, wake.ChatID, message); err != nil {
 			scheduleLogf("[WAKE-TAB] workflow=%s crew=%s chat=%s run=%s not delivered: %v", sctx.WorkspacePath, wake.CrewID, wake.ChatID, runID, err)
 			return
 		}
@@ -97,7 +97,7 @@ func (s *SchedulerService) wakeAgentTab(ctx context.Context, sctx *ScheduleConte
 // wakeCrewTab runs the owner's recurring check for one Crew tab once, now, with
 // the given message in place of its saved one. If the tab is busy the message
 // waits behind the live turn. A paused check stays paused.
-func (s *ProductScheduleService) wakeCrewTab(ctx context.Context, owner, crewID, chatID, message string) error {
+func (s *ProjectActionDispatcher) wakeCrewTab(ctx context.Context, owner, crewID, chatID, message string) error {
 	jobs, err := s.JobsForUser(ctx, owner)
 	if err != nil {
 		return err

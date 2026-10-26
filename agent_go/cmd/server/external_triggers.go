@@ -78,7 +78,7 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 			return
 		}
 	}
-	if api.productSchedules == nil {
+	if api.projectActions == nil {
 		externalError(w, 503, "triggers_unavailable", "Crew triggers are unavailable.")
 		return
 	}
@@ -102,7 +102,7 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 		}
 		return fallback
 	}
-	triggers, err := api.productSchedules.projectWebhookConfigs(ctx, userID, profileID, crewID)
+	triggers, err := api.projectActions.projectWebhookConfigs(ctx, userID, profileID, crewID)
 	if err != nil {
 		externalError(w, 404, "not_found", err.Error())
 		return
@@ -151,7 +151,7 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 		if action == "update" {
 			saveID = id
 		}
-		response, _, err := api.productSchedules.saveProductWebhookConfig(ctx, userID, req, saveID)
+		response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, req, saveID)
 		if err != nil {
 			externalError(w, 400, "trigger_rejected", err.Error())
 			return
@@ -159,10 +159,10 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 		externalJSON(w, response)
 	case "runs":
 		query := url.Values{"profile_id": {profileID}, "project_id": {crewID}, "limit": {fmt.Sprint(externalInt(args, "limit", 20))}}
-		status, body := scheduleHandler(r, api.productSchedules.listProductWebhookRuns, http.MethodGet, "/api/product-webhooks/"+url.PathEscape(id)+"/runs", map[string]string{"id": id}, query, nil)
+		status, body := scheduleHandler(r, api.projectActions.listProductWebhookRuns, http.MethodGet, "/api/product-webhooks/"+url.PathEscape(id)+"/runs", map[string]string{"id": id}, query, nil)
 		externalScheduleRespond(w, status, body)
 	case "delete":
-		if err := api.productSchedules.deleteProductWebhookConfig(ctx, userID, profileID, crewID, id); err != nil {
+		if err := api.projectActions.deleteProductWebhookConfig(ctx, userID, profileID, crewID, id); err != nil {
 			externalError(w, 400, "trigger_rejected", err.Error())
 			return
 		}

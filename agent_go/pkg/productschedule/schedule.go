@@ -12,6 +12,7 @@ package productschedule
 import (
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 	"strings"
 	"time"
 
@@ -23,6 +24,8 @@ import (
 // ("every 24 hours, around 8am"), the cron form the one a product author
 // writes in product.yaml.
 type Schedule struct {
+	// When is the common project's clock, not another saved product shape.
+	When        *projectactions.When     `json:"-" yaml:"-"`
 	Condition   *conditiontrigger.Config `json:"condition,omitempty" yaml:"condition,omitempty"`
 	ID          string                   `json:"id" yaml:"id"`
 	Name        string                   `json:"name" yaml:"name"`
@@ -84,8 +87,9 @@ func Validate(s Schedule) error {
 	}
 	hasCron := strings.TrimSpace(s.CronExpression) != ""
 	hasRunAt := strings.TrimSpace(s.RunAt) != ""
+	hasDates := s.When != nil && len(s.When.Dates) > 0
 	forms := 0
-	for _, present := range []bool{hasCron, s.CadenceHours > 0, hasRunAt} {
+	for _, present := range []bool{hasCron, s.CadenceHours > 0, hasRunAt, hasDates} {
 		if present {
 			forms++
 		}

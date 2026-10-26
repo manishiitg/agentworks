@@ -1,0 +1,147 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
+)
+
+// PLAT-871-15: moving timer storage must retain the caller, message sequence,
+// selected route and dependency, without interpreting old timer arrays.
+func TestCommonProjectScheduleStorePreservesWorkAndCaller(t *testing.T) {
+	_, _ = newScheduleRunWorkspaceStub(t)
+	ctx := context.Background()
+	root := "Workflow/example"
+	record := projectactions.Schedule{ID: "daily", Name: "Daily", Project: projectactions.Project{Kind: "goal", ID: "example"},
+		When:   projectactions.When{Cron: "0 9 * * *", Timezone: "UTC", After: &projectactions.After{Schedules: []string{"collect"}, Outcome: "any_terminal", DelayMinutes: 5, Deadline: "12:00"}},
+		Action: projectactions.Action{Type: "message"}, RunAs: "owner", Enabled: false,
+		Input: json.RawMessage(`{"messages":["Collect evidence.","Check it.","Report it."],"routes":{"router":"report"}}`)}
+	if err := writeProjectSchedules(ctx, root, []projectactions.Schedule{record}); err != nil {
+		t.Fatal(err)
+	}
+	manifest := &WorkflowManifest{ID: "example", Access: &WorkflowAccess{Owners: []string{"owner"}},
+		Schedules: []WorkflowSchedule{{ID: "retired-array", Enabled: true}, {ID: "hook", ScheduleType: "webhook"}}}
+	if err := loadWorkflowTimerActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Schedules) != 2 || manifest.Schedules[0].ID != "hook" {
+		t.Fatalf("retired timer or missing hook: %+v", manifest.Schedules)
+	}
+	got := manifest.Schedules[1]
+	if got.ID != "daily" || got.Enabled || got.RunAs != "owner" || len(got.Messages) != 3 || got.Messages[2] != "Report it." || got.RouteSelections["router"] != "report" || got.DependencyDeadline != "12:00" || got.AfterDelayMinutes != 5 {
+		t.Fatalf("saved work changed: %+v", got)
+	}
+	if err := saveWorkflowTimerActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := loadWorkflowTimerActions(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Access.Owners = []string{"another-owner"}
+	if err := loadWorkflowTimerActions(ctx, root, manifest); err == nil {
+		t.Fatal("saved caller gained another owner's authority")
+	}
+	crewRoot := "Crew/example-example"
+	record.Project.Kind = "crew"
+	record.When.After = nil
+	record.Action.Tab, record.Action.Conversation = "example:chat:research", "isolated"
+	if err := writeProjectSchedules(ctx, crewRoot, []projectactions.Schedule{record}); err != nil {
+		t.Fatal(err)
+	}
+	crew := productProjectManifest{ID: "example", OwnerID: "owner"}
+	if err := loadCrewTimerActions(ctx, crewRoot, &crew); err != nil {
+		t.Fatal(err)
+	}
+	if len(crew.Schedules) != 1 || !crew.Schedules[0].Isolated || crew.Schedules[0].ChatKey != record.Action.Tab || len(crew.Schedules[0].Messages) != 3 {
+		t.Fatalf("Crew chat destination changed: %+v", crew.Schedules)
+	}
+}
+
+// PLAT-871-14/15: all project clocks skip the sleep/offline gap and may start
+// only the newest occurrence inside the two-minute allowance.
+func TestSharedProjectClockSkipsMissedCrewOccurrences(t *testing.T) {
+	day := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	job := productScheduleJob{ProjectID: "example", Profile: agentprofiles.Profile{ID: "work"},
+		Schedule: productschedule.Schedule{ID: "daily", Enabled: true, CronExpression: "0 9 * * *", Timezone: "UTC", CreatedAt: day.Format(time.RFC3339)}}
+	late := projectTimerDecision(job, day.Add(10*time.Hour))
+	if late.Run || !late.ScheduledFor.Equal(day.Add(9*time.Hour)) {
+		t.Fatalf("missed occurrence replayed or cursor lost: %+v", late)
+	}
+	nextDay := day.Add(24 * time.Hour)
+	job.State.LastAttemptAt = late.ScheduledFor.Format(time.RFC3339)
+	ontime := projectTimerDecision(job, nextDay.Add(9*time.Hour+time.Minute))
+	if !ontime.Run || !ontime.ScheduledFor.Equal(nextDay.Add(9*time.Hour)) {
+		t.Fatalf("next on-time occurrence failed: %+v", ontime)
+	}
+	job.State.LastAttemptAt = ontime.ScheduledFor.Format(time.RFC3339)
+	if d := projectTimerDecision(job, nextDay.Add(9*time.Hour+90*time.Second)); d.Run {
+		t.Fatal("an already accepted occurrence replayed")
+	}
+}
+
+// PLAT-871-15: schedules.json is not authority to become another account.
+// Check an edited file against real owner resolution, including empty manifests.
+func TestProjectScheduleCallerCannotBeChangedByEditingFiles(t *testing.T) {
+	_, _ = newScheduleRunWorkspaceStub(t)
+	registry := newTestRegistry(t)
+	previous := defaultProjectOwnersOverride
+	defaultProjectOwnersOverride = registry
+	t.Cleanup(func() {
+		defaultProjectOwnersOverride = previous
+		crewOwners.mu.Lock()
+		crewOwners.entries = map[string]crewOwnerEntry{}
+		crewOwners.mu.Unlock()
+	})
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "example-example", OwnerID: "owner", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, kind, runAs       string
+		multi, noOwner, allowed bool
+	}{
+		{"goal owner", "goal", "owner", true, false, true},
+		{"goal foreign account", "goal", "other", true, false, false},
+		{"goal no owner", "goal", "other", true, true, false},
+		{"relay owner", "relay", "owner", true, false, true},
+		{"relay foreign account", "relay", "other", true, false, false},
+		{"relay no owner", "relay", "other", true, true, false},
+		{"local fallback", "goal", GetDefaultUserID(), false, true, true},
+		{"local foreign account", "goal", "other", false, true, false},
+		{"crew registered owner", "crew", "owner", true, true, true},
+		{"crew foreign account", "crew", "other", true, true, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.multi {
+				t.Setenv("MULTI_USER_MODE", "true")
+			} else {
+				t.Setenv("MULTI_USER_MODE", "false")
+			}
+			root := "Workflow/example"
+			if test.kind == "crew" {
+				root = "Crew/example-example"
+			}
+			record := projectactions.Schedule{ID: "daily", Name: "Daily", Project: projectactions.Project{Kind: test.kind, ID: "example"}, When: projectactions.When{Cron: "0 9 * * *", Timezone: "UTC"}, Action: projectactions.Action{Type: "run"}, RunAs: test.runAs, Input: json.RawMessage(`{}`)}
+			if err := writeProjectSchedules(context.Background(), root, []projectactions.Schedule{record}); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			if test.kind == "crew" {
+				err = loadCrewTimerActions(context.Background(), root, &productProjectManifest{ID: "example"})
+			} else {
+				m := &WorkflowManifest{ID: "example", Kind: test.kind}
+				if !test.noOwner {
+					m.Access = &WorkflowAccess{Owners: []string{"owner"}}
+				}
+				err = loadWorkflowTimerActions(context.Background(), root, m)
+			}
+			if (err == nil) != test.allowed {
+				t.Fatalf("caller %s: allowed=%v: %v", test.runAs, test.allowed, err)
+			}
+		})
+	}
+}

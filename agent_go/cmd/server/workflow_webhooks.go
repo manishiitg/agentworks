@@ -667,7 +667,7 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 				http.Error(w, "caller workflow is unavailable or access denied", 400)
 				return
 			}
-		} else if s.api == nil || s.api.productSchedules == nil || !s.api.productSchedules.crewProjectExists(r.Context(), productWorkspaceUserID(r.Context()), caller.ProfileID, caller.ID) {
+		} else if s.api == nil || s.api.projectActions == nil || !s.api.projectActions.crewProjectExists(r.Context(), productWorkspaceUserID(r.Context()), caller.ProfileID, caller.ID) {
 			http.Error(w, "caller crew project not found", 400)
 			return
 		}

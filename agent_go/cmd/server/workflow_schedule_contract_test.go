@@ -70,37 +70,9 @@ func TestManifestRefusesExtraFullRunMessageForSavedRoute(t *testing.T) {
 	}
 }
 
-func TestValidateScheduleMessagesRequiresReasonForInlineProcedure(t *testing.T) {
-	procedure := []string{"Run sqlite3 db/db.sqlite SELECT * FROM queue"}
-	if err := validateScheduleMessages(procedure, ""); err == nil {
-		t.Fatal("inline SQL procedure without rationale unexpectedly accepted")
-	}
-	if err := validateScheduleMessages(procedure, "This is a one-off schedule-specific reconciliation conversation; it is not reusable plan behavior."); err != nil {
-		t.Fatalf("intentional direct procedure rejected: %v", err)
-	}
-	if err := validateScheduleMessages([]string{"Run the selected workflow route."}, ""); err != nil {
-		t.Fatalf("compact trigger rejected: %v", err)
+// PLAT-871-15: a person's own scheduled messages need no extra rationale.
+func TestGoalScheduleAcceptsOwnMessagesWithoutExtraReason(t *testing.T) {
+	if err := validateScheduleMessages([]string{"Collect evidence.", "SELECT * FROM queue", "Report it."}, ""); err != nil {
+		t.Fatalf("scheduled chat request refused: %v", err)
 	}
 }
-
-func TestValidateScheduleMessagesRequiresReasonForSequentialConversation(t *testing.T) {
-	messages := []string{"Collect the current evidence.", "Challenge the result and summarize it."}
-	if err := validateScheduleMessages(messages, ""); err == nil {
-		t.Fatal("multi-message direct conversation without rationale unexpectedly accepted")
-	}
-	reason := "The second turn intentionally critiques transient context from the first and is unique to this calendar event."
-	if err := validateScheduleMessages(messages, reason); err != nil {
-		t.Fatalf("direct conversation with rationale rejected: %v", err)
-	}
-	if advisory := scheduleMessagesAdvisory(messages, reason); !strings.Contains(advisory, "not canonical plan steps") {
-		t.Fatalf("advisory does not disclose lifecycle tradeoff: %q", advisory)
-	}
-}
-
-// TestUpgradeQueriesNeverNamePlatTickets guards a real mistake made while
-// writing upgradeDedicatedPulseSchedule and workflow-tools.md's
-// periodic-Pulse guidance: this text runs live on operators' own workflows,
-// on their own machines — an internal ticket number in it is meaningless
-// noise to them, not useful context. Scoped to the upgrade query constants
-// specifically, not the whole package, since a Go doc comment referencing a
-// ticket for engineers reading this source is a different, legitimate thing.

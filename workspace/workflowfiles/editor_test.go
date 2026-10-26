@@ -85,6 +85,14 @@ func TestEditorGuardsRevisionsAndDurableRetries(t *testing.T) {
 			t.Fatalf("allowed protected path %q", p)
 		}
 	}
+	// PLAT-871-15: even an unrestricted files.write grant cannot change the
+	// server-bound scheduled caller; ordinary project files remain writable.
+	for _, p := range []string{"Workflow/example/schedules.json", "Crew/example/SCHEDULES.JSON"} {
+		_, err := editor.Write(ctx, WriteRequest{Root: ".", Path: p, Content: "{}", ExpectedRevision: MissingRevision, RequestID: p, Actor: "owner"})
+		if StatusCode(err) != 403 {
+			t.Fatalf("managed schedule files.write: %s: %v", p, err)
+		}
+	}
 	// Denied retries stay denied even after a successful receipt exists.
 	request.Guard = &FolderGuard{}
 	if _, err := editor.Write(ctx, request); StatusCode(err) != 403 {

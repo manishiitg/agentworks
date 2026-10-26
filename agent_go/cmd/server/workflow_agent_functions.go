@@ -16,7 +16,7 @@ import (
 // Source workspace/run/step identity comes from the controller, never model JSON.
 func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) stepworkflow.AgentFunctionToolFactory {
 	claims := GetUserFromContext(ctx)
-	if api == nil || api.scheduler == nil || api.productSchedules == nil || claims == nil || strings.TrimSpace(claims.UserID) == "" {
+	if api == nil || api.scheduler == nil || api.projectActions == nil || claims == nil || strings.TrimSpace(claims.UserID) == "" {
 		return nil
 	}
 	actor := *claims

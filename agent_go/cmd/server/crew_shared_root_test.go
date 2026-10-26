@@ -53,7 +53,7 @@ func TestSharedCrewSchedulesAndWebhooksAreDiscoveredByTheirOwner(t *testing.T) {
 	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	svc := NewProductScheduleService(nil, registry)
+	svc := NewProjectActionDispatcher(nil, registry)
 	svc.users = func(string) []string { return []string{fixtureUserA, fixtureUserB} }
 
 	jobs, err := svc.projectJobsForUser(f.Ctx(fixtureUserA), fixtureUserA, profile, nil)

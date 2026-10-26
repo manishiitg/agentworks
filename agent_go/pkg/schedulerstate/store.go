@@ -413,12 +413,12 @@ func (s *Store) checkPendingPriority(ctx context.Context, tx *sql.Tx, run Run) e
 			continue // Deleted, disabled, or independently parallel schedules.
 		}
 		due, dueErr := parseTime(dueText.String)
-		expiry, expiryErr := parseTime(expiryText.String)
-		if !dueText.Valid || !expiryText.Valid || dueErr != nil || expiryErr != nil || due.IsZero() || expiry.IsZero() {
+		_, expiryErr := parseTime(expiryText.String)
+		if !dueText.Valid || !expiryText.Valid || dueErr != nil || expiryErr != nil || due.IsZero() {
 			s.warnInvalidPending(run.ScopeType, run.ScopeID, id)
 			continue
 		}
-		if run.StartedAt.Before(expiry) && due.Before(run.ScheduledFor) {
+		if due.Before(run.ScheduledFor) {
 			return fmt.Errorf("%w: schedule %s due %s is waiting first", ErrRunAlreadyActive, id, formatTime(due))
 		}
 	}
@@ -711,9 +711,6 @@ func (s *Store) UpsertPendingOccurrence(ctx context.Context, pending PendingOccu
 	if strings.TrimSpace(pending.Policy) == "" {
 		pending.Policy = "queue_latest"
 	}
-	if pending.ExpiresAt.IsZero() {
-		return fmt.Errorf("expires_at is required")
-	}
 	base := `INSERT INTO schedule_pending_occurrences (
 		scope_type, scope_id, schedule_id, scheduled_for, latest_scheduled_for, queued_at,
 		expires_at, trigger_source, policy, occurrence_count, reason
@@ -774,7 +771,7 @@ func (s *Store) ListPendingOccurrences(ctx context.Context) ([]PendingOccurrence
 		valid := true
 		for _, field := range times {
 			parsed, parseErr := parseTime(field.raw.String)
-			if !field.raw.Valid || parseErr != nil || parsed.IsZero() {
+			if !field.raw.Valid || parseErr != nil || (parsed.IsZero() && field.dest != &item.ExpiresAt) {
 				valid = false
 				break
 			}

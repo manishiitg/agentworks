@@ -18,7 +18,7 @@ import (
 // turn replaced. Pin the shared-tab decision across native chat, website and MCP.
 func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
-	f.api.productSchedules = NewProductScheduleService(f.api, f.api.agentProfiles)
+	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
 	const callerRoot = "Crew/calling-team"
 	f.write(t, callerRoot+"/product.json", `{"schema_version":1,"product":"work","id":"calling","title":"Calling Team","session_id":"session-calling"}`)
 	f.write(t, callerRoot+"/workflow.json", `{"id":"calling","label":"Calling Team","created_by":"other"}`)

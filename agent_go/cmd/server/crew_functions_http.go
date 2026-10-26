@@ -19,7 +19,7 @@ import (
 
 const crewFunctionRecentCallsLimit = 25
 
-func (s *ProductScheduleService) crewFunctionTarget(r *http.Request) (triggerTarget, string, int, string) {
+func (s *ProjectActionDispatcher) crewFunctionTarget(r *http.Request) (triggerTarget, string, int, string) {
 	profileID, projectID := productWebhookCoordinates(r)
 	if profileID == "" {
 		profileID = "work"
@@ -94,7 +94,7 @@ func recentCrewFunctionCalls(targetID, requesterID string) []crewFunctionCallVie
 	return views
 }
 
-func (s *ProductScheduleService) listCrewFunctionsHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *ProjectActionDispatcher) listCrewFunctionsHTTP(w http.ResponseWriter, r *http.Request) {
 	target, _, status, message := s.crewFunctionTarget(r)
 	if status != 0 {
 		http.Error(w, message, status)
@@ -118,7 +118,7 @@ func (s *ProductScheduleService) listCrewFunctionsHTTP(w http.ResponseWriter, r 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"functions": views, "calls": recentCrewFunctionCalls(target.CrewID, GetUserIDFromContext(r.Context()))})
 }
 
-func (s *ProductScheduleService) deleteCrewFunctionHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *ProjectActionDispatcher) deleteCrewFunctionHTTP(w http.ResponseWriter, r *http.Request) {
 	target, _, status, message := s.crewFunctionTarget(r)
 	if status != 0 {
 		http.Error(w, message, status)

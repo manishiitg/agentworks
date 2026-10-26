@@ -78,12 +78,19 @@ func TestScheduleOldestDueWinsAdmission(t *testing.T) {
 	if err := store.ForceTerminal(ctx, schedulerstate.Transition{RunID: "morning-first", To: schedulerstate.StateCompleted, At: at}); err != nil {
 		t.Fatal(err)
 	}
-	// Expired and disabled rows cannot block the next waiting occurrence.
-	queue("morning", due(2, 30), due(4, 4), at)
+	// PLAT-871-15: the retired max-start expiry must not discard accepted work.
+	// Different schedules retain their own waiting occurrence, oldest due first.
+	queue("morning", due(3, 0), due(4, 4), at)
 	queue("disabled", due(1, 0), due(4, 4), due(5, 0))
 	watcher.ScheduledFor, watcher.TriggerSource = due(3, 50), "queued"
+	if err := svc.claimScheduleRun(ctx, watcher, "watcher-cannot-expire-morning", at); !errors.Is(err, schedulerstate.ErrRunAlreadyActive) {
+		t.Fatalf("accepted earlier job expired: %v", err)
+	}
+	if err := store.DeletePendingOccurrence(ctx, "workflow", "Workflow/priority", "morning"); err != nil {
+		t.Fatal(err)
+	}
 	if err := svc.claimScheduleRun(ctx, watcher, "watcher-after-morning", at); err != nil {
-		t.Fatalf("expired/disabled occurrence blocked the next admission: %v", err)
+		t.Fatalf("disabled occurrence blocked the next admission: %v", err)
 	}
 	if err := store.ForceTerminal(ctx, schedulerstate.Transition{RunID: "watcher-after-morning", To: schedulerstate.StateCompleted, At: at}); err != nil {
 		t.Fatal(err)

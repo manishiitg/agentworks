@@ -14,7 +14,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
-func newCrewCreationTestEnv(t *testing.T) (*ProductScheduleService, *mockWorkspaceAPI, context.Context) {
+func newCrewCreationTestEnv(t *testing.T) (*ProjectActionDispatcher, *mockWorkspaceAPI, context.Context) {
 	t.Helper()
 	return newCrewCreationTestEnvWithOptions(t, nil)
 }
@@ -40,7 +40,7 @@ func workCrewTestProfile(providerOptions []agentprofiles.ProviderOption) agentpr
 	}
 }
 
-func newCrewCreationTestEnvWithOptions(t *testing.T, providerOptions []agentprofiles.ProviderOption) (*ProductScheduleService, *mockWorkspaceAPI, context.Context) {
+func newCrewCreationTestEnvWithOptions(t *testing.T, providerOptions []agentprofiles.ProviderOption) (*ProjectActionDispatcher, *mockWorkspaceAPI, context.Context) {
 	t.Helper()
 	ensureProjectStateRoot(t)
 	t.Setenv("MULTI_USER_MODE", "true")
@@ -50,7 +50,7 @@ func newCrewCreationTestEnvWithOptions(t *testing.T, providerOptions []agentprof
 	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	svc := NewProductScheduleService(nil, registry)
+	svc := NewProjectActionDispatcher(nil, registry)
 	// Hermetic availability fixtures: github is connected, gitlab is
 	// configured but disconnected, SHARED_GH is global, and the creating
 	// workflow holds no scoped secrets.
@@ -685,7 +685,7 @@ func TestCreateCrewProjectDuplicateTitles(t *testing.T) {
 }
 
 func TestCreateCrewProjectAvailability(t *testing.T) {
-	newEnv := func(t *testing.T) (*ProductScheduleService, *mockWorkspaceAPI, context.Context) {
+	newEnv := func(t *testing.T) (*ProjectActionDispatcher, *mockWorkspaceAPI, context.Context) {
 		t.Helper()
 		return newCrewCreationTestEnv(t)
 	}

@@ -10,7 +10,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
-func newCrewBuilderToolsTestEnv(t *testing.T) (map[string]recordedTool, *mockWorkspaceAPI, string, *ProductScheduleService) {
+func newCrewBuilderToolsTestEnv(t *testing.T) (map[string]recordedTool, *mockWorkspaceAPI, string, *ProjectActionDispatcher) {
 	t.Helper()
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true}]}`)
@@ -36,7 +36,7 @@ func newCrewBuilderToolsTestEnv(t *testing.T) (map[string]recordedTool, *mockWor
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 
-	api := &StreamingAPI{productSchedules: svc}
+	api := &StreamingAPI{projectActions: svc}
 	reg := &recordingRegistrar{}
 	if err := api.registerCrewBuilderTools(reg, "owner", "Workflow/test"); err != nil {
 		t.Fatal(err)

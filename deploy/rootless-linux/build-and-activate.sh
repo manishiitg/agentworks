@@ -100,6 +100,7 @@ install -m 0755 "$REPO_ROOT/scripts/migrations/fold-crew-role.py" "$BUILD_DIR/mi
 install -m 0755 "$REPO_ROOT/scripts/remove-autopilot-engine.py" "$BUILD_DIR/migrations/remove-autopilot-engine.py"
 install -m 0755 "$REPO_ROOT/scripts/simplify-workflow-settings.py" "$BUILD_DIR/migrations/simplify-workflow-settings.py"
 install -m 0755 "$REPO_ROOT/scripts/group-platform-tool-selections.py" "$BUILD_DIR/migrations/group-platform-tool-selections.py"
+install -m 0755 "$REPO_ROOT/scripts/migrate-project-schedules.py" "$BUILD_DIR/migrations/migrate-project-schedules.py"
 install -m 0644 "$REPO_ROOT/agent_go/pkg/platformtools/dashboard-actions.json" "$BUILD_DIR/migrations/dashboard-actions.json"
 install -m 0644 "$REPO_ROOT/agent_go/pkg/platformtools/configuration-actions.json" "$BUILD_DIR/migrations/configuration-actions.json"
 install -m 0644 "$REPO_ROOT/agent_go/pkg/platformtools/data-actions.json" "$BUILD_DIR/migrations/data-actions.json"
@@ -474,6 +475,8 @@ fi
 # rest of this script keeps its own environment). Personal files are
 # archived, never deleted, and only after every secret for that user
 # migrated cleanly; anything unreadable is reported and left in place.
+# PLAT-871-15 runs last, with the old agent stopped and all prior shape hooks complete.
+python3 "$BUILD_DIR/migrations/migrate-project-schedules.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/project-schedules-$(date -u +%Y%m%dT%H%M%SZ)"
 systemctl --user daemon-reload
 systemctl --user restart "$PRODUCT-workspace"
 sleep 2

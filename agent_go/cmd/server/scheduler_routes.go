@@ -644,7 +644,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 		if req.EntityType == "product" {
-			if svc == nil || svc.api == nil || svc.api.productSchedules == nil {
+			if svc == nil || svc.api == nil || svc.api.projectActions == nil {
 				http.Error(w, "product schedules are not available", http.StatusNotFound)
 				return
 			}
@@ -666,7 +666,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			job, err := svc.api.productSchedules.CreateProjectSchedule(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, productschedule.Schedule{
+			job, err := svc.api.projectActions.CreateProjectSchedule(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, productschedule.Schedule{
 				Name: req.Name, Description: req.Description, Enabled: req.Enabled,
 				CronExpression: req.CronExpression, Timezone: scheduleTimezoneOrDefault(req.Timezone), Messages: req.Messages, Isolated: isolated, ChatKey: chatKey,
 			})
@@ -674,10 +674,10 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			runsWorkspace, _ := svc.api.productSchedules.RunsWorkspace(r.Context(), job)
+			runsWorkspace, _ := svc.api.projectActions.RunsWorkspace(r.Context(), job)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(withScheduleStatusText(r.Context(), svc.api.productSchedules.jobResponse(job, runsWorkspace)))
+			_ = json.NewEncoder(w).Encode(withScheduleStatusText(r.Context(), svc.api.projectActions.jobResponse(job, runsWorkspace)))
 			return
 		}
 		if req.WorkspacePath != "" && !requireWorkflowOwner(w, r, req.WorkspacePath) {
@@ -1153,7 +1153,7 @@ func triggerScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 }
 
 // resetHistoryScheduledJobHandler clears an isolated product schedule's own
-// conversation (see ProductScheduleService.ResetHistory) — a workflow
+// conversation (see ProjectActionDispatcher.ResetHistory) — a workflow
 // schedule has no equivalent, so this is product-only.
 func resetHistoryScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1329,10 +1329,10 @@ func getScheduledJobRunsHandler(svc *SchedulerService) http.HandlerFunc {
 // productScheduleJobResponses lists the requesting user's product schedules
 // in the same shape as workflow schedules.
 func productScheduleJobResponses(r *http.Request, svc *SchedulerService, enabledFilter string) ([]ScheduledJobResponse, error) {
-	if svc == nil || svc.api == nil || svc.api.productSchedules == nil {
+	if svc == nil || svc.api == nil || svc.api.projectActions == nil {
 		return nil, nil
 	}
-	ps := svc.api.productSchedules
+	ps := svc.api.projectActions
 	userID := productWorkspaceUserID(r.Context())
 	jobs, err := ps.JobsForBuilder(r.Context(), userID)
 	if err != nil {
@@ -1362,11 +1362,11 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 		return false
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if svc == nil || svc.api == nil || svc.api.productSchedules == nil {
+	if svc == nil || svc.api == nil || svc.api.projectActions == nil {
 		http.Error(w, "product schedules are not available", http.StatusNotFound)
 		return true
 	}
-	ps := svc.api.productSchedules
+	ps := svc.api.projectActions
 	ctx := r.Context()
 	userID := productWorkspaceUserID(ctx)
 	job, err := ps.Job(ctx, userID, id)

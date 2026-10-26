@@ -490,7 +490,7 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 	if err := checkCrewSkillsAvailable(ctx, "", spec.SelectedSkills, spec.Files); err != nil {
 		return "", err
 	}
-	if len(spec.Schedules) > 0 && api.productSchedules == nil {
+	if len(spec.Schedules) > 0 && api.projectActions == nil {
 		return "", fmt.Errorf("schedules are unavailable on this server")
 	}
 	if api.agentProfiles == nil {
@@ -550,7 +550,7 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 		if !enableSchedules {
 			schedule.Enabled = false
 		}
-		if _, err := api.productSchedules.CreateProjectSchedule(ctx, userID, profileID, crewID, schedule); err != nil {
+		if _, err := api.projectActions.CreateProjectSchedule(ctx, userID, profileID, crewID, schedule); err != nil {
 			return crewID, fmt.Errorf("schedule %q: %w", schedule.Name, err)
 		}
 	}
@@ -667,7 +667,7 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 	scheduleExists := map[string]bool{}
 	scheduleNames := map[string]bool{}
 	if update.Schedules != nil {
-		if api.productSchedules == nil {
+		if api.projectActions == nil {
 			return fmt.Errorf("schedules are unavailable on this server")
 		}
 		current := map[string]productschedule.Schedule{}
@@ -757,13 +757,13 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 	if update.Schedules != nil {
 		userID := claims.UserID
 		for _, schedule := range scheduleAdds {
-			if _, err := api.productSchedules.CreateProjectSchedule(ctx, userID, manifest.Product, manifest.ID, schedule); err != nil {
+			if _, err := api.projectActions.CreateProjectSchedule(ctx, userID, manifest.Product, manifest.ID, schedule); err != nil {
 				return fmt.Errorf("schedule %q: %w", schedule.Name, err)
 			}
 		}
 		for _, spec := range update.Schedules.Update {
 			var applyErr error
-			if _, err := api.productSchedules.UpdateProjectSchedule(ctx, userID, projectScheduleJobID(manifest.Product, manifest.ID, strings.TrimSpace(spec.ID)), func(schedule *productschedule.Schedule) {
+			if _, err := api.projectActions.UpdateProjectSchedule(ctx, userID, projectScheduleJobID(manifest.Product, manifest.ID, strings.TrimSpace(spec.ID)), func(schedule *productschedule.Schedule) {
 				applyErr = spec.applyTo(schedule)
 			}); err != nil {
 				return fmt.Errorf("schedule %q: %w", spec.ID, err)
@@ -776,7 +776,7 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 			if !scheduleExists[strings.TrimSpace(id)] {
 				continue
 			}
-			if err := api.productSchedules.DeleteProjectSchedule(ctx, userID, projectScheduleJobID(manifest.Product, manifest.ID, strings.TrimSpace(id))); err != nil {
+			if err := api.projectActions.DeleteProjectSchedule(ctx, userID, projectScheduleJobID(manifest.Product, manifest.ID, strings.TrimSpace(id))); err != nil {
 				return fmt.Errorf("schedule %q: %w", id, err)
 			}
 		}

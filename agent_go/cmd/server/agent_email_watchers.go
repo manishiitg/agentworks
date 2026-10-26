@@ -20,10 +20,10 @@ func inboxWatcherWorkspace(job productScheduleJob) string {
 
 // Internal mailbox events reuse the durable Watcher wake/ledger; they expose no public webhook or mailbox credential.
 func (api *StreamingAPI) wakeAgentInboxWatchers(ctx context.Context, inbox gmailinbound.Inbox) error {
-	if IsLocalMode() || api.productSchedules == nil {
+	if IsLocalMode() || api.projectActions == nil {
 		return nil
 	}
-	c := api.productSchedules.conditionService()
+	c := api.projectActions.conditionService()
 	for _, owner := range conditionCallerOwners() {
 		jobs, err := c.s.JobsForUser(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: owner}), owner)
 		if err != nil {
@@ -231,10 +231,10 @@ func (c *conditionService) syncPersonalGmailOwner(ctx context.Context, owner str
 	return inboxes, nil
 }
 func (api *StreamingAPI) syncPersonalGmailWatchers(ctx context.Context, active map[string]bool) error {
-	if api.productSchedules == nil {
+	if api.projectActions == nil {
 		return nil
 	}
-	c := api.productSchedules.conditionService()
+	c := api.projectActions.conditionService()
 	for _, owner := range conditionCallerOwners() {
 		inboxes, err := c.syncPersonalGmailOwner(ctx, owner)
 		if err != nil {

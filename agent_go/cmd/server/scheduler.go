@@ -22,6 +22,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
@@ -406,6 +407,7 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case t := <-ticker.C:
+			s.dispatchProjectTimers(ctx, t)
 			gap := t.Sub(lastTick)
 			if gap > wakeThreshold {
 				scheduleLogf("[SCHEDULER] 💤 WAKE_DETECTED gap=%s now=%s prev_tick=%s",
@@ -562,6 +564,9 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		Schedule:      sched,
 		Capabilities:  lockedScheduleCapabilities(manifest.Capabilities),
 		OwnerUserID:   workflowExecutionOwnerUserID(manifest),
+	}
+	if sched.RunAs != "" {
+		sctx.OwnerUserID = sched.RunAs
 	}
 	if sched.ScheduleType != "webhook" && !scheduleAllowsParallel(sched) {
 		for _, candidate := range manifest.Schedules {
@@ -733,17 +738,10 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 		}
 	} else {
 		// Cron schedules: parse the expression and register for wall-clock eval.
-		loc, err := time.LoadLocation(scheduleTimezoneOrDefault(sched.Timezone))
+		cronSched, err := (projectactions.When{Cron: sched.CronExpression, Timezone: scheduleTimezoneOrDefault(sched.Timezone)}).CronSchedule()
 		if err != nil {
-			loc = time.UTC
+			return fmt.Errorf("failed to parse project clock: %w", err)
 		}
-		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-		cronSched, err := parser.Parse(sched.CronExpression)
-		if err != nil {
-			return fmt.Errorf("failed to parse cron expression %q: %w", sched.CronExpression, err)
-		}
-		// Wrap with timezone-aware location
-		cronSched = &tzSchedule{inner: cronSched, loc: loc}
 		now := time.Now().UTC()
 		lastFired := now.Add(-30 * time.Second) // a genuinely new schedule starts with its next future occurrence
 		if latest, ok := s.latestCronOccurrence(sctx); ok {
@@ -947,7 +945,10 @@ func (s *SchedulerService) GetRuntimeStateForWorkflow(workspacePath, scheduleID 
 			merged.LastStatus = "waiting_for_workflow"
 			merged.LastError = pending.Reason
 			merged.WaitingSince = &queuedAt
-			merged.WaitingUntil = &expiresAt
+			merged.WaitingUntil = nil
+			if !expiresAt.IsZero() {
+				merged.WaitingUntil = &expiresAt
+			}
 			merged.WaitingReason = pending.Reason
 			merged.QueuedOccurrences = pending.OccurrenceCount
 		} else if decisions, err := s.stateStore.ListFireDecisions(context.Background(), "workflow", workspacePath, scheduleID, 1); err == nil && len(decisions) > 0 {
@@ -1748,40 +1749,24 @@ func (s *SchedulerService) discardQueuedOccurrence(ctx context.Context, sctx *Sc
 	}
 }
 
-const defaultQueuedScheduleStartDelay = 3 * time.Hour
-
+// Busy occurrences retain only the latest pending occurrence of each schedule.
 func (s *SchedulerService) recordOrQueueBlockedSchedule(ctx context.Context, sctx *ScheduleContext, reason string, at time.Time) bool {
 	if sctx == nil {
 		return false
 	}
-	policy := strings.TrimSpace(sctx.Schedule.CollisionPolicy)
-	if policy == "" {
-		policy = "skip"
-	}
-	if policy == "skip" {
-		_ = s.recordScheduleFireDecision(ctx, sctx, "skipped_busy", reason, "", at)
-		return false
-	}
-	return s.queueScheduleOccurrence(ctx, sctx, reason, at, policy)
+	return s.queueScheduleOccurrence(ctx, sctx, reason, at, "queue_latest")
 }
 
 func (s *SchedulerService) queueScheduleOccurrence(ctx context.Context, sctx *ScheduleContext, reason string, at time.Time, policy string) bool {
 	if sctx == nil {
 		return false
 	}
-	delay := defaultQueuedScheduleStartDelay
-	if minutes := sctx.Schedule.MaxStartDelayMinutes; minutes > 0 {
-		delay = time.Duration(minutes) * time.Minute
-	}
 	scopeType, scopeID, _ := scheduleStateScope(sctx)
 	scheduledFor := sctx.ScheduledFor
 	if scheduledFor.IsZero() {
 		scheduledFor = at
 	}
-	expiresAt := at.Add(delay).UTC()
-	if !sctx.QueuedExpiresAt.IsZero() {
-		expiresAt = sctx.QueuedExpiresAt.UTC()
-	}
+	var expiresAt time.Time // Busy runs have no max-start expiry.
 	pending := schedulerstate.PendingOccurrence{
 		ScopeType: scopeType, ScopeID: scopeID, ScheduleID: sctx.Schedule.ID,
 		ScheduledFor: scheduledFor.UTC(), QueuedAt: at.UTC(), ExpiresAt: expiresAt,
@@ -1836,7 +1821,10 @@ func (s *SchedulerService) markScheduleWaiting(sctx *ScheduleContext, reason str
 		state.LastStatus = "waiting_for_workflow"
 		state.LastError = reason
 		state.WaitingSince = &now
-		state.WaitingUntil = &expiresAt
+		state.WaitingUntil = nil
+		if !expiresAt.IsZero() {
+			state.WaitingUntil = &expiresAt
+		}
 		state.WaitingReason = reason
 		state.QueuedOccurrences = count
 	})
@@ -2018,27 +2006,6 @@ func (s *SchedulerService) resumeQueuedScheduleOccurrences(ctx context.Context, 
 			}
 			continue
 		}
-		// Expiry is durable queue state and does not depend on the manifest still
-		// being readable. Drop expired rows first so a renamed/deleted workflow
-		// cannot leave an immortal pending occurrence behind.
-		if !now.Before(item.ExpiresAt) {
-			s.stateStoreMu.RLock()
-			_ = store.DeletePendingOccurrence(ctx, item.ScopeType, item.ScopeID, item.ScheduleID)
-			s.stateStoreMu.RUnlock()
-			expiredCtx := buildScheduleContext(item.ScopeID, &WorkflowManifest{}, WorkflowSchedule{ID: item.ScheduleID})
-			expiredCtx.TriggerSource = "queued"
-			expiredCtx.ScheduledFor = item.ScheduledFor
-			_ = s.recordScheduleFireDecision(ctx, expiredCtx, "expired_busy", "queued occurrence exceeded max_start_delay", "", now)
-			s.updateScheduleQueueState(workflowScheduleRuntimeKey(item.ScopeID, item.ScheduleID), func(state *ScheduleRuntimeState) {
-				state.LastStatus = "error"
-				state.LastError = "queued occurrence exceeded max_start_delay"
-				state.WaitingSince = nil
-				state.WaitingUntil = nil
-				state.WaitingReason = ""
-				state.QueuedOccurrences = 0
-			})
-			continue
-		}
 		manifest, found, readErr := ReadWorkflowManifest(ctx, item.ScopeID)
 		if readErr != nil || !found {
 			continue
@@ -2050,7 +2017,7 @@ func (s *SchedulerService) resumeQueuedScheduleOccurrences(ctx context.Context, 
 				break
 			}
 		}
-		if schedule == nil || !schedule.Enabled || !now.Before(item.ExpiresAt) {
+		if schedule == nil || !schedule.Enabled {
 			s.stateStoreMu.RLock()
 			_ = store.DeletePendingOccurrence(ctx, item.ScopeType, item.ScopeID, item.ScheduleID)
 			s.stateStoreMu.RUnlock()

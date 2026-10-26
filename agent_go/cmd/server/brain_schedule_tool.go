@@ -14,7 +14,7 @@ import (
 const brainScheduleToolName = "brain_schedule"
 
 func (api *StreamingAPI) registerBrainScheduleTool(registrar definitionToolRegistrar, userID string) error {
-	if api == nil || api.productSchedules == nil {
+	if api == nil || api.projectActions == nil {
 		return nil
 	}
 	jobID := productScheduleJobID(knowledgebaseproduct.ProfileID, "organize")
@@ -34,7 +34,7 @@ func (api *StreamingAPI) registerBrainScheduleTool(registrar definitionToolRegis
 		if claims == nil || claims.UserID != userID {
 			return "", fmt.Errorf("the Brain schedule belongs to its signed-in person")
 		}
-		ps := api.productSchedules
+		ps := api.projectActions
 		action, _ := args["action"].(string)
 		var job productScheduleJob
 		var err error

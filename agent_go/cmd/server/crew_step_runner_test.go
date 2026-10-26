@@ -397,7 +397,7 @@ func TestCheckInternalCrewAccess(t *testing.T) {
 
 const testPreflightManifestAttached = `{"id":"wf-1","label":"WF1","crew_attachments":[{"id":"att-1","alias":"project-a","crew_profile_id":"crewx","crew_project_id":"project-a","crew_workspace_path":"_users/owner/Chats/Work/projects/project-a"}]}`
 
-func testPreflightWorkspace(t *testing.T, plan string, manifestJSON string) *ProductScheduleService {
+func testPreflightWorkspace(t *testing.T, plan string, manifestJSON string) *ProjectActionDispatcher {
 	t.Helper()
 	svc, files := newInternalTriggerTestCrew(t)
 	svc.api = &StreamingAPI{}
@@ -478,7 +478,7 @@ func TestPreflightCrewAttachmentsWithoutCrewSteps(t *testing.T) {
 
 // testPreflightWorkspaceWithoutCrew mirrors testPreflightWorkspace but seeds
 // no crew project: the attachment's crew is gone (deleted or unshared).
-func testPreflightWorkspaceWithoutCrew(t *testing.T, plan string, manifestJSON string) *ProductScheduleService {
+func testPreflightWorkspaceWithoutCrew(t *testing.T, plan string, manifestJSON string) *ProjectActionDispatcher {
 	t.Helper()
 	svc, _ := newInternalTriggerTestCrew(t)
 	svc.api = &StreamingAPI{}
@@ -497,7 +497,7 @@ func testPreflightWorkspaceWithoutCrew(t *testing.T, plan string, manifestJSON s
 }
 
 func TestCrewRunnerForRun(t *testing.T) {
-	schedules := &ProductScheduleService{}
+	schedules := &ProjectActionDispatcher{}
 	withUser := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 	runner := crewRunnerForRun(withUser, schedules)
 	if runner == nil {

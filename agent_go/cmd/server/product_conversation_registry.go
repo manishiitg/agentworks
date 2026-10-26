@@ -1063,7 +1063,7 @@ type productProjectManifest struct {
 		Name string `json:"name,omitempty"`
 		Icon string `json:"icon,omitempty"`
 	} `json:"identity,omitempty"`
-	Schedules            []productschedule.Schedule `json:"schedules,omitempty"`
+	Schedules            []productschedule.Schedule `json:"-"`
 	Triggers             []productWebhookTrigger    `json:"triggers,omitempty"`
 	WorkflowContextPaths []string                   `json:"workflow_context_paths,omitempty"`
 	Capabilities         struct {

@@ -387,7 +387,7 @@ type StreamingAPI struct {
 	config              ServerConfig
 	cliSecurityStore    *clisecurity.Store
 	agentProfiles       *agentprofiles.Registry
-	productSchedules    *ProductScheduleService
+	projectActions      *ProjectActionDispatcher
 	gmailInbound        *gmailinbound.Service
 
 	// internalQueryHandler is a narrow test seam for server-owned follow-up
@@ -2979,8 +2979,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	defer schedulerCancel()
 	schedulerSvc := NewSchedulerService(api)
 	api.scheduler = schedulerSvc
-	productScheduleSvc := NewProductScheduleService(api, profileRegistry)
-	api.productSchedules = productScheduleSvc
+	productScheduleSvc := NewProjectActionDispatcher(api, profileRegistry)
+	api.projectActions = productScheduleSvc
 	// Recover accepted conversation turns before either scheduler can compete
 	// for those same session lanes. Both services are already wired so a
 	// recovered turn sees the normal runtime capabilities.
@@ -2997,9 +2997,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 
 	// Register scheduler routes
-	if os.Getenv("SCHEDULER_ENABLED") != "false" {
-		go productScheduleSvc.Start(schedulerCtx)
-	}
 	SchedulerRoutes(router, schedulerSvc)
 	WorkflowWebhookRoutes(router, schedulerSvc)
 	ProductWebhookRoutes(router, productScheduleSvc)
@@ -5309,7 +5306,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// Crew steps invoke Crew triggers through a server-owned runner.
 				// The run owner scopes crew lookups; without a user there is no
 				// runner and crew steps fail with a clear error at execution.
-				controllerOpts.CrewRunner = crewRunnerForRun(r.Context(), api.productSchedules)
+				controllerOpts.CrewRunner = crewRunnerForRun(r.Context(), api.projectActions)
 				controllerOpts.AgentFunctionTools = api.workflowAgentFunctionToolsForRun(r.Context())
 				log.Printf("[WORKFLOW EXECUTION] Setting strategy=%s folder=%s", controllerOpts.ExecutionStrategy, controllerOpts.SelectedRunFolder)
 				workflowOrchestrator.SetExecutionOptions(controllerOpts)
@@ -5322,7 +5319,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// authenticated. A minimal options value is behavior-neutral
 				// for every other consumer — they all nil-guard and match
 				// on specific fields.
-				if runner := crewRunnerForRun(r.Context(), api.productSchedules); runner != nil {
+				if runner := crewRunnerForRun(r.Context(), api.projectActions); runner != nil {
 					workflowOrchestrator.SetExecutionOptions(&todo_creation_human.ExecutionOptions{
 						CrewRunner:         runner,
 						AgentFunctionTools: api.workflowAgentFunctionToolsForRun(r.Context()),
@@ -5341,8 +5338,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// the attached roots read-only for the run. Roots derive from
 				// the freshly authorized crew binding, like the run preflight
 				// below; without a user there is no authorization and no grant.
-				if claims := GetUserFromContext(r.Context()); claims != nil && api.productSchedules != nil {
-					common.GrantSessionCrewAttachmentReads(sessionID, crewAttachmentReadRoots(workflowCtx, api.productSchedules, claims.UserID, workflowWorkspacePath))
+				if claims := GetUserFromContext(r.Context()); claims != nil && api.projectActions != nil {
+					common.GrantSessionCrewAttachmentReads(sessionID, crewAttachmentReadRoots(workflowCtx, api.projectActions, claims.UserID, workflowWorkspacePath))
 				}
 				if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, workflowBrowserMode); hostDownloads != "" {
 					log.Printf("[WORKFLOW EXECUTION] Added read-write CDP host Downloads: %s", hostDownloads)
@@ -5385,7 +5382,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if claims := GetUserFromContext(r.Context()); claims != nil {
 				// Fail fast before any step executes when a crew step lost
 				// access to its Crew; shares the execution error reporting below.
-				err = preflightCrewSteps(workflowCtx, api.productSchedules, claims.UserID, workflowWorkspacePath)
+				err = preflightCrewSteps(workflowCtx, api.projectActions, claims.UserID, workflowWorkspacePath)
 			}
 			if err == nil {
 				// An unreadable input is refused before anything runs (PLAT-579).
@@ -6343,7 +6340,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if isWorkflowPhase && effectiveWorkflowPhaseFolderForWrites != "" {
 				fileContextWriteFolders = append(fileContextWriteFolders, effectiveWorkflowPhaseFolderForWrites+"/")
 				blockedPlanning := effectiveWorkflowPhaseFolderForWrites + "/" + todo_creation_human.PlanningFolderName + "/"
-				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedPlanning)
+				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedPlanning, effectiveWorkflowPhaseFolderForWrites+"/schedules.json")
 				log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Write access: %s/ (whole workflow) with blocked-write prefix: %s", effectiveWorkflowPhaseFolderForWrites, blockedPlanning)
 				// workflow.json carries the access record and created_by (whom
 				// schedules run as): only an owner's session may write it, so an
@@ -6518,6 +6515,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						// A Crew writes only its own database; other Crews' db/
 						// stays readable but never writable.
 						guardBlocked = append(guardBlocked, foreignCrewDBWriteBlockedPaths(profileRoot, workflowReadOnlyFolders)...)
+						// Scheduled callers change only through typed schedule tools,
+						// including in owner Builder shells and attached Crew folders.
+						guardBlocked = append(guardBlocked, profileRoot+"/schedules.json")
+						for _, root := range crewRefWrite {
+							guardBlocked = append(guardBlocked, strings.TrimSuffix(root, "/")+"/schedules.json")
+						}
 					}
 					if len(guardBlocked) > 0 {
 						workspace.SetSessionFolderGuardBlockedWritePaths(sessionID, guardBlocked)
@@ -12340,7 +12343,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	// Builder-run crew steps (execute_step, run_full_workflow) resolve their
 	// runner from the session config; without it they fail as unbound even
 	// on fully authenticated runs.
-	cfg.CrewRunner = crewRunnerForRun(ctx, api.productSchedules)
+	cfg.CrewRunner = crewRunnerForRun(ctx, api.projectActions)
 	cfg.AgentFunctionTools = api.workflowAgentFunctionToolsForRun(ctx)
 
 	cfg.ScheduleCollisionCheck = api.scheduleCollisionCheck(cfg.WorkspacePath, sessionID, req.TriggeredBy)

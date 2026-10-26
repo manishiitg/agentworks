@@ -112,7 +112,7 @@ var crewCreationNamespace = uuid.MustParse("7c9e2f4a-1b3d-4e5f-8a6b-9c0d1e2f3a4b
 // indistinguishable. The creating workflow is pre-seeded in the crew's
 // workflow_context_paths (always mounted read-only). First chat open binds
 // the session and lazily initializes the database, exactly as for UI crews.
-func (s *ProductScheduleService) CreateCrewProject(ctx context.Context, req CreateCrewRequest) (CreatedCrew, error) {
+func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req CreateCrewRequest) (CreatedCrew, error) {
 	userID := strings.TrimSpace(req.UserID)
 	workflowPath := strings.Trim(strings.TrimSpace(req.WorkflowPath), "/")
 	profileID := strings.TrimSpace(req.ProfileID)
@@ -343,7 +343,7 @@ func validateCrewCreationWiring(req CreateCrewRequest, title string) (crewCreati
 // the crew read-only, and builds the step configuration for the Builder's
 // follow-up add_step call. Trigger and attachment adoption make re-entry
 // converge: matching records are reused, never duplicated.
-func applyCrewCreationWiring(ctx context.Context, svc *ProductScheduleService, userID, profileID, workflowPath, crewID string, wiring crewCreationWiring, created *CreatedCrew) error {
+func applyCrewCreationWiring(ctx context.Context, svc *ProjectActionDispatcher, userID, profileID, workflowPath, crewID string, wiring crewCreationWiring, created *CreatedCrew) error {
 	workflowID, err := boundWorkflowID(ctx, workflowPath)
 	if err != nil {
 		return err
@@ -373,7 +373,7 @@ func applyCrewCreationWiring(ctx context.Context, svc *ProductScheduleService, u
 // ensureCrewCreationTrigger returns the crew's internal trigger for the
 // creating workflow, creating one (isolated, enabled, caller-bound) when the
 // same-named binding does not already exist.
-func ensureCrewCreationTrigger(ctx context.Context, svc *ProductScheduleService, userID, profileID, projectID, workflowID, name, message string) (string, error) {
+func ensureCrewCreationTrigger(ctx context.Context, svc *ProjectActionDispatcher, userID, profileID, projectID, workflowID, name, message string) (string, error) {
 	if svc == nil {
 		return "", fmt.Errorf("product schedules are unavailable")
 	}
@@ -837,7 +837,7 @@ type crewCreationAvailability struct {
 // Unknown servers fail the call; configured-but-disconnected servers are
 // selected and reported as pending so the Builder can ask the user to
 // connect exactly those.
-func (s *ProductScheduleService) validateCrewCreationServers(ctx context.Context, userID string, names []string) ([]string, []PendingConnection, error) {
+func (s *ProjectActionDispatcher) validateCrewCreationServers(ctx context.Context, userID string, names []string) ([]string, []PendingConnection, error) {
 	checked, err := validateCrewCreationNames("server", names)
 	if err != nil {
 		return nil, nil, err
@@ -857,7 +857,7 @@ func (s *ProductScheduleService) validateCrewCreationServers(ctx context.Context
 	return servers, pending, nil
 }
 
-func (s *ProductScheduleService) probeCrewCreationMCPServer(ctx context.Context, userID, name string) (string, bool, error) {
+func (s *ProjectActionDispatcher) probeCrewCreationMCPServer(ctx context.Context, userID, name string) (string, bool, error) {
 	if s != nil && s.crewAvailability != nil && s.crewAvailability.MCPServer != nil {
 		return s.crewAvailability.MCPServer(name)
 	}
@@ -884,7 +884,7 @@ func (s *ProductScheduleService) probeCrewCreationMCPServer(ctx context.Context,
 // workflow's scoped secrets do not carry over, so a name found only there
 // fails with a targeted hint instead of recording a reference that would
 // resolve empty at runtime.
-func (s *ProductScheduleService) validateCrewCreationSecrets(ctx context.Context, userID, workflowPath string, names []string) ([]string, error) {
+func (s *ProjectActionDispatcher) validateCrewCreationSecrets(ctx context.Context, userID, workflowPath string, names []string) ([]string, error) {
 	checked, err := validateCrewCreationNames("secret", names)
 	if err != nil {
 		return nil, err
@@ -911,7 +911,7 @@ func (s *ProductScheduleService) validateCrewCreationSecrets(ctx context.Context
 	return checked, nil
 }
 
-func (s *ProductScheduleService) probeCrewCreationScopedSecrets(ctx context.Context, path, userID string) (map[string]bool, error) {
+func (s *ProjectActionDispatcher) probeCrewCreationScopedSecrets(ctx context.Context, path, userID string) (map[string]bool, error) {
 	if s != nil && s.crewAvailability != nil && s.crewAvailability.ScopedSecrets != nil {
 		return s.crewAvailability.ScopedSecrets(ctx, path, userID)
 	}
@@ -931,7 +931,7 @@ func (s *ProductScheduleService) probeCrewCreationScopedSecrets(ctx context.Cont
 
 // validateCrewCreationGlobalSecrets shape-checks requested global secrets
 // and verifies each names an existing global record.
-func (s *ProductScheduleService) validateCrewCreationGlobalSecrets(ctx context.Context, userID string, names []string) ([]string, error) {
+func (s *ProjectActionDispatcher) validateCrewCreationGlobalSecrets(ctx context.Context, userID string, names []string) ([]string, error) {
 	checked, err := validateCrewCreationNames("global secret", names)
 	if err != nil {
 		return nil, err
@@ -948,7 +948,7 @@ func (s *ProductScheduleService) validateCrewCreationGlobalSecrets(ctx context.C
 	return checked, nil
 }
 
-func (s *ProductScheduleService) probeCrewCreationGlobalSecrets(ctx context.Context, userID string) map[string]bool {
+func (s *ProjectActionDispatcher) probeCrewCreationGlobalSecrets(ctx context.Context, userID string) map[string]bool {
 	if s != nil && s.crewAvailability != nil && s.crewAvailability.GlobalSecrets != nil {
 		return s.crewAvailability.GlobalSecrets()
 	}
@@ -1019,7 +1019,7 @@ func crewCreationFingerprint(userID, workflowPath, profileID string, req CreateC
 // claims the key by freezing a fresh one. Identity selection (alias and
 // step availability, occupied-path fallback) happens under the receipt lock
 // before any crew resource exists.
-func (s *ProductScheduleService) claimCrewCreationReceipt(ctx context.Context, userID, workflowPath, profileID, key, fingerprint, title, slug, runtimeRoot string, wiring crewCreationWiring) (*crewCreationReceipt, bool, error) {
+func (s *ProjectActionDispatcher) claimCrewCreationReceipt(ctx context.Context, userID, workflowPath, profileID, key, fingerprint, title, slug, runtimeRoot string, wiring crewCreationWiring) (*crewCreationReceipt, bool, error) {
 	path := crewCreationReceiptPath(userID, key)
 	lock := productConversationRegistryMutex(path)
 	lock.Lock()

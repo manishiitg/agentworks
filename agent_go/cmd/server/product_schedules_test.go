@@ -104,7 +104,7 @@ func TestUsersWithProductSingleUserMode(t *testing.T) {
 	}
 }
 
-func newProductScheduleTestService(t *testing.T, users []string) (*ProductScheduleService, map[string]string) {
+func newProductScheduleTestService(t *testing.T, users []string) (*ProjectActionDispatcher, map[string]string) {
 	t.Helper()
 	registry := agentprofiles.NewRegistry()
 	profile := agentprofiles.Profile{
@@ -123,7 +123,7 @@ func newProductScheduleTestService(t *testing.T, users []string) (*ProductSchedu
 		t.Fatal(err)
 	}
 	files := map[string]string{}
-	svc := NewProductScheduleService(nil, registry)
+	svc := NewProjectActionDispatcher(nil, registry)
 	svc.users = func(string) []string { return users }
 	svc.readFile = func(_ context.Context, path string) (string, bool, error) {
 		c, ok := files[path]

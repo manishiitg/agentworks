@@ -183,7 +183,7 @@ func TestWorkflowWebhookDTOInternalHasNoPath(t *testing.T) {
 }
 
 // newInternalTriggerTestCrew registers a keyed crew profile with triggers for binding tests.
-func newInternalTriggerTestCrew(t *testing.T) (*ProductScheduleService, map[string]string) {
+func newInternalTriggerTestCrew(t *testing.T) (*ProjectActionDispatcher, map[string]string) {
 	t.Helper()
 	registry := agentprofiles.NewRegistry()
 	profile := agentprofiles.Profile{
@@ -204,7 +204,7 @@ func newInternalTriggerTestCrew(t *testing.T) (*ProductScheduleService, map[stri
 		t.Fatalf("test profile lacks triggers: %+v %v", resolved, err)
 	}
 	files := map[string]string{}
-	svc := NewProductScheduleService(nil, registry)
+	svc := NewProjectActionDispatcher(nil, registry)
 	svc.readFile = func(_ context.Context, path string) (string, bool, error) {
 		c, ok := files[path]
 		return c, ok, nil
@@ -237,7 +237,7 @@ func TestSaveWorkflowWebhookInternalBindsCrewWithoutSecret(t *testing.T) {
 	crewSvc, crewFiles := newInternalTriggerTestCrew(t)
 	crewFiles["_users/owner/Chats/Work/projects/project-a/product.json"] = crewProduct
 
-	api := &StreamingAPI{productSchedules: crewSvc}
+	api := &StreamingAPI{projectActions: crewSvc}
 	svc := NewSchedulerService(api)
 	api.scheduler = svc
 	policy := workflowChatPolicy{Mode: "builder", Origin: "interactive", Capabilities: map[string]bool{"plan_authoring": true}}
@@ -405,7 +405,7 @@ func TestFindInternalWorkflowTrigger(t *testing.T) {
 // newInternalDispatchCrew wires a crew project with the given triggers JSON
 // through both the service file stubs and the workspace mock, so internal
 // dispatch tests exercise the real scoped lookup.
-func newInternalDispatchCrew(t *testing.T, triggersJSON string) (*ProductScheduleService, map[string]string) {
+func newInternalDispatchCrew(t *testing.T, triggersJSON string) (*ProjectActionDispatcher, map[string]string) {
 	t.Helper()
 	svc, files := newInternalTriggerTestCrew(t)
 	svc.api = &StreamingAPI{}

@@ -138,7 +138,7 @@ func findWorkflowManifestByID(ctx context.Context, workflowID string) (string, *
 }
 
 // crewProjectExists reports whether a crew project exists for the user.
-func (s *ProductScheduleService) crewProjectExists(ctx context.Context, userID, profileID, projectID string) bool {
+func (s *ProjectActionDispatcher) crewProjectExists(ctx context.Context, userID, profileID, projectID string) bool {
 	if strings.TrimSpace(profileID) == "" {
 		profileID = "work"
 	}

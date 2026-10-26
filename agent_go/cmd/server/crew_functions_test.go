@@ -15,7 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
-func muxRouterForCrewFunctions(svc *ProductScheduleService) *mux.Router {
+func muxRouterForCrewFunctions(svc *ProjectActionDispatcher) *mux.Router {
 	router := mux.NewRouter()
 	ProductWebhookRoutes(router, svc)
 	return router

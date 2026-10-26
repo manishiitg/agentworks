@@ -13,9 +13,9 @@ import (
 
 // registerWorkScheduleTools exposes the project-scoped subset Work needs:
 // recurring one-message jobs. Definitions live in workflow.json and execution
-// reuses ProductScheduleService, so there is no second scheduler.
+// reuses ProjectActionDispatcher, so there is no second scheduler.
 func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegistrar, profileID, userID, sessionID, workspacePath string, readOnly bool) error {
-	if api.productSchedules == nil {
+	if api.projectActions == nil {
 		return nil
 	}
 	// Product conversations keep a public Chats/... binding, while project
@@ -65,15 +65,15 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 	if err := register("list_project_schedules", "List this project's recurring message schedules and their latest run status.", map[string]interface{}{
 		"type": "object", "properties": map[string]interface{}{},
 	}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
-		jobs, err := api.productSchedules.JobsForBuilder(ctx, listUserID)
+		jobs, err := api.projectActions.JobsForBuilder(ctx, listUserID)
 		if err != nil {
 			return "", err
 		}
 		var out []ScheduledJobResponse
 		for _, job := range jobs {
 			if strings.EqualFold(job.Profile.ID, profileID) && job.ProjectID == projectID && job.Schedule.Condition == nil {
-				runsWorkspace, _ := api.productSchedules.RunsWorkspace(ctx, job)
-				out = append(out, withScheduleStatusText(ctx, api.productSchedules.jobResponse(job, runsWorkspace)))
+				runsWorkspace, _ := api.projectActions.RunsWorkspace(ctx, job)
+				out = append(out, withScheduleStatusText(ctx, api.projectActions.jobResponse(job, runsWorkspace)))
 			}
 		}
 		encoded, err := json.MarshalIndent(map[string]interface{}{"schedules": out}, "", "  ")
@@ -137,14 +137,14 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 					chatKey = project.Self.Key
 				}
 			}
-			job, err := api.productSchedules.CreateProjectSchedule(ctx, userID, profileID, projectID, productschedule.Schedule{
+			job, err := api.projectActions.CreateProjectSchedule(ctx, userID, profileID, projectID, productschedule.Schedule{
 				Name: strings.TrimSpace(name), Messages: []string{strings.TrimSpace(message)}, CronExpression: strings.TrimSpace(cronExpression), RunAt: runAt, Timezone: strings.TrimSpace(timezone), Enabled: enabled, Isolated: isolated, ChatKey: chatKey,
 			})
 			if err != nil {
 				return "", err
 			}
-			runsWorkspace, _ := api.productSchedules.RunsWorkspace(ctx, job)
-			encoded, err := json.MarshalIndent(withScheduleStatusText(ctx, api.productSchedules.jobResponse(job, runsWorkspace)), "", "  ")
+			runsWorkspace, _ := api.projectActions.RunsWorkspace(ctx, job)
+			encoded, err := json.MarshalIndent(withScheduleStatusText(ctx, api.projectActions.jobResponse(job, runsWorkspace)), "", "  ")
 			return string(encoded), err
 		}); err != nil {
 			return err
@@ -182,7 +182,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				}
 				requestedChatKey = &key
 			}
-			job, err := api.productSchedules.UpdateProjectSchedule(ctx, userID, resolveID(id), func(schedule *productschedule.Schedule) {
+			job, err := api.projectActions.UpdateProjectSchedule(ctx, userID, resolveID(id), func(schedule *productschedule.Schedule) {
 				if requestedChatKey != nil {
 					schedule.ChatKey = *requestedChatKey
 					if *requestedChatKey != "" {
@@ -214,8 +214,8 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			if err != nil {
 				return "", err
 			}
-			runsWorkspace, _ := api.productSchedules.RunsWorkspace(ctx, job)
-			encoded, err := json.MarshalIndent(withScheduleStatusText(ctx, api.productSchedules.jobResponse(job, runsWorkspace)), "", "  ")
+			runsWorkspace, _ := api.projectActions.RunsWorkspace(ctx, job)
+			encoded, err := json.MarshalIndent(withScheduleStatusText(ctx, api.projectActions.jobResponse(job, runsWorkspace)), "", "  ")
 			return string(encoded), err
 		}); err != nil {
 			return err
@@ -224,7 +224,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			"type": "object", "properties": map[string]interface{}{"id": map[string]interface{}{"type": "string"}}, "required": []string{"id"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			id, _ := args["id"].(string)
-			if err := api.productSchedules.DeleteProjectSchedule(ctx, userID, resolveID(id)); err != nil {
+			if err := api.projectActions.DeleteProjectSchedule(ctx, userID, resolveID(id)); err != nil {
 				return "", err
 			}
 			return "Schedule deleted.", nil
@@ -235,7 +235,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 	if err := register("list_project_triggers", "List the authenticated webhook triggers stored in this project's workflow.json. Secrets are never returned.", map[string]interface{}{
 		"type": "object", "properties": map[string]interface{}{},
 	}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
-		triggers, err := api.productSchedules.projectWebhookConfigs(ctx, listUserID, profileID, projectID)
+		triggers, err := api.projectActions.projectWebhookConfigs(ctx, listUserID, profileID, projectID)
 		if err != nil {
 			return "", err
 		}
@@ -267,7 +267,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			if !ok {
 				enabled = true
 			}
-			response, _, err := api.productSchedules.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RunDestination: destination, Kind: kind, Caller: triggerCallerFromArgs(args)}, "")
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RunDestination: destination, Kind: kind, Caller: triggerCallerFromArgs(args)}, "")
 			if err != nil {
 				return "", err
 			}
@@ -286,7 +286,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			}, "required": []string{"id"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			id, _ := args["id"].(string)
-			triggers, err := api.productSchedules.projectWebhookConfigs(ctx, userID, profileID, projectID)
+			triggers, err := api.projectActions.projectWebhookConfigs(ctx, userID, profileID, projectID)
 			if err != nil {
 				return "", err
 			}
@@ -329,7 +329,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				caller = updated
 			}
 			rotate, _ := args["rotate_secret"].(bool)
-			response, _, err := api.productSchedules.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RotateSecret: rotate, RunDestination: destination, Kind: kind, Caller: caller}, current.ID)
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RotateSecret: rotate, RunDestination: destination, Kind: kind, Caller: caller}, current.ID)
 			if err != nil {
 				return "", err
 			}
@@ -342,7 +342,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			"type": "object", "properties": map[string]interface{}{"id": map[string]interface{}{"type": "string"}}, "required": []string{"id"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			id, _ := args["id"].(string)
-			if err := api.productSchedules.deleteProductWebhookConfig(ctx, userID, profileID, projectID, strings.TrimSpace(id)); err != nil {
+			if err := api.projectActions.deleteProductWebhookConfig(ctx, userID, profileID, projectID, strings.TrimSpace(id)); err != nil {
 				return "", err
 			}
 			return "Trigger deleted.", nil
@@ -353,7 +353,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			"type": "object", "properties": map[string]interface{}{"id": map[string]interface{}{"type": "string"}}, "required": []string{"id"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			id, _ := args["id"].(string)
-			sessionID, err := api.productSchedules.Trigger(ctx, userID, resolveID(id))
+			sessionID, err := api.projectActions.Trigger(ctx, userID, resolveID(id))
 			if err != nil {
 				return "", err
 			}

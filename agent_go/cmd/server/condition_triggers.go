@@ -25,13 +25,13 @@ type conditionJobContext struct{}
 type conditionService struct {
 	wakeLocks   sync.Map
 	wakeWorkers sync.Map
-	s           *ProductScheduleService
+	s           *ProjectActionDispatcher
 	engine      *conditiontrigger.Engine
 	capacity    chan struct{}
 	notifyPause func(context.Context, productScheduleJob, string)
 }
 
-func (s *ProductScheduleService) conditionService() *conditionService {
+func (s *ProjectActionDispatcher) conditionService() *conditionService {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.conditions == nil {

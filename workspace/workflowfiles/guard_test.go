@@ -12,7 +12,7 @@ func TestFolderGuardPreservesCaseAndConservativelyDeniesAliases(t *testing.T) {
 	if guard.Allows("SRC/file", false) || guard.AllowsTraversal("SRC") || !guard.Allows("src/file", true) || !guard.Allows("src/locked/file", false) {
 		t.Fatal("case-sensitive grant boundary lost")
 	}
-	for _, p := range []string{"costs/usage.json", "schedule-runs.json", "workflow.json.kb-lock", "product.json", "functions.json"} {
+	for _, p := range []string{"costs/usage.json", "schedule-runs.json", "schedules.json", "Crew/example/SCHEDULES.JSON", "workflow.json.kb-lock", "product.json", "functions.json"} {
 		if !ProtectedWrite(p) {
 			t.Fatalf("managed file writable: %s", p)
 		}

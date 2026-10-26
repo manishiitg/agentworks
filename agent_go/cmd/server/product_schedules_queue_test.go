@@ -40,7 +40,7 @@ func TestConversationKeyForJob(t *testing.T) {
 }
 
 func TestClaimAutomationRunSerializesMainChat(t *testing.T) {
-	svc := &ProductScheduleService{}
+	svc := &ProjectActionDispatcher{}
 	ctx := context.Background()
 	first := testAutomationJob("u1", "work", "proj", "trigger-a", false)
 	second := testAutomationJob("u1", "work", "proj", "trigger-b", false)
@@ -64,7 +64,7 @@ func TestClaimAutomationRunSerializesMainChat(t *testing.T) {
 }
 
 func TestClaimAutomationRunKeepsIsolatedJobsIndependent(t *testing.T) {
-	svc := &ProductScheduleService{}
+	svc := &ProjectActionDispatcher{}
 	ctx := context.Background()
 	first := testAutomationJob("u1", "work", "proj", "trigger-a", true)
 	second := testAutomationJob("u1", "work", "proj", "trigger-b", true)
@@ -78,15 +78,20 @@ func TestClaimAutomationRunKeepsIsolatedJobsIndependent(t *testing.T) {
 }
 
 func TestClaimAutomationRunRejectsFullQueue(t *testing.T) {
-	svc := &ProductScheduleService{}
+	svc := &ProjectActionDispatcher{}
 	ctx := context.Background()
 	job := testAutomationJob("u1", "work", "proj", "trigger-a", false)
+	job.AutomationKind = "webhook" // Exercise the actual queued webhook lane, not scheduled live-input routing.
 	convKey := "u1\x1f" + conversationKeyForJob(job)
 
 	svc.conversations = map[string]bool{convKey: true}
 	svc.queued = map[string][]productScheduleQueuedRun{convKey: make([]productScheduleQueuedRun, maxProductConversationQueue)}
 	if _, err := svc.claimAutomationRun(ctx, job, "webhook", time.Time{}, productScheduleRunOptions{AllowQueue: true}, nil); !errors.Is(err, ErrProductQueueFull) {
 		t.Fatalf("full queue err = %v, want ErrProductQueueFull", err)
+	}
+	svc.queued[convKey] = svc.queued[convKey][:maxProductConversationQueue-1]
+	if _, err := svc.claimAutomationRun(ctx, job, "webhook", time.Time{}, productScheduleRunOptions{AllowQueue: true}, nil); !errors.Is(err, ErrProductRunQueued) {
+		t.Fatalf("available capacity refused: %v", err)
 	}
 }
 
@@ -114,8 +119,38 @@ func TestPopProductQueueLockedIsFIFO(t *testing.T) {
 	}
 }
 
+// PLAT-871-15: replacing a report must not erase a different waiting job or
+// make the report's later occurrence overtake an older queued sync.
+func TestTimedQueueReplacesOnlySameScheduleAndRunsOldestDue(t *testing.T) {
+	svc := &ProjectActionDispatcher{}
+	a := testAutomationJob("owner", "work", "example", "report", false)
+	b := testAutomationJob("owner", "work", "example", "sync", false)
+	key := "owner\x1f" + conversationKeyForJob(a)
+	svc.conversations = map[string]bool{key: true}
+	base := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	for _, item := range []struct {
+		job productScheduleJob
+		at  time.Time
+	}{{a, base}, {b, base.Add(5 * time.Minute)}, {a, base.Add(10 * time.Minute)}} {
+		if _, err := svc.claimAutomationRun(context.Background(), item.job, "cron", item.at, productScheduleRunOptions{AllowQueue: true}, nil); !errors.Is(err, ErrProductRunQueued) {
+			t.Fatalf("timed action was not queued: %v", err)
+		}
+	}
+	if len(svc.queued[key]) != 2 {
+		t.Fatalf("different job lost or same schedule piled up: %+v", svc.queued[key])
+	}
+	first, ok := popProductQueueLocked(svc.queued, key)
+	if !ok || first.job.Schedule.ID != "sync" {
+		t.Fatalf("newer occurrence overtook older job: %+v", first)
+	}
+	last, ok := popProductQueueLocked(svc.queued, key)
+	if !ok || last.job.Schedule.ID != "report" || !last.scheduledFor.Equal(base.Add(10*time.Minute)) {
+		t.Fatalf("wrong latest report: %+v", last)
+	}
+}
+
 func TestFinishAutomationRunDrainsQueueAndReleases(t *testing.T) {
-	svc := &ProductScheduleService{
+	svc := &ProjectActionDispatcher{
 		running:       map[string]*productScheduleRun{},
 		conversations: map[string]bool{},
 		queued:        map[string][]productScheduleQueuedRun{},

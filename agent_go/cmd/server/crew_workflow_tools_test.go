@@ -36,7 +36,7 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 		t.Fatal(err)
 	}
 	files := map[string]string{}
-	crews := NewProductScheduleService(nil, registry)
+	crews := NewProjectActionDispatcher(nil, registry)
 	crews.readFile = func(_ context.Context, path string) (string, bool, error) {
 		c, ok := files[path]
 		return c, ok, nil
@@ -83,7 +83,7 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 
-	api := &StreamingAPI{productSchedules: crews}
+	api := &StreamingAPI{projectActions: crews}
 	api.scheduler = NewSchedulerService(api)
 	reg := &recordingRegistrar{}
 	if err := api.registerCrewWorkflowRunTools(reg, "owner", "sess-1", crewWorkflowTestCrewPath); err != nil {

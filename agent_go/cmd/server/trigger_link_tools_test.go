@@ -20,7 +20,7 @@ const (
 
 type triggerLinkEnv struct {
 	api  *StreamingAPI
-	svc  *ProductScheduleService
+	svc  *ProjectActionDispatcher
 	mock *mockWorkspaceAPI
 }
 
@@ -74,7 +74,7 @@ func newTriggerLinkEnv(t *testing.T) triggerLinkEnv {
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 
-	svc := NewProductScheduleService(nil, registry)
+	svc := NewProjectActionDispatcher(nil, registry)
 	svc.readFile = func(_ context.Context, path string) (string, bool, error) {
 		mock.mu.Lock()
 		defer mock.mu.Unlock()
@@ -89,7 +89,7 @@ func newTriggerLinkEnv(t *testing.T) triggerLinkEnv {
 	}
 	// Mark the completion loops started: the test reads the watch's terminal
 	// state from the registry instead of resuming a live chat.
-	api := &StreamingAPI{productSchedules: svc, bgAgentRegistry: NewBackgroundAgentRegistry(),
+	api := &StreamingAPI{projectActions: svc, bgAgentRegistry: NewBackgroundAgentRegistry(),
 		completionLoopStarted: map[string]bool{"sess-caller": true, "sess-builder": true}}
 	api.scheduler = NewSchedulerService(api)
 	svc.api = api

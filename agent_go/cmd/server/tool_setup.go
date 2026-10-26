@@ -598,6 +598,9 @@ func wrapExecutorsWithFolderGuard(executors map[string]func(ctx context.Context,
 	// allowed; this is the exception-list that pairs with broad write prefixes like
 	// Workflow/<name>/ so planning/ stays non-writable even inside the workflow folder.
 	isPathBlockedWrite := func(cleanedPath string) bool {
+		if strings.EqualFold(filepath.Base(cleanedPath), "schedules.json") {
+			return true // scheduled callers are saved only by typed schedule tools
+		}
 		for _, prefix := range blockedWritePrefixes {
 			if cleanedPath == prefix ||
 				strings.HasPrefix(cleanedPath, prefix+"/") ||

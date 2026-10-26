@@ -14,7 +14,7 @@ func TestRegisterWorkScheduleToolsReadsPairedUsersProjectManifest(t *testing.T) 
 	const publicPath = "Chats/Work/projects/agentworks-6068cfc3"
 	docs.files["_users/"+userID+"/"+publicPath+"/product.json"] = `{"schema_version":1,"product":"work","id":"6068cfc3-039a-4b85-8ade-f8c655000701","title":"Agentworks"}`
 
-	api := &StreamingAPI{productSchedules: &ProductScheduleService{}}
+	api := &StreamingAPI{projectActions: &ProjectActionDispatcher{}}
 	registrar := &recordingRegistrar{}
 	if err := api.registerWorkScheduleTools(registrar, "work", userID, "", publicPath, false); err != nil {
 		t.Fatalf("register Work tools from public conversation path: %v", err)
@@ -40,7 +40,7 @@ func TestRegisterScheduleToolsForACode(t *testing.T) {
 	const publicPath = "Chats/Code/projects/app-c0de0001"
 	docs.files["_users/"+owner+"/"+publicPath+"/product.json"] = `{"schema_version":1,"product":"code","id":"c0de0001-0000-4000-8000-000000000001","title":"App"}`
 
-	api := &StreamingAPI{productSchedules: &ProductScheduleService{}}
+	api := &StreamingAPI{projectActions: &ProjectActionDispatcher{}}
 	registrar := &recordingRegistrar{}
 	if err := api.registerWorkScheduleTools(registrar, "code", owner, "", publicPath, false); err != nil {
 		t.Fatalf("register Code schedule tools: %v", err)

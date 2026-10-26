@@ -19,7 +19,7 @@ import (
 // authoring. Crew access is enforced by user-scoped crew lookups on every
 // call; workflow access by the bound workspace authorization.
 func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, userID, workspace string) error {
-	if api.productSchedules == nil {
+	if api.projectActions == nil {
 		return nil
 	}
 	authorize := func(ctx context.Context, readOnly bool) (context.Context, error) {
@@ -64,7 +64,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 		action, _ := args["action"].(string)
 		switch action {
 		case "list":
-			triggers, err := api.productSchedules.projectWebhookConfigs(ctx, userID, profileID, projectID)
+			triggers, err := api.projectActions.projectWebhookConfigs(ctx, userID, profileID, projectID)
 			if err != nil {
 				return "", err
 			}
@@ -95,7 +95,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			if err := authorizeTriggerCallerWorkflow(ctx, userID, caller); err != nil {
 				return "", err
 			}
-			response, _, err := api.productSchedules.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RunDestination: destination, Kind: kind, Caller: caller}, "")
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RunDestination: destination, Kind: kind, Caller: caller}, "")
 			if err != nil {
 				return "", err
 			}
@@ -103,7 +103,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			return string(encoded), err
 		case "update":
 			id, _ := args["id"].(string)
-			triggers, err := api.productSchedules.projectWebhookConfigs(ctx, userID, profileID, projectID)
+			triggers, err := api.projectActions.projectWebhookConfigs(ctx, userID, profileID, projectID)
 			if err != nil {
 				return "", err
 			}
@@ -148,7 +148,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 				return "", err
 			}
 			rotate, _ := args["rotate_secret"].(bool)
-			response, _, err := api.productSchedules.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RotateSecret: rotate, RunDestination: destination, Kind: kind, Caller: caller}, current.ID)
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RotateSecret: rotate, RunDestination: destination, Kind: kind, Caller: caller}, current.ID)
 			if err != nil {
 				return "", err
 			}
@@ -156,7 +156,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			return string(encoded), err
 		case "delete":
 			id, _ := args["id"].(string)
-			if err := api.productSchedules.deleteProductWebhookConfig(ctx, userID, profileID, projectID, strings.TrimSpace(id)); err != nil {
+			if err := api.projectActions.deleteProductWebhookConfig(ctx, userID, profileID, projectID, strings.TrimSpace(id)); err != nil {
 				return "", err
 			}
 			return "Trigger deleted.", nil
@@ -212,7 +212,7 @@ func authorizeTriggerCallerWorkflow(ctx context.Context, userID string, caller *
 // binding the access check just authorized, never from the stored path.
 // Missing manifests, revoked crews, and retargeted roots yield no grant.
 // A nil service or empty user grants nothing; crew features require a user.
-func crewAttachmentReadRoots(ctx context.Context, svc *ProductScheduleService, userID, workspace string) []string {
+func crewAttachmentReadRoots(ctx context.Context, svc *ProjectActionDispatcher, userID, workspace string) []string {
 	if svc == nil || strings.TrimSpace(userID) == "" {
 		return nil
 	}
@@ -241,7 +241,7 @@ func crewAttachmentReadRoots(ctx context.Context, svc *ProductScheduleService, u
 // whether the attachment was newly created: attaching the same crew under
 // the same alias adopts the existing record (created=false) so retried
 // creation flows converge; every other conflict is an error.
-func attachCrewProjectToWorkflow(ctx context.Context, svc *ProductScheduleService, userID, workspace, profileID, projectID, alias string) (string, bool, error) {
+func attachCrewProjectToWorkflow(ctx context.Context, svc *ProjectActionDispatcher, userID, workspace, profileID, projectID, alias string) (string, bool, error) {
 	alias = strings.TrimSpace(alias)
 	if err := workflowtypes.ValidateCrewAttachmentAlias(alias); err != nil {
 		return "", false, err
@@ -358,7 +358,7 @@ func (api *StreamingAPI) registerCrewAttachmentTool(reg definitionToolRegistrar,
 			alias := strings.TrimSpace(fmt.Sprint(args["alias"]))
 			projectID := strings.TrimSpace(fmt.Sprint(args["crew_project_id"]))
 			profileID := strings.TrimSpace(fmt.Sprint(args["crew_profile_id"]))
-			_, created, err := attachCrewProjectToWorkflow(ctx, api.productSchedules, userID, workspace, profileID, projectID, alias)
+			_, created, err := attachCrewProjectToWorkflow(ctx, api.projectActions, userID, workspace, profileID, projectID, alias)
 			if err != nil {
 				return "", err
 			}

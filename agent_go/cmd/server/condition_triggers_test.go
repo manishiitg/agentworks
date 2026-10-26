@@ -20,7 +20,7 @@ func conditionCodeFixture(t *testing.T) (triggerLinkEnv, context.Context, string
 	return env, internalBotRequestContext(context.Background(), "owner"), root
 }
 
-func mustConditionJob(t *testing.T, s *ProductScheduleService, ctx context.Context, id string) productScheduleJob {
+func mustConditionJob(t *testing.T, s *ProjectActionDispatcher, ctx context.Context, id string) productScheduleJob {
 	t.Helper()
 	j, err := s.Job(ctx, "owner", projectScheduleJobID("work", "checks", id))
 	if err != nil {

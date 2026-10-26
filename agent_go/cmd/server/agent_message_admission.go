@@ -20,10 +20,10 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 		return err
 	}
 	if source.ConditionJob != "" {
-		if api.productSchedules == nil {
+		if api.projectActions == nil {
 			return fmt.Errorf("watcher caller unavailable")
 		}
-		job, err := api.productSchedules.Job(ctx, source.UserID, source.ConditionJob)
+		job, err := api.projectActions.Job(ctx, source.UserID, source.ConditionJob)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "product schedule ") && strings.HasSuffix(err.Error(), "not found for this user") {
 				return err
@@ -37,7 +37,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			// Automatic completion stops future checks, not the exact action
 			// already accepted by this one-time watcher. All access checks below
 			// still apply; a manual pause before acceptance still holds delivery.
-			l, err := api.productSchedules.conditionService().engine.Read(ctx, conditionKey(job))
+			l, err := api.projectActions.conditionService().engine.Read(ctx, conditionKey(job))
 			if err != nil {
 				return conditiontrigger.HoldError{Err: err}
 			}
@@ -46,7 +46,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 				return conditiontrigger.ErrPaused
 			}
 		}
-		if err := api.productSchedules.conditionService().authorize(ctx, job, *job.Schedule.Condition); err != nil {
+		if err := api.projectActions.conditionService().authorize(ctx, job, *job.Schedule.Condition); err != nil {
 			var permanent conditiontrigger.PermanentError
 			if errors.As(err, &permanent) {
 				return err
@@ -126,10 +126,10 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 				return fmt.Errorf("message participant no longer has workflow access")
 			}
 		} else if e.Kind == triggerCallerCrew {
-			if api.productSchedules == nil || api.productSchedules.registry == nil {
+			if api.projectActions == nil || api.projectActions.registry == nil {
 				return fmt.Errorf("Crew runtime unavailable")
 			}
-			profile, err := api.productSchedules.registry.Resolve(e.Profile, 0, actor)
+			profile, err := api.projectActions.registry.Resolve(e.Profile, 0, actor)
 			if err != nil || !userAllowedProduct(&UserClaims{UserID: actor}, profile.Product) {
 				return fmt.Errorf("message participant no longer has Crew access")
 			}

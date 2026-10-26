@@ -233,7 +233,7 @@ func TestCreateCrewMCPAvailabilityUsesCreatorScope(t *testing.T) {
 	if err := mcpclient.SaveConfig(strings.Replace(file, ".json", "_user.json", 1), cfg); err != nil {
 		t.Fatal(err)
 	}
-	svc := &ProductScheduleService{api: &StreamingAPI{mcpConfig: cfg, mcpConfigPath: file, logger: loggerv2.NewNoop()}}
+	svc := &ProjectActionDispatcher{api: &StreamingAPI{mcpConfig: cfg, mcpConfigPath: file, logger: loggerv2.NewNoop()}}
 	names, pending, err := svc.validateCrewCreationServers(personContext("alice"), "alice", []string{"vault_c1", "LegacyShared"})
 	if err != nil || len(names) != 2 || names[0] != "vault_c1" || len(pending) != 1 || pending[0].Name != "LegacyShared" {
 		t.Fatalf("creator selection: %v %v %v", names, pending, err)

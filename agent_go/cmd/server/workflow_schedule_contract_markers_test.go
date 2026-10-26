@@ -1,7 +1,6 @@
 package server
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -41,20 +40,5 @@ func TestScheduleProcedureMarkersStillCatchEmbeddedCode(t *testing.T) {
 		if needs, _ := scheduleMessagesNeedExplicitReason([]string{message}); !needs {
 			t.Errorf("%s: embedded procedure not detected in %q", name, message)
 		}
-	}
-}
-
-// A rejected save has to name what tripped it, or the agent cannot tell which
-// sentence to change.
-func TestScheduleRejectionNamesTheOffendingMessage(t *testing.T) {
-	err := validateScheduleMessages([]string{"Run the nightly check.", "SELECT * FROM runs;"}, "")
-	if err == nil {
-		t.Fatal("embedded SQL should require an explicit reason")
-	}
-	if !strings.Contains(err.Error(), "messages[1]") || !strings.Contains(err.Error(), "SELECT ... FROM") {
-		t.Errorf("rejection does not identify the offending message: %v", err)
-	}
-	if err := validateScheduleMessages([]string{"Run the nightly check.", "SELECT * FROM runs;"}, "kept deliberately: ad-hoc query owned by this schedule"); err != nil {
-		t.Errorf("an explicit reason should satisfy the contract: %v", err)
 	}
 }

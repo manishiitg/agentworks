@@ -138,7 +138,7 @@ func validateProductWebhook(trigger productWebhookTrigger) error {
 
 var productWebhookConfigMu sync.Mutex
 
-func ProductWebhookRoutes(router *mux.Router, svc *ProductScheduleService) {
+func ProductWebhookRoutes(router *mux.Router, svc *ProjectActionDispatcher) {
 	router.HandleFunc("/api/condition-triggers", svc.conditionHTTP).Methods("GET", "POST")
 	router.HandleFunc("/api/condition-triggers/{id}/history", svc.conditionHTTP).Methods("GET")
 	router.HandleFunc("/api/product-webhooks", svc.listProductWebhooks).Methods("GET")
@@ -153,7 +153,7 @@ func ProductWebhookRoutes(router *mux.Router, svc *ProductScheduleService) {
 	router.HandleFunc("/api/hooks/product/{id}/runs/{run}", svc.getProductWebhookRun).Methods("GET")
 }
 
-func (s *ProductScheduleService) getProductWebhookPayload(w http.ResponseWriter, r *http.Request) {
+func (s *ProjectActionDispatcher) getProductWebhookPayload(w http.ResponseWriter, r *http.Request) {
 	profileID, projectID := productWebhookCoordinates(r)
 	if profileID == "" {
 		profileID = "work"
@@ -209,7 +209,7 @@ func (s *ProductScheduleService) getProductWebhookPayload(w http.ResponseWriter,
 	_ = json.NewEncoder(w).Encode(map[string]string{"raw_payload": strings.TrimSpace(content)})
 }
 
-func (s *ProductScheduleService) listProductWebhookRuns(w http.ResponseWriter, r *http.Request) {
+func (s *ProjectActionDispatcher) listProductWebhookRuns(w http.ResponseWriter, r *http.Request) {
 	profileID, projectID := productWebhookCoordinates(r)
 	if profileID == "" {
 		profileID = "work"
@@ -253,7 +253,7 @@ func productWebhookCoordinates(r *http.Request) (string, string) {
 	return "", ""
 }
 
-func (s *ProductScheduleService) listProductWebhooks(w http.ResponseWriter, r *http.Request) {
+func (s *ProjectActionDispatcher) listProductWebhooks(w http.ResponseWriter, r *http.Request) {
 	profileID, projectID := productWebhookCoordinates(r)
 	if profileID == "" {
 		profileID = "work"
@@ -274,7 +274,7 @@ func (s *ProductScheduleService) listProductWebhooks(w http.ResponseWriter, r *h
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"triggers": responses})
 }
 
-func (s *ProductScheduleService) projectWebhookConfigs(ctx context.Context, userID, profileID, projectID string) ([]productWebhookTrigger, error) {
+func (s *ProjectActionDispatcher) projectWebhookConfigs(ctx context.Context, userID, profileID, projectID string) ([]productWebhookTrigger, error) {
 	_, _, manifest, err := s.projectManifest(ctx, userID, profileID, projectID)
 	if err != nil {
 		return nil, err
@@ -282,7 +282,7 @@ func (s *ProductScheduleService) projectWebhookConfigs(ctx context.Context, user
 	return append([]productWebhookTrigger(nil), manifest.Triggers...), nil
 }
 
-func (s *ProductScheduleService) saveProductWebhook(w http.ResponseWriter, r *http.Request) {
+func (s *ProjectActionDispatcher) saveProductWebhook(w http.ResponseWriter, r *http.Request) {
 	var req productWebhookRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
@@ -304,7 +304,7 @@ func (s *ProductScheduleService) saveProductWebhook(w http.ResponseWriter, r *ht
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-func (s *ProductScheduleService) saveProductWebhookConfig(ctx context.Context, userID string, req productWebhookRequest, id string) (productWebhookResponse, bool, error) {
+func (s *ProjectActionDispatcher) saveProductWebhookConfig(ctx context.Context, userID string, req productWebhookRequest, id string) (productWebhookResponse, bool, error) {
 	productWebhookConfigMu.Lock()
 	defer productWebhookConfigMu.Unlock()
 	profile, binding, manifest, err := s.projectManifest(ctx, userID, req.ProfileID, req.ProjectID)
@@ -438,7 +438,7 @@ func (s *ProductScheduleService) saveProductWebhookConfig(ctx context.Context, u
 	return response, index < 0, nil
 }
 
-func (s *ProductScheduleService) deleteProductWebhook(w http.ResponseWriter, r *http.Request) {
+func (s *ProjectActionDispatcher) deleteProductWebhook(w http.ResponseWriter, r *http.Request) {
 	profileID, projectID := productWebhookCoordinates(r)
 	if profileID == "" {
 		profileID = "work"
@@ -466,7 +466,7 @@ func (s *ProductScheduleService) deleteProductWebhook(w http.ResponseWriter, r *
 	http.Error(w, "trigger not found", http.StatusNotFound)
 }
 
-func (s *ProductScheduleService) deleteProductWebhookConfig(ctx context.Context, userID, profileID, projectID, id string) error {
+func (s *ProjectActionDispatcher) deleteProductWebhookConfig(ctx context.Context, userID, profileID, projectID, id string) error {
 	productWebhookConfigMu.Lock()
 	defer productWebhookConfigMu.Unlock()
 	_, binding, manifest, err := s.projectManifest(ctx, userID, profileID, projectID)
@@ -505,7 +505,7 @@ type productWebhookMatch struct {
 	Trigger   productWebhookTrigger
 }
 
-func (s *ProductScheduleService) findProductWebhook(ctx context.Context, id string) (*productWebhookMatch, error) {
+func (s *ProjectActionDispatcher) findProductWebhook(ctx context.Context, id string) (*productWebhookMatch, error) {
 	if s.registry == nil {
 		return nil, fmt.Errorf("product profiles unavailable")
 	}
@@ -596,7 +596,7 @@ func (s *ProductScheduleService) findProductWebhook(ctx context.Context, id stri
 	return nil, fmt.Errorf("trigger not found")
 }
 
-func (s *ProductScheduleService) receiveProductWebhook(w http.ResponseWriter, r *http.Request) {
+func (s *ProjectActionDispatcher) receiveProductWebhook(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	id := mux.Vars(r)["id"]
 	if _, err := uuid.Parse(id); err != nil {
@@ -668,7 +668,7 @@ func (s *ProductScheduleService) receiveProductWebhook(w http.ResponseWriter, r 
 // final response, and idempotency behave identically. caller stamps the
 // workflow step behind an internal delivery for cost attribution; it is nil
 // for public deliveries.
-func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, match *productWebhookMatch, deliveryID, event string, body []byte, sourceNote string, caller *workflowtypes.CrewRunCaller) (internalTriggerDeliveryResult, error) {
+func (s *ProjectActionDispatcher) deliverProductTrigger(ctx context.Context, match *productWebhookMatch, deliveryID, event string, body []byte, sourceNote string, caller *workflowtypes.CrewRunCaller) (internalTriggerDeliveryResult, error) {
 	runID := webhookDeliveryRunID(match.Manifest.ID, match.Trigger.ID, deliveryID)
 	runsWorkspace := agentProfileRuntimeWorkspace(match.UserID, match.Binding.WorkspacePath)
 	jobID := projectScheduleJobID(match.Profile.ID, match.Manifest.ID, match.Trigger.ID)
@@ -783,7 +783,7 @@ func triggerTurnMessage(triggerMessage, sourceNote, relativePayloadPath string) 
 // without a secret or loopback HTTP. The binding caller stamp authorizes the
 // call; public triggers are rejected here so this path can never bypass
 // secret auth.
-func (s *ProductScheduleService) dispatchInternalProductTrigger(ctx context.Context, call internalCrewTriggerCall) (internalTriggerDeliveryResult, error) {
+func (s *ProjectActionDispatcher) dispatchInternalProductTrigger(ctx context.Context, call internalCrewTriggerCall) (internalTriggerDeliveryResult, error) {
 	if err := checkInternalPayload(call.Payload); err != nil {
 		return internalTriggerDeliveryResult{}, err
 	}
@@ -853,7 +853,7 @@ func (s *ProductScheduleService) dispatchInternalProductTrigger(ctx context.Cont
 // getInternalProductTriggerRun serves one Crew trigger run to the bound
 // workflow caller so a plan step can poll a delivery to terminal state.
 // Disabling the trigger revokes reads, mirroring the public endpoint.
-func (s *ProductScheduleService) getInternalProductTriggerRun(ctx context.Context, userID, profileID, projectID, triggerID, runID string, caller triggerCaller) (productWebhookRunStatus, error) {
+func (s *ProjectActionDispatcher) getInternalProductTriggerRun(ctx context.Context, userID, profileID, projectID, triggerID, runID string, caller triggerCaller) (productWebhookRunStatus, error) {
 	profile, binding, manifest, trigger, err := s.findInternalProductTrigger(ctx, userID, profileID, projectID, triggerID)
 	if err != nil {
 		return productWebhookRunStatus{}, err
@@ -875,7 +875,7 @@ func (s *ProductScheduleService) getInternalProductTriggerRun(ctx context.Contex
 // crew resolves under whichever owner holds it (Crew Run mode): a
 // reader's workflow run invokes the owner's crew through the same bound
 // trigger, and delivery below runs in the crew owner's namespace.
-func (s *ProductScheduleService) findInternalProductTrigger(ctx context.Context, userID, profileID, projectID, triggerID string) (agentprofiles.Profile, productConversationBinding, productProjectManifest, *productWebhookTrigger, error) {
+func (s *ProjectActionDispatcher) findInternalProductTrigger(ctx context.Context, userID, profileID, projectID, triggerID string) (agentprofiles.Profile, productConversationBinding, productProjectManifest, *productWebhookTrigger, error) {
 	profile, binding, manifest, ownerID, err := s.projectManifestAnyOwner(ctx, userID, normalizeInternalProfileID(profileID), projectID)
 	if err != nil {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, fmt.Errorf("%w: %w", ErrInternalTriggerNotFound, err)
@@ -970,7 +970,7 @@ func productWebhookRunStatusDTO(entry *ScheduleRunEntry) productWebhookRunStatus
 // external callers and workflow steps can poll a delivery to terminal state.
 // Reads use the trigger secret for both modes; disabling
 // the trigger revokes reads.
-func (s *ProductScheduleService) getProductWebhookRun(w http.ResponseWriter, r *http.Request) {
+func (s *ProjectActionDispatcher) getProductWebhookRun(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	vars := mux.Vars(r)
 	id, runID := vars["id"], vars["run"]

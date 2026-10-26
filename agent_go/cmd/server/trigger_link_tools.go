@@ -253,11 +253,11 @@ func (api *StreamingAPI) connectTriggerTarget(ctx context.Context, userID string
 	}
 	switch target.Kind {
 	case triggerCallerCrew:
-		if api.productSchedules == nil {
+		if api.projectActions == nil {
 			return "", false, fmt.Errorf("Crew calls are unavailable")
 		}
 
-		triggers, err := api.productSchedules.projectWebhookConfigs(ctx, target.ownerOr(userID), target.CrewProfile, target.CrewID)
+		triggers, err := api.projectActions.projectWebhookConfigs(ctx, target.ownerOr(userID), target.CrewProfile, target.CrewID)
 		if err != nil {
 			return "", false, err
 		}
@@ -267,7 +267,7 @@ func (api *StreamingAPI) connectTriggerTarget(ctx context.Context, userID string
 			}
 		}
 		stamp := caller.Stamp
-		response, _, err := api.productSchedules.saveProductWebhookConfig(ctx, target.ownerOr(userID), productWebhookRequest{
+		response, _, err := api.projectActions.saveProductWebhookConfig(ctx, target.ownerOr(userID), productWebhookRequest{
 			WorkspaceFunction: true,
 			ProfileID:         target.CrewProfile, ProjectID: target.CrewID,
 			Name: "Called by " + caller.Label, Message: crewTargetMessage(caller),
@@ -299,7 +299,7 @@ func (api *StreamingAPI) readTriggerTargetRun(ctx context.Context, userID string
 	ctx = context.WithValue(ctx, inFlightCallRunReadKey{}, true)
 	switch target.Kind {
 	case triggerCallerCrew:
-		status, err := api.productSchedules.getInternalProductTriggerRun(ctx, userID, target.CrewProfile, target.CrewID, triggerID, runID, caller.Stamp)
+		status, err := api.projectActions.getInternalProductTriggerRun(ctx, userID, target.CrewProfile, target.CrewID, triggerID, runID, caller.Stamp)
 		if err != nil {
 			return triggerTargetRunState{}, crewWorkflowRunError(err)
 		}
@@ -433,7 +433,7 @@ func triggerTargetTimeout(value interface{}) (time.Duration, error) {
 // takes it as steering input, otherwise it waits in the durable turn queue and
 // runs right after the current turn. Only while the run is still running.
 func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, triggerID, runID, message string) (map[string]interface{}, error) {
-	status, err := api.productSchedules.getInternalProductTriggerRun(ctx, userID, target.CrewProfile, target.CrewID, triggerID, runID, caller.Stamp)
+	status, err := api.projectActions.getInternalProductTriggerRun(ctx, userID, target.CrewProfile, target.CrewID, triggerID, runID, caller.Stamp)
 	if err != nil {
 		return nil, crewWorkflowRunError(err)
 	}
@@ -443,7 +443,7 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 	if strings.TrimSpace(status.SessionID) == "" || !strings.EqualFold(status.Status, "running") {
 		return nil, fmt.Errorf("run %s has not started yet (%s); wait for it to start or put the details in a new call", runID, status.Status)
 	}
-	profile, binding, manifest, trigger, err := api.productSchedules.findInternalProductTrigger(ctx, userID, target.CrewProfile, target.CrewID, triggerID)
+	profile, binding, manifest, trigger, err := api.projectActions.findInternalProductTrigger(ctx, userID, target.CrewProfile, target.CrewID, triggerID)
 	if err != nil {
 		return nil, crewWorkflowRunError(err)
 	}

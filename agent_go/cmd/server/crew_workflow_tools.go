@@ -354,7 +354,7 @@ func workflowTriggerBinding(ctx context.Context, api *StreamingAPI, workspacePat
 		return "", false, fmt.Errorf("workflow scheduler is unavailable")
 	}
 	if caller.Type == triggerCallerCrew {
-		if api.productSchedules == nil || !api.productSchedules.crewProjectExists(ctx, productWorkspaceUserID(ctx), caller.ProfileID, caller.ID) {
+		if api.projectActions == nil || !api.projectActions.crewProjectExists(ctx, productWorkspaceUserID(ctx), caller.ProfileID, caller.ID) {
 			return "", false, fmt.Errorf("caller Crew project not found")
 		}
 	} else {

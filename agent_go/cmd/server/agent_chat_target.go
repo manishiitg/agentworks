@@ -50,8 +50,8 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 			return target, nil
 		}
 		registry := api.agentProfiles
-		if registry == nil && api.productSchedules != nil {
-			registry = api.productSchedules.registry
+		if registry == nil && api.projectActions != nil {
+			registry = api.projectActions.registry
 		}
 		if registry == nil {
 			return target, fmt.Errorf("Crew chat runtime unavailable")

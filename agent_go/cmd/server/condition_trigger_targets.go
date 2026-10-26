@@ -201,16 +201,16 @@ func conditionRouteSchedule(job productScheduleJob, cfg conditiontrigger.Config)
 }
 
 func (s *SchedulerService) conditionRoute(ctx context.Context, workspacePath, id string, input *WorkflowWebhookDelivery) (*WorkflowSchedule, error) {
-	if input.ConditionCaller == nil || s.api.productSchedules == nil {
+	if input.ConditionCaller == nil || s.api.projectActions == nil {
 		return nil, errors.New("watcher route caller unavailable")
 	}
 	b := input.ConditionCaller
 	ctx = internalBotRequestContext(ctx, b.OwnerID)
-	job, err := s.api.productSchedules.Job(ctx, b.OwnerID, b.JobID)
+	job, err := s.api.projectActions.Job(ctx, b.OwnerID, b.JobID)
 	if err != nil || job.Schedule.Condition == nil {
 		return nil, errors.New("watcher route caller was removed")
 	}
-	c := s.api.productSchedules.conditionService()
+	c := s.api.projectActions.conditionService()
 	cfg := *job.Schedule.Condition
 	if err := c.current(ctx, job, cfg); err != nil {
 		return nil, err

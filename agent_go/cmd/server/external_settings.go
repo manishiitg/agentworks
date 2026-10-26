@@ -264,10 +264,10 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 				next = settingsWith(next, name)
 				continue
 			}
-			if api.productSchedules == nil {
+			if api.projectActions == nil {
 				return nil, nil, settingsInvalid("MCP configuration is unavailable")
 			}
-			canonical, waiting, err := api.productSchedules.validateCrewCreationServers(ctx, userID, []string{name})
+			canonical, waiting, err := api.projectActions.validateCrewCreationServers(ctx, userID, []string{name})
 			if err != nil {
 				return nil, nil, settingsInvalid("mcp_servers: %v", err)
 			}
@@ -285,10 +285,10 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 		changed = append(changed, "mcp_servers")
 	}
 	if adds := externalSettingsList(args, "mcp_servers", "add"); len(adds) > 0 {
-		if api.productSchedules == nil {
+		if api.projectActions == nil {
 			return nil, nil, &externalSettingsError{503, "mcp_unavailable", "MCP configuration is unavailable."}
 		}
-		canonical, waiting, err := api.productSchedules.validateCrewCreationServers(ctx, userID, adds)
+		canonical, waiting, err := api.projectActions.validateCrewCreationServers(ctx, userID, adds)
 		if err != nil {
 			return nil, nil, settingsInvalid("mcp_servers: %v", err)
 		}
@@ -376,10 +376,10 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 	}
 	shared := externalSettingsList(args, "secrets", "use_shared")
 	if len(shared) > 0 {
-		if api.productSchedules == nil {
+		if api.projectActions == nil {
 			return nil, nil, &externalSettingsError{503, "secrets_unavailable", "Shared secrets are unavailable."}
 		}
-		if _, err := api.productSchedules.validateCrewCreationGlobalSecrets(ctx, userID, shared); err != nil {
+		if _, err := api.projectActions.validateCrewCreationGlobalSecrets(ctx, userID, shared); err != nil {
 			return nil, nil, settingsInvalid("secrets: %v", err)
 		}
 	}

@@ -11,7 +11,7 @@ import (
 // (PLAT-871, owner 2026-10-20: "should be same"). The id is looked up once: a Crew trigger goes to the Crew receiver,
 // anything else to the workflow receiver, so both keep their own secret checks and run rules. The older
 // /api/hooks/product/<id> and /api/hooks/workflow/<id> addresses stay as aliases ("keep aliases").
-func UnifiedWebhookRoutes(router *mux.Router, workflows *SchedulerService, products *ProductScheduleService) {
+func UnifiedWebhookRoutes(router *mux.Router, workflows *SchedulerService, products *ProjectActionDispatcher) {
 	receiver := webhookReceiver{find: findScheduleByIDAny, start: workflows.triggerSavedSchedule, existing: workflows.existingWebhookRun}
 	isProduct := func(r *http.Request) bool {
 		if products == nil {

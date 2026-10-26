@@ -41,7 +41,7 @@ func (api *StreamingAPI) registerConditionTools(reg definitionToolRegistrar, use
 		if chatSessionIDFromContext(ctx) == "" && sessionID != "" {
 			ctx = context.WithValue(ctx, common.ChatSessionIDKey, sessionID)
 		}
-		out, err := api.productSchedules.conditionService().manage(internalBotRequestContext(ctx, userID), userID, profileID, projectID, args)
+		out, err := api.projectActions.conditionService().manage(internalBotRequestContext(ctx, userID), userID, profileID, projectID, args)
 		if err != nil {
 			return "", err
 		}
@@ -451,7 +451,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 	}
 }
 
-func (s *ProductScheduleService) conditionHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *ProjectActionDispatcher) conditionHTTP(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil {
 		http.Error(w, "sign in first", 401)

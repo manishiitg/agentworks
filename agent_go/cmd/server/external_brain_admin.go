@@ -203,11 +203,11 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 
 func (api *StreamingAPI) externalBrainSchedule(w http.ResponseWriter, r *http.Request, action string, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
-	if api == nil || api.productSchedules == nil {
+	if api == nil || api.projectActions == nil {
 		externalError(w, http.StatusServiceUnavailable, "unavailable", "Brain schedules are not available on this server.")
 		return
 	}
-	ps, ctx, userID := api.productSchedules, r.Context(), claims.UserID
+	ps, ctx, userID := api.projectActions, r.Context(), claims.UserID
 	jobID := productScheduleJobID(knowledgebaseproduct.ProfileID, "organize")
 	var job productScheduleJob
 	var err error

@@ -28,12 +28,12 @@ const crewStepMaxRecoveryAttempts = 100
 // One runner serves one workflow run; it closes over the run owner, so crew
 // lookups stay user-scoped without trusting step content for identity.
 type crewStepRunner struct {
-	crews        *ProductScheduleService
+	crews        *ProjectActionDispatcher
 	userID       string
 	pollInterval time.Duration
 }
 
-func newCrewStepRunner(crews *ProductScheduleService, userID string) *crewStepRunner {
+func newCrewStepRunner(crews *ProjectActionDispatcher, userID string) *crewStepRunner {
 	return &crewStepRunner{crews: crews, userID: userID, pollInterval: crewStepPollInterval}
 }
 
@@ -44,7 +44,7 @@ func newCrewStepRunner(crews *ProductScheduleService, userID string) *crewStepRu
 // runs, workshop execute_step/run_full_workflow, live input, schedules,
 // webhooks) resolves the runner through here so crew steps execute
 // identically everywhere.
-func crewRunnerForRun(ctx context.Context, schedules *ProductScheduleService) stepworkflow.CrewStepRunner {
+func crewRunnerForRun(ctx context.Context, schedules *ProjectActionDispatcher) stepworkflow.CrewStepRunner {
 	if ctx == nil || schedules == nil {
 		return nil
 	}
@@ -241,7 +241,7 @@ func appendCrewPollTransition(timeline []stepworkflow.CrewPollTransition, status
 // trigger, using the same permission check as trigger invocation. Runs call
 // it before the first step executes and crew steps call it before each
 // invocation, so revoked access fails fast.
-func (s *ProductScheduleService) checkInternalCrewAccess(ctx context.Context, userID, profileID, projectID, triggerID string, caller triggerCaller) error {
+func (s *ProjectActionDispatcher) checkInternalCrewAccess(ctx context.Context, userID, profileID, projectID, triggerID string, caller triggerCaller) error {
 	_, _, _, trigger, err := s.findInternalProductTrigger(ctx, userID, profileID, projectID, triggerID)
 	if err != nil {
 		return err
@@ -258,7 +258,7 @@ func (s *ProductScheduleService) checkInternalCrewAccess(ctx context.Context, us
 // the plan holds no crew step — ordinary downstream steps can read through
 // the alias, so a revoked crew must fail the run before any step executes.
 // Plans without crew steps or attachments cost one manifest read.
-func preflightCrewSteps(ctx context.Context, crews *ProductScheduleService, userID, workspacePath string) error {
+func preflightCrewSteps(ctx context.Context, crews *ProjectActionDispatcher, userID, workspacePath string) error {
 	if crews == nil {
 		return nil
 	}

@@ -350,6 +350,7 @@ func runSummaryInstructionsOrDefault(c *WorkflowNotificationConfig) string {
 
 // WorkflowSchedule represents a clock or webhook trigger stored in the manifest.
 type WorkflowSchedule struct {
+	RunAs              string                 `json:"-"` // Server-bound caller from the common schedule record.
 	TeamAuthorizedBy   string                 `json:"team_authorized_by,omitempty"`
 	TeamPolicyRevision int                    `json:"team_policy_revision,omitempty"`
 	ID                 string                 `json:"id"`
@@ -953,6 +954,10 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 		}
 	}
 
+	if err := loadWorkflowTimerActions(ctx, workspacePath, &m); err != nil {
+		return nil, false, err
+	}
+
 	// Track whether any schedule IDs need auto-assignment before applying defaults.
 	hadMissingLabel := strings.TrimSpace(m.Label) == ""
 	if hadMissingLabel {
@@ -1303,6 +1308,9 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		if err := json.Unmarshal([]byte(previous), &prior); err != nil {
 			return fmt.Errorf("parse existing workflow.json before update: %w", err)
 		}
+		if err := loadWorkflowTimerActions(ctx, workspacePath, &prior); err != nil {
+			return err
+		}
 		if err := validateTeamManifestUpdate(ctx, &prior, m); err != nil {
 			return err
 		}
@@ -1329,7 +1337,17 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		return fmt.Errorf("%w: %w", ErrInvalidWorkflowManifest, err)
 	}
 
-	data, err := json.MarshalIndent(m, "", "  ")
+	if err := saveWorkflowTimerActions(ctx, workspacePath, m); err != nil {
+		return err
+	}
+	persisted := *m
+	persisted.Schedules = nil
+	for _, schedule := range m.Schedules {
+		if schedule.ScheduleType == "webhook" {
+			persisted.Schedules = append(persisted.Schedules, schedule)
+		}
+	}
+	data, err := json.MarshalIndent(&persisted, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal workflow.json: %w", err)
 	}

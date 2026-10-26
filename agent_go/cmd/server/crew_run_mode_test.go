@@ -1008,7 +1008,7 @@ func TestSharedProjectFilesAndFile(t *testing.T) {
 
 func TestRegisterWorkScheduleToolsReaderSplit(t *testing.T) {
 	fx := newCrewRunModeFixture(t)
-	api := &StreamingAPI{productSchedules: &ProductScheduleService{}}
+	api := &StreamingAPI{projectActions: &ProjectActionDispatcher{}}
 
 	reader := &recordingRegistrar{}
 	if err := api.registerWorkScheduleTools(reader, "work", "reader", "", crewRunModeOwnerRoot, true); err != nil {
@@ -1044,7 +1044,7 @@ func TestRegisterAgentProfileToolsReaderSplit(t *testing.T) {
 		t.Fatalf("register Work runtime: %v", err)
 	}
 	resolved := &resolvedAgentProfile{Definition: workproduct.BuiltinAgentProfile()}
-	api := &StreamingAPI{agentProfiles: registry, productSchedules: &ProductScheduleService{}}
+	api := &StreamingAPI{agentProfiles: registry, projectActions: &ProjectActionDispatcher{}}
 	api.scheduler = NewSchedulerService(api)
 
 	registrar := &recordingRegistrar{}
@@ -1088,7 +1088,7 @@ func TestSharedCallerGuestTurnGetsOutboundFunctionCallsOnly(t *testing.T) {
 		t.Fatalf("register Work runtime: %v", err)
 	}
 	resolved := &resolvedAgentProfile{Definition: workproduct.BuiltinAgentProfile()}
-	api := &StreamingAPI{agentProfiles: registry, productSchedules: &ProductScheduleService{}}
+	api := &StreamingAPI{agentProfiles: registry, projectActions: &ProjectActionDispatcher{}}
 	api.scheduler = NewSchedulerService(api)
 	outbound := []string{"list_functions", "call_function", "get_function_call", "reply_function_call"}
 
@@ -1143,7 +1143,7 @@ func TestProjectManifestAnyOwner(t *testing.T) {
 	for path, content := range fx.files {
 		backing[path] = content
 	}
-	svc := NewProductScheduleService(nil, registry)
+	svc := NewProjectActionDispatcher(nil, registry)
 	svc.readFile = func(_ context.Context, path string) (string, bool, error) {
 		content, ok := backing[path]
 		return content, ok, nil
@@ -1175,7 +1175,7 @@ func TestProjectManifestAnyOwner(t *testing.T) {
 
 func TestListAttachedWorkflowsReaderFiltersInvisible(t *testing.T) {
 	fx := newCrewRunModeFixture(t)
-	api := &StreamingAPI{productSchedules: &ProductScheduleService{}}
+	api := &StreamingAPI{projectActions: &ProjectActionDispatcher{}}
 	api.scheduler = NewSchedulerService(api)
 	// Registration stamps the turn user (as the query path does per turn),
 	// so register once per caller.

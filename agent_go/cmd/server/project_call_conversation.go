@@ -45,7 +45,7 @@ func workflowProjectCallOwners(manifest *WorkflowManifest) []string {
 // A queued call must not enter a main chat using an ownership decision that
 // became stale while it waited. Reject a changed destination; the caller can
 // submit a fresh call into the correct conversation/queue.
-func (s *ProductScheduleService) validateProjectCallConversation(ctx context.Context, job productScheduleJob) error {
+func (s *ProjectActionDispatcher) validateProjectCallConversation(ctx context.Context, job productScheduleJob) error {
 	if job.ProjectCaller == nil {
 		return nil
 	}
@@ -58,7 +58,7 @@ func (s *ProductScheduleService) validateProjectCallConversation(ctx context.Con
 	return nil
 }
 
-func (s *ProductScheduleService) projectCallerOwners(ctx context.Context, userID string, caller triggerLinkCaller) []string {
+func (s *ProjectActionDispatcher) projectCallerOwners(ctx context.Context, userID string, caller triggerLinkCaller) []string {
 	switch caller.Stamp.Type {
 	case triggerCallerWorkflow:
 		if caller.Path != "" {

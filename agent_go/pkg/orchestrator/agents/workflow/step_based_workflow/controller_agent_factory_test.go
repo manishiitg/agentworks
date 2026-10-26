@@ -1436,7 +1436,7 @@ func TestStepFileAccessFollowsTheOwnersRule(t *testing.T) {
 					t.Errorf("write of %s refused: %v", ok, writes)
 				}
 			}
-			for _, refused := range []string{"planning/plan.json", "workflow.json", "config/x.json", "variables/variables.json", "functions/x", "soul/soul.md", "runs/iteration-0/other-run/execution/x/out.json", "runs/iteration-1/default/x", "code/shared/helper.py"} {
+			for _, refused := range []string{"planning/plan.json", "workflow.json", "schedules.json", "config/x.json", "variables/variables.json", "functions/x", "soul/soul.md", "runs/iteration-0/other-run/execution/x/out.json", "runs/iteration-1/default/x", "code/shared/helper.py"} {
 				if guardCovers(writes, wf+refused) {
 					t.Errorf("write of %s allowed: %v", refused, writes)
 				}

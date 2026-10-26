@@ -112,13 +112,13 @@ func (j productScheduleJob) ID() string {
 // Effective returns the schedule with the user's enable override applied.
 func (j productScheduleJob) Effective() productschedule.Schedule {
 	s := j.Schedule
-	if j.State.Enabled != nil {
+	if j.ProjectID == "" && j.State.Enabled != nil {
 		s.Enabled = *j.State.Enabled
 	}
 	if j.State.CadenceHours != nil && *j.State.CadenceHours > 0 && s.CadenceHours > 0 {
 		s.CadenceHours = *j.State.CadenceHours
 	}
-	if len(j.State.Messages) > 0 {
+	if j.ProjectID == "" && len(j.State.Messages) > 0 {
 		s.Messages = append([]string(nil), j.State.Messages...)
 	}
 	return s
@@ -199,8 +199,9 @@ func scheduleStateKey(job productScheduleJob) string {
 	return productScheduleStateKey(job.Profile.ID, job.Schedule.ID)
 }
 
-// ProductScheduleService runs product schedules for every user.
-type ProductScheduleService struct {
+// ProjectActionDispatcher resolves callers and executes project actions.
+// SchedulerService alone owns their clock; this dispatcher owns conversation delivery.
+type ProjectActionDispatcher struct {
 	// automationTurnRunner replaces only the model boundary in trigger-path regression checks.
 	automationTurnRunner func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error)
 
@@ -247,9 +248,9 @@ type productScheduleRun struct {
 	cancel    context.CancelFunc
 }
 
-// NewProductScheduleService wires the service to the live profile registry.
-func NewProductScheduleService(api *StreamingAPI, registry *agentprofiles.Registry) *ProductScheduleService {
-	svc := &ProductScheduleService{api: api, registry: registry, running: map[string]*productScheduleRun{}, deferred: map[string]string{}, conversations: map[string]bool{}, queued: map[string][]productScheduleQueuedRun{}}
+// NewProjectActionDispatcher wires the service to the live profile registry.
+func NewProjectActionDispatcher(api *StreamingAPI, registry *agentprofiles.Registry) *ProjectActionDispatcher {
+	svc := &ProjectActionDispatcher{api: api, registry: registry, running: map[string]*productScheduleRun{}, deferred: map[string]string{}, conversations: map[string]bool{}, queued: map[string][]productScheduleQueuedRun{}}
 	svc.users = usersWithProduct
 	svc.readFile = readFileFromWorkspace
 	svc.writeFile = writeFileToWorkspace
@@ -259,7 +260,7 @@ func NewProductScheduleService(api *StreamingAPI, registry *agentprofiles.Regist
 	return svc
 }
 
-func (s *ProductScheduleService) setDeferred(userID, jobID, reason string) {
+func (s *ProjectActionDispatcher) setDeferred(userID, jobID, reason string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.deferred == nil {
@@ -273,7 +274,7 @@ func (s *ProductScheduleService) setDeferred(userID, jobID, reason string) {
 	s.deferred[key] = reason
 }
 
-func (s *ProductScheduleService) deferredReason(userID, jobID string) string {
+func (s *ProjectActionDispatcher) deferredReason(userID, jobID string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.deferred[userID+"\x1f"+jobID]
@@ -333,7 +334,7 @@ func productAccessName(profile agentprofiles.Profile) string {
 }
 
 // profilesWithSchedules returns the built-in profiles that declare schedules.
-func (s *ProductScheduleService) profilesWithSchedules() []agentprofiles.Profile {
+func (s *ProjectActionDispatcher) profilesWithSchedules() []agentprofiles.Profile {
 	if s.registry == nil {
 		return nil
 	}
@@ -346,7 +347,7 @@ func (s *ProductScheduleService) profilesWithSchedules() []agentprofiles.Profile
 	return out
 }
 
-func (s *ProductScheduleService) profilesWithProjectSchedules() []agentprofiles.Profile {
+func (s *ProjectActionDispatcher) profilesWithProjectSchedules() []agentprofiles.Profile {
 	if s.registry == nil {
 		return nil
 	}
@@ -359,7 +360,7 @@ func (s *ProductScheduleService) profilesWithProjectSchedules() []agentprofiles.
 	return out
 }
 
-func (s *ProductScheduleService) projectJobsForUser(ctx context.Context, userID string, profile agentprofiles.Profile, states map[string]productScheduleUserState) ([]productScheduleJob, error) {
+func (s *ProjectActionDispatcher) projectJobsForUser(ctx context.Context, userID string, profile agentprofiles.Profile, states map[string]productScheduleUserState) ([]productScheduleJob, error) {
 	// The user's own projects root and, for a Crew, the Crew/ shared root (PLAT-442 step 4): a migrated Crew's
 	// schedules must keep firing for its owner.
 	store := defaultProductProjectStore()
@@ -408,6 +409,11 @@ func (s *ProductScheduleService) projectJobsForUser(ctx context.Context, userID 
 				}
 			}
 		}
+		if isProjectProfileID(profile.ID) {
+			if err := loadCrewTimerActions(ctx, filepath.ToSlash(filepath.Dir(runtimePath)), &manifest); err != nil {
+				return nil, err
+			}
+		}
 		if err := productschedule.ValidateAll(manifest.Schedules); err != nil {
 			return nil, fmt.Errorf("project %s schedules: %w", manifest.ID, err)
 		}
@@ -425,7 +431,7 @@ func (s *ProductScheduleService) projectJobsForUser(ctx context.Context, userID 
 	return jobs, nil
 }
 
-func (s *ProductScheduleService) loadState(ctx context.Context, userID string) (map[string]productScheduleUserState, error) {
+func (s *ProjectActionDispatcher) loadState(ctx context.Context, userID string) (map[string]productScheduleUserState, error) {
 	content, exists, err := s.readFile(ctx, productScheduleStatePath(userID))
 	if err != nil {
 		return nil, err
@@ -441,7 +447,7 @@ func (s *ProductScheduleService) loadState(ctx context.Context, userID string) (
 }
 
 // JobsForUser lists every product schedule visible to one user.
-func (s *ProductScheduleService) JobsForUser(ctx context.Context, userID string) ([]productScheduleJob, error) {
+func (s *ProjectActionDispatcher) JobsForUser(ctx context.Context, userID string) ([]productScheduleJob, error) {
 	if s == nil || strings.TrimSpace(userID) == "" {
 		return nil, nil
 	}
@@ -504,7 +510,7 @@ func containsUserID(list []string, v string) bool {
 
 // UI and Builder discovery include co-owned project configuration. The scheduler
 // itself keeps JobsForUser, so sharing a project never schedules a second copy.
-func (s *ProductScheduleService) JobsForBuilder(ctx context.Context, userID string) ([]productScheduleJob, error) {
+func (s *ProjectActionDispatcher) JobsForBuilder(ctx context.Context, userID string) ([]productScheduleJob, error) {
 	jobs, err := s.JobsForUser(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -537,7 +543,7 @@ func (s *ProductScheduleService) JobsForBuilder(ctx context.Context, userID stri
 	return jobs, nil
 }
 
-func (s *ProductScheduleService) projectBuilderOwner(ctx context.Context, caller, profileID, projectID string) (string, error) {
+func (s *ProjectActionDispatcher) projectBuilderOwner(ctx context.Context, caller, profileID, projectID string) (string, error) {
 	if !isProjectProfileID(profileID) {
 		return caller, nil
 	}
@@ -559,7 +565,7 @@ func (s *ProductScheduleService) projectBuilderOwner(ctx context.Context, caller
 }
 
 // Job finds one product schedule for a user by job id.
-func (s *ProductScheduleService) Job(ctx context.Context, userID, jobID string) (productScheduleJob, error) {
+func (s *ProjectActionDispatcher) Job(ctx context.Context, userID, jobID string) (productScheduleJob, error) {
 	profileID, scheduleID, ok := parseProductScheduleJobID(jobID)
 	projectID := ""
 	if projectProfileID, parsedProjectID, projectScheduleID, projectOK := parseProjectScheduleJobID(jobID); projectOK {
@@ -585,11 +591,14 @@ func (s *ProductScheduleService) Job(ctx context.Context, userID, jobID string) 
 	return productScheduleJob{}, fmt.Errorf("product schedule %s not found for this user", jobID)
 }
 
-// SetEnabled stores a user's enable override.
-func (s *ProductScheduleService) SetEnabled(ctx context.Context, userID, jobID string, enabled bool) (productScheduleJob, error) {
+// SetEnabled changes the shared project flag, or a personal profile override.
+func (s *ProjectActionDispatcher) SetEnabled(ctx context.Context, userID, jobID string, enabled bool) (productScheduleJob, error) {
 	job, err := s.Job(ctx, userID, jobID)
 	if err != nil {
 		return job, err
+	}
+	if job.ProjectID != "" {
+		return s.UpdateProjectSchedule(ctx, userID, jobID, func(schedule *productschedule.Schedule) { schedule.Enabled = enabled })
 	}
 	if err := s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
 		st.Enabled = &enabled
@@ -604,7 +613,7 @@ func (s *ProductScheduleService) SetEnabled(ctx context.Context, userID, jobID s
 const minScheduleCadenceHours, maxScheduleCadenceHours = 1, 24 * 90
 
 // SetCadence sets one person's interval for a cadence schedule (PLAT-618).
-func (s *ProductScheduleService) SetCadence(ctx context.Context, userID, jobID string, hours int) (productScheduleJob, error) {
+func (s *ProjectActionDispatcher) SetCadence(ctx context.Context, userID, jobID string, hours int) (productScheduleJob, error) {
 	job, err := s.Job(ctx, userID, jobID)
 	if err != nil {
 		return job, err
@@ -628,7 +637,7 @@ func (s *ProductScheduleService) SetCadence(ctx context.Context, userID, jobID s
 const maxScheduleMessageBytes = 8000
 
 // SetMessage sets what one person's run of a schedule asks for; empty restores the product's message (PLAT-618).
-func (s *ProductScheduleService) SetMessage(ctx context.Context, userID, jobID, message string) (productScheduleJob, error) {
+func (s *ProjectActionDispatcher) SetMessage(ctx context.Context, userID, jobID, message string) (productScheduleJob, error) {
 	job, err := s.Job(ctx, userID, jobID)
 	if err != nil {
 		return job, err
@@ -636,6 +645,12 @@ func (s *ProductScheduleService) SetMessage(ctx context.Context, userID, jobID, 
 	message = strings.TrimSpace(message)
 	if len(message) > maxScheduleMessageBytes {
 		return job, fmt.Errorf("the schedule message is limited to %d bytes", maxScheduleMessageBytes)
+	}
+	if job.ProjectID != "" {
+		if message == "" {
+			return job, fmt.Errorf("provide a schedule message, or turn the schedule off")
+		}
+		return s.UpdateProjectSchedule(ctx, userID, jobID, func(schedule *productschedule.Schedule) { schedule.Messages = []string{message} })
 	}
 	if err := s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
 		st.Messages = nil
@@ -654,7 +669,7 @@ func (s *ProductScheduleService) SetMessage(ctx context.Context, userID, jobID, 
 // holds it. The fallback is read-only: a reader's workflow run must never
 // rewrite the owner's manifests, so legacy conversion is skipped there.
 // A project ID present under two owners fails closed as ambiguous.
-func (s *ProductScheduleService) projectManifestAnyOwner(ctx context.Context, userID, profileID, projectID string) (agentprofiles.Profile, productConversationBinding, productProjectManifest, string, error) {
+func (s *ProjectActionDispatcher) projectManifestAnyOwner(ctx context.Context, userID, profileID, projectID string) (agentprofiles.Profile, productConversationBinding, productProjectManifest, string, error) {
 	failed := func(err error) (agentprofiles.Profile, productConversationBinding, productProjectManifest, string, error) {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, "", err
 	}
@@ -706,7 +721,7 @@ func (s *ProductScheduleService) projectManifestAnyOwner(ctx context.Context, us
 	return profile, matchBinding, matchManifest, matchOwner, nil
 }
 
-func (s *ProductScheduleService) projectManifest(ctx context.Context, userID, profileID, projectID string) (agentprofiles.Profile, productConversationBinding, productProjectManifest, error) {
+func (s *ProjectActionDispatcher) projectManifest(ctx context.Context, userID, profileID, projectID string) (agentprofiles.Profile, productConversationBinding, productProjectManifest, error) {
 	if s.registry == nil {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, fmt.Errorf("product profiles are unavailable")
 	}
@@ -772,6 +787,10 @@ func (s *ProductScheduleService) projectManifest(ctx context.Context, userID, pr
 		if err := json.Unmarshal([]byte(runtimeRaw), &runtimeManifest); err != nil {
 			return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, err
 		}
+		runtimeManifest.OwnerID = manifest.OwnerID
+		if err := loadCrewTimerActions(ctx, filepath.ToSlash(filepath.Dir(runtimePath)), &runtimeManifest); err != nil {
+			return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, err
+		}
 		manifest.Capabilities = runtimeManifest.Capabilities
 		manifest.Schedules = runtimeManifest.Schedules
 		manifest.Triggers = runtimeManifest.Triggers
@@ -785,7 +804,10 @@ func (s *ProductScheduleService) projectManifest(ctx context.Context, userID, pr
 	return profile, binding, manifest, nil
 }
 
-func (s *ProductScheduleService) writeProjectManifest(ctx context.Context, binding productConversationBinding, manifest productProjectManifest) error {
+func (s *ProjectActionDispatcher) writeProjectManifest(ctx context.Context, binding productConversationBinding, manifest productProjectManifest) error {
+	if err := saveCrewTimerActions(ctx, filepath.ToSlash(filepath.Dir(binding.ManifestPath)), manifest); err != nil {
+		return err
+	}
 	manifest.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	if filepath.Base(filepath.FromSlash(binding.ManifestPath)) == "workflow.json" {
 		if strings.TrimSpace(manifest.Label) == "" {
@@ -804,7 +826,7 @@ func (s *ProductScheduleService) writeProjectManifest(ctx context.Context, bindi
 	return s.writeFile(ctx, binding.ManifestPath, string(data)+"\n")
 }
 
-func (s *ProductScheduleService) CreateProjectSchedule(ctx context.Context, userID, profileID, projectID string, schedule productschedule.Schedule) (productScheduleJob, error) {
+func (s *ProjectActionDispatcher) CreateProjectSchedule(ctx context.Context, userID, profileID, projectID string, schedule productschedule.Schedule) (productScheduleJob, error) {
 	var ownerErr error
 	userID, ownerErr = s.projectBuilderOwner(ctx, userID, profileID, projectID)
 	if ownerErr != nil {
@@ -831,7 +853,7 @@ func (s *ProductScheduleService) CreateProjectSchedule(ctx context.Context, user
 	return productScheduleJob{UserID: userID, Profile: profile, Schedule: schedule, ProjectID: manifest.ID, ProjectTitle: manifest.displayTitle(), WorkspacePath: binding.WorkspacePath, ManifestPath: binding.ManifestPath}, nil
 }
 
-func (s *ProductScheduleService) UpdateProjectSchedule(ctx context.Context, userID, jobID string, update func(*productschedule.Schedule)) (productScheduleJob, error) {
+func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, userID, jobID string, update func(*productschedule.Schedule)) (productScheduleJob, error) {
 	job, err := s.Job(ctx, userID, jobID)
 	if err != nil || job.ProjectID == "" {
 		return job, firstError(err, fmt.Errorf("not a project schedule"))
@@ -863,7 +885,7 @@ func (s *ProductScheduleService) UpdateProjectSchedule(ctx context.Context, user
 	return s.Job(ctx, userID, jobID)
 }
 
-func (s *ProductScheduleService) DeleteProjectSchedule(ctx context.Context, userID, jobID string) error {
+func (s *ProjectActionDispatcher) DeleteProjectSchedule(ctx context.Context, userID, jobID string) error {
 	job, err := s.Job(ctx, userID, jobID)
 	if err != nil {
 		return err
@@ -899,7 +921,7 @@ func firstError(errs ...error) error {
 	return nil
 }
 
-func (s *ProductScheduleService) updateStateByKey(ctx context.Context, userID, key string, fn func(*productScheduleUserState)) error {
+func (s *ProjectActionDispatcher) updateStateByKey(ctx context.Context, userID, key string, fn func(*productScheduleUserState)) error {
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
 	all, err := s.loadState(ctx, userID)
@@ -917,109 +939,8 @@ func (s *ProductScheduleService) updateStateByKey(ctx context.Context, userID, k
 }
 
 // Start runs the tick loop until ctx is done.
-func (s *ProductScheduleService) Start(ctx context.Context) {
-	if len(s.profilesWithSchedules()) == 0 && len(s.profilesWithProjectSchedules()) == 0 {
-		scheduleLogf("[PRODUCT-SCHEDULE] No product declares or supports schedules; loop idle")
-	}
-	ticker := time.NewTicker(60 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case now := <-ticker.C:
-			s.tick(ctx, now)
-		}
-	}
-}
-
-func (s *ProductScheduleService) tick(ctx context.Context, now time.Time) {
-	if s.api != nil && s.api.agentProfiles != nil {
-		s.api.resumeAgentMessages()
-	}
-
-	users := map[string]struct{}{}
-	for _, owner := range conditionCallerOwners() {
-		users[owner] = struct{}{}
-	}
-	profiles := append(s.profilesWithSchedules(), s.profilesWithProjectSchedules()...)
-	for _, profile := range profiles {
-		for _, userID := range s.users(productAccessName(profile)) {
-			users[userID] = struct{}{}
-		}
-	}
-	// The scheduler pause holds timed runs here too: for every product (the global pause) or one at a time (PLAT-782).
-	pauseConfig, pauseErr := LoadSchedulerConfig(ctx)
-	if pauseErr != nil {
-		scheduleLogf("[PRODUCT-SCHEDULE] cannot read the scheduler pause, timed runs continue: %v", pauseErr)
-	}
-	for userID := range users {
-		jobs, err := s.JobsForUser(ctx, userID)
-		if err != nil {
-			scheduleLogf("[PRODUCT-SCHEDULE] %s: cannot discover schedules: %v", userID, err)
-			continue
-		}
-		for _, job := range jobs {
-			if pauseConfig.ProductPaused(job.Profile.ID) {
-				continue
-			}
-			if job.Schedule.Condition != nil && job.Effective().Enabled {
-				go s.conditionService().drain(context.Background(), job)
-				if job.Schedule.Condition.WakesOnChanges() {
-					go s.conditionService().processWake(context.Background(), job)
-				}
-			}
-			activatedAt := job.activatedAt()
-			if strings.TrimSpace(job.Schedule.CronExpression) != "" && job.lastRun().IsZero() && strings.TrimSpace(job.State.ActivatedAt) == "" {
-				// Persist the baseline once. Using this tick's Now without saving it
-				// would make a never-run cron schedule chase tomorrow forever.
-				if activatedAt.IsZero() {
-					activatedAt = now.UTC()
-				}
-				if err := s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
-					if strings.TrimSpace(st.ActivatedAt) == "" {
-						st.ActivatedAt = activatedAt.Format(time.RFC3339)
-					}
-				}); err != nil {
-					scheduleLogf("[PRODUCT-SCHEDULE] %s: cannot persist activation baseline for %s: %v", job.ID(), userID, err)
-					continue
-				}
-				job.State.ActivatedAt = activatedAt.Format(time.RFC3339)
-			}
-			in := productschedule.Inputs{
-				Now:                 now,
-				ActivatedAt:         activatedAt,
-				LastRun:             job.lastRun(),
-				LastAttempt:         job.lastAttempt(),
-				ConsecutiveFailures: job.State.ConsecutiveFailures,
-				SinceInteractive:    productInteractionNever,
-			}
-			if s.sinceInteractive != nil {
-				in.SinceInteractive = s.sinceInteractive(userID, job.Profile)
-			}
-			d := productschedule.Decide(job.Effective(), in)
-			if d.Deferred {
-				s.setDeferred(userID, job.ID(), d.Reason)
-			} else {
-				s.setDeferred(userID, job.ID(), "")
-			}
-			if !d.Run {
-				if d.Deferred {
-					scheduleLogf("[PRODUCT-SCHEDULE] %s deferring for %s: %s", job.ID(), userID, d.Reason)
-				}
-				continue
-			}
-			go func(job productScheduleJob, scheduledFor time.Time) {
-				if _, err := s.Run(context.Background(), job, "cron", scheduledFor); err != nil && !errors.Is(err, productschedule.ErrAlreadyRunning) {
-					scheduleLogf("[PRODUCT-SCHEDULE] %s failed for %s: %v", job.ID(), job.UserID, err)
-				}
-			}(job, d.ScheduledFor)
-		}
-	}
-}
-
 // Trigger runs a product schedule now for one user, ignoring its enabled flag.
-func (s *ProductScheduleService) Trigger(ctx context.Context, userID, jobID string) (string, error) {
+func (s *ProjectActionDispatcher) Trigger(ctx context.Context, userID, jobID string) (string, error) {
 	job, err := s.Job(ctx, userID, jobID)
 	if err != nil {
 		return "", err
@@ -1048,7 +969,7 @@ func (s *ProductScheduleService) Trigger(ctx context.Context, userID, jobID stri
 // no separate conversation to clear — resetting would touch the profile's
 // own chat) and while a run is in progress (rotating the session out from
 // under a live turn).
-func (s *ProductScheduleService) ResetHistory(ctx context.Context, userID, jobID string) error {
+func (s *ProjectActionDispatcher) ResetHistory(ctx context.Context, userID, jobID string) error {
 	job, err := s.Job(ctx, userID, jobID)
 	if err != nil {
 		return err
@@ -1073,7 +994,7 @@ func (s *ProductScheduleService) ResetHistory(ctx context.Context, userID, jobID
 }
 
 // Running reports the live run for a job, if any.
-func (s *ProductScheduleService) Running(userID, jobID string) (productScheduleRun, bool) {
+func (s *ProjectActionDispatcher) Running(userID, jobID string) (productScheduleRun, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, ok := s.running[userID+"\x1f"+jobID]
@@ -1084,7 +1005,7 @@ func (s *ProductScheduleService) Running(userID, jobID string) (productScheduleR
 }
 
 // Stop cancels the live run for a job.
-func (s *ProductScheduleService) Stop(userID, jobID string) bool {
+func (s *ProjectActionDispatcher) Stop(userID, jobID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, ok := s.running[userID+"\x1f"+jobID]
@@ -1098,11 +1019,11 @@ func (s *ProductScheduleService) Stop(userID, jobID string) bool {
 // Run executes one schedule for one user: resolve the product conversation,
 // record a run, send every message in turn, then record the outcome.
 // onStarted, when given, is called once the session id is known.
-func (s *ProductScheduleService) Run(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, onStarted ...func(sessionID string)) (string, error) {
+func (s *ProjectActionDispatcher) Run(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, onStarted ...func(sessionID string)) (string, error) {
 	if job.Schedule.Condition != nil {
 		return s.conditionService().poll(ctx, job, triggerSource, scheduledFor)
 	}
-	return s.runWithOptions(ctx, job, triggerSource, scheduledFor, productScheduleRunOptions{}, onStarted...)
+	return s.runWithOptions(ctx, job, triggerSource, scheduledFor, productScheduleRunOptions{AllowQueue: triggerSource == "cron"}, onStarted...)
 }
 
 type productScheduleRunOptions struct {
@@ -1132,6 +1053,7 @@ type productScheduleQueuedRun struct {
 	job           productScheduleJob
 	triggerSource string
 	scheduledFor  time.Time
+	queuedAt      time.Time
 	options       productScheduleRunOptions
 	onStarted     []func(sessionID string)
 }
@@ -1157,6 +1079,16 @@ func popProductQueueLocked(queued map[string][]productScheduleQueuedRun, convKey
 	if len(items) == 0 {
 		return productScheduleQueuedRun{}, false
 	}
+	sort.SliceStable(items, func(i, j int) bool {
+		a, b := items[i].scheduledFor, items[j].scheduledFor
+		if a.IsZero() {
+			a = items[i].queuedAt
+		}
+		if b.IsZero() {
+			b = items[j].queuedAt
+		}
+		return !a.IsZero() && !b.IsZero() && a.Before(b)
+	})
 	head := items[0]
 	if len(items) == 1 {
 		delete(queued, convKey)
@@ -1166,7 +1098,7 @@ func popProductQueueLocked(queued map[string][]productScheduleQueuedRun, convKey
 	return head, true
 }
 
-func (s *ProductScheduleService) runWithOptions(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, onStarted ...func(sessionID string)) (string, error) {
+func (s *ProjectActionDispatcher) runWithOptions(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, onStarted ...func(sessionID string)) (string, error) {
 	if s.api == nil {
 		return "", fmt.Errorf("product schedules: server not ready")
 	}
@@ -1193,13 +1125,13 @@ type automationClaim struct {
 
 // claimAutomationRun reserves the conversation for one run, or queues the
 // delivery behind the live turn when options allow it.
-func (s *ProductScheduleService) claimAutomationRun(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, onStarted []func(sessionID string)) (*automationClaim, error) {
+func (s *ProjectActionDispatcher) claimAutomationRun(ctx context.Context, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, onStarted []func(sessionID string)) (*automationClaim, error) {
 	jobKey := job.UserID + "\x1f" + job.ID()
 	if job.AutomationKind == "function" {
 		jobKey += "#" + job.ConversationKey
 	}
 	convKey := job.UserID + "\x1f" + conversationKeyForJob(job)
-	if scheduleUsesCrewChatDelivery(job) {
+	if scheduleUsesCrewChatDelivery(job) && triggerSource != "cron" {
 		// Different schedules are independent messages to the same chat, just
 		// like typed input. Keep only the per-job overlap guard here; the chat
 		// router owns live delivery and any necessary fallback queue.
@@ -1213,15 +1145,26 @@ func (s *ProductScheduleService) claimAutomationRun(ctx context.Context, job pro
 			cancel()
 			return nil, productschedule.ErrAlreadyRunning
 		}
+		if s.queued == nil {
+			s.queued = map[string][]productScheduleQueuedRun{}
+		}
+		queued := productScheduleQueuedRun{job: job, triggerSource: triggerSource, scheduledFor: scheduledFor, queuedAt: time.Now().UTC(), options: options, onStarted: onStarted}
+		if triggerSource == "cron" {
+			for i := range s.queued[convKey] {
+				if s.queued[convKey][i].triggerSource == "cron" && s.queued[convKey][i].job.ID() == job.ID() {
+					s.queued[convKey][i] = queued
+					s.mu.Unlock()
+					cancel()
+					return nil, ErrProductRunQueued
+				}
+			}
+		}
 		if len(s.queued[convKey]) >= maxProductConversationQueue {
 			s.mu.Unlock()
 			cancel()
 			return nil, ErrProductQueueFull
 		}
-		if s.queued == nil {
-			s.queued = map[string][]productScheduleQueuedRun{}
-		}
-		s.queued[convKey] = append(s.queued[convKey], productScheduleQueuedRun{job: job, triggerSource: triggerSource, scheduledFor: scheduledFor, options: options, onStarted: onStarted})
+		s.queued[convKey] = append(s.queued[convKey], queued)
 		s.mu.Unlock()
 		cancel()
 		return nil, ErrProductRunQueued
@@ -1241,7 +1184,7 @@ func (s *ProductScheduleService) claimAutomationRun(ctx context.Context, job pro
 
 // finishAutomationRun releases one conversation turn and starts the next
 // queued delivery, if any.
-func (s *ProductScheduleService) finishAutomationRun(jobKey, convKey string) {
+func (s *ProjectActionDispatcher) finishAutomationRun(jobKey, convKey string) {
 	s.mu.Lock()
 	delete(s.running, jobKey)
 	delete(s.conversations, convKey)
@@ -1272,7 +1215,7 @@ func (s *ProductScheduleService) finishAutomationRun(jobKey, convKey string) {
 // redelivery adopts the same stranded record. Only webhook deliveries
 // pre-claim a record (options.RunID); cron runs claim nothing up front and
 // keep their existing report-the-error behavior.
-func (s *ProductScheduleService) failAutomationSetupRun(job productScheduleJob, options productScheduleRunOptions, setupErr error) {
+func (s *ProjectActionDispatcher) failAutomationSetupRun(job productScheduleJob, options productScheduleRunOptions, setupErr error) {
 	runID := strings.TrimSpace(options.RunID)
 	if runID == "" || strings.TrimSpace(job.WorkspacePath) == "" {
 		return
@@ -1299,7 +1242,7 @@ func (s *ProductScheduleService) failAutomationSetupRun(job productScheduleJob, 
 
 // executeAutomationRun runs one claimed automation turn to completion, then
 // releases the conversation and starts the next queued delivery, if any.
-func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, cancel context.CancelFunc, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, run *productScheduleRun, jobKey, convKey string, onStarted []func(sessionID string)) (string, error) {
+func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, cancel context.CancelFunc, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, run *productScheduleRun, jobKey, convKey string, onStarted []func(sessionID string)) (string, error) {
 	if options.FunctionCallID != "" {
 		runCtx = virtualtools.WithFeedbackOperation(runCtx, options.FunctionCallID)
 	}
@@ -1582,7 +1525,7 @@ func queryRequestToMap(req QueryRequest) (map[string]interface{}, error) {
 }
 
 // RunsWorkspace is where a job's schedule-runs.json lives for a user.
-func (s *ProductScheduleService) RunsWorkspace(ctx context.Context, job productScheduleJob) (string, error) {
+func (s *ProjectActionDispatcher) RunsWorkspace(ctx context.Context, job productScheduleJob) (string, error) {
 	if job.ProjectID != "" {
 		return agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath), nil
 	}
@@ -1594,7 +1537,7 @@ func (s *ProductScheduleService) RunsWorkspace(ctx context.Context, job productS
 }
 
 // jobResponse renders a product schedule in the shape the schedules UI reads.
-func (s *ProductScheduleService) jobResponse(job productScheduleJob, runsWorkspace string) ScheduledJobResponse {
+func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorkspace string) ScheduledJobResponse {
 	sched := job.Effective()
 	resp := ScheduledJobResponse{
 		ID:                  job.ID(),
@@ -1733,7 +1676,7 @@ func projectScheduleChatKey(ctx context.Context, userID, profileID, projectID, c
 	return key, nil
 }
 
-func (s *ProductScheduleService) executeAutomationTurn(ctx context.Context, request map[string]interface{}, sessionID, userID string) (internalSessionTurnResult, error) {
+func (s *ProjectActionDispatcher) executeAutomationTurn(ctx context.Context, request map[string]interface{}, sessionID, userID string) (internalSessionTurnResult, error) {
 	if s.automationTurnRunner != nil {
 		return s.automationTurnRunner(ctx, request, sessionID, userID)
 	}

@@ -845,7 +845,7 @@ func (api *StreamingAPI) dispatchTargetTrigger(ctx context.Context, userID strin
 	var delivery internalTriggerDeliveryResult
 	switch target.Kind {
 	case triggerCallerCrew:
-		delivery, err = api.productSchedules.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
+		delivery, err = api.projectActions.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
 			UserID: userID, ProfileID: target.CrewProfile, ProjectID: target.CrewID, TriggerID: triggerID,
 			Caller: caller.Stamp, DeliveryID: deliveryID, Event: event, Payload: data, CallerLabel: caller.Label,
 			CallerPath: caller.Path, PinRunMode: runMode, RunAsOwner: runAsOwner, AgentName: functionTab,
@@ -1405,7 +1405,7 @@ type crewFunctionToolOptions struct {
 }
 
 func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolRegistrar, userID, sessionID string, parentReq QueryRequest, resolveCaller func(context.Context) (triggerLinkCaller, error), declare func(string), options crewFunctionToolOptions) error {
-	if api == nil || api.scheduler == nil || api.productSchedules == nil {
+	if api == nil || api.scheduler == nil || api.projectActions == nil {
 		return nil
 	}
 	if options.ExecutionScope == "" {
