@@ -16,7 +16,6 @@ metadata:
     - execute_shell_command
     - database
     relays:
-    - functions
     - dashboard
     - manage_workflow_webhook
   external-tools:
