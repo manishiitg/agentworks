@@ -496,8 +496,14 @@ type workspaceCreation struct {
 }
 
 func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool, creation workspaceCreation) (string, error) {
-	if status, message := projectCreationGate(claims, profileID); status != 0 {
-		return "", fmt.Errorf("%s", message)
+	// A platform-made Crew (its role is set by server code only) is the server's act, not the person's, so the
+	// person's create permission does not apply: everyone gets their AgentWorks.
+	if creation.Role == "" {
+		if status, message := projectCreationGate(claims, profileID); status != 0 {
+			return "", fmt.Errorf("%s", message)
+		}
+	} else if claims == nil || strings.TrimSpace(claims.UserID) == "" {
+		return "", fmt.Errorf("Sign in to create a Crew.")
 	}
 	spec, err := normalizeCrewSpec(spec)
 	if err != nil {

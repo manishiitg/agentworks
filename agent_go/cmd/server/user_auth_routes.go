@@ -614,8 +614,8 @@ func (api *StreamingAPI) handleGetCurrentUser(w http.ResponseWriter, r *http.Req
 	if access, err := effectiveWorkflowAccessMap(r.Context(), user); err == nil {
 		response["workflows"] = access
 	}
-	// Every person who can make a Crew gets their own AgentWorks on their first visit (owner, 2026-10-26).
-	if user.AccessToken == nil && !acc.Disabled && acc.CanCreateIn(crewProfileID) {
+	// Every person gets their own AgentWorks on their first visit (owner, 2026-10-26); the platform makes it.
+	if user.AccessToken == nil && !acc.Disabled {
 		api.ensureAgentWorksOnVisit(user.UserID)
 	}
 	json.NewEncoder(w).Encode(response)
