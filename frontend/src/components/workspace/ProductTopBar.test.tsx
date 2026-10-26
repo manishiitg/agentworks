@@ -181,7 +181,9 @@ it('places global-page navigation beside the back action in the existing header'
   expect(page.querySelector('[data-product-navigation-slot]')!.textContent).toContain('Account')
   const toggle = host.querySelector<HTMLButtonElement>('[data-navigation-toggle]')!
   await act(async () => toggle.click())
-  expect(page.querySelector('[data-product-navigation-leading-slot] [aria-label="Home"]')).not.toBeNull()
+  expect(page.querySelector('[data-product-navigation-leading-slot] [data-navigation-toggle]')).not.toBeNull()
+  expect(page.querySelector('[data-product-navigation-leading-slot] [aria-label="Home"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Product shortcuts"] [aria-label="Home"]')).not.toBeNull()
   expect(page.querySelector('h1')!.textContent).toBe('Connect AI tools')
   expect(host.querySelectorAll('header')).toHaveLength(1)
   expect(host.querySelector('[data-terminal-focus-chrome="toolbar"]')!.querySelector('[data-product-navigation-slot]')).toBeNull()
