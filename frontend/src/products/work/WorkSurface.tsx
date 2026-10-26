@@ -7,13 +7,13 @@ import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { replaceProductSelection } from '../../utils/productUrlNavigation'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { CalendarClock, UsersRound, Sparkles, Loader2, Plus, Trash2 } from 'lucide-react'
+import { UsersRound, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
 import { CrewStarterGuide } from '../../components/chat/ProductStarterGuide'
 import { NewTabHint } from '../../components/chat/ShortcutHint'
-import { ProductIntro } from '../../components/ProductIntro'
+import { CrewEntryPage } from './CrewEntryPage'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import { TerminalFocusLayout } from '../../components/TerminalFocusLayout'
@@ -209,9 +209,10 @@ function useWorkSessions(product: ProjectProductConfig) {
 
   const refresh = useCallback(async () => {
     const listed = await loadWorkSessionsIncludingShared(product)
+    setError(null)
     updateSessions(listed, true)
     const current = selectedProjectIdFor(product)
-    replaceProductSelection(() => setSelectedId(current && listed.some(item => item.product === product.profileId && item.id === current) ? current : (currentProductRoute()?.surface === product.profileId && !currentProductRoute()?.id ? null : listed.find(item => item.product === product.profileId)?.id ?? null)))
+    replaceProductSelection(() => setSelectedId(current && listed.some(item => item.product === product.profileId && item.id === current) ? current : (!current || (currentProductRoute()?.surface === product.profileId && !currentProductRoute()?.id) ? null : listed.find(item => item.product === product.profileId)?.id ?? null)))
     return listed
   }, [product, allowedProducts, setSelectedId, updateSessions])
 
@@ -224,7 +225,7 @@ function useWorkSessions(product: ProjectProductConfig) {
         if (cancelled || mutationRevision.current !== revisionAtStart) return
         updateSessions(listed, true)
         const current = selectedProjectIdFor(product)
-        replaceProductSelection(() => setSelectedId(current && listed.some(item => item.product === product.profileId && item.id === current) ? current : (currentProductRoute()?.surface === product.profileId && !currentProductRoute()?.id ? null : listed.find(item => item.product === product.profileId)?.id ?? null)))
+        replaceProductSelection(() => setSelectedId(current && listed.some(item => item.product === product.profileId && item.id === current) ? current : (!current || (currentProductRoute()?.surface === product.profileId && !currentProductRoute()?.id) ? null : listed.find(item => item.product === product.profileId)?.id ?? null)))
       })
       .catch((cause) => {
         if (!cancelled && mutationRevision.current === revisionAtStart) {
@@ -750,6 +751,7 @@ function WorkTopBarControl({
   selected,
   onSelect,
   onNewProject,
+  onHome,
   onDelete,
   creating,
   canCreate,
@@ -760,6 +762,7 @@ function WorkTopBarControl({
   selected: WorkSession | null
   onSelect: (session: WorkSession) => void
   onNewProject: () => void
+  onHome: () => void
   onDelete: (session: WorkSession) => void
   creating: boolean
   /** The account may create in this product (PLAT-767). */
@@ -785,6 +788,7 @@ function WorkTopBarControl({
       addDisabled={creating || !canCreate}
     >
       <div role="menu" aria-label="Projects" className="max-h-96 space-y-1 overflow-y-auto p-2">
+        <button type="button" onClick={() => { setOpen(false); onHome() }} className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"><UsersRound aria-hidden="true" className="h-4 w-4" />All Crews</button>
         <button
           type="button"
           onClick={() => { setOpen(false); onNewProject() }}
@@ -933,6 +937,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [creating, setCreating] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [createMode, setCreateMode] = useState<ProductMode>('dev')
+  const [createPurpose, setCreatePurpose] = useState('')
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
@@ -1277,9 +1282,15 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       return
     }
     setCreateError(null)
+    setCreatePurpose('')
     setCreateMode('dev')
     setCreateOpen(true)
   }, [canCreateProjects, refuseCreate])
+  const createFromPrompt = (prompt: string) => {
+    if (!canCreateProjects) { refuseCreate(); return }
+    openCreateProject()
+    setCreatePurpose(prompt)
+  }
   useProductCreateRequest('work', openCreateProject)
 
   const deleteProject = useCallback(async () => {
@@ -1310,6 +1321,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         navigation.setProductSurface(session.product)
       }}
       onNewProject={openCreateProject}
+      onHome={() => select(null)}
       canCreate={canCreateProjects}
       onDelete={setDeleteCandidate}
       creating={creating}
@@ -1334,6 +1346,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
           onClose={() => { if (!creating) setCreateOpen(false) }}
           onCreate={(title, purpose, runsOn, mode, onboarding) => createProject(title, purpose, undefined, runsOn, mode, onboarding)}
           initialMode={createMode}
+          initialPurpose={createPurpose}
           profileVersion={product.profileVersion}
           submitting={creating}
           error={createError}
@@ -1362,30 +1375,11 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         {showSchedulesOverview && !showProviders && <SchedulesPage />}
         {adminPage && !showProviders && <AdminPages />}
         <div className={showProviders || showSchedulesOverview || adminPage ? 'hidden' : 'h-full'}>
-          {error ? (
+          {!selected ? (
+            <CrewEntryPage projects={sessions} loading={sessionsLoading || creating} error={sessionsError} canCreate={canCreateProjects}
+              onCreate={createFromPrompt} onOpen={session => select(session.id)} onRefresh={refresh} />
+          ) : error ? (
             <div className="grid h-full place-items-center p-6 text-center text-sm text-destructive">{error}</div>
-          ) : !selected ? (
-            <div className="flex h-full items-center justify-center bg-background">
-              {sessionsLoading || creating ? (
-                <span className="text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening {product.noun}…</span>
-              ) : (
-                <ProductIntro
-                  tour="crew-empty-state"
-                  product={product.noun}
-                  icon={<span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">{'<>'}</span>}
-                  title={sessions.length ? `Choose a ${product.itemNoun}` : 'An assistant for work you do again'}
-                  description={sessions.length ? 'Open an existing workspace from the project menu, or create another.' : 'Prepare reports, research a topic or draft replies. Give your Crew the skills and connections it needs, then reuse it with your team.'}
-                  features={[
-                    { icon: Sparkles, title: 'Teach it your work', description: 'Add instructions, files and reusable skills.' },
-                    { icon: UsersRound, title: 'Share with your team', description: 'Publish a dashboard and useful functions.' },
-                    { icon: CalendarClock, title: 'Set a schedule', description: 'Have recurring work happen at the right time.' },
-                  ]}
-                  createTour="crew-create"
-                  createLabel={`Create ${sessions.length ? 'another' : 'your first'} ${product.itemNoun}`}
-                  onCreate={openCreateProject}
-                />
-              )}
-            </div>
           ) : (
             <ProductWorkspaceShell
               divider={null}

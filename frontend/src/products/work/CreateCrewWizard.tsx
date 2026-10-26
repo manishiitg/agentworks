@@ -5,18 +5,19 @@ import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
 import { CREW_STARTER_TYPES, type CrewOnboarding, type CrewStarterType } from './crewStarterTypes'
 import { CrewIncludedFeatures } from './CrewIncludedFeatures'
 
-export function CreateCrewWizard({ onClose, onCreate, submitting, error, initialMode = 'dev', profileVersion = 3 }: {
+export function CreateCrewWizard({ onClose, onCreate, submitting, error, initialMode = 'dev', initialPurpose = '', profileVersion = 3 }: {
   onClose: () => void
   onCreate: (title: string, purpose: string, runsOn: RunsOnSelection | undefined, mode: ProductMode, onboarding: CrewOnboarding) => void | Promise<void>
   submitting: boolean
   error: string | null
   initialMode?: ProductMode
+  initialPurpose?: string
   profileVersion?: number
 }) {
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(initialPurpose ? 2 : 1)
   const [type, setType] = useState<CrewStarterType | undefined>(initialMode === 'cowork' ? 'cowork' : undefined)
   const [title, setTitle] = useState('')
-  const [purpose, setPurpose] = useState(initialMode === 'cowork' ? CREW_STARTER_TYPES.find(item => item.id === 'cowork')!.purpose : '')
+  const [purpose, setPurpose] = useState(initialPurpose || (initialMode === 'cowork' ? CREW_STARTER_TYPES.find(item => item.id === 'cowork')!.purpose : ''))
   const [mode, setMode] = useState(initialMode)
   const [runsOn, setRunsOn] = useState<RunsOnSelection | undefined>()
   const [openSharing, setOpenSharing] = useState(false)
@@ -83,7 +84,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, initial
             <input ref={nameRef} id="crew-wizard-name" value={title} onChange={event => setTitle(event.target.value)} maxLength={60} disabled={submitting} placeholder="e.g. Operations helper" className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal outline-none focus:ring-2 focus:ring-ring" />
           </label>
           <CrewIncludedFeatures type={type} mode={mode} profileVersion={profileVersion} />
-          <details>
+          <details open={Boolean(initialPurpose) || undefined}>
             <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Add instructions <span className="font-normal">(optional)</span></summary>
             <label className="sr-only" htmlFor="crew-wizard-purpose">What should it help with?</label>
             <textarea id="crew-wizard-purpose" value={purpose} onChange={event => setPurpose(event.target.value)} rows={2} maxLength={1000} disabled={submitting} className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal outline-none focus:ring-2 focus:ring-ring" />
