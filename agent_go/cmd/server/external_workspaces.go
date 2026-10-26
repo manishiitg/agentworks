@@ -11,8 +11,8 @@ import (
 // The canonical action family reuses native project services. Origin IDs remain
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask can message a selected shared agent in its existing conversation; chat controls use your own tabs; update/export/import use existing Builder authority. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
+	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask can message a selected shared agent in its existing conversation; chat controls use your own tabs; update/export/import use existing Builder authority. agentworks returns your own AgentWorks agent (made on first use) and its main chat: it looks after the Goals you run, which are linked to it automatically; a Crew is linked to it only when you ask, because a Crew link lets it change that Crew. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "agentworks", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
 		"workspace_id": externalString("Crew workspace ID from workspace action=list."),
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
 		"query_id":        externalString("Exact Ask turn returned by ask/read_chat. Keep it when polling or answering a pending question."),
@@ -115,6 +115,17 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 	}
 	if action == "read_saved_chat" {
 		api.externalPublicationHistory(w, r, args)
+		return
+	}
+	if action == "agentworks" {
+		// The same ensure as a first visit: it acts for the signed-in person only and never widens this connection.
+		crew, err := api.ensureAgentWorks(context.Background(), claims.UserID)
+		if err != nil {
+			externalError(w, 409, "agentworks_unavailable", "Your AgentWorks could not be opened: "+err.Error())
+			return
+		}
+		externalJSON(w, map[string]any{"workspace_id": crewProfileID + ":" + crew.CrewID, "crew_id": crew.CrewID, "chat_id": "main", "name": agentWorksName, "created": crew.Created,
+			"next": "Talk to it with workspace action=ask and this workspace_id, or open AgentWorks from the Crew list in the app."})
 		return
 	}
 

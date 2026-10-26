@@ -1171,6 +1171,14 @@
   },
   {
     "family": "workspace",
+    "name": "agentworks",
+    "member": "workspace__agentworks",
+    "description": "Open your own AgentWorks agent and its main chat; it is made on first use.",
+    "source": "workspace",
+    "source_action": "agentworks"
+  },
+  {
+    "family": "workspace",
     "name": "create",
     "member": "workspace__create",
     "description": "Use the current workspace create operation.",
