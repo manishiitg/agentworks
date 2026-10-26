@@ -151,7 +151,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
     <main aria-label="Home"
       style={{ '--welcome-sidebar-width': `${sidebarWidth}px` } as CSSProperties}
       className="fixed inset-0 z-[39] overflow-y-auto bg-background md:left-[var(--welcome-sidebar-width)]">
-      <div className="mx-auto flex min-h-full max-w-5xl flex-col gap-5 px-4 py-5 sm:px-8 sm:py-6">
+      <div className="mx-auto flex min-h-full max-w-5xl flex-col gap-5 px-4 pb-12 pt-5 sm:px-8 sm:pt-6">
         <header className="flex justify-end md:hidden">
           <button type="button" aria-label="Open navigation" onClick={() => window.dispatchEvent(new Event('open-app-sidebar'))} className="rounded-md p-2 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"><Menu className="h-5 w-5" aria-hidden="true" /></button>
         </header>
