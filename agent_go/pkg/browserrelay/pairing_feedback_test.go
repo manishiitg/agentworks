@@ -39,7 +39,7 @@ func TestOldExtensionGetsUpdateReasonWithoutChangingProjectAuthority(t *testing.
 		if err := conn.ReadJSON(&reply); err != nil || reply.Type != "error" || reply.Reason != reason {
 			t.Fatalf("pairing error=%+v err=%v", reply, err)
 		}
-		if reason == "invalid_connection_code" && !strings.Contains(reply.Workspace, "Copy a new code from Browser connections") {
+		if reason == "invalid_connection_code" && (!strings.Contains(reply.Workspace, "Browser connections") || !strings.Contains(reply.Workspace, "Connect browser")) {
 			t.Fatalf("invalid-code feedback has no next action: %+v", reply)
 		}
 		_, _, err := conn.ReadMessage()

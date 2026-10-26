@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 let busy = false;
 let current = { connected: false, tabs: [] };
+document.querySelector('.subtitle').textContent = `Browser connection · v${chrome.runtime.getManifest().version}`;
 function updateButtons() {
   for (const button of document.querySelectorAll('button')) button.disabled = busy;
   for(const id of ['share','newtab','group'])$(id).disabled=busy || !current.projectConnected;
@@ -51,7 +52,7 @@ $('connect').onclick = () => action(async () => {
   try {
     pairing = JSON.parse(raw); url = new URL(pairing.url);
     if (url.pathname !== '/api/browser/extension/connect' || url.search || url.hash || url.username || url.password || typeof pairing.token !== 'string' || pairing.token.length < 32 || (url.protocol !== 'wss:' && !(url.protocol === 'ws:' && ['localhost', '127.0.0.1'].includes(url.hostname)))) throw new Error();
-  } catch { throw new Error('Paste the full connection code copied from AgentWorks Browser settings.'); }
+  } catch { throw new Error('In AgentWorks, open your account menu → Browser connections → Copy connection code. Paste the full code here, then choose Connect browser.'); }
   if (!await chrome.permissions.request({ origins: [`${url.protocol === 'wss:' ? 'https:' : 'http:'}//${url.host}/*`] })) throw new Error('Platform connection permission was declined.');
   await run({ action: 'connect', pairing: raw }); $('pairing').value = '';
 });

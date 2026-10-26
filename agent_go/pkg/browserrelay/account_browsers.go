@@ -305,16 +305,16 @@ func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, auth
 	credential, exists := m.pairs[hello.Token]
 	m.mu.Unlock()
 	if !exists || credential.User == "" {
-		m.rejectConnectionCode(conn)
+		m.rejectConnectionCode(conn, hello.Version)
 		return
 	}
 	user := credential.User
 	if authorize != nil && authorize(user, "", "", "") != nil {
-		m.rejectConnectionCode(conn)
+		m.rejectConnectionCode(conn, hello.Version)
 		return
 	}
 	if !m.connectionCodeStillOwned(hello.Token, user) {
-		m.rejectConnectionCode(conn)
+		m.rejectConnectionCode(conn, hello.Version)
 		return
 	}
 	if extensionVersionBefore(hello.Version, MinimumExtensionVersion) {
@@ -331,7 +331,7 @@ func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, auth
 	current, ok := m.pairs[hello.Token]
 	if !ok || current.User != user {
 		m.mu.Unlock()
-		m.rejectConnectionCode(conn)
+		m.rejectConnectionCode(conn, hello.Version)
 		return
 	}
 	k := key(user, hello.BrowserID)
