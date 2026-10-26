@@ -6,6 +6,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -17,6 +18,15 @@ func TestBrainReadProjectionKeepsItsSelectedPayloadRules(t *testing.T) {
 			continue
 		}
 		raw, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Goal registration passes through Parameters before grouping (PLAT-825-142).
+		var parameters llmtypes.Parameters
+		if err := json.Unmarshal(raw, &parameters); err != nil {
+			t.Fatal(err)
+		}
+		raw, err = json.Marshal(parameters)
 		if err != nil {
 			t.Fatal(err)
 		}
