@@ -1,0 +1,8 @@
+[
+  {
+    "family": "workspace",
+    "name": "create",
+    "member": "create_project",
+    "description": "Create a Goal, Crew or Flow you own. Reuse idempotency_key for an unchanged retry; creation does not run the project."
+  }
+]

@@ -77,13 +77,19 @@ func TestExternalRelayCreationRetryAndConsent(t *testing.T) {
 	f := newExternalRelayFixture(t)
 	_, writer := f.token(t, "owner", relayConsentScopes, true)
 	args := map[string]any{"label": "Hello Relay", "submission_id": "create-hello"}
-	first := f.relayCall(t, writer, "create_relay", args, 200)
+	first := f.createRelay(t, writer, args, 200)
 	id := first["workflow_id"].(string)
-	second := f.relayCall(t, writer, "create_relay", args, 200)
+	second := f.createRelay(t, writer, args, 200)
 	if second["workflow_id"] != id || second["duplicate"] != true {
 		t.Fatalf("retry: %+v", second)
 	}
-	manifest := first["manifest"].(map[string]any)
+	_, savedManifest, manifestErr := findWorkflowManifestByID(t.Context(), id)
+	if manifestErr != nil {
+		t.Fatal(manifestErr)
+	}
+	encodedManifest, _ := json.Marshal(savedManifest)
+	manifest := map[string]any{}
+	_ = json.Unmarshal(encodedManifest, &manifest)
 	if manifest["kind"] != "relay" || manifest["relay_runtime"] != "python" || manifest["relay_output_step_id"] != nil {
 		t.Fatalf("manifest: %+v", manifest)
 	}
@@ -91,13 +97,13 @@ func TestExternalRelayCreationRetryAndConsent(t *testing.T) {
 	if err != nil || len(trigger.GroupNames) != 0 {
 		t.Fatalf("Relay creation retained groups: %+v %v", trigger, err)
 	}
-	f.relayCall(t, writer, "create_relay", map[string]any{"label": "Different", "submission_id": "create-hello"}, 409)
+	f.createRelay(t, writer, map[string]any{"label": "Different", "submission_id": "create-hello"}, 409)
 	_, bounded := f.token(t, "owner", relayConsentScopes, false)
-	f.relayCall(t, bounded, "create_relay", map[string]any{"label": "Bounded", "submission_id": "bounded"}, 403)
+	f.createRelay(t, bounded, map[string]any{"label": "Bounded", "submission_id": "bounded"}, 200)
 	_, reader := f.token(t, "reader", relayConsentScopes, true)
-	f.relayCall(t, reader, "create_relay", map[string]any{"label": "Reader", "submission_id": "reader"}, 403)
+	f.createRelay(t, reader, map[string]any{"label": "Reader", "submission_id": "reader"}, 403)
 	_, runner := f.token(t, "owner", []string{"runs:execute"}, true)
-	f.relayCall(t, runner, "create_relay", args, 403)
+	f.createRelay(t, runner, args, 200)
 }
 func findWorkflowFunctionTriggerFromTest(ctx context.Context, id string) (*WorkflowSchedule, error) {
 	_, m, err := findWorkflowManifestByID(ctx, id)
@@ -117,13 +123,14 @@ func TestExternalRelayBuilderAndPublishingRespectRoles(t *testing.T) {
 	if _, err := validateBuilderGrant(t.Context(), claims, "invoices", "Workflow/invoices"); err != nil {
 		t.Fatal(err)
 	}
-	// The same Relay-only consent must not edit an ordinary AgentWorks workflow.
+	// Ordinary person MCP follows current account roles (20 October decision),
+	// not the scopes originally selected when this token was issued.
 	f.mock.mu.Lock()
 	saved := f.mock.files["Workflow/invoices/workflow.json"]
 	f.mock.files["Workflow/invoices/workflow.json"] = strings.Replace(saved, `"kind":"relay"`, `"kind":""`, 1)
 	f.mock.mu.Unlock()
-	if _, err := validateBuilderGrant(t.Context(), claims, "invoices", "Workflow/invoices"); err == nil {
-		t.Fatal("Relay consent authorized AgentWorks Builder")
+	if _, err := validateBuilderGrant(t.Context(), claims, "invoices", "Workflow/invoices"); err != nil {
+		t.Fatal("ordinary MCP must follow the owner's current product access", err)
 	}
 	f.mock.mu.Lock()
 	f.mock.files["Workflow/invoices/workflow.json"] = saved
@@ -192,13 +199,13 @@ func TestExternalRelayMCPTransportAndSchema(t *testing.T) {
 	srv := serveExternalMCP(t, f.api, claims)
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
-	relaySpec := marshalStructured(t, callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"relay", "builder"}}))
+	relaySpec := marshalStructured(t, callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"workspace", "relay", "builder"}}))
 	for _, want := range []string{`"create"`, `"publish"`, `"test"`, `"run"`, `"get_run"`, `"chat"`} {
 		if !strings.Contains(relaySpec, want) {
 			t.Fatalf("relay/builder spec missing action %s: %s", want, relaySpec)
 		}
 	}
-	created := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "create_relay", "arguments": map[string]any{"label": "MCP hello", "submission_id": "transport"}})
+	created := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "workspace", "arguments": testWorkspaceCreate("relay", map[string]any{"label": "MCP hello", "submission_id": "transport"})})
 	requireRemoteSuccess(t, created, "create Relay through MCP")
 	bad := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "run_relay", "arguments": map[string]any{"workflow_id": "invoices", "function": "process", "input": "not JSON object", "idempotency_key": "bad"}})
 	if !bad.IsError {
@@ -371,7 +378,7 @@ func TestRelayOAuthAuthoringIsExplicit(t *testing.T) {
 	token, _ := f.token(t, "owner", relayConsentScopes, true)
 	grant := mcpOAuthGrant{FamilyID: "relay-test", UserID: token.UserID, Scopes: relayConsentScopes, Expires: time.Now().Add(time.Hour)}
 	oauth := mcpOAuthTokenForGrant(grant)
-	if !oauth.RelayBuilderAccess() || oauth.BuilderAccess() || !oauth.AllWorkflows {
+	if !oauth.RelayBuilderAccess() || !oauth.BuilderAccess() || !oauth.AllWorkflows {
 		t.Fatalf("wrong OAuth authority: %+v", oauth)
 	}
 }

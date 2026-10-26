@@ -410,7 +410,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return personalLaptopSettingsClaims(c) && (externalWorkspaceAllowed(c) || externalFileAuthoringAllowed(c, nil))
 	}
 	if tool.Name == "workspace" {
-		return externalWorkspaceAllowed(c)
+		return externalWorkspaceAllowed(c) || projectCreationAvailable(c)
 	}
 	if tool.Name == "open_dashboard" {
 		return userAllowedProduct(c, crewProfileID) && dashboardScopeAllowed(c, "get")
@@ -485,6 +485,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	}
 	if tool.Name == "create_workflow" {
 		return externalWorkflowCreationAllowed(c)
+	}
+	if tool.Name == "copy_project_files" {
+		return projectCopyAvailable(c)
 	}
 	if tool.Name == "workflow_team" {
 		// Readers can discover get. Dispatch separately enforces current Builder

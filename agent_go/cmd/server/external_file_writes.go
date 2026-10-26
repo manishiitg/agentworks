@@ -14,7 +14,7 @@ import (
 // authoring consent as Builder. Discovery cannot resolve a project yet;
 // dispatch checks its product, role and connection bounds before writing.
 func externalFileAuthoringAllowed(claims *UserClaims, manifest *WorkflowManifest) bool {
-	if claims == nil || claims.AccessToken == nil {
+	if claims == nil {
 		return false
 	}
 	access := userAccessForClaims(claims)
@@ -22,8 +22,8 @@ func externalFileAuthoringAllowed(claims *UserClaims, manifest *WorkflowManifest
 		return false
 	}
 	token := claims.AccessToken
-	workflowAuthor := token.BuilderAccess()
-	relayAuthor := workflowAuthor || token.RelayBuilderAccess()
+	workflowAuthor := token == nil || token.BuilderAccess()
+	relayAuthor := workflowAuthor || token != nil && token.RelayBuilderAccess()
 	if manifest == nil {
 		return workflowAuthor && userAllowedProduct(claims, "agentworks") || relayAuthor && userAllowedProduct(claims, "relays")
 	}
@@ -32,7 +32,7 @@ func externalFileAuthoringAllowed(claims *UserClaims, manifest *WorkflowManifest
 		authorized, product = relayAuthor, "relays"
 	}
 	role := workflowAccessForManifest(claims, manifest)
-	return authorized && userAllowedProduct(claims, product) && token.AllowsWorkflow(manifest.ID) && userAllowedWorkflowID(claims, manifest.ID) && (role == WorkflowAccessOwner || role == WorkflowAccessWrite)
+	return authorized && userAllowedProduct(claims, product) && (token == nil || token.AllowsWorkflow(manifest.ID)) && userAllowedWorkflowID(claims, manifest.ID) && (role == WorkflowAccessOwner || role == WorkflowAccessWrite)
 }
 
 func (api *StreamingAPI) externalWriteFile(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {

@@ -13,7 +13,7 @@ admitted by `internal/agentworksproduct/product.yaml` (run `external_tools`).
 | Tool | CLI | Scope | What it does |
 |---|---|---|---|
 | `get_crew` | `crews get --crew ID` | `crews:read` | Full spec: identity, role, purpose, skills, schedules (with IDs), functions (with instructions), owner and `access` (`your_access`, `can_edit`). |
-| `create_crew` | `crews create --input spec.json` | `crews:write` | New Crew you own from a spec. |
+| `workspace` action=`create`, kind=`crew` | `crews create --input spec.json --idempotency-key KEY` | `crews:write` | New Crew you own: pass its `spec` and a stable `idempotency_key`; reuse the key on retries. |
 | `update_crew` | `crews update --crew ID --input patch.json` | `crews:write` | Partial edit: `name`, `icon`, `role`, `purpose`; `skills {set,add,remove}`; `functions {upsert,delete}`; `schedules {add,update,remove}`; `files`, `remove_files`. |
 | `export_crew` | `crews export --crew ID` | `crews:read` | `{"spec": …}`, portable. |
 | `import_crew` | `crews import --input exported.json` | `crews:write` | New Crew you own from an exported spec. Schedules arrive disabled unless `enable_schedules: true`. |

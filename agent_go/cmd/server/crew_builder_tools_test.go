@@ -134,7 +134,7 @@ func TestCrewBuilderMutationsRecheckWriteAccess(t *testing.T) {
 	for name := range mock.files {
 		before[name] = true
 	}
-	for _, name := range []string{"create_crew", "manage_crew_attachment", "manage_crew_trigger"} {
+	for _, name := range []string{"manage_crew_attachment", "manage_crew_trigger"} {
 		if _, err := tools[name].exec(context.Background(), map[string]interface{}{"action": "create"}); err == nil || !strings.Contains(err.Error(), "write access") {
 			t.Errorf("%s failed to recheck write access: %v", name, err)
 		}
@@ -259,91 +259,9 @@ func TestCrewAttachmentReadRootsSkipInvalidBindings(t *testing.T) {
 	}
 }
 
-func TestCreateCrewToolEndToEnd(t *testing.T) {
-	ensureProjectStateRoot(t)
-	tools, mock, _, svc := newCrewBuilderToolsTestEnv(t)
-	registerWorkCrewProfile(t, svc.registry)
-	// Creation reads and writes through the workspace API like production;
-	// the files-map stub other builder tests use would split the stores.
-	svc.readFile = readFileFromWorkspace
-	svc.writeFile = writeFileToWorkspace
-	tool, ok := tools["create_crew"]
-	if !ok {
-		t.Fatal("create_crew tool is not registered")
-	}
-	for _, field := range tool.params["required"].([]string) {
-		if field == "purpose" {
-			t.Fatal("optional Crew identity is required by the Builder schema")
-		}
-	}
-	ctx := context.Background()
-	result, err := tool.exec(ctx, map[string]interface{}{
-		"title": "Release Reviewer", "purpose": "Own release quality",
-		"step_instruction": "Review the release.", "idempotency_key": "proposal-1",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"Created crew", "release-reviewer", "add_step(type=crew)", "crew-release-reviewer"} {
-		if !strings.Contains(result, want) {
-			t.Fatalf("result missing %q:\n%s", want, result)
-		}
-	}
-	var manifest WorkflowManifest
-	if err := json.Unmarshal([]byte(mock.files[manifestPath("Workflow/test")]), &manifest); err != nil {
-		t.Fatal(err)
-	}
-	if len(manifest.CrewAttachments) != 1 || manifest.CrewAttachments[0].Alias != "release-reviewer" {
-		t.Fatalf("attachments = %+v", manifest.CrewAttachments)
-	}
-	crewPath := manifest.CrewAttachments[0].CrewWorkspacePath
-	if _, ok := mock.files[crewPath+"/product.json"]; !ok {
-		t.Fatal("crew product.json missing")
-	}
-	if _, ok := mock.files[crewPath+"/MEMORY.md"]; !ok {
-		t.Fatal("crew MEMORY.md missing")
-	}
-	triggers, err := svc.projectWebhookConfigs(ctx, "owner", "work", manifest.CrewAttachments[0].CrewProjectID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(triggers) != 1 || !triggers[0].IsInternal() {
-		t.Fatalf("triggers = %+v, want one internal binding", triggers)
-	}
-	again, err := tool.exec(ctx, map[string]interface{}{
-		"title": "Release Reviewer", "purpose": "Own release quality",
-		"step_instruction": "Review the release.", "idempotency_key": "proposal-1",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(again, "Adopted existing") {
-		t.Fatalf("retry = %q, want adoption", again)
-	}
-}
-
-func TestCreateCrewToolRejectsBadInput(t *testing.T) {
-	tools, _, _, svc := newCrewBuilderToolsTestEnv(t)
-	registerWorkCrewProfile(t, svc.registry)
-	tool := tools["create_crew"]
-	ctx := context.Background()
-	if _, err := tool.exec(ctx, map[string]interface{}{
-		"step_instruction": "Review.", "idempotency_key": "k",
-	}); err == nil {
-		t.Fatal("missing title: expected rejection")
-	}
-	if _, err := tool.exec(ctx, map[string]interface{}{
-		"title": "T", "step_instruction": "Review.", "idempotency_key": "k",
-		"skills": "not-an-array",
-	}); err == nil || !strings.Contains(err.Error(), "skills") {
-		t.Fatalf("non-array skills err = %v, want rejection", err)
-	}
-	if _, err := tool.exec(ctx, map[string]interface{}{
-		"title": "T", "purpose": "P", "idempotency_key": "k",
-	}); err == nil {
-		t.Fatal("missing step instruction: expected rejection")
-	}
-}
+// Combined create-and-wire shortcut retired by PLAT-825-114. Creation retry,
+// invalid input and live authority now run through project_tools_test.go;
+// trigger/attachment checks above remain on their actual services.
 
 func TestManageCrewTriggerRejectsInaccessibleCallerWorkflow(t *testing.T) {
 	tools, mock, _, _ := newCrewBuilderToolsTestEnv(t)

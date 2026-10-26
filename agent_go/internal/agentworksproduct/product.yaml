@@ -280,7 +280,8 @@ chat:
       - ask_function_update
       - call_function
       - configure_goal_metrics
-      - create_crew
+      - create_project
+      - copy_project_files
       - create_workflow_database_snapshot
       - define_function
       - delete_function

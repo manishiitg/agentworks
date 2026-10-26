@@ -43,6 +43,8 @@ chat:
       - list_published_llms
       - set_workflow_llm_config
       - list_relay_runs
+      - create_project
+      - copy_project_files
       - read_file
       - list_files
       - search_files

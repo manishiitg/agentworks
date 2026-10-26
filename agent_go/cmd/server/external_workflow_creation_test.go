@@ -35,12 +35,12 @@ func TestExternalWorkflowCreationThroughMCP(t *testing.T) {
 	ctx := context.Background()
 	cli := dialExternalMCP(t, ctx, srv.URL)
 	initializeExternalMCP(t, ctx, cli)
-	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"create_workflow"}})
+	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"workspace"}})
 	requireRemoteSuccess(t, spec, "creator schema")
-	if !strings.Contains(marshalContent(t, spec)+marshalStructured(t, spec), "create_workflow") {
+	if !strings.Contains(marshalContent(t, spec)+marshalStructured(t, spec), "workspace") {
 		t.Fatal("creator missing from MCP discovery")
 	}
-	created := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "create_workflow", "arguments": workflowCreationArgs("kb-reader")})
+	created := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "workspace", "arguments": testWorkspaceCreate("goal", workflowCreationArgs("kb-reader"))})
 	requireRemoteSuccess(t, created, "create workflow")
 	if !strings.Contains(marshalContent(t, created)+marshalStructured(t, created), "wf_kb-reader") {
 		t.Fatal("creation response missing workflow ID")
@@ -61,10 +61,10 @@ func TestExternalWorkflowCreationThroughMCP(t *testing.T) {
 		}
 	}
 	f.relayCall(t, raw, "get_workflow", map[string]any{"workflow_id": "wf_kb-reader"}, 200)
-	f.relayCall(t, raw, "create_workflow", workflowCreationArgs("kb-reader"), 409)
+	f.createGoal(t, raw, workflowCreationArgs("kb-reader"), 200)
 	duplicateID := workflowCreationArgs("another-folder")
 	duplicateID["workflow_json"].(map[string]any)["id"] = "wf_kb-reader"
-	f.relayCall(t, raw, "create_workflow", duplicateID, 409)
+	f.createGoal(t, raw, duplicateID, 409)
 	if _, found, _ := ReadWorkflowManifest(ctx, "Workflow/another-folder"); found {
 		t.Fatal("duplicate ID created a folder")
 	}
@@ -90,26 +90,31 @@ func TestExternalWorkflowCreationAuthorityAndValidation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if externalTokenAllows(claims, externalTool{Name: "create_workflow"}) {
-				t.Fatal("unauthorized creator advertised")
+			allowed := test.user == "owner"
+			if externalWorkflowCreationAllowed(claims) != allowed {
+				t.Fatal("MCP creation differs from current person role")
 			}
-			f.relayCall(t, raw, "create_workflow", workflowCreationArgs("denied"), 403)
+			want := 403
+			if allowed {
+				want = 200
+			}
+			f.createGoal(t, raw, workflowCreationArgs("role-"+strings.ToLower(strings.ReplaceAll(test.name, " ", "-"))), want)
 		})
 	}
 	_, raw := f.token(t, "owner", builderConsentScopes, true)
 	for _, field := range []string{"shared_knowledgebase", "folder_access", "Folder_Access", "knowledgebase_sources", "crew_attachments", "workflow_context_paths"} {
 		args := workflowCreationArgs("invalid")
 		args["workflow_json"].(map[string]any)[field] = []any{map[string]any{"path": "/private"}}
-		f.relayCall(t, raw, "create_workflow", args, 400)
+		f.createGoal(t, raw, args, 400)
 	}
 	badGraph := workflowCreationArgs("invalid")
 	badGraph["plan_json"].(map[string]any)["steps"].([]any)[0].(map[string]any)["next_step_id"] = "missing-step"
-	f.relayCall(t, raw, "create_workflow", badGraph, 400)
+	f.createGoal(t, raw, badGraph, 400)
 	retiredRoute := workflowCreationArgs("invalid")
 	retiredRoute["plan_json"].(map[string]any)["steps"].([]any)[0].(map[string]any)["predefined_routes"] = []any{map[string]any{"route_id": "legacy-worker", "route_name": "Legacy worker", "condition": "When needed", "sub_agent_step": map[string]any{"type": "agent", "id": "legacy-worker", "title": "Legacy worker", "description": "LLM specialist", "prompt_contract": "description-first-v1"}}}
-	f.relayCall(t, raw, "create_workflow", retiredRoute, 400)
+	f.createGoal(t, raw, retiredRoute, 400)
 	badPath := workflowCreationArgs("../outside")
-	f.relayCall(t, raw, "create_workflow", badPath, 400)
+	f.createGoal(t, raw, badPath, 400)
 	if _, found, _ := ReadWorkflowManifest(t.Context(), "Workflow/invalid"); found {
 		t.Fatal("invalid inputs wrote workflow")
 	}
@@ -124,7 +129,7 @@ func TestExternalWorkflowCreationAuthorityAndValidation(t *testing.T) {
 	if err := store.Revoke(t.Context(), token.ID, "owner", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	encoded, _ := json.Marshal(map[string]any{"name": "create_workflow", "arguments": workflowCreationArgs("revoked")})
+	encoded, _ := json.Marshal(map[string]any{"name": "workspace", "arguments": testWorkspaceCreate("goal", workflowCreationArgs("revoked"))})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", strings.NewReader(string(encoded)))
 	f.api.handleExternalCall(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)))
@@ -209,7 +214,7 @@ func TestLocalOwnerTokenCanCreateWorkflow(t *testing.T) {
 	if !externalWorkflowCreationAllowed(claims) {
 		t.Fatal("local Owner token cannot create")
 	}
-	f.relayCall(t, raw, "create_workflow", workflowCreationArgs("local-kb-reader"), 200)
+	f.createGoal(t, raw, workflowCreationArgs("local-kb-reader"), 200)
 	manifest, found, err := ReadWorkflowManifest(t.Context(), "Workflow/local-kb-reader")
 	if err != nil || !found || manifest.CreatedBy != owner {
 		t.Fatalf("local ownership: %+v %v", manifest, err)

@@ -523,6 +523,8 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.String("crew", "", "Crew ID from crews list (crew_id)")
 	}
 	switch tool {
+	case "create_crew":
+		f.String("idempotency-key", "", "One key per intended Crew; reuse it for an unchanged retry")
 	case "call_crew_function":
 		f.String("function", "", "Function name from crews functions")
 		f.String("args", "", "Function arguments as a JSON object")
@@ -698,7 +700,7 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 			return nil, errors.New("--input must contain exactly one JSON object")
 		}
 	}
-	for flagName, field := range map[string]string{"workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "known-version": "known_version", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id", "agent": "agent_name"} {
+	for flagName, field := range map[string]string{"workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "known-version": "known_version", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id", "idempotency-key": "idempotency_key", "agent": "agent_name"} {
 		if cmd.Flags().Changed(flagName) {
 			value, _ := cmd.Flags().GetString(flagName)
 			arguments[field] = value
@@ -918,7 +920,7 @@ func crewCommandCall(name string, args map[string]any) (string, map[string]any) 
 		if action == "create" || action == "import" || action == "update" {
 			settings := map[string]any{}
 			for k, v := range out {
-				if k != "workspace_id" && k != "action" {
+				if k != "workspace_id" && k != "action" && !(action == "create" && k == "idempotency_key") {
 					settings[k] = v
 					delete(out, k)
 				}
@@ -928,6 +930,9 @@ func crewCommandCall(name string, args map[string]any) (string, map[string]any) 
 				key = "changes"
 			}
 			out[key] = settings
+			if action == "create" {
+				out["kind"] = "crew"
+			}
 		}
 	}
 	return family, out

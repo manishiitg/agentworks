@@ -7089,7 +7089,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// Generic AgentWorks chat can create workflows and inspect live
 				// workflow activity. Product-owned agents opt into their own tools.
 				if userAccessForClaims(GetUserFromContext(r.Context())).CanCreateIn("agentworks") {
-					if err := api.registerWorkflowCreatorTool(llmAgent); err != nil {
+					if err := api.registerProjectTools(llmAgent, toolGate, currentUserID, GetUserFromContext(r.Context())); err != nil {
 						logfWithContext(queryLogCtx, "[WORKFLOW CREATOR] Failed to register create_workflow tool: %v", err)
 						sendError(fmt.Sprintf("Failed to register create_workflow tool: %v", err), true)
 						return

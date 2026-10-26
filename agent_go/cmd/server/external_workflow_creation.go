@@ -11,8 +11,7 @@ import (
 const externalWorkflowCreatorDescription = "Create a workflow you own using the same creator as app chat. Requires account creation rights, AgentWorks product access and builder:chat covering all workflows. Supply folder_name (kebab-case), workflow_json and plan_json; the complete plan graph is validated before writing and existing folders/IDs are never overwritten. Ownership is assigned to the authenticated user. Configure folder/KB/project access separately after creation. Returns workflow_id for direct plan edits, guarded file writes, KB bindings and run tools. Builder chat remains available when requested. Structure creation does not run the workflow or author scripted-step code."
 
 func externalWorkflowCreationAllowed(claims *UserClaims) bool {
-	return claims != nil && claims.AccessToken != nil &&
-		claims.AccessToken.BuilderAccess() && claims.AccessToken.AllWorkflows &&
+	return claims != nil && (claims.AccessToken == nil || claims.AccessToken.BuilderAccess() && claims.AccessToken.AllWorkflows) &&
 		userAccessForClaims(claims).CanCreateIn("agentworks") && userAllowedProduct(claims, "agentworks")
 }
 
@@ -23,7 +22,11 @@ func (api *StreamingAPI) externalCreateWorkflow(w http.ResponseWriter, r *http.R
 		return
 	}
 	// Recheck local-token revocation or the OAuth grant before privileged writes.
-	live, err := activeExternalGrantClaims(r.Context(), claims.AccessToken.ID)
+	live := claims
+	var err error
+	if claims.AccessToken != nil {
+		live, err = activeExternalGrantClaims(r.Context(), claims.AccessToken.ID)
+	}
 	if err != nil || live.UserID != claims.UserID || !externalWorkflowCreationAllowed(live) {
 		externalError(w, 403, "grant_unavailable", "Workflow creation grant is no longer active.")
 		return

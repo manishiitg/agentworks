@@ -915,6 +915,11 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 	if resolved == nil {
 		return nil
 	}
+	if isProjectProfileID(resolved.Definition.ID) {
+		if err := api.registerProjectTools(registrar, gate, userID, resolved.ToolCallerClaims); err != nil {
+			return err
+		}
+	}
 	for _, binding := range resolved.Definition.Tools {
 		// Crew Run mode: readers keep caller-scoped factories
 		// (custom commands) but lose crew mutations (identity,
@@ -934,9 +939,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			return err
 		}
 		if binding.ID == "work.create-project" || binding.ID == "code.create-project" {
-			tool.Execute = api.projectCreationTool(strings.SplitN(binding.ID, ".", 2)[0], userID, sessionID, binding, resolved.ToolCallerClaims)
-			tool.Name = "create_crew"
-			tool.Description = "Create another private Crew for the signed-in person when they ask. Give it a name; role and purpose are optional. It has its own files, chats and settings. Their request is approval. After creation, they can open it from the Crew menu. For a shell call, POST JSON to ${MCP_CUSTOM}/create_crew: MCP_CUSTOM already includes /tools/custom; do not append that prefix again."
+			continue
 		}
 		category := strings.TrimSpace(tool.Category)
 		if category == "" {

@@ -30,6 +30,43 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// PLAT-825-115: the existing command must send the new shared creation schema,
+// including a stable retry key outside the Crew spec.
+func TestCrewCreateUsesSharedWorkspaceAction(t *testing.T) {
+	requests := 0
+	s := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Name      string
+			Arguments map[string]any
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		spec, _ := body.Arguments["spec"].(map[string]any)
+		if body.Name != "workspace" || body.Arguments["action"] != "create" || body.Arguments["kind"] != "crew" || body.Arguments["idempotency_key"] != "one-crew" || spec["name"] != "Research" || spec["idempotency_key"] != nil {
+			t.Errorf("wrong creation request: %+v", body)
+		}
+		requests++
+		_, _ = w.Write([]byte(`{"created":true,"crew_id":"sample"}`))
+	}))
+	defer s.Close()
+	for i := 0; i < 2; i++ {
+		var out, errs bytes.Buffer
+		code := run(t.Context(), []string{"--config", filepath.Join(t.TempDir(), "config.json"), "--server", s.URL, "--json", "crews", "create", "--input", "-", "--idempotency-key", "one-crew"}, strings.NewReader(`{"name":"Research","purpose":"Sample research"}`), &out, &errs, func(key string) string {
+			if key == "AGENTWORKS_TOKEN" {
+				return "test-credential"
+			}
+			return ""
+		})
+		if code != 0 {
+			t.Fatalf("creation command failed: %s", errs.String())
+		}
+	}
+	if requests != 2 {
+		t.Fatal("creation/retry did not reach the public HTTP action")
+	}
+}
+
 func TestCLIPlanAndFileArguments(t *testing.T) {
 	for _, tc := range []struct {
 		args   []string

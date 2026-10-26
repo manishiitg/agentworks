@@ -28,7 +28,7 @@ func TestExternalGuardedWriteOverMCPSeparateVolume(t *testing.T) {
 	client := dialExternalMCP(t, ctx, srv.URL)
 	initializeExternalMCP(t, ctx, client)
 	args := map[string]any{"workflow_id": "invoices", "path": "docs/new.md", "content": "new documentation", "expected_revision": "missing", "request_id": "edit-one"}
-	result := callRemoteTool(t, ctx, client, "call_tool", map[string]any{"name": "write_file", "arguments": args})
+	result := callRemoteTool(t, ctx, client, "call_tool", map[string]any{"name": "files", "arguments": withFileTestAction(args, "write")})
 	requireRemoteSuccess(t, result, "write")
 	for _, field := range []string{`"user_id":"owner"`, `"connection_id":"writer"`, `"source":"public_mcp"`} {
 		if !strings.Contains(marshalStructured(t, result), field) {
@@ -38,20 +38,20 @@ func TestExternalGuardedWriteOverMCPSeparateVolume(t *testing.T) {
 	if f.read(t, "Workflow/invoices/docs/new.md") != "new documentation" {
 		t.Fatal("write missing")
 	}
-	retry := callRemoteTool(t, ctx, client, "call_tool", map[string]any{"name": "write_file", "arguments": args})
+	retry := callRemoteTool(t, ctx, client, "call_tool", map[string]any{"name": "files", "arguments": withFileTestAction(args, "write")})
 	requireRemoteSuccess(t, retry, "retry")
 	args["content"] = "different"
-	if got := callRemoteTool(t, ctx, client, "call_tool", map[string]any{"name": "write_file", "arguments": args}); !got.IsError {
+	if got := callRemoteTool(t, ctx, client, "call_tool", map[string]any{"name": "files", "arguments": withFileTestAction(args, "write")}); !got.IsError {
 		t.Fatal("request reuse succeeded")
 	}
 	args["request_id"] = "edit-two"
-	if got := callRemoteTool(t, ctx, client, "call_tool", map[string]any{"name": "write_file", "arguments": args}); !got.IsError {
+	if got := callRemoteTool(t, ctx, client, "call_tool", map[string]any{"name": "files", "arguments": withFileTestAction(args, "write")}); !got.IsError {
 		t.Fatal("stale revision succeeded")
 	}
 	for _, p := range []string{"planning/plan.json", "planning/changelog/change.json", "workflow.json", "db/db.sqlite", "docs/.env", "docs/locked/a.md", "docs/private/a.md", "code/ungranted.py", "../outside"} {
 		args["path"] = p
 		args["request_id"] = p
-		got := callRemoteTool(t, ctx, client, "call_tool", map[string]any{"name": "write_file", "arguments": args})
+		got := callRemoteTool(t, ctx, client, "call_tool", map[string]any{"name": "files", "arguments": withFileTestAction(args, "write")})
 		if !got.IsError {
 			t.Fatalf("allowed %s", p)
 		}
@@ -75,14 +75,18 @@ func TestExternalGuardedWriteOverMCPSeparateVolume(t *testing.T) {
 	}
 	// An old editor entry grants Run access, not Builder access.
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"editors":["owner"]}}`)
-	projectDenied := callRemoteTool(t, ctx, relayClient, "call_tool", map[string]any{"name": "write_file", "arguments": map[string]any{"workflow_id": "invoices", "path": "docs/reader.md", "content": "denied", "expected_revision": "missing", "request_id": "reader"}})
+	projectDenied := callRemoteTool(t, ctx, relayClient, "call_tool", map[string]any{"name": "files", "arguments": map[string]any{"action": "write", "workflow_id": "invoices", "path": "docs/reader.md", "content": "denied", "expected_revision": "missing", "request_id": "reader"}})
 	if !projectDenied.IsError {
 		t.Fatal("project downgrade retained file write access")
 	}
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["owner"]}}`)
 	// The same connected app loses editing rights as soon as the user's role changes.
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"viewer","products":["relays"]}]}`)
-	denied := callRemoteTool(t, ctx, relayClient, "call_tool", map[string]any{"name": "write_file", "arguments": map[string]any{"workflow_id": "invoices", "path": "docs/revoked.md", "content": "denied", "expected_revision": "missing", "request_id": "revoked"}})
+	// A changed account role invalidates the retained MCP session. Reinitialize
+	// to prove the write is refused by current authoring rules as well.
+	currentClient := dialExternalMCP(t, ctx, relaySrv.URL)
+	initializeExternalMCP(t, ctx, currentClient)
+	denied := callRemoteTool(t, ctx, currentClient, "call_tool", map[string]any{"name": "files", "arguments": map[string]any{"action": "write", "workflow_id": "invoices", "path": "docs/revoked.md", "content": "denied", "expected_revision": "missing", "request_id": "revoked"}})
 	if !denied.IsError {
 		t.Fatal("role downgrade retained file write access")
 	}
@@ -115,7 +119,7 @@ func TestExternalWritesRequireScopeLiveRoleAndWorkflowGrant(t *testing.T) {
 		claims := writeTestClaims(tc.user)
 		claims.AccessToken.Scopes = tc.scopes
 		claims.AccessToken.WorkflowIDs = tc.ids
-		data, _ := json.Marshal(map[string]any{"name": "write_file", "arguments": map[string]any{"workflow_id": "invoices", "path": "docs/denied.md", "content": "denied", "expected_revision": "missing", "request_id": "denied"}})
+		data, _ := json.Marshal(map[string]any{"name": "files", "arguments": map[string]any{"action": "write", "workflow_id": "invoices", "path": "docs/denied.md", "content": "denied", "expected_revision": "missing", "request_id": "denied"}})
 		response := httptest.NewRecorder()
 		f.api.handleExternalCall(response, adminRequest(http.MethodPost, "/api/external/v1/call", string(data), claims, nil))
 		if response.Code != tc.want {

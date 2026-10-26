@@ -56,7 +56,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 		claims = live
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, live))
 	}
-	if claims == nil || claims.AccessToken == nil || !claims.AccessToken.RelayBuilderAccess() || !claims.AccessToken.AllWorkflows || !userAccessForClaims(claims).CanCreateIn("relays") || !userAllowedProduct(claims, "relays") {
+	if !projectCreateAllowed(claims, "relay") {
 		externalError(w, 403, "forbidden", "Creation needs account create rights, Flow product access and relays:write consent covering all accessible workflows.")
 		return
 	}
@@ -69,7 +69,11 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 	if function == "" {
 		function = "process"
 	}
-	identity := uuid.NewSHA1(uuid.NameSpaceURL, []byte(claims.UserID+"\x00"+claims.AccessToken.ID+"\x00"+externalArg(args, "submission_id"))).String()
+	connectionID := ""
+	if claims.AccessToken != nil {
+		connectionID = claims.AccessToken.ID
+	}
+	identity := uuid.NewSHA1(uuid.NameSpaceURL, []byte(claims.UserID+"\x00"+connectionID+"\x00"+externalArg(args, "submission_id"))).String()
 	workspace := "Workflow/relay-" + identity
 	workflowID := "wf_" + identity
 	if !userAllowedWorkflowID(claims, workflowID) {

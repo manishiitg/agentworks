@@ -61,7 +61,7 @@ var externalToolMerges = []externalToolMerge{
 		{"file_history", "builder_file_history"}, {"restore_file", "builder_restore_file"},
 	}},
 	{"relay", "Flows: create and edit one, test the draft, publish an immutable version, run a published version and read its runs and releases. Edit its code directly with files action=read/write, then test and inspect the draft run.", [][2]string{
-		{"create", "create_relay"}, {"update", "update_relay"}, {"test", "test_relay"}, {"publish", "publish_relay"},
+		{"update", "update_relay"}, {"test", "test_relay"}, {"publish", "publish_relay"},
 		{"run", "run_relay"}, {"get_run", "get_relay_run"}, {"runs", "list_relay_runs"}, {"releases", "get_relay_releases"},
 	}},
 	{"workspace_review", "Audited inspection of Crew projects for administrators and Crew reviewers: projects, costs, files, chats and the audit log.", [][2]string{
@@ -434,7 +434,7 @@ func externalMergeProperty(props map[string]any, key string, value any) {
 // but only canonical action families are public entry points.
 func projectServiceTool(name string) bool {
 	switch name {
-	case "get_dashboard_share", "share_dashboard", "manage_crew_chats",
+	case "create_workflow", "create_relay", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
 		"ask_crew", "list_crews", "get_crew", "get_crew_costs", "create_crew", "update_crew", "export_crew", "import_crew",
 		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "suggest_crew_change",
 		"list_crew_functions", "call_crew_function", "get_crew_function_call", "reply_crew_function_call", "list_crew_function_calls",

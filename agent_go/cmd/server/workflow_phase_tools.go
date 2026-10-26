@@ -76,6 +76,9 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	// workflow→workflow) under the same interactive authoring gate as
 	// trigger management.
 	if policy.Mode == "builder" && policy.Origin == "interactive" && policy.allows("plan_authoring") {
+		if err := api.registerProjectTools(definitionAgent, nil, userID, GetUserFromContext(internalBotRequestContext(ctx, userID))); err != nil {
+			return err
+		}
 		panelProduct := "agentworks"
 		if phaseTemplateVars["WorkflowKind"] == "relay" {
 			panelProduct = "relays"

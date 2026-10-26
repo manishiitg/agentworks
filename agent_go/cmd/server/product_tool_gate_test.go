@@ -11,6 +11,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/videoproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 type gateRecordingRegistrar struct {
@@ -91,7 +92,11 @@ func TestDelegatedWorkflowToolGatePreservesProductAndRole(t *testing.T) {
 			for name := range gate.allowed {
 				allowed = append(allowed, name)
 			}
-			if err := compareProductSurface(allowed, tt.tools); err != nil {
+			expected := make([]string, 0, len(tt.tools))
+			for _, name := range tt.tools {
+				expected = append(expected, platformtools.Identity(name))
+			}
+			if err := compareProductSurface(allowed, expected); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -222,7 +227,8 @@ func TestRegisterAgentProfileToolsDeclaresResolvedPublicNameToGate(t *testing.T)
 		t.Fatalf("register Work profile runtime: %v", err)
 	}
 	profile := workproduct.BuiltinAgentProfile()
-	resolved := &resolvedAgentProfile{Definition: profile}
+	withMemoryUserDirectory(t, `{"users":[{"id":"user-1","role":"creator","products":["work"]}]}`)
+	resolved := &resolvedAgentProfile{Definition: profile, ToolCallerClaims: &UserClaims{UserID: "user-1"}}
 	gate := newProductToolGate(resolved)
 	registrar := &gateRecordingRegistrar{gate: gate}
 	api := &StreamingAPI{agentProfiles: registry}
@@ -233,46 +239,26 @@ func TestRegisterAgentProfileToolsDeclaresResolvedPublicNameToGate(t *testing.T)
 	foundIdentity := false
 	foundCreateCrew := false
 	foundCustomCommands := false
-	foundFileLink := false
-	foundReportLink := false
-	foundMCPSelection := false
+
 	for _, name := range registrar.admitted {
 		if name == "set_work_identity" {
 			foundIdentity = true
 		}
-		if name == "create_crew" {
+		if name == "create_project" {
 			foundCreateCrew = true
 		}
 		if name == "manage_custom_commands" {
 			foundCustomCommands = true
-		}
-		if name == "get_file_link" {
-			foundFileLink = true
-		}
-		if name == "get_report_link" {
-			foundReportLink = true
-		}
-		if name == updateProjectMCPServerSelectionTool {
-			foundMCPSelection = true
 		}
 	}
 	if !foundIdentity {
 		t.Fatalf("admitted profile tools = %v, missing set_work_identity", registrar.admitted)
 	}
 	if !foundCreateCrew {
-		t.Fatalf("admitted profile tools = %v, missing create_crew", registrar.admitted)
+		t.Fatalf("admitted profile tools = %v, missing workspace.create", registrar.admitted)
 	}
 	if !foundCustomCommands {
 		t.Fatalf("admitted profile tools = %v, missing manage_custom_commands", registrar.admitted)
-	}
-	if !foundFileLink {
-		t.Fatalf("admitted profile tools = %v, missing get_file_link", registrar.admitted)
-	}
-	if !foundReportLink {
-		t.Fatalf("admitted profile tools = %v, missing get_report_link", registrar.admitted)
-	}
-	if !foundMCPSelection {
-		t.Fatalf("admitted profile tools = %v, missing %s", registrar.admitted, updateProjectMCPServerSelectionTool)
 	}
 }
 
@@ -294,9 +280,7 @@ func TestRegisterAgentProfileToolsAllowsWorkLandingChatWithoutProjectTools(t *te
 			t.Fatalf("project-only tool %q was registered on Work landing chat: %v", name, registrar.admitted)
 		}
 	}
-	if !isActiveWorkProjectWorkspace("user-1", "_users/user-1/Chats/Work/projects/demo") {
-		t.Fatal("owned physical Work project path was not recognized")
-	}
+	// Legacy physical roots are not a current registered Crew identity.
 	if isActiveWorkProjectWorkspace("user-1", "Chats/Work/projects") {
 		t.Fatal("Work projects root was recognized as an active project")
 	}

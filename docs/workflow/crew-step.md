@@ -1,6 +1,6 @@
 # Crew workflow step
 
-**Status:** Implemented; follow-up review findings addressed.
+**Current creation path (PLAT-825):** Use `workspace` with `action=create`, `kind=crew`, `spec={name,purpose,...}` and one `idempotency_key`; reuse that key on a retry. Then configure the Crew function/trigger and read attachment through their existing tools, and call `add_step(type=crew)` with the returned Crew/trigger identities. If the step ID already exists, check it rather than adding it again. The older combined `create_crew` shortcut described in the historical design below is retired. Creation and file copying use the same actions in chat and MCP; there is no converter.
 
 ## Summary
 

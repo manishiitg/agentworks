@@ -1,6 +1,12 @@
 [
   {
     "family": "files",
+    "name": "copy",
+    "member": "copy_project_files",
+    "description": "Copy accessible files or a folder into a project you own or edit, without copying private chats or secret stores. Existing destination files are not replaced."
+  },
+  {
+    "family": "files",
     "name": "list",
     "member": "list_files",
     "description": "List files within the current read grants.",

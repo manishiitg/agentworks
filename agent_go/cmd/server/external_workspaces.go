@@ -15,14 +15,15 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
 		"workspace_id": externalString("Crew workspace ID from workspace action=list."),
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
-		"query_id":     externalString("Exact Ask turn returned by ask/read_chat. Keep it when polling or answering a pending question."),
-		"request_id":   externalString("Pending question from your own Ask turn. Answer with reply_input; clients supporting MCP elicitation may show a form."),
-		"answers":      map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"id": externalString("Question id."), "selected_labels": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "other_text": externalString("Custom answer when the question allows it.")}, "required": []any{"id"}}, "maxItems": 12},
-		"session_id":   externalString("An earlier chat session from action=chats, for read/delete."),
-		"agent_id":     externalString("Stable published agent ID from agents or an import receipt, for open_agent."),
-		"operation_id": externalString("Storage operation for storage_status/storage_backup/storage_move. Storage operations need administrator/users:manage access. storage_move moves ready projects to Crew with verified backups; omit workspace_id for all ready projects. Explicitly select a registered project with unreadable files to move it with a partial backup; skipped entries are reported."),
-		"kind":         externalString("read_saved_chat: raw (default) or summary. Builders can read an agent's private imported chat with its current website access."),
-		"offset":       externalInteger(0, 1<<30), "limit": externalInteger(0, 65536),
+		"query_id":        externalString("Exact Ask turn returned by ask/read_chat. Keep it when polling or answering a pending question."),
+		"request_id":      externalString("Pending question from your own Ask turn. Answer with reply_input; clients supporting MCP elicitation may show a form."),
+		"answers":         map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"id": externalString("Question id."), "selected_labels": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "other_text": externalString("Custom answer when the question allows it.")}, "required": []any{"id"}}, "maxItems": 12},
+		"session_id":      externalString("An earlier chat session from action=chats, for read/delete."),
+		"agent_id":        externalString("Stable published agent ID from agents or an import receipt, for open_agent."),
+		"operation_id":    externalString("Storage operation for storage_status/storage_backup/storage_move. Storage operations need administrator/users:manage access. storage_move moves ready projects to Crew with verified backups; omit workspace_id for all ready projects. Explicitly select a registered project with unreadable files to move it with a partial backup; skipped entries are reported."),
+		"kind":            externalString("create: goal, crew or relay. read_saved_chat: raw (default) or summary."),
+		"idempotency_key": projectCreateDefinition().InputSchema["properties"].(map[string]any)["idempotency_key"],
+		"offset":          externalInteger(0, 1<<30), "limit": externalInteger(0, 65536),
 		"conversation_key": externalString("Exact conversation key from this Crew’s tab list."),
 		"chat_id":          externalString("Tab id from chats. Selected shared agents accept attributed ask/message_chat and read_chat from sharing onward. Other co-owner tabs allow read_chat/message_chat. Tab controls belong to their owner."),
 		"inbox_id":         externalString("For message_chat: existing agent reply address, when continuing a conversation."),
@@ -89,6 +90,16 @@ func (api *StreamingAPI) resolveExternalWorkspace(ctx context.Context, claims *U
 
 func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
+	if externalArg(args, "action") == "create" {
+		input := map[string]any{}
+		for _, key := range []string{"kind", "spec", "idempotency_key"} {
+			if value, ok := args[key]; ok {
+				input[key] = value
+			}
+		}
+		api.externalCreateProject(w, r, input)
+		return
+	}
 	if !externalWorkspaceAllowed(claims) {
 		externalError(w, 403, "forbidden", "This account cannot use these projects.")
 		return
@@ -111,9 +122,9 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		api.listExternalWorkspaces(w, r, args, false)
 		return
 	}
-	if action == "create" || action == "import" {
+	if action == "import" {
 		spec := crewSpec{Name: strings.TrimSpace(externalArg(args, "name"))}
-		if action == "import" || args["spec"] != nil {
+		if args["spec"] != nil {
 			if err := remarshalExternalArgs(args["spec"], &spec); err != nil {
 				externalError(w, 400, "invalid_arguments", "Send the Crew's creation settings or exported spec.")
 				return

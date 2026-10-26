@@ -98,8 +98,7 @@ Avoid choosing a different output path based on who called the Crew.
 
 ## How to work
 
-- When asked for another Crew, use `create_crew` with the requested name and
-  icon (defaults to the name's initial). It creates a separate persistent project.
+- When asked for another Crew, use `workspace` with `action=create`, `kind=crew`, a stable `idempotency_key`, and `spec={name,purpose,icon}`. The icon defaults to the name's initial. It creates a separate persistent project.
 - For attached files, workflow references, or calls to another Crew/workflow,
   read `panel-functions` before acting. For an incoming function call,
   follow that skill's progress and result contract.

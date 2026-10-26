@@ -18,35 +18,6 @@ import (
 // lowercase letters and digits, separated by single hyphens, starting with a letter.
 var kebabCaseWorkflowName = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 
-// registerWorkflowCreatorTool registers the create_workflow tool on the multi-agent chat agent.
-// This tool is the privileged path for creating new workflow folders — it bypasses the
-// session's Chats/ folder guard by writing through the workspace API into the shared
-// workspace root. The handler enforces:
-//   - kebab-case name validation
-//   - required-field validation for workflow.json and plan.json
-//   - no-overwrite of existing workflows
-//
-// Registered only for multi-agent chat (not workflow phase).
-func (api *StreamingAPI) registerWorkflowCreatorTool(underlyingAgent definitionToolRegistrar) error {
-	if underlyingAgent == nil {
-		return fmt.Errorf("underlying agent is nil")
-	}
-
-	params := workflowCreatorToolSchema()
-
-	description := "Create a new workflow at Workflow/<folder_name>/ with the given workflow.json and planning/plan.json. Use one large agent per shared-context span, with proof/provenance, evidence-based double-checking, repair, and final validation inside it; create another large sequence only when its context should be isolated. Put deterministic API/SDK/CLI/data-fetch/parse/persist work in coherent scripted-fetcher candidates with authoritative validated outputs. Never use one scripted step per endpoint, routine action, or proof check. This tool writes structure only; after creation tell the user to open Workshop so deterministic steps are declared scripted and main.py is authored/tested before production. The tool validates the complete plan graph before writing anything and refuses dangling targets or overwrite."
-
-	return underlyingAgent.RegisterCustomTool(
-		"create_workflow",
-		description,
-		params,
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			return api.handleWorkflowCreatorTool(ctx, args)
-		},
-		"workflow_creator",
-	)
-}
-
 // workflowCreatorToolSchema is shared by chat and the global MCP catalog.
 func workflowCreatorToolSchema() map[string]interface{} {
 	return map[string]interface{}{

@@ -71,7 +71,7 @@ func GetWorkspaceMap(docsRoot, chatsFolder string) string {
 | ` + "`" + p.Config + "/`" + ` | tool-only | Session config — use dedicated LLM/provider config tools, not raw file reads/writes |
 | ` + "`" + p.ChatHistory + "/`" + ` | read/write | Past conversation histories |
 | ` + "`" + p.Skills + "/`" + ` | read-only | Skill definitions (SKILL.md + supporting files) |
-| ` + "`" + p.Workflow + "/`" + ` | read-only via shell | Workflow definitions — create with ` + "`create_workflow`" + `; edit cron schedules with the workflow_schedule tools (see "Modifying Existing Workflows") |
+| ` + "`" + p.Workflow + "/`" + ` | read-only via shell | Workflow definitions — create with ` + "`workspace action=create kind=goal`" + `; edit cron schedules with the workflow_schedule tools (see "Modifying Existing Workflows") |
 
 ### Chats Folder Organization
 
@@ -330,11 +330,13 @@ Default mode rule: workflow schedules use ` + "`mode=\"workshop\"`" + `. Do not 
 
 ## Creating New Workflows
 
-When asked to create a new workflow (e.g. via ` + "`/workflow-builder`" + ` or a direct "turn this into a workflow" request), call the privileged ` + "`create_workflow`" + ` tool. **Do NOT try to ` + "`mkdir`" + ` or ` + "`cat > workflow.json`" + ` with ` + "`execute_shell_command`" + ` — the ` + "`Workflow/`" + ` folder is read-only to normal shell writes.** The only path that can create a new workflow folder is the ` + "`create_workflow`" + ` tool, which writes the files via privileged server-side I/O after validating the name, required fields, and no-overwrite check.
+Create a Goal with workspace(action="create", kind="goal", spec={folder_name, workflow_json, plan_json}, idempotency_key="one-new-key"). Reuse that key for an unchanged retry. The spec fields below are nested under spec. Creating does not run it.
 
-### The ` + "`create_workflow`" + ` Tool
+When asked to create a new workflow (e.g. via ` + "`/workflow-builder`" + ` or a direct "turn this into a workflow" request), call the privileged ` + "`workspace action=create kind=goal`" + ` tool. **Do NOT try to ` + "`mkdir`" + ` or ` + "`cat > workflow.json`" + ` with ` + "`execute_shell_command`" + ` — the ` + "`Workflow/`" + ` folder is read-only to normal shell writes.** The only path that can create a new workflow folder is the ` + "`workspace action=create kind=goal`" + ` tool, which writes the files via privileged server-side I/O after validating the name, required fields, and no-overwrite check.
 
-` + "`create_workflow(name, workflow_json, plan_json)`" + ` — creates ` + "`Workflow/<name>/`" + ` with the two JSON files in one atomic call.
+### The ` + "`workspace action=create kind=goal`" + ` Tool
+
+` + "`workspace action=create kind=goal with spec and idempotency_key`" + ` — creates ` + "`Workflow/<name>/`" + ` with the two JSON files in one atomic call.
 
 - **name** (required): kebab-case folder name (see rules below)
 - **workflow_json** (required): JSON object matching the workflow.json schema — must include ` + "`schema_version`" + ` (1), ` + "`version`" + ` (` + "`" + WorkflowContractCurrentVersion + "`" + `), ` + "`id`" + `, ` + "`label`" + `
@@ -345,7 +347,7 @@ The tool refuses to overwrite existing workflows. On success it returns the fold
 ### Two Different "Names" — Don't Confuse Them
 Workflows have **two** separate name-like values, and it matters which one you're setting:
 
-1. **Folder name** (` + "`folder_name`" + ` parameter on ` + "`create_workflow`" + `) — the on-disk path segment under ` + "`Workflow/`" + `. This must be **shell-safe**: kebab-case, lowercase letters/digits, hyphens between words, no spaces, no uppercase, no underscores, no special characters (e.g. ` + "`customer-onboarding`" + `, ` + "`sales-report`" + `, ` + "`api-health-check`" + `). It's used as a filesystem path, so it has to work in shell commands without quoting. 2-5 words, descriptive, ≤64 chars. If a clean folder_name cannot be derived, ask the user before creating.
+1. **Folder name** (` + "`folder_name`" + ` parameter on ` + "`workspace action=create kind=goal`" + `) — the on-disk path segment under ` + "`Workflow/`" + `. This must be **shell-safe**: kebab-case, lowercase letters/digits, hyphens between words, no spaces, no uppercase, no underscores, no special characters (e.g. ` + "`customer-onboarding`" + `, ` + "`sales-report`" + `, ` + "`api-health-check`" + `). It's used as a filesystem path, so it has to work in shell commands without quoting. 2-5 words, descriptive, ≤64 chars. If a clean folder_name cannot be derived, ask the user before creating.
 2. **Display name / label** (` + "`workflow_json.label`" + `) — the human-readable name shown in the UI. This can be **any string**: spaces, capitalization, punctuation, Unicode, whatever makes sense to the user (e.g. ` + "`\"AWS Cost Analysis Q3\"`" + `, ` + "`\"Customer Onboarding (v2)\"`" + `, ` + "`\"Müller's Pipeline\"`" + `).
 
 **Rule of thumb**: ` + "`folder_name`" + ` is the machine-readable identifier, ` + "`label`" + ` is the human-readable title. You typically derive folder_name by slugifying the label (lowercase, replace spaces/punctuation with hyphens), but if the user gives you a clean kebab-case preamble use that directly.
@@ -355,7 +357,7 @@ Some existing workflows were created before the kebab-case rule and have spaces 
 - Correct: ` + "`execute_shell_command(command: \"ls '" + absWorkflow + "/AWS Cost Analysis/'\")`" + `
 - Wrong: ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/AWS Cost Analysis/\")`" + ` (the shell splits on the space)
 
-New workflows you create via ` + "`create_workflow`" + ` will always have shell-safe folder names, so this only affects legacy workflows.
+New workflows you create via ` + "`workspace action=create kind=goal`" + ` will always have shell-safe folder names, so this only affects legacy workflows.
 
 ### File 1: ` + "`Workflow/<kebab-name>/workflow.json`" + `
 
@@ -472,7 +474,7 @@ Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step)
 - If call selection requires judgment, use an agentic request-specification step, then a deterministic executor, then an agentic interpretation sequence.
 - Use multiple large sequences when their contexts should not be shared: different credentials/security exposure, independent durable outputs or retries, clean-room independence, human/routing boundaries, or unrelated context that would distract or contaminate the next agent. Split only when the builder can name that boundary; a desire to validate the same output is not enough.
 
-**Execution-mode handoff:** ` + "`plan.json`" + ` stores structure, not per-step execution mode. After ` + "`create_workflow`" + ` returns, tell the user to open the workflow in Workshop. Before the first production run, Workshop must declare deterministic fetch/parse/persist steps ` + "`scripted`" + ` with ` + "`update_step_config`" + `, author and test ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + `, and keep judgment/agent/browser work ` + "`agentic`" + `. The 10-run bar applies only before ` + "`lock_code=true`" + ` freezes a script, not before selecting scripted mode.
+**Execution-mode handoff:** ` + "`plan.json`" + ` stores structure, not per-step execution mode. After ` + "`workspace action=create kind=goal`" + ` returns, tell the user to open the workflow in Workshop. Before the first production run, Workshop must declare deterministic fetch/parse/persist steps ` + "`scripted`" + ` with ` + "`update_step_config`" + `, author and test ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + `, and keep judgment/agent/browser work ` + "`agentic`" + `. The 10-run bar applies only before ` + "`lock_code=true`" + ` freezes a script, not before selecting scripted mode.
 
 **Step types**:
 - ` + "`agent`" + ` — the default for substantial same-context reasoning: complete the outcome, verify it against evidence, then repair gaps in focused follow-up messages.
@@ -486,11 +488,11 @@ Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step)
 - Steps chain via ` + "`context_dependencies`" + ` / ` + "`context_output`" + `, or via explicit ` + "`next_step_id`" + ` on branching types.
 
 ### Rules When Creating a Workflow
-- **Use ` + "`create_workflow`" + `, not shell commands.** Sub-agents cannot write under ` + "`Workflow/`" + ` via ` + "`execute_shell_command`" + ` — they'll hit a folder-guard error. Build the two JSON objects in your reasoning, then call the tool directly from your own turn. No delegation needed for this step.
+- **Use ` + "`workspace action=create kind=goal`" + `, not shell commands.** Sub-agents cannot write under ` + "`Workflow/`" + ` via ` + "`execute_shell_command`" + ` — they'll hit a folder-guard error. Build the two JSON objects in your reasoning, then call the tool directly from your own turn. No delegation needed for this step.
 - **Both JSON objects must be well-formed** — the tool will re-marshal them on write. If you produce invalid structures (missing required fields, wrong types, duplicate step ids, non-kebab-case step ids) the tool returns an error describing the problem and nothing gets written.
 - **Pick capabilities smartly** from the current chat's context: include only the servers, skills, and LLM tiers actually needed for the workflow's steps. Don't blindly copy every currently-enabled server.
 - **Apply the plan-shape rule before calling the tool.** The atomic creator validates graph integrity, but it cannot infer that an LLM-heavy plan should have used a scripted fetcher or that several micro-steps should have been merged. Build the correct scripted-fetcher → large-agent structure up front, include validation on every producing step, and explicitly report the Workshop execution-mode/script handoff.
-- **Don't overwrite existing workflows.** ` + "`create_workflow`" + ` is for *new* workflows only — it refuses if the target folder already exists. To modify an existing workflow's **cron schedules**, use the workflow_schedule tools (see "Modifying Existing Workflows" above). For LLM config, MCP servers, skills, or plan steps, direct the user to the workflow builder / canvas.
+- **Don't overwrite existing workflows.** ` + "`workspace action=create kind=goal`" + ` is for *new* workflows only — it refuses if the target folder already exists. To modify an existing workflow's **cron schedules**, use the workflow_schedule tools (see "Modifying Existing Workflows" above). For LLM config, MCP servers, skills, or plan steps, direct the user to the workflow builder / canvas.
 - After creation, report the folder path (returned by the tool) to the user and tell them they can activate it from the workflow picker.
 
 `

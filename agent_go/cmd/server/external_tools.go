@@ -238,6 +238,17 @@ func externalTools() ([]externalTool, error) {
 		externalWatcherDefinitions(add)
 		externalAgentEmailDefinitions(add)
 		externalWorkspaceDefinitions(add)
+		copyDef := projectCopyDefinition()
+		defined = append(defined, copyDef)
+		for i := range defined {
+			if defined[i].Name == "workspace" {
+				creation := projectCreateDefinition().InputSchema
+				props := creation["properties"].(map[string]any)
+				props["action"] = map[string]any{"type": "string", "enum": []any{"create"}}
+				creation["required"] = append(creation["required"].([]any), "action")
+				defined[i].InputSchema["allOf"] = []any{map[string]any{"if": map[string]any{"properties": map[string]any{"action": map[string]any{"const": "create"}}}, "then": creation}}
+			}
+		}
 		externalLaptopAccessDefinition(add)
 		for i := range defined {
 			if defined[i].Name == "manage_laptop_access" || isExternalLaptopFileTool(defined[i].Name) {
@@ -849,6 +860,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if tool.Name == bullpenAdminTool {
 		api.externalBullpenAdminCall(w, r, call.Arguments)
+		return
+	}
+	if tool.Name == "copy_project_files" {
+		api.externalCopyProjectFiles(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "create_workflow" {
