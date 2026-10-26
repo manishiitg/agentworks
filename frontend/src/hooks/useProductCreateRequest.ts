@@ -3,13 +3,15 @@ import { useCommandDialogStore, type ProductCreateSurface } from '../stores/useC
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 
 /** Consume a creation request once, even when the product loads lazily. */
-export function useProductCreateRequest(surface: ProductCreateSurface | null, open: () => void) {
+export function useProductCreateRequest(surface: ProductCreateSurface | null, open: (intent?: 'studio') => void) {
   const request = useCommandDialogStore(state => state.productCreateSurface)
   const current = useProductSurfaceStore(state => state.productSurface)
   const openRef = useRef(open)
   openRef.current = open
   useEffect(() => {
     if (!surface || request !== surface || current !== surface) return
-    if (useCommandDialogStore.getState().consumeProductCreate(surface)) openRef.current()
+    const store = useCommandDialogStore.getState()
+    const intent = store.productCreateIntent
+    if (store.consumeProductCreate(surface)) openRef.current(intent ?? undefined)
   }, [surface, request, current])
 }

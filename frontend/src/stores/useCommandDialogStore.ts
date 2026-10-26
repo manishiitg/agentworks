@@ -7,7 +7,8 @@ export type DialogName = 'skillImport' | 'mcpDetails' | 'mcpConfig' | 'models' |
 interface CommandDialogState {
   /** Retained until the destination product mounts and opens its existing form. */
   productCreateSurface: ProductCreateSurface | null
-  requestProductCreate: (surface: ProductCreateSurface | null) => void
+  productCreateIntent: 'studio' | null
+  requestProductCreate: (surface: ProductCreateSurface | null, intent?: 'studio') => void
   consumeProductCreate: (surface: ProductCreateSurface) => boolean
   showSkillImport: boolean
   showMCPDetails: boolean
@@ -31,10 +32,11 @@ const dialogKeyMap: Record<DialogName, keyof CommandDialogState> = {
 
 export const useCommandDialogStore = create<CommandDialogState>()((set, get) => ({
   productCreateSurface: null,
-  requestProductCreate: surface => set({ productCreateSurface: surface }),
+  productCreateIntent: null,
+  requestProductCreate: (surface, intent) => set({ productCreateSurface: surface, productCreateIntent: surface ? intent ?? null : null }),
   consumeProductCreate: surface => {
     if (get().productCreateSurface !== surface) return false
-    set({ productCreateSurface: null })
+    set({ productCreateSurface: null, productCreateIntent: null })
     return true
   },
   showSkillImport: false,
@@ -47,6 +49,7 @@ export const useCommandDialogStore = create<CommandDialogState>()((set, get) => 
   closeDialog: (dialog) => set({ [dialogKeyMap[dialog]]: false }),
   closeAll: () => set({
     productCreateSurface: null,
+    productCreateIntent: null,
     showSkillImport: false,
     showMCPDetails: false,
     showMCPConfig: false,

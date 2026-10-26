@@ -12,6 +12,7 @@ vi.hoisted(() => {
 vi.mock('../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn((surface: string) => { window.history.pushState({}, '', `/${surface === 'work' ? 'crew' : surface === 'agentworks' ? 'goals' : surface}`) }) }))
 vi.mock('./WelcomeAiReadiness', () => ({ default: ({ onSetup, crewReadyView }: { onSetup: () => void; crewReadyView?: unknown }) => readiness.crewReady ? crewReadyView : <button onClick={onSetup}>Review AI setup</button> }))
 vi.mock('../services/api', async importOriginal => ({ ...await importOriginal<typeof import('../services/api')>(), default: { post: vi.fn() } }))
+vi.mock('./HomeRecentWork', () => ({ HomeRecentWork: () => <section>Recent work</section> }))
 const readiness = vi.hoisted(() => ({ crewReady: false }))
 
 import { WelcomeHome, WELCOME_HOME_DISMISSED_KEY } from './WelcomeHome'
@@ -65,7 +66,7 @@ describe('WelcomeHome', () => {
     readiness.crewReady = true
     const ready = await renderWelcome()
     expect(ready.textContent).not.toContain('Review AI setup')
-    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {})
+    vi.spyOn(window.location, 'assign').mockImplementation(() => {})
     vi.mocked(api.post).mockResolvedValue({ data: { crew_id: 'crew-1' } })
     const box = ready.querySelector<HTMLTextAreaElement>('#welcome-agentworks-message')!
     expect(box.placeholder).toBe('Tell AgentWorks what you want to get done')
@@ -75,24 +76,22 @@ describe('WelcomeHome', () => {
     })
     await act(async () => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
     expect(api.post).toHaveBeenCalledWith('/api/agentworks', { message: 'Plan my week' })
-    expect(assign).toHaveBeenCalledWith(productRoutePath({ surface: 'work', id: 'crew-1' }))
-    await act(async () => button(ready, 'Manage AI accounts').click())
-    expect(window.location.pathname).toBe('/settings/ai-accounts')
+    expect(window.location.pathname).toBe(productRoutePath({ surface: 'work', id: 'crew-1' }))
   })
 
   it('shows only permitted products and remembers dismissal', async () => {
     configure(['work', 'sparkquill'])
     const host = await renderWelcome()
-    expect(host.textContent).toContain('Welcome to Acme Agents')
+    expect(host.textContent).toContain('Acme Agents')
     expect(host.querySelectorAll('[data-welcome-product]')).toHaveLength(1)
     expect(host.textContent).not.toContain('Goals')
     expect(host.textContent).not.toContain('SparkQuill')
     await act(async () => button(host, 'Open Crew').click())
     expect(openProductWorkspace).toHaveBeenCalledWith('work')
     expect(window.localStorage.getItem(WELCOME_HOME_DISMISSED_KEY)).toBe('true')
-    expect(host.querySelector('main[aria-label="Getting started"]')).toBeNull()
+    expect(host.querySelector('main[aria-label="Home"]')).toBeNull()
     const returning = await renderWelcome()
-    expect(returning.querySelector('main[aria-label="Getting started"]')).toBeNull()
+    expect(returning.querySelector('main[aria-label="Home"]')).toBeNull()
   })
 
   it('orders the three cards Crew first without exposing creation to Run-only users', async () => {
@@ -115,14 +114,24 @@ describe('WelcomeHome', () => {
     await act(async () => button(host, label).click())
     expect(openProductWorkspace).toHaveBeenCalledWith(surface)
     expect(useCommandDialogStore.getState().productCreateSurface).toBe(surface)
-    expect(host.querySelector('main[aria-label="Getting started"]')).toBeNull()
+    expect(host.querySelector('main[aria-label="Home"]')).toBeNull()
+  })
+
+  it('uses the existing Crew create permission and request for Studio', async () => {
+    configure()
+    const host = await renderWelcome()
+    expect(button(host, 'Create Studio').disabled).toBe(true)
+    await act(async () => useAuthStore.setState({ user: { ...useAuthStore.getState().user, can_create_in: { work: true } } as never }))
+    await act(async () => button(host, 'Create Studio').click())
+    expect(useCommandDialogStore.getState().productCreateSurface).toBe('work')
+    expect(useCommandDialogStore.getState().productCreateIntent).toBe('studio')
   })
 
   it('keeps an existing-workspace path alongside creation', async () => {
     configure()
     useAuthStore.setState({ isMultiUserMode: false })
     const host = await renderWelcome()
-    await act(async () => button(host, 'Open existing Crews').click())
+    await act(async () => button(host, 'Open Crew').click())
     expect(openProductWorkspace).toHaveBeenCalledWith('work')
     expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
   })
@@ -172,33 +181,33 @@ describe('WelcomeHome', () => {
     configure()
     const host = await renderWelcome()
     await act(async () => window.dispatchEvent(new Event('quick-switcher-opened')))
-    expect(host.querySelector('main[aria-label="Getting started"]')).not.toBeNull()
+    expect(host.querySelector('main[aria-label="Home"]')).not.toBeNull()
     window.history.pushState({}, '', '/crew')
     await act(async () => window.dispatchEvent(new Event('product-navigation-changed')))
-    expect(host.querySelector('main[aria-label="Getting started"]')).toBeNull()
+    expect(host.querySelector('main[aria-label="Home"]')).toBeNull()
   })
 
   it('is a directly addressable page without modal close or workspace return controls', async () => {
     configure()
     window.history.replaceState({}, '', '/home')
     const host = await renderWelcome(false)
-    expect(host.querySelector('main[aria-label="Getting started"]')).not.toBeNull()
+    expect(host.querySelector('main[aria-label="Home"]')).not.toBeNull()
     expect(host.querySelector('[aria-label="Close welcome"]')).toBeNull()
     expect(host.textContent).not.toContain('Back to workspace')
     expect(host.querySelector('[aria-modal]')).toBeNull()
     await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
     expect(window.location.pathname).toBe('/home')
-    expect(host.querySelector('main[aria-label="Getting started"]')).not.toBeNull()
+    expect(host.querySelector('main[aria-label="Home"]')).not.toBeNull()
   })
 
   it('skips a single-product greeting but allows Getting started to reopen it', async () => {
     configure(['work'])
     const host = await renderWelcome()
-    expect(host.querySelector('main[aria-label="Getting started"]')).toBeNull()
+    expect(host.querySelector('main[aria-label="Home"]')).toBeNull()
     await act(async () => window.dispatchEvent(new Event('open-welcome-home')))
-    expect(host.querySelector('main[aria-label="Getting started"]')).not.toBeNull()
+    expect(host.querySelector('main[aria-label="Home"]')).not.toBeNull()
     await act(async () => useProductNavigationToolbarStore.setState({ sidebarWidth: 300 }))
-    const guide = host.querySelector<HTMLElement>('main[aria-label="Getting started"]')!
+    const guide = host.querySelector<HTMLElement>('main[aria-label="Home"]')!
     expect(guide.style.getPropertyValue('--welcome-sidebar-width')).toBe('300px')
     expect(guide.getAttribute('aria-modal')).toBeNull()
     const sidebar = document.createElement('div')
@@ -207,11 +216,11 @@ describe('WelcomeHome', () => {
     sidebar.append(project); document.body.append(sidebar)
     await act(async () => project.click())
     sidebar.remove()
-    expect(host.querySelector('main[aria-label="Getting started"]')).not.toBeNull()
+    expect(host.querySelector('main[aria-label="Home"]')).not.toBeNull()
     expect(window.location.pathname).toBe('/home')
     window.history.pushState({}, '', '/crew')
     await act(async () => window.dispatchEvent(new Event('product-navigation-changed')))
-    expect(host.querySelector('main[aria-label="Getting started"]')).toBeNull()
+    expect(host.querySelector('main[aria-label="Home"]')).toBeNull()
   })
 
   it('updates visible choices when permissions change while open', async () => {

@@ -13,7 +13,8 @@ import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
 import { CrewStarterGuide } from '../../components/chat/ProductStarterGuide'
 import { NewTabHint } from '../../components/chat/ShortcutHint'
-import { CrewEntryPage } from './CrewEntryPage'
+import { HomeEntry } from '../../components/workspace/HomeEntry'
+import { openHome } from '../../utils/homeNavigation'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import { TerminalFocusLayout } from '../../components/TerminalFocusLayout'
@@ -37,7 +38,7 @@ import { workProjectActivity } from './workProjectPresentation'
 import { SharedCrewWorkspace } from './SharedCrewWorkspace'
 import { CreateCrewWizard } from './CreateCrewWizard'
 import { prepareCrewOnboarding } from './crewOnboarding'
-import type { CrewOnboarding, CrewStarterType } from './crewStarterTypes'
+import type { CrewOnboarding } from './crewStarterTypes'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
@@ -788,7 +789,7 @@ function WorkTopBarControl({
       addDisabled={creating || !canCreate}
     >
       <div role="menu" aria-label="Projects" className="max-h-96 space-y-1 overflow-y-auto p-2">
-        <button type="button" onClick={() => { setOpen(false); onHome() }} className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"><UsersRound aria-hidden="true" className="h-4 w-4" />All Crews</button>
+        <button type="button" onClick={() => { setOpen(false); onHome() }} className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"><UsersRound aria-hidden="true" className="h-4 w-4" />Home</button>
         <button
           type="button"
           onClick={() => { setOpen(false); onNewProject() }}
@@ -937,8 +938,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [creating, setCreating] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [createMode, setCreateMode] = useState<ProductMode>('dev')
-  const [createPurpose, setCreatePurpose] = useState('')
-  const [createType, setCreateType] = useState<CrewStarterType>()
+  const [createStudio, setCreateStudio] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
@@ -1283,18 +1283,14 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       return
     }
     setCreateError(null)
-    setCreatePurpose('')
-    setCreateType(undefined)
+    setCreateStudio(false)
     setCreateMode('dev')
     setCreateOpen(true)
   }, [canCreateProjects, refuseCreate])
-  const createFromPrompt = (prompt: string, type?: CrewStarterType) => {
-    if (!canCreateProjects) { refuseCreate(); return }
+  useProductCreateRequest('work', intent => {
     openCreateProject()
-    setCreatePurpose(prompt)
-    setCreateType(type)
-  }
-  useProductCreateRequest('work', openCreateProject)
+    if (canCreateProjects && intent === 'studio') { setCreateStudio(true); setCreateMode('cowork') }
+  })
 
   const deleteProject = useCallback(async () => {
     if (!deleteCandidate || deletingProjectId) return
@@ -1324,7 +1320,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         navigation.setProductSurface(session.product)
       }}
       onNewProject={openCreateProject}
-      onHome={() => select(null)}
+      onHome={() => openHome()}
       canCreate={canCreateProjects}
       onDelete={setDeleteCandidate}
       creating={creating}
@@ -1349,8 +1345,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
           onClose={() => { if (!creating) setCreateOpen(false) }}
           onCreate={(title, purpose, runsOn, mode, onboarding) => createProject(title, purpose, undefined, runsOn, mode, onboarding)}
           initialMode={createMode}
-          initialPurpose={createPurpose}
-          initialType={createType}
+          studio={createStudio}
           profileVersion={product.profileVersion}
           submitting={creating}
           error={createError}
@@ -1380,8 +1375,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         {adminPage && !showProviders && <AdminPages />}
         <div className={showProviders || showSchedulesOverview || adminPage ? 'hidden' : 'h-full'}>
           {!selected ? (
-            <CrewEntryPage projects={sessions} loading={sessionsLoading || creating} error={sessionsError} canCreate={canCreateProjects}
-              onCreate={createFromPrompt} onOpen={session => select(session.id)} onRefresh={refresh} />
+            <>{sessionsLoading ? <div className="grid h-full place-items-center text-sm text-muted-foreground"><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Loading your work…</div> : !createOpen && <HomeEntry />}</>
           ) : error ? (
             <div className="grid h-full place-items-center p-6 text-center text-sm text-destructive">{error}</div>
           ) : (

@@ -1,3 +1,4 @@
+import { HomeEntry } from '../workspace/HomeEntry'
 import { hydrateWorkflowOwnerTabs, ensureWorkflowBuilderTab } from '../../utils/ensureWorkflowBuilderTab'
 import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { useWorkflowFilesViewSync } from './hooks/useWorkflowFilesViewSync'
@@ -8,7 +9,7 @@ import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
 import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 import React, { useMemo, useCallback, useRef, useEffect, forwardRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { PanelLeftOpen, Waypoints, Target } from 'lucide-react'
+import { PanelLeftOpen } from 'lucide-react'
 import { WorkspacePanelReopen, WorkspacePanelVisibilityContext } from '../workspace/WorkspacePanelToggle'
 import { WorkflowCanvas, type WorkflowCanvasRef } from './canvas'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
@@ -62,8 +63,6 @@ import {
   writeWorkflowSplitPreference,
 } from '../../utils/reportPreviewPreference'
 import { DashboardLayoutControls, DashboardLayoutProvider } from './DashboardLayoutControls'
-import { WorkspacePageHeader } from '../workspace/WorkspacePageHeader'
-import { RelayIntro } from './RelayIntro'
 import { ReportView } from './ReportViewer'
 import { AutomationHubPanel } from '../automation/AutomationHubPanel'
 import { RELAY_WORKSPACE_VIEWS } from './workspaceViews'
@@ -2219,31 +2218,8 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     />
   ) : undefined, [activePresetId, workspacePath])
 
-  // No preset selected state
-  if (!activeWorkflowPreset && !workspacePath) {
-    return (
-      <div className={`flex flex-col h-full ${className}`}>
-        <WorkspacePageHeader title={isRelaySurface ? 'Flows' : 'Goals'} icon={isRelaySurface ? Waypoints : Target} showBack={false} />
-        <div className="flex-1 overflow-y-auto bg-background">
-          <div className="flex min-h-full items-center justify-center py-6">
-            {isRelaySurface ? <RelayIntro /> : (
-              <div data-tour="automation-empty-state" className="flex flex-col items-center gap-4 text-center max-w-md">
-                <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                  <span className="text-4xl">🚀</span>
-                </div>
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Select an Automation</h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    Open the workspace selector to choose or create an automation.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    )
-  }
+  // New work starts from the central Home. Existing creation dialogs stay in their product.
+  if (!activeWorkflowPreset && !workspacePath) return <HomeEntry />
 
   const canvasElement = (
     <DashboardLayoutProvider value={dashboardView ? <DashboardLayoutControls

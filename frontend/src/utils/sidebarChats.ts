@@ -419,7 +419,7 @@ export function sidebarChats({
 }
 
 /** One workspace holds every visible chat; identical names never merge sessions. */
-export function sidebarWorkspaceGroups(rows: SidebarChat[], projects: SidebarProject[] = [], presets: (CustomPreset | PredefinedPreset)[] = []) {
+export function sidebarWorkspaceGroups(rows: SidebarChat[], projects: SidebarProject[] = [], presets: (CustomPreset | PredefinedPreset)[] = [], includeRecent = false) {
   const groups = new Map<
     string,
     { id: string; title: string; icon?: string; surface: ProductSurface; chats: SidebarChat[]; running: boolean; latestActivity: number }
@@ -430,7 +430,7 @@ export function sidebarWorkspaceGroups(rows: SidebarChat[], projects: SidebarPro
     groups.set(id, { id, title: project.title, icon: project.icon, surface: project.surface, chats: [], running: false, latestActivity: 0 })
   }
   for (const row of rows) {
-    if (row.group === 'Recent') continue
+    if (row.group === 'Recent' && !includeRecent) continue
     const id = `${row.surface}:${row.workflowId || row.projectId || normalizedWorkspace(row.workspace) || row.surface}`
     let group = groups.get(id)
     if (!group) {

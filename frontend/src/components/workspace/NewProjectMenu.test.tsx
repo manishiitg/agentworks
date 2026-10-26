@@ -16,7 +16,6 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useCommandDialogStore } from '../../stores/useCommandDialogStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import type { ProductCreateSurface } from '../../stores/useCommandDialogStore'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanup: (() => Promise<void>)[] = []
@@ -40,57 +39,32 @@ async function renderMenu(compact = false) {
   const root = createRoot(host)
   cleanup.push(async () => { await act(async () => root.unmount()); host.remove() })
   await act(async () => root.render(<NewProjectMenu compact={compact} />))
-  const open = async () => act(async () => {
-    const trigger = host.querySelector<HTMLButtonElement>('button')!
-    trigger.focus()
-    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
-  })
-  return { host, open }
+  return host
 }
-const choices = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
 
-it.each([['Goals', 'agentworks', false], ['Crew', 'work', true], ['Flows', 'relays', false]] as [string, ProductCreateSurface, boolean][])
-  ('opens the existing %s creation flow from the common entry', async (label, surface, compact) => {
-    const { host, open } = await renderMenu(compact)
-    expect(host.textContent).toBe(compact ? '' : 'New')
-    expect(host.querySelector('button')?.getAttribute('aria-label')).toBe('New project')
+it.each([false, true])('opens the same Home entry with focus intent (compact=%s)', async compact => {
+  const host = await renderMenu(compact)
+  const request = vi.fn()
+  window.addEventListener('open-welcome-home', request)
+  try {
+    await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
+    expect(window.location.pathname).toBe('/home')
+    expect((request.mock.calls[0][0] as CustomEvent).detail).toEqual({ focusPrompt: true })
     expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
-    await open()
-    expect(choices().map(item => item.getAttribute('aria-label'))).toEqual(['Goals', 'Flows', 'Crew'])
-    await act(async () => choices().find(item => item.getAttribute('aria-label') === label)!.click())
-    expect(openProduct).toHaveBeenCalledWith(surface)
-    expect(useCommandDialogStore.getState().productCreateSurface).toBe(surface)
     expect(document.querySelector('[role="menu"]')).toBeNull()
-  })
-
-it('uses enabled products and per-product create permissions, and hides the entry when none remain', async () => {
-  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'work'] }
-  useAuthStore.setState({ user: { id: 'alice', can_create: false, can_create_in: { work: true }, allowed_products: ['agentworks', 'work'] } as never })
-  const { host, open } = await renderMenu()
-  await open()
-  expect(choices().map(item => item.getAttribute('aria-label'))).toEqual(['Crew'])
-  await act(async () => useAuthStore.setState({ user: { id: 'alice', can_create: false } as never }))
-  expect(host.querySelector('button')).toBeNull()
-  expect(document.querySelector('[role="menu"]')).toBeNull()
+    expect(openProduct).not.toHaveBeenCalled()
+  } finally { window.removeEventListener('open-welcome-home', request) }
 })
 
-it('rechecks a stale menu selection before routing or requesting creation', async () => {
-  const { open } = await renderMenu()
-  await open()
-  const code = choices().find(item => item.getAttribute('aria-label') === 'Crew')!
+it('keeps the existing create-access gate and rechecks stale clicks', async () => {
+  const host = await renderMenu()
+  const button = host.querySelector<HTMLButtonElement>('button')!
+  window.history.replaceState({}, '', '/crew')
   await act(async () => {
     useAuthStore.setState({ user: { id: 'alice', can_create: false } as never })
-    code.click()
+    button.click()
   })
-  expect(openProduct).not.toHaveBeenCalled()
+  expect(host.querySelector('button')).toBeNull()
+  expect(window.location.pathname).toBe('/crew')
   expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
-})
-
-it('closes the product chooser when the account changes', async () => {
-  const { open } = await renderMenu()
-  await open()
-  expect(document.querySelector('[role="menu"]')).not.toBeNull()
-  await act(async () => useAuthStore.setState({ user: { id: 'bob', can_create: true } as never }))
-  expect(document.querySelector('[role="menu"]')).toBeNull()
-  expect(openProduct).not.toHaveBeenCalled()
 })

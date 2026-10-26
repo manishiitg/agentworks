@@ -55,16 +55,6 @@ it('keeps blank creation, optional sharing and both existing modes available', a
   await click(host, 'Create Crew')
   expect(onCreate).toHaveBeenCalledExactlyOnceWith('My helper', '', undefined, 'cowork', { type: undefined, openSharing: true })
 })
-it('carries the entry-page request into named creation without losing account or sharing choices', async () => {
-  const request = 'Compare my spreadsheet totals and explain differences.'
-  const { host, onCreate } = await render({ initialPurpose: request, initialType: 'cowork' })
-  expect(host.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe(request)
-  expect(host.querySelector('details')!.open).toBe(true)
-  expect(host.querySelector('[data-testid="provider-picker"]')?.textContent).toBe('when-needed')
-  await input(host, '#crew-wizard-name', 'Sheet helper')
-  await click(host, 'Create Crew')
-  expect(onCreate).toHaveBeenCalledExactlyOnceWith('Sheet helper', request, undefined, 'dev', { type: 'cowork', openSharing: false })
-})
 it('preserves edits on Back and errors, blocks changes while creating, and supports Escape', async () => {
   const { host, onClose, onCreate, update } = await render()
   await act(async () => host.querySelector<HTMLInputElement>('input[value="brain"]')!.click())
@@ -85,4 +75,16 @@ it('preserves edits on Back and errors, blocks changes while creating, and suppo
   await update()
   host.querySelector('form')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
   expect(onClose).toHaveBeenCalledOnce()
+})
+
+it('creates Studio through the private Code/Cowork choices without new sharing or runtime modes', async () => {
+  const { host, onCreate } = await render({ studio: true, initialMode: 'cowork' })
+  expect([...host.querySelectorAll<HTMLInputElement>('input[name="crew-type"]')].map(input => input.value)).toEqual(['code', 'cowork'])
+  await act(async () => host.querySelector<HTMLInputElement>('input[value="code"]')!.click())
+  await click(host, 'Continue')
+  expect(host.textContent).toContain('Your private workspace')
+  expect(host.querySelector('input[type="checkbox"]')).toBeNull()
+  await input(host, '#crew-wizard-name', 'My code workspace')
+  await click(host, 'Create Studio')
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith('My code workspace', CREW_STARTER_TYPES.find(item => item.id === 'code')!.purpose, undefined, 'dev', { type: 'code', openSharing: false })
 })
