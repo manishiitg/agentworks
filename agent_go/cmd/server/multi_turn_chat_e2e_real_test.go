@@ -34,7 +34,7 @@ type multiTurnChatE2ESpec struct {
 	turnOptions      func(ownerSessionID string) []llmtypes.CallOption
 	expectNonZero    bool // provider produces non-zero TotalCostUSD (false for cursor: display-model gap)
 	expectCacheReads bool // provider surfaces cache_read_input_tokens in gi.Additional (true for claude/codex; false for cursor — char-estimated tokens)
-	strictMemory     bool // when true, mustContainAll misses are hard failures, not logged warnings. Enable for providers whose persistent-session contract requires full cross-turn recall (cursor's TUI is supposed to remember its own conversation by definition, so memory loss is a regression). Leave false for providers like codex that legitimately re-invoke fresh per turn.
+	strictMemory     bool // when true, mustContainAll misses are hard failures, not logged warnings. Enable for providers whose persistent-session contract requires full cross-turn recall (cursor's TUI is supposed to remember its own conversation by definition, so memory loss is a regression). Codex app-server and retained CLI sessions must preserve native history.
 	cleanup          func(ctx context.Context)
 }
 
@@ -469,7 +469,7 @@ func TestMultiTurnChatE2E_ClaudeCode(t *testing.T) {
 func TestMultiTurnChatE2E_Codex(t *testing.T) {
 	model := strings.TrimSpace(os.Getenv("CODEX_CLI_REAL_CONTRACT_MODEL"))
 	if model == "" {
-		model = "gpt-5.4-mini"
+		model = "gpt-5.6-luna"
 	}
 	runMultiTurnChatE2E(t, multiTurnChatE2ESpec{
 		providerName: "codex",
@@ -494,6 +494,7 @@ func TestMultiTurnChatE2E_Codex(t *testing.T) {
 		},
 		expectNonZero:    true,
 		expectCacheReads: true, // codex/OpenAI prompt-caches the system prompt across turns
+		strictMemory:     true,
 		cleanup: func(ctx context.Context) {
 			_ = codexcliadapter.CleanupCodexCLIInteractiveSessions(ctx)
 		},

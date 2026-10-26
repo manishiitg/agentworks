@@ -116,9 +116,9 @@ func TestCodingAgentPersistentInteractiveFlags(t *testing.T) {
 	}
 }
 
-func TestCodingAgentPersistentInteractiveFlagsCoverTmuxContracts(t *testing.T) {
+func TestCodingAgentPersistentInteractiveFlagsCoverPersistentContracts(t *testing.T) {
 	for _, contract := range llm.CodingAgentProviderContracts() {
-		if contract.Transport != llm.CodingAgentTransportTmux {
+		if !contract.UsesPersistentSession {
 			continue
 		}
 		t.Run(string(contract.Provider), func(t *testing.T) {

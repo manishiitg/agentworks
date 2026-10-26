@@ -63,10 +63,10 @@ func TestDefaultCodingAgentE2EModelIncludesCodingCLIProviders(st *stdtesting.T) 
 	}
 }
 
-func TestProviderSupportsTmuxLossResumeE2EIncludesNativeResumeProviders(st *stdtesting.T) {
+func TestProviderSupportsTmuxLossResumeE2EOnlyTmuxProviders(st *stdtesting.T) {
 	cases := map[string]bool{
 		"claude-code": true,
-		"codex-cli":   true,
+		"codex-cli":   false,
 		"cursor-cli":  false,
 		"pi-cli":      false,
 	}
@@ -147,6 +147,17 @@ func TestEventsProveProviderRequiresTypedProviderEvent(st *stdtesting.T) {
 	}
 	if !eventsProveProvider(events, "pi-cli") {
 		st.Fatalf("provider proof rejected typed coding provider session handle")
+	}
+
+	// PLAT-872-19: the app-server P0 reads the canonical generation handle,
+	// without mistaking a tmux handle or prose about a thread for native proof.
+	if appServerThreadFromEvents(events) != "" {
+		st.Fatal("non-Codex handle accepted")
+	}
+	handle := eventPayloadMap(events[0], "metadata")["coding_provider_session_handle"].(map[string]interface{})
+	handle["provider"], handle["transport"], handle["native_session_id"] = "codex-cli", "app-server", "native-thread"
+	if appServerThreadFromEvents(events) != "native-thread" {
+		st.Fatal("native thread handle missing")
 	}
 }
 

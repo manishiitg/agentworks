@@ -160,7 +160,7 @@ Example:
 
 		if codingAgentChatE2EFlags.runTmuxLossResume {
 			if !providerSupportsTmuxLossResumeE2E(provider) {
-				return fmt.Errorf("--run-tmux-loss-resume is only certified for claude-code and codex-cli, got %q", provider)
+				return fmt.Errorf("--run-tmux-loss-resume is only certified for claude-code, got %q", provider)
 			}
 			killedTmux, err := client.killLatestTerminalTmux(ctx, sessionID)
 			if err != nil {
@@ -293,7 +293,7 @@ func init() {
 	codingAgentChatE2ECmd.Flags().BoolVar(&codingAgentChatE2EFlags.skipLiveSteer, "skip-live-steer", false, "skip the in-flight /steer regression test")
 	codingAgentChatE2ECmd.Flags().BoolVar(&codingAgentChatE2EFlags.skipCompletionProbe, "skip-completion-probe", false, "skip the tool-backed completion detection regression test")
 	codingAgentChatE2ECmd.Flags().BoolVar(&codingAgentChatE2EFlags.retainedWindowOnly, "retained-window-p0-only", false, "run only the two-turn IC-11 retained-session P0 contract")
-	codingAgentChatE2ECmd.Flags().BoolVar(&codingAgentChatE2EFlags.runTmuxLossResume, "run-tmux-loss-resume", false, "kill the latest tmux pane after turn 2 and require provider-native continuation recovery; certified for claude-code and codex-cli")
+	codingAgentChatE2ECmd.Flags().BoolVar(&codingAgentChatE2EFlags.runTmuxLossResume, "run-tmux-loss-resume", false, "kill the latest tmux pane after turn 2 and require provider-native continuation recovery; certified for claude-code")
 	codingAgentChatE2ECmd.Flags().BoolVar(&codingAgentChatE2EFlags.vertexFinalJudge, "vertex-final-judge", false, "use a Gemini/Vertex LLM judge to validate each extracted unified_completion final answer")
 	codingAgentChatE2ECmd.Flags().StringVar(&codingAgentChatE2EFlags.vertexJudgeModel, "vertex-final-judge-model", "", "Gemini/Vertex model for --vertex-final-judge; defaults to VERTEX_FINAL_EXTRACTION_JUDGE_MODEL or gemini-3.1-pro-preview")
 }
@@ -475,6 +475,9 @@ const retainedWindowP0DeliveryLimit = time.Second
 // it never deletes a registration or injects a completion event to manufacture
 // the state under test.
 func (c *codingAgentChatE2EClient) runRetainedWindowP0(ctx context.Context, sessionID, provider, model, rememberedToken string) error {
+	if provider == "codex-cli" {
+		return c.runAppServerWindowP0(ctx, sessionID, provider, model, rememberedToken)
+	}
 	before, raw, err := c.getEvents(ctx, sessionID)
 	if err != nil {
 		return fmt.Errorf("read completed first-turn state: %w", err)
@@ -955,7 +958,7 @@ func (c *codingAgentChatE2EClient) getMainTerminal(ctx context.Context, sessionI
 
 func providerSupportsTmuxLossResumeE2E(provider string) bool {
 	switch strings.TrimSpace(provider) {
-	case "claude-code", "codex-cli":
+	case "claude-code":
 		return true
 	default:
 		return false
@@ -1291,4 +1294,71 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+// Codex's idle follow-up uses the ordinary Session.Run path and the native
+// app-server thread. The same real tool/identity/completion checks apply;
+// a tmux pane and a terminal-injection acknowledgement do not exist here.
+func (c *codingAgentChatE2EClient) runAppServerWindowP0(ctx context.Context, sessionID, provider, model, rememberedToken string) error {
+	before, _, err := c.getEvents(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if before.SessionStatus != "completed" {
+		return fmt.Errorf("first Codex turn is not complete: %s", before.SessionStatus)
+	}
+	native := appServerThreadFromEvents(before.Events)
+	if native == "" {
+		return fmt.Errorf("first Codex turn has no app-server native thread handle")
+	}
+	query := "Call the api-bridge execute_shell_command MCP tool exactly once with command `sleep 2; python3 -c 'import secrets; print(\"RETAINED_TOOL_\"+secrets.token_hex(12))'`. After it returns, reply with exactly your complete response from the previous turn, a vertical bar, and the complete command stdout. Do not guess its random output."
+	if _, _, err := c.startQueryWithResponse(ctx, sessionID, provider, model, query); err != nil {
+		return err
+	}
+	if err := c.assertRetainedToolStartsBeforeCompletion(ctx, sessionID, before.LastProcessedIndex, "execute_shell_command", time.Minute); err != nil {
+		return err
+	}
+	final, _, events, err := c.waitForCompletion(ctx, sessionID, before.LastProcessedIndex)
+	if err != nil {
+		return err
+	}
+	if next := appServerThreadFromEvents(events); next != native {
+		return fmt.Errorf("Codex native thread changed: before=%q after=%q", native, next)
+	}
+	if err := assertCanonicalRetainedTurnIdentity(events, "execute_shell_command"); err != nil {
+		return err
+	}
+	if err := assertOneRetainedToolReceipt(events, "execute_shell_command", "RETAINED_TOOL_"); err != nil {
+		return err
+	}
+	token, err := retainedToolResultToken(events, "execute_shell_command")
+	if err != nil {
+		return err
+	}
+	expected := "ACK_" + rememberedToken + "|" + token
+	if strings.TrimSpace(final) != expected {
+		return fmt.Errorf("Codex follow-up lost native context or tool output: %q", final)
+	}
+	if err := assertOneRetainedCompletion(events, expected); err != nil {
+		return err
+	}
+	return assertRetainedCompletionAfterTool(events, "execute_shell_command")
+}
+
+func appServerThreadFromEvents(events []map[string]interface{}) string {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i]["type"] != "llm_generation_end" {
+			continue
+		}
+		metadata := eventPayloadMap(events[i], "metadata")
+		if handle, ok := metadata["coding_provider_session_handle"].(map[string]interface{}); ok {
+			if handle["transport"] == "app-server" && handle["provider"] == "codex-cli" {
+				id, _ := handle["native_session_id"].(string)
+				if id != "" {
+					return id
+				}
+			}
+		}
+	}
+	return ""
 }

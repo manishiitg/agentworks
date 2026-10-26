@@ -216,7 +216,7 @@ for raw_provider in "${provider_list[@]}"; do
   fi
   test_regex="$(p0_test_regex "$provider" "$package")"
   if [[ "$provider" == "codex-cli" ]]; then
-    # Codex P0 cases own global tmux/session cleanup. Keep each live case in
+    # Codex app-server P0 cases own native processes. Keep each live case in
     # its own Go process so cleanup from a completed test cannot corrupt or
     # tear down state belonging to the next one. This also gives each failed
     # contract an exact receipt instead of losing it in a package crash.
@@ -273,7 +273,9 @@ for raw_provider in "${provider_list[@]}"; do
     --provider "$provider" --timeout 8m
 
   # IC-11 + IC-12: cross the AgentWorks -> mcpagent boundary after a real first turn
-  # has completed and the provider tmux is retained. This proves the warm
+  # has completed and the native session is retained. Codex proves the same
+  # app-server thread through ordinary Session.Run; other CLIs use tmux.
+  # This proves the warm
   # follow-up uses the durable Session, returns one authoritative tool receipt
   # (arguments/result/duration), persists exactly one final response, avoids
   # Agent reconstruction, requires stable same-turn IDs plus the canonical

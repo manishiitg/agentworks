@@ -15,8 +15,8 @@ func codingAgentPersistentInteractiveFlags(provider string, allowPersistentInter
 	if usesStructuredTransport {
 		return false, false, false, false, false, false
 	}
-	if !allowPersistentInteractive ||
-		!llm.IsTmuxCodingAgentProvider(llm.Provider(normalizedProvider), "") {
+	contract, ok := llm.GetCodingAgentProviderContract(llm.Provider(normalizedProvider), "")
+	if !allowPersistentInteractive || !ok || !contract.UsesPersistentSession {
 		return false, false, false, false, false, false
 	}
 
@@ -39,16 +39,17 @@ func codingAgentPersistentInteractiveFlags(provider string, allowPersistentInter
 }
 
 // codingAgentUsesStructuredTransportForChat applies AgentWorks' shared
-// transport rule: every chat-level coding-agent turn runs in tmux, whether a
+// transport rule: chat turns retain the provider process (Codex app-server or
+// a tmux CLI), whether a
 // person, a schedule, a webhook, a bot or a background completion started it.
 // Only workflow steps (applyWorkflowTransportToAgentConfig), delegated
 // sub-agents and typed runtime stages use structured JSON. A product profile
 // may choose tools, skills and models, but not a second transport policy.
-func codingAgentUsesStructuredTransportForChat(provider string, retainsTmux bool) bool {
+func codingAgentUsesStructuredTransportForChat(provider string, retainsSession bool) bool {
 	if _, ok := llm.GetCodingAgentProviderContract(llm.Provider(strings.TrimSpace(provider)), ""); !ok {
 		return false
 	}
-	return !retainsTmux
+	return !retainsSession
 }
 
 func codingAgentRequestAllowsPersistentInteractive(req *QueryRequest) bool {
