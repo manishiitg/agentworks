@@ -44,10 +44,10 @@ import SidebarStepInspections from './SidebarStepInspections'
 import { inspectionKey } from '../../utils/stepInspection'
 import { workflowTriggerLabel } from '../../utils/workflowSessionKinds'
 import { SharedToolShortcuts } from './SharedToolShortcuts'
-import { PROJECT_SIDEBAR_ORDER } from './WorkspaceProjectShortcuts'
 
 // Stored chats only resolve each workflow's Builder and run chats; there is no Recent list.
 const HISTORY_LIMIT = 30
+const PROJECT_SIDEBAR_ORDER = ['work', 'agentworks', 'relays'] as const
 
 function ProjectIcon({ icon, title, surface }: { icon?: string; title: string; surface: SidebarChat['surface'] }) {
   return <EntityIdentityIcon icon={icon} label={title} className="h-4 w-4" fallback={<ProductSurfaceIcon surface={surface} className="h-4 w-4 shrink-0" />} />

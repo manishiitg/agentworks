@@ -58,8 +58,8 @@ it('closes only chats, keeps top controls accessible, and restores the preferenc
   expect(saved.get('product_navigation_mode')).toBe('auto-hide')
   expect(toggle.getAttribute('aria-label')).toBe('Open sidebar')
   expect(host.querySelector('[aria-label="Chat navigation"]')?.className).toContain('hidden')
-  expect(host.querySelector('[aria-label="Product shortcuts"] [data-compact="true"]')).not.toBeNull()
-  expect(host.querySelector('[aria-label="Product shortcuts"] [aria-label="Home"]')).not.toBeNull()
+  expect([...host.querySelectorAll('[aria-label="Navigation rail"] button')].map(button => button.getAttribute('aria-label'))).toEqual(['Home', 'Open sidebar', 'Search all chats (Ctrl+K or Command+K)'])
+  expect(host.querySelector('[aria-label="Navigation rail"] [aria-label="Home"]')).not.toBeNull()
   const launcher = host.querySelector('[data-product-navigation-leading-slot] [data-navigation-toggle]')!
   expect(launcher.textContent).toBe('')
   expect(launcher.getAttribute('title')).toBe('Open sidebar')
@@ -84,7 +84,7 @@ it('closes only chats, keeps top controls accessible, and restores the preferenc
   window.removeEventListener('popstate', showHome)
   expect(saved.get('product_navigation_mode')).toBe('fixed')
   expect(restored.querySelector('[aria-label="Chat navigation"]')?.className).not.toContain('hidden')
-  expect(restored.querySelector('[aria-label="Product shortcuts"]')).toBeNull()
+  expect(restored.querySelector('[aria-label="Navigation rail"]')).toBeNull()
 })
 it('does not remount live product controls when the chat sidebar opens or closes', async () => {
   const mounted = vi.fn(), stopped = vi.fn()
@@ -183,7 +183,7 @@ it('places global-page navigation beside the back action in the existing header'
   await act(async () => toggle.click())
   expect(page.querySelector('[data-product-navigation-leading-slot] [data-navigation-toggle]')).not.toBeNull()
   expect(page.querySelector('[data-product-navigation-leading-slot] [aria-label="Home"]')).toBeNull()
-  expect(host.querySelector('[aria-label="Product shortcuts"] [aria-label="Home"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Navigation rail"] [aria-label="Home"]')).not.toBeNull()
   expect(page.querySelector('h1')!.textContent).toBe('Connect AI tools')
   expect(host.querySelectorAll('header')).toHaveLength(1)
   expect(host.querySelector('[data-terminal-focus-chrome="toolbar"]')!.querySelector('[data-product-navigation-slot]')).toBeNull()

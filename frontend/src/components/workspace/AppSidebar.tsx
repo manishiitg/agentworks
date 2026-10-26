@@ -8,9 +8,6 @@ import { CompactProductNavigationContext } from './productNavigationContexts'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
-import { SharedToolShortcuts } from './SharedToolShortcuts'
-import { WorkspaceProjectShortcuts } from './WorkspaceProjectShortcuts'
-import { NewProjectMenu } from './NewProjectMenu'
 
 import { useAppStore } from '../../stores/useAppStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -138,21 +135,16 @@ export function AppSidebar() {
         </div></div> : <aside aria-label="Chat navigation" className={`${open ? 'flex' : 'hidden'} absolute inset-y-0 left-0 w-[var(--chat-sidebar-width)] bg-background md:relative md:h-full`}>
           <Suspense fallback={<div className="w-full border-r border-border">{toggle}</div>}><WorkspaceChatsSidebar toggle={toggle} footer={<div ref={registerSidebarSettings} data-sidebar-setup-slot />} /></Suspense>
         </aside>}
-        {!open && <aside aria-label="Product shortcuts" className="absolute inset-y-0 left-0 hidden w-12 flex-col border-r border-border/70 bg-muted/20 md:flex">
+        {!open && <aside aria-label="Navigation rail" className="absolute inset-y-0 left-0 hidden w-12 flex-col border-r border-border/70 bg-muted/20 md:flex">
           <div className="flex h-[50px] shrink-0 items-center justify-center">{home}</div>
           <div className="flex shrink-0 items-center justify-center py-1">{toggle}</div>
-          <div className="min-h-0 flex-1 overflow-y-auto py-1">
-            <div className="flex flex-col items-center gap-1 pb-3">
-              <NewProjectMenu compact />
+          <div className="flex shrink-0 items-center justify-center py-1">
               <button type="button" aria-label="Search all chats (Ctrl+K or Command+K)" title="Search chats · ⌘K / Ctrl+K"
                 onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher'))}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Search className="h-[18px] w-[18px]" aria-hidden="true" />
               </button>
-            </div>
-            <WorkspaceProjectShortcuts />
           </div>
-          <div className="shrink-0 pb-14"><SharedToolShortcuts compact /></div>
         </aside>}
         {/* The account icon belongs to the rail's stacking context. A fixed
             descendant of the workspace toolbar is covered by this rail. */}

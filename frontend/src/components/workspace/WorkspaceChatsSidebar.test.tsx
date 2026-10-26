@@ -87,7 +87,6 @@ vi.mock('../../products/productSurfaceConfig', () => ({
 vi.mock('../ProductSurfaceIcon', () => ({ ProductSurfaceIcon: ({ surface }: { surface: string }) => <svg data-product-icon={surface} /> }))
 import WorkspaceChatsSidebar from './WorkspaceChatsSidebar'
 import { SharedToolShortcuts } from './SharedToolShortcuts'
-import { WorkspaceProjectShortcuts } from './WorkspaceProjectShortcuts'
 import { useSidebarHistoryStore } from '../../stores/useSidebarHistoryStore'
 import { useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -464,12 +463,9 @@ it('opens AgentBridge directly with current product permission checks', async ()
   })
 })
 
-it('names collapsed shortcuts on keyboard focus and rechecks access before navigation', async () => {
+it('names expanded shared shortcuts on keyboard focus and rechecks access before navigation', async () => {
   mocks.enabled = ['work', 'agentworks', 'relays', 'knowledgebase', 'mcp-gateway', 'bullpen']
   await render(async host => {
-    const products = host.querySelector('[aria-label="Project products"]')!
-    expect([...products.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Crew', 'Goals', 'Flows'])
-    const goal = products.querySelector<HTMLButtonElement>('[aria-label="Goals"]')!
     const brain = host.querySelector<HTMLButtonElement>('[aria-label="Brain"]')!
     const vault = host.querySelector<HTMLButtonElement>('[aria-label="Vault"]')!
     expect(brain.textContent).toBe('')
@@ -479,9 +475,9 @@ it('names collapsed shortcuts on keyboard focus and rechecks access before navig
     await act(async () => brain.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(host.querySelector('[role="tooltip"]')).toBeNull()
     mocks.user.allowed_products = ['knowledgebase']
-    await act(async () => { vault.click(); goal.click() })
+    await act(async () => { vault.click() })
     expect(mocks.openProduct).not.toHaveBeenCalled()
     await act(async () => brain.click())
     expect(mocks.openProduct).toHaveBeenCalledWith('knowledgebase')
-  }, () => <><SharedToolShortcuts compact /><WorkspaceProjectShortcuts /></>)
+  }, () => <SharedToolShortcuts />)
 })

@@ -34,16 +34,16 @@ afterEach(async () => {
   delete window.__APP_RUNTIME_CONFIG__
   HTMLElement.prototype.scrollIntoView = originalScroll
 })
-async function renderMenu(compact = false) {
+async function renderMenu() {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanup.push(async () => { await act(async () => root.unmount()); host.remove() })
-  await act(async () => root.render(<NewProjectMenu compact={compact} />))
+  await act(async () => root.render(<NewProjectMenu />))
   return host
 }
 
-it.each([false, true])('opens the same Home entry with focus intent (compact=%s)', async compact => {
-  const host = await renderMenu(compact)
+it('opens Home with focus intent from the expanded menu', async () => {
+  const host = await renderMenu()
   const request = vi.fn()
   window.addEventListener('open-welcome-home', request)
   try {
