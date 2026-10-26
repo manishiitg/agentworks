@@ -25,6 +25,18 @@ type ExecutionPrincipal struct {
 // turns. Listener validation alone is insufficient for a queued turn.
 func (api *StreamingAPI) revalidateExecutionPrincipal(ctx context.Context, req QueryRequest) (context.Context, error) {
 	claims := GetUserFromContext(ctx)
+	if claims != nil && claims.AccessToken != nil {
+		fresh, err := activeExternalGrantClaims(ctx, claims.AccessToken.ID)
+		if err != nil || fresh.UserID != claims.UserID {
+			return ctx, fmt.Errorf("MCP connection is no longer available; reconnect and try again")
+		}
+		// Keep trusted turn bindings (including external Builder operations),
+		// while replacing the grant and account identity with their current values.
+		copy := *claims
+		copy.AccessToken, copy.Username, copy.Email, copy.Provider = fresh.AccessToken, fresh.Username, fresh.Email, fresh.Provider
+		ctx = context.WithValue(ctx, UserContextKey, &copy)
+		claims = &copy
+	}
 	if claims != nil && claims.Provider == slackDMProvider {
 		return api.revalidateSlackDMPrincipal(ctx, claims, req)
 	}

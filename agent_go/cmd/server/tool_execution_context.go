@@ -141,12 +141,13 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, authoritySession)
 		ctx = executor.WithSessionID(ctx, toolSession)
 
-		if copy.Provider == "bot_route" || copy.Provider == slackDMProvider {
+		if copy.AccessToken != nil || copy.Provider == "bot_route" || copy.Provider == slackDMProvider {
 			validated, err := api.revalidateExecutionPrincipal(ctx, req)
 			if err != nil {
 				return nil, err
 			}
 			ctx = validated
+			copy = *GetUserFromContext(ctx)
 		} else if access := userAccessForClaims(&copy); access.Disabled || directoryUserIsUnknown(&copy) {
 			return nil, fmt.Errorf("%s account is unavailable", tool)
 		}
@@ -156,6 +157,9 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		}
 		if access == WorkflowAccessNone || (!readOnly && access == WorkflowAccessRead) {
 			return nil, fmt.Errorf("%s session permissions changed; start a new turn", tool)
+		}
+		if !builderProductSelection(&copy).AllowsTool(tool) || readOnly && accessTokenRunToolDenied(&copy, tool) || externalBuilderToolDenied(&copy, tool) {
+			return nil, fmt.Errorf("%s is unavailable to this connection", tool)
 		}
 		if vaultBuilderQuery(req, &copy, authoritySession, toolSession, readOnly) {
 			if !canUseCapLayerProfile(ctx, req.AgentProfileID) || api.mcpSessionPerson(authoritySession) != copy.UserID {

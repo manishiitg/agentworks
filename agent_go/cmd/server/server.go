@@ -5708,6 +5708,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Create a detached context for the entire streaming operation.
 		// Execution is stopped by explicit cancellation, not by a wall-clock timeout.
 		streamCtx, cancel := context.WithCancel(productpolicy.WithSelection(context.WithoutCancel(r.Context()), builderProductSelection(GetUserFromContext(r.Context()))))
+		checkTokenTurn, err := api.nativeTokenTurnCheck(streamCtx, sessionID, req)
+		if err != nil {
+			cancel()
+			sendError(err.Error(), true)
+			return
+		}
 		agentModeForScope := req.AgentMode
 		if isWorkflowPhase {
 			agentModeForScope = "workflow_phase"
@@ -8574,6 +8580,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Work projects which use the project-owned path selected above. Workflow
 		// conversations are persisted below in their workspace Builder folder.
 		if !isWorkflowPhase {
+			if err := checkTokenTurn(context.WithoutCancel(agentCtx)); err != nil {
+				turnStatus, turnError = trackedExecutionStatusCanceled, err.Error()
+				return
+			}
 			api.persistChatConversationToPathWithTerminalSession(persistSessionID, sessionID, req.AgentMode, currentUserID, persistedHistoryForDisk, chatRuntime, uiEvents, persistConversationPath, botHistoryMeta)
 			if isCrewReaderTurn(req, currentUserID) {
 				mirrorCrewReaderConversation(currentUserID, req.SelectedFolder, persistSessionID, persistConversationPath, time.Now())
@@ -8622,6 +8632,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// writing it destroys the fuller record.
 				if lossy, existingTurns, nextTurns := conversationOverwriteWouldLoseTurns(context.Background(), logPath, persistedHistoryForDisk); lossy {
 					refuseConversationOverwrite(logPath, existingTurns, nextTurns)
+				} else if err := checkTokenTurn(context.WithoutCancel(agentCtx)); err != nil {
+					turnStatus, turnError = trackedExecutionStatusCanceled, err.Error()
+					return
 				} else if err := persistRawConversationSnapshot(context.Background(), logPath, string(convJSON)); err != nil {
 					log.Printf("[BUILDER LOG] Failed to write conversation log: %v", err)
 				} else {
