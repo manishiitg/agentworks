@@ -451,6 +451,7 @@ type externalScheduleSummary struct {
 	ID             string   `json:"id"`
 	Name           string   `json:"name"`
 	ScheduleType   string   `json:"schedule_type"`
+	TimingSummary  string   `json:"timing_summary,omitempty"`
 	CronExpression string   `json:"cron_expression,omitempty"`
 	Timezone       string   `json:"timezone,omitempty"`
 	Enabled        bool     `json:"enabled"`
@@ -473,7 +474,8 @@ func (api *StreamingAPI) externalListSchedules(w http.ResponseWriter, r *http.Re
 		schedules = append(schedules, externalScheduleSummary{
 			ID: sched.ID, Name: sched.Name, ScheduleType: scheduleTypeOrDefault(sched.ScheduleType),
 			CronExpression: sched.CronExpression, Timezone: sched.Timezone, Enabled: sched.Enabled,
-			GroupNames: sched.GroupNames, Mode: scheduleModeOrDefault(sched.Mode),
+			TimingSummary: scheduleTimingSummary(ScheduledJobResponse{ScheduleType: sched.ScheduleType, CronExpression: sched.CronExpression, CalendarItems: sched.CalendarItems, Timezone: sched.Timezone}),
+			GroupNames:    sched.GroupNames, Mode: scheduleModeOrDefault(sched.Mode),
 			WorkshopMode:  sched.WorkshopMode,
 			CalendarItems: len(sched.CalendarItems), ConcurrencyMode: sched.ConcurrencyMode,
 		})

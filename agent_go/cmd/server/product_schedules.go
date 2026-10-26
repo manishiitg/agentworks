@@ -1585,12 +1585,23 @@ func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorksp
 	if last := job.lastRun(); !last.IsZero() {
 		resp.LastRunAt = &last
 	}
-	if strings.TrimSpace(sched.RunAt) != "" {
+	if sched.When != nil && len(sched.When.Dates) > 0 {
+		// Loaded canonical dates must have the same reply as the creation
+		// projection, which carries RunAt only until it is saved.
+		resp.ScheduleType = "calendar"
+		resp.Timezone = sched.When.Timezone
+		for _, date := range sched.When.Dates {
+			resp.CalendarItems = append(resp.CalendarItems, CalendarScheduleItem{Date: date.Date, Time: date.Time})
+		}
+		if sched.Enabled {
+			resp.NextRunAt = getNextRunTimeForCalendar(WorkflowSchedule{Timezone: resp.Timezone, CalendarItems: resp.CalendarItems})
+		}
+	} else if strings.TrimSpace(sched.RunAt) != "" {
 		// A one-time schedule is shown as a calendar entry: its date and time in the schedule's timezone.
 		resp.ScheduleType = "calendar"
 		resp.Description = strings.TrimSpace(resp.Description + " (one time)")
 		if at, err := sched.RunAtTime(); err == nil {
-			loc := time.Local
+			loc := time.UTC // Matches the saved date's default, never the server's local timezone.
 			if zone, zoneErr := time.LoadLocation(strings.TrimSpace(sched.Timezone)); zoneErr == nil && strings.TrimSpace(sched.Timezone) != "" {
 				loc = zone
 			}

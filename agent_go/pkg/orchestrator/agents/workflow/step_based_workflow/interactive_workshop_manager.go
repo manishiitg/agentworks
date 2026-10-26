@@ -5373,7 +5373,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip create_schedule registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"create_schedule",
-		"Create a new cron schedule for this workflow. Workflow schedules use mode='workshop' with workshop_mode='workshop'; read-only access is pinned to Run by the server. Messages are optional; when omitted, the scheduler asks the Builder to execute the full workflow. Before adding, inspect existing schedules and choose a useful run time using goal evidence. Basic validation and the unreadable-input guard still apply. For the full contract (collision/dependency policy design, when direct messages vs. route_selections is correct, resume_previous tradeoffs): read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
+		"Create repeating work for this workflow: every 5 minutes uses cron_expression=\"*/5 * * * *\"; every hour uses \"0 * * * *\", plus timezone. Dated calendar schedules are one-time, not recurring. Workflow schedules use mode='workshop' with workshop_mode='workshop'; read-only access is pinned to Run by the server. Messages are optional; when omitted, the scheduler asks the Builder to execute the full workflow. Before adding, inspect existing schedules and choose a useful run time using goal evidence. Basic validation and the unreadable-input guard still apply. For the full contract (collision/dependency policy design, when direct messages vs. route_selections is correct, resume_previous tradeoffs): read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/schedules.md\"}]).",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

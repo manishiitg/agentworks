@@ -105,13 +105,13 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		return err
 	}
 	if !readOnly {
-		if err := register("create_project_schedule", "Create one schedule for this project: recurring (cron_expression) or one-time (in_minutes, or run_at for an exact moment). A one-time schedule runs once and never again, for example 'check the deploy in 3 hours'. Choose crew_chat to send a normal message into the project chat (steering it if already running), or isolated for this schedule's own persistent automation conversation.", map[string]interface{}{
+		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Choose crew_chat to send a normal message into the project chat (steering it if already running), or isolated for this schedule's own persistent automation conversation.", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string"},
 				"message":         map[string]interface{}{"type": "string", "description": "The single instruction the agent should perform at each occurrence."},
-				"cron_expression": map[string]interface{}{"type": "string", "description": "Standard five-field cron expression, for a recurring schedule."},
-				"in_minutes":      map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "One-time: run once this many minutes from now (180 = 3 hours)."},
+				"cron_expression": map[string]interface{}{"type": "string", "description": "REPEATING schedule: every 5 minutes = */5 * * * *; every hour = 0 * * * *. Five fields, plus timezone. Use this for every/repeat requests, not in_minutes."},
+				"in_minutes":      map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "ONE TIME ONLY: run once this many minutes from now (5 = once in five minutes; 180 = once in three hours). Never use for every N minutes or repeating work."},
 				"run_at":          map[string]interface{}{"type": "string", "description": "One-time: run once at this exact moment, RFC3339 with an offset, for example 2026-10-05T21:30:00+05:30. Must be in the future."},
 				"timezone":        map[string]interface{}{"type": "string", "description": "IANA timezone, for example Asia/Kolkata. Required with cron_expression; for a one-time schedule it only sets how the time is shown."},
 				"enabled":         map[string]interface{}{"type": "boolean"},
