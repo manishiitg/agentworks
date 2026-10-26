@@ -15,6 +15,7 @@ import { CrewStarterGuide } from '../../components/chat/ProductStarterGuide'
 import { NewTabHint } from '../../components/chat/ShortcutHint'
 import { HomeEntry } from '../../components/workspace/HomeEntry'
 import { openHome } from '../../utils/homeNavigation'
+import { openAppProduct } from '../../utils/appNavigation'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import { TerminalFocusLayout } from '../../components/TerminalFocusLayout'
@@ -1242,6 +1243,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   const createProject = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, mode?: ProductMode, onboarding?: CrewOnboarding) => {
     if (creating) return
+    const startedAtHome = window.location.pathname === '/home'
     const user = useAuthStore.getState().user
     const server = useWorkspaceConnectionStore.getState().activeWorkspaceId
     if (!hasProductCreateAccess(user, useAuthStore.getState().isMultiUserMode, product.profileId)) return
@@ -1266,6 +1268,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         writeWorkWorkspaceView(created.id, product.profileId, view)
       }
       setCreateOpen(false)
+      if (startedAtHome && window.location.pathname === '/home') openAppProduct({ surface: 'work', id: created.id })
     } catch (cause) {
       setCreateError(cause instanceof Error ? cause.message : `Could not create ${product.itemNoun}.`)
     } finally {

@@ -42,6 +42,23 @@ try {
   assert.match(await draft.inputValue(), /research, prepare documents/)
   assert.equal(sent.length, 0, 'use case only fills a request')
   await page.screenshot({ path: path.join(output, 'central-home-desktop.png') })
+  assert.equal(await home.getByLabel('Direct product creation').getByRole('button', { name: /^Open/ }).count(), 0)
+  for (const [button, heading] of [['Create a Goal', 'Add Automation'], ['Create a Flow', 'Add Flow']]) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await home.getByRole('button', { name: button, exact: true }).click()
+      await page.getByRole('heading', { name: heading, exact: true }).waitFor()
+      assert.equal(new URL(page.url()).pathname, '/home', 'creation must not open a remembered project')
+      assert.equal(await page.locator('#preset-label').inputValue(), '', 'each setup starts blank')
+      await page.locator('#preset-label').fill('Discarded draft')
+      await page.getByRole('button', { name: 'Close', exact: true }).click()
+      await home.waitFor()
+      assert.equal(new URL(page.url()).pathname, '/home')
+    }
+  }
+  await home.getByRole('button', { name: 'Create a Crew', exact: true }).click()
+  await page.getByRole('heading', { name: 'Create a Crew', exact: true }).waitFor()
+  assert.equal(new URL(page.url()).pathname, '/home')
+  await page.getByRole('button', { name: 'Close', exact: true }).click()
   await home.getByRole('button', { name: 'Create Studio', exact: true }).click()
   const studio = page.getByRole('dialog')
   await studio.getByRole('heading', { name: 'Create a Studio' }).waitFor()
@@ -73,7 +90,7 @@ try {
   assert.equal(await draft.count(), 0, 'without an account show setup instead of chat')
   await page.screenshot({ path: path.join(output, 'central-home-connect-account.png') })
   assert.deepEqual(errors, [])
-  console.log('Central Home browser passed: one ready/setup block, all three product recents, use-case draft, New focus, existing AgentWorks send and360/390px layout.')
+  console.log('Central Home browser passed: fresh Crew/Goal/Flow forms stay on Home, cancel/reopen names are blank; Studio, readiness, recents, draft-only cases, New focus, AgentWorks send and360/390px layout.')
 } catch (cause) {
   await page?.screenshot({ path: path.join(output, 'central-home-failure.png') }).catch(() => {})
   throw cause

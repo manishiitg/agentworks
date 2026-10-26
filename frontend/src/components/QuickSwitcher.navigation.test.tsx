@@ -22,6 +22,7 @@ import { useProductCreateRequest } from '../hooks/useProductCreateRequest'
 import { useCommandDialogStore, type ProductCreateSurface } from '../stores/useCommandDialogStore'
 import { CreateCodeWorkspaceDialog } from '../products/work/CreateCodeWorkspaceDialog'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
+import { observeProductHistory } from '../utils/productUrlNavigation'
 import QuickSwitcher from './QuickSwitcher'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
@@ -509,4 +510,23 @@ it('omits global Goal activity from navigation and search', async () => {
     const { host } = await renderNavigation(query)
     expect(host.querySelector('[data-navigation-id="menu:activity"]')).toBeNull()
   }
+})
+
+it('keeps Home during creation instead of navigating to a remembered project', async () => {
+  await renderNavigation('@create ')
+  const stop = observeProductHistory()
+  try {
+    for (const surface of ['work', 'agentworks', 'relays'] as const) {
+      window.history.replaceState({}, '', '/home')
+      useProductSurfaceStore.setState({ selectedWorkProjectId: 'existing-crew' })
+      useGlobalPresetStore.setState({ workflowPresets: [{ id: 'existing-goal', label: 'Existing goal', workflowKind: surface === 'relays' ? 'relay' : 'workflow' }] as never, activePresetIds: { ...useGlobalPresetStore.getState().activePresetIds, workflow: 'existing-goal' } })
+      const creation = quickNavigationItems(useAuthStore.getState().user, useProductSurfaceStore.getState().productSurface).find(item => item.id === `create:${surface}`)!
+      await act(async () => {
+        expect(openQuickNavigation(creation)).toBe(true)
+        await new Promise(resolve => setTimeout(resolve, 10))
+      })
+      expect(window.location.pathname).toBe('/home')
+      expect(useCommandDialogStore.getState().productCreateSurface).toBe(surface)
+    }
+  } finally { stop(); window.history.replaceState({}, '', '/'); useGlobalPresetStore.setState({ activePresetIds: { ...useGlobalPresetStore.getState().activePresetIds, workflow: null } }) }
 })

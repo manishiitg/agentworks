@@ -1,6 +1,6 @@
 import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
-import { ArrowRight, ArrowUp, ArrowUpRight, Loader2, Terminal, Menu, Plus, PanelsTopLeft } from 'lucide-react'
+import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, Plus, PanelsTopLeft } from 'lucide-react'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
 import { navigationProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
@@ -144,7 +144,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const openStudio = () => {
     if (!studioCreation || !openQuickNavigation(studioCreation)) return
     useCommandDialogStore.getState().requestProductCreate('work', 'studio')
-    leaveHome()
   }
 
   return (
@@ -178,7 +177,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
         {workProducts.length > 0 && <HomeUseCases key={`cases:${scope}`} products={workProducts.map(product => product.id)} onChoose={message => { setAgentWorksDraft(message); setFocusPrompt(true); requestAnimationFrame(() => prompt.current?.focus()) }} />}
 
         {workProducts.length > 0 && <section aria-label="Direct product creation">
-          <h2 className="mb-3 text-xs font-medium text-muted-foreground">{creationItems.length ? 'Create directly' : 'Open your work'}</h2>
+          <h2 className="mb-3 text-xs font-medium text-muted-foreground">Create directly</h2>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {workProducts.map(product => {
               const creation = creationItems.find(item => item.surface === product.id)
@@ -190,9 +189,8 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
                   <h3 className="text-sm font-semibold">{product.label}</h3>
                 </div>
                 <p className="mb-3 mt-2 min-h-10 text-xs leading-5 text-muted-foreground">{copy.detail}</p>
-                <div className="mt-auto flex items-center gap-1.5 border-t border-border/60 pt-2.5">
-                  {creation && <Button type="button" size="xs" variant="secondary" aria-label={copy.createLabel} onClick={() => { if (openQuickNavigation(creation)) leaveHome() }} className="min-w-0 flex-1 gap-1 bg-primary/10 px-1.5 text-primary shadow-none hover:bg-primary/20 [&_svg]:size-3"><Plus aria-hidden="true" />Create</Button>}
-                  <Button type="button" size="xs" variant="ghost" aria-label={`Open ${product.label}`} title={`Open existing ${product.label}`} onClick={() => openProduct(product.id)} className="min-w-0 flex-1 gap-1 px-1.5 text-muted-foreground hover:text-foreground [&_svg]:size-3">Open<ArrowUpRight aria-hidden="true" /></Button>
+                <div className="mt-auto border-t border-border/60 pt-2.5">
+                  <Button type="button" size="xs" variant="secondary" aria-label={copy.createLabel} disabled={!creation} title={creation ? copy.createLabel : 'Ask an administrator for access to create here'} onClick={() => { if (creation) openQuickNavigation(creation) }} className="w-full gap-1 bg-primary/10 px-1.5 text-primary shadow-none hover:bg-primary/20 [&_svg]:size-3"><Plus aria-hidden="true" />Create</Button>
                 </div>
               </article>
             })}

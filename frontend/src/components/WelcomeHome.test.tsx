@@ -9,7 +9,7 @@ vi.hoisted(() => {
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
   Object.defineProperty(window, 'localStorage', { configurable: true, value: storage })
 })
-vi.mock('../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn((surface: string) => { window.history.pushState({}, '', `/${surface === 'work' ? 'crew' : surface === 'agentworks' ? 'goals' : surface}`) }) }))
+vi.mock('../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn((surface: string, options?: { keepHome?: boolean }) => { if (options?.keepHome) return; window.history.pushState({}, '', `/${surface === 'work' ? 'crew' : surface === 'agentworks' ? 'goals' : surface}`) }) }))
 vi.mock('./WelcomeAiReadiness', () => ({ default: ({ onSetup, crewReadyView }: { onSetup: () => void; crewReadyView?: unknown }) => readiness.crewReady ? crewReadyView : <button onClick={onSetup}>Review AI setup</button> }))
 vi.mock('../services/api', async importOriginal => ({ ...await importOriginal<typeof import('../services/api')>(), default: { post: vi.fn() } }))
 vi.mock('./HomeRecentWork', () => ({ HomeRecentWork: () => <section>Recent work</section> }))
@@ -80,28 +80,26 @@ describe('WelcomeHome', () => {
   })
 
   it('shows only permitted products and remembers dismissal', async () => {
-    configure(['work', 'sparkquill'])
+    configure(['work', 'mcp-gateway', 'sparkquill'])
     const host = await renderWelcome()
     expect(host.textContent).toContain('Acme Agents')
     expect(host.querySelectorAll('[data-welcome-product]')).toHaveLength(1)
     expect(host.textContent).not.toContain('Goals')
     expect(host.textContent).not.toContain('SparkQuill')
-    await act(async () => button(host, 'Open Crew').click())
-    expect(openProductWorkspace).toHaveBeenCalledWith('work')
+    await act(async () => button(host, 'Open Vault').click())
+    expect(openProductWorkspace).toHaveBeenCalledWith('mcp-gateway')
     expect(window.localStorage.getItem(WELCOME_HOME_DISMISSED_KEY)).toBe('true')
     expect(host.querySelector('main[aria-label="Home"]')).toBeNull()
     const returning = await renderWelcome()
     expect(returning.querySelector('main[aria-label="Home"]')).toBeNull()
   })
 
-  it('orders the three cards Crew first without exposing creation to Run-only users', async () => {
+  it('orders the cards Crew first and disables creation for Run-only users', async () => {
     configure()
     const host = await renderWelcome()
     expect([...host.querySelectorAll('[data-welcome-product]')].map(item => item.getAttribute('data-welcome-product'))).toEqual(['work', 'agentworks', 'relays'])
-    expect(host.querySelectorAll('[aria-label^="Create a"]')).toHaveLength(0)
-    expect(button(host, 'Open Crew')).toBeDefined()
-    expect(button(host, 'Open Goals')).toBeDefined()
-    expect(button(host, 'Open Flows')).toBeDefined()
+    expect([...host.querySelectorAll<HTMLButtonElement>('[aria-label^="Create a"]')].every(item => item.disabled)).toBe(true)
+    expect(host.querySelector('[aria-label="Direct product creation"] [aria-label^="Open"]')).toBeNull()
   })
 
   it.each([
@@ -110,11 +108,11 @@ describe('WelcomeHome', () => {
     configure()
     useAuthStore.setState({ user: { ...useAuthStore.getState().user, can_create_in: { [surface]: true } } as never })
     const host = await renderWelcome()
-    expect(host.querySelectorAll('[aria-label^="Create a"]')).toHaveLength(1)
+    expect(host.querySelectorAll('[aria-label^="Create a"]:not(:disabled)')).toHaveLength(1)
     await act(async () => button(host, label).click())
-    expect(openProductWorkspace).toHaveBeenCalledWith(surface)
+    expect(openProductWorkspace).toHaveBeenCalledWith(surface, { keepHome: true })
     expect(useCommandDialogStore.getState().productCreateSurface).toBe(surface)
-    expect(host.querySelector('main[aria-label="Home"]')).toBeNull()
+    expect(host.querySelector('main[aria-label="Home"]')).not.toBeNull()
   })
 
   it('uses the existing Crew create permission and request for Studio', async () => {
@@ -127,13 +125,11 @@ describe('WelcomeHome', () => {
     expect(useCommandDialogStore.getState().productCreateIntent).toBe('studio')
   })
 
-  it('keeps an existing-workspace path alongside creation', async () => {
+  it('keeps existing work in Recent work and removes Open from creation cards', async () => {
     configure()
-    useAuthStore.setState({ isMultiUserMode: false })
     const host = await renderWelcome()
-    await act(async () => button(host, 'Open Crew').click())
-    expect(openProductWorkspace).toHaveBeenCalledWith('work')
-    expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
+    expect(host.textContent).toContain('Recent work')
+    expect(host.querySelector('[aria-label="Direct product creation"] [aria-label^="Open"]')).toBeNull()
   })
 
   it('shows permitted shared tools without a disclosure and preserves other services', async () => {

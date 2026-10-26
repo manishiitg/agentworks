@@ -9,7 +9,7 @@ import { cancelPendingWorkflowNavigation } from './workflowNavigation'
 import { productUrlViewChanged } from './productUrlNavigation'
 
 /** Product icons and page Back buttons share the same workspace destination. */
-export function openProductWorkspace(surface: ProductSurface) {
+export function openProductWorkspace(surface: ProductSurface, options?: { keepHome?: boolean }) {
   // A product click is newer intent than any in-flight workflow lookup.
   cancelPendingWorkflowNavigation()
   useCommandDialogStore.getState().requestProductCreate(null)
@@ -35,5 +35,5 @@ export function openProductWorkspace(surface: ProductSurface) {
     app.setAgentMode('multi-agent')
   }
   useProductSurfaceStore.getState().setProductSurface(surface)
-  if (workspaceSettingsPage() || ['/dashboards', '/home'].includes(window.location.pathname)) productUrlViewChanged()
+  if (workspaceSettingsPage() || window.location.pathname === '/dashboards' || (window.location.pathname === '/home' && !options?.keepHome)) productUrlViewChanged()
 }

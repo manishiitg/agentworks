@@ -29,6 +29,8 @@ import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { WorkflowIcon } from './workflow/WorkflowIcon'
 import ConfirmationDialog from './ui/ConfirmationDialog'
 import { openWorkflowPresetPage } from '../utils/workflowSessionRestore'
+import { openAppProduct } from '../utils/appNavigation'
+import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
 import { currentActiveSession, currentSessionId, headerStatusLabel } from '../utils/globalActivityMonitorStatus'
 
 const workflowManifestToPreset = (manifest: WorkflowManifest, workspacePath: string): CustomPreset => {
@@ -310,6 +312,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     icon?: string,
     workflowKind?: 'relay' | 'workflow'
   ) => {
+    const startedAtHome = window.location.pathname === '/home'
+    const identity = captureChatIdentity()
     try {
       const effectiveMode = editingPreset ? editingPreset.agentMode : agentMode
       const globalSecretNamesForBackend = selectedGlobalSecretNames === undefined
@@ -369,6 +373,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
       // Apply the preset immediately if it's a new one
       if (savedPreset && !editingPreset) {
         handlePresetClick(savedPreset)
+        if (startedAtHome && effectiveMode === 'workflow' && window.location.pathname === '/home' && isChatIdentityCurrent(identity)) openAppProduct({ surface: workflowKind === 'relay' ? 'relays' : 'agentworks', id: savedPreset.id })
       }
 
       setShowPresetModal(false)
@@ -726,7 +731,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
       )}
 
       {/* Preset Modal */}
-      <PresetModal
+      {showPresetModal && <PresetModal
         isOpen={showPresetModal}
         onClose={handleClosePresetModal}
         onSave={handleSavePreset}
@@ -737,7 +742,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
         agentMode={agentMode}
         onDeleteWorkflow={handleDeleteWorkflow}
         fixedWorkflowKind={isRelaySurface ? 'relay' : 'workflow'}
-      />
+      />}
 
       <ConfirmationDialog
         isOpen={pendingDuplicatePreset !== null}
