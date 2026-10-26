@@ -979,8 +979,22 @@ func (w *LLMAgentWrapper) FinalizeDefinition(ctx context.Context) error {
 	runtime := w.runtime
 	bridge := []string{}
 	seen := map[string]bool{}
+	// Every CLI context uses the same already-admitted catalog as the native
+	// runtime, including workflow MCP and scheduled/noninteractive Crew turns.
+	// The SDK's fixed core names may have been retired by projection.
+	for _, tool := range projected {
+		if !seen[tool.Name] {
+			bridge = append(bridge, tool.Name)
+			seen[tool.Name] = true
+		}
+	}
 	for _, name := range runtime.Tools.AdditionalBridge {
 		name = platformtools.PublicName(name)
+		// Explicit SDK primitives (for example read_skill) survive, but a
+		// platform name must actually exist in this session's final catalog.
+		if platformtools.IsFamily(name) && !seen[name] {
+			continue
+		}
 		if !seen[name] {
 			bridge = append(bridge, name)
 			seen[name] = true
@@ -989,16 +1003,15 @@ func (w *LLMAgentWrapper) FinalizeDefinition(ctx context.Context) error {
 	runtime.Tools.AdditionalBridge = bridge
 	admit := runtime.Coding.BridgeToolAdmit
 	runtime.Coding.BridgeToolAdmit = func(name string) bool {
-		if platformtools.IsFamily(name) {
-			for _, tool := range projected {
-				if tool.Name == name {
-					return true
-				}
-			}
-			return false
+		if platformtools.IsFamily(name) || platformtools.IsMember(name) {
+			return seen[name]
 		}
 		return admit == nil || admit(name)
 	}
+	w.logger.Info("Finalized native tool bridge catalog",
+		loggerv2.String("session_id", w.config.SessionID),
+		loggerv2.Int("direct_tool_count", len(projected)),
+		loggerv2.Int("additional_bridge_tool_count", len(bridge)))
 	runtime.ResumeHandle = w.lastResult.Handle
 	runtime.Observability.Observers = append([]mcpagent.AgentEventListener(nil), w.observers...)
 	next, err := mcpagent.NewAgentFromDefinition(ctx, w.definition, runtime)
