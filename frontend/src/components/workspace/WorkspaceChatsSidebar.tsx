@@ -480,7 +480,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     )
   }
   const isResourceWorkspace = (surface: string) => surface === 'knowledgebase' || surface === 'mcp-gateway'
-  const renderWorkspace = (workspace: (typeof workspaces)[number], index: number) => {
+  const renderWorkspace = (workspace: (typeof workspaces)[number], index: number, sectionVisible = true) => {
     if (workspace.surface === 'work' && workspace.chats.length === 0) return <button
       key={workspace.id}
       type="button"
@@ -505,7 +505,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const only = workspace.chats.length === 1 ? workspace.chats[0] : null
     const onlyTab = only?.tabId ? tabs[only.tabId] : undefined
     const primaryOnly = only && !only.scheduled && only.workflowSessionKind !== 'run' && (!onlyTab || !canCloseWorkspaceChatTab(onlyTab, tabs)) && (only.builder || only.title === workspace.title)
-    if (primaryOnly) return <div key={workspace.id}>{renderChat(only, undefined, undefined, workspace, true,
+    if (primaryOnly) return <div key={workspace.id}>{renderChat(only, undefined, undefined, workspace, sectionVisible,
       only.surface === 'agentworks' ? { panelId, expanded: !hidden, onToggle: () => toggleSection(workspace.id) } : undefined
     )}</div>
     return (
@@ -542,7 +542,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
                 ? unnamedChats.indexOf(row.id) + 1
                 : undefined,
               undefined,
-              !hidden
+              sectionVisible && !hidden
             )
           )}
         </div>
@@ -580,9 +580,27 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         {PROJECT_SIDEBAR_ORDER.map(surface => {
           const entries = workspaces.map((workspace, index) => ({ workspace, index })).filter(({ workspace }) => workspace.surface === surface)
           if (!entries.length) return null
-          return <section key={surface} aria-label={`${PRODUCT_SURFACE_LABELS[surface]} projects`} className="mb-4">
-            <h2 className="px-2.5 pb-1 text-[11px] font-medium text-muted-foreground">{PRODUCT_SURFACE_LABELS[surface]}</h2>
-            {entries.map(({ workspace, index }) => renderWorkspace(workspace, index))}
+          const key = sidebarExpansionKey(scope, 'product', surface)
+          const isOpen = expanded[key] ?? true
+          const panelId = `sidebar-product-${surface}`
+          const chats = entries.flatMap(({ workspace }) => workspace.chats)
+          const running = chats.filter(row => row.group === 'Running' && !row.waiting).length
+          const waiting = chats.filter(row => row.waiting).length
+          return <section key={surface} aria-label={`${PRODUCT_SURFACE_LABELS[surface]} projects`} className="mb-3">
+            <h2>
+              <button type="button" aria-expanded={isOpen} aria-controls={panelId}
+                onClick={() => toggleExpanded(key, true)}
+                className="mb-1 flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <span className="flex-1">{PRODUCT_SURFACE_LABELS[surface]}</span>
+                {!isOpen && (running > 0 || waiting > 0) && <span className={`text-[10px] tabular-nums ${waiting ? 'text-amber-500' : 'text-primary'}`}>
+                  {[running ? `${running} working` : '', waiting ? `${waiting} needs you` : ''].filter(Boolean).join(' · ')}
+                </span>}
+                <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${isOpen ? '' : '-rotate-90'}`} aria-hidden="true" />
+              </button>
+            </h2>
+            <div id={panelId} hidden={!isOpen}>
+              {entries.map(({ workspace, index }) => renderWorkspace(workspace, index, isOpen))}
+            </div>
           </section>
         })}
         {workspaces.map((workspace, index) => !PROJECT_SIDEBAR_ORDER.some(surface => surface === workspace.surface) && !isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}

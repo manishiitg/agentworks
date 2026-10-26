@@ -172,8 +172,20 @@ it('keeps saved project icons on every sidebar row layout and falls back for mis
     goal: { session_id: 'goal-main', sessions: { 'goal-main': { is_builder: true, kind: 'builder' } } },
     flow: { session_id: 'flow-main', sessions: { 'flow-main': { is_builder: true, kind: 'builder' }, 'flow-run': { kind: 'run' } } },
   }
-  await render(async host => {
+  await render(async (host, rerender) => {
     expect([...host.querySelectorAll('section[aria-label$=" projects"]')].map(section => section.getAttribute('aria-label'))).toEqual(['Crew projects', 'Goals projects', 'Flows projects'])
+    const crewSection = host.querySelector('section[aria-label="Crew projects"]')!
+    const crewToggle = crewSection.querySelector<HTMLButtonElement>('h2 button')!
+    const crewPanel = host.querySelector<HTMLElement>(`#${crewToggle.getAttribute('aria-controls')}`)!
+    const goalsToggle = host.querySelector<HTMLButtonElement>('section[aria-label="Goals projects"] h2 button')!
+    expect(crewToggle.getAttribute('aria-expanded')).toBe('true')
+    await act(async () => crewToggle.click())
+    expect(crewPanel.hidden).toBe(true)
+    expect(goalsToggle.getAttribute('aria-expanded')).toBe('true')
+    await rerender()
+    expect(crewToggle.getAttribute('aria-expanded')).toBe('false')
+    await act(async () => crewToggle.click())
+    expect(crewPanel.hidden).toBe(false)
     const crew = host.querySelector<HTMLButtonElement>('[title="Crew · Before first chat"]')!
     const upload = crew.querySelector('img')!
     expect(upload.getAttribute('src')).toBe(image)

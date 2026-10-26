@@ -6,10 +6,10 @@ export const sidebarExpansionKey = (scope: string, ...parts: string[]) => JSON.s
 
 export const useSidebarExpansionStore = create<{
   expanded: Record<string, boolean>
-  toggle: (key: string) => void
+  toggle: (key: string, initiallyExpanded?: boolean) => void
 }>()(persist((set) => ({
   expanded: {},
-  toggle: (key) => set(state => ({ expanded: { ...state.expanded, [key]: !state.expanded[key] } })),
+  toggle: (key, initiallyExpanded = false) => set(state => ({ expanded: { ...state.expanded, [key]: !(state.expanded[key] ?? initiallyExpanded) } })),
 }), {
   name: 'sidebar-expansion-v1',
   storage: createJSONStorage(() => ({
