@@ -147,7 +147,7 @@ Publishing freezes source/configuration; selected secret access remains live.
 - skills=["installed-name"] attaches explicitly named bundles from this Flow workspace.
 - mcp=[{"server":"exact connection","tools":["exact tool"]}] exposes selected tools
   to the agent. Omit tools to select all tools on that explicitly named connection.
-  Resolve names/schemas using list_mcp_servers first. Live access/grants are rechecked.
+  Resolve names/schemas using mcp action=list first. Live access/grants are rechecked.
 - await mcp(server="exact connection", tool="exact tool", arguments={...})
   calls the shared platform MCP executor directly from Python with the run's authority.
 - vault("NAME") returns an admitted SECRET_NAME. Missing/deselected secrets fail.
@@ -200,9 +200,9 @@ platform helpers from agentworks, change run to one argument and enable DBOS.
 
 ## Build, test and publish
 
-In website Builder chat, use workspace diff_patch/execute_shell_command to save
-source and helpers. In an external model-mediated Builder turn, use read_file,
-list_files, search_files and write_file with the current revision to edit the
+In website Builder chat, use files action=patch or terminal action=execute to save
+source and helpers. In an external model-mediated Builder turn, use files action=read,
+files action=list, files action=search and files action=write with the current revision to edit the
 draft. After saving, describe the change and let the calling client use relay
 action=test and action=get_run to check it; execution and publication are direct
 Flow actions for that client. Package
@@ -212,16 +212,16 @@ published snapshot. Preserve Python whitespace and literal escapes.
 Configure function triggers through manage_workflow_webhook with required object
 INPUT. Python Flows invoke run(INPUT) and have no step_id, route_selections or
 payload routing mappings. If no function is saved yet, create one before testing.
-Use test_relay(input={...}, function="...") for the draft; it returns a run_id.
-Inspect get_relay_run(run_id="...") for completion/output/error and recorded calls.
+Use relay action=test(input={...}, function="...") for the draft; it returns a run_id.
+Inspect relay action=get_run(run_id="...") for completion/output/error and recorded calls.
 Direct shell execution is not a platform test and does not verify triggers, agents,
 credentials or publication; report that distinction and the exact failing tool error.
 A failed run is terminal. Testing again creates a new invocation and may repeat effects;
-use safe sample data. No run_full_workflow, execute_step, plans, groups, prevalidation,
+use safe sample data. No runs action=start, runs action=step, plans, groups, prevalidation,
 DB/KB/learnings closing turns apply to Python Flows.
 Optional dashboard database migrations are authoring actions, separate from execution.
 
-Use get_relay_releases and publish_relay when the user asks. Published source, helpers,
+Use relay action=releases and relay action=publish when the user asks. Published source, helpers,
 skill files and configuration are immutable. Runtime secrets/connection permissions
 are resolved live. Public calls select a version or default to active; Builder tests
 always use draft. Report the actual returned version/hash, not an assumed deployment.

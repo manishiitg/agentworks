@@ -28,9 +28,9 @@ Leave out transient status, one-off details, raw chat, guesses, unverified resea
 ## 4. Update skills
 
 Invoking this command is my explicit ask to preserve reusable procedures:
-- Call `list_skills` first and read the names and descriptions of existing project skills.
+- Call `skills action=list` first and read the names and descriptions of existing project skills.
 - Create or update focused project-local skills at `skills/<skill-name>/SKILL.md` (with `name` and `description` frontmatter) — keep skills inside the current workspace. Update an existing skill only for the same topic and trigger; otherwise create a new, clearly named one; split catch-all skills.
-- Select each created or updated skill with `update_project_skill_selection`.
+- Select each created or updated skill with `skills action=select`.
 
 ## 5. Report
 
