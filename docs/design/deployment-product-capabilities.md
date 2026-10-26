@@ -6,7 +6,6 @@ address, local login or SSO configuration does not determine installed products.
 | Installation | Default product set |
 | --- | --- |
 | Source local (default) | Goals/workflows, Crew, Code, Flows/Relays, Brain, Vault, AgentBridge |
-| Source local with `--without-server-products` | Goals/workflows, Crew, AgentBridge |
 | Packaged desktop / DMG | Goals/workflows, Crew |
 | Server | Configured server products and account permissions |
 
@@ -19,7 +18,7 @@ products or support the full source-development profile.
 
 From `agent_go`, run `./run_server_with_logging.sh` for the full local stack,
 or add `--with-workspace` for the backend and workspace without launching the
-frontend. `--with-server-products` remains supported and requires Vault to start
+frontend. Server products are always on locally, and Vault must start
 successfully. An installed private LLM Gateway binary adds that product to the
 default source profile; an explicit surface list still narrows availability.
 
@@ -34,8 +33,7 @@ data and audit retention settings are preserved.
 `agent_go/pkg/productpolicy` intersects:
 
 1. `AGENTWORKS_DEPLOYMENT_MODE=local|server`.
-2. `AGENTWORKS_LOCAL_SERVER_PRODUCTS=1`, set by the source launcher by default;
-   `--without-server-products` sets it to `0`.
+2. `AGENTWORKS_LOCAL_SERVER_PRODUCTS=1`, always set by the source launcher.
 3. `AGENTWORKS_ENABLED_PRODUCT_SURFACES`, when explicitly configured.
 4. `AGENT_PRODUCTS`, retaining the existing shared-server Brain/Vault baseline
    unless an explicit surface selection excludes them. Dedicated SparkQuill

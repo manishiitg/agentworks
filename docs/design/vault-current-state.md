@@ -722,8 +722,7 @@ a group grant does not disconnect the MCP server.
 Vault's MCP gateway starts automatically alongside the local backend.
 `./run_agentworks --with-workspace` starts the agent, workspace and Vault;
 plain `./run_agentworks` also starts the frontend and Electron. No gateway
-flag is needed. The optional `--with-gateway` flag makes a gateway startup
-failure fatal; otherwise the launcher reports the failure and continues.
+flag is needed. A gateway startup failure stops the launcher.
 `--only-frontend` and MCP connection-test mode do not start backend services.
 
 ## Automatic Vault MCP access — 2026-10-04

@@ -6,8 +6,8 @@
 # Get script directory first (needed for both test and server modes)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Local launches offer every core product (owner, 2026-10-18); --without-server-products
-# keeps only Goals, Crew and AgentBridge. Local authentication is unchanged.
+# Local launches always run every core product, Vault included (owner, 2026-10-26:
+# server products are not optional). Local authentication is unchanged.
 LOCAL_SERVER_PRODUCTS=true
 
 # Keep the local app on the latest main (2026-09-30). The three checkouts next to each other
@@ -86,7 +86,6 @@ WITH_FRONTEND=false
 ONLY_FRONTEND=false
 WITH_GATEWAY=true
 ONLY_GATEWAY=false
-GATEWAY_EXPLICIT=false
 UPDATE_MMX_CLI=false
 FRONTEND_BUILD_MODE=false
 WITHOUT_ELECTRON=false
@@ -109,9 +108,6 @@ print_usage() {
     printf '%s\n' '  --with-frontend               Start the frontend and Electron app.'
     printf '%s\n' '  --only-frontend               Start only the frontend and Electron app.'
     printf '%s\n' '  (default)                     All core products: Goals, Crew, Flows, Code, Brain, Vault, AgentBridge.'
-    printf '%s\n' '  --with-server-products        Require Vault to start (fail instead of continuing without it).'
-    printf '%s\n' '  --with-gateway                Alias for --with-server-products.'
-    printf '%s\n' '  --without-server-products     Only Goals, Crew and AgentBridge.'
     printf '%s\n' '  --only-gateway                Start the standalone server gateway for development (no local app).'
     printf '%s\n' '  --build                       Build and serve the frontend (use with --only-frontend).'
     printf '%s\n' '  --without-electron            Do not launch Electron.'
@@ -147,20 +143,9 @@ for arg in "$@"; do
         --only-frontend)
             ONLY_FRONTEND=true
             ;;
-        --without-server-products)
-            LOCAL_SERVER_PRODUCTS=false
-            WITH_GATEWAY=false
-            GATEWAY_EXPLICIT=false
-            ;;
-        --with-server-products|--with-gateway)
-            LOCAL_SERVER_PRODUCTS=true
-            WITH_GATEWAY=true
-            GATEWAY_EXPLICIT=true
-            ;;
         --only-gateway)
             ONLY_GATEWAY=true
             WITH_GATEWAY=true
-            GATEWAY_EXPLICIT=true
             ;;
         --build)
             FRONTEND_BUILD_MODE=true
@@ -195,7 +180,7 @@ for arg in "$@"; do
 done
 
 # Resolve the profile before frontend-only/test early exits, then pin it again
-# after .env loading. Source builds enable all core products unless opted out.
+# after .env loading. Source builds always enable all core products.
 configure_local_product_profile() {
     export AGENTWORKS_DEPLOYMENT_MODE=local
     if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
@@ -220,17 +205,6 @@ configure_local_product_profile() {
         resolved_surfaces="$(python3 -c 'import json,sys; raw=sys.argv[1]; values=json.loads(raw) if raw.lstrip().startswith("[") else raw.split(","); print(json.dumps([v.strip() for v in values if isinstance(v,str) and v.strip()]))' "${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-$default_surfaces}")" || return 1
         ENABLED_PRODUCT_SURFACES_JSON="$resolved_surfaces"
         export AGENTWORKS_ENABLED_PRODUCT_SURFACES="$(python3 -c 'import json,sys; print(",".join(json.loads(sys.argv[1])))' "$resolved_surfaces")"
-    else
-        export AGENTWORKS_LOCAL_SERVER_PRODUCTS=0
-        export VITE_DEPLOYMENT_MODE=local
-        export AGENT_PRODUCTS="agentworks,work,bullpen"
-        export AGENTWORKS_ENABLED_PRODUCT_SURFACES="agentworks,work,bullpen"
-        export AGENTWORKS_DEFAULT_PRODUCT_SURFACE="agentworks"
-        ENABLED_PRODUCT_SURFACES_JSON='["agentworks", "work", "bullpen"]'
-        # Empty values prevent godotenv from reviving old service configuration.
-        export CAPLAYER_SERVICE_URL=""
-        export CAPLAYER_SERVICE_TOKEN=""
-        export CAPLAYER_SERVICE_TOKEN_FILE=""
     fi
 }
 configure_local_product_profile
@@ -756,7 +730,7 @@ if [ "$ONLY_FRONTEND" = true ]; then
             ONLY_FRONTEND_GATEWAY_LINE=",
   gatewayUrl: \"http://127.0.0.1:${probe_port}\""
         else
-            echo "⚠️  Local server products requested, but Vault is not running; start the backend with --with-server-products."
+            echo "⚠️  Local server products requested, but Vault is not running; start the backend with ./run_server_with_logging.sh."
         fi
     fi
     mkdir -p "$LOG_DIR" "$(dirname "$FRONTEND_RUNTIME_CONFIG_PATH")"
@@ -2408,20 +2382,9 @@ fi
 if [ "$WITH_GATEWAY" = true ]; then
     # The full local app requires Vault for MCPs and secrets.
     if ! start_mcp_gateway; then
-        if [ "${LOCAL_VAULT:-false}" = true ]; then
-            echo "❌ Vault failed to start; see ${GATEWAY_LOG_PATH}."
-            echo "   Stop any other AgentWorks instance using this local workspace, fix the reported error, then run ./run_server_with_logging.sh again."
-            echo "   --without-server-products explicitly runs only Goals, Crew and AgentBridge."
-            exit 1
-        fi
-        if [ "$GATEWAY_EXPLICIT" = true ]; then
-            exit 1
-        fi
-        echo "⚠️  Continuing without the MCP Gateway (pass --with-gateway to require it)."
-        WITH_GATEWAY=false
-        # A Vault URL that is set but unreachable fails closed, so drop it.
-        unset CAPLAYER_SERVICE_URL CAPLAYER_SERVICE_TOKEN_FILE
-        write_frontend_runtime_config
+        echo "❌ Vault failed to start; see ${GATEWAY_LOG_PATH}."
+        echo "   Stop any other AgentWorks instance using this local workspace, fix the reported error, then run ./run_server_with_logging.sh again."
+        exit 1
     fi
 fi
 
