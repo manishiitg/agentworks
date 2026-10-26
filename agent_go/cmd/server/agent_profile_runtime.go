@@ -1000,6 +1000,12 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		if err := api.registerCodeChatTools(registrar, gate, userID, sessionID, workspacePath); err != nil {
 			return err
 		}
+		// The person's own AgentWorks reads its linked Goals' runs and emails its owner (PLAT-825-99).
+		if isAgentWorksCrew(context.Background(), workspacePath) {
+			if err := api.registerAgentWorksAgentTools(registrar, gate, userID, workspacePath); err != nil {
+				return err
+			}
+		}
 	}
 
 	// The existing Ask read tool also resolves captured published dashboard
