@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Loader2, MessagesSquare, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -218,7 +218,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
             aria-haspopup="dialog"
             data-testid="work-more-tabs"
           >
-            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+            <MessagesSquare className="h-4 w-4 md:hidden" aria-hidden="true" />
+            <ChevronDown className="hidden h-3.5 w-3.5 md:block" aria-hidden="true" />
           </button>
           {moreOpen && createPortal(
             <div ref={menuRef} style={menuPosition} className="fixed z-[100] flex w-80 max-w-[calc(100vw-1rem)] flex-col rounded-xl border border-border bg-popover p-1.5 shadow-lg" role="dialog" aria-label="Agents">

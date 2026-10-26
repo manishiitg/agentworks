@@ -64,7 +64,7 @@ const FileSurfaceFallback = () => (
 )
 
 const ProductSurfaceFallback = ({ label }: { label: string }) => (
-  <div className="flex h-dvh bg-background">
+  <div className="flex h-full bg-background">
     <ProductTopBar><ProductTopBarMain><ProductSurfaceSwitcher /></ProductTopBarMain></ProductTopBar>
     <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -727,7 +727,7 @@ function AppWorkspace() {
         <WelcomeHome autoOpen={firstVisit} />
         {returnNote && <div role="status" className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-lg"><span>{returnNote}</span><button type="button" aria-label="Dismiss workspace notice" onClick={() => useWorkspaceReturnStore.setState({ note: '', saveError: '' })}>×</button></div>}
         {dashboardsOpen ? (
-          <div className="flex h-dvh min-h-0 bg-background">
+          <div className="flex h-full min-h-0 bg-background">
             <ProductTopBar>{null}</ProductTopBar>
             <div className="min-h-0 min-w-0 flex-1">
               {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<FileSurfaceFallback />}><AdminPages /></Suspense> : null}
@@ -754,7 +754,7 @@ function AppWorkspace() {
         <>
         <UpdateProgressToast />
         <GlobalHumanFeedbackPrompt />
-        <TerminalFocusLayout className="h-dvh bg-background flex" enabled={!showWorkflowsOverview && !showProviders && !showSchedulesOverview && !adminPage}>
+        <TerminalFocusLayout className="h-full bg-background flex" enabled={!showWorkflowsOverview && !showProviders && !showSchedulesOverview && !adminPage}>
           {/* All workspace products reuse the same global navigation. */}
           <div className="flex-1 flex min-w-0 min-h-0 relative z-10 overflow-hidden">
             {/* Global Mode & Preset Bar - only above middle content area, not sidebars */}

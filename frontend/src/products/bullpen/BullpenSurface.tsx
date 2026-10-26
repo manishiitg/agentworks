@@ -160,7 +160,7 @@ export function BullpenSurface({ messagingOnly = false }: { messagingOnly?: bool
   const showProviders = useLLMStore(state => state.showLLMModal)
   const user = useAuthStore(state => state.user)
   useRegisterPanelSwitcher('bullpen', user?.role === 'admin' ? [...views, { id: 'admin', label: 'Administration' }] : views, id => setView(id as 'agents' | 'setup' | 'admin'))
-  return <div className="flex h-dvh min-h-0 min-w-0 bg-background text-foreground" data-testid="bullpen-surface">
+  return <div className="flex h-full min-h-0 min-w-0 bg-background text-foreground" data-testid="bullpen-surface">
     {!messagingOnly && <ModePresetBar reduced />}
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {!messagingOnly && showProviders ? <LlmModalHost /> : !messagingOnly && adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="flex h-full min-h-0 w-full flex-col">

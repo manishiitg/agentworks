@@ -1861,7 +1861,13 @@
 
 /* Phone workspaces: touch targets and scrolling stay inside the active pane. */
 @media (max-width: 767px) {
-  [data-app-shell] { padding-top: env(safe-area-inset-top); }
+  [data-app-shell] {
+    position: fixed;
+    top: var(--app-viewport-top, 0px);
+    inset-inline: 0;
+    height: var(--app-viewport-height, 100dvh);
+    padding-top: env(safe-area-inset-top);
+  }
   [data-app-main] input, [data-app-main] textarea, [data-app-main] select { font-size: 16px; }
   [data-terminal-focus-chrome="toolbar"] button,
   [data-testid="workspace-panel-header"] button { min-height: 40px; min-width: 40px; }

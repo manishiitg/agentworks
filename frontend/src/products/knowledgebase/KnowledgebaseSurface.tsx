@@ -138,7 +138,7 @@ export function KnowledgebaseSurface() {
     if (bounds) drag.start(event, { onMove: clientX => changeRatio((clientX - bounds.left) / bounds.width), onEnd: () => {} })
   }
   const title = BRAIN_PANELS.find(item => item.id === effectiveView)?.label ?? 'Library'
-  return <div className="flex h-dvh min-h-0 overflow-hidden bg-background text-foreground" data-product="knowledgebase">
+  return <div className="flex h-full min-h-0 overflow-hidden bg-background text-foreground" data-product="knowledgebase">
     <ModePresetBar reduced />
     <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
       <LlmModalHost />

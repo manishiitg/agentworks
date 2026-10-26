@@ -36,7 +36,7 @@ export function ServerProductSurface({ product, label }: { product: 'llm-gateway
     void refresh()
     return () => { controller.abort(); clearTimeout(timer) }
   }, [prefix, label, userID])
-  return <div className="flex h-screen min-h-0 bg-background">
+  return <div className="flex h-full min-h-0 bg-background">
     <ModePresetBar reduced />
     <main className="min-w-0 flex-1" aria-label={label}>
       {error ? <p role="alert" className="p-6 text-muted-foreground">{error}</p>

@@ -445,12 +445,13 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
         aria-expanded={open}
         aria-label={`Active work: ${buttonLabel}. Activate to switch.`}
         title={`Active work · ${buttonLabel}`}
-        className={`${sidebar ? 'relative h-9 w-full justify-center' : ''} flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-colors border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60`}
+        className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium transition-colors ${sidebar ? 'relative h-9 w-full justify-center border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60' : 'h-10 shrink-0 justify-center border-transparent text-muted-foreground hover:bg-muted md:h-auto md:border-blue-200 md:bg-blue-50 md:text-blue-700 md:hover:bg-blue-100 dark:md:border-blue-800/60 dark:md:bg-blue-950/40 dark:md:text-blue-300 dark:md:hover:bg-blue-950/60'}`}
       >
         {sidebar && <Activity className="h-4 w-4" aria-hidden="true" />}
         <span className={`${sidebar ? 'absolute right-1.5 top-1.5' : ''} h-1.5 w-1.5 rounded-full motion-safe:animate-pulse ${dotClasses}`} />
-        <span className={sidebar ? 'sr-only' : 'whitespace-nowrap'}>{buttonLabel}</span>
-        <ChevronDown className={`${sidebar ? 'hidden' : ''} w-3.5 h-3.5 opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {!sidebar && <span aria-hidden="true" className="tabular-nums md:hidden">{count}</span>}
+        <span className={sidebar ? 'sr-only' : 'hidden whitespace-nowrap md:inline'}>{buttonLabel}</span>
+        <ChevronDown className={`${sidebar ? 'hidden' : 'hidden md:block'} w-3.5 h-3.5 opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {/* Escape toolbar/sidebar stacking contexts so the split divider cannot cross the menu. */}

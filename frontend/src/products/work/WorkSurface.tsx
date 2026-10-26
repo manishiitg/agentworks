@@ -1321,7 +1321,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   return (
     <ProjectProductProvider value={product}>
-    <TerminalFocusLayout tabId={tabId} enabled={!isShared && chatOpen && !showProviders && !showSchedulesOverview && !adminPage} className="flex h-screen min-h-0 bg-background">
+    <TerminalFocusLayout tabId={tabId} enabled={!isShared && chatOpen && !showProviders && !showSchedulesOverview && !adminPage} className="flex h-full min-h-0 bg-background">
       <UpdateProgressToast />
       <GlobalHumanFeedbackPrompt />
       <ModePresetBar

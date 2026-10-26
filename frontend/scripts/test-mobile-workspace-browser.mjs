@@ -1,0 +1,75 @@
+// Real shell, header and pane geometry; synthetic viewport resizes are not physical iOS proof.
+import assert from 'node:assert/strict'
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import os from 'node:os'
+import { createServer } from 'vite'
+import { chromium } from 'playwright'
+
+const output = process.env.BROWSER_CHECK_ARTIFACT_DIR || path.join(os.tmpdir(), 'mobile-workspace-browser')
+const server = await createServer({ server: { host: '127.0.0.1', port: 0 } })
+let browser
+try {
+  await mkdir(output, { recursive: true })
+  await server.listen()
+  browser = await chromium.launch({ headless: true })
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  const errors = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.route('**/api/**', route => route.fulfill({ json: { sessions: [], projects: [], workflows: [], items: [], presets: [], schedules: [], total: 0 } }))
+  await page.addInitScript(() => {
+    const viewport = new EventTarget()
+    Object.assign(viewport, { height: 700, offsetTop: 0, scale: 1 })
+    Object.defineProperty(window, 'visualViewport', { value: viewport })
+    window.addEventListener('qa:viewport', event => {
+      Object.assign(viewport, event.detail)
+      viewport.dispatchEvent(new Event('resize'))
+    })
+  })
+  await page.goto(server.resolvedUrls.local[0] + 'scripts/test-fixtures/mobile-workspace-qa.html')
+  const composer = page.locator('[data-tour="chat-input-area"]')
+  await composer.waitFor()
+  const activity = page.getByRole('button', { name: /Active work:/ })
+  await activity.waitFor()
+  const metrics = []
+  for (const [width, height, top] of [[390, 700, 0], [360, 500, 0], [430, 340, 24]]) {
+    await page.setViewportSize({ width, height: 844 })
+    await page.evaluate(value => window.dispatchEvent(new CustomEvent('qa:viewport', { detail: value })), { height, offsetTop: top, scale: 1 })
+    await page.waitForFunction(({ height, top }) => {
+      const rect = document.querySelector('[data-app-shell]').getBoundingClientRect()
+      return Math.abs(rect.height - height) < 1 && Math.abs(rect.top - top) < 1
+    }, { height, top })
+    const bounds = await composer.boundingBox()
+    assert.ok(bounds.y >= top && bounds.y + bounds.height <= top + height + 1, 'entire composer stays above visible browser edge')
+    assert.equal(await page.getByRole('button', { name: 'Home', exact: true }).isVisible(), false, 'Home is absent from phone header')
+    assert.ok((await activity.boundingBox()).width <= 48, 'active work is compact on phones')
+    const title = await page.getByRole('button', { name: 'Switch workspace: Project files' }).boundingBox()
+    assert.ok(title.width >= 100, 'project name keeps meaningful width')
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+    const agentMenu = page.getByTestId('work-more-tabs')
+    assert.equal(await agentMenu.locator('svg.lucide-messages-square').isVisible(), true, 'agent switcher has a distinct icon')
+    await agentMenu.click()
+    await page.getByRole('dialog', { name: 'Agents', exact: true }).waitFor()
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Open workspace menu', exact: true }).click()
+    await page.getByText('Workspace content', { exact: true }).waitFor({ state: 'visible' })
+    await page.getByRole('button', { name: 'Back to chat', exact: true }).click()
+    await page.screenshot({ path: path.join(output, `workspace-mobile-${width}.png`) })
+    metrics.push({ width, height, top, composer: bounds, title })
+  }
+  await page.getByRole('textbox', { name: 'Message' }).fill('Keep this draft')
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('qa:viewport', { detail: { height: 180, scale: 2 } })))
+  assert.equal(await page.locator('[data-app-shell]').evaluate(element => element.style.getPropertyValue('--app-viewport-height')), '340px', 'pinch zoom does not reflow the shell')
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.waitForFunction(() => document.querySelector('[data-app-shell]').style.getPropertyValue('--app-viewport-height') === '')
+  assert.equal(await page.getByRole('textbox', { name: 'Message' }).inputValue(), 'Keep this draft')
+  assert.equal(await page.getByRole('button', { name: 'Home', exact: true }).isVisible(), true, 'desktop rail keeps Home')
+  assert.ok((await activity.boundingBox()).width > 48, 'desktop keeps descriptive activity label')
+  await page.screenshot({ path: path.join(output, 'workspace-desktop.png') })
+  assert.deepEqual(errors, [], 'no component errors')
+  await writeFile(path.join(output, 'workspace-geometry.json'), JSON.stringify(metrics, null, 2))
+  console.log('Mobile workspace browser regression passed: viewport shrink, offset, header menus, draft retention, zoom and desktop.')
+} finally {
+  await browser?.close()
+  await server.close()
+}
