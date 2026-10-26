@@ -27,9 +27,12 @@ func withSharedSecretsForTest(t *testing.T, env []globalSecretEntry, managed map
 	})
 }
 
-// Environment-defined and managed shared secrets are registered at backend
-// start without an administrator opening Vault > Secrets, as names only.
-func TestStartupRegistersEnvironmentAndManagedSecretNamesWithoutValues(t *testing.T) {
+// Vault-only runtime registers managed names, never legacy environment values
+// or their names (PLAT-856-217, dcad6859b).
+func TestStartupRegistersVaultSecretNamesWithoutValues(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks")
+	t.Setenv("AGENT_PRODUCTS", "agentworks")
 	withSharedSecretsForTest(t, []globalSecretEntry{{Name: "ENV_ONE", Value: "env-secret-value-111"}}, map[string]string{"MANAGED_ONE": "managed-secret-value-222"})
 	var mu sync.Mutex
 	var bodies []string
@@ -68,7 +71,7 @@ func TestStartupRegistersEnvironmentAndManagedSecretNamesWithoutValues(t *testin
 		Secrets []map[string]any `json:"secrets"`
 	}
 	payload := strings.TrimSuffix(bodies[0], " "+vaultSecretRegistrationActor)
-	if err := json.Unmarshal([]byte(payload), &in); err != nil || len(in.Secrets) != 2 {
+	if err := json.Unmarshal([]byte(payload), &in); err != nil || len(in.Secrets) != 1 {
 		t.Fatal(bodies[0], err)
 	}
 	for _, row := range in.Secrets {
@@ -81,7 +84,7 @@ func TestStartupRegistersEnvironmentAndManagedSecretNamesWithoutValues(t *testin
 			t.Fatal("secret value leaked to Vault request or log")
 		}
 	}
-	if !strings.Contains(bodies[0], "ENV_ONE") || !strings.Contains(bodies[0], "MANAGED_ONE") || !strings.HasSuffix(bodies[0], vaultSecretRegistrationActor) {
+	if strings.Contains(bodies[0], "ENV_ONE") || !strings.Contains(bodies[0], "MANAGED_ONE") || !strings.HasSuffix(bodies[0], vaultSecretRegistrationActor) {
 		t.Fatal(bodies[0])
 	}
 }

@@ -172,6 +172,10 @@ func TestVaultRuntimeNamesSeparateUsersSessionsAndCredentialLifetimes(t *testing
 }
 
 func TestVaultRuntimeProxyStripsSpoofedServiceIdentity(t *testing.T) {
+	// PLAT-856-217: runtime delegates retain their identity checks without the Vault screen.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks")
+	t.Setenv("AGENT_PRODUCTS", "agentworks")
 	t.Setenv("MULTI_USER_MODE", "false")
 	secret := strings.Repeat("s", 32)
 	var called int

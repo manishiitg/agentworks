@@ -10,12 +10,16 @@ import (
 )
 
 func TestVaultSecretsRuntimeIsExplicitAuthorizedAndFailClosed(t *testing.T) {
+	// PLAT-856-217: hiding the Vault screen must not disable selected runtime secrets.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks")
+	t.Setenv("AGENT_PRODUCTS", "agentworks")
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	managedGlobalsMu.Lock()
 	oldGlobals, oldManaged := globalSecrets, managedGlobals
-	globalSecrets = []globalSecretEntry{{Name: "KEY", Value: "dummy-secret"}, {Name: "OTHER", Value: "other-dummy"}}
-	managedGlobals = map[string]string{}
+	globalSecrets = nil
+	managedGlobals = map[string]string{"KEY": "dummy-secret", "OTHER": "other-dummy"}
 	managedGlobalsMu.Unlock()
 	defer func() {
 		managedGlobalsMu.Lock()
@@ -26,6 +30,14 @@ func TestVaultSecretsRuntimeIsExplicitAuthorizedAndFailClosed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+strings.Repeat("s", 32) || r.Header.Get("X-CapLayer-Actor") == "" {
 			t.Error("host identity absent")
+		}
+		if r.URL.Path == "/api/vaults/v-fixture" {
+			if !allowed || r.Header.Get("X-CapLayer-Actor") != "alice" || r.Header.Get("X-Vault-Platform-User") != "1" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
 		}
 		if r.URL.Path != "/api/admin/runtime/secrets" {
 			t.Error("wrong runtime route")
@@ -42,6 +54,15 @@ func TestVaultSecretsRuntimeIsExplicitAuthorizedAndFailClosed(t *testing.T) {
 	api := &StreamingAPI{}
 	names := []string{"KEY"}
 	ctx := context.Background()
+	if _, _, err := capLayerServiceConfig(); err == nil {
+		t.Fatal("runtime configuration enabled the hidden Vault browser surface")
+	}
+	if _, err := vaultPersonRequest(ctx, "alice", http.MethodGet, "/api/vaults/v-fixture", nil); err != nil {
+		t.Fatal("project/person runtime request blocked by the product switch:", err)
+	}
+	if _, err := vaultPersonRequest(ctx, "bob", http.MethodGet, "/api/vaults/v-fixture", nil); err == nil {
+		t.Fatal("project/person service refusal ignored")
+	}
 	if got := api.mergeGlobalSecretsFor(ctx, "alice", nil, nil); len(got) != 0 {
 		t.Fatal("nil inherited globals")
 	}
@@ -82,8 +103,8 @@ func TestDisabledVaultCannotExposeStoredGlobals(t *testing.T) {
 	t.Setenv("CAPLAYER_SERVICE_URL", "http://127.0.0.1:1")
 	managedGlobalsMu.Lock()
 	oldGlobals, oldManaged := globalSecrets, managedGlobals
-	globalSecrets = []globalSecretEntry{{Name: "SHARED", Value: "dummy"}}
-	managedGlobals = map[string]string{}
+	globalSecrets = nil
+	managedGlobals = map[string]string{"SHARED": "dummy"}
 	managedGlobalsMu.Unlock()
 	t.Cleanup(func() {
 		managedGlobalsMu.Lock()

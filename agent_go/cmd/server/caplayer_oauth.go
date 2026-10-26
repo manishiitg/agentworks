@@ -30,7 +30,7 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	_, secret, err := capLayerServiceConfig()
+	_, secret, err := gatewayAdminServiceConfig()
 	supplied := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if err != nil || r.Header.Get("Origin") != "" || subtle.ConstantTimeCompare([]byte(supplied), []byte(secret)) != 1 {
 		writeUsersError(w, http.StatusUnauthorized, "service authentication required")

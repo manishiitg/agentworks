@@ -17,18 +17,16 @@ import (
 	"time"
 )
 
-// vaultConfigured is false on servers without Vault (CAPLAYER_SERVICE_URL
-// unset). Enabled installations behave as before Vault existed: every shared secret is usable
-// by every user, and nothing is registered or revoked anywhere. A URL that is set
-// but unusable stays fail-closed.
+// Vault is an internal runtime dependency even when its product screen is off.
+// Local installations still require their explicit server-product opt-in.
 func vaultConfigured() bool {
-	return productEnabled("mcp-gateway") && strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != ""
+	return installationProductAvailable("mcp-gateway") && strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != ""
 }
 
 // The host holds encrypted values. Vault owns metadata and live group grants.
 // There is no fallback from a failed permission lookup to server-wide access.
 func vaultSecretAdminRequest(ctx context.Context, actor, method, path string, body any) error {
-	target, token, err := capLayerServiceConfig()
+	target, token, err := gatewayAdminServiceConfig()
 	if err != nil {
 		return errors.New("Vault service is not configured")
 	}
@@ -115,7 +113,7 @@ func startVaultSecretRegistration() {
 func permittedGlobalSecrets(ctx context.Context, userID string) ([]globalSecretEntry, error) {
 	// Turning off a product must never turn off its authorization and thereby
 	// expose formerly group-scoped values as legacy unrestricted globals.
-	if !productEnabled("mcp-gateway") {
+	if !productEnabled("mcp-gateway") && !vaultConfigured() {
 		return []globalSecretEntry{}, nil
 	}
 	all := getGlobalSecrets()
@@ -180,7 +178,7 @@ func secretNamesWithoutValue(allowed map[string]bool, loaded []globalSecretEntry
 
 // globalSecretNamesWithoutValue is that list for this person; empty when Vault is not in use or cannot be asked.
 func globalSecretNamesWithoutValue(ctx context.Context, userID string) []string {
-	if !productEnabled("mcp-gateway") || !vaultConfigured() {
+	if !vaultConfigured() {
 		return []string{}
 	}
 	allowed, err := vaultPermittedSecretNames(ctx, userID)

@@ -45,7 +45,7 @@ func vaultPersonRequest(ctx context.Context, person, method, path string, payloa
 }
 
 func vaultServiceRequestAs(ctx context.Context, actor string, platformUser bool, method, path string, payload []byte) ([]byte, error) {
-	target, secret, err := capLayerServiceConfig()
+	target, secret, err := gatewayAdminServiceConfig()
 	if err != nil {
 		return nil, errors.New("Vault service is not configured")
 	}

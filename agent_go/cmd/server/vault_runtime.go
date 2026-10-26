@@ -154,7 +154,7 @@ func vaultRuntimeRequest(ctx context.Context, person, path string) ([]byte, erro
 	if !activeMCPPerson(person) {
 		return nil, errors.New("active MCP user required")
 	}
-	target, secret, err := capLayerServiceConfig()
+	target, secret, err := gatewayAdminServiceConfig()
 	if err != nil {
 		return nil, errors.New("Vault is not configured")
 	}
@@ -350,7 +350,7 @@ func verifyVaultDelegation(secret, token string) (vaultDelegation, error) {
 	return out, nil
 }
 func (api *StreamingAPI) vaultServerConfig(person, connector string) (mcpclient.MCPServerConfig, error) {
-	_, secret, err := capLayerServiceConfig()
+	_, secret, err := gatewayAdminServiceConfig()
 	if err != nil {
 		return mcpclient.MCPServerConfig{}, err
 	}
@@ -363,7 +363,7 @@ func (api *StreamingAPI) vaultServerConfig(person, connector string) (mcpclient.
 }
 func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	target, secret, err := capLayerServiceConfig()
+	target, secret, err := gatewayAdminServiceConfig()
 	if err != nil {
 		http.Error(w, "Vault unavailable", 503)
 		return
@@ -483,7 +483,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 		return nil, err
 	}
 	if builder {
-		_, secret, err := capLayerServiceConfig()
+		_, secret, err := gatewayAdminServiceConfig()
 		if err != nil {
 			return nil, err
 		}
@@ -556,7 +556,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		cfg := resolved.Config
 		_, builder := ctx.Value(vaultBuilderKey{}).(vaultBuilderAuthority)
 		if strings.HasPrefix(resolved.Name, "vault_") && sessionID != "" && !builder {
-			_, secret, secretErr := capLayerServiceConfig()
+			_, secret, secretErr := gatewayAdminServiceConfig()
 			if secretErr != nil {
 				continue
 			}
