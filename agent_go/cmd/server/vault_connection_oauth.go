@@ -151,6 +151,21 @@ func (api *StreamingAPI) vaultOAuthConfig(ctx context.Context, id, name, resourc
 	cfg.OAuth = &saved
 	return cfg, nil
 }
+
+// Status exposes a plain category, never a provider response containing credentials.
+func vaultOAuthSignInProblem(id string, setup bool, err error) string {
+	code, detail := "refresh_unavailable", "the saved account could not be refreshed. Try again or reconnect it in Vault."
+	if setup {
+		code, detail = "saved_setup_unavailable", "the saved sign-in setup is unavailable. Connect the account in Vault."
+		if err != nil && strings.Contains(err.Error(), "configuration changed") {
+			code, detail = "configuration_changed", "the saved sign-in setup no longer matches this connection. Reconnect the account in Vault."
+		}
+	} else if err != nil && strings.Contains(strings.ToLower(err.Error()), "invalid_grant") {
+		code, detail = "refresh_rejected", "the saved sign-in expired or was revoked. Reconnect the account in Vault."
+	}
+	log.Printf("[VAULT_OAUTH_STATUS] connection=%s authenticated=false reason=%s", id, code)
+	return "Sign-in needed: " + detail
+}
 func vaultAdminActive(userID string) bool {
 	claims := &UserClaims{UserID: userID}
 	access := userAccessForClaims(claims)
@@ -396,7 +411,7 @@ func (api *StreamingAPI) vaultConnectionOAuthStatus(w http.ResponseWriter, r *ht
 	}
 	cfg, err := api.vaultOAuthConfig(r.Context(), id, name, "")
 	if err != nil {
-		writeUsersJSON(w, 200, map[string]any{"server_name": name, "valid": false})
+		writeUsersJSON(w, 200, map[string]any{"server_name": name, "valid": false, "sign_in_error": vaultOAuthSignInProblem(id, true, err)})
 		return
 	}
 	mutex := platformMCPOAuthMutex("vault:" + id)
@@ -405,7 +420,11 @@ func (api *StreamingAPI) vaultConnectionOAuthStatus(w http.ResponseWriter, r *ht
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	token, err := oauth.NewManager(cfg.OAuth, api.logger).GetAccessToken(ctx)
-	writeUsersJSON(w, 200, map[string]any{"server_name": name, "valid": err == nil && token != "", "has_oauth": true})
+	result := map[string]any{"server_name": name, "valid": err == nil && token != "", "has_oauth": true}
+	if err != nil || token == "" {
+		result["sign_in_error"] = vaultOAuthSignInProblem(id, false, err)
+	}
+	writeUsersJSON(w, 200, result)
 }
 func removeVaultCredentialFiles(id string) {
 	vaultSignInOutcomes.Delete(id)
@@ -539,14 +558,24 @@ func (api *StreamingAPI) capLayerConnectionAccess(ctx context.Context, userID, o
 	case "connection_status":
 		valid := c.OAuthServer == "" && c.Status == "active"
 		cfg, err := api.vaultOAuthConfig(ctx, c.ID, c.OAuthServer, c.UpstreamURL)
+		problem := ""
 		if err == nil {
 			mutex := platformMCPOAuthMutex("vault:" + c.ID)
 			mutex.Lock()
 			token, e := oauth.NewManager(cfg.OAuth, api.logger).GetAccessToken(ctx)
 			mutex.Unlock()
 			valid = e == nil && token != ""
+			if !valid {
+				problem = vaultOAuthSignInProblem(c.ID, false, e)
+			}
+		} else if c.OAuthServer != "" {
+			problem = vaultOAuthSignInProblem(c.ID, true, err)
 		}
-		result = map[string]any{"connection": c, "authenticated": valid, "connected": valid && c.Status == "active"}
+		status := map[string]any{"connection": c, "authenticated": valid, "connected": valid && c.Status == "active"}
+		if problem != "" {
+			status["sign_in_error"] = problem
+		}
+		result = status
 	}
 	data, err := json.Marshal(result)
 	return string(data), err

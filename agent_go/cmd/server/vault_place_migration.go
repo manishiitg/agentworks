@@ -205,6 +205,99 @@ func (api *StreamingAPI) migratePlaceConnections(ctx context.Context, apply bool
 			return rows, e
 		}
 	}
+	repaired, err := api.normalizeMigratedOAuthResources(ctx, apply)
+	return append(rows, repaired...), err
+}
+
+// The importer writes the current contract once; runtime readers stay strict.
+// A missing resource may be filled only for the same provider endpoints.
+func migratedOAuthConfig(saved, canonical oauth.OAuthConfig) (oauth.OAuthConfig, error) {
+	if saved.AuthURL == "" || saved.TokenURL == "" || saved.AuthURL != canonical.AuthURL || saved.TokenURL != canonical.TokenURL {
+		return saved, fmt.Errorf("saved OAuth endpoints do not match this connection")
+	}
+	if saved.Resource != "" && saved.Resource != canonical.Resource {
+		return saved, fmt.Errorf("saved OAuth resource does not match this connection")
+	}
+	saved.Resource = canonical.Resource
+	return saved, nil
+}
+
+// One-off repair for connections already moved by this importer. Invoked only
+// by the existing administrator migration, never by a read or normal run.
+func (api *StreamingAPI) normalizeMigratedOAuthResources(ctx context.Context, apply bool) ([]placeMigrationRow, error) {
+	data, err := vaultServiceRequest(ctx, "", http.MethodGet, "/api/admin/connectors", nil)
+	if err != nil {
+		return nil, err
+	}
+	var inventory struct {
+		Connectors []struct{ ID, InstanceSlug, OAuthServer string }
+	}
+	if json.Unmarshal(data, &inventory) != nil {
+		return nil, fmt.Errorf("Vault inventory unavailable")
+	}
+	rows := []placeMigrationRow{}
+	for _, connection := range inventory.Connectors {
+		if !strings.HasPrefix(connection.InstanceSlug, "migrated-") || connection.OAuthServer == "" {
+			continue
+		}
+		row := placeMigrationRow{Item: connection.ID, Kind: "oauth"}
+		connectionInfo, e := vaultSavedConnection(ctx, connection.ID)
+		if e != nil {
+			return rows, e
+		}
+		path := vaultCredentialConfigPath(connection.ID)
+		plain, readErr := oauth.ReadTokenFile(path)
+		var saved oauth.OAuthConfig
+		if readErr != nil || json.Unmarshal(plain, &saved) != nil {
+			row.Result, row.Detail = "failed", "saved OAuth setup could not be read"
+			rows = append(rows, row)
+			continue
+		}
+		canonical, e := api.vaultOAuthTemplate(ctx, connection.ID, connectionInfo.OAuthServer, connectionInfo.UpstreamURL)
+		if e != nil || canonical.OAuth == nil {
+			row.Result, row.Detail = "failed", "current OAuth setup could not be checked"
+			rows = append(rows, row)
+			continue
+		}
+		normalized, e := migratedOAuthConfig(saved, *canonical.OAuth)
+		if e != nil {
+			row.Result, row.Detail = "failed", e.Error()
+			rows = append(rows, row)
+			continue
+		}
+		if saved.Resource == normalized.Resource {
+			continue
+		}
+		row.Result = "would normalize saved OAuth setup"
+		if apply {
+			state, e := workflowCLIStateRoot()
+			if e != nil {
+				return rows, e
+			}
+			backup := filepath.Join(state, "migration-backups", "vault-oauth-resource-"+time.Now().UTC().Format("20060102T150405.000000000"))
+			if e := os.MkdirAll(backup, 0o700); e != nil {
+				return rows, e
+			}
+			sealed, e := os.ReadFile(path)
+			if e != nil {
+				return rows, e
+			}
+			if e := os.WriteFile(filepath.Join(backup, connection.ID+".json"), sealed, 0o600); e != nil {
+				return rows, e
+			}
+			encoded, e := json.Marshal(normalized)
+			if e != nil {
+				return rows, e
+			}
+			if e := oauth.WriteTokenFile(path, encoded); e != nil {
+				return rows, e
+			}
+			row.Result = "saved OAuth setup normalized"
+			row.Detail = "Encrypted setup backed up to " + backup + "; sync this connection and check its sign-in"
+			log.Printf("[VAULT_MIGRATION] connection=%s oauth_resource=normalized backup=%s", connection.ID, backup)
+		}
+		rows = append(rows, row)
+	}
 	return rows, nil
 }
 
@@ -282,6 +375,18 @@ func (api *StreamingAPI) placeMigrationConnection(ctx context.Context, owner, le
 			return "", err
 		}
 		oc := *cfg.OAuth
+		connection, err := vaultSavedConnection(ctx, id)
+		if err != nil {
+			return "", err
+		}
+		canonical, err := api.vaultOAuthTemplate(ctx, id, connection.OAuthServer, connection.UpstreamURL)
+		if err != nil || canonical.OAuth == nil {
+			return "", fmt.Errorf("current OAuth setup could not be checked")
+		}
+		oc, err = migratedOAuthConfig(oc, *canonical.OAuth)
+		if err != nil {
+			return "", err
+		}
 		token, tokenErr := oauth.ReadTokenFile(oc.TokenFile)
 		oc.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id))
 		if dir, err := placeMCPDir(legacyStore); err == nil {
