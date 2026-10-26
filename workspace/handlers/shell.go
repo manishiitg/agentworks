@@ -399,6 +399,10 @@ func ExecuteShellCommand(c *gin.Context) {
 			return
 		}
 	}
+	if req.StreamRecording != nil {
+		executeBrowserStreamRecording(c, req)
+		return
+	}
 	if len(req.UploadTransfers) > 0 {
 		if req.FolderGuard == nil || !req.FolderGuard.Enabled {
 			c.JSON(http.StatusBadRequest, models.APIResponse[models.ExecuteShellResponse]{

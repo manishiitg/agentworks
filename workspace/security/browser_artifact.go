@@ -322,8 +322,10 @@ func validateBrowserArtifact(file *os.File, kind string) error {
 			return fmt.Errorf("staged screenshot is not a PNG or JPEG image")
 		}
 	case "video":
-		if len(header) < 4 || !bytes.Equal(header[:4], []byte{0x1a, 0x45, 0xdf, 0xa3}) {
-			return fmt.Errorf("staged video is not a WebM/EBML file")
+		webm := len(header) >= 4 && bytes.Equal(header[:4], []byte{0x1a, 0x45, 0xdf, 0xa3})
+		mp4 := len(header) >= 12 && string(header[4:8]) == "ftyp"
+		if !webm && !mp4 {
+			return fmt.Errorf("staged video is not a WebM or MP4 file")
 		}
 	case "download":
 		// Downloads are intentionally format-agnostic. The caller requested this

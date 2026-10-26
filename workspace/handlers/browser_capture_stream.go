@@ -8,9 +8,14 @@ import (
 	"fmt"
 	"image/jpeg"
 	"io"
+	"log"
 	"net/http"
 	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -23,16 +28,31 @@ import (
 var captureStreams = map[string]*captureStream{}
 
 type captureStream struct {
-	stop     chan struct{}
-	done     chan struct{}
-	once     sync.Once
-	cancel   context.CancelFunc
-	frames   int
-	nonBlank bool
-	err      error
+	stop          chan struct{}
+	done          chan struct{}
+	once          sync.Once
+	cancel        context.CancelFunc
+	frames        int
+	dropped       int
+	received      atomic.Uint64
+	nonBlank      bool
+	width, height int
+	maxLag        time.Duration
+	started       time.Time
+	duration      time.Duration
+	err           error
 }
 
+type captureFrame struct{ data []byte }
+
 func startCaptureStream(port int, output string) (*captureStream, error) {
+	return startCaptureEncoder(port, output, 10, true, "")
+}
+
+// Both viewer capture and extension record use this encoder. The receive side
+// keeps only the latest image; missed clock ticks skip frames rather than
+// aborting the take or building an unbounded catch-up queue (PLAT-691).
+func startCaptureEncoder(port int, output string, fps int, fitViewer bool, session string) (*captureStream, error) {
 	conn, _, err := (&websocket.Dialer{HandshakeTimeout: 5 * time.Second}).Dial(
 		fmt.Sprintf("ws://127.0.0.1:%d/", port), http.Header{"Origin": []string{"http://localhost"}})
 	if err != nil {
@@ -40,7 +60,21 @@ func startCaptureStream(port int, output string) (*captureStream, error) {
 	}
 	conn.SetReadLimit(8 << 20)
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-loglevel", "error", "-f", "image2pipe", "-c:v", "mjpeg", "-framerate", "10", "-i", "pipe:0", "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2", "-c:v", "libvpx", "-deadline", "realtime", "-b:v", "1M", "-threads", "1", output)
+	filter := "pad=ceil(iw/2)*2:ceil(ih/2)*2,setpts=PTS-STARTPTS"
+	if fitViewer {
+		filter = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS"
+	}
+	argv := []string{"-y", "-hide_banner", "-loglevel", "error", "-use_wallclock_as_timestamps", "1", "-f", "image2pipe", "-c:v", "mjpeg", "-framerate", strconv.Itoa(fps), "-i", "pipe:0", "-vf", filter, "-fps_mode", "vfr"}
+	if strings.EqualFold(filepath.Ext(output), ".mp4") {
+		// Fragmented MP4 remains readable if capture ends before a normal trailer.
+		argv = append(argv, "-c:v", "libx264", "-preset", "ultrafast", "-movflags", "+frag_keyframe+empty_moov")
+	} else {
+		argv = append(argv, "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "4", "-b:v", "1M")
+	}
+	argv = append(argv, "-pix_fmt", "yuv420p", "-threads", "1", output)
+	cmd := exec.CommandContext(ctx, "ffmpeg", argv...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		conn.Close()
@@ -54,7 +88,7 @@ func startCaptureStream(port int, output string) (*captureStream, error) {
 		return nil, err
 	}
 	stream := &captureStream{stop: make(chan struct{}), done: make(chan struct{}), cancel: cancel}
-	incoming := make(chan []byte, 1)
+	incoming := make(chan captureFrame, 1)
 	disconnected := make(chan error, 1)
 	go func() {
 		for {
@@ -70,17 +104,17 @@ func startCaptureStream(port int, output string) (*captureStream, error) {
 			if json.Unmarshal(raw, &message) != nil || message.Type != "frame" {
 				continue
 			}
-			frame, err := base64.StdEncoding.DecodeString(message.Data)
-			if err != nil || len(frame) == 0 {
+			data, err := base64.StdEncoding.DecodeString(message.Data)
+			if err != nil || len(data) == 0 {
 				continue
 			}
-			// Keep the latest frame, including updates caused by selecting a new tab.
+			stream.received.Add(1)
 			select {
 			case <-incoming:
 			default:
 			}
 			select {
-			case incoming <- frame:
+			case incoming <- captureFrame{data: data}:
 			default:
 			}
 		}
@@ -90,10 +124,12 @@ func startCaptureStream(port int, output string) (*captureStream, error) {
 		defer close(stream.done)
 		defer cancel()
 		defer conn.Close()
-		ticker := time.NewTicker(100 * time.Millisecond)
+		period := time.Second / time.Duration(fps)
+		ticker := time.NewTicker(period)
 		defer ticker.Stop()
 		var latest []byte
-		var readyOnce sync.Once
+		lastFrame := -1
+		lagReported := false
 		running := true
 		for running {
 			select {
@@ -102,28 +138,68 @@ func startCaptureStream(port int, output string) (*captureStream, error) {
 			case err := <-disconnected:
 				stream.err = fmt.Errorf("browser stream disconnected: %w", err)
 				running = false
-			case latest = <-incoming:
+			case frame := <-incoming:
+				latest = frame.data
 				if !stream.nonBlank {
 					stream.nonBlank = captureFrameHasContent(latest)
 				}
-			case <-ticker.C:
+				if stream.width == 0 {
+					if config, err := jpeg.DecodeConfig(bytes.NewReader(latest)); err == nil {
+						stream.width, stream.height = config.Width, config.Height
+					}
+				}
+			case tick := <-ticker.C:
 				if len(latest) == 0 {
 					continue
 				}
+				now := time.Now()
+				if stream.started.IsZero() {
+					stream.started = now
+				}
+				frame := int(now.Sub(stream.started) / period)
+				if skipped := frame - lastFrame - 1; skipped > 0 {
+					stream.dropped += skipped
+				}
+				lastFrame = frame
+				lag := now.Sub(tick)
+				if lag > stream.maxLag {
+					stream.maxLag = lag
+				}
+				if lag > 500*time.Millisecond && !lagReported {
+					lagReported = true
+					log.Printf("[BROWSER_RECORDING] event=encoder_lag browser_session=%q fps=%d lag_ms=%d dropped_frames=%d action=skip_frames", session, fps, lag.Milliseconds(), stream.dropped)
+				}
+				writeStart := time.Now()
 				if _, err := stdin.Write(latest); err != nil {
-					stream.err = err
+					stream.err = fmt.Errorf("video encoder input: %w", err)
 					running = false
 					continue
 				}
+				if lag := time.Since(writeStart); lag > stream.maxLag {
+					stream.maxLag = lag
+				}
 				stream.frames++
-				readyOnce.Do(func() { close(ready) })
+				if stream.frames == 1 {
+					close(ready)
+				}
 			}
 		}
+		if !stream.started.IsZero() {
+			stream.duration = time.Since(stream.started)
+			if skipped := int(stream.duration/period) + 1 - stream.frames; skipped > stream.dropped {
+				stream.dropped = skipped
+			}
+		}
+		// Closing the pipe lets FFmpeg finish whatever it encoded. A lost stream or
+		// slow capture is reported separately from the readability of that file.
 		stdin.Close()
-		// Bound encoder finalization even if ffmpeg stalls.
 		timer := time.AfterFunc(10*time.Second, cancel)
 		if err := cmd.Wait(); err != nil && stream.err == nil {
-			stream.err = fmt.Errorf("video encoder: %w", err)
+			detail := strings.TrimSpace(stderr.String())
+			if len(detail) > 2048 {
+				detail = detail[len(detail)-2048:]
+			}
+			stream.err = fmt.Errorf("video encoder: %w: %s", err, detail)
 		}
 		timer.Stop()
 	}()

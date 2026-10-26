@@ -25,6 +25,10 @@ type ExecuteShellRequest struct {
 	// The command itself stays sandboxed; only this narrowly validated transfer is
 	// performed outside the child process sandbox.
 	ArtifactTransfer *BrowserArtifactTransfer `json:"artifact_transfer,omitempty"`
+	// StreamRecording is a trusted browser-tool request, not a shell option. It
+	// consumes this session's existing live stream and stages a video for the
+	// same guarded artifact finalization as other browser output.
+	StreamRecording *BrowserStreamRecording `json:"stream_recording,omitempty"`
 
 	// UploadTransfers are copied from currently authorized workspace/host read
 	// paths into managed temporary staging before agent-browser runs.
@@ -100,4 +104,12 @@ type ExecuteShellResponse struct {
 	ExitCode        int    `json:"exit_code"`         // Process exit code
 	ExecutionTimeMs int    `json:"execution_time_ms"` // Execution time in milliseconds
 	Command         string `json:"command"`           // Full command that was executed
+}
+
+// BrowserStreamRecording never selects a browser or carries a CDP capability.
+// The agent service already selected the authorized tab; workspace resolves
+// only the live stream belonging to FolderGuard.BrowserSession.
+type BrowserStreamRecording struct {
+	Action string `json:"action"`
+	FPS    int    `json:"fps,omitempty"`
 }

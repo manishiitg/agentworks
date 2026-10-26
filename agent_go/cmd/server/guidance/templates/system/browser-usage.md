@@ -28,12 +28,12 @@ or connect to Chrome. You can also read this attached platform guide through
 and the attached `agent-browser` skill through
 `read_skill(skills=[{"name":"agent-browser"}])`. Documentation reads do not
 prove a browser is connected; keep the live-status check before page actions.
-Extension 0.4.4 supports `record start <project-workspace>/evidence/video.webm`
+Extension recording supports `record start <project-workspace>/evidence/video.webm`
 (or `.mp4`), an optional HTTP(S) URL and `--fps 1-60` (default 15), then `record stop`.
-Prefer `.mp4`: it encodes about four times faster than `.webm`. On a small server a
-`.webm` take above 15 fps can fall behind and is then lost entirely ("Recording
-encoder fell more than 500 ms behind capture"); keep the default fps unless the
-task needs smooth motion, and do a short test take before a long one.
+Prefer `.mp4` for lighter encoding. The workspace encoder keeps recording when
+busy by skipping frames instead of abandoning the take. Check the stop result:
+report its dropped-frame warning or partial-video warning honestly; a saved
+partial recording is not evidence that the whole requested take was captured.
 It records the existing selected shared tab, retaining login and page state;
 stop before selecting/creating another tab. The workspace must provide
 agent-browser 0.38.2 and ffmpeg with the matching encoder. Output uses the same

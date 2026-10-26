@@ -98,13 +98,27 @@ func TestFinalizeBrowserArtifactRejectsSymlinkEscapeFromWritePath(t *testing.T) 
 	}
 }
 
-func TestFinalizeBrowserArtifactPublishesWebM(t *testing.T) {
-	base := t.TempDir()
-	source := stagedArtifactFile(t, ".webm", append([]byte{0x1a, 0x45, 0xdf, 0xa3}, []byte("webm-data")...))
-	destination := filepath.Join(base, "evidence", "run.webm")
-
-	if err := FinalizeBrowserArtifact(source, destination, "video", base, []string{"evidence"}, nil, nil); err != nil {
-		t.Fatalf("FinalizeBrowserArtifact() error = %v", err)
+// PLAT-691: both advertised recording formats must pass the same scoped
+// finalizer. A non-video file still cannot be published as a recording.
+func TestFinalizeBrowserArtifactPublishesRecordingFormats(t *testing.T) {
+	for _, tc := range []struct {
+		name, ext string
+		data      []byte
+		allowed   bool
+	}{
+		{"webm", ".webm", append([]byte{0x1a, 0x45, 0xdf, 0xa3}, []byte("webm-data")...), true},
+		{"mp4", ".mp4", append([]byte{0, 0, 0, 24}, []byte("ftypisom0000mp41")...), true},
+		{"non_video", ".webm", []byte("this is not video data"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base := t.TempDir()
+			source := stagedArtifactFile(t, tc.ext, tc.data)
+			destination := filepath.Join(base, "evidence", "run"+tc.ext)
+			err := FinalizeBrowserArtifact(source, destination, "video", base, []string{"evidence"}, nil, nil)
+			if (err == nil) != tc.allowed {
+				t.Fatalf("format allowed=%t, error=%v", tc.allowed, err)
+			}
+		})
 	}
 }
 

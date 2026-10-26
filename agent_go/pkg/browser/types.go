@@ -1,5 +1,9 @@
 package browser
 
+import "github.com/manishiitg/coding-agent-loop/workspace/models"
+
+type StreamRecording = models.BrowserStreamRecording
+
 // FolderGuardConfig represents folder access restrictions
 type FolderGuardConfig struct {
 	Enabled           bool     `json:"enabled"`
@@ -22,6 +26,7 @@ type ShellExecuteRequest struct {
 	Timeout          int                `json:"timeout,omitempty"`
 	FolderGuard      *FolderGuardConfig `json:"folder_guard,omitempty"`
 	ArtifactTransfer *ArtifactTransfer  `json:"artifact_transfer,omitempty"`
+	StreamRecording  *StreamRecording   `json:"stream_recording,omitempty"`
 	UploadTransfers  []UploadTransfer   `json:"upload_transfers,omitempty"`
 }
 

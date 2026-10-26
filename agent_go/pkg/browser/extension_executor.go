@@ -363,7 +363,14 @@ func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.
 	cli = append(cli, values...)
 	cli = append(cli, "--cdp", endpoint, "--pin-tab", "--json")
 	recordingEpoch := client.RecordingEpoch()
-	output, err := e.Client.ExecuteCommand(ctx, cli, opts)
+	var output string
+	var err error
+	var streamEnabledByRecording bool
+	if command == "record" {
+		output, streamEnabledByRecording, err = e.executeExtensionRecording(ctx, client, opts, artifactPlan, values, endpoint, owner, targetID)
+	} else {
+		output, err = e.Client.ExecuteCommand(ctx, cli, opts)
+	}
 	// Never expose the private relay capability through CLI diagnostics.
 	output = strings.ReplaceAll(rewriteBrowserArtifactOutput(output, artifactPlan), endpoint, "[private Chrome connection]")
 	if err != nil {
@@ -380,7 +387,7 @@ func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.
 	}
 	if artifactPlan != nil {
 		if artifactPlan.StoreLeaseOnSuccess {
-			setBrowserArtifactLease(artifactPlan.LeaseKey, browserArtifactLease{Transfer: artifactPlan.Transfer, RequestedPath: artifactPlan.RequestedPath, TargetID: targetID, RecordingEpoch: recordingEpoch})
+			setBrowserArtifactLease(artifactPlan.LeaseKey, browserArtifactLease{Transfer: artifactPlan.Transfer, RequestedPath: artifactPlan.RequestedPath, TargetID: targetID, RecordingEpoch: recordingEpoch, StreamEnabledByRecording: streamEnabledByRecording})
 		}
 		if artifactPlan.DeleteLeaseOnSuccess {
 			lease, _ := getBrowserArtifactLease(artifactPlan.LeaseKey)

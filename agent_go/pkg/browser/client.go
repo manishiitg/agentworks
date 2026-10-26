@@ -70,6 +70,7 @@ type ExecuteOptions struct {
 	FolderGuard      *FolderGuardConfig
 	WorkingDirectory string // Working directory for command execution (relative to workspace root)
 	ArtifactTransfer *ArtifactTransfer
+	StreamRecording  *StreamRecording
 	UploadTransfers  []UploadTransfer
 }
 
@@ -121,6 +122,9 @@ func (c *Client) executeWorkspaceCommand(ctx context.Context, fullCommand string
 	}
 	if opts != nil && opts.ArtifactTransfer != nil {
 		reqBody.ArtifactTransfer = opts.ArtifactTransfer
+	}
+	if opts != nil {
+		reqBody.StreamRecording = opts.StreamRecording
 	}
 	if opts != nil && len(opts.UploadTransfers) > 0 {
 		reqBody.UploadTransfers = append([]UploadTransfer(nil), opts.UploadTransfers...)
@@ -198,6 +202,17 @@ func (c *Client) executeWorkspaceCommand(ctx context.Context, fullCommand string
 
 	// Return stdout (which contains JSON output from agent-browser)
 	return apiResp.Data.Stdout, nil
+}
+
+// RecordStream uses the workspace encoder without starting a second browser
+// connection or a native agent-browser recording encoder.
+func (c *Client) RecordStream(ctx context.Context, action string, fps int, opts *ExecuteOptions) (string, error) {
+	if opts == nil {
+		return "", fmt.Errorf("recording requires workspace options")
+	}
+	cloned := *opts
+	cloned.StreamRecording = &StreamRecording{Action: action, FPS: fps}
+	return c.executeWorkspaceCommand(ctx, "true", 30*time.Second, &cloned)
 }
 
 // FinalizeArtifact performs only the trusted workspace-side transfer. It is
