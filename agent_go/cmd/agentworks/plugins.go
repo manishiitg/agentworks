@@ -678,6 +678,12 @@ func providerProcessMatches(provider, command string) bool {
 }
 
 func providerProcessMatchesOnOS(provider, command, goos string) bool {
+	// Preserve Claude's rewritten process titles, including the prewarmed
+	// background worker "claude bg-spare". The old column parser read only
+	// their first word; a full install path still follows the checks below.
+	if provider == "claude" && strings.HasPrefix(strings.ToLower(command), "claude ") {
+		return true
+	}
 	name := filepath.Base(command)
 	if strings.EqualFold(name, provider) {
 		return true

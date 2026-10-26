@@ -17,6 +17,7 @@ func TestBackgroundClaudeWorkerKeepsItsOwnProcessIdentity(t *testing.T) {
 		want  bool
 	}{
 		{"claude", true},
+		{"claude bg-spare", true},
 		{"/Users/example/.local/share/claude/versions/2.1.310", true},
 		{"/Users/Example User/.local/share/claude/versions/2.1.310", true},
 		{"/Users/example/.loc", false},
