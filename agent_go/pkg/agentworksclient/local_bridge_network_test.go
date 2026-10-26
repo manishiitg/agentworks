@@ -114,7 +114,7 @@ func TestNamedSignOutKeepsOtherLoginConnections(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if _, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "shutdown", ShutdownReason: "sign_out", ConfigPath: namedLogin}); err != nil {
+	if _, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "sign_out_login", ConfigPath: namedLogin}); err != nil {
 		t.Fatal(err)
 	}
 	ping, err := CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "ping"})

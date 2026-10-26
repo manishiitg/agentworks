@@ -81,6 +81,35 @@ func TestBridgeLabelRefreshKeepsLeaseAndDoesNotBlock(t *testing.T) {
 		t.Fatal("unneeded label request")
 	default:
 	}
+	// PLAT-856-373: an extra network has no separate native socket. Its
+	// metadata must describe the existing chat adapter without project names.
+	primary := &localSession{NativeRemote: "desktop+unix:///example.sock", Attachment: AgentAttachment{Provider: "codex", SessionID: "joined-session"}}
+	joined := &localSession{Also: true, client: client, Attachment: AgentAttachment{ID: "joined-lease", AgentID: "joined-id", AgentName: "joined-worker", Provider: "codex", SessionID: "joined-session", Repository: "private-project", Branch: "private-branch"}}
+	b.sessions[localBridgeKey("codex", "joined-session")] = primary
+	b.sessions["joined"] = joined
+	for _, tc := range []struct {
+		native, hook string
+		offline      bool
+		want         string
+	}{
+		{native: "desktop+unix:///example.sock", want: "codex_desktop"},
+		{hook: "codex_hook", want: "codex_hook"},
+		{native: "desktop+unix:///example.sock", offline: true, want: "inbox"},
+	} {
+		primary.NativeRemote, primary.HookTransport, primary.Offline = tc.native, tc.hook, tc.offline
+		done = make(chan struct{})
+		go func() { b.refreshChatLabel(context.Background(), joined); close(done) }()
+		select {
+		case args := <-started:
+			if args["delivery_route"] != tc.want || args["attachment_id"] != "joined-lease" || args["repository"] != "" || args["branch"] != "" {
+				t.Fatal("joined metadata lost the chat route or exposed primary project names", args)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("joined route metadata was not updated")
+		}
+		release <- struct{}{}
+		<-done
+	}
 }
 
 func TestCrossNetworkDirectoryOmitsProjectContext(t *testing.T) {

@@ -110,6 +110,7 @@ type LocalAgentDirectory struct {
 }
 
 type LocalBridgeReply struct {
+	SignedOut     bool   `json:"signed_out,omitempty"`
 	HostKey       string `json:"host_key,omitempty"` // local connection metadata, not an authorization grant
 	Stopped       bool   `json:"stopped,omitempty"`
 	MonitorActive bool   `json:"monitor_active,omitempty"`
@@ -552,9 +553,7 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 				return
 			}
 			if in.Action == "shutdown" {
-				if in.ConfigPath != "" {
-					out = b.handle(ctx, r.Context(), in)
-				} else if !slices.Contains([]string{"stop", "update", "sign_out"}, in.ShutdownReason) {
+				if !slices.Contains([]string{"stop", "update", "sign_out"}, in.ShutdownReason) {
 					out.Error = "AgentWorks stays connected during ordinary commands. Use agentworks stop to stop messaging."
 					log.Printf("[BRIDGE] ignored shutdown without explicit command pid=%d build=%s", os.Getpid(), b.options.ClientBuild)
 				} else {
@@ -924,8 +923,8 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if b.closed {
 		return LocalBridgeReply{Error: "local bridge stopping"}
 	}
-	if in.Action == "shutdown" {
-		if in.ShutdownReason != "sign_out" || !filepath.IsAbs(in.ConfigPath) || filepath.Clean(in.ConfigPath) != in.ConfigPath {
+	if in.Action == "sign_out_login" {
+		if !filepath.IsAbs(in.ConfigPath) || filepath.Clean(in.ConfigPath) != in.ConfigPath {
 			return LocalBridgeReply{Error: "sign-out needs the exact saved login path"}
 		}
 		// A named sign-out ends only connections made from that login. Other
@@ -949,7 +948,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		log.Printf("[BRIDGE] sign_out login_connections=%d helper=running", len(keys))
-		return LocalBridgeReply{}
+		return LocalBridgeReply{SignedOut: true}
 	}
 	key := localBridgeKey(in.Provider, in.SessionID)
 	primaryKey := key
@@ -1064,7 +1063,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if in.Action == "list" {
 		out := LocalBridgeReply{}
 		for _, session := range b.sessions {
-			state := LocalAgentState{Network: session.Network, AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: b.options.HostAlive != nil && hostAliveFrom(probed, session.Attachment.Provider, session.HostKey, b.options.HostAlive), Route: localDeliveryRoute(session), LastError: session.LastError}
+			state := LocalAgentState{Network: session.Network, AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: b.options.HostAlive != nil && hostAliveFrom(probed, session.Attachment.Provider, session.HostKey, b.options.HostAlive), Route: b.deliveryRoute(session), LastError: session.LastError}
 
 			out.AgentStates = append(out.AgentStates, state)
 		}
@@ -2492,6 +2491,20 @@ func localDeliveryRoute(s *localSession) string {
 	return "" // No observed adapter: the server reports delivery unknown.
 }
 
+// Joined connections deliver through the same native chat as their primary.
+// A missing or stopped primary cannot advertise a working delivery adapter.
+// Caller holds b.mu while reading the saved chat projection.
+func (b *localBridge) deliveryRoute(s *localSession) string {
+	if s.Also && !s.Offline && s.LastError == "" {
+		primary := b.sessions[localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)]
+		if primary == nil || primary.ServerClosed {
+			return "inbox"
+		}
+		return localDeliveryRoute(primary)
+	}
+	return localDeliveryRoute(s)
+}
+
 // Metadata reads and HTTP run outside the global bridge lock. A label update
 // never attaches, moves an address, creates a receipt or restores a closed chat.
 func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
@@ -2504,7 +2517,7 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 			activity, activityAt = primary.Activity, primary.ActivityAt
 		}
 	}
-	route := localDeliveryRoute(s)
+	route := b.deliveryRoute(s)
 	active := !b.closed && !s.Offline && !s.ServerClosed && client != nil
 	b.mu.Unlock()
 	if !active || ctx.Err() != nil {

@@ -117,7 +117,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 }
 
 func newCommand(o *options) *cobra.Command {
-	root := &cobra.Command{Use: "agentworks", Short: "Control a hosted AgentWorks server or expose its tools over MCP", SilenceUsage: true, SilenceErrors: true}
+	root := &cobra.Command{Use: "agentworks", Version: cliVersion, Short: "Control a hosted AgentWorks server or expose its tools over MCP", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentPreRun = func(cmd *cobra.Command, _ []string) { o.checkGuidanceAtStart(cmd) }
 	root.SetIn(o.stdin)
 	root.SetOut(o.stdout)
@@ -487,6 +487,23 @@ func logoutCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		onlyConfig := ""
+		if name != "" {
+			onlyConfig, err = filepath.Abs(path)
+			if err != nil {
+				return err
+			}
+			root, err := agentworksclient.DefaultLocalBridgeRoot()
+			if err != nil {
+				return err
+			}
+			if _, err = agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
+				out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "sign_out_login", ConfigPath: onlyConfig})
+				if err != nil || !out.SignedOut {
+					return errors.New("Run agentworks update first, then sign out again.")
+				}
+			}
+		}
 		if cfg.Server != "" {
 			if cfg.RefreshToken != "" {
 				client, err := agentworksclient.New(cfg.Server, "")
@@ -503,29 +520,13 @@ func logoutCommand(o *options) *cobra.Command {
 				return err
 			}
 		}
-		onlyConfig := ""
-		if name != "" {
-			onlyConfig, err = filepath.Abs(path)
-			if err != nil {
-				return err
-			}
-		}
 		if err := stopLaptopConnections(o, onlyConfig); err != nil {
 			return err
 		}
-		if onlyConfig != "" {
-			root, err := agentworksclient.DefaultLocalBridgeRoot()
-			if err != nil {
+		if onlyConfig == "" {
+			if err := stopAgentBridge(cmd.Context(), "sign_out"); err != nil {
 				return err
 			}
-			if _, err = agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
-				_, err = agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "shutdown", ShutdownReason: "sign_out", ConfigPath: onlyConfig})
-				if err != nil {
-					return err
-				}
-			}
-		} else if err := stopAgentBridge(cmd.Context(), "sign_out"); err != nil {
-			return err
 		}
 		return o.output(map[string]any{"logged_out": true, "environment_token_active": o.getenv("AGENTWORKS_TOKEN") != ""})
 	}}

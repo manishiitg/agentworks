@@ -600,7 +600,13 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 }
 
 func detachAgentCommand(o *options) *cobra.Command {
-	return &cobra.Command{Use: "detach", Args: cobra.NoArgs, Short: "Stop delivery to an attached local chat", RunE: func(cmd *cobra.Command, _ []string) error {
+	var from string
+	cmd := &cobra.Command{Use: "detach", Args: cobra.NoArgs, Short: "Stop delivery to an attached local chat", RunE: func(cmd *cobra.Command, _ []string) error {
+		if from != "" {
+			if _, err := o.loginPath(from); err != nil {
+				return err
+			}
+		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
 			return err
@@ -616,7 +622,7 @@ func detachAgentCommand(o *options) *cobra.Command {
 			return err
 		}
 		if fromAgent {
-			request := agentworksclient.LocalBridgeRequest{Action: "detach_person", Provider: own.provider, SessionID: own.session, HostKey: own.host}
+			request := agentworksclient.LocalBridgeRequest{Action: "detach_person", Provider: own.provider, SessionID: own.session, HostKey: own.host, Network: from}
 			if own.provider == "codex" {
 				request.Action = "detach_own"
 			}
@@ -630,7 +636,11 @@ func detachAgentCommand(o *options) *cobra.Command {
 			if _, err = bridgeCall(cmd.Context(), root, o, request); err != nil {
 				return err
 			}
-			fmt.Fprintln(o.stdout, "Detached this chat from AgentWorks.")
+			if from != "" {
+				fmt.Fprintf(o.stdout, "This chat left network %s.\n", from)
+			} else {
+				fmt.Fprintln(o.stdout, "Detached this chat from AgentWorks.")
+			}
 			return nil
 		}
 		if err := personAgentTerminal(); err != nil {
@@ -658,7 +668,7 @@ func detachAgentCommand(o *options) *cobra.Command {
 			return errors.New("detach cancelled")
 		}
 		a := sessions[n-1]
-		request := agentworksclient.LocalBridgeRequest{Action: "detach_person", Provider: a.Provider, SessionID: a.SessionID}
+		request := agentworksclient.LocalBridgeRequest{Action: "detach_person", Provider: a.Provider, SessionID: a.SessionID, Network: from}
 		if a.Provider == "pi" {
 			request.AttachmentID = a.ID
 		}
@@ -666,9 +676,15 @@ func detachAgentCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(o.stdout, "Detached agent:%s.\n", a.AgentName)
+		if from != "" {
+			fmt.Fprintf(o.stdout, "agent:%s left network %s.\n", a.AgentName, from)
+		} else {
+			fmt.Fprintf(o.stdout, "Detached agent:%s.\n", a.AgentName)
+		}
 		return nil
 	}}
+	cmd.Flags().StringVar(&from, "from", "", "Leave only this extra network, keeping the chat's own connection")
+	return cmd
 }
 
 func installAgentPlugin(ctx context.Context, o *options, provider string) error {

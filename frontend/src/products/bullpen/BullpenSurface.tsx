@@ -71,7 +71,7 @@ function AgentDetails({ agent, onClose }: { agent: BullpenAgent; onClose: () => 
         {agent.repository && <><dt className="text-muted-foreground">Repository</dt><dd className="break-all">{agent.repository}{agent.branch ? `@${agent.branch}` : ''}</dd></>}
         {agent.activity && <><dt className="text-muted-foreground">Activity</dt><dd>{agent.activity}{agent.activity_at && <> · <time dateTime={agent.activity_at}>{new Date(agent.activity_at).toLocaleString()}</time></>}</dd></>}
       </dl>
-      {agent.update_needed && <p className="rounded-lg bg-muted p-3">An AgentWorks update is available on this agent’s computer. Run <code>agentworks update</code> there.</p>}
+      {agent.update_needed && <p className="rounded-lg bg-muted p-3">The AgentWorks helper running on this agent’s computer needs an update. Run <code>agentworks update</code> there to update it and reconnect the chats.</p>}
       {agent.provider === 'cursor' && <p className="text-muted-foreground">Cursor receives messages when its chat takes a step. Messages wait while the chat is idle.</p>}
       <AgentAddress target={agent.target} />
     </div>

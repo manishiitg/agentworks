@@ -990,6 +990,7 @@ func TestNamedLoginDoesNotConnectOtherNativeChats(t *testing.T) {
 	}
 	var attaches atomic.Int32
 	var scopedSignOut atomic.Bool
+	var oldHelper atomic.Bool
 	bridge := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in agentworksclient.LocalBridgeRequest
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -1003,12 +1004,13 @@ func TestNamedLoginDoesNotConnectOtherNativeChats(t *testing.T) {
 				t.Error("automatic discovery changed the native chat or joined another network")
 			}
 		}
-		if in.Action == "shutdown" {
+		if in.Action == "sign_out_login" || in.Action == "shutdown" {
 			path, _ := agentworksclient.LoginPath("partner")
-			if in.ShutdownReason != "sign_out" || in.ConfigPath != path {
+			if in.Action != "sign_out_login" || in.ConfigPath != path {
 				t.Error("signing out a named login stopped the entire helper")
 			}
-			scopedSignOut.Store(true)
+			out.SignedOut = !oldHelper.Load()
+			scopedSignOut.Store(out.SignedOut)
 		}
 		_ = json.NewEncoder(w).Encode(out)
 	})}
@@ -1031,6 +1033,15 @@ func TestNamedLoginDoesNotConnectOtherNativeChats(t *testing.T) {
 	if attaches.Load() != 1 {
 		t.Fatal("the normal default login no longer connects a verified native chat")
 	}
+	oldHelper.Store(true)
+	if code := run(t.Context(), []string{"logout", "--name", "partner"}, strings.NewReader(""), &stdout, &stderr, func(string) string { return "" }); code == 0 || !strings.Contains(stderr.String(), "agentworks update") {
+		t.Fatal("an old helper must not be treated as a successful named sign-out")
+	}
+	path, _ := agentworksclient.LoginPath("partner")
+	if cfg, err := agentworksclient.LoadConfig(path); err != nil || cfg.Token == "" {
+		t.Fatal("unconfirmed named sign-out cleared the saved login")
+	}
+	oldHelper.Store(false)
 	if code := run(t.Context(), []string{"logout", "--name", "partner"}, strings.NewReader(""), &stdout, &stderr, func(string) string { return "" }); code != 0 || !scopedSignOut.Load() {
 		t.Fatalf("named logout did not stop only its own connections: %s", &stderr)
 	}

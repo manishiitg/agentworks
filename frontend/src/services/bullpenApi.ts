@@ -21,7 +21,7 @@ export interface BullpenAgent {
   delivery_mode?: string
   last_seen_at?: string
   last_delivered_at?: string
-  update_needed?: boolean // its AgentWorks CLI is older than the one this server offers
+  update_needed?: boolean // the running helper's reported build differs from the one this server offers
   owner?: string
   shared?: boolean
   published?: boolean // your own agent is published to the network
