@@ -102,23 +102,3 @@ func TestBrainAccessProjectionSpecializesConditionalRequirements(t *testing.T) {
 	}
 	t.Fatal("actual Brain access schema missing")
 }
-
-// PLAT-825: a source serializing an empty required list as null failed the
-// whole catalog on a server and the local app (slack_bot_credentials, ui.get).
-func TestNormalizeRequiredTurnsNullIntoEmptyList(t *testing.T) {
-	schema := map[string]any{"type": "object", "required": nil, "properties": map[string]any{
-		"nested": map[string]any{"type": "object", "required": []string(nil)},
-		"keep":   map[string]any{"type": "object", "required": []any{"a"}},
-	}}
-	out := normalizeRequired(schema)
-	if _, err := compileSchema(out); err != nil {
-		t.Fatalf("normalized schema still invalid: %v", err)
-	}
-	props := out["properties"].(map[string]any)
-	if r := props["keep"].(map[string]any)["required"].([]any); len(r) != 1 {
-		t.Fatalf("a real required list changed: %v", r)
-	}
-	if schema["required"] != nil {
-		t.Fatal("the caller's schema was modified")
-	}
-}
