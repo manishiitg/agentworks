@@ -15,8 +15,9 @@ try {
   browser = await chromium.launch({ headless: true })
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
   const errors = []
-  page.on('pageerror', error => errors.push(error.message))
-  await page.route('**/api/**', route => route.fulfill({ json: { sessions: [], projects: [], workflows: [], items: [], presets: [], schedules: [], total: 0 } }))
+  page.on('pageerror', error => { errors.push(error.message); console.error(error.stack) })
+  // Match backend endpoints only, never source modules such as /src/api/*.ts.
+  await page.route(/^https?:\/\/[^/]+\/api\//, route => route.fulfill({ json: { sessions: [], projects: [], workflows: [], items: [], presets: [], schedules: [], total: 0 } }))
   await page.addInitScript(() => {
     const viewport = new EventTarget()
     Object.assign(viewport, { height: 700, offsetTop: 0, scale: 1 })
