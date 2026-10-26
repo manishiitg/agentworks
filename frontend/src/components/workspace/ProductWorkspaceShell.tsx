@@ -3,7 +3,7 @@ import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { resolveWorkSurfaceLayout } from '../../products/work/workSurfaceLayoutResolver'
 import { MobileWorkspaceNavigationContext, type MobileWorkspacePane } from './MobileWorkspaceNavigation'
 import { WorkspaceTopToolbar } from './WorkspaceTopToolbar'
-import { WorkspacePanelVisibilityContext } from './WorkspacePanelToggle'
+import { WorkspacePanelFrame, WorkspacePanelReopen, WorkspacePanelVisibilityContext } from './WorkspacePanelToggle'
 
 /** Complete split workspace used by Crew, Code, Vault and Brain. Product surfaces
  * supply content; pane geometry, tabs row and reopen controls have one owner. */
@@ -50,9 +50,10 @@ export function ProductWorkspaceShell({
       <WorkspaceTopToolbar className={layout.toolbarClassName} navigationActive={navigationActive}>
         {tabs}{layout.showPanel || toolbarWhenPanelClosed ? toolbar : null}
       </WorkspaceTopToolbar>
+      <WorkspacePanelReopen />
       {(layout.showChat || retainChat) && <main {...chatProps} hidden={!layout.showChat} style={{ ...chatProps?.style, ...(!layout.showChat ? { display: 'none' } : {}) }} className={chatClassName}>{chat}</main>}
       {layout.showDivider && divider}
-      {(layout.showPanel || retainWorkspace) && <aside {...workspaceProps} hidden={!layout.showPanel} style={{ ...workspaceProps?.style, ...(!layout.showPanel ? { display: 'none' } : {}) }} className={workspaceClassName}>{workspace}</aside>}
+      {(layout.showPanel || retainWorkspace) && <aside {...workspaceProps} hidden={!layout.showPanel} style={{ ...workspaceProps?.style, ...(!layout.showPanel ? { display: 'none' } : {}) }} className={workspaceClassName}><WorkspacePanelFrame>{workspace}</WorkspacePanelFrame></aside>}
     </div>
   </div></MobileWorkspaceNavigationContext.Provider></WorkspacePanelVisibilityContext.Provider>
 }

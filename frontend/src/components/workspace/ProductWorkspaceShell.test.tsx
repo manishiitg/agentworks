@@ -42,10 +42,13 @@ describe('shared product workspace visibility', () => {
     expect(host.querySelector('main')?.className).toMatch(/^flex /)
     expect(host.querySelector('aside')?.classList.contains('hidden')).toBe(false)
     const close = host.querySelector<HTMLButtonElement>('[aria-label="Close workspace panel"]')!
+    expect(close.closest('aside')).not.toBeNull()
+    expect(close.closest('[data-terminal-focus-chrome="toolbar"]')).toBeNull()
     expect(close.querySelector('.lucide-chevrons-right')).not.toBeNull()
     await act(async () => close.click())
     expect(host.querySelector('aside')?.hidden).toBe(true)
     const open = host.querySelector<HTMLButtonElement>('[aria-label="Open workspace panel"]')!
+    expect(open.closest('[data-terminal-focus-chrome="toolbar"]')).toBeNull()
     expect(open.getAttribute('aria-expanded')).toBe('false')
     expect(open.querySelector('.lucide-chevrons-left')).not.toBeNull()
     await act(async () => open.click())
