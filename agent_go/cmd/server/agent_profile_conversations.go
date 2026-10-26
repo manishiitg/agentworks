@@ -370,6 +370,10 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusNotFound, "project not found")
 		return
 	}
+	if strings.EqualFold(profile.ID, crewProfileID) && isAgentWorksCrew(r.Context(), binding.WorkspacePath) {
+		writeAgentProfileError(w, http.StatusConflict, errAgentWorksDeleteRefused.Error())
+		return
+	}
 	store := defaultProductConversationRegistryStore()
 	current, hasCurrent, previous, err := store.history(r.Context(), actingFor, profile, binding)
 	if err != nil {
