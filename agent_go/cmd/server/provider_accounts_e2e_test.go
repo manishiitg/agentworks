@@ -884,3 +884,79 @@ func TestProviderAccountsUnlistedIdentityIsNotAdmin(t *testing.T) {
 		t.Fatal("owner lost the account")
 	}
 }
+
+// PLAT-872-19: two saved CLI logins for one person must retain independent
+// homes through setup and A -> B -> A selection; other people cannot use them.
+// The login artifacts are fixtures. Real Codex authentication is certified in
+// the opt-in CLI suite, not by these HTTP/account-boundary assertions.
+func TestProviderAccountsMultipleCodexCLILogins(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	t.Setenv("CODEX_API_KEY", "ambient-key-must-not-win")
+	t.Setenv("OPENAI_API_KEY", "ambient-openai-must-not-win")
+	a := env.addAccount(t, "alice", map[string]interface{}{"provider": "codex-cli", "display_name": "Personal", "auth_method": "cli_login"})
+	b := env.addAccount(t, "alice", map[string]interface{}{"provider": "codex-cli", "display_name": "Work", "auth_method": "cli_login"})
+	if a.ID == b.ID || a.AuthMethod != "cli_login" || b.AuthMethod != "cli_login" {
+		t.Fatal("CLI logins lost independent identity")
+	}
+	homes := map[string]string{}
+	for _, account := range []ProviderConnection{a, b} {
+		keys, err := env.api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: "alice"}, "codex-cli", account.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		home := keys.RuntimeEnvironment["CODEX_HOME"]
+		homes[account.ID] = home
+		if err := os.WriteFile(filepath.Join(home, "auth.json"), []byte(`{"fixture_login":"`+account.ID+`"}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if homes[a.ID] == homes[b.ID] {
+		t.Fatal("two logins share CODEX_HOME")
+	}
+	// Reload the encrypted registry through a fresh API to catch in-memory-only selection.
+	api := &StreamingAPI{}
+	for _, account := range []ProviderConnection{a, b, a} {
+		keys, err := api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: "alice"}, "codex-cli", account.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if keys.CodexCLI == nil || *keys.CodexCLI != "" {
+			t.Fatal("CLI login did not suppress ambient API keys")
+		}
+		if keys.RuntimeEnvironment["CODEX_HOME"] != homes[account.ID] {
+			t.Fatal("account selection changed login home")
+		}
+		auth, err := os.ReadFile(filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "auth.json"))
+		if err != nil || !strings.Contains(string(auth), account.ID) {
+			t.Fatal("selected another login's artifact")
+		}
+		config, err := os.ReadFile(filepath.Join(homes[account.ID], "config.toml"))
+		if err != nil || !strings.Contains(string(config), `cli_auth_credentials_store = "file"`) {
+			t.Fatal("CLI login can use a shared OS keychain")
+		}
+		request := startProviderSetupRequest{Provider: "codex-cli", ConnectionID: account.ID, Action: "authenticate"}
+		record, err := api.providerSetupAccount(context.Background(), request, "alice", false)
+		if err != nil || record.ID != account.ID {
+			t.Fatal("owner cannot sign into the selected login")
+		}
+		setupKeys, err := providerConnectionRuntimeKeys(*record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		childEnv := strings.Join(providerConnectionSetupEnvironment("test", setupKeys), "\n")
+		if !strings.Contains(childEnv, "CODEX_HOME="+homes[account.ID]) || strings.Contains(childEnv, "ambient-key-must-not-win") || strings.Contains(childEnv, "ambient-openai-must-not-win") {
+			t.Fatal("login setup used ambient identity")
+		}
+		if _, err := api.providerSetupAccount(context.Background(), request, "bob", false); err == nil {
+			t.Fatal("another person can sign into a private login")
+		}
+		if _, err := api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: "bob"}, "codex-cli", account.ID); err == nil {
+			t.Fatal("another person can run a private login")
+		}
+	}
+	for _, account := range env.list(t, "bob", "") {
+		if account.ID == a.ID || account.ID == b.ID {
+			t.Fatal("private login exposed to another person")
+		}
+	}
+}

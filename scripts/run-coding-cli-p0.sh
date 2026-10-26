@@ -152,7 +152,9 @@ done
 p0_test_regex() {
   local provider="$1"
   local package_path="$2"
-  go -C "$MULTI_LLM_DIR" run ./cmd/coding-agent-p0-tests -provider "$provider" -package "$package_path"
+  local priority="P0"
+  [[ "$provider" != "codex-cli" ]] || priority="all"
+  go -C "$MULTI_LLM_DIR" run ./cmd/coding-agent-p0-tests -provider "$provider" -package "$package_path" -priority "$priority"
 }
 
 run_required_go_tests() {
@@ -204,7 +206,7 @@ run_required_go_tests go -C "$MULTI_LLM_DIR" test -json . ./llmtypes ./pkg/adapt
 run_required_go_tests go -C "$MCPAGENT_DIR" test -json ./agent \
   -run '^TestProviderAccountContinuationCannotCrossAccounts$' -count=1
 run_required_go_tests go -C "$ROOT_DIR/agent_go" test -json ./cmd/server \
-  -run '^TestProviderConnection' -count=1
+  -run '^(TestProviderConnection|TestProviderAccountsMultipleCodexCLILogins)' -count=1
 
 IFS=',' read -r -a provider_list <<< "$PROVIDERS"
 for raw_provider in "${provider_list[@]}"; do
