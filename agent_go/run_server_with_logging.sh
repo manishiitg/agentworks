@@ -1721,8 +1721,12 @@ rotate_log_file() {
             # Keep the existing inode: the Go server has stdout/stderr open to
             # this file. BSD sed -i replaces the file, leaving the live process
             # writing to an unlinked inode while the visible log goes stale.
+            # The trimmed lines go to a per-day file (<log>.YYYY-MM-DD) instead of being thrown
+            # away, so a run from earlier in the day can still be proven from its log.
             local rotate_tmp="${file_path}.rotate.$$"
-            if tail -n "$LOG_ROTATE_LINES" "$file_path" > "$rotate_tmp"; then
+            local drop=$((lines - LOG_ROTATE_LINES))
+            head -n "$drop" "$file_path" >> "${file_path}.$(date +%Y-%m-%d)"
+            if tail -n +"$((drop + 1))" "$file_path" > "$rotate_tmp"; then
                 cat "$rotate_tmp" > "$file_path"
             fi
             rm -f "$rotate_tmp"
@@ -1730,9 +1734,27 @@ rotate_log_file() {
     fi
 }
 
+# Per-day log files: earlier days are compressed, and kept for LOG_KEEP_DAYS days.
+LOG_KEEP_DAYS=3
+compress_old_day_logs() {
+    local today
+    today="$(date +%Y-%m-%d)"
+    for day_log in "$LOG_DIR"/*.log.20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]; do
+        [ -f "$day_log" ] || continue
+        case "$day_log" in *".$today") continue ;; esac
+        gzip -f "$day_log"
+    done
+    find "$LOG_DIR" -maxdepth 1 -name '*.log.20*.gz' -mtime +"$LOG_KEEP_DAYS" -delete 2>/dev/null
+}
+
 log_rotate_daemon() {
+    local ticks=0
     while true; do
         sleep 30
+        ticks=$((ticks + 1))
+        if [ $((ticks % 120)) -eq 1 ]; then
+            compress_old_day_logs
+        fi
         rotate_log_file "$LOG_PATH"
         if [ "$WITH_WORKSPACE" = true ] && [ -n "$WORKSPACE_LOG_PATH" ]; then
             rotate_log_file "$WORKSPACE_LOG_PATH"
@@ -1916,7 +1938,7 @@ cleanup_on_exit() {
 
 trap cleanup_on_exit EXIT
 trap "echo ''; echo '🛑 Shutting down (Ctrl+C)...'; exit 130" INT TERM
-echo "🔄 Log rotation started (keeping last $LOG_ROTATE_LINES lines, PID: $LOG_ROTATE_PID)"
+echo "🔄 Log rotation started (last $LOG_ROTATE_LINES lines live, older lines in per-day files kept $LOG_KEEP_DAYS days, PID: $LOG_ROTATE_PID)"
 
 wait_for_workspace_health() {
     local health_url="${WORKSPACE_API_URL%/}/health"
