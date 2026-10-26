@@ -5,6 +5,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestAuthMiddlewareRequiresJWTInSingleUserMode(t *testing.T) {
@@ -47,6 +50,48 @@ func TestAuthMiddlewareAcceptsJWTInSingleUserMode(t *testing.T) {
 
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusNoContent)
+	}
+}
+
+// A sign-in used every day was cut off exactly 7 days after login
+// (PLAT-825). A plain session older than a day is renewed; a scoped token is not.
+func TestAuthMiddlewareRenewsAnInUseSignIn(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	sign := func(c *UserClaims) string {
+		s, err := jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString(GetAuthSecret())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	claims := func(issued time.Time, scope string) *UserClaims {
+		return &UserClaims{UserID: "default", Username: "user", Scope: scope,
+			RegisteredClaims: jwt.RegisteredClaims{IssuedAt: jwt.NewNumericDate(issued), ExpiresAt: jwt.NewNumericDate(issued.Add(sessionLifetime))}}
+	}
+	handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	for _, tc := range []struct {
+		name, token string
+		renew       bool
+	}{
+		{"six days old", sign(claims(time.Now().Add(-6*24*time.Hour), "")), true},
+		{"fresh", sign(claims(time.Now().Add(-time.Hour), "")), false},
+		{"scoped", sign(claims(time.Now().Add(-6*24*time.Hour), "report-preview")), false},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/api/terminals", nil)
+		req.Header.Set("Authorization", "Bearer "+tc.token)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		renewed := rr.Header().Get(renewedTokenHeader)
+		if (renewed != "") != tc.renew {
+			t.Fatalf("%s: renewed=%t (status %d), want %t", tc.name, renewed != "", rr.Code, tc.renew)
+		}
+		if renewed != "" {
+			got := &UserClaims{}
+			if _, err := jwt.ParseWithClaims(renewed, got, func(*jwt.Token) (interface{}, error) { return GetAuthSecret(), nil }); err != nil || got.UserID != "default" || time.Until(got.ExpiresAt.Time) < sessionLifetime-time.Minute {
+				t.Fatalf("%s: renewed token not a fresh 7-day sign-in for the same user: %v", tc.name, err)
+			}
+		}
 	}
 }
 

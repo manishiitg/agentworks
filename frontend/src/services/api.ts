@@ -578,6 +578,11 @@ function redirectOnGatewayAuthenticationRequired(error: unknown): boolean {
 api.interceptors.response.use(
   (response) => {
     recordResponseTiming(response.config as TimedRequestConfig, response.status, response.data)
+    // The server renews a sign-in that is in use; keep the one it sends.
+    const renewed = response.headers?.['x-renewed-token']
+    if (typeof renewed === 'string' && renewed && response.config.headers?.Authorization === `Bearer ${getAuthToken()}`) {
+      setAuthToken(renewed)
+    }
     return response
   },
   async (error) => {

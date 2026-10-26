@@ -219,6 +219,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 		// Query authentication remains for WebSocket upgrades and signed links.
 		authHeader := r.Header.Get("Authorization")
+		headerCredential := authHeader != ""
 		cookieScope := ""
 		if authHeader == "" {
 			if qToken := r.URL.Query().Get("token"); qToken != "" {
@@ -332,10 +333,31 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			claims.AccessToken = &connection
 		}
 
+		// A sign-in renews while it is used: a plain browser session older than a
+		// day gets a fresh one, so only a week without use signs a person out.
+		if headerCredential && plainSessionClaims(claims) && claims.IssuedAt != nil && time.Since(claims.IssuedAt.Time) > sessionRenewAfter {
+			if renewed, err := GenerateJWTWithProvider(claims.UserID, claims.Username, claims.Email, claims.Provider); err == nil {
+				w.Header().Set(renewedTokenHeader, renewed)
+			}
+		}
+
 		// Token is valid, add claims to context
-		ctx := productpolicy.WithSelection(context.WithValue(r.Context(), UserContextKey, claims), builderProductSelection(claims))
+		ctx :=productpolicy.WithSelection(context.WithValue(r.Context(), UserContextKey, claims), builderProductSelection(claims))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+const (
+	sessionLifetime    = 7 * 24 * time.Hour
+	sessionRenewAfter  = 24 * time.Hour
+	renewedTokenHeader = "X-Renewed-Token"
+)
+
+// plainSessionClaims is a person's own sign-in: no scope, preview or bot
+// route narrows it, so a renewal grants nothing the sign-in did not.
+func plainSessionClaims(c *UserClaims) bool {
+	return c.Scope == "" && c.ScopeWorkspace == "" && c.ScopeFile == "" && c.PreviewConnectionID == "" &&
+		c.BotRouteGrant == "" && c.BotRouteWorkflowID == "" && c.BotRouteProfileID == "" && c.BotRouteConversationKey == "" && c.BotRouteWorkspacePath == ""
 }
 
 // headerOnlyEventStream covers the browser's chat and live-notice SSE routes.
@@ -438,7 +460,7 @@ func GenerateJWTWithProvider(userID, username, email, provider string) (string, 
 		Email:    email,
 		Provider: provider,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)), // 7 day expiry
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(sessionLifetime)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Issuer:    "mcp-agent-builder",
