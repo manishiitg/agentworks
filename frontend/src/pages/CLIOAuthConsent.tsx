@@ -55,10 +55,11 @@ export function CLIOAuthConsent() {
             <li className="flex items-start gap-2.5"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span>Files and AI accounts stay private.</span></li>
           </>}
           {connectsComputer && <>
-            <li className="flex items-start gap-2.5"><MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span>Connect this computer to AgentBridge.</span></li>
-            <li className="flex items-start gap-2.5"><FolderLock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span>No folder is shared automatically.</span></li>
+            <li className="flex items-start gap-2.5"><MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span>Run commands you allow.</span></li>
+            <li className="flex items-start gap-2.5"><FolderLock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span>Read or edit folders you share.</span></li>
           </>}
         </ul>
+        {connectsComputer && <p className="mt-2 text-xs text-muted-foreground">No folder is shared automatically.</p>}
         {additionalScopes.length > 0 && <section aria-label="Additional permissions" className="mt-4 text-sm">
           <h2 className="font-medium">Also requested</h2>
           <ul className="mt-1 space-y-1 break-words text-xs text-muted-foreground">{consent.scopes.filter(scope => scope !== 'devices:connect').map(scope => <li key={scope}>{scope}</li>)}</ul>
