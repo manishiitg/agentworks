@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { useServiceChatNavigation } from './serviceChatNavigation'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // Persisted stores need a Storage before they are created at import time.
@@ -79,11 +80,11 @@ describe('global AgentWorks and Crew navigation', () => {
     expect(useProductSurfaceStore.getState().productSurface).toBe('knowledgebase')
     expect(openCanonicalActivitySession).not.toHaveBeenCalled()
   })
-  it('recognizes public and physical Crew sessions without admitting other products', () => {
+  it('recognizes current Crew sessions without admitting other products', () => {
     expect(isWorkProductSession(session({ session_id: 'work:project:project-1' }))).toBe(true)
-    expect(isWorkProductSession(session({ workspace_path: '_users/user-1/Chats/Work/projects/demo' }))).toBe(true)
+    expect(isWorkProductSession(session({ workspace_path: 'Crew/demo-123' }))).toBe(true)
     expect(isWorkProductSession(session({ session_id: 'product-trigger-1', workspace_path: 'Crew/news-monitor' }))).toBe(true)
-    expect(isWorkProductSession(session({ workspace_path: 'Chats/Video Studio/projects/demo' }))).toBe(false)
+    expect(isWorkProductSession(session({ workspace_path: 'Chats/Example Product/projects/demo' }))).toBe(false)
   })
 
   it('resolves stable Crew project identity from tabs and sessions', () => {

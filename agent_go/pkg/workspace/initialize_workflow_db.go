@@ -26,7 +26,7 @@ type InitializeWorkflowDBResult struct {
 
 // InitializeWorkflowDB invokes the token-protected generic managed-database
 // initializer. Product runtimes call this directly with a fixed, compiled-in
-// migration list once per workspace (see e.g. internal/videoproduct). It is
+// migration list once per workspace. It is
 // also the backing call for the narrow apply_workflow_db_migration agent
 // tool (virtual-tools/workflow_db_tools.go), which restricts callers to a
 // workflow's own pre-authored db/migrations/*.sql file and a read-write

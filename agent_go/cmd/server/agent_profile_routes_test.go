@@ -97,7 +97,7 @@ func TestWorkResumeKeyIsDerivedFromProjectAndSavedChat(t *testing.T) {
 	if got := agentProfileResumeConversationKey("work", input); got != "existing:key" {
 		t.Fatalf("existing key was replaced: %q", got)
 	}
-	if got := agentProfileResumeConversationKey("video-studio", AgentProfileConversationRequest{ResourceID: "launch", SessionID: "saved-chat"}); got != "launch" {
+	if got := agentProfileResumeConversationKey("example-product", AgentProfileConversationRequest{ResourceID: "launch", SessionID: "saved-chat"}); got != "launch" {
 		t.Fatalf("non-Work project key=%q", got)
 	}
 }

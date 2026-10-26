@@ -1,4 +1,0 @@
-interface:
-  display_name: "HyperFrames Quality"
-  short_description: "Review HyperFrames composition and render quality."
-  default_prompt: "Review this HyperFrames video for composition and render quality."

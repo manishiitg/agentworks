@@ -37,10 +37,10 @@ describe('product chat SQLite restore', () => {
     const { useChatStore, waitForChatStoreHydration } = await import('../stores/useChatStore')
     const { restoreSession } = await import('./sessionRestore')
     await waitForChatStoreHydration()
-    const sessionId = 'video-studio:project:launch'
-    const workspacePath = 'Chats/Video Studio/projects/launch'
+    const sessionId = 'example-product:project:launch'
+    const workspacePath = 'Chats/Example Product/projects/launch'
     const tabId = await useChatStore.getState().createChatTab('Launch', {
-      mode: 'multi-agent', agentProfileId: 'video-studio', agentProfileWorkspace: workspacePath,
+      mode: 'multi-agent', agentProfileId: 'example-product', agentProfileWorkspace: workspacePath,
     }, sessionId)
 
     await expect(restoreSession(sessionId, { source: 'product-open', workspacePath })).resolves.toBe(tabId)

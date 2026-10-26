@@ -115,7 +115,7 @@ func costOverviewRoot(workflowID string) (id, kind, name, ownerID string) {
 	}
 
 	// Product project usage can be recorded against its physical workspace,
-	// e.g. _users/<owner>/Chats/Video Studio/projects/<project>. Do not fold
+	// e.g. _users/<owner>/Chats/Example/projects/<project>. Do not fold
 	// these into the admin-only "other" bucket: their owner should see them.
 	if ref := workspaceref.MustParse(path); ref.HasOwner() {
 		if logical := strings.Split(ref.Logical(), "/"); len(logical) >= 4 && logical[0] == "Chats" && logical[1] != "" &&

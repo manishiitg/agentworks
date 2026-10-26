@@ -101,7 +101,6 @@ export function sidebarScope(
     knowledgebase: 'knowledgebase',
     caplayer: 'mcp-gateway',
     'mcp-gateway': 'mcp-gateway',
-    'video-studio': 'video-studio',
   }
   if (aliases[profile]) return { surface: aliases[profile] }
   const singleton = normalizedWorkspace(path).match(/^Chats\/(CapLayer|Knowledgebase)(?:\/|$)/i)

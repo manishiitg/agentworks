@@ -200,7 +200,7 @@ profile:
       network: allowed
       read_only: []
       # No account-wide chat_history/: it indexes every product's chats
-      # (Video Studio, workflows, other Crews), so a Crew could read and
+      # (workflows, other Crews), so a Crew could read and
       # quote conversations that are not its own. A Crew's own history lives
       # in its project (builder/conversation/), which it can already read;
       # the server persists chat logs itself, not through the shell.

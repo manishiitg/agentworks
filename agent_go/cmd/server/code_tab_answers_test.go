@@ -24,7 +24,7 @@ func TestTabFinalAnswerIsRelayedOnceAndOnlyWhenNoReplyWasSent(t *testing.T) {
 	if tabFinalAnswerText(agentConversation{Messages: []agentMessage{relayed}}, relayed, tab, asker, "thanks") != "" {
 		t.Fatal("a relayed answer bounced back to the tab")
 	}
-	if tabFinalAnswerText(conversation, asked, agentMessageEndpoint{Profile: "video-studio", Session: "s-x"}, tab, "x") != "" {
+	if tabFinalAnswerText(conversation, asked, agentMessageEndpoint{Profile: "example-product", Session: "s-x"}, tab, "x") != "" {
 		t.Fatal("an answer was relayed to a tab of another product")
 	}
 	if tabFinalAnswerText(conversation, asked, asker, tab, "  ") != "" {

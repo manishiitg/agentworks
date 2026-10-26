@@ -4,7 +4,7 @@ import { isLegacyAppPath, LEGACY_APP_ROOTS, legacyAppRoot, parseProductRoute, pr
 
 describe('shareable product routes', () => {
   it('round trips every surface and the resource/view contract', () => {
-    const paths = [...Object.values(PRODUCT_PATHS), '/workflows', '/agentbridge/connect', '/relays/example', '/relays/example/dashboard', '/workflows/example/dashboard', '/crew/projects/example?view=memory', '/code/projects/example/dashboard', '/video-studio/projects/example?view=production', '/brain?view=access&folder=Guides%2FGetting+started']
+    const paths = [...Object.values(PRODUCT_PATHS), '/workflows', '/agentbridge/connect', '/relays/example', '/relays/example/dashboard', '/workflows/example/dashboard', '/crew/projects/example?view=memory', '/brain?view=access&folder=Guides%2FGetting+started']
     for (const path of paths) {
       const route = parseProductRoute(path)
       expect(route, path).toBeTruthy()
@@ -16,17 +16,17 @@ describe('shareable product routes', () => {
     expect(productReturnPath('/mcp-gateway')).toBe('/vault')
     expect(productReturnPath('/agentworks')).toBe('/goals')
     expect(productReturnPath('/agentworks/example')).toBe('/workflows/example')
-    expect(productReturnPath('/code/projects/example?view=files')).toBe('/code/projects/example')
+    expect(productReturnPath('/crew/projects/example?view=files')).toBe('/crew/projects/example?view=files')
     expect(parseProductRoute('/')).toBeNull()
     expect(isLegacyAppPath('/settings')).toBe(true)
     expect(isLegacyAppPath('/chat/old-bookmark')).toBe(true)
-    expect(isLegacyAppPath('/code/projects/example/extra')).toBe(false)
+    expect(isLegacyAppPath('/crew/projects/example/extra')).toBe(false)
     expect(isLegacyAppPath('/%252fexample.com/code')).toBe(false)
   })
 
   it('keeps every real top-level path resolving', () => {
     // Product roots and resources parse as routes.
-    for (const path of [...Object.values(PRODUCT_PATHS), '/workflows', '/agentbridge/connect', '/goals', '/crew', '/code', '/brain', '/vault', '/relays', '/llm-gateway']) {
+    for (const path of [...Object.values(PRODUCT_PATHS), '/workflows', '/agentbridge/connect', '/goals', '/crew', '/brain', '/vault', '/relays', '/llm-gateway']) {
       expect(parseProductRoute(path), path).toBeTruthy()
     }
     // Old app pages keep the home fallback through the boundary.

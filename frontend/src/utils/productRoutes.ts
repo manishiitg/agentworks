@@ -4,7 +4,7 @@ export type ProductRoute = { surface: ProductSurface; id?: string; view?: string
 export const PRODUCT_PATHS: Record<ProductSurface, string> = {
   agentworks: '/goals', relays: '/relays', work: '/crew',
   knowledgebase: '/brain', 'mcp-gateway': '/vault', 'llm-gateway': '/llm-gateway', bullpen: '/agentbridge',
-  'video-studio': '/video-studio', sparkquill: '/sparkquill',
+  sparkquill: '/sparkquill',
 }
 // The product was called Bullpen; its old address still opens it (and is shown as /agentbridge).
 export const PRODUCT_ROUTE_ALIASES: Record<string, ProductSurface> = { bullpen: 'bullpen', agentworks: 'agentworks', work: 'work', knowledgebase: 'knowledgebase', 'mcp-gateway': 'mcp-gateway' }
@@ -52,7 +52,7 @@ export function parseProductRoute(value: string): ProductRoute | null | undefine
   if (parts.length > 1) {
     if (surface === 'bullpen' && parts.length === 2 && parts[1] === 'connect') view = 'setup'
     else {
-      const project = surface === 'work' || surface === 'video-studio'
+      const project = surface === 'work'
       if (!overview && parts[0] !== 'agentworks' && surface !== 'relays' && !project) return undefined
       const offset = project ? 2 : 1
       if (project && parts[1] !== 'projects') return undefined
@@ -71,7 +71,7 @@ export function productRoutePath(route: ProductRoute): string {
   let path = route.surface === 'agentworks' && (route.id || route.overview) ? '/workflows' : PRODUCT_PATHS[route.surface]
   const params = new URLSearchParams()
   if (route.id) {
-    if (['work', 'video-studio'].includes(route.surface)) path += '/projects'
+    if (route.surface === 'work') path += '/projects'
     path += '/' + encodeURIComponent(route.id)
   }
   if (route.surface === 'bullpen' && route.view === 'setup') path += '/connect'
@@ -111,5 +111,5 @@ export function isLegacyAppPath(value: string): boolean {
 
 export function routeView<T extends string>(surface: ProductSurface, id: string | null | undefined, normalize: (value: unknown) => T | null, defaultView?: T): T | null {
   const route = currentProductRoute()
-  return route?.surface === surface && (!['work', 'video-studio'].includes(surface) || (route.id ?? 'main') === (id ?? 'main')) ? normalize(route.view) ?? defaultView ?? null : null
+  return route?.surface === surface && (surface !== 'work' || (route.id ?? 'main') === (id ?? 'main')) ? normalize(route.view) ?? defaultView ?? null : null
 }

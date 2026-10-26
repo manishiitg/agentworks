@@ -45,7 +45,7 @@ func TestRegisteredRelayProductFollowsWorkflowDeployment(t *testing.T) {
 	for _, tc := range []struct {
 		products string
 		want     bool
-	}{{"agentworks", true}, {"relays", true}, {"work,code", false}, {"video-studio", false}} {
+	}{{"agentworks", true}, {"relays", true}, {"work,code", false}, {"example-product", false}} {
 		t.Setenv("AGENT_PRODUCTS", tc.products)
 		found := false
 		for _, id := range registeredProductIDs() {
@@ -83,9 +83,9 @@ func TestAccessForRecordProductSemantics(t *testing.T) {
 		canCreate  bool
 		canEdit    bool
 	}{
-		{"admin ignores list", UserRecord{Admin: true, Products: []string{"video-studio"}}, false, 0, true, true},
+		{"admin ignores list", UserRecord{Admin: true, Products: []string{"example-product"}}, false, 0, true, true},
 		{"member no list = all", UserRecord{CanCreate: true}, false, 0, true, true},
-		{"member with list", UserRecord{CanCreate: true, Products: []string{"video-studio"}}, true, 1, true, true},
+		{"member with list", UserRecord{CanCreate: true, Products: []string{"example-product"}}, true, 1, true, true},
 		{"contributor with product", UserRecord{CanEdit: &canEdit, Products: []string{"agentworks"}}, true, 1, false, true},
 		{"read-only no list = none", UserRecord{}, true, 0, false, false},
 		{"read-only with list", UserRecord{Products: []string{"agentworks"}}, true, 1, false, false},
@@ -102,7 +102,7 @@ func TestDirectoryDrivesWorkflowTierAndProducts(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[
 	  {"id":"a1","username":"alice","admin":true,"can_create":true,"products":[]},
-	  {"id":"b2","username":"bob","admin":false,"can_create":true,"products":["video-studio"]},
+	  {"id":"b2","username":"bob","admin":false,"can_create":true,"products":["example-product"]},
 	  {"id":"c3","username":"carol","admin":false,"can_create":false,"products":[]}
 	]}`)
 	if got := workflowAccessForIdentity("a1", "alice", ""); got != WorkflowAccessOwner {
@@ -115,11 +115,11 @@ func TestDirectoryDrivesWorkflowTierAndProducts(t *testing.T) {
 		t.Fatalf("read-only tier (by username) = %s", got)
 	}
 	bob := &UserClaims{UserID: "b2", Username: "bob"}
-	if !userAllowedProduct(bob, "video-studio") || userAllowedProduct(bob, "finance") {
+	if !userAllowedProduct(bob, "example-product") || userAllowedProduct(bob, "finance") {
 		t.Fatal("bob's product list not applied")
 	}
 	carol := &UserClaims{UserID: "c3", Username: "carol"}
-	if userAllowedProduct(carol, "video-studio") {
+	if userAllowedProduct(carol, "example-product") {
 		t.Fatal("read-only user with no products must not open a product")
 	}
 	fields := productAccessResponseFields(carol)
@@ -271,7 +271,7 @@ func TestAdminCannotCreateUsersFromTheApp(t *testing.T) {
 func TestAdminUserCRUDAndGuards(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	daveID := userIDForUsername("dave")
-	withMemoryUserDirectory(t, `{"users":[{"id":"a1","username":"alice","admin":true,"can_create":true,"products":[]},{"id":"`+daveID+`","username":"dave","can_edit":true,"products":["video-studio"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"a1","username":"alice","admin":true,"can_create":true,"products":[]},{"id":"`+daveID+`","username":"dave","can_edit":true,"products":["example-product"]}]}`)
 	api := &StreamingAPI{}
 	alice := &UserClaims{UserID: "a1", Username: "alice"}
 	created := userAdminView{ID: daveID}

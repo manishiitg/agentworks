@@ -83,20 +83,20 @@ func TestProductsAvailableToAllAugmentReadOnlyAccounts(t *testing.T) {
 			t.Fatalf("%s frontend products = %v, want Work", userID, products)
 		}
 	}
-	if userAllowedProduct(&UserClaims{UserID: "new-reader", Username: "new-reader"}, "video-studio") {
+	if userAllowedProduct(&UserClaims{UserID: "new-reader", Username: "new-reader"}, "example-product") {
 		t.Fatal("deployment-wide Work access must not unlock unrelated products")
 	}
 }
 
 func TestUserAllowedProductRestrictsExplicitEntry(t *testing.T) {
 	withUserProductAccessFile(t, `{
-		"reader": { "products": ["video-studio"] },
-		"owner": { "products": ["video-studio", "agentworks"], "workflow_ids": ["demo-workflow"] }
+		"reader": { "products": ["example-product"] },
+		"owner": { "products": ["example-product", "agentworks"], "workflow_ids": ["demo-workflow"] }
 	}`)
 
 	reader := &UserClaims{UserID: "u-reader", Username: "reader"}
-	if !userAllowedProduct(reader, "video-studio") {
-		t.Fatal("reader should be allowed video-studio")
+	if !userAllowedProduct(reader, "example-product") {
+		t.Fatal("reader should be allowed example-product")
 	}
 	if userAllowedProduct(reader, "agentworks") {
 		t.Fatal("reader should not be allowed agentworks")
@@ -120,19 +120,19 @@ func TestUserAllowedProductRestrictsExplicitEntry(t *testing.T) {
 }
 
 func TestUserAllowedProductMatchesByUsernameCaseInsensitive(t *testing.T) {
-	withUserProductAccessFile(t, `{ "Reader": { "products": ["video-studio"] } }`)
+	withUserProductAccessFile(t, `{ "Reader": { "products": ["example-product"] } }`)
 
 	claims := &UserClaims{UserID: "u-reader", Username: "reader"}
 	if userAllowedProduct(claims, "agentworks") {
 		t.Fatal("normalized username match should still restrict")
 	}
-	if !userAllowedProduct(claims, "video-studio") {
+	if !userAllowedProduct(claims, "example-product") {
 		t.Fatal("normalized username match should still allow the granted product")
 	}
 }
 
 func TestFilterWorkflowManifestsForUserNarrowsList(t *testing.T) {
-	withUserProductAccessFile(t, `{ "owner": { "products": ["video-studio", "agentworks"], "workflow_ids": ["demo-workflow"] } }`)
+	withUserProductAccessFile(t, `{ "owner": { "products": ["example-product", "agentworks"], "workflow_ids": ["demo-workflow"] } }`)
 
 	discovered := []DiscoveredWorkflow{
 		{WorkspacePath: "Workflow/demo-workflow", Manifest: &WorkflowManifest{ID: "demo-workflow"}},
@@ -197,7 +197,7 @@ func TestSharedServicesAreAvailableToEveryAccount(t *testing.T) {
 				t.Fatalf("route identity must not gain shared service %s", product)
 			}
 		}
-		if userAllowedProduct(claims, "work") || userAllowedProduct(claims, "video-studio") {
+		if userAllowedProduct(claims, "work") || userAllowedProduct(claims, "example-product") {
 			t.Fatal("shared-service access must not widen other products")
 		}
 	}

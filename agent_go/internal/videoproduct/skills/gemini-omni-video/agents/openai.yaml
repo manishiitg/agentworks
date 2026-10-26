@@ -1,4 +1,0 @@
-interface:
-  display_name: "Gemini Omni Video"
-  short_description: "Plan Gemini Omni generation and video edits"
-  default_prompt: "Use $gemini-omni-video to choose and construct the best Gemini Omni request for this scene."

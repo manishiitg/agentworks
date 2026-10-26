@@ -64,7 +64,7 @@ func TestValidateSkillNameAcceptsRealSkillNames(t *testing.T) {
 // join silently produces a path outside skills/, which is what the workspace
 // read would then have been asked for.
 func TestUnvalidatedSkillNameWouldEscapeTheSkillsRoot(t *testing.T) {
-	const base = "Chats/Video Studio/projects/launch/skills"
+	const base = "Chats/Example Product/projects/launch/skills"
 	escaped := path.Join(base, "../../../../etc", "SKILL.md")
 	if strings.HasPrefix(escaped, base) {
 		t.Fatalf("expected path.Join to collapse .. out of the skills root, got %q", escaped)

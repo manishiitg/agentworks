@@ -26,7 +26,7 @@ import { productRoutePath } from '../utils/productRoutes'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
-const allProducts = ['work', 'agentworks', 'relays', 'knowledgebase', 'mcp-gateway', 'bullpen', 'llm-gateway', 'video-studio']
+const allProducts = ['work', 'agentworks', 'relays', 'knowledgebase', 'mcp-gateway', 'bullpen', 'llm-gateway', 'sparkquill']
 function configure(allowed = allProducts) {
   window.__APP_RUNTIME_CONFIG__ = { appName: 'Acme Agents', gatewayUrl: 'http://localhost:18136', enabledProductSurfaces: allProducts } as never
   useAuthStore.setState({ user: { id: 'person', allowed_products: allowed, can_create: false } as never, isMultiUserMode: true })
@@ -81,12 +81,12 @@ describe('WelcomeHome', () => {
   })
 
   it('shows only permitted products and remembers dismissal', async () => {
-    configure(['work', 'video-studio'])
+    configure(['work', 'sparkquill'])
     const host = await renderWelcome()
     expect(host.textContent).toContain('Welcome to Acme Agents')
     expect(host.querySelectorAll('[data-welcome-product]')).toHaveLength(1)
     expect(host.textContent).not.toContain('Goals')
-    expect(host.textContent).not.toContain('Video Studio')
+    expect(host.textContent).not.toContain('SparkQuill')
     await act(async () => button(host, 'Open Crew').click())
     expect(openProductWorkspace).toHaveBeenCalledWith('work')
     expect(window.localStorage.getItem(WELCOME_HOME_DISMISSED_KEY)).toBe('true')

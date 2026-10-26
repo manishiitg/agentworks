@@ -12,7 +12,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/sparkquillproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/videoproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
@@ -24,7 +23,6 @@ func productWorkingTips() (map[string][]agentprofiles.WorkingTip, error) {
 		"agentworks":    agentworksproduct.AgentWorksManifest,
 		"relays":        relayproduct.Manifest,
 		"work":          workproduct.WorkManifest,
-		"video-studio":  videoproduct.VideoStudioManifest,
 		"sparkquill":    sparkquillproduct.SparkQuillManifest,
 		"knowledgebase": knowledgebaseproduct.Manifest,
 		"mcp-gateway":   func() (agentprofiles.ProductManifest, error) { return caplayerproduct.Manifest(), nil },

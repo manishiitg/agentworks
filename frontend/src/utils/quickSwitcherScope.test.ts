@@ -15,7 +15,7 @@ describe('AgentWorks quick switcher scope', () => {
     expect(isAgentWorksSwitcherTab(tab('ordinary'))).toBe(true)
     expect(isAgentWorksSwitcherTab(tab('explicit', 'agentworks'))).toBe(true)
     expect(isAgentWorksSwitcherTab({ sessionId: 'workflow-run', metadata: { mode: 'workflow' } })).toBe(true)
-    for (const profile of ['video-studio', 'sparkquill', 'sparkquill-child', 'future-product']) {
+    for (const profile of ['example-product', 'sparkquill', 'sparkquill-child', 'future-product']) {
       expect(isAgentWorksSwitcherTab(tab('new', profile, null))).toBe(false)
     }
   })
@@ -23,11 +23,11 @@ describe('AgentWorks quick switcher scope', () => {
   it('removes history video without allowing its active session to reappear', () => {
     const tabs = {
       ordinary: tab('ordinary'),
-      historyVideo: tab('history video', 'video-studio', 'legacy-opaque-id'),
-      newVideo: tab('new-video', 'video-studio', 'video-studio:project:new-video'),
+      historyVideo: tab('history video', 'example-product', 'legacy-opaque-id'),
+      newVideo: tab('new-video', 'example-product', 'example-product:project:new-video'),
     }
     const result = scopeQuickSwitcherToAgentWorks(tabs, [
-      session('ordinary'), session('legacy-opaque-id'), session('video-studio:project:new-video'), session('schedule-workflow-run'),
+      session('ordinary'), session('legacy-opaque-id'), session('example-product:project:new-video'), session('schedule-workflow-run'),
     ])
     expect(Object.keys(result.tabs)).toEqual(['ordinary'])
     expect(result.sessions.map(s => s.session_id)).toEqual(['ordinary', 'schedule-workflow-run'])
@@ -36,7 +36,7 @@ describe('AgentWorks quick switcher scope', () => {
 
   it('recognizes product sessions without local tabs or with stale generic metadata', () => {
     const result = scopeQuickSwitcherToAgentWorks({
-      stale: tab('stale', 'agentworks', 'video-studio:project:old'),
+      stale: tab('stale', 'agentworks', 'example-product:project:old'),
       registry: tab('registry', undefined, 'product-uuid'),
     }, [session('product-orphan'), session('future-product:project:one'), session('normal-orphan')])
     expect(Object.keys(result.tabs)).toEqual([])

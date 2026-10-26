@@ -36,7 +36,7 @@ func TestChannelRouterResolvesOnlyForItsProfile(t *testing.T) {
 	if _, ok, err := registry.ResolveChannelRoute(context.Background(), "sparkquill", "user-1", "broken"); !ok || err == nil {
 		t.Fatalf("token the product cannot serve = (ok=%v, err=%v), want ok with an error", ok, err)
 	}
-	if _, ok, err := registry.ResolveChannelRoute(context.Background(), "video-studio", "user-1", "child"); ok || err != nil {
+	if _, ok, err := registry.ResolveChannelRoute(context.Background(), "example-product", "user-1", "child"); ok || err != nil {
 		t.Fatalf("another profile = (ok=%v, err=%v), want no router", ok, err)
 	}
 

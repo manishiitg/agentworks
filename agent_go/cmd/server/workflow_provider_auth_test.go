@@ -152,7 +152,7 @@ func TestWorkflowProviderAPIKeysPreservesDeploymentClaudeTokenWithoutOverride(t 
 	api := &StreamingAPI{chatStore: store}
 	globalToken := "deployment-oauth-token"
 
-	keys, err := api.workflowProviderAPIKeys(context.Background(), "alice", "Chats/Video Studio/project", &llm.ProviderAPIKeys{
+	keys, err := api.workflowProviderAPIKeys(context.Background(), "alice", "Chats/Example Product/project", &llm.ProviderAPIKeys{
 		ClaudeCodeOAuthToken: &globalToken,
 	})
 	if err != nil {
@@ -322,7 +322,7 @@ func TestWorkflowPiCLIGeminiKeyIsUserAndWorkflowScoped(t *testing.T) {
 // Pi CLI routes by sub-provider, so a workflow-scoped Gemini key must land in
 // PiProviderKeys["google"] specifically and must not disturb any other
 // sub-provider key (zai, minimax, ...) already present in the shared base --
-// those have nothing to do with Video Studio's Gemini-pinned Pi CLI option.
+// those have nothing to do with Example Product's Gemini-pinned Pi CLI option.
 func TestWorkflowPiCLIGeminiKeyOverridesSharedKeyOnlyWhenPresent(t *testing.T) {
 	store, err := chathistory.NewFilesystemStore(t.TempDir())
 	if err != nil {
@@ -379,7 +379,7 @@ func TestResolveEffectiveAPIKeysSelfComputesBaseWhenNil(t *testing.T) {
 	}
 	api := &StreamingAPI{chatStore: store}
 	const userID = "alice"
-	const workspacePath = "Chats/Video Studio/projects/launch"
+	const workspacePath = "Chats/Example Product/projects/launch"
 	const scopedKey = "crsr_scoped_key"
 	encrypted := encryptProviderCredentialForTest(t, scopedKey, userID)
 	if err := store.UpsertWorkflowProviderCredential(context.Background(), userID, workspacePath, cursorCLIProviderID, encrypted); err != nil {
@@ -402,7 +402,7 @@ func TestResolveEffectiveAPIKeysLayersOntoProvidedBase(t *testing.T) {
 	}
 	api := &StreamingAPI{chatStore: store}
 	const userID = "alice"
-	const workspacePath = "Chats/Video Studio/projects/launch"
+	const workspacePath = "Chats/Example Product/projects/launch"
 	const scopedKey = "crsr_scoped_key"
 	encrypted := encryptProviderCredentialForTest(t, scopedKey, userID)
 	if err := store.UpsertWorkflowProviderCredential(context.Background(), userID, workspacePath, cursorCLIProviderID, encrypted); err != nil {
@@ -431,7 +431,7 @@ func TestResolveEffectiveAPIKeysLayersOntoProvidedBase(t *testing.T) {
 // resolveEffectiveAPIKeys, not a direct call to the lower-level
 // workflowProviderAPIKeys. Before this, five call sites independently
 // reimplemented the same two-line pattern; two of them gated it incorrectly,
-// and Video Studio's Cursor turns silently ran under the server's shared
+// and Example Product's Cursor turns silently ran under the server's shared
 // login for two commits before either gate was caught and fixed. A future
 // edit that adds a sixth direct call — instead of routing through the shared
 // function — reintroduces exactly that risk, and this test catches it at

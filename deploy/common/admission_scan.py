@@ -28,7 +28,7 @@ from pathlib import Path
 USERS = "_users"
 SHARED_OWNER = "_shared"
 MANAGED_GLOBALS_OWNER = "_system_global_secrets"
-PROJECT_ROOTS = ["Chats/Work/projects", "Chats/Code/projects", "Chats/Relays/projects", "Chats/Goals/projects", "Chats/Video Studio/projects"]
+PROJECT_ROOTS = ["Chats/Work/projects", "Chats/Code/projects", "Chats/Relays/projects", "Chats/Goals/projects"]
 FIELDS = ("selected_secrets", "selected_global_secret_names")
 GATEWAY_WORKSPACE = "w1"  # mcp-gateway/cmd/server/main.go
 

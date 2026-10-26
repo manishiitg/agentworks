@@ -19,7 +19,7 @@ import { useModeStore } from "./stores/useModeStore";
 import { useProductSurfaceStore } from "./stores/useProductSurfaceStore";
 import { useAuthStore } from "./stores/useAuthStore";
 import { deploymentDefaultProductSurface, enabledProductSurfaces, isEnabledProductSurface, intersectAllowedProductSurfaces } from "./products/productSurfaceConfig";
-import { loadVideoStudioSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface, loadKnowledgebaseSurface, loadBullpenSurface } from './products/productSurfacePreload';
+import { loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface, loadKnowledgebaseSurface, loadBullpenSurface } from './products/productSurfacePreload';
 import { useLLMStore } from "./stores/useLLMStore";
 import { useWorkflowTabRestore } from "./hooks/useWorkflowTabRestore";
 import { useLLMDefaults } from "./hooks/useLLMDefaults";
@@ -46,7 +46,6 @@ const WorkflowsOverviewPage = lazy(() => import('./components/ActivityPage'))
 const DashboardsPage = lazy(() => import('./components/DashboardsPage').then(module => ({ default: module.DashboardsPage })))
 const SchedulesPage = lazy(() => import('./components/SchedulesPage'))
 const AdminPages = lazy(() => import('./components/AdminPages'))
-const VideoStudioSurface = lazy(() => loadVideoStudioSurface().then(module => ({ default: module.VideoStudioSurface })))
 const SparkQuillSurface = lazy(() => loadSparkQuillSurface().then(module => ({ default: module.SparkQuillSurface })))
 const WorkSurface = lazy(() => loadWorkSurface().then(module => ({ default: module.WorkSurface })))
 const GatewaySurface = lazy(() => loadGatewaySurface().then(module => ({ default: module.GatewaySurface })))
@@ -738,8 +737,6 @@ function AppWorkspace() {
           </div>
         ) : productSurface === 'bullpen' ? (
           <Suspense fallback={<ProductSurfaceFallback label="AgentBridge" />}><BullpenSurface /></Suspense>
-        ) : productSurface === 'video-studio' ? (
-          <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>
         ) : productSurface === 'sparkquill' ? (
           <Suspense fallback={<ProductSurfaceFallback label="SparkQuill" />}><SparkQuillSurface /></Suspense>
         ) : productSurface === 'knowledgebase' ? (

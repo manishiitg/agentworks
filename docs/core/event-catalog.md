@@ -941,7 +941,6 @@ Producers:
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/base_orchestrator_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/base_orchestrator_agent_factory.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/events/data.go`
-- `mcp-agent-builder-go/agent_go/internal/videoproduct/profile_definition.go`
 - `mcp-agent-builder-go/agent_go/internal/agentsession/agentsession.go`
 - `mcp-agent-builder-go/agent_go/internal/agentworksproduct/profile_definition.go`
 - `mcp-agent-builder-go/agent_go/internal/dominionproduct/profile_definition.go`
@@ -1047,7 +1046,6 @@ Producers:
 - `multi-llm-provider-go/pkg/adapters/picli/picli_interactive_adapter.go`
 - `multi-llm-provider-go/pkg/adapters/bedrock/bedrock_adapter.go`
 Consumers:
-- `mcp-agent-builder-go/frontend/src/products/video-studio/projectAgentUsage.ts`
 - `mcp-agent-builder-go/frontend/src/utils/cleanConversation.ts`
 - `mcp-agent-builder-go/frontend/src/components/ChatArea.tsx`
 - `mcp-agent-builder-go/frontend/src/components/events/EventDispatcher.tsx`

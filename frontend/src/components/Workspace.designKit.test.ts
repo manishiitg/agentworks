@@ -13,7 +13,6 @@ describe('Files design kit', () => {
     const mounts = [
       'src/components/workflow/canvas/WorkspaceViewHost.tsx',
       'src/products/work/WorkWorkspacePane.tsx',
-      'src/products/video-studio/VideoStudioSurface.tsx',
     ]
     for (const file of mounts) {
       const source = readFileSync(file, 'utf8')

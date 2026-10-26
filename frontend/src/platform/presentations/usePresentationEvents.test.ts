@@ -25,7 +25,7 @@ describe('parsePresentationUpdatedEvent', () => {
       presentation_id: 'presentation-abc',
       kind: 'media.video',
       title: 'Launch video',
-      workspace_path: 'Chats/Video Studio/projects/demo',
+      workspace_path: 'Chats/Example Product/projects/demo',
 		payload: { path: 'outputs/final.mp4' },
 		activity: { label: 'Video ready', destination: 'Videos panel', detail: 'Ready to review' },
     })
@@ -33,7 +33,7 @@ describe('parsePresentationUpdatedEvent', () => {
       presentationId: 'presentation-abc',
       kind: 'media.video',
       title: 'Launch video',
-      workspacePath: 'Chats/Video Studio/projects/demo',
+      workspacePath: 'Chats/Example Product/projects/demo',
 		payload: { path: 'outputs/final.mp4' },
 		activity: { label: 'Video ready', destination: 'Videos panel', detail: 'Ready to review' },
     })

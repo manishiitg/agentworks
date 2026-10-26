@@ -45,8 +45,8 @@ func validPresentation() Presentation {
 		Kind:          "media.video",
 		IdentityKey:   "outputs/final.mp4",
 		Title:         "Launch video",
-		WorkspacePath: "Chats/Video Studio/projects/demo",
-		SessionID:     "video-studio:project:demo",
+		WorkspacePath: "Chats/Example Product/projects/demo",
+		SessionID:     "example-product:project:demo",
 		Activity:      &orchestratorevents.PresentationActivity{Label: "Video ready", Destination: "Videos panel", Detail: "Ready to review"},
 		Payload:       map[string]interface{}{"path": "outputs/final.mp4", "verdict": "pass"},
 		Resources:     []map[string]string{{"kind": "workspace.file", "path": "outputs/final.mp4", "role": "primary"}},
@@ -94,8 +94,8 @@ func TestUpsertIsStableForTheSameIdentity(t *testing.T) {
 
 func TestWorkspaceDatabasePathStripsCanonicalUserScope(t *testing.T) {
 	tests := map[string]string{
-		"_users/default/Chats/Video Studio/projects/demo": "Chats/Video Studio/projects/demo/db/db.sqlite",
-		"Chats/Video Studio/projects/demo":                "Chats/Video Studio/projects/demo/db/db.sqlite",
+		"_users/default/Chats/Example Product/projects/demo": "Chats/Example Product/projects/demo/db/db.sqlite",
+		"Chats/Example Product/projects/demo":                "Chats/Example Product/projects/demo/db/db.sqlite",
 	}
 	for input, want := range tests {
 		if got := workspaceDatabasePath(input); got != want {
@@ -132,7 +132,7 @@ func TestUpsertRequiresEveryField(t *testing.T) {
 func TestDeleteRemovesOnlyTheRequestedPresentation(t *testing.T) {
 	server, lastParams := capturingWorkspaceServer(t)
 	defer server.Close()
-	if err := Delete(context.Background(), workspace.NewClient(server.URL), "Chats/Video Studio/projects/demo", "presentation-video", "media.video"); err != nil {
+	if err := Delete(context.Background(), workspace.NewClient(server.URL), "Chats/Example Product/projects/demo", "presentation-video", "media.video"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if len(*lastParams) != 2 || (*lastParams)[0] != "presentation-video" || (*lastParams)[1] != "media.video" {

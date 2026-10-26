@@ -40,7 +40,7 @@ func TestLockedLLMWithoutPublishedListKeepsKnownModels(t *testing.T) {
 	}
 }
 
-// A product profile's own binding (Video Studio pins claude-code) is operator
+// A product profile's own binding (Example Product pins claude-code) is operator
 // configuration and wins under the lock; a user's or a workflow's choice that
 // is not published falls back to the server default.
 func TestResolveLockedLLMHonoursProfileBindingsAndFallsBackOtherwise(t *testing.T) {

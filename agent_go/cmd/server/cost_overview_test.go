@@ -101,9 +101,9 @@ func TestBuildCostOverviewRecognizesOwnerScopedProductProjects(t *testing.T) {
 	t.Cleanup(func() { _ = ledger.Close() })
 	ts := time.Date(2026, 9, 20, 10, 0, 0, 0, time.UTC)
 	for _, entry := range []costledger.Entry{
-		{EventID: "alice-1", Timestamp: ts, WorkflowID: "_users/alice/Chats/Video Studio/projects/launch", UserID: "alice", Scope: "workflow_execution", LLMCallCount: 1, BillingBasis: "subscription_shadow", TotalCostUSD: 2},
-		{EventID: "alice-2", Timestamp: ts, WorkflowID: "_users/alice/Chats/Video Studio/projects/launch/runs/one", UserID: "alice", Scope: "chat", LLMCallCount: 1, BillingBasis: "subscription_shadow", TotalCostUSD: 1},
-		{EventID: "bob-1", Timestamp: ts, WorkflowID: "_users/bob/Chats/Video Studio/projects/launch", UserID: "bob", Scope: "chat", LLMCallCount: 1, BillingBasis: "subscription_shadow", TotalCostUSD: 4},
+		{EventID: "alice-1", Timestamp: ts, WorkflowID: "_users/alice/Chats/Example Product/projects/launch", UserID: "alice", Scope: "workflow_execution", LLMCallCount: 1, BillingBasis: "subscription_shadow", TotalCostUSD: 2},
+		{EventID: "alice-2", Timestamp: ts, WorkflowID: "_users/alice/Chats/Example Product/projects/launch/runs/one", UserID: "alice", Scope: "chat", LLMCallCount: 1, BillingBasis: "subscription_shadow", TotalCostUSD: 1},
+		{EventID: "bob-1", Timestamp: ts, WorkflowID: "_users/bob/Chats/Example Product/projects/launch", UserID: "bob", Scope: "chat", LLMCallCount: 1, BillingBasis: "subscription_shadow", TotalCostUSD: 4},
 	} {
 		if err := ledger.Append(entry); err != nil {
 			t.Fatal(err)
@@ -117,14 +117,14 @@ func TestBuildCostOverviewRecognizesOwnerScopedProductProjects(t *testing.T) {
 		return kind == costOverviewKindProduct && costOverviewProductVisible(id, "alice", false)
 	}, false)
 	if len(alice.Items) != 1 || alice.Items[0].Kind != costOverviewKindProduct ||
-		alice.Items[0].ID != "_users/alice/Chats/Video Studio/projects/launch" ||
+		alice.Items[0].ID != "_users/alice/Chats/Example Product/projects/launch" ||
 		alice.Items[0].OwnerID != "alice" || alice.Items[0].OwnerEmail != "alice@example.com" || alice.Items[0].TotalCostUSD != 3 || alice.Total.TotalCostUSD != 3 {
 		t.Fatalf("Alice's visible product project = %+v, total %+v", alice.Items, alice.Total)
 	}
-	if costOverviewProductVisible("_users/bob/Chats/Video Studio/projects/launch", "alice", false) {
+	if costOverviewProductVisible("_users/bob/Chats/Example Product/projects/launch", "alice", false) {
 		t.Fatal("another user's product project was visible")
 	}
-	if !costOverviewProductVisible("_users/bob/Chats/Video Studio/projects/launch", "alice", true) {
+	if !costOverviewProductVisible("_users/bob/Chats/Example Product/projects/launch", "alice", true) {
 		t.Fatal("admin could not see another user's product project")
 	}
 	if costOverviewProductVisible("Workflow/launch", "alice", true) {

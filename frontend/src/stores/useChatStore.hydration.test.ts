@@ -144,22 +144,22 @@ describe('useChatStore hydration bootstrap', () => {
 
     const firstProjectTabId = await chatStore.useChatStore.getState().createChatTab('Launch film', {
       mode: 'multi-agent',
-      agentProfileId: 'video-studio',
+      agentProfileId: 'example-product',
       agentProfileVersion: 1,
-      agentProfileWorkspace: 'Chats/Video Studio/projects/launch-film',
-    }, 'video-studio:project:launch-film')
+      agentProfileWorkspace: 'Chats/Example Product/projects/launch-film',
+    }, 'example-product:project:launch-film')
     const reusedProjectTabId = await chatStore.useChatStore.getState().createChatTab('Launch film', {
       mode: 'multi-agent',
-      agentProfileId: 'video-studio',
+      agentProfileId: 'example-product',
       agentProfileVersion: 1,
-      agentProfileWorkspace: 'Chats/Video Studio/projects/launch-film',
+      agentProfileWorkspace: 'Chats/Example Product/projects/launch-film',
     })
     const secondProjectTabId = await chatStore.useChatStore.getState().createChatTab('Customer story', {
       mode: 'multi-agent',
-      agentProfileId: 'video-studio',
+      agentProfileId: 'example-product',
       agentProfileVersion: 1,
-      agentProfileWorkspace: 'Chats/Video Studio/projects/customer-story',
-    }, 'video-studio:project:customer-story')
+      agentProfileWorkspace: 'Chats/Example Product/projects/customer-story',
+    }, 'example-product:project:customer-story')
 
     expect(reusedProjectTabId).toBe(firstProjectTabId)
     expect(secondProjectTabId).not.toBe(firstProjectTabId)
@@ -233,9 +233,9 @@ describe('useChatStore hydration bootstrap', () => {
 
     const originalTabId = await chatStore.useChatStore.getState().createChatTab('Launch film', {
       mode: 'multi-agent',
-      agentProfileId: 'video-studio',
+      agentProfileId: 'example-product',
       agentProfileVersion: 1,
-      agentProfileWorkspace: 'Chats/Video Studio/projects/old-location',
+      agentProfileWorkspace: 'Chats/Example Product/projects/old-location',
       agentProfileProjectId: 'launch-2026',
       agentProfileConversationKey: 'launch-2026',
       agentProfileConversationId: 'conversation-launch',
@@ -243,9 +243,9 @@ describe('useChatStore hydration bootstrap', () => {
     }, 'canonical-session')
     const resumedTabId = await chatStore.useChatStore.getState().createChatTab('Launch film', {
       mode: 'multi-agent',
-      agentProfileId: 'video-studio',
+      agentProfileId: 'example-product',
       agentProfileVersion: 2,
-      agentProfileWorkspace: 'Chats/Video Studio/projects/new-location',
+      agentProfileWorkspace: 'Chats/Example Product/projects/new-location',
       agentProfileProjectId: 'launch-2026',
       agentProfileConversationKey: 'launch-2026',
       agentProfileConversationId: 'conversation-launch',
@@ -255,7 +255,7 @@ describe('useChatStore hydration bootstrap', () => {
     expect(resumedTabId).toBe(originalTabId)
     expect(chatStore.useChatStore.getState().getTab(originalTabId)?.metadata).toMatchObject({
       agentProfileVersion: 2,
-      agentProfileWorkspace: 'Chats/Video Studio/projects/new-location',
+      agentProfileWorkspace: 'Chats/Example Product/projects/new-location',
       agentProfileConversationKey: 'launch-2026',
     })
     expect(Object.keys(chatStore.useChatStore.getState().chatTabs)).toHaveLength(1)

@@ -11,12 +11,12 @@ import (
 )
 
 func TestProductScheduleJobIDRoundTrip(t *testing.T) {
-	id := productScheduleJobID("video-studio", "daily-checkin")
-	if id != "product:video-studio:daily-checkin" {
+	id := productScheduleJobID("example-product", "daily-checkin")
+	if id != "product:example-product:daily-checkin" {
 		t.Fatalf("id = %q", id)
 	}
 	profile, sched, ok := parseProductScheduleJobID(id)
-	if !ok || profile != "video-studio" || sched != "daily-checkin" {
+	if !ok || profile != "example-product" || sched != "daily-checkin" {
 		t.Fatalf("parse = %q %q %v", profile, sched, ok)
 	}
 	for _, bad := range []string{"daily-checkin", "product:", "product:x", "product:x:"} {
@@ -84,9 +84,9 @@ func TestUsersWithProductFollowsDirectoryAccess(t *testing.T) {
 		{"id":"reader1","username":"r","can_create":false,"products":[]},
 		{"id":"off1","username":"o","admin":true,"disabled":true}
 	]}`)
-	got := usersWithProduct("video-studio")
+	got := usersWithProduct("example-product")
 	if strings.Join(got, ",") != "admin1,member1" {
-		t.Fatalf("video-studio users = %v", got)
+		t.Fatalf("example-product users = %v", got)
 	}
 	if got := usersWithProduct("finance"); strings.Join(got, ",") != "admin1,member1,scoped1" {
 		t.Fatalf("finance users = %v", got)

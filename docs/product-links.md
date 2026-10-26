@@ -15,7 +15,6 @@ the recipient still needs their own sign-in and access.
 | Vault | `/vault` |
 | LLM Gateway (when installed) | `/llm-gateway` |
 | AgentBridge / connection instructions | `/agentbridge`, `/agentbridge/connect` (`/bullpen` still works) |
-| Video Studio / one project | `/video-studio`, `/video-studio/projects/<id>` |
 | SparkQuill | `/sparkquill` |
 
 Workflow, Relay, Crew and Code dashboard links append `/dashboard` to the item

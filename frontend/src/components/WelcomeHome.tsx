@@ -19,7 +19,7 @@ import api from '../services/api'
 
 export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
 export const OPEN_WELCOME_HOME_EVENT = 'open-welcome-home'
-const PERSONAL_PRODUCTS = new Set<string>(['video-studio', 'sparkquill'])
+const PERSONAL_PRODUCTS = new Set<string>(['sparkquill'])
 const WORK_PRODUCT_ORDER: ProductSurface[] = ['work', 'agentworks', 'relays']
 const SERVICE_ORDER: ProductSurface[] = ['knowledgebase', 'mcp-gateway', 'bullpen']
 const STARTING_POINTS: Partial<Record<ProductSurface, { heading: string; example: string; createLabel: string; openLabel: string }>> = {

@@ -28,7 +28,7 @@ func TestWorkflowUIRegistrationFollowsCallerNotSharedBuilderPhase(t *testing.T) 
 		{name: "Autopilot child", session: "child", req: QueryRequest{ParentSessionID: "chat-1", SessionKind: "pulse_reviewer"}},
 		{name: "restored child", session: "child", active: &ActiveSessionInfo{ParentSessionID: "chat-1"}},
 		{name: "bot", session: "bot", req: QueryRequest{BotPlatform: "slack"}},
-		{name: "product", session: "product", req: QueryRequest{AgentProfileID: "video-studio"}},
+		{name: "product", session: "product", req: QueryRequest{AgentProfileID: "example-product"}},
 		{name: "auto notification", session: "chat-1", req: QueryRequest{IsAutoNotification: true}},
 		{name: "non builder phase", session: "chat-1", phase: "execution"},
 		{name: "explicit promotion", session: "schedule-digest_123", req: QueryRequest{UserInteractiveContinuation: true}, active: &ActiveSessionInfo{TriggeredBy: "cron"}, want: true},

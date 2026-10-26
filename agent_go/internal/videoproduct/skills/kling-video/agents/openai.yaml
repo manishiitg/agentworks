@@ -1,4 +1,0 @@
-interface:
-  display_name: "Kling Video"
-  short_description: "Plan and generate effective Kling video"
-  default_prompt: "Use $kling-video to plan this scene with the best supported Kling controls."

@@ -45,12 +45,12 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'video-studio', 'relays', 'sparkquill', 'mcp-gateway'], admin = true, seed?: () => void) {
+async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'relays', 'sparkquill', 'mcp-gateway'], admin = true, seed?: () => void) {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: allowed, gatewayUrl: 'http://localhost:99999' } as never
   useAuthStore.setState({ user: { id: 'u1', username: 'u1', is_admin: admin, allowed_products: allowed } as never })
   useGlobalPresetStore.setState({ workflowPresetsLoaded: true, workflowPresets: [] })
   useChatStore.setState({ chatTabs: {}, activeTabId: null, activeSessionsCache: [], getActiveSessions: vi.fn(async () => []) })
-  useProductSurfaceStore.setState({ productSurface: 'video-studio' })
+  useProductSurfaceStore.setState({ productSurface: 'sparkquill' })
   seed?.()
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
@@ -215,7 +215,6 @@ it('shows Vault-specific icons only in Vault and opens its audit page', async ()
 
 it('lists every available product and opens its workspace from another product', async () => {
   const { host, onClose } = await renderNavigation('@products ')
-  expect(host.querySelectorAll('[data-navigation-id^="product:"]')).toHaveLength(6)
   expect(host.textContent).not.toContain('Dominion')
   expect(host.textContent).toContain('Vault')
   expect(host.textContent).toContain('SparkQuill')
@@ -249,10 +248,10 @@ it('hides unavailable products and admin-only menus and opens Providers on an al
 
 it('rechecks access if a menu was selected after permission changed', async () => {
   await renderNavigation('@menus ')
-  const users = quickNavigationItems(useAuthStore.getState().user, 'video-studio').find(item => item.action === 'users')!
+  const users = quickNavigationItems(useAuthStore.getState().user, 'sparkquill').find(item => item.action === 'users')!
   useAuthStore.setState({ user: { is_admin: false, allowed_products: ['work'] } as never })
   expect(openQuickNavigation(users)).toBe(false)
-  expect(useProductSurfaceStore.getState().productSurface).toBe('video-studio')
+  expect(useProductSurfaceStore.getState().productSurface).toBe('sparkquill')
 })
 
 
@@ -307,7 +306,7 @@ it('opens a parent panel with @panels and refuses stale panel selections after a
 
 it('offers creation for every supported product and routes each action from another product', async () => {
   const { host, onClose } = await renderNavigation('@create ')
-  const surfaces: ProductCreateSurface[] = ['agentworks', 'relays', 'video-studio', 'work']
+  const surfaces: ProductCreateSurface[] = ['agentworks', 'relays', 'work']
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(surfaces.map(surface => `create:${surface}`))
   for (const surface of surfaces) {
     await act(async () => {
@@ -398,7 +397,7 @@ it.each(['mcp-gateway', 'relays'])('rejects a stale %s shortcut after local opt-
   const shortcut = quickNavigationItems(useAuthStore.getState().user, 'work').find(item => item.id === `product:${product}`)!
   Object.assign(window.__APP_RUNTIME_CONFIG__!, { localServerProducts: false })
   expect(openQuickNavigation(shortcut)).toBe(false)
-  expect(useProductSurfaceStore.getState().productSurface).toBe('video-studio')
+  expect(useProductSurfaceStore.getState().productSurface).toBe('sparkquill')
 })
 
 

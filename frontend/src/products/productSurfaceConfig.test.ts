@@ -23,14 +23,14 @@ describe('product surface deployment configuration', () => {
   it('excludes shared server products from local installations despite stale configuration', () => {
     vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: {
       deploymentMode: 'local',
-      enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway', 'video-studio', 'sparkquill', 'llm-gateway'],
+      enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway', 'sparkquill', 'llm-gateway'],
       defaultProductSurface: 'knowledgebase', gatewayUrl: 'http://127.0.0.1:18745', gatewaySso: true,
     } })
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(gatewayBaseUrl()).toBeNull()
     expect(hasGatewaySSO()).toBe(false)
-    for (const product of ['work', 'relays', 'knowledgebase', 'mcp-gateway', 'llm-gateway'] as const) expect(isEnabledProductSurface(product)).toBe(false)
+    for (const product of ['relays', 'knowledgebase', 'mcp-gateway', 'llm-gateway'] as const) expect(isEnabledProductSurface(product)).toBe(false)
   })
 
   it('uses local defaults and cannot opt into server products in a local build', () => {
@@ -47,7 +47,7 @@ describe('product surface deployment configuration', () => {
       enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway'],
       gatewayUrl: 'http://127.0.0.1:18745',
     } })
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'code', 'knowledgebase', 'mcp-gateway'])
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'knowledgebase', 'mcp-gateway'])
     expect(gatewayBaseUrl()).toBe('http://127.0.0.1:18745')
   })
 
@@ -97,18 +97,18 @@ describe('product surface deployment configuration', () => {
     expect(isEnabledProductSurface('mcp-gateway')).toBe(false)
   })
 
-  it('constrains the dedicated host to AgentWorks and Video Studio', () => {
+  it('constrains the dedicated host to AgentWorks and SparkQuill', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: {
-        defaultProductSurface: 'video-studio',
-        enabledProductSurfaces: ['agentworks', 'video-studio'],
+        defaultProductSurface: 'sparkquill',
+        enabledProductSurfaces: ['agentworks', 'sparkquill'],
       },
     })
 
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'video-studio'])
-    expect(deploymentDefaultProductSurface()).toBe('video-studio')
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'sparkquill'])
+    expect(deploymentDefaultProductSurface()).toBe('sparkquill')
     expect(isEnabledProductSurface('agentworks')).toBe(true)
-    expect(isEnabledProductSurface('sparkquill')).toBe(false)
+    expect(isEnabledProductSurface('knowledgebase')).toBe(false)
     expect(isSingleProductDeployment()).toBe(false)
   })
 
@@ -139,7 +139,7 @@ describe('product surface deployment configuration', () => {
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isEnabledProductSurface('work')).toBe(true)
-    expect(isEnabledProductSurface('sparkquill')).toBe(false)
+    expect(isEnabledProductSurface('knowledgebase')).toBe(false)
     expect(isSingleProductDeployment()).toBe(false)
   })
 })
@@ -197,14 +197,14 @@ describe('intersectAllowedProductSurfaces', () => {
     expect(intersectAllowedProductSurfaces(['knowledgebase'], [])).toEqual([])
   })
   it('passes the deployment list through unchanged when the user is unrestricted', () => {
-    expect(intersectAllowedProductSurfaces(['video-studio', 'agentworks'], null)).toEqual(['video-studio', 'agentworks'])
-    expect(intersectAllowedProductSurfaces(['video-studio', 'agentworks'], undefined)).toEqual(['video-studio', 'agentworks'])
+    expect(intersectAllowedProductSurfaces(['sparkquill', 'agentworks'], null)).toEqual(['sparkquill', 'agentworks'])
+    expect(intersectAllowedProductSurfaces(['sparkquill', 'agentworks'], undefined)).toEqual(['sparkquill', 'agentworks'])
     // An empty list is a read-only account with nothing enabled: no products.
-    expect(intersectAllowedProductSurfaces(['video-studio', 'agentworks'], [])).toEqual([])
+    expect(intersectAllowedProductSurfaces(['sparkquill', 'agentworks'], [])).toEqual([])
   })
 
   it('narrows to the explicit per-user allowlist, case-insensitively', () => {
-    expect(intersectAllowedProductSurfaces(['video-studio', 'agentworks'], ['Video-Studio'])).toEqual(['video-studio'])
+    expect(intersectAllowedProductSurfaces(['sparkquill', 'agentworks'], ['SparkQuill'])).toEqual(['sparkquill'])
     expect(intersectAllowedProductSurfaces(['agentworks', 'relays', 'work'], ['agentworks'])).toEqual(['agentworks'])
     expect(intersectAllowedProductSurfaces(['agentworks', 'relays', 'work'], ['relays'])).toEqual(['relays'])
   })
@@ -225,14 +225,14 @@ it('allows an explicitly configured same-origin LLM default on a managed server'
  expect(deploymentDefaultProductSurface()).toBe('llm-gateway')
 })
 
-// A display merger never grants the other origin's entitlement.
+// Retired product grants do not grant access to a current Crew.
 it.each([
-  [['work', 'code'], ['code']],
-  [['code'], ['code']],
+  [['work', 'code'], ['work']],
+  [['code'], []],
   [['work'], ['work']],
   [[], []],
-])('shows one Crew entry without widening %j', (allowed, navigation) => {
+])('filters retired products without widening %j', (allowed, navigation) => {
   vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { enabledProductSurfaces: ['work', 'code'] } })
-  expect(visibleProductSurfaceIDs(allowed)).toEqual(allowed)
+  expect(visibleProductSurfaceIDs(allowed)).toEqual(navigation)
   expect(navigationProductSurfaceIDs(allowed)).toEqual(navigation)
 })

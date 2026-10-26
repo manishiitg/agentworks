@@ -7,7 +7,7 @@ import (
 )
 
 func TestSummaryRequiresWorkflowAuthority(t *testing.T) {
-	for _, profile := range []string{"work", "code", "relays", "sparkquill", "sparkquill-child", "video-studio"} {
+	for _, profile := range []string{"work", "code", "relays", "sparkquill", "sparkquill-child", "example-product"} {
 		t.Run(profile, func(t *testing.T) {
 			gate := newProductToolGate(profileWithPolicy(profile, agentprofiles.ToolPolicy{Mode: agentprofiles.ToolPolicyModeAllowlist, Enabled: []string{"record_summary", "read_image"}}))
 			gate.AllowWorkflowNotifications(true) // A shared runner cannot grant a product this tool.

@@ -29,7 +29,6 @@ export type QuickNavigationItem = {
 
 const CREATION_LABELS: Record<ProductCreateSurface, string> = {
   agentworks: 'Create new Goal', relays: 'Create new Flow', work: 'Create new Crew',
-  'video-studio': 'Create new video project',
 }
 
 // Keep this beside the shared creation commands so a product consolidation has

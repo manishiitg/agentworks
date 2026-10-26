@@ -108,7 +108,7 @@ describe('parseSessionManifest', () => {
 
   it('rejects other products and incomplete manifests', () => {
     expect(parseSessionManifest('not json', 'w')).toBeNull()
-    expect(parseSessionManifest(JSON.stringify({ ...JSON.parse(manifest), product: 'video-studio' }), 'w')).toBeNull()
+    expect(parseSessionManifest(JSON.stringify({ ...JSON.parse(manifest), product: 'example-product' }), 'w')).toBeNull()
     expect(parseSessionManifest(JSON.stringify({ ...JSON.parse(manifest), session_id: '' }), 'w')).toBeNull()
   })
 

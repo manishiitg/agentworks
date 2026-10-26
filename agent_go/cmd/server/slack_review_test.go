@@ -590,7 +590,7 @@ func TestSlackEmailExclusionsAreOwnerControlled(t *testing.T) {
 
 func TestSlackBotProductPolicyIsTargetScoped(t *testing.T) {
 	claims := botRouteUserClaims("bot", services.ChannelRoute{ProfileID: "work", ConversationKey: "acme", WorkspacePath: "Chats/Work/projects/acme", BotGrant: "owner"})
-	if !userAllowedProduct(claims, "work") || userAllowedProduct(claims, "video-studio") {
+	if !userAllowedProduct(claims, "work") || userAllowedProduct(claims, "example-product") {
 		t.Fatal("bot product scope leaked")
 	}
 	if access := userAccessForClaims(claims); !access.ProductsRestricted || access.Admin || access.CanCreate {

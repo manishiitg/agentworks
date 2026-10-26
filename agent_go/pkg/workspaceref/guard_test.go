@@ -53,7 +53,6 @@ var usersDirAllowlist = map[string]string{
 	"cmd/server/product_owner.go":                  "startup scan registering Crew/Code owners from the on-disk per-user tree, with anchored symlink-refusing opens (PLAT-449, PLAT-450)",
 	"cmd/server/durable_chat_migration_command.go": "one-shot migration reading the owner out of legacy on-disk chat paths",
 	"cmd/server/virtual-tools/delegation_tools.go": "const fallback Chats folder; a const cannot call PhysicalPath",
-	"internal/videoproduct/managed_skills.go":      "walks the per-user directories on disk",
 	"internal/sparkquillproduct/migrate.go":        "one-shot on-disk migration of SparkQuill folders",
 	"pkg/chathistory/fs_store.go":                  "physical storage layer of per-user secrets (on-disk path)",
 	"pkg/workspace/client.go":                      "folder-guard rewrite at the workspace API client boundary (unsanitized user id, see PLAT-435 ticket)",

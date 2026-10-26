@@ -59,7 +59,6 @@ bin/*
 !agent_go/internal/sparkquillproduct/secret_guidance_test.go
 !agent_go/internal/workproduct/secret_guidance_test.go
 !agent_go/internal/agentworksproduct/secret_guidance_test.go
-!agent_go/internal/videoproduct/secret_guidance_test.go
 # The *credential* rule above is meant for credential FILES, but it also
 # swallows source that merely has "Credential" in its name. These two are
 # ordinary UI source (a form field and a masking helper) holding no secret

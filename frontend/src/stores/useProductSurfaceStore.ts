@@ -9,11 +9,9 @@ export type { ProductSurface } from '../products/productSurfaceConfig'
 
 interface ProductSurfaceState {
   productSurface: ProductSurface
-  lastVideoProjectId: string | null
   selectedWorkProjectId: string | null
   pendingWorkView: 'schedules' | 'bots' | 'triggers' | null
   setProductSurface: (surface: ProductSurface) => void
-  setLastVideoProjectId: (projectId: string | null) => void
   setSelectedWorkProjectId: (projectId: string | null) => void
   setPendingWorkView: (view: 'schedules' | 'bots' | 'triggers' | null) => void
 }
@@ -22,7 +20,6 @@ export const useProductSurfaceStore = create<ProductSurfaceState>()(
   persist(
     (set, get) => ({
       productSurface: 'agentworks',
-      lastVideoProjectId: null,
       selectedWorkProjectId: null,
       pendingWorkView: null,
       setProductSurface: (productSurface) => {
@@ -33,7 +30,6 @@ export const useProductSurfaceStore = create<ProductSurfaceState>()(
         }
         set({ productSurface })
       },
-      setLastVideoProjectId: (lastVideoProjectId) => set({ lastVideoProjectId }),
       setSelectedWorkProjectId: (selectedWorkProjectId) => { if (get().selectedWorkProjectId !== selectedWorkProjectId) useSidebarHistoryStore.setState(state => ({ generation: state.generation + 1, request: state.request?.surface === 'work' && state.request.projectId === selectedWorkProjectId ? state.request : null })); set({ selectedWorkProjectId }) },
       setPendingWorkView: (pendingWorkView) => set({ pendingWorkView }),
     }),

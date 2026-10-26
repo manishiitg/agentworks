@@ -19,12 +19,12 @@ func TestRegisteredProductIDsExcludeRetiredProduct(t *testing.T) {
 
 func TestProductEnabled(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "")
-	if !productEnabled("video-studio") || !productEnabled("sparkquill") {
+	if !productEnabled("example-product") || !productEnabled("sparkquill") {
 		t.Fatal("an unset product allowlist must preserve shared-server behavior")
 	}
 
-	t.Setenv("AGENT_PRODUCTS", " video-studio, Finance ")
-	if !productEnabled("video-studio") || !productEnabled("finance") {
+	t.Setenv("AGENT_PRODUCTS", " example-product, Finance ")
+	if !productEnabled("example-product") || !productEnabled("finance") {
 		t.Fatal("configured products must be enabled case-insensitively")
 	}
 	if productEnabled("sparkquill") {
@@ -53,7 +53,7 @@ func TestIsSingleProductServerDeployment(t *testing.T) {
 		t.Fatal("a single configured product must count as a dedicated single-product deployment")
 	}
 
-	t.Setenv("AGENT_PRODUCTS", "video-studio,finance")
+	t.Setenv("AGENT_PRODUCTS", "example-product,finance")
 	if isSingleProductServerDeployment() {
 		t.Fatal("more than one configured product is not a single-product deployment")
 	}

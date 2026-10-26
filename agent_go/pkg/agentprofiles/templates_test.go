@@ -7,10 +7,10 @@ import (
 
 func TestRenderPromptTemplateExpandsKnownVariablesOnly(t *testing.T) {
 	got := RenderPromptTemplate("Hello {{NAME}}, it is {{TIME}}. {{UNKNOWN}} stays.", map[string]string{
-		"NAME": "Video Studio",
+		"NAME": "Example Product",
 		"TIME": "10:00",
 	})
-	want := "Hello Video Studio, it is 10:00. {{UNKNOWN}} stays."
+	want := "Hello Example Product, it is 10:00. {{UNKNOWN}} stays."
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}

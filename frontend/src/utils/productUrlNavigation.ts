@@ -35,8 +35,6 @@ export function readProductNavigation(): ProductRoute {
   let view: string | undefined
   let overview: boolean | undefined
   if (surface === 'work') id = state.selectedWorkProjectId ?? undefined
-  if (surface === 'work') id = state.selectedWorkProjectId ?? undefined
-  if (surface === 'video-studio') id = state.lastVideoProjectId ?? undefined
   if (surface === 'agentworks' || surface === 'relays') {
     overview = useAppStore.getState().showWorkflowsOverview
     if (!overview) {
@@ -101,9 +99,7 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
   const unsubscribers = [
     useProductSurfaceStore.subscribe((state, previous) => {
       if (state.productSurface !== previous.productSurface ||
-        (state.productSurface === 'work' && state.selectedWorkProjectId !== previous.selectedWorkProjectId) ||
-        (state.productSurface === 'work' && state.selectedWorkProjectId !== previous.selectedWorkProjectId) ||
-        (state.productSurface === 'video-studio' && state.lastVideoProjectId !== previous.lastVideoProjectId)) schedule(replacingSelection ? 'redirect' : 'navigation')
+        (state.productSurface === 'work' && state.selectedWorkProjectId !== previous.selectedWorkProjectId)) schedule(replacingSelection ? 'redirect' : 'navigation')
     }),
     useAppStore.subscribe((state, previous) => { if (state.showWorkflowsOverview !== previous.showWorkflowsOverview && ['agentworks', 'relays'].includes(useProductSurfaceStore.getState().productSurface)) schedule('navigation') }),
     useGlobalPresetStore.subscribe((state, previous) => { if (isWorkflow() && state.activePresetIds.workflow !== previous.activePresetIds.workflow) schedule('navigation') }),

@@ -614,7 +614,7 @@ func TestUserBrowserDiscoveryShowsFixedWorkspaceProductSessionInSingleUserMode(t
 func TestCrewBrowserIsSharedWithCrewMembersOnly(t *testing.T) {
 	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "/data/browser-profile")
 	fx := newCrewRunModeFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"reader","username":"reader","can_create":true,"products":["work"]},{"id":"stranger","username":"stranger","can_create":true,"products":["video-studio"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"reader","username":"reader","can_create":true,"products":["work"]},{"id":"stranger","username":"stranger","can_create":true,"products":["example-product"]}]}`)
 	api := fx.api
 	registry := withProjectOwnerRegistry(t)
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "alpha-a1", OwnerID: "owner", Shared: true}); err != nil {

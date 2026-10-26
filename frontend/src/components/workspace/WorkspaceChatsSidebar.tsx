@@ -317,10 +317,6 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       if (row.history && row.surface !== 'agentworks' && row.surface !== 'relays') {
         const state = useProductSurfaceStore.getState()
         if (row.surface === 'work' && row.projectId) state.setSelectedWorkProjectId(row.projectId)
-        else if (row.surface === 'work' && row.projectId)
-          state.setSelectedWorkProjectId(row.projectId)
-        else if (row.surface === 'video-studio' && row.projectId)
-          state.setLastVideoProjectId(row.projectId)
         useSidebarHistoryStore.setState({
           request: {
             surface: row.surface,

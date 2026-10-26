@@ -8,7 +8,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/videoproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
@@ -37,7 +36,7 @@ func profileWithPolicy(id string, policy agentprofiles.ToolPolicy) *resolvedAgen
 // A profile without mode=allowlist must not filter. Products still on the
 // legacy deny-list keep their current surface when the gate is installed.
 func TestProductToolGateObserveModeAdmitsEverything(t *testing.T) {
-	gate := newProductToolGate(profileWithPolicy("video-studio", agentprofiles.ToolPolicy{
+	gate := newProductToolGate(profileWithPolicy("example-product", agentprofiles.ToolPolicy{
 		Disabled: []string{"execute_shell_command"},
 	}))
 
@@ -123,7 +122,7 @@ func TestProductToolGateNilProfileAdmitsEverything(t *testing.T) {
 }
 
 func TestProductToolGateAllowlistFiltersUnlistedTools(t *testing.T) {
-	gate := newProductToolGate(profileWithPolicy("video-studio", agentprofiles.ToolPolicy{
+	gate := newProductToolGate(profileWithPolicy("example-product", agentprofiles.ToolPolicy{
 		Mode:    agentprofiles.ToolPolicyModeAllowlist,
 		Enabled: []string{"video.show-video", "set_workflow_secret", "run_full_workflow"},
 	}))
@@ -289,7 +288,7 @@ func TestRegisterAgentProfileToolsAllowsWorkLandingChatWithoutProjectTools(t *te
 // The gate is the one decision point, so it must not care which pool a tool
 // arrived from. Secret, workflow, and platform tools are all just names.
 func TestProductToolGateAppliesAcrossPools(t *testing.T) {
-	gate := newProductToolGate(profileWithPolicy("video-studio", agentprofiles.ToolPolicy{
+	gate := newProductToolGate(profileWithPolicy("example-product", agentprofiles.ToolPolicy{
 		Mode:    agentprofiles.ToolPolicyModeAllowlist,
 		Enabled: []string{"list_secrets", "query_step"},
 	}))
@@ -317,8 +316,8 @@ func TestProductToolGateIsDerivedIdenticallyForParentAndChild(t *testing.T) {
 		Mode:    agentprofiles.ToolPolicyModeAllowlist,
 		Enabled: []string{"video.show-video", "query_step"},
 	}
-	parent := newProductToolGate(profileWithPolicy("video-studio", policy))
-	child := newProductToolGate(profileWithPolicy("video-studio", policy))
+	parent := newProductToolGate(profileWithPolicy("example-product", policy))
+	child := newProductToolGate(profileWithPolicy("example-product", policy))
 
 	if parent.enforcing() != child.enforcing() {
 		t.Fatalf("parent enforcing=%v but child enforcing=%v", parent.enforcing(), child.enforcing())
@@ -331,7 +330,7 @@ func TestProductToolGateIsDerivedIdenticallyForParentAndChild(t *testing.T) {
 }
 
 func TestProductToolGateTrimsAndDeduplicates(t *testing.T) {
-	gate := newProductToolGate(profileWithPolicy("video-studio", agentprofiles.ToolPolicy{
+	gate := newProductToolGate(profileWithPolicy("example-product", agentprofiles.ToolPolicy{
 		Mode:    agentprofiles.ToolPolicyModeAllowlist,
 		Enabled: []string{"  query_step  ", ""},
 	}))
@@ -360,31 +359,14 @@ func TestProductToolGateTrimsAndDeduplicates(t *testing.T) {
 // agent_browser is the control: hybrid profiles genuinely want it, because no
 // coding CLI has a native equivalent for driving the user's signed-in browser.
 func TestProductToolGateGovernsTheCodingAgentBridgeCatalog(t *testing.T) {
-	manifest, err := videoproduct.VideoStudioManifest()
-	if err != nil {
-		t.Fatalf("load Video Studio manifest: %v", err)
-	}
-	gate := newProductToolGate(&resolvedAgentProfile{Definition: manifest.Profile})
-	if !gate.enforcing() {
-		t.Fatal("Video Studio declares tool_policy.mode=allowlist; the gate must enforce")
-	}
+	gate := newProductToolGate(profileWithPolicy("example-product", agentprofiles.ToolPolicy{
+		Mode: "allowlist", Enabled: []string{"execute_shell_command", "agent_browser"},
+	}))
 
-	// The bridge carries what the CLI cannot do natively, so a file editor's
-	// place depends on the mode: under hybrid every supported CLI ships one and
-	// diff_patch_workspace_file is redundant; under mcp_only they are denied and
-	// it is the only guarded way to edit a file. Asserting one direction
-	// unconditionally made the exclusion look like a property of the tool.
-	//
-	// execute_shell_command stays IN: it is how product HTTP APIs are
-	// reached, and Codex can reach it only as an MCP tool (its JS code-mode
-	// sandbox has no network and no env). See
-	// docs/design/product_api_transport_for_coding_agents.md.
-	nativeToolsDenied := manifest.Profile.Runtime.AgentTools.Mode != "hybrid"
-	if got := gate.Admit("diff_patch_workspace_file"); got != nativeToolsDenied {
-		if nativeToolsDenied {
-			t.Fatalf("agent_tools.mode=%q denies the CLI's own editor, so the bridge must supply diff_patch_workspace_file", manifest.Profile.Runtime.AgentTools.Mode)
-		}
-		t.Fatal("diff_patch_workspace_file must stay out of a hybrid profile's surface: the CLI supplies its own")
+	// This hybrid profile uses the CLI's editor; the bridge must not
+	// re-advertise an excluded platform editor and bypass the same gate.
+	if gate.Admit("diff_patch_workspace_file") {
+		t.Fatal("bridge must exclude a tool the product does not admit")
 	}
 	for _, kept := range []string{"execute_shell_command", "agent_browser"} {
 		if !gate.Admit(kept) {

@@ -42,7 +42,7 @@ func sectionByName(t *testing.T, name string) promptSection {
 func TestNoSectionClaimsNativeToolsAreDisabledForAHybridProfile(t *testing.T) {
 	hybrid := promptContext{
 		Provider:           "codex-cli",
-		ProfileID:          "video-studio",
+		ProfileID:          "example-product",
 		HasProfile:         true,
 		NativeCodingTools:  true,
 		CLIToolEnvironment: "Your native tools (Bash, Read, Write, etc.) are **disabled**.",
@@ -94,7 +94,7 @@ func TestWorkspaceMapPicksOneVariantPerMode(t *testing.T) {
 		want string
 	}{
 		{"workflow phase", promptContext{IsWorkflowPhase: true, ShellRoot: "/root", WorkflowPhaseFolder: "Workflow/demo"}, "Workflow/demo"},
-		{"product profile", promptContext{HasProfile: true, ShellRoot: "/root", ProfileWorkspace: "Chats/Video Studio/projects/x"}, "Chats/Video Studio/projects/x"},
+		{"product profile", promptContext{HasProfile: true, ShellRoot: "/root", ProfileWorkspace: "Chats/Example Product/projects/x"}, "Chats/Example Product/projects/x"},
 		{"work profile", promptContext{HasProfile: true, ProfileID: "work", ShellRoot: "/root", PerUserChatsFolder: "_users/alice/Chats", ProfileWorkspace: "/srv/repos/site"}, "/srv/repos/site/"},
 		{"plain chat", promptContext{ShellRoot: "/root", PerUserChatsFolder: "_users/default/Chats"}, "_users/default/Chats"},
 	} {
@@ -113,8 +113,8 @@ func TestProjectMemoryIsSharedByEveryProductAndWorkflow(t *testing.T) {
 	section := sectionByName(t, "project-memory")
 	for _, ctx := range []promptContext{
 		{HasProfile: true, ProfileID: "work", Provider: "claude-code"},
-		{HasProfile: true, ProfileID: "video-studio", Provider: "codex-cli"},
-		{HasProfile: true, ProfileID: "video-studio", Provider: "cursor-cli"},
+		{HasProfile: true, ProfileID: "example-product", Provider: "codex-cli"},
+		{HasProfile: true, ProfileID: "example-product", Provider: "cursor-cli"},
 		{IsWorkflowPhase: true, Provider: "cursor-cli"},
 	} {
 		if !section.Applies(ctx) {
@@ -176,7 +176,7 @@ func TestEmptySectionsAreSkippedAndDistinguishedFromInapplicableOnes(t *testing.
 }
 
 // The capability snapshot instructs the agent to call list_llm_capabilities,
-// text_to_speech, generate_music and set_provider_auth. Video Studio's
+// text_to_speech, generate_music and set_provider_auth. Example Product's
 // allow-list contains none of them, so injecting it told the agent to reach for
 // four tools that were not there — the same shape as several defects in
 // docs/bugs/.

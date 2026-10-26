@@ -53,7 +53,6 @@ export function openGlobalTab(tabId: string): boolean {
     surfaces.setProductSurface('mcp-gateway')
     requestServiceChat('mcp-gateway', tabId)
   } else if (tab.metadata?.agentProfileId && isProductSurface(tab.metadata.agentProfileId)) {
-    if (tab.metadata.agentProfileId === 'video-studio') surfaces.setLastVideoProjectId(tab.metadata.agentProfileProjectId || null)
     surfaces.setProductSurface(tab.metadata.agentProfileId)
     if (tab.metadata.agentProfileId === 'knowledgebase') requestServiceChat('knowledgebase', tabId)
   } else {

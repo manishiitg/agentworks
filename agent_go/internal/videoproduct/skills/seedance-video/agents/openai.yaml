@@ -1,4 +1,0 @@
-interface:
-  display_name: "Seedance Video"
-  short_description: "Plan multimodal Seedance video generation"
-  default_prompt: "Use $seedance-video to choose and construct the best Seedance request for this scene."

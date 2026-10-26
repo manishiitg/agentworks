@@ -30,7 +30,7 @@ it('offers separate user, workflow, crew and project summaries with cross naviga
     items: [
       { id: 'Workflow/shared', kind: 'workflow', name: 'shared', ...usage({ total_cost_usd: 3, call_count: 2 }), by_scope: { workflow_execution: usage({ total_cost_usd: 3, call_count: 2 }) }, by_user: [{ id: 'alice', name: 'Alice', ...usage({ total_cost_usd: 2, call_count: 1 }) }] },
       { id: '_users/alice/Chats/Work/projects/crew', kind: 'crew', name: 'crew', ...usage({ total_cost_usd: 1, call_count: 1 }) },
-      { id: '_users/alice/Chats/Video Studio/projects/launch', kind: 'product', name: 'Video Studio · launch', owner_email: 'owner@example.com', ...usage({ total_cost_usd: 0.5, call_count: 1 }) },
+      { id: '_users/alice/Chats/Example Product/projects/launch', kind: 'product', name: 'Example Product · launch', owner_email: 'owner@example.com', ...usage({ total_cost_usd: 0.5, call_count: 1 }) },
       { id: 'other', kind: 'other', name: 'Unattributed activity', ...usage({ total_cost_usd: 0.25, call_count: 1 }) },
     ],
     by_user: [{ id: 'alice', name: 'Alice', ...usage({ total_cost_usd: 3, call_count: 2 }), by_scope: { chat: usage({ total_cost_usd: 1, call_count: 1 }) }, by_model: { gpt: usage({ provider: 'codex-cli', total_cost_usd: 3, call_count: 2 }) }, by_work: [{ id: 'Workflow/shared', kind: 'workflow', name: 'shared', ...usage({ total_cost_usd: 2, call_count: 1 }) }] }],
@@ -48,7 +48,7 @@ it('offers separate user, workflow, crew and project summaries with cross naviga
   await click(button(container, 'Crews'))
   expect(container.textContent).toContain('Detailed summary')
   await click(button(container, 'Projects'))
-  expect(container.textContent).toContain('Video Studio · launch')
+  expect(container.textContent).toContain('Example Product · launch')
   expect(container.textContent).toContain('Owner: owner@example.com')
   const search = container.querySelector<HTMLInputElement>('[aria-label="Find projects"]')
   await act(async () => {
@@ -56,7 +56,7 @@ it('offers separate user, workflow, crew and project summaries with cross naviga
     setter.call(search, 'owner@example.com')
     search?.dispatchEvent(new Event('input', { bubbles: true }))
   })
-  expect(button(container, 'Video Studio · launch')).toBeTruthy()
+  expect(button(container, 'Example Product · launch')).toBeTruthy()
   await click(button(container, 'Bots'))
   expect(container.textContent).toContain('External channel delivery fees are not included')
   await click(button(container, 'MCP'))

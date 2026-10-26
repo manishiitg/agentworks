@@ -27,9 +27,9 @@ describe('agent profile query binding', () => {
       name: 'Launch film',
       metadata: {
         mode: 'multi-agent',
-        agentProfileId: 'video-studio',
+        agentProfileId: 'example-product',
         agentProfileVersion: 1,
-        agentProfileWorkspace: 'Chats/Video Studio/projects/launch-film',
+        agentProfileWorkspace: 'Chats/Example Product/projects/launch-film',
         agentProfileProjectTitle: 'Launch film',
         agentProfileWorkspaceDescription: 'A 30 second product launch film.',
       },
@@ -37,9 +37,9 @@ describe('agent profile query binding', () => {
 
     expect(applyAgentProfileBinding(payload, tab)).toEqual({
       ...payload,
-      agent_profile_id: 'video-studio',
+      agent_profile_id: 'example-product',
       agent_profile_version: 1,
-      selected_folder: 'Chats/Video Studio/projects/launch-film',
+      selected_folder: 'Chats/Example Product/projects/launch-film',
       agent_profile_context: {
         project_title: 'Launch film',
         workspace_description: 'A 30 second product launch film.',

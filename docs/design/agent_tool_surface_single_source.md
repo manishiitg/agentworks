@@ -1,3 +1,10 @@
+# Historical investigation
+
+The dedicated Video Studio product and its profile have been removed. This
+investigation records the original tool-gate bug; current video production is
+an ordinary Crew. Do not use the product-specific implementation below as setup
+guidance. The generic access and bridge-gate regressions remain covered.
+
 # Agent tool surface: one source of truth
 
 **Status:** Partly implemented — stale header corrected 2026-08-17. Step 1 has

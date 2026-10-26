@@ -26,7 +26,7 @@ func TestPlaywrightScriptedGuidancePinsIsolationAndFailureEvidence(t *testing.T)
 }
 
 // Exercise the attachment path, not just the source markdown: the former
-// multi-agent omission left Video Studio unable to read the named reference.
+// multi-agent omission left Example Product unable to read the named reference.
 func TestPlaywrightReferenceIsDiscoverableAndCanonicalAcrossChatSurfaces(t *testing.T) {
 	canonical, err := renderReferenceKind("playwright-scripted", tmplData{})
 	if err != nil {

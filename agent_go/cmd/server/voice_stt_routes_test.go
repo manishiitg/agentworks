@@ -17,7 +17,7 @@ func TestVoicePermittedWithoutProfileFollowsBuild(t *testing.T) {
 	if got := api.voicePermitted("", "user-1"); got != voicestt.Available {
 		t.Fatalf("voicePermitted(\"\") = %v, want voicestt.Available (%v)", got, voicestt.Available)
 	}
-	if api.voicePermitted("video-studio", "user-1") {
+	if api.voicePermitted("example-product", "user-1") {
 		t.Fatal("a product profile must not be admitted without a profile registry to consult")
 	}
 }
@@ -26,7 +26,7 @@ func TestVoicePermittedWithoutProfileFollowsBuild(t *testing.T) {
 // cannot poke the engine, and without a registry no profile is admitted.
 func TestVoiceUnloadRefusedForUndeclaredProfile(t *testing.T) {
 	api := &StreamingAPI{}
-	req := httptest.NewRequest(http.MethodPost, "/api/voice/unload?profile_id=video-studio", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/voice/unload?profile_id=example-product", nil)
 	rec := httptest.NewRecorder()
 	api.handleVoiceUnload(rec, req)
 	if rec.Code != http.StatusForbidden {

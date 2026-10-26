@@ -132,7 +132,6 @@ this is the complete map.
 - [Skill system — current state and narrow product-skill design](design/skill_system_design.md)
 - [SparkQuill desktop on the platform — plan and research record](design/sparkquill_desktop_on_platform_plan.md)
 - [User accounts, product access, and workflow sharing](design/user_accounts_and_workflow_sharing.md)
-- [Video Studio Inside AgentWorks](design/video_studio_inside_agentworks.md)
 - [Work Product Design](design/work_product.md)
 - [Schedule ownership and Builder warnings](design/workflow-schedule-guard.md)
 - [A Workflow as a Product: Custom UI Frontend, AgentWorks as Backend](design/workflow_custom_ui_product.md)
@@ -145,7 +144,6 @@ this is the complete map.
 
 ### Handover
 
-- [Video Studio handover](handover/video_studio_handover.md)
 
 ### Integrations
 

@@ -44,10 +44,10 @@ func TestProductTipsFilteredByUserProducts(t *testing.T) {
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[
-	  {"id":"b2","username":"bob","admin":false,"can_create":true,"products":["video-studio"]}
+	  {"id":"b2","username":"bob","admin":false,"can_create":true,"products":["work"]}
 	]}`)
 	tips := getProductTipsCatalog(t, &UserClaims{UserID: "b2", Username: "bob"})
-	if len(tips["video-studio"]) == 0 || len(tips["agentworks"]) != 0 || len(tips["work"]) != 0 {
-		t.Fatalf("bob must see the video-studio catalog and not the products he lacks, got %v surfaces", len(tips))
+	if len(tips["work"]) == 0 || len(tips["agentworks"]) != 0 || len(tips["sparkquill"]) != 0 {
+		t.Fatalf("bob must see the work catalog and not the products he lacks, got %v surfaces", len(tips))
 	}
 }

@@ -13,11 +13,11 @@ func profileWithPlacement(placement map[string][]string) *resolvedAgentProfile {
 
 // A product declares where its own artifacts go; it must not inherit
 // AgentWorks' layout (plan folders, pulse/goals.html) for concepts it does not
-// have. Video Studio's system prompt names uploads//work//outputs/, and the
+// have. Example Product's system prompt names uploads//work//outputs/, and the
 // tool description is what the model re-reads on every get_api_spec call, so
 // the two contradicting each other is the bug this guards.
 func TestMultiAgentToolDescriptionUsesDeclaredPlacement(t *testing.T) {
-	const folder = "_users/default/Chats/Video Studio/projects/demo"
+	const folder = "_users/default/Chats/Example Product/projects/demo"
 	profile := profileWithPlacement(map[string][]string{
 		"execute_shell_command": {"Direct-chat work belongs in `work/`; finished exports belong in `outputs/`."},
 	})
@@ -41,7 +41,7 @@ func TestMultiAgentToolDescriptionUsesDeclaredPlacement(t *testing.T) {
 // Declaring nothing for a tool yields no placement lines. Falling back to the
 // AgentWorks layout here would reintroduce exactly what this replaced.
 func TestMultiAgentToolDescriptionUndeclaredToolGetsNoPlacement(t *testing.T) {
-	const folder = "_users/default/Chats/Video Studio/projects/demo"
+	const folder = "_users/default/Chats/Example Product/projects/demo"
 	got := enhanceToolDescriptionForMultiAgentMode("execute_shell_command", "base.", folder, profileWithPlacement(nil))
 	for _, leaked := range []string{"pulse/", "{plan_id}"} {
 		if strings.Contains(got, leaked) {

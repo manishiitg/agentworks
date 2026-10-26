@@ -112,7 +112,7 @@ func TestWorkUIOnlyRegistersForInteractiveWorkChat(t *testing.T) {
 		{name: "cron", req: QueryRequest{AgentProfileID: "work", TriggeredBy: "cron"}},
 		{name: "bot", req: QueryRequest{AgentProfileID: "work", BotPlatform: "slack"}},
 		{name: "background child", req: QueryRequest{AgentProfileID: "work", ParentSessionID: "parent"}},
-		{name: "other product", req: QueryRequest{AgentProfileID: "video-studio"}},
+		{name: "other product", req: QueryRequest{AgentProfileID: "example-product"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := registerWorkUIAllowed(test.req); got != test.want {

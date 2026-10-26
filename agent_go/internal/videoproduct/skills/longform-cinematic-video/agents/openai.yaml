@@ -1,4 +1,0 @@
-interface:
-  display_name: "Long-form Cinematic Video"
-  short_description: "Direct coherent cinematic sequences and final edits"
-  default_prompt: "Use $longform-cinematic-video to plan and assemble this production as one coherent cinematic film."

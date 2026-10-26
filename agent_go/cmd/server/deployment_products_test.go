@@ -84,7 +84,7 @@ func TestServerInstallationRetainsSharedProducts(t *testing.T) {
 // host) still shows its workflows and Relays to the people granted them.
 func TestServerProductListDoesNotHideGrantedWorkflows(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	t.Setenv("AGENT_PRODUCTS", "video-studio,work,code")
+	t.Setenv("AGENT_PRODUCTS", "example-product,work,code")
 	owner := &UserClaims{UserID: "owner"}
 	for _, kind := range []string{"", "relay"} {
 		manifest := &WorkflowManifest{ID: "wf_server", Kind: kind, Access: &WorkflowAccess{Owners: []string{"owner"}}}

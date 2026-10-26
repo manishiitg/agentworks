@@ -1,3 +1,7 @@
+> Video production now uses an ordinary Crew. The old Video Studio profile
+> examples below are historical; new projects use the Crew tools and dashboard,
+> not a separate personal-product profile.
+
 # Designing a product.yaml
 
 A practical guide for the next product built on the `agentprofiles.Profile` /

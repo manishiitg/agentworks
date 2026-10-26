@@ -13,7 +13,7 @@ import {
 
 describe('activity session helpers', () => {
   it('recognizes product-project sessions so AgentWorks can keep them out of its monitor', () => {
-    expect(isProductProjectSession({ session_id: 'video-studio:project:new-video' })).toBe(true)
+    expect(isProductProjectSession({ session_id: 'example-product:project:new-video' })).toBe(true)
     expect(isProductProjectSession({ session_id: 'future-product:project:launch-1' })).toBe(true)
     expect(isProductProjectSession({
       session_id: 'legacy-uuid-session',

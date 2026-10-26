@@ -13,7 +13,7 @@ func TestRegisterBuiltinMakesProductSkillAttachableByName(t *testing.T) {
 		Description: "Research a product brief",
 		Content:     "# Research Director\n\nStudy the brief.",
 		Paths:       []string{"briefs/**"},
-		Metadata:    map[string]string{"product": "video-studio"},
+		Metadata:    map[string]string{"product": "example-product"},
 		SupportingFiles: []llmtypes.SkillFile{
 			{RelPath: "references/checklist.md", Content: []byte("original checklist")},
 		},
@@ -37,7 +37,7 @@ func TestRegisterBuiltinMakesProductSkillAttachableByName(t *testing.T) {
 	if got[0].Content != "# Research Director\n\nStudy the brief." {
 		t.Fatalf("registered content was mutated: %q", got[0].Content)
 	}
-	if got[0].Paths[0] != "briefs/**" || got[0].Metadata["product"] != "video-studio" {
+	if got[0].Paths[0] != "briefs/**" || got[0].Metadata["product"] != "example-product" {
 		t.Fatalf("registered slices/maps were mutated: %+v", got[0])
 	}
 	if string(got[0].SupportingFiles[0].Content) != "original checklist" {
@@ -58,7 +58,7 @@ func TestRegisterBuiltinMakesProductSkillAttachableByName(t *testing.T) {
 	if len(gotAgain) != 1 || gotAgain[0].Content != "# Research Director\n\nStudy the brief." {
 		t.Fatalf("one resolved agent mutated the registry: %+v", gotAgain)
 	}
-	if gotAgain[0].Metadata["product"] != "video-studio" || string(gotAgain[0].SupportingFiles[0].Content) != "original checklist" {
+	if gotAgain[0].Metadata["product"] != "example-product" || string(gotAgain[0].SupportingFiles[0].Content) != "original checklist" {
 		t.Fatalf("one resolved agent mutated nested registry data: %+v", gotAgain[0])
 	}
 }

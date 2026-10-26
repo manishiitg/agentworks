@@ -18,12 +18,12 @@ describe('runtime branding', () => {
   it('applies an isolated app name and same-origin favicon', () => {
     const target = fakeDocument()
     applyRuntimeBranding({
-      appName: 'Video Studio (Dev)',
-      faviconUrl: '/video-studio-favicon.svg',
+      appName: 'Example Product (Dev)',
+      faviconUrl: '/example-product-favicon.svg',
     }, target.document)
 
-    expect(target.document.title).toBe('Video Studio (Dev)')
-    expect(target.favicon.href).toBe('/video-studio-favicon.svg')
+    expect(target.document.title).toBe('Example Product (Dev)')
+    expect(target.favicon.href).toBe('/example-product-favicon.svg')
     expect(target.favicon.type).toBe('image/svg+xml')
   })
 
@@ -36,8 +36,8 @@ describe('runtime branding', () => {
   it('rejects control characters in runtime branding values', () => {
     const target = fakeDocument()
     applyRuntimeBranding({
-      appName: 'Video Studio\nInjected',
-      faviconUrl: '/video-studio-favicon.svg\u0000.png',
+      appName: 'Example Product\nInjected',
+      faviconUrl: '/example-product-favicon.svg\u0000.png',
     }, target.document)
 
     expect(target.document.title).toBe('AgentWorks')

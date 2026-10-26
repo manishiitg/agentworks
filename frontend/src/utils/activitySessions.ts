@@ -10,7 +10,7 @@ export function normalizedActivityStatus(status?: string): string {
  * Product project conversations use the durable `<product-id>:project:<id>`
  * identity. They are deliberately visible inside their own product surfaces,
  * but AgentWorks' global monitor represents AgentWorks work only. Keep the
- * recognition structural rather than hard-coding Video Studio so future
+ * recognition structural rather than hard-coding a product so future
  * project-based products inherit the boundary automatically.
  */
 export function isProductProjectSession(session: Pick<ActiveSessionInfo, 'session_id' | 'workspace_path'>): boolean {

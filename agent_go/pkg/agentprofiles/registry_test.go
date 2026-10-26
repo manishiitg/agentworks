@@ -9,8 +9,8 @@ import (
 
 func validProfile() Profile {
 	return Profile{
-		ID:                   "video-studio",
-		Name:                 "Video Studio",
+		ID:                   "example-product",
+		Name:                 "Example Product",
 		Version:              1,
 		SystemPromptTemplate: "You are working on {{.ProjectTitle}} at {{.LocalDateTime}}.",
 		Skills:               []string{"video-creation", "video-quality"},
@@ -96,7 +96,7 @@ func TestValidateProductConversationPolicies(t *testing.T) {
 		{
 			name:         "project keyed",
 			conversation: ConversationPolicy{Mode: ConversationModeKeyed, KeyType: ConversationKeyTypeProject},
-			workspace:    WorkspacePolicy{Mode: WorkspaceModeProject, ProjectsRoot: "Chats/Video Studio/projects"},
+			workspace:    WorkspacePolicy{Mode: WorkspaceModeProject, ProjectsRoot: "Chats/Example Product/projects"},
 		},
 		{
 			name:         "singleton missing root",
@@ -278,14 +278,14 @@ func TestToolFactoriesAreRegisteredCodeNotProfilePayloads(t *testing.T) {
 func TestProfileInitializerReceivesTrustedRuntime(t *testing.T) {
 	registry := NewRegistry()
 	var received RuntimeContext
-	if err := registry.RegisterInitializer("video-studio", func(_ context.Context, runtime RuntimeContext) error {
+	if err := registry.RegisterInitializer("example-product", func(_ context.Context, runtime RuntimeContext) error {
 		received = runtime
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	want := RuntimeContext{UserID: "user-1", SessionID: "session-1", WorkspacePath: "Chats/Video Studio/projects/demo"}
-	if err := registry.Initialize(context.Background(), "video-studio", want); err != nil {
+	want := RuntimeContext{UserID: "user-1", SessionID: "session-1", WorkspacePath: "Chats/Example Product/projects/demo"}
+	if err := registry.Initialize(context.Background(), "example-product", want); err != nil {
 		t.Fatal(err)
 	}
 	if received != want {

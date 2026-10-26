@@ -248,19 +248,8 @@ A profile that sets `transport: structured` together with `live_input: required`
 is contradictory and profile validation rejects it — live input has nowhere to
 go on a transport with no stdin.
 
-### Known drift (2026-08-16)
-
-`video_studio_inside_agentworks.md` specifies `transport: auto` for Video Studio
-and describes selecting "a tmux-capable runtime for live steering", but the
-shipped `agent_go/internal/videoproduct/product.yaml` pins `transport:
-structured`. Those disagree. The shipped setting is why Video Studio shows no
-progress on codex and claude-code while pi-cli looks fine — pi is the only one of
-the four whose structured protocol streams.
-
-Resolving the drift is a product decision, not a bug fix: `structured` buys typed
-events and a clean non-technical surface, and costs streaming and live steering
-on three of four providers.
-
+The former dedicated Video Studio profile has been retired. Video production
+uses a Crew and its ordinary coding-agent runtime.
 
 ## Measured matrix (2026-08-16)
 

@@ -103,13 +103,13 @@ func TestSingleUserProductWorkspaceMapsGatewayIdentityToDefaultOwner(t *testing.
 	// The rootless gateway uses a product identity for its signed loopback
 	// token. Single-user project data is intentionally stored under the
 	// deployment's default user, so the request must resolve to that owner.
-	token, err := GenerateJWT("video-studio", "video-studio", "")
+	token, err := GenerateJWT("example-product", "example-product", "")
 	if err != nil {
 		t.Fatalf("GenerateJWT failed: %v", err)
 	}
 
 	handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := GetUserIDFromContext(r.Context()); got != "video-studio" {
+		if got := GetUserIDFromContext(r.Context()); got != "example-product" {
 			t.Fatalf("request identity = %q, want gateway identity", got)
 		}
 		if got := productWorkspaceUserID(r.Context()); got != "default" {
@@ -121,7 +121,7 @@ func TestSingleUserProductWorkspaceMapsGatewayIdentityToDefaultOwner(t *testing.
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agent-profiles/video-studio/query", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/agent-profiles/example-product/query", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
@@ -135,7 +135,7 @@ func TestSingleUserPublicWorkspaceMapsGatewayIdentityToDefaultOwner(t *testing.T
 	t.Setenv("DEFAULT_USER_ID", "default")
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 
-	token, err := GenerateJWT("video-studio", "video-studio", "")
+	token, err := GenerateJWT("example-product", "example-product", "")
 	if err != nil {
 		t.Fatalf("GenerateJWT failed: %v", err)
 	}

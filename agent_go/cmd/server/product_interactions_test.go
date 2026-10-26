@@ -68,7 +68,7 @@ func TestProductInteractionTrackerNoteThenSinceAndPersistence(t *testing.T) {
 
 	tr.Note(ctx, "default", "sparkquill")
 	store.waitWrites(t, 1)
-	if got := tr.SinceInteractive(ctx, "default", "video-studio"); got != productInteractionNever {
+	if got := tr.SinceInteractive(ctx, "default", "example-product"); got != productInteractionNever {
 		t.Fatal("another product must not inherit this one's activity")
 	}
 

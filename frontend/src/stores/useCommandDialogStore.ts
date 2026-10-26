@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type ProductCreateSurface = 'agentworks' | 'relays' | 'work' | 'video-studio'
+export type ProductCreateSurface = 'agentworks' | 'relays' | 'work'
 
 export type DialogName = 'skillImport' | 'mcpDetails' | 'mcpConfig' | 'models' | 'presetSettings' | 'presetCreate'
 

@@ -56,7 +56,7 @@ describe('Workflow Slack connection resolution', () => {
     const resolved = resolveWorkflowSlackConnection(projectConns, projectPath, undefined, 'slack_001', 'work')
     expect(resolved.own?.id).toBe('slack_ppp')
     expect(resolved.effective?.id).toBe('slack_001')
-    const otherProfile = resolveWorkflowSlackConnection(projectConns, projectPath, undefined, 'slack_001', 'video-studio')
+    const otherProfile = resolveWorkflowSlackConnection(projectConns, projectPath, undefined, 'slack_001', 'example-product')
     expect(otherProfile.own).toBeNull()
     const workflowView = resolveWorkflowSlackConnection(projectConns, projectPath, undefined, 'slack_001')
     expect(workflowView.own).toBeNull()

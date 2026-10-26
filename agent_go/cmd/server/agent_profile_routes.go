@@ -20,7 +20,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/presentations"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
@@ -125,16 +124,6 @@ func resolveProductResumeTarget(userID string, conversation ProductConversationR
 		Runtime:          target.Runtime,
 		WorkshopMode:     target.WorkshopMode,
 	}, true, nil
-}
-
-// AgentProfilePresentationDeleteRequest is deliberately narrow: the browser
-// can request deletion of one presented Video Studio asset, but cannot supply
-// an arbitrary workspace root or a SQL statement. The server resolves the
-// project from its durable manifest before touching either the files or the
-// presentation row.
-type AgentProfilePresentationDeleteRequest struct {
-	ConversationKey string `json:"conversation_key"`
-	Kind            string `json:"kind"`
 }
 
 // hasSelectedServers reports whether the browser named a real MCP server
@@ -396,144 +385,6 @@ func AgentProfileRoutes(router *mux.Router, registry *agentprofiles.Registry) {
 	router.HandleFunc("/agent-profiles/{id}", getAgentProfileHandler(registry)).Methods(http.MethodGet, http.MethodOptions)
 }
 
-func cleanPresentedAssetPath(raw string, kind string) (string, error) {
-	path := strings.TrimSpace(raw)
-	if path == "" || filepath.IsAbs(path) {
-		return "", fmt.Errorf("asset path must be project-relative")
-	}
-	path = filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
-	if path == "." || path == ".." || strings.HasPrefix(path, "../") {
-		return "", fmt.Errorf("asset path must stay inside the project")
-	}
-	extension := strings.ToLower(filepath.Ext(path))
-	switch kind {
-	case "media.video":
-		if extension != ".mp4" && extension != ".mov" && extension != ".webm" && extension != ".mkv" {
-			return "", fmt.Errorf("video deletion requires a video file")
-		}
-	case "media.character":
-		if extension != ".png" && extension != ".jpg" && extension != ".jpeg" && extension != ".webp" && extension != ".md" {
-			return "", fmt.Errorf("character deletion only permits its reference image and spec")
-		}
-	default:
-		return "", fmt.Errorf("this presentation kind cannot be deleted from the product UI")
-	}
-	return path, nil
-}
-
-// handleAgentProfilePresentationDelete deletes a user-confirmed, generated
-// presentation. The browser provides only the presentation ID, kind, and
-// paths already rendered from that row; project ownership and the workspace
-// root are always determined server-side from the signed-in user's project.
-func (api *StreamingAPI) handleAgentProfilePresentationDelete(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes))
-	decoder.DisallowUnknownFields()
-	var input AgentProfilePresentationDeleteRequest
-	if err := decoder.Decode(&input); err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, "invalid presentation deletion request: "+err.Error())
-		return
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		writeAgentProfileError(w, http.StatusBadRequest, "invalid presentation deletion request: expected one JSON object")
-		return
-	}
-	if api.agentProfiles == nil {
-		writeAgentProfileError(w, http.StatusServiceUnavailable, "agent profiles are unavailable")
-		return
-	}
-	profile, err := api.agentProfiles.Resolve(strings.TrimSpace(mux.Vars(r)["id"]), 0, GetUserIDFromContext(r.Context()))
-	if err != nil {
-		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
-		return
-	}
-	if !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) || !canUseCapLayerProfile(r.Context(), profile.ID) {
-		writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
-		return
-	}
-	if profile.ID != "video-studio" {
-		writeAgentProfileError(w, http.StatusMethodNotAllowed, "this product does not support deleting presentations")
-		return
-	}
-	presentationID := strings.TrimSpace(mux.Vars(r)["presentationID"])
-	if presentationID == "" {
-		writeAgentProfileError(w, http.StatusBadRequest, "presentation id is required")
-		return
-	}
-	userID := productWorkspaceUserID(r.Context())
-	binding, err := resolveProductConversationBinding(r.Context(), userID, profile, strings.TrimSpace(input.ConversationKey))
-	if err != nil {
-		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
-		return
-	}
-	kind := strings.TrimSpace(input.Kind)
-	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
-	rows, err := client.QueryAuthorizedWorkflowDB(r.Context(), workspace.QueryWorkflowDBParams{
-		DBPath: presentations.DatabasePath(binding.WorkspacePath),
-		SQL:    "SELECT payload_json FROM ui_presentations WHERE id = ? AND kind = ?",
-		Params: []interface{}{presentationID, kind},
-	})
-	if err != nil {
-		writeAgentProfileError(w, http.StatusUnprocessableEntity, "load presentation for deletion: "+err.Error())
-		return
-	}
-	if len(rows.Rows) != 1 {
-		writeAgentProfileError(w, http.StatusNotFound, "presentation was not found in this project")
-		return
-	}
-	payloadJSON, _ := rows.Rows[0]["payload_json"].(string)
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
-		writeAgentProfileError(w, http.StatusUnprocessableEntity, "stored presentation payload is invalid")
-		return
-	}
-	rawPaths := []string{}
-	switch kind {
-	case "media.video":
-		rawPaths = append(rawPaths, stringPayloadValue(payload, "path"))
-	case "media.character":
-		rawPaths = append(rawPaths, stringPayloadValue(payload, "image_path"), stringPayloadValue(payload, "spec_path"))
-	default:
-		writeAgentProfileError(w, http.StatusBadRequest, "this presentation kind cannot be deleted from the product UI")
-		return
-	}
-	paths := make([]string, 0, len(rawPaths))
-	for _, rawPath := range rawPaths {
-		path, pathErr := cleanPresentedAssetPath(rawPath, kind)
-		if pathErr != nil {
-			writeAgentProfileError(w, http.StatusUnprocessableEntity, "stored presentation source is invalid: "+pathErr.Error())
-			return
-		}
-		paths = append(paths, path)
-	}
-	for _, path := range paths {
-		if _, err := client.DeleteWorkspaceFile(r.Context(), workspace.DeleteWorkspaceFileParams{Filepath: filepath.ToSlash(filepath.Join(binding.WorkspacePath, path))}); err != nil {
-			// A stale presentation is exactly the case where the user most needs
-			// this control: its generated file may already have been removed from
-			// the Files panel. Still remove the durable card in that case rather
-			// than trapping them behind a failed delete button.
-			if strings.Contains(strings.ToLower(err.Error()), "not found") || strings.Contains(strings.ToLower(err.Error()), "does not exist") {
-				continue
-			}
-			writeAgentProfileError(w, http.StatusUnprocessableEntity, "delete presented asset: "+err.Error())
-			return
-		}
-	}
-	if err := presentations.Delete(r.Context(), client, binding.WorkspacePath, presentationID, kind); err != nil {
-		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
-		return
-	}
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"deleted": true, "presentation_id": presentationID})
-}
-
-func stringPayloadValue(payload map[string]interface{}, key string) string {
-	value, _ := payload[key].(string)
-	return strings.TrimSpace(value)
-}
-
 func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -623,7 +474,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	// the shared turn runner can be extracted from handleQuery behind this seam
 	// without another frontend migration.
 	// The rootless product gateway identifies its loopback caller as the
-	// product (for example "video-studio"), while a single-user deployment's
+	// product (for example "sparkquill"), while a single-user deployment's
 	// durable workspace remains owned by DEFAULT_USER_ID. Keep that gateway
 	// identity out of the shared query path so the folder guard, project
 	// initializer, history and registry all address the same project files.

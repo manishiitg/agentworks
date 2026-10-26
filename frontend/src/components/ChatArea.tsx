@@ -2289,19 +2289,11 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           const chatStore = useChatStore.getState()
           const persistedSessionIds = new Set(
             Object.values(chatStore.chatTabs)
-              // Product surfaces own their restoration contract. In
-              // particular, Video Studio restores the durable transcript;
-              // letting the generic live-event hydrator race it leaves a
-              // user-only cache after refresh.
-              .filter(tab => tab.sessionId && tab.metadata?.agentProfileId !== 'video-studio')
+              .filter(tab => tab.sessionId)
               .map(tab => tab.sessionId!)
           )
           const sessionsToRestore = runningSessions.filter(s =>
-            persistedSessionIds.has(s.session_id) || (
-              s.status === 'running' && !Object.values(chatStore.chatTabs).some(tab =>
-                tab.sessionId === s.session_id && tab.metadata?.agentProfileId === 'video-studio'
-              )
-            )
+            persistedSessionIds.has(s.session_id) || s.status === 'running'
           )
 
           if (sessionsToRestore.length > 0) {
@@ -2332,7 +2324,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         const tabs = Object.values(chatStore.chatTabs)
         const tabsToHydrate = tabs.filter(tab => {
           if (!tab.sessionId || tab.metadata?.mode === 'workflow') return false
-          if (tab.metadata?.agentProfileId === 'video-studio') return false
           if (restoredSessionIds.has(tab.sessionId)) return false
           return chatStore.getTabEvents(tab.sessionId).length === 0
         })

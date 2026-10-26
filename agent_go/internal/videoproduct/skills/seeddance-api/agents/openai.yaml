@@ -1,4 +1,0 @@
-interface:
-  display_name: "Seeddance Direct API"
-  short_description: "Call Seedance models through Seeddance directly"
-  default_prompt: "Use $seeddance-api to run this Seedance generation through the direct Seeddance API."

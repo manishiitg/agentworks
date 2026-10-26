@@ -1,4 +1,0 @@
-interface:
-  display_name: "MiniMax H3 Video"
-  short_description: "Plan multimodal MiniMax H3 video generation"
-  default_prompt: "Use $minimax-h3-video to choose and construct the best MiniMax H3 request for this scene."

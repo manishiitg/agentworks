@@ -9,7 +9,7 @@ import (
 
 // TestClaudeCodeTokenMissingForSingleProductDeploymentGatesCorrectly pins the
 // exact incident this gate closes: a dedicated single-product deployment
-// (SparkQuill or Video Studio) resolving to claude-code with no
+// (SparkQuill or Example Product) resolving to claude-code with no
 // configured token must refuse instead of silently falling back to whatever
 // Claude Code CLI login happens to exist on that host.
 func TestClaudeCodeTokenMissingForSingleProductDeploymentGatesCorrectly(t *testing.T) {
@@ -74,7 +74,7 @@ func TestClaudeCodeTokenMissingForSingleProductDeploymentGatesCorrectly(t *testi
 		},
 		{
 			name:            "server hosting more than one product is not a dedicated single-product deployment",
-			agentProducts:   "video-studio,sparkquill",
+			agentProducts:   "example-product,sparkquill",
 			resolvedProfile: &resolvedAgentProfile{APIKeys: nil},
 			finalProvider:   "claude-code",
 			wantMissing:     false,
@@ -100,7 +100,7 @@ func TestClaudeCodeTokenMissingForSingleProductDeploymentGatesCorrectly(t *testi
 			wantMissing:   false,
 		},
 		{
-			name:          "profile does not opt in and server is shared/desktop -- stays exempt (e.g. Video Studio)",
+			name:          "profile does not opt in and server is shared/desktop -- stays exempt (e.g. Example Product)",
 			agentProducts: "",
 			resolvedProfile: &resolvedAgentProfile{
 				Definition: agentprofiles.Profile{Runtime: agentprofiles.RuntimePolicy{RequireProviderToken: false}},

@@ -42,7 +42,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/sparkquillproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminalleases"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/videoproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
@@ -123,7 +122,7 @@ var mcpBridgeVirtualToolCategories = map[string]bool{}
 // productEnabled reports whether a product's profiles and skills should be
 // loaded by this server. An unset AGENT_PRODUCTS preserves the shared-server
 // behavior of loading every product. Dedicated deployments can set a
-// comma-separated allowlist (for example, "video-studio") so unrelated
+// comma-separated allowlist (for example, "sparkquill") so unrelated
 // product startup failures cannot take down their agent API.
 func allowlistHasProduct(configured, product string) bool {
 	for _, candidate := range strings.Split(configured, ",") {
@@ -137,7 +136,7 @@ func allowlistHasProduct(configured, product string) bool {
 func productEnabled(product string) bool { return productpolicy.Enabled(product) }
 
 // isSingleProductServerDeployment reports whether this server instance is
-// dedicated to exactly one product surface (Video Studio or SparkQuill)
+// dedicated to exactly one product surface (SparkQuill)
 // via AGENT_PRODUCTS, as opposed to the shared desktop/multi-product server
 // where AGENT_PRODUCTS is unset. Only a genuinely dedicated deployment is
 // eligible for the missing-Claude-Code-token refusal in handleQuery: on the
@@ -2043,23 +2042,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := mediapresentation.Register(profileRegistry, getWorkspaceAPIURL()); err != nil {
 		log.Fatalf("Failed to register shared media tools: %v", err)
 	}
-	if productEnabled("video-studio") {
-		if err := videoproduct.RegisterProductSkills(); err != nil {
-			log.Printf("[SKILLS] Video Studio skills: some were not registered; the server keeps running: %v", err)
-		}
-		if err := videoproduct.SyncVisibleSkillsForExistingProjects(os.Getenv("WORKSPACE_DOCS_PATH")); err != nil {
-			log.Printf("Failed to sync visible Video Studio skills into existing projects: %v", err)
-		}
-		for _, profile := range videoproduct.BuiltinAgentProfiles() {
-			profile.Product = "video-studio"
-			if err := profileRegistry.RegisterProfile(profile); err != nil {
-				log.Fatalf("Failed to register Video Studio agent profile: %v", err)
-			}
-		}
-		if err := videoproduct.RegisterAgentProfileRuntime(profileRegistry, getWorkspaceAPIURL()); err != nil {
-			log.Fatalf("Failed to register Video Studio agent profile runtime: %v", err)
-		}
-	}
 	if productEnabled("sparkquill") {
 		if err := sparkquillproduct.RegisterProductSkills(); err != nil {
 			log.Printf("[SKILLS] SparkQuill skills: some were not registered; the server keeps running: %v", err)
@@ -2512,7 +2494,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/integrations/slack/bots", api.handleSlackVaultBots).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/files", api.handleListSharedProjectFiles).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/file", api.handleGetSharedProjectFile).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/agent-profiles/{id}/presentations/{presentationID}", api.handleAgentProfilePresentationDelete).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/work/folders", api.handleListWorkFolders).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/work/folders", api.handleAddWorkFolder).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/work/folders/{id}", api.handleDeleteWorkFolder).Methods("DELETE", "OPTIONS")
@@ -4558,7 +4539,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// branch), "workflow" (direct plan execution, see below), or "multi-agent" — the
 	// generic direct-chat mode (model + skills + tools + workspace context)
 	// that the base agentworks surface uses by default and that other product
-	// surfaces (Video Studio, SparkQuill) opt into explicitly for plain chat.
+	// surfaces (SparkQuill) opt into explicitly for plain chat.
 	// "multi-agent" is NOT a "Chief of Staff" product — no such product exists
 	// on main (only on the separate, unmerged feature/chief-of-staff-product
 	// branch) — see frontend/src/utils/agentModeDescriptions.ts.
@@ -5582,7 +5563,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if resolvedProfile != nil && resolvedProfile.APIKeys != nil {
 		// resolveAgentProfileForQuery resolved a project-scoped credential for a
-		// product surface (e.g. Video Studio) from the encrypted per-workspace
+		// product surface (e.g. SparkQuill) from the encrypted per-workspace
 		// store. Recomputing mergedAPIKeys from scratch below would discard it:
 		// NewLLMAgentWrapper reads mergedAPIKeys, not req.LLMConfig.
 		//
@@ -7196,7 +7177,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// additionally project SKILL.md folders to disk in Phase 3b.
 				// The legacy buildSkillPrompt path is gone.
 				// Resolve against the session's own folder first. A product that
-				// installs skills into its project (Video Studio installs its
+				// installs skills into its project (a product installs its
 				// managed HyperFrames set there) was invisible to the unscoped
 				// lookup, so those skills never attached — and read_skill, which
 				// serves only ATTACHED skills, then had nothing to read. That is
@@ -7322,7 +7303,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// already the authoritative source of what tools exist. The generic
 			// text predates per-product custom tools: it names platform tools an
 			// allowlist filters out and never mentions the product's own tool at
-			// all, so a CLI-provider product chat (e.g. SparkQuill, Video Studio) can
+			// all, so a CLI-provider product chat (e.g. SparkQuill) can
 			// correctly run its one allowlisted tool and then, in the very same
 			// turn, tell the user it has no working tool because this stale text
 			// contradicted what actually happened.

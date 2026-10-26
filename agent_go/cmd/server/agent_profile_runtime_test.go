@@ -90,7 +90,7 @@ func TestResolveAgentProfileForQueryResolvesGlobalScopeWithoutFolderOrTitle(t *t
 // A global-scoped profile is meant to feel like a
 // profile-less multi-agent chat, where the user's own chat-level model
 // selection (any published LLM) already wins -- unlike a project-scoped
-// product (Video Studio), whose pinned runtime binding is deliberately
+// product (Example Product), whose pinned runtime binding is deliberately
 // authoritative. The declared runtime.provider/model_id is only the default
 // for a brand-new chat with no selection yet.
 func TestResolveAgentProfileForQueryGlobalScopeDefersToRequestedModel(t *testing.T) {
@@ -143,7 +143,7 @@ func TestResolveAgentProfileForQueryGlobalScopeFallsBackToPinnedModelWhenRequest
 func TestResolveAgentProfileForQueryProjectScopeStaysAuthoritative(t *testing.T) {
 	registry := agentprofiles.NewRegistry()
 	profile := agentprofiles.Profile{
-		ID: "video-studio", Name: "Video Studio", Version: 1, BuiltIn: true,
+		ID: "example-product", Name: "Example Product", Version: 1, BuiltIn: true,
 		SystemPromptTemplate: "placeholder",
 		Runtime:              agentprofiles.RuntimePolicy{Transport: "auto", Provider: "claude-code", ModelID: "claude-sonnet-5-5"},
 	}
@@ -152,8 +152,8 @@ func TestResolveAgentProfileForQueryProjectScopeStaysAuthoritative(t *testing.T)
 	}
 	api := &StreamingAPI{agentProfiles: registry}
 	req := QueryRequest{
-		AgentMode: "multi-agent", AgentProfileID: "video-studio",
-		SelectedFolder:      "Chats/Video Studio/projects/demo",
+		AgentMode: "multi-agent", AgentProfileID: "example-product",
+		SelectedFolder:      "Chats/Example Product/projects/demo",
 		AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Demo"},
 		Provider:            "codex-cli", ModelID: "gpt-6-sol",
 	}
@@ -168,7 +168,7 @@ func TestResolveAgentProfileForQueryProjectScopeStaysAuthoritative(t *testing.T)
 func TestResolveAgentProfileForQueryRejectsProjectScopeWithoutTitle(t *testing.T) {
 	registry := agentprofiles.NewRegistry()
 	profile := agentprofiles.Profile{
-		ID: "video-studio", Name: "Video Studio", Version: 1, BuiltIn: true,
+		ID: "example-product", Name: "Example Product", Version: 1, BuiltIn: true,
 		SystemPromptTemplate: "placeholder",
 		Runtime:              agentprofiles.RuntimePolicy{Transport: "auto"},
 	}
@@ -177,8 +177,8 @@ func TestResolveAgentProfileForQueryRejectsProjectScopeWithoutTitle(t *testing.T
 	}
 	api := &StreamingAPI{agentProfiles: registry}
 	req := QueryRequest{
-		AgentMode: "multi-agent", AgentProfileID: "video-studio",
-		SelectedFolder: "Chats/Video Studio/projects/launch",
+		AgentMode: "multi-agent", AgentProfileID: "example-product",
+		SelectedFolder: "Chats/Example Product/projects/launch",
 	}
 	if _, err := api.resolveAgentProfileForQuery(context.Background(), &req, "user-1", "session-1"); err == nil || !strings.Contains(err.Error(), "project_title") {
 		t.Fatalf("expected project-scoped profile to still require project_title, got: %v", err)
@@ -188,7 +188,7 @@ func TestResolveAgentProfileForQueryRejectsProjectScopeWithoutTitle(t *testing.T
 func TestResolveAgentProfileForQueryPinsVersionAndSkills(t *testing.T) {
 	registry := agentprofiles.NewRegistry()
 	profile := agentprofiles.Profile{
-		ID: "video-studio", Name: "Video Studio", Version: 2, BuiltIn: true,
+		ID: "example-product", Name: "Example Product", Version: 2, BuiltIn: true,
 		SystemPromptTemplate: "Project {{.ProjectTitle}} at {{.LocalDateTime}}",
 		Skills:               []string{"video-creation"},
 		Runtime: agentprofiles.RuntimePolicy{
@@ -201,9 +201,9 @@ func TestResolveAgentProfileForQueryPinsVersionAndSkills(t *testing.T) {
 	}
 	api := &StreamingAPI{agentProfiles: registry}
 	req := QueryRequest{
-		AgentMode: "multi-agent", AgentProfileID: "video-studio",
+		AgentMode: "multi-agent", AgentProfileID: "example-product",
 		AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Launch"},
-		SelectedFolder:      "Chats/Video Studio/projects/launch",
+		SelectedFolder:      "Chats/Example Product/projects/launch",
 		SelectedSkills:      []string{"existing"},
 		Provider:            "codex-cli",
 		ModelID:             "gpt-5.4",
@@ -224,7 +224,7 @@ func TestResolveAgentProfileForQueryPinsVersionAndSkills(t *testing.T) {
 	if req.EnableBrowserAccess == nil || !*req.EnableBrowserAccess || req.BrowserMode != "auto" {
 		t.Fatalf("profile browser capability was not applied: enabled=%v mode=%q", req.EnableBrowserAccess, req.BrowserMode)
 	}
-	if req.SelectedFolder != "Chats/Video Studio/projects/launch" {
+	if req.SelectedFolder != "Chats/Example Product/projects/launch" {
 		t.Fatalf("selected folder = %q", req.SelectedFolder)
 	}
 	if req.Provider != "claude-code" || req.ModelID != "claude-sonnet-5-5" || req.LLMConfig == nil || req.LLMConfig.Primary.Provider != "claude-code" || req.LLMConfig.Primary.ModelID != "claude-sonnet-5-5" {
@@ -233,7 +233,7 @@ func TestResolveAgentProfileForQueryPinsVersionAndSkills(t *testing.T) {
 	if req.LLMConfigSource != llmConfigSourceAgentProfile || !requestLLMConfigOverridesManifest(req) {
 		t.Fatalf("profile LLM source is not authoritative: source=%q", req.LLMConfigSource)
 	}
-	if got := agentProfileRuntimeWorkspace("user-1", req.SelectedFolder); got != "_users/user-1/Chats/Video Studio/projects/launch" {
+	if got := agentProfileRuntimeWorkspace("user-1", req.SelectedFolder); got != "_users/user-1/Chats/Example Product/projects/launch" {
 		t.Fatalf("runtime folder = %q", got)
 	}
 }
@@ -246,7 +246,7 @@ func TestResolveAgentProfileForQueryPinsVersionAndSkills(t *testing.T) {
 func TestLookupAgentProfileDefinitionDoesNotRunTheRuntimeInitializer(t *testing.T) {
 	registry := agentprofiles.NewRegistry()
 	profile := agentprofiles.Profile{
-		ID: "video-studio", Name: "Video Studio", Version: 1, BuiltIn: true,
+		ID: "example-product", Name: "Example Product", Version: 1, BuiltIn: true,
 		SystemPromptTemplate: "{{.ProjectTitle}}",
 		ToolPolicy: agentprofiles.ToolPolicy{
 			Mode:    agentprofiles.ToolPolicyModeAllowlist,
@@ -258,7 +258,7 @@ func TestLookupAgentProfileDefinitionDoesNotRunTheRuntimeInitializer(t *testing.
 		t.Fatal(err)
 	}
 	initializerCalls := 0
-	if err := registry.RegisterInitializer("video-studio", func(context.Context, agentprofiles.RuntimeContext) error {
+	if err := registry.RegisterInitializer("example-product", func(context.Context, agentprofiles.RuntimeContext) error {
 		initializerCalls++
 		return nil
 	}); err != nil {
@@ -267,8 +267,8 @@ func TestLookupAgentProfileDefinitionDoesNotRunTheRuntimeInitializer(t *testing.
 
 	api := &StreamingAPI{agentProfiles: registry}
 	req := QueryRequest{
-		AgentMode: "multi-agent", AgentProfileID: "video-studio",
-		SelectedFolder:      "Chats/Video Studio/projects/launch",
+		AgentMode: "multi-agent", AgentProfileID: "example-product",
+		SelectedFolder:      "Chats/Example Product/projects/launch",
 		AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Launch"},
 	}
 
@@ -291,7 +291,7 @@ func TestLookupAgentProfileDefinitionDoesNotRunTheRuntimeInitializer(t *testing.
 	}
 
 	// It must still return what the tool gate consumes...
-	if resolved == nil || resolved.Definition.ID != "video-studio" ||
+	if resolved == nil || resolved.Definition.ID != "example-product" ||
 		len(resolved.Definition.ToolPolicy.Enabled) != 1 || resolved.Definition.ToolPolicy.Enabled[0] != "show_video" {
 		t.Fatalf("lookup did not return the declared tool surface: %+v", resolved)
 	}
@@ -308,11 +308,11 @@ func TestLookupAgentProfileDefinitionDoesNotRunTheRuntimeInitializer(t *testing.
 func TestResolveAgentProfileRejectsWorkspaceEscape(t *testing.T) {
 	registry := agentprofiles.NewRegistry()
 	_ = registry.RegisterProfile(agentprofiles.Profile{
-		ID: "video-studio", Name: "Video Studio", Version: 1, BuiltIn: true,
+		ID: "example-product", Name: "Example Product", Version: 1, BuiltIn: true,
 		SystemPromptTemplate: "{{.ProjectTitle}}", Runtime: agentprofiles.RuntimePolicy{Transport: "auto"},
 	})
 	api := &StreamingAPI{agentProfiles: registry}
-	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "video-studio", SelectedFolder: "../outside", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Bad"}}
+	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "example-product", SelectedFolder: "../outside", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Bad"}}
 	if _, err := api.resolveAgentProfileForQuery(context.Background(), &req, "user-1", "session-1"); err == nil {
 		t.Fatal("workspace escape was accepted")
 	}
@@ -325,9 +325,9 @@ func TestResolveAgentProfileInjectsProjectScopedSecretsIntoNativeEnvironment(t *
 		t.Fatal(err)
 	}
 	const userID = "user-1"
-	const workspacePath = "Chats/Video Studio/projects/launch"
+	const workspacePath = "Chats/Example Product/projects/launch"
 	workspace := &mockWorkspaceAPI{files: map[string]string{
-		workspacePath + "/product.json": `{"schema_version":1,"product":"video-studio","capabilities":{"selected_secrets":["PEXELS_API_KEY"]}}`,
+		workspacePath + "/product.json": `{"schema_version":1,"product":"example-product","capabilities":{"selected_secrets":["PEXELS_API_KEY"]}}`,
 	}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()
@@ -338,14 +338,14 @@ func TestResolveAgentProfileInjectsProjectScopedSecretsIntoNativeEnvironment(t *
 
 	registry := agentprofiles.NewRegistry()
 	if err := registry.RegisterProfile(agentprofiles.Profile{
-		ID: "video-studio", Name: "Video Studio", Version: 1, BuiltIn: true,
+		ID: "example-product", Name: "Example Product", Version: 1, BuiltIn: true,
 		SystemPromptTemplate: "{{.ProjectTitle}}",
 		Runtime:              agentprofiles.RuntimePolicy{Transport: "structured", Capabilities: agentprofiles.RuntimeCapabilities{Secrets: agentprofiles.CapabilityRequired}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{agentProfiles: registry, chatStore: store}
-	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "video-studio", SelectedFolder: workspacePath, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Launch"}}
+	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "example-product", SelectedFolder: workspacePath, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Launch"}}
 	if _, err := api.resolveAgentProfileForQuery(context.Background(), &req, userID, "session-1"); err != nil {
 		t.Fatal(err)
 	}
@@ -495,7 +495,7 @@ func TestResolveAgentProfileInjectsProjectScopedCursorAPIKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	const userID = "user-1"
-	const workspacePath = "Chats/Video Studio/projects/launch"
+	const workspacePath = "Chats/Example Product/projects/launch"
 	const cursorKey = "crsr_project_scoped_key"
 	if err := store.UpsertWorkflowProviderCredential(context.Background(), userID, workspacePath, cursorCLIProviderID, encryptProviderCredentialForTest(t, cursorKey, userID)); err != nil {
 		t.Fatalf("store project Cursor credential: %v", err)
@@ -503,7 +503,7 @@ func TestResolveAgentProfileInjectsProjectScopedCursorAPIKey(t *testing.T) {
 
 	registry := agentprofiles.NewRegistry()
 	if err := registry.RegisterProfile(agentprofiles.Profile{
-		ID: "video-studio", Name: "Video Studio", Version: 1, BuiltIn: true,
+		ID: "example-product", Name: "Example Product", Version: 1, BuiltIn: true,
 		SystemPromptTemplate: "{{.ProjectTitle}}",
 		Runtime: agentprofiles.RuntimePolicy{
 			Transport: "auto", Provider: "cursor-cli", ModelID: "auto",
@@ -512,7 +512,7 @@ func TestResolveAgentProfileInjectsProjectScopedCursorAPIKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{agentProfiles: registry, chatStore: store}
-	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "video-studio", SelectedFolder: workspacePath, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Launch"}}
+	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "example-product", SelectedFolder: workspacePath, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Launch"}}
 	resolved, err := api.resolveAgentProfileForQuery(context.Background(), &req, userID, "session-1")
 	if err != nil {
 		t.Fatal(err)
@@ -679,7 +679,7 @@ func TestCleanAgentProfileWorkspaceRejectsCrossUserPaths(t *testing.T) {
 		name string
 		path string
 	}{
-		{"another user's chats", "_users/bob/Chats/Video Studio/projects/x"},
+		{"another user's chats", "_users/bob/Chats/Example Product/projects/x"},
 		{"another user's root", "_users/bob"},
 		{"the users root itself", "_users"},
 		{"traversal out of own space", "_users/alice/../bob/Chats"},
@@ -698,7 +698,7 @@ func TestCleanAgentProfileWorkspaceRejectsCrossUserPaths(t *testing.T) {
 		path string
 		want string
 	}{
-		{"user-relative chats path", "Chats/Video Studio/projects/x", "Chats/Video Studio/projects/x"},
+		{"user-relative chats path", "Chats/Example Product/projects/x", "Chats/Example Product/projects/x"},
 		{"caller's own canonical path", "_users/alice/Chats/x", "_users/alice/Chats/x"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -734,18 +734,18 @@ func TestAgentProfileSessionKeyTracksMCPSelection(t *testing.T) {
 }
 
 func TestResolveAgentProfileUsesSavedMCPScopeBeforeRetainedDelivery(t *testing.T) {
-	const folder = "Chats/Video Studio/projects/scope"
+	const folder = "Chats/Example Product/projects/scope"
 	workspace := &mockWorkspaceAPI{files: map[string]string{folder + "/product.json": `{"capabilities":{"selected_servers":["Notion"]}}`}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
 	registry := agentprofiles.NewRegistry()
-	if err := registry.RegisterProfile(agentprofiles.Profile{ID: "video-studio", Name: "Video Studio", Version: 1, BuiltIn: true, SystemPromptTemplate: "{{.ProjectTitle}}", Features: []agentprofiles.FeatureBinding{{ID: "mcp"}}}); err != nil {
+	if err := registry.RegisterProfile(agentprofiles.Profile{ID: "example-product", Name: "Example Product", Version: 1, BuiltIn: true, SystemPromptTemplate: "{{.ProjectTitle}}", Features: []agentprofiles.FeatureBinding{{ID: "mcp"}}}); err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{agentProfiles: registry}
 	request := func() QueryRequest {
-		return QueryRequest{AgentMode: "multi-agent", AgentProfileID: "video-studio", SelectedFolder: folder, EnabledServers: []string{"Linear"}, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Scope"}}
+		return QueryRequest{AgentMode: "multi-agent", AgentProfileID: "example-product", SelectedFolder: folder, EnabledServers: []string{"Linear"}, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Scope"}}
 	}
 	req := request()
 	profile, err := api.resolveAgentProfileForQuery(context.Background(), &req, "user-1", "chat")

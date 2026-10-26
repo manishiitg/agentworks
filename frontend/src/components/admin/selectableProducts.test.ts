@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { selectableProducts } from './selectableProducts'
 
-const all = ['agentworks', 'code', 'sparkquill', 'video-studio', 'work']
+const all = ['agentworks', 'code', 'sparkquill', 'work']
 
 describe('products an admin can grant', () => {
   it('offers only the deployment’s main products', () => {
@@ -9,11 +9,10 @@ describe('products an admin can grant', () => {
     expect(selectableProducts(all, ['agentworks', 'work', 'code'])).toEqual(['agentworks', 'code', 'work'])
   })
   it('never offers the dedicated products on a shared deployment, even when enabled', () => {
-    expect(selectableProducts(all, ['agentworks', 'work', 'code', 'sparkquill', 'video-studio'])).toEqual(['agentworks', 'code', 'work'])
+    expect(selectableProducts(all, ['agentworks', 'work', 'code', 'sparkquill'])).toEqual(['agentworks', 'code', 'work'])
   })
   it('a dedicated product deployment still offers its own product', () => {
     expect(selectableProducts(all, ['sparkquill'])).toEqual(['sparkquill'])
-    expect(selectableProducts(all, ['video-studio'])).toEqual(['video-studio'])
   })
   it('never renders per-person controls for core account services', () => {
     expect(selectableProducts([...all, 'mcp-gateway'], ['agentworks', 'work', 'mcp-gateway'])).toEqual(['agentworks', 'work'])

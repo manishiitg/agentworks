@@ -89,9 +89,8 @@ Products have no account roles of their own. Crew (`work` in the product
 allowlist) projects are scoped to the authenticated user's private project
 workspace; this is not a separate platform-admin role. Their selected MCP
 servers are stored in the project's `workflow.json` under
-`capabilities.selected_servers`. Video Studio projects are per user
-(under `_users/<id>/Chats/Video Studio/projects`) and not shareable in this
-phase; a project manifest can carry the same `access` block later if wanted.
+`capabilities.selected_servers`. Video production uses an ordinary Crew and
+its published dashboard, with the same project sharing rules as other Crews.
 
 ## Storage: JSON, deliberately
 

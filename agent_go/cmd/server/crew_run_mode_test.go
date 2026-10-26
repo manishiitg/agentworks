@@ -39,7 +39,7 @@ func TestIsCrewReaderTurn(t *testing.T) {
 		{"owner", QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot}, "owner", false},
 		{"reader", QueryRequest{AgentProfileID: "work", SelectedFolder: ownerRoot}, "reader", true},
 		{"landing chat", QueryRequest{AgentProfileID: "work", SelectedFolder: "Chats/Work"}, "reader", false},
-		{"non-work profile", QueryRequest{AgentProfileID: "video-studio", SelectedFolder: ownerRoot}, "reader", false},
+		{"non-work profile", QueryRequest{AgentProfileID: "example-product", SelectedFolder: ownerRoot}, "reader", false},
 		{"no profile", QueryRequest{SelectedFolder: ownerRoot}, "reader", false},
 		{"workflow folder", QueryRequest{SelectedFolder: "Workflow/acme"}, "reader", false},
 	} {

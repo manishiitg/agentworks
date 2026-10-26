@@ -148,7 +148,7 @@ func TestShouldRebindWorkConversationOnlyForVerifiedTabSpecificSession(t *testin
 	}, record, "open-tab-session", true) {
 		t.Fatal("the permanent Builder slot must remain governed by the project manifest")
 	}
-	if shouldRebindWorkConversation(agentprofiles.Profile{ID: "video-studio"}, binding, record, "open-tab-session", true) {
+	if shouldRebindWorkConversation(agentprofiles.Profile{ID: "example-product"}, binding, record, "open-tab-session", true) {
 		t.Fatal("the Work-specific compatibility repair must not affect other products")
 	}
 }
@@ -191,14 +191,14 @@ func TestProductConversationRegistryRejectsUnverifiedHistoryForNewKey(t *testing
 
 func TestProductConversationRotationChangesProjectSessionAndKeepsNewBinding(t *testing.T) {
 	store, files := memoryProductConversationStore()
-	profile := routeTestProfile("video-studio", true, "")
+	profile := routeTestProfile("example-product", true, "")
 	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{
 		Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject,
 	}
-	const manifestPath = "_users/user-1/Chats/Video Studio/projects/launch/product.json"
-	files[manifestPath] = `{"product":"video-studio","id":"launch","title":"Launch","session_id":"existing-session","unrelated":"preserved"}`
+	const manifestPath = "_users/user-1/Chats/Example Product/projects/launch/product.json"
+	files[manifestPath] = `{"product":"example-product","id":"launch","title":"Launch","session_id":"existing-session","unrelated":"preserved"}`
 	binding := productConversationBinding{
-		ConversationKey: "launch", WorkspacePath: "_users/user-1/Chats/Video Studio/projects/launch",
+		ConversationKey: "launch", WorkspacePath: "_users/user-1/Chats/Example Product/projects/launch",
 		ManifestPath: manifestPath, ResourceID: "launch", Title: "Launch", AuthoritativeSessionID: "existing-session",
 	}
 	original, err := store.resolveOrCreate(context.Background(), "user-1", profile, binding, "")
@@ -238,32 +238,32 @@ func TestResolveProductConversationBindingEnforcesDeclaredMode(t *testing.T) {
 		t.Fatalf("singleton accepted an arbitrary key: %v", err)
 	}
 	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
-	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Video Studio/projects"}
+	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Example Product/projects"}
 	if _, err := resolveProductConversationBinding(context.Background(), "user-1", profile, ""); err == nil || !strings.Contains(err.Error(), "conversation_key") {
 		t.Fatalf("keyed conversation accepted an empty key: %v", err)
 	}
 }
 
 func TestProductConversationP0ProjectKeyResolvesAndResumesOneDurableConversation(t *testing.T) {
-	profile := routeTestProfile("video-studio", true, "")
-	profile.Name = "Video Studio"
+	profile := routeTestProfile("example-product", true, "")
+	profile.Name = "Example Product"
 	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{
 		Mode:         agentprofiles.WorkspaceModeProject,
-		ProjectsRoot: "Chats/Video Studio/projects",
+		ProjectsRoot: "Chats/Example Product/projects",
 	}
 	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{
 		Mode:    agentprofiles.ConversationModeKeyed,
 		KeyType: agentprofiles.ConversationKeyTypeProject,
 	}
 
-	const manifestPath = "_users/user-1/Chats/Video Studio/projects/launch-film/product.json"
+	const manifestPath = "_users/user-1/Chats/Example Product/projects/launch-film/product.json"
 	projectStore := productProjectStore{
 		listPaths: func(_ context.Context, root string) ([]string, bool, error) {
-			if root != "_users/user-1/Chats/Video Studio/projects" {
+			if root != "_users/user-1/Chats/Example Product/projects" {
 				t.Fatalf("projects root=%q", root)
 			}
 			return []string{
-				"_users/user-1/Chats/Video Studio/projects/not-a-video/product.json",
+				"_users/user-1/Chats/Example Product/projects/not-a-video/product.json",
 				manifestPath,
 				manifestPath,
 			}, true, nil
@@ -271,8 +271,8 @@ func TestProductConversationP0ProjectKeyResolvesAndResumesOneDurableConversation
 		read: func(_ context.Context, path string) (string, bool, error) {
 			switch path {
 			case manifestPath:
-				return `{"schema_version":1,"product":"video-studio","id":"launch-2026","title":"Launch Film","description":"Product launch film","session_id":"existing-video-session"}`, true, nil
-			case "_users/user-1/Chats/Video Studio/projects/not-a-video/product.json":
+				return `{"schema_version":1,"product":"example-product","id":"launch-2026","title":"Launch Film","description":"Product launch film","session_id":"existing-video-session"}`, true, nil
+			case "_users/user-1/Chats/Example Product/projects/not-a-video/product.json":
 				return `{"schema_version":1,"product":"other-product","id":"launch-2026","title":"Wrong product","session_id":"wrong-session"}`, true, nil
 			default:
 				return "", false, nil
@@ -284,7 +284,7 @@ func TestProductConversationP0ProjectKeyResolvesAndResumesOneDurableConversation
 	if err != nil {
 		t.Fatal(err)
 	}
-	if binding.WorkspacePath != "_users/user-1/Chats/Video Studio/projects/launch-film" ||
+	if binding.WorkspacePath != "_users/user-1/Chats/Example Product/projects/launch-film" ||
 		binding.ManifestPath != manifestPath ||
 		binding.AuthoritativeSessionID != "existing-video-session" ||
 		binding.Title != "Launch Film" {
@@ -400,18 +400,18 @@ func TestWorkProjectChatKeyUsesSameFolderWithIndependentSession(t *testing.T) {
 }
 
 func TestProductProjectBindingRejectsDuplicateProjectIDs(t *testing.T) {
-	profile := routeTestProfile("video-studio", true, "")
-	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Video Studio/projects"}
+	profile := routeTestProfile("example-product", true, "")
+	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Example Product/projects"}
 	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
 	store := productProjectStore{
 		listPaths: func(context.Context, string) ([]string, bool, error) {
 			return []string{
-				"_users/user-1/Chats/Video Studio/projects/one/product.json",
-				"_users/user-1/Chats/Video Studio/projects/two/product.json",
+				"_users/user-1/Chats/Example Product/projects/one/product.json",
+				"_users/user-1/Chats/Example Product/projects/two/product.json",
 			}, true, nil
 		},
 		read: func(context.Context, string) (string, bool, error) {
-			return `{"product":"video-studio","id":"duplicate","title":"Video","session_id":"session"}`, true, nil
+			return `{"product":"example-product","id":"duplicate","title":"Video","session_id":"session"}`, true, nil
 		},
 	}
 

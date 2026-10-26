@@ -49,10 +49,6 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
       const state = useProductSurfaceStore.getState()
       state.setSelectedWorkProjectId(route.id!)
     }
-  } else if (route.id && route.surface === 'video-studio') {
-    const { loadVideoProjects } = await import('../products/video-studio/videoStudioData')
-    if (!(await loadVideoProjects()).some(item => item.id === route.id)) throw new ProductUnavailable()
-    activateResource = () => useProductSurfaceStore.getState().setLastVideoProjectId(route.id!)
   } else if (route.folder) {
     const { knowledgebaseApi } = await import('../services/knowledgebaseApi')
     const access = await knowledgebaseApi.access(route.folder, signal)
@@ -64,7 +60,6 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
     if (!route.id) {
       const state = useProductSurfaceStore.getState()
       if (route.surface === 'work') state.setSelectedWorkProjectId(null)
-      if (route.surface === 'video-studio') state.setLastVideoProjectId(null)
       if (route.surface === 'agentworks' || route.surface === 'relays') {
         useGlobalPresetStore.getState().clearActivePreset('workflow')
         useAppStore.getState().setShowWorkflowsOverview(true)

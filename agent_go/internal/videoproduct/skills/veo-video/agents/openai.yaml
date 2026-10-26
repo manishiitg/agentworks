@@ -1,4 +1,0 @@
-interface:
-  display_name: "Veo Video"
-  short_description: "Plan and generate effective Veo video"
-  default_prompt: "Use $veo-video to plan this scene with the correct Veo mode and constraints."

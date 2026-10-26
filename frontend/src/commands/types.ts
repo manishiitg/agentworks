@@ -32,7 +32,7 @@ export type WorkshopMode = 'workshop' | 'run'
 
 export interface CommandContext {
   beforeSlash: string
-  // Set for a specific product's tab (e.g. 'video-studio'); unset for the
+  // Set for a specific product's tab (e.g. 'work'); unset for the
   // product-owned chat surface. Lets a command opt out of surfaces where it
   // makes no sense.
   agentProfileId?: string

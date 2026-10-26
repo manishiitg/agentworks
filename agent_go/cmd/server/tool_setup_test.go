@@ -18,7 +18,7 @@ func TestEnhanceToolDescriptionTreatsGlobalScopeLikeNoProfile(t *testing.T) {
 		ID: "global-assistant", Scope: agentprofiles.ProfileScopeGlobal,
 	}}
 	global := enhanceToolDescriptionForMultiAgentMode("execute_shell_command", "desc", chatsFolder, globalProfile)
-	projectProfile := &resolvedAgentProfile{Definition: agentprofiles.Profile{ID: "video-studio"}}
+	projectProfile := &resolvedAgentProfile{Definition: agentprofiles.Profile{ID: "example-product"}}
 	project := enhanceToolDescriptionForMultiAgentMode("execute_shell_command", "desc", chatsFolder, projectProfile)
 
 	if global != noProfile {
@@ -37,7 +37,7 @@ func TestMultiAgentPlacementGuidanceFallsThroughForGlobalScope(t *testing.T) {
 	}}
 	global := multiAgentPlacementGuidance("execute_shell_command", chatsFolder, globalProfile)
 	projectProfile := &resolvedAgentProfile{Definition: agentprofiles.Profile{
-		ID: "video-studio",
+		ID: "example-product",
 		Runtime: agentprofiles.RuntimePolicy{Workspace: agentprofiles.WorkspacePolicy{
 			Placement: map[string][]string{"execute_shell_command": {"project-specific guidance"}},
 		}},

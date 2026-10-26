@@ -20,26 +20,26 @@ describe('ProductSurfaceSwitcher deployment allowlist', () => {
   it('shows AgentWorks, Relays, Crew, and Brain in the local product switcher', () => {
     expect(visibleProductSurfaceIDs()).toEqual(['agentworks', 'relays', 'work', 'knowledgebase'])
   })
-  it('shows only AgentWorks and Video Studio on the dedicated server', () => {
+  it('shows only AgentWorks and SparkQuill on the dedicated server', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: {
-        defaultProductSurface: 'video-studio',
-        enabledProductSurfaces: ['agentworks', 'video-studio'],
+        defaultProductSurface: 'sparkquill',
+        enabledProductSurfaces: ['agentworks', 'sparkquill'],
       },
     })
-    expect(visibleProductSurfaceIDs()).toEqual(['agentworks', 'video-studio'])
+    expect(visibleProductSurfaceIDs()).toEqual(['agentworks', 'sparkquill'])
   })
 
   it('further narrows to a per-user allowlist on top of the deployment allowlist', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: {
-        defaultProductSurface: 'video-studio',
-        enabledProductSurfaces: ['video-studio', 'agentworks'],
+        defaultProductSurface: 'sparkquill',
+        enabledProductSurfaces: ['sparkquill', 'agentworks'],
       },
     })
-    expect(visibleProductSurfaceIDs(['video-studio'])).toEqual(['video-studio'])
-    expect(visibleProductSurfaceIDs(['video-studio', 'agentworks'])).toEqual(['agentworks', 'video-studio'])
-    expect(visibleProductSurfaceIDs(null)).toEqual(['agentworks', 'video-studio'])
+    expect(visibleProductSurfaceIDs(['sparkquill'])).toEqual(['sparkquill'])
+    expect(visibleProductSurfaceIDs(['sparkquill', 'agentworks'])).toEqual(['agentworks', 'sparkquill'])
+    expect(visibleProductSurfaceIDs(null)).toEqual(['agentworks', 'sparkquill'])
   })
 
   it('shows Work alongside AgentWorks when the deployment allowlists it', () => {

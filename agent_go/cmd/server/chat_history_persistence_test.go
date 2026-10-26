@@ -2867,14 +2867,14 @@ func TestSeedCodingAgentRuntimeFromRestoredConversationRejectsLegacyModeForRun(t
 func TestRestorePersistedConversationHistoryHydratesStableProjectSession(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	sessionID := "video-studio:project:lumadesk"
+	sessionID := "example-product:project:lumadesk"
 	dateDir := filepath.Join(root, "_users", "default", "chat_history", time.Now().Format("2006-01-02"))
 	if err := os.MkdirAll(dateDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	conversationPath := filepath.Join(dateDir, chatHistoryConversationFileName(sessionID))
 	conversation := `{
-  "session_id": "video-studio:project:lumadesk",
+  "session_id": "example-product:project:lumadesk",
   "conversation_history": [
     {"Role": "human", "Parts": [{"Text": "Create an AgentWorks infographic"}]},
     {"Role": "ai", "Parts": [{"Text": "I will prepare the infographic."}]}

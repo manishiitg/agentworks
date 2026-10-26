@@ -18,7 +18,7 @@ func agentBridgeOnlyDeployment() bool {
 	if !productEnabled("bullpen") {
 		return false
 	}
-	for _, product := range []string{"agentworks", "work", "relays", "knowledgebase", "mcp-gateway", "llm-gateway", "sparkquill", "video-studio"} {
+	for _, product := range []string{"agentworks", "work", "relays", "knowledgebase", "mcp-gateway", "llm-gateway", "sparkquill"} {
 		if productEnabled(product) {
 			return false
 		}
