@@ -53,10 +53,13 @@ export function HomeRecentWork() {
       return id ? [{ ...group, href: productRoutePath({ surface: group.surface, id }), waiting: group.chats.some(item => item.waiting) }] : []
     })
   }, [current, tabs, active, presets, allowed.join('|'), user?.allowed_workflow_ids])
-  const visible = rows.filter(row => `${row.title} ${PRODUCT_SURFACE_LABELS[row.surface]}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).slice(0, query ? 30 : 8)
+  const canSearch = rows.length > 20
+  const filter = canSearch ? query.trim().toLocaleLowerCase() : ''
+  useEffect(() => { if (!canSearch) setQuery('') }, [canSearch])
+  const visible = rows.filter(row => `${row.title} ${PRODUCT_SURFACE_LABELS[row.surface]}`.toLocaleLowerCase().includes(filter)).slice(0, filter ? 30 : 8)
   return <section aria-labelledby="home-recent-title" className="border-t border-border pt-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="home-recent-title" className="text-sm font-semibold">Recent work</h2>
-      <div className="flex min-w-0 items-center gap-2"><label className="flex items-center gap-2"><Search aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" /><input aria-label="Search recent work" value={query} onChange={event => setQuery(event.target.value)} placeholder="Find your work" className="h-8 min-w-0 w-40 bg-transparent text-xs outline-none focus:underline sm:w-48" /></label><button type="button" title="Refresh recent work" aria-label="Refresh recent work" onClick={() => setRevision(value => value + 1)} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted"><RefreshCw aria-hidden="true" className="h-3.5 w-3.5" /></button></div>
+      <div className="flex min-w-0 items-center gap-2">{canSearch && <label className="flex items-center gap-2"><Search aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" /><input aria-label="Search recent work" value={query} onChange={event => setQuery(event.target.value)} placeholder="Find your work" className="h-8 min-w-0 w-40 bg-transparent text-xs outline-none focus:underline sm:w-48" /></label>}<button type="button" title="Refresh recent work" aria-label="Refresh recent work" onClick={() => setRevision(value => value + 1)} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted"><RefreshCw aria-hidden="true" className="h-3.5 w-3.5" /></button></div>
     </div>
     {!current ? <p role="status" className="flex items-center gap-2 py-5 text-xs text-muted-foreground"><Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />Loading your work…</p> : <>
       {current.error && <p role="status" className="py-2 text-xs text-muted-foreground">Some recent work could not be loaded. Refresh to try again.</p>}
@@ -65,7 +68,7 @@ export function HomeRecentWork() {
         <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{row.title}</span><span className="block text-xs text-muted-foreground">{PRODUCT_SURFACE_LABELS[row.surface]}</span></span>
         {row.waiting ? <span className="text-xs text-amber-500">Needs you</span> : row.running ? <span className="flex items-center gap-1.5 text-xs text-primary"><Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />Working</span> : row.latestActivity > 0 && <span className="hidden text-xs text-muted-foreground sm:block">{new Date(row.latestActivity).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
         <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      </a></li>)}</ul> : <p className="py-5 text-xs text-muted-foreground">{query ? 'No work matches your search.' : 'Your work will appear here. Start with an idea above or open a project from the sidebar.'}</p>}
+      </a></li>)}</ul> : <p className="py-5 text-xs text-muted-foreground">{filter ? 'No work matches your search.' : 'Your work will appear here. Start with an idea above or open a project from the sidebar.'}</p>}
     </>}
   </section>
 }

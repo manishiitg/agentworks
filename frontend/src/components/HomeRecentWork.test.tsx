@@ -48,3 +48,27 @@ it('does not display a previous account’s late inventory response', async () =
   await act(async () => resolve({ workspaces: [project] }))
   expect(host.textContent).not.toContain('Research notes')
 })
+
+it('shows search above twenty projects and removes its filter when the list shrinks', async () => {
+  let count = 20
+  vi.spyOn(agentApi, 'listChatHistorySessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(agentApi, 'listWorkspaceNavigation').mockImplementation(async () => ({ workspaces: Array.from({ length: count }, (_, index) => ({ ...project, id: `project-${index + 1}`, workspace_id: `work:project-${index + 1}`, workspace_path: `Crew/project-${index + 1}`, name: `Project ${index + 1}` })) }))
+  const host = await mount()
+  const search = () => host.querySelector<HTMLInputElement>('[aria-label="Search recent work"]')
+  const refresh = () => host.querySelector<HTMLButtonElement>('[aria-label="Refresh recent work"]')!.click()
+  expect(search()).toBeNull()
+  expect(host.querySelector('[aria-label="Refresh recent work"]')).not.toBeNull()
+  count = 21
+  await act(async () => refresh())
+  expect(search()).not.toBeNull()
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search()!, 'Project 21')
+    search()!.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(host.querySelectorAll('li')).toHaveLength(1)
+  expect(host.querySelector('li')!.textContent).toContain('Project 21')
+  count = 20
+  await act(async () => refresh())
+  expect(search()).toBeNull()
+  expect(host.querySelectorAll('li')).toHaveLength(8)
+})
