@@ -35,7 +35,7 @@ def convert(mode, deployment):
 
 def migrate(root, backup, deployment, state):
     selection_file = state / 'chrome-extension/selected.json'
-    selected = json.loads(selection_file.read_text()) if selection_file.is_file() else {}
+    selected = (json.loads(selection_file.read_text()) or {}) if selection_file.is_file() else {}
     selected_paths = set()
     for key, label in selected.items():
         user = key.split('\x00', 1)[0]
@@ -48,22 +48,22 @@ def migrate(root, backup, deployment, state):
         if manifest_path.is_symlink() or sidecar.is_symlink():
             continue
         if manifest_path.is_file():
-            before = json.loads(manifest_path.read_text())
+            before = json.loads(manifest_path.read_text()) or {}
         elif sidecar.is_file() and project.parent.name != 'Workflow':
             # Crew metadata stays untouched; project settings get their canonical
             # manifest before the runtime sidecar reader is removed.
             metadata_path = project / 'product.json'
             if metadata_path.is_symlink():
                 continue
-            metadata = json.loads(metadata_path.read_text()) if metadata_path.is_file() else {}
+            metadata = (json.loads(metadata_path.read_text()) or {}) if metadata_path.is_file() else {}
             before = {}
             prepared = {
                 'schema_version': 1,
                 'id': metadata.get('id', project.name),
                 'label': metadata.get('title') or metadata.get('name') or project.name,
-                'capabilities': metadata.get('capabilities', {}),
-                'schedules': metadata.get('schedules', []),
-                'triggers': metadata.get('triggers', []),
+                'capabilities': metadata.get('capabilities') or {},
+                'schedules': metadata.get('schedules') or [],
+                'triggers': metadata.get('triggers') or [],
             }
             for field in ('created_at', 'updated_at', 'workflow_context_paths'):
                 if field in metadata:
@@ -71,8 +71,9 @@ def migrate(root, backup, deployment, state):
         else:
             continue
         after = json.loads(json.dumps(before if manifest_path.is_file() else prepared))
-        caps = after.setdefault('capabilities', {})
-        saved = json.loads(sidecar.read_text()) if sidecar.is_file() else {}
+        caps = after.get('capabilities') or {}
+        after['capabilities'] = caps
+        saved = (json.loads(sidecar.read_text()) or {}) if sidecar.is_file() else {}
         # An explicit off state must never become enabled during conversion.
         mode = 'none' if caps.get('browser_mode') == 'none' else saved.get('mode', caps.get('browser_mode'))
         if mode != 'none' and project.relative_to(root).as_posix() in selected_paths:
