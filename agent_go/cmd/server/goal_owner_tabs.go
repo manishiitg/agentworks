@@ -292,6 +292,11 @@ func (api *StreamingAPI) goalOwnerTabSummary(ctx context.Context, scope workflow
 		return nil, err
 	}
 	for _, tab := range tabs {
+		if role := roles[tab.SessionID]; role.Kind == "run" || workflowBuilderHistoryKind(tab.SessionID, "", "", "") == "run" {
+			role.IsBuilder, role.Kind = false, "run"
+			roles[tab.SessionID] = role
+			continue
+		}
 		roles[tab.SessionID] = workflowSidebarSession{IsBuilder: true, Kind: "builder"}
 	}
 	status := "idle"

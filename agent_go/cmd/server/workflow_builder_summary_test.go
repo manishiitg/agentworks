@@ -123,6 +123,23 @@ func TestWorkflowOwnerTabsShareProjectAndKeepControl(t *testing.T) {
 			if err != nil || after.SessionID != main.SessionID || len(after.Tabs) != 2 {
 				t.Fatalf("side tab replaced main: %+v %v", after, err)
 			}
+			// PLAT-746-149: owner-authorized MCP runs remain runs, even when
+			// an older server already saved an erroneous Builder-tab reference.
+			runID := "pat-example-run-completed"
+			if err := recordWorkflowBuilderSend(ctx("alice"), scope, runID); err != nil {
+				t.Fatal(err)
+			}
+			unchanged, err := api.goalOwnerTabs(ctx("alice"), scope)
+			if err != nil || len(unchanged) != len(after.Tabs) {
+				t.Fatal("execution registered as a Builder tab", err)
+			}
+			if _, err := storeGoalOwnerTab(ctx("alice"), scope, "Builder", false, runID); err != nil {
+				t.Fatal(err)
+			}
+			classified, err := api.goalOwnerTabSummary(ctx("alice"), scope, false)
+			if err != nil || classified.Sessions[runID].Kind != "run" || classified.Sessions[runID].IsBuilder || !classified.Sessions[main.SessionID].IsBuilder {
+				t.Fatal("saved execution reference overrode its real kind", err)
+			}
 			workspace.mu.Lock()
 			workspace.files["Workflow/demo/workflow.json"] = strings.Replace(manifest, `"alice","bob"`, `"alice"`, 1)
 			workspace.mu.Unlock()

@@ -39,4 +39,5 @@ if (( ${#migration_plan_roots[@]} )); then
 fi
 python3 "$migration_repo/scripts/migrate_workflow_builder_chats.py" --workspace-root "$migration_docs" --default-owner-id "$migration_user" --default-owner-username "Local user" --apply
 python3 "$migration_repo/scripts/migrate-project-schedules.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/project-schedules" --single-user --local-user-id "$migration_user"
+python3 "$migration_repo/scripts/repair-workflow-builder-tabs.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/workflow-builder-tabs"
 echo "Local stopped-app migrations complete. The app has not been restarted."

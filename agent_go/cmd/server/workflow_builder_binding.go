@@ -159,6 +159,11 @@ func (api *StreamingAPI) handleWorkflowBuilderBindings(w http.ResponseWriter, r 
 // Register only an admitted interactive Builder session. Automated runs and
 // notifications never become owner-controlled tabs.
 func recordWorkflowBuilderSend(ctx context.Context, scope workflowBuilderScope, session string) error {
+	// PLAT-746-149: an owner can have Builder authority during a run without
+	// turning that execution into a named interactive Builder tab.
+	if workflowBuilderHistoryKind(session, "", "", "") == "run" {
+		return nil
+	}
 	scope, status := authorizeWorkflowBuilderScope(ctx, scope, true)
 	if status != 0 {
 		return fmt.Errorf("Builder binding access denied")
