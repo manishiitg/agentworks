@@ -566,12 +566,15 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     setCurrentQuery: state.setCurrentQuery,
   })))
 
-  const { selectedModeCategory, getAgentModeFromCategory } = useModeStore(useShallow(state => ({
+  const { selectedModeCategory: workspaceModeCategory, getAgentModeFromCategory } = useModeStore(useShallow(state => ({
     selectedModeCategory: state.selectedModeCategory,
     getAgentModeFromCategory: state.getAgentModeFromCategory
   })))
-  const { getActivePreset, applyPreset, clearActivePreset, currentPresetServers } = useGlobalPresetStore(useShallow(state => ({
-    getActivePreset: state.getActivePreset,
+  // PLAT-750-79: an embedded/standalone chat renders its bound conversation,
+  // independently of the last mode selected in the surrounding workspace.
+  const boundModeCategory = useChatStore(state => tabId ? state.chatTabs[tabId]?.metadata?.mode : undefined)
+  const selectedModeCategory = boundModeCategory ?? workspaceModeCategory
+  const { applyPreset, clearActivePreset, currentPresetServers } = useGlobalPresetStore(useShallow(state => ({
     applyPreset: state.applyPreset,
     clearActivePreset: state.clearActivePreset,
     currentPresetServers: state.currentPresetServers
@@ -617,6 +620,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const activeTab = useChatStore(state =>
     targetTabId ? state.chatTabs[targetTabId] : undefined
   )
+  const activeWorkflowPreset = useGlobalPresetStore(state => tabId
+    ? state.workflowPresets.find(preset => preset.id === activeTab?.metadata?.presetQueryId) ?? null
+    : state.getActivePreset('workflow'))
   // Every Crew, Code or workflow opens in the chat view (user, 2026-09-29):
   // the terminal is a choice for the moment, not remembered. Applied once per
   // tab and place, so switching to the terminal afterwards is never fought.
@@ -803,7 +809,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     activeSessionId,
     activeEventViewMode === 'formatted',
     activeTab?.metadata?.agentProfileWorkspace ||
-      (activeTab?.metadata?.mode === 'workflow' ? getActivePreset('workflow')?.selectedFolder?.filepath : undefined),
+      (activeTab?.metadata?.mode === 'workflow' ? activeWorkflowPreset?.selectedFolder?.filepath : undefined),
     !isExecutionConversationTab(activeTab),
   )
   const activeStreamingText = useChatStore((state) =>
@@ -818,8 +824,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const { page: olderHistory, updatePage: updateOlderHistory } = useConversationOlderPages(activeSessionId)
   const historyPagination = olderHistory.pagination ?? storedHistoryPagination
 
-  // Get active preset for workflow mode
-  const activeWorkflowPreset = getActivePreset('workflow')
   const selectedWorkflowPreset = activeWorkflowPreset?.id || null
 
   // Always use tab events - never fall back to global events to prevent cross-tab mixing
@@ -2255,7 +2259,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // Unified page-load restore: handles both active sessions AND persisted tabs with no events.
   // Runs once per page load to avoid duplicate restores from separate effects racing each other.
   useEffect(() => {
-    if (globalHasRestored) return
+    // Bound panes already hydrate their own transcript; opening one must not
+    // restore/switch unrelated workspace tabs or wait for their history.
+    if (tabId || globalHasRestored) return
     // Only restore in multi-agent mode (workflow handles its own restore)
     if (selectedModeCategory !== 'multi-agent') return
 
@@ -2363,7 +2369,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     }
 
     restoreAll()
-  }, [getActiveSessions, switchTab, selectedModeCategory])
+  }, [tabId, getActiveSessions, switchTab, selectedModeCategory])
 
   // Only poll tabs that have their session ID in the backend's active sessions list
   // Backend determines activity based on event activity (10 min timeout)
