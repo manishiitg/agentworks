@@ -87,6 +87,11 @@ func (api *StreamingAPI) registerAgentWorksAgentTools(registrar definitionToolRe
 		return err
 	}
 
+	// Crews differ by content, not features (decisions log 2026-10-26); email_me stays with the platform-made
+	// AgentWorks, which sends the person's evening summary.
+	if !isAgentWorksCrew(context.Background(), workspacePath) {
+		return nil
+	}
 	return register("email_me", "Email yourself to the person, at their own account address only (at most twice a day): the evening summary, or an urgent note when work has stopped and only they can unblock it. Short, plain, readable on a phone.", map[string]interface{}{
 		"type": "object", "required": []string{"subject", "body"}, "properties": map[string]interface{}{
 			"subject": map[string]interface{}{"type": "string", "maxLength": 200},

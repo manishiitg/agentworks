@@ -1000,11 +1000,9 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		if err := api.registerCodeChatTools(registrar, gate, userID, sessionID, workspacePath); err != nil {
 			return err
 		}
-		// The person's own AgentWorks reads its linked Goals' runs and emails its owner (PLAT-825-99).
-		if isAgentWorksCrew(context.Background(), workspacePath) {
-			if err := api.registerAgentWorksAgentTools(registrar, gate, userID, workspacePath); err != nil {
-				return err
-			}
+		// Any Crew reads its linked Goals' runs and metrics; the person's own AgentWorks also emails its owner (PLAT-825-99).
+		if err := api.registerAgentWorksAgentTools(registrar, gate, userID, workspacePath); err != nil {
+			return err
 		}
 	}
 
