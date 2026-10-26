@@ -1,6 +1,10 @@
 package workflowtypes
 
-import "testing"
+import (
+	llmproviders "github.com/manishiitg/multi-llm-provider-go"
+	"reflect"
+	"testing"
+)
 
 func testExplicitConfig() *PresetLLMConfig {
 	builder := &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5-5"}
@@ -97,36 +101,31 @@ func TestNormalizePresetLLMConfigRemovesRetiredWorkflowKBLock(t *testing.T) {
 	}
 }
 
-// Claude Code's expected model/effort here must track
-// multi-llm-provider-go's GetCodingAgentDefaultTierModels for
-// ProviderClaudeCode. Fixed 2026-09-11: this test still expected
-// claude-fable-5-1/claude-opus-5 after multi-llm-provider-go's 3fc07b8
-// ("Revert Claude Code Builder tier back to Sonnet 5.5 / high") reverted
-// Builder/High/Pulse to claude-sonnet-5-5 -- a cross-repo staleness (the
-// replace directive always builds against whatever's checked out at
-// ../../multi-llm-provider-go), not something wrong with the model choice
-// itself; verify against that package before changing these expectations
-// again.
+// PLAT-872: workflow profiles must take current provider defaults and retain
+// the selected account across every tier. Frozen model-name assertions here
+// had become stale while the runtime correctly followed the provider registry.
 func TestResolveProviderProfileConfigUsesBuilderDefaults(t *testing.T) {
-	tests := []struct {
-		provider string
-		model    string
-		effort   string
-	}{
-		{provider: "claude-code", model: "claude-sonnet-5-5", effort: "high"},
-		{provider: "codex-cli", model: "gpt-6-astra", effort: "medium"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.provider, func(t *testing.T) {
-			builder, _, ok := ResolveProviderProfileConfig(providerProfile(tt.provider))
-			if !ok || builder == nil {
-				t.Fatalf("ResolveProviderProfileConfig(%q) = %+v, ok=%v", tt.provider, builder, ok)
+	for _, provider := range []string{"claude-code", "codex-cli", "cursor-cli"} {
+		t.Run(provider, func(t *testing.T) {
+			expected, ok := llmproviders.GetCodingAgentDefaultTierModels(llmproviders.Provider(provider))
+			if !ok {
+				t.Fatal("provider defaults unavailable")
 			}
-			if builder.Provider != tt.provider || builder.ModelID != tt.model {
-				t.Fatalf("builder = %+v, want %s/%s", builder, tt.provider, tt.model)
+			config := providerProfile(provider)
+			config.ConnectionID = "selected-test-account"
+			builder, tiers, ok := ResolveProviderProfileConfig(config)
+			if !ok || builder == nil || tiers == nil {
+				t.Fatal("workflow profile did not resolve all roles")
 			}
-			if got := builder.Options["reasoning_effort"]; got != tt.effort {
-				t.Fatalf("reasoning_effort = %#v, want %q", got, tt.effort)
+			for _, pair := range []struct {
+				got  *AgentLLMConfig
+				want llmproviders.CodingAgentTierModelRef
+			}{
+				{builder, expected.Builder}, {tiers.Tier1, expected.High}, {tiers.Tier2, expected.Medium}, {tiers.Tier3, expected.Low},
+			} {
+				if pair.got == nil || pair.got.Provider != pair.want.Provider || pair.got.ModelID != pair.want.ModelID || !reflect.DeepEqual(pair.got.Options, pair.want.Options) || pair.got.ConnectionID != config.ConnectionID {
+					t.Fatalf("workflow role %+v does not match provider default %+v and selected account", pair.got, pair.want)
+				}
 			}
 		})
 	}
