@@ -29,6 +29,8 @@ export type ProductProject<P extends string = string> = {
   nativeAgentTools?: boolean
   /** Absent on projects made before modes: they are dev. */
   mode?: ProductMode
+  /** Set by the server only: "agentworks" marks the person's own AgentWorks Crew. */
+  role?: 'agentworks'
   creationWarnings?: string[]
   selectionConfigInitialized: boolean
   secretSelectionInitialized: boolean
@@ -68,6 +70,7 @@ type ProductManifest = {
   capabilities?: unknown
   workflow_context_paths?: unknown
   mode?: unknown
+  role?: unknown
 }
 
 const asString = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
@@ -171,6 +174,7 @@ export function parseProductProjectManifest<P extends string>(
     workflowContextPaths: manifestStringList(raw, 'workflow_context_paths'),
     nativeAgentTools: manifestNativeAgentTools(raw),
     mode: manifestMode(raw),
+    ...(raw.role === 'agentworks' ? { role: 'agentworks' as const } : {}),
     selectionConfigInitialized: manifestHasSelectionConfig(raw),
     secretSelectionInitialized: manifestHasSecretSelection(raw),
     runtimeConfigInitialized: true,

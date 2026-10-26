@@ -22,6 +22,7 @@ import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { intersectAllowedProductSurfaces, isEnabledProductSurface, visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
+import { AGENTWORKS_SUBTITLE, AgentWorksIcon, isOwnAgentWorks } from './ui/AgentWorksIdentity'
 import { openQuickNavigation, quickNavigationItems, type QuickNavigationItem, type QuickNavigationScope } from '../utils/quickNavigation'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { ProductSurfaceIcon } from './ProductSurfaceIcon'
@@ -98,6 +99,8 @@ interface CrewChatItem {
   activeSession?: ActiveSessionInfo
   hasLocalActivity: boolean
   icon?: string
+  /** The person's own AgentWorks (server role "agentworks"). */
+  agentWorks?: boolean
 }
 
 interface PanelItem {
@@ -442,11 +445,14 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       .map(crew => {
         const name = crew.identity?.name?.trim() || crew.title
         const owner = crew.shared ? `shared by ${crew.shared.ownerUsername || crew.shared.ownerId}` : 'yours'
+        const agentWorks = isOwnAgentWorks(crew)
         return {
           type: 'crew' as const,
           id: `crew-project:${crew.id}`,
           label: name,
-          subtitle: `Crew · ${owner}${name !== crew.title ? ` · ${crew.title}` : ''}`,
+          subtitle: agentWorks ? AGENTWORKS_SUBTITLE : `Crew · ${owner}${name !== crew.title ? ` · ${crew.title}` : ''}`,
+          searchText: agentWorks ? `${crew.title} Crew` : undefined,
+          agentWorks,
           isActive: productSurface === 'work' && useProductSurfaceStore.getState().selectedWorkProjectId === crew.id,
           lastAccessedAt: 0,
           projectId: crew.id,
@@ -827,7 +833,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   {item.treeChild ? <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : item.type === 'product' || item.type === 'menu'
                     ? <QuickNavigationIcon item={item} />
                     : item.type === 'crew'
-                    ? <EntityIdentityIcon icon={item.icon} label={item.label} />
+                    ? item.agentWorks ? <AgentWorksIcon /> : <EntityIdentityIcon icon={item.icon} label={item.label} />
                     : <ItemIcon className={`w-4 h-4 flex-shrink-0 ${item.isActive ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'}`} />}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">

@@ -5,6 +5,7 @@ import api from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
+import { AGENTWORKS_ROLE, AGENTWORKS_SUBTITLE, AgentWorksIcon } from '../ui/AgentWorksIdentity'
 
 type ReachableAgent = {
   id: string
@@ -17,6 +18,8 @@ type ReachableAgent = {
   purpose?: string
   online?: boolean
   presence?: string
+  /** "agentworks" on the person's own AgentWorks; set by the server. */
+  role?: string
 }
 const agentName = (agent: ReachableAgent) => agent.label || agent.name || agent.agent_name || 'Agent'
 const AGENT_KINDS: Record<string, string> = { crew: 'Crew', crew_agent: 'Crew agent', goal: 'Goal', relay: 'Relay', connected_agent: 'AgentBridge', agent: 'AgentBridge' }
@@ -50,7 +53,7 @@ export function ReachableAgentsMenu({ submenu = false }: { submenu?: boolean }) 
   if (!userId) return null
   const search = query.trim().toLocaleLowerCase()
   const agents = (data?.agents || []).filter(agent => [agentName(agent), agent.name, agent.agent_name, agentKind(agent), agent.provider, agent.purpose, agent.description].some(text => text?.toLocaleLowerCase().includes(search)))
-    .sort((a, b) => Number(b.online === true) - Number(a.online === true) || agentName(a).localeCompare(agentName(b)))
+    .sort((a, b) => Number(b.role === AGENTWORKS_ROLE) - Number(a.role === AGENTWORKS_ROLE) || Number(b.online === true) - Number(a.online === true) || agentName(a).localeCompare(agentName(b)))
   const directory = <>
       <Menu.Label className="px-3 pb-2 pt-3 text-sm font-medium">Agents you can reach</Menu.Label>
       <div className="mx-2 mb-2 flex items-center gap-2 rounded-lg border border-border bg-background px-2.5">
@@ -63,11 +66,12 @@ export function ReachableAgentsMenu({ submenu = false }: { submenu?: boolean }) 
           : !agents.length ? <p className="px-2 py-3 text-xs text-muted-foreground">{search ? 'No agents match your search.' : 'No agents are available to this account yet.'}</p>
           : agents.map(agent => {
             const connected = agentKind(agent) === 'AgentBridge'
+            const agentWorks = agent.role === AGENTWORKS_ROLE
             const Icon = connected ? Cable : Bot
             const name = agentName(agent)
             return <div role="listitem" key={agent.id} title={agent.purpose || agent.description || name} className="flex items-start gap-2.5 rounded-lg px-2 py-2">
-              <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{name}</span><span className="block truncate text-[10px] text-muted-foreground">{agentKind(agent)}{agent.provider ? ` · ${agent.provider}` : ''} · {agent.presence || (connected ? agent.online === false ? 'Offline' : 'Status unavailable' : 'Runs when called')}</span>{(agent.purpose || agent.description) && <span className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{agent.purpose || agent.description}</span>}</span>
+              {agentWorks ? <AgentWorksIcon className="h-4 w-4" /> : <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{name}</span><span className="block truncate text-[10px] text-muted-foreground">{agentWorks ? AGENTWORKS_SUBTITLE : agentKind(agent)}{agent.provider ? ` · ${agent.provider}` : ''} · {agent.presence || (connected ? agent.online === false ? 'Offline' : 'Status unavailable' : 'Runs when called')}</span>{(agent.purpose || agent.description) && <span className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{agent.purpose || agent.description}</span>}</span>
             </div>
           })}
       </div>

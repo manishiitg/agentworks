@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { loadProductProjects } from '../platform/chat/productProjects'
 import { WORK_PROFILE_ID, WORK_PROJECTS_ROOT } from '../products/work/workData'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
+import { AGENTWORKS_SUBTITLE, AgentWorksIcon, agentWorksFirst, isOwnAgentWorks } from './ui/AgentWorksIdentity'
 
 interface WorkflowItem {
   presetId: string
@@ -14,6 +15,8 @@ interface WorkflowItem {
   icon?: string
   secondaryLabel?: string
   shared?: boolean
+  /** The person's own AgentWorks (server role "agentworks"): own icon, listed first. */
+  agentWorks?: boolean
 }
 
 const referenceRowKey = (item: WorkflowItem) => item.presetId
@@ -102,10 +105,12 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     void loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { includeOwnSharedProjects: true }).then(crews => {
       crewProjects = crews.map(crew => {
         const identityName = crew.identity?.name?.trim() || crew.title
+        const agentWorks = isOwnAgentWorks(crew)
         return {
           presetId: `crew:${crew.id}`,
           label: identityName,
-          secondaryLabel: identityName === crew.title ? undefined : crew.title,
+          secondaryLabel: agentWorks ? AGENTWORKS_SUBTITLE : identityName === crew.title ? undefined : crew.title,
+          agentWorks,
           workspacePath: crew.workspacePath,
           kind: 'crew',
           shared: !!crew.shared && crew.shared.canBuild !== true,
@@ -117,7 +122,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   }, [isOpen, userID])
   const allReferences = useMemo(() => {
     const items = isOpen && referenceResult?.userID === userID ? referenceResult?.items || [] : []
-    return items
+    return agentWorksFirst(items, item => !!item.agentWorks)
   }, [isOpen, referenceResult, userID])
 
   const query = localQuery.toLowerCase().trim()
@@ -276,13 +281,14 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
               onMouseEnter={() => setSelectedPresetId(referenceRowKey(workflow))}
               onMouseDown={e => { e.preventDefault(); onSelectWorkflow(workflow) }}
             >
-              <EntityIdentityIcon icon={workflow.icon} label={workflow.label} />
+              {workflow.agentWorks ? <AgentWorksIcon /> : <EntityIdentityIcon icon={workflow.icon} label={workflow.label} />}
               <div className="flex-1 min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="truncate font-medium">{workflow.label}</div>
                   <span className="shrink-0 rounded border border-border px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{workflow.kind}</span>
                   {workflow.shared && <span className="shrink-0 text-[10px] text-muted-foreground">Shared</span>}
                 </div>
+                {workflow.agentWorks && <div className="truncate text-xs text-muted-foreground">{AGENTWORKS_SUBTITLE}</div>}
               </div>
             </div>
             </div>
