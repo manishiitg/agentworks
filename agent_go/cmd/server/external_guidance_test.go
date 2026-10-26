@@ -90,7 +90,7 @@ func TestExternalAgentContextGlobalAndScoped(t *testing.T) {
 
 func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	body := externalTestBody(t, f.call(t, "owner", "list_guidance_topics", map[string]any{}), 200)
+	body := externalTestBody(t, f.call(t, "owner", "help", map[string]any{"action": "topics"}), 200)
 	topics, _ := body["topics"].([]any)
 	if len(topics) < 9 {
 		t.Fatalf("got %d topics, want at least the 9 original ones", len(topics))
@@ -110,7 +110,7 @@ func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 			t.Fatalf("topic without a version: %v", topic)
 		}
 	}
-	body = externalTestBody(t, f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "plan-change-impact"}), 200)
+	body = externalTestBody(t, f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "plan-change-impact"}), 200)
 	content, _ := body["content"].(string)
 	if !strings.Contains(content, "blast radius") {
 		t.Fatalf("topic content not rendered from canonical reference: %.120s", content)
@@ -123,21 +123,21 @@ func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 	if version == "" {
 		t.Fatal("topic has no version")
 	}
-	same := externalTestBody(t, f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "plan-change-impact", "known_version": version}), 200)
+	same := externalTestBody(t, f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "plan-change-impact", "known_version": version}), 200)
 	if same["unchanged"] != true || same["content"] != nil {
 		t.Fatalf("unchanged topic was resent: %v", same)
 	}
 	// PLAT-825-113: an area router fetch must not require loading every procedure.
-	area := externalTestBody(t, f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "panel-dashboard"}), 200)
+	area := externalTestBody(t, f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "panel-dashboard"}), 200)
 	path := "references/dashboard/SKILL.md"
-	ref := externalTestBody(t, f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "panel-dashboard", "path": path, "known_version": area["version"]}), 200)
+	ref := externalTestBody(t, f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "panel-dashboard", "path": path, "known_version": area["version"]}), 200)
 	if ref["path"] != path || ref["content"] == "" || ref["content"] == area["content"] || ref["unchanged"] == true {
 		t.Fatalf("reference was not independently readable: %v", ref)
 	}
-	externalTestBody(t, f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "panel-dashboard", "path": "../workflow.json"}), 404)
+	externalTestBody(t, f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "panel-dashboard", "path": "../workflow.json"}), 404)
 	// A topic outside the external profile is rejected even though it exists
 	// in the builder reference.
-	unknown := f.call(t, "owner", "get_guidance_topic", map[string]any{"topic": "plan-editing-tools"})
+	unknown := f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "plan-editing-tools"})
 	denied := externalTestBody(t, unknown, 404)
 	if denied["error"].(map[string]any)["code"] != "unknown_topic" {
 		t.Fatalf("wrong error: %v", denied)
