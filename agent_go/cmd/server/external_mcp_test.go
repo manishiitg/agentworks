@@ -206,7 +206,7 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "get_api_spec")
 	listed := marshalStructured(t, spec)
-	for _, name := range []string{"workflow", "files", "execute_step", "help"} {
+	for _, name := range []string{"workflow", "files", "runs", "help"} {
 		if !strings.Contains(listed, name) {
 			t.Fatalf("spec list missing %q: %s", name, listed)
 		}
@@ -232,27 +232,27 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 	}
 
 	// Spec accepts a single name or an array and returns JSON schemas.
-	single := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": "read_file"})
+	single := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": "files"})
 	requireRemoteSuccess(t, single, "get_api_spec single name")
 	if got := marshalStructured(t, single); !strings.Contains(got, "inputSchema") || !strings.Contains(got, "workflow_id") {
 		t.Fatalf("single-name spec missing schema: %s", got)
 	}
-	multi := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"read_file", "list_workflows"}})
+	multi := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"files", "workflow"}})
 	requireRemoteSuccess(t, multi, "get_api_spec name array")
-	if got := marshalStructured(t, multi); !strings.Contains(got, "read_file") || !strings.Contains(got, "list_workflows") {
+	if got := marshalStructured(t, multi); !strings.Contains(got, "files") || !strings.Contains(got, "workflow") {
 		t.Fatalf("array spec missing entries: %s", got)
 	}
 	unknown := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": "update_workflow_config"})
 	requireRemoteError(t, unknown, "spec of unexposed tool", "unknown_tool")
 
 	// Calls dispatch through the REST surface.
-	workflows := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "list_workflows", "arguments": map[string]any{}})
+	workflows := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "workflow", "arguments": map[string]any{"action": "list"}})
 	requireRemoteSuccess(t, workflows, "call list_workflows")
 	if got := marshalStructured(t, workflows); !strings.Contains(got, "invoices") {
 		t.Fatalf("list_workflows result missing invoices workflow: %s", got)
 	}
 	process := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{
-		"name": "read_file", "arguments": map[string]any{"workflow_id": "invoices", "path": "docs/process.md"},
+		"name": "files", "arguments": map[string]any{"action": "read", "workflow_id": "invoices", "path": "docs/process.md"},
 	})
 	requireRemoteSuccess(t, process, "call read_file")
 	if got := marshalStructured(t, process); !strings.Contains(got, "reviewed weekly") {
@@ -261,7 +261,7 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 	// A workflow the caller cannot see surfaces as a tool error carrying the
 	// REST error code, not a protocol failure.
 	denied := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{
-		"name": "read_file", "arguments": map[string]any{"workflow_id": "secret", "path": "docs/process.md"},
+		"name": "files", "arguments": map[string]any{"action": "read", "workflow_id": "secret", "path": "docs/process.md"},
 	})
 	requireRemoteError(t, denied, "read of invisible workflow", "workflow_not_found")
 
