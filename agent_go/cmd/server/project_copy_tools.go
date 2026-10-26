@@ -18,11 +18,8 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-const projectCopyMaxFiles = 64
-const projectCopyMaxBytes = 16 << 20
-
 func projectCopyDefinition() externalTool {
-	return externalTool{Name: "copy_project_files", Description: "Copy a file or folder from a project you can read into one you own or edit. Private chats, secret stores and symlinks are excluded. Existing files are not replaced. At most 64 files, 2 MiB each and 16 MiB total; choose a smaller folder if it exceeds these limits.", mutates: true, InputSchema: map[string]any{
+	return externalTool{Name: "copy_project_files", Description: "Copy a file or folder from a project you can read into one you own or edit. Private chats, secret stores and symlinks are excluded. Existing files are not replaced. Each file can be up to 2 MiB.", mutates: true, InputSchema: map[string]any{
 		"type": "object", "additionalProperties": false, "required": []any{"source_project", "source_path", "target_project", "target_path"},
 		"properties": map[string]any{
 			"source_project": externalString("Workflow/Flow ID, or work:<Crew ID>, from your accessible project list."),
@@ -92,6 +89,8 @@ func (api *StreamingAPI) projectCopyRoot(ctx context.Context, project string, wr
 	}
 	return root, nil
 }
+
+const projectCopyMemoryBytes = 512 << 20
 
 type projectCopyFile struct {
 	destination string
@@ -169,13 +168,13 @@ func (api *StreamingAPI) externalCopyProjectFiles(w http.ResponseWriter, r *http
 		externalError(w, 403, "protected_path", "Destination is protected or outside write grants.")
 		return
 	}
-	listing, err := externalFileRequest(r.Context(), wf.Request{Root: source, Operation: "list", Path: p, Depth: 8, Limit: 200})
+	listing, err := externalFileRequest(r.Context(), wf.Request{Root: source, Operation: "list", Path: p, Depth: 64, Limit: 10000})
 	if err != nil {
 		externalFailure(w, err)
 		return
 	}
 	if listing.Truncated || listing.DepthLimited || listing.NextOffset != 0 {
-		externalError(w, 400, "copy_limit", "Choose a smaller source folder (at most 64 files and 8 levels).")
+		externalError(w, 400, "copy_limit", "This folder is too large to copy in one go; copy its subfolders one at a time.")
 		return
 	}
 	files := []projectCopyFile{}
@@ -209,8 +208,14 @@ func (api *StreamingAPI) externalCopyProjectFiles(w http.ResponseWriter, r *http
 			directories = append(directories, to)
 			continue
 		}
-		if len(files) >= projectCopyMaxFiles || entry.Size > wf.MaxFileBytes || total+entry.Size > projectCopyMaxBytes {
-			externalError(w, 400, "copy_limit", "Choose fewer or smaller files (64 files, 2 MiB each, 16 MiB total).")
+		if entry.Size > wf.MaxFileBytes {
+			externalError(w, 400, "copy_limit", entry.Path+" is larger than 2 MiB; copy it with the shell or a download instead.")
+			return
+		}
+		// Files are held in memory until all destinations are checked; this
+		// only stops a copy large enough to exhaust the server's memory.
+		if total+entry.Size > projectCopyMemoryBytes {
+			externalError(w, 400, "copy_limit", "This folder is too large to copy in one go; copy its subfolders one at a time.")
 			return
 		}
 		content, e := externalFileRequest(r.Context(), wf.Request{Root: source, Operation: "read", Path: entry.Path})
@@ -233,10 +238,6 @@ func (api *StreamingAPI) externalCopyProjectFiles(w http.ResponseWriter, r *http
 		}
 		total += content.Size
 		files = append(files, projectCopyFile{to, content.File})
-	}
-	if total > projectCopyMaxBytes {
-		externalError(w, 400, "copy_limit", "Choose files totaling at most 16 MiB.")
-		return
 	}
 	for _, dir := range directories {
 		if err = projectCopyDirectory(r.Context(), target, dir, guard); err != nil {
