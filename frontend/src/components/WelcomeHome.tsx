@@ -1,6 +1,6 @@
 import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
-import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, Plus, PanelsTopLeft } from 'lucide-react'
+import { ArrowRight, ArrowUp, Loader2, Terminal, Menu, Plus, PanelsTopLeft, LayoutDashboard } from 'lucide-react'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
 import { navigationProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
@@ -12,7 +12,7 @@ import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
 import { productUrlViewChanged } from '../utils/productUrlNavigation'
 import WelcomeAiReadiness from './WelcomeAiReadiness'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
-import { openAppProduct } from '../utils/appNavigation'
+import { followAppLink, openAppProduct } from '../utils/appNavigation'
 import { OPEN_HOME_EVENT } from '../utils/homeNavigation'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
@@ -209,9 +209,13 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
 
         {workProducts.length > 0 && <HomeRecentWork key={`recent:${scope}`} />}
 
-        {services.length > 0 && <section aria-labelledby="welcome-services">
+        <section aria-labelledby="welcome-services">
           <h2 id="welcome-services" className="text-xs font-medium text-muted-foreground">Tools that work across your projects</h2>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3" aria-label="Shared services">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="Shared services">
+            <a href="/dashboards" onClick={followAppLink} aria-label="Open Dashboards" className="flex min-w-0 items-center gap-3 rounded-xl border border-border p-3.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <LayoutDashboard className="h-7 w-7 shrink-0" aria-hidden="true" />
+              <span className="min-w-0"><span className="block text-sm font-semibold">Dashboards</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">Your dashboards and those shared with you</span></span>
+            </a>
             {services.map(product => {
               const Icon = product.icon
               return <button key={product.id} type="button" aria-label={`Open ${product.label}`} onClick={() => openProduct(product.id)} className="flex min-w-0 items-center gap-3 rounded-xl border border-border p-3.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -220,7 +224,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
               </button>
             })}
           </div>
-        </section>}
+        </section>
 
         <section aria-labelledby="welcome-tools" className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-primary/20 bg-primary/[0.04] p-5 sm:flex-row sm:items-center sm:p-6">
           <div className="flex items-start gap-3">
