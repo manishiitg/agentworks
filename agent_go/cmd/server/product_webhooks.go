@@ -901,6 +901,29 @@ func (s *ProjectActionDispatcher) findInternalProductTrigger(ctx context.Context
 		}
 	}
 	trigger, err := selectInternalProductTrigger(manifest.Triggers, triggerID)
+	// Published functions are immutable source entries, not saved synthetic
+	// triggers in the receiving Crew. Only the typed service's admission can
+	// project that exact published entry into this dispatch.
+	if errors.Is(err, ErrInternalTriggerNotFound) {
+		admission, _ := ctx.Value(declaredFunctionDispatchKey{}).(*crewFunctionCall)
+		if admission != nil && admission.Publication != nil && admission.TargetID == manifest.ID && admission.UserID == userID && admission.TriggerID == triggerID {
+			records, readErr := readProjectFunctionDefinitions(contextWithoutPublication(ctx), admission.Publication.sourceRoot())
+			if readErr != nil {
+				return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, readErr
+			}
+			for _, record := range records {
+				if record.ID == triggerID && record.Name == admission.Function && record.Enabled && record.InputMapping == nil {
+					input := scheduleExecutionInput{}
+					if decodeErr := json.Unmarshal(record.Input, &input); decodeErr != nil {
+						return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, decodeErr
+					}
+					trigger = &productWebhookTrigger{ID: record.ID, Name: firstNonEmptyTrimmed(record.Description, record.Name), Enabled: true, Message: strings.Join(input.Messages, "\n\n"), Kind: triggerKindInternal, RunDestination: runDestinationIsolated, WorkspaceFunction: true}
+					err = nil
+					break
+				}
+			}
+		}
+	}
 	if err != nil {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, err
 	}

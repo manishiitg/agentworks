@@ -1,5 +1,12 @@
+---
+name: schedules
+description: Create, change or inspect timed project callers.
+---
+
 # Schedules
 
-List before editing. Crew uses list_project_schedules and the create/update/delete project schedule tools; Goal uses list_schedules/create_schedule/update_schedule/delete_schedule, trigger_schedule and get_schedule_runs. Discover exact schemas before changing time or target. Preserve timezone, intended target and existing settings not requested to change. A real run can have effects; inspect its result. Do not create and immediately delete a reminder in the same turn.
+Use `schedules` and only the actions listed in this chat or connection. Start with action=list. In MCP pass project (ID or name); product chat already binds its own project. Preserve IDs, timezone, enabled state and settings the person did not ask to change.
 
-For this panel’s full setup and operational contract, Read [the detailed procedure](references/operations.md).
+Use create/update/delete, enable/disable, run_now/stop and runs where offered. MCP create/update take schedule with the advertised timing and action fields. A Crew timer sends its complete message to its saved tab (main by default); Goal timers run the saved plan or preserve their custom message sequence. Flows use their published function entry, not Goal schedules. The server stamps the caller and decides the next eligible time.
+
+Read [timing and execution](references/operations.md) before changing clock/dependency settings or diagnosing a missed occurrence.

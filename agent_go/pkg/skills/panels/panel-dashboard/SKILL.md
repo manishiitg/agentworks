@@ -3,7 +3,7 @@ name: panel-dashboard
 description: Build and share dashboards, offer functions, or configure publishing
   and backups. Use the current product services.
 metadata:
-  version: 2.0.0
+  version: 2.1.0
   panel-tools:
     work:
     - functions
@@ -11,13 +11,12 @@ metadata:
     agentworks:
     - functions
     - dashboard
-    - manage_workflow_webhook
     - settings
     - execute_shell_command
     - database
     relays:
+    - functions
     - dashboard
-    - manage_workflow_webhook
   external-tools:
   - dashboard
   - functions

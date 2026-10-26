@@ -209,8 +209,7 @@ Flow actions for that client. Package
 installation uses the existing sandbox dependency mechanism; never install into a
 published snapshot. Preserve Python whitespace and literal escapes.
 
-Configure function triggers through manage_workflow_webhook with required object
-INPUT. Python Flows invoke run(INPUT) and have no step_id, route_selections or
+Configure the saved function through functions action=define with definition{name, action:{type:"run"}, input_schema}; INPUT is a required object. Python Flows invoke run(INPUT) and have no step_id, route_selections or
 payload routing mappings. If no function is saved yet, create one before testing.
 Use relay action=test(input={...}, function="...") for the draft; it returns a run_id.
 Inspect relay action=get_run(run_id="...") for completion/output/error and recorded calls.

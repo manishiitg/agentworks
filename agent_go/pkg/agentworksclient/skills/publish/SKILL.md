@@ -32,3 +32,17 @@ status. Report success only when state is `live`; show the Crew link and name,
 its current audience and company account. If preparation fails, explain the
 returned next step. Republishing follows the saved project/agent link and
 preserves online working data and conversations.
+
+
+If the project offers functions, keep functions.json in the common Crew format.
+Each function has a stable unique id and name, enabled, description, action,
+fixed input, input_schema and optional result_schema. For example:
+
+```json
+{"functions":[{"id":"report_ready","name":"report_ready","description":"Prepare a report","enabled":true,"action":{"type":"message"},"input":{"messages":["Prepare the requested report."]},"input_schema":{"type":"object"}}]}
+```
+
+Use a message action for a published Crew function; input.messages holds its
+instructions. Do not write the retired top-level instructions/version format.
+Current Crew sharing controls who may call. Keep caller input and results free
+of secret values. Publish again to change the immutable source.

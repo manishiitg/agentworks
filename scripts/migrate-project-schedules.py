@@ -358,6 +358,23 @@ def entry_changes(root, timer_changes, counts, local_user_id=None):
             release["hash"] = digest.hexdigest()
             planned[release_path] = release
             counts["flow_releases_converted"] += 1
+    # Published agents keep an immutable source copy outside the Crew tree.
+    # Convert those definitions too; there is no runtime legacy reader.
+    for user in (root / "_users").glob("*"):
+        published = user / "crew-published"
+        if user.is_symlink() or published.is_symlink():
+            continue
+        for file in published.glob("*/*/*/source/functions.json"):
+            relative = file.relative_to(root)
+            if any(root.joinpath(*relative.parts[:i]).is_symlink() for i in range(1, len(relative.parts) + 1)):
+                continue
+            old = read_json(file, {})
+            functions = old.get("functions") or []
+            if "version" not in old and all("action" in fn for fn in functions):
+                continue
+            folder = file.parent.relative_to(root).as_posix()
+            planned[file] = {"functions": [function_record("crew", folder, fn) for fn in functions]}
+            counts["published_function_files_converted"] += 1
     if skipped_releases:
         counts["flow_release_skip_paths"] = skipped_releases
     return list(planned.items())

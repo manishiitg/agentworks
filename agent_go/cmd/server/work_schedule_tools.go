@@ -12,7 +12,7 @@ import (
 )
 
 // registerWorkScheduleTools exposes the project-scoped subset Work needs:
-// recurring one-message jobs. Definitions live in workflow.json and execution
+// recurring one-message jobs. Definitions live in schedules.json and execution
 // reuses ProjectActionDispatcher, so there is no second scheduler.
 func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegistrar, profileID, userID, sessionID, workspacePath string, readOnly bool) error {
 	if api.projectActions == nil {
@@ -53,6 +53,29 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		crewFunctionsHint = " Other Crews, workflows and external connections do not need a webhook: they call this Crew's functions (functions action=call; `ask` is always available), which sets up their binding automatically."
 	}
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
+		if strings.HasSuffix(name, "_project_trigger") {
+			properties, _ := parameters["properties"].(map[string]interface{})
+			delete(properties, "kind")
+			delete(properties, "caller")
+			original := execute
+			execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
+				if kind, _ := args["kind"].(string); kind != "" && kind != "webhook" {
+					return "", fmt.Errorf("use functions for reusable work")
+				}
+				if id, _ := args["id"].(string); id != "" {
+					entries, err := api.projectActions.projectWebhookConfigs(ctx, listUserID, profileID, projectID)
+					if err != nil {
+						return "", err
+					}
+					for _, entry := range entries {
+						if entry.ID == id && entry.IsInternal() {
+							return "", fmt.Errorf("use functions or its saved step binding for that entry")
+						}
+					}
+				}
+				return original(ctx, args)
+			}
+		}
 		return registrar.RegisterCustomTool(name, description, parameters, execute, "work_schedule_tools")
 	}
 	resolveID := func(value string) string {
@@ -232,7 +255,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			return err
 		}
 	}
-	if err := register("list_project_triggers", "List the authenticated webhook triggers stored in this project's workflow.json. Secrets are never returned.", map[string]interface{}{
+	if err := register("list_project_triggers", "List the authenticated webhook triggers stored in this project's webhooks.json. Secrets are never returned.", map[string]interface{}{
 		"type": "object", "properties": map[string]interface{}{},
 	}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		triggers, err := api.projectActions.projectWebhookConfigs(ctx, listUserID, profileID, projectID)
@@ -241,6 +264,9 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		}
 		out := make([]productWebhookResponse, 0, len(triggers))
 		for _, trigger := range triggers {
+			if trigger.IsInternal() {
+				continue
+			}
 			out = append(out, productWebhookDTO(trigger))
 		}
 		encoded, err := json.MarshalIndent(map[string]interface{}{"triggers": out}, "", "  ")

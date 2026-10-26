@@ -16,14 +16,13 @@ import (
 // returned once, on create or rotate, as in the app.
 
 func externalTriggerDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_triggers", "List, create, update or delete the triggers of a workflow, Flow or Crew, or read a trigger's recent deliveries (runs): webhooks, function triggers (Flows and workflows) and internal triggers bound to a calling workflow or Crew; for workflows and Flows also test a trigger and read a test run's status. Pass workflow_id (also for a Flow) or crew_id. List first: it shows declared variables, saved routes and existing triggers. A webhook's secret is returned once, when it is created or rotated.", true, false, map[string]any{
-		"workflow_id": externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
-		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
-		"action":      map[string]any{"type": "string", "enum": []any{"list", "create", "update", "delete", "test", "status", "runs"}},
-		"limit":       externalInteger(1, 100),
-		"id":          externalString("Trigger ID from list; required for update, delete, test and runs."),
-		"trigger":     map[string]any{"type": "object", "description": "For create and update. Workflows and Flows: name, enabled, kind (webhook default, function, internal), auth_mode (bearer or github), route_selections, group_names (workflows), function {name, description, inputs, allowed_callers}, caller, step_id, input_mode, allowed_variables, payload_mappings, rotate_secret. Crews: name, enabled, message, auth_mode, run_destination (crew_chat or isolated), kind (internal), caller, rotate_secret. For test: payload, event, delivery_id; for status: run_id."},
-	}, "action")
+	add("manage_triggers", "List, create, update or delete the triggers of a workflow, Flow or Crew, or read a trigger's recent deliveries (runs): authenticated HTTP webhooks; for workflows and Flows also test a trigger and read a test run's status. Pass project. List first: it shows declared variables, saved routes and existing triggers. A webhook's secret is returned once, when it is created or rotated.", true, false, map[string]any{
+		"project": externalString("Project ID or name."),
+		"action":  map[string]any{"type": "string", "enum": []any{"list", "create", "update", "delete", "test", "status", "runs"}},
+		"limit":   externalInteger(1, 100),
+		"id":      externalString("Trigger ID from list; required for update, delete, test and runs."),
+		"trigger": map[string]any{"type": "object", "description": "For create and update. Workflows and Flows: name, enabled, kind (webhook default, function, internal), auth_mode (bearer or github), route_selections, group_names (workflows), function {name, description, inputs, allowed_callers}, caller, step_id, input_mode, allowed_variables, payload_mappings, rotate_secret. Crews: name, enabled, message, auth_mode, run_destination (crew_chat or isolated), kind (internal), caller, rotate_secret. For test: payload, event, delivery_id; for status: run_id."},
+	}, "action", "project")
 }
 
 func (api *StreamingAPI) externalWorkflowTriggerCall(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow, access WorkflowAccessLevel) {
@@ -68,6 +67,17 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 	ctx := r.Context()
 	claims := GetUserFromContext(ctx)
 	action := externalArg(args, "action")
+	if trigger, ok := args["trigger"].(map[string]interface{}); ok {
+		if kind, _ := trigger["kind"].(string); kind != "" && kind != "webhook" {
+			externalError(w, 400, "use_functions", "Use functions for reusable work.")
+			return
+		}
+		if trigger["caller"] != nil || trigger["function"] != nil {
+			externalError(w, 400, "use_functions", "Use functions for reusable work.")
+			return
+		}
+	}
+
 	if t := claims.AccessToken; t != nil {
 		scope := "crews:write"
 		if action == "list" || action == "runs" {
@@ -108,10 +118,19 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 		return
 	}
 	id := externalArg(args, "id")
+	for _, entry := range triggers {
+		if entry.ID == id && entry.IsInternal() {
+			externalError(w, 400, "use_functions", "Use functions or the saved step binding for that entry.")
+			return
+		}
+	}
 	switch action {
 	case "list":
 		out := make([]productWebhookResponse, 0, len(triggers))
 		for _, item := range triggers {
+			if item.IsInternal() {
+				continue
+			}
 			out = append(out, productWebhookDTO(item))
 		}
 		externalJSON(w, map[string]any{"crew_id": crewID, "triggers": out})

@@ -25,6 +25,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
 	mcpclient "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -93,7 +94,7 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 		{[]string{"files", "search", "--workflow", "wf-1", "--query", "invoice"}, "", "files", map[string]any{"action": "search", "workflow_id": "wf-1", "query": "invoice"}},
 		{[]string{"knowledge", "list", "--workflow", "wf-1"}, "", "files", map[string]any{"action": "knowledge_list", "workflow_id": "wf-1"}},
 		{[]string{"crews", "read", "--crew", "crew-1", "--path", "notes.md"}, "", "files", map[string]any{"action": "read", "crew_id": "crew-1", "path": "notes.md"}},
-		{[]string{"guidance", "topic", "--topic", "plan-change-impact"}, "", "get_guidance_topic", map[string]any{"topic": "plan-change-impact"}},
+		{[]string{"guidance", "topic", "--topic", "plan-change-impact"}, "", "help", map[string]any{"action": "topic", "topic": "plan-change-impact"}},
 		{[]string{"knowledge", "read", "--workflow", "wf-1", "--path", "learnings/_global/SKILL.md"}, "", "files", map[string]any{"action": "knowledge_read", "workflow_id": "wf-1", "path": "learnings/_global/SKILL.md"}},
 		{[]string{"tools", "call", "native_future_tool", "--set", `nested={"enabled":true}`, "--set", `count=9007199254740993`}, "", "native_future_tool", map[string]any{"nested": map[string]any{"enabled": true}}},
 	} {
@@ -153,14 +154,14 @@ func TestCLIRunAndScheduleArguments(t *testing.T) {
 		{[]string{"runs", "stop", "--workflow", "wf-1", "--session", "s1", "--execution-id", "e1"}, "runs", map[string]any{"action": "stop_step", "workflow_id": "wf-1", "session_id": "s1", "execution_id": "e1"}},
 		{[]string{"runs", "stop-all", "--workflow", "wf-1", "--session", "s1"}, "runs", map[string]any{"action": "stop_all", "workflow_id": "wf-1", "session_id": "s1"}},
 		{[]string{"runs", "executions", "--workflow", "wf-1"}, "runs", map[string]any{"action": "active", "workflow_id": "wf-1"}},
-		{[]string{"schedules", "list", "--workflow", "wf-1"}, "list_schedules", map[string]any{"workflow_id": "wf-1"}},
-		{[]string{"schedules", "runs", "--workflow", "wf-1", "--schedule-id", "daily"}, "get_schedule_runs", map[string]any{"workflow_id": "wf-1", "schedule_id": "daily"}},
-		{[]string{"schedules", "trigger", "--workflow", "wf-1", "--schedule-id", "daily"}, "trigger_schedule", map[string]any{"workflow_id": "wf-1", "schedule_id": "daily"}},
+		{[]string{"schedules", "list", "--project", "wf-1"}, "schedules", map[string]any{"action": "list", "project": "wf-1"}},
+		{[]string{"schedules", "runs", "--project", "wf-1", "--schedule-id", "daily"}, "schedules", map[string]any{"action": "runs", "project": "wf-1", "schedule_id": "daily"}},
+		{[]string{"schedules", "trigger", "--project", "wf-1", "--schedule-id", "daily"}, "schedules", map[string]any{"action": "run_now", "project": "wf-1", "schedule_id": "daily"}},
 		{[]string{"chat", "ask", "--workflow", "wf-1", "--message", "why did step 1 fail?"}, "chat", map[string]any{"workflow_id": "wf-1", "message": "why did step 1 fail?"}},
 		{[]string{"chat", "ask", "--workflow", "wf-1", "--inbox", "inbox-1", "--message", "and then?"}, "chat", map[string]any{"workflow_id": "wf-1", "inbox_id": "inbox-1", "message": "and then?"}},
 		{[]string{"messages", "send", "--crew", "crew-1", "--message", "Please review", "--submission-id", "msg-1"}, "messages", map[string]any{"action": "send", "crew_id": "crew-1", "message": "Please review", "submission_id": "msg-1"}},
 		{[]string{"messages", "read", "--inbox", "inbox-1", "--after", "2", "--limit", "10", "--wait", "25"}, "messages", map[string]any{"action": "read", "inbox_id": "inbox-1", "after": 2, "limit": 10, "wait_seconds": 25}},
-		{[]string{"crews", "call-status", "--call", "fn-1", "--after", "3", "--after-event", "7", "--message-limit", "5"}, "functions", map[string]any{"action": "status", "call_id": "fn-1", "after": 3, "after_event": 7, "message_limit": 5}},
+		{[]string{"functions", "call-status", "--call", "fn-1", "--after", "3", "--after-event", "7", "--message-limit", "5"}, "functions", map[string]any{"action": "status", "call_id": "fn-1", "after": 3, "after_event": 7, "message_limit": 5}},
 		{[]string{"runs", "reply", "--workflow", "wf-1", "--session", "s1", "--request-id", "r1", "--response", "yes"}, "runs", map[string]any{"action": "reply_input", "workflow_id": "wf-1", "session_id": "s1", "request_id": "r1", "response": "yes"}},
 		{[]string{"brain", "secret", "list"}, "brain", map[string]any{"action": "secrets_list"}},
 		{[]string{"brain", "secret", "delete", "EXAMPLE_KEY"}, "brain", map[string]any{"action": "secrets_delete", "name": "EXAMPLE_KEY"}},
@@ -803,6 +804,13 @@ func TestCLIOperationsStayAdmitted(t *testing.T) {
 	}
 	for _, name := range agentworksproduct.RunTools() {
 		admitted[name] = true
+	}
+	// PLAT-871: a narrow catalog operation inherits its admitted source;
+	// canonical caller members need not duplicate the product source list.
+	for _, action := range catalog.Actions {
+		if action.Source != "" && admitted[action.Source] {
+			admitted[action.Member] = true
+		}
 	}
 	mapped := map[string]string{}
 	for _, group := range cliOperationGroups {

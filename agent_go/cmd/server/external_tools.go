@@ -717,6 +717,19 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalWorkspaceCall(w, r, call.Arguments)
 		return
 	}
+	if tool.Name == "manage_schedules" || tool.Name == "manage_triggers" || tool.Name == "manage_condition_triggers" {
+		claims := GetUserFromContext(r.Context())
+		target, err := resolveTriggerTarget(r.Context(), claims, externalArg(call.Arguments, "project"))
+		if err != nil {
+			externalError(w, 404, "not_found", "Project not found or not allowed for this connection.")
+			return
+		}
+		if target.Kind == triggerCallerCrew {
+			call.Arguments["crew_id"] = target.CrewID
+		} else {
+			call.Arguments["workflow_id"] = target.Manifest.ID
+		}
+	}
 	if projectFunctionTool(tool.Name) {
 		api.externalProjectFunctionCall(w, r, tool.Name, call.Arguments)
 		return

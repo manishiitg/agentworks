@@ -26,15 +26,14 @@ var externalScheduleActions = []any{"list", "create", "update", "delete", "enabl
 var externalScheduleTargetFields = []string{"workspace_path", "entity_type", "product_profile_id", "product_project_id", "id"}
 
 func externalScheduleDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_schedules", "List, create, change, delete, enable, disable, run now, stop, or read the run history of a workflow's or Crew's schedules (not Flows: they use function triggers). Pass workflow_id or crew_id. Changes need the owner, as on the Schedules page; run_now and stop need run access.", true, false, map[string]any{
-		"workflow_id": externalString("Workflow ID from list_workflows. Pass this or crew_id."),
-		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
+	add("manage_schedules", "List, create, change, delete, enable, disable, run now, stop, or read the run history of a workflow's or Crew's schedules (not Flows: they use function triggers). Pass project. Changes need the owner, as on the Schedules page; run_now and stop need run access.", true, false, map[string]any{
+		"project":     externalString("Project ID or name."),
 		"action":      map[string]any{"type": "string", "enum": externalScheduleActions},
 		"schedule_id": externalString("Schedule ID from action list; required except for list and create."),
 		"schedule":    map[string]any{"type": "object", "description": "For create and update: the schedule's fields, as the Schedules page saves them. name, schedule_type (cron or calendar), cron_expression, timezone, calendar_items, enabled, messages (a Crew schedule needs exactly one), description; a Crew schedule also chat_id (the tab it runs in, from workspace action=chats; empty is the main chat); workflows also group_names, route_selections, collision_policy, after_schedule_ids. update replaces the fields you send."},
 		"limit":       externalInteger(1, 200),
 		"offset":      externalInteger(0, 1000000),
-	}, "action")
+	}, "action", "project")
 }
 
 type externalScheduleTarget struct {
