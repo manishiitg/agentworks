@@ -67,6 +67,20 @@ class ProjectScheduleMigrationTest(unittest.TestCase):
             self.assertEqual(dates[0]["input"]["payload"], {"task": "check"})
             self.assertEqual(migration.migrate(root, backup).get("changed_files"), 0)
 
+    def test_local_caller_requires_explicit_single_user_conversion(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)/"docs"
+            for kind in ("Workflow","Crew"):
+                project=root/kind/"local"
+                project.mkdir(parents=True)
+                (project/"workflow.json").write_text(json.dumps({"id":"local","schedules":[{"id":"daily","name":"Daily","cron_expression":"0 9 * * *","enabled":True}]}))
+            with self.assertRaisesRegex(ValueError,"no recorded owner"):
+                migration.migrate(root,check=True)
+            migration.migrate(root,Path(temp)/"backup",local_user_id="local-person")
+            for kind in ("Workflow","Crew"):
+                saved=json.loads((root/kind/"local"/"schedules.json").read_text())["schedules"][0]
+                self.assertEqual(saved["run_as"],"local-person")
+
 
 if __name__ == "__main__":
     unittest.main()

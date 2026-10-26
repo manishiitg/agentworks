@@ -224,6 +224,9 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 		if owner == "" {
 			owner, _ = crewProjectOwnerID(root)
 		}
+		if owner == "" && !IsMultiUserMode() {
+			owner = GetDefaultUserID()
+		}
 		if owner == "" || record.RunAs != owner {
 			return fmt.Errorf("schedule caller does not match its Crew owner")
 		}
@@ -253,6 +256,9 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 			When:   projectactions.When{Cron: s.CronExpression, Timezone: scheduleTimezoneOrDefault(s.Timezone), Anchor: s.CreatedAt}}
 		if record.RunAs == "" {
 			record.RunAs, _ = crewProjectOwnerID(root)
+		}
+		if record.RunAs == "" && !IsMultiUserMode() {
+			record.RunAs = GetDefaultUserID()
 		}
 		if s.Isolated {
 			record.Action.Conversation = "isolated"

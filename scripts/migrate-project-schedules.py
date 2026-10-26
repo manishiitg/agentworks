@@ -10,6 +10,7 @@ from collections import Counter
 import copy
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
@@ -36,15 +37,15 @@ def read_json(path, default):
     return json.loads(path.read_text())
 
 
-def caller_for(kind, manifest, metadata):
+def caller_for(kind, manifest, metadata, local_user_id=None):
     if kind == "crew":
-        return metadata.get("owner_id") or manifest.get("owner_id") or ""
+        return metadata.get("owner_id") or manifest.get("owner_id") or local_user_id or ""
     owners = (manifest.get("access") or {}).get("owners") or []
     creator = manifest.get("created_by") or ""
     # Match the saved ownership, never replace a missing caller with an admin.
     if creator and (not owners or creator in owners):
         return creator
-    return next((owner for owner in owners if isinstance(owner, str) and owner.strip()), "")
+    return next((owner for owner in owners if isinstance(owner, str) and owner.strip()), local_user_id or "")
 
 
 def timer_record(kind, identity, caller, schedule, anchor):
@@ -96,7 +97,7 @@ def timer_record(kind, identity, caller, schedule, anchor):
             "when": when, "action": action, "input": inputs, "run_as": caller, "enabled": bool(schedule.get("enabled"))}
 
 
-def inspect(root):
+def inspect(root, local_user_id=None):
     changes, counts = [], Counter()
     states = {}
     for state_path in (root / "_users").glob("*/chat_history/product-schedules.json"):
@@ -127,7 +128,7 @@ def inspect(root):
         counts[kind + "_timers"] += len(timers)
         counts["goal_message_timers"] += sum(1 for s in timers if kind == "goal" and s.get("messages"))
         counts["after_dependencies"] += sum(1 for s in timers if s.get("after_schedule_id") or s.get("after_schedule_ids"))
-        records = [timer_record(kind, identity, caller_for(kind, manifest, metadata), s,
+        records = [timer_record(kind, identity, caller_for(kind, manifest, metadata, local_user_id), s,
                                 manifest.get("created_at") or metadata.get("created_at") or manifest.get("updated_at")) for s in timers]
         if kind == "crew" and records:
             state = states.get(records[0]["run_as"])
@@ -162,8 +163,8 @@ def inspect(root):
     return changes, dict(counts)
 
 
-def migrate(root, backup=None, check=False):
-    changes, counts = inspect(root)
+def migrate(root, backup=None, check=False, local_user_id=None):
+    changes, counts = inspect(root, local_user_id)
     if check:
         return counts
     if not backup:
@@ -198,6 +199,10 @@ if __name__ == "__main__":
     parser.add_argument("--workspace-dir", type=Path, required=True)
     parser.add_argument("--backup-dir", type=Path)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--single-user", action="store_true", help="Explicit local deployment mode; never use on a company server")
+    parser.add_argument("--local-user-id", help="The local server's DEFAULT_USER_ID (default when unset)")
     args = parser.parse_args()
+    if args.single_user != bool(args.local_user_id) or (args.single_user and os.environ.get("MULTI_USER_MODE", "").lower() == "true"):
+        parser.error("local caller conversion requires --single-user and --local-user-id together, outside multi-user mode")
     print(json.dumps({"event": "project_schedule_migration", "check": args.check,
-                      **migrate(args.workspace_dir, args.backup_dir, args.check)}, sort_keys=True))
+                      **migrate(args.workspace_dir, args.backup_dir, args.check, args.local_user_id)}, sort_keys=True))

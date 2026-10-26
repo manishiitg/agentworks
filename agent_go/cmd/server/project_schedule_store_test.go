@@ -112,6 +112,8 @@ func TestProjectScheduleCallerCannotBeChangedByEditingFiles(t *testing.T) {
 		{"relay no owner", "relay", "other", true, true, false},
 		{"local fallback", "goal", GetDefaultUserID(), false, true, true},
 		{"local foreign account", "goal", "other", false, true, false},
+		{"crew local fallback", "local-crew", GetDefaultUserID(), false, true, true},
+		{"crew local foreign account", "local-crew", "other", false, true, false},
 		{"crew registered owner", "crew", "owner", true, true, true},
 		{"crew foreign account", "crew", "other", true, true, false},
 	} {
@@ -122,15 +124,20 @@ func TestProjectScheduleCallerCannotBeChangedByEditingFiles(t *testing.T) {
 				t.Setenv("MULTI_USER_MODE", "false")
 			}
 			root := "Workflow/example"
-			if test.kind == "crew" {
+			if test.kind == "crew" || test.kind == "local-crew" {
 				root = "Crew/example-example"
 			}
-			record := projectactions.Schedule{ID: "daily", Name: "Daily", Project: projectactions.Project{Kind: test.kind, ID: "example"}, When: projectactions.When{Cron: "0 9 * * *", Timezone: "UTC"}, Action: projectactions.Action{Type: "run"}, RunAs: test.runAs, Input: json.RawMessage(`{}`)}
+			recordKind := test.kind
+			if recordKind == "local-crew" {
+				recordKind = "crew"
+				root = "Crew/local-local"
+			}
+			record := projectactions.Schedule{ID: "daily", Name: "Daily", Project: projectactions.Project{Kind: recordKind, ID: "example"}, When: projectactions.When{Cron: "0 9 * * *", Timezone: "UTC"}, Action: projectactions.Action{Type: "run"}, RunAs: test.runAs, Input: json.RawMessage(`{}`)}
 			if err := writeProjectSchedules(context.Background(), root, []projectactions.Schedule{record}); err != nil {
 				t.Fatal(err)
 			}
 			var err error
-			if test.kind == "crew" {
+			if recordKind == "crew" {
 				err = loadCrewTimerActions(context.Background(), root, &productProjectManifest{ID: "example"})
 			} else {
 				m := &WorkflowManifest{ID: "example", Kind: test.kind}
