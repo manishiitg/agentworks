@@ -20,6 +20,7 @@ import { AgentWorksIcon, AGENTWORKS_SUBTITLE } from './ui/AgentWorksIdentity'
 import { HomeUseCases } from './HomeUseCases'
 import { HomeRecentWork } from './HomeRecentWork'
 import { useCommandDialogStore } from '../stores/useCommandDialogStore'
+import { Button } from './ui/Button'
 import api from '../services/api'
 
 
@@ -215,9 +216,12 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
           </div>
         </section>}
 
-        <section aria-labelledby="welcome-tools" className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs text-muted-foreground">
-          <span id="welcome-tools" className="flex items-center gap-2"><Terminal aria-hidden="true" className="h-4 w-4" />Use {appName} from your AI app</span>
-          <button type="button" onClick={openMcpSetup} className="inline-flex min-h-8 items-center gap-2 rounded-md px-2 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Connect your AI app<ArrowRight aria-hidden="true" className="h-3.5 w-3.5" /></button>
+        <section aria-labelledby="welcome-tools" className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-primary/20 bg-primary/[0.04] p-5 sm:flex-row sm:items-center sm:p-6">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Terminal className="h-5 w-5" aria-hidden="true" /></span>
+            <div><h2 id="welcome-tools" className="text-base font-semibold">Already use an AI app?</h2><p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">Connect ChatGPT, Claude or your favorite coding app to {appName}.</p></div>
+          </div>
+          <Button type="button" variant="outline" onClick={openMcpSetup} className="shrink-0">Connect your AI app<ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button>
         </section>
 
       </div>
