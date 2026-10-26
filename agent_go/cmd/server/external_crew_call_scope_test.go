@@ -126,9 +126,9 @@ func TestCrewFunctionQuestionIsBoundToCallAndRunScope(t *testing.T) {
 	}
 }
 
-// A Crew's owner sees every call to it (who, which function, how it ended) without other people's results; anyone else
-// sees only their own calls, in full (PLAT-837).
-func TestListCrewFunctionCallsOwnerSeesAllOthersSeeTheirOwn(t *testing.T) {
+// PLAT-861-342: admitted Crew members see every published function call and result
+// under the existing one-company sharing rule, regardless of who made the call.
+func TestListCrewFunctionCallsMembersSeeAllResults(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	seed := func(id, user string, isolated bool) {
@@ -156,10 +156,9 @@ func TestListCrewFunctionCallsOwnerSeesAllOthersSeeTheirOwn(t *testing.T) {
 	}
 	for _, raw := range calls {
 		call := raw.(map[string]any)
-		mine := call["caller"].(map[string]any)["you"] == true
 		for _, field := range []string{"answer", "result", "files"} {
-			if _, present := call[field]; present != mine {
-				t.Fatalf("the list exposes %s only on the caller's own call, got %v", field, call)
+			if _, present := call[field]; !present {
+				t.Fatalf("shared function history is missing %s: %v", field, call)
 			}
 		}
 	}
@@ -173,8 +172,13 @@ func TestListCrewFunctionCallsOwnerSeesAllOthersSeeTheirOwn(t *testing.T) {
 	}
 	code, out = externalCrewRequest(t, env, token("someone"), "project_functions_calls", map[string]any{"crew_id": "beta"})
 	calls, _ = out["calls"].([]any)
-	if code != 200 || len(calls) != 1 || calls[0].(map[string]any)["call_id"] != "fn-list-someone" || calls[0].(map[string]any)["result"] == nil {
-		t.Fatalf("another user sees only their own call, in full: %d %v", code, out)
+	if code != 200 || len(calls) != 2 {
+		t.Fatalf("an admitted person sees every shared call: %d %v", code, out)
+	}
+	for _, raw := range calls {
+		if raw.(map[string]any)["result"] == nil {
+			t.Fatalf("an admitted person sees every shared result: %v", raw)
+		}
 	}
 }
 

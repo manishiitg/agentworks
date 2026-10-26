@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -333,8 +332,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		api.addCrewCallCommands(ctx, crew.OwnedByCaller, call, out)
 		externalJSON(w, out)
 	case "project_functions_calls":
-		loadExternalSavedFunctionCalls(ctx)
-		externalJSON(w, map[string]any{"crew_id": manifest.ID, "calls": externalCrewFunctionCalls(workspaceExternalID(manifest.Product, manifest.ID), claims.UserID, crew.OwnedByCaller, externalInt(args, "limit", crewFunctionRecentCallsLimit))})
+		externalJSON(w, map[string]any{"crew_id": manifest.ID, "calls": externalCrewFunctionCalls(ctx, workspaceExternalID(manifest.Product, manifest.ID), claims.UserID, externalInt(args, "limit", crewFunctionRecentCallsLimit))})
 	case "project_functions_list":
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "functions": externalCrewFunctionSummaries(ctx, crew, manifest, label)})
 	case "list_crew_files", "search_crew_files":
@@ -398,63 +396,31 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// externalCrewFunctionCalls lists recent calls to one Crew, newest first. The Crew's owner sees every call (who made it,
-// which function, when, how it ended) but not the arguments or results of other people's calls; anyone else sees only the
-// calls they made themselves, in full. Saved records are loaded before listing.
-func externalCrewFunctionCalls(crewID, userID string, owner bool, limit int) []map[string]any {
+// externalCrewFunctionCalls uses the website's saved-call history after the
+// existing project access checks. Every admitted person sees the same results.
+func externalCrewFunctionCalls(ctx context.Context, crewID, userID string, limit int) []map[string]any {
 	if limit <= 0 || limit > crewFunctionRecentCallsLimit {
 		limit = crewFunctionRecentCallsLimit
 	}
-	crewFunctionCalls.Lock()
-	calls := make([]*crewFunctionCall, 0, len(crewFunctionCalls.m))
-	for _, call := range crewFunctionCalls.m {
-		calls = append(calls, call)
-	}
-	crewFunctionCalls.Unlock()
-	type row struct {
-		started time.Time
-		entry   map[string]any
-	}
-	rows := []row{}
+	calls := recentCrewFunctionCalls(ctx, crewID, userID)
+	calls = calls[:min(len(calls), limit)]
+	out := make([]map[string]any, 0, len(calls))
 	for _, call := range calls {
-		call.mu.Lock()
-		if call.TargetKind != triggerCallerCrew || workspaceExternalID(call.TargetProfileID, call.TargetID) != strings.TrimSpace(crewID) || call.TargetChat != "" {
-			call.mu.Unlock()
-			continue
-		}
-		mine := call.UserID == userID
-		if !mine && !owner {
-			call.mu.Unlock()
-			continue
-		}
 		entry := map[string]any{
-			"call_id": call.ID, "function": call.Function, "status": call.Status, "started_at": call.CreatedAt,
-			"caller": map[string]any{"kind": call.CallerKind, "name": call.CallerLabel, "you": mine},
+			"call_id": call.CallID, "function": call.Function, "status": call.Status, "started_at": call.StartedAt,
+			"caller": map[string]any{"kind": call.CallerKind, "name": call.CallerLabel, "you": call.CallerYou},
+			"answer": call.Answer, "files": call.Files,
 		}
-		if call.terminalLocked() {
-			entry["finished_at"] = call.UpdatedAt
+		if call.Result != nil {
+			entry["result"] = call.Result
 		}
-		if mine {
-			entry["answer"] = call.Answer
-			entry["files"] = call.Files
-			if call.Result != nil {
-				entry["result"] = call.Result
-			}
+		if call.FinishedAt != nil {
+			entry["finished_at"] = call.FinishedAt
 		}
 		if call.Error != "" {
 			entry["error"] = call.Error
 		}
-		started := call.CreatedAt
-		call.mu.Unlock()
-		rows = append(rows, row{started, entry})
-	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].started.After(rows[j].started) })
-	if len(rows) > limit {
-		rows = rows[:limit]
-	}
-	out := make([]map[string]any, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, r.entry)
+		out = append(out, entry)
 	}
 	return out
 }

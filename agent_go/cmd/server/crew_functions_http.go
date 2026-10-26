@@ -1,8 +1,8 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"net/http"
 	"sort"
 	"strings"
@@ -13,7 +13,7 @@ import (
 
 // Crew functions in the Automation panel (PLAT-357): the Functions tab lists
 // a Crew's declared functions and recent calls
-// made to them while the server has been running. Deletion is limited to the
+// made to them, including saved calls from before a restart. Deletion is limited to the
 // Crew owner, like triggers (projectManifest resolves the caller's own
 // projects only).
 
@@ -37,23 +37,28 @@ func (s *ProjectActionDispatcher) crewFunctionTarget(r *http.Request) (triggerTa
 }
 
 type crewFunctionCallView struct {
-	CallID         string                 `json:"call_id"`
-	Function       string                 `json:"function"`
-	CallerKind     string                 `json:"caller_kind"`
-	CallerLabel    string                 `json:"caller_label"`
-	Status         string                 `json:"status"`
-	LatestProgress *crewFunctionProgress  `json:"latest_progress,omitempty"`
-	Progress       []crewFunctionProgress `json:"progress,omitempty"`
-	Result         interface{}            `json:"result,omitempty"`
-	Error          string                 `json:"error,omitempty"`
-	StartedAt      time.Time              `json:"started_at"`
-	FinishedAt     *time.Time             `json:"finished_at,omitempty"`
+	CallID            string                   `json:"call_id"`
+	Function          string                   `json:"function"`
+	CallerKind        string                   `json:"caller_kind"`
+	CallerLabel       string                   `json:"caller_label"`
+	Status            string                   `json:"status"`
+	LatestProgress    *crewFunctionProgress    `json:"latest_progress,omitempty"`
+	Progress          []crewFunctionProgress   `json:"progress,omitempty"`
+	Result            interface{}              `json:"result,omitempty"`
+	Answer            string                   `json:"answer,omitempty"`
+	Files             []structuredFunctionFile `json:"files,omitempty"`
+	IsolatedExecution bool                     `json:"isolated_execution,omitempty"`
+	CallerYou         bool                     `json:"-"`
+	Error             string                   `json:"error,omitempty"`
+	StartedAt         time.Time                `json:"started_at"`
+	FinishedAt        *time.Time               `json:"finished_at,omitempty"`
 }
 
-// recentCrewFunctionCalls returns the latest calls made to one Crew. A call
-// to a Code (a private same-owner peer call) is shown only to the person who
-// made it: the Code's owner never sees an editor's private runs (#246 review).
-func recentCrewFunctionCalls(targetID, requesterID string) []crewFunctionCallView {
+// recentCrewFunctionCalls is the shared website/MCP history for an admitted
+// Crew. Published function results belong to the project; private chat-to-chat
+// calls remain outside its history.
+func recentCrewFunctionCalls(ctx context.Context, targetID, requesterID string) []crewFunctionCallView {
+	loadExternalSavedFunctionCalls(ctx)
 	crewFunctionCalls.Lock()
 	calls := make([]*crewFunctionCall, 0, len(crewFunctionCalls.m))
 	for _, call := range crewFunctionCalls.m {
@@ -63,11 +68,7 @@ func recentCrewFunctionCalls(targetID, requesterID string) []crewFunctionCallVie
 	views := []crewFunctionCallView{}
 	for _, call := range calls {
 		call.mu.Lock()
-		if call.TargetKind != triggerCallerCrew || call.TargetID != strings.TrimSpace(targetID) {
-			call.mu.Unlock()
-			continue
-		}
-		if call.TargetProfileID == workproduct.ProfileID && call.UserID != strings.TrimSpace(requesterID) {
+		if call.TargetKind != triggerCallerCrew || call.TargetID != strings.TrimSpace(targetID) || call.TargetChat != "" {
 			call.mu.Unlock()
 			continue
 		}
@@ -75,6 +76,8 @@ func recentCrewFunctionCalls(targetID, requesterID string) []crewFunctionCallVie
 			CallID: call.ID, Function: call.Function, CallerKind: call.CallerKind, CallerLabel: call.CallerLabel,
 			Status: call.Status, Result: call.Result, Error: call.Error, StartedAt: call.CreatedAt,
 			Progress: append([]crewFunctionProgress(nil), call.Progress...),
+			Answer:   call.Answer, Files: append([]structuredFunctionFile(nil), call.Files...),
+			IsolatedExecution: call.IsolatedExecution, CallerYou: call.UserID == strings.TrimSpace(requesterID),
 		}
 		if len(call.Progress) > 0 {
 			latest := call.Progress[len(call.Progress)-1]
@@ -115,7 +118,7 @@ func (s *ProjectActionDispatcher) listCrewFunctionsHTTP(w http.ResponseWriter, r
 		views = append(views, functionView{crewFunction: fn, Implicit: !declared})
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"functions": views, "calls": recentCrewFunctionCalls(target.CrewID, GetUserIDFromContext(r.Context()))})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"functions": views, "calls": recentCrewFunctionCalls(r.Context(), target.CrewID, GetUserIDFromContext(r.Context()))})
 }
 
 func (s *ProjectActionDispatcher) deleteCrewFunctionHTTP(w http.ResponseWriter, r *http.Request) {
