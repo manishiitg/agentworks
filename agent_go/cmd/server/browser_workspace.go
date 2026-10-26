@@ -23,7 +23,7 @@ type workspaceBrowserSettings struct {
 func normalBrowserMode(mode string) string {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	if mode == "" {
-		return "extension"
+		return browser.DefaultMode()
 	}
 	if browser.ValidateMode(mode) != nil {
 		return ""
@@ -33,7 +33,7 @@ func normalBrowserMode(mode string) string {
 func effectiveWorkspaceBrowserMode(mode string) string { return normalBrowserMode(mode) }
 
 func readWorkspaceBrowserSettings(ctx context.Context, workspace string) (workspaceBrowserSettings, error) {
-	settings := workspaceBrowserSettings{Mode: "extension", Port: defaultCDPPort}
+	settings := workspaceBrowserSettings{Mode: browser.DefaultMode(), Port: defaultCDPPort}
 	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
 	if err != nil {
 		return settings, err

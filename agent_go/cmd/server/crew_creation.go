@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"log"
 	"path/filepath"
 	"strings"
@@ -432,7 +433,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		"selected_skills":              []string{},
 		"selected_secrets":             []string{},
 		"selected_global_secret_names": []string{},
-		"browser_mode":                 "extension",
+		"browser_mode":                 browser.DefaultMode(),
 		"use_code_execution_mode":      false,
 	}
 	if llmConfig := resolveCrewCreationLLMConfig(profile, inheritedLLM); llmConfig != nil {

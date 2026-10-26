@@ -662,7 +662,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		browserEnabled := req.BrowserMode != "none"
 		req.EnableBrowserAccess = &browserEnabled
 		if strings.TrimSpace(req.BrowserMode) == "" {
-			req.BrowserMode = "extension"
+			req.BrowserMode = browser.DefaultMode()
 		}
 	}
 	projectInstructions := ""

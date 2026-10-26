@@ -1283,7 +1283,7 @@ func applyMultiAgentCapabilitiesToRequest(req *QueryRequest, caps WorkflowCapabi
 		req.NotificationRunSummaryRecipients = append([]string(nil), caps.Notifications.RunSummaryRecipients...)
 	}
 	if req.BrowserMode == "" {
-		req.BrowserMode = "extension"
+		req.BrowserMode = browser.DefaultMode()
 	}
 
 	if req.BrowserMode == "cdp" && !browser.CDPEnabled() {

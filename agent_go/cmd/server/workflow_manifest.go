@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"io"
 	"log"
 	"net/http"
@@ -901,7 +902,7 @@ func NewWorkflowManifest(label string) *WorkflowManifest {
 			SelectedSkills:            []string{},
 			SelectedSecrets:           []string{},
 			SelectedGlobalSecretNames: &noGlobalSecrets,
-			BrowserMode:               "extension",
+			BrowserMode:               browser.DefaultMode(),
 		},
 		Schedules: []WorkflowSchedule{},
 		CreatedAt: now,
@@ -1417,7 +1418,7 @@ func applyManifestDefaults(m *WorkflowManifest) {
 		m.SchemaVersion = 1
 	}
 	if m.Capabilities.BrowserMode == "" {
-		m.Capabilities.BrowserMode = "extension"
+		m.Capabilities.BrowserMode = browser.DefaultMode()
 	}
 	if m.Capabilities.SelectedServers == nil {
 		m.Capabilities.SelectedServers = []string{}

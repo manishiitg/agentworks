@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"path"
 	"regexp"
 	"strconv"
@@ -465,7 +466,7 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 						"selected_skills":              []string{},
 						"selected_secrets":             []string{},
 						"selected_global_secret_names": []string{},
-						"browser_mode":                 "extension",
+						"browser_mode":                 browser.DefaultMode(),
 						"use_code_execution_mode":      false,
 					},
 					"workflow_context_paths": []string{},

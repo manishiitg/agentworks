@@ -23,7 +23,7 @@ def projects(root):
 
 def convert(mode, deployment):
     if mode in ('', 'auto', None):
-        return 'extension'
+        return 'extension' if deployment == 'local' else 'headless'
     if mode == 'headless' and deployment == 'local':
         return 'extension'
     if mode == 'cdp' and deployment == 'server':
@@ -45,10 +45,32 @@ def migrate(root, backup, deployment, state):
     for project in projects(root):
         manifest_path = project / 'workflow.json'
         sidecar = project / '.browser-settings.json'
-        if not manifest_path.is_file() or manifest_path.is_symlink() or sidecar.is_symlink():
+        if manifest_path.is_symlink() or sidecar.is_symlink():
             continue
-        before = json.loads(manifest_path.read_text())
-        after = json.loads(json.dumps(before))
+        if manifest_path.is_file():
+            before = json.loads(manifest_path.read_text())
+        elif sidecar.is_file() and project.parent.name != 'Workflow':
+            # Crew metadata stays untouched; project settings get their canonical
+            # manifest before the runtime sidecar reader is removed.
+            metadata_path = project / 'product.json'
+            if metadata_path.is_symlink():
+                continue
+            metadata = json.loads(metadata_path.read_text()) if metadata_path.is_file() else {}
+            before = {}
+            prepared = {
+                'schema_version': 1,
+                'id': metadata.get('id', project.name),
+                'label': metadata.get('title') or metadata.get('name') or project.name,
+                'capabilities': metadata.get('capabilities', {}),
+                'schedules': metadata.get('schedules', []),
+                'triggers': metadata.get('triggers', []),
+            }
+            for field in ('created_at', 'updated_at', 'workflow_context_paths'):
+                if field in metadata:
+                    prepared[field] = metadata[field]
+        else:
+            continue
+        after = json.loads(json.dumps(before if manifest_path.is_file() else prepared))
         caps = after.setdefault('capabilities', {})
         saved = json.loads(sidecar.read_text()) if sidecar.is_file() else {}
         # An explicit off state must never become enabled during conversion.

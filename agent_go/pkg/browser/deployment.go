@@ -28,3 +28,12 @@ func ValidateMode(mode string) error {
 }
 
 func ManagedEnabled() bool { return !productpolicy.Local() }
+
+// DefaultMode preserves the installation's ordinary browser without selecting
+// or pairing a personal account browser.
+func DefaultMode() string {
+	if ManagedEnabled() {
+		return "headless"
+	}
+	return "extension"
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -62,7 +63,7 @@ func workRuntimeManifestFromLegacy(raw string) (map[string]interface{}, error) {
 	defaults := map[string]interface{}{
 		"selected_tools":               []interface{}{},
 		"selected_global_secret_names": []interface{}{},
-		"browser_mode":                 "extension",
+		"browser_mode":                 browser.DefaultMode(),
 		"use_code_execution_mode":      false,
 	}
 	for key, value := range defaults {
