@@ -11,9 +11,10 @@ type Inventory = { providers: ProviderManifestEntry[]; accounts: { product: Prod
 type Check = { scope: string; status: 'loading' | 'loaded' | 'error'; inventory?: Inventory }
 
 /** Check actual caller-scoped accounts, not the saved model defaults (which may exist before sign-in). */
-export default function WelcomeAiReadiness({ products, onSetup }: {
+export default function WelcomeAiReadiness({ products, onSetup, onReadyProducts }: {
   products: ProductSurface[]
   onSetup: () => void
+  onReadyProducts?: (products: ProductSurface[]) => void
 }) {
   const user = useAuthStore(state => state.user)
   const profile = useWorkspaceConnectionStore(state => state.profiles.find(item => item.id === state.activeWorkspaceId))
@@ -54,6 +55,8 @@ export default function WelcomeAiReadiness({ products, onSetup }: {
   const runtime = (account: ProviderConnection) => inventory?.providers.find(provider => provider.id === account.provider)
   const readyProducts = inventory?.accounts.filter(group => group.connections.some(account => eligible(account) && account.configured === true && runtime(account)?.runtime_available === true)) ?? []
   const ready = readyProducts.length > 0
+  const readyKey = readyProducts.map(group => group.product).join('|')
+  useEffect(() => { onReadyProducts?.(readyKey ? readyKey.split('|') as ProductSurface[] : []) }, [readyKey, onReadyProducts])
   const accountSummary = [
     { label: 'Personal', relations: ['own'] },
     { label: 'Company', relations: ['server'] },

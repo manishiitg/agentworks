@@ -39,6 +39,9 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const sidebarWidth = useProductNavigationToolbarStore(state => state.sidebarWidth)
   const user = useAuthStore(state => state.user)
   const [agentWorksError, setAgentWorksError] = useState('')
+  // AgentWorks is a Crew, so it is offered once the person has a ready AI account for Crew.
+  const [crewReady, setCrewReady] = useState(false)
+  const onReadyProducts = useCallback((ready: ProductSurface[]) => setCrewReady(ready.includes('work')), [])
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const products = useMemo(() => {
     const visible = new Set(navigationProductSurfaceIDs(user?.allowed_products))
@@ -128,7 +131,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
             className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"><Menu className="h-5 w-5" aria-hidden="true" /></button>
         </header>
 
-        {workProducts.some(product => product.id === 'work') && <section aria-labelledby="welcome-agentworks" className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-primary/50 bg-primary/[0.06] p-5 sm:flex-row sm:items-center sm:p-6">
+        {crewReady && <section aria-labelledby="welcome-agentworks" className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-primary/50 bg-primary/[0.06] p-5 sm:flex-row sm:items-center sm:p-6">
           <div>
             <h2 id="welcome-agentworks" className="text-lg font-semibold">Ask AgentWorks</h2>
             <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">Your own agent. Tell it what you want to get done; it watches your Goals, reports what needs you and builds new work with you.</p>
@@ -137,7 +140,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
           <Button type="button" onClick={openAgentWorks} className="shrink-0">Open AgentWorks<ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button>
         </section>}
 
-        {workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} />}
+        {workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} onReadyProducts={onReadyProducts} />}
 
         {workProducts.length > 0 && <section aria-labelledby="welcome-products">
           <h2 id="welcome-products" className="sr-only">Choose where to work</h2>
