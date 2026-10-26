@@ -12,6 +12,7 @@ import { resolveWorkflowTabForSession } from '../../../utils/workflowTabResoluti
 import { hydrateExecutionConversation } from '../../../utils/executionConversationRestore'
 import type { ScheduledJob, ScheduledJobRun, SchedulerConfig, SkippedWhilePaused } from '../../../services/api-types'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
+import { useLiveRefetch } from '../../../hooks/useLiveRefetch'
 import {
   WORKFLOW_SCHEDULE_PANEL_LIMIT,
   defaultSchedulePanelView,
@@ -186,7 +187,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     refreshPresets()
   }, [loadJobs, refreshPresets, active])
 
-  // Auto-refresh while any schedule is running: jobs list (every 5s)
+  // Keep running jobs responsive; idle panels must still discover later cron runs.
   const hasRunningJob = panelJobs.some(j => j.last_status === 'running')
   const activeScheduleCount = panelJobs.filter(j => j.enabled).length
   // Each product pauses on its own, besides the pause of everything (PLAT-782).
@@ -489,13 +490,24 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     [monthlyCalendar.cells, selectedCalendarDate],
   )
 
+  useLiveRefetch(() => { void loadJobs() }, {
+    kinds: ['schedules'],
+    fallbackMs: hasRunningJob ? 5_000 : 60_000,
+    safetyMs: hasRunningJob ? 5_000 : 60_000,
+    minIntervalMs: 1_000,
+    enabled: active,
+  })
+
   useEffect(() => {
-    if (!active || !hasRunningJob) return
-    const interval = setInterval(() => {
-      loadJobs()
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [hasRunningJob, loadJobs, active])
+    if (!active) return
+    const refreshOnReturn = () => { if (!document.hidden) void loadJobs() }
+    window.addEventListener('focus', refreshOnReturn)
+    document.addEventListener('visibilitychange', refreshOnReturn)
+    return () => {
+      window.removeEventListener('focus', refreshOnReturn)
+      document.removeEventListener('visibilitychange', refreshOnReturn)
+    }
+  }, [loadJobs, active])
 
   const handleToggle = async (job: ScheduledJob) => {
     try {
