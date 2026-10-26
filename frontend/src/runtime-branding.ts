@@ -13,6 +13,29 @@ export type RuntimeBrandingConfig = {
   logoDarkUrl?: unknown
   /** Brand colour (#rrggbb): the primary colour in every theme. */
   brandColor?: unknown
+  /** A note on the sign-in card, for example a shared demo login: { title, rows: [[label, value]], text }. */
+  loginNote?: unknown
+}
+
+export type RuntimeLoginNote = { title: string; rows: [string, string][]; text: string }
+
+const loginNoteText = (value: unknown, max: number): string => (typeof value === 'string' && !hasControlCharacters(value) ? value.trim().slice(0, max) : '')
+
+/** The sign-in note from the runtime config, cleaned up; null when absent or empty. Plain text only. */
+export function runtimeLoginNote(config: RuntimeBrandingConfig | null = runtimeBrandingConfig()): RuntimeLoginNote | null {
+  const raw = config?.loginNote
+  if (!raw || typeof raw !== 'object') return null
+  const note = raw as { title?: unknown; rows?: unknown; text?: unknown }
+  const rows: [string, string][] = []
+  if (Array.isArray(note.rows)) {
+    for (const row of note.rows.slice(0, 4)) {
+      if (!Array.isArray(row)) continue
+      const label = loginNoteText(row[0], 40), value = loginNoteText(row[1], 120)
+      if (label && value) rows.push([label, value])
+    }
+  }
+  const title = loginNoteText(note.title, 80), text = loginNoteText(note.text, 240)
+  return title || rows.length || text ? { title, rows, text } : null
 }
 
 function hasControlCharacters(value: string): boolean {

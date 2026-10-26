@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from '../components/ui/alert'
 import { Loader2, KeyRound, Mail, User, Lock, AlertCircle } from 'lucide-react'
 import { authApi, type AuthProvider } from '../services/api'
 import { RunloopMark } from '../components/branding/RunloopLogo'
-import { getRuntimeAppName, runtimeBrandAsset } from '../runtime-branding'
+import { getRuntimeAppName, runtimeBrandAsset, runtimeLoginNote } from '../runtime-branding'
 import { hasGatewaySSO } from '../products/productSurfaceConfig'
 
 const runtimeAppName =
@@ -237,6 +237,16 @@ export function Login() {
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {!creatingAccount && runtimeLoginNote() && (() => {
+            const note = runtimeLoginNote()!
+            return <div role="note" aria-label="Sign-in note" className="rounded-md border border-border bg-muted/40 p-3 text-sm">
+              {note.title && <p className="font-medium">{note.title}</p>}
+              {note.rows.length > 0 && <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                {note.rows.map(([label, value]) => <div key={label} className="contents"><dt className="text-muted-foreground">{label}</dt><dd className="break-all font-mono select-all">{value}</dd></div>)}
+              </dl>}
+              {note.text && <p className="mt-2 text-xs text-muted-foreground">{note.text}</p>}
+            </div>
+          })()}
           {/* Error Alert */}
           {(signupError || error) && (
             <Alert variant="destructive">

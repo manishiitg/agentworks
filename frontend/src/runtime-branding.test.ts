@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyRuntimeBranding } from './runtime-branding'
+import { applyRuntimeBranding, runtimeLoginNote } from './runtime-branding'
 
 function fakeDocument() {
   const favicon = { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }
@@ -42,5 +42,15 @@ describe('runtime branding', () => {
 
     expect(target.document.title).toBe('AgentWorks')
     expect(target.favicon.href).toBe('/logo.svg')
+  })
+
+  // A deployment can show a note on the sign-in card (for example a shared demo login). Only plain text is
+  // kept, bounded; anything malformed is ignored so a bad config never breaks sign-in.
+  it('reads a sign-in note and ignores a malformed one', () => {
+    expect(runtimeLoginNote({ loginNote: { title: 'Demo login', rows: [['Username', 'demo'], ['Password', 'pw']], text: 'Shared.' } }))
+      .toEqual({ title: 'Demo login', rows: [['Username', 'demo'], ['Password', 'pw']], text: 'Shared.' })
+    expect(runtimeLoginNote({ loginNote: 'text' })).toBeNull()
+    expect(runtimeLoginNote({ loginNote: { rows: [['only label'], 'x', ['', 'v']] } })).toBeNull()
+    expect(runtimeLoginNote({})).toBeNull()
   })
 })
