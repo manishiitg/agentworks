@@ -55,6 +55,9 @@ class ProjectScheduleMigrationTest(unittest.TestCase):
             (corrupt / "workflow.json").write_bytes((release / "workflow.json").read_bytes())
             (corrupt / "release.json").write_text(json.dumps({"version": "v2", "hash": "deliberately-wrong", "files": ["workflow.json"], "file_count": 1}))
             corrupt_before = {file.name: file.read_bytes() for file in corrupt.iterdir()}
+            published = root / "_users" / "owner" / "crew-published" / "workspace" / "checks" / "revision" / "source"
+            published.mkdir(parents=True)
+            (published / "functions.json").write_text(json.dumps({"version": 1, "functions": [{"name": "check", "instructions": "Check the report."}]}))
             db = root / "_system" / "schedule-state.sqlite"
             with sqlite3.connect(db) as connection:
                 connection.execute("CREATE TABLE receipts (id TEXT, status TEXT)")
@@ -83,6 +86,9 @@ class ProjectScheduleMigrationTest(unittest.TestCase):
             self.assertEqual(saved_function["input"]["routes"], {"router": "report"})
             self.assertEqual(saved_function["allowed_callers"], function["function"]["allowed_callers"])
             self.assertEqual(saved_function["input_schema"]["required"], ["query"])
+            published_function = json.loads((published / "functions.json").read_text())["functions"][0]
+            self.assertEqual(published_function["action"], {"type": "message", "tab": "check"})
+            self.assertEqual(published_function["input"]["messages"], ["Check the report."])
             crew_functions = json.loads((crew / "functions.json").read_text())["functions"]
             self.assertEqual(len(crew_functions), 2)
             self.assertEqual(next(fn for fn in crew_functions if fn["name"] == "research")["action"], {"type": "message", "conversation": "fresh"})

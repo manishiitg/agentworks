@@ -494,4 +494,28 @@ func TestDeclaredFunctionCannotBeFiredThroughTheRawTriggerEndpoint(t *testing.T)
 	if !errors.Is(err, ErrInternalTriggerNotBound) {
 		t.Fatalf("raw trigger bypassed typed function admission: %v", err)
 	}
+	publication := &publishedProject{OwnerID: "owner", WorkspaceID: "workspace", AgentID: "checks", Revision: "revision"}
+	record, err := crewFunctionDefinition(publication.sourceRoot(), crewFunction{Name: "published_check", Instructions: "Check the published source."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(projectFunctionsDocument{Functions: []projectFunctionDefinition{record}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Publication upload installs immutable source. Ordinary authoring must not
+	// write it; seed the upload boundary directly in this dispatch fixture.
+	env.mock.mu.Lock()
+	env.mock.files[publication.sourceRoot()+"/functions.json"] = string(encoded)
+	env.mock.mu.Unlock()
+	if _, _, _, _, err = env.svc.findInternalProductTrigger(ctx, "owner", "work", "beta", record.ID); !errors.Is(err, ErrInternalTriggerNotFound) {
+		t.Fatalf("unadmitted published entry: %v", err)
+	}
+	admission := &crewFunctionCall{ID: "admitted", UserID: "owner", TargetID: "beta", TriggerID: record.ID, Function: record.Name, Publication: publication}
+	admitted := context.WithValue(ctx, declaredFunctionDispatchKey{}, admission)
+	_, _, _, view, err = env.svc.findInternalProductTrigger(admitted, "owner", "work", "beta", record.ID)
+	if err != nil || !view.WorkspaceFunction {
+		t.Fatalf("typed published entry cannot dispatch: %v %v", view, err)
+	}
+
 }

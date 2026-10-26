@@ -74,13 +74,20 @@ func TestFunctionTabPromptKeepsItsOwnJobAfterModeSelection(t *testing.T) {
 		write(productConversationRegistryPath(person), doc)
 	}
 	publication := &publishedProject{Root: crewRunModeOwnerRoot, OwnerID: "owner", WorkspaceID: "crew-aaa", ProfileID: "work", Revision: "release1", Provider: "codex-cli", ModelID: "gpt-6-luna", ConnectionID: "global:codex-cli"}
-	write(publication.sourceRoot()+"/functions.json", crewFunctionsDoc{Version: 1, Functions: []crewFunction{
-		{Name: "sample_reply", Agent: "Sample desk", Description: "Draft a reply using the sample inbox."},
-		{Name: "other_job", Agent: "Other desk", Description: "OTHER_FUNCTION_DESCRIPTION"},
-	}})
-	write(crewRunModeOwnerRoot+"/functions.json", crewFunctionsDoc{Version: 1, Functions: []crewFunction{
-		{Name: "draft_only", Agent: "Sample desk", Description: "UNPUBLISHED_DESCRIPTION"},
-	}})
+	functionDocument := func(root string, functions ...crewFunction) projectFunctionsDocument {
+		doc := projectFunctionsDocument{}
+		for _, fn := range functions {
+			record, err := crewFunctionDefinition(root, fn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			doc.Functions = append(doc.Functions, record)
+		}
+		return doc
+	}
+	write(publication.sourceRoot()+"/functions.json", functionDocument(publication.sourceRoot(), crewFunction{Name: "sample_reply", Agent: "Sample desk", Description: "Draft a reply using the sample inbox."}, crewFunction{Name: "other_job", Agent: "Other desk", Description: "OTHER_FUNCTION_DESCRIPTION"}))
+	write(crewRunModeOwnerRoot+"/functions.json", functionDocument(crewRunModeOwnerRoot, crewFunction{Name: "draft_only", Agent: "Sample desk", Description: "UNPUBLISHED_DESCRIPTION"}))
+
 	for _, tc := range []struct {
 		person string
 		run    bool

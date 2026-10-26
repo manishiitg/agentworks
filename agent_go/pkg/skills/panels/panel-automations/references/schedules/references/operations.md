@@ -1,32 +1,11 @@
-## Project schedules
+# Timing and execution
 
+Use the current schedules schema; do not edit schedules.json by shell or generic file tools. Website, Builder and MCP use the same saved definitions and server clock. List before editing and preserve omitted settings.
 
+- Recurring callers use a five-field cron and an IANA timezone. Calendar callers use explicit dates/time and may carry per-date input. For a one-time reminder, use the admitted in_minutes/run_at or calendar fields. Check an already-finished task now before creating an unnecessary reminder. Keep reminders the person requested unless they ask to remove them.
+- A Crew message goes to its saved stable tab; a timer created within a side tab defaults there. An isolated destination is that timer’s own persistent conversation. Preserve the destination instead of silently switching it to main.
+- A Goal can run its saved plan/routes/groups, or send its saved custom message sequence. Preserve every message and its order; do not convert a message schedule into a function or planning mode. Preserve an existing after condition, including outcome, delay and explicit deadline.
+- There is one durable clock. Missed ticks are not replayed on restart. The existing two-minute late-slot admission limit remains. Global/product pauses and disabled flags still apply.
+- A busy destination keeps the latest waiting occurrence per schedule. A newer occurrence replaces that schedule’s older waiting one. Distinct schedules sharing a destination take turns, oldest due first. Accepted waiting work has no max-start expiry.
 
-- A project schedule contains exactly one message sent to this project's chat.
-  It is not an AgentWorks workflow, route, phase, or execution.
-- A schedule runs in the main chat unless it names a tab: pass `chat_id` (a tab
-  from the project's chat list) on create or update to run it in that tab, and
-  an empty `chat_id` on update to move it back to the main chat. A schedule
-  created from inside a tab already runs in that tab.
-- Use `list_project_schedules` before updating, deleting, or triggering. Use the
-  exact returned schedule ID.
-- For a recurring schedule, provide a clear name, one complete message, a
-  standard five-field cron expression, and an IANA timezone such as
-  `Asia/Kolkata`. Enable it by default unless the user asks to save it paused.
-
-## Reminders ("check this in 15 minutes")
-
-- A reminder is a one-time schedule: `create_project_schedule` with `in_minutes`
-  (or `run_at` for an exact moment) and a self-contained message saying what to
-  check and what to report. It runs once.
-- Check first when it is cheap. If the thing can be checked right now (a deploy,
-  a CI run, a reply), look once before scheduling. If it is already settled,
-  report that instead of creating a reminder, and offer one if the user still
-  wants it ("It already finished at 06:42; want a reminder anyway?").
-- Never create a reminder and then delete it in the same turn. A reminder the
-  user asked for stays unless they agree to remove it; if it turns out to be
-  unneeded, say so and ask.
-- When the reminder fires, do the check and report the result in the chat; do
-  not schedule another one unless the user asked for repeated checks.
-- Use `trigger_project_schedule` only when the user asks to run it now. Report
-  the resulting session without inventing a workflow run.
+Use run_now only for a requested real run. Read runs and the actual terminal outcome; saved next_run or an accepted receipt does not prove completion. Report global/product pauses, current blockers and the relevant timestamps separately from old skipped history. Never resume paused Goals merely to verify a refactor.

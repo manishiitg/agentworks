@@ -107,11 +107,6 @@ func (fn crewFunction) tabName() string {
 	return firstNonEmptyTrimmed(fn.Agent, fn.Name)
 }
 
-type crewFunctionsDoc struct {
-	Version   int            `json:"version"`
-	Functions []crewFunction `json:"functions"`
-}
-
 // crewFunctionRoot is the physical folder holding a target's functions. A
 // Crew the requester owns may be addressed by its logical Chats/... path;
 // store under the owner's physical tree so every caller sees one file.

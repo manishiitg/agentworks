@@ -17,7 +17,7 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"You are the Flow Builder", "Workflow/relay-test", "Current authenticated user", "then do what the owner asked in the same", "No confirmation question, wait or extra gate", "existing chat history records it"} {
+	for _, required := range []string{"You are the Flow Builder", "Workflow/relay-test", "Current authenticated user"} {
 		if !strings.Contains(prompt, required) {
 			t.Fatalf("Relay prompt missing %q", required)
 		}
@@ -28,7 +28,7 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 		}
 	}
 
-	server, _ := newFakeWorkspaceServer(t)
+	server, store := newFakeWorkspaceServer(t)
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
 	logger := loggerv2.NewNoop()
@@ -37,7 +37,8 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer session.Close()
-	api := &StreamingAPI{logger: logger}
+	api := &StreamingAPI{logger: logger, scheduler: &SchedulerService{}, projectActions: &ProjectActionDispatcher{}}
+	store.files["Workflow/relay-test/workflow.json"] = `{"id":"relay-test","label":"Relay test","kind":"relay","created_by":"test-user"}`
 	api.workshopChatSessions.Store("relay-surface", session)
 	draft := &productSurfaceDraft{}
 	if err := api.installWorkflowPhaseTools(context.Background(), draft, "relay-surface", "test-user", "workflow-builder", "Workflow/relay-test", "", map[string]string{"WorkshopMode": "workshop", "WorkflowKind": "relay"}, nil, nil, nil, nil, nil, QueryRequest{}, false); err != nil {
@@ -47,7 +48,7 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 	if len(draft.skills) != len(expectedSkills) || draft.skills[0].Name != "relay-builder" {
 		t.Fatalf("Relay skills: %v", draft.skills)
 	}
-	for _, name := range []string{"test_relay", "get_relay_run", "manage_workflow_webhook", "get_relay_releases", "publish_relay", "validate_report_html", "preview_report", "get_report_link"} {
+	for _, name := range []string{"test_relay", "get_relay_run", "project_functions_define", "project_functions_call", "project_functions_get_call", "get_relay_releases", "publish_relay", "validate_report_html", "preview_report", "get_report_link"} {
 		if _, registered := draft.tools[name]; !registered {
 			t.Errorf("shared workflow registration did not provide Relay tool %s", name)
 		}
@@ -61,6 +62,11 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 	for name, tool := range draft.tools {
 		if gate.Allows(name) {
 			filtered[name] = tool
+		}
+	}
+	for _, name := range []string{"project_functions_list", "project_functions_define", "project_functions_delete", "project_functions_call", "project_functions_get_call", "project_functions_reply"} {
+		if _, ok := filtered[name]; !ok {
+			t.Fatalf("Flow Builder has no common function action %s", name)
 		}
 	}
 	logConfigurationCatalog(t, "flow-builder-phase", filtered)

@@ -86,3 +86,26 @@ func TestPublishedFunctionPathsAreIndependentOfCLIWorkingDirectory(t *testing.T)
 		t.Fatal("result was written in CLI state")
 	}
 }
+
+// PLAT-871: the upload validator must accept the same functions.json that a
+// Crew writes, rather than expecting the retired instructions-at-root shape.
+func TestPublishedFunctionsAcceptTheCommonDocument(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "functions.json")
+	valid := `{"functions":[{"id":"report","name":"report","description":"Make a report","enabled":true,"action":{"type":"message"},"input":{"messages":["Prepare the report."]}}]}`
+	for _, tc := range []struct {
+		raw     string
+		allowed bool
+	}{
+		{valid, true},
+		{strings.Replace(valid, `"type":"message"`, `"type":"run"`, 1), false},
+		{strings.Replace(valid, `"id":"report"`, `"id":""`, 1), false},
+	} {
+		if err := os.WriteFile(file, []byte(tc.raw), 0600); err != nil {
+			t.Fatal(err)
+		}
+		err := validatePublishedFunctions(file)
+		if (err == nil) != tc.allowed {
+			t.Fatalf("published common contract allowed=%v: %v", tc.allowed, err)
+		}
+	}
+}

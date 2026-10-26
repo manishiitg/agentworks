@@ -66,7 +66,7 @@ var cliOperationGroups = []struct {
 	{"workflows", "Discover workflows", []struct{ command, tool string }{{"list", "list_workflows"}, {"get", "get_workflow"}}},
 	{"files", "Read and edit guarded workspace files", []struct{ command, tool string }{{"code", "list_step_code"}, {"link", "get_file_link"}, {"list", "list_files"}, {"read", "read_file"}, {"write", "write_file"}, {"search", "search_files"}}},
 	{"runs", "Start, steer, stop, and inspect runs", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"start-step", "execute_step"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"message", "send_step_message"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
-	{"schedules", "List, inspect, and trigger schedules", []struct{ command, tool string }{{"list", "list_schedules"}, {"runs", "get_schedule_runs"}, {"trigger", "trigger_schedule"}}},
+	{"schedules", "List, inspect, and trigger schedules", []struct{ command, tool string }{{"list", "project_schedules_list"}, {"runs", "project_schedules_runs"}, {"trigger", "project_schedules_run_now"}}},
 	{"chat", "Send messages to the workflow assistant", []struct{ command, tool string }{{"ask", "chat"}}},
 	{"messages", "Register named agents, discover addresses and manage your inbox", []struct{ command, tool string }{{"register", "messages"}, {"unregister", "messages"}, {"list", "messages"}, {"send", "messages"}, {"read", "messages"}, {"count", "messages"}, {"delete", "messages"}, {"clear", "messages"}}},
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skills", "get_guidance_skills"}}},
@@ -517,10 +517,10 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	// Global guidance topics accept no workflow_id; offering the flag would
 	// only produce an avoidable invalid_arguments response.
 	crewTool := strings.Contains(tool, "crew")
-	if strings.HasPrefix(tool, "project_functions_") {
+	if strings.HasPrefix(tool, "project_functions_") || strings.HasPrefix(tool, "project_schedules_") {
 		f.String("project", "", "Project ID or name")
 	}
-	if tool != "messages" && tool != "list_workflows" && tool != "list_guidance_topics" && tool != "get_guidance_topic" && tool != "get_guidance_skills" && !crewTool && !strings.HasPrefix(tool, "project_functions_") {
+	if tool != "messages" && tool != "list_workflows" && tool != "list_guidance_topics" && tool != "get_guidance_topic" && tool != "get_guidance_skills" && !crewTool && !(strings.HasPrefix(tool, "project_functions_") || strings.HasPrefix(tool, "project_schedules_")) {
 		f.String("workflow", "", "Workflow ID (workflow_id)")
 	}
 	if crewTool && tool != "list_crews" && tool != "project_functions_get_call" && tool != "create_crew" && tool != "import_crew" {
@@ -574,7 +574,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.String("topic", "", "Guidance topic from guidance topics")
 		f.String("known-version", "", "Saved topic version; unchanged bodies are omitted")
 	}
-	if tool == "list_workflows" || tool == "list_files" || tool == "search_files" || tool == "list_step_code" || tool == "list_runs" || tool == "get_run" || tool == "get_logs" || tool == "run_status" || tool == "get_schedule_runs" {
+	if tool == "list_workflows" || tool == "list_files" || tool == "search_files" || tool == "list_step_code" || tool == "list_runs" || tool == "get_run" || tool == "get_logs" || tool == "run_status" || tool == "project_schedules_runs" {
 		f.Int("limit", 0, "Maximum results")
 		f.Int("offset", 0, "Result offset")
 	}
@@ -649,7 +649,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.String("request-id", "", "Pending input request ID from runs status")
 		f.String("response", "", "Answer to submit")
 	}
-	if tool == "get_schedule_runs" || tool == "trigger_schedule" {
+	if tool == "project_schedules_runs" || tool == "project_schedules_run_now" {
 		f.String("schedule-id", "", "Schedule ID from schedules list")
 	}
 }

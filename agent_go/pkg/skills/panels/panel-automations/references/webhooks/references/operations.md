@@ -1,16 +1,9 @@
-## Project webhook triggers
+# HTTP setup and evidence
 
-- A project webhook trigger contains one saved instruction. Each authenticated
-  JSON delivery sends that instruction into this project's durable Builder
-  conversation together with the workspace-relative payload file path.
-- Use `list_project_triggers` before updating or deleting a trigger. Use the
-  exact returned trigger ID.
-- Use `create_project_trigger` with a clear name, one complete instruction,
-  and either `bearer` or `github` authentication. Return the generated endpoint
-  and one-time secret immediately; the secret cannot be listed later.
-- Rotating a secret invalidates the old credential. Never write a trigger
-  secret or raw delivery payload into `workflow.json`, chat instructions, logs,
-  or source files.
-- project triggers do not select or execute AgentWorks routes, steps, phases,
-  AgentWorks, or workflow runs. Use an AgentWorks workflow webhook when those
-  orchestration semantics are required.
+Use webhooks for outside HTTP events; functions expose reusable work and keep their own declared input contract. List first, then use the offered schema and current project permissions. MCP uses project and trigger; the bound Builder uses its captured project.
+
+Keep the existing canonical URL when editing. HTTP hooks live in webhooks.json; functions and explicit saved step bindings live in functions.json. Use typed tools, not raw file or shell edits. Bearer and GitHub HMAC checks remain; encrypted secret values never belong in logs, messages or committed source. A secret name is safe to report.
+
+A Goal hook runs its saved route/step with validated group, variable and payload mappings; a Crew hook sends its saved message to main or its own continuing conversation. Fixed and mapped route selections must agree. Input overrides use declared non-secret variables. Flows keep published function execution and release verification; do not configure a Goal-plan webhook to bypass that.
+
+An HTTP acceptance receipt is not completion. Preserve the delivery ID on retry. Inspect deliveries/runs or status and the actual output/error. A requested internal test runs real work through the receiver, but does not prove public DNS or gateway delivery. Never rotate a secret or test a hook just to inspect it.

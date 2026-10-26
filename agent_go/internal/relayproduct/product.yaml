@@ -64,7 +64,12 @@ chat:
       - manage_custom_commands
       - get_llm_config
       - manage_condition_triggers
-      - manage_workflow_webhook
+      - project_functions_list
+      - project_functions_define
+      - project_functions_delete
+      - project_functions_call
+      - project_functions_get_call
+      - project_functions_reply
       - call_mcp_tool
       - list_mcp_servers
       - search_mcp_catalog

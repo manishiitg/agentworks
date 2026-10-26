@@ -1,5 +1,12 @@
+---
+name: webhooks
+description: Configure or inspect authenticated incoming HTTP events.
+---
+
 # Webhooks
 
-Crew uses list_project_triggers and create/update/delete_project_trigger; Goal uses manage_workflow_webhook. Relays use the same tool for their published function entry; read relay-builder and do not create Goal routes. List targets/routes and existing triggers first, then use the current native schema. Keep secret values out of chat logs and files, selecting an existing secret name when supported. A test may execute real work. Read receiver/run evidence rather than claiming a saved URL proves delivery.
+Use the listed `webhooks` actions, with project over MCP or the current bound project in Builder. List first to discover routes, steps and existing HTTP hooks. Functions are separate reusable entry points; use functions to define or call those. Flows expose their published functions as API entries.
 
-For this panel’s full setup and operational contract, Read [the detailed procedure](references/operations.md).
+Create/update take the advertised trigger fields. Preserve existing canonical URLs, bearer/GitHub authentication, input mapping and encrypted secrets. Keep secret values out of messages, logs and saved source. A save is not proof of delivery. Test only when the person requested execution, then inspect receiver/run evidence.
+
+Read [HTTP setup and evidence](references/operations.md) for input mapping, retries and status.

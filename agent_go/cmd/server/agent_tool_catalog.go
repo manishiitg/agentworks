@@ -53,6 +53,12 @@ func agentSourceMutates(source, operation string, original bool) bool {
 	switch source {
 	case brainAdminTool:
 		return brainAdminWriteActions[operation]
+	case "manage_schedules":
+		return operation != "list" && operation != "runs"
+	case "manage_triggers":
+		return operation != "list" && operation != "runs" && operation != "status"
+	case "manage_condition_triggers":
+		return operation != "list" && operation != "history" && operation != "read_script"
 	case "crew_skills", "crew_mcp":
 		return !crewCapabilityRead(operation)
 	case externalCrewCommandsTool:
@@ -120,6 +126,18 @@ func agentSourceConsentAllowed(claims *UserClaims, tool externalTool) bool {
 		return true
 	}
 	switch action.Source {
+	case "manage_schedules", "manage_triggers":
+		t := claims.AccessToken
+		switch action.SourceAction {
+		case "list", "runs", "status":
+			return t.Allows("crews:read") || t.Allows("workflows:read") || t.Allows("runs:execute")
+		case "run_now", "stop", "test":
+			return t.Allows("crews:run") || t.Allows("runs:execute")
+		default:
+			return t.Allows("crews:write") || t.BuilderAccess() || t.RelayBuilderAccess()
+		}
+	case "manage_condition_triggers":
+		return externalWatchersAllowed(claims)
 	case "crew_skills", "crew_mcp", externalCrewCommandsTool:
 		scope := "crews:write"
 		if crewCapabilityRead(action.SourceAction) {

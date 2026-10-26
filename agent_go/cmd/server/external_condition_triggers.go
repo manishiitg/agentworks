@@ -18,9 +18,8 @@ func externalWatchersAllowed(claims *UserClaims) bool {
 
 func externalWatcherDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	props := conditionToolSchema()["properties"].(map[string]interface{})
-	props["crew_id"] = externalString("Associated Crew ID (crews:run); calls a published function.")
-	props["workflow_id"] = externalString("Associated workflow or Flow ID (runs:execute); workflow route/trigger or published Flow entry.")
-	add("manage_condition_triggers", conditionToolDescription, true, false, props, "action")
+	props["project"] = externalString("Project ID or name whose Watchers you are managing.")
+	add("manage_condition_triggers", conditionToolDescription, true, false, props, "action", "project")
 }
 
 func (api *StreamingAPI) externalWatcherCall(w http.ResponseWriter, r *http.Request, args map[string]any) {

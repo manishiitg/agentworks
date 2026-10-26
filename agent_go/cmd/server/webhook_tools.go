@@ -57,11 +57,13 @@ func (api *StreamingAPI) registerWebhookTools(reg definitionToolRegistrar, userI
 			"group_names":      map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}}, "rotate_secret": map[string]interface{}{"type": "boolean"},
 		}}
 	if manifest, found, err := ReadWorkflowManifest(context.Background(), workspace); err == nil && found && manifest.Kind == "relay" {
-		description = "Create and manage this Flow's authenticated API function triggers. First list to discover declared variables and saved routes. Create/update require name, enabled, kind=function, route_selections and function with a required object INPUT argument. Flows execute once per call using configuration values and caller inputs; there are no variable groups. Omit group_names. action=test executes the draft; action=status reads durable run results. All calls enforce current permissions."
-		properties := params["properties"].(map[string]interface{})
-		delete(properties, "group_names")
-		properties["kind"] = map[string]interface{}{"type": "string", "enum": []string{triggerKindFunction}}
+		return nil
 	}
+	properties := params["properties"].(map[string]interface{})
+	for _, field := range []string{"kind", "function", "caller"} {
+		delete(properties, field)
+	}
+
 	return reg.RegisterCustomTool("manage_workflow_webhook", description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: userID})
 		if userAccessForClaims(&UserClaims{UserID: userID}).Disabled {
@@ -80,6 +82,25 @@ func (api *StreamingAPI) manageWorkflowWebhook(ctx context.Context, workspace st
 	}
 	if api.scheduler == nil {
 		return "", fmt.Errorf("Workflow scheduler is unavailable")
+	}
+	if kind, _ := args["kind"].(string); kind != "" && kind != "webhook" {
+		return "", fmt.Errorf("use functions to manage reusable work; webhooks receive HTTP events")
+	}
+	if args["function"] != nil || args["caller"] != nil {
+		return "", fmt.Errorf("use functions to manage reusable work")
+	}
+	if id, _ := args["id"].(string); id != "" {
+		manifest, _, err := ReadWorkflowManifest(ctx, workspace)
+		if err != nil {
+			return "", err
+		}
+		if manifest != nil {
+			for _, entry := range manifest.Schedules {
+				if entry.ID == id && entry.IsInternalTrigger() {
+					return "", fmt.Errorf("this is a function entry; use functions or its saved step binding")
+				}
+			}
+		}
 	}
 	action, _ := args["action"].(string)
 	if action == "test" || action == "status" {
@@ -158,7 +179,7 @@ func (api *StreamingAPI) manageWorkflowWebhook(ctx context.Context, workspace st
 	if rec.Len() == 0 {
 		return `{"success":true}`, nil
 	}
-	return rec.String(), nil
+	return httpWebhookListOnly(rec.String()), nil
 }
 
 // A test uses the stored credential internally; it never echoes it into a shell.
@@ -256,4 +277,26 @@ func webhookPayloadMappingsSchema() map[string]interface{} {
 	return map[string]interface{}{"type": "object", "additionalProperties": false, "description": "Map fixed scalar paths in raw JSON (including numeric array segments) to allowed execution choices. Missing or unknown values reject delivery.", "properties": map[string]interface{}{
 		"group": valueMappingSchema, "routes": map[string]interface{}{"type": "object", "additionalProperties": valueMappingSchema}, "step": valueMappingSchema,
 	}}
+}
+
+func httpWebhookListOnly(raw string) string {
+	var result map[string]interface{}
+	if json.Unmarshal([]byte(raw), &result) != nil {
+		return raw
+	}
+	if values, ok := result["triggers"].([]interface{}); ok {
+		kept := []interface{}{}
+		for _, value := range values {
+			entry, _ := value.(map[string]interface{})
+			kind, _ := entry["kind"].(string)
+			if kind == "" || kind == "webhook" {
+				kept = append(kept, value)
+			}
+		}
+		result["triggers"] = kept
+		if encoded, err := json.Marshal(result); err == nil {
+			return string(encoded)
+		}
+	}
+	return raw
 }

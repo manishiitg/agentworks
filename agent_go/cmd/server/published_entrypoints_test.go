@@ -88,7 +88,7 @@ func TestPublicationRefreshesOnlyGeneratedDashboard(t *testing.T) {
 	refresh()
 	before := get()
 	record.Revision = "second-publication"
-	f.write(t, record.sourceRoot()+"/functions.json", `{"functions":[{"name":"qa_ping","description":"Run the action","instructions":"Return the result."}]}`)
+	f.write(t, record.sourceRoot()+"/functions.json", `{"functions":[{"id":"qa-ping","name":"qa_ping","enabled":true,"description":"Run the action","action":{"type":"message"},"input":{"messages":["Return the result."]}}]}`)
 	f.write(t, record.sourceRoot()+"/db/reports/theme.css", "body { color: white; }")
 	if err := savePublishedProject(record); err != nil {
 		t.Fatal(err)

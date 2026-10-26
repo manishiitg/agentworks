@@ -43,6 +43,9 @@ var externalToolMerges = []externalToolMerge{
 	{"mcp", "Manage the current project's connections and call already selected tools with existing account and connection access.", platformMergeActions("mcp")},
 	{"brain", "Read and maintain shared company knowledge using existing folder roles and project grants.", platformMergeActions("brain")},
 	{"vault", "Select and store secrets and manage allowed connections. Values stay write-only; current project, Vault and administrator checks apply.", platformMergeActions("vault")},
+	{"schedules", "Timed project callers: list, create, change, pause, run and inspect them using the same saved clock and project access.", platformMergeActions("schedules")},
+	{"webhooks", "Authenticated incoming HTTP events and their deliveries. Reusable work is managed with functions.", platformMergeActions("webhooks")},
+	{"watchers", "Caller-owned condition checks and their history, using the same selected credentials and authorized targets.", platformMergeActions("watchers")},
 	{"functions", "Discover, call and maintain offered functions. Published access, caller identity and active-invocation checks still apply.", platformMergeActions("functions")},
 	{"runs", "Start and inspect real workflow runs through their existing execution and access checks.", platformMergeActions("runs")},
 	{"sessions", "Use your project chats and background work. Existing person, project, tab and operation ownership still decides access.", platformMergeActions("sessions")},
@@ -440,7 +443,7 @@ func externalMergeProperty(props map[string]any, key string, value any) {
 // but only canonical action families are public entry points.
 func projectServiceTool(name string) bool {
 	switch name {
-	case "create_workflow", "create_relay", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
+	case "manage_schedules", "manage_triggers", "manage_condition_triggers", "create_workflow", "create_relay", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
 		"ask_crew", "list_crews", "get_crew", "get_crew_costs", "create_crew", "update_crew", "export_crew", "import_crew",
 		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "suggest_crew_change",
 		"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "project_functions_calls",

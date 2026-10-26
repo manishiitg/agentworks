@@ -81,12 +81,19 @@ var ProjectActions = func() []Action {
 
 //go:embed agent-actions.json
 var agentSource []byte
+
+//go:embed triggers-actions.json
+var triggersSource []byte
 var AgentActions = func() []Action {
 	var actions []Action
 	if err := json.Unmarshal(agentSource, &actions); err != nil {
 		panic(err)
 	}
-	return actions
+	var triggers []Action
+	if err := json.Unmarshal(triggersSource, &triggers); err != nil {
+		panic(err)
+	}
+	return append(actions, triggers...)
 }()
 
 //go:embed experience-actions.json

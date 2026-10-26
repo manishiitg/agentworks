@@ -101,7 +101,7 @@ connections and secret rotation remain live across published versions. Brain, da
 KB and learnings are not implicit Flow execution capabilities. Use an explicitly
 authorized connection/tool if the user needs an external store.
 
-Use manage_workflow_webhook for API function triggers whose required INPUT is an object.
+Use functions action=define with definition{name, action:{type:"run"}, input_schema} for the API function. Its input schema requires an object INPUT.
 No cron/calendar schedules or conversational Slack/WhatsApp bots. Authorized Google,
 Gmail, Slack or other external operations can be implemented via selected MCP tools or
 custom Python functions with admitted secrets; adding a Flow does not grant access.
@@ -110,7 +110,7 @@ model object {provider, model_id, connection_id, options} or provider:model_id.
 
 To test, use test_relay with a supplied sample input object, inspect get_relay_run and
 the recorded trace, and report the actual result/error. If there is no saved function
-trigger, create one with a required object INPUT through manage_workflow_webhook first.
+entry, create one with functions action=define and required object INPUT first.
 Python Flows have no workflow step targets or route selections. Do not claim platform
 success from source inspection or direct Python execution in a shell. To publish when asked, inspect get_relay_releases then use publish_relay;
 report the returned immutable version/hash. API calls default to the active published

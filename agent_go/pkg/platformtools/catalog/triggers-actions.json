@@ -1,0 +1,275 @@
+[
+  {
+    "family": "schedules",
+    "name": "list",
+    "member": "project_schedules_list",
+    "description": "Use this project\u2019s list schedule action with its current access.",
+    "source": "manage_schedules",
+    "source_action": "list",
+    "aliases": [
+      "list_schedules",
+      "list_project_schedules"
+    ]
+  },
+  {
+    "family": "schedules",
+    "name": "create",
+    "member": "project_schedules_create",
+    "description": "Use this project\u2019s create schedule action with its current access.",
+    "source": "manage_schedules",
+    "source_action": "create",
+    "aliases": [
+      "create_schedule",
+      "create_project_schedule"
+    ]
+  },
+  {
+    "family": "schedules",
+    "name": "update",
+    "member": "project_schedules_update",
+    "description": "Use this project\u2019s update schedule action with its current access.",
+    "source": "manage_schedules",
+    "source_action": "update",
+    "aliases": [
+      "update_schedule",
+      "update_project_schedule"
+    ]
+  },
+  {
+    "family": "schedules",
+    "name": "delete",
+    "member": "project_schedules_delete",
+    "description": "Use this project\u2019s delete schedule action with its current access.",
+    "source": "manage_schedules",
+    "source_action": "delete",
+    "aliases": [
+      "delete_schedule",
+      "delete_project_schedule"
+    ]
+  },
+  {
+    "family": "schedules",
+    "name": "enable",
+    "member": "project_schedules_enable",
+    "description": "Use this project\u2019s enable schedule action with its current access.",
+    "source": "manage_schedules",
+    "source_action": "enable"
+  },
+  {
+    "family": "schedules",
+    "name": "disable",
+    "member": "project_schedules_disable",
+    "description": "Use this project\u2019s disable schedule action with its current access.",
+    "source": "manage_schedules",
+    "source_action": "disable"
+  },
+  {
+    "family": "schedules",
+    "name": "run_now",
+    "member": "project_schedules_run_now",
+    "description": "Use this project\u2019s run now schedule action with its current access.",
+    "source": "manage_schedules",
+    "source_action": "run_now",
+    "aliases": [
+      "trigger_schedule",
+      "trigger_project_schedule"
+    ]
+  },
+  {
+    "family": "schedules",
+    "name": "stop",
+    "member": "project_schedules_stop",
+    "description": "Use this project\u2019s stop schedule action with its current access.",
+    "source": "manage_schedules",
+    "source_action": "stop"
+  },
+  {
+    "family": "schedules",
+    "name": "runs",
+    "member": "project_schedules_runs",
+    "description": "Use this project\u2019s runs schedule action with its current access.",
+    "source": "manage_schedules",
+    "source_action": "runs",
+    "aliases": [
+      "get_schedule_runs"
+    ]
+  },
+  {
+    "family": "schedules",
+    "name": "create_calendar",
+    "member": "create_calendar_schedule",
+    "description": "Create a dated Goal schedule using the admitted calendar schema."
+  },
+  {
+    "family": "webhooks",
+    "name": "list",
+    "member": "project_webhooks_list",
+    "description": "Use this project\u2019s list HTTP webhook action with existing authentication and caller checks.",
+    "source": "manage_triggers",
+    "source_action": "list"
+  },
+  {
+    "family": "webhooks",
+    "name": "list",
+    "member": "project_webhooks_list",
+    "description": "Use this project\u2019s list HTTP webhook action.",
+    "source": "manage_workflow_webhook",
+    "source_action": "list",
+    "aliases": [
+      "list_project_triggers"
+    ]
+  },
+  {
+    "family": "webhooks",
+    "name": "create",
+    "member": "project_webhooks_create",
+    "description": "Use this project\u2019s create HTTP webhook action with existing authentication and caller checks.",
+    "source": "manage_triggers",
+    "source_action": "create"
+  },
+  {
+    "family": "webhooks",
+    "name": "create",
+    "member": "project_webhooks_create",
+    "description": "Use this project\u2019s create HTTP webhook action.",
+    "source": "manage_workflow_webhook",
+    "source_action": "create",
+    "aliases": [
+      "create_project_trigger"
+    ]
+  },
+  {
+    "family": "webhooks",
+    "name": "update",
+    "member": "project_webhooks_update",
+    "description": "Use this project\u2019s update HTTP webhook action with existing authentication and caller checks.",
+    "source": "manage_triggers",
+    "source_action": "update"
+  },
+  {
+    "family": "webhooks",
+    "name": "update",
+    "member": "project_webhooks_update",
+    "description": "Use this project\u2019s update HTTP webhook action.",
+    "source": "manage_workflow_webhook",
+    "source_action": "update",
+    "aliases": [
+      "update_project_trigger"
+    ]
+  },
+  {
+    "family": "webhooks",
+    "name": "delete",
+    "member": "project_webhooks_delete",
+    "description": "Use this project\u2019s delete HTTP webhook action with existing authentication and caller checks.",
+    "source": "manage_triggers",
+    "source_action": "delete"
+  },
+  {
+    "family": "webhooks",
+    "name": "delete",
+    "member": "project_webhooks_delete",
+    "description": "Use this project\u2019s delete HTTP webhook action.",
+    "source": "manage_workflow_webhook",
+    "source_action": "delete",
+    "aliases": [
+      "delete_project_trigger"
+    ]
+  },
+  {
+    "family": "webhooks",
+    "name": "test",
+    "member": "project_webhooks_test",
+    "description": "Use this project\u2019s test HTTP webhook action with existing authentication and caller checks.",
+    "source": "manage_triggers",
+    "source_action": "test"
+  },
+  {
+    "family": "webhooks",
+    "name": "test",
+    "member": "project_webhooks_test",
+    "description": "Use this project\u2019s test HTTP webhook action.",
+    "source": "manage_workflow_webhook",
+    "source_action": "test"
+  },
+  {
+    "family": "webhooks",
+    "name": "status",
+    "member": "project_webhooks_status",
+    "description": "Use this project\u2019s status HTTP webhook action with existing authentication and caller checks.",
+    "source": "manage_triggers",
+    "source_action": "status"
+  },
+  {
+    "family": "webhooks",
+    "name": "status",
+    "member": "project_webhooks_status",
+    "description": "Use this project\u2019s status HTTP webhook action.",
+    "source": "manage_workflow_webhook",
+    "source_action": "status"
+  },
+  {
+    "family": "webhooks",
+    "name": "runs",
+    "member": "project_webhooks_runs",
+    "description": "Use this project\u2019s runs HTTP webhook action with existing authentication and caller checks.",
+    "source": "manage_triggers",
+    "source_action": "runs"
+  },
+  {
+    "family": "watchers",
+    "name": "list",
+    "member": "project_watchers_list",
+    "description": "Use this caller\u2019s list Watcher action, retaining selected credentials, target and revision checks.",
+    "source": "manage_condition_triggers",
+    "source_action": "list"
+  },
+  {
+    "family": "watchers",
+    "name": "create",
+    "member": "project_watchers_create",
+    "description": "Use this caller\u2019s create Watcher action, retaining selected credentials, target and revision checks.",
+    "source": "manage_condition_triggers",
+    "source_action": "create"
+  },
+  {
+    "family": "watchers",
+    "name": "update",
+    "member": "project_watchers_update",
+    "description": "Use this caller\u2019s update Watcher action, retaining selected credentials, target and revision checks.",
+    "source": "manage_condition_triggers",
+    "source_action": "update"
+  },
+  {
+    "family": "watchers",
+    "name": "delete",
+    "member": "project_watchers_delete",
+    "description": "Use this caller\u2019s delete Watcher action, retaining selected credentials, target and revision checks.",
+    "source": "manage_condition_triggers",
+    "source_action": "delete"
+  },
+  {
+    "family": "watchers",
+    "name": "history",
+    "member": "project_watchers_history",
+    "description": "Use this caller\u2019s history Watcher action, retaining selected credentials, target and revision checks.",
+    "source": "manage_condition_triggers",
+    "source_action": "history"
+  },
+  {
+    "family": "watchers",
+    "name": "read_script",
+    "member": "project_watchers_read_script",
+    "description": "Use this caller\u2019s read script Watcher action, retaining selected credentials, target and revision checks.",
+    "source": "manage_condition_triggers",
+    "source_action": "read_script"
+  },
+  {
+    "family": "watchers",
+    "name": "check",
+    "member": "project_watchers_check",
+    "description": "Use this caller\u2019s check Watcher action, retaining selected credentials, target and revision checks.",
+    "source": "manage_condition_triggers",
+    "source_action": "check"
+  }
+]
