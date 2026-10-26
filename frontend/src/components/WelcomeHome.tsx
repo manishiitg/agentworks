@@ -7,7 +7,7 @@ import { navigationProductSurfaceIDs, type ProductSurface } from '../products/pr
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { openQuickNavigation, quickNavigationItems } from '../utils/quickNavigation'
 import { isGuideRemembered, rememberGuide } from '../utils/onboarding'
-import { getRuntimeAppName, runtimeBrandAsset, runtimeBrandingConfig } from '../runtime-branding'
+import { getRuntimeAppName, runtimeBrandingConfig } from '../runtime-branding'
 import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
 import { productUrlViewChanged } from '../utils/productUrlNavigation'
 import WelcomeAiReadiness from './WelcomeAiReadiness'
@@ -102,7 +102,6 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
 
   const branding = runtimeBrandingConfig()
   const appName = getRuntimeAppName(branding) || 'AgentWorks'
-  const mark = runtimeBrandAsset('markUrl', branding)
   const workProducts = WORK_PRODUCT_ORDER.flatMap(id => products.filter(product => product.id === id))
   const services = products.filter(product => !WORK_PRODUCT_ORDER.includes(product.id))
     .sort((a, b) => {
@@ -153,8 +152,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
       style={{ '--welcome-sidebar-width': `${sidebarWidth}px` } as CSSProperties}
       className="fixed inset-0 z-[39] overflow-y-auto bg-background md:left-[var(--welcome-sidebar-width)]">
       <div className="mx-auto flex min-h-full max-w-5xl flex-col gap-5 px-4 py-5 sm:px-8 sm:py-6">
-        <header className="flex items-center justify-between gap-4">
-          <p className="flex items-center gap-2 pl-12 text-xs text-muted-foreground md:pl-0">{mark && <img src={mark} alt="" className="h-5 w-5 rounded-md" />}{appName}</p>
+        <header className="flex justify-end md:hidden">
           <button type="button" aria-label="Open navigation" onClick={() => window.dispatchEvent(new Event('open-app-sidebar'))} className="rounded-md p-2 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"><Menu className="h-5 w-5" aria-hidden="true" /></button>
         </header>
 
