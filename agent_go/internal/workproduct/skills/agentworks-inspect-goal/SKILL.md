@@ -5,7 +5,7 @@ description: "Use to inspect a Goal (workflow) in depth: runs, steps, schedules,
 
 # How to inspect a Goal (workflow) in depth
 
-Start from the tab's notes (`notes/tab-<goal>.md`): purpose, targets, what you learned last time. If you are not sure where something lives (groups, iterations, step files, costs), read `agentworks-goal-anatomy` first. Then open the evidence, newest first. Quote only what is relevant; never copy secret values or other people's private chats.
+Start from the Goal's notes (`notes/goal-<name>.md`): purpose, targets, what you learned last time. If you are not sure where something lives (groups, iterations, step files, costs), read `agentworks-goal-anatomy` first. Then open the evidence, newest first. Quote only what is relevant; never copy secret values or other people's private chats.
 
 ## Tools and skills
 - Runs and steps: `read_linked_goal` action `runs` lists each timer's runs, newest first, with status and times. For one run's detail read its `runs/iteration-*-sched/<group>/run_metadata.json`, then the saved step outputs and logs. Skill: `panel-runs` (run logs). Pick the right run, group and step before diagnosing; do not re-run a failed step just to read it.
@@ -30,4 +30,4 @@ Start from the tab's notes (`notes/tab-<goal>.md`): purpose, targets, what you l
 9. **Improvement:** on Mondays, `agentworks-improve-goals` (QA, architecture and strategy lenses).
 
 ## Finish
-Write the cause in one plain line, what you verified and what you could not, and what you did or propose. Save anything lasting to the tab's notes file.
+Write the cause in one plain line, what you verified and what you could not, and what you did or propose. Save anything lasting to the Goal's notes file.

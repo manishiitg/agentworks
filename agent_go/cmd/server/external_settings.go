@@ -75,7 +75,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"gmail_connection_id": map[string]any{"type": "string", "description": "An enabled Gmail account already added to this product. Empty clears the selection."},
 			"exclude_channels":    names,
 			"break_alerts":        map[string]any{"type": "boolean", "description": "Tell me when something breaks: show a run status in Needs you. On unless turned off. AgentWorks reports progress; configured team delivery is separate."},
-			"wake_tab": map[string]any{"type": "object", "additionalProperties": false, "description": "A Crew tab to message straight away when a run of this workflow fails, stops partway, or never actually ran. Pass the Crew id and the tab's chat id (from workspace action=chats); send both empty to clear.", "properties": map[string]any{
+			"wake_tab": map[string]any{"type": "object", "additionalProperties": false, "description": "A Crew chat to message straight away when a run of this workflow fails, stops partway, or never actually ran. Pass the Crew id and the chat id from workspace action=chats (main for its main chat); that chat needs an enabled recurring check. Send both empty to clear.", "properties": map[string]any{
 				"crew_id": map[string]any{"type": "string"}, "chat_id": map[string]any{"type": "string"},
 			}},
 		}},

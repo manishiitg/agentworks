@@ -82,7 +82,7 @@ func (s *SchedulerService) wakeAgentTab(ctx context.Context, sctx *ScheduleConte
 		}
 		message += " The run reported: " + detail
 	}
-	message += "\n\nLook at it now, as your tab check says: read this tab's notes, follow the matching inspect skill, find the cause from the run records, save what you learn, and report here. If only the owner can unblock it, say so in one line."
+	message += "\n\nLook at it now, as your daily check says: read this Goal's notes, follow the matching inspect skill, find the cause from the run records, save what you learn, and report here. If only the owner can unblock it, say so in one line."
 
 	go func() {
 		bg := internalBotRequestContext(context.WithoutCancel(ctx), owner)
@@ -95,16 +95,26 @@ func (s *SchedulerService) wakeAgentTab(ctx context.Context, sctx *ScheduleConte
 }
 
 // wakeCrewTab runs the owner's recurring check for one Crew tab once, now, with
-// the given message in place of its saved one. If the tab is busy the message
-// waits behind the live turn. A paused check stays paused.
+// the given message in place of its saved one. chatID "main" (as workspace
+// action=chats names it) is the owner's main chat, woken through a recurring
+// check that runs there. If the chat is busy the message waits behind the live
+// turn. A paused check stays paused.
 func (s *ProjectActionDispatcher) wakeCrewTab(ctx context.Context, owner, crewID, chatID, message string) error {
 	jobs, err := s.JobsForUser(ctx, owner)
 	if err != nil {
 		return err
 	}
+	main := strings.TrimSpace(chatID) == "main"
 	tabKey := strings.TrimSpace(crewID) + codeChatSideMarker + strings.TrimSpace(chatID)
 	for _, job := range jobs {
-		if job.ProjectID != strings.TrimSpace(crewID) || job.Schedule.Condition != nil || scheduleChatKey(job) != tabKey {
+		if job.ProjectID != strings.TrimSpace(crewID) || job.Schedule.Condition != nil {
+			continue
+		}
+		if main {
+			if job.Schedule.Isolated || strings.TrimSpace(job.Schedule.ChatKey) != "" {
+				continue
+			}
+		} else if scheduleChatKey(job) != tabKey {
 			continue
 		}
 		if job.Schedule.CronExpression == "" || !job.Effective().Enabled {
@@ -118,5 +128,5 @@ func (s *ProjectActionDispatcher) wakeCrewTab(ctx context.Context, owner, crewID
 		}
 		return err
 	}
-	return fmt.Errorf("no enabled recurring check on that tab; create one first (a schedule with chat_id)")
+	return fmt.Errorf("no enabled recurring check in that chat; create one first (a schedule that runs in that chat)")
 }

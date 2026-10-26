@@ -26,4 +26,4 @@ Only when they say yes, or asks in chat; their yes is the approval. Create it wi
 When unsure, suggest the simpler one.
 
 ## After building
-A new Goal the person runs gets its tab, notes and daily check from the platform; fill in its notes. For a Crew or Relay, follow `agentworks-add-new-thing`.
+A new Goal the person runs gets its notes from the platform and is covered by the daily check; fill in its notes. For a Crew or Relay, follow `agentworks-add-new-thing`.

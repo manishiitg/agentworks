@@ -106,7 +106,7 @@ func (api *StreamingAPI) registerAgentWorksAgentTools(registrar definitionToolRe
 			return "", fmt.Errorf("email is not set up on this server")
 		}
 		if !agentWorksEmailQuota.take(userID, time.Now()) {
-			return "", fmt.Errorf("already emailed the person %d times today; put the rest in the main tab", agentWorksEmailsPerDay)
+			return "", fmt.Errorf("already emailed the person %d times today; put the rest in the main chat", agentWorksEmailsPerDay)
 		}
 		// Gmail only, to the person's own address: never the server's default recipient, never another channel.
 		exclude := []string{}
@@ -126,8 +126,8 @@ func (api *StreamingAPI) registerAgentWorksAgentTools(registrar definitionToolRe
 			}
 		}
 		agentWorksEmailQuota.giveBack(userID, time.Now())
-		// The reason names what an admin must fix (for example no default sending account); say it in the main tab.
-		return "", fmt.Errorf("the email could not be sent (%s); say it in the main tab and tell the person what to fix", reason)
+		// The reason names what an admin must fix (for example no default sending account); say it in the main chat.
+		return "", fmt.Errorf("the email could not be sent (%s); say it in the main chat and tell the person what to fix", reason)
 	})
 }
 
@@ -169,7 +169,7 @@ func agentWorksEmailRecipient(userID string) (string, error) {
 	if record := directoryUserFor(userID, "", ""); record != nil && strings.Contains(record.Email, "@") {
 		return strings.TrimSpace(record.Email), nil
 	}
-	return "", fmt.Errorf("the person has no email address on their account, so nothing was sent; say it in the main tab")
+	return "", fmt.Errorf("the person has no email address on their account, so nothing was sent; say it in the main chat")
 }
 
 type agentWorksDailyQuota struct {

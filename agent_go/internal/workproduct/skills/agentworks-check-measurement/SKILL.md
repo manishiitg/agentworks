@@ -20,7 +20,7 @@ Use `workspace` action `references_list` for the exact linked Goal path, then `r
 8. **Are supporting measurements and guardrails there when needed?** For example sends per day alongside replies, or errors alongside volume.
 
 ## Report
-One line per Goal in the roll-up: 'measured well', 'measured but wrong thing' (name it), 'readings stale since <date>' or 'measurement setup needed'. Lead with the worst. Save the finding in the tab's notes.
+One line per Goal in the roll-up: 'measured well', 'measured but wrong thing' (name it), 'readings stale since <date>' or 'measurement setup needed'. Lead with the worst. Save the finding in that Goal's notes.
 
 ## Fixing it
 - You may **propose** a metric, target or window to the person in plain words (what, why, how it would be recorded). Do not invent targets; ask once and save their answer.

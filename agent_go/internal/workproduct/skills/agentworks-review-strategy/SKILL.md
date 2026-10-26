@@ -13,7 +13,7 @@ Follow `agentworks-check-measurement`. A broken measure is not a stuck goal. Pre
 - A change of method (dashboard vs public profile) is a **new baseline**, not a change in the goal. A partial day is not a full-day baseline. Gaps stay explicit. If a goal still has no target after two weeks, suggest one useful target to the person (once).
 
 ## 2. Test and learn (experiments)
-Use an experiment when a meaningful choice is uncertain, not for every improvement. A test is one coherent change (it may remove or combine work) with: the metric and direction, a comparable baseline, a sample or outcome window, a stop rule and a rollback condition. Ask the Builder to implement it only where you may act or after the person says yes. Write the hypothesis and a `check_at` date in your tab notes.
+Use an experiment when a meaningful choice is uncertain, not for every improvement. A test is one coherent change (it may remove or combine work) with: the metric and direction, a comparable baseline, a sample or outcome window, a stop rule and a rollback condition. Ask the Builder to implement it only where you may act or after the person says yes. Write the hypothesis and a `check_at` date in that Goal's notes.
 When due, compare like with like and look for other explanations:
 - **Worked:** movement beyond normal variation without harming other constraints.
 - **No effect:** enough comparable evidence, no meaningful improvement.

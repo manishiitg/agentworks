@@ -5,7 +5,7 @@ description: "Use for the weekly improvement pass on a Goal, or when the person 
 
 # The improvement pass: how to make a Goal better
 
-The daily tab check keeps a Goal healthy. The improvement pass makes it better. Do it for every Goal **once a week** (on Mondays, as part of that tab's check), and any time the person asks 'how can we improve X?'. It uses three lenses, each with its own guide:
+The daily check keeps a Goal healthy. The improvement pass makes it better. Do it for every Goal **once a week** (on Mondays, as part of the daily check), and any time the person asks 'how can we improve X?'. It uses three lenses, each with its own guide:
 
 | Lens | Question | Guide |
 |---|---|---|
@@ -14,12 +14,12 @@ The daily tab check keeps a Goal healthy. The improvement pass makes it better. 
 | Strategy | Is it measured honestly? What should we test? What bigger idea are we missing? | `agentworks-review-strategy` |
 
 ## How to run a pass
-1. Read the tab notes and the Goal's purpose. Know the targets and what you learned last time.
+1. Read the Goal's notes and its purpose. Know the targets and what you learned last time.
 2. Run **QA** on the latest runs; stop and fix what is broken before improving anything.
 3. Run **Architecture** on the worst-performing link, or the most expensive step.
 4. Run **Strategy**: measurement health, any experiment whose check date has come, then think out of the box.
 5. Pick at most **three** improvements. For each: the change, the evidence, the expected effect, how we will know, how to undo it.
-6. Save the findings and the open experiments (with `check_at`) in the tab notes. Put the best suggestions in the next roll-up.
+6. Save the findings and the open experiments (with `check_at`) in the Goal's notes. Put the best suggestions in the next roll-up.
 
 ## Rules
 - A supported 'no change needed' is a fine result. Do not invent work to look busy.
