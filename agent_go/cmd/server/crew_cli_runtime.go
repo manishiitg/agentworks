@@ -91,10 +91,10 @@ func applyCrewChatMode(profile *resolvedAgentProfile, req *QueryRequest, readOnl
 		return fmt.Errorf("render Crew %s prompt: %w", crewCLIMode(readOnly), err)
 	}
 	profile.Definition = definition
-	profile.Prompt = strings.TrimSpace(rendered)
+	profile.Prompt = strings.TrimSpace(rendered) + profile.AgentRolePrompt
 	if profile.Publication != nil {
 		if profile.Publication.AgentID != "" {
-			profile.Prompt += "\n\nYou are the " + profile.Publication.Name + " agent in this Crew. Your own source, instructions and working data are separate from Main. Use the Crew's existing resources within this turn's permissions."
+			profile.Prompt += "\n\nYour published source is " + profile.Publication.Name + ". Its instructions and working data are separate from Main. Use the Crew's existing resources within this turn's permissions."
 		}
 		profile.Prompt += "\n\n" + publishedSourceNotice + "\nThis published agent saves working data under " + profile.Publication.runtimeRoot() + ". Use AGENTWORKS_PUBLICATION_RUNTIME in scripts for working data; imported source is read-only."
 		if publishedBuilderHandoff(req, readOnly) {

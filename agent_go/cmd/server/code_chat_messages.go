@@ -188,31 +188,52 @@ func (api *StreamingAPI) codeChatTurnRequest(ctx context.Context, userID string,
 	return reqMap, sessionID, nil
 }
 
-// agentRolePrompt tells an agent its own name and purpose in this project, as a fact about it (PLAT-571). Empty when
-// neither is set.
-func agentRolePrompt(ctx context.Context, userID, profileID, conversationKey, noun string) string {
+// agentRolePrompt describes only this tab, including its declared function job (PLAT-750-76).
+func agentRolePrompt(ctx context.Context, userID, profileID, conversationKey, workspacePath string) string {
 	conversationKey = strings.TrimSpace(conversationKey)
-	project, _, _ := strings.Cut(conversationKey, codeChatSideMarker)
+	project, tab, _ := strings.Cut(conversationKey, codeChatSideMarker)
 	if project == "" {
 		return ""
 	}
-	identities, err := defaultProductConversationRegistryStore().agentIdentities(ctx, userID, profileID, project)
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	document, err := defaultProductConversationRegistryStore().loadDocument(ctx, path)
+	mutex.Unlock()
 	if err != nil {
 		return ""
 	}
-	identity := identities[conversationKey]
-	if noun == "" {
-		noun = "Code"
+	entryKey := productConversationRegistryEntryKey(profileID, conversationKey)
+	record, found := document.Entries[entryKey]
+	if !found || !workspacePathsMatchForUser(userID, record.WorkspacePath, workspacePath) {
+		return ""
 	}
-	switch {
-	case identity.Name != "" && identity.Purpose != "":
-		return fmt.Sprintf("\n\n## Your role in this %s\n\nYou are the %q agent in this %s: %s\n", noun, identity.Name, noun, identity.Purpose)
-	case identity.Name != "":
-		return fmt.Sprintf("\n\n## Your role in this %s\n\nYou are the %q agent in this %s.\n", noun, identity.Name, noun)
-	case identity.Purpose != "":
-		return fmt.Sprintf("\n\n## Your role in this %s\n\nThis agent's purpose in this %s: %s\n", noun, noun, identity.Purpose)
+	identity := document.Agents[entryKey]
+	name := identity.Name
+	jobs := ""
+	if functionTab, ok := strings.CutPrefix(tab, crewFunctionTabPrefix); ok {
+		functions, err := readCrewFunctions(ctx, triggerTarget{Kind: triggerCallerCrew, Path: workspacePath, CrewOwner: userID, CrewProfile: profileID, CrewID: project})
+		if err == nil {
+			sort.Slice(functions, func(i, j int) bool { return functions[i].Name < functions[j].Name })
+			for _, function := range functions {
+				if function.tabName() == "" || crewAgentChatID(function.tabName()) != functionTab {
+					continue
+				}
+				name = firstNonEmptyTrimmed(name, function.tabName())
+				jobs += fmt.Sprintf("\nFunction %q: %s\n", function.Name, strings.TrimSpace(function.Description))
+			}
+		}
 	}
-	return ""
+	defaultName := "Main chat"
+	if tab != "" {
+		defaultName = "Chat"
+	}
+	name = firstNonEmptyTrimmed(name, record.Title, defaultName)
+	role := fmt.Sprintf("\n\n## Your role in this Crew\n\nYou are the %q agent in this Crew.\n", name)
+	if purpose := strings.TrimSpace(identity.Purpose); purpose != "" {
+		role += "Your job: " + purpose + "\n"
+	}
+	return role + jobs
 }
 
 // registerCodeChatTools registers list_project_chats and ask_project_chat

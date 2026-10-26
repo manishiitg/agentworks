@@ -44,6 +44,8 @@ type resolvedAgentProfile struct {
 	Definition      agentprofiles.Profile
 	SelectedServers []string
 	Prompt          string
+	// AgentRolePrompt is this tab's server-owned name, purpose and function job; mode rendering retains it.
+	AgentRolePrompt string
 	// IdentityKey carries the Crew's user-owned identity (role and purpose)
 	// resolved from product.json for this query. Empty for products without
 	// one. It feeds the session fingerprint so a retained native session
@@ -566,12 +568,11 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err != nil {
 		return nil, err
 	}
+	agentRole := ""
 	if profile.ID == workproduct.ProfileID {
-		noun := "Code"
-		if codeProjectMode(ctx, workspacePath) == "cowork" {
-			noun = "Cowork project"
-		}
-		rendered += agentRolePrompt(ctx, userID, profile.ID, req.AgentProfileConversationKey, noun)
+		agentRole = agentRolePrompt(ctx, userID, profile.ID, req.AgentProfileConversationKey, workspacePath)
+		rendered += agentRole
+		identityKey += agentRole
 	}
 	if err := api.agentProfiles.Initialize(ctx, profile.ID, agentprofiles.RuntimeContext{
 		UserID: userID, SessionID: sessionID, WorkspacePath: workspacePath,
@@ -783,7 +784,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			rendered += "\n\nPrivate Builder handoff summary:\n" + publicationHistorySummary(publication)
 		}
 	}
-	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
+	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered, AgentRolePrompt: agentRole, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
 		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }
 
