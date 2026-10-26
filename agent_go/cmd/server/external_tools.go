@@ -631,6 +631,22 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		externalError(w, 400, "invalid_arguments", err.Error())
 		return
 	}
+	if native := crewDatabaseMembers[tool.Name]; native != "" {
+		params := map[string]any{}
+		for key, value := range call.Arguments {
+			if key != "crew_id" {
+				params[key] = value
+			}
+		}
+		api.externalCrewExecutionCall(w, r, "crew_execution", map[string]any{"crew_id": call.Arguments["crew_id"], "action": native, "arguments": params})
+		return
+	}
+	if source, operation := dataSourceAction(tool.Name); source != "" {
+		resolved := *tool
+		resolved.Name = source
+		tool, call.Name = &resolved, source
+		call.Arguments["action"] = operation
+	}
 	if tool.Name == "browser_connections" {
 		api.externalBrowserConnectionsCall(w, r, call.Arguments)
 		return

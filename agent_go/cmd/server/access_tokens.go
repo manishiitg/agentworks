@@ -374,6 +374,15 @@ func tokenSessionWorkflowReadRoot(_ *UserClaims, workflowPhaseFolder string) str
 }
 
 func externalTokenAllows(c *UserClaims, tool externalTool) bool {
+	if source, operation := dataSourceAction(tool.Name); source == "crew_folders" && c != nil && c.AccessToken != nil {
+		scope := "crews:write"
+		if crewCapabilityRead(operation) {
+			scope = "crews:read"
+		}
+		if !c.AccessToken.Allows(scope) {
+			return false
+		}
+	}
 	// These narrower catalog members use the existing chat action consent as
 	// well as the source tool's consent; grouping must not admit write-only
 	// connections that the source tool refused (PLAT-825).
@@ -381,6 +390,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return false
 	}
 	tool.Name = configurationConsentMember(tool.Name)
+	tool.Name = dataConsentMember(tool.Name)
 	if agentBridgeOnlyDeployment() && tool.Name != "messages" && tool.Name != "help" && tool.actions == nil {
 		return false
 	}

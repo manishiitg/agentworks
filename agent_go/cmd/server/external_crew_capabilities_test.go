@@ -43,8 +43,8 @@ func TestExternalCrewFileLifecycleOverMCP(t *testing.T) {
 	call := func(args map[string]any) {
 		t.Helper()
 		args["crew_id"] = "team"
-		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "crew_files", "arguments": args})
-		requireRemoteSuccess(t, result, "crew_files")
+		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "files", "arguments": args})
+		requireRemoteSuccess(t, result, "files")
 	}
 	patch := map[string]any{"action": "patch", "path": "code/report.md", "diff": "--- a/report.md\n+++ b/report.md\n@@ -1 +1 @@\n-Old text\n+New text\n", "expected_revision": wf.Revision([]byte("Old text\n")), "request_id": "patch-report"}
 	call(patch)
@@ -58,25 +58,25 @@ func TestExternalCrewFileLifecycleOverMCP(t *testing.T) {
 		t.Fatal(got)
 	}
 	call(map[string]any{"action": "delete", "path": "archive/report.md", "expected_revision": wf.Revision([]byte("New text\n"))})
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_files", map[string]any{"action": "delete", "path": "archive", "expected_revision": "bogus"}, 400)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "files", map[string]any{"action": "delete", "path": "archive", "expected_revision": "bogus"}, 400)
 	call(map[string]any{"action": "delete", "path": "archive"})
 	f.write(t, externalCommandCrewRoot+"/code/locked/keep.md", "Keep")
 	guarded := crewWriter("owner")
 	guarded.AccessToken.FileGuard = &wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"code", "archive"}, ReadOnlyPaths: []string{"code/locked"}}
-	crewCapabilityHTTP(t, f, guarded, "crew_files", map[string]any{"action": "move", "path": "code", "destination": "archive"}, 403)
-	crewCapabilityHTTP(t, f, guarded, "crew_files", map[string]any{"action": "delete", "path": "code/locked/keep.md", "expected_revision": wf.Revision([]byte("Keep"))}, 403)
+	crewCapabilityHTTP(t, f, guarded, "files", map[string]any{"action": "move", "path": "code", "destination": "archive"}, 403)
+	crewCapabilityHTTP(t, f, guarded, "files", map[string]any{"action": "delete", "path": "code/locked/keep.md", "expected_revision": wf.Revision([]byte("Keep"))}, 403)
 	crewCapabilityHTTP(t, f, guarded, "files", map[string]any{"action": "write", "path": "code/locked/keep.md", "content": "Denied"}, 403)
 	guarded.AccessToken.FileGuard.BlockedPaths = []string{"code/locked"}
 	crewCapabilityHTTP(t, f, guarded, "files", map[string]any{"action": "read", "path": "code/locked/keep.md"}, 403)
 
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_files", map[string]any{"action": "delete", "path": "code"}, 409)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "files", map[string]any{"action": "delete", "path": "code"}, 409)
 	f.write(t, externalCommandCrewRoot+"/code/functions.json", "{}")
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_files", map[string]any{"action": "move", "path": "code", "destination": "archive"}, 403)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "files", map[string]any{"action": "move", "path": "code", "destination": "archive"}, 403)
 	for _, denied := range []*UserClaims{crewWriter("other"), crewReader("owner")} {
-		crewCapabilityHTTP(t, f, denied, "crew_files", map[string]any{"action": "mkdir", "path": "denied", "expected_revision": "missing"}, 403)
+		crewCapabilityHTTP(t, f, denied, "files", map[string]any{"action": "mkdir", "path": "denied", "expected_revision": "missing"}, 403)
 	}
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_files", map[string]any{"action": "delete", "path": "../workflow.json"}, 403)
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_files", map[string]any{"action": "patch", "path": "code/locked/keep.md", "diff": "bad", "request_id": "bad", "expected_revision": "stale"}, 409)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "files", map[string]any{"action": "delete", "path": "../workflow.json"}, 403)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "files", map[string]any{"action": "patch", "path": "code/locked/keep.md", "diff": "bad", "request_id": "bad", "expected_revision": "stale"}, 409)
 }
 func crewReader(user string) *UserClaims {
 	claims := crewWriter(user)
@@ -215,8 +215,8 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	if strings.Contains(result, "Workflow/research") {
 		t.Fatal("out-of-bound reference was listed")
 	}
-	for _, group := range []string{"crew_skills", "crew_mcp", "crew_folders", "crew_references"} {
-		action := map[string]string{"crew_skills": "uninstall", "crew_mcp": "remove", "crew_folders": "attach", "crew_references": "attach"}[group]
+	for _, group := range []string{"crew_skills", "crew_mcp", "crew_references"} {
+		action := map[string]string{"crew_skills": "uninstall", "crew_mcp": "remove", "crew_references": "attach"}[group]
 		crewCapabilityHTTP(t, f, crewReader("owner"), group, map[string]any{"action": action}, 403)
 		crewCapabilityHTTP(t, f, crewWriter("other"), group, map[string]any{"action": action}, 403)
 	}
@@ -231,17 +231,20 @@ func TestExternalCrewAccountFoldersRequireBroadConsent(t *testing.T) {
 	document, _ := json.Marshal(map[string]any{"assignments": map[string]any{"owner": map[string]any{"roots": []string{canonical}}}, "grants": map[string]any{}})
 	f.write(t, workFolderAccessFilePath(), string(document))
 	args := func() map[string]any {
-		return map[string]any{"action": "attach", "path": root, "alias": "references", "access": "read_only"}
+		return map[string]any{"action": "folder_attach", "path": root, "alias": "references", "access": "read_only"}
+	}
+	for _, denied := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
+		crewCapabilityHTTP(t, f, denied, "files", args(), 403)
 	}
 	bounded := crewWriter("owner")
 	bounded.AccessToken.AllCrews = false
 	bounded.AccessToken.CrewIDs = []string{"team"}
-	crewCapabilityHTTP(t, f, bounded, "crew_folders", args(), 403)
+	crewCapabilityHTTP(t, f, bounded, "files", args(), 403)
 	guarded := crewWriter("owner")
 	guarded.AccessToken.FileGuard = &wf.FolderGuard{WritePaths: []string{"."}}
-	crewCapabilityHTTP(t, f, guarded, "crew_folders", args(), 403)
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_folders", args(), 200)
-	result := crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_folders", map[string]any{"action": "list"}, 200)
+	crewCapabilityHTTP(t, f, guarded, "files", args(), 403)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "files", args(), 200)
+	result := crewCapabilityHTTP(t, f, crewWriter("owner"), "files", map[string]any{"action": "folders"}, 200)
 	if !strings.Contains(result, "references") {
 		t.Fatal(result)
 	}
@@ -249,13 +252,13 @@ func TestExternalCrewAccountFoldersRequireBroadConsent(t *testing.T) {
 	if len(grants) != 1 {
 		t.Fatalf("grants=%v", grants)
 	}
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_folders", map[string]any{"action": "detach", "id": grants[0].ID}, 200)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "files", map[string]any{"action": "folder_detach", "id": grants[0].ID}, 200)
 	if grants = workFolderGrantsForClaims(context.Background(), crewWriter("owner")); len(grants) != 0 {
 		t.Fatalf("detach left grants=%v", grants)
 	}
 	outside := args()
 	outside["path"] = t.TempDir()
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_folders", outside, 400)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "files", outside, 400)
 }
 
 // Real MCP calls read the disk-backed Crew while unrelated browsers, private

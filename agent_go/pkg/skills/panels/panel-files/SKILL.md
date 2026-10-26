@@ -5,25 +5,19 @@ metadata:
   panel-tools:
     work:
     - execute_shell_command
-    - diff_patch_workspace_file
+    - files
     agentworks:
     - execute_shell_command
-    - diff_patch_workspace_file
-    - get_file_link
+    - files
     relays:
     - execute_shell_command
-    - diff_patch_workspace_file
-    - get_file_link
+    - files
   external-tools:
-  - list_files
-  - search_files
-  - read_file
-  - write_file
-  - get_file_link
+  - files
 ---
 
 # Files
 
-Use the current project’s scoped file readers and diff_patch_workspace_file or execute_shell_command for requested file changes. Preserve unrelated files and the project’s existing layout. Use get_file_link for a real existing artifact; return its URL verbatim. Shared file access excludes private chats, secret values and other products’ internals.
+Use the offered `files` actions to list, search, read, write, patch, move or delete within the current project and grants. Native chats bind their project; external MCP uses the returned project ID. Keep revision/request IDs where the schema requires them. Preserve unrelated files and the existing layout. Use action=link for a real existing artifact and return its URL verbatim. Action=image retains the current image-analysis provider/account where offered. Shared reads keep the existing private-chat, secret and file-root exclusions. Use the platform terminal only when an operation is already allowed there and no file action offers it.
 
 For existing-file links and attached-root access, Read [the detailed procedure](references/links.md).

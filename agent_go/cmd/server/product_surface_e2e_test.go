@@ -128,6 +128,7 @@ func TestAgentWorksProductSurfaceE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 		logConfigurationCatalog(t, "goal-"+mode+"-phase", draft.tools)
+		logDataCatalog(t, "goal-"+mode+"-phase", draft.tools)
 		skillNames := []string{}
 		for _, skill := range draft.skills {
 			skillNames = append(skillNames, skill.Name)

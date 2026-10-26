@@ -99,8 +99,10 @@ install -m 0755 "$REPO_ROOT/scripts/migrations/retire-agent-server-relay.py" "$B
 install -m 0755 "$REPO_ROOT/scripts/migrations/fold-crew-role.py" "$BUILD_DIR/migrations/fold-crew-role.py"
 install -m 0755 "$REPO_ROOT/scripts/remove-autopilot-engine.py" "$BUILD_DIR/migrations/remove-autopilot-engine.py"
 install -m 0755 "$REPO_ROOT/scripts/simplify-workflow-settings.py" "$BUILD_DIR/migrations/simplify-workflow-settings.py"
-install -m 0755 "$REPO_ROOT/scripts/group-dashboard-tool-selections.py" "$BUILD_DIR/migrations/group-dashboard-tool-selections.py"
+install -m 0755 "$REPO_ROOT/scripts/group-platform-tool-selections.py" "$BUILD_DIR/migrations/group-platform-tool-selections.py"
 install -m 0644 "$REPO_ROOT/agent_go/pkg/platformtools/dashboard-actions.json" "$BUILD_DIR/migrations/dashboard-actions.json"
+install -m 0644 "$REPO_ROOT/agent_go/pkg/platformtools/configuration-actions.json" "$BUILD_DIR/migrations/configuration-actions.json"
+install -m 0644 "$REPO_ROOT/agent_go/pkg/platformtools/data-actions.json" "$BUILD_DIR/migrations/data-actions.json"
 cleanup_build() {
   if declare -F vault_recover >/dev/null; then vault_recover; fi
   if [[ "$MIGRATION_STOPPED_AGENT" == 1 ]]; then
@@ -423,7 +425,7 @@ python3 "$BUILD_DIR/migrations/agentbridge-receipts.py" "$REMOTE_APP/data/docs/_
 python3 "$BUILD_DIR/migrations/retire-agent-server-relay.py" --state-root "$REMOTE_APP/state" --mailbox "$REMOTE_APP/data/docs/_system/agent_messages/conversations.json"
 python3 "$BUILD_DIR/migrations/fold-crew-role.py" --workspace-root "$REMOTE_APP/data/docs" --state-root "$REMOTE_APP/state"
 python3 "$BUILD_DIR/migrations/remove-autopilot-engine.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/remove-autopilot-$(date -u +%Y%m%dT%H%M%SZ)"
-python3 "$BUILD_DIR/migrations/group-dashboard-tool-selections.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/group-dashboard-tools-$(date -u +%Y%m%dT%H%M%SZ)" --catalog "$BUILD_DIR/migrations/dashboard-actions.json"
+python3 "$BUILD_DIR/migrations/group-platform-tool-selections.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/group-platform-tools-$(date -u +%Y%m%dT%H%M%SZ)" --catalog "$BUILD_DIR/migrations/dashboard-actions.json" --catalog "$BUILD_DIR/migrations/configuration-actions.json" --catalog "$BUILD_DIR/migrations/data-actions.json" --native-namespace workspace_advanced
 python3 "$BUILD_DIR/migrations/simplify-workflow-settings.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/simplify-workflow-settings-$(date -u +%Y%m%dT%H%M%SZ)"
 # One-off saved-agent shape preparation, with backups/changelog and no stamps.
 agent_plan_roots=()

@@ -22,7 +22,10 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 				}
 				copy.Name = "get_cost_" + action
 				copy.Description = "Read recorded cost " + action + " within your current product and connection access."
-				props := copy.InputSchema["properties"].(map[string]any)
+				props, err := externalSchemaProperties(copy.Name, copy.InputSchema)
+				if err != nil {
+					return nil, err
+				}
 				delete(props, "action")
 				copy.InputSchema["required"] = []any{}
 				result = append(result, copy)
@@ -35,7 +38,10 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 				if err != nil {
 					return nil, err
 				}
-				props := member.InputSchema["properties"].(map[string]any)
+				props, err := externalSchemaProperties(member.Name, member.InputSchema)
+				if err != nil {
+					return nil, err
+				}
 				keep := []string{"crew_id", "chat_id"}
 				member.Name, member.Description, member.mutates = "get_tab_models", "Read this Crew's tab models and offered account choices through its existing chat service.", false
 				member.InputSchema["required"] = []any{"crew_id"}
@@ -44,7 +50,11 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 					keep = append(keep, "engine", "model_id", "connection_id", "reasoning_effort")
 					member.InputSchema["required"] = []any{"crew_id", "chat_id", "engine"}
 					// The app's existing reset sends an empty engine.
-					delete(props["engine"].(map[string]any), "minLength")
+					engine, ok := props["engine"].(map[string]any)
+					if !ok {
+						return nil, fmt.Errorf("%s engine schema must be an object", tool.Name)
+					}
+					delete(engine, "minLength")
 				}
 				for key := range props {
 					if !slices.Contains(keep, key) {
@@ -60,7 +70,10 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 			if err != nil {
 				return nil, err
 			}
-			props := model.InputSchema["properties"].(map[string]any)
+			props, err := externalSchemaProperties(model.Name, model.InputSchema)
+			if err != nil {
+				return nil, err
+			}
 			keep := []string{"workflow_id", "crew_id"}
 			model.Name = "get_project_models"
 			model.Description = "Read this product's saved models and settings version, using its existing access."
@@ -74,7 +87,11 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 				if err != nil {
 					return nil, err
 				}
-				delete(tool.InputSchema["properties"].(map[string]any), "models")
+				settingsProps, err := externalSchemaProperties(tool.Name, tool.InputSchema)
+				if err != nil {
+					return nil, err
+				}
+				delete(settingsProps, "models")
 			}
 			for key := range props {
 				if !slices.Contains(keep, key) {
@@ -87,6 +104,25 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 		result = append(result, tool)
 	}
 	return result, nil
+}
+
+// Native parameter serialization can omit an empty properties object for a
+// no-argument tool. A malformed non-object schema is a catalog error.
+func externalSchemaProperties(name string, schema map[string]any) (map[string]any, error) {
+	if schema == nil {
+		return nil, fmt.Errorf("%s has no input schema", name)
+	}
+	value, exists := schema["properties"]
+	if !exists {
+		props := map[string]any{}
+		schema["properties"] = props
+		return props, nil
+	}
+	props, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s properties schema must be an object", name)
+	}
+	return props, nil
 }
 
 func configurationToolCopy(tool externalTool) (externalTool, error) {
@@ -102,10 +138,10 @@ func configurationToolCopy(tool externalTool) (externalTool, error) {
 	return tool, nil
 }
 
-func configurationMergeActions(family string) [][2]string {
+func platformMergeActions(family string) [][2]string {
 	result := [][2]string{}
 	positions := map[string]int{}
-	for _, action := range platformtools.ConfigurationActions {
+	for _, action := range platformtools.Actions {
 		if action.Family != family {
 			continue
 		}

@@ -18,7 +18,7 @@ and Run. Reading a reference does not grant its tools or write permissions.
   `$WORKFLOW_KB_<ALIAS>/notes/_index.json`) hold other workflows' facts;
   check them before saying you don't know.
 - `db/README.md` defines tables, keys, merge rules, and producer/consumer
-  ownership. Query current facts with `query_workflow_db`.
+  ownership. Query current facts with `database action=query`.
   {{if ne .WorkshopMode "run"}}Use the `stores` reference before designing or
   repairing persistence.{{end}}
 - `runs/iteration-0/` is the active run; retained older iterations and eval

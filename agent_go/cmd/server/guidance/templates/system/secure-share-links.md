@@ -23,7 +23,7 @@ The server verifies access and confirms that `db/reports/index.html` exists,
 then returns a dedicated `/report` URL. Present its `url` value verbatim. This
 viewer uses the same report runtime as Builder, including the report's styling,
 tabs, live data API, file actions, and refresh behavior. Do not use
-`get_file_link` for the dashboard: its restricted generic HTML preview is not
+`files action=link` for the dashboard: its restricted generic HTML preview is not
 the report runtime, and the tool rejects the dashboard entry path. The report
 URL opens as a full-page dashboard after the normal AgentWorks SSO flow.
 
@@ -34,7 +34,7 @@ a separately deployed static public report created through the publish flow.
 
 ## Create a file or folder link
 
-Call `get_file_link` with a canonical path relative to the active workflow:
+Call `files action=link` with a canonical path relative to the active workflow:
 
 ```json
 {"path":"runs/latest/report.pdf"}
@@ -76,7 +76,7 @@ wants anonymous, externally hosted, or password-gated public distribution.
 
 ## Scripted steps
 
-Load `references/mcp-bridge.md` before authoring bridge code. `get_file_link` is
+Load `references/mcp-bridge.md` before authoring bridge code. `files action=link` is
 a custom tool, so call it through `$MCP_CUSTOM/get_file_link`:
 
 ```bash

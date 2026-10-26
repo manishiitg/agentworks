@@ -87,6 +87,7 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 		members := map[string][]projectedMember{}
 		validators := map[string]*jsonschema.Schema{}
 		props := map[string]any{}
+		passThrough := false
 		actions := []any{}
 		lines := []string{}
 		seen := map[string]bool{}
@@ -124,6 +125,9 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 			}
 			lines = append(lines, line)
 			memberProps, _ := member.tool.InputSchema["properties"].(map[string]any)
+			if member.tool.InputSchema["additionalProperties"] == true {
+				passThrough = true
+			}
 			for key, value := range memberProps {
 				mergeProperty(props, key, value)
 			}
@@ -135,7 +139,7 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 			continue
 		}
 		props["action"] = map[string]any{"type": "string", "enum": actions}
-		group.InputSchema = map[string]any{"type": "object", "properties": props, "required": []any{"action"}, "additionalProperties": false}
+		group.InputSchema = map[string]any{"type": "object", "properties": props, "required": []any{"action"}, "additionalProperties": passThrough}
 		group.Description = "Use this project's " + family + " actions.\n" + strings.Join(lines, "\n")
 		group.Execute = func(ctx context.Context, args map[string]any) (string, error) {
 			action, _ := args["action"].(string)

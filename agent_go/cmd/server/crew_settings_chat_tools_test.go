@@ -115,6 +115,7 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 					captured[name] = tool
 				}
 				logConfigurationCatalog(t, "crew-builder", captured)
+				logDataCatalog(t, "crew-builder-settings-only", captured)
 				logExternalConfigurationCatalog(t)
 			}
 			for _, name := range []string{"browser_connections", "get_crew_costs", "manage_crew_model"} {

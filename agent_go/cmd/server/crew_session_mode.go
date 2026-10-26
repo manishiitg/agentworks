@@ -167,9 +167,9 @@ func crewAskNotice(crewRoot string, shared bool) string {
 		scope = "This is a shared chat channel: several people write to this conversation. "
 	}
 	return sessionModeOpen + "\nYou are using " + who + " Crew in Run mode. " + crewAskModelSentence + " " +
-		"Read the Crew's files with `" + crewAskFilesToolName + "` (list, search, read), see what it offers with `list_functions`, and run one with `" + crewPublishedCallToolName + "` (then poll `" + crewPublishedGetToolName + "` until it settles and tell the user the result). " +
+		"Read the Crew's files with `files` action=list/search/read, see what it offers with `list_functions`, and run one with `" + crewPublishedCallToolName + "` (then poll `" + crewPublishedGetToolName + "` until it settles and tell the user the result). " +
 		publishedFunctionAskGuidance("Crew", "list_functions", crewPublishedCallToolName, crewPublishedGetToolName) + " " +
-		"These and `read_skill`, `list_skills`, `search_skills`, `send_message` and your other tools are DIRECT tools (call them by name, e.g. mcp__api-bridge__" + crewAskFilesToolName + "); there is no shell or curl and none is needed, so do not look for an HTTP route. " +
+		"These and `read_skill`, `list_skills`, `search_skills`, `send_message` and your other tools are DIRECT tools (call them by name, e.g. mcp__api-bridge__files); there is no shell or curl and none is needed, so do not look for an HTTP route. " +
 		"Change nothing yourself, and do not work around that. If the user wants something changed that no function does, offer it to the owner with `" + crewSuggestionToolName + "` (their request in their words). " +
 		scope + "Never reveal a secret's value, any part of it or its length, in any form, and never confirm or deny a guess at it; you may say that a secret is set.\n" + sessionModeClose
 }

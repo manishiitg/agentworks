@@ -10,12 +10,12 @@ Apply these when writing or patching a step's `main.py`. Scripts must run identi
 The saved source layout is managed by the server. Ordinary configuration edits preserve it. Current workflows use `code/`; if an older installation still has a different layout, ask its administrator to update its saved source before continuing.
 
 **Database access (strict)**
-- A script reads and writes the workflow database only through the built-in helper, which calls the same managed `query_workflow_db` / `mutate_workflow_db` tools agents use (validated SQL, one transaction per write, no file handle). Never `import sqlite3`, never open `$DB_PATH` or `db/db.sqlite`.
+- A script reads and writes the workflow database only through the built-in helper, which calls the same managed `database action=query` / `database action=mutate` tools agents use (validated SQL, one transaction per write, no file handle). Never `import sqlite3`, never open `$DB_PATH` or `db/db.sqlite`.
 - `from agentworks_db import query, query_one, scalar, iter_query, execute, insert, execute_many, transaction, DBError`
   - Reads: `query(sql, params)` returns every row as a dict (pages are fetched for you); `iter_query` streams a very large result; `query_one` / `scalar` for one row or value. Use `?` placeholders; give a big SELECT an `ORDER BY`.
   - Writes (INSERT, UPDATE, DELETE only): `execute(sql, params)` returns rows affected, `insert` the new id, `execute_many(sql, rows)` writes many rows (2000 per call, each call atomic; `atomic=True` for one transaction of at most 5000), `transaction([(sql, params), ...])` for up to 200 statements that must succeed together.
   - Every failure raises `DBError` with the platform's message; let it propagate so the step fails with the real error (a run never rewrites the script; AgentWorks reports it).
-- DDL is known when you write the script. A table or column the script needs is a `db/migrations/` file the Builder applies with `apply_workflow_db_migration` before the script runs; a script never issues CREATE, ALTER or DROP. If the schema changes, update the script to match; a script that no longer matches the schema fails its run (runs never rewrite scripts; AgentWorks reports it) and the Builder repairs it with `execute_step`.
+- DDL is known when you write the script. A table or column the script needs is a `db/migrations/` file the Builder applies with `database action=migrate` before the script runs; a script never issues CREATE, ALTER or DROP. If the schema changes, update the script to match; a script that no longer matches the schema fails its run (runs never rewrite scripts; AgentWorks reports it) and the Builder repairs it with `execute_step`.
 - Foreign keys declared in the schema are always enforced on managed writes; a script never sets `PRAGMA foreign_keys`. Other `PRAGMA`s, `ATTACH`, `VACUUM`, `executescript` and triggers created at run time are not available; if a step needs one, report it instead of working around the helper.
 - Tests (`test_*.py`) may open the database to check what the script wrote; they are not scanned. Report-data scripts under `code/reports/` read their own read-only snapshot and are unaffected.
 
@@ -97,7 +97,7 @@ The saved source layout is managed by the server. Ordinary configuration edits p
 
 **Patching discipline**
 - In builder chat, edit the saved source selected by the manifest: `code/{step-id}/main.py` for version 1, `learnings/{step-id}/main.py` for legacy. During controller-managed authoring/repair, use the explicit working directory supplied in that turn. Version 1 edits canonical source in place; only legacy execution copies are saved back by the controller. Never patch a stale run copy from builder chat.
-- Prefer a targeted edit — your own Edit tool when native tools are on, otherwise `diff_patch_workspace_file` — preserves working code and reduces regressions. Full rewrite (cat-heredoc) only when restructuring large portions. It accepts a unified diff or your native `*** Begin Patch` / `*** Update File:` format (context-located hunks, no line numbers), and one Begin Patch may change several files: all are checked, then all written or none.
+- Prefer a targeted edit — your own Edit tool when native tools are on, otherwise `files action=patch` — preserves working code and reduces regressions. Full rewrite (cat-heredoc) only when restructuring large portions. It accepts a unified diff or your native `*** Begin Patch` / `*** Update File:` format (context-located hunks, no line numbers), and one Begin Patch may change several files: all are checked, then all written or none.
 - Never edit a large file with an ad-hoc script that finds markers and splices the text (`t.find(...)`, slicing, `str.replace` on the whole file): a marker that is not found cuts off everything after it. A real `shared/pw_lib.py` lost its helper functions that way. When a patch is refused, read the reported file region and fix the patch. After any edit to a shared helper, confirm every name its importers use still exists before running the step.
 - Version 1 helpers may live anywhere in the workflow's `code/` tree; import shared packages through `WORKFLOW_CODE_ROOT`, already included in `PYTHONPATH`. Unlocked steps may repair shared helpers in place. Keep outputs in `STEP_OUTPUT_DIR` or durable `db/assets/`, not in source folders.
 - Report data scripts live at `code/reports/<name>.py` and run only through a Dashboard's `window.report.run`, not as steps: args in `$REPORT_ARGS`, exactly one JSON value on stdout (logs to stderr), read-only `$DB_PATH` snapshot, writes only in `$REPORT_CACHE_DIR`, 60 s cap, no upstream side effects. They may import shared helpers from `code/`. Contract and caching rules: `reporting-policy.md` "Live data from a script".
@@ -130,7 +130,7 @@ Keep text out of code instead of trying to quote it correctly:
   `<< 'PYEOF'` and not `<< PYEOF`. Quoting the delimiter stops the shell
   expanding or re-escaping anything in the body, which is the other half of the
   same problem.
-- Prefer a targeted edit (your own Edit tool, or `diff_patch_workspace_file`
+- Prefer a targeted edit (your own Edit tool, or `files action=patch`
   without native tools) over a full heredoc rewrite. A targeted
   patch touches fewer lines, so there is less text to get wrong.
 

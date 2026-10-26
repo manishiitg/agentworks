@@ -2,7 +2,11 @@ package virtualtools
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/llm"
@@ -22,8 +26,29 @@ func TestInjectSelectedLLMConfigCarriesTheTurnsAccount(t *testing.T) {
 		return "ok", nil
 	}
 	wrapped := injectSelectedLLMConfig(inner, selected, turn)
+	var image mcpagent.ToolDefinition
+	for _, definition := range workspace.GetAdvancedToolDefinitions() {
+		if definition.Function.Name == "read_image" {
+			data, err := json.Marshal(definition.Function.Parameters)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var schema map[string]any
+			if err := json.Unmarshal(data, &schema); err != nil {
+				t.Fatal(err)
+			}
+			image = mcpagent.ToolDefinition{Name: "read_image", InputSchema: schema, Execute: wrapped, DisplayGroup: "workspace_advanced"}
+		}
+	}
+	jobs, err := platformtools.Project([]mcpagent.ToolDefinition{image})
+	if err != nil || len(jobs) != 1 || jobs[0].Name != "files" {
+		t.Fatalf("image job: %v %v", jobs, err)
+	}
+	call := func(ctx context.Context) (string, error) {
+		return jobs[0].Execute(ctx, map[string]any{"action": "image", "filepath": "/workspace/docs/example.png", "query": "Describe this image."})
+	}
 
-	if _, err := wrapped(context.Background(), nil); err != nil {
+	if _, err := call(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if gotKeys != turn {
@@ -35,7 +60,7 @@ func TestInjectSelectedLLMConfigCarriesTheTurnsAccount(t *testing.T) {
 
 	// keys already in the context win
 	other := &llm.ProviderAPIKeys{}
-	if _, err := wrapped(WithProviderAccountKeys(context.Background(), other), nil); err != nil {
+	if _, err := call(WithProviderAccountKeys(context.Background(), other)); err != nil {
 		t.Fatal(err)
 	}
 	if gotKeys != other {

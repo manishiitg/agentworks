@@ -1,0 +1,299 @@
+[
+  {
+    "family": "files",
+    "name": "list",
+    "member": "list_files",
+    "description": "List files within the current read grants.",
+    "aliases": [
+      "list_crew_files"
+    ],
+    "source": "read_project_files",
+    "source_action": "list",
+    "external_members": "list_files|list_crew_files"
+  },
+  {
+    "family": "files",
+    "name": "search",
+    "member": "search_files",
+    "description": "Search accessible project files.",
+    "aliases": [
+      "search_crew_files"
+    ],
+    "source": "read_project_files",
+    "source_action": "search",
+    "external_members": "search_files|search_crew_files"
+  },
+  {
+    "family": "files",
+    "name": "read",
+    "member": "read_file",
+    "description": "Read an accessible project file and its revision.",
+    "aliases": [
+      "read_crew_file"
+    ],
+    "source": "read_project_files",
+    "source_action": "read",
+    "external_members": "read_file|read_crew_file"
+  },
+  {
+    "family": "files",
+    "name": "dashboard",
+    "member": "read_published_dashboard_files",
+    "description": "Read authorized published dashboard source files for this Ask.",
+    "source": "read_project_files",
+    "source_action": "dashboard"
+  },
+  {
+    "family": "files",
+    "name": "write",
+    "member": "write_file",
+    "description": "Write a file using its current role, root and revision checks.",
+    "aliases": [
+      "write_crew_file"
+    ],
+    "external_members": "write_file|write_crew_file"
+  },
+  {
+    "family": "files",
+    "name": "patch",
+    "member": "diff_patch_workspace_file",
+    "description": "Apply a checked patch within the existing write grants.",
+    "aliases": [
+      "patch_file"
+    ],
+    "external_members": "patch_file|patch_crew_file"
+  },
+  {
+    "family": "files",
+    "name": "image",
+    "member": "read_image",
+    "description": "Ask about a workspace image through the existing vision provider and account."
+  },
+  {
+    "family": "files",
+    "name": "link",
+    "member": "get_file_link",
+    "description": "Get a link to an accessible file; it adds no access."
+  },
+  {
+    "family": "files",
+    "name": "code",
+    "member": "list_step_code",
+    "description": "List a workflow step’s saved code files."
+  },
+  {
+    "family": "files",
+    "name": "folders",
+    "member": "list_work_folders",
+    "description": "List this Crew’s attached folders.",
+    "external_members": "list_crew_folders"
+  },
+  {
+    "family": "files",
+    "name": "folder_attach",
+    "member": "attach_work_folder",
+    "description": "Attach an existing allowed folder using its current grants.",
+    "external_members": "attach_crew_folder"
+  },
+  {
+    "family": "files",
+    "name": "folder_detach",
+    "member": "detach_work_folder",
+    "description": "Remove a folder attachment from this Crew.",
+    "external_members": "detach_crew_folder"
+  },
+  {
+    "family": "files",
+    "name": "request_folder",
+    "member": "request_workflow_folder_access",
+    "description": "Request the existing workflow folder access operation."
+  },
+  {
+    "family": "files",
+    "name": "consolidate_project_knowledge",
+    "member": "consolidate_knowledgebase",
+    "description": "Consolidate this workflow’s local knowledge under its existing access."
+  },
+  {
+    "family": "files",
+    "name": "reorganize_project_knowledge",
+    "member": "reorganize_knowledgebase",
+    "description": "Reorganize this workflow’s local knowledge under its existing access."
+  },
+  {
+    "family": "files",
+    "name": "patch",
+    "member": "patch_crew_file",
+    "description": "Patch a Crew file using the owner, connection and revision checks.",
+    "source": "crew_files",
+    "source_action": "patch"
+  },
+  {
+    "family": "files",
+    "name": "mkdir",
+    "member": "make_crew_folder",
+    "description": "Create a Crew folder through the existing file service.",
+    "source": "crew_files",
+    "source_action": "mkdir"
+  },
+  {
+    "family": "files",
+    "name": "move",
+    "member": "move_crew_file",
+    "description": "Move a Crew file or folder within the current write grants.",
+    "source": "crew_files",
+    "source_action": "move"
+  },
+  {
+    "family": "files",
+    "name": "delete",
+    "member": "delete_crew_file",
+    "description": "Delete a Crew file or empty folder through the existing file guards.",
+    "source": "crew_files",
+    "source_action": "delete"
+  },
+  {
+    "family": "files",
+    "name": "knowledge_list",
+    "member": "list_workflow_knowledge",
+    "description": "List this workflow’s allowed local knowledge and learning files."
+  },
+  {
+    "family": "files",
+    "name": "knowledge_read",
+    "member": "read_workflow_knowledge",
+    "description": "Read an allowed local knowledge or learning file."
+  },
+  {
+    "family": "database",
+    "name": "query",
+    "member": "query_workflow_db",
+    "description": "Read the current managed database with its existing query and row limits.",
+    "source": "query_workflow_db",
+    "source_action": "query",
+    "external_members": "read_database_rows"
+  },
+  {
+    "family": "database",
+    "name": "query",
+    "member": "read_database_rows",
+    "description": "Read the current managed database with its existing query and row limits.",
+    "source": "query_database",
+    "source_action": "query",
+    "external_members": "read_database_rows"
+  },
+  {
+    "family": "database",
+    "name": "describe",
+    "member": "describe_workflow_db",
+    "description": "Read allowed database tables and columns.",
+    "source": "query_workflow_db",
+    "source_action": "describe",
+    "external_members": "describe_database"
+  },
+  {
+    "family": "database",
+    "name": "describe",
+    "member": "describe_database",
+    "description": "Read allowed database tables and columns.",
+    "source": "query_database",
+    "source_action": "describe",
+    "external_members": "describe_database"
+  },
+  {
+    "family": "database",
+    "name": "integrity_check",
+    "member": "check_workflow_db_integrity",
+    "description": "Check the database’s integrity without changing data.",
+    "source": "query_workflow_db",
+    "source_action": "integrity_check",
+    "external_members": "check_database_integrity"
+  },
+  {
+    "family": "database",
+    "name": "integrity_check",
+    "member": "check_database_integrity",
+    "description": "Check the database’s integrity without changing data.",
+    "source": "query_database",
+    "source_action": "integrity_check",
+    "external_members": "check_database_integrity"
+  },
+  {
+    "family": "database",
+    "name": "mutate",
+    "member": "mutate_workflow_db",
+    "description": "Change rows using the current database write setting and grants.",
+    "aliases": [
+      "mutate_crew_database"
+    ],
+    "external_members": "mutate_crew_database"
+  },
+  {
+    "family": "database",
+    "name": "migrate",
+    "member": "apply_workflow_db_migration",
+    "description": "Apply a managed database migration with the existing statement checks.",
+    "aliases": [
+      "migrate_crew_database"
+    ],
+    "external_members": "migrate_crew_database"
+  },
+  {
+    "family": "database",
+    "name": "snapshot",
+    "member": "create_workflow_database_snapshot",
+    "description": "Create a database snapshot where the captured source allows it.",
+    "aliases": [
+      "snapshot_crew_database"
+    ],
+    "external_members": "snapshot_crew_database"
+  },
+  {
+    "family": "database",
+    "name": "query_linked",
+    "member": "read_linked_database_query",
+    "description": "Read a linked workflow database using its existing link, role and query checks.",
+    "source": "query_linked_workflow_db",
+    "source_action": "query"
+  },
+  {
+    "family": "database",
+    "name": "describe_linked",
+    "member": "read_linked_database_describe",
+    "description": "Read a linked workflow database using its existing link, role and query checks.",
+    "source": "query_linked_workflow_db",
+    "source_action": "describe"
+  },
+  {
+    "family": "database",
+    "name": "integrity_check_linked",
+    "member": "read_linked_database_integrity_check",
+    "description": "Read a linked workflow database using its existing link, role and query checks.",
+    "source": "query_linked_workflow_db",
+    "source_action": "integrity_check"
+  },
+  {
+    "family": "files",
+    "name": "folders",
+    "member": "list_crew_folders",
+    "description": "List this Crew’s attached folders.",
+    "source": "crew_folders",
+    "source_action": "list"
+  },
+  {
+    "family": "files",
+    "name": "folder_attach",
+    "member": "attach_crew_folder",
+    "description": "Attach an existing allowed folder using its current grants.",
+    "source": "crew_folders",
+    "source_action": "attach"
+  },
+  {
+    "family": "files",
+    "name": "folder_detach",
+    "member": "detach_crew_folder",
+    "description": "Remove a folder attachment from this Crew.",
+    "source": "crew_folders",
+    "source_action": "detach"
+  }
+]

@@ -48,7 +48,18 @@ var ConfigurationActions = func() []Action {
 	return actions
 }()
 
-var Actions = append(append([]Action{}, DashboardActions...), ConfigurationActions...)
+//go:embed data-actions.json
+var dataSource []byte
+
+var DataActions = func() []Action {
+	var actions []Action
+	if err := json.Unmarshal(dataSource, &actions); err != nil {
+		panic(err)
+	}
+	return actions
+}()
+
+var Actions = append(append(append([]Action{}, DashboardActions...), ConfigurationActions...), DataActions...)
 
 // Identity is used only while assembling trusted native definitions/policies.
 // It never resolves a public call or accepts a retired tool name over MCP.
@@ -67,8 +78,10 @@ func Identity(member string) string {
 }
 
 func PublicName(identity string) string {
-	if identity == "manage_crew_model" {
-		return "models"
+	for _, action := range Actions {
+		if action.Source != "" && action.Source == identity {
+			return action.Family
+		}
 	}
 	identity = Identity(identity)
 	for _, action := range Actions {
@@ -85,6 +98,11 @@ func IsDashboardMember(name string) bool {
 }
 
 func IsMember(name string) bool {
+	for _, action := range Actions {
+		if action.Source != "" && action.Source == name && action.Source != action.Family {
+			return true
+		}
+	}
 	id := Identity(name)
 	for _, action := range Actions {
 		if id == action.Family+"."+action.Name {

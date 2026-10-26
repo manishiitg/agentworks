@@ -9,6 +9,7 @@ import (
 
 type recordedTool struct {
 	desc   string
+	group  string
 	params map[string]interface{}
 	exec   func(context.Context, map[string]interface{}) (string, error)
 }
@@ -17,11 +18,11 @@ type recordingRegistrar struct {
 	tools map[string]recordedTool
 }
 
-func (r *recordingRegistrar) RegisterCustomTool(name, desc string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), _ string) error {
+func (r *recordingRegistrar) RegisterCustomTool(name, desc string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), category string) error {
 	if r.tools == nil {
 		r.tools = map[string]recordedTool{}
 	}
-	r.tools[name] = recordedTool{desc: desc, params: params, exec: exec}
+	r.tools[name] = recordedTool{desc: desc, group: category, params: params, exec: exec}
 	return nil
 }
 

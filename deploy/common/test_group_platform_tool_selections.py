@@ -4,13 +4,14 @@ from pathlib import Path
 import tempfile
 import unittest
 
-spec = importlib.util.spec_from_file_location("grouping", Path(__file__).parents[2] / "scripts/group-dashboard-tool-selections.py")
+spec = importlib.util.spec_from_file_location("grouping", Path(__file__).parents[2] / "scripts/group-platform-tool-selections.py")
 grouping = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(grouping)
 catalog = Path(__file__).parents[2] / "agent_go/pkg/platformtools/dashboard-actions.json"
+data_catalog = Path(__file__).parents[2] / "agent_go/pkg/platformtools/data-actions.json"
 
 
-class DashboardSelections(unittest.TestCase):
+class PlatformSelections(unittest.TestCase):
     def test_partial_native_selection_preserves_foreign_tools_and_user_notes(self):
         # PLAT-825-113: migrating get must never grant the dashboard family.
         with tempfile.TemporaryDirectory() as temp:
@@ -19,19 +20,23 @@ class DashboardSelections(unittest.TestCase):
             project.mkdir(parents=True)
             path = project / "product.json"
             original = {"tool_policy": {"enabled": ["get_dashboard"], "disabled": ["create_dashboard"]},
-                        "selected_tools": ["foreign:get_dashboard", "dashboard:get_dashboard"],
+                        "selected_tools": ["foreign:get_dashboard", "dashboard:get_dashboard", "workspace_advanced:diff_patch_workspace_file", "foreign:diff_patch_workspace_file"],
+                        "selected_custom_tools": ["query_workflow_db"],
                         "execution_defaults": {"enabled_custom_tools": ["get_dashboard_share", "share_dashboard"]},
                         "enabled_tools": [], "note": "get_dashboard is in my own notes"}
             path.write_text(json.dumps(original))
-            self.assertEqual(grouping.migrate(root, backup, catalog, ["dashboard"]), 1)
+            catalogs = [catalog, data_catalog]
+            namespaces = ["dashboard", "workspace_advanced"]
+            self.assertEqual(grouping.migrate(root, backup, catalogs, namespaces), 1)
             saved = json.loads(path.read_text())
             self.assertEqual(saved["tool_policy"], {"enabled": ["dashboard.get"], "disabled": ["dashboard.create"]})
-            self.assertEqual(saved["selected_tools"], ["foreign:get_dashboard", "dashboard:dashboard.get"])
+            self.assertEqual(saved["selected_tools"], ["foreign:get_dashboard", "dashboard:dashboard.get", "workspace_advanced:files.patch", "foreign:diff_patch_workspace_file"])
+            self.assertEqual(saved["selected_custom_tools"], ["database.query", "database.describe", "database.integrity_check"])
             self.assertEqual(saved["execution_defaults"]["enabled_custom_tools"], ["share.get", "share.set"])
             self.assertEqual(saved["enabled_tools"], [])
             self.assertEqual(saved["note"], original["note"])
             self.assertEqual(json.loads((backup / "Crew/team/product.json").read_text()), original)
-            self.assertEqual(grouping.migrate(root, backup, catalog, ["dashboard"]), 0)
+            self.assertEqual(grouping.migrate(root, backup, catalogs, namespaces), 0)
 
 
 if __name__ == "__main__":

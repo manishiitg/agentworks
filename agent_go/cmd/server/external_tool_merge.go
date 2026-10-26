@@ -28,9 +28,9 @@ type externalToolMerge struct {
 var externalToolMerges = []externalToolMerge{
 	{"share", "Share a Crew, Goal or Flow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, dashboardMergeActions("share")},
 	{"dashboard", "Live dashboards of workflows, Flows and Crews: find them, read and edit drafts, check and publish revisions, and get links.", dashboardMergeActions("dashboard")},
-	{"settings", "Read or change this product's setup, accounts, linked knowledge and team delivery using its existing access.", configurationMergeActions("settings")},
-	{"models", "Read or change project model defaults with existing Builder and account access; other model actions appear only where already available.", configurationMergeActions("models")},
-	{"costs", "Read recorded usage and attributed spend for products you can access. Summary, queries and drill-down keep their existing product, root and connection checks.", configurationMergeActions("costs")},
+	{"settings", "Read or change this product's setup, accounts, linked knowledge and team delivery using its existing access.", platformMergeActions("settings")},
+	{"models", "Read or change project model defaults with existing Builder and account access; other model actions appear only where already available.", platformMergeActions("models")},
+	{"costs", "Read recorded usage and attributed spend for products you can access. Summary, queries and drill-down keep their existing product, root and connection checks.", platformMergeActions("costs")},
 	{"needs_you", "Shares Home's question/decision collector. List what is waiting on you across workflows and Crews, then answer or dismiss one; answered decisions awaiting application include apply_message for the Builder. home action=attention also includes failed-run review items.", [][2]string{
 		{"list", "list_needs_you"}, {"answer", "answer_needs_you"}, {"dismiss", "dismiss_needs_you"},
 	}},
@@ -43,10 +43,8 @@ var externalToolMerges = []externalToolMerge{
 	{"workflow", "Find workflows and Flows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
 		{"list", "list_workflows"}, {"get", "get_workflow"}, {"plan", "get_plan"},
 	}},
-	{"files", "Browse, search, read and write project files, with revision checks, for a workflow or Flow (workflow_id), or a Crew you own (crew_id; read for anyone with access, write for its owner, text or binary). action=code lists a step's saved code.", [][2]string{
-		{"list", "list_files|list_crew_files"}, {"search", "search_files|search_crew_files"}, {"read", "read_file|read_crew_file"},
-		{"write", "write_file|write_crew_file"}, {"code", "list_step_code"},
-	}},
+	{"files", "Read and change allowed project files, links and attachments. Current Builder, sharing, private-path, file-root and revision checks still decide access.", platformMergeActions("files")},
+	{"database", "Read managed project data and schemas. Offered write, migration and snapshot actions retain the current owner, connection, step and file-grant checks.", platformMergeActions("database")},
 	{"functions", "Workflow and Crew internal function triggers with checked inputs. Crew functions default to a named tab that keeps history and queues calls; execution=fresh starts a new chat for each call. List, call, inspect execution status/messages, read private output files and answer a pending input question.", [][2]string{
 		{"list", "list_workflow_functions|list_crew_functions"}, {"call", "call_workflow_function|call_crew_function"},
 		{"status", "get_workflow_function_call|get_crew_function_call"}, {"read", "get_workflow_function_call|get_crew_function_call"}, {"reply", "reply_workflow_function_call|reply_crew_function_call"},
@@ -88,6 +86,9 @@ var externalHiddenAliases = map[string]string{"get_report_link": "dashboard acti
 func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 	var err error
 	catalog, err = configurationExternalMembers(catalog)
+	if err == nil {
+		catalog, err = dataExternalMembers(catalog)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -108,6 +109,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 			return nil, fmt.Errorf("merged tool %q collides with an existing tool", merge.name)
 		}
 		props := map[string]any{}
+		passThrough := false
 		actions := map[string]string{}
 		order := []string{}
 		for _, pair := range merge.actions {
@@ -119,6 +121,9 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 				}
 				admitted = append(admitted, name)
 				member := &catalog[i]
+				if member.InputSchema["additionalProperties"] == true {
+					passThrough = true
+				}
 				if _, has := member.InputSchema["properties"].(map[string]any)["action"]; has {
 					return nil, fmt.Errorf("merged tool %q: member %q already has an action field", merge.name, member.Name)
 				}
@@ -135,7 +140,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 		if len(order) == 0 {
 			continue
 		}
-		if merge.name == "functions" || merge.name == "files" || merge.name == "share" || merge.name == "settings" || merge.name == "models" || merge.name == "costs" || merge.name == "dashboard" {
+		if merge.name == "functions" || merge.name == "files" || merge.name == "share" || merge.name == "settings" || merge.name == "models" || merge.name == "costs" || merge.name == "database" || merge.name == "dashboard" {
 			props["workspace_id"] = externalString("Stable work:<id> from workspace action=list.")
 		}
 		if merge.name == "functions" {
@@ -145,7 +150,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 		catalog = append(catalog, externalTool{
 			Name:        merge.name,
 			Description: merge.summary,
-			InputSchema: map[string]any{"type": "object", "properties": props, "required": externalMergedRequired(order), "additionalProperties": false},
+			InputSchema: map[string]any{"type": "object", "properties": props, "required": externalMergedRequired(order), "additionalProperties": passThrough},
 			actions:     actions,
 			actionOrder: order,
 		})
@@ -198,6 +203,7 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 	allowed := []string{}
 	var lines []string
 	props := map[string]any{}
+	passThrough := false
 	for _, action := range tool.actionOrder {
 		var members []externalTool
 		for _, name := range externalMemberNames(tool.actions[action]) {
@@ -226,6 +232,9 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 		}
 		lines = append(lines, line)
 		for _, member := range members {
+			if member.InputSchema["additionalProperties"] == true {
+				passThrough = true
+			}
 			for key, value := range member.InputSchema["properties"].(map[string]any) {
 				externalMergeProperty(props, key, value)
 			}
@@ -251,7 +260,7 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 	}
 	// A globally multi-action tool always requires action, even when this
 	// connection sees only one. Dispatch uses the same full object contract.
-	out.InputSchema = map[string]any{"type": "object", "properties": props, "required": externalMergedRequired(tool.actionOrder), "additionalProperties": false}
+	out.InputSchema = map[string]any{"type": "object", "properties": props, "required": externalMergedRequired(tool.actionOrder), "additionalProperties": passThrough}
 	return out, true
 }
 

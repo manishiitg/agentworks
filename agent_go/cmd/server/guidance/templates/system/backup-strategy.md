@@ -191,7 +191,7 @@ errors. This is a sandbox boundary, not a macOS ownership or mount problem.
 
 The live `db/db.sqlite` database and its WAL/SHM sidecars are protected runtime
 state. Shell and generic file tools must not read, copy, stage, or unlock them.
-Before backup, use `create_workflow_database_snapshot` unless the scheduler has
+Before backup, use `database action=snapshot` unless the scheduler has
 already supplied a current managed-snapshot receipt in the finalizer message.
 The workspace service reads SQLite through the database engine, includes all
 committed WAL rows, runs `PRAGMA integrity_check`, and atomically publishes the

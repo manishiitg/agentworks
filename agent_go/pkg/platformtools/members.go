@@ -16,12 +16,12 @@ func projectMembers(tools []mcpagent.ToolDefinition) ([]projectedMember, []mcpag
 	other := []mcpagent.ToolDefinition{}
 	for _, tool := range tools {
 		hasSource, expanded := false, false
-		for _, action := range ConfigurationActions {
+		for _, action := range Actions {
 			if action.Source != tool.Name {
 				continue
 			}
 			hasSource = true
-			if !sourceHasAction(tool.InputSchema, action.SourceAction) {
+			if !OffersAction(tool.InputSchema, action.SourceAction) {
 				continue
 			}
 			member, err := sourceMember(tool, action)
@@ -74,7 +74,8 @@ func cloneSchema(schema map[string]any) (map[string]any, error) {
 	return result, err
 }
 
-func sourceHasAction(schema map[string]any, action string) bool {
+// OffersAction reports a subaction present in the admitted source schema.
+func OffersAction(schema map[string]any, action string) bool {
 	props, _ := schema["properties"].(map[string]any)
 	choice, _ := props["action"].(map[string]any)
 	values, _ := choice["enum"].([]any)
@@ -87,10 +88,12 @@ func sourceHasAction(schema map[string]any, action string) bool {
 	return slices.Contains(strings, action)
 }
 
-func sourceMember(source mcpagent.ToolDefinition, action Action) (mcpagent.ToolDefinition, error) {
-	schema, err := cloneSchema(source.InputSchema)
+// MemberSchema retains the admitted source's validation for one flattened
+// action. Native chat and external MCP derive the same narrow shape.
+func MemberSchema(original map[string]any, action Action) (map[string]any, error) {
+	schema, err := cloneSchema(original)
 	if err != nil {
-		return source, err
+		return nil, err
 	}
 	props, _ := schema["properties"].(map[string]any)
 	delete(props, "action")
@@ -113,6 +116,14 @@ func sourceMember(source mcpagent.ToolDefinition, action Action) (mcpagent.ToolD
 		}
 	}
 	schema["required"] = required
+	return schema, nil
+}
+
+func sourceMember(source mcpagent.ToolDefinition, action Action) (mcpagent.ToolDefinition, error) {
+	schema, err := MemberSchema(source.InputSchema, action)
+	if err != nil {
+		return source, err
+	}
 	member := source
 	member.Name = action.SourceMember
 	if member.Name == "" {

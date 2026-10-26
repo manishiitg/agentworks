@@ -154,6 +154,20 @@ func TestExternalMergedCallDropsFieldsOnlyAnotherMemberTakes(t *testing.T) {
 	if rest["bogus"] == nil {
 		t.Fatalf("an unknown field was silently dropped: %v", rest)
 	}
+	// PLAT-825-113: a generic Run proxy admits operation parameters such as
+	// run_folder. Its aggregate must advertise that pass-through without relaxing a
+	// different selected member's strict schema.
+	costs, ok := externalCatalogTool("costs")
+	if !ok {
+		t.Fatal("costs unavailable")
+	}
+	if err := costs.validator.Validate(map[string]any{"action": "summary", "workflow_id": "w", "run_folder": "runs/iteration-1"}); err != nil {
+		t.Fatalf("aggregate hid the admitted proxy's run parameter: %v", err)
+	}
+	strict, args, err := externalResolveMerged(costs, map[string]any{"action": "breakdown", "bogus": true})
+	if err != nil || strict.validator.Validate(args) == nil {
+		t.Fatalf("strict selected member accepted an unknown argument: %v", err)
+	}
 }
 
 // The advertised shape used to include a nested functions patch that dispatch

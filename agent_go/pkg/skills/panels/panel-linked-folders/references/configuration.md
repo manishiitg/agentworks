@@ -1,6 +1,6 @@
 ## Attached folders
 
-- Use `list_work_folders` first. Attach only an existing path permitted by the
+- Use `files action=folders` first. Attach only an existing path permitted by the
   administrator, with a clear alias and the least access needed (`read_only`
   unless writes are required).
 - Use the exact stored ID when detaching. A newly attached folder becomes part

@@ -107,7 +107,7 @@ Use the paths and grants below. The existing `STEP_OUTPUT_DIR` is your output fo
 
 {{if .WorkflowRoot}}Read `{{.WorkflowRoot}}/soul/soul.md` for owner-approved Constraints when granted. Those constraints win over stale task values; report any conflict as CONCERNS. Do not edit soul or planning files.{{end}}
 {{if ne .DBAccess "none"}}
-- **Database ({{.DBAccess}}):** shared structured state that persists across runs. {{if eq .DBDirectAccess "true"}}Use `agentworks_db` in saved scripts;{{else}}Use `query_workflow_db`{{if eq .DBAccess "read"}} only (read access only); do not call `mutate_workflow_db`{{else}} and `mutate_workflow_db`{{end}};{{end}} never open SQLite files directly or change schema. Open **workflow-database** for query, update and script-helper procedures.
+- **Database ({{.DBAccess}}):** shared structured state that persists across runs. {{if eq .DBDirectAccess "true"}}Use `agentworks_db` in saved scripts;{{else}}Use `database action=query`{{if eq .DBAccess "read"}} only (read access only); do not call `database action=mutate`{{else}} and `database action=mutate`{{end}};{{end}} never open SQLite files directly or change schema. Open **workflow-database** for query, update and script-helper procedures.
 {{end}}{{if ne .KbAccess "none"}}
 {{if eq .KbAccess "shared"}}- **Shared Brain:** reusable reference knowledge outside this run. Use the **brain** skill under the MCP grant below; local KB is not a fallback.
 {{else}}- **knowledgebase/** ({{.KbAccessLabel}}): reference material and reusable knowledge retained across runs. Use the sources named by the task; open **workflow-knowledgebase** for selective topic reads and permitted contributions. Do not edit context/.{{end}}
@@ -172,18 +172,18 @@ LLM specialists belong to a separate Crew step in the Goal plan.
 
 Use the managed database tool only; never open `db.sqlite` with shell or Python. This is **READ-ONLY workflow evidence**.
 
-- Use `query_workflow_db` for schema discovery and reads. Inspect an unfamiliar table first: `action: "describe", table: "<table>"`.
+- Use `database action=query` for schema discovery and reads. Inspect an unfamiliar table first: `action: "describe", table: "<table>"`.
 - Query with `sql: "SELECT ... WHERE key = ?", params: ["value"]`. Use `max_rows` (up to 10000) when a result may exceed the default limit of 500. For a bigger result give the SELECT an ORDER BY and page with `offset`: a truncated result carries `next_offset`, pass it as `offset` for the next page.
 - In HTTP/code-execution mode, keep SQL in a shell variable and JSON-encode it with `jq -n --arg sql "$sql" '{sql:$sql}'`; never place SQL containing single quotes (including `'$.field'`) inside an outer single-quoted JSON literal, because the shell strips the inner quotes.
-- This session is read-only: do not call `mutate_workflow_db`.
-- A table's schema alone does not explain its business meaning (writer ownership, upsert rule, what a column is for). If `db/README.md` is readable in this session, read it for that context first; not every session's Folder Guard grants it, so fall back to `query_workflow_db` with `action: "describe"` to inspect the table's actual columns directly when it is not.{{end}}
+- This session is read-only: do not call `database action=mutate`.
+- A table's schema alone does not explain its business meaning (writer ownership, upsert rule, what a column is for). If `db/README.md` is readable in this session, read it for that context first; not every session's Folder Guard grants it, so fall back to `database action=query` with `action: "describe"` to inspect the table's actual columns directly when it is not.{{end}}
 
 {{define "managed-db-write"}}## Workflow database
 
 Use the managed database tools only; never open `db.sqlite` with shell or Python.
 
-- Use `query_workflow_db` for schema discovery and reads. Inspect an unfamiliar table first: `action: "describe", table: "<table>"`; then query with `sql: "SELECT ... WHERE key = ?", params: ["value"]`. Use `max_rows` (up to 10000) when a result may exceed the default limit of 500; for a bigger result add an ORDER BY and page with `offset` (a truncated result carries `next_offset`).
-- Use `mutate_workflow_db` for transactional INSERT/UPDATE/DELETE operations: one change uses `sql` + `params`; related changes use `statements: [{sql, params}, ...]` (up to 200) as one atomic batch. Many rows of one statement use `param_sets: [[v1, v2], [v3, v4], ...]` with a single `sql` (up to 5000 rows per call, one transaction, rolled back if any row fails): send an import in chunks of a few thousand rows, not one call per row.
+- Use `database action=query` for schema discovery and reads. Inspect an unfamiliar table first: `action: "describe", table: "<table>"`; then query with `sql: "SELECT ... WHERE key = ?", params: ["value"]`. Use `max_rows` (up to 10000) when a result may exceed the default limit of 500; for a bigger result add an ORDER BY and page with `offset` (a truncated result carries `next_offset`).
+- Use `database action=mutate` for transactional INSERT/UPDATE/DELETE operations: one change uses `sql` + `params`; related changes use `statements: [{sql, params}, ...]` (up to 200) as one atomic batch. Many rows of one statement use `param_sets: [[v1, v2], [v3, v4], ...]` with a single `sql` (up to 5000 rows per call, one transaction, rolled back if any row fails): send an import in chunks of a few thousand rows, not one call per row.
 - In HTTP/code-execution mode, keep SQL in a shell variable and JSON-encode it with `jq -n --arg sql "$sql" '{sql:$sql}'`; never place SQL containing single quotes (including `'$.field'`) inside an outer single-quoted JSON literal, because the shell strips the inner quotes.
 - Prefer primary-key upserts. Never drop, recreate, or wholesale replace tables.
-- A table's schema alone does not explain its business meaning (writer ownership, upsert rule, what a column is for). If `db/README.md` is readable in this session, read it for that context first; not every session's Folder Guard grants it, so fall back to `query_workflow_db` with `action: "describe"` to inspect the table's actual columns directly when it is not.{{end}}
+- A table's schema alone does not explain its business meaning (writer ownership, upsert rule, what a column is for). If `db/README.md` is readable in this session, read it for that context first; not every session's Folder Guard grants it, so fall back to `database action=query` with `action: "describe"` to inspect the table's actual columns directly when it is not.{{end}}

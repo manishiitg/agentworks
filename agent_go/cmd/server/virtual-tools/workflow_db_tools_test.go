@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
 // TestParseManagedMigrationStatementsStripsLeadingComments reproduces a
@@ -131,7 +133,7 @@ func TestWorkflowDBBackupSnapshotExecutorRejectsWorkflowStep(t *testing.T) {
 
 	registry := CreateWorkflowDBToolRegistry("http://127.0.0.1:1", "", sessionID)
 	_, err := registry.Executors["create_workflow_database_snapshot"](context.Background(), map[string]any{})
-	if err == nil || !strings.Contains(err.Error(), "restricted to the parent Builder/Autopilot session") {
+	if err == nil || !strings.Contains(err.Error(), "not workflow steps") {
 		t.Fatalf("step snapshot error=%v", err)
 	}
 }
@@ -139,16 +141,40 @@ func TestWorkflowDBBackupSnapshotExecutorRejectsWorkflowStep(t *testing.T) {
 func TestWorkflowDBMutationExecutorDeniesReadOnlySession(t *testing.T) {
 	sessionID := "workflow-db-read-only"
 	defer common.ClearSessionShellConfig(sessionID)
-	common.SetSessionFolderGuard(sessionID, []string{"Workflow/demo/db"}, nil)
+	// Folder access alone must not bypass this step/session's DB read setting.
+	common.SetSessionFolderGuard(sessionID, []string{"Workflow/demo/db"}, []string{"Workflow/demo/db"})
 	common.SetSessionShellEnv(sessionID, map[string]string{workflowDBAccessEnv: "read"})
 
 	registry := CreateWorkflowDBToolRegistry("http://127.0.0.1:1", "", sessionID)
-	_, err := registry.Executors["mutate_workflow_db"](context.Background(), map[string]any{
-		"statements": []any{map[string]any{"sql": "DELETE FROM facts"}},
-	})
-	if err == nil || !strings.Contains(err.Error(), "mutation denied") {
-		t.Fatalf("read-only mutation error=%v", err)
+	definitions := []mcpagent.ToolDefinition{}
+	for _, tool := range registry.Tools {
+		raw, err := json.Marshal(tool.Function.Parameters)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema map[string]any
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatal(err)
+		}
+		definitions = append(definitions, mcpagent.ToolDefinition{Name: tool.Function.Name, InputSchema: schema, Execute: registry.Executors[tool.Function.Name], DisplayGroup: WorkflowDBToolCategory})
 	}
+	projected, err := platformtools.Project(definitions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range projected {
+		if tool.Name != "database" {
+			continue
+		}
+		for _, action := range []string{"mutate", "migrate"} {
+			_, err := tool.Execute(context.Background(), map[string]any{"action": action, "sql": "DELETE FROM facts", "migration_file": "read-only.sql"})
+			if err == nil || !strings.Contains(err.Error(), "denied") {
+				t.Fatalf("grouped %s bypassed DB read access: %v", action, err)
+			}
+		}
+		return
+	}
+	t.Fatal("database job missing from the admitted registry")
 }
 
 func TestWorkflowDBMutationExecutorDeniesSessionWithoutExplicitAccess(t *testing.T) {

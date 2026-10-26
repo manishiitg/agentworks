@@ -455,8 +455,8 @@ export async function loadData(report) {
 }
 ```
 
-Use the same parameter in `query_workflow_db`, `mutate_workflow_db` (including
-batch/param_sets), the external MCP `query_database` and `agentworks_db` scripts.
+Use the same parameter in `database action=query`, `database action=mutate` (including
+batch/param_sets), the external MCP `database action=query` and `agentworks_db` scripts.
 For creation, bind it into `created_by_user_id`; preserve that field on updates.
 Shared tables, files, skills, functions and chats keep their existing access.
 This is a default list filter, not a private workspace or row-level permission.

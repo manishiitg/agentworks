@@ -1,7 +1,7 @@
 ## Share an active project project file or folder
 
 For the project's live Dashboard, call `dashboard` with `action=link` and no document_path and
-use its returned `url`. Do not pass `db/reports/index.html` to `get_file_link`:
+use its returned `url`. Do not pass `db/reports/index.html` to `files action=link`:
 that would open a restricted generic HTML preview instead of the full Dashboard
 runtime, and the file-link tool rejects that Dashboard entry path. The dedicated
 Dashboard URL renders the Dashboard full-page and uses the normal AgentWorks SSO;
@@ -11,7 +11,7 @@ controls.
 
 
 
-Call `get_file_link` with the path relative to the active project project. The
+Call `files action=link` with the path relative to the active project project. The
 server verifies that the target exists, rejects private or escaping paths,
 detects file versus folder, and returns the correct authenticated
 `preview_url`. Never construct `/file` or `/folder` URLs manually.
@@ -34,7 +34,7 @@ Resolve the authorized root before reading:
   display `identity` (`name` and `icon`), and each Crew also its `owner`.
   Discovery does not itself grant file access. Use the exact authorized
   returned path; never guess a project path or scan unattached projects.
-- For a host folder, call `list_work_folders` and use its
+- For a host folder, call `files action=folders` and use its
   `$WORK_FOLDER_<ALIAS>` variable. Do not inspect the parent directory.
 - Workflow references and host folders are read-only unless a host-folder
   grant explicitly says `read_write`. Never edit a referenced workflow.

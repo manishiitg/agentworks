@@ -87,7 +87,7 @@ func projectRecordedCatalog(t *testing.T, reg *recordingRegistrar, selections ..
 	t.Helper()
 	definitions := []mcpagent.ToolDefinition{}
 	for name, tool := range reg.tools {
-		definitions = append(definitions, mcpagent.ToolDefinition{Name: name, Description: tool.desc, InputSchema: tool.params, Execute: tool.exec})
+		definitions = append(definitions, mcpagent.ToolDefinition{Name: name, Description: tool.desc, InputSchema: tool.params, Execute: tool.exec, DisplayGroup: tool.group})
 	}
 	sort.Slice(definitions, func(i, j int) bool { return definitions[i].Name < definitions[j].Name })
 	projected, err := platformtools.Project(definitions, selections...)
@@ -96,7 +96,7 @@ func projectRecordedCatalog(t *testing.T, reg *recordingRegistrar, selections ..
 	}
 	reg.tools = map[string]recordedTool{}
 	for _, tool := range projected {
-		reg.tools[tool.Name] = recordedTool{desc: tool.Description, params: tool.InputSchema, exec: tool.Execute}
+		reg.tools[tool.Name] = recordedTool{desc: tool.Description, group: tool.DisplayGroup, params: tool.InputSchema, exec: tool.Execute}
 	}
 }
 

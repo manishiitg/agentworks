@@ -5,7 +5,7 @@ metadata:
   panel-tools:
     work:
     - execute_shell_command
-    - diff_patch_workspace_file
+    - files
   external-tools: []
 ---
 

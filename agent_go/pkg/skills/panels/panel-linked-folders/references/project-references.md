@@ -60,7 +60,7 @@ and the runtime permits it. A referenced Crew's `builder/` stays blocked.
 
 For an attached workflow database, use a read-only shell query such as
 `sqlite3 -readonly "$root/db/db.sqlite" ...`. The project project's
-`query_workflow_db` tool targets the current project project, not an attached
+`database action=query` tool targets the current project project, not an attached
 workflow. Treat files as evidence that may change while the source workflow is
 running, and state when a conclusion depends on a particular run or snapshot.
 

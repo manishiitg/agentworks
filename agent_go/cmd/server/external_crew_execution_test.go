@@ -56,12 +56,16 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	initializeExternalMCP(t, ctx, cli)
 	call := func(action string, params map[string]any) {
 		t.Helper()
-		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "crew_execution", "arguments": map[string]any{"crew_id": "team", "action": action, "arguments": params}})
+		args := map[string]any{"crew_id": "team", "action": action}
+		for key, value := range params {
+			args[key] = value
+		}
+		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "database", "arguments": args})
 		requireRemoteSuccess(t, result, action)
 	}
-	call("apply_workflow_db_migration", map[string]any{"migration_file": "2026-10-11-example.sql"})
-	call("mutate_workflow_db", map[string]any{"sql": "INSERT INTO example (id,value) VALUES (?,?)", "params": []any{1, "saved via MCP"}})
-	call("create_workflow_database_snapshot", map[string]any{})
+	call("migrate", map[string]any{"migration_file": "2026-10-11-example.sql"})
+	call("mutate", map[string]any{"sql": "INSERT INTO example (id,value) VALUES (?,?)", "params": []any{1, "saved via MCP"}})
+	call("snapshot", map[string]any{})
 	live, err := sql.Open("sqlite", filepath.Join(f.docs, externalCommandCrewRoot, "db", "db.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -71,6 +75,15 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	if err = live.QueryRow("SELECT value FROM example WHERE id=1").Scan(&value); err != nil || value != "saved via MCP" {
 		t.Fatalf("disk value=%q err=%v", value, err)
 	}
+	// PLAT-825: the same real database is readable by a shared Run caller,
+	// while its existing write and unrestricted-file rules remain unchanged.
+	shared := crewReader("other")
+	shared.AccessToken.Scopes = append(shared.AccessToken.Scopes, "crews:run")
+	read := crewCapabilityHTTP(t, f, shared, "database", map[string]any{"action": "query", "sql": "SELECT id,value FROM example"}, 200)
+	if !strings.Contains(read, "saved via MCP") {
+		t.Fatalf("shared database read lost its row: %s", read)
+	}
+	crewCapabilityHTTP(t, f, shared, "database", map[string]any{"action": "mutate", "sql": "DELETE FROM example"}, 403)
 	guarded := crewWriter("owner")
 	guarded.AccessToken.FileGuard = &wf.FolderGuard{ReadPaths: []string{"code"}, WritePaths: []string{"code"}, ReadOnlyPaths: []string{"code/locked"}, BlockedPaths: []string{"code/private"}}
 	crewCapabilityHTTP(t, f, guarded, "crew_execution", map[string]any{"action": "execute_shell_command", "arguments": map[string]any{"command": "pwd"}}, 200)
@@ -105,7 +118,7 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	if !strings.Contains(history, "previous-owner") || strings.Contains(history, "expired") {
 		t.Fatal(history)
 	}
-	call("mutate_workflow_db", map[string]any{"sql": "UPDATE example SET value=? WHERE id=?", "params": []any{"saved via MCP", 1}})
+	call("mutate", map[string]any{"sql": "UPDATE example SET value=? WHERE id=?", "params": []any{"saved via MCP", 1}})
 	audit, err = openCrewExecutionAudit()
 	if err != nil {
 		t.Fatal(err)
@@ -141,15 +154,18 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 
 	crewCapabilityHTTP(t, f, crewWriter("other"), "crew_execution", map[string]any{"action": "history"}, 403)
 	for _, denied := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
-		crewCapabilityHTTP(t, f, denied, "crew_execution", map[string]any{"action": "mutate_workflow_db", "arguments": map[string]any{"sql": "DELETE FROM example"}}, 403)
+		crewCapabilityHTTP(t, f, denied, "database", map[string]any{"action": "mutate", "sql": "DELETE FROM example"}, 403)
 	}
-	crewCapabilityHTTP(t, f, guarded, "crew_execution", map[string]any{"action": "mutate_workflow_db", "arguments": map[string]any{"sql": "DELETE FROM example"}}, 403)
+	crewCapabilityHTTP(t, f, guarded, "database", map[string]any{"action": "mutate", "sql": "DELETE FROM example"}, 403)
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "execute_shell_command", "arguments": map[string]any{"command": "pwd", "working_directory": "Workflow/other"}}, 400)
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "apply_workflow_db_migration", "arguments": map[string]any{"migration_file": "../other.sql"}}, 400)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "database", map[string]any{"action": "migrate", "migration_file": "../other.sql"}, 400)
 	bounded := crewWriter("owner")
 	bounded.AccessToken.AllCrews, bounded.AccessToken.CrewIDs = false, []string{"other"}
 	crewCapabilityHTTP(t, f, bounded, "crew_execution", map[string]any{"action": "list"}, 403)
 	list := crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "list"}, 200)
+	if strings.Contains(list, "mutate_workflow_db") || strings.Contains(list, "apply_workflow_db_migration") || strings.Contains(list, "create_workflow_database_snapshot") {
+		t.Fatal("public execution inventory retained database duplicates")
+	}
 	if !json.Valid([]byte(list)) || !strings.Contains(list, "inputSchema") || !strings.Contains(list, "agent_browser") {
 		t.Fatal(list)
 	}

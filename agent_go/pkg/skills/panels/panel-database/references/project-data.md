@@ -1,9 +1,9 @@
 ## Project data and actions
 
 - Use `window.report.query(sql, params)` for live structured data. Inspect the
-  schema with `query_workflow_db`; create idempotent migrations under
-  `db/migrations/` and apply them with `apply_workflow_db_migration`. Change rows
-  only through `mutate_workflow_db`. Never open or edit `db/db.sqlite`, WAL, or
+  schema with `database action=query`; create idempotent migrations under
+  `db/migrations/` and apply them with `database action=migrate`. Change rows
+  only through `database action=mutate`. Never open or edit `db/db.sqlite`, WAL, or
   SHM files directly.
 - Dashboard documents can read allowed project files with `window.report.get`,
   `getText`, or `getHtml` when a database is unnecessary. For example,

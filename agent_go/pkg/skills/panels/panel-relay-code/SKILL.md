@@ -10,7 +10,7 @@ metadata:
     - get_relay_releases
     - publish_relay
     - execute_shell_command
-    - diff_patch_workspace_file
+    - files
   external-tools:
   - test_relay
   - publish_relay

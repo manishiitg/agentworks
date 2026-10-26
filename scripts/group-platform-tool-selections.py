@@ -10,19 +10,25 @@ from pathlib import Path
 import shutil
 
 
-def migrate(root, backups, catalog, native_namespaces=()):
-    mapping = {member: action["family"] + "." + action["name"]
-               for action in json.loads(catalog.read_text())
-               for member in [action["member"], *action.get("aliases", [])]}
+def migrate(root, backups, catalogs, native_namespaces=()):
+    mapping = {}
+    for catalog in catalogs:
+        for action in json.loads(catalog.read_text()):
+            identity = action["family"] + "." + action["name"]
+            sources = [action["member"], *action.get("aliases", [])]
+            if action.get("source") and action["source"] != action["family"]:
+                sources.append(action["source"])
+            for member in sources:
+                if identity not in mapping.setdefault(member, []):
+                    mapping[member].append(identity)
 
-    def selector(value):
+    def selectors(value):
         if not isinstance(value, str):
-            return value
+            return [value]
         namespace, sep, member = value.rpartition(":")
         if sep and namespace not in native_namespaces:
-            return value
-        replacement = mapping.get(member, member)
-        return namespace + sep + replacement
+            return [value]
+        return [namespace + sep + replacement for replacement in mapping.get(member, [member])]
 
     def rewrite(value, parent=""):
         if isinstance(value, list):
@@ -35,7 +41,7 @@ def migrate(root, backups, catalog, native_namespaces=()):
             if selection and isinstance(item, list):
                 # Keep explicit empty selections and order; collapse only IDs
                 # that represented the same existing action.
-                item = list(dict.fromkeys(selector(entry) for entry in item))
+                item = list(dict.fromkeys(identity for entry in item for identity in selectors(entry)))
             result[key] = rewrite(item, key)
         return result
 
@@ -61,8 +67,8 @@ def migrate(root, backups, catalog, native_namespaces=()):
         backup.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, backup)
         path.write_text(json.dumps(after, indent=2, ensure_ascii=False) + "\n")
-        print(json.dumps({"event": "dashboard_tool_selections_grouped", "config": str(path.relative_to(root))}))
-    print(json.dumps({"event": "dashboard_tool_selection_migration", "changed_files": len(changes)}))
+        print(json.dumps({"event": "platform_tool_selections_grouped", "config": str(path.relative_to(root))}))
+    print(json.dumps({"event": "platform_tool_selection_migration", "changed_files": len(changes)}))
     return len(changes)
 
 
@@ -70,7 +76,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace-dir", type=Path, required=True)
     parser.add_argument("--backup-dir", type=Path, required=True)
-    parser.add_argument("--catalog", type=Path, required=True)
+    parser.add_argument("--catalog", type=Path, action="append", required=True)
     parser.add_argument("--native-namespace", action="append", default=[])
     args = parser.parse_args()
     migrate(args.workspace_dir, args.backup_dir, args.catalog, args.native_namespace)

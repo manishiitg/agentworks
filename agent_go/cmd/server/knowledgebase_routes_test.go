@@ -98,7 +98,7 @@ func TestKnowledgebaseBuilderAdmitsOnlyBrainTools(t *testing.T) {
 	api, service := knowledgebaseServerTest(t)
 	p := knowledgebaseproduct.BuiltinAgentProfile()
 	gate := newProductToolGate(&resolvedAgentProfile{Definition: p})
-	for _, name := range []string{"query_database", "agent_browser"} {
+	for _, name := range []string{"database", "agent_browser"} {
 		if gate.Admit(name) {
 			t.Fatalf("builder admitted %s", name)
 		}

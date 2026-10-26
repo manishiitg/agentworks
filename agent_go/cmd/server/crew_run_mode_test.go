@@ -1075,6 +1075,7 @@ func TestRegisterAgentProfileToolsReaderSplit(t *testing.T) {
 			t.Fatalf("reader registered %q", denied)
 		}
 	}
+	logDataCatalog(t, "crew-shared-run-factory-registration", registrar.tools)
 	_ = fx
 }
 

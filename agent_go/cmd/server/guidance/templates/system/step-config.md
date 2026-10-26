@@ -21,7 +21,7 @@ A step's access to each store is independent and defaults differently. Grant the
 |---|---|---|---|
 | ~~`db_access`~~ | **retired** | `read-write` | Had no runtime effect — `resolveDBAccess` ignored it and always granted read-write, while the enum invited agents to "restrict" a step that never was restricted. Removed in PLAT-061; existing values still parse and are ignored. Every workflow step gets managed read-write DB access. |
 
-- **DB contract:** every agentic workflow step receives `query_workflow_db` and `mutate_workflow_db`; it does not receive raw SQLite access. Scripted code reaches the database through the built-in `agentworks_db` helper (the same managed tools); `$DB_PATH` remains only for scripts written before contract 1.0.45 and is not to be used in new or repaired scripts.
+- **DB contract:** every agentic workflow step receives `database action=query` and `database action=mutate`; it does not receive raw SQLite access. Scripted code reaches the database through the built-in `agentworks_db` helper (the same managed tools); `$DB_PATH` remains only for scripts written before contract 1.0.45 and is not to be used in new or repaired scripts.
 - Deep dive on what belongs in each store and the write contracts: `read_skill(skills=[{"name":"builder-reference","path":"references/stores.md"}])`.
 
 | `knowledgebase_access` | `read` · `write` · `read-write` · `none` | `read` | Permits task-directed notes contributions. Preserve the mode when migrating legacy objectives. |

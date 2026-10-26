@@ -49,7 +49,7 @@ Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumpti
      path for any other tool, so `plan.json` itself is always fully and
      truthfully captured here. A direct edit to a step's own code
      (`<script-dir>/main.py`) or a shared doc (`db/README.md`) made via
-     `diff_patch_workspace_file`/`update_workspace_file` is a different kind
+     `files action=patch`/`update_workspace_file` is a different kind
      of change and does not produce a changelog entry, even when it happens
      in the same turn as a plan-tool call — the entry that turn produces
      describes only the plan-tool's own field change. When a changelog entry

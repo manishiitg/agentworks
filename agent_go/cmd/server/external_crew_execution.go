@@ -115,7 +115,7 @@ func externalCrewExecutionDefinition(add func(string, string, bool, bool, map[st
 	if err != nil {
 		return err
 	}
-	if err := externalCrewNativeDefinition(add, "crew_execution", "Execute a shared Crew shell, browser, selected MCP or managed database tool directly, without a model turn. action=history returns the last 100 owner-only audit records. action=list returns the enabled tools' descriptions and exact argument schemas; otherwise action is that tool name and arguments matches its schema. Requires crews:write, current editable account and Crew ownership. Uses this Crew's sandbox and connection file limits; never borrows a chat's authority. Shell timeout defaults to 25 seconds. Browser, connected MCP and database operations require unrestricted Crew file consent; credentials remain in Integrations. Database reads use query_database.", tools); err != nil {
+	if err := externalCrewNativeDefinition(add, "crew_execution", "Execute a shared Crew shell, browser or selected MCP tool directly, without a model turn. action=history returns the last 100 owner-only audit records. action=list returns the enabled tools' descriptions and exact argument schemas; otherwise action is that tool name and arguments matches its schema. Requires crews:write, current editable account and Crew ownership. Uses this Crew's sandbox and connection file limits; never borrows a chat's authority. Shell timeout defaults to 25 seconds. Browser and connected MCP operations require unrestricted Crew file consent; credentials remain in Integrations. Managed database operations use the offered database actions.", tools); err != nil {
 		return err
 	}
 	tools, err = crewIntegrationDefinitions()
@@ -197,6 +197,9 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 	}
 	for _, tool := range tools {
 		member := tool.Function.Name
+		if action == "list" && group == "crew_execution" && groupedCrewDatabaseNative(member) {
+			continue
+		}
 		if member == "call_selected_mcp_tool" {
 			member = "trigger_mcp_discovery"
 		}
