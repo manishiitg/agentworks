@@ -5,6 +5,7 @@ import (
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -112,7 +113,7 @@ func FilterCustomToolsByCategory(
 		toolName := tool.Function.Name
 
 		// Check if tool is in the enabled set
-		if enabledToolNames[toolName] {
+		if enabledToolNames[toolName] || enabledToolNames[catalog.Identity(toolName)] {
 			filteredTools = append(filteredTools, tool)
 			// Include corresponding executor if it exists
 			if executor, exists := allExecutors[toolName]; exists {

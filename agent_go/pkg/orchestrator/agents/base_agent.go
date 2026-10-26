@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	internalLLM "github.com/manishiitg/mcpagent/llm"
@@ -32,6 +33,27 @@ func platformBridgeToolsFromDirectTools(directTools []mcpagent.ToolDefinition) [
 		}
 	}
 	return nil
+}
+
+// newProjectedAgent preserves the source definition for later identity updates,
+// and gives every constructed runtime the same admitted public tool catalog.
+func newProjectedAgent(ctx context.Context, definition mcpagent.AgentDefinition, runtime mcpagent.RuntimeConfig, provider string) (*mcpagent.Agent, error) {
+	projected, err := platformtools.Project(definition.Tools.Direct, platformtools.Selection{
+		Tools: runtime.Tools.SelectedTools, Servers: runtime.Tools.SelectedServers,
+		FilterCustom: !runtime.Tools.CodeExecution && !common.IsCLIProvider(provider),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("project platform tool catalog: %w", err)
+	}
+	definition.Tools.Direct = projected
+	runtime = platformtools.BridgeRuntime(projected, runtime)
+	if runtime.Observability.Logger != nil {
+		runtime.Observability.Logger.Info("Finalized workflow native tool bridge catalog",
+			loggerv2.String("session_id", runtime.MCP.SessionID),
+			loggerv2.Int("direct_tool_count", len(projected)),
+			loggerv2.Int("additional_bridge_tool_count", len(runtime.Tools.AdditionalBridge)))
+	}
+	return mcpagent.NewAgentFromDefinition(ctx, definition, runtime)
 }
 
 // AgentMode represents the mode of operation for an agent
@@ -305,7 +327,7 @@ func NewBaseAgent(
 	if forceStructuredCodingAgent {
 		runtime.Coding.Transport = internalLLM.CodingAgentTransportStructured
 	}
-	agent, err := mcpagent.NewAgentFromDefinition(ctx, definition, runtime)
+	agent, err := newProjectedAgent(ctx, definition, runtime, provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
 	}
@@ -555,7 +577,7 @@ func (ba *BaseAgent) finalizeDefinition(ctx context.Context) error {
 	}
 	runtime := ba.runtime
 	runtime.ResumeHandle = ba.lastHandle
-	nextAgent, err := mcpagent.NewAgentFromDefinition(ctx, ba.definition, runtime)
+	nextAgent, err := newProjectedAgent(ctx, ba.definition, runtime, ba.provider)
 	if err != nil {
 		return fmt.Errorf("finalize immutable agent definition: %w", err)
 	}
@@ -589,7 +611,7 @@ func (ba *BaseAgent) replaceDefinition(ctx context.Context, nextDefinition mcpag
 	}
 	nextRuntime := ba.runtime
 	nextRuntime.ResumeHandle = ba.lastHandle
-	nextAgent, err := mcpagent.NewAgentFromDefinition(ctx, nextDefinition, nextRuntime)
+	nextAgent, err := newProjectedAgent(ctx, nextDefinition, nextRuntime, ba.provider)
 	if err != nil {
 		return fmt.Errorf("rebuild agent identity: %w", err)
 	}

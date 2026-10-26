@@ -64,7 +64,7 @@ func TestWorkflowBaseUsesOnDemandTransportSkill(t *testing.T) {
 	}
 	admitted := false
 	for _, tool := range view.Tools {
-		if tool.Name == "query_workflow_db" {
+		if tool.Name == "database" {
 			admitted = true
 		}
 	}
