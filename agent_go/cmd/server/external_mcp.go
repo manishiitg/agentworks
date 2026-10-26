@@ -192,7 +192,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if tool.Name == "workspace" {
-			instructions += " Project creation: use workspace action=create with kind=goal|crew|relay, spec matching that kind and a stable idempotency_key. Goal spec contains folder_name, workflow_json and plan_json. Crew spec contains name and purpose. Flow spec contains label. Account creation rights and unrestricted Builder consent are required. The new workflow belongs to this user; use its returned workflow_id for direct plan edits, guarded files and authorized KB project bindings. Creation does not run it."
+			instructions += " Project creation: use workspace action=create with kind=goal|crew|relay, spec matching that kind and a stable idempotency_key. Goal spec needs name and optional purpose; the server supplies its ID, current defaults and an empty plan. Optional folder_name, workflow_json and plan_json provide initial authoring details. Crew spec contains name and purpose. Flow spec contains label. Account creation rights and unrestricted Builder consent are required. The new workflow belongs to this user; use its returned workflow_id for direct plan edits, guarded files and authorized KB project bindings. Creation does not run it."
 		}
 		if tool.Name == "run_relay" {
 			instructions += externalMCPRelayInstructions

@@ -96,7 +96,7 @@ func projectCreateTestArgs(kind, key string) map[string]any {
 	var spec map[string]any
 	switch kind {
 	case "goal":
-		spec = workflowCreationArgs(key)
+		spec = map[string]any{"name": "Research " + key, "purpose": "Research sample work"}
 	case "crew":
 		spec = map[string]any{"name": "Research " + key, "purpose": "Research sample work"}
 	case "relay":

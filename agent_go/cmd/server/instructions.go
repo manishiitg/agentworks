@@ -330,34 +330,11 @@ Default mode rule: workflow schedules use ` + "`mode=\"workshop\"`" + `. Do not 
 
 ## Creating New Workflows
 
-Create a Goal with workspace(action="create", kind="goal", spec={folder_name, workflow_json, plan_json}, idempotency_key="one-new-key"). Reuse that key for an unchanged retry. The spec fields below are nested under spec. Creating does not run it.
+Create a Goal with workspace(action="create", kind="goal", spec={name, purpose}, idempotency_key="one-new-key"). Only name is required; purpose is optional. The server supplies a stable ID, safe folder, current settings and an empty plan. Creating does not run it.
 
-When asked to create a new workflow (e.g. via ` + "`/workflow-builder`" + ` or a direct "turn this into a workflow" request), call the privileged ` + "`workspace action=create kind=goal`" + ` tool. **Do NOT try to ` + "`mkdir`" + ` or ` + "`cat > workflow.json`" + ` with ` + "`execute_shell_command`" + ` — the ` + "`Workflow/`" + ` folder is read-only to normal shell writes.** The only path that can create a new workflow folder is the ` + "`workspace action=create kind=goal`" + ` tool, which writes the files via privileged server-side I/O after validating the name, required fields, and no-overwrite check.
+Reuse the key for an unchanged retry. If creation failed, correct the request and reuse the same key. Once creation succeeds, that key identifies that project; use its returned workflow_id with the existing plan, settings and file tools to finish building it.
 
-### The ` + "`workspace action=create kind=goal`" + ` Tool
-
-` + "`workspace action=create kind=goal with spec and idempotency_key`" + ` — creates ` + "`Workflow/<name>/`" + ` with the two JSON files in one atomic call.
-
-- **name** (required): kebab-case folder name (see rules below)
-- **workflow_json** (required): JSON object matching the workflow.json schema — must include ` + "`schema_version`" + ` (1), ` + "`version`" + ` (` + "`" + WorkflowContractCurrentVersion + "`" + `), ` + "`id`" + `, ` + "`label`" + `
-- **plan_json** (required): JSON object matching the plan.json schema — must include a non-empty ` + "`steps`" + ` array
-
-The tool refuses to overwrite existing workflows. On success it returns the folder path, the resolved label/objective, and a summary of the steps. On validation failure it returns an error describing what's missing — fix the JSON and retry.
-
-### Two Different "Names" — Don't Confuse Them
-Workflows have **two** separate name-like values, and it matters which one you're setting:
-
-1. **Folder name** (` + "`folder_name`" + ` parameter on ` + "`workspace action=create kind=goal`" + `) — the on-disk path segment under ` + "`Workflow/`" + `. This must be **shell-safe**: kebab-case, lowercase letters/digits, hyphens between words, no spaces, no uppercase, no underscores, no special characters (e.g. ` + "`customer-onboarding`" + `, ` + "`sales-report`" + `, ` + "`api-health-check`" + `). It's used as a filesystem path, so it has to work in shell commands without quoting. 2-5 words, descriptive, ≤64 chars. If a clean folder_name cannot be derived, ask the user before creating.
-2. **Display name / label** (` + "`workflow_json.label`" + `) — the human-readable name shown in the UI. This can be **any string**: spaces, capitalization, punctuation, Unicode, whatever makes sense to the user (e.g. ` + "`\"AWS Cost Analysis Q3\"`" + `, ` + "`\"Customer Onboarding (v2)\"`" + `, ` + "`\"Müller's Pipeline\"`" + `).
-
-**Rule of thumb**: ` + "`folder_name`" + ` is the machine-readable identifier, ` + "`label`" + ` is the human-readable title. You typically derive folder_name by slugifying the label (lowercase, replace spaces/punctuation with hyphens), but if the user gives you a clean kebab-case preamble use that directly.
-
-### Legacy Workflows with Spaces in Folder Names
-Some existing workflows were created before the kebab-case rule and have spaces in their folder names (e.g. ` + "`Workflow/AWS Cost Analysis/`" + `, ` + "`Workflow/Portfolio Detailed/`" + `). When you reference these in shell commands, use the absolute path AND **always quote it** to avoid word-splitting:
-- Correct: ` + "`execute_shell_command(command: \"ls '" + absWorkflow + "/AWS Cost Analysis/'\")`" + `
-- Wrong: ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/AWS Cost Analysis/\")`" + ` (the shell splits on the space)
-
-New workflows you create via ` + "`workspace action=create kind=goal`" + ` will always have shell-safe folder names, so this only affects legacy workflows.
+Optional folder_name, workflow_json and plan_json under spec can provide initial authoring details. Explicit values still pass the existing validation and access checks. Do not ask a person to supply IDs or JSON. The following file shapes are reference material for agents authoring these optional inputs, not prerequisites for creating a Goal.
 
 ### File 1: ` + "`Workflow/<kebab-name>/workflow.json`" + `
 

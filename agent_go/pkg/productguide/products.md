@@ -30,6 +30,7 @@ Products can work together when this installation enables them and current acces
 Use Goals when the task is a continuing outcome, rather than a single question or a fixed code pipeline.
 
 - **Abilities:** define the objective and success measures; create and edit the workflow plan; configure steps, skills, schedules and integrations; run steps or the workflow; inspect results, reports and costs; inspect the saved goals and measurements.
+- **Start from chat:** give the Goal a name and optionally describe its purpose. The server creates an empty draft with current defaults; your agent then builds its plan. You do not need to supply IDs or JSON.
 - **MCP route:** discover workflows with `workflow action=list`; read the plan and current revision; discover native edit operations with `plan action=list`; inspect run state and evidence through the available run tools. Load the relevant plan, execution and measurement guidance.
 - **Access:** owners and workflow editors can build through MCP just as on the website. Running, sharing and integration access use the same server checks.
 - **Example:** monitor incoming support requests, measure response time and follow up on unresolved cases.

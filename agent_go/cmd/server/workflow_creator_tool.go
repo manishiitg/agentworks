@@ -34,7 +34,7 @@ func workflowCreatorToolSchema() map[string]interface{} {
 			},
 			"plan_json": map[string]interface{}{
 				"type":                 "object",
-				"description":          "The full plan.json object. Required field: steps (array, at least 1 step). Start with one large agent per coherent shared-context span; put run-specific proof/provenance, evidence-based double-check and repair turns, and the final validation_schema inside that step. Use multiple large sequences only when contexts should not be shared because of security/credentials, independent outputs/retries, clean-room independence, human/routing boundaries, or context contamination. Fixed API/SDK/CLI calls, deterministic fetching/pagination/parsing/normalization, and mechanical persistence belong in coherent scripted fetcher steps batched by source/auth/retry/output contract. Do not create one step per endpoint/tool/checklist/proof item. Every output-producing step needs validation_schema. Each step needs type, id (kebab-case, unique), and title. Every route and explicit next_step_id must target a declared step or end; the complete graph is validated atomically before creation. The plan type IS the execution model (a scripted step is scripted, an agent is conversational), so after creation explicitly hand off every deterministic (scripted) step to Workshop for an authored/tested code/<step-id>/main.py before the first production run.",
+				"description":          "Optional initial plan.json object. Its steps array may be empty for a draft; authored steps use the following contract. Start with one large agent per coherent shared-context span; put run-specific proof/provenance, evidence-based double-check and repair turns, and the final validation_schema inside that step. Use multiple large sequences only when contexts should not be shared because of security/credentials, independent outputs/retries, clean-room independence, human/routing boundaries, or context contamination. Fixed API/SDK/CLI calls, deterministic fetching/pagination/parsing/normalization, and mechanical persistence belong in coherent scripted fetcher steps batched by source/auth/retry/output contract. Do not create one step per endpoint/tool/checklist/proof item. Every output-producing step needs validation_schema. Each step needs type, id (kebab-case, unique), and title. Every route and explicit next_step_id must target a declared step or end; the complete graph is validated atomically before creation. The plan type IS the execution model (a scripted step is scripted, an agent is conversational), so after creation explicitly hand off every deterministic (scripted) step to Workshop for an authored/tested code/<step-id>/main.py before the first production run.",
 				"additionalProperties": true,
 			},
 		},
@@ -90,8 +90,10 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 	defaultWorkflowCreatorContract(workflowMap)
 
 	// 4. Validate plan.json required fields
-	if err := validatePlanJSONStructure(planMap); err != nil {
-		return "", err
+	if steps, ok := planMap["steps"].([]any); !ok || len(steps) > 0 {
+		if err := validatePlanJSONStructure(planMap); err != nil {
+			return "", err
+		}
 	}
 
 	// 5. Resolve workspace paths (shared workspace root — Workflow/ is not per-user)
@@ -147,7 +149,8 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 	// an obvious place to fill in and prevents "dir not found" on first edit.
 	soulLabel, _ := workflowMap["label"].(string)
 	soulPath := pathpkg.Join(workflowFolder, "soul", "soul.md")
-	if err := writeRawFileToWorkspace(ctx, soulPath, todo_creation_human.SoulScaffold(soulLabel)); err != nil {
+	purpose, _ := args["purpose"].(string)
+	if err := writeRawFileToWorkspace(ctx, soulPath, todo_creation_human.SoulScaffold(soulLabel, purpose)); err != nil {
 		// Non-fatal: log and continue. Builder can create it manually if the API
 		// happens to reject, and ResolveWorkflowObjective falls back to workflow.json.
 		log.Printf("[WORKFLOW CREATOR] Warning: failed to scaffold soul/soul.md for Workflow/%s: %v", folderName, err)

@@ -131,12 +131,18 @@ func extractSoulSection(markdown, heading string) string {
 // SoulScaffold returns a default soul.md body for a brand-new workflow with the
 // given display label. Used by workflow_creator_tool to seed the file so the
 // builder has an obvious structure to fill in.
-func SoulScaffold(workflowLabel string) string {
+func SoulScaffold(workflowLabel string, purpose ...string) string {
 	label := strings.TrimSpace(workflowLabel)
 	if label == "" {
 		label = "Workflow"
 	}
-	return stringsReplace(soulDefaultScaffoldTemplate, "%s", label, 1)
+	body := stringsReplace(soulDefaultScaffoldTemplate, "%s", label, 1)
+	if len(purpose) > 0 && strings.TrimSpace(purpose[0]) != "" {
+		start := strings.Index(body, "## Objective\n") + len("## Objective\n")
+		end := strings.Index(body[start:], "\n## Success Criteria") + start
+		body = body[:start] + strings.TrimSpace(purpose[0]) + "\n" + body[end:]
+	}
+	return body
 }
 
 // stringsReplace wraps strings.Replace with a bounded count — kept as a tiny
