@@ -5,19 +5,20 @@ import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
 import { CREW_STARTER_TYPES, type CrewOnboarding, type CrewStarterType } from './crewStarterTypes'
 import { CrewIncludedFeatures } from './CrewIncludedFeatures'
 
-export function CreateCrewWizard({ onClose, onCreate, submitting, error, initialMode = 'dev', initialPurpose = '', profileVersion = 3 }: {
+export function CreateCrewWizard({ onClose, onCreate, submitting, error, initialMode = 'dev', initialPurpose = '', initialType, profileVersion = 3 }: {
   onClose: () => void
   onCreate: (title: string, purpose: string, runsOn: RunsOnSelection | undefined, mode: ProductMode, onboarding: CrewOnboarding) => void | Promise<void>
   submitting: boolean
   error: string | null
   initialMode?: ProductMode
   initialPurpose?: string
+  initialType?: CrewStarterType
   profileVersion?: number
 }) {
-  const [step, setStep] = useState(initialPurpose ? 2 : 1)
-  const [type, setType] = useState<CrewStarterType | undefined>(initialMode === 'cowork' ? 'cowork' : undefined)
+  const [step, setStep] = useState(initialPurpose || initialType ? 2 : 1)
+  const [type, setType] = useState<CrewStarterType | undefined>(initialType ?? (initialMode === 'cowork' ? 'cowork' : undefined))
   const [title, setTitle] = useState('')
-  const [purpose, setPurpose] = useState(initialPurpose || (initialMode === 'cowork' ? CREW_STARTER_TYPES.find(item => item.id === 'cowork')!.purpose : ''))
+  const [purpose, setPurpose] = useState(initialPurpose || CREW_STARTER_TYPES.find(item => item.id === initialType)?.purpose || (initialMode === 'cowork' ? CREW_STARTER_TYPES.find(item => item.id === 'cowork')!.purpose : ''))
   const [mode, setMode] = useState(initialMode)
   const [runsOn, setRunsOn] = useState<RunsOnSelection | undefined>()
   const [openSharing, setOpenSharing] = useState(false)

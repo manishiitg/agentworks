@@ -1,17 +1,12 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { ArrowRight, FileBarChart2, FileText, Loader2, Plus, RefreshCw, Search, UsersRound } from 'lucide-react'
+import { ArrowRight, Loader2, Plus, RefreshCw, Search, UsersRound } from 'lucide-react'
 import { EntityIdentityIcon } from '../../components/ui/EntityIdentityIcon'
 import { WorkspaceTopToolbar } from '../../components/workspace/WorkspaceTopToolbar'
 import { useChatStore } from '../../stores/useChatStore'
 import { formatDeploymentDateTime } from '../../utils/displayTime'
 import { workProjectActivity } from './workProjectPresentation'
 import type { WorkSession } from './workSessions'
-
-const suggestions = [
-  { title: 'Analyse a spreadsheet', detail: 'Find patterns and turn numbers into a clear summary.', icon: FileBarChart2, prompt: 'Help me analyse a spreadsheet, check the numbers and explain the key findings.' },
-  { title: 'Research a topic', detail: 'Compare sources and bring the useful details together.', icon: Search, prompt: 'Help me research a topic, compare reliable sources and prepare a useful brief.' },
-  { title: 'Prepare a report', detail: 'Turn notes and documents into something ready to share.', icon: FileText, prompt: 'Help me turn my notes and documents into a clear report that I can share.' },
-]
+import { CREW_STARTER_TYPES, type CrewStarterType } from './crewStarterTypes'
 
 /** Creation reuses the existing wizard. Rows are only the admitted Crew inventory. */
 export function CrewEntryPage({ projects, loading, error, canCreate, onCreate, onOpen, onRefresh }: {
@@ -19,11 +14,12 @@ export function CrewEntryPage({ projects, loading, error, canCreate, onCreate, o
   loading: boolean
   error: string | null
   canCreate: boolean
-  onCreate: (prompt: string) => void
+  onCreate: (prompt: string, type?: CrewStarterType) => void
   onOpen: (project: WorkSession) => void
   onRefresh: () => Promise<unknown>
 }) {
   const [prompt, setPrompt] = useState('')
+  const [type, setType] = useState<CrewStarterType>()
   const [query, setQuery] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
@@ -33,7 +29,7 @@ export function CrewEntryPage({ projects, loading, error, canCreate, onCreate, o
   const visible = projects.filter(project => [project.identity?.name, project.title, project.description].some(value => value?.toLocaleLowerCase().includes(filter)))
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (canCreate && !loading) onCreate(prompt.trim())
+    if (canCreate && !loading) onCreate(prompt.trim(), type)
   }
   const refresh = async () => {
     setRefreshing(true); setRefreshError(null)
@@ -58,12 +54,16 @@ export function CrewEntryPage({ projects, loading, error, canCreate, onCreate, o
               <Plus aria-hidden="true" className="h-4 w-4" />Create Crew
             </button></div>
           </form>
-          <div className="mx-auto mt-3 grid max-w-3xl gap-2 sm:grid-cols-3" aria-label="Suggested starting points">
-            {suggestions.map(({ title, detail, icon: Icon, prompt: example }) => <button type="button" key={title} disabled={loading}
-              onClick={() => { setPrompt(example); input.current?.focus() }} className="rounded-xl border border-dashed border-border p-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
-              <span className="flex items-center gap-2 text-xs font-medium"><Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />{title}</span>
-              <span className="mt-1.5 hidden text-xs leading-5 text-muted-foreground sm:block">{detail}</span>
-            </button>)}
+          <div className="mx-auto mt-4 max-w-3xl">
+            <div className="mb-2 flex items-center justify-between gap-2"><h3 className="text-xs font-medium text-muted-foreground">Choose a use case</h3>{type && <button type="button" onClick={() => setType(undefined)} className="rounded px-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Use my own idea</button>}</div>
+            <div className="flex gap-2 overflow-x-auto overscroll-x-contain pb-2" aria-label="Crew use cases">
+              {CREW_STARTER_TYPES.map(item => <button type="button" key={item.id} disabled={loading} aria-pressed={type === item.id}
+                onClick={() => { setType(item.id); setPrompt(item.purpose); input.current?.focus() }} className={`w-60 shrink-0 rounded-xl border p-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:opacity-50 ${type === item.id ? 'border-primary/60 bg-primary/5' : 'border-border'}`}>
+                <span className="flex items-center gap-2 text-xs font-semibold"><item.icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />{item.label}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">{item.summary}</span>
+                <span className="mt-1.5 block text-xs leading-5 text-muted-foreground">{item.example}</span>
+              </button>)}
+            </div>
           </div>
         </section>}
         <section aria-labelledby="crew-existing-title" className={canCreate ? 'border-t border-border pt-5' : 'pt-6'}>

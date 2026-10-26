@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { CrewEntryPage } from './CrewEntryPage'
 import type { WorkSession } from './workSessions'
+import { CREW_STARTER_TYPES } from './crewStarterTypes'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root | undefined
@@ -22,12 +23,13 @@ async function mount(canCreate = true) {
 
 it('drafts a suggestion without creating, then forwards the exact request to existing setup', async () => {
   const { host, onCreate } = await mount()
-  await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Analyse a spreadsheet'))!.click())
+  await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Cowork'))!.click())
   const draft = host.querySelector('textarea')!
-  expect(draft.value).toContain('check the numbers')
+  expect(draft.value).toBe(CREW_STARTER_TYPES.find(item => item.id === 'cowork')!.purpose)
+  expect(host.querySelectorAll('[aria-label="Crew use cases"] button')).toHaveLength(CREW_STARTER_TYPES.length)
   expect(onCreate).not.toHaveBeenCalled()
   await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
-  expect(onCreate).toHaveBeenCalledExactlyOnceWith(draft.value)
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith(draft.value, 'cowork')
 })
 
 it('keeps admitted shared Crews searchable and opens the exact row without creation access', async () => {

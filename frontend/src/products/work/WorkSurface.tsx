@@ -37,7 +37,7 @@ import { workProjectActivity } from './workProjectPresentation'
 import { SharedCrewWorkspace } from './SharedCrewWorkspace'
 import { CreateCrewWizard } from './CreateCrewWizard'
 import { prepareCrewOnboarding } from './crewOnboarding'
-import type { CrewOnboarding } from './crewStarterTypes'
+import type { CrewOnboarding, CrewStarterType } from './crewStarterTypes'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
@@ -938,6 +938,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [createOpen, setCreateOpen] = useState(false)
   const [createMode, setCreateMode] = useState<ProductMode>('dev')
   const [createPurpose, setCreatePurpose] = useState('')
+  const [createType, setCreateType] = useState<CrewStarterType>()
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
@@ -1283,13 +1284,15 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     }
     setCreateError(null)
     setCreatePurpose('')
+    setCreateType(undefined)
     setCreateMode('dev')
     setCreateOpen(true)
   }, [canCreateProjects, refuseCreate])
-  const createFromPrompt = (prompt: string) => {
+  const createFromPrompt = (prompt: string, type?: CrewStarterType) => {
     if (!canCreateProjects) { refuseCreate(); return }
     openCreateProject()
     setCreatePurpose(prompt)
+    setCreateType(type)
   }
   useProductCreateRequest('work', openCreateProject)
 
@@ -1347,6 +1350,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
           onCreate={(title, purpose, runsOn, mode, onboarding) => createProject(title, purpose, undefined, runsOn, mode, onboarding)}
           initialMode={createMode}
           initialPurpose={createPurpose}
+          initialType={createType}
           profileVersion={product.profileVersion}
           submitting={creating}
           error={createError}

@@ -57,13 +57,13 @@ it('keeps blank creation, optional sharing and both existing modes available', a
 })
 it('carries the entry-page request into named creation without losing account or sharing choices', async () => {
   const request = 'Compare my spreadsheet totals and explain differences.'
-  const { host, onCreate } = await render({ initialPurpose: request })
+  const { host, onCreate } = await render({ initialPurpose: request, initialType: 'cowork' })
   expect(host.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe(request)
   expect(host.querySelector('details')!.open).toBe(true)
   expect(host.querySelector('[data-testid="provider-picker"]')?.textContent).toBe('when-needed')
   await input(host, '#crew-wizard-name', 'Sheet helper')
   await click(host, 'Create Crew')
-  expect(onCreate).toHaveBeenCalledExactlyOnceWith('Sheet helper', request, undefined, 'dev', { type: undefined, openSharing: false })
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith('Sheet helper', request, undefined, 'dev', { type: 'cowork', openSharing: false })
 })
 it('preserves edits on Back and errors, blocks changes while creating, and supports Escape', async () => {
   const { host, onClose, onCreate, update } = await render()
