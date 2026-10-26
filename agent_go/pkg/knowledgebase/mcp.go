@@ -212,6 +212,20 @@ func ValidateToolArguments(tool string, args map[string]any) error {
 		return badArg("Unknown Brain MCP tool.")
 	}
 	if err := validator.Validate(asMap(args)); err != nil {
+		if tool == ToolRead {
+			switch stringArg(args, "action") {
+			case "search":
+				if _, hasPath := args["path"]; hasPath {
+					return badArg("Search needs query and optional folder_path. To inspect one note, use action=read with its path.")
+				}
+			case "read":
+				_, start := args["start_line"]
+				_, end := args["end_line"]
+				if start != end {
+					return badArg("To read a line range, send both start_line and end_line. Omit both to read the whole note.")
+				}
+			}
+		}
 		return badArg("Arguments must match the selected Brain action.")
 	}
 	return nil

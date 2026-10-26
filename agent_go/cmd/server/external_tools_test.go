@@ -255,6 +255,12 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 			}
 			names[name] = true
 
+			// PLAT-825-142: discovery is flat even when server validation has branches.
+			for _, keyword := range []string{"oneOf", "anyOf", "allOf", "if", "then", "else", "dependentRequired"} {
+				if _, exposed := tool["inputSchema"].(map[string]any)[keyword]; exposed {
+					t.Fatalf("%s advertised root %s", name, keyword)
+				}
+			}
 			if _, leaked := tool["validator"]; leaked {
 				t.Fatal("private implementation field leaked")
 			}

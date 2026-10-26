@@ -20,6 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -37,6 +38,14 @@ type externalTool struct {
 	// actions maps a merged tool's action to the member tool it runs.
 	actions     map[string]string
 	actionOrder []string
+}
+
+// Discovery exposes model-compatible fields; dispatch keeps the full schema.
+func (tool externalTool) MarshalJSON() ([]byte, error) {
+	type fields externalTool
+	advertised := fields(tool)
+	advertised.InputSchema = llmtypes.ModelToolSchema(tool.InputSchema)
+	return json.Marshal(advertised)
 }
 
 var externalCatalogOnce sync.Once

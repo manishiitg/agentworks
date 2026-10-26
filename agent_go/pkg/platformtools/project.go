@@ -183,7 +183,7 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 				memberArgs[key] = value
 			}
 			if err := validators[actionKey(member.action)].Validate(memberArgs); err != nil {
-				return "", fmt.Errorf("%s.%s arguments: %w", family, action, err)
+				return "", fmt.Errorf("%s.%s arguments: %w. %s", family, action, err, member.action.Description)
 			}
 			if member.tool.Timeout > 0 {
 				var cancel context.CancelFunc

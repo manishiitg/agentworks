@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"io"
 	"net/http"
 	"sort"
@@ -502,7 +503,7 @@ func externalMCPAPISpec(args map[string]any, listed, allowed []externalTool, pre
 		if !ok {
 			return mcp.NewToolResultError("unknown_tool: \"" + name + "\" is not available to this connection; call get_api_spec with no arguments for the available tools")
 		}
-		schemas[tool.Name] = map[string]any{"description": tool.Description, "inputSchema": tool.InputSchema}
+		schemas[tool.Name] = map[string]any{"description": tool.Description, "inputSchema": llmtypes.ModelToolSchema(tool.InputSchema)}
 	}
 	value := map[string]any{"schemas": schemas}
 	for _, decorate := range prepare {

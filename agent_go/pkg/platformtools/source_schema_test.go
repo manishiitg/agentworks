@@ -2,6 +2,7 @@ package platformtools_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
@@ -56,6 +57,35 @@ func TestBrainReadProjectionKeepsItsSelectedPayloadRules(t *testing.T) {
 		// The source still sees and validates its original fixed action.
 		if err := knowledgebase.ValidateToolArguments(tool.Name, map[string]any{"action": "read", "path": "Shared/Guide.md"}); err != nil {
 			t.Fatal(err)
+		}
+		search, err := platformtools.MemberSchema(original, platformtools.Action{Source: tool.Name, SourceAction: "search"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		const searchName = "https://example.com/grouped-brain-search.json"
+		if err := compiler.AddResource(searchName, search); err != nil {
+			t.Fatal(err)
+		}
+		searchValidator, err := compiler.Compile(searchName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := searchValidator.Validate(map[string]any{"query": "needle", "folder_path": "Shared"}); err != nil {
+			t.Fatalf("valid scoped search refused: %v", err)
+		}
+		invalidSearch := map[string]any{"query": "needle", "path": "Shared/Guide.md"}
+		if err := searchValidator.Validate(invalidSearch); err == nil {
+			t.Fatal("search accepted a read locator")
+		}
+		invalidSearch["action"] = "search"
+		if err := knowledgebase.ValidateToolArguments(tool.Name, invalidSearch); err == nil || !strings.Contains(err.Error(), "folder_path") {
+			t.Fatalf("invalid search did not explain its existing folder scope: %v", err)
+		}
+		if err := validator.Validate(map[string]any{"path": "Shared/Guide.md", "end_line": float64(22)}); err == nil {
+			t.Fatal("read lost its paired line-range rule")
+		}
+		if err := validator.Validate(map[string]any{"path": "Shared/Guide.md", "start_line": float64(1), "end_line": float64(22)}); err != nil {
+			t.Fatalf("valid line range refused: %v", err)
 		}
 		return
 	}

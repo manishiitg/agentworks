@@ -287,7 +287,7 @@
     "family": "brain",
     "name": "read",
     "member": "brain_read__read",
-    "description": "Use the existing brain read operation with its current access.",
+    "description": "Read one Brain note using path or entry_id. For a line range, provide start_line and end_line together.",
     "source": "brain_read",
     "source_action": "read"
   },
@@ -295,7 +295,7 @@
     "family": "brain",
     "name": "search",
     "member": "brain_read__search",
-    "description": "Use the existing brain search operation with its current access.",
+    "description": "Literal-search readable Brain text with query and optional folder_path to limit the search to a folder.",
     "source": "brain_read",
     "source_action": "search"
   },
