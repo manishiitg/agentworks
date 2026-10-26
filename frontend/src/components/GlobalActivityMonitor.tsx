@@ -197,7 +197,7 @@ const noRepresentedSessions: readonly string[] = []
 export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly string[] }> = ({ representedSessionIds = noRepresentedSessions }) => {
   const sidebar = useProductNavigationSidebar()
   const panelRef = useRef<HTMLDivElement>(null)
-  const [panelPosition, setPanelPosition] = useState({ left: 0, top: 0 })
+  const [panelPosition, setPanelPosition] = useState<{ left: number; top: number; maxHeight?: number }>({ left: 0, top: 0 })
   const activeSessionsCache = useChatStore(state => state.activeSessionsCache)
   const getActiveSessions = useChatStore(state => state.getActiveSessions)
   const activeTabId = useChatStore(state => state.activeTabId)
@@ -404,17 +404,26 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
       const trigger = rootRef.current?.getBoundingClientRect()
       const panel = panelRef.current?.getBoundingClientRect()
       if (!trigger || !panel) return
+      const viewport = window.visualViewport
+      const visibleTop = viewport?.offsetTop ?? 0
+      const height = viewport?.height ?? window.innerHeight
+      const maxHeight = Math.max(0, height - 24)
       setPanelPosition({
         left: Math.max(12, Math.min(sidebar ? trigger.right + 12 : trigger.right - panel.width, window.innerWidth - panel.width - 12)),
-        top: Math.max(12, Math.min(sidebar ? trigger.bottom - panel.height : trigger.bottom + 8, window.innerHeight - panel.height - 12)),
+        top: Math.max(visibleTop + 12, Math.min(sidebar ? trigger.bottom - panel.height : trigger.bottom + 8, visibleTop + height - Math.min(panel.height, maxHeight) - 12)),
+        maxHeight,
       })
     }
     reposition()
     window.addEventListener('resize', reposition)
     document.addEventListener('scroll', reposition, true)
+    window.visualViewport?.addEventListener('resize', reposition)
+    window.visualViewport?.addEventListener('scroll', reposition)
     return () => {
       window.removeEventListener('resize', reposition)
       document.removeEventListener('scroll', reposition, true)
+      window.visualViewport?.removeEventListener('resize', reposition)
+      window.visualViewport?.removeEventListener('scroll', reposition)
     }
   }, [sidebar, open, activityItems.length])
 

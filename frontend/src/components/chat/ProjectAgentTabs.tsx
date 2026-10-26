@@ -69,14 +69,22 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     const position = () => {
       const rect = moreRef.current?.getBoundingClientRect()
       if (!rect) return
-      const top = Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - 120))
-      setMenuPosition({ top, left: Math.max(8, Math.min(rect.right - 320, window.innerWidth - Math.min(320, window.innerWidth - 16) - 8)), maxHeight: Math.min(416, window.innerHeight - top - 8) })
+      const viewport = window.visualViewport
+      const visibleTop = viewport?.offsetTop ?? 0
+      const bottom = visibleTop + (viewport?.height ?? window.innerHeight)
+      const top = Math.max(visibleTop + 8, Math.min(rect.bottom + 4, bottom - 120))
+      setMenuPosition({ top, left: Math.max(8, Math.min(rect.right - 320, window.innerWidth - Math.min(320, window.innerWidth - 16) - 8)), maxHeight: Math.min(416, Math.max(0, bottom - top - 8)) })
     }
     position()
     menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
     window.addEventListener('resize', position)
     window.addEventListener('scroll', position, true)
-    return () => { window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true) }
+    window.visualViewport?.addEventListener('resize', position)
+    window.visualViewport?.addEventListener('scroll', position)
+    return () => {
+      window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true)
+      window.visualViewport?.removeEventListener('resize', position); window.visualViewport?.removeEventListener('scroll', position)
+    }
   }, [moreOpen])
   useEffect(() => {
     if (!moreOpen) return

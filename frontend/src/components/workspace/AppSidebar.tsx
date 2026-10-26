@@ -127,9 +127,9 @@ export function AppSidebar() {
       <div data-terminal-focus-chrome="header" data-app-sidebar data-product-navigation-mode={navigationMode}
         style={{ '--chat-sidebar-width': `${width}px` } as CSSProperties}
         className={`relative z-40 shrink-0 ${open ? 'w-0 md:w-[var(--chat-sidebar-width)]' : 'w-0 md:w-12'}`}>
-        {isMobile ? mobileOpen && <div className="fixed inset-0 z-40">
+        {isMobile ? mobileOpen && <div className="fixed inset-x-0 top-[var(--app-viewport-top,0px)] z-40 h-[var(--app-viewport-height,100dvh)]">
           <button type="button" aria-label="Close sidebar backdrop" onClick={() => setMobileOpen(false)} className="absolute inset-0 bg-black/50" />
-          <div ref={drawer} role="dialog" aria-modal="true" aria-label="Your work" className="relative h-dvh w-[min(320px,calc(100vw-3rem))] border-r border-border bg-background text-foreground shadow-xl">
+          <div ref={drawer} role="dialog" aria-modal="true" aria-label="Your work" className="relative h-full w-[min(320px,calc(100vw-3rem))] border-r border-border bg-background text-foreground shadow-xl">
           <aside aria-label="Chat navigation" className="flex h-full w-full pb-[env(safe-area-inset-bottom)]">
             <Suspense fallback={<div className="w-full border-r border-border">{toggle}</div>}><WorkspaceChatsSidebar toggle={toggle} footer={<div ref={registerSidebarSettings} data-sidebar-setup-slot />} /></Suspense>
           </aside>

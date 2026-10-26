@@ -50,7 +50,7 @@ const workflowSession = (overrides: Partial<ActiveSessionInfo> = {}) => session(
 const crewTrigger = (overrides: Partial<ActiveSessionInfo> = {}) => session({
   session_id: 'product-trigger-1',
   agent_mode: 'multi-agent',
-  workspace_path: 'Chats/Work/projects/news-monitor',
+  workspace_path: 'Crew/news-monitor',
   triggered_by: 'cron',
   title: 'News Monitor · news monitor trigger',
   ...overrides,
