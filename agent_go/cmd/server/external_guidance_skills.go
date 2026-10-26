@@ -84,5 +84,9 @@ func externalGuidanceSkillContent(claims *UserClaims, topic externalGuidanceTopi
 		return "", err
 	}
 	description, _ := json.Marshal(topic.Description)
-	return fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n", topic.Name, description) + externalTopicNoteFor(claims, topic) + "\n\n" + body, nil
+	header := fmt.Sprintf("---\nname: %s\ndescription: %s\n", topic.Name, description)
+	if topic.SourceVersion != "" {
+		header += fmt.Sprintf("metadata:\n  version: %q\n", topic.SourceVersion)
+	}
+	return header + "---\n\n" + externalTopicNoteFor(claims, topic) + "\n\n" + body, nil
 }

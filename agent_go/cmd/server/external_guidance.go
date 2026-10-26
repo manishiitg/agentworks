@@ -44,6 +44,9 @@ func externalGuidanceVersionFor(claims *UserClaims) string {
 func externalTopicVersionFor(claims *UserClaims, topic externalGuidanceTopic) string {
 	h := sha256.New()
 	h.Write([]byte(topic.Name + "\n" + topic.Description + "\n" + externalTopicNoteFor(claims, topic) + "\n" + strings.Join(topic.Scopes, ",") + "\n" + strings.Join(topic.Tools, ",") + "\n"))
+	if topic.SourceVersion != "" {
+		h.Write([]byte(topic.SourceVersion + "\n"))
+	}
 	if _, body, err := externalGuidanceContentForProducts(topic.Name, builderProductSelection(claims)); err == nil {
 		h.Write([]byte(body))
 	}
@@ -300,7 +303,7 @@ func loadExternalGuidanceTopics() []externalGuidanceTopic {
 			panic("duplicate panel guidance: " + name)
 		}
 		seen[name] = true
-		topics = append(topics, externalGuidanceTopic{Name: name, Description: definition.Description, Source: "panel", Tools: patterns, Content: definition.Content})
+		topics = append(topics, externalGuidanceTopic{Name: name, Description: definition.Description, Source: "panel", Tools: patterns, Content: definition.Content, SourceVersion: definition.Metadata["version"]})
 	}
 	topics = append(topics,
 		externalGuidanceTopic{Name: "product-guide", Description: "Choose AgentWorks products: purpose, abilities, access requirements and examples.", Source: "product-guide", SourceVersion: productguide.GuideVersion},
@@ -515,7 +518,11 @@ func (api *StreamingAPI) externalGuidanceTopicBody(w http.ResponseWriter, r *htt
 		for _, raw := range files {
 			file := raw.(map[string]any)
 			if file["path"] == path {
-				externalJSON(w, map[string]any{"guidance_version": externalGuidanceVersionFor(claims), "topic": name, "version": version, "path": path, "content": file["content"]})
+				out := map[string]any{"guidance_version": externalGuidanceVersionFor(claims), "topic": name, "version": version, "path": path, "content": file["content"]}
+				if allowed.SourceVersion != "" {
+					out["source_version"] = allowed.SourceVersion
+				}
+				externalJSON(w, out)
 				return
 			}
 		}
