@@ -50,7 +50,7 @@ For a **workflow**:
   (`python3 -c "import json; json.load(open('workflow.json'))"`) — a malformed workflow.json
   drops the workflow's config and can hide the workflow from the UI.
 
-After every run is one Goal choice: `backup.after_runs`. Preserve an existing choice when configuring a destination; leave it off for a new Goal unless requested. It applies to every full run and skips unchanged sources. The Backup panel, MCP update_settings and chat update_workflow_config change the same setting. An explicit Backup now action works even with automatic Backup off.
+After every run is one Goal choice: `backup.after_runs`. Preserve an existing choice when configuring a destination; leave it off for a new Goal unless requested. It applies to every full run and skips unchanged sources. The Backup panel, settings action=update in MCP or chat change the same setting. An explicit Backup now action works even with automatic Backup off.
 
 Recommended backup config shape (`workflow.json.backup`):
 

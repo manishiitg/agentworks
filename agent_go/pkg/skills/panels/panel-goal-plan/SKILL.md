@@ -9,7 +9,7 @@ metadata:
     - add_step
     - update_step
     - maintain_plan
-    - get_workflow_config
+    - settings
   external-tools:
   - plan
   - get_plan

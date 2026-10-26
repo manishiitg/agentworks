@@ -147,6 +147,7 @@ chat:
       - add_step
       - manage_group
       - settings
+      - models
       - workflow_team
       - manage_project
       - manage_builder_chats

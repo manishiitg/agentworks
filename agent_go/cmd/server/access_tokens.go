@@ -374,6 +374,13 @@ func tokenSessionWorkflowReadRoot(_ *UserClaims, workflowPhaseFolder string) str
 }
 
 func externalTokenAllows(c *UserClaims, tool externalTool) bool {
+	// These narrower catalog members use the existing chat action consent as
+	// well as the source tool's consent; grouping must not admit write-only
+	// connections that the source tool refused (PLAT-825).
+	if action := tabModelMemberAction(tool.Name); action != "" && c != nil && c.AccessToken != nil && !c.AccessToken.Allows(crewChatActionScope(action, "")) {
+		return false
+	}
+	tool.Name = configurationConsentMember(tool.Name)
 	if agentBridgeOnlyDeployment() && tool.Name != "messages" && tool.Name != "help" && tool.actions == nil {
 		return false
 	}
@@ -401,7 +408,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "browser_connections" {
 		return externalBrowserConnectionsAllowed(c)
 	}
-	if tool.Name == "costs" {
+	if tool.Name == "costs" && tool.actions == nil {
 		return externalCostsAllowed(c)
 	}
 	if tool.Name == "agent_inbox" {

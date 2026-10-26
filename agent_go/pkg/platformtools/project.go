@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"slices"
 	"strings"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -19,31 +21,38 @@ type Selection struct {
 	FilterCustom   bool
 }
 
+type projectedMember struct {
+	tool   mcpagent.ToolDefinition
+	source string
+	action Action
+}
+
+func actionKey(action Action) string { return action.Family + "." + action.Name + "@" + action.Scope }
+
 func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpagent.ToolDefinition, error) {
 	selection := Selection{}
 	if len(selections) > 0 {
 		selection = selections[0]
 	}
 	filter := mcpagent.NewToolFilter(selection.Tools, selection.Servers, nil, nil, loggerv2.NewNoop())
+	candidates, out, err := projectMembers(tools)
+	if err != nil {
+		return nil, err
+	}
 	selected := map[string]map[string]bool{}
 	for _, entry := range selection.Tools {
 		namespace, identity, qualified := strings.Cut(entry, ":")
 		if !qualified {
 			identity, namespace = namespace, ""
 		}
-		for _, action := range DashboardActions {
+		for _, candidate := range candidates {
+			action := candidate.action
 			id := action.Family + "." + action.Name
 			if identity != id && identity != action.Family {
 				continue
 			}
-			native := namespace == "" || namespace == action.Family
-			for _, tool := range tools {
-				if IsDashboardMember(tool.Name) && Identity(tool.Name) == id && tool.DisplayGroup == namespace {
-					native = true
-				}
-			}
-			if !native {
-				continue // a foreign MCP server's same-named tool
+			if namespace != "" && namespace != action.Family && namespace != candidate.tool.DisplayGroup {
+				continue
 			}
 			if selected[action.Family] == nil {
 				selected[action.Family] = map[string]bool{}
@@ -51,52 +60,62 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 			selected[action.Family][id] = true
 		}
 	}
-	byID := map[string]mcpagent.ToolDefinition{}
-	out := make([]mcpagent.ToolDefinition, 0, len(tools))
-	for _, tool := range tools {
-		if !IsDashboardMember(tool.Name) {
-			out = append(out, tool)
-			continue
-		}
-		id := Identity(tool.Name)
-		if actions, explicit := selected[PublicName(id)]; explicit {
+	byKey := map[string]projectedMember{}
+	for _, candidate := range candidates {
+		action := candidate.action
+		id := action.Family + "." + action.Name
+		if actions, explicit := selected[action.Family]; explicit {
 			if !actions[id] {
 				continue
 			}
-		} else if selection.FilterCustom && !filter.ShouldIncludeTool(tool.DisplayGroup, tool.Name, true, false) {
+		} else if selection.FilterCustom && !filter.ShouldIncludeTool(candidate.tool.DisplayGroup, candidate.source, true, false) {
 			continue
 		}
-		previous, found := byID[id]
-		if !found || primaryMember(id) == tool.Name || primaryMember(id) != previous.Name {
-			byID[id] = tool
+		key := actionKey(action)
+		previous, found := byKey[key]
+		if !found || candidate.tool.Name == action.Member || previous.tool.Name != action.Member {
+			byKey[key] = candidate
 		}
 	}
-	for _, family := range []string{"dashboard", "share"} {
-		members := map[string]mcpagent.ToolDefinition{}
+	families := []string{}
+	for _, action := range Actions {
+		if !slices.Contains(families, action.Family) {
+			families = append(families, action.Family)
+		}
+	}
+	for _, family := range families {
+		members := map[string][]projectedMember{}
 		validators := map[string]*jsonschema.Schema{}
 		props := map[string]any{}
 		actions := []any{}
 		lines := []string{}
-		// Per-member filtering is complete. Use the existing system category
-		// so the SDK does not filter the sealed family a second time by a
-		// category that only one of its former members happened to use.
+		seen := map[string]bool{}
 		group := mcpagent.ToolDefinition{Name: family, DisplayGroup: "workflow"}
-		for _, action := range DashboardActions {
-			if action.Family != family {
+		for _, action := range Actions {
+			key := actionKey(action)
+			if action.Family != family || seen[key] {
 				continue
 			}
-			member, ok := byID[family+"."+action.Name]
+			seen[key] = true
+			member, ok := byKey[key]
 			if !ok {
 				continue
 			}
-			validator, err := compileSchema(member.InputSchema)
+			validator, err := compileSchema(member.tool.InputSchema)
 			if err != nil {
-				return nil, fmt.Errorf("%s.%s schema: %w", family, action.Name, err)
+				return nil, fmt.Errorf("%s schema: %w", key, err)
 			}
-			members[action.Name], validators[action.Name] = member, validator
-			actions = append(actions, action.Name)
-			line := "- " + action.Name + ": " + action.Description
-			if required, ok := member.InputSchema["required"].([]any); ok && len(required) > 0 {
+			validators[key] = validator
+			members[action.Name] = append(members[action.Name], member)
+			if !slices.Contains(actions, any(action.Name)) {
+				actions = append(actions, action.Name)
+			}
+			line := "- " + action.Name
+			if action.Scope != "" {
+				line += " (" + action.Scope + ")"
+			}
+			line += ": " + action.Description
+			if required, ok := member.tool.InputSchema["required"].([]any); ok && len(required) > 0 {
 				fields := []string{}
 				for _, field := range required {
 					fields = append(fields, fmt.Sprint(field))
@@ -104,16 +123,12 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 				line += " Requires " + strings.Join(fields, ", ") + "."
 			}
 			lines = append(lines, line)
-			memberProps, _ := member.InputSchema["properties"].(map[string]any)
+			memberProps, _ := member.tool.InputSchema["properties"].(map[string]any)
 			for key, value := range memberProps {
-				// All action-specific shapes remain enforced by the selected
-				// member. Shared fields need only one description in the menu.
-				if _, exists := props[key]; !exists {
-					props[key] = value
-				}
+				mergeProperty(props, key, value)
 			}
-			if member.Timeout > group.Timeout {
-				group.Timeout = member.Timeout
+			if member.tool.Timeout > group.Timeout {
+				group.Timeout = member.tool.Timeout
 			}
 		}
 		if len(actions) == 0 {
@@ -124,12 +139,21 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 		group.Description = "Use this project's " + family + " actions.\n" + strings.Join(lines, "\n")
 		group.Execute = func(ctx context.Context, args map[string]any) (string, error) {
 			action, _ := args["action"].(string)
-			member, allowed := members[action]
-			if !allowed {
-				return "", fmt.Errorf("%s action %q is unavailable in this chat; refresh its tool catalog", family, action)
+			choices := members[action]
+			scope, _ := args["scope"].(string)
+			var selected *projectedMember
+			for i := range choices {
+				if scope == "" && len(choices) == 1 || choices[i].action.Scope == scope {
+					selected = &choices[i]
+					break
+				}
 			}
+			if selected == nil {
+				return "", fmt.Errorf("%s action %q scope %q is unavailable in this chat; refresh its tool catalog and choose an offered action and scope", family, action, scope)
+			}
+			member := *selected
 			memberArgs := map[string]any{}
-			memberProps, _ := member.InputSchema["properties"].(map[string]any)
+			memberProps, _ := member.tool.InputSchema["properties"].(map[string]any)
 			for key, value := range args {
 				if key == "action" {
 					continue
@@ -141,28 +165,44 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 				}
 				memberArgs[key] = value
 			}
-			if err := validators[action].Validate(memberArgs); err != nil {
+			if err := validators[actionKey(member.action)].Validate(memberArgs); err != nil {
 				return "", fmt.Errorf("%s.%s arguments: %w", family, action, err)
 			}
-			if member.Timeout > 0 {
+			if member.tool.Timeout > 0 {
 				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, member.Timeout)
+				ctx, cancel = context.WithTimeout(ctx, member.tool.Timeout)
 				defer cancel()
 			}
-			return member.Execute(ctx, memberArgs)
+			return member.tool.Execute(ctx, memberArgs)
 		}
 		out = append(out, group)
 	}
 	return out, nil
 }
 
-func primaryMember(id string) string {
-	for _, action := range DashboardActions {
-		if action.Family+"."+action.Name == id {
-			return action.Member
+func mergeProperty(properties map[string]any, name string, value any) {
+	old, exists := properties[name]
+	if !exists {
+		properties[name] = value
+		return
+	}
+	if reflect.DeepEqual(old, value) {
+		return
+	}
+	// The family advertises the union; the selected member still enforces its
+	// exact schema. One action's provider/role enum cannot exclude another's.
+	if union, ok := old.(map[string]any); ok && len(union) == 1 {
+		if choices, ok := union["anyOf"].([]any); ok {
+			for _, choice := range choices {
+				if reflect.DeepEqual(choice, value) {
+					return
+				}
+			}
+			properties[name] = map[string]any{"anyOf": append(choices, value)}
+			return
 		}
 	}
-	return ""
+	properties[name] = map[string]any{"anyOf": []any{old, value}}
 }
 
 func compileSchema(schema map[string]any) (*jsonschema.Schema, error) {

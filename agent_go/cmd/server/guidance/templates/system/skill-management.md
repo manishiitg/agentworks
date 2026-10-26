@@ -23,16 +23,16 @@ Skills belong to the **current product or workflow**, `<current-workspace>/skill
    - `import_skill(github_url)` — from a GitHub folder URL.
    - Both download into `<current-workspace>/skills/<folder>/`. If a folder exists but has no `SKILL.md`, reinstall it with the same method it was originally installed with — **never write `SKILL.md` by hand**.
 3. **Select for workflow/builder context**
-   - `update_workflow_config(add_skills=["folder-name"])`. This records the skill as a selected workflow capability for workshop/builder discovery. Do NOT edit `workflow.json` manually.
+   - `settings(action="update", skills={add:["folder-name"]})`. This records the skill as a selected workflow capability for workshop/builder discovery. Do NOT edit `workflow.json` manually.
 4. **Enable for specific runtime steps**
    - `update_step_config(step_id, enabled_skills=["skill-a"])` makes that step receive the listed skills at execution time.
    - Step execution does not inherit workflow-selected skills, so every runtime skill must be listed on the step that needs it.
 5. **Remove from the workflow**
-   - `update_workflow_config(remove_skills=["folder-name"])`.
+   - `settings(action="update", skills={remove:["folder-name"]})`.
 6. **Uninstall**
    - `uninstall_skill(folder_name)` — deletes its files and clears its main-chat and per-step attachments in this workspace. Platform-managed skills cannot be uninstalled.
 
-Inspect at any point with `get_workflow_config` (the workflow's selected skills) and `list_skills` (everything installed). Inspect `planning/step_config.json` or use step config tools to see per-step `enabled_skills`.
+Inspect at any point with `settings action=get` (the workflow's selected skills) and `list_skills` (everything installed). Inspect `planning/step_config.json` or use step config tools to see per-step `enabled_skills`.
 
 ### Attachment model: selected vs enabled (important)
 
@@ -52,7 +52,7 @@ So workflow selection is discovery/context for workshop agents, not runtime inhe
 
 ### Troubleshooting
 
-- **Skill not taking effect on a step** → check that the step explicitly lists it in `enabled_skills`. `update_workflow_config(add_skills=[...])` alone is not enough for runtime execution.
+- **Skill not taking effect on a step** → check that the step explicitly lists it in `enabled_skills`. `settings(action="update", skills={add:[...]})` alone is not enough for runtime execution.
 - **Folder exists but no `SKILL.md`** → reinstall via the original method (`install_skill` / `import_skill`); do not author the file manually.
 - **Too many skills / bloated step prompts** → remove unnecessary skills from each step's `enabled_skills`; keep workflow-level selection as a lightweight capability inventory only when useful.
 - **Need to author or improve a skill** → use the `skill-creator` skill; for sub-agent templates use `subagent-creator`. Neither installs/attaches — that's this doc's tools.

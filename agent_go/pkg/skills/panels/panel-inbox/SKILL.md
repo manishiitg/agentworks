@@ -11,7 +11,6 @@ metadata:
     - manage_condition_triggers
     agentworks:
     - get_agent_inbox
-    - configure_agent_inbox
     - manage_google_account
     - manage_condition_triggers
   external-tools:

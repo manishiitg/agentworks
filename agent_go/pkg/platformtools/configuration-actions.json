@@ -1,0 +1,199 @@
+[
+  {
+    "family": "settings",
+    "name": "get",
+    "member": "get_settings",
+    "description": "Read this product’s saved setup.",
+    "source": "settings",
+    "source_action": "get",
+    "aliases": [
+      "get_workflow_config"
+    ]
+  },
+  {
+    "family": "settings",
+    "name": "update",
+    "member": "update_settings",
+    "description": "Change the saved setup with the current Builder and field checks.",
+    "source": "settings",
+    "source_action": "update",
+    "aliases": [
+      "update_workflow_config"
+    ],
+    "exclude_fields": [
+      "models"
+    ]
+  },
+  {
+    "family": "settings",
+    "name": "secret_sources",
+    "member": "get_secret_sources",
+    "description": "Explain selected secret sources by name; never values.",
+    "source": "settings",
+    "source_action": "secret_sources"
+  },
+  {
+    "family": "settings",
+    "name": "google_account",
+    "member": "workflow_google_account",
+    "description": "Select or remove an existing Google account for this product.",
+    "source": "settings",
+    "source_action": "google_account"
+  },
+  {
+    "family": "settings",
+    "name": "slack_account",
+    "member": "workflow_slack_account",
+    "description": "Select or remove an existing Slack account for this product.",
+    "source": "settings",
+    "source_action": "slack_account"
+  },
+  {
+    "family": "settings",
+    "name": "slack_bot",
+    "member": "workflow_slack_bot",
+    "description": "Read or change this product’s Slack bot setup.",
+    "source": "settings",
+    "source_action": "slack_bot"
+  },
+  {
+    "family": "settings",
+    "name": "chat",
+    "member": "chat_preferences",
+    "description": "Read or change your personal chat display."
+  },
+  {
+    "family": "settings",
+    "name": "variables",
+    "member": "update_variable",
+    "description": "Change this workflow’s declared variables."
+  },
+  {
+    "family": "models",
+    "name": "get",
+    "member": "get_llm_config",
+    "description": "Read effective project models and their inheritance.",
+    "aliases": [
+      "get_project_models"
+    ],
+    "source": "models",
+    "source_action": "get",
+    "source_member": "get_project_models",
+    "scope": "project",
+    "fields": [],
+    "external_members": "get_project_models"
+  },
+  {
+    "family": "models",
+    "name": "list",
+    "member": "list_published_llms",
+    "description": "List the published models available here.",
+    "scope": "project"
+  },
+  {
+    "family": "models",
+    "name": "catalog",
+    "member": "list_provider_models",
+    "description": "List a provider’s offered models."
+  },
+  {
+    "family": "models",
+    "name": "capabilities",
+    "member": "list_llm_capabilities",
+    "description": "Find models with the needed abilities."
+  },
+  {
+    "family": "models",
+    "name": "test",
+    "member": "test_llm",
+    "description": "Check an available model through its existing service."
+  },
+  {
+    "family": "models",
+    "name": "set",
+    "member": "set_project_models",
+    "description": "Change this project’s saved models.",
+    "aliases": [
+      "set_workflow_llm_config"
+    ],
+    "source": "models",
+    "source_action": "set",
+    "source_member": "set_project_models",
+    "scope": "project",
+    "fields": [
+      "models",
+      "expected_version"
+    ],
+    "external_members": "set_project_models",
+    "required": [
+      "models"
+    ]
+  },
+  {
+    "family": "models",
+    "name": "generate",
+    "member": "generate_text_llm",
+    "description": "Generate text through the existing model call."
+  },
+  {
+    "family": "models",
+    "name": "list",
+    "member": "__crew_model_list",
+    "description": "Read this chat’s model and account choices.",
+    "source": "manage_crew_model",
+    "source_action": "list",
+    "scope": "tab",
+    "external_members": "get_tab_models",
+    "aliases": [
+      "get_tab_models"
+    ]
+  },
+  {
+    "family": "models",
+    "name": "set",
+    "member": "__crew_model_set",
+    "description": "Change this chat’s model for its next message.",
+    "source": "manage_crew_model",
+    "source_action": "set",
+    "scope": "tab",
+    "required": [
+      "engine"
+    ],
+    "external_members": "set_tab_model",
+    "aliases": [
+      "set_tab_model"
+    ]
+  },
+  {
+    "family": "costs",
+    "name": "summary",
+    "member": "get_cost_summary",
+    "description": "Read the current product or run’s recorded costs.",
+    "aliases": [
+      "get_crew_costs"
+    ],
+    "external_members": "get_cost_summary|get_crew_costs"
+  },
+  {
+    "family": "costs",
+    "name": "query",
+    "member": "query_workflow_costs",
+    "description": "Query this workflow’s existing cost ledger."
+  },
+  {
+    "family": "costs",
+    "name": "breakdown",
+    "member": "get_cost_breakdown",
+    "description": "Read attributed spend for an allowed product and activity.",
+    "source": "costs",
+    "source_action": "breakdown"
+  },
+  {
+    "family": "costs",
+    "name": "detail",
+    "member": "get_cost_detail",
+    "description": "Read the matching recorded cost calls.",
+    "source": "costs",
+    "source_action": "detail"
+  }
+]

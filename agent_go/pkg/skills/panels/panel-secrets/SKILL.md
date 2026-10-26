@@ -21,7 +21,7 @@ metadata:
     - delete_workflow_secret
     - settings
   external-tools:
-  - get_secret_sources
+  - settings.secret_sources
 ---
 
 # Secrets

@@ -6,6 +6,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
@@ -22,6 +23,18 @@ func TestPanelToolMappingsRespectProductAdmission(t *testing.T) {
 		relayNames = append(relayNames, skill.Name)
 	}
 	for product, names := range map[string][]string{"agentworks": goalNames, "relays": relayNames} {
+		admitted := agentworksproduct.ChatTools("builder")
+		if product == "relays" {
+			admitted, err = relayproduct.ChatTools("builder")
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		public := map[string]bool{}
+		for _, source := range admitted {
+			public[platformtools.Identity(source)] = true
+			public[platformtools.PublicName(source)] = true
+		}
 		for _, name := range names {
 			if !skills.IsWorkspacePanelSkill(name) {
 				continue
@@ -31,11 +44,7 @@ func TestPanelToolMappingsRespectProductAdmission(t *testing.T) {
 				t.Fatalf("%s %s has no usable tool mapping", product, name)
 			}
 			for _, tool := range mapped {
-				allowed := agentworksproduct.ChatAllowsTool("builder", tool)
-				if product == "relays" {
-					allowed = relayproduct.ChatAllowsTool("builder", tool)
-				}
-				if !allowed {
+				if !public[tool] {
 					t.Fatalf("%s %s advertises unavailable %s", product, name, tool)
 				}
 			}

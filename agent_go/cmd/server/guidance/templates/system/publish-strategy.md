@@ -53,7 +53,7 @@ loadData when the person wants it available in the static snapshot too.
 Every Publish pass, including after-run auto-publish, calls dashboard action=export_static
 again before deploying. After every run is one Goal choice, `publish.after_runs`,
 off for a new Goal. Preserve its existing choice when configuring a destination.
-The Publish panel, MCP update_settings and chat update_workflow_config change
+The Publish panel, settings action=update in MCP or chat change
 the same setting. An explicit Publish now action works with automatic publishing
 off; do not create a second publisher or a new schedule. Source change checks
 include managed dashboard revisions and db/code files; generated publish/exports

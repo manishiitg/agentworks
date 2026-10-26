@@ -3,23 +3,12 @@ name: panel-costs
 description: Costs and usage panel in Goals and Crews. Inspect spend, tokens and model usage for this project.
 metadata:
   panel-tools:
-    work:
-    - get_crew_costs
-    agentworks:
-    - get_cost_summary
-    - query_workflow_costs
-    relays:
-    - get_cost_summary
-  external-tools:
-  - get_cost_summary
-  - get_crew_costs
+    work: [costs]
+    agentworks: [costs]
+    relays: [costs]
+  external-tools: [costs]
 ---
 
 # Costs and usage
 
-Crew uses get_crew_costs with days/before; Goal uses get_cost_summary and query_workflow_costs. Use the platform ledger, a clear period and returned attribution. Distinguish total spend from model token counts. Costs are observations, not budgets or payer switching. Do not keep a second mirrored ledger or claim unavailable data is zero.
-
-Use `get_crew_costs` to read this Crew's Costs and usage from the app's ledger.
-Crew owners, including co-owners, get costs under the existing access rules.
-Use `days` and `before` to page through dates;
-never add another mirrored ledger to these totals.
+Use `costs action=summary` for this Crew or workflow/run. Crew summary keeps its existing owner check and accepts days/before. Use query only where offered for a workflow's ledger. MCP breakdown/detail provide attributed spend and recorded calls within the connection's current product and account access. Use a clear period and the returned attribution; distinguish tokens, estimated costs and actual provider charges. Missing data is unknown. Do not add budgets, payer switching or a second mirrored ledger. Sharing and connection consent continue to decide which actions and records are available.

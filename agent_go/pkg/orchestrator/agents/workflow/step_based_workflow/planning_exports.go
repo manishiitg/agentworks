@@ -933,7 +933,21 @@ func (s *WorkshopChatSession) UpdatePresetSettings(
 	if skillsParsed {
 		s.controller.SetSelectedSkills(selectedSkills)
 	}
+	previousSecrets := s.controller.GetSecrets()
 	s.controller.SetSecrets(secrets)
+	// SetSecrets refreshes the controller env; the active Builder shell also
+	// needs the existing callback, including names that were just deselected.
+	selected := make(map[string]bool, len(secrets))
+	for _, secret := range secrets {
+		selected[secret.Name] = true
+	}
+	removed := []string{}
+	for _, secret := range previousSecrets {
+		if !selected[secret.Name] {
+			removed = append(removed, secret.Name)
+		}
+	}
+	notifySecretsAttached(s.secretsAttached, secrets, removed)
 
 	// Sync back to session.config so run_full_workflow (which
 	// creates fresh controllers from cfg) picks up the latest values.

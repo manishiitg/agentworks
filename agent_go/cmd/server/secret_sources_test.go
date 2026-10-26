@@ -22,6 +22,8 @@ func TestSecretSourcesMCPAndWebsitePreserveCopiesAndPermissions(t *testing.T) {
 	f.api.chatStore = store
 	managedGlobalsMu.Lock()
 	oldGlobals, oldManaged := globalSecrets, managedGlobals
+	// dcad6859b made environment entries migration inventory only. A saved
+	// selection must not make an old environment secret available again.
 	globalSecrets = []globalSecretEntry{{Name: "ENV_KEY", Value: "environment-value-canary"}}
 	managedGlobals = map[string]string{"BOTH": "vault-value-canary", "UNSELECTED": "vault-value-canary"}
 	managedGlobalsMu.Unlock()
@@ -57,7 +59,7 @@ func TestSecretSourcesMCPAndWebsitePreserveCopiesAndPermissions(t *testing.T) {
 		for _, row := range snapshot.Secrets {
 			rows[row.Name] = row
 		}
-		if snapshot.Status != "available" || rows["BOTH"].ConfiguredSource != "product" || !strings.Contains(rows["BOTH"].Explanation, "also exists in the company Vault") || rows["UNSELECTED"].ConfiguredSource != "vault" || !strings.Contains(rows["UNSELECTED"].Explanation, "not selected") || !rows["ENV_KEY"].EnvironmentOwned {
+		if snapshot.Status != "available" || rows["BOTH"].ConfiguredSource != "product" || !strings.Contains(rows["BOTH"].Explanation, "also exists in the company Vault") || rows["UNSELECTED"].ConfiguredSource != "vault" || !strings.Contains(rows["UNSELECTED"].Explanation, "not selected") || rows["ENV_KEY"].EnvironmentOwned || rows["ENV_KEY"].ConfiguredSource != "unavailable" {
 			t.Fatalf("source precedence not explained: %s", body)
 		}
 	}
@@ -82,7 +84,7 @@ func TestSecretSourcesMCPAndWebsitePreserveCopiesAndPermissions(t *testing.T) {
 	if err := store.UpsertWorkflowSecret(t.Context(), "owner", workspace, "BOTH", "legacy-ciphertext-canary"); err != nil {
 		t.Fatal(err)
 	}
-	checkLegacy := f.call(t, "reader", "get_secret_sources", map[string]any{"workflow_id": "invoices"})
+	checkLegacy := f.call(t, "reader", "settings", map[string]any{"action": "secret_sources", "workflow_id": "invoices"})
 	if checkLegacy.Code != 200 || !strings.Contains(checkLegacy.Body.String(), `"configured_source":"legacy"`) || strings.Contains(checkLegacy.Body.String(), "legacy-ciphertext-canary") {
 		t.Fatalf("legacy inspection: %d %s", checkLegacy.Code, checkLegacy.Body)
 	}
@@ -97,7 +99,7 @@ func TestSecretSourcesMCPAndWebsitePreserveCopiesAndPermissions(t *testing.T) {
 	t.Setenv("CAPLAYER_SERVICE_URL", vault.URL)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
-	partial := f.call(t, "reader", "get_secret_sources", map[string]any{"workflow_id": "invoices"})
+	partial := f.call(t, "reader", "settings", map[string]any{"action": "secret_sources", "workflow_id": "invoices"})
 	if partial.Code != 200 || !strings.Contains(partial.Body.String(), `"status":"partial"`) || !strings.Contains(partial.Body.String(), `"vault_available":null`) {
 		t.Fatalf("Vault failure hidden: %d %s", partial.Code, partial.Body)
 	}
@@ -112,13 +114,13 @@ func TestSecretSourcesMCPAndWebsitePreserveCopiesAndPermissions(t *testing.T) {
 	}
 	f.write(t, workspace+"/workflow.json", manifest)
 	f.api.chatStore = nil
-	unavailable := f.call(t, "owner", "get_secret_sources", map[string]any{"workflow_id": "invoices"})
+	unavailable := f.call(t, "owner", "settings", map[string]any{"action": "secret_sources", "workflow_id": "invoices"})
 	if unavailable.Code != 200 || !strings.Contains(unavailable.Body.String(), `"status":"unavailable"`) {
 		t.Fatalf("store failure hidden: %d %s", unavailable.Code, unavailable.Body)
 	}
 }
 
-func TestSecretSourcesCrewAndOwnCodeTargets(t *testing.T) {
+func TestSecretSourcesCrewShareAndPrivateAccess(t *testing.T) {
 	t.Run("Crew", func(t *testing.T) {
 		f, _ := newExternalCrewCommandFixture(t)
 		store, err := chathistory.NewFilesystemStore(t.TempDir())
@@ -144,28 +146,26 @@ func TestSecretSourcesCrewAndOwnCodeTargets(t *testing.T) {
 			t.Fatalf("shared Crew HTTP source access: %d %s", httpResult.Code, httpResult.Body)
 		}
 	})
-	t.Run("Code", func(t *testing.T) {
-		api, _ := newCodeAdminFixture(t, false)
+	// Code routing retired in8106ccb9d. Protect the same own/private rule on
+	// the current Crew entry point instead of restoring a code_id alias.
+	t.Run("PrivateCrew", func(t *testing.T) {
+		f, _ := newExternalCrewCommandFixture(t)
 		store, err := chathistory.NewFilesystemStore(t.TempDir())
 		if err != nil {
 			t.Fatal(err)
 		}
-		api.chatStore = store
-		args := map[string]any{"action": "secret_sources", "code_id": "c0de0001-0000"}
-		w := codeReviewCall(api, &UserClaims{UserID: "owner"}, "settings", args)
-		if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"available"`) {
-			t.Fatalf("own Code source view: %d %s", w.Code, w.Body)
+		f.api.chatStore = store
+		if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
+			t.Fatal(err)
 		}
-		w = codeReviewCall(api, &UserClaims{UserID: "other"}, "settings", args)
-		if w.Code != 404 {
-			t.Fatalf("other person's Code source view: %d %s", w.Code, w.Body)
+		args := map[string]any{"action": "secret_sources", "crew_id": "team"}
+		if w := f.call(t, "owner", "settings", args); w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"available"`) {
+			t.Fatalf("own private Crew source view: %d %s", w.Code, w.Body)
 		}
-		httpResult := httptest.NewRecorder()
-		api.handleSecretSources(httpResult, adminRequest("GET", "/api/secrets/workflow/sources?workspace_path="+codePrivacyOwnerRoot, "", &UserClaims{UserID: "other"}, nil))
-		if httpResult.Code == 200 {
-			t.Fatalf("another person's Code HTTP source access: %d %s", httpResult.Code, httpResult.Body)
+		if w := f.call(t, "other", "settings", args); w.Code != 404 {
+			t.Fatalf("another person's private Crew source view: %d %s", w.Code, w.Body)
 		}
-		w = codeReviewCall(api, codeReviewToken("owner", "workflows:read"), "settings", args)
+		w := codeReviewCall(f.api, codeReviewToken("owner", "workflows:read"), "settings", args)
 		if w.Code != 403 {
 			t.Fatalf("restricted machine connection: %d %s", w.Code, w.Body)
 		}

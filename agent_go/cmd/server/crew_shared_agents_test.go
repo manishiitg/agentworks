@@ -143,15 +143,19 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 			t.Fatalf("unselected owner tab admitted send=%t", send)
 		}
 	}
-	for _, action := range []string{"stop", "close_chat", "rename_chat", "set_chat_model"} {
+	for _, action := range []string{"stop", "close_chat", "rename_chat"} {
 		w := call(action, map[string]any{"chat_id": coach.ConversationKey, "name": "Takeover"}, false)
 		if w.Code < 400 {
 			t.Fatalf("shared recipient acquired %s: %s", action, w.Body.String())
 		}
 	}
+	modelArgs := map[string]any{"workspace_id": "work:team", "action": "set", "scope": "tab", "chat_id": coach.ConversationKey, "engine": ""}
+	if response := codeReviewCall(f.api, reader, "models", modelArgs); response.Code != http.StatusForbidden {
+		t.Fatalf("shared recipient changed a model: %d %s", response.Code, response.Body)
+	}
 	// Read/run consent can use agents but cannot edit even the caller's own project.
 	reader.UserID = "owner"
-	for _, action := range []string{"open_chat", "rename_chat", "set_chat_model", "stop", "chat_tool", "update"} {
+	for _, action := range []string{"open_chat", "rename_chat", "stop", "chat_tool", "update"} {
 		w := call(action, map[string]any{"chat_id": "coach", "name": "New name", "tool_name": "perform_ui_action", "changes": map[string]any{"purpose": "Changed"}}, false)
 		if w.Code < 400 {
 			t.Fatalf("run-only connection acquired owner action %s: %s", action, w.Body.String())

@@ -115,7 +115,7 @@ Each step should only have the MCP servers and tools it actually needs. After a 
 
 Installed skills are reusable capability instructions under `<workspace-root>/skills/{folder}/SKILL.md`. Both installed capabilities and workflow-specific methods use this same skill format.
 
-- Workflow-selected skills from `update_workflow_config(add_skills=[...])` are builder/workshop discovery context. They do not automatically reach runtime step agents.
+- Workflow-selected skills from `settings(action="update", skills={add:[...]})` are builder/workshop discovery context. They do not automatically reach runtime step agents.
 - Runtime step agents receive only skills listed in that step's `enabled_skills`. Use `update_step_config(step_id, enabled_skills=[...])` when a step actually needs an installed skill.
 - If a failing step is doing ad-hoc work covered by an installed skill, enable the skill on that step and keep the step description focused on task, inputs, intended outcome, and constraints; keep output structure in its schema or canonical contract.
 - If a skill is enabled but irrelevant to the step, remove it from that step to reduce prompt noise.

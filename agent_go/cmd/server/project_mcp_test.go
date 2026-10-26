@@ -118,7 +118,7 @@ func TestProjectMCPCatalogExcludesGlobalAndBuilderTools(t *testing.T) {
 				}
 				listed[tool.Name] = tool
 			}
-			for _, name := range []string{"chat", "settings", "get_settings", "manage_project", "users", "account", "costs", "messages", "code", "code_review", "builder", "plan", "vault", "brain_admin", "bullpen_admin", "brain_read", "brain_update", "server_product", "write_file", "write_crew_file"} {
+			for _, name := range []string{"chat", "settings", "models", "get_settings", "manage_project", "users", "account", "costs", "messages", "code", "code_review", "builder", "plan", "vault", "brain_admin", "bullpen_admin", "brain_read", "brain_update", "server_product", "write_file", "write_crew_file"} {
 				if _, exists := listed[name]; exists {
 					t.Fatalf("%s/%s exposes %s", kind, mode, name)
 				}

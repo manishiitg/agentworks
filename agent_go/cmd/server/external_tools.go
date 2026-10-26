@@ -643,7 +643,8 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.chatPreferences(w, r, update)
 		return
 	}
-	if tool.Name == "costs" {
+	if tool.Name == "get_cost_breakdown" || tool.Name == "get_cost_detail" {
+		call.Arguments["action"] = strings.TrimPrefix(tool.Name, "get_cost_")
 		api.externalCostsCall(w, r, call.Arguments)
 		return
 	}
@@ -728,6 +729,11 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		}
 		label, _ := summary["name"].(string)
 		api.externalMessagingCall(w, r, call.Arguments, externalMessagingTarget{kind: "crew", id: crewID, label: label, path: crew.Binding.WorkspacePath, profile: "work"})
+		return
+	}
+	if action := tabModelMemberAction(tool.Name); action != "" {
+		call.Arguments["action"] = action
+		api.externalCrewChatsCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "manage_crew_chats" {

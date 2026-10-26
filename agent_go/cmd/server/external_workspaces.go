@@ -12,7 +12,7 @@ import (
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. message_chat sends an attributed agent message to another owner’s tab. ask can message a selected shared agent in its existing conversation; chat controls use your own tabs; update/export/import use existing Builder authority. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "costs", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "set_chat_model", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "message_chat", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
 		"workspace_id": externalString("Crew workspace ID from workspace action=list."),
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
 		"query_id":     externalString("Exact Ask turn returned by ask/read_chat. Keep it when polling or answering a pending question."),
@@ -28,16 +28,10 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"inbox_id":         externalString("For message_chat: existing agent reply address, when continuing a conversation."),
 		"query":            externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
 		"wait_seconds": externalInteger(0, 25), "after": externalInteger(0, 1<<30),
-		"before_seq":       externalInteger(1, 1<<30),
-		"days":             externalInteger(1, 90),
-		"before":           externalString("For costs: page before this UTC day (YYYY-MM-DD)."),
-		"engine":           externalString("For set_chat_model: a provider from this Crew. Omit to use the Crew model."),
-		"model_id":         externalString("For set_chat_model: the model for that provider."),
-		"connection_id":    externalString("For a chat model: your personal or available company account ID from provider_connections in the chats list. Only this chat uses it; empty engine restores the Crew default."),
-		"reasoning_effort": externalString("For set_chat_model: optional reasoning level."),
-		"tool_name":        externalString("For chat_tool: exact native name from chat_tools."),
-		"arguments":        map[string]any{"type": "object"},
-		"changes":          map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, purpose, mode (dev/cowork), llm_config, selected_skills, templates, files, functions and schedules."},
+		"before_seq": externalInteger(1, 1<<30),
+		"tool_name":  externalString("For chat_tool: exact native name from chat_tools."),
+		"arguments":  map[string]any{"type": "object"},
+		"changes":    map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, purpose, mode (dev/cowork), llm_config, selected_skills, templates, files, functions and schedules."},
 	}, "action")
 }
 
@@ -214,8 +208,8 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	member := map[string]string{"costs": "get_crew_costs", "ask": "ask_crew", "update": "update_crew", "export": "export_crew", "import": "import_crew"}[action]
-	if chatAction := map[string]string{"chats": "list", "read_chat": "read", "open_chat": "side_open", "rename_chat": "side_rename", "close_chat": "side_close", "new_chat": "new", "delete_chat": "delete", "stop": "stop", "message_chat": "message", "set_chat_model": "set_model", "chat_tools": "tools", "chat_tool": "tool"}[action]; chatAction != "" {
+	member := map[string]string{"ask": "ask_crew", "update": "update_crew", "export": "export_crew", "import": "import_crew"}[action]
+	if chatAction := map[string]string{"chats": "list", "read_chat": "read", "open_chat": "side_open", "rename_chat": "side_rename", "close_chat": "side_close", "new_chat": "new", "delete_chat": "delete", "stop": "stop", "message_chat": "message", "chat_tools": "tools", "chat_tool": "tool"}[action]; chatAction != "" {
 		memberArgs["action"] = chatAction
 		member = "manage_crew_chats"
 	}

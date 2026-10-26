@@ -55,10 +55,10 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	const value = "sk-settings-test-value-0042"
 
-	if w := f.call(t, "reader", "update_settings", map[string]any{"workflow_id": "invoices", "backup": map[string]any{"after_runs": true}}); w.Code != 403 {
+	if w := f.call(t, "reader", "settings", map[string]any{"action": "update", "workflow_id": "invoices", "backup": map[string]any{"after_runs": true}}); w.Code != 403 {
 		t.Fatalf("reader changed settings: %d %s", w.Code, w.Body)
 	}
-	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "browser_mode": "headless", "backup": map[string]any{"after_runs": true}, "publish": map[string]any{"after_runs": false},
+	w := f.call(t, "owner", "settings", map[string]any{"action": "update", "workflow_id": "invoices", "browser_mode": "headless", "backup": map[string]any{"after_runs": true}, "publish": map[string]any{"after_runs": false},
 		"secrets": map[string]any{"set": map[string]any{"API_KEY": value}}, "chat_instructions": "  Explain the source of each number.  "})
 	if w.Code != 200 || strings.Contains(w.Body.String(), value) {
 		t.Fatalf("owner update: %d %s", w.Code, w.Body)
@@ -66,7 +66,7 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 	if !strings.Contains(w.Body.String(), `"after_runs":true`) || !strings.Contains(w.Body.String(), "Set up a backup destination") {
 		t.Fatal("settings reply omitted the saved selection or its next step")
 	}
-	w = f.call(t, "owner", "get_settings", map[string]any{"workflow_id": "invoices"})
+	w = f.call(t, "owner", "settings", map[string]any{"action": "get", "workflow_id": "invoices"})
 	body := w.Body.String()
 	if w.Code != 200 || strings.Contains(body, value) || !strings.Contains(body, `{"name":"API_KEY","selected":true}`) || !strings.Contains(body, `"browser_mode":"headless"`) {
 		t.Fatalf("settings after update: %d %s", w.Code, body)
@@ -86,13 +86,13 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 	if before == "" {
 		t.Fatal("retained chats must include saved guidance in their fingerprint")
 	}
-	if w := f.call(t, "reader", "update_settings", map[string]any{"workflow_id": "invoices", "chat_instructions": "Change your rules"}); w.Code != 403 {
+	if w := f.call(t, "reader", "settings", map[string]any{"action": "update", "workflow_id": "invoices", "chat_instructions": "Change your rules"}); w.Code != 403 {
 		t.Fatalf("shared person changed guidance: %d", w.Code)
 	}
-	if w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "chat_instructions": strings.Repeat("a", 4001)}); w.Code != 400 {
+	if w := f.call(t, "owner", "settings", map[string]any{"action": "update", "workflow_id": "invoices", "chat_instructions": strings.Repeat("a", 4001)}); w.Code != 400 {
 		t.Fatalf("oversize guidance: %d", w.Code)
 	}
-	if w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "chat_instructions": ""}); w.Code != 200 {
+	if w := f.call(t, "owner", "settings", map[string]any{"action": "update", "workflow_id": "invoices", "chat_instructions": ""}); w.Code != 200 {
 		t.Fatalf("clear: %d %s", w.Code, w.Body)
 	}
 	if after := projectChatInstructionsKey("Workflow/invoices"); after == before || after != "" {

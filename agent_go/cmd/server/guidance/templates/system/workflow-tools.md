@@ -48,8 +48,8 @@ HTTP URL.
 
 ## Shared knowledge bases (Workshop configuration)
 
-Use `get_workflow_config` to inspect attached KBs and discover eligible source
-workflow IDs. `update_workflow_config(knowledgebase_sources=[{"workflow_id":"<id>",
+Use `settings action=get` to inspect attached KBs and discover eligible source
+workflow IDs. `settings(action="update", knowledgebase_sources=[{"workflow_id":"<id>",
 "alias":"reference_data","access":"read"}])` replaces the entire attachment list: preserve
 existing entries when adding a source; pass `[]` to detach all. Up to 20 sources
 are supported on the same host. Aliases must start with a lowercase letter and
@@ -81,11 +81,11 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 - **AgentWorks** — One continuing conversation checks the goal and evidence, then works with Builder on useful improvements. Use the current goal tools and existing permissions. There are no separate Gate, reviewer or fixer agents. OFF starts no AgentWorks work.
 - **Objective + success criteria** — Edit `soul/soul.md` directly via shell (fill in the `## Objective` and `## Success Criteria` sections). `soul.md` is stable intent, not architecture: never add step design, provider/tool choices, implementation decisions, inferred assumptions, or a decision log. Optional constraints belong there only when the user explicitly approved them as durable boundaries. `plan.json` owns the current implementation attempt. No dedicated tool — use `diff_patch_workspace_file` or a shell heredoc.
 - **Notification preferences** — AgentWorks handles progress reporting. Save configured team run messages with `run_notification_instructions`, `run_notification_channels` and `run_notification_recipients`; no recipients means no summary email. `break_alerts` controls “Tell me when something breaks” in Needs you. Questions requiring an answer remain visible. Notification preferences belong in workflow settings, not `soul/soul.md`.
-- **Notification Gmail sender** — `get_workflow_config` shows the selected sender and available enabled Gmail connection IDs. Set the one workflow Notify sender with `update_workflow_config(notification_gmail_connection_id="<id>")`, or pass `""` to inherit the account default. This controls the FROM account for `record_summary` and `send_email`; run and AgentWorks recipient lists remain separate, and ordinary workflow Gmail actions can choose their own sender.
+- **Notification Gmail sender** — `settings action=get` shows the selected sender and available enabled Gmail connection IDs. Set the one workflow Notify sender with `settings(action="update", notifications={"gmail_connection_id":"<id>"})`, or pass `""` to inherit the account default. This controls the FROM account for `record_summary` and `send_email`; run and AgentWorks recipient lists remain separate, and ordinary workflow Gmail actions can choose their own sender.
 - **Goal proposals and experiments** — come from the workflow's AgentWorks agent: it messages you (the Builder chat) with the change it wants and the evidence, and anything that needs the owner appears under Needs you with AgentWorks's recommendation. Make the change within the current AgentWorks permissions its message runs under, then tell AgentWorks what you did.
 - **`review_workflow_timing(iteration?, group_name?, focus?)`** — Read-only latency review: finds the slowest groups/steps/tools/LLM calls and recommends faster descriptions, fewer handoffs, safer step merges, or plan changes.
 - **`review_workflow_costs(iteration?, group_name?, focus?)`** — Read-only cost review: finds the biggest cost drivers and recommends cheaper models, fewer retries/handoffs, better descriptions, or plan changes without sacrificing success criteria.
-- **`get_cost_summary(run_folder?)`** — Token usage and cost breakdown.
+- **`costs(action="summary", run_folder?)`** — Token usage and cost breakdown.
 
 {{end}}
 
@@ -93,8 +93,8 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 
 - **`preview_step_runtime(step_id, item_id?, include_prompt?)`** — Read-only preview of current assembled step instructions, skill identities/reference paths, workspace tools and access scope before execution. Secret values are masked; unresolved live/provider context is labelled.
 - **`get_step_prompts(step_id, attempt?, iteration?)`** — System prompt and user message for a step.
-- **`get_workflow_config`** — Inspect the workflow's current MCP servers, selected skills, available secrets, notification content instructions and one-way destinations, LLM config, and schedules. Use this instead of `cat workflow.json` when you need the full workflow config. For the global installed skill catalog, use `list_skills`.
-- **`get_llm_config`** — Per-step LLM overrides.
+- **`settings action=get`** — Inspect the workflow's current MCP servers, selected skills, available secrets, notification content instructions and configured team delivery, LLM config, and schedules. Use this instead of `cat workflow.json` when you need the full workflow config. For the global installed skill catalog, use `list_skills`.
+- **`models action=get`** — Per-step LLM overrides.
 - **`get_workflow_command_guidance(kind="review-artifact-drift", focus?)`** *(Workshop only)* — Full artifact drift audit for scheduled AgentWorks or an explicit user request, including the plan-drift repair procedure and a read-only dependency checklist. Ordinary edits and targeted tests use `builder-reference/references/plan-change-impact.md` for one combined compatibility check in the current agent.
 
 {{if ne .WorkshopMode "run"}}
@@ -117,19 +117,19 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 - **`manage_group` / `manage_group` / `manage_group`** — Manage variable groups.
 - **MCP servers workflow**: before this — if the user is asking to connect a *new* service rather than one already configured, honor an explicit MCP request; otherwise consider CLI/skill/MCP in that order. See the `integration-discovery` reference.
   0. Not sure whether an MCP server exists for a service at all? `search_mcp_catalog(query)` checks our own catalog, GitHub's MCP Registry and the official MCP Registry. Public listings are discovery metadata; verify and prefer the provider's own documented endpoint. Do not use hosted Smithery replacements.
-  1. `get_workflow_config` to inspect which servers are currently selected.
-  2. `update_workflow_config(add_servers=["server-name"])` selects an **already-registered** server into the workflow. This is tier 2 of a two-tier model — registering a server (tier 1, below) only makes it available account-wide; it still does nothing for any workflow until this call. **Do NOT edit `workflow.json` manually.**
+  1. `settings action=get` to inspect which servers are currently selected.
+  2. `settings(action="update", mcp_servers={"add":["server-name"]})` selects an **already-registered** server into the workflow. This is tier 2 of a two-tier model — registering a server (tier 1, below) only makes it available account-wide; it still does nothing for any workflow until this call. **Do NOT edit `workflow.json` manually.**
      - To **register a new server first**: use `install_mcp_server` with the exact catalog name, or a verified public remote `url`. Complete setup in chat. Supply the user-provided `api_key` (with documented `api_key_header`/`api_key_format` when needed), or `client_id` and `client_secret` if a provider without dynamic registration needs an OAuth app. The server encrypts credentials; never repeat them or write them to project files. Guide the provider app setup with the exact returned callback URL, then retry the existing exact connection `name` without label or catalog. Return only the actual sign-in link for the person to approve at the provider; never ask for their password or send them to AgentWorks settings to finish. After consent, verify discovery and select the connection as part of the original request. A missing callback address is a server configuration problem, not a missing menu. Use only the arguments and remote transports the current tool schema advertises; no arbitrary process configuration.
-     - `edit_mcp_server` / `remove_mcp_server` manage an already user-defined server (base/catalog servers can't be touched from chat). **`remove_mcp_server` deletes the server account-wide, not just from one workflow** — it does not detach it from any workflow's `selected_servers`, so a workflow that had it attached keeps a dangling reference; the tool itself now checks and warns you which workflows are affected so you can tell the user and offer `update_workflow_config(remove_servers=[...])` for each one.
-  3. Optional workflow-level allowlist: `update_workflow_config(add_tools=["server:*"])` or `add_tools=["server:tool_name"]`. Tool entries must reference selected workflow servers.
+     - `edit_mcp_server` / `remove_mcp_server` manage an already user-defined server (base/catalog servers can't be touched from chat). **`remove_mcp_server` deletes the server account-wide, not just from one workflow** — it does not detach it from any workflow's `selected_servers`, so a workflow that had it attached keeps a dangling reference; the tool itself now checks and warns you which workflows are affected so you can tell the user and offer `settings action=update` with `mcp_servers.remove` for each one.
+  3. Optional workflow-level allowlist: `settings(action="update", tools={"add":["server:*"]})` or `tools={"add":["server:tool_name"]}`. Tool entries must reference selected workflow servers.
   4. `update_step_config(step_id, servers=["server-name"], tools=["server:tool_name"])` to scope specific servers/tools to a step.
   5. `list_mcp_servers` shows what's actually installed/authorized vs. merely present in the catalog but never connected — use this, not `search_mcp_catalog`, to check the status of something already configured. `get_mcp_server_logs` shows recent connection/discovery logs for one server, or lists which servers have logs — use it when a server isn't showing the tools you expect. `trigger_mcp_discovery` manually re-scans every configured server's tools in the background, for when metadata looks stale but nothing about the config itself changed.
 - **Browser workflow**:
   0. Call `agent_browser(command="status", ...)` when browser capability is available. If it returns `cdp_supported=false`, CDP is disabled for this deployment: do not configure `cdp`, probe ports, or offer CDP setup. Use `auto` (managed headless here), `headless`, or `none`.
-  1. Pick the workflow mode with `update_workflow_config(browser_mode="none"|"auto"|"headless"|"cdp")`. Prefer `auto` unless the workflow must require an authenticated visible Chrome (`cdp`) or must stay isolated in the background (`headless`).
+  1. Pick the workflow mode with `settings action=update` with `browser_mode`. Prefer `auto` unless the workflow must require an authenticated visible Chrome (`cdp`) or must stay isolated in the background (`headless`).
   2. For `agent_browser` steps, enable `workspace_browser:agent_browser` via `update_step_config(enabled_custom_tools=[...])` and attach the matching runtime skill with `enabled_skills=["agent-browser"]`.
   3. For browser steps, attach `enabled_skills=["agent-browser"]`; the runtime provides the managed `agent_browser` tool.
-- **`update_workflow_config(add_servers?, remove_servers?, add_tools?, remove_tools?, add_skills?, remove_skills?, run_notification_instructions?, break_alerts?, notification_gmail_connection_id?, browser_mode?)`** — Update workflow MCP servers, workflow-level MCP tool allowlist, skills, secrets, scoped notification preferences and Gmail sender, or browser mode. The server retains ten completed runs independently for Builder, schedules and webhooks.
+- **`settings action=update`** — Change offered MCP, tool and skill selections, secret names, knowledge links and grants, browser mode or notification choices. Use nested `mcp_servers`, `tools`, `skills`, `secrets` and `notifications` objects from the live schema. Models use `models action=set`. The server retains ten completed runs independently for Builder, schedules and webhooks.
 
   ```
   { "id": "...", "name": "...", "description": "...",
@@ -174,7 +174,7 @@ Workflow schedules always use the workshop builder execution path. Do not create
 
 **Default mode rule:** create workflow schedules with `mode="workshop"`. New schedules should never use `mode="workflow"`.
 
-**After every run:** Backup and Publish are Goal settings, `backup.after_runs` and `publish.after_runs`, off for a new Goal. Change them with `update_workflow_config` (or MCP `update_settings`), passing `backup: {after_runs: true}` or `publish: {after_runs: true}`. Each applies after every full run, including runs started in chat. Only configured destinations are used and unchanged files are skipped; creating a schedule does not enable either action. Run outcomes are recorded in Activity independently. Configured team messages remain; there is no automatic owner email or daily digest. “Tell me when something breaks” (`break_alerts`) controls informational failures in Needs you. AgentWorks handles progress reports through ordinary Crew chats and schedules. Existing execution validation and access checks still apply.
+**After every run:** Backup and Publish are Goal settings, `backup.after_runs` and `publish.after_runs`, off for a new Goal. Change them with `settings action=update` (or MCP `settings action=update`), passing `backup: {after_runs: true}` or `publish: {after_runs: true}`. Each applies after every full run, including runs started in chat. Only configured destinations are used and unchanged files are skipped; creating a schedule does not enable either action. Run outcomes are recorded in Activity independently. Configured team messages remain; there is no automatic owner email or daily digest. “Tell me when something breaks” (`break_alerts`) controls informational failures in Needs you. AgentWorks handles progress reports through ordinary Crew chats and schedules. Existing execution validation and access checks still apply.
 
 ### Back up scheduled workflows
 
@@ -236,12 +236,12 @@ Skills are reusable instruction sets injected into step agents at runtime. They 
 
 1. **Find**: `list_skills` to see installed skills, or `search_skills(query)` to search the public registry.
 2. **Install**: `install_skill(source)` (e.g. `owner/repo@skill-name`) or `import_skill(github_url)` — downloads into `{{"{{"}}.AbsDocsRoot{{"}}"}}/skills/{folder}/`. If a skill folder exists but has no `SKILL.md`, reinstall it using the same method it was originally installed with — **never write `SKILL.md` content manually**.
-3. **Select for workflow/builder context**: `update_workflow_config(add_skills=["folder-name"])` — makes the skill visible as a selected workflow capability for workshop/builder discovery. **Do NOT edit `workflow.json` manually.**
+3. **Select for workflow/builder context**: `settings(action="update", skills={"add":["folder-name"]})` — makes the skill visible as a selected workflow capability for workshop/builder discovery. **Do NOT edit `workflow.json` manually.**
 4. **Enable for runtime steps**: `update_step_config(step_id, enabled_skills=["skill-a"])`. Step execution only receives the skills listed in that step's `enabled_skills`; workflow-selected skills do not cascade into runtime agents.
-5. **Remove from workflow**: `update_workflow_config(remove_skills=["folder-name"])`.
+5. **Remove from workflow**: `settings(action="update", skills={"remove":["folder-name"]})`.
 6. **Uninstall**: `uninstall_skill(folder_name)` — removes files from workspace entirely.
 
-Use `get_workflow_config` to see the workflow's selected skills. Use `list_skills` to see all installed skills.
+Use `settings action=get` to see the workflow's selected skills. Use `list_skills` to see all installed skills.
 
 ## Secrets
 
@@ -252,7 +252,7 @@ Secrets are credentials (API keys, tokens, passwords) injected into step agents 
 
 **Storing a new secret is one step.** `set_workflow_secret(name="BUFFER_API_KEY", value="<plaintext>")` stores, attaches, and injects the value into the active builder shell and future workflow steps.
 
-**Attaching an already-stored secret is a separate operation.** Call `list_secrets`, then `update_workflow_config(add_secrets=["BUFFER_API_KEY"])`. The builder can use it immediately as `$SECRET_BUFFER_API_KEY`; no restart or new chat is required. If the requested name does not exist, ask for the value and store it. Never claim that a stored secret is unusable merely because its plaintext cannot be returned—the builder should consume it through the injected environment without displaying it.
+**Attaching an already-stored secret is a separate operation.** Call `list_secrets`, then `settings(action="update", secrets={"select":["BUFFER_API_KEY"]})`. The builder can use it immediately as `$SECRET_BUFFER_API_KEY`; no restart or new chat is required. If the requested name does not exist, ask for the value and store it. Never claim that a stored secret is unusable merely because its plaintext cannot be returned—the builder should consume it through the injected environment without displaying it.
 
 Do **not** give boilerplate advice like `"rotate this secret"` after a normal user-requested save. Recommend rotation only when there is a concrete exposure reason: the value was printed into logs/output, committed to a file, sent to the wrong channel, or the user explicitly asks for security remediation.
 
@@ -262,8 +262,8 @@ Do **not** give boilerplate advice like `"rotate this secret"` after a normal us
 
 - **Inspect**: `list_secrets` returns `global` and `workflow` buckets — values are never exposed.
 - **Edit a value**: call `set_workflow_secret` again with the same name — it upserts.
-- **Delete from store**: `delete_workflow_secret(name)`. Workflow attachments are separate — also run `update_workflow_config(remove_secrets=["NAME"])` to detach.
-- **Detach only (keep value)**: `update_workflow_config(remove_secrets=["NAME"])`.
+- **Delete from store**: `delete_workflow_secret(name)`. Workflow attachments are separate — also run `settings(action="update", secrets={"unselect":["NAME"]})` to detach.
+- **Detach only (keep value)**: `settings(action="update", secrets={"unselect":["NAME"]})`.
 
 Secret VALUES are never rendered into prompts, logs, or tool outputs. Builder and step agents consume them only through `$SECRET_<NAME>` in `execute_shell_command`. Never echo, print, or hardcode a secret value in descriptions, learnings, or `main.py`.
 

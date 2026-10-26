@@ -133,6 +133,45 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 					t.Fatalf("%s accepted another caller", name)
 				}
 			}
+			projected := &recordingRegistrar{tools: map[string]recordedTool{}}
+			for name, tool := range panels.tools {
+				projected.tools[name] = tool
+			}
+			for name, tool := range reg.tools {
+				projected.tools[name] = tool
+			}
+			projectRecordedCatalog(t, projected)
+			for _, family := range []string{"settings", "models", "costs"} {
+				tool, exists := projected.tools[family]
+				if !exists {
+					t.Fatalf("missing projected %s", family)
+				}
+				props := tool.params["properties"].(map[string]any)
+				for _, key := range []string{"workspace_id", "crew_id", "workflow_id", "chat_id", "conversation_key"} {
+					if props[key] != nil {
+						t.Fatalf("projected %s exposes %s", family, key)
+					}
+				}
+			}
+			if _, err := projected.tools["models"].exec(ctx, map[string]any{"action": "set", "scope": "tab", "engine": ""}); err != nil {
+				t.Fatalf("projected own-tab model reset: %v", err)
+			}
+			if _, err := projected.tools["models"].exec(ctx, map[string]any{"action": "set", "scope": "project", "models": map[string]any{"schema_version": 2, "mode": "provider_profile", "provider": "codex-cli"}}); err != nil {
+				t.Fatalf("projected project model: %v", err)
+			}
+			if person == "owner" {
+				partial := &recordingRegistrar{tools: map[string]recordedTool{}}
+				for name, tool := range reg.tools {
+					partial.tools[name] = tool
+				}
+				projectRecordedCatalog(t, partial, platformtools.Selection{Tools: []string{"models.list"}, FilterCustom: true})
+				if _, err := partial.tools["models"].exec(ctx, map[string]any{"action": "list", "scope": "tab"}); err != nil {
+					t.Fatalf("selected model list refused: %v", err)
+				}
+				if _, err := partial.tools["models"].exec(ctx, map[string]any{"action": "set", "scope": "tab", "engine": ""}); err == nil {
+					t.Fatal("model list selection granted model writes")
+				}
+			}
 			// Forged selectors are ignored even if the transport skips schema checks.
 			out, err := reg.tools["browser_connections"].exec(ctx, map[string]any{"action": "list", "crew_id": "another", "workspace": "Crew/another"})
 			if err != nil || !strings.Contains(out, "https://example.com/?browser_connections=1") {
@@ -140,7 +179,7 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 			}
 			// The live native bridge validates this schema before the callback. An
 			// empty engine is the existing reset operation and must survive admission.
-			encodedSchema, err := json.Marshal(reg.tools["manage_crew_model"].params)
+			encodedSchema, err := json.Marshal(projected.tools["models"].params)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -156,7 +195,7 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := schema.Validate(map[string]any{"action": "set", "engine": ""}); err != nil {
+			if err := schema.Validate(map[string]any{"action": "set", "scope": "tab", "engine": ""}); err != nil {
 				t.Fatalf("native schema rejects the documented model reset: %v", err)
 			}
 			if _, err := reg.tools["manage_crew_model"].exec(ctx, map[string]any{"action": "set", "engine": "", "conversation_key": side.ConversationKey, "chat_id": "other"}); err != nil {

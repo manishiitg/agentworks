@@ -25,12 +25,12 @@ absence as a configuration issue.
 Saved configurations are reusable shortcuts for exact provider/model/options combinations. They are not required before a provider or model can be selected.
 
 **Tools:**
-- `list_provider_models` — authoritative models and supported options exposed by a provider. Use this before choosing a direct model.
-- `list_published_llms` — optional saved model configurations that may be reused as shortcuts.
-- `test_llm` — smoke-test a provider/model before committing to it.
-- `set_workflow_llm_config(mode="provider_profile", provider="...")` — follow the provider's current role defaults.
-- `set_workflow_llm_config(mode="explicit", builder_llm=..., background_llm=..., tier_1=..., tier_2=..., tier_3=...)` — pin the complete advanced role configuration. Do NOT edit `workflow.json` by hand.
-- `get_llm_config` / `get_workflow_config` — inspect the current workflow roles and per-step overrides.
+- `models action=catalog` — authoritative models and supported options exposed by a provider. Use this before choosing a direct model.
+- `models action=list scope=project` — optional saved model configurations that may be reused as shortcuts.
+- `models action=test` — smoke-test a provider/model before committing to it.
+- `models(action="set", scope="project", models={schema_version:2, mode:"provider_profile", provider:"..."})` — follow the provider's current role defaults.
+- `models action=set scope=project` with the complete explicit `models` object (`builder_llm`, `background_llm`, `tiered_config`) — pin the complete advanced role configuration. Do NOT edit `workflow.json` by hand.
+- `models action=get` / `settings action=get` — inspect the current workflow roles and per-step overrides.
 
 ### Per-step overrides (use sparingly)
 
@@ -61,7 +61,7 @@ Set via `update_step_config(step_id, ...)`:
   default moving from an older model to a newer model is expected and does not
   require rewriting the workflow.
 - Exact pins do not move automatically. Audit explicit workflow roles and
-  planning/evaluation step overrides with `list_provider_models(provider=...)`.
+  planning/evaluation step overrides with `models action=catalog`.
   Its catalog and `default_tier_models` are authoritative for availability and
   the provider's current role/tier recommendations.
 - Classify each pin as unavailable/deprecated, supported but different from the
@@ -80,13 +80,13 @@ Set via `update_step_config(step_id, ...)`:
 1. **Start with a provider profile, not pins.** Let the coding-agent provider supply sensible role defaults. Use explicit mode only when the workflow needs a deliberate cross-provider or model-specific allocation.
 2. **Don't force a cheaper tier before reliability and goal quality are proven.** When a material workflow goal is below target, keep the current model/reasoning tier for outcome-bearing, planning, judgment, diagnostic, recovery, eval, and verification steps. Drop a step to `medium`/`low` only after representative eval/run evidence is at target and proves equivalent output and downstream outcomes. A strictly mechanical deterministic non-bottleneck step may be trialed cheaper only with that evidence, explicit approval, and rollback. Missing evidence means do not downgrade.
 3. **Use `execution_tier` for "usually cheaper/faster", `execution_llm` for "must be this exact model".** Don't hardcode a model when a tier expresses the intent.
-4. **Trial before committing.** Use `execute_step(..., tier="...")` or `test_llm` to validate a model on a real run before making it persistent.
+4. **Trial before committing.** Use `execute_step(..., tier="...")` or `models action=test` to validate a model on a real run before making it persistent.
 5. **Match tier to the work.** Subjective/ambiguous judgment → high; routine checks → medium; deterministic/file-shape → low.
 
 ### Cost awareness
 
 - `review_workflow_costs(iteration?, group_name?, focus?)` — read-only cost analysis with safe-reduction recommendations (which steps could drop a tier).
-- `get_cost_summary` — current spend snapshot.
+- `costs action=summary` — current spend snapshot.
 
 ### Installing / authorizing providers
 

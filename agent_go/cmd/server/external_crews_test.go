@@ -303,12 +303,18 @@ func TestExternalCrewCostsAreOwnerOnly(t *testing.T) {
 	}
 
 	owner := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
-	code, out := externalCrewRequest(t, env, owner, "get_crew_costs", map[string]any{"crew_id": "alpha"})
+	// PLAT-825: use the public grouped transport, including the existing
+	// no-ID aggregate. A native-only first member must not hide MCP's member.
+	call := func(claims *UserClaims, args map[string]any) (int, map[string]any) {
+		args["action"] = "summary"
+		return workspaceOwnerTabRequest(t, env, claims, "costs", args)
+	}
+	code, out := call(owner, map[string]any{"crew_id": "alpha"})
 	total, _ := out["total"].(map[string]any)
 	if code != 200 || total["total_cost_usd"] != 1.5 || out["by_model"] == nil || out["window"] == nil {
 		t.Fatalf("owner's own Crew = %d %v", code, out)
 	}
-	code, out = externalCrewRequest(t, env, owner, "get_crew_costs", map[string]any{})
+	code, out = call(owner, map[string]any{})
 	rows, _ := out["crews"].([]any)
 	if code != 200 || len(rows) == 0 || rows[0].(map[string]any)["crew_id"] != "alpha" || out["total_cost_usd"] != 1.5 {
 		t.Fatalf("one row per owned Crew, dearest first = %d %v", code, out)
@@ -318,11 +324,11 @@ func TestExternalCrewCostsAreOwnerOnly(t *testing.T) {
 			t.Fatalf("another person's Crew is in the owner's cost list: %v", out)
 		}
 	}
-	if code, _ := externalCrewRequest(t, env, owner, "get_crew_costs", map[string]any{"crew_id": "gamma"}); code != 403 {
+	if code, _ := call(owner, map[string]any{"crew_id": "gamma"}); code != 403 {
 		t.Fatalf("a Crew someone else owns must be refused, got %d", code)
 	}
 	bounded := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{"beta"}}}
-	if code, _ := externalCrewRequest(t, env, bounded, "get_crew_costs", map[string]any{"crew_id": "alpha"}); code != 404 {
+	if code, _ := call(bounded, map[string]any{"crew_id": "alpha"}); code != 404 {
 		t.Fatalf("a Crew outside the token's bound must be not-found, got %d", code)
 	}
 }

@@ -989,7 +989,7 @@ func (w *LLMAgentWrapper) FinalizeDefinition(ctx context.Context) error {
 	runtime.Tools.AdditionalBridge = bridge
 	admit := runtime.Coding.BridgeToolAdmit
 	runtime.Coding.BridgeToolAdmit = func(name string) bool {
-		if name == "dashboard" || name == "share" {
+		if platformtools.IsFamily(name) {
 			for _, tool := range projected {
 				if tool.Name == name {
 					return true

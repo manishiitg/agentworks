@@ -28,7 +28,7 @@ import (
 // anything. Secret values are write-only and owner-only; never returned.
 
 func isExternalSettingsTool(name string) bool {
-	return name == "get_settings" || name == "update_settings" || name == "get_secret_sources"
+	return name == "get_settings" || name == "update_settings" || name == "get_secret_sources" || name == "get_project_models" || name == "set_project_models"
 }
 
 func externalSettingsDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
@@ -62,13 +62,18 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"use_shared":  names,
 			"stop_shared": names,
 		}, "description": "set/remove store or delete secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
-		"browser_mode": map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
-		"backup":       map[string]any{"type": "object", "additionalProperties": false, "description": "Goals only: after_runs runs configured Backup after every full run; off by default. Does not create or enable a destination.", "properties": map[string]any{"after_runs": map[string]any{"type": "boolean"}}},
-		"publish":      map[string]any{"type": "object", "additionalProperties": false, "description": "Goals only: after_runs refreshes configured publishing after every full run; off by default. Does not create or enable a destination.", "properties": map[string]any{"after_runs": map[string]any{"type": "boolean"}}},
+		"knowledgebase_sources": map[string]any{"type": "array", "maxItems": 20, "description": "Replace linked workflow knowledge sources. Existing sharing and write grants still apply. Empty removes the links.", "items": map[string]any{"type": "object", "additionalProperties": false, "required": []any{"workflow_id", "alias", "access"}, "properties": map[string]any{"workflow_id": externalString("Source workflow ID."), "alias": externalString("Short name for this source."), "access": map[string]any{"type": "string", "enum": []any{"read", "write"}}}}},
+		"kb_write_grants":       names,
+		"browser_mode":          map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
+		"backup":                map[string]any{"type": "object", "additionalProperties": false, "description": "Goals only: after_runs runs configured Backup after every full run; off by default. Does not create or enable a destination.", "properties": map[string]any{"after_runs": map[string]any{"type": "boolean"}}},
+		"publish":               map[string]any{"type": "object", "additionalProperties": false, "description": "Goals only: after_runs refreshes configured publishing after every full run; off by default. Does not create or enable a destination.", "properties": map[string]any{"after_runs": map[string]any{"type": "boolean"}}},
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
-			"run_instructions": map[string]any{"type": "string", "maxLength": 4000},
-			"run_channels":     names,
-			"break_alerts":     map[string]any{"type": "boolean", "description": "Tell me when something breaks: show a run status in Needs you. On unless turned off. AgentWorks reports progress; configured team delivery is separate."},
+			"run_instructions":    map[string]any{"type": "string", "maxLength": 4000},
+			"run_channels":        names,
+			"run_recipients":      names,
+			"gmail_connection_id": map[string]any{"type": "string", "description": "An enabled Gmail account already added to this product. Empty clears the selection."},
+			"exclude_channels":    names,
+			"break_alerts":        map[string]any{"type": "boolean", "description": "Tell me when something breaks: show a run status in Needs you. On unless turned off. AgentWorks reports progress; configured team delivery is separate."},
 			"wake_tab": map[string]any{"type": "object", "additionalProperties": false, "description": "A Crew tab to message straight away when a run of this workflow fails, stops partway, or never actually ran. Pass the Crew id and the tab's chat id (from workspace action=chats); send both empty to clear.", "properties": map[string]any{
 				"crew_id": map[string]any{"type": "string"}, "chat_id": map[string]any{"type": "string"},
 			}},
@@ -439,6 +444,8 @@ func externalSettingsWorkflowSkillCheck(path string) func(context.Context, []str
 }
 
 func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, workflow DiscoveredWorkflow, access WorkflowAccessLevel) {
+	modelsOnly := modelSettingsMember(name) != name
+	name = modelSettingsMember(name)
 	ctx := r.Context()
 	claims := GetUserFromContext(ctx)
 	if t := claims.AccessToken; t != nil && !t.Allows("workflows:read") && !t.Allows("runs:execute") {
@@ -465,13 +472,14 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		Secrets: append([]string{}, caps.SelectedSecrets...), GlobalSecrets: caps.SelectedGlobalSecretNames, BrowserMode: caps.BrowserMode}
 	notifications := func(c WorkflowCapabilities) map[string]any {
 		if n := c.Notifications; n != nil {
-			return map[string]any{"run_instructions": n.RunSummaryInstructions, "run_channels": n.RunSummaryChannels, "break_alerts": n.BreakAlertsEnabled(), "wake_tab": n.WakeTab}
+			return map[string]any{"run_instructions": n.RunSummaryInstructions, "run_channels": n.RunSummaryChannels, "run_recipients": n.RunSummaryRecipients, "gmail_connection_id": n.GmailConnectionID, "exclude_channels": n.ExcludeChannels, "break_alerts": n.BreakAlertsEnabled(), "wake_tab": n.WakeTab}
 		}
 		return map[string]any{"break_alerts": true}
 	}
 
 	if name == "get_settings" {
 		view := api.externalSettingsView(ctx, claims.UserID, target, state, notifications(caps))
+		addWorkflowSettingsView(view, manifest)
 		if target.kind == "workflow" && (access == WorkflowAccessOwner || access == WorkflowAccessWrite) {
 			if vault, err := api.projectVaultInventory(ctx, claims.UserID, target.path); err == nil {
 				view["vault"] = vault
@@ -483,7 +491,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 				view[key] = json.RawMessage(body)
 			}
 		}
-		externalJSON(w, view)
+		externalSettingsReply(w, view, modelsOnly)
 		return
 	}
 	if expected := externalArg(args, "expected_version"); expected != "" && expected != state.version() {
@@ -498,6 +506,21 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	caps.LLMConfig, caps.SelectedServers, caps.SelectedTools, caps.SelectedSkills = state.LLMConfig, state.Servers, state.Tools, state.Skills
 	caps.SelectedSecrets, caps.SelectedGlobalSecretNames, caps.BrowserMode = state.Secrets, state.GlobalSecrets, state.BrowserMode
 	req := UpdateWorkflowManifestRequest{WorkspacePath: workflow.WorkspacePath, Capabilities: &caps}
+	if raw, present := args["knowledgebase_sources"]; present {
+		data, err := json.Marshal(raw)
+		var sources []workflowtypes.KnowledgebaseSource
+		if err != nil || json.Unmarshal(data, &sources) != nil || sources == nil {
+			externalError(w, 400, "invalid_settings", "Knowledge sources must be a list. Send [] to remove all links.")
+			return
+		}
+		req.KnowledgebaseSources = &sources
+		changed = append(changed, "knowledgebase_sources")
+	}
+	if _, present := args["kb_write_grants"]; present {
+		values := externalSettingsList(map[string]any{"grants": map[string]any{"values": args["kb_write_grants"]}}, "grants", "values")
+		req.KBWriteGrants = &values
+		changed = append(changed, "kb_write_grants")
+	}
 	if _, ok := args["chat_instructions"]; ok {
 		req.ChatInstructions = &state.ChatInstructions
 	}
@@ -508,6 +531,19 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		if _, ok := n["run_channels"]; ok {
 			v := externalSettingsList(args, "notifications", "run_channels")
 			req.RunNotificationChannels = &v
+		}
+		if _, present := n["run_recipients"]; present {
+			values := externalSettingsList(args, "notifications", "run_recipients")
+			req.RunNotificationRecipients = &values
+		}
+		if value, present := n["gmail_connection_id"].(string); present {
+			req.NotificationGmailConnectionID = &value
+		}
+		if _, present := n["exclude_channels"]; present {
+			if caps.Notifications == nil {
+				caps.Notifications = &WorkflowNotificationConfig{}
+			}
+			caps.Notifications.ExcludeChannels = normalizeNotificationChannels(externalSettingsList(args, "notifications", "exclude_channels"))
 		}
 		if v, ok := n["break_alerts"].(bool); ok {
 			req.BreakAlerts = &v
@@ -560,6 +596,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	view := api.externalSettingsView(ctx, claims.UserID, target, externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: caps.SelectedServers,
 		Tools: caps.SelectedTools, Skills: caps.SelectedSkills, Secrets: caps.SelectedSecrets, GlobalSecrets: caps.SelectedGlobalSecretNames,
 		BrowserMode: caps.BrowserMode}, notifications(caps))
+	addWorkflowSettingsView(view, manifest)
 	view["backup"] = map[string]any{"config": manifest.Backup}
 	view["publish"] = map[string]any{"config": manifest.Publish}
 	notes := []string{}
@@ -576,12 +613,14 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	if len(pending) > 0 {
 		view["pending_sign_in"] = pending
 	}
-	externalJSON(w, view)
+	externalSettingsReply(w, view, modelsOnly)
 }
 
 // externalCrewSettingsCall reads or changes a Crew's settings in its runtime
 // manifest, the file the Crew's Models and Integrations panels write.
 func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any) {
+	modelsOnly := modelSettingsMember(name) != name
+	name = modelSettingsMember(name)
 	ctx := r.Context()
 	claims := GetUserFromContext(ctx)
 	crewID := externalArg(args, "crew_id")
@@ -639,12 +678,18 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 				view["vault"] = vault
 			}
 		}
-		externalJSON(w, view)
+		externalSettingsReply(w, view, modelsOnly)
 		return
 	}
 	if !crew.OwnedByCaller {
 		externalError(w, 403, "forbidden", "Only the Crew's owner can change its settings.")
 		return
+	}
+	for _, key := range []string{"knowledgebase_sources", "kb_write_grants"} {
+		if _, present := args[key]; present {
+			externalError(w, 400, "invalid_settings", "Workflow knowledge links and grants apply to Goals and Flows. Use this Crew's existing Brain and folder tools.")
+			return
+		}
 	}
 	if _, ok := args["notifications"]; ok {
 		externalError(w, 400, "invalid_settings", "notifications apply to workflows and Flows only.")
@@ -712,5 +757,15 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 	if len(pending) > 0 {
 		view["pending_sign_in"] = pending
 	}
-	externalJSON(w, view)
+	externalSettingsReply(w, view, modelsOnly)
+}
+
+// These are existing workflow settings; they grant no access by being read.
+func addWorkflowSettingsView(view map[string]any, manifest *WorkflowManifest) {
+	view["knowledgebase_sources"] = manifest.KnowledgebaseSources
+	grants := []string{}
+	if manifest.Access != nil {
+		grants = nonNilStrings(manifest.Access.AllowedKBWriters)
+	}
+	view["kb_write_grants"] = grants
 }

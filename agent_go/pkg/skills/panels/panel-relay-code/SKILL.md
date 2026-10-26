@@ -4,8 +4,7 @@ description: Relay code and publishing panel. Edit, test, publish or inspect a R
 metadata:
   panel-tools:
     relays:
-    - get_workflow_config
-    - update_workflow_config
+    - settings
     - test_relay
     - get_relay_run
     - get_relay_releases

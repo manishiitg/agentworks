@@ -4235,7 +4235,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 
 	if err := mcpAgent.RegisterCustomTool(
 		"request_workflow_folder_access",
-		"Create a pending attached-folder request in the Workflow toolbar. This never grants access. If the user explicitly supplied an exact absolute host folder path, preserve it in path so the user can approve or deny that exact request; never infer a path. Without a supplied path, the user chooses one with the native picker. Use get_workflow_config afterward to confirm the approved grant.",
+		"Create a pending attached-folder request in the Workflow toolbar. This never grants access. If the user explicitly supplied an exact absolute host folder path, preserve it in path so the user can approve or deny that exact request; never infer a path. Without a supplied path, the user chooses one with the native picker. Use settings action=get afterward to confirm the approved grant.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -4289,9 +4289,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 			if requestedPath != "" {
-				return fmt.Sprintf("Pending folder request %q for %q is now visible in Workflow toolbar → Attached folders. No access has been granted yet. The user can approve or deny the displayed %s permission. After approval, call get_workflow_config to confirm the grant.", alias, requestedPath, access), nil
+				return fmt.Sprintf("Pending folder request %q for %q is now visible in Workflow toolbar → Attached folders. No access has been granted yet. The user can approve or deny the displayed %s permission. After approval, call settings action=get to confirm the grant.", alias, requestedPath, access), nil
 			}
-			return fmt.Sprintf("Pending folder request %q is now visible in Workflow toolbar → Attached folders. No access has been granted yet. The user must choose the folder and approve %s access. After approval, call get_workflow_config to confirm the grant.", alias, access), nil
+			return fmt.Sprintf("Pending folder request %q is now visible in Workflow toolbar → Attached folders. No access has been granted yet. The user must choose the folder and approve %s access. After approval, call settings action=get to confirm the grant.", alias, access), nil
 		},
 		"workflow",
 	); err != nil {
@@ -4310,7 +4310,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip update_workflow_config registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"update_workflow_config",
-		"Update workflow configuration: add/remove MCP servers, workflow-level tool allowlist entries, skills and secrets; save workflow-scoped notification content instructions and one Gmail notification sender; set browser mode; inspect configured delivery. Use get_workflow_config to inspect current workflow settings and list_skills to discover installed skill folder names. Most changes take effect immediately for subsequent steps; browser changes take effect on the next workflow execution.",
+		"Update workflow configuration: add/remove MCP servers, workflow-level tool allowlist entries, skills and secrets; save workflow-scoped notification content instructions and one Gmail notification sender; set browser mode; inspect configured delivery. Use settings action=get to inspect current workflow settings and list_skills to discover installed skill folder names. Most changes take effect immediately for subsequent steps; browser changes take effect on the next workflow execution.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -4522,7 +4522,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return fmt.Sprintf("Error: selected tool entries must use 'server:tool_name' or 'server:*'. Invalid entries: %v.", invalidTools), nil
 				}
 				if len(missingServers) > 0 {
-					return fmt.Sprintf("Error: selected tool entries reference server(s) not selected at workflow level: %v. Add the server first with update_workflow_config(add_servers=[...]).", uniqueStringsPreserveOrder(missingServers)), nil
+					return fmt.Sprintf("Error: selected tool entries reference server(s) not selected at workflow level: %v. Add the server first with settings action=update and mcp_servers.add.", uniqueStringsPreserveOrder(missingServers)), nil
 				}
 
 				tools := iwm.controller.GetSelectedTools()
@@ -4667,7 +4667,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 								"Attaching them would set $SECRET_<NAME> to an empty string at runtime and silently break any step that reads them.\n\n"+
 								"Fix:\n"+
 								"  1. Store the value first: set_workflow_secret(name=\"%s\", value=\"<plaintext>\") for this workflow.\n"+
-								"  2. Then re-run update_workflow_config(add_secrets=[...]).",
+								"  2. Then use settings action=update with secrets.select.",
 							missing, missing[0],
 						), nil
 					}
@@ -6417,7 +6417,7 @@ func registerWorkshopLLMTools(iwm *InteractiveWorkshopManager, mcpAgent Definiti
 			case workflowtypes.LLMConfigModeProviderProfile:
 				provider := strings.TrimSpace(fmt.Sprintf("%v", args["provider"]))
 				if provider == "" || provider == "<nil>" {
-					return "provider is required in provider_profile mode. Use list_provider_models to inspect available coding-agent providers.", nil
+					return "provider is required in provider_profile mode. Use models action=catalog to inspect available coding-agent providers.", nil
 				}
 				llmCfg["mode"] = workflowtypes.LLMConfigModeProviderProfile
 				llmCfg["provider"] = provider
@@ -7591,7 +7591,7 @@ func validateStepLLMConfig(label, publishedID, provider, modelID string) string 
 		return ""
 	}
 	if provider == "" {
-		return fmt.Sprintf("%s sets model_id %q with no provider. Use get_llm_config to see which provider serves that model.", label, modelID)
+		return fmt.Sprintf("%s sets model_id %q with no provider. Use models action=get to see which provider serves that model.", label, modelID)
 	}
 	if strings.EqualFold(provider, "agy-cli") {
 		if err := llmguard.RequireCodingAgentProvider(provider); err != nil {
@@ -7599,10 +7599,10 @@ func validateStepLLMConfig(label, publishedID, provider, modelID string) string 
 		}
 	}
 	if modelID == "" {
-		return fmt.Sprintf("%s sets provider %q with no model_id. Use get_llm_config (or list_coding_agent_models for a CLI provider) to pick one.", label, provider)
+		return fmt.Sprintf("%s sets provider %q with no model_id. Use models action=get (or list_coding_agent_models for a CLI provider) to pick one.", label, provider)
 	}
 	if strings.EqualFold(provider, modelID) {
-		hint := "Use get_llm_config to pick a real model for that provider."
+		hint := "Use models action=get to pick a real model for that provider."
 		if common.IsCLIProvider(provider) {
 			hint = fmt.Sprintf("%q is a CLI runtime, not a model. Use list_coding_agent_models to pick the model it should run (for example %q with a specific Claude model).", provider, provider)
 		}

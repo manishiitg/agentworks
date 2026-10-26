@@ -132,6 +132,22 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		return r.WithContext(internalBotRequestContext(r.Context(), person))
 	}
+	// PLAT-825: grouping the tab model action must preserve both the chat
+	// tool's read/run consent and its setter's write consent.
+	for _, consent := range []struct {
+		scopes []string
+		status int
+	}{
+		{[]string{"crews:read", "crews:write"}, 200},
+		{[]string{"crews:read"}, 403},
+		{[]string{"crews:write"}, 403},
+	} {
+		claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: consent.scopes, CrewIDs: []string{"beta"}}}
+		args := map[string]any{"workspace_id": "work:beta", "action": "set", "scope": "tab", "chat_id": sessions["owner"].SessionID, "engine": ""}
+		if code, out := workspaceOwnerTabRequest(t, env, claims, "models", args); code != consent.status {
+			t.Fatalf("tab model consent %v: %d %+v", consent.scopes, code, out)
+		}
+	}
 	for _, person := range []string{"owner", "other"} {
 		peer := "owner"
 		if person == peer {
@@ -187,7 +203,13 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 			t.Fatalf("public peer ask: %d %+v", code, out)
 		}
 		for _, action := range []string{"side_rename", "side_close", "set_model", "stop"} {
-			code, out := workspaceOwnerTabRequest(t, env, &UserClaims{UserID: person}, "workspace", map[string]any{"workspace_id": "work:beta", "action": map[string]string{"side_rename": "rename_chat", "side_close": "close_chat", "set_model": "set_chat_model", "stop": "stop"}[action], "chat_id": foreign.ChatID, "name": "changed"})
+			tool := "workspace"
+			args := map[string]any{"workspace_id": "work:beta", "action": map[string]string{"side_rename": "rename_chat", "side_close": "close_chat", "stop": "stop"}[action], "chat_id": foreign.ChatID, "name": "changed"}
+			if action == "set_model" {
+				tool = "models"
+				args = map[string]any{"workspace_id": "work:beta", "action": "set", "scope": "tab", "chat_id": foreign.ChatID, "engine": ""}
+			}
+			code, out := workspaceOwnerTabRequest(t, env, &UserClaims{UserID: person}, tool, args)
 			if code != 403 {
 				t.Fatalf("MCP %s foreign write: %d %+v", action, code, out)
 			}

@@ -5,12 +5,19 @@ import (
 	"github.com/gin-gonic/gin"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
 // Drive real settings/project handlers. A hidden selector, a retained tool
@@ -42,7 +49,7 @@ func TestWorkspacePanelChatToolsBindCurrentBuilder(t *testing.T) {
 			t.Fatalf("%s is not Builder-only", name)
 		}
 		props := reg.tools[name].params["properties"].(map[string]any)
-		if props["workflow_id"] != nil || props["crew_id"] != nil {
+		if props["workflow_id"] != nil || props["crew_id"] != nil || props["workspace_id"] != nil {
 			t.Fatalf("%s exposes a project selector", name)
 		}
 	}
@@ -58,6 +65,58 @@ func TestWorkspacePanelChatToolsBindCurrentBuilder(t *testing.T) {
 	other, _, _ := ReadWorkflowManifest(ctx, "Workflow/secret")
 	if manifest.Label != "Reviewed invoices" || other.Label != "Private research" {
 		t.Fatal("project binding did not hold")
+	}
+	// PLAT-825-113: a canonical save must revoke live secret/sender choices in
+	// the same turn, not leave stale credentials for the next shell/child run.
+	manifest.Capabilities.SelectedSecrets = []string{"RETIRED_EXAMPLE"}
+	manifest.Capabilities.SelectedGlobalSecretNames = &[]string{}
+	if err := WriteWorkflowManifest(ctx, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	controllerEnv := map[string]string{"SECRET_RETIRED_EXAMPLE": "synthetic-retired-value"}
+	builderEnv := map[string]string{"SECRET_RETIRED_EXAMPLE": "synthetic-retired-value", "KEEP_MARKER": "keep"}
+	live, err := stepworkflow.NewWorkshopChatSession(ctx, &stepworkflow.WorkshopConfig{
+		WorkspacePath: root, SessionID: session, Logger: loggerv2.NewNoop(), LLMConfig: &orchestrator.LLMConfig{},
+		WorkspaceEnvRef: controllerEnv, Secrets: []orchestrator.SecretEntry{{Name: "RETIRED_EXAMPLE", Value: "synthetic-retired-value"}},
+		SecretsAttached: func(set map[string]string, removed []string) {
+			for _, name := range removed {
+				delete(builderEnv, "SECRET_"+name)
+			}
+			for name, value := range set {
+				builderEnv["SECRET_"+name] = value
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.api.workshopChatSessions.Store(session, live)
+	virtualtools.RegisterSessionNotificationDestination(session, &services.NotificationDestination{UserID: "owner", WorkspacePath: root, Gmail: &services.GmailDest{ConnectionIDs: []string{"prior-sender"}}})
+	t.Cleanup(func() {
+		live.Close()
+		f.api.workshopChatSessions.Delete(session)
+		virtualtools.DeleteSessionNotificationDestination(session)
+		common.ClearSessionShellConfig(session)
+	})
+	if out, err := reg.tools["settings"].exec(ctx, map[string]any{"action": "update", "secrets": map[string]any{"unselect": []any{"RETIRED_EXAMPLE"}}, "notifications": map[string]any{"gmail_connection_id": ""}}); err != nil {
+		t.Fatalf("native settings clear: %s %v", out, err)
+	}
+	for _, env := range []map[string]string{controllerEnv, builderEnv} {
+		command := exec.CommandContext(t.Context(), "/bin/sh", "-c", `test "${SECRET_RETIRED_EXAMPLE+x}" != x`)
+		command.Env = []string{}
+		for key, value := range env {
+			command.Env = append(command.Env, key+"="+value)
+		}
+		if err := command.Run(); err != nil {
+			t.Fatal("next shell call retained a deselected secret")
+		}
+	}
+	if builderEnv["KEEP_MARKER"] != "keep" {
+		t.Fatal("settings refresh changed unrelated shell environment")
+	}
+	childContext := context.WithValue(ctx, common.ChatSessionIDKey, session)
+	if dest := virtualtools.NotificationDestinationFromContext(childContext); dest == nil || dest.Gmail == nil || len(dest.Gmail.ConnectionIDs) != 0 {
+		t.Fatal("the next child notification retained a cleared Gmail sender")
 	}
 	out, err = reg.tools["workflow_team"].exec(ctx, map[string]any{"action": "get"})
 	if err != nil || !strings.Contains(out, "can_manage") {

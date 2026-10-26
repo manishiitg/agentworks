@@ -4,7 +4,7 @@ description: Publish panel in Goals and Crews. Configure, perform or inspect Goa
 metadata:
   panel-tools:
     agentworks:
-    - update_workflow_config
+    - settings
     - execute_shell_command
     - dashboard
   external-tools:
@@ -18,4 +18,4 @@ Read builder-reference/references/publish-strategy.md before setup or publishing
 
 For Surge, Vercel and all static hosts, use dashboard action=export_static on the saved publication each Publish pass and deploy its whole returned folder. It packages the same TSX/shared components and current authorized data. Preserve the saved visibility/encryption and provider settings. Keep the timestamp/live link; private chat, DB and credentials never ship. Auto-after-run Publish regenerates the export; do not create a separate dashboard or polling publisher.
 
-For Goals, “After every run” is `publish.after_runs`, off by default. Use update_workflow_config or external update_settings to change it, preserving destination configuration. It applies to every full run and skips unchanged files; the explicit action still works while automatic runs are off. Flows do not use Goal housekeeping.
+For Goals, “After every run” is `publish.after_runs`, off by default. Use settings action=update to change it, preserving destination configuration. It applies to every full run and skips unchanged files; the explicit action still works while automatic runs are off. Flows do not use Goal housekeeping.

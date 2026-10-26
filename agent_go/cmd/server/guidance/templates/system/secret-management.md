@@ -17,7 +17,7 @@ Secrets are credentials (API keys, tokens, passwords). Keep project-specific cre
 
 1. Call `list_secrets` first to check if the name already exists and which bucket owns it.
 2. In a workflow builder/workshop chat, prefer `set_workflow_secret(name, value)` for workflow-only credentials.<!-- product:mcp-gateway --> For credentials shared across projects, a Vault administrator can store the provided value with `manage_vault_secret_access operation=set_value`, using `values: {NAME: value}`. Discover the current schema first.<!-- /product -->
-3. In a workflow-builder session, `set_workflow_secret` automatically attaches and injects a newly stored value. For an already-stored secret, attach it with the workflow config tool (for example `update_workflow_config(add_secrets=["NAME"])`). The attached value becomes immediately available to the builder shell and workflow steps as `$SECRET_<NAME>` without revealing plaintext to the model.
+3. In a workflow-builder session, `set_workflow_secret` automatically attaches and injects a newly stored value. For an already-stored secret, attach it with the workflow config tool (for example `settings(action="update", secrets={select:["NAME"]})`). The attached value becomes immediately available to the builder shell and workflow steps as `$SECRET_<NAME>` without revealing plaintext to the model.
 4. Confirm success. Do NOT echo the plaintext value back to the user — acknowledge by name only.
 
 ### Adding a secret value

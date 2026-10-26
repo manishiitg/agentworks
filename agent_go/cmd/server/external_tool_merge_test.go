@@ -10,7 +10,7 @@ import (
 )
 
 // Every merged tool is built from tools that exist, hides them from the menu
-// (they stay callable), and refuses an action it does not have.
+// (retired names are dispatcher-only), and refuses an action it does not have.
 func TestExternalToolMergesAreWellFormed(t *testing.T) {
 	catalog, err := externalTools()
 	if err != nil {

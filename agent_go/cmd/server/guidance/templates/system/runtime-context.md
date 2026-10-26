@@ -25,7 +25,7 @@ and Run. Reading a reference does not grant its tools or write permissions.
   artifacts support history and before/after comparisons. Match evidence to
   its run, group, route, and timestamp. A previous success is not verification
   of a new change.
-- `query_workflow_costs` reads this workflow's cost/token records. It is not the
+- `costs action=query` reads this workflow's cost/token records. It is not the
   global Cost Analysis dashboard. Summarize costs with their scope and units.
 
 For a question about a named workflow, inspect its relevant state before

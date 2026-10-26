@@ -15,6 +15,7 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 // externalRunToolHints documents the heavily used proxied run tools for the
@@ -166,6 +167,10 @@ func externalRunInstruction(name string, args map[string]any) string {
 			continue
 		}
 		params[key] = value
+	}
+	if id := platformtools.Identity(name); id != name {
+		family, action, _ := strings.Cut(id, ".")
+		name, params["action"] = family, action
 	}
 	var sb strings.Builder
 	sb.WriteString("Call the run-mode tool \"" + name + "\" now")

@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -27,10 +28,9 @@ type externalToolMerge struct {
 var externalToolMerges = []externalToolMerge{
 	{"share", "Share a Crew, Goal or Flow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, dashboardMergeActions("share")},
 	{"dashboard", "Live dashboards of workflows, Flows and Crews: find them, read and edit drafts, check and publish revisions, and get links.", dashboardMergeActions("dashboard")},
-	{"settings", "Read and change the setup of a workflow, Flow or Crew; inspect saved secret sources for these projects: models, MCP servers, skills, secrets, personal Google/Slack accounts, browser mode, notifications and after-run steps.", [][2]string{
-		{"get", "get_settings"}, {"update", "update_settings"}, {"secret_sources", "get_secret_sources"},
-		{"google_account", "workflow_google_account"}, {"slack_account", "workflow_slack_account"}, {"slack_bot", "workflow_slack_bot"},
-	}},
+	{"settings", "Read or change this product's setup, accounts, linked knowledge and team delivery using its existing access.", configurationMergeActions("settings")},
+	{"models", "Read or change project model defaults with existing Builder and account access; other model actions appear only where already available.", configurationMergeActions("models")},
+	{"costs", "Read recorded usage and attributed spend for products you can access. Summary, queries and drill-down keep their existing product, root and connection checks.", configurationMergeActions("costs")},
 	{"needs_you", "Shares Home's question/decision collector. List what is waiting on you across workflows and Crews, then answer or dismiss one; answered decisions awaiting application include apply_message for the Builder. home action=attention also includes failed-run review items.", [][2]string{
 		{"list", "list_needs_you"}, {"answer", "answer_needs_you"}, {"dismiss", "dismiss_needs_you"},
 	}},
@@ -86,10 +86,15 @@ func dashboardMergeActions(family string) [][2]string {
 var externalHiddenAliases = map[string]string{"get_report_link": "dashboard action=link"}
 
 func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
+	var err error
+	catalog, err = configurationExternalMembers(catalog)
+	if err != nil {
+		return nil, err
+	}
 	index := make(map[string]int, len(catalog))
 	for i, tool := range catalog {
 		index[tool.Name] = i
-		if projectServiceTool(tool.Name) || platformtools.IsDashboardMember(tool.Name) {
+		if projectServiceTool(tool.Name) || platformtools.IsMember(tool.Name) {
 			catalog[i].hidden, catalog[i].internalOnly = true, true
 		}
 	}
@@ -106,13 +111,13 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 		actions := map[string]string{}
 		order := []string{}
 		for _, pair := range merge.actions {
-			found := false
+			admitted := []string{}
 			for _, name := range externalMemberNames(pair[1]) {
 				i, ok := index[name]
 				if !ok {
 					continue // not admitted on this server
 				}
-				found = true
+				admitted = append(admitted, name)
 				member := &catalog[i]
 				if _, has := member.InputSchema["properties"].(map[string]any)["action"]; has {
 					return nil, fmt.Errorf("merged tool %q: member %q already has an action field", merge.name, member.Name)
@@ -122,15 +127,15 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 					externalMergeProperty(props, key, value)
 				}
 			}
-			if found {
-				actions[pair[0]] = pair[1]
+			if len(admitted) > 0 {
+				actions[pair[0]] = strings.Join(admitted, "|")
 				order = append(order, pair[0])
 			}
 		}
 		if len(order) == 0 {
 			continue
 		}
-		if merge.name == "functions" || merge.name == "files" || merge.name == "share" || merge.name == "settings" || merge.name == "dashboard" {
+		if merge.name == "functions" || merge.name == "files" || merge.name == "share" || merge.name == "settings" || merge.name == "models" || merge.name == "costs" || merge.name == "dashboard" {
 			props["workspace_id"] = externalString("Stable work:<id> from workspace action=list.")
 		}
 		if merge.name == "functions" {
@@ -350,9 +355,20 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 	}
 	names := externalMemberNames(spec)
 	name := names[0]
-	if len(names) == 2 && externalArg(args, "crew_id") != "" {
+	if tool.Name == "models" {
+		var err error
+		name, err = scopedExternalModelMember(names, args)
+		if err != nil {
+			return tool, args, err
+		}
+	} else if tool.Name == "costs" && action == "summary" && externalArg(args, "workflow_id") == "" && slices.Contains(names, "get_crew_costs") {
+		// Crew summary already supports an omitted ID (all owned Crews).
+		// The workflow summary is a separate, workflow-bound Run operation.
+		name = "get_crew_costs"
+	} else if len(names) == 2 && externalArg(args, "crew_id") != "" {
 		name = names[1]
 	}
+
 	member, ok := externalCatalogTool(name)
 	if !ok {
 		return tool, args, fmt.Errorf("%s action %s is unavailable here", tool.Name, action)

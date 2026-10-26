@@ -139,26 +139,31 @@ func findCrewChat(chats []externalCrewChat, id string) (externalCrewChat, bool) 
 	return externalCrewChat{}, false
 }
 
+func crewChatActionScope(action, tool string) string {
+	scope := "crews:write"
+	if action == "message" {
+		scope = "crews:run"
+	}
+	if action == "list" || action == "read" || action == "tools" {
+		scope = "crews:read"
+	}
+	if action == "tool" {
+		switch tool {
+		case "list_ui_capabilities", "get_ui_state", "query_agent", "list_background_agents":
+			scope = "crews:read"
+		case "run_in_background":
+			scope = "crews:write"
+		}
+	}
+	return scope
+}
+
 func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	ctx := r.Context()
 	claims := GetUserFromContext(ctx)
 	crewID, action := externalArg(args, "crew_id"), externalArg(args, "action")
 	if t := claims.AccessToken; t != nil {
-		scope := "crews:write"
-		if action == "message" {
-			scope = "crews:run"
-		}
-		if action == "list" || action == "read" || action == "tools" {
-			scope = "crews:read"
-		}
-		if action == "tool" {
-			switch externalArg(args, "tool_name") {
-			case "list_ui_capabilities", "get_ui_state", "query_agent", "list_background_agents":
-				scope = "crews:read"
-			case "run_in_background":
-				scope = "crews:write"
-			}
-		}
+		scope := crewChatActionScope(action, externalArg(args, "tool_name"))
 		if !t.Allows(scope) || !t.AllowsCrew(workspaceTokenProjectID(crewID)) {
 			externalError(w, 403, "insufficient_scope", "This connection does not allow "+action+" on this Crew.")
 			return
