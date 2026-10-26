@@ -1,6 +1,6 @@
 import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { ArrowRight, Terminal, Menu } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react'
+import { ArrowRight, ArrowUp, Loader2, Terminal, Menu } from 'lucide-react'
 import { Button } from './ui/Button'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -39,9 +39,8 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const sidebarWidth = useProductNavigationToolbarStore(state => state.sidebarWidth)
   const user = useAuthStore(state => state.user)
   const [agentWorksError, setAgentWorksError] = useState('')
-  // AgentWorks is a Crew, so it is offered once the person has a ready AI account for Crew.
-  const [crewReady, setCrewReady] = useState(false)
-  const onReadyProducts = useCallback((ready: ProductSurface[]) => setCrewReady(ready.includes('work')), [])
+  const [agentWorksDraft, setAgentWorksDraft] = useState('')
+  const [agentWorksSending, setAgentWorksSending] = useState(false)
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const products = useMemo(() => {
     const visible = new Set(navigationProductSurfaceIDs(user?.allowed_products))
@@ -98,16 +97,22 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
     openProductWorkspace(surface)
     leaveHome()
   }
-  // The server makes the person's own AgentWorks on first use and says which Crew it is.
-  const openAgentWorks = async () => {
+  // The server makes the person's own AgentWorks on first use, sends the message into its main chat and says which
+  // Crew it is; the reply streams there.
+  const askAgentWorks = async (event: FormEvent) => {
+    event.preventDefault()
+    const message = agentWorksDraft.trim()
+    if (!message || agentWorksSending) return
     setAgentWorksError('')
+    setAgentWorksSending(true)
     try {
-      const { data } = await api.post<{ crew_id: string }>('/api/agentworks')
+      const { data } = await api.post<{ crew_id: string }>('/api/agentworks', { message })
       rememberGuide(WELCOME_HOME_DISMISSED_KEY)
       window.location.assign(productRoutePath({ surface: 'work', id: data.crew_id }))
     } catch (error) {
       const response = (error as { response?: { data?: unknown } }).response
-      setAgentWorksError(typeof response?.data === 'string' ? response.data : 'AgentWorks could not be opened. Try again.')
+      setAgentWorksError(typeof response?.data === 'string' ? response.data : 'Your message could not be sent. Try again.')
+      setAgentWorksSending(false)
     }
   }
   const openMcpSetup = () => openWorkspaceSettings('mcp')
@@ -131,16 +136,21 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
             className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"><Menu className="h-5 w-5" aria-hidden="true" /></button>
         </header>
 
-        {crewReady && <section aria-labelledby="welcome-agentworks" className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-primary/50 bg-primary/[0.06] p-5 sm:flex-row sm:items-center sm:p-6">
-          <div>
-            <h2 id="welcome-agentworks" className="text-lg font-semibold">Ask AgentWorks</h2>
-            <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">Your own agent. Tell it what you want to get done; it watches your Goals, reports what needs you and builds new work with you.</p>
-            {agentWorksError && <p role="alert" className="mt-2 text-xs text-destructive">{agentWorksError}</p>}
-          </div>
-          <Button type="button" onClick={openAgentWorks} className="shrink-0">Open AgentWorks<ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button>
-        </section>}
-
-        {workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} onReadyProducts={onReadyProducts} />}
+        {workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} crewReadyView={<section aria-label="Ask AgentWorks">
+          <form onSubmit={askAgentWorks} className="rounded-2xl border border-border bg-muted/20 p-3 focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/20 sm:p-4">
+            <label htmlFor="welcome-agentworks-message" className="sr-only">Tell AgentWorks what you want to get done</label>
+            <textarea id="welcome-agentworks-message" value={agentWorksDraft} onChange={event => setAgentWorksDraft(event.target.value)} maxLength={20000} rows={2} disabled={agentWorksSending}
+              onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }}
+              placeholder="Tell AgentWorks what you want to get done" className="block w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-50" />
+            <div className="mt-2 flex items-center justify-between gap-3">
+              {agentWorksError ? <p role="alert" className="text-xs text-destructive">{agentWorksError}</p> : <span />}
+              <button type="submit" disabled={agentWorksSending || !agentWorksDraft.trim()} className="inline-flex min-h-9 shrink-0 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {agentWorksSending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ArrowUp aria-hidden="true" className="h-4 w-4" />}Send
+              </button>
+            </div>
+          </form>
+          <button type="button" onClick={openProviders} className="mt-2 rounded-md px-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Manage AI accounts</button>
+        </section>} />}
 
         {workProducts.length > 0 && <section aria-labelledby="welcome-products">
           <h2 id="welcome-products" className="sr-only">Choose where to work</h2>

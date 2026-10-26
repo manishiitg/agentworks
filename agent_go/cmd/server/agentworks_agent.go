@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -617,12 +618,26 @@ func (api *StreamingAPI) openAgentWorksTab(request *http.Request, crewID, name s
 	return id, nil
 }
 
-// handleOpenAgentWorks is the app's "Ask AgentWorks" entry: it returns (making it on first use) the signed-in
-// person's own AgentWorks, the same ensure as a first visit and workspace action=agentworks.
+// handleOpenAgentWorks is the app's AgentWorks entry: it returns (making it on first use) the signed-in person's own
+// AgentWorks, the same ensure as a first visit and workspace action=agentworks. An optional {"message": "..."} is sent
+// into its main chat as the person, through the app's own chat send (handleAgentProfileChatQuery), without waiting
+// for the answer; the reply streams in the chat as usual.
 func (api *StreamingAPI) handleOpenAgentWorks(w http.ResponseWriter, r *http.Request) {
 	user := GetUserFromContext(r.Context())
 	if user == nil || strings.TrimSpace(user.UserID) == "" {
 		http.Error(w, "Sign in to open AgentWorks.", http.StatusUnauthorized)
+		return
+	}
+	var input struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes)).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+		http.Error(w, "Send your message as plain text.", http.StatusBadRequest)
+		return
+	}
+	message := strings.TrimSpace(input.Message)
+	if len([]rune(message)) > codeChatMessageMaxRune {
+		http.Error(w, "That message is too long. Shorten it, or send the details in the chat in parts.", http.StatusBadRequest)
 		return
 	}
 	crew, err := api.ensureAgentWorks(context.Background(), user.UserID)
@@ -630,6 +645,28 @@ func (api *StreamingAPI) handleOpenAgentWorks(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Your AgentWorks could not be opened: "+err.Error(), http.StatusConflict)
 		return
 	}
+	out := map[string]any{"crew_id": crew.CrewID, "name": agentWorksName, "created": crew.Created}
+	if message != "" {
+		// The owner's main chat is addressed by the project id, as the app's main chat send does.
+		status, body := scheduleHandler(r, api.handleAgentProfileChatQuery, http.MethodPost, "/api/agent-profiles/"+crewProfileID+"/query", map[string]string{"id": crewProfileID}, nil, AgentProfileChatRequest{Message: message, ConversationKey: crew.CrewID})
+		if status >= 300 {
+			log.Printf("[AGENTWORKS] user=%s crew=%s message not sent: %d %s", user.UserID, crew.CrewID, status, strings.TrimSpace(string(body)))
+			reason := "Open AgentWorks and try again in its chat."
+			var failure struct{ Error, Message string }
+			if json.Unmarshal(body, &failure) == nil && strings.TrimSpace(failure.Error+failure.Message) != "" {
+				reason = strings.TrimSpace(failure.Error + " " + failure.Message)
+			}
+			http.Error(w, "Your message could not be sent to AgentWorks: "+reason, status)
+			return
+		}
+		var receipt map[string]any
+		if json.Unmarshal(body, &receipt) == nil {
+			if queryID, _ := receipt["query_id"].(string); queryID != "" {
+				out["query_id"] = queryID
+			}
+		}
+		out["sent"] = true
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"crew_id": crew.CrewID, "name": agentWorksName, "created": crew.Created})
+	json.NewEncoder(w).Encode(out)
 }

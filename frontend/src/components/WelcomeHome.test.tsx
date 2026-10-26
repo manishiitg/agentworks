@@ -10,7 +10,9 @@ vi.hoisted(() => {
   Object.defineProperty(window, 'localStorage', { configurable: true, value: storage })
 })
 vi.mock('../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn((surface: string) => { window.history.pushState({}, '', `/${surface === 'work' ? 'crew' : surface === 'agentworks' ? 'goals' : surface}`) }) }))
-vi.mock('./WelcomeAiReadiness', () => ({ default: ({ onSetup }: { onSetup: () => void }) => <button onClick={onSetup}>Manage AI accounts</button> }))
+vi.mock('./WelcomeAiReadiness', () => ({ default: ({ onSetup, crewReadyView }: { onSetup: () => void; crewReadyView?: unknown }) => readiness.crewReady ? crewReadyView : <button onClick={onSetup}>Review AI setup</button> }))
+vi.mock('../services/api', () => ({ default: { post: vi.fn() } }))
+const readiness = vi.hoisted(() => ({ crewReady: false }))
 
 import { WelcomeHome, WELCOME_HOME_DISMISSED_KEY } from './WelcomeHome'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -19,6 +21,8 @@ import { useLLMStore } from '../stores/useLLMStore'
 import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
+import api from '../services/api'
+import { productRoutePath } from '../utils/productRoutes'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
@@ -51,7 +55,29 @@ describe('WelcomeHome', () => {
     useAppStore.setState({ adminPage: null })
     useLLMStore.setState({ showLLMModal: false })
     useProductNavigationToolbarStore.setState({ sidebarWidth: 0 })
+    readiness.crewReady = false
+    vi.restoreAllMocks()
     vi.clearAllMocks()
+  })
+
+  it('shows only the AgentWorks chat when Crew is ready and sends the message for the server to deliver', async () => {
+    configure()
+    readiness.crewReady = true
+    const ready = await renderWelcome()
+    expect(ready.textContent).not.toContain('Review AI setup')
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {})
+    vi.mocked(api.post).mockResolvedValue({ data: { crew_id: 'crew-1' } })
+    const box = ready.querySelector<HTMLTextAreaElement>('#welcome-agentworks-message')!
+    expect(box.placeholder).toBe('Tell AgentWorks what you want to get done')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(box, '  Plan my week  ')
+      box.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    expect(api.post).toHaveBeenCalledWith('/api/agentworks', { message: 'Plan my week' })
+    expect(assign).toHaveBeenCalledWith(productRoutePath({ surface: 'work', id: 'crew-1' }))
+    await act(async () => button(ready, 'Manage AI accounts').click())
+    expect(window.location.pathname).toBe('/settings/ai-accounts')
   })
 
   it('shows only permitted products and remembers dismissal', async () => {
@@ -136,7 +162,7 @@ describe('WelcomeHome', () => {
     expect(host.querySelector('main')).toBeNull()
     window.history.replaceState({}, '', '/home')
     await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
-    await act(async () => button(host, 'Manage AI accounts').click())
+    await act(async () => button(host, 'Review AI setup').click())
     expect(window.location.pathname).toBe('/settings/ai-accounts')
     expect(useLLMStore.getState().showLLMModal).toBe(true)
     expect(host.querySelector('[role="dialog"]')).toBeNull()

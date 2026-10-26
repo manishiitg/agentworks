@@ -134,3 +134,16 @@ it('shows distinct ready Personal and Company providers once across products and
   expect([...summary.querySelectorAll('dd')].map(item => item.textContent)).toEqual(['Codex', 'Claude Code'])
   expect(summary.textContent).not.toContain('Muse')
 })
+
+it('shows either the Crew-ready view or the setup card, never both', async () => {
+  const withView = async () => { await act(async () => root.render(<WelcomeAiReadiness products={['work', 'agentworks']} onSetup={open} crewReadyView={<p>AgentWorks chat</p>} />)) }
+  await withView()
+  expect(host.textContent).toContain('First, connect an AI account')
+  expect(host.textContent).not.toContain('AgentWorks chat')
+  vi.mocked(llmConfigService.getProviderConnections).mockImplementation(async scope => scope?.product === 'agentworks' ? [account({ configured: true })] : [account()])
+  await act(async () => window.dispatchEvent(new Event('provider-connections-changed')))
+  expect(host.textContent).not.toContain('AgentWorks chat')
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([account({ configured: true })])
+  await act(async () => window.dispatchEvent(new Event('provider-connections-changed')))
+  expect(host.textContent).toBe('AgentWorks chat')
+})

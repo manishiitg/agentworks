@@ -1,5 +1,5 @@
 import { codingProviderName } from '../utils/codingProviderName'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ArrowRight, CheckCircle2, KeyRound, Loader2, LogIn, Terminal } from 'lucide-react'
 import { llmConfigService, type ProviderConnection, type ProviderManifestEntry } from '../services/llm-config-api'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -10,11 +10,12 @@ import { Button } from './ui/Button'
 type Inventory = { providers: ProviderManifestEntry[]; accounts: { product: ProductSurface; connections: ProviderConnection[] }[] }
 type Check = { scope: string; status: 'loading' | 'loaded' | 'error'; inventory?: Inventory }
 
-/** Check actual caller-scoped accounts, not the saved model defaults (which may exist before sign-in). */
-export default function WelcomeAiReadiness({ products, onSetup, onReadyProducts }: {
+/** Check actual caller-scoped accounts, not the saved model defaults (which may exist before sign-in).
+ *  When a Crew account is ready, crewReadyView replaces the card (AgentWorks is a Crew). */
+export default function WelcomeAiReadiness({ products, onSetup, crewReadyView }: {
   products: ProductSurface[]
   onSetup: () => void
-  onReadyProducts?: (products: ProductSurface[]) => void
+  crewReadyView?: ReactNode
 }) {
   const user = useAuthStore(state => state.user)
   const profile = useWorkspaceConnectionStore(state => state.profiles.find(item => item.id === state.activeWorkspaceId))
@@ -28,7 +29,8 @@ export default function WelcomeAiReadiness({ products, onSetup, onReadyProducts 
   useEffect(() => {
     let current = true
     const permittedProducts = productKey.split('|').filter(Boolean) as ProductSurface[]
-    setCheck({ scope, status: 'loading' })
+    // A recheck (focus, account change) keeps showing the last result, so a draft in crewReadyView is not lost.
+    setCheck(previous => previous.scope === scope && previous.status === 'loaded' ? previous : { scope, status: 'loading' })
     void Promise.all([
       llmConfigService.getProviderManifest(),
       Promise.all(permittedProducts.map(async product => ({ product, connections: await llmConfigService.getProviderConnections({ product }) }))),
@@ -55,8 +57,6 @@ export default function WelcomeAiReadiness({ products, onSetup, onReadyProducts 
   const runtime = (account: ProviderConnection) => inventory?.providers.find(provider => provider.id === account.provider)
   const readyProducts = inventory?.accounts.filter(group => group.connections.some(account => eligible(account) && account.configured === true && runtime(account)?.runtime_available === true)) ?? []
   const ready = readyProducts.length > 0
-  const readyKey = readyProducts.map(group => group.product).join('|')
-  useEffect(() => { onReadyProducts?.(readyKey ? readyKey.split('|') as ProductSurface[] : []) }, [readyKey, onReadyProducts])
   const accountSummary = [
     { label: 'Personal', relations: ['own'] },
     { label: 'Company', relations: ['server'] },
@@ -79,6 +79,7 @@ export default function WelcomeAiReadiness({ products, onSetup, onReadyProducts 
   const canAddPersonal = (provider: ProviderManifestEntry) => connections.some(account => account.provider === provider.id && account.scope === 'global' && account.personal_accounts_allowed === true)
   const personalAllowed = inventory?.providers.some(canAddPersonal)
 
+  if (crewReadyView && readyProducts.some(group => group.product === 'work')) return <>{crewReadyView}</>
   return <>
     <section aria-label="AI account setup" className={`rounded-2xl border p-4 sm:p-5 ${ready ? 'border-border bg-card' : 'border-primary/30 bg-primary/[0.04]'}`}>
       {state.status === 'loading' ? <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Checking your AI accounts…</p> : <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
