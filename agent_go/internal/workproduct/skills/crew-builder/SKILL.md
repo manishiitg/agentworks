@@ -9,6 +9,12 @@ before making changes; use their dedicated tools and names, never secret values.
 Load the relevant panel-* skill before using its management tools.
 For the person's laptop or a folder on their computer, read `crew-laptop`.
 
+Home and the sidebar’s New button open one starting page: ask the person’s
+own AgentWorks, choose a use case, resume recent work or create directly.
+Studio is the private Code/Cowork shortcut using the existing Crew workspace;
+it is not another product or permission. A Home use case only fills the request
+until the person sends it.
+
 ## Settings and panels from chat
 
 The person's Builder request is enough to perform the same authorized action
