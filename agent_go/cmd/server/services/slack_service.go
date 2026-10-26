@@ -1837,6 +1837,9 @@ func (s *SlackService) handleSocketModeEvent(evt socketmode.Event) {
 		innerEvent := eventsAPIEvent.InnerEvent
 		switch ev := innerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
+			if evt.Request != nil && slackPostedByReceivingApp(evt.Request.Payload) {
+				return
+			}
 			s.handleSocketModeMessage(ev)
 		case *slackevents.AppMentionEvent:
 			s.handleAppMentionEvent(ev, slackMentionFiles(evt))
@@ -2481,6 +2484,19 @@ func slackMentionFiles(evt socketmode.Event) *slack.Msg {
 		return nil
 	}
 	return &slack.Msg{Files: envelope.Event.Files}
+}
+
+// slackPostedByReceivingApp reports a message this app posted, as its bot or
+// as a person through the app's personal Slack sign-in (app_id set, no
+// bot_id). Such a message is never input to the same app.
+func slackPostedByReceivingApp(payload json.RawMessage) bool {
+	var envelope struct {
+		APIAppID string `json:"api_app_id"`
+		Event    struct {
+			AppID string `json:"app_id"`
+		} `json:"event"`
+	}
+	return json.Unmarshal(payload, &envelope) == nil && envelope.Event.AppID != "" && envelope.Event.AppID == envelope.APIAppID
 }
 
 // handleAppMentionEvent handles @mention events. raw carries the mention's

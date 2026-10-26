@@ -130,6 +130,20 @@ func TestSlackOwnBotMessageIgnoredWithoutUserField(t *testing.T) {
 	}
 }
 
+// PLAT-856: a person's message sent through the app's personal Slack sign-in
+// carries the app's app_id and no bot_id; the same app answered it with a picker.
+func TestSlackMessageSentThroughOwnAppIsIgnored(t *testing.T) {
+	event := func(receivingApp, postingApp string) json.RawMessage {
+		return json.RawMessage(`{"api_app_id":"` + receivingApp + `","event":{"type":"message","user":"UPERSON","app_id":"` + postingApp + `","channel":"C123","thread_ts":"1.1","ts":"1.2"}}`)
+	}
+	if !slackPostedByReceivingApp(event("AOWN", "AOWN")) {
+		t.Fatal("the app answered a message it sent itself")
+	}
+	if slackPostedByReceivingApp(event("AOTHER", "AOWN")) || slackPostedByReceivingApp(event("AOWN", "")) {
+		t.Fatal("a message from a person or another app was dropped")
+	}
+}
+
 func TestSlackEmailExclusions(t *testing.T) {
 	route := ChannelRoute{BlockedEmails: []string{"person@example.com"}}
 	for _, tc := range []struct {
