@@ -1220,7 +1220,7 @@ func validateCursorCLI(apiKey, modelID string) llm.APIKeyValidationResponse {
 	}
 }
 
-// validatePiCLI validates Pi CLI through the real tmux marker adapter path.
+// validatePiCLI validates Pi CLI through the native RPC adapter.
 func validatePiCLI(apiKey, modelID string, options map[string]interface{}) llm.APIKeyValidationResponse {
 	log.Printf("[PI-CLI VALIDATION] Starting CLI validation")
 
@@ -1230,13 +1230,6 @@ func validatePiCLI(apiKey, modelID string, options map[string]interface{}) llm.A
 		return llm.APIKeyValidationResponse{
 			Valid:   false,
 			Message: "Pi CLI not found. Install with: npm install -g @earendil-works/pi-coding-agent, or ensure npx is available.",
-		}
-	}
-	if _, err := exec.LookPath("tmux"); err != nil {
-		log.Printf("[PI-CLI VALIDATION] tmux not found on PATH: %v", err)
-		return llm.APIKeyValidationResponse{
-			Valid:   false,
-			Message: "tmux not found. Pi CLI integration requires tmux for interactive mode.",
 		}
 	}
 	log.Printf("[PI-CLI VALIDATION] runtime available: %s", runtimePath)
@@ -1297,9 +1290,6 @@ func validatePiCLI(apiKey, modelID string, options map[string]interface{}) llm.A
 			},
 		},
 	}, callOpts...)
-	if handle, ok := llmtypes.ExtractCodingProviderSessionHandleFromResponse(resp); ok {
-		llm.ClosePiCLIInteractiveSessionByTmux(handle.TmuxSession, "validation cleanup")
-	}
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return llm.APIKeyValidationResponse{

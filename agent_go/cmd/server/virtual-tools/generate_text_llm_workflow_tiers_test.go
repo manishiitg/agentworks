@@ -49,7 +49,6 @@ func TestStructuredOneShotCallOptionsForceEveryCodingCLI(t *testing.T) {
 		{provider: llm.ProviderClaudeCode, key: "claude_code_structured_transport"},
 		{provider: llm.ProviderCodexCLI, key: "codex_structured_transport"},
 		{provider: llm.ProviderCursorCLI, key: "cursor_structured_transport"},
-		{provider: llm.ProviderPiCLI, key: "pi_structured_transport"},
 	}
 
 	for _, tc := range tests {

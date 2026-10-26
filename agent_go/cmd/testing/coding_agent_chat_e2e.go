@@ -475,8 +475,8 @@ const retainedWindowP0DeliveryLimit = time.Second
 // it never deletes a registration or injects a completion event to manufacture
 // the state under test.
 func (c *codingAgentChatE2EClient) runRetainedWindowP0(ctx context.Context, sessionID, provider, model, rememberedToken string) error {
-	if provider == "codex-cli" {
-		return c.runAppServerWindowP0(ctx, sessionID, provider, model, rememberedToken)
+	if provider == "codex-cli" || provider == "pi-cli" {
+		return c.runNativeSessionWindowP0(ctx, sessionID, provider, model, rememberedToken)
 	}
 	before, raw, err := c.getEvents(ctx, sessionID)
 	if err != nil {
@@ -1296,20 +1296,19 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// Codex's idle follow-up uses the ordinary Session.Run path and the native
-// app-server thread. The same real tool/identity/completion checks apply;
+// Codex and Pi idle follow-ups use Session.Run and the native session. The same real tool/identity/completion checks apply;
 // a tmux pane and a terminal-injection acknowledgement do not exist here.
-func (c *codingAgentChatE2EClient) runAppServerWindowP0(ctx context.Context, sessionID, provider, model, rememberedToken string) error {
+func (c *codingAgentChatE2EClient) runNativeSessionWindowP0(ctx context.Context, sessionID, provider, model, rememberedToken string) error {
 	before, _, err := c.getEvents(ctx, sessionID)
 	if err != nil {
 		return err
 	}
 	if before.SessionStatus != "completed" {
-		return fmt.Errorf("first Codex turn is not complete: %s", before.SessionStatus)
+		return fmt.Errorf("first native turn is not complete: %s", before.SessionStatus)
 	}
-	native := appServerThreadFromEvents(before.Events)
+	native := nativeSessionFromEvents(before.Events, provider)
 	if native == "" {
-		return fmt.Errorf("first Codex turn has no app-server native thread handle")
+		return fmt.Errorf("first native turn has no native session handle")
 	}
 	query := "Call the api-bridge execute_shell_command MCP tool exactly once with command `sleep 2; python3 -c 'import secrets; print(\"RETAINED_TOOL_\"+secrets.token_hex(12))'`. After it returns, reply with exactly your complete response from the previous turn, a vertical bar, and the complete command stdout. Do not guess its random output."
 	if _, _, err := c.startQueryWithResponse(ctx, sessionID, provider, model, query); err != nil {
@@ -1322,8 +1321,8 @@ func (c *codingAgentChatE2EClient) runAppServerWindowP0(ctx context.Context, ses
 	if err != nil {
 		return err
 	}
-	if next := appServerThreadFromEvents(events); next != native {
-		return fmt.Errorf("Codex native thread changed: before=%q after=%q", native, next)
+	if next := nativeSessionFromEvents(events, provider); next != native {
+		return fmt.Errorf("native session changed: before=%q after=%q", native, next)
 	}
 	if err := assertCanonicalRetainedTurnIdentity(events, "execute_shell_command"); err != nil {
 		return err
@@ -1337,7 +1336,7 @@ func (c *codingAgentChatE2EClient) runAppServerWindowP0(ctx context.Context, ses
 	}
 	expected := "ACK_" + rememberedToken + "|" + token
 	if strings.TrimSpace(final) != expected {
-		return fmt.Errorf("Codex follow-up lost native context or tool output: %q", final)
+		return fmt.Errorf("native follow-up lost native context or tool output: %q", final)
 	}
 	if err := assertOneRetainedCompletion(events, expected); err != nil {
 		return err
@@ -1345,14 +1344,14 @@ func (c *codingAgentChatE2EClient) runAppServerWindowP0(ctx context.Context, ses
 	return assertRetainedCompletionAfterTool(events, "execute_shell_command")
 }
 
-func appServerThreadFromEvents(events []map[string]interface{}) string {
+func nativeSessionFromEvents(events []map[string]interface{}, provider string) string {
 	for i := len(events) - 1; i >= 0; i-- {
 		if events[i]["type"] != "llm_generation_end" {
 			continue
 		}
 		metadata := eventPayloadMap(events[i], "metadata")
 		if handle, ok := metadata["coding_provider_session_handle"].(map[string]interface{}); ok {
-			if handle["transport"] == "app-server" && handle["provider"] == "codex-cli" {
+			if ((provider == "codex-cli" && handle["transport"] == "app-server") || (provider == "pi-cli" && handle["transport"] == "rpc")) && handle["provider"] == provider {
 				id, _ := handle["native_session_id"].(string)
 				if id != "" {
 					return id

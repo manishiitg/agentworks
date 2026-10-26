@@ -583,7 +583,7 @@ func structuredOneShotCallOptions(provider llm.Provider) []llmtypes.CallOption {
 	case llm.ProviderCursorCLI:
 		options = append(options, llmproviders.WithCursorStructuredTransport(true))
 	case llm.ProviderPiCLI:
-		options = append(options, llmproviders.WithPiStructuredTransport(true))
+		// Pi uses bounded RPC when no persistent owner is requested.
 	default:
 		return nil
 	}

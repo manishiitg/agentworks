@@ -151,13 +151,20 @@ func TestEventsProveProviderRequiresTypedProviderEvent(st *stdtesting.T) {
 
 	// PLAT-872-19: the app-server P0 reads the canonical generation handle,
 	// without mistaking a tmux handle or prose about a thread for native proof.
-	if appServerThreadFromEvents(events) != "" {
+	if nativeSessionFromEvents(events, "codex-cli") != "" {
 		st.Fatal("non-Codex handle accepted")
 	}
 	handle := eventPayloadMap(events[0], "metadata")["coding_provider_session_handle"].(map[string]interface{})
 	handle["provider"], handle["transport"], handle["native_session_id"] = "codex-cli", "app-server", "native-thread"
-	if appServerThreadFromEvents(events) != "native-thread" {
+	if nativeSessionFromEvents(events, "codex-cli") != "native-thread" {
 		st.Fatal("native thread handle missing")
+	}
+	handle["provider"], handle["transport"], handle["native_session_id"] = "pi-cli", "rpc", "native-pi"
+	if nativeSessionFromEvents(events, "pi-cli") != "native-pi" {
+		st.Fatal("native Pi RPC handle missing")
+	}
+	if nativeSessionFromEvents(events, "codex-cli") != "" {
+		st.Fatal("Pi handle accepted for Codex")
 	}
 }
 

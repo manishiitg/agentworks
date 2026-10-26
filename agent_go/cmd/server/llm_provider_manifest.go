@@ -131,7 +131,7 @@ var providerStaticInfoMap = map[string]providerStaticInfo{
 	},
 	"pi-cli": {
 		displayName:     "Pi CLI",
-		description:     "Uses Pi CLI through tmux marker transport for Pi model IDs across Gemini, Z.AI, Kimi, MiniMax, DeepSeek, and custom Pi providers.",
+		description:     "Uses Pi CLI through native RPC for Pi model IDs across Gemini, Z.AI, Kimi, MiniMax, DeepSeek, and custom Pi providers.",
 		integrationKind: "coding_agent",
 		authDescription: "Local CLI (Pi provider API key)",
 		requiresAPIKey:  false,

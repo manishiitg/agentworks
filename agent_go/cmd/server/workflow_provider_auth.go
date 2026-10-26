@@ -326,21 +326,9 @@ func (api *StreamingAPI) closeIdleWorkflowCursorCLISessions(userID, workflowPath
 	}
 }
 
-// closeIdleWorkflowPiCLISessions is the Pi CLI counterpart. Video Studio
-// drives Pi CLI over the structured transport like Cursor, so this mainly
-// guards the interactive tmux path for any other workflow-scoped caller.
+// closeIdleWorkflowPiCLISessions closes the account's owned RPC sessions.
 func (api *StreamingAPI) closeIdleWorkflowPiCLISessions(userID, workflowPath, reason string) {
 	for _, sessionID := range api.workflowSessionIDs(userID, workflowPath) {
 		llmproviders.ClosePiCLIInteractiveSessionForOwner(sessionID, reason)
-		if api.terminalStore == nil {
-			continue
-		}
-		for _, snapshot := range api.terminalStore.ListRaw(sessionID) {
-			if !strings.HasPrefix(strings.TrimSpace(snapshot.TmuxSession), "mlp-pi-cli-int") {
-				continue
-			}
-			llmproviders.ClosePiCLIInteractiveSessionByTmux(snapshot.TmuxSession, reason)
-			api.terminalStore.MarkProcessClosed(snapshot.TerminalID, reason)
-		}
 	}
 }

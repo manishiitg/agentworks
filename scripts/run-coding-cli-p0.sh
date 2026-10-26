@@ -153,7 +153,7 @@ p0_test_regex() {
   local provider="$1"
   local package_path="$2"
   local priority="P0"
-  [[ "$provider" != "codex-cli" ]] || priority="all"
+  [[ "$provider" != "codex-cli" && "$provider" != "pi-cli" ]] || priority="all"
   go -C "$MULTI_LLM_DIR" run ./cmd/coding-agent-p0-tests -provider "$provider" -package "$package_path" -priority "$priority"
 }
 
@@ -217,8 +217,8 @@ for raw_provider in "${provider_list[@]}"; do
     exit 2
   fi
   test_regex="$(p0_test_regex "$provider" "$package")"
-  if [[ "$provider" == "codex-cli" ]]; then
-    # Codex app-server P0 cases own native processes. Keep each live case in
+  if [[ "$provider" == "codex-cli" || "$provider" == "pi-cli" ]]; then
+    # Native session P0 cases own processes. Keep each live case in
     # its own Go process so cleanup from a completed test cannot corrupt or
     # tear down state belonging to the next one. This also gives each failed
     # contract an exact receipt instead of losing it in a package crash.
@@ -233,11 +233,13 @@ for raw_provider in "${provider_list[@]}"; do
       -run "$test_regex" -count=1 -timeout=35m -args -coding-cli-p0-live
   fi
 
-  if [[ "$provider" == "codex-cli" ]]; then
-    # The SDK registry includes both retained app-server turns and bounded
+  if [[ "$provider" == "codex-cli" || "$provider" == "pi-cli" ]]; then
+    sdk_provider=Codex
+    [[ "$provider" != "pi-cli" ]] || sdk_provider=Pi
+    # The SDK registry includes both retained native sessions and bounded
     # calls. Agent-reviewed captures cover tool recovery and output quality.
-    sdk_regex="$(go -C "$MCPAGENT_DIR" run ./cmd/coding-agent-tests -provider Codex)"
-    RUN_MCPAGENT_REAL_BRIDGE_E2E=1 RUN_MCPAGENT_STEER_E2E=1 MCPAGENT_REAL_BRIDGE_ONLY=codex \
+    sdk_regex="$(go -C "$MCPAGENT_DIR" run ./cmd/coding-agent-tests -provider "$sdk_provider")"
+    RUN_MCPAGENT_REAL_BRIDGE_E2E=1 RUN_MCPAGENT_STEER_E2E=1 MCPAGENT_REAL_BRIDGE_ONLY="${provider%-cli}" \
       run_required_go_tests go -C "$MCPAGENT_DIR" test -json ./agent \
         -run "$sdk_regex" -count=1 -timeout=40m
   fi
@@ -245,13 +247,13 @@ for raw_provider in "${provider_list[@]}"; do
   # Sandbox contract (PLAT-394): the same file-access checks against every CLI
   # in Full CLI mode through the real launch options, under the lock the host
   # applies (Seatbelt on a Mac, Landlock on Linux via AGENTWORKS_LANDLOCK_RUNNER).
-  # Verdicts come from the disk, not from the model's report. Pi is bridge-only
-  # and has no native tools to confine.
+  # Verdicts come from disk, including Pi's confined Full CLI tools.
   contract_provider=""
   case "$provider" in
     claude-code) contract_provider="Claude" ;;
     codex-cli)   contract_provider="Codex" ;;
     cursor-cli)  contract_provider="Cursor" ;;
+    pi-cli)      contract_provider="Pi" ;;
     muse-cli)    contract_provider="Muse" ;;
     agy-cli)     contract_provider="Agy" ;;
   esac
@@ -284,8 +286,8 @@ for raw_provider in "${provider_list[@]}"; do
     --provider "$provider" --timeout 8m
 
   # IC-11 + IC-12: cross the AgentWorks -> mcpagent boundary after a real first turn
-  # has completed and the native session is retained. Codex proves the same
-  # app-server thread through ordinary Session.Run; other CLIs use tmux.
+  # has completed and the native session is retained. Codex and Pi prove the same
+  # native session through ordinary Session.Run; terminal CLIs use tmux.
   # This proves the warm
   # follow-up uses the durable Session, returns one authoritative tool receipt
   # (arguments/result/duration), persists exactly one final response, avoids
