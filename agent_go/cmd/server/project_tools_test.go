@@ -105,7 +105,7 @@ func projectCreateTestArgs(kind, key string) map[string]any {
 	return map[string]any{"kind": kind, "spec": spec, "idempotency_key": key}
 }
 
-// PLAT-825-115: drive each actual native registration path and real MCP over
+// PLAT-825: drive each actual native registration path and real MCP over
 // HTTP against the workspace handlers, then inspect stored ownership/results.
 func TestProjectCreationNativeAndMCPUseTheSameAction(t *testing.T) {
 	f := newProjectToolsFixture(t)
@@ -229,7 +229,7 @@ func TestProjectCreationNativeAndMCPUseTheSameAction(t *testing.T) {
 	}
 }
 
-// PLAT-825-115: a shared source is readable, never writable by association;
+// PLAT-825: a shared source is readable, never writable by association;
 // both access checks and each descendant's existing file guard must hold.
 func TestProjectCopyRequiresSourceReadAndDestinationWrite(t *testing.T) {
 	f := newProjectToolsFixture(t)

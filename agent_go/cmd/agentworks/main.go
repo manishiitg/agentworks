@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	"github.com/spf13/cobra"
 )
 
@@ -831,9 +832,21 @@ func (o *options) callWithArguments(cmd *cobra.Command, name string, arguments m
 	if err != nil {
 		return err
 	}
-	name, arguments = crewCommandCall(name, arguments)
+	// Typed commands own their source identities. Explicit tools calls use the
+	// server's current catalog verbatim, including refusal of retired names.
+	typedCommand := cmd.Parent() == nil || cmd.Parent().Name() != "tools"
+	if typedCommand {
+		name, arguments = crewCommandCall(name, arguments)
+		name, arguments = platformtools.Invocation(name, arguments)
+	}
 	result, err := client.Call(cmd.Context(), name, arguments)
 	if err != nil {
+		var failure *agentworksclient.APIError
+		if typedCommand && errors.As(err, &failure) && (failure.Code == "unknown_tool" || failure.Status == 404 && failure.Code == "http_error") {
+			friendly := *failure
+			friendly.Message = "This command is unavailable on this server. Run agentworks update. If your CLI is current, ask the server administrator to update the server or check your access."
+			return &friendly
+		}
 		return err
 	}
 	return o.output(result)

@@ -16,12 +16,21 @@ type Action struct {
 	Aliases         []string `json:"aliases,omitempty"`
 	Source          string   `json:"source,omitempty"`
 	SourceAction    string   `json:"source_action,omitempty"`
+	SourceKey       string   `json:"source_key,omitempty"`
 	SourceMember    string   `json:"source_member,omitempty"`
 	Scope           string   `json:"scope,omitempty"`
 	Fields          []string `json:"fields,omitempty"`
 	ExcludeFields   []string `json:"exclude_fields,omitempty"`
 	ExternalMembers string   `json:"external_members,omitempty"`
 	Required        []string `json:"required,omitempty"`
+}
+
+// SourceParameter names the existing selector used by a captured source tool.
+func (a Action) SourceParameter() string {
+	if a.SourceKey != "" {
+		return a.SourceKey
+	}
+	return "action"
 }
 
 // DashboardActions is shared by native chat projection and external MCP.
@@ -86,6 +95,52 @@ func Identity(member string) string {
 		}
 	}
 	return member
+}
+
+// Invocation translates a trusted source instruction to its public action.
+// It does not admit calls: the current catalog and captured executor do that.
+// Ambiguous external members stay unresolved; the typed caller must choose the
+// operation explicitly (for example a Crew update also backs function edits).
+func Invocation(source string, args map[string]any) (string, map[string]any) {
+	return invocation(Actions, source, args)
+}
+
+func invocation(actions []Action, source string, args map[string]any) (string, map[string]any) {
+	var match *Action
+	for i := range actions {
+		action := &actions[i]
+		matches := source == action.Member
+		for _, alias := range action.Aliases {
+			matches = matches || source == alias
+		}
+		for _, member := range strings.Split(action.ExternalMembers, "|") {
+			matches = matches || source == member
+		}
+		if action.Source == source {
+			matches = args[action.SourceParameter()] == action.SourceAction
+		}
+		if !matches {
+			continue
+		}
+		if match != nil && (match.Family != action.Family || match.Name != action.Name || match.Scope != action.Scope) {
+			return source, args
+		}
+		match = action
+	}
+	if match == nil {
+		return source, args
+	}
+	input := map[string]any{}
+	for key, value := range args {
+		if match.Source != source || key != match.SourceParameter() {
+			input[key] = value
+		}
+	}
+	input["action"] = match.Name
+	if match.Scope != "" {
+		input["scope"] = match.Scope
+	}
+	return match.Family, input
 }
 
 func PublicName(identity string) string {

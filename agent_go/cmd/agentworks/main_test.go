@@ -30,7 +30,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// PLAT-825-115: the existing command must send the new shared creation schema,
+// PLAT-825: the existing command must send the new shared creation schema,
 // including a stable retry key outside the Crew spec.
 func TestCrewCreateUsesSharedWorkspaceAction(t *testing.T) {
 	requests := 0
@@ -83,11 +83,15 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 		{[]string{"plan", "get", "--workflow", "wf-1"}, "", "get_plan", map[string]any{"workflow_id": "wf-1"}},
 		{[]string{"plan", "list", "--workflow", "wf-1"}, "", "plan", map[string]any{"workflow_id": "wf-1", "action": "list"}},
 		{[]string{"plan", "edit", "--workflow", "wf-1", "--input", "-"}, `{"action":"update_step","arguments":{"step_id":"fetch","changes":{"title":"Fetch invoices","reason":"Clarify scope"}},"expected_revision":"revision","request_id":"edit-1"}`, "plan", map[string]any{"workflow_id": "wf-1", "action": "update_step", "expected_revision": "revision", "request_id": "edit-1", "arguments": map[string]any{"step_id": "fetch", "changes": map[string]any{"title": "Fetch invoices", "reason": "Clarify scope"}}}},
-		{[]string{"files", "read", "--workflow", "wf-1", "--path", "notes.md"}, "", "read_file", map[string]any{"workflow_id": "wf-1", "path": "notes.md"}},
-		{[]string{"files", "list", "--workflow", "wf-1", "--path", "code", "--glob", "**/*.py"}, "", "list_files", map[string]any{"workflow_id": "wf-1", "path": "code", "glob": "**/*.py"}},
-		{[]string{"files", "code", "--workflow", "wf-1", "--step-id", "run-basic-smoke"}, "", "list_step_code", map[string]any{"workflow_id": "wf-1", "step_id": "run-basic-smoke"}},
+		{[]string{"files", "read", "--workflow", "wf-1", "--path", "notes.md"}, "", "files", map[string]any{"action": "read", "workflow_id": "wf-1", "path": "notes.md"}},
+		{[]string{"files", "list", "--workflow", "wf-1", "--path", "code", "--glob", "**/*.py"}, "", "files", map[string]any{"action": "list", "workflow_id": "wf-1", "path": "code", "glob": "**/*.py"}},
+		{[]string{"files", "code", "--workflow", "wf-1", "--step-id", "run-basic-smoke"}, "", "files", map[string]any{"action": "code", "workflow_id": "wf-1", "step_id": "run-basic-smoke"}},
+		{[]string{"files", "link", "--workflow", "wf-1", "--path", "db/assets/chart.png"}, "", "files", map[string]any{"action": "link", "workflow_id": "wf-1", "path": "db/assets/chart.png"}},
+		{[]string{"files", "search", "--workflow", "wf-1", "--query", "invoice"}, "", "files", map[string]any{"action": "search", "workflow_id": "wf-1", "query": "invoice"}},
+		{[]string{"knowledge", "list", "--workflow", "wf-1"}, "", "files", map[string]any{"action": "knowledge_list", "workflow_id": "wf-1"}},
+		{[]string{"crews", "read", "--crew", "crew-1", "--path", "notes.md"}, "", "files", map[string]any{"action": "read", "crew_id": "crew-1", "path": "notes.md"}},
 		{[]string{"guidance", "topic", "--topic", "plan-change-impact"}, "", "get_guidance_topic", map[string]any{"topic": "plan-change-impact"}},
-		{[]string{"knowledge", "read", "--workflow", "wf-1", "--path", "learnings/_global/SKILL.md"}, "", "read_workflow_knowledge", map[string]any{"workflow_id": "wf-1", "path": "learnings/_global/SKILL.md"}},
+		{[]string{"knowledge", "read", "--workflow", "wf-1", "--path", "learnings/_global/SKILL.md"}, "", "files", map[string]any{"action": "knowledge_read", "workflow_id": "wf-1", "path": "learnings/_global/SKILL.md"}},
 		{[]string{"tools", "call", "native_future_tool", "--set", `nested={"enabled":true}`, "--set", `count=9007199254740993`}, "", "native_future_tool", map[string]any{"nested": map[string]any{"enabled": true}}},
 	} {
 		t.Run(tc.tool, func(t *testing.T) {
@@ -153,7 +157,7 @@ func TestCLIRunAndScheduleArguments(t *testing.T) {
 		{[]string{"chat", "ask", "--workflow", "wf-1", "--inbox", "inbox-1", "--message", "and then?"}, "chat", map[string]any{"workflow_id": "wf-1", "inbox_id": "inbox-1", "message": "and then?"}},
 		{[]string{"messages", "send", "--crew", "crew-1", "--message", "Please review", "--submission-id", "msg-1"}, "messages", map[string]any{"action": "send", "crew_id": "crew-1", "message": "Please review", "submission_id": "msg-1"}},
 		{[]string{"messages", "read", "--inbox", "inbox-1", "--after", "2", "--limit", "10", "--wait", "25"}, "messages", map[string]any{"action": "read", "inbox_id": "inbox-1", "after": 2, "limit": 10, "wait_seconds": 25}},
-		{[]string{"crews", "call-status", "--call", "fn-1", "--after", "3", "--after-event", "7", "--message-limit", "5"}, "get_crew_function_call", map[string]any{"call_id": "fn-1", "after": 3, "after_event": 7, "message_limit": 5}},
+		{[]string{"crews", "call-status", "--call", "fn-1", "--after", "3", "--after-event", "7", "--message-limit", "5"}, "functions", map[string]any{"action": "status", "call_id": "fn-1", "after": 3, "after_event": 7, "message_limit": 5}},
 		{[]string{"runs", "reply", "--workflow", "wf-1", "--session", "s1", "--request-id", "r1", "--response", "yes"}, "run_reply_input", map[string]any{"workflow_id": "wf-1", "session_id": "s1", "request_id": "r1", "response": "yes"}},
 	} {
 		t.Run(tc.tool, func(t *testing.T) {
@@ -195,18 +199,133 @@ func TestCLIRunAndScheduleArguments(t *testing.T) {
 	}
 }
 
-func TestCLIWriteCommandsRejected(t *testing.T) {
-	for _, args := range [][]string{
-		{"plan", "update-scripted-step", "--workflow", "wf-1"},
-		{"files", "write", "--workflow", "wf-1", "--path", "notes.md"},
-		{"files", "patch", "--workflow", "wf-1", "--path", "notes.md"},
-		{"builder", "chat", "--workflow", "wf-1", "--message", "hi"},
-	} {
-		var stdout, stderr bytes.Buffer
-		full := append([]string{"--config", filepath.Join(t.TempDir(), "config.json"), "--server", "http://127.0.0.1:1", "--json"}, args...)
-		if code := run(context.Background(), full, strings.NewReader(""), &stdout, &stderr, func(string) string { return "jwt" }); code == 0 {
-			t.Fatalf("%v accepted", args)
+// PLAT-825: guarded writes must reach the current action and preserve both
+// the server's permission refusal and its allowed result.
+func TestCLIFileWritesKeepTheServerDecision(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusOK} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			called := false
+			srv := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body struct {
+					Name      string
+					Arguments map[string]any
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+					return
+				}
+				if body.Name != "files" || body.Arguments["action"] != "write" || body.Arguments["content"] != "sample" || body.Arguments["expected_revision"] != "revision-1" {
+					t.Errorf("wrong guarded write request: %+v", body)
+				}
+				called = true
+				w.WriteHeader(status)
+				if status == http.StatusForbidden {
+					_, _ = w.Write([]byte(`{"error":{"code":"forbidden","message":"Only the owner or an editor can write this file."}}`))
+				} else {
+					_, _ = w.Write([]byte(`{"written":true}`))
+				}
+			}))
+			defer srv.Close()
+			var out, errs bytes.Buffer
+			args := []string{"--config", filepath.Join(t.TempDir(), "config.json"), "--server", srv.URL, "--json", "files", "write", "--workflow", "wf-1", "--path", "notes.md", "--input", "-"}
+			code := run(t.Context(), args, strings.NewReader(`{"content":"sample","expected_revision":"revision-1"}`), &out, &errs, func(key string) string {
+				if key == "AGENTWORKS_TOKEN" {
+					return "test-credential"
+				}
+				return ""
+			})
+			if !called {
+				t.Fatal("write did not reach the server")
+			}
+			if status == http.StatusForbidden {
+				if code == 0 || !strings.Contains(errs.String(), "Only the owner or an editor") {
+					t.Fatalf("permission decision lost: code=%d err=%s", code, &errs)
+				}
+			} else if code != 0 || !strings.Contains(out.String(), `"written":true`) {
+				t.Fatalf("allowed write failed: code=%d out=%s err=%s", code, &out, &errs)
+			}
+		})
+	}
+}
+
+// Explicit tools calls stay raw: retired names are refused by the server,
+// rather than silently resurrected by the typed-command adapter.
+func TestCLIRawToolsDoNotResolveRetiredNames(t *testing.T) {
+	called := false
+	srv := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Name      string
+			Arguments map[string]any
 		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Name != "read_file" || body.Arguments["action"] != nil {
+			t.Errorf("raw tool was rewritten: %+v", body)
+		}
+		called = true
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"code":"unknown_tool","message":"Use files action=read."}}`))
+	}))
+	defer srv.Close()
+	var out, errs bytes.Buffer
+	code := run(t.Context(), []string{"--config", filepath.Join(t.TempDir(), "config.json"), "--server", srv.URL, "tools", "call", "read_file", "--workflow", "wf-1", "--set", `path="notes.md"`}, strings.NewReader(""), &out, &errs, func(key string) string {
+		if key == "AGENTWORKS_TOKEN" {
+			return "test-credential"
+		}
+		return ""
+	})
+	if !called || code == 0 || !strings.Contains(errs.String(), "Use files action=read") {
+		t.Fatalf("retired tool refusal lost: called=%v code=%d err=%s", called, code, &errs)
+	}
+}
+
+// PLAT-825: tool-version mismatches need an actionable update hint, while
+// a missing project remains the server's own error. Keep the JSON error code.
+func TestCLITypedCommandExplainsUnknownTool(t *testing.T) {
+	for _, tc := range []struct {
+		code   string
+		update bool
+	}{
+		{"unknown_tool", true}, {"http_error", true}, {"not_found", false},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			called := false
+			srv := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body struct {
+					Name      string
+					Arguments map[string]any
+				}
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				if body.Name != "files" || body.Arguments["action"] != "read" {
+					t.Errorf("wrong typed request: %+v", body)
+				}
+				called = true
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": tc.code, "message": "Project not found."}})
+			}))
+			defer srv.Close()
+			var out, errs bytes.Buffer
+			code := run(t.Context(), []string{"--config", filepath.Join(t.TempDir(), "config.json"), "--server", srv.URL, "--json", "files", "read", "--workflow", "wf-1", "--path", "notes.md"}, strings.NewReader(""), &out, &errs, func(key string) string {
+				if key == "AGENTWORKS_TOKEN" {
+					return "test-credential"
+				}
+				return ""
+			})
+			var result struct {
+				Error struct {
+					Code, Message string
+					Status        int
+				}
+			}
+			if err := json.Unmarshal(errs.Bytes(), &result); err != nil {
+				t.Fatalf("not a JSON error: %s", &errs)
+			}
+			if !called || code == 0 || result.Error.Code != tc.code || result.Error.Status != http.StatusNotFound || strings.Contains(result.Error.Message, "agentworks update") != tc.update {
+				t.Fatalf("mismatch guidance/code lost: called=%v code=%d err=%s", called, code, &errs)
+			}
+			if !tc.update && result.Error.Message != "Project not found." {
+				t.Fatal("missing project error was replaced")
+			}
+		})
 	}
 }
 
