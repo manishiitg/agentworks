@@ -55,7 +55,7 @@ export function GoogleAccountList({ connections, busyId, readOnly, canRemove, on
                 </div>
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-2">
-                <button type="button" disabled={!(conn.ready === false ? reconnectAllowed : manageAllowed) || busy} onClick={() => { setExpandedId(null); onChangeAccess ? onChangeAccess(conn) : changeGoogleAccountAccess(conn, workspacePath) }}
+                <button type="button" disabled={!(conn.ready === false ? reconnectAllowed : manageAllowed) || busy} onClick={() => { setExpandedId(null); if (conn.ready === false) onReconnect(conn); else if (onChangeAccess) onChangeAccess(conn); else changeGoogleAccountAccess(conn, workspacePath) }}
                   className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
                   {conn.ready === false ? 'Sign in again' : 'Change access'}
                 </button>
