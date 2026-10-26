@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
 
 // A person can ask an agent to connect its own chat. Never turn a model tool
@@ -72,6 +73,26 @@ func ownAgentSession(ctx context.Context, root string, o *options) (liveAgentSes
 		}
 		if _, err := uuid.Parse(session); err != nil {
 			return liveAgentSession{}, true, errors.New("this Codex tool call has no valid CODEX_THREAD_ID; cannot select another chat")
+		}
+		return liveAgentSession{provider: provider, session: session, host: host, cwd: cwd, remote: refreshNativeRoute(provider, session, host, "")}, true, nil
+	}
+	if provider == "claude" {
+		session := claudeSessionIDForHost(host)
+		if session == "" {
+			// Hook-only/background sessions need no native idle socket. The
+			// helper already holds their exact hook attachment. Its lookup
+			// refuses ambiguity instead of picking a sibling chat.
+			out, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "status", Provider: provider, HostKey: host})
+			if err != nil {
+				return liveAgentSession{}, true, err
+			}
+			if !out.Attached && !out.Offline {
+				return liveAgentSession{}, true, errors.New("this Claude chat has no AgentWorks connection; ask to connect it or type /agentworks attach")
+			}
+			session = out.Attachment.SessionID
+		}
+		if _, err := uuid.Parse(session); err != nil {
+			return liveAgentSession{}, true, errors.New("cannot verify this Claude chat's exact session")
 		}
 		return liveAgentSession{provider: provider, session: session, host: host, cwd: cwd, remote: refreshNativeRoute(provider, session, host, "")}, true, nil
 	}
@@ -182,6 +203,9 @@ func ownAgentAncestor(ctx context.Context) (string, int, error) {
 }
 
 func ownProviderExecutable(executable string) string {
+	if providerProcessMatches("claude", executable) {
+		return "claude"
+	}
 	name := strings.ToLower(filepath.Base(executable))
 	switch name {
 	case "codex", "codexcli":

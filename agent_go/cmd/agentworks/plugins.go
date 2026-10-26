@@ -671,6 +671,7 @@ func providerProcessField(provider string) string {
 
 var museExecutableName = regexp.MustCompile(`^muse-bin-[0-9]+\.[0-9]+\.[0-9]+(?:-R[0-9]+(?:\.[0-9]+)?)?$`)
 var museTruncatedExecutableName = regexp.MustCompile(`^muse-bin-[0-9]+\.[0-9]+\.[0-9]+(?:-R?[0-9]*)?$`)
+var claudeVersionExecutable = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$`)
 
 func providerProcessMatches(provider, command string) bool {
 	return providerProcessMatchesOnOS(provider, command, runtime.GOOS)
@@ -680,6 +681,11 @@ func providerProcessMatchesOnOS(provider, command, goos string) bool {
 	name := filepath.Base(command)
 	if strings.EqualFold(name, provider) {
 		return true
+	}
+	// Background Claude workers keep their native install path as comm,
+	// rather than rewriting it to "claude" like the foreground session.
+	if provider == "claude" {
+		return filepath.Base(filepath.Dir(command)) == "versions" && filepath.Base(filepath.Dir(filepath.Dir(command))) == "claude" && claudeVersionExecutable.MatchString(name)
 	}
 	if provider != "muse" {
 		return false
@@ -893,7 +899,9 @@ func providerHostProcess(provider string) (int, string, error) {
 	pid := os.Getppid()
 	for i := 0; i < 8 && pid > 1; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "ppid=", "-o", providerProcessField(provider), "-o", "lstart=").Output()
+		// Keep the executable last: macOS truncates comm to 16 columns
+		// when another field follows it, losing the worker's install path.
+		out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "ppid=", "-o", "lstart=", "-o", providerProcessField(provider)).Output()
 		cancel()
 		if err != nil {
 			return 0, "", errors.New("cannot identify provider ancestor")
@@ -906,8 +914,8 @@ func providerHostProcess(provider string) (int, string, error) {
 		if err != nil {
 			return 0, "", err
 		}
-		if providerProcessMatches(provider, fields[1]) {
-			h := sha256.Sum256([]byte(strconv.Itoa(pid) + " " + strings.Join(fields[len(fields)-5:], " ")))
+		if providerProcessMatches(provider, strings.Join(fields[6:], " ")) {
+			h := sha256.Sum256([]byte(strconv.Itoa(pid) + " " + strings.Join(fields[1:6], " ")))
 			return pid, hex.EncodeToString(h[:]), nil
 		}
 		pid = parent
@@ -1271,15 +1279,15 @@ func providerPIDHostKey(provider string, pid int) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", providerProcessField(provider), "-o", "lstart=").Output()
+	out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "lstart=", "-o", providerProcessField(provider)).Output()
 	if err != nil {
 		return "", err
 	}
 	fields := strings.Fields(string(out))
-	if len(fields) < 6 || !providerProcessMatches(provider, fields[0]) {
+	if len(fields) < 6 || !providerProcessMatches(provider, strings.Join(fields[5:], " ")) {
 		return "", errors.New("registered provider process is unavailable")
 	}
-	h := sha256.Sum256([]byte(strconv.Itoa(pid) + " " + strings.Join(fields[len(fields)-5:], " ")))
+	h := sha256.Sum256([]byte(strconv.Itoa(pid) + " " + strings.Join(fields[:5], " ")))
 	return hex.EncodeToString(h[:]), nil
 }
 

@@ -880,16 +880,16 @@ func providerHostAliveWith(provider, host string, ps func(env []string, args ...
 	if runtime.GOOS == "windows" {
 		return winHostAlive(provider, host)
 	}
-	out, err := ps(nil, "-axo", "pid=", "-o", providerProcessField(provider), "-o", "lstart=")
+	out, err := ps(nil, "-axo", "pid=", "-o", "lstart=", "-o", providerProcessField(provider))
 	if err != nil {
 		return true
 	} // Permission failure is not evidence of death.
 	for _, line := range strings.Split(string(out), "\n") {
 		p := strings.Fields(line)
-		if len(p) < 7 || !providerProcessMatches(provider, p[1]) {
+		if len(p) < 7 || !providerProcessMatches(provider, strings.Join(p[6:], " ")) {
 			continue
 		}
-		sum := sha256.Sum256([]byte(p[0] + " " + strings.Join(p[len(p)-5:], " ")))
+		sum := sha256.Sum256([]byte(p[0] + " " + strings.Join(p[1:6], " ")))
 		if hex.EncodeToString(sum[:]) == host {
 			return true
 		}
