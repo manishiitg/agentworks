@@ -4,6 +4,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/nativeshell"
 )
@@ -58,6 +59,8 @@ type promptContext struct {
 	IsWorkflowPhase        bool
 	CrewReadOnly           bool
 	MemoryReadOnly         bool
+	// CrewRole is the platform role of the Crew this chat belongs to ("agentworks" or empty).
+	CrewRole string
 	// NativeCodingTools is true when the chat really starts in Full CLI (its
 	// own tools in a sandbox). Sections that describe a
 	// bridge-only world must not apply when this is set.
@@ -133,6 +136,12 @@ var promptSections = []promptSection{
 		Build: func(c promptContext) string {
 			return instructions.ProjectMemoryPrompt(c.MemoryReadOnly || c.CrewReadOnly || (c.IsWorkflowPhase && c.WorkflowMode == "run"))
 		},
+	},
+	{
+		// The person's own AgentWorks Crew: its job, limits and naming are platform-owned (PLAT-825-99).
+		Name:    "agentworks-agent",
+		Applies: func(c promptContext) bool { return c.CrewRole == agentWorksRole && !c.CrewReadOnly },
+		Build:   func(promptContext) string { return workproduct.AgentWorksAgentPrompt() },
 	},
 	{
 		Name:    "product-features",

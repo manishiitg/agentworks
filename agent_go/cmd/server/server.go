@@ -7294,6 +7294,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if note := omittedWorkflowContextNote(req.omittedWorkflowContextCount); note != "" {
 				promptCtx.WorkflowContext += note
 			}
+			if resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID && !crewReaderCLI {
+				if manifest, err := readCrewProjectManifests(r.Context(), crewProfileID, promptCtx.ProfileWorkspace); err == nil {
+					promptCtx.CrewRole = manifest.Role
+				}
+			}
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 				promptCtx.WorkFolders = workproduct.BuildAttachedFoldersPrompt(workFolderGrantsForClaims(r.Context(), GetUserFromContext(r.Context())))
 			}

@@ -548,6 +548,7 @@ instruction_sections:
   - authenticated-user
   - workspace-map
   - project-memory
+  - agentworks-agent
   - product-features
   - llm-capability
   - workflow-context
