@@ -40,7 +40,7 @@ func TestAskCrewDescriptionStatesTheModel(t *testing.T) {
 // A guest's ask has exactly this tool surface: a new tool fails here until it is classified (reviewer rule, 856-59).
 func TestGuestAskToolSurfaceIsAnExactAllowList(t *testing.T) {
 	want := []string{
-		"EndConversation", "WebSearch", crewAskFilesToolName, "get_api_spec", "get_workflow_trigger_run", "list_accessible_workflows",
+		"EndConversation", "WebSearch", crewAskFilesToolName, "query_workflow_db", "get_api_spec", "get_workflow_trigger_run", "list_accessible_workflows",
 		"list_attached_workflows", "list_functions", "list_mcp_servers", "list_project_schedules", "list_project_triggers",
 		"list_skills", "list_workflow_triggers", "read_agent_messages", "read_image", "read_skill",
 		"search_skills", "search_tools", "send_message", crewSuggestionToolName,
@@ -94,7 +94,7 @@ func TestGuestAskFilesToolRefusesPrivateAreas(t *testing.T) {
 // Every non-core tool on the allow list is a native bridge tool for a guest's ask (no shell to curl them).
 func TestGuestAskNativeBridgeToolsAreTheAllowListMinusCore(t *testing.T) {
 	got := crewAskNativeBridgeTools()
-	for _, must := range []string{crewAskFilesToolName, "send_message", "read_skill", "list_functions", crewSuggestionToolName, "read_image"} {
+	for _, must := range []string{crewAskFilesToolName, "send_message", "read_skill", "list_functions", crewSuggestionToolName, "read_image", "query_workflow_db"} {
 		if !slices.Contains(got, must) {
 			t.Errorf("%s must be a native bridge tool for a guest's ask: %v", must, got)
 		}

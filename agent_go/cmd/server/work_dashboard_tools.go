@@ -15,13 +15,14 @@ import (
 )
 
 // registerWorkDashboardTools exposes the same managed SQLite and live HTML
-// report primitives AgentWorks uses, scoped to one Work project. Product words
-// stay Dashboard/Database; the established workflow_* tool names remain stable
-// so Work does not fork the storage or validation implementation.
+// report primitives AgentWorks uses, scoped to one Crew project. Every session
+// gets the same database registry; Run gets only its read source. Dashboard
+// authoring and database writes stay with Builder sessions.
 func (api *StreamingAPI) registerWorkDashboardTools(
 	llmAgent *agent.LLMAgentWrapper,
 	profile *resolvedAgentProfile,
 	sessionID, userID, workspacePath string,
+	readOnly bool,
 ) error {
 	if profile == nil || !isProjectProfileID(profile.Definition.ID) ||
 		(!agentprofiles.HasFeature(profile.Definition, "database") && !agentprofiles.HasFeature(profile.Definition, "dashboard")) {
@@ -40,6 +41,9 @@ func (api *StreamingAPI) registerWorkDashboardTools(
 			continue
 		}
 		name := definition.Function.Name
+		if readOnly && name != "query_workflow_db" {
+			continue
+		}
 		executor := registry.Executors[name]
 		if executor == nil {
 			continue
@@ -57,6 +61,9 @@ func (api *StreamingAPI) registerWorkDashboardTools(
 		if err := llmAgent.RegisterCustomTool(name, definition.Function.Description, parameters, executor, registry.Categories[name]); err != nil {
 			return fmt.Errorf("register %s: %w", name, err)
 		}
+	}
+	if readOnly {
+		return nil
 	}
 
 	publicWorkspacePath := canonicalChatHistoryWorkspacePath(userID, workspacePath)

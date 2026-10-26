@@ -14,7 +14,7 @@ const crewAskModelSentence = "Everyone except the Crew's owners uses it in Run m
 // owner exposes. No shell: it could send data out or use secrets; reads go through the CLI's own file tools. send_message only replies inside the same conversation; submit_crew_suggestion lands in the owner's inbox.
 var crewAskAllowedTools = map[string]bool{
 	"request_clarification": true, // Registered only for an attended external Ask; no project authority.
-	"read_image":            true, crewAskFilesToolName: true, "read_skill": true, "search_tools": true, "get_api_spec": true,
+	"read_image":            true, crewAskFilesToolName: true, "query_workflow_db": true, "read_skill": true, "search_tools": true, "get_api_spec": true,
 	"list_skills": true, "search_skills": true, "send_message": true, "read_agent_messages": true,
 	"list_mcp_servers": true, "list_accessible_workflows": true, "list_attached_workflows": true,
 	"list_workflow_triggers": true, "list_project_schedules": true, "list_project_triggers": true,

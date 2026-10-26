@@ -6940,11 +6940,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError(fmt.Sprintf("Failed to register Work background tools: %v", err), true)
 					return
 				}
-				if err := api.registerWorkDashboardTools(llmAgent, resolvedProfile, sessionID, currentUserID, req.SelectedFolder); err != nil {
-					logfWithContext(queryLogCtx, "[WORK DASHBOARD] Failed to register tools: %v", err)
-					sendError(fmt.Sprintf("Failed to register Work Dashboard tools: %v", err), true)
-					return
-				}
+			}
+			if err := api.registerWorkDashboardTools(llmAgent, resolvedProfile, sessionID, currentUserID, req.SelectedFolder, crewReadOnly || currentUserIsReadOnly); err != nil {
+				logfWithContext(queryLogCtx, "[WORK DASHBOARD] Failed to register tools: %v", err)
+				sendError(fmt.Sprintf("Failed to register Crew data tools: %v", err), true)
+				return
 			}
 			// Laptop setup (computer, folders, commands switch) is available from the Crew owner's own chat, as in the panel.
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {

@@ -130,6 +130,9 @@ profile:
       icon: brain
       file: commands/daily-learnings.md
   runtime:
+    # Managed data uses the same direct bridge in Builder and Run. Registration
+    # and session access decide whether the database family has reads or writes.
+    bridge_tools: [query_workflow_db]
     # Transport is selected by AgentWorks' shared execution policy: interactive
     # chats retain tmux, while background children and steps use structured JSON.
     transport: auto

@@ -113,3 +113,5 @@ that follow-up is configured or working.
 <!-- /product --><!-- /product -->
 
 Dashboard tools use the same names in product chats and MCP: `dashboard` with actions such as catalog, create, validate, preview, publish and link, and `share` with get/set. Read the current catalog: each chat offers only its existing permitted actions. If an older conversation calls a retired dashboard name, refresh its tool catalog and choose the current action.
+
+A shared Crew's Ask can read its shared database with the offered `database` query, describe and integrity_check actions. Owners use the same direct tool; writes keep the existing Builder checks. Published functions keep the authority of the owner who published them.
