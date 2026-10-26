@@ -179,9 +179,14 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => { queue.focus(); queue.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
     const submit = host.querySelector<HTMLButtonElement>('[data-testid="chat-submit-button"]')!
     expect(submit.getAttribute('aria-label')).toBe('Queue next')
+    expect(submit.querySelector('.lucide-clock')).toBeNull()
+    expect(submit.querySelector('.lucide-arrow-up')).not.toBeNull()
     await act(async () => submit.click())
     expect(send).toHaveBeenLastCalledWith('review this file', expect.objectContaining({ sourceTabId: 'A', deliveryMode: 'queue' }))
     const input = host.querySelector<HTMLTextAreaElement>('[data-testid="chat-input-textarea"]')!
+    await act(async () => useChatStore.getState().setTabConfig('A', { inputText: '' }))
+    expect(host.querySelector('[data-testid="chat-submit-button"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Add files and actions"]')).not.toBeNull()
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'second message')
       input.dispatchEvent(new Event('input', { bubbles: true }))

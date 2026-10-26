@@ -92,7 +92,7 @@ export function ChatSendModeButton({ mode, busy, disabled, onModeChange, onSend,
   const runningCount = backgroundWork?.items.length ?? 0
   const label = busy ? (mode === 'queue' ? 'Queue next' : 'Steer') : 'Send'
   const modeLabel = mode === 'queue' ? 'Queue next' : 'Steer'
-  const Icon = mode === 'queue' ? Clock : ArrowUp
+  const Icon = showOptions && mode === 'queue' ? Clock : ArrowUp
   return <div className="inline-flex shrink-0 rounded-md border border-border bg-transparent">
     <Button type="button" variant="ghost" size="xs" onClick={onSend} disabled={disabled} aria-label={label}
       title={busy ? label : `Send · ${modeLabel} while agent is working`} data-testid="chat-submit-button"

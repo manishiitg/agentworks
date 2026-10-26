@@ -3613,8 +3613,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
                       {!nativeTerminalTools && micEl}
                       {/* Chat and task actions share the popup; Enter follows the selected delivery mode. */}
-                      <Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
-                        {deliveryMode === 'queue' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
+                      {(!compactComposerActions || hasValidQuery) && <Suspense fallback={<Button type="button" variant="ghost" size="xs" onClick={handleSendButtonClick} disabled={submitButtonDisabled} aria-label={sendButtonLabel} title={sendButtonLabel} data-testid="chat-submit-button" className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">
+                        {!compactComposerActions && deliveryMode === 'queue' ? <Clock className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
                       </Button>}>
                       <ChatSendModeButton
                         showOptions={!compactComposerActions}
@@ -3629,7 +3629,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onOpenChange={setSendOptionsOpen}
                         onModeChange={mode => { if (activeTabId) setTabConfig(activeTabId, { sendDeliveryMode: mode }) }}
                       />
-                      </Suspense>
+                      </Suspense>}
                     </div>
                 </div>
               </div>
