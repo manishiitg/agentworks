@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -143,7 +144,7 @@ type StreakInfo struct {
 	Count int    `json:"count"`
 }
 
-var ErrScriptedHarnessRejection = errors.New("workspace refused to start the script")
+var ErrScriptedHarnessRejection = errors.New("workspace script invocation failed")
 
 // ErrScriptedHarnessTimeout means main.py started but the outer workspace
 // harness killed it after its command deadline. This is not a startup refusal
@@ -183,9 +184,9 @@ type ScriptedFastPathResult struct {
 	ValidationError string // output/pre-validation failure, if any
 	FailureReason   string // "execution_error", "validation_error", or "execution_and_validation_error"
 	ExistingScript  string // old script content (for LLM relearn prompt)
-	// HarnessFailure means the script never started (ErrScriptedHarnessRejection).
-	// Mutually exclusive with RanScript: nothing was executed, so there is no
-	// exit code, no output, and nothing for the LLM to repair.
+	// HarnessFailure means no reliable execution result was returned. A lost
+	// request may have started the script; this is not evidence of a code defect
+	// and must never enter the automatic repair path.
 	HarnessFailure bool
 	HarnessError   string
 	// HarnessTimeout means the process started and may have emitted partial
@@ -217,8 +218,8 @@ type ScriptedFastPathDecision struct {
 	// a script actually ran and failed — an untried script is a reuse case, not
 	// a failure, and must not be presented to the model as one.
 	PriorError string
-	// HarnessFailure aborts the step: the runtime refused to start the script,
-	// so neither the fast path nor the LLM fallback has anything to work with.
+	// HarnessFailure aborts on infrastructure failure. The process may have
+	// started, so neither automatic retry nor code repair is justified.
 	HarnessFailure bool
 	HarnessError   string
 	HarnessTimeout bool
@@ -1116,6 +1117,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		}
 		if errors.Is(execErr, ErrScriptedHarnessRejection) {
 			status = "not_started"
+			var requestErr *url.Error
+			if errors.Is(execErr, context.Canceled) || errors.Is(execErr, context.DeadlineExceeded) || errors.As(execErr, &requestErr) {
+				status = "interrupted"
+			}
 		}
 		hcpo.recordInspectionEvents(ctx, scriptInspectionEnd(snapshotStart, stdout, stderr, exitCode, status, execErr)...)
 	}()
@@ -1128,8 +1133,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	}
 	result, err := hcpo.WorkspaceClient.ExecuteShellCommand(shellCtx, reqParams)
 	if err != nil {
-		// Transport failure or a non-2xx status: the request never became a
-		// process, so this is the harness failing, not the script.
+		// A transport failure can arrive after the process starts. Preserve the
+		// infrastructure error without claiming it produced no side effects.
 		return "", -1, fmt.Errorf("%w: %w", ErrScriptedHarnessRejection, err)
 	}
 
@@ -1303,13 +1308,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		}
 	}
 
-	// A refused request is not a run. Return before pre-validation and before
-	// updateScriptedRunStats: recording it as a failure would inflate
-	// current_streak and lock_code_stats.consecutive_failures, which is what
-	// flips needs_review and argues for unlocking a script that never ran.
+	// Missing execution evidence is not a script defect. Return before
+	// validation/statistics/repair; an interrupted request may have done work.
 	if errors.Is(execErr, ErrScriptedHarnessRejection) {
 		hcpo.GetLogger().Error(fmt.Sprintf(
-			"🚨 [scripted] Workspace refused to start main.py for step %d (%s) — the script did not run",
+			"[scripted] Workspace request failed for step %d (%s); execution may have started, outcome unknown",
 			stepIndex+1, stepID), execErr)
 		return &ScriptedFastPathResult{
 			HarnessFailure: true,

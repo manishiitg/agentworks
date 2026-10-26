@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/codingtimeout"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -21,18 +22,21 @@ import (
 // HTTP, the registered platform tool and the UI's answer endpoint. No bank
 // workflow or model is involved in this transport test.
 type singleToolCaptureRegistrar struct {
-	exec func(context.Context, map[string]interface{}) (string, error)
+	exec    func(context.Context, map[string]interface{}) (string, error)
+	timeout time.Duration
 }
 
 func (r *singleToolCaptureRegistrar) RegisterCustomTool(_ string, _ string, _ map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), _ string) error {
 	r.exec = exec
 	return nil
 }
-func (r *singleToolCaptureRegistrar) RegisterCustomToolWithTimeout(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), _ time.Duration, category string) error {
+func (r *singleToolCaptureRegistrar) RegisterCustomToolWithTimeout(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, category string) error {
+	r.timeout = timeout
 	return r.RegisterCustomTool(name, description, params, exec, category)
 }
 
 func TestCodingAgentClarificationThroughMCPBridge(t *testing.T) {
+	t.Setenv(codingtimeout.EnvLongRunningMCPToolTimeout, "17m")
 	binary := buildTestMCPBridge(t)
 	for _, provider := range []string{"muse-cli", "claude-code", "codex-cli"} {
 		t.Run(provider, func(t *testing.T) {
@@ -41,6 +45,10 @@ func TestCodingAgentClarificationThroughMCPBridge(t *testing.T) {
 			registrar := &singleToolCaptureRegistrar{}
 			if err := api.registerCodingAgentClarificationTool(registrar, session, provider); err != nil {
 				t.Fatal(err)
+			}
+			// PLAT-861-344: per-tool metadata must retain the existing human wait cap.
+			if registrar.timeout != 17*time.Minute {
+				t.Fatalf("clarification deadline shortened: %s", registrar.timeout)
 			}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/tools/custom/request_clarification" || r.Header.Get("X-Session-ID") != session || r.Header.Get("Authorization") != "Bearer test-clarification-token" {
@@ -61,7 +69,7 @@ func TestCodingAgentClarificationThroughMCPBridge(t *testing.T) {
 				_ = json.NewEncoder(w).Encode(response)
 			}))
 			defer server.Close()
-			tools, _ := json.Marshal([]map[string]interface{}{{"name": "request_clarification", "description": "Ask for choices", "type": "custom", "input_schema": codingAgentClarificationSchema()}})
+			tools, _ := json.Marshal([]map[string]interface{}{{"name": "request_clarification", "description": "Ask for choices", "type": "custom", "timeout_ms": registrar.timeout.Milliseconds(), "input_schema": codingAgentClarificationSchema()}})
 			bridge, err := client.NewStdioMCPClient(binary, append(os.Environ(), "MCP_API_URL="+server.URL, "MCP_API_TOKEN=test-clarification-token", "MCP_SESSION_ID="+session, "MCP_TOOLS_FILE="+writeMCPToolsFileForTest(t, tools)))
 			if err != nil {
 				t.Fatal(err)

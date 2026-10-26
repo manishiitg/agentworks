@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -51,6 +53,8 @@ func TestScriptInspectionFreezesExecutedSourceAndOutput(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, workspace, "reference.md"), []byte("workflow reference"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	var interrupt atomic.Bool
+	started := make(chan struct{})
 	router := gin.New()
 	router.GET("/api/documents", workspacehandlers.ListDocuments)
 	router.POST("/api/folders", workspacehandlers.CreateFolder)
@@ -107,6 +111,13 @@ func TestScriptInspectionFreezesExecutedSourceAndOutput(t *testing.T) {
 			c.Status(500)
 			return
 		}
+		if interrupt.Load() {
+			// The real Python process already completed, but its HTTP result is
+			// cut off by the caller (PLAT-861-344). Never report "not started".
+			close(started)
+			<-c.Request.Context().Done()
+			return
+		}
 		if err := os.WriteFile(sourcePath, []byte("print('later edit')\n"), 0600); err != nil {
 			t.Error(err)
 		}
@@ -155,5 +166,46 @@ func TestScriptInspectionFreezesExecutedSourceAndOutput(t *testing.T) {
 	}
 	if strings.Contains(saved, "fixture-script-secret") || !strings.Contains(saved, "[redacted]") {
 		t.Fatal("script source secret was not redacted")
+	}
+
+	interrupt.Store(true)
+	interruptedOwner := "exec-task-interrupted"
+	interruptedHeader := orchevents.NewBackgroundAgentTranscript("chat", interruptedOwner, "", "Task", "workflow_step", time.Now())
+	interruptedRaw, err := interruptedHeader.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	interruptedPath := orchevents.BackgroundAgentTranscriptPath(workspace, "chat", interruptedOwner)
+	if err := controller.WriteWorkspaceFile(context.Background(), interruptedPath, interruptedRaw); err != nil {
+		t.Fatal(err)
+	}
+	interruptedCtx, cancel := context.WithCancel(virtualtools.WithBackgroundAgentID(ctx, interruptedOwner))
+	defer cancel()
+	controller.recordInspectionMode(interruptedCtx, "script")
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := controller.execScriptedScript(interruptedCtx, step, 0, "step-1", sourcePath, nil, filepath.Join(root, outputRel), filepath.Dir(sourcePath), outputRel, DBAccessNone)
+		done <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("script request never reached Python")
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) || !errors.Is(err, ErrScriptedHarnessRejection) {
+		t.Fatalf("lost interrupted infrastructure outcome: %v", err)
+	}
+	interruptedSaved, err := controller.ReadWorkspaceFile(context.Background(), interruptedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interruptedTranscript, err := orchevents.ParseBackgroundAgentTranscript(interruptedSaved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, interruptedScripts := executioninspection.Records(interruptedTranscript)
+	if len(interruptedScripts) != 1 || interruptedScripts[0].Status != "interrupted" {
+		t.Fatalf("cut-off execution was reported as not started: %+v", interruptedScripts)
 	}
 }

@@ -1572,15 +1572,15 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 					"scripted step %q started main.py but exceeded the workspace harness timeout. Its partial output was preserved, and the code-repair loop was not started because a harness kill does not prove a script defect. Timeout detail: %s",
 					step.GetID(), scriptedDecision.TimeoutError)
 			}
-			// The workspace refused to start the script, so there is nothing to
-			// validate and nothing for the LLM to repair. Fail the step rather
+			// The workspace did not return reliable execution evidence. The script
+			// may have started; this is not a reason to repair its code. Fail the step rather
 			// than falling through: the relearn path would tell the agent to fix
 			// a bug that does not exist and then persist its rewrite over working
 			// code. This is infrastructure, not workflow content — it belongs in
 			// the step-failure notification, not in the run's concerns.
 			if scriptedDecision.HarnessFailure {
 				return "", updatedContextFiles, fmt.Errorf(
-					"scripted step %q could not run: the workspace refused to start main.py, so it produced no output and its behavior is untested by this run. "+
+					"scripted step %q lost its workspace execution result; it may have started and its outcome is unknown. Check the stored run before retrying. "+
 						"This is a harness/infrastructure failure, not a fault in the script — do not modify main.py in response to it. Underlying error: %s",
 					step.GetID(), scriptedDecision.HarnessError)
 			}

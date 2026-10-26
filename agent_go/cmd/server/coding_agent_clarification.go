@@ -16,6 +16,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/codingtimeout"
 )
 
 const clarificationPromptPrefix = "clarification:"
@@ -60,7 +61,7 @@ func (api *StreamingAPI) registerCodingAgentClarificationTool(registrar definiti
 		"Ask the user to choose options in this chat and wait for their answers. Put related questions in a single call; give every question a unique id. Supports single choice, multi_select with selection bounds, and a custom text answer when allow_other is true. The user explicitly submits all answers together; subsequent calls create separate prompts. A cancelled or expired prompt returns an error, never an assumed answer. Wait for the result before doing anything else, and do not end your turn while the question is open; if you must end it, say that you will continue when the person answers.",
 		codingAgentClarificationSchema(), func(ctx context.Context, args map[string]interface{}) (string, error) {
 			return api.waitForCodingAgentClarification(ctx, sessionID, provider, args)
-		}, 30*time.Minute, "human_tools")
+		}, codingtimeout.LongRunningMCPToolTimeout(), "human_tools")
 }
 
 func parseCodingAgentClarification(args map[string]interface{}) ([]unifiedevents.CodingAgentQuestionPrompt, error) {
