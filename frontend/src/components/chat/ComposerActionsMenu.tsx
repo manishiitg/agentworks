@@ -32,7 +32,7 @@ export function ComposerActionsMenu({ uploading, onAttach, onOpenCommands, onOpe
         afterClose.current = null
         if (action) { event.preventDefault(); action() }
       }}
-      className="z-[100] max-h-[min(22rem,60dvh)] w-[min(320px,calc(100vw-24px))] overflow-y-auto rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+      className="z-[100] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(320px,calc(100vw-24px))] overflow-y-auto overscroll-contain scroll-py-1.5 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
       <Menu.Item disabled={uploading} onSelect={onAttach} data-testid="chat-upload-button" className={rowClass}>
         <Paperclip className="h-4 w-4" aria-hidden="true" />{uploading ? 'Uploading files…' : 'Attach files'}
       </Menu.Item>

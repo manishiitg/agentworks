@@ -59,7 +59,7 @@ export function ChatSendOptions({ mode, busy, onModeChange, onOpenCommands, onNe
           <ChevronRight className="ml-auto h-3.5 w-3.5" aria-hidden="true" />
         </Menu.SubTrigger>
         <Menu.Portal>
-          <Menu.SubContent sideOffset={6} collisionPadding={12} className="z-[101] w-[min(22rem,calc(100vw-24px))] rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+          <Menu.SubContent sideOffset={6} collisionPadding={12} className="z-[101] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(22rem,calc(100vw-24px))] overflow-y-auto overscroll-contain scroll-py-1.5 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
             <Menu.Label className="px-2 pb-2 pt-1 text-xs text-muted-foreground">Background work</Menu.Label>
             <BackgroundWorkList work={backgroundWork} renderAction={(button, options) =>
               <Menu.Item asChild disabled={options?.disabled} onSelect={options?.keepOpen ? event => event.preventDefault() : undefined}>{button}</Menu.Item>} />
@@ -109,7 +109,7 @@ export function ChatSendModeButton({ mode, busy, disabled, onModeChange, onSend,
         {runningCount > 0 && <span id={activityId} className="sr-only">{runningCount} background tasks running</span>}
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Content side="top" align="end" sideOffset={8}
+        <Menu.Content side="top" align="end" sideOffset={8} collisionPadding={12}
           onCloseAutoFocus={event => {
             const action = afterClose.current
             afterClose.current = null
@@ -117,7 +117,7 @@ export function ChatSendModeButton({ mode, busy, disabled, onModeChange, onSend,
             event.preventDefault()
             action()
           }}
-          className="z-[100] w-[min(320px,calc(100vw-24px))] rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+          className="z-[100] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(320px,calc(100vw-24px))] overflow-y-auto overscroll-contain scroll-py-1.5 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
             <ChatSendOptions mode={mode} busy={busy} onModeChange={onModeChange} onOpenCommands={onOpenCommands}
               onNewChat={onNewChat} onStop={onStop} backgroundWork={backgroundWork}
               deferAction={action => { afterClose.current = action }} />
