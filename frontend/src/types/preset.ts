@@ -18,7 +18,7 @@ export interface CustomPreset {
   llmConfig?: PresetLLMConfig; // LLM configuration for this preset
   useCodeExecutionMode?: boolean; // MCP code execution mode
   enableBrowserAccess?: boolean; // Deprecated: use browserMode
-  browserMode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp'; // Browser mode (source of truth)
+  browserMode?: 'none' | 'extension' | 'headless' | 'cdp'; // Browser mode (source of truth)
   employee_id?: string; // Assigned employee ID
 }
 
@@ -37,6 +37,6 @@ export interface PredefinedPreset {
   llmConfig?: PresetLLMConfig; // LLM configuration for this preset
   useCodeExecutionMode?: boolean; // MCP code execution mode
   enableBrowserAccess?: boolean; // Deprecated: use browserMode
-  browserMode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp'; // Browser mode (source of truth)
+  browserMode?: 'none' | 'extension' | 'headless' | 'cdp'; // Browser mode (source of truth)
   employee_id?: string; // Assigned employee ID
 }

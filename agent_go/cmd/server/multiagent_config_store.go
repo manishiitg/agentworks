@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"time"
 )
@@ -54,6 +55,11 @@ func ReadMultiAgentChatConfig(ctx context.Context, userID string) (*MultiAgentCh
 // WriteMultiAgentChatConfig persists the user's chat capabilities, stamping
 // UpdatedAt at write time.
 func WriteMultiAgentChatConfig(ctx context.Context, userID string, caps MultiAgentChatCapabilities) error {
+	if caps.BrowserMode == "" {
+		caps.BrowserMode = browser.DefaultMode()
+	} else if err := browser.ValidateMode(caps.BrowserMode); err != nil {
+		return err
+	}
 	c := MultiAgentChatConfig{
 		Capabilities: caps,
 		UpdatedAt:    time.Now().UTC().Format(time.RFC3339),

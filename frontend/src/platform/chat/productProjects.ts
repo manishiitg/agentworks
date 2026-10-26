@@ -299,7 +299,6 @@ export async function createProductProject<P extends string>(options: {
     selected_skills: [...new Set(options.selectedSkills || [])],
     selected_secrets: [],
     selected_global_secret_names: [],
-    browser_mode: 'auto',
     use_code_execution_mode: false,
     ...(options.llmConfig ? { llm_config: options.llmConfig } : {}),
   }
@@ -397,7 +396,6 @@ async function readProjectRuntimeManifest<P extends string>(project: ProductProj
   delete legacyCapabilities.workflow_context_paths
   if (!Array.isArray(legacyCapabilities.selected_tools)) legacyCapabilities.selected_tools = []
   if (!Array.isArray(legacyCapabilities.selected_global_secret_names)) legacyCapabilities.selected_global_secret_names = []
-  if (typeof legacyCapabilities.browser_mode !== 'string') legacyCapabilities.browser_mode = 'auto'
   if (typeof legacyCapabilities.use_code_execution_mode !== 'boolean') legacyCapabilities.use_code_execution_mode = false
   return {
     path,

@@ -354,6 +354,10 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 			externalError(w, 502, "browser_settings_unavailable", "Cannot read this Crew's browser settings.")
 			return
 		}
+		if settings.Mode == "" {
+			externalError(w, 400, "browser_not_selected", projectBrowserChoiceMessage)
+			return
+		}
 		common.SetSessionBrowserMode(session, settings.Mode)
 		if err = registerCodingBrowserTools(crewCapabilityRegistrarBrowser(executors), session, settings.Mode, []int{settings.Port}, nil); err != nil {
 			externalFailure(w, err)

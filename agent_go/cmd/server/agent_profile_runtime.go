@@ -646,9 +646,12 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		if err != nil {
 			return nil, fmt.Errorf("read project browser settings: %w", err)
 		}
-		req.BrowserMode = settings.Mode
+		req.BrowserMode = settings.runtimeMode()
+		if settings.Mode == "" {
+			log.Printf("[BROWSER_CONFIGURATION] session=%s workspace=%s unavailable_choice=true chat_browser_tools=false", sessionID, workspacePath)
+		}
 		req.CdpPort, req.resolvedCDPPorts = nil, nil
-		if browser.CDPEnabled() && (settings.Mode == "cdp" || settings.Mode == "auto") {
+		if browser.CDPEnabled() && settings.Mode == "cdp" {
 			port := settings.Port
 			req.CdpPort = &port
 			req.resolvedCDPPorts = []int{port}

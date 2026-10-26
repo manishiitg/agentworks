@@ -105,7 +105,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
 
 export function WorkBrowserPanel({ tabId, workspacePath, onAsk }: { tabId: string; workspacePath: string; onAsk: (message: string) => unknown | Promise<unknown> }) {
   const product = useProjectProduct()
-  const savedMode = useChatStore(state => state.chatTabs[tabId]?.config.browserMode ?? 'auto')
+  const savedMode = useChatStore(state => state.chatTabs[tabId]?.config.browserMode)
   const savedPort = useChatStore(state => state.chatTabs[tabId]?.config.cdpPort ?? 9222)
   const [browserMode, setBrowserMode] = useState<BrowserAutomationMode>(savedMode)
   const [canonicalSettings, setCanonicalSettings] = useState<{ mode: BrowserAutomationMode; port: number }>({

@@ -686,13 +686,9 @@ func ValidateManifest(m *WorkflowManifest) error {
 		seenWorkflowContexts[path] = struct{}{}
 	}
 
-	// Validate browser mode if set
 	if m.Capabilities.BrowserMode != "" {
-		validModes := map[string]bool{
-			"none": true, "extension": true, "headless": true, "cdp": true,
-		}
-		if !validModes[m.Capabilities.BrowserMode] {
-			return fmt.Errorf("invalid browser_mode: %s", m.Capabilities.BrowserMode)
+		if err := browser.ValidateMode(m.Capabilities.BrowserMode); err != nil {
+			return err
 		}
 	}
 

@@ -37,7 +37,7 @@ export function buildWorkflowPresetsFromManifests(workflows = useWorkflowManifes
       selectedSkills: caps?.selected_skills || [],
       selectedSecrets: caps?.selected_secrets || [],
       selectedGlobalSecretNames: caps?.selected_global_secret_names ?? [],
-      browserMode: (caps?.browser_mode || 'auto') as CustomPreset['browserMode'],
+      browserMode: caps?.browser_mode,
       useCodeExecutionMode: caps?.use_code_execution_mode || false,
       llmConfig: caps?.llm_config ? { ...caps.llm_config } : undefined,
     }
@@ -75,7 +75,7 @@ interface GlobalPresetState {
   // Actions for manifest management
   refreshPresets: () => Promise<void>
   deleteWorkflow: (workspacePath: string) => Promise<void>
-  savePreset: (label: string, query?: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, id?: string, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => Promise<CustomPreset | null>
+  savePreset: (label: string, query?: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, id?: string, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'extension' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => Promise<CustomPreset | null>
   duplicatePreset: (presetId: string) => Promise<CustomPreset | null>
 
   // Actions for preset application
@@ -202,7 +202,7 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
             selected_skills: selectedSkills || [],
             selected_secrets: secretNamesForBackend,
             selected_global_secret_names: globalSecretNamesForBackend,
-            browser_mode: browserMode || 'auto',
+            browser_mode: browserMode,
             use_code_execution_mode: useCodeExecutionMode ?? false,
             llm_config: llmConfig || undefined,
           })
@@ -218,7 +218,7 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
             selectedSkills: selectedSkills || [],
             selectedSecrets: secretNamesForBackend,
             selectedGlobalSecretNames: globalSecretNamesForBackend,
-            browserMode: (browserMode || 'auto') as CustomPreset['browserMode'],
+            browserMode: browserMode,
             useCodeExecutionMode: useCodeExecutionMode ?? false,
             llmConfig: llmConfig || undefined,
           }
@@ -248,7 +248,7 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
                 selected_skills: selectedSkills || [],
                 selected_secrets: secretNamesForBackend,
                 selected_global_secret_names: globalSecretNamesForBackend,
-                browser_mode: browserMode || 'auto',
+                browser_mode: browserMode,
                 use_code_execution_mode: useCodeExecutionMode ?? false,
                 llm_config: llmConfig || undefined,
               },
@@ -266,7 +266,6 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
                 selected_skills: selectedSkills || [],
                 selected_secrets: secretNamesForBackend,
                 selected_global_secret_names: globalSecretNamesForBackend,
-                browser_mode: browserMode || 'auto',
                 use_code_execution_mode: useCodeExecutionMode ?? false,
                 llm_config: llmConfig || undefined,
               },

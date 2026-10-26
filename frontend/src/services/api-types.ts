@@ -117,7 +117,7 @@ export interface AgentQueryRequest {
   // Browser automation access configuration
   enable_browser_access?: boolean // Enable/disable browser automation tool (auto-enables workspace when true)
   // Explicit browser mode for prompt/runtime selection
-  browser_mode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp'
+  browser_mode?: 'none' | 'extension' | 'headless' | 'cdp'
   // CDP port for connecting to an existing Chrome browser (local mode only)
   cdp_port?: number
   // Specialized multi-profile CDP testing. Each port uses a distinct Chrome profile.
@@ -2985,7 +2985,7 @@ export interface WorkflowCapabilities {
   selected_skills: string[]
   selected_secrets: string[]
   selected_global_secret_names: string[] | null // null = none, [] = none
-  browser_mode: string
+  browser_mode?: 'none' | 'extension' | 'headless' | 'cdp'
   use_code_execution_mode: boolean
   llm_config?: PresetLLMConfig
   notifications?: WorkflowNotificationConfig

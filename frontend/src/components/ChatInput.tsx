@@ -887,7 +887,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   )
   const canShowSteer = useMemo(() => canSteer && !isCLIProvider, [canSteer, isCLIProvider])
   const cdpEnabled = useMemo(() => isBrowserCDPEnabled(), [])
-  const browserMode = useMemo(() => tabConfig?.browserMode ?? 'auto', [tabConfig?.browserMode])
+  const browserMode = useMemo(() => tabConfig?.browserMode, [tabConfig?.browserMode])
   const cdpPort = useMemo(() => tabConfig?.cdpPort ?? 9222, [tabConfig?.cdpPort])
   const workspaceActiveFolder = useWorkspaceStore(state => state.activeFolder)
   const [cdpConnected, setCdpConnected] = useState<boolean | null>(null)
@@ -983,12 +983,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     [mcpToolList]
   )
 
-  const setBrowserMode = useCallback((mode: 'none' | 'extension' | 'auto' | 'headless' | 'cdp') => {
+  const setBrowserMode = useCallback((mode: 'none' | 'extension' | 'headless' | 'cdp') => {
     if (!activeTabId) return
 
     if (mode === 'cdp' && !cdpEnabled) return
 
-    if (mode === 'auto' || mode === 'headless' || mode === 'cdp') {
+    if (mode === 'extension' || mode === 'headless' || mode === 'cdp') {
       setTabConfig(activeTabId, {
         browserMode: mode,
         enableBrowserAccess: true,
@@ -1031,11 +1031,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [cdpEnabled])
 
-  // Auto-check CDP connection when automatic/CDP mode is active or port changes.
-  // In automatic mode this is informational: an unavailable CDP browser falls
-  // back to headless at runtime instead of blocking the chat.
+  // Check only the explicitly selected direct Chrome connection.
   useEffect(() => {
-    if (!cdpEnabled || (browserMode !== 'auto' && browserMode !== 'cdp')) {
+    if (!cdpEnabled || browserMode !== 'cdp') {
       setCdpConnected(null)
       setCdpError(null)
       return
@@ -1056,9 +1054,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         return
       }
 
-      if (browserMode === 'none') {
-        setBrowserMode('auto')
-      }
       setShowCdpPopup(true)
       setWorkspaceMinimized(true)
     }
@@ -3230,16 +3225,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       data-tour="chat-browser-tools"
                       data-testid="tour-chat-browser-tools"
                       onClick={() => {
-                        if (browserMode === 'none') {
-                          // Enabling browser: prefer connected CDP, otherwise use headless.
-                          setBrowserMode('auto')
-                          setShowCdpPopup(true)
-                          setWorkspaceMinimized(true)
-                        } else {
-                          // Clicking again while enabled: re-open popup to change settings
-                          setShowCdpPopup(true)
-                          setWorkspaceMinimized(true)
-                        }
+                        setShowCdpPopup(true)
+                        setWorkspaceMinimized(true)
                       }}
                       disabled={isStreaming}
                       className={`group flex items-center gap-1 p-1.5 rounded-md border transition-all duration-200 ${
@@ -3249,7 +3236,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                             : cdpChecking || cdpConnected === null
                               ? 'bg-yellow-900/40 border-yellow-600 text-yellow-400'
                               : 'bg-green-900/40 border-green-600 text-green-400'
-                          : browserMode === 'auto'
+                          : browserMode === 'extension'
                               ? 'bg-cyan-900/40 border-cyan-600 text-cyan-300'
                               : browserMode === 'headless'
                                 ? 'bg-blue-900/40 border-blue-600 text-blue-400'
@@ -3257,7 +3244,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       } ${isStreaming ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:pr-2'}`}
                     >
                       <Globe className="w-4 h-4 flex-shrink-0" />
-                      {browserMode !== 'none' ? (
+                      {browserMode && browserMode !== 'none' ? (
                         <span className={`text-[10px] font-semibold px-1 rounded ${
                           browserMode === 'cdp'
                             ? cdpConnected === false
@@ -3265,11 +3252,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                               : cdpChecking || cdpConnected === null
                                 ? 'bg-yellow-800 text-yellow-200'
                                 : 'bg-green-800 text-green-200'
-                            : browserMode === 'auto'
+                            : browserMode === 'extension'
                                 ? 'bg-cyan-800 text-cyan-100'
                                 : 'bg-blue-800 text-blue-200'
                         }`}>
-                          {browserMode === 'cdp' ? 'CDP' : browserMode === 'auto' ? 'Auto' : 'Headless'}
+                          {browserMode === 'cdp' ? 'CDP' : browserMode === 'extension' ? 'Chrome / Edge' : 'In-app'}
                         </span>
                       ) : (
                         <span className="text-xs font-medium max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-[60px] transition-all duration-200">
@@ -3305,32 +3292,27 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
                         {/* Mode options */}
                         <div className="grid gap-3 md:grid-cols-3">
-                          {/* Automatic */}
+                          {/* Account browser */}
                           <label className={`flex min-h-[132px] cursor-pointer flex-col gap-3 rounded-lg border p-3 transition-colors ${
-                            browserMode === 'auto'
+                            browserMode === 'extension'
                               ? 'border-cyan-500 bg-cyan-500/10 ring-1 ring-cyan-500/20'
                               : 'border-border bg-card/40 hover:bg-muted/50'
                           }`}>
                             <input
                               type="radio"
                               name="browserMode"
-                              checked={browserMode === 'auto'}
-                              onChange={() => setBrowserMode('auto')}
+                              checked={browserMode === 'extension'}
+                              onChange={() => setBrowserMode('extension')}
                               className="sr-only"
                             />
                             <div className="flex items-center gap-2">
-                              <span className={`h-3 w-3 rounded-full border ${browserMode === 'auto' ? 'border-cyan-400 bg-cyan-400 ring-4 ring-cyan-400/20' : 'border-muted-foreground/50'}`} />
-                              <div className="text-sm font-medium">Automatic</div>
+                              <span className={`h-3 w-3 rounded-full border ${browserMode === 'extension' ? 'border-cyan-400 bg-cyan-400 ring-4 ring-cyan-400/20' : 'border-muted-foreground/50'}`} />
+                              <div className="text-sm font-medium">Chrome / Edge</div>
                             </div>
                             <div className="text-xs leading-5 text-muted-foreground">
-                              {cdpEnabled
-                                ? 'Uses Local Chrome through CDP when reachable; otherwise uses headless agent-browser.'
-                                : 'Uses managed headless Chromium on this server. CDP is disabled.'}
+                              Uses the browser you select in this project's Browser panel.
                             </div>
-                            <div className={`mt-auto inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${cdpChecking || cdpConnected === null ? 'bg-amber-500/10 text-amber-300' : cdpConnected ? 'bg-emerald-500/10 text-emerald-300' : 'bg-blue-500/10 text-blue-300'}`}>
-                              <span className={`h-1.5 w-1.5 rounded-full ${cdpConnected ? 'bg-emerald-400' : cdpChecking || cdpConnected === null ? 'bg-amber-400' : 'bg-blue-400'}`} />
-                              {!cdpEnabled ? 'CDP disabled · Headless' : cdpChecking || cdpConnected === null ? 'Checking CDP' : cdpConnected ? 'Will use CDP' : 'Will use headless'}
-                            </div>
+
                           </label>
 
                           {/* Headless */}

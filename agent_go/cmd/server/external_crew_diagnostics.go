@@ -66,7 +66,7 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 		// or a retained caller session. Status never launches a browser.
 		ctx := context.WithValue(r.Context(), common.ChatSessionIDKey, "")
 		ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, "")
-		probe := browser.NewExecutor(browser.NewClient(getWorkspaceAPIURL()), browser.WithBrowserRuntimeConfig(browser.NewBrowserRuntimeConfig(settings.Mode, []int{settings.Port})))
+		probe := browser.NewExecutor(browser.NewClient(getWorkspaceAPIURL()), browser.WithBrowserRuntimeConfig(browser.NewBrowserRuntimeConfig(settings.runtimeMode(), []int{settings.Port})))
 		raw, err := probe.HandleAgentBrowser(ctx, map[string]any{"command": "status"})
 		if err != nil {
 			externalError(w, 502, "browser_status_unavailable", "Cannot inspect this Crew's browser status.")

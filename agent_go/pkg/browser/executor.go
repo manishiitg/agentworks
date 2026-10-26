@@ -204,7 +204,7 @@ func (e *Executor) liveBrowserStatus(ctx context.Context) browserRuntimeStatus {
 	case "cdp":
 		if !cdpEnabled {
 			status.EffectiveMode = "unavailable"
-			status.Instruction = "CDP is disabled for this server deployment. Change browser_mode to auto, headless, or none; --cdp cannot override this policy."
+			status.Instruction = "CDP is disabled for this server deployment. Choose the extension or in-app browser; --cdp cannot override this policy."
 			break
 		}
 		if len(status.ReachableCDPPorts) > 0 {
@@ -405,7 +405,7 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 	}
 	if !CDPEnabled() {
 		if configuredMode == "cdp" || cdpArg.found {
-			return "", fmt.Errorf("CDP_DISABLED: CDP is disabled for this server deployment; use browser_mode=auto or headless and call agent_browser without --cdp")
+			return "", fmt.Errorf("CDP_DISABLED: CDP is disabled for this server deployment; choose the extension or in-app browser and call agent_browser without --cdp")
 		}
 		// On server deployments Automatic is deliberately headless-only. Do not
 		// probe configured ports or accidentally grant host-browser access.

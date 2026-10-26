@@ -47,7 +47,7 @@ interface AppState {
   setUseCodeExecutionMode: (enabled: boolean) => void
   // Last-used tab settings — inherited by new tabs
   lastSelectedSkills: string[]
-  lastBrowserMode: 'none' | 'extension' | 'auto' | 'headless' | 'cdp'
+  lastBrowserMode?: 'none' | 'extension' | 'headless' | 'cdp'
   syncLastTabSettings: (update: Partial<Pick<AppState, 'lastSelectedSkills' | 'lastBrowserMode'>>) => void
 }
 
@@ -172,7 +172,7 @@ export const useAppStore = create<AppState>()(
         },
 
         lastSelectedSkills: [],
-        lastBrowserMode: 'auto',
+        lastBrowserMode: undefined,
         syncLastTabSettings: (update) => {
           set(update)
         },

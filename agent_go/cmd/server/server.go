@@ -843,7 +843,7 @@ type QueryRequest struct {
 	EnableWorkspaceAccess *bool `json:"enable_workspace_access,omitempty"`
 	// Browser automation access configuration
 	EnableBrowserAccess *bool `json:"enable_browser_access,omitempty"` // Enable/disable browser automation tool (nil = inherit default, true/false = explicit override)
-	// Explicit browser mode from frontend: none|auto|headless|cdp
+	// Explicit browser choice: none|extension|headless|cdp
 	BrowserMode string `json:"browser_mode,omitempty"`
 	// Caller input survives in-memory continuation copies, never client JSON.
 	callerBrowserInput *queuedBrowserInput `json:"-"`
@@ -1160,7 +1160,7 @@ func getCdpPorts(req QueryRequest) []int {
 func validateRequestedCDPPorts(req QueryRequest) error {
 	if !browser.CDPEnabled() {
 		if strings.EqualFold(strings.TrimSpace(req.BrowserMode), "cdp") || req.CdpPort != nil || len(req.resolvedCDPPorts) > 0 {
-			return fmt.Errorf("CDP is disabled for this server deployment; use browser_mode auto, headless, or none without CDP ports")
+			return fmt.Errorf("CDP is disabled for this server deployment; choose the extension or in-app browser without CDP ports")
 		}
 		return nil
 	}
@@ -1189,22 +1189,19 @@ func getCdpPort(req QueryRequest) int {
 	return 0
 }
 
-// getBrowserMode resolves effective browser mode with backward-compatible fallback.
+// getBrowserMode resolves optional browser intent using installation policy.
 func getBrowserMode(req QueryRequest) string {
 	mode := strings.ToLower(strings.TrimSpace(req.BrowserMode))
-	switch mode {
-	case "none", "extension", "auto", "headless", "cdp":
-		return mode
-	}
-
-	enableBrowser := req.EnableBrowserAccess != nil && *req.EnableBrowserAccess
-	if enableBrowser {
-		if getCdpPort(req) > 0 {
-			return "cdp"
+	if mode != "" {
+		if browser.ValidateMode(mode) == nil {
+			return mode
 		}
-		return "headless"
+		return "none"
 	}
-	return "none"
+	if req.EnableBrowserAccess != nil && !*req.EnableBrowserAccess {
+		return "none"
+	}
+	return browser.DefaultMode()
 }
 
 // buildChatBrowserConfig resolves the browser configuration from a QueryRequest

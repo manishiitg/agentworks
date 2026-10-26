@@ -16,13 +16,13 @@ import (
 )
 
 // Exercise profile enrichment, persisted queue replacement and re-admission:
-// a headless project must not replay the server's default local Chrome port.
+// PLAT-788: a retired browser choice cannot block chat or leak runtime ports into replay.
 func TestProjectBrowserQueueReplayWithoutCDP(t *testing.T) {
-	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("MULTI_USER_MODE", "false")
 	const folder = "Chats/Work/projects/demo"
-	const settingsPath = "_users/owner/" + folder + "/.browser-settings.json"
-	workspace := &mockWorkspaceAPI{files: map[string]string{settingsPath: `{"mode":"cdp","port":9222}`}}
+	const settingsPath = "_users/owner/" + folder + "/workflow.json"
+	workspace := &mockWorkspaceAPI{files: map[string]string{settingsPath: `{"capabilities":{"browser_mode":"auto","browser_cdp_port":9222}}`}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
@@ -47,8 +47,11 @@ func TestProjectBrowserQueueReplayWithoutCDP(t *testing.T) {
 	if _, err := api.resolveAgentProfileForQuery(ctx, &incoming, "owner", "chat"); err != nil {
 		t.Fatal(err)
 	}
-	if incoming.BrowserMode != "auto" || incoming.CdpPort != nil || len(incoming.resolvedCDPPorts) != 0 {
+	if incoming.BrowserMode != "none" || incoming.EnableBrowserAccess == nil || *incoming.EnableBrowserAccess || incoming.CdpPort != nil || len(incoming.resolvedCDPPorts) != 0 {
 		t.Fatalf("enriched browser settings: mode=%s port=%v ports=%v", incoming.BrowserMode, incoming.CdpPort, incoming.resolvedCDPPorts)
+	}
+	if workspace.files[settingsPath] != `{"capabilities":{"browser_mode":"auto","browser_cdp_port":9222}}` {
+		t.Fatal("opening chat rewrote the saved unavailable choice")
 	}
 	// Even a later enrichment must never become persisted caller input.
 	stalePort := 9222
@@ -91,14 +94,14 @@ func TestProjectBrowserQueueReplayWithoutCDP(t *testing.T) {
 	if err := validateRequestedCDPPorts(replay); err != nil {
 		t.Fatal(err)
 	}
-	workspace.files[settingsPath] = `{"mode":"headless","port":9444}`
+	workspace.files[settingsPath] = `{"capabilities":{"browser_mode":"headless","browser_cdp_port":9444}}`
 	if _, err := restarted.resolveAgentProfileForQuery(context.Background(), &replay, "owner", "chat"); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateRequestedCDPPorts(replay); err != nil {
 		t.Fatal(err)
 	}
-	if replay.BrowserMode != "auto" || replay.CdpPort != nil {
+	if replay.BrowserMode != "headless" || replay.CdpPort != nil {
 		t.Fatal("replay did not rederive managed browser settings")
 	}
 	// Refusal of actual caller CDP remains before any profile normalization.

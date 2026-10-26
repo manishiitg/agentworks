@@ -377,7 +377,7 @@ export interface ChatTabConfig {
   selectedSecrets: string[]  // Selected secret IDs to inject into chat
   llmConfig: ExtendedLLMConfiguration  // LLM configuration (provider, model, etc.)
   fileContext: FileContextItem[]  // Files/folders in context
-  browserMode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp'  // Browser access mode (default: 'auto')
+  browserMode?: 'none' | 'extension' | 'headless' | 'cdp'  // Browser choice; absent uses the server default
   enableBrowserAccess?: boolean  // Enable/disable browser automation tool (auto-enables workspace when true)
   useCdp?: boolean  // Whether CDP mode is enabled (connect to local Chrome)
   cdpPort?: number  // CDP port (default 9222)
@@ -563,8 +563,8 @@ const getDefaultTabConfig = (mode: 'workflow' | 'multi-agent' = 'multi-agent'): 
     // CRITICAL: Don't copy global chatFileContext - chat tabs should have independent file context
     // Workflow mode uses global chatFileContext, but chat mode uses tab-specific fileContext
     fileContext: [],
-    browserMode: appStore?.lastBrowserMode ?? 'auto',
-    enableBrowserAccess: ['auto', 'headless', 'cdp'].includes(appStore?.lastBrowserMode ?? 'auto'),
+    browserMode: appStore?.lastBrowserMode,
+    enableBrowserAccess: appStore?.lastBrowserMode === undefined ? undefined : appStore.lastBrowserMode !== 'none',
     selectedSkills: appStore?.lastSelectedSkills ?? [],
     delegationTierConfig: undefined,
     queuedMessages: [],
@@ -3059,7 +3059,7 @@ export const useChatStore = create<ChatState>()(
         if (tabMode === 'multi-agent') {
           type SyncUpdate = {
             lastSelectedSkills?: string[]
-            lastBrowserMode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp'
+            lastBrowserMode?: 'none' | 'extension' | 'headless' | 'cdp'
           }
           const sync: SyncUpdate = {}
           if (configUpdate.selectedSkills !== undefined) sync.lastSelectedSkills = configUpdate.selectedSkills

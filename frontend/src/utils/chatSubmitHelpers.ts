@@ -132,24 +132,9 @@ export function buildQueryRequestPayload(params: {
   // isChatWithExtras: only multi-agent mode gets optional extras (browser, skills, secrets, etc.)
   const isChatWithExtras = isMultiAgentMode
 
-  // Browser mode can drift on resumed/migrated tabs when older fields exist.
-  // Derive a robust effective mode so request payloads are consistent.
-  const rawBrowserMode = currentTab?.config?.browserMode
-  const legacyUseCdp = currentTab?.config?.useCdp === true
-  const legacyEnableBrowser = currentTab?.config?.enableBrowserAccess === true
-  let effectiveBrowserMode: 'none' | 'extension' | 'auto' | 'headless' | 'cdp' =
-    rawBrowserMode
-      ? rawBrowserMode
-      : (legacyEnableBrowser
-          ? (legacyUseCdp ? 'cdp' : 'headless')
-          : 'none')
-
-  // Guard against stale/migrated config where browserMode says headless
-  // but useCdp is actually enabled in tab config.
-  if (effectiveBrowserMode === 'headless' && legacyUseCdp) {
-    effectiveBrowserMode = 'cdp'
-  }
-  const isBrowserAccessMode = effectiveBrowserMode !== 'none'
+  // Browser intent is optional; the server owns the default and project choice.
+  const effectiveBrowserMode = currentTab?.config?.browserMode
+  const isBrowserAccessMode = effectiveBrowserMode === undefined ? undefined : effectiveBrowserMode !== 'none'
 
   return {
     query: queryWithContext,
@@ -173,7 +158,7 @@ export function buildQueryRequestPayload(params: {
     browser_mode: isChatWithExtras
       ? effectiveBrowserMode
       : undefined,
-    cdp_port: isChatWithExtras && (effectiveBrowserMode === 'auto' || effectiveBrowserMode === 'cdp')
+    cdp_port: isChatWithExtras && effectiveBrowserMode === 'cdp'
       ? (currentTab?.config?.cdpPort || 9222)
       : undefined,
     delegation_tier_config: undefined,

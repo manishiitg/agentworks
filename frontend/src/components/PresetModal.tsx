@@ -29,7 +29,7 @@ import { useChatStore } from '../stores/useChatStore';
 interface PresetModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (label: string, query: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => boolean | void | Promise<boolean | void>;
+  onSave: (label: string, query: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'extension' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => boolean | void | Promise<boolean | void>;
   editingPreset?: CustomPreset | null;
   availableServers?: string[];
   hideAgentModeSelection?: boolean;
@@ -69,7 +69,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
   const [llmConfig, setLlmConfig] = useState<PresetLLMConfig | null>(null);
   // Browser mode and CDP port are edited in the workflow panel now; this
   // dialog only carries the saved values through.
-  const [browserMode, setBrowserModeState] = useState<'none' | 'extension' | 'auto' | 'headless' | 'cdp'>('auto');
+  const [browserMode, setBrowserModeState] = useState<'none' | 'extension' | 'headless' | 'cdp'>();
   const [showDeleteWorkflowConfirm, setShowDeleteWorkflowConfirm] = useState(false);
   const [deletingWorkflow, setDeletingWorkflow] = useState(false);
 
@@ -248,17 +248,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         provider: primaryConfig.provider as PresetLLMConfig['provider'],
       };
       setLlmConfig(presetLLM);
-      // Load browser mode: prefer explicit browserMode, fall back to legacy derivation
-      if (editingPreset.browserMode) {
-        setBrowserModeState(editingPreset.browserMode);
-      } else {
-        // Legacy fallback for presets saved before browserMode was added
-        if (editingPreset.enableBrowserAccess) {
-          setBrowserModeState('headless');
-        } else {
-          setBrowserModeState('auto');
-        }
-      }
+      setBrowserModeState(editingPreset.browserMode);
       // Load agent-specific configs if available
       setBuilderLLM(presetLLM.builder_llm || null);
       setMaintenanceLLM(presetLLM.maintenance_llm || null);
@@ -290,7 +280,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         provider: primaryConfig.provider as PresetLLMConfig['provider'],
       };
       setLlmConfig(defaultLLM);
-      setBrowserModeState('auto'); // Prefer connected CDP, otherwise headless
+      setBrowserModeState(undefined);
       // Initialize agent-specific configs to null (will use legacy default)
       setBuilderLLM(null);
       setMaintenanceLLM(null);
@@ -447,7 +437,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         false, // useCodeExecutionMode — backend determines mode from browser selection
         selectedSecrets, // Secret names for workflow injection
         selectedGlobalSecrets, // Per-preset global secret selection (null=all)
-        browserMode, // Browser mode: none|auto|headless|cdp
+        browserMode,
         icon.trim(),
         workflowKind
       );

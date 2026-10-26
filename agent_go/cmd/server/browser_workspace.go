@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const projectBrowserChoiceMessage = "Choose a browser in this project's Browser panel"
+
 type workspaceBrowserSettings struct {
 	Mode string `json:"mode"`
 	Port int    `json:"port"`
@@ -34,7 +36,7 @@ func effectiveWorkspaceBrowserMode(mode string) string { return normalBrowserMod
 
 func readWorkspaceBrowserSettings(ctx context.Context, workspace string) (workspaceBrowserSettings, error) {
 	settings := workspaceBrowserSettings{Mode: browser.DefaultMode(), Port: defaultCDPPort}
-	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
+	manifest, found, err := readWorkflowManifest(ctx, workspace, false)
 	if err != nil {
 		return settings, err
 	}
@@ -44,10 +46,16 @@ func readWorkspaceBrowserSettings(ctx context.Context, workspace string) (worksp
 			settings.Port = manifest.Capabilities.BrowserCDPPort
 		}
 	}
-	if settings.Mode == "" {
-		return settings, fmt.Errorf("Select an available browser in this project's Browser panel")
-	}
+	// An unavailable saved choice is configuration to repair, not a manifest
+	// read failure. Keep it unset so the panel can save a valid explicit choice.
 	return settings, nil
+}
+
+func (settings workspaceBrowserSettings) runtimeMode() string {
+	if settings.Mode == "" {
+		return "none"
+	}
+	return settings.Mode
 }
 
 func saveWorkspaceBrowserSettings(ctx context.Context, workspace string, settings workspaceBrowserSettings) error {
@@ -188,7 +196,7 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 			}
 		} else if req.Action == "start" || req.Action == "recover" {
 			if settings.Mode != "cdp" && settings.Mode != "headless" {
-				http.Error(w, "Choose a saved browser or a direct browser connection first", 400)
+				http.Error(w, projectBrowserChoiceMessage, 400)
 				return
 			}
 			if settings.Mode == "headless" && !browser.ManagedEnabled() {

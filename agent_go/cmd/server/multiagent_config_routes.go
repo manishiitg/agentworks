@@ -61,6 +61,10 @@ func saveMultiAgentChatCapabilitiesHandler() http.HandlerFunc {
 			http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
 			return
 		}
+		if err := enforceDeploymentBrowserCapability(&caps.WorkflowCapabilities); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		// The general chat capability editor predates notifications and
 		// replaces the entire capabilities object. Preserve the dedicated Notify
 		// setting when an older/current editor omits that field; disabling Notify

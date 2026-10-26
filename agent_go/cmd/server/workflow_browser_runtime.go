@@ -43,6 +43,11 @@ func workflowBrowserExecutors(sessionID, workspacePath string, readManifest func
 			switch strings.ToLower(strings.TrimSpace(manifest.Capabilities.BrowserMode)) {
 			case "", "none", "extension", "headless", "cdp":
 				mode = effectiveWorkspaceBrowserMode(manifest.Capabilities.BrowserMode)
+				if mode == "" {
+					return "", fmt.Errorf("%s", projectBrowserChoiceMessage)
+				}
+			default:
+				return "", fmt.Errorf("%s", projectBrowserChoiceMessage)
 			}
 			port := manifest.Capabilities.BrowserCDPPort
 			ports = configuredCDPPortsForMode(mode, &port, nil)

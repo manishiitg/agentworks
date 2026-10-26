@@ -18,7 +18,7 @@ import {
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 
-export type BrowserAutomationMode = 'none' | 'extension' | 'auto' | 'headless' | 'cdp'
+export type BrowserAutomationMode = 'none' | 'extension' | 'headless' | 'cdp' | undefined
 
 interface BrowserAutomationSettingsProps {
   browserMode: BrowserAutomationMode
