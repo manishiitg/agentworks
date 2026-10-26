@@ -29,10 +29,11 @@ func externalMCPSearchTools(args map[string]any, listed []externalTool) *mcp.Cal
 		return mcp.NewToolResultError("invalid_arguments: offset must be an integer of 0 or more")
 	}
 	limit, ok := externalSearchInt(args, "limit", externalSearchDefaultLimit)
-	if !ok || limit < 1 || limit > externalSearchMaxLimit {
-		return mcp.NewToolResultError("invalid_arguments: limit must be an integer between 1 and 20 (a page is at least 10)")
+	if !ok || limit < 1 {
+		return mcp.NewToolResultError("invalid_arguments: limit must be a whole number of 1 or more")
 	}
-	limit = max(limit, externalSearchDefaultLimit)
+	// A page is 10 to 20 tools; a larger request gets 20 rather than an error that costs the agent a turn.
+	limit = min(max(limit, externalSearchDefaultLimit), externalSearchMaxLimit)
 
 	words := strings.Fields(strings.ToLower(strings.NewReplacer("_", " ", "-", " ").Replace(query)))
 	type hit struct {

@@ -376,8 +376,9 @@ func TestExternalMCPSearchToolsFindsByKeywordAndPages(t *testing.T) {
 	if one := decode(map[string]any{"query": "vault groups"}); one["total"].(float64) != 1 {
 		t.Fatalf("every word must match: %v", one)
 	}
-	if bad := externalMCPSearchTools(map[string]any{"limit": float64(21)}, listed); !bad.IsError {
-		t.Fatal("a limit above 20 must be refused")
+	// Agents asked for 30 and lost a turn to an error (PLAT-825): a large page is capped at 20, not refused.
+	if big := decode(map[string]any{"query": "dashboard", "limit": float64(30)}); len(big["tools"].([]any)) != 12 {
+		t.Fatalf("a limit of 30 must return the whole 12-tool match: %v", big)
 	}
 }
 
