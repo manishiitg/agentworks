@@ -109,7 +109,9 @@ export class OpaqueReportFrame {
     const context = this.context()
     if (this.tooLarge) html = `<html data-report-state="error"><head><style>body{margin:0;padding:20px;font:14px/1.6 system-ui;color:hsl(var(--foreground));background:hsl(var(--background))}</style></head><body><p role="alert" data-report-error>${DOCUMENT_TOO_LARGE}</p></body></html>`
     const config = JSON.stringify({ channel: this.channel, ...context }).replace(/</g, '\\u003c')
-    const source = new URL(options.runtimeUrl ?? '/report-preview/report-preview.js', window.location.href)
+    // Website frames load the asset published in the frontend's static root.
+    // The dedicated preview supplies its own runtime URL when it creates a frame.
+    const source = new URL(options.runtimeUrl ?? '/report-preview.js', window.location.href)
     source.search = ''; source.hash = ''
     const origin = new URL(options.runtimeUrl ? '.' : '/', source).href
     const head = `<base href="${origin}"><meta name="referrer" content="no-referrer"><script id="aw-native-document-config" type="application/json">${config}</script><script defer src="${source}"></script>`

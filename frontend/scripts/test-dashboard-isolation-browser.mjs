@@ -30,7 +30,7 @@ document.querySelector('#file').onclick=async()=>{probe.file=await report.fileUr
 const fixture = { name: 'isolated-dashboard', configureServer(server) {
   server.middlewares.use(async (req, res, next) => {
     const url = new URL(req.url, 'http://localhost')
-    if (url.pathname === '/report-preview/report-preview.js') { res.setHeader('Content-Type','text/javascript'); res.end(runtime); return }
+    if (url.pathname === '/report-preview.js' || url.pathname === '/report-preview/report-preview.js') { res.setHeader('Content-Type','text/javascript'); res.end(runtime); return }
     if (url.pathname === '/report-preview/') { res.setHeader('Content-Type','text/html'); res.end('<!doctype html><html><body><script src="/report-preview/report-preview.js"></script></body></html>'); return }
     if (url.pathname.startsWith('/api/workflow/report-preview/')) {
       if(url.pathname.endsWith('/file')){res.setHeader('Content-Type','text/html');res.end(url.searchParams.get('path')==='db/sample.html'?'FILE_BYTES':html+(url.searchParams.get('path')==='db/reports/large.html'?'<!--'+'x'.repeat(5*1024*1024)+'-->':''));return}
@@ -157,13 +157,13 @@ try {
   }
   console.log('All three isolated surface and interaction checks passed.')
   // The sandbox remains safe even when its trusted child runtime never starts.
-  await page.route('**/report-preview/report-preview.js', route => route.fulfill({ contentType:'text/javascript', body:'/* unavailable child runtime */' }))
+  await page.route('**/report-preview.js', route => route.fulfill({ contentType:'text/javascript', body:'/* unavailable child runtime */' }))
   await page.goto(origin+'/__native')
   await page.frameLocator('iframe').getByText('Sample report',{exact:true}).waitFor()
   await page.frames().find(frame=>frame.parentFrame()).waitForLoadState('load')
   assert.deepEqual(await page.evaluate(()=>calls),[])
   await reopen()
-  await page.unroute('**/report-preview/report-preview.js')
+  await page.unroute('**/report-preview.js')
   assert.deepEqual(errors.filter(e=>!e.includes('ResizeObserver loop')),[])
   const out=process.env.BROWSER_CHECK_ARTIFACT_DIR||await mkdtemp(path.join(tmpdir(),'dashboard-isolation-'));await mkdir(out,{recursive:true});await page.screenshot({path:path.join(out,'isolated-preview.png')})
   console.log('PASS: native, HTML viewer and preview opaque; app DOM/storage/cookies inaccessible; popup/top navigation blocked; document URL opaque even when reopened without sandbox;1.45MB document loads;5MB source has a plain refusal in app and preview; file blobs opaque; query/Python/write/message/Ask/function controls/theme/resize/motion/preview capture work; spoofed source/channel ignored and native slots clipped. Service and conversation replies are fixtures.')
