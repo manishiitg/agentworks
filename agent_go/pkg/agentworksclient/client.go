@@ -234,10 +234,17 @@ func (c *Client) Call(ctx context.Context, name string, arguments map[string]any
 	return c.callOnce(ctx, name, arguments)
 }
 
+// A normal deployment can keep the server unavailable for more than a minute.
+const agentSendRetryBudget = 150 * time.Second
+
 // retryAgentRequest keeps retries in the original call, on the same server. No
 // local outbox is created and a failed/uncertain send is never called accepted.
 func retryAgentRequest(ctx context.Context, operation string, run func(context.Context) (json.RawMessage, error)) (json.RawMessage, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	budget := agentSendRetryBudget
+	if operation == "ack" {
+		budget = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	delay := 250 * time.Millisecond
 	for attempt := 1; ; attempt++ {
@@ -253,7 +260,7 @@ func retryAgentRequest(ctx context.Context, operation string, run func(context.C
 			return nil, err
 		case <-timer.C:
 		}
-		delay = min(2*time.Second, delay*2)
+		delay = min(5*time.Second, delay*2)
 	}
 }
 

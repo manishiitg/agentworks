@@ -894,7 +894,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	// One budget includes resolving/validating the attachment and sending.
 	if in.Action == "send" || in.Action == "reply" || in.Action == "reply_inbox" {
 		var cancel context.CancelFunc
-		callCtx, cancel = context.WithTimeout(callCtx, 30*time.Second)
+		callCtx, cancel = context.WithTimeout(callCtx, agentSendRetryBudget)
 		defer cancel()
 	}
 	if in.Action == "usage_refresh" {

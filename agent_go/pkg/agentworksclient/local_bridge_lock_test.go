@@ -1203,11 +1203,15 @@ func TestLegacyLifecycleRepairDoesNotReclaimMovedNames(t *testing.T) {
 // The same helper must also retry a temporary outage before sending.
 func TestMessagingSurvivesRestartAndHookCallerExit(t *testing.T) {
 	var validates, sends, receipts atomic.Int32
+	// PLAT-856-375: a real deployment outlasted the old 30s send window.
+	// Exercise the complete helper budget, not only the inner HTTP retry.
+	restartingUntil := time.Now().Add(35 * time.Second)
 	accepted := make(chan struct{})
 	release := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/attachment") {
-			if validates.Add(1) == 1 {
+			validates.Add(1)
+			if time.Now().Before(restartingUntil) {
 				w.WriteHeader(503)
 				return
 			}
@@ -1236,8 +1240,8 @@ func TestMessagingSurvivesRestartAndHookCallerExit(t *testing.T) {
 	client, _ := New(server.URL, "token")
 	session := &localSession{Attachment: AgentAttachment{ID: "lease", AgentName: "a", Provider: "claude", SessionID: "s"}, HostKey: "h", client: client}
 	b := &localBridge{sessions: map[string]*localSession{localBridgeKey("claude", "s"): session}, changed: make(chan struct{})}
-	reply := b.mailboxCall(context.Background(), session, LocalBridgeRequest{Action: "send", Target: "agent:peer", Message: "body", SubmissionID: "stable"}, LocalBridgeReply{})
-	if reply.Error != "" || validates.Load() != 2 || sends.Load() != 2 {
+	reply := b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "send", Provider: "claude", SessionID: "s", HostKey: "h", AttachmentID: "lease", Target: "agent:peer", Message: "body", SubmissionID: "stable"})
+	if reply.Error != "" || validates.Load() < 2 || sends.Load() != 2 {
 		t.Fatalf("send after restart: %+v validates=%d sends=%d", reply, validates.Load(), sends.Load())
 	}
 	caller, cancel := context.WithCancel(context.Background())
