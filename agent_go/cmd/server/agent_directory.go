@@ -57,6 +57,9 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			"your_access": crew["access"], "description": crew["description"], "functions": agentDirectoryFunctions(functions),
 			"reach": "functions action=call(target=<id>, function=<name>) for a function; send_message(target=<id>) to ask it",
 		}
+		if role, _ := crew["role"].(string); role != "" {
+			row["role"] = role
+		}
 		owned := crewProjectOwnedByCaller(claims.UserID, crewPath)
 		if owned {
 			tabs, err := crewOwnerChatRecords(ctx, claims.UserID, profileID, id, crewPath)

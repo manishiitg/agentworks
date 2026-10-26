@@ -133,6 +133,10 @@ func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query s
 			"access":         itemAccess,
 			"owner":          ownerLabel,
 		})
+		// Only the person's own AgentWorks is marked; someone else's is listed as a plain Crew.
+		if access == "owner" && manifest.Role == agentWorksRole {
+			items[len(items)-1]["role"] = agentWorksRole
+		}
 	}
 	return items, nil
 }
