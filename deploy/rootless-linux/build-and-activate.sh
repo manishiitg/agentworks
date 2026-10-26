@@ -103,6 +103,7 @@ install -m 0755 "$REPO_ROOT/scripts/group-platform-tool-selections.py" "$BUILD_D
 install -m 0755 "$REPO_ROOT/scripts/migrate-project-schedules.py" "$BUILD_DIR/migrations/migrate-project-schedules.py"
 install -m 0755 "$REPO_ROOT/scripts/migrate-browser-modes.py" "$BUILD_DIR/migrations/migrate-browser-modes.py"
 install -m 0755 "$REPO_ROOT/scripts/repair-workflow-builder-tabs.py" "$BUILD_DIR/migrations/repair-workflow-builder-tabs.py"
+install -m 0755 "$REPO_ROOT/scripts/migrate-saved-platform-references.py" "$BUILD_DIR/migrations/migrate-saved-platform-references.py"
 for grouped_tool_catalog in "$REPO_ROOT/agent_go/pkg/platformtools/catalog/"*-actions.json; do
   install -m 0644 "$grouped_tool_catalog" "$BUILD_DIR/migrations/$(basename "$grouped_tool_catalog")"
 done
@@ -485,6 +486,7 @@ fi
 python3 "$BUILD_DIR/migrations/migrate-project-schedules.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/project-schedules-$(date -u +%Y%m%dT%H%M%SZ)"
 python3 "$BUILD_DIR/migrations/migrate-browser-modes.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/browser-modes-$RELEASE_ID" --state-root "$REMOTE_APP/state" --deployment-mode server
 python3 "$BUILD_DIR/migrations/repair-workflow-builder-tabs.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/workflow-builder-tabs-$(date -u +%Y%m%dT%H%M%SZ)"
+python3 "$BUILD_DIR/migrations/migrate-saved-platform-references.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/saved-platform-references-$RELEASE_ID" --catalog-dir "$BUILD_DIR/migrations" --workspace-api-url "http://127.0.0.1:$WORKSPACE_PORT" --workspace-env-file "$REMOTE_APP/.env"
 systemctl --user daemon-reload
 systemctl --user restart "$PRODUCT-workspace"
 sleep 2
