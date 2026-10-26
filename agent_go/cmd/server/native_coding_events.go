@@ -229,6 +229,35 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		}
 		o.nativeRecords = s
 	}
+	o.api.nativeObserversMu.Lock()
+	tmux := o.snapshot.TmuxSession
+	o.api.nativeObserversMu.Unlock()
+	if tmux != "" && tmux != s.TmuxSession {
+		// Every CLI launch, including --resume of the same native session, gets
+		// its own tmux session. Background commands and helpers die with the
+		// process that started them and never write a completion, so work
+		// recorded under the replaced runtime is no longer running.
+		closed := 0
+		for id, r := range s.Work {
+			if r.State == "started" {
+				r.State = "stopped"
+				s.Work[id] = r
+				closed++
+			}
+		}
+		for id, r := range s.Turns {
+			if r.State == "started" {
+				r.State = "stopped"
+				s.Turns[id] = r
+				closed++
+			}
+		}
+		s.TmuxSession = tmux
+		if err := saveNativeCodingState(s); err != nil {
+			o.nativeCodingGap(s, "checkpoint_write_failed")
+		}
+		log.Printf("[NATIVE_RECORD] runtime_replaced session=%s provider=%s native=%s closed=%d", o.snapshot.SessionID, o.provider, o.nativeID, closed)
+	}
 	if path != s.Path {
 		o.nativeCodingGap(s, "source_path_changed")
 		return

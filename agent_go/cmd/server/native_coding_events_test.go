@@ -116,6 +116,39 @@ func TestNativeWorkDoesNotBecomePlatformExecution(t *testing.T) {
 	}
 }
 
+// PLAT-872: after app restarts relaunched Claude Code with --resume, the chat
+// kept listing "Background command" items started hours earlier by the killed
+// process, because no completion is ever written for them.
+func TestNativeBackgroundWorkEndsWithReplacedCLIProcess(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "native.jsonl")
+	if err := os.WriteFile(path, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := &nativeCodingRecordState{SessionID: "chat", Provider: "claude-code", NativeID: "native", Path: path, TmuxSession: "claude-old", Primed: true,
+		Work:     map[string]llmtypes.NativeRecord{"bash1": {Kind: "background_command", State: "started", TaskID: "bash1"}},
+		Turns:    map[string]llmtypes.NativeRecord{},
+		filename: filepath.Join(dir, "native-records", "chat.json")}
+	o := &nativeTerminalObserver{snapshot: terminals.Snapshot{SessionID: "chat", TmuxSession: "claude-old"}, provider: "claude-code", nativeID: "native", nativeRecords: state}
+	api := &StreamingAPI{nativeObservers: map[string]*nativeTerminalObserver{"chat": o}}
+	o.api = api
+	o.pollNativeCodingRecords()
+	if len(api.nativeCodingBackgroundWork("chat")) != 1 {
+		t.Fatal("background command of the live CLI process was closed")
+	}
+	// The same native session resumed by a new CLI process in a new tmux session.
+	o.snapshot.TmuxSession = "claude-new"
+	o.pollNativeCodingRecords()
+	if items := api.nativeCodingBackgroundWork("chat"); len(items) != 0 {
+		t.Fatalf("replaced CLI process still lists %d running items", len(items))
+	}
+	var saved nativeCodingRecordState
+	raw, _ := os.ReadFile(state.filename)
+	if json.Unmarshal(raw, &saved) != nil || saved.Work["bash1"].State != "stopped" || saved.TmuxSession != "claude-new" {
+		t.Fatal("closed background command was not checkpointed for the next restart")
+	}
+}
+
 func TestNativeStartupObservesWithoutNewEvents(t *testing.T) {
 	const sessionID = "native-startup-chat"
 	const userID = "alice"
