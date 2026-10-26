@@ -308,8 +308,18 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	}
 	// Real capability probes can carry a workspace host/error or CDP endpoint.
 	// Exercise both failure and success; neither may appear in diagnostics.
-	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "true")
-	f.write(t, browserSettingsPath(externalCommandCrewRoot), `{"mode":"cdp","port":9222}`)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	raw, found, readErr := readFileFromWorkspace(context.Background(), externalCommandCrewRoot+"/workflow.json")
+	if readErr != nil || !found {
+		t.Fatal("Crew manifest missing")
+	}
+	var browserManifest map[string]any
+	if err := json.Unmarshal([]byte(raw), &browserManifest); err != nil {
+		t.Fatal(err)
+	}
+	browserManifest["capabilities"].(map[string]any)["browser_mode"] = "cdp"
+	encodedBrowserManifest, _ := json.Marshal(browserManifest)
+	f.write(t, externalCommandCrewRoot+"/workflow.json", string(encodedBrowserManifest))
 	upstream, err := url.Parse(workspaceURL)
 	if err != nil {
 		t.Fatal(err)

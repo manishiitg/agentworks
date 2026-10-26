@@ -30,7 +30,7 @@ func runtimeFrontendConfigJS(actualPort int, workspaceURL string) string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "window.__APP_RUNTIME_CONFIG__ = {\n  apiBaseUrl: \"http://localhost:%d\",\n  workspaceApiBaseUrl: %q", actualPort, workspaceURL)
-	fmt.Fprintf(&b, ",\n  cdpEnabled: %t", browser.CDPEnabled())
+	fmt.Fprintf(&b, ",\n  cdpEnabled: %t,\n  browserModes: %s", browser.CDPEnabled(), jsStringArrayLiteral(browser.VisibleModes()))
 	local := localProductInstallation()
 	localOptIn := localServerProductsEnabled()
 	if local {

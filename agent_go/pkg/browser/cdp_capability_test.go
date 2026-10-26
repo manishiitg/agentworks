@@ -10,23 +10,23 @@ import (
 	"testing"
 )
 
-func TestCDPEnabledDefaultsOnAndHonorsServerDisable(t *testing.T) {
-	t.Setenv(EnvAgentBrowserCDPEnabled, "")
+func TestCDPEnabledOnlyOnLocalInstallation(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	if !CDPEnabled() {
 		t.Fatal("empty/unset-compatible capability must preserve desktop CDP support")
 	}
-	t.Setenv(EnvAgentBrowserCDPEnabled, "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if CDPEnabled() {
 		t.Fatal("false must disable CDP")
 	}
-	t.Setenv(EnvAgentBrowserCDPEnabled, "typo")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if CDPEnabled() {
 		t.Fatal("an invalid explicit capability value must fail closed")
 	}
 }
 
 func TestDisabledCDPAutoStatusIsHeadlessWithoutProbe(t *testing.T) {
-	t.Setenv(EnvAgentBrowserCDPEnabled, "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -55,7 +55,7 @@ func TestDisabledCDPAutoStatusIsHeadlessWithoutProbe(t *testing.T) {
 }
 
 func TestDisabledCDPRejectsExplicitInvocation(t *testing.T) {
-	t.Setenv(EnvAgentBrowserCDPEnabled, "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	executor := NewExecutor(NewClient("http://127.0.0.1:1"), WithCdpPort(9222))
 	_, err := executor.HandleAgentBrowser(context.Background(), map[string]interface{}{
 		"command": "snapshot",

@@ -22,7 +22,7 @@ func TestLiveExecutorRecoversFromACrashedTabAndRefusesTallScreenshots(t *testing
 	if url == "" || folder == "" {
 		t.Skip("set AW_LIVE_BROWSER_WORKSPACE_URL and AW_LIVE_BROWSER_FOLDER for the live browser check")
 	}
-	t.Setenv(EnvAgentBrowserCDPEnabled, "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

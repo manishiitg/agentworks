@@ -21,27 +21,8 @@ import (
 
 const cdpTabListTimeout = 15 * time.Second
 
-// EnvAgentBrowserCDPEnabled controls whether this deployment permits agents to
-// connect to an operator-owned Chrome instance over CDP. It defaults to true
-// for backwards compatibility with desktop/local installations. Public and
-// remote server deployments set it to false explicitly.
-const EnvAgentBrowserCDPEnabled = "AGENT_BROWSER_CDP_ENABLED"
-
-// CDPEnabled reports the deployment-level CDP capability. Workflow settings
-// can narrow browser access further, but cannot override a disabled deployment
-// capability.
-func CDPEnabled() bool {
-	raw, ok := os.LookupEnv(EnvAgentBrowserCDPEnabled)
-	if !ok || strings.TrimSpace(raw) == "" {
-		return true
-	}
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "1", "true", "yes", "on", "enabled":
-		return true
-	default:
-		return false
-	}
-}
+// CDPEnabled uses the same installation contract as panels and settings tools.
+func CDPEnabled() bool { return !ManagedEnabled() }
 
 // execCmd is an alias so tests can swap it out; defaults to exec.Command.
 var execCmd = exec.Command
@@ -157,7 +138,7 @@ func (e *Executor) liveBrowserStatus(ctx context.Context) browserRuntimeStatus {
 	status := browserRuntimeStatus{
 		ConfiguredMode:     mode,
 		ConfiguredCDPPorts: append([]int(nil), ports...),
-		HeadlessAvailable:  mode == "auto" || mode == "headless",
+		HeadlessAvailable:  ManagedEnabled() && (mode == "auto" || mode == "headless"),
 		CDPSupported:       cdpEnabled,
 	}
 	if !cdpEnabled {
@@ -237,6 +218,9 @@ func (e *Executor) liveBrowserStatus(ctx context.Context) browserRuntimeStatus {
 	case "headless":
 		status.EffectiveMode = "headless"
 		status.Instruction = "Call agent_browser without --cdp."
+	case "extension":
+		status.EffectiveMode = "unavailable"
+		status.Instruction = "Choose a saved Chrome or Edge browser in this project's Browser panel or through browser connections."
 	case "none":
 		status.EffectiveMode = "none"
 		status.HeadlessAvailable = false
@@ -380,10 +364,16 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 		return "", fmt.Errorf("command is required")
 	}
 	command = strings.ToLower(strings.TrimSpace(command))
-	if e.configuredBrowserMode() != "none" {
+	if e.configuredBrowserMode() == "extension" {
 		if binding := extensionBinding(ctx); binding != nil {
 			return e.handleExtensionBrowser(ctx, args, binding)
 		}
+	}
+	if e.configuredBrowserMode() == "extension" && command != "status" {
+		return "", fmt.Errorf("BROWSER_NOT_SELECTED: choose a saved Chrome or Edge browser in the project Browser panel or through browser connections")
+	}
+	if !ManagedEnabled() && (e.configuredBrowserMode() == "headless" || e.configuredBrowserMode() == "auto") {
+		return "", fmt.Errorf("MANAGED_BROWSER_UNAVAILABLE: choose the extension or local Chrome connection")
 	}
 	// Status is a backend-owned live capability query. It never launches
 	// agent-browser and intentionally does not require or accept a --cdp value.

@@ -1132,7 +1132,7 @@ func getCdpPorts(req QueryRequest) []int {
 		return nil
 	}
 	mode := strings.ToLower(strings.TrimSpace(req.BrowserMode))
-	if mode == "none" || mode == "headless" {
+	if mode == "none" || mode == "extension" || mode == "headless" {
 		return nil
 	}
 	candidates := make([]int, 0, 1+len(req.resolvedCDPPorts))
@@ -1194,7 +1194,7 @@ func getCdpPort(req QueryRequest) int {
 func getBrowserMode(req QueryRequest) string {
 	mode := strings.ToLower(strings.TrimSpace(req.BrowserMode))
 	switch mode {
-	case "none", "auto", "headless", "cdp":
+	case "none", "extension", "auto", "headless", "cdp":
 		return mode
 	}
 
@@ -1271,6 +1271,10 @@ func applyMultiAgentCapabilitiesToRequest(req *QueryRequest, caps WorkflowCapabi
 	req.SelectedSkills = append([]string(nil), caps.SelectedSkills...)
 	req.UseCodeExecutionMode = caps.UseCodeExecutionMode
 	req.BrowserMode = strings.ToLower(strings.TrimSpace(caps.BrowserMode))
+	if req.BrowserMode == "cdp" && caps.BrowserCDPPort > 0 {
+		port := caps.BrowserCDPPort
+		req.CdpPort = &port
+	}
 	if caps.Notifications != nil {
 		req.NotificationRunSummaryInstructions = caps.Notifications.EffectiveRunSummaryInstructions()
 		req.NotificationRunSummaryChannels = append([]string(nil), caps.Notifications.RunSummaryChannels...)
@@ -1278,15 +1282,15 @@ func applyMultiAgentCapabilitiesToRequest(req *QueryRequest, caps WorkflowCapabi
 		req.NotificationGmailConnectionID = caps.Notifications.GmailConnectionID
 		req.NotificationRunSummaryRecipients = append([]string(nil), caps.Notifications.RunSummaryRecipients...)
 	}
-	if req.BrowserMode == "" || req.BrowserMode == "none" {
-		req.BrowserMode = "auto"
+	if req.BrowserMode == "" {
+		req.BrowserMode = "extension"
 	}
 
 	if req.BrowserMode == "cdp" && !browser.CDPEnabled() {
 		req.BrowserMode = "headless"
 	}
 
-	enableBrowser := req.BrowserMode == "auto" || req.BrowserMode == "headless" || req.BrowserMode == "cdp"
+	enableBrowser := req.BrowserMode == "extension" || req.BrowserMode == "auto" || req.BrowserMode == "headless" || req.BrowserMode == "cdp"
 	req.EnableBrowserAccess = &enableBrowser
 
 	if caps.SelectedGlobalSecretNames != nil {
@@ -4448,7 +4452,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	configuredRequestBrowserMode := getBrowserMode(req)
 	enableBrowserAccess := (req.EnableBrowserAccess != nil && *req.EnableBrowserAccess) ||
-		configuredRequestBrowserMode == "auto" || configuredRequestBrowserMode == "headless" || configuredRequestBrowserMode == "cdp"
+		configuredRequestBrowserMode == "extension" || configuredRequestBrowserMode == "auto" || configuredRequestBrowserMode == "headless" || configuredRequestBrowserMode == "cdp"
 	cdpPort := 0
 	if req.CdpPort != nil {
 		cdpPort = *req.CdpPort
@@ -4820,7 +4824,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 
 				// Browser mode from manifest
-				if caps.BrowserMode != "" && caps.BrowserMode != "none" && (req.BrowserMode == "" || req.BrowserMode == "none") {
+				if caps.BrowserMode != "" && caps.BrowserMode != "none" && req.BrowserMode == "" {
 					req.BrowserMode = caps.BrowserMode
 				}
 			}
@@ -4843,7 +4847,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if workflowBrowserMode != "" {
 			common.SetSessionBrowserMode(sessionID, workflowBrowserMode)
 		}
-		if workflowBrowserMode == "auto" || workflowBrowserMode == "headless" || workflowBrowserMode == "cdp" {
+		if workflowBrowserMode == "extension" || workflowBrowserMode == "auto" || workflowBrowserMode == "headless" || workflowBrowserMode == "cdp" {
 			wfCdpPorts := getCdpPorts(req)
 			if workflowBrowserMode == "auto" {
 				wfCdpPorts = configuredCDPPortsForMode(workflowBrowserMode, req.CdpPort, req.resolvedCDPPorts)
@@ -12211,6 +12215,10 @@ func (api *StreamingAPI) buildWorkshopConfig(
 			// Store configured browser intent only. Auto mode is resolved live by
 			// agent_browser status/actions, never persisted as cdp or headless.
 			configuredBrowserMode := strings.ToLower(strings.TrimSpace(caps.BrowserMode))
+			if configuredBrowserMode == "cdp" && caps.BrowserCDPPort > 0 {
+				port := caps.BrowserCDPPort
+				req.CdpPort = &port
+			}
 			workshopConfiguredCDPPorts := configuredCDPPortsForMode(configuredBrowserMode, req.CdpPort, req.resolvedCDPPorts)
 			cfg.BrowserRuntime = browser.NewBrowserRuntimeConfig(configuredBrowserMode, workshopConfiguredCDPPorts)
 			if configuredBrowserMode != "" {

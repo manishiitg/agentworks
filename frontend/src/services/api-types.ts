@@ -117,7 +117,7 @@ export interface AgentQueryRequest {
   // Browser automation access configuration
   enable_browser_access?: boolean // Enable/disable browser automation tool (auto-enables workspace when true)
   // Explicit browser mode for prompt/runtime selection
-  browser_mode?: 'none' | 'auto' | 'headless' | 'cdp'
+  browser_mode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp'
   // CDP port for connecting to an existing Chrome browser (local mode only)
   cdp_port?: number
   // Specialized multi-profile CDP testing. Each port uses a distinct Chrome profile.

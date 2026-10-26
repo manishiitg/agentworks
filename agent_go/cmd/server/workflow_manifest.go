@@ -272,6 +272,7 @@ type WorkflowCapabilities struct {
 	SelectedSecrets           []string                       `json:"selected_secrets"`
 	SelectedGlobalSecretNames *[]string                      `json:"selected_global_secret_names"` // nil = none, [] = none
 	BrowserMode               string                         `json:"browser_mode"`
+	BrowserCDPPort            int                            `json:"browser_cdp_port,omitempty"`
 	UseCodeExecutionMode      bool                           `json:"use_code_execution_mode"`
 	LLMConfig                 *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
 	Notifications             *WorkflowNotificationConfig    `json:"notifications,omitempty"`
@@ -687,7 +688,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 	// Validate browser mode if set
 	if m.Capabilities.BrowserMode != "" {
 		validModes := map[string]bool{
-			"none": true, "auto": true, "headless": true, "cdp": true,
+			"none": true, "extension": true, "headless": true, "cdp": true,
 		}
 		if !validModes[m.Capabilities.BrowserMode] {
 			return fmt.Errorf("invalid browser_mode: %s", m.Capabilities.BrowserMode)
@@ -900,7 +901,7 @@ func NewWorkflowManifest(label string) *WorkflowManifest {
 			SelectedSkills:            []string{},
 			SelectedSecrets:           []string{},
 			SelectedGlobalSecretNames: &noGlobalSecrets,
-			BrowserMode:               "auto",
+			BrowserMode:               "extension",
 		},
 		Schedules: []WorkflowSchedule{},
 		CreatedAt: now,
@@ -1415,8 +1416,8 @@ func applyManifestDefaults(m *WorkflowManifest) {
 	if m.SchemaVersion == 0 {
 		m.SchemaVersion = 1
 	}
-	if m.Capabilities.BrowserMode == "" || m.Capabilities.BrowserMode == "none" {
-		m.Capabilities.BrowserMode = "auto"
+	if m.Capabilities.BrowserMode == "" {
+		m.Capabilities.BrowserMode = "extension"
 	}
 	if m.Capabilities.SelectedServers == nil {
 		m.Capabilities.SelectedServers = []string{}

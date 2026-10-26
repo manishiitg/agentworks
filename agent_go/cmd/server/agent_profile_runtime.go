@@ -659,10 +659,10 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// runtime then registers AgentWorks' managed agent_browser tool and
 		// attaches its shared built-in skill; product code must not duplicate
 		// either implementation.
-		browserEnabled := true
+		browserEnabled := req.BrowserMode != "none"
 		req.EnableBrowserAccess = &browserEnabled
-		if strings.TrimSpace(req.BrowserMode) == "" || strings.EqualFold(strings.TrimSpace(req.BrowserMode), "none") {
-			req.BrowserMode = "auto"
+		if strings.TrimSpace(req.BrowserMode) == "" {
+			req.BrowserMode = "extension"
 		}
 	}
 	projectInstructions := ""

@@ -306,7 +306,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     useCodeExecutionMode?: boolean,
     selectedSecrets?: string[],
     selectedGlobalSecretNames?: string[] | null,
-    browserMode?: 'none' | 'auto' | 'headless' | 'cdp',
+    browserMode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp',
     icon?: string,
     workflowKind?: 'relay' | 'workflow'
   ) => {

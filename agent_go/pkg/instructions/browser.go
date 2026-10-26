@@ -67,6 +67,9 @@ func BuildBrowserInstructions(cfg BrowserConfig) string {
 		return ""
 	}
 
+	if cfg.Mode == "extension" {
+		return "Use the project's selected Chrome or Edge browser through agent_browser, without --cdp or launch arguments. If no browser is selected, ask the person to choose one in the Browser panel or through browser connections. Never select another account's browser."
+	}
 	result := "\nFor repeatable browser tests, read agent-browser/references/playwright-scripted.md; use @agentworks/playwright for JS/TS or agentworks-playwright for Python when available. Its test sessions are watch-only. The following configuration, media, and capture rules concern managed agent-browser.\n\n## Bundled Browser Recording\nWhen requested, use agent_browser(command=\"capture\", args=[\"start\"], session=\"main\") in managed headless mode after opening/selecting the page. This Builder command starts video, HAR, console and error capture through the same backend as the Browser view. Use args=[\"status\"] before starting and after uncertain responses. Stop with args=[\"stop\"] and report the returned directory, files, validation and errors. A failed validation means the capture is not verified evidence; never substitute a previous run’s footage. Stop a capture you started even when reproduction fails; never stop someone else's active recording. Do not mix capture with separate record/HAR commands or close/reset the browser. The output path is assigned from current workflow permissions. CDP uses the separate native recording commands.\n"
 
 	// Use Mode as primary decision, fall back to legacy CdpPort/Has* flags.

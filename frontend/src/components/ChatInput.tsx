@@ -983,7 +983,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     [mcpToolList]
   )
 
-  const setBrowserMode = useCallback((mode: 'none' | 'auto' | 'headless' | 'cdp') => {
+  const setBrowserMode = useCallback((mode: 'none' | 'extension' | 'auto' | 'headless' | 'cdp') => {
     if (!activeTabId) return
 
     if (mode === 'cdp' && !cdpEnabled) return

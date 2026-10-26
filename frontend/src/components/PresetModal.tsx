@@ -29,7 +29,7 @@ import { useChatStore } from '../stores/useChatStore';
 interface PresetModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (label: string, query: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'auto' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => boolean | void | Promise<boolean | void>;
+  onSave: (label: string, query: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => boolean | void | Promise<boolean | void>;
   editingPreset?: CustomPreset | null;
   availableServers?: string[];
   hideAgentModeSelection?: boolean;
@@ -69,7 +69,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
   const [llmConfig, setLlmConfig] = useState<PresetLLMConfig | null>(null);
   // Browser mode and CDP port are edited in the workflow panel now; this
   // dialog only carries the saved values through.
-  const [browserMode, setBrowserModeState] = useState<'none' | 'auto' | 'headless' | 'cdp'>('auto');
+  const [browserMode, setBrowserModeState] = useState<'none' | 'extension' | 'auto' | 'headless' | 'cdp'>('auto');
   const [showDeleteWorkflowConfirm, setShowDeleteWorkflowConfirm] = useState(false);
   const [deletingWorkflow, setDeletingWorkflow] = useState(false);
 

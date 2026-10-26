@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
 )
 
@@ -30,7 +31,7 @@ func (api *StreamingAPI) projectExtensionAccess(r *http.Request, workspace, prof
 		if manifest == nil || manifest.Kind == "relay" {
 			return "", fmt.Errorf("Open a workflow browser")
 		}
-		return workspace, nil
+		return api.browserWorkspaceAccess(r, workspace, "workflow", true)
 	}
 	if !(profile == crewProfileID && isCrewProjectPath(workspace)) {
 		return "", fmt.Errorf("Browser extension access requires Code, Crew or a workflow")
@@ -49,7 +50,8 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 		api.handleAccountBrowsers(w, r)
 		return
 	}
-	if _, err := api.projectExtensionAccess(r, workspace, r.URL.Query().Get("profile_id")); err != nil {
+	physical, err := api.projectExtensionAccess(r, workspace, r.URL.Query().Get("profile_id"))
+	if err != nil {
 		http.Error(w, err.Error(), 403)
 		return
 	}
@@ -90,6 +92,16 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 				http.Error(w, err.Error(), 400)
 				return
 			}
+			settings, err := readWorkspaceBrowserSettings(r.Context(), physical)
+			if err != nil {
+				http.Error(w, "Cannot load project browser settings", 502)
+				return
+			}
+			settings.Mode = "extension"
+			if err := saveWorkspaceBrowserSettings(r.Context(), physical, settings); err != nil {
+				http.Error(w, "Cannot save project browser choice", 502)
+				return
+			}
 			browserrelay.Default.RequestProjectConnection(user, scope)
 		case "disconnect":
 			if err := browserrelay.Default.Disconnect(user, scope); err != nil {
@@ -101,7 +113,10 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 			return
 		}
 	}
-	json.NewEncoder(w).Encode(browserrelay.Default.Status(user, scope))
+	json.NewEncoder(w).Encode(struct {
+		browserrelay.Status
+		AllowedModes []string `json:"allowed_modes"`
+	}{browserrelay.Default.Status(user, scope), browser.VisibleModes()})
 }
 func (api *StreamingAPI) handleBrowserExtensionConnect(w http.ResponseWriter, r *http.Request) {
 	browserrelay.Default.ServeExtensionAuthorizedWithNames(w, r, func(user, scope, workspace, profile string) error {

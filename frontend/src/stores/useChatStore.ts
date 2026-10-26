@@ -377,7 +377,7 @@ export interface ChatTabConfig {
   selectedSecrets: string[]  // Selected secret IDs to inject into chat
   llmConfig: ExtendedLLMConfiguration  // LLM configuration (provider, model, etc.)
   fileContext: FileContextItem[]  // Files/folders in context
-  browserMode?: 'none' | 'auto' | 'headless' | 'cdp'  // Browser access mode (default: 'auto')
+  browserMode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp'  // Browser access mode (default: 'auto')
   enableBrowserAccess?: boolean  // Enable/disable browser automation tool (auto-enables workspace when true)
   useCdp?: boolean  // Whether CDP mode is enabled (connect to local Chrome)
   cdpPort?: number  // CDP port (default 9222)
@@ -3059,7 +3059,7 @@ export const useChatStore = create<ChatState>()(
         if (tabMode === 'multi-agent') {
           type SyncUpdate = {
             lastSelectedSkills?: string[]
-            lastBrowserMode?: 'none' | 'auto' | 'headless' | 'cdp'
+            lastBrowserMode?: 'none' | 'extension' | 'auto' | 'headless' | 'cdp'
           }
           const sync: SyncUpdate = {}
           if (configUpdate.selectedSkills !== undefined) sync.lastSelectedSkills = configUpdate.selectedSkills

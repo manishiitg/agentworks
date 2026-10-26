@@ -95,7 +95,7 @@ func (f *fakeWorkspace) count(verb string) int {
 }
 
 func stuckTestExecutor(t *testing.T, fake *fakeWorkspace) *Executor {
-	t.Setenv(EnvAgentBrowserCDPEnabled, "false")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	previous := stuckSessionRetryPause
 	stuckSessionRetryPause = time.Millisecond
 	t.Cleanup(func() { stuckSessionRetryPause = previous })

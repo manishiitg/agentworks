@@ -137,7 +137,7 @@ export function buildQueryRequestPayload(params: {
   const rawBrowserMode = currentTab?.config?.browserMode
   const legacyUseCdp = currentTab?.config?.useCdp === true
   const legacyEnableBrowser = currentTab?.config?.enableBrowserAccess === true
-  let effectiveBrowserMode: 'none' | 'auto' | 'headless' | 'cdp' =
+  let effectiveBrowserMode: 'none' | 'extension' | 'auto' | 'headless' | 'cdp' =
     rawBrowserMode
       ? rawBrowserMode
       : (legacyEnableBrowser

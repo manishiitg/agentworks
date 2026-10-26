@@ -101,6 +101,7 @@ install -m 0755 "$REPO_ROOT/scripts/remove-autopilot-engine.py" "$BUILD_DIR/migr
 install -m 0755 "$REPO_ROOT/scripts/simplify-workflow-settings.py" "$BUILD_DIR/migrations/simplify-workflow-settings.py"
 install -m 0755 "$REPO_ROOT/scripts/group-platform-tool-selections.py" "$BUILD_DIR/migrations/group-platform-tool-selections.py"
 install -m 0755 "$REPO_ROOT/scripts/migrate-project-schedules.py" "$BUILD_DIR/migrations/migrate-project-schedules.py"
+install -m 0755 "$REPO_ROOT/scripts/migrate-browser-modes.py" "$BUILD_DIR/migrations/migrate-browser-modes.py"
 install -m 0755 "$REPO_ROOT/scripts/repair-workflow-builder-tabs.py" "$BUILD_DIR/migrations/repair-workflow-builder-tabs.py"
 for grouped_tool_catalog in "$REPO_ROOT/agent_go/pkg/platformtools/catalog/"*-actions.json; do
   install -m 0644 "$grouped_tool_catalog" "$BUILD_DIR/migrations/$(basename "$grouped_tool_catalog")"
@@ -482,6 +483,7 @@ fi
 # migrated cleanly; anything unreadable is reported and left in place.
 # PLAT-871-15 runs last, with the old agent stopped and all prior shape hooks complete.
 python3 "$BUILD_DIR/migrations/migrate-project-schedules.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/project-schedules-$(date -u +%Y%m%dT%H%M%SZ)"
+python3 "$BUILD_DIR/migrations/migrate-browser-modes.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/browser-modes-$RELEASE_ID" --state-root "$REMOTE_APP/state" --deployment-mode server
 python3 "$BUILD_DIR/migrations/repair-workflow-builder-tabs.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/workflow-builder-tabs-$(date -u +%Y%m%dT%H%M%SZ)"
 systemctl --user daemon-reload
 systemctl --user restart "$PRODUCT-workspace"

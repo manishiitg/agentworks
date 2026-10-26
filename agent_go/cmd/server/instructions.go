@@ -368,8 +368,8 @@ Workflow-level manifest. **Required fields**: ` + "`schema_version`" + ` (int, 1
 - ` + "`selected_tools`" + ` — specific tool names to allow-list from those servers (optional)
 - ` + "`selected_skills`" + ` — skill folder names to auto-activate
 - ` + "`selected_secrets`" + ` — secret names the workflow needs; values resolve at runtime from workflow-scoped secrets or GLOBAL_SECRET_* / managed globals
-- ` + "`browser_mode`" + ` — ` + "`none`" + ` | ` + "`auto`" + ` | ` + "`headless`" + ` | ` + "`cdp`" + `
-- Server deployments may disable CDP. Treat the live ` + "`agent_browser status`" + ` field ` + "`cdp_supported`" + ` and the dynamic ` + "`update_workflow_config`" + ` schema as authoritative. When disabled, use ` + "`auto`" + ` (managed headless), ` + "`headless`" + `, or ` + "`none`" + `.
+- ` + "`browser_mode`" + ` — ` + "`extension`" + ` or this installation’s direct browser (` + "`cdp`" + ` locally, ` + "`headless`" + ` on servers); ` + "`none`" + ` turns access off. Read ` + "`allowed_browser_modes`" + ` from settings for the available choices.
+- ` + "`browser_cdp_port`" + ` — local Chrome debugging port (local installations only).
 - ` + "`use_code_execution_mode`" + ` — ` + "`true`" + ` if steps should run scripted Python; ` + "`false`" + ` for direct tool calls
 - ` + "`llm_config`" + ` — set to ` + "`null`" + ` unless the user asked for a specific provider/model
 

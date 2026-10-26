@@ -47,7 +47,7 @@ interface AppState {
   setUseCodeExecutionMode: (enabled: boolean) => void
   // Last-used tab settings — inherited by new tabs
   lastSelectedSkills: string[]
-  lastBrowserMode: 'none' | 'auto' | 'headless' | 'cdp'
+  lastBrowserMode: 'none' | 'extension' | 'auto' | 'headless' | 'cdp'
   syncLastTabSettings: (update: Partial<Pick<AppState, 'lastSelectedSkills' | 'lastBrowserMode'>>) => void
 }
 

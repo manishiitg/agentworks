@@ -15,11 +15,10 @@ import {
   chromeCdpVerifyCommand,
   chromeCdpZipUrl,
 } from '../utils/cdpSetup'
-import { isBrowserCDPEnabled } from '../utils/runtimeCapabilities'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 
-export type BrowserAutomationMode = 'none' | 'auto' | 'headless' | 'cdp'
+export type BrowserAutomationMode = 'none' | 'extension' | 'auto' | 'headless' | 'cdp'
 export type BrowserChoice = BrowserAutomationMode | 'extension'
 
 interface BrowserAutomationSettingsProps {
@@ -83,23 +82,17 @@ const CommandBlock: React.FC<CommandBlockProps> = ({ command, label }) => {
 
 const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
   browserMode,
-  onBrowserModeChange,
   cdpPort = 9222,
   onCdpPortChange,
   cdpConnected,
   cdpError,
   cdpChecking,
   onCheckCdpConnection,
-  browserChoice, onBrowserChoiceChange, allowAutomatic = true, extensionAvailable = false, extensionConnected = false, extensionContent,
   readOnly = false,
-  scopeNoun = 'workflow',
 }) => {
   const platform = typeof navigator !== 'undefined' ? navigator.platform : undefined
   const isMac = platform?.includes('Mac')
-  const cdpEnabled = isBrowserCDPEnabled()
-  const requestedChoice = browserChoice ?? (browserMode === 'none' ? 'auto' : browserMode)
-  const choice = !allowAutomatic && requestedChoice === 'auto' ? 'headless' : requestedChoice
-  const usesCdp = cdpEnabled && (choice === 'auto' || choice === 'cdp')
+  const usesCdp = browserMode === 'cdp'
 
   const connectionLabel = cdpChecking
     ? 'Checking'
@@ -119,26 +112,6 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
 
   return (
     <section className="space-y-3" aria-labelledby="browser-automation-heading">
-      {cdpEnabled || extensionAvailable ? (
-        <div className="space-y-2">
-          <label className="block text-xs font-medium text-muted-foreground" htmlFor="browser-automation-heading">Browser</label>
-          <select id="browser-automation-heading" aria-label="Browser choice" disabled={readOnly} value={choice} onChange={event => {
-            const next = event.target.value as BrowserChoice
-            if (onBrowserChoiceChange) onBrowserChoiceChange(next)
-            else if (next !== 'extension') onBrowserModeChange(next)
-          }} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
-            {allowAutomatic && <option value="auto">Automatic (recommended)</option>}
-            <option value="headless">Workspace browser</option>
-            {extensionAvailable && <option value="extension">My Chrome or Edge · extension{extensionConnected ? ' · Connected' : ''}</option>}
-            {cdpEnabled && <option value="cdp">Chrome · direct connection</option>}
-          </select>
-          {extensionAvailable && extensionConnected && choice !== 'extension' && <p className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />My Chrome or Edge is connected to your account.</p>}
-          {choice !== 'extension' && <p className="text-xs leading-relaxed text-muted-foreground">
-            {choice === 'cdp' ? 'Connect directly to Chrome on this machine using the advanced settings below.' : choice === 'headless' ? `Uses a dedicated browser for this ${scopeNoun}. Sign in from its live view.` : cdpEnabled ? 'Uses your direct Chrome connection when available, otherwise starts a workspace browser.' : `Starts a browser for this ${scopeNoun} when your agent needs it.`}
-          </p>}
-          {choice === 'extension' && extensionContent}
-        </div>
-      ) : <p id="browser-automation-heading" className="text-sm text-muted-foreground">This {scopeNoun} has its own browser. Start it to visit a website, sign in, or teach your helper.</p>}
 
       {usesCdp && (
         <details className="overflow-hidden rounded-lg border border-border">
@@ -148,9 +121,7 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
               <div>
                 <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">Local Chrome connection</h4>
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  {browserMode === 'auto'
-                    ? 'Automatic mode rechecks this port at run time and falls back to headless when it is unavailable.'
-                    : 'This mode requires Chrome to remain reachable on the saved port.'}
+                  This mode requires Chrome to remain reachable on the saved port.
                 </p>
               </div>
               <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium ${connectionStyle}`}>

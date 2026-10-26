@@ -4,12 +4,9 @@ type RuntimeCapabilityWindow = Window & {
   }
 }
 
-// Missing means enabled so older desktop/local runtime configs preserve their
-// behavior. Remote deployments always publish an explicit false value.
+// The backend bootstrap advertises installation capabilities.
 export function isBrowserCDPEnabled(): boolean {
-  if (typeof window === 'undefined') return true
+  if (typeof window === 'undefined') return false
   const value = (window as RuntimeCapabilityWindow).__APP_RUNTIME_CONFIG__?.cdpEnabled
-  if (value === undefined) return true
-  if (typeof value === 'boolean') return value
-  return value.toLowerCase() === 'true'
+  return value === true || value === 'true'
 }

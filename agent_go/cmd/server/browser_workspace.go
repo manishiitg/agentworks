@@ -21,51 +21,49 @@ type workspaceBrowserSettings struct {
 }
 
 func normalBrowserMode(mode string) string {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "headless":
-		return "headless"
-	case "cdp":
-		return "cdp"
-	case "", "none", "auto":
-		return "auto"
-	default:
-		return ""
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		return "extension"
 	}
-}
-func effectiveWorkspaceBrowserMode(mode string) string {
-	mode = normalBrowserMode(mode)
-	if mode == "cdp" && !browser.CDPEnabled() {
-		return "headless"
+	if browser.ValidateMode(mode) != nil {
+		return ""
 	}
 	return mode
 }
-func browserSettingsPath(workspace string) string {
-	return path.Join(workspace, ".browser-settings.json")
-}
+func effectiveWorkspaceBrowserMode(mode string) string { return normalBrowserMode(mode) }
+
 func readWorkspaceBrowserSettings(ctx context.Context, workspace string) (workspaceBrowserSettings, error) {
-	settings := workspaceBrowserSettings{Mode: "auto", Port: 9222}
-	data, found, err := readFileFromWorkspace(ctx, browserSettingsPath(workspace))
+	settings := workspaceBrowserSettings{Mode: "extension", Port: defaultCDPPort}
+	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
 	if err != nil {
 		return settings, err
 	}
-	if found {
-		if err = json.Unmarshal([]byte(data), &settings); err != nil {
-			return settings, err
+	if found && manifest != nil {
+		settings.Mode = normalBrowserMode(manifest.Capabilities.BrowserMode)
+		if manifest.Capabilities.BrowserCDPPort > 0 {
+			settings.Port = manifest.Capabilities.BrowserCDPPort
 		}
 	}
-	settings.Mode = effectiveWorkspaceBrowserMode(settings.Mode)
-	// Code uses an explicit browser choice. Old automatic settings become the
-	// workspace browser rather than probing a local Chrome port.
-	if isProjectWorkspacePath(workspace) && settings.Mode == "auto" {
-		settings.Mode = "headless"
-	}
 	if settings.Mode == "" {
-		return settings, fmt.Errorf("invalid browser mode")
-	}
-	if settings.Port < 1 || settings.Port > 65535 {
-		settings.Port = 9222
+		return settings, fmt.Errorf("Select an available browser in this project's Browser panel")
 	}
 	return settings, nil
+}
+
+func saveWorkspaceBrowserSettings(ctx context.Context, workspace string, settings workspaceBrowserSettings) error {
+	if err := browser.ValidateMode(settings.Mode); err != nil {
+		return err
+	}
+	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
+	if err != nil {
+		return err
+	}
+	if !found || manifest == nil {
+		return fmt.Errorf("Project settings could not be found")
+	}
+	manifest.Capabilities.BrowserMode = settings.Mode
+	manifest.Capabilities.BrowserCDPPort = settings.Port
+	return WriteWorkflowManifest(ctx, workspace, manifest)
 }
 
 func validBrowserWorkspacePath(workspace string) bool {
@@ -158,17 +156,7 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 		http.Error(w, err.Error(), 403)
 		return
 	}
-	settings := workspaceBrowserSettings{Mode: "auto", Port: 9222}
-	workflow := strings.HasPrefix(normalizeConversationWorkspace(workspace), "Workflow/")
-	var manifest *WorkflowManifest
-	if workflow {
-		manifest, _, err = ReadWorkflowManifest(r.Context(), physical)
-		if manifest != nil {
-			settings.Mode = effectiveWorkspaceBrowserMode(manifest.Capabilities.BrowserMode)
-		}
-	} else {
-		settings, err = readWorkspaceBrowserSettings(r.Context(), physical)
-	}
+	settings, err := readWorkspaceBrowserSettings(r.Context(), physical)
 	if err != nil {
 		http.Error(w, "Cannot load browser settings", 502)
 		return
@@ -184,12 +172,8 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 			return
 		}
 		if req.Action == "save" {
-			if req.Mode != "auto" && req.Mode != "headless" && req.Mode != "cdp" {
-				http.Error(w, "Select automatic, managed browser or local Chrome", 400)
-				return
-			}
-			if req.Mode == "cdp" && !browser.CDPEnabled() {
-				http.Error(w, "Local Chrome is unavailable on this server", 400)
+			if err := browser.ValidateMode(req.Mode); err != nil {
+				http.Error(w, err.Error(), 400)
 				return
 			}
 			if req.Port < 1 || req.Port > 65535 {
@@ -197,24 +181,20 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 				return
 			}
 			settings = workspaceBrowserSettings{Mode: req.Mode, Port: req.Port}
-			if workflow {
-				settings.Port = defaultCDPPort
-			}
-			if isProjectWorkspacePath(workspace) && settings.Mode == "auto" {
-				settings.Mode = "headless"
-			}
-			if workflow {
-				manifest.Capabilities.BrowserMode = settings.Mode
-				err = WriteWorkflowManifest(r.Context(), physical, manifest)
-			} else {
-				data, _ := json.Marshal(settings)
-				err = writeFileToWorkspace(r.Context(), browserSettingsPath(physical), string(data))
-			}
+			err = saveWorkspaceBrowserSettings(r.Context(), physical, settings)
 			if err != nil {
 				http.Error(w, "Cannot save browser settings", 502)
 				return
 			}
 		} else if req.Action == "start" || req.Action == "recover" {
+			if settings.Mode != "cdp" && settings.Mode != "headless" {
+				http.Error(w, "Choose a saved browser or a direct browser connection first", 400)
+				return
+			}
+			if settings.Mode == "headless" && !browser.ManagedEnabled() {
+				http.Error(w, "This installation uses the extension or local Chrome", 400)
+				return
+			}
 			// A viewer has its own scoped managed daemon. On local installations it may
 			// attach to the explicitly configured Chrome; server CDP policy still wins.
 			session := browserSessionForWorkspace(GetUserIDFromContext(r.Context()), workspace)
@@ -231,7 +211,7 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 				http.Error(w, "Reconnect local Chrome manually", 409)
 				return
 			}
-			if req.Action != "recover" && browser.CDPEnabled() && (settings.Mode == "cdp" || settings.Mode == "auto") {
+			if req.Action != "recover" && browser.CDPEnabled() && settings.Mode == "cdp" {
 				connected, _, checkErr := client.CheckCDP(r.Context(), settings.Port)
 				if connected && checkErr == nil {
 					cdpPort = settings.Port

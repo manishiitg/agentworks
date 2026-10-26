@@ -195,7 +195,8 @@ func (api *StreamingAPI) refreshBoundWorkflowSettings(ctx context.Context, user,
 	}
 	live.UpdatePresetSettings(caps.SelectedServers, caps.SelectedTools, true, caps.UseCodeExecutionMode, useKB, caps.SelectedSkills, true, entries)
 	mode := strings.ToLower(strings.TrimSpace(caps.BrowserMode))
-	live.UpdateBrowserRuntime(mode, configuredCDPPortsForMode(mode, nil, nil))
+	port := caps.BrowserCDPPort
+	live.UpdateBrowserRuntime(mode, configuredCDPPortsForMode(mode, &port, nil))
 	common.SetSessionBrowserMode(session, mode)
 	stepworkflow.RefreshWorkflowFolderAccessSession(session, root)
 	if caps.LLMConfig != nil {

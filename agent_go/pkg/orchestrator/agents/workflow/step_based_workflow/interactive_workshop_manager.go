@@ -4300,12 +4300,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 
 	// === Tool: update_workflow_config ===
 	// Tool: update_workflow_config — add/remove MCP servers, skills, secrets, and workflow-level knobs
-	browserModeValues := []interface{}{"none", "auto", "headless", "cdp"}
-	browserModeDescription := "Workflow-level browser automation mode. 'none' disables browser capability; 'auto' uses the operator's shared Chrome through CDP when reachable and otherwise headless agent_browser; 'headless' forces isolated agent_browser; 'cdp' requires the operator's shared Chrome. For steps that actually drive the browser, also set update_step_config(enabled_custom_tools=[...]) and enabled_skills=['agent-browser']."
-	if !browser.CDPEnabled() {
-		browserModeValues = []interface{}{"none", "auto", "headless"}
-		browserModeDescription = "Workflow-level browser automation mode for this server deployment. CDP is disabled: 'auto' and 'headless' both use managed headless Chromium; 'none' disables browser capability. The 'cdp' mode is unavailable and cannot be forced."
-	}
+	browserModeValues := browser.ConfigurationModes()
+	browserModeDescription := "Project browser choice. extension uses an explicitly selected saved Chrome or Edge browser; cdp connects to local Chrome; headless uses the server browser. Only this installation's available modes are listed. none turns browser access off."
+
 	if iwm.isRunModeRestricted() {
 		// PLAT-262: skip update_workflow_config registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
@@ -5080,12 +5077,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if raw, ok := args["browser_mode"]; ok && raw != nil {
 				mode, _ := raw.(string)
 				mode = strings.ToLower(strings.TrimSpace(mode))
-				if mode == "cdp" && !browser.CDPEnabled() {
-					return "Error: CDP is disabled for this server deployment. Use browser_mode='auto', 'headless', or 'none'.", nil
-				}
-				validModes := map[string]bool{"none": true, "auto": true, "headless": true, "cdp": true}
-				if !validModes[mode] {
-					return "Error: browser_mode must be one of: none, auto, headless, cdp.", nil
+				if err := browser.ValidateMode(mode); err != nil {
+					return "Error: " + err.Error(), nil
 				}
 				iwm.controller.SetBrowserMode(mode)
 				if mode != "cdp" && mode != "auto" {

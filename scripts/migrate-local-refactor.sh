@@ -15,7 +15,7 @@ done
 migration_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [[ -d "$migration_docs" && -d "$migration_state" && -x "$migration_agent" && -n "$migration_user" ]]
 if [[ "${MULTI_USER_MODE:-false}" == true ]]; then echo "This command is only for the local single-user app." >&2; exit 2; fi
-export MULTI_USER_MODE=false DEFAULT_USER_ID="$migration_user" AGENTWORKS_STATE_ROOT="$migration_state" WORKSPACE_DOCS_PATH="$migration_docs"
+export AGENTWORKS_DEPLOYMENT_MODE=local MULTI_USER_MODE=false DEFAULT_USER_ID="$migration_user" AGENTWORKS_STATE_ROOT="$migration_state" WORKSPACE_DOCS_PATH="$migration_docs"
 migration_backup="$migration_state/migration-backups/local-refactor-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$migration_backup"
 python3 "$migration_repo/scripts/migrations/agent-email-inboxes.py" "$migration_state/gmail-inbound/email.db" --workspace-root "$migration_docs"
@@ -39,5 +39,6 @@ if (( ${#migration_plan_roots[@]} )); then
 fi
 python3 "$migration_repo/scripts/migrate_workflow_builder_chats.py" --workspace-root "$migration_docs" --default-owner-id "$migration_user" --default-owner-username "Local user" --apply
 python3 "$migration_repo/scripts/migrate-project-schedules.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/project-schedules" --single-user --local-user-id "$migration_user"
+python3 "$migration_repo/scripts/migrate-browser-modes.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/browser-modes" --state-root "$migration_state" --deployment-mode local
 python3 "$migration_repo/scripts/repair-workflow-builder-tabs.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/workflow-builder-tabs"
 echo "Local stopped-app migrations complete. The app has not been restarted."

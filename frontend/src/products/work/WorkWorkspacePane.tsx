@@ -102,9 +102,9 @@ export function WorkBrowserPanel({ tabId, workspacePath, onAsk }: { tabId: strin
   const product = useProjectProduct()
   const savedMode = useChatStore(state => state.chatTabs[tabId]?.config.browserMode ?? 'auto')
   const savedPort = useChatStore(state => state.chatTabs[tabId]?.config.cdpPort ?? 9222)
-  const [browserMode, setBrowserMode] = useState<BrowserAutomationMode>(savedMode === 'none' ? 'auto' : savedMode)
+  const [browserMode, setBrowserMode] = useState<BrowserAutomationMode>(savedMode)
   const [canonicalSettings, setCanonicalSettings] = useState<{ mode: BrowserAutomationMode; port: number }>({
-    mode: savedMode === 'none' ? 'auto' : savedMode, port: savedPort,
+    mode: savedMode, port: savedPort,
   })
   const [cdpPort, setCdpPort] = useState(savedPort)
   useEffect(() => {
@@ -162,7 +162,7 @@ export function WorkBrowserPanel({ tabId, workspacePath, onAsk }: { tabId: strin
       setCanonicalSettings({ mode: browserMode, port: cdpPort })
       for (const tab of Object.values(store.chatTabs)) {
         if (tab.tabId !== tabId && (!projectId || tab.metadata?.agentProfileProjectId !== projectId)) continue
-        store.setTabConfig(tab.tabId, { browserMode, cdpPort, enableBrowserAccess: true, useCdp: browserMode === 'cdp' })
+        store.setTabConfig(tab.tabId, { browserMode, cdpPort, enableBrowserAccess: browserMode !== 'none', useCdp: browserMode === 'cdp' })
       }
     } catch {
       store.addToast('Unable to save project browser settings', 'error')

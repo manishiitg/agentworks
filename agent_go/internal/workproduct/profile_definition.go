@@ -465,7 +465,7 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 						"selected_skills":              []string{},
 						"selected_secrets":             []string{},
 						"selected_global_secret_names": []string{},
-						"browser_mode":                 "auto",
+						"browser_mode":                 "extension",
 						"use_code_execution_mode":      false,
 					},
 					"workflow_context_paths": []string{},

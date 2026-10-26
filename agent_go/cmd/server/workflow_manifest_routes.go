@@ -127,13 +127,16 @@ type CreateWorkflowManifestRequest struct {
 }
 
 func enforceDeploymentBrowserCapability(capabilities *WorkflowCapabilities) error {
-	if capabilities == nil || browser.CDPEnabled() {
+	if capabilities == nil {
 		return nil
 	}
-	if strings.EqualFold(strings.TrimSpace(capabilities.BrowserMode), "cdp") {
-		return fmt.Errorf("CDP is disabled for this server deployment; use browser_mode auto, headless, or none")
+	if capabilities.BrowserCDPPort < 0 || capabilities.BrowserCDPPort > 65535 {
+		return fmt.Errorf("Choose a local Chrome port between 1 and 65535")
 	}
-	return nil
+	if capabilities.BrowserMode == "" {
+		return nil
+	}
+	return browser.ValidateMode(capabilities.BrowserMode)
 }
 
 func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *http.Request) {

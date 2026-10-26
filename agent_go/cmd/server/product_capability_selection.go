@@ -62,7 +62,7 @@ func workRuntimeManifestFromLegacy(raw string) (map[string]interface{}, error) {
 	defaults := map[string]interface{}{
 		"selected_tools":               []interface{}{},
 		"selected_global_secret_names": []interface{}{},
-		"browser_mode":                 "auto",
+		"browser_mode":                 "extension",
 		"use_code_execution_mode":      false,
 	}
 	for key, value := range defaults {

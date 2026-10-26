@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
@@ -64,7 +65,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		}, "description": "set/remove store or delete secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
 		"knowledgebase_sources": map[string]any{"type": "array", "maxItems": 20, "description": "Replace linked workflow knowledge sources. Existing sharing and write grants still apply. Empty removes the links.", "items": map[string]any{"type": "object", "additionalProperties": false, "required": []any{"workflow_id", "alias", "access"}, "properties": map[string]any{"workflow_id": externalString("Source workflow ID."), "alias": externalString("Short name for this source."), "access": map[string]any{"type": "string", "enum": []any{"read", "write"}}}}},
 		"kb_write_grants":       names,
-		"browser_mode":          map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
+		"browser_mode":          map[string]any{"type": "string", "enum": browser.ConfigurationModes()},
 		"backup":                map[string]any{"type": "object", "additionalProperties": false, "description": "Goals only: after_runs runs configured Backup after every full run; off by default. Does not create or enable a destination.", "properties": map[string]any{"after_runs": map[string]any{"type": "boolean"}}},
 		"publish":               map[string]any{"type": "object", "additionalProperties": false, "description": "Goals only: after_runs refreshes configured publishing after every full run; off by default. Does not create or enable a destination.", "properties": map[string]any{"after_runs": map[string]any{"type": "boolean"}}},
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
@@ -81,6 +82,9 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 	} {
 		props[key] = value
 	}
+	if browser.CDPEnabled() {
+		props["browser_cdp_port"] = map[string]any{"type": "integer", "minimum": 1, "maximum": 65535, "description": "Local Chrome debugging port; defaults to 9222."}
+	}
 	add("update_settings", "Change a workflow's, Flow's or Crew's settings. Send only what changes. Workflows and Flows need owner or editor access, Crews their owner; setting or removing secret values needs owner. MCP servers come from your own connections, shared Vault connections the server allows you, or the catalog; one that still needs a sign-in is attached and listed under pending_sign_in. Returns the new settings.", true, false, props)
 }
 
@@ -95,6 +99,7 @@ type externalSettingsState struct {
 	Secrets          []string                       `json:"selected_secrets,omitempty"`
 	GlobalSecrets    *[]string                      `json:"selected_global_secret_names,omitempty"`
 	BrowserMode      string                         `json:"browser_mode,omitempty"`
+	BrowserCDPPort   int                            `json:"browser_cdp_port,omitempty"`
 }
 
 func (s externalSettingsState) version() string {
@@ -138,7 +143,7 @@ func (api *StreamingAPI) externalSettingsView(ctx context.Context, userID string
 		"skills": nonNilStrings(s.Skills),
 		"secrets": map[string]any{"stored": stored, "shared_selected": shared, "shared_available": available,
 			"note": "Values are never returned. Only owners may set or remove values."},
-		"browser_mode": s.BrowserMode,
+		"browser_mode": s.BrowserMode, "browser_cdp_port": s.BrowserCDPPort, "allowed_browser_modes": browser.VisibleModes(),
 	}
 	if notifications != nil {
 		view["notifications"] = notifications
@@ -419,6 +424,15 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 		s.BrowserMode = mode
 		changed = append(changed, "browser_mode")
 	}
+	if _, present := args["browser_cdp_port"]; present {
+		port, err := externalBuilderInt(args, "browser_cdp_port", 9222, 1, 65535)
+		if err != nil || !browser.CDPEnabled() {
+			return nil, nil, settingsInvalid("Choose a local Chrome port between 1 and 65535")
+		}
+		s.BrowserCDPPort = port
+		changed = append(changed, "browser_cdp_port")
+	}
+
 	if _, ok := args["free_text_ask"]; ok {
 		return nil, nil, settingsInvalid("free_text_ask was removed: Ask is always open to everyone the project is shared with. Control access by sharing.")
 	}
@@ -469,7 +483,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	caps := manifest.Capabilities
 	state := externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: append([]string{}, caps.SelectedServers...),
 		Tools: append([]string{}, caps.SelectedTools...), Skills: append([]string{}, caps.SelectedSkills...),
-		Secrets: append([]string{}, caps.SelectedSecrets...), GlobalSecrets: caps.SelectedGlobalSecretNames, BrowserMode: caps.BrowserMode}
+		Secrets: append([]string{}, caps.SelectedSecrets...), GlobalSecrets: caps.SelectedGlobalSecretNames, BrowserMode: caps.BrowserMode, BrowserCDPPort: caps.BrowserCDPPort}
 	notifications := func(c WorkflowCapabilities) map[string]any {
 		if n := c.Notifications; n != nil {
 			return map[string]any{"run_instructions": n.RunSummaryInstructions, "run_channels": n.RunSummaryChannels, "run_recipients": n.RunSummaryRecipients, "gmail_connection_id": n.GmailConnectionID, "exclude_channels": n.ExcludeChannels, "break_alerts": n.BreakAlertsEnabled(), "wake_tab": n.WakeTab}
@@ -505,6 +519,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	}
 	caps.LLMConfig, caps.SelectedServers, caps.SelectedTools, caps.SelectedSkills = state.LLMConfig, state.Servers, state.Tools, state.Skills
 	caps.SelectedSecrets, caps.SelectedGlobalSecretNames, caps.BrowserMode = state.Secrets, state.GlobalSecrets, state.BrowserMode
+	caps.BrowserCDPPort = state.BrowserCDPPort
 	req := UpdateWorkflowManifestRequest{WorkspacePath: workflow.WorkspacePath, Capabilities: &caps}
 	if raw, present := args["knowledgebase_sources"]; present {
 		data, err := json.Marshal(raw)
@@ -595,7 +610,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	}
 	view := api.externalSettingsView(ctx, claims.UserID, target, externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: caps.SelectedServers,
 		Tools: caps.SelectedTools, Skills: caps.SelectedSkills, Secrets: caps.SelectedSecrets, GlobalSecrets: caps.SelectedGlobalSecretNames,
-		BrowserMode: caps.BrowserMode}, notifications(caps))
+		BrowserMode: caps.BrowserMode, BrowserCDPPort: caps.BrowserCDPPort}, notifications(caps))
 	addWorkflowSettingsView(view, manifest)
 	view["backup"] = map[string]any{"config": manifest.Backup}
 	view["publish"] = map[string]any{"config": manifest.Publish}
@@ -738,6 +753,8 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 			}
 		case "browser_mode":
 			capabilities["browser_mode"] = state.BrowserMode
+		case "browser_cdp_port":
+			capabilities["browser_cdp_port"] = state.BrowserCDPPort
 		}
 	}
 	manifest["capabilities"] = capabilities

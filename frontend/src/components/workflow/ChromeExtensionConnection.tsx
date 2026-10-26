@@ -8,7 +8,7 @@ import { extensionVersionOlder } from '../../utils/extensionVersion'
 export { extensionVersionOlder } from '../../utils/extensionVersion'
 
 export interface ChromeExtensionStatus {
-  selected: boolean; connected: boolean; account_connected?: boolean; tabs: number; workspace?: string; connection_id?: string; tab_titles?: string[]
+  allowed_modes?: ('extension' | 'headless' | 'cdp')[]; selected: boolean; connected: boolean; account_connected?: boolean; tabs: number; workspace?: string; connection_id?: string; tab_titles?: string[]
   browser_id?: string; browsers?: SavedBrowserConnection[]; message?: string; extension_version?: string; latest_extension_version?: string
 }
 
@@ -69,7 +69,7 @@ export function useChromeExtensionConnection(workspacePath: string | null, profi
 }
 export type ChromeExtensionController = ReturnType<typeof useChromeExtensionConnection>
 
-export function ChromeExtensionConnection({ connection, workspaceBrowser }: { connection: ChromeExtensionController; workspaceBrowser?: { selected: boolean; onSelect: () => void | Promise<void> } }) {
+export function ChromeExtensionConnection({ connection, workspaceBrowser }: { connection: ChromeExtensionController; workspaceBrowser?: { label: string; selected: boolean; onSelect: () => void | Promise<void> } }) {
   const { status, busy, error, connect, download } = connection
   const [chosenBrowser, setChosenBrowser] = useState('')
   const choice = chosenBrowser || (workspaceBrowser?.selected ? 'workspace-browser' : status.browser_id || '')
@@ -77,8 +77,8 @@ export function ChromeExtensionConnection({ connection, workspaceBrowser }: { co
     <div className="flex flex-wrap items-center gap-2">
       <label className="text-xs text-muted-foreground" htmlFor="project-saved-browser">Browser</label>
       <select id="project-saved-browser" value={choice} disabled={busy} onChange={e => setChosenBrowser(e.target.value)} className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs">
-        {workspaceBrowser && <option value="workspace-browser">Workspace browser</option>}
-        {!workspaceBrowser && !status.browser_id && <option value="" disabled>Choose a browser</option>}
+        {workspaceBrowser && <option value="workspace-browser">{workspaceBrowser.label}</option>}
+        {!status.browser_id && !workspaceBrowser?.selected && <option value="" disabled>Choose a browser</option>}
         {status.browsers?.filter(b => b.enabled).map(b => <option key={b.id} value={b.id}>{b.name} · {b.connected ? 'Connected' : 'Offline'}</option>)}
       </select>
       {choice !== (workspaceBrowser?.selected ? 'workspace-browser' : status.browser_id || '') && <Button size="sm" disabled={busy || !choice} onClick={() => { if (choice === 'workspace-browser' && workspaceBrowser) { void Promise.resolve(workspaceBrowser.onSelect()).then(() => setChosenBrowser('')) } else { void connect(choice).then(saved => { if (saved) setChosenBrowser('') }) } }}>{busy && <Loader2 />}Use browser</Button>}

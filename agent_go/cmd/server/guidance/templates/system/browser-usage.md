@@ -66,11 +66,13 @@ every command if the user chose another view. The live stream follows navigation
 and tab changes automatically, so no workspace refresh is needed. Builders can click and type directly while the agent continues. Re-inspect the page if a person changes it. Scheduled or unattended runs must not try
 to open the foreground UI.
 
-`status.cdp_supported` is the deployment authority. When it is `false`, CDP
-is disabled on that server: do not probe ports, install/launch CDP Chrome, or
-pass `--cdp`. Use managed headless Chromium. In that deployment, workflow
-`auto` mode is intentionally headless-only and `cdp` updates are
-rejected. Desktop/local deployments may still report CDP as supported.
+The server publishes the available browser choices in settings and the Browser
+panel. Local installations offer the Chrome/Edge extension and direct local
+Chrome (CDP); server installations offer the extension and the in-app browser.
+Choose an existing account browser explicitly; a mode change never selects a
+personal browser for you. `none` keeps browser access off. Automatic is not a
+saved project choice. Never launch a managed browser locally or probe CDP on a
+server.
 
 ## Runtime modes
 
