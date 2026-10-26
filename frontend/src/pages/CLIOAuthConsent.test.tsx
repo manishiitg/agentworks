@@ -18,7 +18,7 @@ it('makes executor folder access explicit without promising remote workflow acce
     expect(host.textContent).toContain('No folder is shared automatically')
     expect(host.textContent).toContain('Choose folders and Read or Read & write in Crew Settings')
     expect(host.textContent).not.toContain('start or control runs')
-    const allow = [...host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
+    const allow = [...host.querySelectorAll('button')].find(button => button.textContent === 'Approve connection')!
     await act(async () => allow.click())
     expect(api.post).toHaveBeenCalledWith(expect.stringContaining('/api/oauth/cli/consent'), { decision: 'approve' })
   } finally { await act(async () => root.unmount()) }
