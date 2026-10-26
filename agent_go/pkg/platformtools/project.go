@@ -35,6 +35,14 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 		selection = selections[0]
 	}
 	filter := mcpagent.NewToolFilter(selection.Tools, selection.Servers, nil, nil, loggerv2.NewNoop())
+	// A source that serializes an empty required list as null would fail
+	// schema validation here and with the provider, breaking the whole turn.
+	normalized := make([]mcpagent.ToolDefinition, len(tools))
+	for i, tool := range tools {
+		tool.InputSchema = normalizeRequired(tool.InputSchema)
+		normalized[i] = tool
+	}
+	tools = normalized
 	candidates, out, err := projectMembers(tools)
 	if err != nil {
 		return nil, err

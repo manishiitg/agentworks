@@ -64,6 +64,50 @@ func projectMembers(tools []mcpagent.ToolDefinition) ([]projectedMember, []mcpag
 	return members, other, nil
 }
 
+// normalizeRequired returns a copy of schema in which every JSON Schema
+// "required" keyword that is null becomes an empty list; nothing else changes.
+func normalizeRequired(schema map[string]any) map[string]any {
+	if schema == nil {
+		return nil
+	}
+	return normalizeRequiredValue(schema).(map[string]any)
+}
+
+func normalizeRequiredValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, child := range v {
+			if key == "required" && nilList(child) {
+				out[key] = []any{}
+				continue
+			}
+			out[key] = normalizeRequiredValue(child)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, child := range v {
+			out[i] = normalizeRequiredValue(child)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func nilList(value any) bool {
+	switch v := value.(type) {
+	case nil:
+		return true
+	case []string:
+		return v == nil
+	case []any:
+		return v == nil
+	}
+	return false
+}
+
 func cloneSchema(schema map[string]any) (map[string]any, error) {
 	data, err := json.Marshal(schema)
 	if err != nil {
