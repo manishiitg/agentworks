@@ -13,6 +13,8 @@ import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
 import { productUrlViewChanged } from '../utils/productUrlNavigation'
 import WelcomeAiReadiness from './WelcomeAiReadiness'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
+import { productRoutePath } from '../utils/productRoutes'
+import api from '../services/api'
 
 
 export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
@@ -36,6 +38,7 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   const [open, setOpen] = useState(() => window.location.pathname === '/home' || (autoOpen && !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && navigationProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).length !== 1))
   const sidebarWidth = useProductNavigationToolbarStore(state => state.sidebarWidth)
   const user = useAuthStore(state => state.user)
+  const [agentWorksError, setAgentWorksError] = useState('')
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const products = useMemo(() => {
     const visible = new Set(navigationProductSurfaceIDs(user?.allowed_products))
@@ -92,6 +95,18 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
     openProductWorkspace(surface)
     leaveHome()
   }
+  // The server makes the person's own AgentWorks on first use and says which Crew it is.
+  const openAgentWorks = async () => {
+    setAgentWorksError('')
+    try {
+      const { data } = await api.post<{ crew_id: string }>('/api/agentworks')
+      rememberGuide(WELCOME_HOME_DISMISSED_KEY)
+      window.location.assign(productRoutePath({ surface: 'work', id: data.crew_id }))
+    } catch (error) {
+      const response = (error as { response?: { data?: unknown } }).response
+      setAgentWorksError(typeof response?.data === 'string' ? response.data : 'AgentWorks could not be opened. Try again.')
+    }
+  }
   const openMcpSetup = () => openWorkspaceSettings('mcp')
   const openProviders = () => openWorkspaceSettings('providers')
 
@@ -112,6 +127,15 @@ export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
           <button type="button" aria-label="Open navigation" onClick={() => window.dispatchEvent(new Event('open-app-sidebar'))}
             className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"><Menu className="h-5 w-5" aria-hidden="true" /></button>
         </header>
+
+        {workProducts.some(product => product.id === 'work') && <section aria-labelledby="welcome-agentworks" className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-primary/50 bg-primary/[0.06] p-5 sm:flex-row sm:items-center sm:p-6">
+          <div>
+            <h2 id="welcome-agentworks" className="text-lg font-semibold">Ask AgentWorks</h2>
+            <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">Your own agent. Tell it what you want to get done; it watches your Goals, reports what needs you and builds new work with you.</p>
+            {agentWorksError && <p role="alert" className="mt-2 text-xs text-destructive">{agentWorksError}</p>}
+          </div>
+          <Button type="button" onClick={openAgentWorks} className="shrink-0">Open AgentWorks<ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button>
+        </section>}
 
         {workProducts.length > 0 && <WelcomeAiReadiness products={workProducts.map(product => product.id)} onSetup={openProviders} />}
 

@@ -616,3 +616,20 @@ func (api *StreamingAPI) openAgentWorksTab(request *http.Request, crewID, name s
 	}
 	return id, nil
 }
+
+// handleOpenAgentWorks is the app's "Ask AgentWorks" entry: it returns (making it on first use) the signed-in
+// person's own AgentWorks, the same ensure as a first visit and workspace action=agentworks.
+func (api *StreamingAPI) handleOpenAgentWorks(w http.ResponseWriter, r *http.Request) {
+	user := GetUserFromContext(r.Context())
+	if user == nil || strings.TrimSpace(user.UserID) == "" {
+		http.Error(w, "Sign in to open AgentWorks.", http.StatusUnauthorized)
+		return
+	}
+	crew, err := api.ensureAgentWorks(context.Background(), user.UserID)
+	if err != nil {
+		http.Error(w, "Your AgentWorks could not be opened: "+err.Error(), http.StatusConflict)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"crew_id": crew.CrewID, "name": agentWorksName, "created": crew.Created})
+}
