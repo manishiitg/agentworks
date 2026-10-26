@@ -405,7 +405,15 @@ func (api *StreamingAPI) reconcileAgentWorksGoals(ctx context.Context, userID st
 		mainSchedules = append(mainSchedules, agentWorksDailyCheck())
 	}
 	for _, schedule := range mainSchedules {
-		if _, ok := schedules[schedule.ID]; ok {
+		if saved, ok := schedules[schedule.ID]; ok {
+			// One-time: a saved platform message that still names the removed email_me tool takes the current
+			// text; the person's own edits and the on/off state are kept.
+			if strings.Contains(strings.Join(saved.Messages, "\n"), "email_me") {
+				messages := schedule.Messages
+				if _, err := api.projectActions.UpdateProjectSchedule(ctx, userID, projectScheduleJobID(crewProfileID, crew.CrewID, schedule.ID), func(s *productschedule.Schedule) { s.Messages = messages }); err != nil {
+					log.Printf("[AGENTWORKS] user=%s schedule %s not updated: %v", userID, schedule.ID, err)
+				}
+			}
 			continue
 		}
 		if _, err := api.projectActions.CreateProjectSchedule(ctx, userID, crewProfileID, crew.CrewID, schedule); err != nil {
