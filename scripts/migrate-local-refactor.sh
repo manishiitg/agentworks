@@ -28,7 +28,7 @@ migration_catalogs=()
 for migration_catalog in "$migration_repo/agent_go/pkg/platformtools/catalog/"*-actions.json; do
   if [[ -f "$migration_catalog" ]]; then migration_catalogs+=(--catalog "$migration_catalog"); fi
 done
-python3 "$migration_repo/scripts/group-platform-tool-selections.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/group-platform-tools" "${migration_catalogs[@]}" --native-namespace workspace_advanced
+python3 "$migration_repo/scripts/group-platform-tool-selections.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/group-platform-tools" "${migration_catalogs[@]}" --native-namespace workspace_advanced --native-namespace workspace_browser --native-namespace human_tools
 python3 "$migration_repo/scripts/simplify-workflow-settings.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/simplify-workflow-settings"
 migration_plan_roots=()
 for migration_root in "$migration_docs/Workflow" "$migration_docs/_users/"*/Workflow; do

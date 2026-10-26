@@ -430,7 +430,7 @@ grouped_tool_catalog_args=()
 for grouped_tool_catalog in "$BUILD_DIR/migrations/"*-actions.json; do
   grouped_tool_catalog_args+=(--catalog "$grouped_tool_catalog")
 done
-python3 "$BUILD_DIR/migrations/group-platform-tool-selections.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/group-platform-tools-$(date -u +%Y%m%dT%H%M%SZ)" "${grouped_tool_catalog_args[@]}" --native-namespace workspace_advanced
+python3 "$BUILD_DIR/migrations/group-platform-tool-selections.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/group-platform-tools-$(date -u +%Y%m%dT%H%M%SZ)" "${grouped_tool_catalog_args[@]}" --native-namespace workspace_advanced --native-namespace workspace_browser --native-namespace human_tools
 python3 "$BUILD_DIR/migrations/simplify-workflow-settings.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/simplify-workflow-settings-$(date -u +%Y%m%dT%H%M%SZ)"
 # One-off saved-agent shape preparation, with backups/changelog and no stamps.
 agent_plan_roots=()
