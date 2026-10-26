@@ -116,13 +116,18 @@ func (api *StreamingAPI) registerAgentWorksAgentTools(registrar definitionToolRe
 			}
 		}
 		dest := &services.NotificationDestination{UserID: userID, Gmail: &services.GmailDest{Email: to}, Content: &services.NotificationContent{Gmail: &services.GmailContent{Subject: subject}}}
+		reason := "email is not set up on this server"
 		for _, result := range manager.SendUserNotificationSync(ctx, body, "", dest, exclude...) {
 			if result.OK && result.MsgID != "" {
 				return "Emailed the person.", nil
 			}
+			if strings.TrimSpace(result.Err) != "" {
+				reason = strings.TrimSpace(result.Err)
+			}
 		}
 		agentWorksEmailQuota.giveBack(userID, time.Now())
-		return "", fmt.Errorf("the email could not be sent; say it in the main tab instead")
+		// The reason names what an admin must fix (for example no default sending account); say it in the main tab.
+		return "", fmt.Errorf("the email could not be sent (%s); say it in the main tab and tell the person what to fix", reason)
 	})
 }
 
