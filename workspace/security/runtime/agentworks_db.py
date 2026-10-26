@@ -118,7 +118,7 @@ def _call(tool, arguments, retries=0):
 
 
 def _read_arguments(sql, params, max_rows, offset):
-    arguments = {"sql": sql, "max_rows": max_rows}
+    arguments = {"action": "query", "sql": sql, "max_rows": max_rows}
     if params:
         arguments["params"] = list(params)
     if offset:
@@ -131,7 +131,7 @@ def iter_query(sql, params=None, page_size=PAGE_ROWS):
     page_size = max(1, min(int(page_size), 10000))
     offset = 0
     while True:
-        result = _call("query_workflow_db", _read_arguments(sql, params, page_size, offset), retries=2) or {}
+        result = _call("database", _read_arguments(sql, params, page_size, offset), retries=2) or {}
         for row in result.get("rows") or []:
             yield row
         if not result.get("truncated"):
@@ -170,14 +170,14 @@ def describe(table=None):
     arguments = {"action": "describe"}
     if table:
         arguments["table"] = table
-    result = _call("query_workflow_db", arguments, retries=2) or {}
+    result = _call("database", arguments, retries=2) or {}
     return result.get("rows") or []
 
 
 def _mutate(arguments):
-    result = _call("mutate_workflow_db", arguments)
+    result = _call("database", {**arguments, "action": "mutate"})
     if not isinstance(result, dict) or "results" not in result:
-        raise DBError("mutate_workflow_db returned an unexpected result")
+        raise DBError("database.mutate returned an unexpected result")
     return result
 
 

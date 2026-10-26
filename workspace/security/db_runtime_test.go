@@ -10,6 +10,7 @@ import (
 // The helper is exercised against a fake bridge that speaks the real HTTP shape:
 // POST <MCP_CUSTOM>/<tool> with the MCP_AUTH header, answering
 // {"success":true,"result":"<the tool's JSON as a string>"} or {"success":false,"error":...}.
+// PLAT-825-140: grouped bridges refuse the retired query/mutate tool names.
 func TestDatabaseHelper(t *testing.T) {
 	python, err := exec.LookPath("python3")
 	if err != nil {
@@ -39,7 +40,7 @@ class Handler(BaseHTTPRequestHandler):
         calls.append((tool, body, self.headers.get("Authorization")))
         if self.headers.get("Authorization") != "Bearer tok":
             return self._reply(401, {"success": False, "error": "unauthorized"})
-        if tool == "query_workflow_db":
+        if tool == "database" and body.get("action") in ("query", "describe"):
             if state["fail_query_once"]:
                 state["fail_query_once"] = False
                 return self._reply(503, {"success": False, "error": "busy"})
@@ -54,7 +55,7 @@ class Handler(BaseHTTPRequestHandler):
                 result["truncated"] = True
                 result["next_offset"] = offset if state["bad_paging"] else offset + len(page)
             return self._reply(200, {"success": True, "result": json.dumps(result)})
-        if tool == "mutate_workflow_db":
+        if tool == "database" and body.get("action") == "mutate":
             if "statements" in body:
                 results = [{"rows_affected": 1, "last_insert_id": 7} for _ in body["statements"]]
                 return self._reply(200, {"success": True, "result": json.dumps({"results": results, "total_rows_affected": len(results)})})
@@ -90,7 +91,7 @@ def must_raise(fn, text=""):
 # reads: every page, once, in order; auth header sent
 rows = query("SELECT id, label FROM facts ORDER BY id")
 assert len(rows) == 1234 and [r["id"] for r in rows] == list(range(1234))
-assert len([c for c in calls if c[0] == "query_workflow_db"]) == 1  # 1,234 rows fit one 5,000-row page
+assert len([c for c in calls if c[0] == "database" and c[1].get("action") == "query"]) == 1  # 1,234 rows fit one 5,000-row page
 assert all(c[2] == "Bearer tok" for c in calls)
 calls.clear()
 paged = list(iter_query("SELECT id FROM facts ORDER BY id", page_size=500))
@@ -119,7 +120,7 @@ assert len(query("SELECT 1", limit=1)) == 1 and len(calls) == 2
 # writes
 calls.clear()
 assert execute("UPDATE t SET a = ?", [1]) == 1
-assert calls[0][1] == {"sql": "UPDATE t SET a = ?", "params": [1]}
+assert calls[0][1] == {"action": "mutate", "sql": "UPDATE t SET a = ?", "params": [1]}
 assert insert("INSERT INTO t VALUES (?)", [1]) == 42
 calls.clear()
 assert execute_many("INSERT INTO t VALUES (?)", [[i] for i in range(2500)], chunk=1000) == 2500
