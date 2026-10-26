@@ -88,6 +88,24 @@ func TestDashboardFunctionRoutesFollowTheDashboardProject(t *testing.T) {
 	if status, _ := do("reader", http.MethodGet, base+"/function-calls/does-not-exist", nil); status != 404 {
 		t.Fatalf("an unknown call must be refused: %d", status)
 	}
+	// PLAT-750-22: Share includes colleagues' results, but never lets a member answer their pending input.
+	call := &crewFunctionCall{ID: "fn-dashboard-shared-result-75022", UserID: "owner", CallerKind: triggerCallerUser,
+		TargetKind: triggerCallerWorkflow, TargetID: "invoices", TargetPath: "Workflow/invoices", Status: "completed",
+		Result: map[string]any{"total": 42}, done: make(chan struct{})}
+	crewFunctionCalls.Lock()
+	crewFunctionCalls.m[call.ID] = call
+	crewFunctionCalls.Unlock()
+	t.Cleanup(func() { crewFunctionCalls.Lock(); delete(crewFunctionCalls.m, call.ID); crewFunctionCalls.Unlock() })
+	for _, person := range []string{"owner", "reader"} {
+		status, out := do(person, http.MethodGet, base+"/function-calls/"+call.ID, nil)
+		result, _ := out["result"].(map[string]any)
+		if status != 200 || result["total"] != float64(42) || out["can_reply"] != (person == "owner") {
+			t.Fatalf("%s must see the shared result with caller-owned reply rights: %d %v", person, status, out)
+		}
+	}
+	if status, _ := do("outsider", http.MethodGet, base+"/function-calls/"+call.ID, nil); status != 404 {
+		t.Fatalf("a person without current project access read its function result: %d", status)
+	}
 }
 
 // Exercise the real typed dispatcher and scheduler ingress. Executor contract

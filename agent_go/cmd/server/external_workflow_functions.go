@@ -48,7 +48,8 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 		}
 		call.mu.Lock()
 		mine := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser
-		owned := call.TargetKind == triggerCallerWorkflow && call.TargetID == manifest.ID && (mine || name == "get_workflow_function_call" && access == WorkflowAccessOwner)
+		// Shared project members may read its results; pending replies still belong to the caller (PLAT-750-22).
+		owned := call.TargetKind == triggerCallerWorkflow && call.TargetID == manifest.ID && (mine || name == "get_workflow_function_call")
 		call.mu.Unlock()
 		if !owned {
 			externalError(w, 404, "not_found", "Function call not found.")
