@@ -60,6 +60,8 @@ type crewSpec struct {
 	Schedules        []crewScheduleSpec             `json:"schedules,omitempty"`
 	Mode             string                         `json:"mode,omitempty"`
 	LLMConfig        *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
+	// Role is read only to refuse it: the platform alone marks its own Crews.
+	Role string `json:"role,omitempty"`
 }
 
 // crewScheduleSpec is a project schedule as authors send it; omitted fields
@@ -266,6 +268,9 @@ func normalizeCrewSpec(spec crewSpec) (crewSpec, error) {
 	spec.ChatInstructions, instructionsErr = workflowtypes.NormalizeChatInstructions(spec.ChatInstructions)
 	if instructionsErr != nil {
 		return spec, instructionsErr
+	}
+	if strings.TrimSpace(spec.Role) != "" {
+		return spec, fmt.Errorf("role is set by the platform; remove it from the Crew settings")
 	}
 	spec.Mode = strings.TrimSpace(spec.Mode)
 	switch spec.Mode {
@@ -477,6 +482,20 @@ func (api *StreamingAPI) createCrewFromSpec(ctx context.Context, claims *UserCla
 }
 
 func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool, reservedID ...string) (string, error) {
+	creation := workspaceCreation{}
+	if len(reservedID) > 0 {
+		creation.ReservedID = reservedID[0]
+	}
+	return api.createWorkspace(ctx, claims, profileID, spec, enableSchedules, creation)
+}
+
+// workspaceCreation carries what only server code may choose for a new Crew: its identity and its platform role.
+type workspaceCreation struct {
+	ReservedID string
+	Role       string
+}
+
+func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool, creation workspaceCreation) (string, error) {
 	if status, message := projectCreationGate(claims, profileID); status != 0 {
 		return "", fmt.Errorf("%s", message)
 	}
@@ -507,17 +526,17 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 	}
 	runtimeRoot := crewCreationRoot(profileID, agentProfileRuntimeWorkspace(userID, projectsRoot))
 	crewID := uuid.NewString()
-	if len(reservedID) > 0 {
-		if _, err := uuid.Parse(reservedID[0]); err != nil {
+	if creation.ReservedID != "" {
+		if _, err := uuid.Parse(creation.ReservedID); err != nil {
 			return "", fmt.Errorf("invalid reserved project identity")
 		}
-		crewID = reservedID[0]
+		crewID = creation.ReservedID
 	}
 	workspacePath := runtimeRoot + "/" + slugifyCrewTitle(spec.Name) + "-" + crewID[:8]
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
 	}
-	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{Mode: spec.Mode, LLMConfig: spec.LLMConfig}); err != nil {
+	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{Mode: spec.Mode, LLMConfig: spec.LLMConfig, Role: creation.Role}); err != nil {
 		return "", err
 	}
 	if spec.ChatInstructions != "" {

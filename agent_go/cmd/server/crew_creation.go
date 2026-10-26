@@ -410,6 +410,8 @@ func ensureCrewCreationTrigger(ctx context.Context, svc *ProjectActionDispatcher
 type crewCreationOptions struct {
 	Mode      string
 	LLMConfig *workflowtypes.PresetLLMConfig
+	// Role is set only by the server (agentWorksRole); a spec never supplies it.
+	Role string
 }
 
 func writeCrewCreationManifests(ctx context.Context, userID string, profile agentprofiles.Profile, profileID, workflowPath, title, purpose, icon, crewID, workspacePath string, inheritedLLM *workflowtypes.AgentLLMConfig, options ...crewCreationOptions) (created CreatedCrew, createErr error) {
@@ -472,6 +474,9 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	}
 	if settings.Mode != "" {
 		manifest["mode"] = settings.Mode
+	}
+	if settings.Role != "" {
+		manifest["role"] = settings.Role
 	}
 	// The server records who owns the project before anything about it exists (PLAT-449): the registry is the
 	// authority, the owner_id above is information for whoever reads the folder.
