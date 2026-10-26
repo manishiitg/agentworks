@@ -114,18 +114,19 @@ func TestExternalVaultSetupUsesSharedLiveMCPAndSQL(t *testing.T) {
 	invoke := func(name string, args map[string]any) *mcp.CallToolResult {
 		return callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": name, "arguments": args})
 	}
-	listing := invoke("list_vault_mcp_servers", map[string]any{})
+	listing := invoke("vault", map[string]any{"action": "connections"})
 	requireRemoteSuccess(t, listing, "administrator inventory")
 	if raw := marshalContent(t, listing); !strings.Contains(raw, "vault_notion") || !strings.Contains(raw, "admin@example.com") {
 		t.Fatal(raw)
 	}
-	for name, args := range map[string]map[string]any{
-		"query_vault_db":  {"sql": "SELECT id FROM groups"},
-		"mutate_vault_db": {"sql": "UPDATE groups SET description=? WHERE id=?", "params": []any{"test", "team"}},
+	for _, args := range []map[string]any{
+		{"action": "governance_query", "sql": "SELECT id FROM groups"},
+		{"action": "governance_mutate", "sql": "UPDATE groups SET description=? WHERE id=?", "params": []any{"test", "team"}},
 	} {
-		requireRemoteSuccess(t, invoke(name, args), name)
+		requireRemoteSuccess(t, invoke("vault", args), "governance operation")
 	}
-	result := invoke("call_vault_mcp_tool", map[string]any{"server": "vault_notion", "tool": "notion-fetch", "arguments": map[string]any{"page_id": "canonical-id"}})
+
+	result := invoke("vault", map[string]any{"action": "call", "server": "vault_notion", "tool": "notion-fetch", "arguments": map[string]any{"page_id": "canonical-id"}})
 	requireRemoteSuccess(t, result, "setup execution")
 	if calls != 1 || sqlCalls != 2 || !strings.Contains(marshalContent(t, result), "canonical-id") {
 		t.Fatalf("calls=%d sql=%d result=%s", calls, sqlCalls, marshalContent(t, result))
@@ -148,11 +149,11 @@ func TestExternalVaultSetupUsesSharedLiveMCPAndSQL(t *testing.T) {
 	if err != nil || !strings.Contains(output, "builder-id") || calls != 2 {
 		t.Fatalf("builder shared execution: %s %v", output, err)
 	}
-	requireRemoteError(t, invoke("call_vault_mcp_tool", map[string]any{"server": "http://arbitrary-host", "tool": "notion-fetch", "arguments": map[string]any{}}), "foreign server", "exact active Vault")
+	requireRemoteError(t, invoke("vault", map[string]any{"action": "call", "server": "http://arbitrary-host", "tool": "notion-fetch", "arguments": map[string]any{}}), "foreign server", "exact active Vault")
 	*directory = `{"users":[{"id":"admin","role":"viewer","products":["mcp-gateway"]}]}`
 	invalidateUserDirectoryCache()
 	cli = reconnectAfterCatalogChange(t, ctx, cli, host.URL)
-	requireRemoteError(t, invoke("call_vault_mcp_tool", map[string]any{"server": "vault_notion", "tool": "notion-fetch", "arguments": map[string]any{}}), "revoked admin", "insufficient_scope")
+	requireRemoteError(t, invoke("vault", map[string]any{"action": "call", "server": "vault_notion", "tool": "notion-fetch", "arguments": map[string]any{}}), "revoked admin", "insufficient_scope")
 	if _, err := builderTool.Execute(builderCtx, arguments); err == nil {
 		t.Fatal("builder retained revoked administrator")
 	}

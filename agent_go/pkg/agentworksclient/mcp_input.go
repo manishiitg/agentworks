@@ -29,6 +29,8 @@ func MCPURLSignInCandidate(target string, args map[string]any) bool {
 		account, _ = args["arguments"].(map[string]any)
 	case "manage_vault_access":
 		return args["operation"] == "connect_server" || args["operation"] == "sign_in_connection"
+	case "vault":
+		return args["action"] == "access_connect_server" || args["action"] == "access_sign_in_connection"
 	default:
 		return false
 	}

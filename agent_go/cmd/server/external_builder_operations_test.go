@@ -76,7 +76,7 @@ func (f *builderOperationFixture) call(t *testing.T, raw, name string, args map[
 }
 func (f *builderOperationFixture) submit(t *testing.T, raw, key, message string) externalBuilderOperation {
 	t.Helper()
-	w := f.call(t, raw, "builder_chat", map[string]any{"submission_id": key, "message": message}, 200)
+	w := f.call(t, raw, "sessions", map[string]any{"action": "builder_chat", "submission_id": key, "message": message}, 200)
 	var op externalBuilderOperation
 	if err := json.Unmarshal(w.Body.Bytes(), &op); err != nil {
 		t.Fatal(err)
@@ -115,15 +115,15 @@ func TestExternalBuilderOperationsContinueMainChatAndSeparateEditor(t *testing.T
 	if duplicate.ID != first.ID || len(f.api.mustReadTurnQueueForTest(t, "owner")) != 1 {
 		t.Fatal("duplicate submission queued twice")
 	}
-	f.call(t, owner, "builder_chat", map[string]any{"submission_id": "first", "message": "Different edit"}, 409)
+	f.call(t, owner, "sessions", map[string]any{"action": "builder_chat", "submission_id": "first", "message": "Different edit"}, 409)
 	second := f.submit(t, editor, "editor", "Adjust validation")
 	if second.SessionID != f.sessions["outsider"] || second.SessionID == first.SessionID {
 		t.Fatalf("editor did not use own chat: %+v", second)
 	}
-	f.call(t, editor, "builder_chat", map[string]any{"submission_id": "foreign", "message": "Read owner's chat", "session_id": first.SessionID}, 404)
+	f.call(t, editor, "sessions", map[string]any{"action": "builder_chat", "submission_id": "foreign", "message": "Read owner's chat", "session_id": first.SessionID}, 404)
 	_, replacement := f.issue(t, "owner")
-	f.call(t, replacement, "builder_status", map[string]any{"operation_id": first.ID}, 404)
-	f.call(t, owner, "builder_status", map[string]any{"operation_id": first.ID}, 401)
+	f.call(t, replacement, "sessions", map[string]any{"action": "builder_status", "operation_id": first.ID}, 404)
+	f.call(t, owner, "sessions", map[string]any{"action": "builder_status", "operation_id": first.ID}, 401)
 }
 
 func TestExternalBuilderReservationDoesNotCoverChatLookupOrQueue(t *testing.T) {
@@ -275,8 +275,8 @@ func TestExternalBuilderOperationsQueuedCancelLeavesBrowserWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	op := f.submit(t, raw, "queued", "Edit the plan")
-	f.call(t, raw, "builder_cancel", map[string]any{"operation_id": op.ID}, 200)
-	f.call(t, raw, "builder_cancel", map[string]any{"operation_id": op.ID}, 200)
+	f.call(t, raw, "sessions", map[string]any{"action": "builder_cancel", "operation_id": op.ID}, 200)
+	f.call(t, raw, "sessions", map[string]any{"action": "builder_cancel", "operation_id": op.ID}, 200)
 	if browserCanceled.Load() {
 		t.Fatal("queued cancel stopped unrelated browser work")
 	}
@@ -336,7 +336,7 @@ func TestExternalBuilderOperationsNeverReplayUncertainStartedTurn(t *testing.T) 
 	if _, err := f.api.runQueuedExternalBuilder(ctx, turn, request); err == nil || called {
 		t.Fatal("uncertain operation was replayed")
 	}
-	w := f.call(t, raw, "builder_status", map[string]any{"operation_id": op.ID}, 200)
+	w := f.call(t, raw, "sessions", map[string]any{"action": "builder_status", "operation_id": op.ID}, 200)
 	if !strings.Contains(w.Body.String(), `"status":"interrupted"`) {
 		t.Fatalf("uncertain result: %s", w.Body)
 	}
@@ -406,15 +406,15 @@ func TestExternalBuilderOperationsFeedbackAndRunningCancelStayScoped(t *testing.
 			t.Error("runtime failed to stop")
 		}
 	}()
-	w := f.call(t, raw, "builder_status", map[string]any{"operation_id": op.ID}, 200)
+	w := f.call(t, raw, "sessions", map[string]any{"action": "builder_status", "operation_id": op.ID}, 200)
 	if !strings.Contains(w.Body.String(), ownID) || strings.Contains(w.Body.String(), previousID) || strings.Contains(w.Body.String(), foreignID) || strings.Contains(w.Body.String(), concurrentBrowserID) {
 		t.Fatalf("question scope: %s", w.Body)
 	}
-	f.call(t, raw, "builder_reply_input", map[string]any{"operation_id": op.ID, "request_id": previousID, "response": "yes"}, 409)
-	f.call(t, raw, "builder_reply_input", map[string]any{"operation_id": op.ID, "request_id": foreignID, "response": "yes"}, 409)
-	f.call(t, raw, "builder_reply_input", map[string]any{"operation_id": op.ID, "request_id": ownID, "response": "invalid"}, 409)
-	f.call(t, raw, "builder_reply_input", map[string]any{"operation_id": op.ID, "request_id": ownID, "response": "Yes"}, 200)
-	f.call(t, raw, "builder_cancel", map[string]any{"operation_id": op.ID}, 200)
+	f.call(t, raw, "sessions", map[string]any{"action": "builder_reply_input", "operation_id": op.ID, "request_id": previousID, "response": "yes"}, 409)
+	f.call(t, raw, "sessions", map[string]any{"action": "builder_reply_input", "operation_id": op.ID, "request_id": foreignID, "response": "yes"}, 409)
+	f.call(t, raw, "sessions", map[string]any{"action": "builder_reply_input", "operation_id": op.ID, "request_id": ownID, "response": "invalid"}, 409)
+	f.call(t, raw, "sessions", map[string]any{"action": "builder_reply_input", "operation_id": op.ID, "request_id": ownID, "response": "Yes"}, 200)
+	f.call(t, raw, "sessions", map[string]any{"action": "builder_cancel", "operation_id": op.ID}, 200)
 	oldStillPending := false
 	concurrentStillPending := false
 	for _, pending := range feedback.PendingForSession(session, time.Now()) {
@@ -431,7 +431,7 @@ func TestExternalBuilderOperationsFeedbackAndRunningCancelStayScoped(t *testing.
 	if !oldStillPending || !concurrentStillPending {
 		t.Error("cancel withdrew unrelated browser question in shared chat")
 	}
-	f.call(t, raw, "builder_reply_input", map[string]any{"operation_id": op.ID, "request_id": ownID, "response": "No"}, 409)
+	f.call(t, raw, "sessions", map[string]any{"action": "builder_reply_input", "operation_id": op.ID, "request_id": ownID, "response": "No"}, 409)
 }
 
 func TestExternalBuilderOperationsLiveRoleDowngradeBlocksExecution(t *testing.T) {
@@ -465,11 +465,11 @@ func TestExternalBuilderOperationsCompletionUsesExactResultAndPrincipal(t *testi
 	if _, err := f.api.runQueuedExternalBuilder(ctx, turn, request); err != nil {
 		t.Fatal(err)
 	}
-	w := f.call(t, raw, "builder_status", map[string]any{"operation_id": op.ID}, 200)
+	w := f.call(t, raw, "sessions", map[string]any{"action": "builder_status", "operation_id": op.ID}, 200)
 	if !strings.Contains(w.Body.String(), `"status":"completed"`) || !strings.Contains(w.Body.String(), `"answer":"Updated the validation plan."`) {
 		t.Fatalf("exact result missing: %s", w.Body)
 	}
-	f.call(t, raw, "builder_cancel", map[string]any{"operation_id": op.ID}, 200)
+	f.call(t, raw, "sessions", map[string]any{"action": "builder_cancel", "operation_id": op.ID}, 200)
 	saved, err := readExternalBuilder(context.Background(), op.ID)
 	if err != nil || saved.Status != "completed" || saved.Answer != "Updated the validation plan." {
 		t.Fatalf("late cancel rewrote completed work: %+v %v", saved, err)
@@ -490,42 +490,37 @@ func TestExternalBuilderOperationsRealMCPTransportAndDiscovery(t *testing.T) {
 	initializeExternalMCP(t, ctx, cli)
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "Builder catalog")
-	builderSpec := marshalStructured(t, callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"builder"}}))
-	for _, action := range []string{"chat", "status", "reply_input", "cancel", "file_history", "restore_file"} {
+	builderSpec := marshalStructured(t, callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"sessions"}}))
+	for _, action := range []string{"builder_chat", "builder_status", "builder_reply_input", "builder_cancel", "file_history", "restore_file"} {
 		if !strings.Contains(builderSpec, `"`+action+`"`) {
 			t.Fatalf("enabled scoped catalog: builder has no %s action", action)
 		}
 	}
-	history := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "builder_file_history", "arguments": map[string]any{"workflow_id": "invoices", "path": "code/task.py"}})
+	history := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "sessions", "arguments": map[string]any{"action": "file_history", "workflow_id": "invoices", "path": "code/task.py"}})
 	requireRemoteSuccess(t, history, "Builder file history")
 	if !strings.Contains(marshalStructured(t, history), `"edits":[]`) {
 		t.Fatalf("unexpected file history: %s", marshalStructured(t, history))
 	}
-	submitted := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "builder_chat", "arguments": map[string]any{"workflow_id": "invoices", "submission_id": "transport", "message": "Update validation"}})
+	submitted := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "sessions", "arguments": map[string]any{"action": "builder_chat", "workflow_id": "invoices", "submission_id": "transport", "message": "Update validation"}})
 	requireRemoteSuccess(t, submitted, "Builder submit")
 	var op externalBuilderOperation
 	if err := json.Unmarshal([]byte(marshalStructured(t, submitted)), &op); err != nil || op.ID == "" || op.SessionID != f.sessions["owner"] {
 		t.Fatalf("transport submit: %+v %v", op, err)
 	}
-	status := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "builder_status", "arguments": map[string]any{"workflow_id": "invoices", "operation_id": op.ID}})
+	status := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "sessions", "arguments": map[string]any{"action": "builder_status", "workflow_id": "invoices", "operation_id": op.ID}})
 	requireRemoteSuccess(t, status, "Builder status")
 	if !strings.Contains(marshalStructured(t, status), `"status":"queued"`) {
 		t.Fatalf("unexpected status: %s", marshalStructured(t, status))
 	}
-	canceled := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "builder_cancel", "arguments": map[string]any{"workflow_id": "invoices", "operation_id": op.ID}})
+	canceled := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "sessions", "arguments": map[string]any{"action": "builder_cancel", "workflow_id": "invoices", "operation_id": op.ID}})
 	requireRemoteSuccess(t, canceled, "Builder cancel must not become an MCP HTTP-status error")
 	if !strings.Contains(marshalStructured(t, canceled), `"status":"canceled"`) {
 		t.Fatalf("missing cancel acknowledgement: %s", marshalStructured(t, canceled))
 	}
-	store, err := openAccessTokens()
-	if err != nil {
-		t.Fatal(err)
-	}
-	readToken, _, err := store.Issue(ctx, accesstokens.Token{Name: "Run only", UserID: "reader", Username: "reader", Scopes: []string{"workflows:read", "files:read", "runs:execute"}, WorkflowIDs: []string{"invoices"}, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
-	store.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Personal sign-ins now follow the website role. The Run-only contract is
+	// a shared project connection, not a personal token's historical scopes.
+	t.Setenv("PUBLIC_URL", "https://agentworks.example.com")
+	readToken := mcpOAuthTokenForGrant(mcpOAuthGrant{UserID: "reader", Username: "reader", FamilyID: "run-project", Resource: "https://agentworks.example.com" + projectMCPPrefix + "workflow/invoices/use", Scopes: []string{"workflows:read", "files:read", "runs:execute"}, Expires: time.Now().Add(time.Hour)})
 	readClaims, err := accessTokenClaims(readToken)
 	if err != nil {
 		t.Fatal(err)
@@ -535,10 +530,42 @@ func TestExternalBuilderOperationsRealMCPTransportAndDiscovery(t *testing.T) {
 	initializeExternalMCP(t, ctx, readClient)
 	readSpec := callRemoteTool(t, ctx, readClient, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, readSpec, "read/run catalog")
-	if strings.Contains(marshalStructured(t, readSpec), "builder_chat") {
-		t.Fatal("run-only token discovered Builder")
+	var runCatalog struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
 	}
-	denied := callRemoteTool(t, ctx, readClient, externalMCPToolCall, map[string]any{"name": "builder_chat", "arguments": map[string]any{"workflow_id": "invoices", "submission_id": "unauthorized", "message": "Edit"}})
+	if err := json.Unmarshal([]byte(marshalStructured(t, readSpec)), &runCatalog); err != nil {
+		t.Fatal(err)
+	}
+	hasRuns := false
+	for _, tool := range runCatalog.Tools {
+		hasRuns = hasRuns || tool.Name == "runs"
+	}
+	if !hasRuns {
+		t.Fatal("shared Run connection did not discover its allowed runs")
+	}
+	var sessionShape struct {
+		Schemas map[string]struct {
+			InputSchema struct {
+				Properties map[string]struct {
+					Enum []string `json:"enum"`
+				} `json:"properties"`
+			} `json:"inputSchema"`
+		} `json:"schemas"`
+	}
+	runSessions := callRemoteTool(t, ctx, readClient, externalMCPToolSpec, map[string]any{"names": "sessions"})
+	if !runSessions.IsError {
+		if err := json.Unmarshal([]byte(marshalStructured(t, runSessions)), &sessionShape); err != nil {
+			t.Fatal(err)
+		}
+		for _, verb := range sessionShape.Schemas["sessions"].InputSchema.Properties["action"].Enum {
+			if verb == "builder_chat" {
+				t.Fatal("run-only token discovered Builder action")
+			}
+		}
+	}
+	denied := callRemoteTool(t, ctx, readClient, externalMCPToolCall, map[string]any{"name": "sessions", "arguments": map[string]any{"action": "builder_chat", "workflow_id": "invoices", "submission_id": "unauthorized", "message": "Edit"}})
 	if !denied.IsError {
 		t.Fatal("run-only client could invoke hidden Builder")
 	}
@@ -583,7 +610,7 @@ func TestExternalBuilderChatWaitReturnsTheAnswer(t *testing.T) {
 		return internalSessionTurnResult{FinalResponse: "Plan updated."}, nil
 	}
 	got := make(chan *httptest.ResponseRecorder, 1)
-	body := `{"name":"builder_chat","arguments":{"workflow_id":"invoices","submission_id":"wait","message":"Update the plan","wait_seconds":10}}`
+	body := `{"name":"sessions","arguments":{"action":"builder_chat","workflow_id":"invoices","submission_id":"wait","message":"Update the plan","wait_seconds":10}}`
 	go func() {
 		r := httptest.NewRequest("POST", "/api/external/v1/call", strings.NewReader(body))
 		r.Header.Set("Authorization", "Bearer "+raw)
@@ -627,16 +654,16 @@ func TestExternalBuilderTabsShareNativeAndWebsiteControl(t *testing.T) {
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner","outsider"],"readers":["reader"]}}`)
 	_, owner := f.issue(t, "owner")
 	_, other := f.issue(t, "outsider")
-	f.call(t, owner, "builder_tabs", map[string]any{"tab_action": "list"}, 200)
-	w := f.call(t, owner, "builder_tabs", map[string]any{"tab_action": "open", "name": "Review"}, 200)
+	f.call(t, owner, "sessions", map[string]any{"action": "list"}, 200)
+	w := f.call(t, owner, "sessions", map[string]any{"action": "open", "name": "Review"}, 200)
 	var opened struct {
 		Chat goalOwnerTab `json:"chat"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &opened); err != nil || opened.Chat.ID == "" {
 		t.Fatal(w.Body.String(), err)
 	}
-	f.call(t, other, "builder_tabs", map[string]any{"tab_action": "read", "chat_id": opened.Chat.ID}, 200)
-	f.call(t, other, "builder_tabs", map[string]any{"tab_action": "rename", "chat_id": opened.Chat.ID, "name": "Taken"}, 403)
+	f.call(t, other, "sessions", map[string]any{"action": "read", "chat_id": opened.Chat.ID}, 200)
+	f.call(t, other, "sessions", map[string]any{"action": "rename", "chat_id": opened.Chat.ID, "name": "Taken"}, 403)
 	reg := &recordingRegistrar{}
 	if err := f.api.registerGoalOwnerTabTools(reg, "outsider", "Workflow/invoices"); err != nil {
 		t.Fatal(err)
@@ -647,8 +674,8 @@ func TestExternalBuilderTabsShareNativeAndWebsiteControl(t *testing.T) {
 	if _, err := reg.tools["manage_builder_chats"].exec(context.Background(), map[string]any{"action": "close", "chat_id": opened.Chat.ID}); err == nil {
 		t.Fatal("native Builder closed another owner's tab")
 	}
-	f.call(t, owner, "builder_tabs", map[string]any{"tab_action": "pin", "chat_id": opened.Chat.ID, "pinned": false}, 200)
-	f.call(t, other, "builder_tabs", map[string]any{"tab_action": "order", "chat_ids": []string{opened.Chat.ID}}, 403)
+	f.call(t, owner, "sessions", map[string]any{"action": "pin", "chat_id": opened.Chat.ID, "pinned": false}, 200)
+	f.call(t, other, "sessions", map[string]any{"action": "order", "chat_ids": []string{opened.Chat.ID}}, 403)
 	if err := f.api.registerGoalOwnerTabTools(reg, "owner", "Workflow/invoices"); err != nil {
 		t.Fatal(err)
 	}
@@ -658,5 +685,5 @@ func TestExternalBuilderTabsShareNativeAndWebsiteControl(t *testing.T) {
 	if _, err := reg.tools["manage_builder_chats"].exec(context.Background(), map[string]any{"action": "order", "chat_ids": []string{opened.Chat.ID}}); err != nil {
 		t.Fatal(err)
 	}
-	f.call(t, owner, "builder_tabs", map[string]any{"tab_action": "rename", "chat_id": opened.Chat.ID, "name": "Review changes"}, 200)
+	f.call(t, owner, "sessions", map[string]any{"action": "rename", "chat_id": opened.Chat.ID, "name": "Review changes"}, 200)
 }

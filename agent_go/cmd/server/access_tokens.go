@@ -374,6 +374,9 @@ func tokenSessionWorkflowReadRoot(_ *UserClaims, workflowPhaseFolder string) str
 }
 
 func externalTokenAllows(c *UserClaims, tool externalTool) bool {
+	if !agentSourceConsentAllowed(c, tool) {
+		return false
+	}
 	if source, operation := dataSourceAction(tool.Name); source == "crew_folders" && c != nil && c.AccessToken != nil {
 		scope := "crews:write"
 		if crewCapabilityRead(operation) {
@@ -391,6 +394,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	}
 	tool.Name = configurationConsentMember(tool.Name)
 	tool.Name = dataConsentMember(tool.Name)
+	tool.Name = agentConsentMember(tool.Name)
 	if agentBridgeOnlyDeployment() && tool.Name != "messages" && tool.Name != "help" && tool.actions == nil {
 		return false
 	}

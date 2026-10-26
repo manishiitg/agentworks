@@ -178,7 +178,17 @@
     "family": "costs",
     "name": "query",
     "member": "query_workflow_costs",
-    "description": "Query this workflow’s existing cost ledger."
+    "description": "Query this workflow’s existing cost ledger.",
+    "source": "query_workflow_costs",
+    "source_action": "query"
+  },
+  {
+    "family": "costs",
+    "name": "describe",
+    "member": "describe_workflow_costs",
+    "description": "Read the current workflow cost ledger’s schema.",
+    "source": "query_workflow_costs",
+    "source_action": "describe"
   },
   {
     "family": "costs",

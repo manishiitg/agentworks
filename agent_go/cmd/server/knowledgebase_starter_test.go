@@ -89,17 +89,17 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if setup["content"] != productguide.CLISetup(builderProductSelection(claims)) || setup["source_version"] != productguide.CLISetupVersion {
 		t.Fatal("MCP CLI setup differs from its versioned source", setup)
 	}
-	setupNote := remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/cli-setup.md"})["result"].(map[string]any)
+	setupNote := remote("brain", map[string]any{"action": "read", "path": "Shared/AgentWorks/cli-setup.md"})["result"].(map[string]any)
 	if setupNote["content"] != productguide.CLISetup(productpolicy.Selection{}) {
 		t.Fatal("Brain CLI setup differs from the shared source", setupNote)
 	}
-	read := remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
+	read := remote("brain", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
 	noteVersion, _ := read["version"].(string)
 	if read["content"] != productguide.Guide(productpolicy.Selection{}) || noteVersion == "" || noteVersion == productguide.GuideVersion {
 		t.Fatal("Brain guide source or opaque revision incorrect", read)
 	}
 	const skillFolder = "Shared/Skills/agentworks-mcp"
-	pack := remote("brain_skills", map[string]any{"action": "get", "folder_path": skillFolder})["result"].(map[string]any)
+	pack := remote("brain", map[string]any{"action": "skills_get", "folder_path": skillFolder})["result"].(map[string]any)
 	brainSkillVersion, _ := pack["version"].(string)
 	if pack["name"] != productguide.SkillName || brainSkillVersion == "" || len(pack["files"].([]any)) != 4 {
 		t.Fatal("Brain package incomplete", pack)
@@ -203,7 +203,7 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if err := seedBrainStarterFiles(t.Context(), service, admin, stateDir, futureFiles); err != nil {
 		t.Fatal(err)
 	}
-	read = remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
+	read = remote("brain", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
 	if read["content"] != futureFiles[0].Content || read["version"] == noteVersion {
 		t.Fatal("unchanged platform guide did not receive new version")
 	}
@@ -237,7 +237,7 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	_ = cli.Close()
 	cli = dialExternalMCP(t, t.Context(), srv.URL+externalMCPPath)
 	initializeExternalMCP(t, t.Context(), cli)
-	read = remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
+	read = remote("brain", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
 	if !strings.Contains(read["content"].(string), "### AgentBridge") || strings.Contains(read["content"].(string), "SparkQuill") || strings.Contains(read["content"].(string), "Video Studio") {
 		t.Fatal("enabled work product or personal-product exclusion incorrect in Brain guide")
 	}
@@ -248,16 +248,16 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if err := seedBrainStarterFiles(t.Context(), service, admin, stateDir, originalFiles); err != nil {
 		t.Fatal(err)
 	}
-	afterRollback := remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
+	afterRollback := remote("brain", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
 	if afterRollback["content"] != read["content"] {
 		t.Fatal("older source downgraded a newer guide")
 	}
 	// Customize one starter and deliberately remove another through native tools.
-	remote("brain_update", map[string]any{"action": "update", "path": "Shared/AgentWorks/product-guide.md", "content": "Our own product guide", "expected_version": read["version"], "request_id": "custom-guide"})
-	setupNote = remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/cli-setup.md"})["result"].(map[string]any)
-	remote("brain_update", map[string]any{"action": "update", "path": "Shared/AgentWorks/cli-setup.md", "content": "Our own CLI notes", "expected_version": setupNote["version"], "request_id": "custom-cli-setup"})
-	ref := remote("brain_read", map[string]any{"action": "read", "path": skillFolder + "/references/products.md"})["result"].(map[string]any)
-	remote("brain_update", map[string]any{"action": "delete", "path": skillFolder + "/references/products.md", "expected_version": ref["version"], "request_id": "remove-starter-ref"})
+	remote("brain", map[string]any{"action": "update", "path": "Shared/AgentWorks/product-guide.md", "content": "Our own product guide", "expected_version": read["version"], "request_id": "custom-guide"})
+	setupNote = remote("brain", map[string]any{"action": "read", "path": "Shared/AgentWorks/cli-setup.md"})["result"].(map[string]any)
+	remote("brain", map[string]any{"action": "update", "path": "Shared/AgentWorks/cli-setup.md", "content": "Our own CLI notes", "expected_version": setupNote["version"], "request_id": "custom-cli-setup"})
+	ref := remote("brain", map[string]any{"action": "read", "path": skillFolder + "/references/products.md"})["result"].(map[string]any)
+	remote("brain", map[string]any{"action": "delete", "path": skillFolder + "/references/products.md", "expected_version": ref["version"], "request_id": "remove-starter-ref"})
 	if err := service.Close(); err != nil {
 		t.Fatal(err)
 	}

@@ -215,11 +215,11 @@ func TestExternalDirectoryListingsReportExistingPaths(t *testing.T) {
 		args map[string]any
 		path string
 	}{
-		{"list_files", map[string]any{"workflow_id": "invoices", "path": "docs"}, "docs"},
-		{"search_files", map[string]any{"workflow_id": "invoices", "path": "docs", "query": "Invoices"}, "docs"},
-		{"list_runs", map[string]any{"workflow_id": "invoices"}, "runs"},
-		{"get_run", map[string]any{"workflow_id": "invoices", "run_folder": "iteration-1-sched/default"}, "runs/iteration-1-sched/default"},
-		{"get_logs", map[string]any{"workflow_id": "invoices", "run_folder": "iteration-1-sched/default"}, "runs/iteration-1-sched/default/logs"},
+		{"files", map[string]any{"action": "list", "workflow_id": "invoices", "path": "docs"}, "docs"},
+		{"files", map[string]any{"action": "search", "workflow_id": "invoices", "path": "docs", "query": "Invoices"}, "docs"},
+		{"runs", map[string]any{"action": "list", "workflow_id": "invoices"}, "runs"},
+		{"runs", map[string]any{"action": "get", "workflow_id": "invoices", "run_folder": "iteration-1-sched/default"}, "runs/iteration-1-sched/default"},
+		{"runs", map[string]any{"action": "logs", "workflow_id": "invoices", "run_folder": "iteration-1-sched/default"}, "runs/iteration-1-sched/default/logs"},
 	} {
 		body := externalTestBody(t, f.call(t, "owner", call.name, call.args), 200)
 		if body["exists"] != true || body["path"] != call.path {
@@ -268,7 +268,7 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 			}
 		}
 		// The run surface proxies run-mode tools, including execution.
-		for _, name := range []string{"run_full_workflow", "execute_step", "runs", "trigger_schedule"} {
+		for _, name := range []string{"runs", "trigger_schedule"} {
 			if !names[name] {
 				t.Fatalf("run tool missing: %s", name)
 			}
@@ -338,7 +338,7 @@ func TestExternalToolsHTTPMutationsAreNotExposed(t *testing.T) {
 	}
 	for name, args := range calls {
 		wantStatus, wantCode := 404, "unknown_tool"
-		if strings.HasPrefix(name, "builder_") || name == "write_file" {
+		if name == "write_file" {
 			wantStatus, wantCode = 403, "insufficient_scope"
 		}
 		body := externalTestBody(t, f.call(t, "readonly-owner", name, args), wantStatus)
@@ -451,19 +451,19 @@ func TestExternalStopStepDoesNotCancelSession(t *testing.T) {
 	registry.Register(&stepworkflow.WorkshopStepExecution{ID: "exec-2", StepID: "notify", Status: stepworkflow.WorkshopStepRunning})
 	f.api.workshopChatSessions.Store("sess-1", &stepworkflow.WorkshopChatSession{StepRegistry: registry})
 	// Missing execution_id fails schema validation before dispatch.
-	externalTestBody(t, f.call(t, "owner", "stop_step", map[string]any{"workflow_id": "invoices"}), 400)
+	externalTestBody(t, f.call(t, "owner", "runs", map[string]any{"action": "stop_step", "workflow_id": "invoices"}), 400)
 	// Unknown execution resolves to nothing.
-	missing := f.call(t, "owner", "stop_step", map[string]any{"workflow_id": "invoices", "execution_id": "nope"})
+	missing := f.call(t, "owner", "runs", map[string]any{"action": "stop_step", "workflow_id": "invoices", "execution_id": "nope"})
 	if missing.Code != http.StatusNotFound || !strings.Contains(missing.Body.String(), "execution_not_found") {
 		t.Fatalf("unknown execution status %d: %s", missing.Code, missing.Body.String())
 	}
 	// A session filter that does not own the execution rejects.
-	mismatch := f.call(t, "owner", "stop_step", map[string]any{"workflow_id": "invoices", "execution_id": "exec-1", "session_id": "sess-9"})
+	mismatch := f.call(t, "owner", "runs", map[string]any{"action": "stop_step", "workflow_id": "invoices", "execution_id": "exec-1", "session_id": "sess-9"})
 	if mismatch.Code != http.StatusNotFound {
 		t.Fatalf("session mismatch status %d, want 404", mismatch.Code)
 	}
 	// A tracked step without a cancel function must not cancel its entire session.
-	stopped := f.call(t, "owner", "stop_step", map[string]any{"workflow_id": "invoices", "execution_id": "exec-1"})
+	stopped := f.call(t, "owner", "runs", map[string]any{"action": "stop_step", "workflow_id": "invoices", "execution_id": "exec-1"})
 	if stopped.Code != http.StatusConflict || !strings.Contains(stopped.Body.String(), "execution_not_cancelable") {
 		t.Fatalf("non-cancelable step status %d: %s", stopped.Code, stopped.Body.String())
 	}
@@ -482,7 +482,7 @@ func TestExternalStopOwnershipAcrossTokens(t *testing.T) {
 		"exec-1": {ExecutionID: "exec-1", SessionID: "pat-other-s1", WorkspacePath: "Workflow/invoices", Status: trackedExecutionStatusRunning, Source: trackedExecutionSourceWorkflowRun},
 	}
 	claims := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{ID: "t1", Scopes: []string{"workflows:read", "files:read", "runs:execute"}, AllWorkflows: true}}
-	data, _ := json.Marshal(map[string]any{"name": "stop_step", "arguments": map[string]any{"workflow_id": "invoices", "execution_id": "exec-1"}})
+	data, _ := json.Marshal(map[string]any{"name": "runs", "arguments": map[string]any{"action": "stop_step", "workflow_id": "invoices", "execution_id": "exec-1"}})
 	w := httptest.NewRecorder()
 	f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(data), claims, nil))
 	if w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), "execution_not_found") {
@@ -497,7 +497,7 @@ func TestExternalStopAllExecutions(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	f.api.stoppedSessions = map[string]bool{}
 	// App callers must scope to one session.
-	scopeless := f.call(t, "owner", "stop_all_executions", map[string]any{"workflow_id": "invoices"})
+	scopeless := f.call(t, "owner", "runs", map[string]any{"action": "stop_all", "workflow_id": "invoices"})
 	if scopeless.Code != http.StatusBadRequest {
 		t.Fatalf("unscoped app call status %d, want 400", scopeless.Code)
 	}
@@ -509,7 +509,7 @@ func TestExternalStopAllExecutions(t *testing.T) {
 		"pat-t2-s1": {tokenID: "t2", sessionID: "pat-t2-s1", workspace: "Workflow/invoices"},
 	}
 	claims := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{ID: "t1", Scopes: []string{"workflows:read", "files:read", "runs:execute"}, AllWorkflows: true}}
-	data, _ := json.Marshal(map[string]any{"name": "stop_all_executions", "arguments": map[string]any{"workflow_id": "invoices"}})
+	data, _ := json.Marshal(map[string]any{"name": "runs", "arguments": map[string]any{"action": "stop_all", "workflow_id": "invoices"}})
 	w := httptest.NewRecorder()
 	f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(data), claims, nil))
 	body := externalTestBody(t, w, 200)
@@ -534,7 +534,7 @@ func TestExternalStopAllExecutions(t *testing.T) {
 		}
 	}
 	// A named session outside the token's ownership rejects before any lookup.
-	foreign, _ := json.Marshal(map[string]any{"name": "stop_all_executions", "arguments": map[string]any{"workflow_id": "invoices", "session_id": "pat-t2-s1"}})
+	foreign, _ := json.Marshal(map[string]any{"name": "runs", "arguments": map[string]any{"action": "stop_all", "workflow_id": "invoices", "session_id": "pat-t2-s1"}})
 	fw := httptest.NewRecorder()
 	f.api.handleExternalCall(fw, adminRequest(http.MethodPost, "/api/external/call", string(foreign), claims, nil))
 	if fw.Code != http.StatusNotFound {

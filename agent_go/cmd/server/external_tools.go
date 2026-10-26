@@ -622,7 +622,8 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		externalError(w, 403, "insufficient_scope", "This access token does not allow this operation."+externalMissingScopeHint(GetUserFromContext(r.Context()), *tool))
 		return
 	}
-	if isExternalKnowledgebaseTool(tool.Name) && !knowledgebaseConnectionAllowsAction(GetUserFromContext(r.Context()), tool.Name, call.Arguments) {
+	guidanceTool, guidanceArgs := agentSourceCall(*tool, call.Arguments)
+	if isExternalKnowledgebaseTool(guidanceTool.Name) && !knowledgebaseConnectionAllowsAction(GetUserFromContext(r.Context()), guidanceTool.Name, guidanceArgs) {
 		externalError(w, 403, "insufficient_scope", "This connection does not allow the requested Brain action.")
 		return
 	}
@@ -633,8 +634,8 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	if len(handle) > 256 {
 		handle = ""
 	} // malformed receipt is missing, not authorization
-	if externalOperationHasGuidance(*tool, call.Arguments) || externalProjectSkillFetch(tool.Name, call.Arguments) || tool.Name == "get_guidance_topic" || tool.Name == "get_guidance_skills" {
-		decorated, finish := api.externalGuidanceResponse(w, r, tool.Name, handle, call.Arguments)
+	if externalOperationHasGuidance(guidanceTool, guidanceArgs) || externalProjectSkillFetch(guidanceTool.Name, guidanceArgs) || tool.Name == "get_guidance_topic" || tool.Name == "get_guidance_skills" {
+		decorated, finish := api.externalGuidanceResponse(w, r, guidanceTool.Name, handle, guidanceArgs)
 		w = decorated
 		defer finish()
 	}
@@ -642,7 +643,11 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		externalError(w, 400, "invalid_arguments", err.Error())
 		return
 	}
-	if native := crewDatabaseMembers[tool.Name]; native != "" {
+	if _, ok := agentSourceAction(tool.Name); ok {
+		resolved, args := agentSourceCall(*tool, call.Arguments)
+		tool, call.Name, call.Arguments = &resolved, resolved.Name, args
+	}
+	if native := crewExecutionGroupedMembers[tool.Name]; native != "" {
 		params := map[string]any{}
 		for key, value := range call.Arguments {
 			if key != "crew_id" {

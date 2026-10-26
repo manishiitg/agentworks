@@ -59,33 +59,33 @@ func TestKnowledgebaseExternalMCPBackupSetupAndUserWriteAccess(t *testing.T) {
 		requireRemoteError(t, call(admin, name, map[string]any{"action": "folders"}), "removed call "+name, "unknown_tool")
 	}
 	setup := map[string]any{"action": "configure_backup", "username": "kb-user", "remote_url": "https://github.com/org/knowledge-backup.git", "pat": "mcp-test-only-secret", "branch": "main", "request_id": "mcp-backup-setup"}
-	requireRemoteError(t, call(priya, "brain_access", setup), "non-admin backup setup", "FORBIDDEN")
-	if got := result(admin, "brain_access", setup); got["configured"] != true || got["pat_configured"] != true || got["pat"] != nil || got["encrypted_pat"] != nil {
+	requireRemoteError(t, call(priya, "brain", setup), "non-admin backup setup", "FORBIDDEN")
+	if got := result(admin, "brain", setup); got["configured"] != true || got["pat_configured"] != true || got["pat"] != nil || got["encrypted_pat"] != nil {
 		t.Fatal("backup setup not applied", got)
 	}
 	// Exact retries are safe, and configuration is visible to an ordinary reader.
-	result(admin, "brain_access", setup)
+	result(admin, "brain", setup)
 	if configured, err := service.BackupConfigured(); err != nil || !configured {
 		t.Fatal("external setup did not persist", configured, err)
 	}
 	// The destination may change (PLAT-633); a new username still needs its own token.
-	requireRemoteError(t, call(admin, "brain_access", map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/other.git", "request_id": "mcp-backup-redirect"}), "backup redirect with a new username but no token", "INVALID_ARGUMENT")
+	requireRemoteError(t, call(admin, "brain", map[string]any{"action": "configure_backup", "username": "git", "remote_url": "https://github.com/org/other.git", "request_id": "mcp-backup-redirect"}), "backup redirect with a new username but no token", "INVALID_ARGUMENT")
 
 	inspect := func() map[string]any {
-		return result(admin, "brain_access", map[string]any{"action": "inspect", "folder_path": "Payments/Checkout"})
+		return result(admin, "brain", map[string]any{"action": "access_inspect", "folder_path": "Payments/Checkout"})
 	}
-	result(admin, "brain_access", map[string]any{"action": "list", "folder_path": "Payments/Checkout"})
+	result(admin, "brain", map[string]any{"action": "access_list", "folder_path": "Payments/Checkout"})
 	readArgs := map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}
-	entry := result(priya, "brain_read", readArgs)
+	entry := result(priya, "brain", readArgs)
 	write := map[string]any{"action": "update", "path": readArgs["path"], "expected_version": entry["version"], "content": "# Retries\nWritten by Priya through MCP.\n", "request_id": "mcp-priya-write"}
-	requireRemoteError(t, call(priya, "brain_update", write), "Reader cannot edit", "FORBIDDEN")
-	result(admin, "brain_access", map[string]any{"action": "grant", "folder_path": "Payments/Checkout", "identity_id": "priya", "role": "Editor", "expected_acl_version": inspect()["acl_version"], "request_id": "mcp-grant-editor"})
-	result(priya, "brain_update", write)
-	if got := result(admin, "brain_read", readArgs); got["content"] != write["content"] {
+	requireRemoteError(t, call(priya, "brain", write), "Reader cannot edit", "FORBIDDEN")
+	result(admin, "brain", map[string]any{"action": "access_grant", "folder_path": "Payments/Checkout", "identity_id": "priya", "role": "Editor", "expected_acl_version": inspect()["acl_version"], "request_id": "mcp-grant-editor"})
+	result(priya, "brain", write)
+	if got := result(admin, "brain", readArgs); got["content"] != write["content"] {
 		t.Fatal("new Editor save not immediately shared", got)
 	}
-	requireRemoteError(t, call(priya, "brain_access", map[string]any{"action": "grant", "folder_path": "Payments/Checkout", "identity_id": "outsider", "role": "Reader", "expected_acl_version": inspect()["acl_version"], "request_id": "mcp-editor-grant"}), "Editor cannot manage access", "FORBIDDEN")
-	requireRemoteError(t, call(priya, "brain_read", map[string]any{"action": "read", "path": "Payments/Billing/private.md"}), "grant cannot escape folder", "NOT_FOUND")
-	result(admin, "brain_access", map[string]any{"action": "revoke", "folder_path": "Payments/Checkout", "identity_id": "priya", "expected_acl_version": inspect()["acl_version"], "request_id": "mcp-revoke-editor"})
-	requireRemoteError(t, call(priya, "brain_read", readArgs), "revocation takes effect immediately", "NOT_FOUND")
+	requireRemoteError(t, call(priya, "brain", map[string]any{"action": "access_grant", "folder_path": "Payments/Checkout", "identity_id": "outsider", "role": "Reader", "expected_acl_version": inspect()["acl_version"], "request_id": "mcp-editor-grant"}), "Editor cannot manage access", "FORBIDDEN")
+	requireRemoteError(t, call(priya, "brain", map[string]any{"action": "read", "path": "Payments/Billing/private.md"}), "grant cannot escape folder", "NOT_FOUND")
+	result(admin, "brain", map[string]any{"action": "access_revoke", "folder_path": "Payments/Checkout", "identity_id": "priya", "expected_acl_version": inspect()["acl_version"], "request_id": "mcp-revoke-editor"})
+	requireRemoteError(t, call(priya, "brain", readArgs), "revocation takes effect immediately", "NOT_FOUND")
 }

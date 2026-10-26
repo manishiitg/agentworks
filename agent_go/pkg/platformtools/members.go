@@ -21,7 +21,7 @@ func projectMembers(tools []mcpagent.ToolDefinition) ([]projectedMember, []mcpag
 				continue
 			}
 			hasSource = true
-			if !OffersAction(tool.InputSchema, action.SourceAction) {
+			if !OffersSourceAction(tool.InputSchema, action) {
 				continue
 			}
 			member, err := sourceMember(tool, action)
@@ -76,8 +76,16 @@ func cloneSchema(schema map[string]any) (map[string]any, error) {
 
 // OffersAction reports a subaction present in the admitted source schema.
 func OffersAction(schema map[string]any, action string) bool {
+	return offersValue(schema, "action", action)
+}
+
+func OffersSourceAction(schema map[string]any, action Action) bool {
+	return offersValue(schema, action.SourceParameter(), action.SourceAction)
+}
+
+func offersValue(schema map[string]any, key, action string) bool {
 	props, _ := schema["properties"].(map[string]any)
-	choice, _ := props["action"].(map[string]any)
+	choice, _ := props[key].(map[string]any)
 	values, _ := choice["enum"].([]any)
 	for _, value := range values {
 		if value == action {
@@ -95,8 +103,10 @@ func MemberSchema(original map[string]any, action Action) (map[string]any, error
 	if err != nil {
 		return nil, err
 	}
+	if err := specializeSourceSelector(schema, action.SourceParameter(), action.SourceAction); err != nil {
+		return nil, err
+	}
 	props, _ := schema["properties"].(map[string]any)
-	delete(props, "action")
 	for key := range props {
 		if action.Fields != nil && !slices.Contains(action.Fields, key) || slices.Contains(action.ExcludeFields, key) {
 			delete(props, key)
@@ -131,7 +141,7 @@ func sourceMember(source mcpagent.ToolDefinition, action Action) (mcpagent.ToolD
 	}
 	member.InputSchema = schema
 	member.Execute = func(ctx context.Context, args map[string]any) (string, error) {
-		input := map[string]any{"action": action.SourceAction}
+		input := map[string]any{action.SourceParameter(): action.SourceAction}
 		if action.Scope != "" {
 			originalProps, _ := source.InputSchema["properties"].(map[string]any)
 			if _, scoped := originalProps["scope"]; scoped {
@@ -139,7 +149,9 @@ func sourceMember(source mcpagent.ToolDefinition, action Action) (mcpagent.ToolD
 			}
 		}
 		for key, value := range args {
-			input[key] = value
+			if key != action.SourceParameter() {
+				input[key] = value
+			}
 		}
 		return source.Execute(ctx, input)
 	}

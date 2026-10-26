@@ -2570,6 +2570,9 @@ func runServer(cmd *cobra.Command, args []string) {
 			r = r.WithContext(context.WithValue(r.Context(), common.ChatSessionIDKey, sid))
 		}
 		if isMCPBridgeCustomToolCategory(server) {
+			if r.Method == http.MethodPost && refuseReaderDeniedToolRequest(w, r, r.Context(), tool) {
+				return
+			}
 			log.Printf("[ROUTE] Redirecting /tools/mcp/%s/%s → custom tool handler", server, tool)
 			executorHandlers.HandlePerToolCustomRequest(w, r, tool)
 			return
@@ -2605,7 +2608,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		if sid := strings.TrimSpace(r.Header.Get("X-Session-ID")); sid != "" {
 			r = r.WithContext(context.WithValue(r.Context(), common.ChatSessionIDKey, sid))
 		}
-		if r.Method == http.MethodPost && refuseReaderDeniedTool(w, r.Context(), vars["tool"]) {
+		if r.Method == http.MethodPost && refuseReaderDeniedToolRequest(w, r, r.Context(), vars["tool"]) {
 			return
 		}
 		logCustomToolDuration(vars["tool"], strings.TrimSpace(r.Header.Get("X-Session-ID")), func() {
@@ -2660,7 +2663,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		// Inject ChatSessionIDKey so execute_shell_command can look up
 		// the session's working directory and folder guard from the global map.
 		ctx := context.WithValue(r.Context(), common.ChatSessionIDKey, sid)
-		if r.Method == http.MethodPost && refuseReaderDeniedTool(w, ctx, tool) {
+		if r.Method == http.MethodPost && refuseReaderDeniedToolRequest(w, r, ctx, tool) {
 			return
 		}
 		logCustomToolDuration(tool, sid, func() {

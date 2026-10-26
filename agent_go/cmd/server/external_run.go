@@ -168,10 +168,7 @@ func externalRunInstruction(name string, args map[string]any) string {
 		}
 		params[key] = value
 	}
-	if id := platformtools.Identity(name); id != name {
-		family, action, _ := strings.Cut(id, ".")
-		name, params["action"] = family, action
-	}
+	name, params = platformtools.Invocation(name, params)
 	var sb strings.Builder
 	sb.WriteString("Call the run-mode tool \"" + name + "\" now")
 	if len(params) == 0 {

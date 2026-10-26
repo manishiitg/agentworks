@@ -36,9 +36,22 @@ type FunctionElicitationHost struct {
 // the tool that reads it, the tool that answers it, and which argument names
 // the call, operation or session the question belongs to.
 type elicitationFamily struct {
-	get, reply string
-	idField    string // call_id, operation_id or session_id
-	workflow   bool   // the tools are workflow-scoped
+	get, reply             string
+	getAction, replyAction string
+	poll                   bool
+	idField                string // call_id, operation_id or session_id
+	workflow               bool   // the tools are workflow-scoped
+}
+
+func (f elicitationFamily) available(h FunctionElicitationHost, reply bool) bool {
+	name, action := f.get, f.getAction
+	if reply {
+		name, action = f.reply, f.replyAction
+	}
+	if action != "" {
+		name += "." + action
+	}
+	return h.Available(name)
 }
 
 type functionElicitationState struct {
@@ -46,6 +59,8 @@ type functionElicitationState struct {
 	CallID     string `json:"call_id"`
 	RequestID  string `json:"request_id"`
 	WorkflowID string `json:"workflow_id,omitempty"`
+	CrewID     string `json:"crew_id,omitempty"`
+	Action     string `json:"action,omitempty"`
 }
 
 // functionCallStatus reads a status response from any family. Function calls
@@ -94,7 +109,24 @@ func (s functionCallStatus) idFor(f elicitationFamily) string {
 	return s.CallID
 }
 
-func elicitationFamilyFor(target string) (elicitationFamily, bool) {
+func elicitationFamilyFor(target string, inputs ...map[string]any) (elicitationFamily, bool) {
+	var args map[string]any
+	if len(inputs) > 0 {
+		args = inputs[0]
+	}
+	action, _ := args["action"].(string)
+	if target == "functions" && (action == "call" || action == "status") {
+		workflow, _ := args["workflow_id"].(string)
+		return elicitationFamily{get: target, reply: target, getAction: "status", replyAction: "reply", idField: "call_id", workflow: workflow != "", poll: action == "status"}, true
+	}
+	if target == "sessions" && (action == "builder_chat" || action == "builder_status") {
+		return elicitationFamily{get: target, reply: target, getAction: "builder_status", replyAction: "builder_reply_input", idField: "operation_id", workflow: true, poll: action == "builder_status"}, true
+	}
+	if target == "runs" && action == "status" {
+		return elicitationFamily{get: target, reply: target, getAction: "status", replyAction: "reply_input", idField: "session_id", workflow: true, poll: true}, true
+	}
+	// Private backend identities are used by hosted dispatch and stored Tasks.
+	// They are never public aliases on the MCP transport.
 	switch target {
 	case "call_crew_function", "get_crew_function_call":
 		return elicitationFamily{get: "get_crew_function_call", reply: "reply_crew_function_call", idField: "call_id"}, true
@@ -114,7 +146,13 @@ func (f elicitationFamily) pollArgs(state functionElicitationState) map[string]a
 	if f.workflow {
 		args["workflow_id"] = state.WorkflowID
 	}
-	if f.get == "run_status" {
+	if state.CrewID != "" {
+		args["crew_id"] = state.CrewID
+	}
+	if f.getAction != "" {
+		args["action"] = f.getAction
+	}
+	if f.get == "run_status" || f.get == "runs" {
 		args["compact"] = true
 	}
 	return args
@@ -125,6 +163,9 @@ func (f elicitationFamily) replyArgs(state functionElicitationState, answer stri
 	delete(args, "compact")
 	args["request_id"] = state.RequestID
 	args["response"] = answer
+	if f.replyAction != "" {
+		args["action"] = f.replyAction
+	}
 	return args
 }
 
@@ -167,8 +208,8 @@ func (h FunctionElicitationHost) MaybeElicit(ctx context.Context, target string,
 	if target == "workspace" {
 		return h.workspaceMaybeElicit(ctx, args, raw)
 	}
-	family, ok := elicitationFamilyFor(target)
-	if !ok || !h.ClientCanElicit(ctx) || !h.Available(family.get) || !h.Available(family.reply) {
+	family, ok := elicitationFamilyFor(target, args)
+	if !ok || !h.ClientCanElicit(ctx) || !family.available(h, false) || !family.available(h, true) {
 		return nil
 	}
 	var status functionCallStatus
@@ -184,6 +225,8 @@ func (h FunctionElicitationHost) MaybeElicit(ctx context.Context, target string,
 		return nil
 	}
 	state := functionElicitationState{Target: target, CallID: status.idFor(family), RequestID: input.id()}
+	state.CrewID, _ = args["crew_id"].(string)
+	state.Action, _ = args["action"].(string)
 	if family.workflow {
 		state.WorkflowID, _ = args["workflow_id"].(string)
 		if state.WorkflowID == "" {
@@ -222,19 +265,24 @@ func (h FunctionElicitationHost) Resume(ctx context.Context, target string, args
 		return h.workspaceResume(ctx, args, request)
 	}
 	var state functionElicitationState
-	if err := json.Unmarshal([]byte(request.Params.RequestState), &state); err != nil || state.Target != target || state.CallID == "" || state.RequestID == "" {
+	action, _ := args["action"].(string)
+	if err := json.Unmarshal([]byte(request.Params.RequestState), &state); err != nil || state.Target != target || state.Action != action || state.CallID == "" || state.RequestID == "" {
 		return mcp.NewToolResultError("invalid_request_state: the elicitation does not match this tool call")
 	}
-	family, known := elicitationFamilyFor(target)
-	if !known || !h.Available(family.get) {
+	family, known := elicitationFamilyFor(target, args)
+	if !known || !family.available(h, false) {
 		return mcp.NewToolResultError("insufficient_scope: function-call polling is unavailable")
 	}
 	// A retried poll must name the same call, operation or session; a retried
 	// chat has no such argument yet (its session was created by the first call).
-	if strings.HasPrefix(target, "get_") || target == "builder_status" || target == "run_status" {
+	if family.poll || strings.HasPrefix(target, "get_") || target == "builder_status" || target == "run_status" {
 		if id, _ := args[family.idField].(string); id != state.CallID {
 			return mcp.NewToolResultError("invalid_request_state: " + family.idField + " changed during elicitation")
 		}
+	}
+	crewID, _ := args["crew_id"].(string)
+	if crewID != state.CrewID {
+		return mcp.NewToolResultError("invalid_request_state: crew_id changed during elicitation")
 	}
 	if family.workflow {
 		workflowID, _ := args["workflow_id"].(string)
@@ -248,7 +296,7 @@ func (h FunctionElicitationHost) Resume(ctx context.Context, target string, args
 	}
 	switch response.Action {
 	case mcp.ElicitationResponseActionAccept:
-		if !h.Available(family.reply) {
+		if !family.available(h, true) {
 			return mcp.NewToolResultError("insufficient_scope: answering this question is unavailable")
 		}
 		content, ok := response.Content.(map[string]any)

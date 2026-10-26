@@ -147,7 +147,7 @@ func Project(tools []mcpagent.ToolDefinition, selections ...Selection) ([]mcpage
 			scope, _ := args["scope"].(string)
 			var selected *projectedMember
 			for i := range choices {
-				if scope == "" && len(choices) == 1 || choices[i].action.Scope == scope {
+				if len(choices) == 1 && (scope == "" || choices[i].action.Scope == "") || choices[i].action.Scope == scope {
 					selected = &choices[i]
 					break
 				}

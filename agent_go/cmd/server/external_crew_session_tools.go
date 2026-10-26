@@ -7,6 +7,8 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -73,12 +75,23 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 	if !canStart {
 		delete(reg, "run_in_background")
 	}
+	definitions := []mcpagent.ToolDefinition{}
+	for name, tool := range reg {
+		definitions = append(definitions, mcpagent.ToolDefinition{Name: name, Description: tool.description, InputSchema: tool.schema, Execute: tool.execute})
+	}
+	projected, err := platformtools.Project(definitions)
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	reg = crewCapabilityRegistrar{}
+	for _, tool := range projected {
+		reg[tool.Name] = crewCapabilityTool{description: tool.Description, schema: tool.InputSchema, execute: tool.Execute}
+	}
 	if action == "tools" {
 		inventory := []map[string]any{}
-		for _, name := range []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action", "run_in_background", "query_agent", "list_background_agents", "terminate_agent"} {
-			if tool, ok := reg[name]; ok {
-				inventory = append(inventory, map[string]any{"name": name, "description": tool.description, "input_schema": tool.schema})
-			}
+		for name, tool := range reg {
+			inventory = append(inventory, map[string]any{"name": name, "description": tool.description, "input_schema": tool.schema})
 		}
 		externalJSON(w, map[string]any{"crew_id": id, "chat_id": chat.ChatID, "tools": inventory, "background_initialized": initialized, "next": "Background starts require current editable ownership, crews:write and an initialized manual chat. Results use the same native chat notifications. Browser actions require an attached browser and return its receipt; unavailable is not success."})
 		return
@@ -102,7 +115,7 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 		externalError(w, 400, "invalid_arguments", err.Error())
 		return
 	}
-	if name == "run_in_background" {
+	if crewSessionToolIdentity(name, params) == platformtools.Identity("run_in_background") {
 		// Never inherit a retained website chat's broader filesystem grants.
 		// Every non-root grant must still be approved AND covered by this token.
 		cfg := common.GetSessionShellConfig(chat.SessionID)
@@ -138,7 +151,7 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 	if claims.AccessToken != nil {
 		connection = claims.AccessToken.ID
 	}
-	audit, auditID, err := startCrewExecutionAudit(r.Context(), claims.UserID, id, connection, "crew_session", name, params)
+	audit, auditID, err := startCrewExecutionAudit(r.Context(), claims.UserID, id, connection, "crew_session", crewSessionToolIdentity(name, params), params)
 	if err != nil {
 		externalFailure(w, err)
 		return

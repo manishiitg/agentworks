@@ -28,6 +28,7 @@ func TestExternalCrewConnectedMCP(t *testing.T) {
 	t.Setenv("AUTH_SECRET", "crew-connected-mcp-test-signing-secret")
 	withMCPConnectionsRoot(t)
 	f, _ := newExternalCrewCommandFixture(t)
+	f.write(t, externalCommandCrewRoot+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_one"]}}`)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	credential := strings.Repeat("s", 32)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", credential)
@@ -90,19 +91,19 @@ func TestExternalCrewConnectedMCP(t *testing.T) {
 	server := serveExternalMCP(t, f.api, crewWriter("owner"))
 	cli := dialExternalMCP(t, ctx, server.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
-	result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "crew_execution", "arguments": map[string]any{"crew_id": "team", "action": "call_selected_mcp_tool", "arguments": map[string]any{"server": "vault_one", "tool": "fetch", "args": map[string]any{"id": "allowed"}}}})
+	result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "mcp", "arguments": map[string]any{"crew_id": "team", "action": "call", "server": "vault_one", "tool": "fetch", "args": map[string]any{"id": "allowed"}}})
 	requireRemoteSuccess(t, result, "live Crew MCP dispatch")
 	raw, _ := json.Marshal(result)
 	if calls.Load() != 1 || !strings.Contains(string(raw), "saved id=allowed") || strings.Contains(string(raw), credential) {
 		t.Fatalf("wrong upstream result %s calls=%d", raw, calls.Load())
 	}
 	for _, args := range []map[string]any{{"server": "vault_one", "tool": "fetch", "args": map[string]any{"id": "denied"}}, {"server": "unattached-personal", "tool": "fetch", "args": map[string]any{"id": "allowed"}}} {
-		crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "call_selected_mcp_tool", "arguments": args}, 400)
+		crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "call", "server": args["server"], "tool": args["tool"], "args": args["args"]}, 400)
 	}
 	revoked.Store(true)
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_execution", map[string]any{"action": "call_selected_mcp_tool", "arguments": map[string]any{"server": "vault_one", "tool": "fetch", "args": map[string]any{"id": "allowed"}}}, 400)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "call", "server": "vault_one", "tool": "fetch", "args": map[string]any{"id": "allowed"}}, 400)
 	if calls.Load() != 1 {
 		t.Fatal("denied or revoked call reached upstream")
 	}
-	crewCapabilityHTTP(t, f, crewWriter("other"), "crew_execution", map[string]any{"action": "call_selected_mcp_tool", "arguments": map[string]any{"server": "vault_one", "tool": "fetch", "args": map[string]any{"id": "allowed"}}}, 403)
+	crewCapabilityHTTP(t, f, crewWriter("other"), "mcp", map[string]any{"action": "call", "server": "vault_one", "tool": "fetch", "args": map[string]any{"id": "allowed"}}, 403)
 }

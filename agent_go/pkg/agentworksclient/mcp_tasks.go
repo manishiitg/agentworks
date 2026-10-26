@@ -124,10 +124,8 @@ func MCPTaskCandidate(name string, args map[string]any) bool {
 	switch name {
 	case "functions":
 		return action == "call" || action == "status"
-	case "builder":
-		return action == "chat" || action == "status"
-	case "call_crew_function", "get_crew_function_call", "call_workflow_function", "get_workflow_function_call", "builder_chat", "builder_status":
-		return true
+	case "sessions":
+		return action == "builder_chat" || action == "builder_status"
 	}
 	return false
 }

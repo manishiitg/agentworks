@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
-	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +20,6 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/mcpcache"
 	"github.com/manishiitg/mcpagent/mcpclient"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 func crewCapabilityHTTP(t *testing.T, f *externalToolsFixture, claims *UserClaims, name string, args map[string]any, status int) string {
@@ -85,116 +84,78 @@ func crewReader(user string) *UserClaims {
 }
 
 func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("PUBLIC_URL", "")
-	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
-	catalog := `{"mcpServers":{"Example":{"url":"https://mcp.example.com/mcp","protocol":"http","oauth":{"auth_url":"https://auth.example.com/authorize","token_url":"https://auth.example.com/token"}}}}`
-	if err := os.WriteFile(catalogPath, []byte(catalog), 0600); err != nil {
-		t.Fatal(err)
-	}
-	f.api.mcpConfigPath = catalogPath
+	gateway := newCrewConnectionVaultFixture(t)
+	f.api.mcpConfigPath = gateway.catalog
 	f.api.logger = loggerv2.NewNoop()
-	config, err := mcpclient.LoadConfig(catalogPath, f.api.logger)
+	config, err := mcpclient.LoadConfig(gateway.catalog, f.api.logger)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.api.mcpConfig = config
-	result := crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": "example"}, 200)
-	if !strings.Contains(result, "no PUBLIC_URL OAuth callback address") {
-		t.Fatal(result)
+	result := crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "install", "name": "example"}, 200)
+	if !strings.Contains(result, "OAuth callback address") {
+		t.Fatal("pending account did not explain sign-in setup")
 	}
-	attachments, _ := placeMCPAttachmentsFor(externalCommandCrewRoot)
-	if len(attachments) != 1 {
-		t.Fatalf("attachments=%v", attachments)
+	selected, err := projectSelectedServers(t.Context(), externalCommandCrewRoot)
+	if err != nil || len(selected) != 1 {
+		t.Fatalf("project selection: %v %v", selected, err)
 	}
-	// Custom URLs use the website's existing remote/public validation.
-	for _, endpoint := range []string{"https://127.0.0.1/mcp", "http://custom.example.com/mcp", "file:///tmp/mcp", "https://user:password@custom.example.com/mcp"} {
-		crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": "invalid", "url": endpoint}, 400)
-	}
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": attachments[0].Server}, 200)
-	// The same personal login is used elsewhere; removing the Crew attachment
-	// must leave that other attachment and the login untouched.
-	otherRoot := "_users/owner/Chats/Work/projects/another"
-	if err = attachPersonalLoginToPlace("owner", attachments[0].Server, otherRoot); err != nil {
-		t.Fatal(err)
-	}
-	crewCapabilityHTTP(t, f, crewReader("other"), "crew_mcp", map[string]any{"action": "list"}, 200)
-	crewCapabilityHTTP(t, f, crewWriter("other"), "crew_mcp", map[string]any{"action": "remove", "name": attachments[0].Server}, 403)
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": "Example", "client_secret": "denied"}, 400)
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "remove", "name": attachments[0].Server}, 200)
-	current, _ := placeMCPAttachmentsFor(externalCommandCrewRoot)
-	other, _ := placeMCPAttachmentsFor(otherRoot)
-	personal, _ := listPlaceMCPServers("owner")
-	if len(current) != 0 || len(other) != 1 || len(personal) != 1 {
-		t.Fatalf("detach changed other state: %v %v %v", current, other, personal)
-	}
-	// Seed an existing credential-backed custom login through Integrations.
-	// Reuse and endpoint edits need no network probe because its auth method
-	// is already configured; the same URL validation and private store apply.
-	appCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	customHeaders := map[string]placeMCPHeader{"X-Api-Key": {Secret: "EXAMPLE_KEY"}}
-	custom, _, err := f.api.addPlaceMCP(appCtx, "owner", placeMCPServer{Name: "custom", URL: "https://custom.example.com/mcp", Transport: "sse", Headers: customHeaders}, "")
-	if err != nil {
-		t.Fatal(err)
+	connection := selected[0]
+	// The saved Vault account can be selected by more than one project.
+	otherRoot := "Crew/another"
+	f.write(t, otherRoot+"/workflow.json", `{"id":"another","created_by":"owner","capabilities":{"selected_servers":["`+connection+`"]}}`)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "install", "name": connection}, 200)
+	crewCapabilityHTTP(t, f, crewReader("other"), "mcp", map[string]any{"action": "list"}, 200)
+	crewCapabilityHTTP(t, f, crewWriter("other"), "mcp", map[string]any{"action": "remove", "name": connection}, 403)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "install", "name": "Example", "client_secret": "denied"}, 400)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "remove", "name": connection}, 200)
+	current, _ := projectSelectedServers(t.Context(), externalCommandCrewRoot)
+	other, _ := projectSelectedServers(t.Context(), otherRoot)
+	if slices.Contains(current, connection) || !slices.Contains(other, connection) || gateway.count() != 1 {
+		t.Fatal("detach changed another product or deleted the saved account")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	srv := serveExternalMCP(t, f.api, crewWriter("owner"))
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
-	catalogOnly := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "crew_mcp", "arguments": map[string]any{"crew_id": "team", "action": "install", "catalog": "example"}})
-	requireRemoteSuccess(t, catalogOnly, "crew_mcp")
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "remove", "name": "example"}, 200)
-	installed := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "crew_mcp", "arguments": map[string]any{"crew_id": "team", "action": "install", "name": custom.Name}})
-	requireRemoteSuccess(t, installed, "crew_mcp")
-	if _, found := placeAttachmentNamed(externalCommandCrewRoot, custom.Name); !found {
-		t.Fatal("custom MCP reuse did not attach to Crew")
+	installed := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "mcp", "arguments": map[string]any{"crew_id": "team", "action": "install", "name": "custom", "url": "https://custom.example.com/mcp", "api_key": "synthetic-key"}})
+	requireRemoteSuccess(t, installed, "mcp install")
+	if gateway.count() != 2 {
+		t.Fatal("custom connection was not saved in Vault")
 	}
 	for _, denied := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
-		crewCapabilityHTTP(t, f, denied, "crew_mcp", map[string]any{"action": "install", "name": custom.Name}, 403)
+		crewCapabilityHTTP(t, f, denied, "mcp", map[string]any{"action": "install", "name": connection}, 403)
 	}
 	bounded := crewWriter("owner")
 	bounded.AccessToken.AllCrews, bounded.AccessToken.CrewIDs = false, []string{"different"}
-	crewCapabilityHTTP(t, f, bounded, "crew_mcp", map[string]any{"action": "install", "name": custom.Name}, 403)
-	// Chat, function and message runs use their actual server-owned session.
-	// Both shared and legacy roots can install/add/reuse and edit custom URLs.
+	crewCapabilityHTTP(t, f, bounded, "mcp", map[string]any{"action": "install", "name": connection}, 403)
+	// Actual native chat/function/message registrations all select the same
+	// account store. No retired personal-connection files are involved.
 	reg := &recordingRegistrar{}
 	f.api.eventStore = events.NewEventStore(10)
 	f.api.sessionWorkspaceFolders = map[string]string{}
 	if err := f.api.registerMultiAgentMCPServerTools(reg, nil); err != nil {
 		t.Fatal(err)
 	}
-	for _, root := range []string{externalCommandCrewRoot, "_users/owner/Chats/Work/projects/legacy"} {
-		for _, run := range []string{"chat", "function", "messages"} {
-			session := run + "-" + root
-			f.api.eventStore.SetSessionOwner(session, "owner")
-			f.api.sessionWorkspaceFolders[session] = root
-			if run != "chat" {
-				f.api.sessionWorkspaceFolders[session] += "/runs/" + run
-			}
-			ctx := executor.WithSessionID(appCtx, session)
-			for _, operation := range []string{"install_mcp_server", "add_mcp_server"} {
-				if _, err := reg.tools[operation].exec(ctx, map[string]any{"name": custom.Name}); err != nil {
-					t.Fatalf("%s %s custom reuse: %v", root, run, err)
-				}
-			}
-			if _, err := reg.tools["edit_mcp_server"].exec(ctx, map[string]any{"name": custom.Name, "server": map[string]any{"url": "https://updated.example.com/mcp"}}); err != nil {
-				t.Fatalf("%s %s custom URL edit: %v", root, run, err)
+	appCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	for _, run := range []string{"chat", "function", "messages"} {
+		session := "connection-test-" + run
+		f.api.eventStore.SetSessionOwner(session, "owner")
+		f.api.sessionWorkspaceFolders[session] = externalCommandCrewRoot
+		if run != "chat" {
+			f.api.sessionWorkspaceFolders[session] += "/runs/" + run
+		}
+		runCtx := executor.WithSessionID(appCtx, session)
+		for _, operation := range []string{"install_mcp_server", "add_mcp_server"} {
+			if _, err := reg.tools[operation].exec(runCtx, map[string]any{"name": connection}); err != nil {
+				t.Fatalf("%s %s: %v", run, operation, err)
 			}
 		}
 	}
-	// External and Builder-originated adapters share custom URL support.
-	for _, claims := range []*UserClaims{crewWriter("owner"), {UserID: "owner", ExternalBuilderOperationID: "builder-operation"}} {
-		ctx := context.WithValue(context.Background(), UserContextKey, claims)
-		if _, err := f.api.mcpConnectionTool(ctx, "owner", "edit_mcp_server", map[string]any{"name": custom.Name, "url": "https://updated.example.com/mcp"}); err != nil {
-			t.Fatalf("external custom endpoint edit: %v", err)
-		}
-	}
-	updated, found, err := lookupPersonalMCP("owner", custom.Name)
-	if err != nil || !found || updated.URL != "https://updated.example.com/mcp" || updated.Transport != "sse" || updated.Headers["X-Api-Key"].Secret != "EXAMPLE_KEY" {
-		t.Fatalf("custom connection lost its URL, transport or secret reference: %+v, %v", updated, err)
-	}
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "remove", "name": custom.Name}, 200)
 	f.write(t, "Workflow/research/workflow.json", `{"id":"research","label":"Research","access":{"owners":["owner"]}}`)
 	claims := crewWriter("owner")
 	claims.AccessToken.Scopes = append(claims.AccessToken.Scopes, "workflows:read", "files:read")
@@ -215,8 +176,8 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	if strings.Contains(result, "Workflow/research") {
 		t.Fatal("out-of-bound reference was listed")
 	}
-	for _, group := range []string{"crew_skills", "crew_mcp", "crew_references"} {
-		action := map[string]string{"crew_skills": "uninstall", "crew_mcp": "remove", "crew_references": "attach"}[group]
+	for _, group := range []string{"skills", "mcp", "crew_references"} {
+		action := map[string]string{"skills": "uninstall", "mcp": "remove", "crew_references": "attach"}[group]
 		crewCapabilityHTTP(t, f, crewReader("owner"), group, map[string]any{"action": action}, 403)
 		crewCapabilityHTTP(t, f, crewWriter("other"), group, map[string]any{"action": action}, 403)
 	}
@@ -267,27 +228,26 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	f, workspaceURL := newExternalCrewCommandFixture(t)
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
 	f.api.logger = loggerv2.NewNoop()
-	for _, name := range []string{"attached", "unattached"} {
-		if _, err := addPlaceMCPServer("owner", placeMCPServer{Name: name, URL: "https://mcp.example.com/hidden-endpoint", Transport: "http"}); err != nil {
-			t.Fatal(err)
+	// Diagnostics now reads central Vault, never the retired personal store
+	// or its tool cache. Only the selected account's metadata is shared.
+	f.write(t, externalCommandCrewRoot+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_attached"]}}`)
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/admin/runtime/servers" || r.Header.Get("X-CapLayer-Actor") != "owner" {
+			w.WriteHeader(403)
+			return
 		}
-	}
-	if err := attachPersonalLoginToPlace("owner", "attached", externalCommandCrewRoot); err != nil {
-		t.Fatal(err)
-	}
-	internal, config, err := placeMCPServerConfig("owner", "attached")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cache := mcpcache.GetCacheManager(f.api.logger)
-	entry := &mcpcache.CacheEntry{ServerName: internal, CreatedAt: time.Now(), IsValid: true, TTLMinutes: 30, ErrorMessage: "private-diagnostic-marker", Tools: []llmtypes.Tool{
-		{Function: &llmtypes.FunctionDefinition{Name: "lookup", Description: "Find a record", Parameters: &llmtypes.Parameters{Type: "object", Properties: map[string]any{"query": map[string]any{"type": "string"}}, Required: []string{"query"}}}},
-		{Function: &llmtypes.FunctionDefinition{Name: "count", Description: "Count records"}},
-	}}
-	if err := cache.Put(entry, config); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = cache.Invalidate(mcpcache.GenerateUnifiedCacheKey(internal, config)) })
+		json.NewEncoder(w).Encode(map[string]any{"servers": []any{
+			map[string]any{"id": "attached", "label": "Selected connection", "provider": "example", "upstream_url": "https://example.com/hidden-endpoint", "tools": []any{
+				map[string]any{"name": "lookup", "description": "Find a record", "input_schema": map[string]any{"type": "object", "properties": map[string]any{"query": map[string]any{"type": "string"}}, "required": []string{"query"}}},
+				map[string]any{"name": "count", "description": "Count records", "input_schema": map[string]any{"type": "object"}},
+			}},
+			map[string]any{"id": "unattached", "label": "private-diagnostic-marker", "tools": []any{}},
+		}})
+	}))
+	defer gateway.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", gateway.URL)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	selectedBrowser := browserSessionForWorkspace("owner", externalCommandCrewRoot)
 	unrelatedBrowser := browserSessionForWorkspace("owner", "Crew/another-crew")
 	browser.GetSessionTracker().Touch(selectedBrowser, "crew-chat", "crew-chat")
@@ -349,6 +309,7 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	// Real capability probes can carry a workspace host/error or CDP endpoint.
 	// Exercise both failure and success; neither may appear in diagnostics.
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "true")
+	f.write(t, browserSettingsPath(externalCommandCrewRoot), `{"mode":"cdp","port":9222}`)
 	upstream, err := url.Parse(workspaceURL)
 	if err != nil {
 		t.Fatal(err)
@@ -373,24 +334,24 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	if connections["connections"].(map[string]any)["total"] != float64(1) {
 		t.Fatalf("attached connections = %v", connections)
 	}
-	tools := call(map[string]any{"action": "connections", "name": "attached", "limit": 1})["connection"].(map[string]any)
+	tools := call(map[string]any{"action": "connections", "name": "vault_attached", "limit": 1})["connection"].(map[string]any)
 	page := tools["tools"].(map[string]any)
-	if tools["status"] != "cached" || page["total"] != float64(2) || page["has_more"] != true || len(page["items"].([]any)) != 1 {
+	if tools["status"] != "connected" || page["total"] != float64(2) || page["has_more"] != true || len(page["items"].([]any)) != 1 {
 		t.Fatalf("tool metadata page = %v", tools)
 	}
 	if _, exposed := page["items"].([]any)[0].(map[string]any)["parameters"]; exposed {
 		t.Fatal("reader saw full schemas")
 	}
-	crewCapabilityHTTP(t, f, reader, "crew_diagnostics", map[string]any{"action": "connections", "name": "attached", "include_tools": true}, 403)
+	crewCapabilityHTTP(t, f, reader, "crew_diagnostics", map[string]any{"action": "connections", "name": "vault_attached", "include_tools": true}, 403)
 	ownerSrv := serveExternalMCP(t, f.api, crewReader("owner"))
 	ownerClient := dialExternalMCP(t, ctx, ownerSrv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, ownerClient)
-	ownerTools := callRemoteTool(t, ctx, ownerClient, "call_tool", map[string]any{"name": "crew_diagnostics", "arguments": map[string]any{"crew_id": "team", "action": "connections", "name": "attached", "include_tools": true}})
+	ownerTools := callRemoteTool(t, ctx, ownerClient, "call_tool", map[string]any{"name": "crew_diagnostics", "arguments": map[string]any{"crew_id": "team", "action": "connections", "name": "vault_attached", "include_tools": true}})
 	requireRemoteSuccess(t, ownerTools, "crew_diagnostics")
 	if raw := marshalStructured(t, ownerTools); !strings.Contains(raw, `"parameters"`) || !strings.Contains(raw, `"required":["query"]`) {
 		t.Fatalf("owner full schema = %s", raw)
 	}
-	crewCapabilityHTTP(t, f, reader, "crew_diagnostics", map[string]any{"action": "connections", "name": "unattached"}, 403)
+	crewCapabilityHTTP(t, f, reader, "crew_diagnostics", map[string]any{"action": "connections", "name": "vault_unattached"}, 403)
 	bounded := crewReader("other")
 	bounded.AccessToken.AllCrews, bounded.AccessToken.CrewIDs = false, []string{"different"}
 	crewCapabilityHTTP(t, f, bounded, "crew_diagnostics", map[string]any{"action": "browser"}, 403)

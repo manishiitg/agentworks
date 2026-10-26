@@ -153,7 +153,7 @@ func (api *StreamingAPI) externalMCPTaskOperation(r *http.Request, method string
 				break
 			}
 		}
-		if !found {
+		if !found || tool.internalOnly {
 			return nil, 400, errors.New("Choose an available job tool.")
 		}
 		if tool.actions != nil {

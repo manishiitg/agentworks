@@ -58,7 +58,7 @@ func TestExternalRunProxyRejectsReadOnlyToken(t *testing.T) {
 	// The scope gate bites before dispatch: a read-only PAT calling a
 	// proxied run tool is rejected without touching the run runtime.
 	w := httptest.NewRecorder()
-	data := `{"name":"execute_step","arguments":{"workflow_id":"invoices","step_id":"fetch-invoices"}}`
+	data := `{"name":"runs","arguments":{"action":"step","workflow_id":"invoices","step_id":"fetch-invoices"}}`
 	f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", data, patClaims("owner", []string{"workflows:read", "files:read"}), nil))
 	scoped := externalTestBody(t, w, 403)
 	if scoped["error"].(map[string]any)["code"] != "insufficient_scope" {
@@ -82,7 +82,7 @@ func TestExternalChatRejectsReadOnlyTokenAndBlankMessage(t *testing.T) {
 
 func TestExternalRunReplyInputRejectsUnknownSession(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	body := externalTestBody(t, f.call(t, "owner", "run_reply_input", map[string]any{"workflow_id": "invoices", "session_id": "no-such-session", "request_id": "r", "response": "yes"}), 404)
+	body := externalTestBody(t, f.call(t, "owner", "runs", map[string]any{"action": "reply_input", "workflow_id": "invoices", "session_id": "no-such-session", "request_id": "r", "response": "yes"}), 404)
 	if body["error"].(map[string]any)["code"] != "session_not_found" {
 		t.Fatalf("wrong error: %v", body)
 	}
@@ -90,11 +90,11 @@ func TestExternalRunReplyInputRejectsUnknownSession(t *testing.T) {
 
 func TestExternalRunStatusRejectsUnknownSession(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	body := externalTestBody(t, f.call(t, "owner", "run_status", map[string]any{"workflow_id": "invoices", "session_id": "no-such-session"}), 404)
+	body := externalTestBody(t, f.call(t, "owner", "runs", map[string]any{"action": "status", "workflow_id": "invoices", "session_id": "no-such-session"}), 404)
 	if body["error"].(map[string]any)["code"] != "session_not_found" {
 		t.Fatalf("wrong error: %v", body)
 	}
-	externalTestBody(t, f.call(t, "owner", "run_status", map[string]any{"workflow_id": "invoices", "session_id": "../escape"}), 400)
+	externalTestBody(t, f.call(t, "owner", "runs", map[string]any{"action": "status", "workflow_id": "invoices", "session_id": "../escape"}), 400)
 }
 
 func TestExternalListSchedulesEmptyAndUnknownRuns(t *testing.T) {
@@ -170,7 +170,7 @@ func TestExternalWebhookRunExposesAcceptedDeployMetadata(t *testing.T) {
 		args map[string]any
 	}{
 		{"get_schedule_runs", map[string]any{"workflow_id": "invoices", "schedule_id": "deploy-hook"}},
-		{"get_run", map[string]any{"workflow_id": "invoices", "run_folder": "iteration-6-hook/default"}},
+		{"runs", map[string]any{"action": "get", "workflow_id": "invoices", "run_folder": "iteration-6-hook/default"}},
 	} {
 		body := externalTestBody(t, f.call(t, "owner", call.name, call.args), 200)
 		var webhook map[string]any
@@ -215,7 +215,7 @@ func TestExternalTriggerScheduleWithoutScheduler(t *testing.T) {
 
 func TestExternalListExecutionsEmpty(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	body := externalTestBody(t, f.call(t, "owner", "list_executions", map[string]any{"workflow_id": "invoices"}), 200)
+	body := externalTestBody(t, f.call(t, "owner", "runs", map[string]any{"action": "active", "workflow_id": "invoices"}), 200)
 	executions, _ := body["executions"].([]any)
 	if executions == nil || len(executions) != 0 {
 		t.Fatalf("expected empty executions, got %v", body)
@@ -228,7 +228,7 @@ func TestExternalListExecutionsIncludesRunningSteps(t *testing.T) {
 		"step-1":         {ExecutionID: "step-1", SessionID: "session-1", WorkspacePath: "Workflow/invoices", Source: trackedExecutionSourceWorkshopBackground, Kind: "step", Status: trackedExecutionStatusRunning},
 		"other-workflow": {ExecutionID: "other-workflow", SessionID: "session-2", WorkspacePath: "Workflow/secret", Source: trackedExecutionSourceWorkshopBackground, Kind: "step", Status: trackedExecutionStatusRunning},
 	}
-	body := externalTestBody(t, f.call(t, "owner", "list_executions", map[string]any{"workflow_id": "invoices"}), 200)
+	body := externalTestBody(t, f.call(t, "owner", "runs", map[string]any{"action": "active", "workflow_id": "invoices"}), 200)
 	executions, _ := body["executions"].([]any)
 	if len(executions) != 1 || executions[0].(map[string]any)["query_id"] != "step-1" {
 		t.Fatalf("running workflow steps = %v", executions)
@@ -252,7 +252,7 @@ func TestReadOnlyForRequest(t *testing.T) {
 
 func TestExternalRunInstructionPassesArgumentsThrough(t *testing.T) {
 	got := externalRunInstruction("execute_step", map[string]any{"workflow_id": "invoices", "session_id": "s", "step_id": "fetch", "tier": "high"})
-	for _, want := range []string{`"execute_step"`, `"step_id":"fetch"`, `"tier":"high"`} {
+	for _, want := range []string{`"runs"`, `"action":"step"`, `"step_id":"fetch"`, `"tier":"high"`} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("instruction missing %s: %s", want, got)
 		}
@@ -263,7 +263,7 @@ func TestExternalRunInstructionPassesArgumentsThrough(t *testing.T) {
 		}
 	}
 	got = externalRunInstruction("stop_all_executions", map[string]any{"workflow_id": "invoices"})
-	if !strings.Contains(got, "with no arguments") {
+	if !strings.Contains(got, `"action":"stop_all"`) {
 		t.Fatalf("empty instruction wrong: %s", got)
 	}
 }

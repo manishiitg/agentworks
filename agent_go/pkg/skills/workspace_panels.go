@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -96,7 +97,12 @@ func IsWorkspacePanelSkill(name string) bool {
 func WorkspacePanelToolMap(name string) map[string][]string {
 	out := map[string][]string{}
 	for product, names := range workspacePanelTools[name] {
-		out[product] = append([]string(nil), names...)
+		for _, name := range names {
+			public := platformtools.PublicName(name)
+			if !slices.Contains(out[product], public) {
+				out[product] = append(out[product], public)
+			}
+		}
 	}
 	return out
 }
@@ -131,5 +137,12 @@ func WorkspacePanelNames() []string {
 }
 
 func WorkspacePanelExternalTools(name string) []string {
-	return append([]string(nil), workspacePanelExternalTools[name]...)
+	var out []string
+	for _, source := range workspacePanelExternalTools[name] {
+		public := platformtools.PublicName(source)
+		if !slices.Contains(out, public) {
+			out = append(out, public)
+		}
+	}
+	return out
 }

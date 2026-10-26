@@ -86,7 +86,8 @@ func TestExternalCrewCommandsOverMCP(t *testing.T) {
 	call := func(args map[string]any) string {
 		t.Helper()
 		args["crew_id"] = "team"
-		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": externalCrewCommandsTool, "arguments": args})
+		args["action"] = "commands_" + args["action"].(string)
+		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "skills", "arguments": args})
 		requireRemoteSuccess(t, result, externalCrewCommandsTool)
 		return marshalStructured(t, result)
 	}
@@ -161,11 +162,11 @@ func TestExternalCrewMemorySkillsAndCommandsFollowRoles(t *testing.T) {
 		for _, path := range []string{"MEMORY.md", "skills/review/SKILL.md"} {
 			call(denied.claims, "files", map[string]any{"action": "write", "crew_id": "team", "path": path, "content": "Denied"}, denied.fileStatus)
 		}
-		call(denied.claims, externalCrewCommandsTool, map[string]any{"crew_id": "team", "action": "create", "name": "denied", "description": "Denied", "prompt": "Denied"}, 403)
+		call(denied.claims, "skills", map[string]any{"crew_id": "team", "action": "commands_create", "name": "denied", "description": "Denied", "prompt": "Denied"}, 403)
 	}
-	call(crewWriter("other"), externalCrewCommandsTool, map[string]any{"crew_id": "team", "action": "list"}, 200)
-	call(readOnlyToken, externalCrewCommandsTool, map[string]any{"crew_id": "team", "action": "list"}, 200)
-	call(boundedToken, externalCrewCommandsTool, map[string]any{"crew_id": "team", "action": "list"}, 403)
+	call(crewWriter("other"), "skills", map[string]any{"crew_id": "team", "action": "commands_list"}, 200)
+	call(readOnlyToken, "skills", map[string]any{"crew_id": "team", "action": "commands_list"}, 200)
+	call(boundedToken, "skills", map[string]any{"crew_id": "team", "action": "commands_list"}, 403)
 	call(crewWriter("other"), "files", map[string]any{"action": "write", "crew_id": "team", "path": "shared/other/input.md", "content": "Input"}, 200)
 	for _, role := range []string{"viewer", "disabled", "no-product"} {
 		record := `{"id":"owner","role":"viewer","products":["work"]}`
@@ -178,7 +179,7 @@ func TestExternalCrewMemorySkillsAndCommandsFollowRoles(t *testing.T) {
 		for _, path := range []string{"MEMORY.md", "skills/review/SKILL.md"} {
 			call(crewWriter("owner"), "files", map[string]any{"action": "write", "crew_id": "team", "path": path, "content": "Denied"}, 403)
 		}
-		call(crewWriter("owner"), externalCrewCommandsTool, map[string]any{"crew_id": "team", "action": "create", "name": "denied", "description": "Denied", "prompt": "Denied"}, 403)
+		call(crewWriter("owner"), "skills", map[string]any{"crew_id": "team", "action": "commands_create", "name": "denied", "description": "Denied", "prompt": "Denied"}, 403)
 	}
 	if got := f.read(t, externalCommandCrewRoot+"/MEMORY.md"); got != "Remember the agreed process.\n" {
 		t.Fatalf("a denied write changed memory: %s", got)

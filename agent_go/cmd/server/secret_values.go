@@ -131,7 +131,7 @@ func (api *StreamingAPI) importProjectSecrets(r *http.Request, kind, id string, 
 	if kind == "crew" {
 		key = "crew_id"
 	}
-	status, view := api.callExternalToolInternal(r, "get_settings", map[string]any{key: id})
+	status, view := api.callExternalToolInternal(r, "settings", map[string]any{"action": "get", key: id})
 	if status != http.StatusOK {
 		return nil, status, externalErrorMessage(view, "Could not read that project's settings.")
 	}
@@ -169,7 +169,7 @@ func (api *StreamingAPI) importProjectSecrets(r *http.Request, kind, id string, 
 		}
 	}
 	if len(toSet) > 0 {
-		if status, body := api.callExternalToolInternal(r, "update_settings", map[string]any{key: id, "secrets": map[string]any{"set": toSet}}); status != http.StatusOK {
+		if status, body := api.callExternalToolInternal(r, "settings", map[string]any{"action": "update", key: id, "secrets": map[string]any{"set": toSet}}); status != http.StatusOK {
 			return nil, status, externalErrorMessage(body, "The project's secrets could not be saved.")
 		}
 	}

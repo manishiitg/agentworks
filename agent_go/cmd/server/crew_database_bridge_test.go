@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -65,6 +66,8 @@ func TestCrewDatabaseBridgeReadsInBuilderAndRun(t *testing.T) {
 			session := "crew-database-catalog-" + name
 			defer common.ClearSessionShellConfig(session)
 			common.SetSessionFolderGuard(session, []string{externalCommandCrewRoot}, nil)
+			common.SetSessionCrewReader(session, run)
+			common.SetSessionCrewAskReadOnly(session, run)
 			stepworkflow.ConfigureManagedWorkflowDBSession(session, externalCommandCrewRoot, !run)
 			profile := &resolvedAgentProfile{Definition: workproduct.BuiltinAgentProfile()}
 			req := QueryRequest{AgentProfileID: "work", SelectedFolder: externalCommandCrewRoot}
@@ -134,11 +137,26 @@ func TestCrewDatabaseBridgeReadsInBuilderAndRun(t *testing.T) {
 					t.Fatalf("wrong %s authority in native catalog: %v", action, actions)
 				}
 			}
-			result, err := codeexec.CallCustomToolWithSession(ctx, session, "database", map[string]any{"action": "query", "sql": "SELECT amount FROM sample_items"})
+			readArgs := map[string]any{"action": "query", "sql": "SELECT amount FROM sample_items"}
+			payload, _ := json.Marshal(readArgs)
+			request := httptest.NewRequest("POST", "/tools/custom/database", bytes.NewReader(payload))
+			if refused := refuseReaderDeniedToolRequest(httptest.NewRecorder(), request, ctx, "database"); refused {
+				t.Fatal("native HTTP role fence refused the admitted database read")
+			}
+			var forwarded map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&forwarded); err != nil {
+				t.Fatalf("role fence consumed the executor body: %v", err)
+			}
+			result, err := codeexec.CallCustomToolWithSession(ctx, session, "database", forwarded)
 			if err != nil || !strings.Contains(result, "42") {
 				t.Fatalf("shared stored row unavailable: %s %v", result, err)
 			}
 			if run {
+				writeBody := strings.NewReader(`{"action":"mutate","sql":"DELETE FROM sample_items"}`)
+				writeRequest := httptest.NewRequest("POST", "/tools/custom/database", writeBody)
+				if !refuseReaderDeniedToolRequest(httptest.NewRecorder(), writeRequest, ctx, "database") {
+					t.Fatal("Run HTTP role fence admitted database mutation")
+				}
 				if _, err := codeexec.CallCustomToolWithSession(ctx, session, "database", map[string]any{"action": "mutate", "sql": "DELETE FROM sample_items"}); err == nil {
 					t.Fatal("Run database admitted mutation")
 				}

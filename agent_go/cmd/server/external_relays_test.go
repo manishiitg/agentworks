@@ -176,12 +176,12 @@ func TestExternalRelayBuilderAndPublishingRespectRoles(t *testing.T) {
 	for _, name := range []string{"publish_relay", "update_relay"} {
 		f.relayCall(t, reader, name, map[string]any{"workflow_id": "invoices"}, 403)
 	}
-	f.call(t, reader, "builder_chat", map[string]any{"message": "Edit", "submission_id": "read-edit"}, 403)
+	f.call(t, reader, "sessions", map[string]any{"action": "builder_chat", "message": "Edit", "submission_id": "read-edit"}, 403)
 	_, editor := f.token(t, "outsider", relayConsentScopes, false)
 	// A former editor runs published versions; only owners can publish.
 	f.relayCall(t, editor, "publish_relay", map[string]any{"workflow_id": "invoices"}, 403)
 	f.relayCall(t, writer, "chat", map[string]any{"workflow_id": "invoices", "message": "Edit"}, 400)
-	f.relayCall(t, writer, "execute_step", map[string]any{"workflow_id": "invoices", "step_id": "answer"}, 400)
+	f.relayCall(t, writer, "runs", map[string]any{"action": "step", "workflow_id": "invoices", "step_id": "answer"}, 400)
 	f.relayCall(t, writer, "update_relay", map[string]any{"workflow_id": "invoices", "label": "Updated"}, 200)
 }
 
@@ -199,8 +199,8 @@ func TestExternalRelayMCPTransportAndSchema(t *testing.T) {
 	srv := serveExternalMCP(t, f.api, claims)
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
-	relaySpec := marshalStructured(t, callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"workspace", "relay", "builder"}}))
-	for _, want := range []string{`"create"`, `"publish"`, `"test"`, `"run"`, `"get_run"`, `"chat"`} {
+	relaySpec := marshalStructured(t, callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"workspace", "relay", "sessions"}}))
+	for _, want := range []string{`"create"`, `"publish"`, `"test"`, `"run"`, `"get_run"`, `"builder_chat"`} {
 		if !strings.Contains(relaySpec, want) {
 			t.Fatalf("relay/builder spec missing action %s: %s", want, relaySpec)
 		}

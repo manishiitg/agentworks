@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 // A person's own chats with a Crew over MCP, through the Crew screen's own
@@ -139,7 +141,7 @@ func findCrewChat(chats []externalCrewChat, id string) (externalCrewChat, bool) 
 	return externalCrewChat{}, false
 }
 
-func crewChatActionScope(action, tool string) string {
+func crewChatActionScope(action, tool string, inputs ...map[string]any) string {
 	scope := "crews:write"
 	if action == "message" {
 		scope = "crews:run"
@@ -148,14 +150,25 @@ func crewChatActionScope(action, tool string) string {
 		scope = "crews:read"
 	}
 	if action == "tool" {
-		switch tool {
-		case "list_ui_capabilities", "get_ui_state", "query_agent", "list_background_agents":
-			scope = "crews:read"
-		case "run_in_background":
-			scope = "crews:write"
+		var args map[string]any
+		if len(inputs) > 0 {
+			args = inputs[0]
+		}
+		identity := crewSessionToolIdentity(tool, args)
+		for _, read := range []string{"list_ui_capabilities", "get_ui_state", "query_agent", "list_background_agents"} {
+			if identity == platformtools.Identity(read) {
+				scope = "crews:read"
+			}
 		}
 	}
 	return scope
+}
+
+func crewSessionToolIdentity(name string, args map[string]any) string {
+	if platformtools.IsFamily(name) {
+		return name + "." + externalArg(args, "action")
+	}
+	return platformtools.Identity(name)
 }
 
 func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
@@ -163,7 +176,8 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 	claims := GetUserFromContext(ctx)
 	crewID, action := externalArg(args, "crew_id"), externalArg(args, "action")
 	if t := claims.AccessToken; t != nil {
-		scope := crewChatActionScope(action, externalArg(args, "tool_name"))
+		params, _ := args["arguments"].(map[string]any)
+		scope := crewChatActionScope(action, externalArg(args, "tool_name"), params)
 		if !t.Allows(scope) || !t.AllowsCrew(workspaceTokenProjectID(crewID)) {
 			externalError(w, 403, "insufficient_scope", "This connection does not allow "+action+" on this Crew.")
 			return

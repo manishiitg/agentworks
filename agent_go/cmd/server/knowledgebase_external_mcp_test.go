@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -57,16 +58,16 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 	}
 	found := map[string]bool{}
 	for _, tool := range catalog.Tools {
-		if strings.HasPrefix(tool.Name, "brain_") || strings.Contains(tool.Name, "knowledgebase") {
+		if tool.Name == "brain" || strings.HasPrefix(tool.Name, "brain_") || strings.Contains(tool.Name, "knowledgebase") {
 			found[tool.Name] = true
 		}
 	}
-	if !reflect.DeepEqual(found, map[string]bool{"brain_browse": true, "brain_read": true, "brain_update": true, "brain_skills": true, "brain_access": true, "brain_admin": true}) {
+	if !reflect.DeepEqual(found, map[string]bool{"brain": true}) {
 		t.Fatal("MCP exposes legacy or missing tools", found)
 	}
-	spec := callRemoteTool(t, t.Context(), cli, externalMCPToolSpec, map[string]any{"names": []any{"brain_read", "brain_update"}})
+	spec := callRemoteTool(t, t.Context(), cli, externalMCPToolSpec, map[string]any{"names": []any{"brain"}})
 	requireRemoteSuccess(t, spec, "Brain schemas")
-	read := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_read", "arguments": map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}})
+	read := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain", "arguments": map[string]any{"action": "read", "path": "Payments/Checkout/retries.md"}})
 	requireRemoteSuccess(t, read, "MCP read")
 	var body struct {
 		Result struct {
@@ -76,9 +77,9 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 	if err := json.Unmarshal([]byte(marshalStructured(t, read)), &body); err != nil || body.Result.Version == "" {
 		t.Fatalf("missing MCP version: %+v %v", read, err)
 	}
-	invalid := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_update", "arguments": map[string]any{"action": "update", "path": "Payments/Checkout/retries.md", "expected_version": body.Result.Version, "content": "Binary\u0000content", "request_id": "hosted-invalid-text"}})
+	invalid := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain", "arguments": map[string]any{"action": "update", "path": "Payments/Checkout/retries.md", "expected_version": body.Result.Version, "content": "Binary\u0000content", "request_id": "hosted-invalid-text"}})
 	requireRemoteError(t, invalid, "MCP binary content validation", "INVALID_ARGUMENT")
-	write := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_update", "arguments": map[string]any{"action": "update", "path": "Payments/Checkout/retries.md", "expected_version": body.Result.Version, "content": "# Retries\r\nSaved through hosted MCP.\r\n", "request_id": "hosted-save"}})
+	write := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain", "arguments": map[string]any{"action": "update", "path": "Payments/Checkout/retries.md", "expected_version": body.Result.Version, "content": "# Retries\r\nSaved through hosted MCP.\r\n", "request_id": "hosted-save"}})
 	requireRemoteSuccess(t, write, "MCP save despite workflow viewer role")
 	r := (&http.Request{}).WithContext(t.Context())
 	p := knowledgebasePrincipal(r, &UserClaims{UserID: "priya", Username: "priya"})
@@ -86,13 +87,13 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 	if err != nil || live.(map[string]any)["content"] != "# Retries\nSaved through hosted MCP.\n" {
 		t.Fatal("save is not live before Git backup", live, err)
 	}
-	denied := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_read", "arguments": map[string]any{"action": "read", "path": "Payments/Billing/private.md"}})
+	denied := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain", "arguments": map[string]any{"action": "read", "path": "Payments/Billing/private.md"}})
 	requireRemoteError(t, denied, "MCP folder cap", "NOT_FOUND")
 	legacy := callRemoteTool(t, t.Context(), cli, externalMCPToolSpec, map[string]any{"names": "commit_knowledgebase"})
 	requireRemoteError(t, legacy, "legacy alias hidden", "unknown_tool")
-	grantAttempt := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_access", "arguments": map[string]any{"action": "grant", "folder_path": "Payments/Checkout", "identity_id": "outsider", "role": "Reader", "expected_acl_version": access.(map[string]any)["acl_version"], "request_id": "remote-grant"}})
+	grantAttempt := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain", "arguments": map[string]any{"action": "access_grant", "folder_path": "Payments/Checkout", "identity_id": "outsider", "role": "Reader", "expected_acl_version": access.(map[string]any)["acl_version"], "request_id": "remote-grant"}})
 	requireRemoteError(t, grantAttempt, "content connection cannot grant", "insufficient_scope")
-	news := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_admin", "arguments": map[string]any{"action": "whats_new"}})
+	news := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain", "arguments": map[string]any{"action": "whats_new"}})
 	requireRemoteSuccess(t, news, "what's new over MCP")
 	// A secret's value is set only from the person's own CLI sign-in, never through a tool or a connection an agent holds.
 	refuse := httptest.NewRecorder()
@@ -100,7 +101,7 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 	if refuse.Code != http.StatusForbidden || !strings.Contains(refuse.Body.String(), "secret_refused") {
 		t.Fatalf("a secret value was accepted without the person's CLI sign-in: %d %s", refuse.Code, refuse.Body.String())
 	}
-	secrets := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_admin", "arguments": map[string]any{"action": "secrets_list"}})
+	secrets := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain", "arguments": map[string]any{"action": "secrets_list"}})
 	requireRemoteError(t, secrets, "a folder-capped connection cannot manage Brain's secrets", "FORBIDDEN")
 
 	readToken, _, err := store.Issue(t.Context(), accesstokens.Token{UserID: "priya", Username: "priya", Name: "Reader", Scopes: []string{"knowledgebase:read"}, KnowledgebaseFolders: &caps, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
@@ -110,9 +111,9 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 	readSrv := serveExternalMCP(t, api, &UserClaims{UserID: "priya", Username: "priya", AccessToken: &readToken})
 	reader := dialExternalMCP(t, t.Context(), readSrv.URL+externalMCPPath)
 	initializeExternalMCP(t, t.Context(), reader)
-	markSeen := callRemoteTool(t, t.Context(), reader, externalMCPToolCall, map[string]any{"name": "brain_admin", "arguments": map[string]any{"action": "mark_seen", "commit": strings.Repeat("a", 40)}})
+	markSeen := callRemoteTool(t, t.Context(), reader, externalMCPToolCall, map[string]any{"name": "brain", "arguments": map[string]any{"action": "mark_seen", "commit": strings.Repeat("a", 40)}})
 	requireRemoteError(t, markSeen, "a read-only connection cannot change Brain", "insufficient_scope")
-	readSpec := callRemoteTool(t, t.Context(), reader, externalMCPToolSpec, map[string]any{"names": []any{"brain_access"}})
+	readSpec := callRemoteTool(t, t.Context(), reader, externalMCPToolSpec, map[string]any{"names": []any{"brain"}})
 	requireRemoteSuccess(t, readSpec, "read-only action schemas")
 	var schemas struct {
 		Schemas map[string]struct {
@@ -126,14 +127,14 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 	if err = json.Unmarshal([]byte(marshalStructured(t, readSpec)), &schemas); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(schemas.Schemas["brain_access"].InputSchema.Properties["action"].Enum, []string{"inspect"}) {
+	if !slices.Contains(schemas.Schemas["brain"].InputSchema.Properties["action"].Enum, "access_inspect") || slices.Contains(schemas.Schemas["brain"].InputSchema.Properties["action"].Enum, "access_grant") {
 		t.Fatal("reader schema contains write actions", schemas)
 	}
 	for _, operation := range []struct {
 		name string
 		args map[string]any
 	}{
-		{"brain_access", map[string]any{"action": "inspect", "folder_path": "Payments/Checkout"}},
+		{"brain", map[string]any{"action": "access_inspect", "folder_path": "Payments/Checkout"}},
 	} {
 		requireRemoteSuccess(t, callRemoteTool(t, t.Context(), reader, externalMCPToolCall, map[string]any{"name": operation.name, "arguments": operation.args}), "reader inspect action")
 	}
@@ -141,7 +142,7 @@ func TestKnowledgebaseExternalMCPWritesAreImmediatelyShared(t *testing.T) {
 		name string
 		args map[string]any
 	}{
-		{"brain_update", map[string]any{"action": "delete", "path": "Payments/Checkout/retries.md", "expected_version": body.Result.Version, "request_id": "reader-delete"}},
+		{"brain", map[string]any{"action": "delete", "path": "Payments/Checkout/retries.md", "expected_version": body.Result.Version, "request_id": "reader-delete"}},
 	} {
 		requireRemoteError(t, callRemoteTool(t, t.Context(), reader, externalMCPToolCall, map[string]any{"name": operation.name, "arguments": operation.args}), "reader mutation action", "insufficient_scope")
 	}

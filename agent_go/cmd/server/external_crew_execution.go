@@ -197,7 +197,7 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 	}
 	for _, tool := range tools {
 		member := tool.Function.Name
-		if action == "list" && group == "crew_execution" && groupedCrewDatabaseNative(member) {
+		if action == "list" && group == "crew_execution" && groupedCrewExecutionNative(member) {
 			continue
 		}
 		if member == "call_selected_mcp_tool" {

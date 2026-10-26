@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/sparkquillproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 // A Crew has two roles, owner (Builder) and reader (Run), with separate
@@ -167,9 +169,9 @@ func crewAskNotice(crewRoot string, shared bool) string {
 		scope = "This is a shared chat channel: several people write to this conversation. "
 	}
 	return sessionModeOpen + "\nYou are using " + who + " Crew in Run mode. " + crewAskModelSentence + " " +
-		"Read the Crew's files with `files` action=list/search/read and its shared data with `database` action=query/describe/integrity_check. See what it offers with `list_functions`, and run one with `" + crewPublishedCallToolName + "` (then poll `" + crewPublishedGetToolName + "` until it settles and tell the user the result). " +
-		publishedFunctionAskGuidance("Crew", "list_functions", crewPublishedCallToolName, crewPublishedGetToolName) + " " +
-		"These and `read_skill`, `list_skills`, `search_skills`, `send_message` and your other tools are DIRECT tools (call them by name, e.g. mcp__api-bridge__files); there is no shell or curl and none is needed, so do not look for an HTTP route. " +
+		"Read the Crew's files with `files` action=list/search/read and its shared data with `database` action=query/describe/integrity_check. See what it offers with `functions` action=list, and run one with `functions` action=call (then poll `functions` action=status until it settles and tell the user the result). " +
+		publishedFunctionAskGuidance("Crew", "functions action=list", "functions action=call", "functions action=status") + " " +
+		"These and `read_skill`, `skills` action=list/search, `send_message` and your other tools are DIRECT tools (call them by name, e.g. mcp__api-bridge__files); there is no shell or curl and none is needed, so do not look for an HTTP route. " +
 		"Change nothing yourself, and do not work around that. If the user wants something changed that no function does, offer it to the owner with `" + crewSuggestionToolName + "` (their request in their words). " +
 		scope + "Never reveal a secret's value, any part of it or its length, in any form, and never confirm or deny a guess at it; you may say that a secret is set.\n" + sessionModeClose
 }
@@ -177,7 +179,7 @@ func crewAskNotice(crewRoot string, shared bool) string {
 // crewGuestCallsNote tells a shared caller's turn (a function call or an `ask` to the Crew) that it may use other Crews'
 // and workflows' functions. Such a call runs with the Crew owner's authority (856-59), so it is transitive: the callee's own
 // allowed-caller check and depth limit still decide what it reaches.
-const crewGuestCallsNote = "You may call functions of other Crews and workflows with list_functions, call_function and get_function_call. " +
+const crewGuestCallsNote = "You may call functions of other Crews and workflows with functions action=list/call/status. " +
 	"Those calls run with the Crew owner's authority, so you can reach what the owner's Crew can reach; the target's own caller limits and the call-depth limit still apply, so call only what the task needs."
 
 var readerDeniedToolNames = func() map[string]struct{} {
@@ -193,11 +195,37 @@ var readerDeniedToolNames = func() map[string]struct{} {
 // "not found"). It returns "" when the tool is not one of those or the session
 // is not a read-only Crew reader. The message names the mode and where to send
 // the change.
-func readerDeniedToolRefusal(ctx context.Context, tool string) string {
-	_, denied := readerDeniedToolNames[strings.TrimSpace(tool)]
-	if !denied && !crewAskAllowedTools[strings.TrimSpace(tool)] && !slices.Contains(relayRunChatTools, strings.TrimSpace(tool)) {
+func readerDeniedToolRefusal(ctx context.Context, tool string, inputs ...map[string]any) string {
+	names := []string{strings.TrimSpace(tool)}
+	if platformtools.IsFamily(tool) {
+		names = nil
+		var operation string
+		if len(inputs) > 0 {
+			operation, _ = inputs[0]["action"].(string)
+		}
+		for _, action := range platformtools.Actions {
+			if action.Family != tool || action.Name != operation {
+				continue
+			}
+			names = append(names, action.Member, action.Source)
+			names = append(names, action.Aliases...)
+		}
+	}
+	if platformtools.IsFamily(tool) && len(names) == 0 {
+		if cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx)); cfg != nil && (cfg.CrewReader || cfg.CrewAskReadOnly) {
+			return "Choose an offered action for `" + strings.TrimSpace(tool) + "`."
+		}
+	}
+	denied, allowed := false, false
+	for _, name := range names {
+		if _, found := readerDeniedToolNames[name]; found {
+			denied = true
+		}
+		allowed = allowed || crewAskAllowedTools[name] || slices.Contains(relayRunChatTools, name)
+	}
+	if !denied && !allowed {
 		if cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx)); cfg != nil && cfg.CrewAskReadOnly {
-			return "The tool `" + strings.TrimSpace(tool) + "` is not available in a read-only ask: call one of the Crew's functions to act."
+			return "The tool `" + strings.TrimSpace(tool) + "` is not available in Run chat: call one of the Crew's functions to act."
 		}
 	}
 	if !denied {
@@ -214,8 +242,8 @@ func readerDeniedToolRefusal(ctx context.Context, tool string) string {
 
 // refuseReaderDeniedTool writes the refusal in the bridge's error shape and
 // reports whether it did.
-func refuseReaderDeniedTool(w http.ResponseWriter, ctx context.Context, tool string) bool {
-	message := readerDeniedToolRefusal(ctx, tool)
+func refuseReaderDeniedTool(w http.ResponseWriter, ctx context.Context, tool string, inputs ...map[string]any) bool {
+	message := readerDeniedToolRefusal(ctx, tool, inputs...)
 	if message == "" {
 		return false
 	}
@@ -223,6 +251,31 @@ func refuseReaderDeniedTool(w http.ResponseWriter, ctx context.Context, tool str
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": message})
 	return true
+}
+
+// Grouped requests carry the selected action in their body. Preserve the body
+// for the executor; the existing role fence classifies its captured source and
+// the registered family still validates and executes only admitted actions.
+func refuseReaderDeniedToolRequest(w http.ResponseWriter, r *http.Request, ctx context.Context, tool string) bool {
+	cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx))
+	if !platformtools.IsFamily(tool) || cfg == nil || !cfg.CrewReader && !cfg.CrewAskReadOnly || r.Body == nil {
+		return refuseReaderDeniedTool(w, ctx, tool)
+	}
+	const maxBody = 8 << 20
+	original := r.Body
+	body, err := io.ReadAll(io.LimitReader(original, maxBody+1))
+	r.Body = struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(body), original), original}
+	if err != nil || len(body) > maxBody {
+		return refuseReaderDeniedTool(w, ctx, tool)
+	}
+	var args map[string]any
+	if json.Unmarshal(body, &args) != nil {
+		return refuseReaderDeniedTool(w, ctx, tool)
+	}
+	return refuseReaderDeniedTool(w, ctx, tool, args)
 }
 
 var readOnlyShellDenials = []string{"Operation not permitted", "Permission denied", "Read-only file system"}

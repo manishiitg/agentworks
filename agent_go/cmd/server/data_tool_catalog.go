@@ -9,18 +9,18 @@ import (
 
 // These are existing Crew execution members, with their original service
 // checks. The shared catalog owns their public job and private source names.
-var crewDatabaseMembers = func() map[string]string {
+var crewExecutionGroupedMembers = func() map[string]string {
 	result := map[string]string{}
-	for _, action := range platformtools.DataActions {
-		if action.Family == "database" && action.ExternalMembers != "" && slices.Contains(action.Aliases, action.ExternalMembers) {
+	for _, action := range platformtools.Actions {
+		if action.ExternalMembers != "" && slices.Contains(action.Aliases, action.ExternalMembers) {
 			result[action.ExternalMembers] = action.Member
 		}
 	}
 	return result
 }()
 
-func groupedCrewDatabaseNative(name string) bool {
-	for _, native := range crewDatabaseMembers {
+func groupedCrewExecutionNative(name string) bool {
+	for _, native := range crewExecutionGroupedMembers {
 		if name == native {
 			return true
 		}
@@ -41,7 +41,7 @@ func dataConsentMember(name string) string {
 	if source, _ := dataSourceAction(name); source != "" {
 		return source
 	}
-	if crewDatabaseMembers[name] != "" {
+	if crewExecutionGroupedMembers[name] != "" {
 		return "crew_execution"
 	}
 	return name
@@ -89,20 +89,20 @@ func dataExternalMembers(catalog []externalTool) ([]externalTool, error) {
 				if err != nil {
 					return nil, err
 				}
-				if !groupedCrewDatabaseNative(def.Function.Name) {
+				if !groupedCrewExecutionNative(def.Function.Name) {
 					names = append(names, def.Function.Name)
 					schemas = append(schemas, schema)
 					continue
 				}
 				member := tool
-				for name, native := range crewDatabaseMembers {
+				for name, native := range crewExecutionGroupedMembers {
 					if native == def.Function.Name {
 						member.Name = name
 						break
 					}
 				}
 				if member.Name == tool.Name {
-					return nil, fmt.Errorf("database job missing for %s", def.Function.Name)
+					return nil, fmt.Errorf("execution job missing for %s", def.Function.Name)
 				}
 				member.Description = def.Function.Description
 				member.mutates = true

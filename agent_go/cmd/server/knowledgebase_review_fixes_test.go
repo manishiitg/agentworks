@@ -168,7 +168,7 @@ func TestKnowledgebaseExternalMigrationRequiresSourceBuilderForPreview(t *testin
 			t.Fatal(err)
 		}
 		claims := &UserClaims{UserID: "admin", Username: "admin", AccessToken: &token}
-		body, _ := json.Marshal(map[string]any{"name": "brain_update", "arguments": map[string]any{"action": "migration_preview", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "request_id": fmt.Sprintf("external-preview-%t", builder)}})
+		body, _ := json.Marshal(map[string]any{"name": "brain", "arguments": map[string]any{"action": "migration_preview", "workspace_path": workspace, "folder_id": id, "alias": "local", "access": "read", "request_id": fmt.Sprintf("external-preview-%t", builder)}})
 		req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", strings.NewReader(string(body))).WithContext(context.WithValue(t.Context(), UserContextKey, claims))
 		w := httptest.NewRecorder()
 		(&StreamingAPI{}).handleExternalCall(w, req)

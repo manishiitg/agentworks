@@ -13,7 +13,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -50,7 +49,7 @@ func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
 	wrong, _ := connect("another-workflow", true)
 	contentOnly, _ := connect("payments-workflow", false)
 	call := func(cli *client.Client, args map[string]any) *mcp.CallToolResult {
-		return callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain_access", "arguments": args})
+		return callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "brain", "arguments": args})
 	}
 	result := func(args map[string]any) map[string]any {
 		t.Helper()
@@ -308,26 +307,30 @@ func TestBrainProjectAccessModes(t *testing.T) {
 	}
 }
 
-// Pins the owner decision that Code projects get Brain like workflows and Crews: open by default, acting as their
-// owner. A Code project is private, so its owner is its whole audience.
-func TestBrainCodeProjectUsesBrainAsItsOwner(t *testing.T) {
+// PLAT-825-113: combined Crew keeps the original owner-bound Brain rule.
+// Use the current shared project registry, not the retired private Code root.
+func TestBrainCrewProjectUsesBrainAsItsOwner(t *testing.T) {
 	service, admin, _, folderID := knowledgeIntegrationFixture(t)
 	root := os.Getenv("WORKSPACE_DOCS_PATH")
-	code := "_users/admin/" + workspaceref.CodeProjectsRoot + "/payments-code"
+	code := "Crew/payments-code"
+	owners := withProjectOwnerRegistry(t)
+	if err := owners.Register(projectOwnerRecord{Product: "work", Folder: "payments-code", ProjectID: "code-payments", OwnerID: "admin"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(root, code), 0700); err != nil {
 		t.Fatal(err)
 	}
 	for _, file := range []string{"workflow.json", "product.json"} {
-		if err := os.WriteFile(filepath.Join(root, code, file), []byte(`{"id":"code-payments","owner_id":"admin","product":"code"}`), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(root, code, file), []byte(`{"id":"code-payments","created_by":"admin","owner_id":"admin","product":"work"}`), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	project, err := knowledgeProjectLoad(t.Context(), "admin", code, true)
 	if err != nil {
-		t.Fatal("Code project refused:", err)
+		t.Fatal("Crew project refused:", err)
 	}
 	if project.BrainMode() != "write" || len(project.Audience) != 1 || project.Audience[0] != "admin" {
-		t.Fatalf("Code project: mode %q audience %v", project.BrainMode(), project.Audience)
+		t.Fatalf("Crew project: mode %q audience %v", project.BrainMode(), project.Audience)
 	}
 	seed, err := service.CallTool(t.Context(), admin, "brain_update", map[string]any{"action": "create", "folder_id": folderID, "filename": "code.md", "title": "Code", "type": "note", "content": "code-marker", "request_id": "code-seed"})
 	if err != nil {
@@ -340,11 +343,11 @@ func TestBrainCodeProjectUsesBrainAsItsOwner(t *testing.T) {
 	read, ok := executors["brain_read"].(func(context.Context, map[string]interface{}) (string, error))
 	update, writable := executors["brain_update"].(func(context.Context, map[string]interface{}) (string, error))
 	if !ok || !writable {
-		t.Fatal("a Code session got no Brain tools")
+		t.Fatal("a Crew session got no Brain tools")
 	}
 	run := knowledgeTestCaller(context.WithValue(t.Context(), common.ChatSessionIDKey, session), "admin")
 	if out, err := read(run, map[string]any{"action": "read", "entry_id": knowledgeMap(seed)["entry_id"]}); err != nil || !strings.Contains(out, "code-marker") {
-		t.Fatalf("Code could not read Brain: %s %v", out, err)
+		t.Fatalf("Crew could not read Brain: %s %v", out, err)
 	}
 	if _, err := update(run, map[string]any{"action": "create", "folder_id": folderID, "filename": "from-code.md", "title": "From Code", "type": "note", "content": "written by Code", "request_id": "code-write"}); err != nil {
 		t.Fatal("Code could not write to Brain:", err)

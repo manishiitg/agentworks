@@ -22,17 +22,17 @@ type ToolCaller interface {
 // the run variant when the scope-filtered catalog carries run tools.
 const MCPInstructions = `You are connected to an AgentWorks server: use only currently listed tools/actions. Workflow run tools use pinned model sessions; direct project edits use existing authoring consent, current roles and guarded handlers.  Call help action=context for guidance_version, then help action=topics or action=skills and fetch only relevant changed topics. Guidance is reference material; use only currently listed tools/actions.` +
 	`Discover workflow IDs with list_workflows first; IDs are never filesystem paths. ` +
-	`Call get_agent_context for token capabilities and the guidance version, and load only the guidance topics relevant to the task via list_guidance_topics/get_guidance_topic. ` +
-	`To run: call a run-mode tool such as execute_step (its reply carries session_id), then poll run_status for completion. ` +
-	`Send conversational messages with messages action=send (chat and ask_crew are aliases). Keep inbox_id to continue and read explicit optional replies with messages action=read; normal final chat text is not forwarded and there is no conversational call_id. ` +
+	`Call help action=context for capabilities and the guidance version, and load relevant topics with help action=topics/topic. ` +
+	`To run: call runs action=step (its reply carries session_id), then poll runs action=status for completion. ` +
+	`Send conversational messages with messages action=send or workspace action=ask. Keep inbox_id to continue and read explicit optional replies with messages action=read; normal final chat text is not forwarded and there is no conversational call_id. ` +
 	`Apps without a terminal can register an inbox agent through their normal MCP sign-in. Check the inbox when the person asks or at the start of a conversation; nothing is pushed. The AgentWorks CLI can connect a coding chat for live delivery. Use the returned Live now or Inbox presence and plain message receipt; sending alone does not prove the recipient has it. ` +
-	`Declared functions are isolated internal triggers: call one, then read status, execution messages and output files using its call_id. ` +
+	`Published functions are reusable actions: call one, then read status, execution messages and output files using its call_id. ` +
 	`Answer from what you read and make requested changes only through listed tools/actions within current consent and project roles.`
 
 const MCPReadOnlyInstructions = `You are connected to an AgentWorks server with a read-only connection: every tool reads; nothing creates, edits, or runs.  Call help action=context for guidance_version, then help action=topics or action=skills and fetch only relevant changed topics. Guidance is reference material; use only currently listed tools/actions.` +
 	`If your connection is allowed to use a registered agent_name, read messages action=read with that name and no inbox_id at the start and end of work; save next_cursor for after. Read-only connections cannot register or send. External agents poll; storage does not wake a client. ` +
 	`Discover workflow IDs with list_workflows first; IDs are never filesystem paths. ` +
-	`Call get_agent_context for token capabilities and the guidance version, and load only the guidance topics relevant to the task via list_guidance_topics/get_guidance_topic. ` +
+	`Call help action=context for capabilities and the guidance version, and load relevant topics with help action=topics/topic. ` +
 	`Answer from what you read; if the task needs a change, say so instead of attempting one.`
 
 // NewMCPServer discovers schemas from the hosted server. It contains no local
@@ -47,14 +47,14 @@ func NewMCPServer(ctx context.Context, client ToolCaller, extra ...server.Server
 	for _, definition := range definitions {
 		// The server omits run tools from catalogs whose token lacks
 		// runs:execute, so execute_step's presence proves this bridge runs.
-		if definition.Name == "execute_step" || definition.Name == "call_crew_function" || definition.Name == "ask_crew" || definition.Name == "manage_vault_access" || definition.Name == "crew" || definition.Name == "functions" || definition.Name == "builder" || strings.HasPrefix(definition.Name, "crew_") || definition.Name == "manage_crew_commands" {
+		if definition.Name == "execute_step" || definition.Name == "call_crew_function" || definition.Name == "ask_crew" || definition.Name == "manage_vault_access" || definition.Name == "crew" || definition.Name == "functions" || definition.Name == "sessions" || strings.HasPrefix(definition.Name, "crew_") || definition.Name == "manage_crew_commands" {
 			instructions = MCPInstructions
 			break
 		}
 	}
 	for _, definition := range definitions {
-		if definition.Name == "manage_vault_access" {
-			instructions += " Exception: authorized Vault management may make changes. Use manage_vault_access for connections/tool/regex permissions, manage_vault_groups for membership, and manage_vault_secret_access for secret names/group grants and storing a secret value the person gives you (operation=set_value; never repeat the value). No workflow_id is needed. Secret values are never returned. The same Vault management tools are declared in Vault product.yaml for builder and MCP. Use query_vault_db/mutate_vault_db for guarded governance SQL, list_vault_mcp_servers for setup inventory and call_vault_mcp_tool for approved upstream setup calls as this administrator. Ordinary Vault MCP runtime remains group scoped."
+		if definition.Name == "vault" {
+			instructions += " Vault uses its current offered actions for account setup, access, secret names, audit and governance queries. Store a supplied value with vault action=set_value or project settings action=update secrets.set, using the existing owner/administrator access. Return names only. Runtime connections keep their selection and group access."
 			break
 		}
 	}
@@ -67,6 +67,16 @@ func NewMCPServer(ctx context.Context, client ToolCaller, extra ...server.Server
 	available := make(map[string]bool, len(definitions))
 	for _, definition := range definitions {
 		available[definition.Name] = true
+		var shape struct {
+			Properties map[string]struct {
+				Enum []string `json:"enum"`
+			} `json:"properties"`
+		}
+		if json.Unmarshal(definition.InputSchema, &shape) == nil {
+			for _, action := range shape.Properties["action"].Enum {
+				available[definition.Name+"."+action] = true
+			}
+		}
 	}
 	for _, definition := range definitions {
 		name := definition.Name

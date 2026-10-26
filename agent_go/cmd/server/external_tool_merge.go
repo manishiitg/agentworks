@@ -45,21 +45,16 @@ var externalToolMerges = []externalToolMerge{
 	}},
 	{"files", "Read and change allowed project files, links and attachments. Current Builder, sharing, private-path, file-root and revision checks still decide access.", platformMergeActions("files")},
 	{"database", "Read managed project data and schemas. Offered write, migration and snapshot actions retain the current owner, connection, step and file-grant checks.", platformMergeActions("database")},
-	{"functions", "Workflow and Crew internal function triggers with checked inputs. Crew functions default to a named tab that keeps history and queues calls; execution=fresh starts a new chat for each call. List, call, inspect execution status/messages, read private output files and answer a pending input question.", [][2]string{
-		{"list", "list_workflow_functions|list_crew_functions"}, {"call", "call_workflow_function|call_crew_function"},
-		{"status", "get_workflow_function_call|get_crew_function_call"}, {"read", "get_workflow_function_call|get_crew_function_call"}, {"reply", "reply_workflow_function_call|reply_crew_function_call"},
-		{"calls", "list_crew_function_calls"}, {"define", "update_crew"}, {"update", "update_crew"}, {"delete", "update_crew"},
-	}},
+	{"skills", "Find, install and select project skills and reusable commands using existing access.", platformMergeActions("skills")},
+	{"mcp", "Manage the current project's connections and call already selected tools with existing account and connection access.", platformMergeActions("mcp")},
+	{"brain", "Read and maintain shared company knowledge using existing folder roles and project grants.", platformMergeActions("brain")},
+	{"vault", "Select and store secrets and manage allowed connections. Values stay write-only; current project, Vault and administrator checks apply.", platformMergeActions("vault")},
+	{"functions", "Discover, call and maintain offered functions. Published access, caller identity and active-invocation checks still apply.", platformMergeActions("functions")},
 	{"suggest_change", "Suggest a change to a workflow (workflow_id) or a Crew (crew_id) for its owner to review; it never changes anything itself.", [][2]string{
 		{"suggest", "suggest_workflow_change|suggest_crew_change"},
 	}},
-	{"runs", "Runs of a workflow or Flow: list them, read one, its logs, poll a session started externally and answer a pending input.", [][2]string{
-		{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"status", "run_status"}, {"reply_input", "run_reply_input"},
-	}},
-	{"builder", "Edit a workflow or Flow through its Builder model in your existing workflow chat. Submit with action=chat, then poll status; answer a question with reply_input; cancel an operation; read and restore file edits.", [][2]string{
-		{"tabs", "builder_tabs"}, {"chat", "builder_chat"}, {"status", "builder_status"}, {"reply_input", "builder_reply_input"}, {"cancel", "builder_cancel"},
-		{"file_history", "builder_file_history"}, {"restore_file", "builder_restore_file"},
-	}},
+	{"runs", "Start and inspect real workflow runs through their existing execution and access checks.", platformMergeActions("runs")},
+	{"sessions", "Use your project chats and background work. Existing person, project, tab and operation ownership still decides access.", platformMergeActions("sessions")},
 	{"relay", "Flows: create and edit one, test the draft, publish an immutable version, run a published version and read its runs and releases. Edit its code directly with files action=read/write, then test and inspect the draft run.", [][2]string{
 		{"update", "update_relay"}, {"test", "test_relay"}, {"publish", "publish_relay"},
 		{"run", "run_relay"}, {"get_run", "get_relay_run"}, {"runs", "list_relay_runs"}, {"releases", "get_relay_releases"},
@@ -88,6 +83,9 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 	catalog, err = configurationExternalMembers(catalog)
 	if err == nil {
 		catalog, err = dataExternalMembers(catalog)
+	}
+	if err == nil {
+		catalog, err = agentExternalMembers(catalog)
 	}
 	if err != nil {
 		return nil, err
@@ -140,11 +138,17 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 		if len(order) == 0 {
 			continue
 		}
-		if merge.name == "functions" || merge.name == "files" || merge.name == "share" || merge.name == "settings" || merge.name == "models" || merge.name == "costs" || merge.name == "database" || merge.name == "dashboard" {
+		if merge.name == "functions" || merge.name == "files" || merge.name == "share" || merge.name == "settings" || merge.name == "models" || merge.name == "costs" || merge.name == "database" || merge.name == "dashboard" || merge.name == "skills" || merge.name == "mcp" || merge.name == "sessions" {
 			props["workspace_id"] = externalString("Stable work:<id> from workspace action=list.")
 		}
 		if merge.name == "functions" {
-			props = externalFunctionProperties(props, order)
+			props = externalFunctionProperties(props, order, func(name string) (externalTool, bool) {
+				i, exists := index[name]
+				if !exists {
+					return externalTool{}, false
+				}
+				return catalog[i], true
+			})
 		}
 		props["action"] = map[string]any{"type": "string", "enum": stringsToAny(order)}
 		catalog = append(catalog, externalTool{
@@ -251,7 +255,7 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 		}
 	}
 	if tool.Name == "functions" {
-		props = externalFunctionProperties(props, allowed)
+		props = externalFunctionProperties(props, allowed, externalCatalogTool)
 	}
 	props["action"] = map[string]any{"type": "string", "enum": stringsToAny(allowed)}
 	out := tool
@@ -273,11 +277,30 @@ func firstSentence(text string) string {
 
 // Function authoring takes one flat definition. Do not inherit project-update
 // fields (including its batch functions patch) from the update_crew executor.
-func externalFunctionProperties(in map[string]any, actions []string) map[string]any {
+func externalFunctionProperties(in map[string]any, actions []string, lookup func(string) (externalTool, bool)) map[string]any {
 	out := map[string]any{}
 	for _, key := range []string{"workspace_id", "crew_id", "workflow_id", "function", "args", "wait_seconds", "submission_id", "run_mode", "call_id", "request_id", "response", "limit", "after", "after_event", "message_limit", "file", "offset"} {
 		if value, ok := in[key]; ok {
 			out[key] = value
+		}
+	}
+	// Carry every admitted call/trigger payload from its real schema. Only
+	// update_crew needs the flat authoring adapter below; its other settings
+	// must not become function fields.
+	for _, pair := range platformMergeActions("functions") {
+		if !slices.Contains(actions, pair[0]) {
+			continue
+		}
+		for _, name := range externalMemberNames(pair[1]) {
+			if name == "update_crew" {
+				continue
+			}
+			if member, ok := lookup(name); ok {
+				props, _ := member.InputSchema["properties"].(map[string]any)
+				for key, value := range props {
+					externalMergeProperty(out, key, value)
+				}
+			}
 		}
 	}
 	for _, action := range actions {
@@ -374,6 +397,11 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 		// Crew summary already supports an omitted ID (all owned Crews).
 		// The workflow summary is a separate, workflow-bound Run operation.
 		name = "get_crew_costs"
+	} else if tool.Name == "functions" && (action == "status" || action == "reply") && externalArg(args, "workflow_id") == "" && len(names) == 2 {
+		// Crew call IDs already identify their target. Its existing status
+		// and answer handlers recheck the caller and refuse workflow calls;
+		// the typed Crew CLI need not repeat a project ID it never required.
+		name = names[1]
 	} else if len(names) == 2 && externalArg(args, "crew_id") != "" {
 		name = names[1]
 	}

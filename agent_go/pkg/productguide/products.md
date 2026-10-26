@@ -59,7 +59,7 @@ Use a Flow when a repeatable code workflow should have an explicit release and e
 Use Brain for information and skills that should be reusable across people and projects. It is a knowledge store, rather than a workflow runner.
 
 - **Abilities:** browse and search folders; read notes and files; create, patch, move, restore and delete content; inspect history; share folders; publish and retrieve skill packages; inspect or configure permitted backup, schedule and secret operations.
-- **MCP route:** use the discovered `brain_*` schemas. Browse or search before creating duplicate content. Read the current opaque entry version before updating. Use `brain_skills` to discover and retrieve an installable skill package.
+- **MCP route:** use the discovered `brain` actions. Browse or search before creating duplicate content. Read the current opaque entry version before updating. Use `brain action=skills_list/skills_get` to discover and retrieve an installable skill package.
 - **Access:** existing folder permissions, inherited grants and connection caps apply. Administrative operations retain their administrator checks. Secret values are not returned through MCP.
 - **Example:** keep a team's operating procedures and a reusable release-check skill in shared folders.
 

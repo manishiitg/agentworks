@@ -49,15 +49,16 @@ func (acceptingElicitation) Elicit(_ context.Context, _ mcp.ElicitationRequest) 
 
 func (f *functionCaller) Tools(context.Context) ([]Tool, error) {
 	tools := []Tool{}
-	for _, name := range []string{"get_crew_function_call", "reply_crew_function_call"} {
-		tools = append(tools, Tool{Name: name, InputSchema: json.RawMessage(`{"type":"object"}`)})
+	for _, name := range []string{"functions"} {
+		tools = append(tools, Tool{Name: name, InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["status","reply"]}}}`)})
 	}
 	return tools, nil
 }
 
 func (f *functionCaller) Call(_ context.Context, name string, args map[string]any) (json.RawMessage, error) {
-	f.calls = append(f.calls, name)
-	if name == "reply_crew_function_call" {
+	action, _ := args["action"].(string)
+	f.calls = append(f.calls, name+"."+action)
+	if name == "functions" && action == "reply" {
 		f.answer, _ = args["response"].(string)
 		return json.RawMessage(`{"status":"submitted"}`), nil
 	}
@@ -73,9 +74,9 @@ func TestStdioMCPFunctionElicitationAndPollingFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tool := bridge.GetTool("get_crew_function_call")
-	args := map[string]any{"call_id": "fn-stdio"}
-	request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "get_crew_function_call", Arguments: args}}
+	tool := bridge.GetTool("functions")
+	args := map[string]any{"action": "status", "crew_id": "example-crew", "call_id": "fn-stdio"}
+	request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "functions", Arguments: args}}
 	noCapability := server.WithRequestProtocolInfo(context.Background(), &server.RequestProtocolInfo{
 		Modern: true, ProtocolVersion: mcp.ProtocolVersion20260728, ClientCapabilities: &mcp.ClientCapabilities{},
 	})
@@ -104,7 +105,7 @@ func TestStdioMCPFunctionElicitationAndPollingFallback(t *testing.T) {
 	if err != nil || answered.IsError || caller.answer != "main" {
 		t.Fatalf("answer = %+v, err=%v, caller=%+v", answered, err, caller)
 	}
-	if len(caller.calls) != 4 || caller.calls[2] != "reply_crew_function_call" || caller.calls[3] != "get_crew_function_call" {
+	if len(caller.calls) != 4 || caller.calls[2] != "functions.reply" || caller.calls[3] != "functions.status" {
 		t.Fatalf("retry started another function instead of replying and polling: %v", caller.calls)
 	}
 }
@@ -129,7 +130,7 @@ func TestStdioMCPLegacyClientElicitationRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := cli.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{
-		Name: "get_crew_function_call", Arguments: map[string]any{"call_id": "fn-stdio"},
+		Name: "functions", Arguments: map[string]any{"action": "status", "crew_id": "example-crew", "call_id": "fn-stdio"},
 	}})
 	if err != nil || result.IsError || result.NeedsInput() || caller.answer != "main" {
 		t.Fatalf("legacy elicitation round trip = %+v, err=%v, caller=%+v", result, err, caller)

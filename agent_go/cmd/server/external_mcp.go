@@ -139,20 +139,20 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		if tool.Name == serverProductManagementTool {
 			instructions += " Installed private server products: server_product action=tools discovers their management schemas; action=call invokes them with current admin authority and users:manage consent. Inference keys do not authorize management. "
 		}
-		if isExternalKnowledgebaseTool(tool.Name) {
-			instructions += " Brain stores files of any type (text in content, other files in content_base64) and has five tools with action parameters: brain_browse (folders/entries), brain_read (read/search), brain_update (create/update/delete/create_folder), brain_skills (company skills: list, get to install one by writing its files under your own skills folder, publish a SKILL.md package; scripts need folder Owner), and brain_access (inspect; writable unrestricted external connections may also list, grant/revoke, and manage service accounts and configure backup using remote_url, username and pat_secret (the name of a platform secret holding the token) subject to live Owner/admin authority). The catalog reflects this connection's current read/write actions. Updates/deletes use expected_version and a stable request_id; saves are immediately visible to people with access. Every save is a Git commit by the person who made it, and Brain pushes its commits to the configured backup remote automatically a few minutes after the last save; there is no separate backup step. External MCP access changes apply directly after permission checks; grants/revokes require a current expected_acl_version and stable request_id. App access-chat changes still require app confirmation."
+		if tool.Name == "brain" {
+			instructions += " Brain stores shared files of any type. Use brain actions for folders, entries, read/search, changes/diff and saves; skills_list/skills_get/skills_publish manage company skills, and access_* actions use current folder ownership. Install a skill by writing its returned files under your project's skills folder. The catalog reflects this connection's actions. Updates/deletes require expected_version and a stable request_id. Access changes require current expected_acl_version and request_id. Every save is a Git commit; configured backup runs automatically after saves. App access-chat changes retain app confirmation."
 			break
 		}
 	}
 	for _, tool := range allowed {
-		if tool.Name == knowledgebase.ToolUpdate {
+		if tool.Name == "brain" && tool.actions["create"] != "" {
 			instructions += " This connection also authorizes Brain saves. Saves affect only folders where its identity currently has Editor access, intersected with its folder caps; workflow authoring permissions are separate."
 			break
 		}
 	}
 	for _, tool := range allowed {
-		if tool.Name == "manage_vault_access" {
-			instructions += " Vault management is authorized for this administrator via vault:manage: use manage_vault_access for MCP connections and immediate tool/regex permissions, manage_vault_groups for groups/members, and manage_vault_secret_access for secret names, group grants and storing a secret value the person gives you (operation=set_value; never repeat the value). These are global tools and need no workflow_id. Regex rules require human-readable descriptions. Secret values are never returned. The same Vault management tools are declared in Vault product.yaml for builder and MCP. Use query_vault_db/mutate_vault_db for guarded governance SQL, list_vault_mcp_servers for setup inventory and call_vault_mcp_tool for approved upstream setup calls as this administrator. Ordinary Vault MCP runtime remains group scoped."
+		if tool.Name == "vault" && tool.actions["access_save_permissions"] != "" {
+			instructions += " Vault actions use current account, project and administrator access. Use the offered access_*, groups_* and tools_* actions for administration, governance_query/governance_mutate for guarded SQL, and connections/call for approved setup calls. set_value stores a secret the person supplies and returns names only; never repeat values. Project secrets also use settings action=update secrets.set with existing owner access. Vault administration needs no workflow_id; ordinary runtime calls retain group and selection checks."
 		}
 	}
 	for _, tool := range allowed {
@@ -402,7 +402,8 @@ func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Reques
 	}
 	// A function call with a pending question may come back as an MCP form
 	// for clients that declare elicitation (docs/design/mcp_elicitation.md).
-	if result := api.externalMCPURLCall(r.WithContext(ctx), target, callArgs, request); result != nil {
+	serviceTool, serviceArgs := agentSourceCall(externalTool{Name: target}, callArgs)
+	if result := api.externalMCPURLCall(r.WithContext(ctx), serviceTool.Name, serviceArgs, request); result != nil {
 		return result
 	}
 	elicitation := api.externalMCPElicitation(r, byName)
@@ -579,13 +580,13 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 			group = "Dashboards"
 		case name == "needs_you" || strings.HasSuffix(name, "_needs_you"):
 			group = "Needs you"
-		case name == "builder" || strings.HasPrefix(name, "builder_"):
+		case name == "sessions" || name == "builder" || strings.HasPrefix(name, "builder_"):
 			group = "Builder"
 		case strings.Contains(name, "relay"):
 			group = "Flows"
 		case strings.Contains(name, "crew"):
 			group = "Crews"
-		case strings.HasPrefix(name, "brain_"):
+		case name == "brain" || strings.HasPrefix(name, "brain_"):
 			group = "Brain"
 		case strings.Contains(name, "vault"):
 			group = "Vault"

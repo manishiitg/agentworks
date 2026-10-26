@@ -267,6 +267,8 @@ func (api *StreamingAPI) handleExternalMCPInput(w http.ResponseWriter, r *http.R
 				return
 			}
 			input.Target, input.Arguments = member.Name, rest
+			member, input.Arguments = agentSourceCall(member, input.Arguments)
+			input.Target = member.Name
 			break
 		}
 	}

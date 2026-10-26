@@ -64,6 +64,19 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 				props["scope"] = map[string]any{"type": "string", "enum": []any{"tab"}, "description": "Your own chat's model choice."}
 				result = append(result, member)
 			}
+			// The model setter now belongs only to models.set(scope=tab).
+			var err error
+			tool, err = configurationToolCopy(tool)
+			if err != nil {
+				return nil, err
+			}
+			props, err := externalSchemaProperties(tool.Name, tool.InputSchema)
+			if err != nil {
+				return nil, err
+			}
+			selector, _ := props["action"].(map[string]any)
+			values, _ := selector["enum"].([]any)
+			selector["enum"] = slices.DeleteFunc(values, func(value any) bool { return value == "set_model" })
 		}
 		if tool.Name == "get_settings" || tool.Name == "update_settings" {
 			model, err := configurationToolCopy(tool)

@@ -8,6 +8,7 @@ spec = importlib.util.spec_from_file_location("grouping", Path(__file__).parents
 grouping = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(grouping)
 catalog = Path(__file__).parents[2] / "agent_go/pkg/platformtools/dashboard-actions.json"
+agent_catalog = Path(__file__).parents[2] / "agent_go/pkg/platformtools/agent-actions.json"
 data_catalog = Path(__file__).parents[2] / "agent_go/pkg/platformtools/data-actions.json"
 
 
@@ -23,9 +24,9 @@ class PlatformSelections(unittest.TestCase):
                         "selected_tools": ["foreign:get_dashboard", "dashboard:get_dashboard", "workspace_advanced:diff_patch_workspace_file", "foreign:diff_patch_workspace_file"],
                         "selected_custom_tools": ["query_workflow_db"],
                         "execution_defaults": {"enabled_custom_tools": ["get_dashboard_share", "share_dashboard"]},
-                        "enabled_tools": [], "note": "get_dashboard is in my own notes"}
+                        "enabled_tools": [], "enabled_custom_tools": ["manage_vault_secret_access", "foreign:manage_vault_secret_access"], "note": "get_dashboard is in my own notes"}
             path.write_text(json.dumps(original))
-            catalogs = [catalog, data_catalog]
+            catalogs = [catalog, data_catalog, agent_catalog]
             namespaces = ["dashboard", "workspace_advanced"]
             self.assertEqual(grouping.migrate(root, backup, catalogs, namespaces), 1)
             saved = json.loads(path.read_text())
@@ -34,6 +35,7 @@ class PlatformSelections(unittest.TestCase):
             self.assertEqual(saved["selected_custom_tools"], ["database.query", "database.describe", "database.integrity_check"])
             self.assertEqual(saved["execution_defaults"]["enabled_custom_tools"], ["share.get", "share.set"])
             self.assertEqual(saved["enabled_tools"], [])
+            self.assertEqual(saved["enabled_custom_tools"], ["vault.shared_secrets", "vault.grant_secret", "vault.set_value", "vault.share_secret", "vault.delete_shared_secret", "foreign:manage_vault_secret_access"])
             self.assertEqual(saved["note"], original["note"])
             self.assertEqual(json.loads((backup / "Crew/team/product.json").read_text()), original)
             self.assertEqual(grouping.migrate(root, backup, catalogs, namespaces), 0)

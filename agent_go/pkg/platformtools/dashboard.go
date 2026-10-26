@@ -79,7 +79,23 @@ var ProjectActions = func() []Action {
 	return actions
 }()
 
-var Actions = append(append(append(append([]Action{}, DashboardActions...), ConfigurationActions...), DataActions...), ProjectActions...)
+//go:embed agent-actions.json
+var agentSource []byte
+var AgentActions = func() []Action {
+	var actions []Action
+	if err := json.Unmarshal(agentSource, &actions); err != nil {
+		panic(err)
+	}
+	return actions
+}()
+
+var Actions = func() []Action {
+	var all []Action
+	for _, group := range [][]Action{DashboardActions, ConfigurationActions, DataActions, ProjectActions, AgentActions} {
+		all = append(all, group...)
+	}
+	return all
+}()
 
 // Identity is used only while assembling trusted native definitions/policies.
 // It never resolves a public call or accepts a retired tool name over MCP.

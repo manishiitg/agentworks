@@ -77,7 +77,7 @@ func TestKnowledgebaseViewerAndExternalCallSharePermissions(t *testing.T) {
 	if search.Code != 200 || strings.Contains(search.Body.String(), "Billing") || strings.Contains(search.Body.String(), "Protected billing") {
 		t.Fatal(search.Code, search.Body.String())
 	}
-	external := request("/api/external/v1/call", `{"name":"brain_read","arguments":{"action":"read","path":"Payments/Checkout/retries.md"}}`, "priya", true)
+	external := request("/api/external/v1/call", `{"name":"brain","arguments":{"action":"read","path":"Payments/Checkout/retries.md"}}`, "priya", true)
 	if external.Code != 200 || !strings.Contains(external.Body.String(), "Retry failed payments safely") {
 		t.Fatal(external.Code, external.Body.String())
 	}
@@ -87,7 +87,7 @@ func TestKnowledgebaseViewerAndExternalCallSharePermissions(t *testing.T) {
 	if err := json.Unmarshal(read.Body.Bytes(), &readBody); err != nil {
 		t.Fatal(err)
 	}
-	args, _ := json.Marshal(map[string]any{"name": "brain_update", "arguments": map[string]any{"action": "update", "path": "Payments/Checkout/retries.md", "content": "Bad overwrite", "expected_version": readBody.Version, "request_id": "denied-write"}})
+	args, _ := json.Marshal(map[string]any{"name": "brain", "arguments": map[string]any{"action": "update", "path": "Payments/Checkout/retries.md", "content": "Bad overwrite", "expected_version": readBody.Version, "request_id": "denied-write"}})
 	denied := request("/api/external/v1/call", string(args), "priya", true)
 	if denied.Code != 403 {
 		t.Fatal(denied.Code, denied.Body.String())

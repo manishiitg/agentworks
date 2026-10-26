@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
+	"io"
+	"net/http/httptest"
 	"os"
 	"slices"
 	"strings"
@@ -74,6 +76,33 @@ func TestGuestAskRefusesEverythingOutsideTheAllowList(t *testing.T) {
 	for tool := range crewAskAllowedTools {
 		if msg := readerDeniedToolRefusal(ctx, tool); msg != "" {
 			t.Errorf("%s is allowed in a read-only ask, got %q", tool, msg)
+		}
+	}
+	// PLAT-825-113/750-75: the HTTP fence receives a public family, while
+	// its original role allowlist contains raw source names.
+	for _, tc := range []struct {
+		tool, body string
+		allowed    bool
+	}{
+		{"database", ` {"action":"query","sql":"SELECT 42"} `, true},
+		{"database", `{"action":"mutate","sql":"DELETE FROM facts"}`, false},
+		{"files", ` {"action":"read","path":"MEMORY.md"} `, true},
+		{"files", `{"action":"write","path":"MEMORY.md","content":"change"}`, false},
+		{"database", `{}`, false},
+		{"database", `{"action":123}`, false},
+		{"database", `{"action":"unknown"}`, false},
+		{"files", `{"action":`, false},
+	} {
+		request := httptest.NewRequest("POST", "/tools/custom/"+tc.tool, strings.NewReader(tc.body))
+		refused := refuseReaderDeniedToolRequest(httptest.NewRecorder(), request, ctx, tc.tool)
+		if refused == tc.allowed {
+			t.Errorf("grouped HTTP guard tool=%s allowed=%v want=%v", tc.tool, !refused, tc.allowed)
+		}
+		if tc.allowed {
+			restored, err := io.ReadAll(request.Body)
+			if err != nil || string(restored) != tc.body {
+				t.Fatal("HTTP guard changed the executor body")
+			}
 		}
 	}
 }
@@ -187,7 +216,7 @@ func TestNonOwnerChatsShareOnePolicy(t *testing.T) {
 	if crewAskAllowedTools["execute_shell_command"] || crewAskAllowedTools["call_function"] {
 		t.Error("no shell and no calls to other Crews or workflows in a non-owner's chat")
 	}
-	if notice := crewAskNotice("Crew/c-1", false); !strings.Contains(notice, crewPublishedCallToolName) || !strings.Contains(notice, "Run mode") || !strings.Contains(notice, "check whether one of the Crew's functions answers the question better") || !strings.Contains(notice, "Unknown means ask, not run") {
+	if notice := crewAskNotice("Crew/c-1", false); !strings.Contains(notice, "functions` action=call") || !strings.Contains(notice, "Run mode") || !strings.Contains(notice, "check whether one of the Crew's functions answers the question better") || !strings.Contains(notice, "Unknown means ask, not run") {
 		t.Fatalf("the notice must teach the published-function tool:\n%s", notice)
 	}
 }
