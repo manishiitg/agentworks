@@ -7,7 +7,7 @@ import { NativeTerminalToolbar } from './NativeTerminalToolbar'
 import { useTerminalFocusMode } from './TerminalFocusLayout'
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
-import { getModelDisplayName, resolvePiModelGroup } from '../utils/llmDisplay'
+import { composerModelLabel, getModelDisplayName, resolvePiModelGroup } from '../utils/llmDisplay'
 import { useChatPreferences } from '../hooks/useChatPreferences'
 import React, { Suspense, lazy, useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -1430,7 +1430,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const mainAgentRuntimeLabel = mainAgentRuntimeLLM?.model_id || mainAgentRuntimeLLM?.provider || null
   const isGoalBuilderChat = isWorkflowPhaseChat && !isRelaySurface
   const goalModelLabel = mainAgentRuntimeLLM
-    ? getModelDisplayName({ provider: mainAgentRuntimeLLM.provider, modelId: mainAgentRuntimeLLM.model_id, savedLLMs: publishedLLMs, availableLLMs })
+    ? composerModelLabel(getModelDisplayName({ provider: mainAgentRuntimeLLM.provider, modelId: mainAgentRuntimeLLM.model_id, savedLLMs: publishedLLMs, availableLLMs }), mainAgentRuntimeLLM.provider)
+    : null
+  const crewModelLabel = activeTab?.metadata?.agentProfileChatModelLabel
+    ? composerModelLabel(activeTab.metadata.agentProfileChatModelLabel, mainAgentRuntimeLLM?.provider || activeTab.metadata.agentProfileChatProvider)
     : null
 
   // Preset folder selection
@@ -3592,14 +3595,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 )}
                 {!compactComposerActions && attachmentEl}
                 {isGoalBuilderChat && goalModelLabel && (
-                  <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" aria-label={`Model: ${goalModelLabel}`} title={goalModelLabel}>
+                  canWriteCommandWorkflow && isInteractiveWorkflowBuilderChat ? <button type="button" className="max-w-40 truncate rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Model: ${goalModelLabel}`} title={`${goalModelLabel} — open Models`}
+                    onClick={() => useWorkflowStore.getState().openWorkspaceView('identity', 'llm')}>
                     {goalModelLabel}
-                  </span>
+                  </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" aria-label={`Model: ${goalModelLabel}`} title={goalModelLabel}>{goalModelLabel}</span>
                 )}
                 {(agentProfileId === 'work') && agentProfileProjectId && activeTab?.metadata?.isViewOnly !== true && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab.metadata.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`) && (
                   activeTab.metadata.agentProfileCanOpenModels ? <button type="button" className="max-w-40 truncate rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground" title={`${activeTab.metadata.agentProfileChatModelOverride ? 'Own model' : 'Same as Crew'} · ${activeTab.metadata.agentProfileChatModelLabel} — open Models`} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId: agentProfileProjectId, conversationKey: activeTab?.metadata?.agentProfileConversationKey } }))}>
-                    {activeTab.metadata.agentProfileChatModelLabel}
-                  </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" title={activeTab.metadata.agentProfileChatModelLabel}>{activeTab.metadata.agentProfileChatModelLabel}</span>
+                    {crewModelLabel}
+                  </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" title={activeTab.metadata.agentProfileChatModelLabel}>{crewModelLabel}</span>
                 )}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
                 {showContextIndicator && typeof contextPercent === 'number' && <span className="whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground" role="status" aria-label={`Context ${contextPercent}%`}>Context {contextPercent}%</span>}

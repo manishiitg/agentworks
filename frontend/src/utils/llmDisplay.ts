@@ -206,3 +206,13 @@ export function getModelDisplayName({
 
   return modelId
 }
+
+/** The composer names the selected model; the runtime stays in Models. */
+export function composerModelLabel(label: string, provider?: string): string {
+  const runtimeName = getProviderDisplayInfo(provider || '').name
+  const names = [runtimeName, runtimeName.replace(/\s+(?:CLI(?: \(Alpha\))?|Code)$/, '')]
+  const separator = label.indexOf(' · ')
+  return separator > 0 && names.includes(label.slice(0, separator))
+    ? label.slice(separator + 3)
+    : label
+}

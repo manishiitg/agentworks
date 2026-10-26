@@ -31,6 +31,7 @@ import { useModeStore } from '../stores/useModeStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
+import { useWorkflowStore } from '../stores/useWorkflowStore'
 import api, { agentApi } from '../services/api'
 import { setProductCommands, setUserCommands } from '../commands/registry'
 import { MAIN_TERMINAL_FOCUS_EVENT } from '../utils/mainTerminalFocus'
@@ -88,6 +89,7 @@ describe('terminal toolbar shared tools', () => {
     const llms = useLLMStore.getState(), presets = useGlobalPresetStore.getState()
     const workflows = useWorkflowManifestStore.getState(), auth = useAuthStore.getState()
     const get = vi.spyOn(api, 'get').mockResolvedValue({ data: { agents: [] } })
+    const openModels = vi.spyOn(useWorkflowStore.getState(), 'openWorkspaceView').mockImplementation(() => {})
     try {
       await act(async () => {
         useAuthStore.setState({ user: { id: 'person-one', username: 'builder' } })
@@ -97,11 +99,18 @@ describe('terminal toolbar shared tools', () => {
           capabilities: { selected_servers: [], selected_tools: [], selected_skills: [], selected_secrets: [], selected_global_secret_names: [], browser_mode: 'none', use_code_execution_mode: false,
             llm_config: { schema_version: 2, mode: 'explicit', builder_llm: { provider: 'codex-cli', model_id: 'builder-model' } } },
         } }] })
-        useLLMStore.setState({ savedLLMs: [], availableLLMs: [{ provider: 'codex-cli', model: 'builder-model', label: 'Builder model', description: '' }] })
+        useLLMStore.setState({ savedLLMs: [], availableLLMs: [{ provider: 'codex-cli', model: 'builder-model', label: 'Codex · Builder model', description: '' }] })
         useChatStore.setState({ activeSessionsCache: [{ session_id: 'A-session', runtime: { provider: 'claude-code', model_id: 'old-model' } }] as never })
         useChatStore.getState().setTabViewMode('A', 'formatted')
         renderComposer('A', false)
       })
+      const modelButton = host.querySelector<HTMLButtonElement>('button[aria-label="Model: Builder model"]')!
+      expect(modelButton).not.toBeNull()
+      expect(modelButton.textContent).toBe('Builder model')
+      await act(async () => modelButton.click())
+      expect(openModels).toHaveBeenCalledExactlyOnceWith('identity', 'llm')
+      await act(async () => useWorkflowManifestStore.setState(state => ({ workflows: state.workflows.map(workflow => ({ ...workflow, my_access: 'read' as const })) })))
+      expect(host.querySelector('button[aria-label="Model: Builder model"]')).toBeNull()
       expect(host.querySelector('[aria-label="Model: Builder model"]')).not.toBeNull()
       const directoryCalls = () => get.mock.calls.filter(([url]) => url === '/api/agent-directory')
       expect(directoryCalls()).toHaveLength(0)
