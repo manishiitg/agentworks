@@ -1,5 +1,5 @@
 import { CodeChatConnectionStatus } from '../products/work/CodeChatConnectionStatus'
-import { ReachableAgentsMenu } from './chat/ReachableAgentsMenu'
+import { ComposerActionsMenu } from './chat/ComposerActionsMenu'
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
 import { requestMainTerminalFocus } from '../utils/mainTerminalFocus'
@@ -2881,6 +2881,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     )
   }
 
+  const compactComposerActions = agentProfileId === 'work' || isWorkflowPhaseChat
   const nativeTerminalTools = terminalViewSelected && liveTerminalOffered && !!activeTabId
   const openAttachmentPicker = () => {
     closeComposerPickers()
@@ -3175,6 +3176,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             )}
 <ChatComposerControls>
               <div className={nativeTerminalTools ? 'hidden' : 'flex min-w-0 max-w-full flex-wrap items-center gap-1'}>
+                {compactComposerActions && <ComposerActionsMenu
+                  key={activeTabId}
+                  uploading={isUploadingFiles}
+                  onAttach={openAttachmentPicker}
+                  onOpenCommands={productCommandsAvailable ? openCommandMenu : undefined}
+                  onOpenLiveView={activeTabId && shouldShowLiveTerminalControl(liveTerminalOffered, isProductSurface, isInteractiveWorkflowBuilderChat, showProductTerminalControl)
+                    ? () => chooseViewMode(activeTabId, 'terminal') : undefined}
+                  liveViewTitle={[mainAgentRuntimeLabel, ...terminalUsage.map(line => line.text), ...terminalSessionUsage].filter(Boolean).join('\n')}
+                  showAgents={agentProfileId === 'work' || isGoalBuilderChat}
+                />}
                 {chatInputStatusLine && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -3525,7 +3536,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </div>
                 )}
 
-                {activeTabId && shouldShowLiveTerminalControl(
+                {!compactComposerActions && activeTabId && shouldShowLiveTerminalControl(
                   liveTerminalOffered,
                   isProductSurface,
                   isInteractiveWorkflowBuilderChat,
@@ -3570,7 +3581,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     </TooltipContent>
                   </Tooltip>
                 )}
-                {attachmentEl}
+                {!compactComposerActions && attachmentEl}
+              </div>
+              <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
                 {isGoalBuilderChat && goalModelLabel && (
                   <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" aria-label={`Model: ${goalModelLabel}`} title={goalModelLabel}>
                     {goalModelLabel}
@@ -3584,14 +3597,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
                 {showContextIndicator && typeof contextPercent === 'number' && <span className="whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground" role="status" aria-label={`Context ${contextPercent}%`}>Context {contextPercent}%</span>}
                 {(agentProfileId === 'work' || isGoalBuilderChat) && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} workflowPath={isGoalBuilderChat ? workflowPhaseWorkspacePath : undefined} />}
-                {(agentProfileId === 'work' || isGoalBuilderChat) && <ReachableAgentsMenu />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
                   || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} />
-                {/* Status text - removed observer initialization message */}
-              </div>
-              {/* Show old buttons */}
-              {(
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
                       {!nativeTerminalTools && micEl}
@@ -3604,7 +3612,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         busy={isStreaming || transcriptTurnActive}
                         disabled={submitButtonDisabled}
                         onSend={handleSendButtonClick}
-                        onOpenCommands={productCommandsAvailable ? openCommandMenu : undefined}
+                        onOpenCommands={!compactComposerActions && productCommandsAvailable ? openCommandMenu : undefined}
                         onNewChat={showNewChatAction ? onNewChat : undefined}
                         onStop={showStopButton && foregroundTurnActive ? onStopStreaming : undefined}
                         backgroundWork={backgroundWork}
@@ -3614,7 +3622,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       </Suspense>
                     </div>
                 </div>
-              )}
+              </div>
             </ChatComposerControls>
         </ChatComposerForm>
         <input

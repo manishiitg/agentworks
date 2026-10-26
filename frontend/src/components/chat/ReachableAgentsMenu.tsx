@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FocusEvent } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { Bot, Cable, Loader2, Network, Search } from 'lucide-react'
+import { Bot, Cable, ChevronRight, Loader2, Network, Search } from 'lucide-react'
 import api from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -23,7 +23,7 @@ const AGENT_KINDS: Record<string, string> = { crew: 'Crew', crew_agent: 'Crew ag
 const agentKind = (agent: ReachableAgent) => AGENT_KINDS[agent.kind] || 'Agent'
 
 /** The same authorized directory as list_agents, fetched only while opened. */
-export function ReachableAgentsMenu() {
+export function ReachableAgentsMenu({ submenu = false }: { submenu?: boolean }) {
   const userId = useAuthStore(state => state.user?.id)
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = `${workspace}:${userId || ''}`
@@ -51,13 +51,7 @@ export function ReachableAgentsMenu() {
   const search = query.trim().toLocaleLowerCase()
   const agents = (data?.agents || []).filter(agent => [agentName(agent), agent.name, agent.agent_name, agentKind(agent), agent.provider, agent.purpose, agent.description].some(text => text?.toLocaleLowerCase().includes(search)))
     .sort((a, b) => Number(b.online === true) - Number(a.online === true) || agentName(a).localeCompare(agentName(b)))
-  return <Menu.Root open={open} onOpenChange={setOpen} modal={false}>
-    <Menu.Trigger aria-haspopup="dialog" title="Agents you can reach" aria-label="Agents you can reach" className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded px-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <Network className="h-3.5 w-3.5" aria-hidden="true" /><span>Agents{data && !data.loading && !data.error ? ` · ${data.agents.length}` : ''}</span>
-    </Menu.Trigger>
-    <Menu.Portal><Menu.Content role="dialog" aria-label="Accessible agents" side="top" align="start" sideOffset={8} collisionPadding={12}
-      onFocusCapture={event => { if (event.target === event.currentTarget) input.current?.focus() }}
-      className="z-[100] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg">
+  const directory = <>
       <Menu.Label className="px-3 pb-2 pt-3 text-sm font-medium">Agents you can reach</Menu.Label>
       <div className="mx-2 mb-2 flex items-center gap-2 rounded-lg border border-border bg-background px-2.5">
         <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -78,6 +72,25 @@ export function ReachableAgentsMenu() {
           })}
       </div>
       <p className="border-t border-border px-3 py-2 text-[10px] text-muted-foreground">Ask this chat to contact an agent by name.</p>
+  </>
+  const contentClass = 'z-[101] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg'
+  const focusSearch = (event: FocusEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) input.current?.focus()
+  }
+  if (submenu) return <Menu.Sub open={open} onOpenChange={setOpen}>
+    <Menu.SubTrigger aria-label="Agents you can reach" className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-muted data-[state=open]:bg-muted">
+      <Network className="h-4 w-4" aria-hidden="true" /><span>Agents</span><ChevronRight className="ml-auto h-3.5 w-3.5" aria-hidden="true" />
+    </Menu.SubTrigger>
+    <Menu.Portal><Menu.SubContent role="dialog" aria-label="Accessible agents" sideOffset={6} collisionPadding={12} onFocusCapture={focusSearch} className={contentClass}>
+      {directory}
+    </Menu.SubContent></Menu.Portal>
+  </Menu.Sub>
+  return <Menu.Root open={open} onOpenChange={setOpen} modal={false}>
+    <Menu.Trigger aria-haspopup="dialog" title="Agents you can reach" aria-label="Agents you can reach" className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded px-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Network className="h-3.5 w-3.5" aria-hidden="true" /><span>Agents{data && !data.loading && !data.error ? ` · ${data.agents.length}` : ''}</span>
+    </Menu.Trigger>
+    <Menu.Portal><Menu.Content role="dialog" aria-label="Accessible agents" side="top" align="start" sideOffset={8} collisionPadding={12} onFocusCapture={focusSearch} className={contentClass}>
+      {directory}
     </Menu.Content></Menu.Portal>
   </Menu.Root>
 }

@@ -105,9 +105,15 @@ describe('terminal toolbar shared tools', () => {
       expect(host.querySelector('[aria-label="Model: Builder model"]')).not.toBeNull()
       const directoryCalls = () => get.mock.calls.filter(([url]) => url === '/api/agent-directory')
       expect(directoryCalls()).toHaveLength(0)
-      const agents = host.querySelector<HTMLButtonElement>('[aria-label="Agents you can reach"]')!
+      expect(host.querySelector('[aria-label="Agents you can reach"]')).toBeNull()
+      const add = host.querySelector<HTMLButtonElement>('[aria-label="Add files and actions"]')!
+      expect(add).not.toBeNull()
+      await act(async () => { add.focus(); add.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
+      expect(document.querySelector('[data-testid="chat-upload-button"]')?.textContent).toContain('Attach files')
+      expect(directoryCalls()).toHaveLength(0)
+      const agents = document.querySelector<HTMLElement>('[aria-label="Agents you can reach"]')!
       expect(agents).not.toBeNull()
-      await act(async () => { agents.focus(); agents.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
+      await act(async () => { agents.focus(); agents.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
       expect(directoryCalls()).toHaveLength(1)
       expect(document.querySelector('[aria-label="Accessible agents"]')).not.toBeNull()
       await act(async () => useLLMStore.setState({ llmConfigLocked: true, savedLLMs: [{ id: 'company-model', provider: 'cursor-cli', model_id: 'auto', name: 'Company model' }] }))
@@ -212,14 +218,14 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
     expect(send).toHaveBeenLastCalledWith('Updated queued instruction.', expect.objectContaining({ deliveryMode: 'queue' }))
   })
-  it('opens slash commands from the send-options menu without changing the draft or delivery mode', async () => {
+  it('opens slash commands from the add menu without changing the draft or delivery mode', async () => {
     await act(async () => {
       setUserCommands([{ command: 'menu-review', description: 'Review via menu', icon: 'terminal', source: 'user', modes: ['workflow'], execute: ctx => ctx.onSubmit('review via menu') }])
       useChatStore.getState().setTabConfig('A', { sendDeliveryMode: 'queue' })
       renderComposer(undefined, false)
     })
     expect(host.querySelector('[data-testid="chat-command-menu-button"]')).toBeNull()
-    const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Send options: Queue next"]')!
+    const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Add files and actions"]')!
     await act(async () => {
       trigger.focus()
       trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
