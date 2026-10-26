@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, useEffect } from 'react'
+import { act, useEffect, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProductWorkspaceShell } from './ProductWorkspaceShell'
@@ -25,18 +25,31 @@ describe('shared product workspace visibility', () => {
     expect(mounted).not.toHaveBeenCalled()
   })
 
-  it('keeps the reader mounted across phone pane switches and restores desktop panes', async () => {
+  it('reopens the selected panel with double chevrons and retains content across desktop and phone switches', async () => {
     const mounted = vi.fn()
     function Reader() { useEffect(() => { mounted() }, []); return <p>Selected knowledge entry</p> }
     const host = document.createElement('div'); document.body.append(host); root = createRoot(host)
-    const render = (mobilePane?: 'chat' | 'workspace') => act(async () => root?.render(<ProductWorkspaceShell
-      chatOpen panelOpen splitRatio={.38} mobilePane={mobilePane}
-      onOpenChat={() => {}} onOpenWorkspace={() => {}}
+    function Fixture({ mobilePane }: { mobilePane?: 'chat' | 'workspace' }) {
+      const [open, setOpen] = useState(true)
+      return <ProductWorkspaceShell
+      chatOpen panelOpen={open} retainWorkspace toolbarWhenPanelClosed compactContext splitRatio={.38} mobilePane={mobilePane}
+      onOpenChat={() => {}} onOpenWorkspace={() => setOpen(true)} onCloseWorkspace={() => setOpen(false)}
       tabs="Access chat" toolbar="Views" chat="Chat transcript" workspace={<Reader />} divider="Resize"
-    />))
+    />
+    }
+    const render = (mobilePane?: 'chat' | 'workspace') => act(async () => root?.render(<Fixture mobilePane={mobilePane} />))
     await render()
     expect(host.querySelector('main')?.className).toMatch(/^flex /)
     expect(host.querySelector('aside')?.classList.contains('hidden')).toBe(false)
+    const close = host.querySelector<HTMLButtonElement>('[aria-label="Close workspace panel"]')!
+    expect(close.querySelector('.lucide-chevrons-right')).not.toBeNull()
+    await act(async () => close.click())
+    expect(host.querySelector('aside')?.hidden).toBe(true)
+    const open = host.querySelector<HTMLButtonElement>('[aria-label="Open workspace panel"]')!
+    expect(open.getAttribute('aria-expanded')).toBe('false')
+    expect(open.querySelector('.lucide-chevrons-left')).not.toBeNull()
+    await act(async () => open.click())
+    expect(host.querySelector('aside')?.hidden).toBe(false)
     await render('workspace')
     expect(host.querySelector('main')?.className).toMatch(/^hidden md:flex /)
     expect(host.querySelector('aside')?.classList.contains('hidden')).toBe(false)

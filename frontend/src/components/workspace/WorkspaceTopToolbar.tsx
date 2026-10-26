@@ -5,6 +5,7 @@ import { useLLMStore } from '../../stores/useLLMStore'
 import { cn } from '../../lib/utils'
 import { MobileWorkspaceNavigation } from './MobileWorkspaceNavigation'
 import { WORKSPACE_PAGE_GUTTER } from './WorkspacePageContent'
+import { WorkspacePanelToggle } from './WorkspacePanelToggle'
 
 /** Shared AgentWorks toolbar row used above chat/workspace split surfaces. */
 export function WorkspaceTopToolbar({ className = '', children, navigationKind = 'workspace', navigationActive = true, ...props }: HTMLAttributes<HTMLDivElement> & { navigationKind?: 'workspace' | 'page'; navigationActive?: boolean }) {
@@ -43,6 +44,7 @@ export function WorkspaceTopToolbar({ className = '', children, navigationKind =
       {children}
       {showNavigation && <div ref={register} data-product-navigation-slot className="ml-auto flex min-w-0 max-w-full flex-wrap items-center empty:hidden" />}
       <MobileWorkspaceNavigation />
+      {showNavigation && <WorkspacePanelToggle />}
     </div>
   )
 }

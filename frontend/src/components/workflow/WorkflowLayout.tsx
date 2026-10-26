@@ -8,7 +8,8 @@ import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
 import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 import React, { useMemo, useCallback, useRef, useEffect, forwardRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { PanelLeftOpen, PanelRightOpen, Waypoints, Target } from 'lucide-react'
+import { PanelLeftOpen, Waypoints, Target } from 'lucide-react'
+import { WorkspacePanelVisibilityContext } from '../workspace/WorkspacePanelToggle'
 import { WorkflowCanvas, type WorkflowCanvasRef } from './canvas'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -1075,7 +1076,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   // point for every flag combination (see workspaceLayoutResolver.ts).
   const layout = resolveWorkspaceLayout({
     showChatArea,
-    showWorkspacePane: dashboardView || showWorkspacePane,
+    showWorkspacePane,
     focusedPane,
     reportPreviewPreference: dashboardView ? reportPreviewPreference : 'desktop',
     laptopPreview: dashboardView && reportPreviewPreference === 'desktop',
@@ -1273,7 +1274,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   })
 
   useWorkspaceReturn(relayMode ? 'relays' : 'agentworks', activePresetId ?? undefined, workflowWorkspaceView ?? undefined,
-    { chat_open: showChatArea, panel_open: dashboardView || workflowWorkspaceView === 'context' || showWorkspacePane, split_ratio: workspaceSplitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, focused_pane: focusedPane },
+    { chat_open: showChatArea, panel_open: showWorkspacePane, split_ratio: workspaceSplitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, focused_pane: focusedPane },
     saved => {
       setShowChatArea(isMobile || saved.chat_open); setShowWorkspacePane(saved.panel_open)
       // This flag controls the Files sidebar, not the workspace panel. Opening
@@ -2285,6 +2286,10 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   }
 
   return (
+    <WorkspacePanelVisibilityContext.Provider value={showChatArea && (activeWorkflowAccess === 'owner' || activeWorkflowAccess === 'write') ? {
+      open: workspacePaneVisible,
+      onToggle: () => setShowWorkspacePane(!workspacePaneVisible),
+    } : null}>
     <MobileWorkspaceNavigationContext.Provider value={{
       pane: showChatArea && (!workspacePaneVisible || focusedPane === 'chat') ? 'chat' : 'workspace',
       onChange: pane => {
@@ -2295,21 +2300,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       },
     }}>
     <div className={`relative flex min-h-0 min-w-0 flex-col h-full ${className}`}>
-      {/* Right-edge tab to re-open the preview pane after it's been collapsed
-          (the on-pane collapse button hides it). Only when chat is shown and the
-          pane is hidden. */}
-      {showChatArea && !workspacePaneVisible && relayMode && (
-        <button
-          type="button"
-          onClick={() => setShowWorkspacePane(true)}
-          title="Show dashboard / plan panel"
-          aria-label="Show dashboard / plan panel"
-          className="absolute right-0 top-1/2 z-30 hidden -translate-y-1/2 flex-col items-center gap-1.5 rounded-l-lg border border-r-0 border-border bg-background/95 py-3 pl-1.5 pr-1 text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground md:flex"
-        >
-          <PanelRightOpen className="h-4 w-4" />
-          <span className="[writing-mode:vertical-rl] text-[10px] font-semibold uppercase tracking-wider">Panel</span>
-        </button>
-      )}
       {!showChatArea && (
         <button
           type="button"
@@ -2435,6 +2425,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       </div>
     </div>
     </MobileWorkspaceNavigationContext.Provider>
+    </WorkspacePanelVisibilityContext.Provider>
   )
 }
 

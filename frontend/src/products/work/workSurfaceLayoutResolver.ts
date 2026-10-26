@@ -39,7 +39,7 @@ export interface WorkSurfaceLayout {
  */
 export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSurfaceLayout {
   const { chatOpen, splitRatio, mobilePreview = false, mobilePaneWidth = null, mobilePane } = input
-  const panelOpen = Boolean(input.compactContext) || input.panelOpen
+  const panelOpen = input.panelOpen
   const split = chatOpen && panelOpen
   // With a phone pane switch, below md only the chosen pane shows: one
   // content row, no reserved row for the hidden pane (Brain at 390 px left

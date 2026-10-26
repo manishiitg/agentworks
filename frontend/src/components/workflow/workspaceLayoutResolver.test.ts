@@ -15,11 +15,11 @@ describe('resolveWorkspaceLayout', () => {
     const layout = resolveWorkspaceLayout({ ...base, reportPreviewPreference: 'desktop', workspaceSplitRatio: 0.8, laptopPreview: true })
     expect(layout.splitLayoutStyle).toEqual({ '--workflow-split-columns': 'min(480px, calc(100% - 240px)) minmax(240px, 1fr)' })
   })
-  it('keeps the context bubble visible despite an older closed-pane preference', () => {
+  it('honors a closed panel even when the selected section is the context menu', () => {
     const layout = resolveWorkspaceLayout({ ...base, compactContext: true, showWorkspacePane: false })
-    expect(layout.workspacePaneVisible).toBe(true)
-    expect(layout.renderCanvasStandalone).toBe(false)
-    expect(layout.splitLayoutStyle).toEqual({ '--workflow-split-columns': 'minmax(240px, 1fr) clamp(240px, 26vw, 316px)' })
+    expect(layout.workspacePaneVisible).toBe(false)
+    expect(layout.renderCanvasStandalone).toBe(true)
+    expect(layout.splitLayoutStyle).toBeUndefined()
   })
   it('keeps context compact independently of saved preview size and drag ratio', () => {
     const layout = resolveWorkspaceLayout({ ...base, compactContext: true, reportPreviewPreference: 'mobile', workspaceSplitRatio: 0.8 })

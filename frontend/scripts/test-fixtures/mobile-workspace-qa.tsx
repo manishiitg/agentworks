@@ -33,10 +33,11 @@ for (const [name, type] of [['qa:complete-research', 'agent_end'], ['qa:start-re
 }
 function Fixture() {
   const [pane, setPane] = useState<'chat' | 'workspace'>('chat')
+  const [panelOpen, setPanelOpen] = useState(true)
   return <AppShell><div className="h-full min-h-0">
     <ProductTopBar><GlobalActivityMonitor /></ProductTopBar>
-    <ProductWorkspaceShell chatOpen panelOpen splitRatio={.5} mobilePane={pane} onMobilePaneChange={setPane}
-      onOpenChat={() => setPane('chat')} onOpenWorkspace={() => setPane('workspace')}
+    <ProductWorkspaceShell chatOpen panelOpen={panelOpen} retainWorkspace toolbarWhenPanelClosed splitRatio={.5} mobilePane={pane} onMobilePaneChange={setPane}
+      onOpenChat={() => setPane('chat')} onOpenWorkspace={() => setPanelOpen(true)} onCloseWorkspace={() => setPanelOpen(false)}
       tabs={<ProjectAgentTabs tabs={tabs} listed={rows.slice(1)} canonicalTabId="chat-0" projectName="Project files" surface={surface} allowSideChats opening={false}
         onSelectTab={id => useChatStore.getState().switchTab(id)} onOpen={async () => false} onRename={async () => false}
         onPin={async () => {}} onOrder={async () => {}} onCloseTab={() => {}} />}

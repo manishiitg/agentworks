@@ -7,11 +7,11 @@ describe('resolveWorkSurfaceLayout', () => {
     const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: true, splitRatio: 0.8, laptopPreview: true })
     expect(layout.gridStyle).toEqual({ '--work-split-columns': 'min(480px, calc(100% - 240px)) minmax(240px, 1fr)' })
   })
-  it('keeps the context bubble visible despite an older closed-pane preference', () => {
+  it('honors a closed panel even when the selected section is the context menu', () => {
     const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: false, splitRatio: 0.5, compactContext: true })
-    expect(layout.showPanel).toBe(true)
+    expect(layout.showPanel).toBe(false)
     expect(layout.showDivider).toBe(false)
-    expect(layout.gridStyle).toEqual({ '--work-split-columns': 'minmax(240px, 1fr) clamp(240px, 26vw, 316px)' })
+    expect(layout.gridStyle).toBeUndefined()
   })
   it('gives context a compact column without a resize divider or chat border', () => {
     const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: true, splitRatio: 0.8, mobilePreview: true, compactContext: true })

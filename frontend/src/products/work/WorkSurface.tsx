@@ -1161,7 +1161,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [product.defaultView, product.profileId, selected?.id, selected?.shared, selected?.workspacePath])
 
   useWorkspaceReturn(product.profileId, selected?.id, selected ? workspaceView : undefined,
-    { chat_open: chatOpen, panel_open: (!selected?.shared && workspaceView === 'context') || workspaceView === 'dashboard' || panelOpen, split_ratio: splitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, mobile_pane_width: mobilePaneWidth ?? undefined },
+    { chat_open: chatOpen, panel_open: panelOpen, split_ratio: splitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, mobile_pane_width: mobilePaneWidth ?? undefined },
     saved => {
       setChatOpen(isMobile || saved.chat_open); setPanelOpen(saved.panel_open)
       splitRatioRef.current = saved.split_ratio; setSplitRatioState(saved.split_ratio); writeWorkSplitRatio(selected?.id, saved.split_ratio)
@@ -1392,7 +1392,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               splitRef={splitLayoutRef}
               compactContext={!isWorkSessionRun(selected) && workspaceView==='context'}
               toolbarWhenPanelClosed={!isWorkSessionRun(selected)}
-              chatOpen={!isShared && chatOpen} panelOpen={isShared || workspaceView === 'dashboard' || panelOpen} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
+              chatOpen={!isShared && chatOpen} panelOpen={isShared || panelOpen} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
+              retainWorkspace
+              onCloseWorkspace={isShared ? undefined : () => setPanelOpen(false)}
               showChatReopenControl={!isShared}
               mobilePane={mobilePane}
               onMobilePaneChange={pane => { if (pane === 'chat') openChatPane(); else selectWorkspaceView('context') }}

@@ -52,7 +52,7 @@ export function resolveWorkspaceLayout(input: WorkspaceLayoutInput): WorkspaceLa
     isWorkspaceViewActive,
   } = input
 
-  const workspacePaneVisible = Boolean(input.compactContext) || !showChatArea || showWorkspacePane
+  const workspacePaneVisible = !showChatArea || showWorkspacePane
   // The device tier controls the OUTER workspace pane for every workspace view,
   // not only Plan and Report.
   //   mobile  → preview/files 480px column, chat takes the rest (review-style)
