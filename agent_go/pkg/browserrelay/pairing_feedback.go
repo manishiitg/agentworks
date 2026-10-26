@@ -66,11 +66,15 @@ func (m *Manager) PairingFailure(user string) *PairingFailure {
 }
 
 func (m *Manager) rejectPairing(conn *websocket.Conn, user, reason, message, version string) {
+	m.rejectPairingWithCause(conn, user, reason, message, version, reason)
+}
+
+func (m *Manager) rejectPairingWithCause(conn *websocket.Conn, user, reason, message, version, cause string) {
 	if !validExtensionVersion(version) {
 		version = ""
 	}
 	// No pairing code, credential, tab or account identity is written here.
-	log.Printf("[BROWSER_PAIR] event=rejected reason=%s extension_version=%q authenticated=%t", reason, version, user != "")
+	log.Printf("[BROWSER_PAIR] event=rejected reason=%s cause=%s extension_version=%q authenticated=%t", reason, cause, version, user != "")
 	if user != "" {
 		m.mu.Lock()
 		if m.pairingFailures == nil {
@@ -106,8 +110,8 @@ func (m *Manager) rejectOutdatedExtension(conn *websocket.Conn, user, version st
 
 // Unknown, revoked and denied credentials deliberately produce the same
 // payload and close frame. Neither channel may reveal a code's validity.
-func (m *Manager) rejectConnectionCode(conn *websocket.Conn, version string) {
-	m.rejectPairing(conn, "", "invalid_connection_code", "This browser could not connect with that code. In AgentWorks, open your account menu → Browser connections → Copy connection code. Paste the full code here and choose Connect browser. If it still fails, download the latest extension there, replace its folder and click Reload on the browser’s Extensions page, then try again.", version)
+func (m *Manager) rejectConnectionCode(conn *websocket.Conn, version, cause string) {
+	m.rejectPairingWithCause(conn, "", "invalid_connection_code", "This browser could not connect with that code. In AgentWorks, open your account menu → Browser connections → Copy connection code. Paste the full code here and choose Connect browser. If it still fails, download the latest extension there, replace its folder and click Reload on the browser’s Extensions page, then try again.", version, cause)
 }
 
 func (m *Manager) connectionCodeStillOwned(token, user string) bool {

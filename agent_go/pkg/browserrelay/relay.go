@@ -778,12 +778,18 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 			m.connectionCodeStillOwned(hello.Token, credential.User) {
 			m.rejectOutdatedExtension(conn, credential.User, hello.Version)
 		} else {
-			m.rejectConnectionCode(conn, hello.Version)
+			cause := "project_not_granted"
+			if !exists {
+				cause = "unknown_code"
+			} else if credential.User == "" {
+				cause = "no_user"
+			}
+			m.rejectConnectionCode(conn, hello.Version, cause)
 		}
 		return
 	}
 	if authorize != nil && authorize(g.User, g.Scope, g.Label, g.ProfileID) != nil {
-		m.rejectConnectionCode(conn, hello.Version)
+		m.rejectConnectionCode(conn, hello.Version, "access_denied")
 		return
 	}
 	available := m.availableProjects(hello.Token, authorize)
@@ -802,7 +808,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	checked, granted := resolveProject(current, g.Scope)
 	if !exists || !granted || !sameProject(checked, g) {
 		m.mu.Unlock()
-		m.rejectConnectionCode(conn, hello.Version)
+		m.rejectConnectionCode(conn, hello.Version, "grant_changed")
 		return
 	}
 	// An offline browser may have missed the explicit Disconnect close frame.
