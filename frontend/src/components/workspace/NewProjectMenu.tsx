@@ -10,7 +10,7 @@ import { openQuickNavigation, quickNavigationItems } from '../../utils/quickNavi
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 
 /** A visible entry into the existing, permission-checked product creation flows. */
-export function NewProjectMenu() {
+export function NewProjectMenu({ compact = false }: { compact?: boolean }) {
   const user = useAuthStore(state => state.user)
   const multiUser = useAuthStore(state => state.isMultiUserMode)
   const product = useProductSurfaceStore(state => state.productSurface)
@@ -25,9 +25,9 @@ export function NewProjectMenu() {
     setOpen(value)
   }}>
     <Menu.Trigger asChild>
-      <button type="button" className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-foreground/85 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <button type="button" aria-label="New project" title="New project" className={`flex items-center rounded-lg text-[13px] text-foreground/85 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${compact ? 'h-10 w-10 justify-center' : 'h-9 w-full gap-2.5 px-2.5 text-left'}`}>
         <Plus className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        New project
+        {!compact && <span>New</span>}
       </button>
     </Menu.Trigger>
     <Menu.Portal>

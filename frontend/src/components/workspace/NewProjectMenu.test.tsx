@@ -23,7 +23,7 @@ const cleanup: (() => Promise<void>)[] = []
 const originalScroll = HTMLElement.prototype.scrollIntoView
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
-  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'video-studio'], localServerProducts: true }
+  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays', 'work', 'video-studio'], localServerProducts: true }
   useAuthStore.setState({ user: { id: 'alice', allowed_products: null, can_create: true } as never, isMultiUserMode: true })
   useProductSurfaceStore.setState({ productSurface: 'work' })
   useWorkspaceConnectionStore.setState({ activeWorkspaceId: 'local' })
@@ -35,11 +35,11 @@ afterEach(async () => {
   delete window.__APP_RUNTIME_CONFIG__
   HTMLElement.prototype.scrollIntoView = originalScroll
 })
-async function renderMenu() {
+async function renderMenu(compact = false) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanup.push(async () => { await act(async () => root.unmount()); host.remove() })
-  await act(async () => root.render(<NewProjectMenu />))
+  await act(async () => root.render(<NewProjectMenu compact={compact} />))
   const open = async () => act(async () => {
     const trigger = host.querySelector<HTMLButtonElement>('button')!
     trigger.focus()
@@ -49,10 +49,11 @@ async function renderMenu() {
 }
 const choices = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
 
-it.each([['Goals', 'agentworks'], ['Crew', 'code'], ['Flows', 'relays']] as [string, ProductCreateSurface][])
-  ('opens the existing %s creation flow from the common entry', async (label, surface) => {
-    const { host, open } = await renderMenu()
-    expect(host.textContent).toBe('New project')
+it.each([['Goals', 'agentworks', false], ['Crew', 'work', true], ['Flows', 'relays', false]] as [string, ProductCreateSurface, boolean][])
+  ('opens the existing %s creation flow from the common entry', async (label, surface, compact) => {
+    const { host, open } = await renderMenu(compact)
+    expect(host.textContent).toBe(compact ? '' : 'New')
+    expect(host.querySelector('button')?.getAttribute('aria-label')).toBe('New project')
     expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
     await open()
     expect(choices().map(item => item.getAttribute('aria-label'))).toEqual(['Goals', 'Flows', 'Crew'])
@@ -64,7 +65,7 @@ it.each([['Goals', 'agentworks'], ['Crew', 'code'], ['Flows', 'relays']] as [str
 
 it('uses enabled products and per-product create permissions, and hides the entry when none remain', async () => {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'work'] }
-  useAuthStore.setState({ user: { id: 'alice', can_create: false, can_create_in: { work: true }, allowed_products: ['agentworks', 'work', 'code'] } as never })
+  useAuthStore.setState({ user: { id: 'alice', can_create: false, can_create_in: { work: true }, allowed_products: ['agentworks', 'work'] } as never })
   const { host, open } = await renderMenu()
   await open()
   expect(choices().map(item => item.getAttribute('aria-label'))).toEqual(['Crew'])
@@ -83,13 +84,6 @@ it('rechecks a stale menu selection before routing or requesting creation', asyn
   })
   expect(openProduct).not.toHaveBeenCalled()
   expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
-})
-
-it('shows one Crew choice when only the Code origin is enabled', async () => {
-  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays', 'code'] }
-  const { open } = await renderMenu()
-  await open()
-  expect(choices().map(item => item.getAttribute('aria-label'))).toEqual(['Goals', 'Flows', 'Crew'])
 })
 
 it('closes the product chooser when the account changes', async () => {

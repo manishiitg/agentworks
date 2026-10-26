@@ -44,6 +44,7 @@ import SidebarStepInspections from './SidebarStepInspections'
 import { inspectionKey } from '../../utils/stepInspection'
 import { workflowTriggerLabel } from '../../utils/workflowSessionKinds'
 import { SharedToolShortcuts } from './SharedToolShortcuts'
+import { PROJECT_SIDEBAR_ORDER } from './WorkspaceProjectShortcuts'
 
 // Stored chats only resolve each workflow's Builder and run chats; there is no Recent list.
 const HISTORY_LIMIT = 30
@@ -558,22 +559,33 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           <RuntimeBrandLogo variant="sidebar-header" />
         </a>
         <div className="flex shrink-0 items-center gap-1">
+        {toggle}
+        </div>
+      </div>
+      <div className="shrink-0 space-y-0.5 px-2 pb-1">
+        <NewProjectMenu />
         <button
           type="button"
           aria-label="Search all chats (Ctrl+K or Command+K)"
           title="Search all chats · ⌘K / Ctrl+K"
           onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher'))}
-          className="flex h-7 items-center gap-1 rounded-md px-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Search className="h-3.5 w-3.5" />
+          <span className="flex-1">Search chats</span>
           <kbd className="text-[10px] text-muted-foreground">{navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K'}</kbd>
         </button>
-        {toggle}
-        </div>
       </div>
-      <div className="shrink-0 px-2 pb-1"><NewProjectMenu /></div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2">
-        {workspaces.map((workspace, index) => !isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
+        {PROJECT_SIDEBAR_ORDER.map(surface => {
+          const entries = workspaces.map((workspace, index) => ({ workspace, index })).filter(({ workspace }) => workspace.surface === surface)
+          if (!entries.length) return null
+          return <section key={surface} aria-label={`${PRODUCT_SURFACE_LABELS[surface]} projects`} className="mb-4">
+            <h2 className="px-2.5 pb-1 text-[11px] font-medium text-muted-foreground">{PRODUCT_SURFACE_LABELS[surface]}</h2>
+            {entries.map(({ workspace, index }) => renderWorkspace(workspace, index))}
+          </section>
+        })}
+        {workspaces.map((workspace, index) => !PROJECT_SIDEBAR_ORDER.some(surface => surface === workspace.surface) && !isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
         {directory?.scope === scope && !directory.authoritative && (
           <button className="px-2 py-3 text-left text-xs text-muted-foreground underline" onClick={() => setDirectoryTick(value => value + 1)}>
             Some projects could not load. Try again.

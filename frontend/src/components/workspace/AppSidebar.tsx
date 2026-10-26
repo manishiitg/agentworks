@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
-import { Home, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Home, PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
 import { CompactProductNavigationContext } from './productNavigationContexts'
@@ -9,6 +9,8 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { SharedToolShortcuts } from './SharedToolShortcuts'
+import { WorkspaceProjectShortcuts } from './WorkspaceProjectShortcuts'
+import { NewProjectMenu } from './NewProjectMenu'
 
 import { useAppStore } from '../../stores/useAppStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -139,7 +141,18 @@ export function AppSidebar() {
         {!open && <aside aria-label="Product shortcuts" className="absolute inset-y-0 left-0 hidden w-12 flex-col border-r border-border/70 bg-muted/20 md:flex">
           <div className="flex h-[50px] shrink-0 items-center justify-center">{home}</div>
           <div className="flex shrink-0 items-center justify-center py-1">{toggle}</div>
-          <div className="mt-auto pb-14"><SharedToolShortcuts compact /></div>
+          <div className="min-h-0 flex-1 overflow-y-auto py-1">
+            <div className="flex flex-col items-center gap-1 pb-3">
+              <NewProjectMenu compact />
+              <button type="button" aria-label="Search all chats (Ctrl+K or Command+K)" title="Search chats · ⌘K / Ctrl+K"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher'))}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <Search className="h-[18px] w-[18px]" aria-hidden="true" />
+              </button>
+            </div>
+            <WorkspaceProjectShortcuts />
+          </div>
+          <div className="shrink-0 pb-14"><SharedToolShortcuts compact /></div>
         </aside>}
         {/* The account icon belongs to the rail's stacking context. A fixed
             descendant of the workspace toolbar is covered by this rail. */}

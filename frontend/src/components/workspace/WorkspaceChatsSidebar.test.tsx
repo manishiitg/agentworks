@@ -87,6 +87,7 @@ vi.mock('../../products/productSurfaceConfig', () => ({
 vi.mock('../ProductSurfaceIcon', () => ({ ProductSurfaceIcon: ({ surface }: { surface: string }) => <svg data-product-icon={surface} /> }))
 import WorkspaceChatsSidebar from './WorkspaceChatsSidebar'
 import { SharedToolShortcuts } from './SharedToolShortcuts'
+import { WorkspaceProjectShortcuts } from './WorkspaceProjectShortcuts'
 import { useSidebarHistoryStore } from '../../stores/useSidebarHistoryStore'
 import { useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -172,6 +173,7 @@ it('keeps saved project icons on every sidebar row layout and falls back for mis
     flow: { session_id: 'flow-main', sessions: { 'flow-main': { is_builder: true, kind: 'builder' }, 'flow-run': { kind: 'run' } } },
   }
   await render(async host => {
+    expect([...host.querySelectorAll('section[aria-label$=" projects"]')].map(section => section.getAttribute('aria-label'))).toEqual(['Crew projects', 'Goals projects', 'Flows projects'])
     const crew = host.querySelector<HTMLButtonElement>('[title="Crew · Before first chat"]')!
     const upload = crew.querySelector('img')!
     expect(upload.getAttribute('src')).toBe(image)
@@ -451,8 +453,11 @@ it('opens AgentBridge directly with current product permission checks', async ()
 })
 
 it('names collapsed shortcuts on keyboard focus and rechecks access before navigation', async () => {
-  mocks.enabled = ['knowledgebase', 'mcp-gateway', 'bullpen']
+  mocks.enabled = ['work', 'agentworks', 'relays', 'knowledgebase', 'mcp-gateway', 'bullpen']
   await render(async host => {
+    const products = host.querySelector('[aria-label="Project products"]')!
+    expect([...products.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Crew', 'Goals', 'Flows'])
+    const goal = products.querySelector<HTMLButtonElement>('[aria-label="Goals"]')!
     const brain = host.querySelector<HTMLButtonElement>('[aria-label="Brain"]')!
     const vault = host.querySelector<HTMLButtonElement>('[aria-label="Vault"]')!
     expect(brain.textContent).toBe('')
@@ -462,9 +467,9 @@ it('names collapsed shortcuts on keyboard focus and rechecks access before navig
     await act(async () => brain.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(host.querySelector('[role="tooltip"]')).toBeNull()
     mocks.user.allowed_products = ['knowledgebase']
-    await act(async () => vault.click())
+    await act(async () => { vault.click(); goal.click() })
     expect(mocks.openProduct).not.toHaveBeenCalled()
     await act(async () => brain.click())
     expect(mocks.openProduct).toHaveBeenCalledWith('knowledgebase')
-  }, () => <SharedToolShortcuts compact />)
+  }, () => <><SharedToolShortcuts compact /><WorkspaceProjectShortcuts /></>)
 })
