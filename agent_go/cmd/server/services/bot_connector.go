@@ -592,6 +592,7 @@ type activeBotSession struct {
 	ackChannelID      string     // channel of the message the bot reacted to (for removal)
 	ackMessageTS      string     // timestamp of the message the bot reacted to
 	followUpAcks      []ThreadID // every accepted follow-up reaction is cleared on completion
+	ignoreReacted     bool       // the thread already shows the bot is staying out (one 🤐, not one per message)
 	LastActivity      time.Time  // updated on any send/receive; used to prune stale completed sessions
 
 	// Background workflow tracking — when the builder agent fires
@@ -3789,7 +3790,12 @@ func (m *BotConversationManager) ignoreMultiUserNonMention(active *activeBotSess
 	// the message just falls into a silent void and looks like a
 	// bug. Best-effort: log and move on if the platform doesn't
 	// support reactions or the call fails.
-	if connector := m.GetConnector(active.Platform); connector != nil && connector.Capabilities().Reactions && msg.ChannelID != "" && msg.MessageTS != "" {
+	// Once per thread: a reaction on every colleague message read as noise (owner, 2026-10-27).
+	active.mu.Lock()
+	first := !active.ignoreReacted
+	active.ignoreReacted = true
+	active.mu.Unlock()
+	if connector := m.GetConnector(active.Platform); first && connector != nil && connector.Capabilities().Reactions && msg.ChannelID != "" && msg.MessageTS != "" {
 		thread := ThreadID{Platform: msg.Platform, ChannelID: msg.ChannelID, ConnectionID: msg.ConnectionID}
 		if err := botConnectorAddReaction(context.Background(), connector, thread, msg.MessageTS, "zipper_mouth_face"); err != nil {
 			log.Printf("[BOT_MANAGER] Failed to add ignore-reaction on %s: %v", active.SessionID, err)
