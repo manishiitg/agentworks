@@ -933,18 +933,19 @@ function workingDuration(steps: WorkingStep[]): string {
 }
 
 // One closed row for all the steps between two replies; opening it lists every step in order.
-const WorkingGroup: React.FC<{ item: Extract<TranscriptRenderItem, { kind: 'working' }>; live: boolean; toolLayout?: 'grouped' | 'rows' }> = ({ item, live, toolLayout }) => {
+const WorkingGroup: React.FC<{ item: Extract<TranscriptRenderItem, { kind: 'working' }>; live: boolean; phase?: TurnPhase; toolLayout?: 'grouped' | 'rows' }> = ({ item, live, phase, toolLayout }) => {
   const [expanded, toggle] = useDisclosure(item.key, false)
   const tools = item.steps.reduce((sum, step) => sum + (step.kind === 'tools' ? step.toolCount : 0), 0)
   const duration = workingDuration(item.steps)
-  const last = item.steps[item.steps.length - 1]
+  const completed = pairToolCalls(item.events).every(tool => tool.status !== 'running')
   const [dots, setDots] = React.useState(1)
   React.useEffect(() => {
     if (!live) return
     const timer = window.setInterval(() => setDots(count => count % 3 + 1), 450)
     return () => window.clearInterval(timer)
   }, [live])
-  const summary = [tools ? `${tools} tool ${tools === 1 ? 'call' : 'calls'}` : '', duration].filter(Boolean).join(' · ')
+  const summary = tools ? `${tools} ${tools === 1 ? 'step' : 'steps'}` : ''
+  const label = live ? phase?.text || 'Working' : completed && duration ? `Worked for ${duration}` : 'Activity'
   return (
     <div data-testid="terminal-working-group" className="my-1">
       <button
@@ -953,13 +954,10 @@ const WorkingGroup: React.FC<{ item: Extract<TranscriptRenderItem, { kind: 'work
         aria-expanded={expanded}
         className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <span>{live ? <>Working<span aria-hidden="true" className="inline-block w-4 text-left">{'.'.repeat(dots)}</span></> : 'Working'}</span>
+        <span>{label}{live && <span aria-hidden="true" className="inline-block w-4 text-left">{'.'.repeat(dots)}</span>}</span>
         {summary && <span>· {summary}</span>}
         {expanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
       </button>
-      {live && !expanded && (
-        <p className="pl-3 text-[11px] text-muted-foreground">now: {last.kind === 'thinking' ? 'Thinking' : `${last.toolCount} tool ${last.toolCount === 1 ? 'call' : 'calls'}`}</p>
-      )}
       {expanded && (
         <div data-testid="terminal-working-group-steps" className="mt-1 border-l border-border pl-3">
           {item.steps.map((step, index) => step.kind === 'thinking'
@@ -1405,7 +1403,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             : item.kind === 'live'
             ? <LiveAssistantTranscript chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
             : item.kind === 'working'
-            ? <WorkingGroup item={item} live={index === items.length - 1 && !streamingText.trim()} toolLayout={toolLayout} />
+            ? <WorkingGroup item={item} live={workingNow && index === items.length - 1 && !streamingText.trim()} phase={turnPhase} toolLayout={toolLayout} />
             : item.kind === 'tools'
             ? <ToolBatch item={item} toolLayout={toolLayout} />
             : item.kind === 'thinking'

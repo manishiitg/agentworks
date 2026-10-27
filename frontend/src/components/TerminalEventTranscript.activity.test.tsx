@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PollingEvent } from '../services/api-types'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
+import { CleanConversationSurface } from './CleanConversationSurface'
 import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import type { ActiveSessionInfo } from '../services/api-types'
@@ -75,10 +76,51 @@ describe('activity belongs to the current agent turn', () => {
     const { host } = await mount({ events: [user, ...steps] })
     const groups = host.querySelectorAll('[data-testid="terminal-working-group"]')
     expect(groups).toHaveLength(1)
-    expect(groups[0].textContent).toContain('2 tool calls')
+    expect(groups[0].textContent).toContain('2 steps')
     expect(host.querySelector('[data-testid="terminal-clear-thinking-batch-toggle"]')).toBeNull()
     await act(async () => { groups[0].querySelector<HTMLButtonElement>('button')!.click() })
     expect(host.querySelectorAll('[data-testid="terminal-clear-thinking-batch-toggle"]')).toHaveLength(2)
+  })
+
+  // PLAT-746-158 A5: a last-position group was animated even in saved history,
+  // while a genuinely running command only said “now: 1 tool call”.
+  it('uses the server action while running and retains completed activity across the next turn', async () => {
+    const thinking = event('thinking', 'conversation_thinking', { thinking: 'Check the project.' })
+    const start = event('start', 'tool_call_start', { tool_call_id: 'test', tool_name: 'execute_shell_command' })
+    const phase = event('phase', 'turn_phase', { phase: 'running', text: 'Running tests', since: start.timestamp })
+    const end = { ...event('end', 'tool_call_end', { tool_call_id: 'test', tool_name: 'execute_shell_command', result: 'passed' }), timestamp: '2026-10-01T07:03:00Z' }
+    const finished = { ...completed, timestamp: '2026-10-01T07:03:05Z' }
+    const { host, render } = await mount({ events: [user, thinking, start, phase], runtimeActivity: running })
+    const group = () => host.querySelector('[data-testid="terminal-working-group"]')!
+    expect(group().textContent).toContain('Running tests')
+    expect(group().querySelector('span[aria-hidden="true"]')).not.toBeNull()
+    await render({ events: [user, thinking, start, phase, end, finished] })
+    expect(group().textContent).toContain('3m')
+    expect(group().textContent).not.toContain('Running tests')
+    expect(group().querySelector('span[aria-hidden="true"]')).toBeNull()
+    await render({ events: [user, thinking, start, phase, end, finished, { ...event('next', 'user_message', { content: 'Now inspect the report' }), timestamp: '2026-10-01T07:04:00Z' }], runtimeActivity: running })
+    expect(group().textContent).toContain('3m')
+    expect(group().querySelector('span[aria-hidden="true"]')).toBeNull()
+    await act(async () => group().querySelector<HTMLButtonElement>('button')!.click())
+    expect(group().querySelector('[data-testid="terminal-working-group-steps"]')).not.toBeNull()
+  })
+
+  it('mounts product activity details only when opened, while retaining every recorded call', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    const calls = Array.from({ length: 10 }, (_, index) => [
+      event(`start-${index}`, 'tool_call_start', { tool_call_id: `call-${index}`, tool_name: 'read_file', arguments: '{"path":"report.txt"}' }),
+      event(`end-${index}`, 'tool_call_end', { tool_call_id: `call-${index}`, tool_name: 'read_file', result: 'unchanged' }),
+    ]).flat()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    cleanups.push(() => { act(() => root.unmount()); host.remove() })
+    await act(async () => root.render(<CleanConversationSurface events={[user, ...calls, completed]} isStreaming={false} isRestoring={false} streamingText="" />))
+    const details = host.querySelector<HTMLDetailsElement>('[data-testid="clean-production-activity"]')!
+    expect(details.querySelectorAll('[data-status]')).toHaveLength(0)
+    await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')) })
+    expect(details.querySelectorAll('[data-status]')).toHaveLength(10)
+    await act(async () => { details.open = false; details.dispatchEvent(new Event('toggle')) })
+    expect(details.querySelectorAll('[data-status]')).toHaveLength(0)
   })
 
   it('renders one six-call group across duplicate native progress updates', async () => {

@@ -597,6 +597,20 @@ describe('buildProductionActivityTurns', () => {
     expect(turns[1].items).toHaveLength(1)
   })
 
+  // PLAT-746-158 A5: the eight-row cap and identical-input collapse erased
+  // real invocations from a turn's activity. Repeated work is still work.
+  it('retains ten identical invocations and their recorded duration after another turn', () => {
+    const calls = Array.from({ length: 10 }, (_, index) => [
+      event(`start-${index}`, 'tool_call_start', { tool_call_id: `call-${index}`, tool_name: 'read_file', arguments: '{"path":"report.txt"}' }),
+      event(`end-${index}`, 'tool_call_end', { tool_call_id: `call-${index}`, tool_name: 'read_file', result: 'unchanged' }, { timestamp: '2026-08-07T12:03:00.000Z' }),
+    ]).flat()
+    const first = buildProductionActivityTurns([event('user-1', 'user_message', { content: 'Read reports' }), ...calls])
+    const next = buildProductionActivityTurns([event('user-1', 'user_message', { content: 'Read reports' }), ...calls, event('user-2', 'user_message', { content: 'Continue' })])
+    expect(first[0].items).toHaveLength(10)
+    expect(first[0].durationMs).toBe(180_000)
+    expect(next[0]).toEqual(first[0])
+  })
+
   it('keeps auto-notification work in the turn that triggered it', () => {
     // Auto-notifications arrive as user_message events but nobody typed them,
     // so they must not split a turn -- doing so would strand the work under a

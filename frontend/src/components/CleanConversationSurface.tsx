@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { WorkingStatus } from './chat/WorkingStatus'
-import { currentTurnActivity, currentTurnPhase } from '../utils/turnStart'
+import { formatElapsed } from './chat/workingWords'
+import { currentTurnActivity, currentTurnPhase, type TurnPhase } from '../utils/turnStart'
 import { Activity, AlertCircle, Bell, Check, Loader2, Sparkles, Wrench } from 'lucide-react'
 import type { PollingEvent } from '../services/api-types'
 import { buildCleanConversationItems, buildProductionActivityTurns } from '../utils/cleanConversation'
-import type { ProductionActivityItem, ProductionActivityTurn } from '../utils/cleanConversation'
+import type { ProductionActivityTurn } from '../utils/cleanConversation'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { ConversationContinuityNotice } from './ConversationContinuityNotice'
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
@@ -81,19 +82,23 @@ function ProgressUpdate({ content, isStreaming }: { content: string; isStreaming
 // One turn's tool activity. Rendered per turn rather than once for the whole
 // conversation: the summary used to describe only the newest turn, so sending
 // a message erased the record of what had just been done on the user's behalf.
-function ProductionActivityDetails({ items }: { items: ProductionActivityItem[] }) {
+function ProductionActivityDetails({ turn, live = false, phase }: { turn: ProductionActivityTurn; live?: boolean; phase?: TurnPhase }) {
+  const { items, durationMs } = turn
+  const [open, setOpen] = useState(false)
   if (items.length === 0) return null
+  const completed = items.every(item => item.status !== 'running')
+  const label = live ? phase?.text || 'Working' : completed && durationMs ? `Worked for ${formatElapsed(durationMs)}` : 'Activity'
   return (
           // Plain text, no card: a bordered box per turn read as a UI element
           // competing with the conversation, for information nobody reads unless
           // they explicitly ask. Closed by default even while streaming — with a
           // workflow in flight this list can run to dozens of calls.
-          <details className="w-full" aria-label="Production activity" data-testid="clean-production-activity">
+          <details className="w-full" aria-label="Production activity" data-testid="clean-production-activity" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
             <summary className="flex cursor-pointer list-none items-center gap-1 select-none text-[11px] text-slate-500 hover:text-slate-300 [&::-webkit-details-marker]:hidden">
               <Wrench className="h-3 w-3" />
-              <span>+{items.length} {items.length === 1 ? 'tool' : 'tools'}</span>
+              <span>{label} · {items.length} {items.length === 1 ? 'step' : 'steps'}</span>
             </summary>
-            <div className="mt-1.5 space-y-1 pl-4 text-[11px] text-slate-500">
+            {open && <div className="mt-1.5 space-y-1 pl-4 text-[11px] text-slate-500">
               {items.map((activityItem) => (
                 <div key={activityItem.id} className="flex items-start gap-1.5" data-status={activityItem.status}>
                   <span className="mt-0.5 shrink-0">
@@ -111,7 +116,7 @@ function ProductionActivityDetails({ items }: { items: ProductionActivityItem[] 
                   </div>
                 </div>
               ))}
-            </div>
+            </div>}
           </details>
   )
 }
@@ -187,7 +192,7 @@ export function CleanConversationSurface({
       <div className="flex w-full flex-col gap-6">
         {rows.map(({ item, activityBefore }) => (
           <Fragment key={`row:${item.id}`}>
-            {activityBefore ? <ProductionActivityDetails items={activityBefore.items} /> : null}
+            {activityBefore ? <ProductionActivityDetails turn={activityBefore} /> : null}
             {item.role === 'continuity' ? (
           <ConversationContinuityNotice content={item.content} timestamp={messageTime(item.timestamp)} />
         ) : item.role === 'user' ? (
@@ -300,7 +305,7 @@ export function CleanConversationSurface({
           </Fragment>
         ))}
 
-        {trailingActivity ? <ProductionActivityDetails items={trailingActivity.items} /> : null}
+        {trailingActivity ? <ProductionActivityDetails turn={trailingActivity} live={isStreaming} phase={currentTurnPhase(events)} /> : null}
 
         {showWorkingIndicator && !streamingText.trim() ? (
           <div className="flex items-center gap-2 text-xs text-slate-400" data-testid="clean-working-indicator">

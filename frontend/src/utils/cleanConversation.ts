@@ -390,6 +390,7 @@ export type ProductionActivityTurn = {
    * render each turn's activity against its own message. */
   anchorId: string
   items: ProductionActivityItem[]
+  durationMs?: number
 }
 
 /** Activity grouped per turn, so sending a new message does not take the
@@ -399,18 +400,27 @@ export function buildProductionActivityTurns(events: PollingEvent[]): Production
   const starts = humanTurnStarts(events)
   if (starts.length === 0) {
     const items = productionActivityForTurn(events)
-    return items.length > 0 ? [{ anchorId: '', items }] : []
+    return items.length > 0 ? [productionActivityTurn('', items, events)] : []
   }
   const turns: ProductionActivityTurn[] = []
   // Work can precede the first human message on a restored conversation.
   const opening = productionActivityForTurn(events.slice(0, starts[0]))
-  if (opening.length > 0) turns.push({ anchorId: '', items: opening })
+  if (opening.length > 0) turns.push(productionActivityTurn('', opening, events.slice(0, starts[0])))
   starts.forEach((start, position) => {
     const end = position + 1 < starts.length ? starts[position + 1] : events.length
     const items = productionActivityForTurn(events.slice(start, end))
-    if (items.length > 0) turns.push({ anchorId: events[start].id, items })
+    if (items.length > 0) turns.push(productionActivityTurn(events[start].id, items, events.slice(start, end)))
   })
   return turns
+}
+
+function productionActivityTurn(anchorId: string, items: ProductionActivityItem[], events: PollingEvent[]): ProductionActivityTurn {
+  // Use recorded tool boundaries, never time spent between human messages or
+  // a wall clock for restored history. Overlapping calls are not double-counted.
+  const times = events.filter(event => ['tool_call_start', 'tool_call_end', 'tool_call_error'].includes(event.type || ''))
+    .map(event => Date.parse(event.timestamp || '')).filter(Number.isFinite)
+  const durationMs = times.length > 1 ? Math.max(...times) - Math.min(...times) : 0
+  return { anchorId, items, ...(durationMs > 0 ? { durationMs } : {}) }
 }
 
 /** Product-facing, observable work for the current turn. Raw terminal output,
@@ -445,8 +455,6 @@ function productionActivityForTurn(turnEvents: PollingEvent[]): ProductionActivi
       // Cursor emits redundant empty wrapper/provider lifecycle fragments. A
       // single latest status is enough when neither row contains inspectable
       // data.
-      items[existingIndex] = item
-    } else if (existing.arguments === item.arguments && existing.result === item.result) {
       items[existingIndex] = item
     } else {
       // Never let an output-only fragment replace a row with its input (or a
@@ -494,7 +502,7 @@ function productionActivityForTurn(turnEvents: PollingEvent[]): ProductionActivi
     }
   }
 
-  return items.slice(-8)
+  return items
 }
 
 export function cleanConversationActivity(events: PollingEvent[], fallback: string): string {
