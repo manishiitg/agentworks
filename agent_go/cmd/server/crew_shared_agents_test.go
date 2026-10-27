@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,8 +22,13 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
 	const callerRoot = "Crew/calling-team"
-	f.write(t, callerRoot+"/product.json", `{"schema_version":1,"product":"work","id":"calling","title":"Calling Team","session_id":"session-calling"}`)
-	f.write(t, callerRoot+"/workflow.json", `{"id":"calling","label":"Calling Team","created_by":"other"}`)
+	if err := os.MkdirAll(filepath.Join(f.docs, callerRoot), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// PLAT-856-383: platform records and transcripts live outside user files.
+	const callerState = "_system/crew-data/calling"
+	f.write(t, callerState+"/product.json", `{"schema_version":1,"product":"work","id":"calling","title":"Calling Team","session_id":"session-calling"}`)
+	f.write(t, callerState+"/workflow.json", `{"id":"calling","label":"Calling Team","created_by":"other"}`)
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "calling-team", ProjectID: "calling", OwnerID: "other", Shared: true, Private: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +113,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		t.Fatal("audience edit reset the continuously shared history")
 	}
 	transcript := fmt.Sprintf(`{"ui_events":[{"sequence":1,"timestamp":%q,"type":"user_message","data":{"data":{"content":"Private earlier context"}}},{"sequence":2,"timestamp":%q,"type":"user_message","data":{"data":{"content":"Shared owner context"}}},{"sequence":3,"timestamp":%q,"type":"user_message","data":{"data":{"content":"internal envelope","metadata":{"source":"agent_message","sender_label":"Colleague","display_content":"Please review this"}}}}]}`, since.Add(-time.Hour).Format(time.RFC3339Nano), since.Format(time.RFC3339Nano), since.Format(time.RFC3339Nano))
-	f.write(t, externalCommandCrewRoot+"/builder/conversation/2026-10-24/session-"+coach.SessionID+"-conversation.json", transcript)
+	f.write(t, externalCommandCrewState+"/builder/conversation/2026-10-24/session-"+coach.SessionID+"-conversation.json", transcript)
 	for _, web := range []bool{false, true} {
 		w := call("read_chat", map[string]any{"chat_id": coach.ConversationKey}, web)
 		if w.Code != 200 || strings.Contains(w.Body.String(), "Private earlier context") || !strings.Contains(w.Body.String(), "Shared owner context") || !strings.Contains(w.Body.String(), `"sender":"owner"`) || strings.Contains(w.Body.String(), `"role":"you"`) || !strings.Contains(w.Body.String(), `"sender":"Colleague"`) || strings.Contains(w.Body.String(), "internal envelope") {
@@ -268,7 +275,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if w := call("read_chat", map[string]any{"chat_id": coach.ConversationKey}, true); w.Code != 200 || strings.Contains(w.Body.String(), "Shared owner context") {
 		t.Fatalf("re-shared history: %d %s", w.Code, w.Body.String())
 	}
-	if got := f.read(t, externalCommandCrewRoot+"/builder/conversation/2026-10-24/session-"+coach.SessionID+"-conversation.json"); !strings.Contains(got, "Private earlier context") {
+	if got := f.read(t, externalCommandCrewState+"/builder/conversation/2026-10-24/session-"+coach.SessionID+"-conversation.json"); !strings.Contains(got, "Private earlier context") {
 		t.Fatal("sharing changed the original agent context")
 	}
 	// A saved dashboard URL does not retain access after its Crew becomes private.
