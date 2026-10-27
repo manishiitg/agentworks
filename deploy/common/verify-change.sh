@@ -129,7 +129,7 @@ if [[ "$go_needed" == true ]]; then
       run "macOS CLI build and vet ($arch)" env GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 bash -c 'go build -o /dev/null ./cmd/agentworks && go vet ./cmd/agentworks ./pkg/agentworksclient'
     done
   else
-    echo "macOS CLI skipped: only agent_go/cmd/server changed (the laptop CLI does not import it)."
+    echo "macOS CLI skipped: nothing outside agent_go/cmd/server changed (the laptop CLI does not import it)."
   fi
   while IFS= read -r file; do
     [[ -n "$file" ]] || continue
