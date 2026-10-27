@@ -99,6 +99,7 @@ install -m 0755 "$REPO_ROOT/scripts/migrations/agentbridge-receipts.py" "$BUILD_
 install -m 0755 "$REPO_ROOT/scripts/migrations/retire-agent-server-relay.py" "$BUILD_DIR/migrations/retire-agent-server-relay.py"
 install -m 0755 "$REPO_ROOT/scripts/migrations/fold-crew-role.py" "$BUILD_DIR/migrations/fold-crew-role.py"
 install -m 0755 "$REPO_ROOT/scripts/migrations/account-availability.py" "$BUILD_DIR/migrations/account-availability.py"
+install -m 0755 "$REPO_ROOT/scripts/migrations/vault-apps-setting.py" "$BUILD_DIR/migrations/vault-apps-setting.py"
 install -m 0755 "$REPO_ROOT/scripts/remove-autopilot-engine.py" "$BUILD_DIR/migrations/remove-autopilot-engine.py"
 install -m 0755 "$REPO_ROOT/scripts/simplify-workflow-settings.py" "$BUILD_DIR/migrations/simplify-workflow-settings.py"
 install -m 0755 "$REPO_ROOT/scripts/group-platform-tool-selections.py" "$BUILD_DIR/migrations/group-platform-tool-selections.py"
@@ -430,6 +431,8 @@ systemctl --user stop "$PRODUCT-agent"
 # Retire product-wide account grants before the new server reads its policy.
 # On failure, cleanup_build restarts the old agent (current has not moved).
 python3 "$BUILD_DIR/migrations/account-availability.py" --workspace-dir "$REMOTE_APP/data/docs" --env-file "$REMOTE_APP/.env" --backup-dir "$REMOTE_APP/state/migration-backups/account-audiences-$(date -u +%Y%m%dT%H%M%SZ)"
+# Replace the saved NO_SERVERS marker with "Use all my Vault apps automatically" (PLAT-856-394); runs once.
+python3 "$BUILD_DIR/migrations/vault-apps-setting.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/vault-apps-setting-$(date -u +%Y%m%dT%H%M%SZ)" --done-file "$REMOTE_APP/state/migrations/vault-apps-setting.done"
 python3 "$BUILD_DIR/migrations/agent-email-inboxes.py" \
   "$REMOTE_APP/state/gmail-inbound/email.db" --workspace-root "$REMOTE_APP/data/docs"
 python3 "$BUILD_DIR/migrations/crew-owner-tabs.py" --workspace-root "$REMOTE_APP/data/docs" --state-root "$REMOTE_APP/state"

@@ -37,8 +37,9 @@ setup the tools support; do not send users back to the button that opened chat.
 
 Use the product's advertised selection tool (`mcp action=select`
 for Crew, the settings/config tool for Goals and Flows). Select exact Vault IDs.
-No explicit picks means all currently permitted Vault accounts; an explicit
-NO_SERVERS selection means none. Removing a connection from a project only
+The setting "Use all my Vault apps automatically" (settings `use_all_vault_apps`)
+decides the rest: on means every currently permitted Vault account, off means
+only the Vault apps the project lists. Removing a connection from a project only
 changes selection. Removing it from Vault removes the account everywhere.
 Vault grants, tool permissions and argument conditions are checked at every call.
 

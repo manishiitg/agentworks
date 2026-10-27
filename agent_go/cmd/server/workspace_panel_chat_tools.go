@@ -206,7 +206,7 @@ func (api *StreamingAPI) refreshBoundWorkflowSettings(ctx context.Context, user,
 	if caps.LLMConfig != nil && caps.LLMConfig.UseKnowledgebase != nil {
 		useKB = *caps.LLMConfig.UseKnowledgebase
 	}
-	live.UpdatePresetSettings(caps.SelectedServers, caps.SelectedTools, true, caps.UseCodeExecutionMode, useKB, caps.SelectedSkills, true, entries)
+	live.UpdatePresetSettings(caps.RuntimeServers(), caps.SelectedTools, true, caps.UseCodeExecutionMode, useKB, caps.SelectedSkills, true, entries)
 	mode := strings.ToLower(strings.TrimSpace(caps.BrowserMode))
 	port := caps.BrowserCDPPort
 	live.UpdateBrowserRuntime(mode, configuredCDPPortsForMode(mode, &port, nil))

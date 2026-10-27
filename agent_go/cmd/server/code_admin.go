@@ -460,15 +460,9 @@ func (api *StreamingAPI) handleAdminCodeMCP(w http.ResponseWriter, r *http.Reque
 		writeAgentProfileError(w, 502, "Vault is unavailable")
 		return
 	}
-	selected, _ := projectSelectedServers(r.Context(), root)
-	picks := false
-	for _, n := range selected {
-		if strings.HasPrefix(n, "vault_") {
-			picks = true
-		}
-	}
+	selected, chosenOnly, _ := projectAppSelection(r.Context(), root)
 	for _, c := range inventory {
-		if containsExactString(selected, "NO_SERVERS") || picks && !containsExactString(selected, vaultServerName(c.ID)) {
+		if !projectVaultAppInUse(selected, chosenOnly, c.ID) {
 			continue
 		}
 		rows = append(rows, codeAdminPersonalServer{UserID: ownerID, Username: crewOwnerDisplayName(ownerID), Name: vaultServerName(c.ID), Connected: true, Transport: "http"})

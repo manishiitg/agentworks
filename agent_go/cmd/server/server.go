@@ -1262,7 +1262,7 @@ func applyMultiAgentCapabilitiesToRequest(req *QueryRequest, caps WorkflowCapabi
 		return
 	}
 
-	req.EnabledServers = append([]string(nil), caps.SelectedServers...)
+	req.EnabledServers = caps.RuntimeServers()
 	req.Servers = nil
 	req.SelectedTools = append([]string(nil), caps.SelectedTools...)
 	req.SelectedSkills = append([]string(nil), caps.SelectedSkills...)
@@ -4680,8 +4680,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 
 				// Manifest is the source of truth for servers and browser mode.
-				if len(manifest.Capabilities.SelectedServers) > 0 {
-					selectedServers = manifest.Capabilities.SelectedServers
+				if runtime := manifest.Capabilities.RuntimeServers(); len(runtime) > 0 {
+					selectedServers = runtime
 					serverList = strings.Join(selectedServers, ",")
 				}
 				if manifest.Capabilities.BrowserMode != "" {
@@ -4786,8 +4786,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				selectedSkills = caps.SelectedSkills
 				presetLLMConfig = lockedPresetLLMConfig(caps.LLMConfig)
 
-				if len(caps.SelectedServers) > 0 {
-					selectedServers = caps.SelectedServers
+				if runtime := caps.RuntimeServers(); len(runtime) > 0 {
+					selectedServers = runtime
 					serverList = strings.Join(selectedServers, ",")
 				}
 
@@ -12331,7 +12331,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 			log.Printf("[WORKSHOP] Loaded config from manifest at %s", workspacePath)
 
 			// Manifest is the source of truth for workflow-selected MCP servers.
-			cfg.SelectedServers = append([]string(nil), caps.SelectedServers...)
+			cfg.SelectedServers = caps.RuntimeServers()
 			cfg.SelectedTools = caps.SelectedTools
 			cfg.UseCodeExecutionMode = caps.UseCodeExecutionMode
 			cfg.SelectedSkills = caps.SelectedSkills

@@ -12,8 +12,6 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-
-	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // Personal Slack lives in the person's own vault (owner, 2026-10-21: one store, Vault only). One Slack account per
@@ -104,31 +102,49 @@ func ownVaultSlack(ctx context.Context, person string) (personalSlackConnection,
 	return found, ok, nil
 }
 
-// projectVaultServers is the project's selected servers, from its own manifest (a Crew's runtime manifest, a Goal's
-// workflow.json).
-func projectSelectedServers(ctx context.Context, workspace string) ([]string, error) {
+// projectAppSelection is the project's saved app list and its "chosen Vault apps only" setting, from its own manifest
+// (a Crew's runtime manifest, a Goal's workflow.json).
+func projectAppSelection(ctx context.Context, workspace string) ([]string, bool, error) {
 	if isProjectWorkspacePath(workspace) {
-		servers, _, err := productSelectedServers(ctx, "work", workspace)
-		return servers, err
+		return productAppSelection(ctx, "work", workspace)
 	}
 	manifest, exists, err := ReadWorkflowManifest(ctx, workspace)
 	if err != nil || !exists || manifest == nil {
-		return nil, errors.New("This item could not be read.")
+		return nil, false, errors.New("This item could not be read.")
 	}
-	return append([]string{}, manifest.Capabilities.SelectedServers...), nil
+	return savedAppSelection(manifest.Capabilities.SelectedServers), manifest.Capabilities.ChosenVaultAppsOnly, nil
 }
 
-// setProjectSelectedServers rewrites the project's selected servers through the same writers the app's panels use.
-func (api *StreamingAPI) setProjectSelectedServers(ctx context.Context, workspace string, mutate func([]string) []string) error {
+// projectSelectedServers is the project's app list as the agent runtime takes it (runtimeAppSelection).
+func projectSelectedServers(ctx context.Context, workspace string) ([]string, error) {
+	servers, chosenOnly, err := projectAppSelection(ctx, workspace)
+	if err != nil {
+		return nil, err
+	}
+	return runtimeAppSelection(servers, chosenOnly), nil
+}
+
+// projectVaultAppInUse reports whether a project uses one Vault app: all of them when "Use all my Vault apps
+// automatically" is on, else only the chosen ones.
+func projectVaultAppInUse(servers []string, chosenOnly bool, connectionID string) bool {
+	return !chosenOnly || containsExactString(servers, vaultServerName(connectionID))
+}
+
+// setProjectSelectedServers rewrites the project's saved app list through the same writers the app's panels use;
+// chosenOnly, when given, sets "Use all my Vault apps automatically" off (true) or on (false).
+func (api *StreamingAPI) setProjectSelectedServers(ctx context.Context, workspace string, mutate func([]string) []string, chosenOnly ...bool) error {
 	if isProjectWorkspacePath(workspace) {
-		return updateProductSelectedServers(ctx, "work", workspace, mutate)
+		return updateProductSelectedServers(ctx, "work", workspace, mutate, chosenOnly...)
 	}
 	manifest, exists, err := ReadWorkflowManifest(ctx, workspace)
 	if err != nil || !exists || manifest == nil {
 		return errors.New("This item could not be read.")
 	}
 	caps := manifest.Capabilities
-	caps.SelectedServers = mutate(append([]string{}, caps.SelectedServers...))
+	caps.SelectedServers = savedAppSelection(mutate(savedAppSelection(caps.SelectedServers)))
+	if len(chosenOnly) > 0 {
+		caps.ChosenVaultAppsOnly = chosenOnly[0]
+	}
 	body, _ := json.Marshal(UpdateWorkflowManifestRequest{WorkspacePath: workspace, Capabilities: &caps})
 	save := httptest.NewRequest(http.MethodPut, "/api/workflows/manifest", bytes.NewReader(body)).WithContext(ctx)
 	save.Header.Set("Content-Type", "application/json")
@@ -140,14 +156,14 @@ func (api *StreamingAPI) setProjectSelectedServers(ctx context.Context, workspac
 	return nil
 }
 
-// selectVaultServer adds or removes one Vault connection from the project. A project that picks no Vault connection uses
-// every one its owner may use; the first pick would silently drop all the others, so it keeps them picked alongside.
+// selectVaultServer adds or removes one Vault connection from the project. A project using all its owner's Vault apps
+// switches to chosen apps only with every app in use kept, so one change never silently drops the others.
 func (api *StreamingAPI) selectVaultServer(ctx context.Context, person, workspace, connectionID string, on bool) error {
 	if !placeMCPCanAttach(ctx, person, workspace) {
 		return errors.New("only a current Builder can change project connections")
 	}
 	name := vaultServerName(connectionID)
-	current, err := projectSelectedServers(ctx, workspace)
+	current, chosenOnly, err := projectAppSelection(ctx, workspace)
 	if err != nil {
 		return err
 	}
@@ -173,27 +189,22 @@ func (api *StreamingAPI) selectVaultServer(ctx context.Context, person, workspac
 	}
 	picked := []string{}
 	others := []string{}
-	none := false
 	for _, n := range current {
-		if n == mcpclient.NoServers {
-			none = true
-		} else if strings.HasPrefix(n, "vault_") {
+		if strings.HasPrefix(n, "vault_") {
 			picked = append(picked, n)
 		} else {
 			others = append(others, n)
 		}
 	}
-	if len(picked) == 0 && !none {
+	// Changing one Vault app by hand means chosen apps only, starting from every app in use now.
+	if !chosenOnly {
 		picked = available
 	}
 	picked = settingsWithout(picked, []string{name})
 	if on {
 		picked = settingsWith(picked, name)
 	}
-	if len(picked) == 0 {
-		picked = []string{mcpclient.NoServers}
-	}
-	return api.setProjectSelectedServers(ctx, workspace, func([]string) []string { return append(others, picked...) })
+	return api.setProjectSelectedServers(ctx, workspace, func([]string) []string { return append(others, picked...) }, true)
 
 }
 

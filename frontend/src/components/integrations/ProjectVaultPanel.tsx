@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { KeyRound, Laptop, Plug } from 'lucide-react'
-import { loadProjectVault, selectProjectVaultItem, type ProjectVaultInventory, type ProjectVaultItem, type VaultItemKind } from '../../api/projectVault'
+import { loadProjectVault, selectProjectVaultItem, setUseAllVaultApps, type ProjectVaultInventory, type ProjectVaultItem, type VaultItemKind } from '../../api/projectVault'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -52,17 +52,17 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
   }, [streaming, refresh])
   useLiveRefetch(() => { void refresh() }, { kinds: ['plan'], workflow: workspacePath, fallbackMs: 0, safetyMs: 0, minIntervalMs: 1000 })
 
-  const toggle = async (item: ProjectVaultItem) => {
-    if (!data || busy || disabled || !item.can_select) return
+  const toggle = async (item: ProjectVaultItem | 'all_vault_apps') => {
+    if (!data || busy || disabled || (item !== 'all_vault_apps' && !item.can_select)) return
     const identity = scope
     generation.current++; setBusy(true); setError('')
     try {
-      const inventory = await selectProjectVaultItem(workspacePath, item)
+      const inventory = item === 'all_vault_apps' ? await setUseAllVaultApps(workspacePath, !data.use_all_vault_apps) : await selectProjectVaultItem(workspacePath, item)
       if (identity === `${useWorkspaceConnectionStore.getState().activeWorkspaceId}:${useAuthStore.getState().user?.id}:${workspacePath}`) {
         generation.current++
         setResult({ scope, inventory })
         onSelectionSaved?.(inventory)
-        if (item.kind === 'computer') window.dispatchEvent(new Event('crew-laptop-settings-changed'))
+        if (item !== 'all_vault_apps' && item.kind === 'computer') window.dispatchEvent(new Event('crew-laptop-settings-changed'))
       }
     } catch (cause) {
       const response = (cause as { response?: { data?: { error?: string } } })?.response?.data
@@ -90,6 +90,10 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
     <p className="text-xs text-muted-foreground">{secretsOnly ? 'Choose the secrets this project can use. Their source is shown beside each name; saved values stay hidden.' : 'Tick what this project uses. Ask in chat to connect apps, add secrets or share an account.'}</p>
     {(error || setup.error) && <p role="alert" className="text-xs text-destructive">{error || setup.error}</p>}
     {!data && !error && <p role="status" className="text-muted-foreground">Loading integrations…</p>}
+    {data && !secretsOnly && <label className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
+      <Checkbox aria-label="Use all my Vault apps automatically" checked={data.use_all_vault_apps} disabled={disabled || busy} onCheckedChange={() => { void toggle('all_vault_apps') }} />
+      <span className="min-w-0 flex-1"><span className="block font-medium">Use all my Vault apps automatically</span><span className="block text-xs text-muted-foreground">{data.use_all_vault_apps ? 'This project can use every Vault app you can use. Untick an app below to choose them yourself.' : 'This project uses only the apps ticked below.'}</span></span>
+    </label>}
     {data?.notices.map(notice => <p key={notice} role="status" className="text-xs text-muted-foreground">{notice}</p>)}
     {groups?.length === 0 && <p className="py-4 text-muted-foreground">{secretsOnly ? 'No secrets are available to this project yet.' : 'No accounts or secrets yet. Ask this chat to connect your first app or share an account.'}</p>}
     {flat?<div className="divide-y divide-border rounded-lg border border-border" aria-label="Secret list">{flatRows?.map(({item,groupName})=>row(item,groupName))}</div>:groups?.map(vault => <details key={`${scope}:${vault.id}`} open className="overflow-hidden rounded-lg border border-border">

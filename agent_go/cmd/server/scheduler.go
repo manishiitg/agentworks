@@ -3392,7 +3392,7 @@ func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *Sched
 		"triggered_by":                scheduleSessionTrigger(sctx),
 		"triggered_by_label":          automationTriggerLabel(scheduleSessionTrigger(sctx), sctx.Schedule.Name),
 		"session_title":               sctx.Schedule.Name,
-		"servers":                     sctx.Capabilities.SelectedServers,
+		"servers":                     sctx.Capabilities.RuntimeServers(),
 		"selected_tools":              sctx.Capabilities.SelectedTools,
 		"selected_skills":             sctx.Capabilities.SelectedSkills,
 		"browser_mode":                sctx.Capabilities.BrowserMode,

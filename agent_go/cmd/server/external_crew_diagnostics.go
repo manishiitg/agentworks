@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
@@ -134,21 +133,11 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 		externalError(w, 502, "connections_unavailable", "Vault is unavailable.")
 		return
 	}
-	selected, _ := projectSelectedServers(r.Context(), root)
-	hasPicks := false
-	none := false
-	for _, pick := range selected {
-		if pick == "NO_SERVERS" {
-			none = true
-		}
-		if strings.HasPrefix(pick, "vault_") {
-			hasPicks = true
-		}
-	}
+	selected, chosenOnly, _ := projectAppSelection(r.Context(), root)
 	rows := []map[string]any{}
 	for _, server := range inventory {
 		exact := vaultServerName(server.ID)
-		if none || hasPicks && !containsExactString(selected, exact) || name != "" && name != exact {
+		if !projectVaultAppInUse(selected, chosenOnly, server.ID) || name != "" && name != exact {
 			continue
 		}
 		row := map[string]any{"name": exact, "label": server.Label, "catalog": server.Provider, "status": "connected", "active": true, "connected": true, "cached_tool_count": len(server.Tools)}

@@ -39,16 +39,10 @@ func (api *StreamingAPI) workspaceShareAccounts(ctx context.Context, target dash
 		}
 		accounts = append(accounts, runShareAccount{Kind: "Model", Name: name, Use: "Use consumes this account's provider quota and any API-key billing. Activity and costs are attributed to the person calling the project."})
 	}
-	selected, _ := projectSelectedServers(ctx, target.Root)
-	picks := false
-	for _, name := range selected {
-		if strings.HasPrefix(name, "vault_") {
-			picks = true
-		}
-	}
+	selected, chosenOnly, _ := projectAppSelection(ctx, target.Root)
 	if inventory, err := vaultServersFor(ctx, owner); err == nil {
 		for _, server := range inventory {
-			if containsExactString(selected, "NO_SERVERS") || picks && !containsExactString(selected, vaultServerName(server.ID)) {
+			if !projectVaultAppInUse(selected, chosenOnly, server.ID) {
 				continue
 			}
 			kind, use := "MCP app", "Available through this project under its existing Vault access rules."

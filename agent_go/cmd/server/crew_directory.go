@@ -383,7 +383,7 @@ func summarizeSharedProject(ctx context.Context, claims *UserClaims, ownerID, pr
 		FilesPath:       crewFilesPath(projectRoot),
 		CreatedAt:       strings.TrimSpace(manifest.CreatedAt),
 		UpdatedAt:       strings.TrimSpace(manifest.UpdatedAt),
-		SelectedServers: append([]string(nil), manifest.Capabilities.SelectedServers...),
+		SelectedServers: savedAppSelection(manifest.Capabilities.SelectedServers),
 		SelectedSkills:  append([]string(nil), manifest.Capabilities.SelectedSkills...),
 	}
 	row.SelectedSecrets = derefSharedProjectSelection(manifest.Capabilities.SelectedSecrets)

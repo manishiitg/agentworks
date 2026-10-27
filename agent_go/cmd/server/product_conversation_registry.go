@@ -1072,7 +1072,9 @@ type productProjectManifest struct {
 	Capabilities         struct {
 		LLMConfig       *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
 		SelectedServers []string                       `json:"selected_servers,omitempty"`
-		SelectedSkills  []string                       `json:"selected_skills,omitempty"`
+		// ChosenVaultAppsOnly is "Use all my Vault apps automatically" off (PLAT-856-394).
+		ChosenVaultAppsOnly bool     `json:"chosen_vault_apps_only,omitempty"`
+		SelectedSkills      []string `json:"selected_skills,omitempty"`
 		// Pointer preserves the contract's three relevant states when schedule
 		// updates rewrite the runtime manifest: missing (legacy, migrate once), empty
 		// (explicitly attach none), and populated.
@@ -1248,7 +1250,7 @@ func resolveProductProjectBindingInRoot(
 			Description:                 strings.TrimSpace(manifest.Description),
 			AuthoritativeSessionID:      strings.TrimSpace(manifest.SessionID),
 			ProjectLLMConfig:            manifest.Capabilities.LLMConfig,
-			ProjectSelectedServers:      append([]string(nil), manifest.Capabilities.SelectedServers...),
+			ProjectSelectedServers:      runtimeAppSelection(manifest.Capabilities.SelectedServers, manifest.Capabilities.ChosenVaultAppsOnly),
 			ProjectSelectedSkills:       append([]string(nil), manifest.Capabilities.SelectedSkills...),
 			ProjectWorkflowContextPaths: append([]string(nil), firstNonEmptyStrings(manifest.WorkflowContextPaths, manifest.Capabilities.WorkflowContextPaths)...),
 			// No user switch for a Crew or a Code (user, 2026-09-29): native

@@ -411,7 +411,7 @@ func (api *StreamingAPI) executeCrewSelectedMCP(ctx context.Context, root string
 		if err != nil {
 			return nil, err
 		}
-		resolved, err := api.resolveScopedGovernedMCP(callCtx, catalog, runtimeMCPServers(manifest.Capabilities.SelectedServers), manifest.Capabilities.SelectedTools, GetUserIDFromContext(callCtx), server, tool)
+		resolved, err := api.resolveScopedGovernedMCP(callCtx, catalog, runtimeMCPServers(manifest.Capabilities.RuntimeServers()), manifest.Capabilities.SelectedTools, GetUserIDFromContext(callCtx), server, tool)
 		if err != nil {
 			return nil, err
 		}

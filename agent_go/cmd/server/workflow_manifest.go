@@ -24,6 +24,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // Current manifest schema version. This is the JSON shape version.
@@ -267,7 +268,10 @@ type WorkflowPublishDestination struct {
 
 // WorkflowCapabilities stores workflow-wide agent and tool configuration.
 type WorkflowCapabilities struct {
-	SelectedServers           []string                       `json:"selected_servers"`
+	SelectedServers []string `json:"selected_servers"`
+	// ChosenVaultAppsOnly is "Use all my Vault apps automatically" switched off: only the Vault apps in SelectedServers
+	// are used. Off (the default) means every Vault app the person may use (owner decision 2026-10-27, PLAT-856-394).
+	ChosenVaultAppsOnly       bool                           `json:"chosen_vault_apps_only,omitempty"`
 	SelectedTools             []string                       `json:"selected_tools"`
 	SelectedSkills            []string                       `json:"selected_skills"`
 	SelectedSecrets           []string                       `json:"selected_secrets"`
@@ -1619,4 +1623,39 @@ func keepUnmodelledManifestFields(previous, written []byte) []byte {
 		return written
 	}
 	return merged
+}
+
+// RuntimeServers is the app list the agent runtime takes for these capabilities (see runtimeAppSelection).
+func (c WorkflowCapabilities) RuntimeServers() []string {
+	return runtimeAppSelection(c.SelectedServers, c.ChosenVaultAppsOnly)
+}
+
+// runtimeAppSelection turns a saved app list and its "Use all my Vault apps automatically" setting into the agent
+// runtime's list. With every Vault app on, hand-picked Vault apps are dropped because the runtime adds them all; with
+// chosen apps only, the agent library's internal no-automatic-apps sentinel is added. People and saved settings never
+// carry the sentinel.
+func runtimeAppSelection(servers []string, chosenOnly bool) []string {
+	out := []string{}
+	for _, name := range servers {
+		name = strings.TrimSpace(name)
+		if name == "" || name == mcpclient.NoServers || (!chosenOnly && strings.HasPrefix(name, "vault_")) {
+			continue
+		}
+		out = append(out, name)
+	}
+	if chosenOnly {
+		out = append(out, mcpclient.NoServers)
+	}
+	return out
+}
+
+// savedAppSelection removes the runtime sentinel from a list about to be saved.
+func savedAppSelection(servers []string) []string {
+	out := []string{}
+	for _, name := range servers {
+		if name = strings.TrimSpace(name); name != "" && name != mcpclient.NoServers {
+			out = append(out, name)
+		}
+	}
+	return out
 }

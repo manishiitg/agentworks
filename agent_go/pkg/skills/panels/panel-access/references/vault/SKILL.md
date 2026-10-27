@@ -35,8 +35,8 @@ kind, item_id and selected from the snapshot. It uses the same settings and
 account services as the panel. For external MCP, settings updates the project
 selection, integrations attach or detach the saved account, and
 terminal selects or removes its computer. mcp_servers.replace is an
-exact selection; NO_SERVERS explicitly turns off automatic Vault app selection
-for this project. It never disconnects or deletes an account.
+exact selection; `use_all_vault_apps` false uses only the Vault apps listed there,
+true uses every permitted Vault app. It never disconnects or deletes an account.
 
 Account setup and sharing requests stay in this visible chat. Use vault list/apps,
 create, connect, sign_in, sync, set_secret/remove_secret, member/owner operations

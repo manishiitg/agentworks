@@ -247,7 +247,7 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 						workshopSession.UpdateEnabledGroupNames(ctx, nil)
 					}
 					caps := refreshManifest.Capabilities
-					selectedServers = caps.SelectedServers
+					selectedServers = caps.RuntimeServers()
 					configuredBrowserMode := strings.ToLower(strings.TrimSpace(caps.BrowserMode))
 					configuredBrowserPorts := configuredCDPPortsForMode(configuredBrowserMode, nil, nil)
 					workshopSession.UpdateBrowserRuntime(configuredBrowserMode, configuredBrowserPorts)

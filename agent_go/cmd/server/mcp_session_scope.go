@@ -50,5 +50,5 @@ func (api *StreamingAPI) resolveWorkshopMCPServer(ctx context.Context, sessionID
 	if err != nil {
 		return nil, fmt.Errorf("load current MCP configuration: %w", err)
 	}
-	return api.resolveScopedGovernedMCP(ctx, catalog, runtimeMCPServers(manifest.Capabilities.SelectedServers), manifest.Capabilities.SelectedTools, userID, server, tool)
+	return api.resolveScopedGovernedMCP(ctx, catalog, runtimeMCPServers(manifest.Capabilities.RuntimeServers()), manifest.Capabilities.SelectedTools, userID, server, tool)
 }

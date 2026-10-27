@@ -72,7 +72,7 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 		if e != nil || !found || manifest == nil {
 			return nil, fmt.Errorf("project MCP selection unavailable")
 		}
-		return api.resolveScopedGovernedMCP(ctx, nil, manifest.Capabilities.SelectedServers, manifest.Capabilities.SelectedTools, lender, server, tool)
+		return api.resolveScopedGovernedMCP(ctx, nil, manifest.Capabilities.RuntimeServers(), manifest.Capabilities.SelectedTools, lender, server, tool)
 	}
 	return api.resolveGovernedMCP(ctx, lender, server)
 }
@@ -97,7 +97,7 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 	if err != nil {
 		return nil, true, fmt.Errorf("load current MCP configuration: %w", err)
 	}
-	resolved, err := api.resolveScopedGovernedMCP(ctx, catalog, runtimeMCPServers(manifest.Capabilities.SelectedServers), manifest.Capabilities.SelectedTools, pin.Person, server, tool)
+	resolved, err := api.resolveScopedGovernedMCP(ctx, catalog, runtimeMCPServers(manifest.Capabilities.RuntimeServers()), manifest.Capabilities.SelectedTools, pin.Person, server, tool)
 	return resolved, true, err
 }
 

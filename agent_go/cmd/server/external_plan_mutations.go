@@ -192,7 +192,7 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 	}
 	operationID := uuid.NewString()
 	ctx = stepworkflow.WithExternalBuilderPlanOrigin(ctx, operationID, live.AccessToken.ID, live.UserID, live.Username, "")
-	ctx = stepworkflow.WithExternalPlanSelectedServers(ctx, current.Capabilities.SelectedServers)
+	ctx = stepworkflow.WithExternalPlanSelectedServers(ctx, current.Capabilities.RuntimeServers())
 	var preparationError error
 	relative := func(p string, write bool) (string, error) {
 		p = filepath.ToSlash(filepath.Clean(p))

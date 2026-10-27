@@ -12,10 +12,18 @@ export interface ProjectVaultGroup {
 export interface ProjectVaultInventory {
   vaults: ProjectVaultGroup[]; notices: string[]
   selected_servers: string[]; selected_secrets: string[]; selected_global_secret_names: string[]
+  /** "Use all my Vault apps automatically": on = every permitted Vault app, off = only the chosen ones. */
+  use_all_vault_apps: boolean
 }
 
 export async function loadProjectVault(workspacePath: string): Promise<ProjectVaultInventory> {
   return JSON.parse(await agentApi.myVaultsOp({ operation: 'project', workspace_path: workspacePath })) as ProjectVaultInventory
+}
+
+/** Turns "Use all my Vault apps automatically" on or off for the project; the server decides and saves it. */
+export async function setUseAllVaultApps(workspacePath: string, on: boolean): Promise<ProjectVaultInventory> {
+  return JSON.parse(await agentApi.myVaultsOp({ operation: 'project_select', workspace_path: workspacePath,
+    kind: 'all_vault_apps', item_id: '', selected: on })) as ProjectVaultInventory
 }
 
 /** The server edits one item through the existing native settings services. */

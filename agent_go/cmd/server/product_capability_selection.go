@@ -362,31 +362,48 @@ func updateProductSelectedSkills(ctx context.Context, profileID, workspacePath s
 	return writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n")
 }
 
-// productSelectedServers reads capabilities.selected_servers from the
-// product's canonical runtime manifest. Work project MCP selection is durable
-// project state, distinct from the platform-wide connection overlay.
+// productSelectedServers is a Crew's app selection as the agent runtime takes it (runtimeAppSelection); initialized
+// reports whether the Crew has saved one yet.
 func productSelectedServers(ctx context.Context, profileID, workspacePath string) ([]string, bool, error) {
+	names, chosenOnly, initialized, err := productAppSelectionRecord(ctx, profileID, workspacePath)
+	if err != nil || !initialized {
+		return nil, initialized, err
+	}
+	return runtimeAppSelection(names, chosenOnly), true, nil
+}
+
+// productAppSelection is a Crew's saved app list and its "chosen Vault apps only" setting.
+func productAppSelection(ctx context.Context, profileID, workspacePath string) ([]string, bool, error) {
+	names, chosenOnly, _, err := productAppSelectionRecord(ctx, profileID, workspacePath)
+	return names, chosenOnly, err
+}
+
+// productAppSelectionRecord reads capabilities.selected_servers and chosen_vault_apps_only from the product's
+// canonical runtime manifest. Work project MCP selection is durable project state, distinct from the platform-wide
+// connection overlay.
+func productAppSelectionRecord(ctx context.Context, profileID, workspacePath string) ([]string, bool, bool, error) {
 	raw, found, err := readProjectRuntimeManifest(ctx, profileID, workspacePath)
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 	if !found {
 		// See the matching comment in productSelectedSecrets: no manifest yet
 		// means "never initialized", not an error.
-		return nil, false, nil
+		return nil, false, false, nil
 	}
 	var manifest map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return nil, false, fmt.Errorf("decode product manifest: %w", err)
+		return nil, false, false, fmt.Errorf("decode product manifest: %w", err)
 	}
 	capabilities, _ := manifest["capabilities"].(map[string]interface{})
+	chosenOnly, _ := capabilities["chosen_vault_apps_only"].(bool)
 	value, initialized := capabilities["selected_servers"]
 	if !initialized {
-		return nil, false, nil
+		return nil, chosenOnly, false, nil
 	}
 	items, ok := value.([]interface{})
 	if !ok {
-		return nil, true, fmt.Errorf("product capabilities.selected_servers must be an array")
+		return nil, chosenOnly, true, fmt.Errorf("product capabilities.selected_servers must be an array")
 	}
 	names := make([]string, 0, len(items))
 	for _, item := range items {
@@ -395,10 +412,12 @@ func productSelectedServers(ctx context.Context, profileID, workspacePath string
 		}
 	}
 	sort.Strings(names)
-	return names, true, nil
+	return savedAppSelection(names), chosenOnly, true, nil
 }
 
-func updateProductSelectedServers(ctx context.Context, profileID, workspacePath string, mutate func([]string) []string) error {
+// updateProductSelectedServers saves a Crew's app list; chosenOnly, when given, sets "Use all my Vault apps
+// automatically" off (true) or on (false).
+func updateProductSelectedServers(ctx context.Context, profileID, workspacePath string, mutate func([]string) []string, chosenOnly ...bool) error {
 	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, profileID, workspacePath)
 	if err != nil {
 		return err
@@ -419,13 +438,20 @@ func updateProductSelectedServers(ctx context.Context, profileID, workspacePath 
 			}
 		}
 	}
-	next := mutate(current)
+	next := savedAppSelection(mutate(savedAppSelection(current)))
 	canonical := make([]string, 0, len(next))
 	for _, name := range next {
 		canonical = appendUniqueStrings(canonical, strings.TrimSpace(name))
 	}
 	sort.Strings(canonical)
 	capabilities["selected_servers"] = canonical
+	if len(chosenOnly) > 0 {
+		if chosenOnly[0] {
+			capabilities["chosen_vault_apps_only"] = true
+		} else {
+			delete(capabilities, "chosen_vault_apps_only")
+		}
+	}
 	manifest["capabilities"] = capabilities
 	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 	encoded, err := json.MarshalIndent(manifest, "", "  ")

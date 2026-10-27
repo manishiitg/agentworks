@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
@@ -50,12 +49,13 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 	add("get_secret_sources", "Explain this product's saved secret choices by name: its own copy, the company Vault copy and which takes priority. Values, token validity and account identities are not checked. Does not change selections or stored copies. Pass workflow_id or crew_id.", false, false, sourceTarget)
 	props := target()
 	for key, value := range map[string]any{
-		"chat_instructions": map[string]any{"type": "string", "maxLength": workflowtypes.ChatInstructionsLimit, "description": "Optional short instructions for the app chat: behavior, tone and what to do first. Visible to people who can use the app; no secrets. Empty clears. Owner only; never grants tools or permissions."},
-		"expected_version":  externalString("Version from settings action=get; the update is refused if the settings changed since."),
-		"models":            map[string]any{"type": "object", "description": "The models object from get_settings with your changes. Replaces it whole; every account (connection_id) must be one you may use."},
-		"mcp_servers":       map[string]any{"type": "object", "additionalProperties": false, "description": "Attach/detach MCP servers, or replace the complete selection. NO_SERVERS explicitly turns off automatic Vault connections.", "properties": map[string]any{"add": names, "remove": names, "replace": names}},
-		"tools":             addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),
-		"skills":            addRemove("Installed or built-in skills to use or stop using."),
+		"chat_instructions":  map[string]any{"type": "string", "maxLength": workflowtypes.ChatInstructionsLimit, "description": "Optional short instructions for the app chat: behavior, tone and what to do first. Visible to people who can use the app; no secrets. Empty clears. Owner only; never grants tools or permissions."},
+		"expected_version":   externalString("Version from settings action=get; the update is refused if the settings changed since."),
+		"models":             map[string]any{"type": "object", "description": "The models object from get_settings with your changes. Replaces it whole; every account (connection_id) must be one you may use."},
+		"mcp_servers":        map[string]any{"type": "object", "additionalProperties": false, "description": "Attach/detach apps (MCP servers and Vault apps), or replace the complete selection.", "properties": map[string]any{"add": names, "remove": names, "replace": names}},
+		"use_all_vault_apps": map[string]any{"type": "boolean", "description": "Use all my Vault apps automatically. On: every Vault app the owner may use is available. Off: only the Vault apps listed in mcp_servers."},
+		"tools":              addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),
+		"skills":             addRemove("Installed or built-in skills to use or stop using."),
 		"secrets": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 			"set":         map[string]any{"type": "object", "maxProperties": 20, "additionalProperties": map[string]any{"type": "string", "minLength": 1, "maxLength": 65536}, "description": "NAME: value. Stores the value (write-only, owner only) and selects the secret. To add it to Vault for other projects, then call manage_vault_secret_access operation=share (a Vault administrator)."},
 			"remove":      names,
@@ -95,12 +95,14 @@ type externalSettingsState struct {
 	ChatInstructions string                         `json:"chat_instructions,omitempty"`
 	LLMConfig        *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
 	Servers          []string                       `json:"selected_servers,omitempty"`
-	Tools            []string                       `json:"selected_tools,omitempty"`
-	Skills           []string                       `json:"selected_skills,omitempty"`
-	Secrets          []string                       `json:"selected_secrets,omitempty"`
-	GlobalSecrets    *[]string                      `json:"selected_global_secret_names,omitempty"`
-	BrowserMode      string                         `json:"browser_mode,omitempty"`
-	BrowserCDPPort   int                            `json:"browser_cdp_port,omitempty"`
+	// ChosenVaultAppsOnly is "Use all my Vault apps automatically" off (PLAT-856-394).
+	ChosenVaultAppsOnly bool      `json:"chosen_vault_apps_only,omitempty"`
+	Tools               []string  `json:"selected_tools,omitempty"`
+	Skills              []string  `json:"selected_skills,omitempty"`
+	Secrets             []string  `json:"selected_secrets,omitempty"`
+	GlobalSecrets       *[]string `json:"selected_global_secret_names,omitempty"`
+	BrowserMode         string    `json:"browser_mode,omitempty"`
+	BrowserCDPPort      int       `json:"browser_cdp_port,omitempty"`
 }
 
 func (s externalSettingsState) version() string {
@@ -140,7 +142,7 @@ func (api *StreamingAPI) externalSettingsView(ctx context.Context, userID string
 	}
 	view := map[string]any{
 		"kind": t.kind, "version": s.version(), "my_access": t.access, "chat_instructions": s.ChatInstructions,
-		"models": s.LLMConfig, "mcp_servers": nonNilStrings(s.Servers), "tools": nonNilStrings(s.Tools),
+		"models": s.LLMConfig, "mcp_servers": nonNilStrings(savedAppSelection(s.Servers)), "use_all_vault_apps": !s.ChosenVaultAppsOnly, "tools": nonNilStrings(s.Tools),
 		"skills": nonNilStrings(s.Skills),
 		"secrets": map[string]any{"stored": stored, "shared_selected": shared, "shared_available": available,
 			"note": "Values are never returned. Only owners may set or remove values."},
@@ -252,7 +254,7 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 		names := externalSettingsList(args, "mcp_servers", "replace")
 		next := []string{}
 		for _, name := range names {
-			if name == "NO_SERVERS" || slices.Contains(s.Servers, name) {
+			if slices.Contains(s.Servers, name) {
 				next = settingsWith(next, name)
 				continue
 			}
@@ -279,9 +281,6 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 			}
 			next = settingsWith(next, canonical...)
 			pending = append(pending, waiting...)
-		}
-		if len(next) == 0 {
-			next = []string{"NO_SERVERS"}
 		}
 		s.Servers = next
 		s.Tools = slices.DeleteFunc(s.Tools, func(tool string) bool {
@@ -317,16 +316,11 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 		s.Tools = kept
 		changed = settingsWith(changed, "mcp_servers")
 	}
-	if slices.Contains(changed, "mcp_servers") {
-		// NO_SERVERS means no MCP or Vault server (it also turns off automatic Vault apps), so attaching
-		// a real server drops it and detaching the last one restores it. Built-in tool categories are
-		// not servers and sit next to the marker.
-		if slices.ContainsFunc(s.Servers, func(name string) bool { return name != "NO_SERVERS" && !common.IsBuiltinToolCategory(name) }) {
-			s.Servers = slices.DeleteFunc(s.Servers, func(name string) bool { return name == "NO_SERVERS" })
-		} else if len(s.Servers) == 0 {
-			s.Servers = []string{"NO_SERVERS"}
-		}
+	if all, ok := args["use_all_vault_apps"].(bool); ok {
+		s.ChosenVaultAppsOnly = !all
+		changed = settingsWith(changed, "mcp_servers")
 	}
+	s.Servers = savedAppSelection(s.Servers)
 	if adds := externalSettingsList(args, "tools", "add"); len(adds) > 0 {
 		for _, tool := range adds {
 			server, toolName, ok := strings.Cut(tool, ":")
@@ -492,7 +486,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		target.kind = "relay"
 	}
 	caps := manifest.Capabilities
-	state := externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: append([]string{}, caps.SelectedServers...),
+	state := externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: savedAppSelection(caps.SelectedServers), ChosenVaultAppsOnly: caps.ChosenVaultAppsOnly,
 		Tools: append([]string{}, caps.SelectedTools...), Skills: append([]string{}, caps.SelectedSkills...),
 		Secrets: append([]string{}, caps.SelectedSecrets...), GlobalSecrets: caps.SelectedGlobalSecretNames, BrowserMode: caps.BrowserMode, BrowserCDPPort: caps.BrowserCDPPort}
 	notifications := func(c WorkflowCapabilities) map[string]any {
@@ -528,7 +522,8 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		externalError(w, failure.status, failure.code, failure.message)
 		return
 	}
-	caps.LLMConfig, caps.SelectedServers, caps.SelectedTools, caps.SelectedSkills = state.LLMConfig, state.Servers, state.Tools, state.Skills
+	caps.LLMConfig, caps.SelectedServers, caps.SelectedTools, caps.SelectedSkills = state.LLMConfig, savedAppSelection(state.Servers), state.Tools, state.Skills
+	caps.ChosenVaultAppsOnly = state.ChosenVaultAppsOnly
 	caps.SelectedSecrets, caps.SelectedGlobalSecretNames, caps.BrowserMode = state.Secrets, state.GlobalSecrets, state.BrowserMode
 	caps.BrowserCDPPort = state.BrowserCDPPort
 	req := UpdateWorkflowManifestRequest{WorkspacePath: workflow.WorkspacePath, Capabilities: &caps}
@@ -619,7 +614,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		caps = updated.Capabilities
 		manifest = updated
 	}
-	view := api.externalSettingsView(ctx, claims.UserID, target, externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: caps.SelectedServers,
+	view := api.externalSettingsView(ctx, claims.UserID, target, externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: savedAppSelection(caps.SelectedServers), ChosenVaultAppsOnly: caps.ChosenVaultAppsOnly,
 		Tools: caps.SelectedTools, Skills: caps.SelectedSkills, Secrets: caps.SelectedSecrets, GlobalSecrets: caps.SelectedGlobalSecretNames,
 		BrowserMode: caps.BrowserMode, BrowserCDPPort: caps.BrowserCDPPort}, notifications(caps))
 	addWorkflowSettingsView(view, manifest)
@@ -754,7 +749,12 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		case "models":
 			capabilities["llm_config"] = state.LLMConfig
 		case "mcp_servers", "tools":
-			capabilities["selected_servers"], capabilities["selected_tools"] = nonNilStrings(state.Servers), nonNilStrings(state.Tools)
+			capabilities["selected_servers"], capabilities["selected_tools"] = nonNilStrings(savedAppSelection(state.Servers)), nonNilStrings(state.Tools)
+			if state.ChosenVaultAppsOnly {
+				capabilities["chosen_vault_apps_only"] = true
+			} else {
+				delete(capabilities, "chosen_vault_apps_only")
+			}
 		case "skills":
 			capabilities["selected_skills"] = nonNilStrings(state.Skills)
 		case "secrets":

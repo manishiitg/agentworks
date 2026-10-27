@@ -35,6 +35,21 @@ func (api *StreamingAPI) selectProjectVaultItem(ctx context.Context, person, wor
 	if err != nil {
 		return before, err
 	}
+	// "Use all my Vault apps automatically" (PLAT-856-394): one project switch, the same Builder check as one app.
+	if kind == "all_vault_apps" {
+		if before.UseAllVaultApps == selected {
+			return before, nil
+		}
+		r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+		scope, err := personalConnectionItemScope(r, workspace, true, "Vault", "Vault")
+		if err != nil {
+			return before, err
+		}
+		if err := api.setProjectSelectedServers(ctx, scope.Workspace, func(current []string) []string { return current }, !selected); err != nil {
+			return before, err
+		}
+		return api.projectVaultInventory(ctx, person, workspace)
+	}
 	var item *projectVaultItem
 	for _, group := range before.Vaults {
 		for _, row := range group.Items {
@@ -136,12 +151,14 @@ type projectVaultGroup struct {
 }
 
 type projectVaultInventory struct {
-	Vaults   []projectVaultGroup `json:"vaults"`
-	Notices  []string            `json:"notices"`
-	Servers  []string            `json:"selected_servers"`
-	Secrets  []string            `json:"selected_secrets"`
-	Shared   []string            `json:"selected_global_secret_names"`
-	Computer crewLaptopSettings  `json:"-"`
+	Vaults  []projectVaultGroup `json:"vaults"`
+	Notices []string            `json:"notices"`
+	Servers []string            `json:"selected_servers"`
+	// UseAllVaultApps is "Use all my Vault apps automatically" (PLAT-856-394).
+	UseAllVaultApps bool               `json:"use_all_vault_apps"`
+	Secrets         []string           `json:"selected_secrets"`
+	Shared          []string           `json:"selected_global_secret_names"`
+	Computer        crewLaptopSettings `json:"-"`
 }
 
 func vaultSharingLabel(count int) string {
@@ -176,19 +193,15 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 		return out, errors.New("Project selections could not be read")
 	}
 	caps := saved.Capabilities
-	out.Servers = append([]string{}, caps.SelectedServers...)
+	out.Servers = savedAppSelection(caps.SelectedServers)
+	out.UseAllVaultApps = !caps.ChosenVaultAppsOnly
 	out.Secrets = append([]string{}, caps.SelectedSecrets...)
 	out.Shared = []string{}
 	if caps.SelectedGlobalSecretNames != nil {
 		out.Shared = append(out.Shared, (*caps.SelectedGlobalSecretNames)...)
 	}
-	// Empty Vault picks have the runtime's existing all-connections meaning;
-	// NO_SERVERS is the explicit empty selection. Report actual use, not ticks
-	// inferred from only the explicit names.
-	picks, none := false, slices.Contains(out.Servers, "NO_SERVERS")
-	for _, name := range out.Servers {
-		picks = picks || strings.HasPrefix(name, "vault_")
-	}
+	// With every Vault app on, each app the owner may use is in use; otherwise only the chosen ones. Report actual use.
+	chosenOnly := caps.ChosenVaultAppsOnly
 	lender := api.projectSecretsOwner(person, root)
 	lenderAccess, lenderErr := vaultAccessFor(ctx, lender)
 	available := map[string]bool{}
@@ -196,7 +209,7 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 		available[row.ID] = true
 	}
 	serverUsed := func(id string) bool {
-		return slices.Contains(out.Servers, vaultServerName(id)) || available[id] && !picks && !none
+		return slices.Contains(out.Servers, vaultServerName(id)) || available[id] && !chosenOnly
 	}
 	if lenderErr != nil {
 		out.Notices = append(out.Notices, "Project app access could not be checked.")

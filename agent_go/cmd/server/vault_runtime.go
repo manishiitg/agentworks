@@ -283,7 +283,7 @@ func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Req
 	seen := map[string]bool{}
 	picks := map[string]bool{}
 	if root != "" {
-		if selected, e := projectSelectedServers(r.Context(), root); e == nil {
+		if selected, _, e := projectAppSelection(r.Context(), root); e == nil {
 			for _, name := range selected {
 				picks[name] = true
 			}
@@ -375,25 +375,12 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 	}
 	if in.Session != "" {
 		if root := api.placeRootForSession(in.Session); root != "" {
-			selected, err := projectSelectedServers(r.Context(), root)
+			selected, chosenOnly, err := projectAppSelection(r.Context(), root)
 			if err != nil {
 				http.Error(w, "project connection selection unavailable", 403)
 				return
 			}
-			picked, allowed := false, false
-			for _, name := range selected {
-				if name == mcpclient.NoServers {
-					http.Error(w, "no MCP connections selected for this project", 403)
-					return
-				}
-				if strings.HasPrefix(name, "vault_") {
-					picked = true
-					if name == vaultServerName(in.Connector) {
-						allowed = true
-					}
-				}
-			}
-			if picked && !allowed {
+			if !projectVaultAppInUse(selected, chosenOnly, in.Connector) {
 				http.Error(w, "this Vault connection is not selected for the project", 403)
 				return
 			}

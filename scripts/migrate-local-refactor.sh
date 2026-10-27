@@ -22,6 +22,7 @@ export AGENTWORKS_DEPLOYMENT_MODE=local MULTI_USER_MODE=false DEFAULT_USER_ID="$
 migration_backup="$migration_state/migration-backups/local-refactor-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$migration_backup"
 python3 "$migration_repo/scripts/migrations/account-availability.py" --workspace-dir "$migration_docs" --env-file "${AGENTWORKS_ENV_FILE:-$migration_repo/agent_go/.env}" --backup-dir "$migration_backup/account-audiences"
+python3 "$migration_repo/scripts/migrations/vault-apps-setting.py" --workspace-dir "$migration_docs" --backup-dir "$migration_backup/vault-apps-setting" --done-file "$migration_state/migrations/vault-apps-setting.done"
 python3 "$migration_repo/scripts/migrations/agent-email-inboxes.py" "$migration_state/gmail-inbound/email.db" --workspace-root "$migration_docs"
 python3 "$migration_repo/scripts/migrations/crew-owner-tabs.py" --workspace-root "$migration_docs" --state-root "$migration_state"
 python3 "$migration_repo/scripts/migrations/agentbridge-receipts.py" "$migration_docs/_system/agent_messages/conversations.json"

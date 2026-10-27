@@ -105,7 +105,7 @@ func reportRunSelectionFor(ctx context.Context, workspacePath string) (reportRun
 		return reportRunSelection{}, fmt.Errorf("workflow.json is missing or unreadable")
 	}
 	caps := manifest.Capabilities
-	return reportRunSelection{servers: caps.SelectedServers, tools: caps.SelectedTools, secrets: caps.SelectedSecrets, globalSecrets: caps.SelectedGlobalSecretNames, variables: true}, nil
+	return reportRunSelection{servers: caps.RuntimeServers(), tools: caps.SelectedTools, secrets: caps.SelectedSecrets, globalSecrets: caps.SelectedGlobalSecretNames, variables: true}, nil
 }
 
 // reportRunScriptPath accepts only a script in the workflow's code/ folder.

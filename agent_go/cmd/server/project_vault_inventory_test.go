@@ -118,9 +118,16 @@ func TestProjectVaultSelectionsUseCanonicalCrewSettings(t *testing.T) {
 	if _, err := f.api.myVaultsOperation(ctx, "other", args); err != nil {
 		t.Fatal(err)
 	}
-	saved, err := projectSelectedServers(ctx, externalCommandCrewRoot)
-	if err != nil || !slices.Equal(saved, []string{"NO_SERVERS"}) {
-		t.Fatalf("last untick became implicit all: %v, %v", saved, err)
+	// Unticking the last app means chosen apps only with none chosen, never back to every Vault app (PLAT-856-394).
+	saved, chosenOnly, err := projectAppSelection(ctx, externalCommandCrewRoot)
+	if err != nil || len(saved) != 0 || !chosenOnly {
+		t.Fatalf("last untick became implicit all: %v, %v, %v", saved, chosenOnly, err)
+	}
+	if _, err := f.api.myVaultsOperation(ctx, "other", map[string]any{"operation": "project_select", "workspace_path": externalCommandCrewRoot, "kind": "all_vault_apps", "item_id": "", "selected": true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, chosenOnly, _ = projectAppSelection(ctx, externalCommandCrewRoot); chosenOnly {
+		t.Fatal("Use all my Vault apps automatically did not switch back on")
 	}
 	args["selected"] = true
 	if _, err := f.api.myVaultsOperation(ctx, "other", args); err == nil {
