@@ -135,14 +135,16 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			workspacehandlers.UpdateDocument(c)
 			return
 		}
-		if strings.TrimPrefix(c.Param("file"), "/") != "Workflow/invoices/workflow.json" {
+		// A Goal save writes workflow.json and, since PLAT-871, its schedules/webhooks/functions files beside it.
+		name := strings.TrimPrefix(rel, "Workflow/invoices/")
+		if name != "workflow.json" && name != "schedules.json" && name != "webhooks.json" && name != "functions.json" {
 			c.Status(404)
 			return
 		}
 		var body struct {
 			Content string `json:"content"`
 		}
-		if c.BindJSON(&body) != nil || os.WriteFile(filepath.Join(f.docs, "Workflow", "invoices", "workflow.json"), []byte(body.Content), 0600) != nil {
+		if c.BindJSON(&body) != nil || os.WriteFile(filepath.Join(f.docs, "Workflow", "invoices", name), []byte(body.Content), 0600) != nil {
 			c.Status(500)
 			return
 		}

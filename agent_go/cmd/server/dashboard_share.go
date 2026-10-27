@@ -290,6 +290,7 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 			manifest.Access.Readers = ids
 		}
 		if err := WriteWorkflowManifest(ctx, target.Root, manifest); err != nil {
+			log.Printf("[RUN_SHARE] save failed kind=%q root=%q mode=%q: %v", target.Kind, target.Root, mode, err)
 			return runShareState{}, dashboardFailure(500, "could not save the sharing choice")
 		}
 		log.Printf("[RUN_SHARE] %s set %s %s share=%s", sanitizeUserIDForPath(claims.UserID), target.Kind, target.ID, mode)
