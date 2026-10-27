@@ -176,7 +176,7 @@ it('opens a known same-server dashboard link in its server-resolved Crew panel (
   window.history.replaceState({}, '', '/crew/projects/current')
   dashboardPost.mockResolvedValue({ data: { dashboards: [{
     dashboard_id: 'overview', project_id: 'resolved-project', product: 'crew',
-    workspace: 'Crew/sample', document_path: 'db/reports/managed/overview/index.html',
+    workspace: 'Crew/sample', document_path: 'db/reports/managed/overview/index.html', published_revision: '',
   }], has_more: false, next_offset: 1 } })
   try {
     const href = sharedReportLink(window.location.origin, 'Crew/sample', 'db/reports/managed/overview/index.html')

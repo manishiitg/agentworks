@@ -70,9 +70,9 @@ export async function openDashboardWorkspaceLink(href: string): Promise<boolean>
     let offset = 0
     for (;;) {
       // The server resolves the project and checks today's access, including
-      // shared Run access. Never derive a project ID/role from a folder name.
+      // shared Run access and owner-only drafts. Never derive a project ID/role from a folder name.
       const { data } = await api.post<DashboardPage>('/api/dashboards', {
-        action: 'list', workspace: target.workspace, published_only: true, limit: 200, offset,
+        action: 'list', workspace: target.workspace, limit: 200, offset,
       })
       const row = data.dashboards.find(row => row.document_path === target.document && row.project_id)
       if (row?.project_id) {
