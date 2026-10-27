@@ -61,6 +61,26 @@ describe('activity belongs to the current agent turn', () => {
     expect(row.textContent).toContain('INITIALIZED')
   })
 
+  // Owner 2026-10-27: alternating Thinking and tool rows read as a ladder; the steps between two replies fold into one
+  // closed Working row that lists them in order when opened.
+  it('folds alternating thinking and tool batches into one closed Working row', async () => {
+    const steps = [
+      event('think-1', 'conversation_thinking', { thinking: 'Look at the logs first.' }),
+      event('call-a', 'tool_call_start', { tool_call_id: 'call-a', tool_name: 'read_file' }),
+      event('result-a', 'tool_call_end', { tool_call_id: 'call-a', tool_name: 'read_file', result: 'ok' }),
+      event('think-2', 'conversation_thinking', { thinking: 'Now compare the commits.' }),
+      event('call-b', 'tool_call_start', { tool_call_id: 'call-b', tool_name: 'execute_shell_command' }),
+      event('result-b', 'tool_call_end', { tool_call_id: 'call-b', tool_name: 'execute_shell_command', result: 'ok' }),
+    ]
+    const { host } = await mount({ events: [user, ...steps] })
+    const groups = host.querySelectorAll('[data-testid="terminal-working-group"]')
+    expect(groups).toHaveLength(1)
+    expect(groups[0].textContent).toContain('2 tool calls')
+    expect(host.querySelector('[data-testid="terminal-clear-thinking-batch-toggle"]')).toBeNull()
+    await act(async () => { groups[0].querySelector<HTMLButtonElement>('button')!.click() })
+    expect(host.querySelectorAll('[data-testid="terminal-clear-thinking-batch-toggle"]')).toHaveLength(2)
+  })
+
   it('renders one six-call group across duplicate native progress updates', async () => {
     const calls = Array.from({ length: 6 }, (_, index) => [
       event(`progress-${index}`, 'streaming_chunk', { source: 'transcript', content: 'The download finished; the full run is still in progress.' }),

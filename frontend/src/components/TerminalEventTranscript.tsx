@@ -55,11 +55,42 @@ import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
 // Message text sizes multiply --chat-scale (default 1), so a product can offer
 // a bigger reading size (SparkQuill's Child Mode "T" button sets it on the
 // chat section) without the transcript knowing about the control.
+type WorkingStep = Extract<TranscriptItem, { kind: 'tools' | 'thinking' }>
+
 type TranscriptRenderItem = TranscriptItem | {
   kind: 'live'
   key: string
   text: string
   status: string
+} | {
+  // Consecutive thinking and tool batches between two replies, folded into one row (owner 2026-10-27).
+  kind: 'working'
+  key: string
+  events: PollingEvent[]
+  steps: WorkingStep[]
+}
+
+function isWorkingStep(item: TranscriptItem): item is WorkingStep {
+  return item.kind === 'tools' || (item.kind === 'thinking' && !item.assistantUpdate)
+}
+
+// groupWorkingSteps folds every run of two or more steps into one Working row. The row keeps the
+// key of its first step, so a run that grows while the agent works keeps its open/closed state.
+function groupWorkingSteps(items: TranscriptItem[]): TranscriptRenderItem[] {
+  const out: TranscriptRenderItem[] = []
+  let run: WorkingStep[] = []
+  const flush = () => {
+    if (run.length > 1) out.push({ kind: 'working', key: `working:${run[0].key}`, events: run.flatMap(step => step.events), steps: run })
+    else out.push(...run)
+    run = []
+  }
+  for (const item of items) {
+    if (isWorkingStep(item)) { run.push(item); continue }
+    flush()
+    out.push(item)
+  }
+  flush()
+  return out
 }
 
 type TranscriptHistoryContext = {
@@ -896,6 +927,53 @@ const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking'
   )
 }
 
+function workingDuration(steps: WorkingStep[]): string {
+  const times = steps.flatMap(step => step.events).map(event => Date.parse(event.timestamp || '')).filter(Number.isFinite)
+  if (times.length < 2) return ''
+  const seconds = Math.round((Math.max(...times) - Math.min(...times)) / 1000)
+  if (seconds < 1) return ''
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
+
+// One closed row for all the steps between two replies; opening it lists every step in order.
+const WorkingGroup: React.FC<{ item: Extract<TranscriptRenderItem, { kind: 'working' }>; live: boolean; toolLayout?: 'grouped' | 'rows' }> = ({ item, live, toolLayout }) => {
+  const [expanded, toggle] = useDisclosure(item.key, false)
+  const tools = item.steps.reduce((sum, step) => sum + (step.kind === 'tools' ? step.toolCount : 0), 0)
+  const duration = workingDuration(item.steps)
+  const last = item.steps[item.steps.length - 1]
+  const [dots, setDots] = React.useState(1)
+  React.useEffect(() => {
+    if (!live) return
+    const timer = window.setInterval(() => setDots(count => count % 3 + 1), 450)
+    return () => window.clearInterval(timer)
+  }, [live])
+  const summary = [tools ? `${tools} tool ${tools === 1 ? 'call' : 'calls'}` : '', duration].filter(Boolean).join(' · ')
+  return (
+    <div data-testid="terminal-working-group" className="my-1">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={expanded}
+        className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <span>{live ? <>Working<span aria-hidden="true" className="inline-block w-4 text-left">{'.'.repeat(dots)}</span></> : 'Working'}</span>
+        {summary && <span>· {summary}</span>}
+        {expanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+      </button>
+      {live && !expanded && (
+        <p className="pl-3 text-[11px] text-muted-foreground">now: {last.kind === 'thinking' ? 'Thinking' : `${last.toolCount} tool ${last.toolCount === 1 ? 'call' : 'calls'}`}</p>
+      )}
+      {expanded && (
+        <div data-testid="terminal-working-group-steps" className="mt-1 border-l border-border pl-3">
+          {item.steps.map((step, index) => step.kind === 'thinking'
+            ? <ThinkingBatch key={step.key} item={step} live={live && index === item.steps.length - 1} />
+            : <ToolBatch key={step.key} item={step} toolLayout={toolLayout} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // A web search is something the reader wants to see (what was looked up, what
 // came back), so it gets its own collapsed card instead of hiding inside the
 // "N tool calls" chip. The other calls keep their chip, split around the
@@ -1122,7 +1200,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   // internal turn (T0, T1): one cancel showed three times beside the turn's own
   // "Response cancelled" (owner, 2026-10-08). The chat keeps only that one.
   const items = useMemo<TranscriptRenderItem[]>(
-    () => withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled')))),
+    () => groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled'))))),
     [scoped, questions],
   )
   // Retry belongs to the latest human turn, never an older failed message
@@ -1310,6 +1388,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             ? <CodingAgentQuestionCard prompt={questionPrompt} onAnswer={onAnswerCodingAgentQuestion} />
             : item.kind === 'live'
             ? <LiveAssistantTranscript chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
+            : item.kind === 'working'
+            ? <WorkingGroup item={item} live={index === items.length - 1 && !streamingText.trim()} toolLayout={toolLayout} />
             : item.kind === 'tools'
             ? <ToolBatch item={item} toolLayout={toolLayout} />
             : item.kind === 'thinking'
@@ -1320,7 +1400,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
                   onSendMessage={onSendMessage}
                   onResendMessage={onResendMessage}
                   onRetryLastMessage={item === retryItem ? onRetryLastMessage : undefined}
-                  compactUserBottom={listData[index + 1]?.kind === 'tools'}
+                  compactUserBottom={listData[index + 1]?.kind === 'tools' || listData[index + 1]?.kind === 'working'}
                   inTurn={Boolean(slot?.agent)}
                   renderInteraction={renderInteraction}
                   assistantLabel={assistantLabel}
