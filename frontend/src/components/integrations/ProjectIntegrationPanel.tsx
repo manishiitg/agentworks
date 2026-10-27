@@ -6,7 +6,7 @@ import { Button } from '../ui/Button'
 import WorkflowEmailPanel from '../workflow/WorkflowEmailPanel'
 import { ProjectMcpPanel } from './ProjectMcpPanel'
 import { ProjectSecretsPanel } from './ProjectSecretsPanel'
-import PersonalAccountsPanel from './PersonalAccountsPanel'
+import { ProductSlackPanel } from './ProductSlackPanel'
 import { CompanySignInSetup } from './CompanySignInSetup'
 import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 import type { ProjectVaultInventory } from '../../api/projectVault'
@@ -15,7 +15,7 @@ import { ProjectVaultPanel } from './ProjectVaultPanel'
 
 export type IntegrationSection = 'connected' | 'available' | 'secrets' | 'gmail' | 'slack-account' | 'laptop'
 export const INTEGRATION_LABELS: Record<IntegrationSection, string> = {
-  connected: 'MCPs', available: 'Available MCPs', secrets: 'Secrets', gmail: 'Google apps', 'slack-account': 'Slack account', laptop: 'Local laptop',
+  connected: 'MCPs', available: 'Available MCPs', secrets: 'Secrets', gmail: 'Google apps', 'slack-account': 'My Slack account', laptop: 'Local laptop',
 }
 export function integrationPanelQuestion(section: string, label: string): string {
  if(section==='folders') return buildAskAIMessage({view:label,summary:'Help me link a folder or other work to this project.',instructions:"Read the relevant folder panel skill and inspect this project's current linked work and attached folders. Help me choose or update links using existing tools and current access. Explain what the project can use in plain words; do not change folder permissions unless I ask."})
@@ -51,7 +51,7 @@ function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section =
     </>}
     {section === 'secrets' && <><ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} selectedSecrets={secrets.selectedSecrets} onSecretChange={secrets.onSelectedSecretsChange} onSelectionSaved={secrets.onSecretSelectionSaved} /></>}
     {section === 'gmail' && <><WorkflowEmailPanel workspacePath={workspacePath} scopeNoun={placeNoun === 'Flow' ? 'relay' : 'project'} onAsk={onAsk} /><CompanySignInSetup provider="Google" tabId={tabId} /></>}
-    {section === 'slack-account' && <><PersonalAccountsPanel workspacePath={workspacePath} provider="slack" /><CompanySignInSetup provider="Slack" tabId={tabId} /></>}
+    {section === 'slack-account' && <><ProductSlackPanel workspacePath={workspacePath} noun={placeNoun} section="account" allowBots={placeNoun !== 'Flow'} tabId={tabId}/></>}
     {section === 'laptop' && laptop}
   </div>
 }

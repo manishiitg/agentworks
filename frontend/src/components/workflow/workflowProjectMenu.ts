@@ -53,7 +53,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   for (const item of projectConnectionSections({ allowedProducts, relayMode, onOpen: () => {} })) {
     add('mcp', 'Integrations', item.label, item.icon, item.id.slice(4), item.subgroup)
   }
-  add('mcp', 'Integrations', 'Slack account', MessageSquareText, 'slack-account')
+  add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
   if (!relayMode) add('mcp', 'Integrations', 'Local laptop', Laptop, 'laptop')
   if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Integrations', 'AgentBridge', Cable, 'agentbridge')
   add('identity', 'Setup', 'Settings', Settings, 'general')

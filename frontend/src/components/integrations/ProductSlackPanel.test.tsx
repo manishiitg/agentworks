@@ -22,7 +22,7 @@ it('keeps the bot form readable and preserves server selection restrictions and 
   try {
     await act(async () => root.render(<ProductSlackPanel workspacePath="Crew/one" section="bot" />))
     expect(host.firstElementChild?.className).toContain('max-w-3xl')
-    expect(host.textContent).toContain('Talk to this Crew in Slack')
+    expect(host.textContent).toContain('Let people talk to this Crew in Slack')
     expect(host.textContent).toContain('with their existing access')
     expect(host.querySelector<HTMLSelectElement>('[aria-label="Saved Slack bot"]')?.disabled).toBe(true)
     expect(host.textContent).not.toContain('Personal account controls')
@@ -32,6 +32,23 @@ it('keeps the bot form readable and preserves server selection restrictions and 
     api.get.mockResolvedValue({ data: { bots: [], selected_id: '', allow_bots: false } })
     await act(async () => root.render(<ProductSlackPanel key="other" workspacePath="Crew/other" section="bot" />))
     expect(host.querySelector('select')).toBeNull()
-    expect(host.querySelector('button')).toBeNull()
+    expect(host.textContent).not.toContain('Manage bots in chat')
   } finally { await act(async () => root.unmount()); vi.clearAllMocks() }
+})
+
+it('shows Slack identity instead of Default without claiming delivery and keeps checks manager-only', async () => {
+ api.get.mockResolvedValue({data:{bots:[{id:'one',name:'Default',configured:true,enabled:true,can_manage:false,identity:{name:'workspace-helper',workspace:'Example workspace',verified:true}}],selected_id:'one',can_select:false,allow_bots:true}})
+ const host=document.createElement('div'),root=createRoot(host)
+ try {
+  await act(async()=>root.render(<ProductSlackPanel workspacePath="Crew/one" section="bot"/>))
+  expect(host.textContent).toContain('workspace-helper')
+  expect(host.textContent).toContain('Example workspace')
+  expect(host.textContent).toContain('Identity verified · Delivery not checked')
+  expect(host.textContent).not.toContain('Default')
+  expect(host.querySelector('select')).toBeNull()
+  expect([...host.querySelectorAll('button')].some(button=>button.textContent?.includes('Check connection'))).toBe(false)
+  await act(async()=>host.querySelector<HTMLButtonElement>('[role="tab"][id$="-account-tab"]')!.click())
+  expect(host.textContent).toContain('Personal account controls')
+  expect(api.post).not.toHaveBeenCalled()
+ } finally {await act(async()=>root.unmount());vi.clearAllMocks()}
 })

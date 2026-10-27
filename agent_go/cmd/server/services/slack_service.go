@@ -220,6 +220,7 @@ type SlackConfig struct {
 // Mode listener. Children are owned by the root — they never touch the
 // config file and are created, synced, and stopped by reconcileChildren.
 type SlackService struct {
+	identities     slackBotIdentityCache
 	triggerHandler SlackTriggerHandler
 	client         *slack.Client
 	socketClient   *socketmode.Client // Socket Mode client for WebSocket connection

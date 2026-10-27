@@ -61,7 +61,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
         {tab === 'folders' && <WorkFoldersSection workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
         {tab === 'agents' && canEdit && <CrewPublishedAgents profileId={product.profileId} projectId={projectId} />}
         {tab === 'cli' && <ProjectMcpSetupPanel workspacePath={workspacePath} />}
-        {tab === 'slack' && <ProductSlackPanel workspacePath={workspacePath} noun="Crew" section="bot" />}
+        {tab === 'slack' && <ProductSlackPanel workspacePath={workspacePath} noun="Crew" section="bot" tabId={tabId} />}
         {tab === 'whatsapp' && <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
       </>}
     </div>

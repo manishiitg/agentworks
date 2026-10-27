@@ -6,6 +6,7 @@ import { expect, it, vi } from 'vitest'
 const requests = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(async () => ({ data: {} })) }))
 vi.mock('../../services/api', () => ({ default: requests, getApiBaseUrl: () => 'https://app.example.com' }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { is_admin: false } }) }))
+vi.mock('./CompanySignInSetup', () => ({ CompanySignInSetup: () => <div>Slack sign-in setup</div> }))
 import SlackAccountsPanel from './SlackAccountsPanel'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -20,14 +21,14 @@ it('shows one own Slack account and only the server-authorized actions', async (
   const root = createRoot(host)
   try {
     await act(async () => { root.render(<SlackAccountsPanel workspacePath="Workflow/orders" />) })
-    expect(host.textContent).toContain('send as you')
+    expect(host.textContent).toContain('send messages as you')
     expect(host.textContent).toContain('Connected')
     expect(host.textContent).not.toContain('Sign out of Slack')
     expect(host.textContent).not.toContain('Connect my Slack')
     const use = [...host.querySelectorAll('button')].find(button => button.textContent === 'Use here')!
     await act(async () => { use.click() })
     expect(requests.post).toHaveBeenLastCalledWith('/api/integrations/slack/accounts', { workspace_path: 'Workflow/orders', action: 'attach', connection_id: 'slack_work', connection_owner: 'builder' })
-    const remove = [...host.querySelectorAll('button')].find(button => button.textContent === 'Remove here')!
+    const remove = [...host.querySelectorAll('button')].find(button => button.textContent === 'Remove from this Crew')!
     await act(async () => { remove.click() })
     expect(requests.post).toHaveBeenLastCalledWith('/api/integrations/slack/accounts', { workspace_path: 'Workflow/orders', action: 'detach', connection_id: 'slack_selected', connection_owner: 'another' })
   } finally {

@@ -37,6 +37,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const multiUser = useAuthStore(state => state.isMultiUserMode)
   const central = !workspacePath
   const endpoint = `/api/integrations/${provider}/accounts`
   const label = provider === 'google' ? 'Google' : 'Slack'
@@ -91,7 +92,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
     </div>)}
     {central && provider === 'google' && data && (data.can_connect || data.accounts.some(account => account.can_reconnect)) && <GoogleAccountConnect initiallyExpanded={data.accounts.length === 0} canConnect={data.can_connect} onChanged={() => { void refresh(); onChanged?.() }} />}
     {central && provider === 'slack' && data?.can_connect && !data.accounts.some(account => account.mine) && <Button variant="outline" size="sm" disabled={busy || data.sign_in_ready === false} onClick={() => void act('connect')}>Connect Slack account</Button>}
-    {central && data?.sign_in_ready === false && <p className="text-xs text-muted-foreground">An administrator needs to open Integrations → Slack account → Company sign-in setup and save this server’s Slack app before you connect your account.</p>}
+    {central && data?.sign_in_ready === false && <p className="text-xs text-muted-foreground">{multiUser ? 'An administrator needs to set up the workspace’s Slack sign-in app before you connect.' : 'Set up the Slack sign-in app on this device before connecting your account.'}</p>}
   </div>
 }
 

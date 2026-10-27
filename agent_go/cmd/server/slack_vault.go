@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 )
@@ -15,13 +16,14 @@ import (
 // My Vault manages the existing encrypted registry. A product stores only a
 // selected connection ID; ownership still comes from the original scope.
 type slackVaultBot struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Configured bool   `json:"configured"`
-	Enabled    bool   `json:"enabled"`
-	CanManage  bool   `json:"can_manage"`
-	ScopeLabel string `json:"scope_label"`
-	Shared     bool   `json:"shared"`
+	ID         string                    `json:"id"`
+	Name       string                    `json:"name"`
+	Configured bool                      `json:"configured"`
+	Enabled    bool                      `json:"enabled"`
+	CanManage  bool                      `json:"can_manage"`
+	ScopeLabel string                    `json:"scope_label"`
+	Shared     bool                      `json:"shared"`
+	Identity   services.SlackBotIdentity `json:"identity"`
 }
 type slackVaultScope struct {
 	Workspace string `json:"workspace_path"`
@@ -143,6 +145,8 @@ func (api *StreamingAPI) slackVaultBotState(r *http.Request, workspace string) (
 	} else {
 		out["scopes"] = api.slackVaultScopes(r)
 	}
+	identityCtx, cancelIdentity := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancelIdentity()
 	bots := []slackVaultBot{}
 	for _, conn := range svc.ListConnections() {
 		manageable := requireSlackConnectionAccess(r, api, conn) == nil
@@ -152,6 +156,7 @@ func (api *StreamingAPI) slackVaultBotState(r *http.Request, workspace string) (
 			continue
 		}
 		bot := safeSlackVaultBot(r, api, conn)
+		bot.Identity = svc.BotIdentity(identityCtx, conn)
 		bots = append(bots, bot)
 	}
 	sort.Slice(bots, func(i, j int) bool { return bots[i].Name < bots[j].Name })

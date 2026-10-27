@@ -42,7 +42,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
       add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects & folders' : item.label, item.icon, item.id.slice(4), item.subgroup)
     }
     add('mcp', 'Integrations', 'Local laptop', Laptop, 'laptop')
-    if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'Slack account', MessageSquareText, 'slack-account')
+    if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
     if (projectId) add('mcp', 'Integrations', 'Chats from your computer', Laptop, 'agents')
     if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Integrations', 'AgentBridge', Cable, 'agentbridge')
     if (has('dashboard') && canShare) {
