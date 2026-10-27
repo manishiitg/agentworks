@@ -39,7 +39,6 @@ import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from 
 import { workProjectActivity } from './workProjectPresentation'
 import { SharedCrewWorkspace } from './SharedCrewWorkspace'
 import { CreateCrewWizard } from './CreateCrewWizard'
-import { LocalProjectContext } from './LocalProjectContext'
 import { prepareCrewOnboarding } from './crewOnboarding'
 import type { CrewOnboarding } from './crewStarterTypes'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
@@ -1435,7 +1434,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>
-                  {!isShared && selected.filesPath && selected.filesPath !== selected.workspacePath && <LocalProjectContext key={selected.id} projectId={selected.id} />}
                   {tabId ? (
                       <div className="min-h-0 flex-1">
                         <ChatArea

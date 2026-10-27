@@ -54,10 +54,10 @@ Connect the computer once in My Vault (manage_my_vaults operation=laptops lists 
 
 ## Recognize an existing local project
 
-The compact folder row above chat lists instruction files and skills found in
-that folder, including native skill directories. This is discovery, not proof
-that a model loaded every file. Keep existing instructions and configuration
-in place. Use `sessions action=project_context` for the same names-only scan.
+When the person asks what the project contains, use
+`sessions action=project_context` for a names-only scan of instruction files
+and skills. This is discovery, not proof that a model loaded every file.
+Keep existing instructions and configuration in place.
 
 On the local Mac app, `sessions action=native_list` finds the person's own
 Claude/Codex conversations for this exact folder and shows the original account.
