@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -14,7 +15,7 @@ func TestWorkflowOwnerTabsShareProjectAndKeepControl(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			t.Setenv("MULTI_USER_MODE", "true")
 			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-			withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","role":"creator","can_edit":true,"can_create":true},{"id":"bob","username":"bob","role":"creator","can_edit":true,"can_create":true},{"id":"runner","username":"runner","role":"viewer"}]}`)
+			withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","email":"alice@example.com","role":"creator","can_edit":true,"can_create":true},{"id":"bob","username":"bob","role":"creator","can_edit":true,"can_create":true},{"id":"runner","username":"runner","role":"viewer"}]}`)
 			manifest := `{"id":"wf","kind":"` + kind + `","created_by":"alice","access":{"owners":["alice","bob"],"readers":["runner"]}}`
 			workspace := &mockWorkspaceAPI{files: map[string]string{"Workflow/demo/workflow.json": manifest}}
 			srv := httptest.NewServer(workspace)
@@ -40,11 +41,8 @@ func TestWorkflowOwnerTabsShareProjectAndKeepControl(t *testing.T) {
 				if !flowOwnersStateFor(&m, "bob").CanManage {
 					t.Fatal("Relay co-owner lost the shared owner control")
 				}
-				r := httptest.NewRequest("PUT", "/api/workflow/access", strings.NewReader(`{"workspace_path":"Workflow/demo","owners":["bob"],"readers":[]}`)).WithContext(ctx("bob"))
-				w := httptest.NewRecorder()
-				api.handleSetWorkflowAccess(w, r)
-				if w.Code != 400 {
-					t.Fatal("owner edit changed Relay execution identity", w.Code, w.Body.String())
+				if _, status, _, message := api.changeFlowOwners(ctx("bob"), &UserClaims{UserID: "bob"}, "Workflow/demo", &m, "remove", "alice@example.com"); status != http.StatusConflict {
+					t.Fatal("a co-owner removed the Relay's main owner", status, message)
 				}
 			}
 			bob, err := api.goalOwnerTabSummary(ctx("bob"), scope, false)

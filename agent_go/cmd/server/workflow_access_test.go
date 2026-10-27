@@ -151,18 +151,12 @@ func TestSessionVisibility(t *testing.T) {
 	}
 }
 
-func TestSetWorkflowAccessValidation(t *testing.T) {
+func TestUserDirectoryPickerListsEnabledUsersOnly(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"b2","username":"bob","email":"bob@x.io","can_create":true,"products":[]},{"id":"c3","username":"carol","can_create":false,"products":[]}]}`)
 	api := &StreamingAPI{}
-	// No workflow at the path (workspace API not reachable in tests) → 404 rather than a grant.
-	rec := httptest.NewRecorder()
-	api.handleSetWorkflowAccess(rec, adminRequest(http.MethodPut, "/api/workflow/access", `{"workspace_path":"Workflow/nope","owners":["bob"]}`, &UserClaims{UserID: "b2"}, nil))
-	if rec.Code != http.StatusNotFound && rec.Code != http.StatusInternalServerError {
-		t.Fatalf("missing workflow: %d %s", rec.Code, rec.Body.String())
-	}
 	// Directory picker lists enabled users only, never hashes or roles.
-	rec = httptest.NewRecorder()
+	rec := httptest.NewRecorder()
 	api.handleUserDirectory(rec, adminRequest(http.MethodGet, "/api/users/directory", "", &UserClaims{UserID: "c3"}, nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"username":"bob"`) || strings.Contains(rec.Body.String(), "password") || strings.Contains(rec.Body.String(), "can_create") {
 		t.Fatalf("directory: %d %s", rec.Code, rec.Body.String())
@@ -196,14 +190,14 @@ func TestWorkflowEditorsGrant(t *testing.T) {
 	bob, carol, erin := &UserClaims{UserID: "b2"}, &UserClaims{UserID: "c3"}, &UserClaims{UserID: "e5"}
 
 	shared := &WorkflowManifest{ID: "w1", Access: &WorkflowAccess{
-		Owners: []string{"b2"}, Editors: []string{"e5", "c3"}, Readers: []string{"c3"},
+		Owners: []string{"b2", "e5", "c3"}, Readers: []string{"c3"},
 	}}
-	if got := workflowAccessForManifest(erin, shared); got != WorkflowAccessWrite {
-		t.Fatalf("editor: %s", got)
+	if got := workflowAccessForManifest(erin, shared); got != WorkflowAccessOwner {
+		t.Fatalf("second owner: %s", got)
 	}
-	// A viewer account caps at read even when listed as an editor.
+	// An account that may not edit caps at read even when listed as an owner.
 	if got := workflowAccessForManifest(carol, shared); got != WorkflowAccessRead {
-		t.Fatalf("viewer listed as editor: %s", got)
+		t.Fatalf("non-editing account listed as owner: %s", got)
 	}
 	if got := workflowAccessForManifest(bob, shared); got != WorkflowAccessOwner {
 		t.Fatalf("owner: %s", got)
@@ -211,7 +205,7 @@ func TestWorkflowEditorsGrant(t *testing.T) {
 }
 
 // Every owner of a Flow builds it (owner, 2026-10-16); the main owner (the creator while still listed, else the first listed
-// owner) is who it runs as. Editors and readers run it. A workflow keeps its owner and editor tiers.
+// owner) is who it runs as. People who can use it run it. A Goal has the same two tiers.
 func TestRelayOwnersAllBuildMainOwnerRunsIt(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[
@@ -222,7 +216,7 @@ func TestRelayOwnersAllBuildMainOwnerRunsIt(t *testing.T) {
 	  {"id":"e5","username":"erin","can_create":true,"products":[]}
 	]}`)
 	alice, bob, carol, dan, erin := &UserClaims{UserID: "a1"}, &UserClaims{UserID: "b2"}, &UserClaims{UserID: "c3"}, &UserClaims{UserID: "d4"}, &UserClaims{UserID: "e5"}
-	access := &WorkflowAccess{Owners: []string{"c3", "b2"}, Editors: []string{"d4"}, Readers: []string{"e5"}}
+	access := &WorkflowAccess{Owners: []string{"c3", "b2"}, Readers: []string{"d4", "e5"}}
 	relay := &WorkflowManifest{ID: "r1", Kind: "relay", CreatedBy: "b2", Access: access}
 	for who, want := range map[*UserClaims]WorkflowAccessLevel{bob: WorkflowAccessOwner, carol: WorkflowAccessOwner, dan: WorkflowAccessRead, erin: WorkflowAccessRead, alice: WorkflowAccessOwner} {
 		if got := workflowAccessForManifest(who, relay); got != want {
@@ -237,15 +231,11 @@ func TestRelayOwnersAllBuildMainOwnerRunsIt(t *testing.T) {
 	if moved.relayBuilder() != "c3" || workflowAccessForManifest(bob, moved) != WorkflowAccessOwner {
 		t.Errorf("main owner %s; second owner access %s", moved.relayBuilder(), workflowAccessForManifest(bob, moved))
 	}
-	owners, editors, readers := relayAccessLists(relay)
-	if len(owners) != 2 || owners[0] != "b2" || owners[1] != "c3" || len(editors) != 0 || len(readers) != 2 {
-		t.Errorf("shown as owners (main first) and everyone else running: %v %v %v", owners, editors, readers)
-	}
 	workflow := &WorkflowManifest{ID: "w9", CreatedBy: "b2", Access: access}
 	if got := workflowAccessForManifest(carol, workflow); got != WorkflowAccessOwner {
 		t.Errorf("a workflow keeps several owners: %s", got)
 	}
-	if got := workflowAccessForManifest(dan, workflow); got != WorkflowAccessWrite {
-		t.Errorf("a workflow keeps its editors: %s", got)
+	if got := workflowAccessForManifest(dan, workflow); got != WorkflowAccessRead {
+		t.Errorf("someone who can use a Goal runs it: %s", got)
 	}
 }

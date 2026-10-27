@@ -118,7 +118,7 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 			return nil, err
 		}
 		p.Owners = append([]string{}, manifest.effectiveOwners()...)
-		p.Audience = append(append(append([]string{}, manifest.effectiveOwners()...), manifest.effectiveEditors()...), manifest.effectiveReaders()...)
+		p.Audience = append(append([]string{}, manifest.effectiveOwners()...), manifest.effectiveReaders()...)
 		// The single-user local app never stamps an owner on workflows; its one person owns them (owner, 2026-10-18).
 		if len(p.Owners) == 0 && productpolicy.Local() && !IsMultiUserMode() && strings.TrimSpace(userID) != "" {
 			p.Owners = []string{userID}

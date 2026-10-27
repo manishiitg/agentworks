@@ -24,9 +24,9 @@ func TestPersonalGoogleConnectionsAcrossSurfaces(t *testing.T) {
 	t.Setenv("LOCAL_MODE", "false")
 	t.Setenv("GOG_HOME", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"builder","username":"builder","can_create":true},{"id":"editor","username":"editor","can_create":true},{"id":"runner","username":"runner"},{"id":"boss","username":"boss","admin":true}]}`)
-	wf := WorkflowManifest{ID: "orders", Label: "Orders", Access: &WorkflowAccess{Owners: []string{"builder"}, Editors: []string{"editor"}, Readers: []string{"runner"}}}
+	wf := WorkflowManifest{ID: "orders", Label: "Orders", Access: &WorkflowAccess{Owners: []string{"builder", "editor"}, Readers: []string{"runner"}}}
 	raw, _ := json.Marshal(wf)
-	flow, _ := json.Marshal(WorkflowManifest{ID: "flow", Kind: "relay", Label: "Flow", Access: &WorkflowAccess{Owners: []string{"builder"}, Editors: []string{"editor"}}})
+	flow, _ := json.Marshal(WorkflowManifest{ID: "flow", Kind: "relay", Label: "Flow", Access: &WorkflowAccess{Owners: []string{"builder"}, Readers: []string{"editor"}}})
 	gog := filepath.Join(t.TempDir(), "gog")
 	script := `#!/bin/sh
 case "$*" in

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -36,14 +35,13 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 	str := func(description string) map[string]interface{} {
 		return map[string]interface{}{"type": "string", "description": description}
 	}
-	return reg.RegisterCustomTool("manage_user_access", "Builder-only user and workflow access management. Inspect before changing. Workflow owners/admins may inspect/set a source workflow's owners/editors/readers and list the sharing directory. Only admins may list full accounts, update users (including a person-supplied password) or delete an account while keeping its files. Accounts are added by DevOps on the server, not here. Every invocation checks current caller permissions and errors when unauthorized. Use source workspace_path to resolve cross-workflow sharing; never widen access without the user's request. Returns account metadata only, never passwords or hashes.", map[string]interface{}{
+	return reg.RegisterCustomTool("manage_user_access", "Builder-only user and workflow access management. Inspect before changing. Goal/Flow owners and admins may inspect or set its owners and the people who can use it, and list the sharing directory. Only admins may list full accounts, update users (including a person-supplied password) or delete an account while keeping its files. Accounts are added by DevOps on the server, not here. Every invocation checks current caller permissions and errors when unauthorized. Use source workspace_path to resolve cross-workflow sharing; never widen access without the user's request. Returns account metadata only, never passwords or hashes.", map[string]interface{}{
 		"type": "object", "additionalProperties": false,
 		"properties": map[string]interface{}{
 			"action":         map[string]interface{}{"type": "string", "enum": []string{"get_workflow_access", "set_workflow_access", "list_users", "update_user", "delete_user"}},
 			"workspace_path": str("Workflow/<folder>; defaults to the active workflow for access and owner directory operations."),
-			"owners":         map[string]interface{}{"type": "array", "items": str("User ID, username or email; complete owner list, at least one.")},
-			"editors":        map[string]interface{}{"type": "array", "items": str("User ID, username or email; complete editor list. Omit to preserve.")},
-			"readers":        map[string]interface{}{"type": "array", "items": str("User ID, username or email; complete reader list.")},
+			"owners":         map[string]interface{}{"type": "array", "items": str("User ID, username or email; complete owner list (they build and change it). Omit to keep.")},
+			"readers":        map[string]interface{}{"type": "array", "items": str("User ID, username or email; complete list of people who can use it. Omit to keep.")},
 			"user_id":        str("Existing account ID for update_user/delete_user."),
 			"username":       str("Account username (update_user may rename)."),
 			"email":          str("Account email."), "password": str("User-provided account password only; never echo it."),
@@ -85,23 +83,27 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 		method, target := http.MethodGet, "/api/users/directory"
 		payload := map[string]interface{}{}
 		switch action {
-		case "get_workflow_access":
-			handler = api.handleGetWorkflowAccess
-			target = "/api/workflow/access?workspace_path=" + url.QueryEscape(path)
-		case "set_workflow_access":
-			if _, ok := args["owners"]; !ok {
-				return "", fmt.Errorf("owners and readers must both be supplied as complete lists")
+		case "get_workflow_access", "set_workflow_access":
+			_, manifest := workflowAccessForWorkspacePath(ctx, claims, path)
+			if manifest == nil {
+				return "", fmt.Errorf("no Goal or Flow at %s", path)
 			}
-			if _, ok := args["readers"]; !ok {
-				return "", fmt.Errorf("owners and readers must both be supplied as complete lists")
+			owners, ownersSet := stringListArg(args["owners"])
+			readers, readersSet := stringListArg(args["readers"])
+			var state map[string]any
+			var err error
+			if action == "get_workflow_access" {
+				state, err = api.projectAccessState(ctx, claims, path, manifest)
+			} else if !ownersSet && !readersSet {
+				return "", fmt.Errorf("give owners, readers or both")
+			} else {
+				state, err = api.setProjectAccessLists(ctx, claims, path, manifest, owners, readers, ownersSet, readersSet)
 			}
-			handler = api.handleSetWorkflowAccess
-			method = http.MethodPut
-			target = "/api/workflow/access"
-			payload = map[string]interface{}{"workspace_path": path, "owners": args["owners"], "readers": args["readers"]}
-			if editors, ok := args["editors"]; ok {
-				payload["editors"] = editors
+			if err != nil {
+				return "", err
 			}
+			out, _ := json.Marshal(state)
+			return string(out), nil
 		case "list_users":
 			handler = api.handleUserDirectory
 			if access.Admin {

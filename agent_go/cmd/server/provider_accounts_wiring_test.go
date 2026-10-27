@@ -29,7 +29,7 @@ func (e *providerAccountsEnv) setWorkflowW(t *testing.T, connectionID string) {
 	t.Helper()
 	manifest := map[string]interface{}{
 		"id": "wf-w", "label": "Weekly report", "created_by": "alice",
-		"access": map[string]interface{}{"owners": []string{"alice"}, "editors": []string{"bob"}, "readers": []string{}},
+		"access": map[string]interface{}{"owners": []string{"alice", "bob"}, "readers": []string{}},
 		"capabilities": map[string]interface{}{"llm_config": map[string]interface{}{
 			"schema_version": 2, "mode": "explicit",
 			"builder_llm": map[string]interface{}{"provider": "claude-code", "model_id": "sonnet", "connection_id": connectionID},

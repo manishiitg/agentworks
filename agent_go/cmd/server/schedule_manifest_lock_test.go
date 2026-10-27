@@ -2,10 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -62,7 +59,7 @@ func TestConcurrentScheduleDisablesAllPersist(t *testing.T) {
 	}
 }
 
-// Drive the sharing handler, real workspace HTTP writer and disk lock. A brief
+// Drive the manifest writer, real workspace HTTP writer and disk lock. A brief
 // concurrent save must not make a just-created workflow unshareable; cancelled
 // or persistently blocked requests must leave its access record untouched.
 func TestWorkflowManifestAccessWaitsForConcurrentSave(t *testing.T) {
@@ -84,18 +81,19 @@ func TestWorkflowManifestAccessWaitsForConcurrentSave(t *testing.T) {
 		t.Cleanup(release)
 		return release
 	}
-	save := func(ctx context.Context, readers []string) *httptest.ResponseRecorder {
-		body, _ := json.Marshal(map[string]any{"workspace_path": teamTestRoot, "owners": []string{"leader"}, "editors": []string{}, "readers": readers})
-		r := httptest.NewRequest(http.MethodPut, "/api/workflow/access", strings.NewReader(string(body))).WithContext(ctx)
-		w := httptest.NewRecorder()
-		f.api.handleSetWorkflowAccess(w, r)
-		return w
+	save := func(ctx context.Context, readers []string) error {
+		current, _, err := ReadWorkflowManifest(teamTestContext("leader"), teamTestRoot)
+		if err != nil {
+			return err
+		}
+		current.Access = &WorkflowAccess{Owners: []string{"leader"}, Readers: readers}
+		return WriteWorkflowManifest(ctx, teamTestRoot, current)
 	}
 	release := hold()
 	timer := time.AfterFunc(60*time.Millisecond, release)
 	defer timer.Stop()
-	if w := save(teamTestContext("leader"), []string{"observer"}); w.Code != http.StatusOK {
-		t.Fatalf("brief concurrent save refused: %d %s", w.Code, w.Body.String())
+	if err := save(teamTestContext("leader"), []string{"observer"}); err != nil {
+		t.Fatalf("brief concurrent save refused: %v", err)
 	}
 	after, _, err := ReadWorkflowManifest(teamTestContext("leader"), teamTestRoot)
 	if err != nil || after == nil || !containsID(after.effectiveReaders(), "observer") {
@@ -107,20 +105,20 @@ func TestWorkflowManifestAccessWaitsForConcurrentSave(t *testing.T) {
 	defer cancel()
 	timer = time.AfterFunc(60*time.Millisecond, cancel)
 	defer timer.Stop()
-	if w := save(ctx, []string{}); w.Code == http.StatusOK {
+	if err := save(ctx, []string{}); err == nil {
 		t.Fatal("cancelled save was admitted")
 	}
 	if f.file("workflow.json") != before {
 		t.Fatal("cancelled save changed access")
 	}
-	if w := save(teamTestContext("leader"), []string{}); w.Code == http.StatusOK || !strings.Contains(w.Body.String(), "VERSION_CONFLICT") {
-		t.Fatalf("persistent lock did not return retry refusal: %d %s", w.Code, w.Body.String())
+	if err := save(teamTestContext("leader"), []string{}); err == nil || !strings.Contains(err.Error(), "VERSION_CONFLICT") {
+		t.Fatalf("persistent lock did not return retry refusal: %v", err)
 	}
 	if f.file("workflow.json") != before {
 		t.Fatal("timed-out save changed access")
 	}
 	release()
-	if w := save(teamTestContext("leader"), []string{}); w.Code != http.StatusOK {
-		t.Fatalf("retry after release: %d %s", w.Code, w.Body.String())
+	if err := save(teamTestContext("leader"), []string{}); err != nil {
+		t.Fatalf("retry after release: %v", err)
 	}
 }

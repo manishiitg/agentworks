@@ -45,7 +45,7 @@ func (e *providerAccountsEnv) setWorkflowNativeTools(t *testing.T, enabled *bool
 	}
 	data, _ := json.Marshal(map[string]interface{}{
 		"id": "wf-w", "label": "Weekly report", "created_by": "alice",
-		"access":       map[string]interface{}{"owners": []string{"alice"}, "editors": []string{"bob"}, "readers": []string{"carol"}},
+		"access":       map[string]interface{}{"owners": []string{"alice", "bob"}, "readers": []string{"carol"}},
 		"capabilities": capabilities,
 	})
 	e.mock.mu.Lock()

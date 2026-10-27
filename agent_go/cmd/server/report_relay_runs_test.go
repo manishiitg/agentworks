@@ -74,7 +74,7 @@ func TestReportRelayRunsSharePublishedDiagnosticsAcrossProductMembers(t *testing
 	workspace := "Workflow/relay"
 	releaseWorkspace := relayReleaseWorkspace(workspace, "v1")
 	ws := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{
-		workspace + "/workflow.json":                 `{"id":"relay","label":"Invoice OCR","kind":"relay","access":{"owners":["owner"],"editors":["editor"],"readers":["reader-a","reader-b","disabled","deleted"]}}`,
+		workspace + "/workflow.json":                 `{"id":"relay","label":"Invoice OCR","kind":"relay","access":{"owners":["owner"],"readers":["reader-a","reader-b","disabled","deleted","editor"]}}`,
 		relayReleaseRoot(workspace) + "/active.json": `{"version":"v1"}`,
 		releaseWorkspace + "/release.json":           `{"version":"v1","hash":"fixture","file_count":1,"files":["relay.py"]}`,
 	}})

@@ -34,12 +34,8 @@ describe('Workflow MCP panel layout', () => {
     for (const view of ['costs', 'execution-logs', 'schedules', 'pulse', 'backup', 'publish', 'notify']) {
       expect(host).toContain(`headerAction={askAI('${view}')}`)
     }
-    // Access owns its Ask AI + refresh pair inside the view; the host mounts
-    // it without a header action.
-    const access = readFileSync('src/components/workflow/WorkflowAccessView.tsx', 'utf8')
-    expect(access).toContain('getAccessTabAskAIMessage(activeTab)')
-    expect(access).toContain('onRefresh')
-    expect(host).toContain('<WorkflowAccessView workspacePath={workspacePath} relayMode={relayMode} />')
+    // Access is the one shared People panel, mounted without a header action.
+    expect(host).toContain('<ShareDashboardButton workspacePath={workspacePath} variant="panel" />')
     // Folders moved under the Identity tabs; it no longer has a host header.
     expect(host).not.toContain("headerAction={refreshAndAskAI('folders')}")
     // Knowledge is a self-served umbrella (like capabilities sections): the

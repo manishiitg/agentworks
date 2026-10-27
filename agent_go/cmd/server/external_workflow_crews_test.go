@@ -29,7 +29,7 @@ func TestExternalWorkflowCrewDetachOverMCP(t *testing.T) {
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	m := NewWorkflowManifest("Attachment cleanup")
 	m.ID, m.CreatedBy = "invoices", "owner"
-	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Editors: []string{"outsider"}, Readers: []string{"reader"}}
+	m.Access = &WorkflowAccess{Owners: []string{"owner", "outsider"}, Readers: []string{"reader"}}
 	const removedRoot = "_users/owner/Chats/Work/projects/remove-crew"
 	m.CrewAttachments = []workflowtypes.CrewAttachment{
 		{ID: "remove-binding", Alias: "remove-crew", CrewProfileID: "work", CrewProjectID: "remove-project", CrewWorkspacePath: removedRoot},
@@ -87,7 +87,7 @@ func TestExternalWorkflowCrewDetachOverMCP(t *testing.T) {
 	if err := json.Unmarshal([]byte(f.read(t, "Workflow/invoices/workflow.json")), &saved); err != nil {
 		t.Fatal(err)
 	}
-	if len(saved.CrewAttachments) != 1 || saved.CrewAttachments[0].Alias != "keep-crew" || saved.Label != m.Label || len(saved.Access.Editors) != 1 {
+	if len(saved.CrewAttachments) != 1 || saved.CrewAttachments[0].Alias != "keep-crew" || saved.Label != m.Label || len(saved.Access.Owners) != 2 {
 		t.Fatalf("detach changed unrelated workflow state: %+v", saved)
 	}
 	config := common.GetSessionShellConfig(session)

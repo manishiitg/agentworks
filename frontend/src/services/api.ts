@@ -3021,14 +3021,6 @@ export const authApi = {
     const response = await api.get('/api/users/directory')
     return response.data
   },
-  getWorkflowAccess: async (workspacePath: string): Promise<WorkflowAccessInfo> => {
-    const response = await api.get(`/api/workflow/access?workspace_path=${encodeURIComponent(workspacePath)}`)
-    return response.data
-  },
-  setWorkflowAccess: async (workspacePath: string, owners: string[], editors: string[], readers: string[]): Promise<WorkflowAccessInfo> => {
-    const response = await api.put('/api/workflow/access', { workspace_path: workspacePath, owners, editors, readers })
-    return response.data
-  },
 }
 
 export interface WorkflowAccessUser {
@@ -3037,15 +3029,6 @@ export interface WorkflowAccessUser {
   email?: string
 }
 
-export interface WorkflowAccessInfo {
-  workspace_path: string
-  owners: WorkflowAccessUser[]
-  editors: WorkflowAccessUser[]
-  readers: WorkflowAccessUser[]
-  my_access: 'owner' | 'write' | 'read' | 'none'
-  /** Nothing recorded yet: open to every member until a grant is saved. */
-  legacy?: boolean
-}
 
 export interface WorkflowUserPermission {
   user_key: string

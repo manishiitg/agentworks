@@ -30,7 +30,7 @@ func newBuilderOperationFixture(t *testing.T) *builderOperationFixture {
 	tokenTestSetup(t)
 	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")
 	f := newExternalToolsFixture(t)
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner"],"editors":["outsider"],"readers":["reader"]}}`)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner","outsider"],"readers":["reader"]}}`)
 	f.api = newConversationTurnQueueTestAPI(map[string]string{})
 	// These tests drive the durable queue explicitly so no unobserved worker
 	// reaches a model, and every test owns the lifetime of its runtime hook.

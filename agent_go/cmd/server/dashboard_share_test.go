@@ -69,7 +69,7 @@ func TestDashboardShareCreatesAndPublishesStandardDashboard(t *testing.T) {
 func TestShareMCPKeepsExistingPermissions(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks"]},{"id":"editor","username":"editor","can_create":true,"products":["agentworks"]},{"id":"reader","username":"reader","email":"reader@example.com","products":["agentworks"]}]}`)
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner"],"editors":["editor"],"readers":["reader"]}}`)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner","editor"],"readers":["reader"]}}`)
 	readToken := &accesstokens.Token{ID: "share-read", Scopes: []string{"dashboards:read"}, WorkflowIDs: []string{"invoices"}}
 	writerToken := &accesstokens.Token{ID: "share-author", Scopes: []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat"}, WorkflowIDs: []string{"invoices"}}
 	call := func(name, user string, token *accesstokens.Token, args map[string]any, status int) map[string]any {
@@ -92,7 +92,8 @@ func TestShareMCPKeepsExistingPermissions(t *testing.T) {
 	if len(actions) != 1 || actions[0] != "get" {
 		t.Fatalf("read connection acquired a sharing mutation: %+v", actions)
 	}
-	for _, user := range []string{"owner", "editor"} {
+	// A read connection cannot share, and nor can someone who only uses the Goal (one sharing model, PLAT-856-393).
+	for _, user := range []string{"owner", "reader"} {
 		token := writerToken
 		if user == "owner" {
 			token = readToken

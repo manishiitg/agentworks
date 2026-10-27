@@ -210,7 +210,7 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	}
 	// Relay authoring reuses relays:write and requires its current Builder owner.
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["agentworks","work","relays"]},{"id":"reader","username":"reader","role":"editor","products":["agentworks","work","relays"]}]}`)
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"editors":["owner"],"readers":["reader"]}}`)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"readers":["reader","owner"]}}`)
 	owner.AccessToken.Scopes = []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}
 	// Changed consent changes the catalog and requires a fresh MCP session.
 	cli = dialExternalMCP(t, ctx, srv.URL+externalMCPPath)

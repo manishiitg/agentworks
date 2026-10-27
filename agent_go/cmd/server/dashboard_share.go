@@ -281,8 +281,8 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 			}
 			ids := []string{}
 			for _, person := range people {
-				if containsID(manifest.effectiveOwners(), person.ID) || containsID(manifest.effectiveEditors(), person.ID) {
-					continue // already more than a reader
+				if containsID(manifest.effectiveOwners(), person.ID) {
+					continue // already an owner
 				}
 				ids = append(ids, person.ID)
 			}

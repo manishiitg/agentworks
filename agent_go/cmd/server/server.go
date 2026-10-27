@@ -2411,8 +2411,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Per-workflow ownership and sharing (workflow_access.go).
 	apiRouter.HandleFunc("/workflow/laptop", api.handleGoalLaptopSettings).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/workflow/laptop/folders", api.handleGoalLaptopBrowse).Methods("GET")
-	apiRouter.HandleFunc("/workflow/access", api.handleGetWorkflowAccess).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/access", api.handleSetWorkflowAccess).Methods("PUT", "POST")
 	apiRouter.HandleFunc("/users/directory", api.handleUserDirectory).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/me/token-usage", api.handleMyTokenUsage).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/share-tunnel/status", requireAdmin(api.handleGetShareTunnelStatus)).Methods("GET", "OPTIONS")

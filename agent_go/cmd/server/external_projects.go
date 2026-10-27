@@ -15,7 +15,7 @@ import (
 
 func externalProjectDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	names := map[string]any{"type": "array", "maxItems": 100, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": 200}, "description": "User ids, usernames or emails."}
-	add("manage_project", "Rename, duplicate, delete or share a workflow, Flow or Crew. Pass workflow_id or crew_id. rename (workflows and Flows; Crews use update_crew): label, description (one short line, shown in Slack and lists), icon. duplicate (workflows and Flows): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: workflows list owners, editors and readers (set_access changes only the lists you send; owners only). Goals and Flows use the same owner lists; Crew ownership uses crew_owners. Run sharing is available from the dashboard.", true, false, map[string]any{
+	add("manage_project", "Rename, duplicate, delete or share a workflow, Flow or Crew. Pass workflow_id or crew_id. rename (workflows and Flows; Crews use update_crew): label, description (one short line, shown in Slack and lists), icon. duplicate (workflows and Flows): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: a Goal's or Flow's owners (they build and change it) and readers (the people who can use it); set_access changes only the lists you send, owners only, and the main owner stays. Everyone in the company is the share tool's choice. Crew ownership uses crew_owners.", true, false, map[string]any{
 		"workflow_id": externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
 		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
 		"action":      map[string]any{"type": "string", "enum": []any{"rename", "duplicate", "delete", "get_access", "set_access"}},
@@ -25,7 +25,6 @@ func externalProjectDefinitions(add func(string, string, bool, bool, map[string]
 		"new_label":   map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
 		"confirm":     externalString("For delete: the same workflow_id or crew_id."),
 		"owners":      names,
-		"editors":     names,
 		"readers":     names,
 	}, "action")
 }
@@ -85,27 +84,26 @@ func (api *StreamingAPI) externalWorkflowProjectCall(w http.ResponseWriter, r *h
 		}
 		respond(scheduleHandler(r, requireWorkflowWriteAccess(api.handleDeleteWorkflowFolder), http.MethodDelete, "/api/workflows/folder", nil,
 			url.Values{"workspace_path": {root}}, DeleteWorkflowFolderRequest{WorkspacePath: root}))
-	case "get_access":
-		respond(scheduleHandler(r, api.handleGetWorkflowAccess, http.MethodGet, "/api/workflow/access", nil, url.Values{"workspace_path": {root}}, nil))
-	case "set_access":
-		owners, editors, readers := workflow.Manifest.effectiveOwners(), workflow.Manifest.effectiveEditors(), workflow.Manifest.effectiveReaders()
-		changed := false
-		for key, target := range map[string]*[]string{"owners": &owners, "editors": &editors, "readers": &readers} {
-			if raw, ok := args[key].([]any); ok {
-				list := make([]string, 0, len(raw))
-				for _, item := range raw {
-					list = append(list, strings.TrimSpace(item.(string)))
-				}
-				*target = list
-				changed = true
-			}
+	case "get_access", "set_access":
+		// One sharing model (2026-10-27): owners and the people who can use it, through the Access panel's operations.
+		claims := GetUserFromContext(r.Context())
+		owners, ownersSet := stringListArg(args["owners"])
+		readers, readersSet := stringListArg(args["readers"])
+		var state map[string]any
+		var err error
+		if action == "get_access" {
+			state, err = api.projectAccessState(r.Context(), claims, root, workflow.Manifest)
+		} else if !ownersSet && !readersSet {
+			externalError(w, 400, "invalid_arguments", "set_access needs owners, readers (the people who can use it) or both.")
+			return
+		} else {
+			state, err = api.setProjectAccessLists(r.Context(), claims, root, workflow.Manifest, owners, readers, ownersSet, readersSet)
 		}
-		if !changed {
-			externalError(w, 400, "invalid_arguments", "set_access needs owners, editors or readers.")
+		if err != nil {
+			externalError(w, 400, "access_not_changed", err.Error())
 			return
 		}
-		body := map[string]any{"workspace_path": root, "owners": owners, "editors": editors, "readers": readers}
-		respond(scheduleHandler(r, api.handleSetWorkflowAccess, http.MethodPut, "/api/workflow/access", nil, nil, body))
+		externalJSON(w, state)
 	default:
 		externalError(w, 400, "invalid_arguments", action+" applies to Crews; for a workflow use rename, duplicate, delete, get_access or set_access.")
 	}

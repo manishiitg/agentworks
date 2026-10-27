@@ -19,12 +19,12 @@ func dashboardOwnersWrite(action string) bool {
 }
 
 func (api *StreamingAPI) handleDashboardOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string) {
-	if target.Kind == "relay" {
+	if target.Kind == "relay" || target.Kind == "workflow" {
 		api.handleDashboardFlowOwners(w, r, claims, target, action, emails)
 		return
 	}
 	if target.Kind != "crew" {
-		externalError(w, http.StatusNotFound, "not_found", "Co-owners are available for Crews and Flows.")
+		externalError(w, http.StatusNotFound, "not_found", "Owners are available for Crews, Goals and Flows.")
 		return
 	}
 	ref, ok := resolveCrewPath(r.Context(), claims.UserID, target.Root)
@@ -87,14 +87,14 @@ func (api *StreamingAPI) stopRemovedOwnerSessions(userID, root string) {
 
 func (api *StreamingAPI) handleDashboardFlowOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string) {
 	level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, target.Root)
-	if manifest == nil || manifest.Kind != "relay" || level != WorkflowAccessOwner {
-		externalError(w, http.StatusNotFound, "not_found", "Flow not found or not allowed.")
+	if manifest == nil || level != WorkflowAccessOwner {
+		externalError(w, http.StatusNotFound, "not_found", "Not found or not allowed.")
 		return
 	}
 	state := flowOwnersStateFor(manifest, claims.UserID)
 	if dashboardOwnersWrite(action) {
 		if !dashboardAuthoringAllowed(claims, &target) {
-			externalError(w, http.StatusForbidden, "insufficient_scope", "Changing owners needs the Flow's main owner and existing authoring consent.")
+			externalError(w, http.StatusForbidden, "insufficient_scope", "Changing owners needs an owner and existing authoring consent.")
 			return
 		}
 		if len(emails) == 0 {

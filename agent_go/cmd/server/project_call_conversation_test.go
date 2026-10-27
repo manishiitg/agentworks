@@ -190,7 +190,7 @@ func TestProjectCallsRouteByProjectOwners(t *testing.T) {
 			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 			if tc.workflow {
 				manifest, _, _ := ReadWorkflowManifest(ctx, tc.source)
-				manifest.Access = &WorkflowAccess{Owners: tc.owners, Editors: []string{"owner"}}
+				manifest.Access = &WorkflowAccess{Owners: tc.owners}
 				raw, _ := json.Marshal(manifest)
 				env.mock.mu.Lock()
 				env.mock.files[manifestPath(tc.source)] = string(raw)

@@ -42,7 +42,7 @@ func newTeamTestFixture(t *testing.T) *teamTestFixture {
 	t.Cleanup(server.Close)
 	t.Setenv("WORKSPACE_API_URL", server.URL)
 	t.Setenv("WORKSPACE_FILE_STATE_DIR", t.TempDir())
-	withMemoryUserDirectory(t, `{"users":[{"id":"leader","username":"leader","role":"creator"},{"id":"first","username":"first","role":"editor"},{"id":"second","username":"second","role":"editor"},{"id":"observer","username":"observer","role":"viewer"}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"leader","username":"leader","email":"leader@example.com","role":"creator"},{"id":"first","username":"first","role":"editor"},{"id":"second","username":"second","email":"second@example.com","role":"editor"},{"id":"observer","username":"observer","role":"viewer"}]}`)
 	if e := os.MkdirAll(filepath.Join(root, teamTestRoot, "planning"), 0755); e != nil {
 		t.Fatal(e)
 	}
@@ -351,11 +351,8 @@ func TestWorkflowTeamOwnerTabsKeepExecutionAndSharedGrants(t *testing.T) {
 	m.Access.AllowedKBWriters = []string{"research"}
 	m.Access.RunEveryone = true
 	f.manifest(t, m)
-	req := httptest.NewRequest(http.MethodPut, "/api/workflow/access", strings.NewReader(`{"workspace_path":"Workflow/team-example","owners":["leader","second"],"editors":[],"readers":[]}`)).WithContext(teamTestContext("leader"))
-	w := httptest.NewRecorder()
-	f.api.handleSetWorkflowAccess(w, req)
-	if w.Code != 200 {
-		t.Fatalf("add project owner: %d %s", w.Code, w.Body.String())
+	if _, err := f.api.setProjectAccessLists(teamTestContext("leader"), &UserClaims{UserID: "leader"}, teamTestRoot, m, []string{"leader", "second"}, nil, true, false); err != nil {
+		t.Fatalf("add project owner: %v", err)
 	}
 	saved, _, err := ReadWorkflowManifest(context.Background(), teamTestRoot)
 	if err != nil || workflowAccessForManifest(&UserClaims{UserID: "second"}, saved) != WorkflowAccessOwner || workflowExecutionOwnerUserID(saved) != "leader" || !saved.Access.RunEveryone || !containsID(saved.Access.AllowedKBWriters, "research") {

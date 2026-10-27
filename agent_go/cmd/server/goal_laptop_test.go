@@ -15,7 +15,7 @@ import (
 func TestGoalBuilderLaptopUsesSharedGrantsOnlyInInteractiveTurns(t *testing.T) {
 	f := newMCPLaptopFixture(t)
 	const root = "Workflow/invoices"
-	f.write(t, root+"/workflow.json", `{"schema_version":1,"id":"wf_invoices","label":"Invoices","capabilities":{},"access":{"owners":["owner"],"editors":["other"]}}`)
+	f.write(t, root+"/workflow.json", `{"schema_version":1,"id":"wf_invoices","label":"Invoices","capabilities":{},"access":{"owners":["owner","other"]}}`)
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
 	ctx := context.WithValue(t.Context(), UserContextKey, owner)
 	settings := crewLaptopSettings{DeviceOwnerID: "owner", DeviceID: "laptop", Commands: true, Folders: []localfiles.FolderSelection{{ID: "project", Path: "/tmp/project", Access: "write"}}}

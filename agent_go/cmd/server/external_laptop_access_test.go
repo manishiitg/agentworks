@@ -121,7 +121,7 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 				root = "Workflow/invoices"
 				target = map[string]any{"workflow_id": "wf_invoices"}
 			}
-			goalManifest := `{"schema_version":1,"id":"wf_invoices","label":"Invoices","capabilities":{},"access":{"owners":["owner"],"editors":["other"]}}`
+			goalManifest := `{"schema_version":1,"id":"wf_invoices","label":"Invoices","capabilities":{},"access":{"owners":["owner","other"]}}`
 			if goal {
 				f.write(t, root+"/workflow.json", goalManifest)
 			}
@@ -252,7 +252,7 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 				t.Fatalf("co-owner laptop write: %q %v", written, err)
 			}
 			if goal {
-				f.write(t, root+"/workflow.json", strings.Replace(goalManifest, `"editors":["other"]`, `"readers":["other"]`, 1))
+				f.write(t, root+"/workflow.json", strings.Replace(goalManifest, `"owners":["owner","other"]`, `"owners":["owner"],"readers":["other"]`, 1))
 			} else if _, err := defaultProjectOwners().RemoveCoOwner("work", "dashboard-team", "other"); err != nil {
 				t.Fatal(err)
 			}

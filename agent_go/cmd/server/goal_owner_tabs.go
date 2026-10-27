@@ -40,9 +40,6 @@ func goalTabMembers(m *WorkflowManifest) []string {
 	seen := map[string]bool{}
 	var out []string
 	members := append([]string{}, m.effectiveOwners()...)
-	if m.Team == nil {
-		members = append(members, m.effectiveEditors()...)
-	}
 	for _, id := range members {
 		if id != "" && !seen[id] {
 			seen[id] = true

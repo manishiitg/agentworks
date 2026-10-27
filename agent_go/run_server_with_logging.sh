@@ -1633,6 +1633,10 @@ python3 "$SCRIPT_DIR/../scripts/migrations/vault-apps-setting.py" \
     --workspace-dir "$WORKSPACE_DOCS_PATH" \
     --backup-dir "$vault_apps_state/migration-backups/vault-apps-setting-$(date -u +%Y%m%dT%H%M%SZ)" \
     --done-file "$vault_apps_state/migrations/vault-apps-setting.done" || exit 1
+# One sharing model (PLAT-856-393): retire the Goal/Flow editor tier before the server reads access.
+python3 "$SCRIPT_DIR/../scripts/migrations/one-sharing-model.py" \
+    --workspace-dir "$WORKSPACE_DOCS_PATH" \
+    --backup-dir "${AGENTWORKS_STATE_ROOT:-$HOME/.config/agentworks/state}/migration-backups/one-sharing-model-$(date -u +%Y%m%dT%H%M%SZ)" || exit 1
 # Convert only the already-exported non-secret policy. Re-sourcing the full .env
 # here would overwrite the native workspace/port settings resolved above.
 if [ -n "${AGENTWORKS_PROVIDER_POLICY:-}" ]; then

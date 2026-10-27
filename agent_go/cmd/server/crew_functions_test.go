@@ -206,7 +206,7 @@ func TestInternalFunctionReplyRechecksTargetAccess(t *testing.T) {
 	const targetPath = "Workflow/revocable"
 	manifest := NewWorkflowManifest("Revocable")
 	manifest.CreatedBy = "other"
-	manifest.Access = &WorkflowAccess{Owners: []string{"other"}, Editors: []string{"owner"}}
+	manifest.Access = &WorkflowAccess{Owners: []string{"other", "owner"}}
 	writeManifest := func() {
 		t.Helper()
 		raw, err := json.Marshal(manifest)
@@ -236,7 +236,7 @@ func TestInternalFunctionReplyRechecksTargetAccess(t *testing.T) {
 	if err := store.CreatePendingRequest("revoked-target-request", "Proceed?", "", "shared-chat", []string{"yes", "no"}, false, time.Minute, call.ID); err != nil {
 		t.Fatal(err)
 	}
-	manifest.Access.Editors = nil
+	manifest.Access.Owners = []string{"other"}
 	writeManifest()
 	if _, err := reg.tools["project_functions_reply"].exec(ctx, map[string]interface{}{
 		"call_id": call.ID, "request_id": "revoked-target-request", "response": "yes",

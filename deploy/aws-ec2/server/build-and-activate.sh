@@ -87,6 +87,7 @@ install -m 0755 "$REPO_ROOT/scripts/migrations/agentbridge-receipts.py" "$BUILD_
 install -m 0755 "$REPO_ROOT/scripts/migrations/retire-agent-server-relay.py" "$BUILD_DIR/migrations/retire-agent-server-relay.py"
 install -m 0755 "$REPO_ROOT/scripts/migrations/fold-crew-role.py" "$BUILD_DIR/migrations/fold-crew-role.py"
 install -m 0755 "$REPO_ROOT/scripts/migrations/vault-apps-setting.py" "$BUILD_DIR/migrations/vault-apps-setting.py"
+install -m 0755 "$REPO_ROOT/scripts/migrations/one-sharing-model.py" "$BUILD_DIR/migrations/one-sharing-model.py"
 install -m 0755 "$REPO_ROOT/scripts/remove-autopilot-engine.py" "$BUILD_DIR/migrations/remove-autopilot-engine.py"
 install -m 0755 "$REPO_ROOT/scripts/group-platform-tool-selections.py" "$BUILD_DIR/migrations/group-platform-tool-selections.py"
 install -m 0755 "$REPO_ROOT/scripts/simplify-workflow-settings.py" "$BUILD_DIR/migrations/simplify-workflow-settings.py"

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { authApi, workflowTeamApi, type WorkflowAccessUser, type WorkflowTeamInfo, type WorkflowTeamMember, type WorkflowTeamPolicy } from '../../services/api'
+import api, { authApi, workflowTeamApi, type WorkflowAccessUser, type WorkflowTeamInfo, type WorkflowTeamMember, type WorkflowTeamPolicy } from '../../services/api'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
-import WorkflowSharePopup from './WorkflowSharePopup'
+import { ShareDashboardButton } from './ShareDashboardButton'
 import { Button } from '../ui/Button'
 
 const member = (user_id: string, run = false): WorkflowTeamMember => ({ user_id, run, manage_schedules: false, approve: false, backup: false, publish: false, notify: false })
@@ -21,12 +21,16 @@ export default function WorkflowTeamView({ workspacePath, readOnly }: { workspac
   useEffect(() => {
     let current = true
     setInfo(null); setDraft(null); setError('')
-    Promise.all([workflowTeamApi.get(workspacePath), authApi.listUserDirectory(), authApi.getWorkflowAccess(workspacePath)])
-      .then(([result, users, access]) => {
+    type Person = { id: string }
+    const owners = api.post<{ owner?: Person; co_owners?: Person[] }>('/api/dashboards', { workspace: workspacePath, action: 'owners' }).then(r => r.data).catch(() => ({ owner: undefined, co_owners: [] as Person[] }))
+    const share = api.post<{ people?: Person[] }>('/api/dashboards', { workspace: workspacePath, action: 'share_status' }).then(r => r.data).catch(() => ({ people: [] as Person[] }))
+    Promise.all([workflowTeamApi.get(workspacePath), authApi.listUserDirectory(), owners, share])
+      .then(([result, users, access, shared]) => {
         if (!current) return
         setInfo(result); setDirectory(users.users)
-        setDraft(result.team || { leader_id: access.owners[0]?.id || result.my_user_id, revision: 0,
-          contributors: [...(access.editors || []).map(u => member(u.id, true)), ...access.readers.map(u => member(u.id, true)), ...access.owners.slice(1).map(u => member(u.id, true))], routes: [] })
+        // A new team starts from the Goal's People: its owners and the people who can use it.
+        setDraft(result.team || { leader_id: access.owner?.id || result.my_user_id, revision: 0,
+          contributors: [...(access.co_owners || []), ...(shared.people || [])].map(u => member(u.id, true)), routes: [] })
       }).catch(e => { if (current) setError(e instanceof Error ? e.message : 'Unable to load workflow team') })
     return () => { current = false }
   }, [workspacePath])
@@ -73,6 +77,6 @@ export default function WorkflowTeamView({ workspacePath, readOnly }: { workspac
         {canManage && <><p className="text-xs text-muted-foreground">Saving team permissions refreshes Builder access. Existing schedules need review and saving before they run under the new permissions.</p><Button disabled={saving} onClick={save}>{saving ? 'Saving…' : info.team ? 'Save team permissions' : 'Enable team collaboration'}</Button></>}
       </>}
     </section>
-    <WorkflowSharePopup workspacePath={workspacePath} readOnly={readOnly} />
+    {!readOnly && <ShareDashboardButton workspacePath={workspacePath} />}
   </div>
 }

@@ -19,7 +19,7 @@ func ownerBotWorld(t *testing.T) (*StreamingAPI, string) {
 	t.Helper()
 	api, workspace := setupSlackConnectionTest(t)
 	workspace.files["Workflow/gamma/workflow.json"] = `{"schema_version":1,"id":"wf_gamma","label":"Gamma","access":{"owners":["alice"],"readers":[]}}`
-	workspace.files["Workflow/delta/workflow.json"] = `{"schema_version":1,"id":"wf_delta","label":"Delta","access":{"owners":["bob"],"editors":["alice"],"readers":[]}}`
+	workspace.files["Workflow/delta/workflow.json"] = `{"schema_version":1,"id":"wf_delta","label":"Delta","access":{"owners":["bob","alice"],"readers":[]}}`
 	workspace.files["Workflow/epsilon/workflow.json"] = `{"schema_version":1,"id":"wf_epsilon","label":"Epsilon","access":{"owners":["bob"],"readers":["alice"]}}`
 	createSlackConnectionForTest(t, api, "alice", `{"display_name":"Alpha App","bot_token":"xoxb-alpha","app_token":"xapp-alpha","enabled":true,"workspace_path":"Workflow/alpha"}`)
 	createSlackConnectionForTest(t, api, "bob", `{"display_name":"Beta App","bot_token":"xoxb-beta","app_token":"xapp-beta","enabled":true,"workspace_path":"Workflow/beta"}`)

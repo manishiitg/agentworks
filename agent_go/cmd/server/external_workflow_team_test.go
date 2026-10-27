@@ -28,7 +28,7 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 	f.write(t, "Workflow/invoices/planning/plan.json", `{"steps":[{"id":"parent","type":"agent","predefined_routes":[{"route_id":"first","route_name":"First","sub_agent_step":{"id":"first-step","type":"scripted"}},{"route_id":"second","route_name":"Second","sub_agent_step":{"id":"second-step","type":"scripted"}}]}]}`)
 	m := NewWorkflowManifest("Team example")
 	m.ID, m.CreatedBy = "invoices", "owner"
-	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Editors: []string{"outsider"}, Readers: []string{"reader"}}
+	m.Access = &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{"reader", "outsider"}}
 	m.Schedules = []WorkflowSchedule{{ID: "route-clock", Name: "Reviewed clock", CronExpression: "0 9 * * *", Timezone: "UTC", Enabled: false,
 		GroupNames: []string{"default"}, RouteSelections: map[string]string{"parent": "first"}}}
 	b, _ := json.Marshal(m)

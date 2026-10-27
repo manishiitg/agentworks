@@ -451,9 +451,9 @@ func (api *StreamingAPI) handleWorkflowTeam(w http.ResponseWriter, r *http.Reque
 			writeUsersError(w, 400, "Leader must have an editable account")
 			return
 		}
-		kb := []string{}
+		kb, everyone := []string{}, false
 		if m.Access != nil {
-			kb = m.Access.AllowedKBWriters
+			kb, everyone = m.Access.AllowedKBWriters, m.Access.RunEveryone
 		}
 		owners := append([]string{}, m.effectiveOwners()...)
 		if !containsID(owners, body.Team.LeaderID) {
@@ -461,7 +461,7 @@ func (api *StreamingAPI) handleWorkflowTeam(w http.ResponseWriter, r *http.Reque
 		}
 		readers := append([]string{}, m.effectiveReaders()...)
 		m.Team = body.Team
-		m.Access = &WorkflowAccess{Owners: owners, Editors: teamContributorIDs(m.Team), Readers: readers, AllowedKBWriters: kb}
+		m.Access = &WorkflowAccess{Owners: owners, Readers: readers, AllowedKBWriters: kb, RunEveryone: everyone}
 		if e := WriteWorkflowManifest(context.WithValue(context.WithValue(r.Context(), teamLockHeldKey{}, root), teamManifestPermitKey{}, true), root, m); e != nil {
 			writeUsersError(w, 500, e.Error())
 			return

@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -33,8 +31,8 @@ import (
 
 // WorkflowAccess is the manifest's `access` block.
 type WorkflowAccess struct {
+	// Owners build and change it; Readers ("Can use") use its dashboard and ask for work (one sharing model, 2026-10-27).
 	Owners  []string `json:"owners"`
-	Editors []string `json:"editors,omitempty"`
 	Readers []string `json:"readers"`
 	// AllowedKBWriters lists workflow IDs explicitly permitted to write into
 	// this workflow's knowledgebase/notes/ via a "write" knowledgebase_source
@@ -79,13 +77,6 @@ func (m *WorkflowManifest) effectiveReaders() []string {
 		return nil
 	}
 	return m.Access.Readers
-}
-
-func (m *WorkflowManifest) effectiveEditors() []string {
-	if m == nil || m.Access == nil {
-		return nil
-	}
-	return m.Access.Editors
 }
 
 // hasOwnershipRecord reports whether anyone has ever been recorded as owning
@@ -216,7 +207,7 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 			}
 			return WorkflowAccessOwner
 		}
-		if containsID(m.effectiveEditors(), claims.UserID) || containsID(m.effectiveReaders(), claims.UserID) || workflowRunEveryone(claims, m, product) {
+		if containsID(m.effectiveReaders(), claims.UserID) || workflowRunEveryone(claims, m, product) {
 			return WorkflowAccessRead
 		}
 		return WorkflowAccessNone
@@ -226,12 +217,6 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 			return WorkflowAccessRead
 		}
 		return WorkflowAccessOwner
-	}
-	if containsID(m.effectiveEditors(), claims.UserID) {
-		if !userAccessForClaims(claims).CanEdit {
-			return WorkflowAccessRead
-		}
-		return WorkflowAccessWrite
 	}
 	if containsID(m.effectiveReaders(), claims.UserID) || workflowRunEveryone(claims, m, product) {
 		return WorkflowAccessRead
@@ -367,211 +352,6 @@ type workflowAccessUser struct {
 	Email    string `json:"email,omitempty"`
 }
 
-type workflowAccessResponse struct {
-	WorkspacePath string               `json:"workspace_path"`
-	Owners        []workflowAccessUser `json:"owners"`
-	Editors       []workflowAccessUser `json:"editors"`
-	Readers       []workflowAccessUser `json:"readers"`
-	MyAccess      WorkflowAccessLevel  `json:"my_access"`
-	// Legacy is true when nothing has been recorded yet and the workflow is
-	// open to every creator and editor; saving any grant ends that.
-	Legacy bool `json:"legacy"`
-}
-
-func describeUsers(ids []string, dir *userDirectory) []workflowAccessUser {
-	out := make([]workflowAccessUser, 0, len(ids))
-	for _, id := range ids {
-		u := workflowAccessUser{ID: id, Username: id}
-		if dir != nil {
-			if rec := dir.byID(id); rec != nil {
-				u.Username, u.Email = rec.Username, rec.Email
-			}
-		}
-		out = append(out, u)
-	}
-	return out
-}
-
-// GET /api/workflow/access?workspace_path=Workflow/<folder>
-func (api *StreamingAPI) handleGetWorkflowAccess(w http.ResponseWriter, r *http.Request) {
-	workspacePath := strings.TrimSpace(r.URL.Query().Get("workspace_path"))
-	if workspacePath == "" {
-		writeUsersError(w, http.StatusBadRequest, "workspace_path is required")
-		return
-	}
-	claims := GetUserFromContext(r.Context())
-	level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, workspacePath)
-	if manifest == nil {
-		writeUsersError(w, http.StatusNotFound, "no workflow at that path")
-		return
-	}
-	if level == WorkflowAccessNone {
-		writeWorkflowPermissionDenied(w, "read")
-		return
-	}
-	dir, _ := loadUserDirectory()
-	owners, editors, readers := manifest.effectiveOwners(), manifest.effectiveEditors(), manifest.effectiveReaders()
-	if manifest.Kind == "relay" {
-		owners, editors, readers = relayAccessLists(manifest)
-	}
-	writeUsersJSON(w, http.StatusOK, workflowAccessResponse{
-		WorkspacePath: workspacePath,
-		Owners:        describeUsers(owners, dir),
-		Editors:       describeUsers(editors, dir),
-		Readers:       describeUsers(readers, dir),
-		MyAccess:      level,
-		Legacy:        !manifest.hasOwnershipRecord(),
-	})
-}
-
-// PUT /api/workflow/access {workspace_path, owners:[...], editors:[...], readers:[...]}
-// Entries may be user ids, usernames, or emails; they are stored as ids. The
-// caller must be an owner (or admin) and cannot remove the last owner.
-// Editors may edit and run but not share; readers are view-only.
-func (api *StreamingAPI) handleSetWorkflowAccess(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		WorkspacePath string    `json:"workspace_path"`
-		Owners        []string  `json:"owners"`
-		Editors       *[]string `json:"editors"`
-		Readers       []string  `json:"readers"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeUsersError(w, http.StatusBadRequest, "invalid body")
-		return
-	}
-	req.WorkspacePath = strings.TrimSpace(req.WorkspacePath)
-	if req.WorkspacePath == "" {
-		writeUsersError(w, http.StatusBadRequest, "workspace_path is required")
-		return
-	}
-	claims := GetUserFromContext(r.Context())
-	level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, req.WorkspacePath)
-	if manifest == nil {
-		writeUsersError(w, http.StatusNotFound, "no workflow at that path")
-		return
-	}
-	// Only owners share a claimed workflow. Account-tier writers may still
-	// share a legacy manifest with no ownership record — that save is what
-	// claims it and ends the legacy openness.
-	if level != WorkflowAccessOwner && (level != WorkflowAccessWrite || manifest.hasOwnershipRecord()) {
-		writeWorkflowPermissionDenied(w, "owner")
-		return
-	}
-	dir, err := loadUserDirectory()
-	if err != nil {
-		writeUsersError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	resolve := func(entries []string) ([]string, string) {
-		seen := map[string]bool{}
-		var ids []string
-		for _, raw := range entries {
-			key := strings.TrimSpace(raw)
-			if key == "" {
-				continue
-			}
-			rec := dir.find(key, key, key)
-			if rec == nil {
-				return nil, key
-			}
-			if !seen[rec.ID] {
-				seen[rec.ID] = true
-				ids = append(ids, rec.ID)
-			}
-		}
-		sort.Strings(ids)
-		return ids, ""
-	}
-	owners, unknown := resolve(req.Owners)
-	if unknown != "" {
-		writeUsersError(w, http.StatusBadRequest, "unknown user: "+unknown)
-		return
-	}
-	// An absent editors key (older clients) preserves the stored list,
-	// quietly dropping deleted accounts; an explicit empty list clears it.
-	var editors []string
-	if req.Editors == nil {
-		for _, id := range manifest.effectiveEditors() {
-			if dir.byID(id) != nil {
-				editors = append(editors, id)
-			}
-		}
-	} else {
-		var unknown string
-		if editors, unknown = resolve(*req.Editors); unknown != "" {
-			writeUsersError(w, http.StatusBadRequest, "unknown user: "+unknown)
-			return
-		}
-	}
-	readers, unknown := resolve(req.Readers)
-	if unknown != "" {
-		writeUsersError(w, http.StatusBadRequest, "unknown user: "+unknown)
-		return
-	}
-	if len(owners) == 0 {
-		writeUsersError(w, http.StatusBadRequest, "a workflow needs at least one owner")
-		return
-	}
-	if manifest.Kind == "relay" {
-		if len(owners) != 1 {
-			writeUsersError(w, http.StatusBadRequest, "A Flow has one owner; others can run its published versions")
-			return
-		}
-		// Everyone who is not the owner runs the Flow: the editor tier does not exist for a Flow.
-		seen := map[string]bool{}
-		var runners []string
-		for _, id := range append(append([]string{}, readers...), editors...) {
-			if !seen[id] {
-				seen[id] = true
-				runners = append(runners, id)
-			}
-		}
-		sort.Strings(runners)
-		editors, readers = nil, runners
-	}
-	// A user holds exactly one tier; higher tiers win overlaps.
-	keptEditors := editors[:0]
-	for _, id := range editors {
-		if !containsID(owners, id) {
-			keptEditors = append(keptEditors, id)
-		}
-	}
-	filtered := readers[:0]
-	for _, id := range readers {
-		if !containsID(owners, id) && !containsID(keptEditors, id) {
-			filtered = append(filtered, id)
-		}
-	}
-	if manifestIsRelay(manifest) && !containsID(owners, manifest.relayBuilder()) {
-		writeUsersError(w, http.StatusBadRequest, "Keep the Flow's execution owner in its owner list.")
-		return
-	}
-	if manifest.Team != nil && !containsID(owners, manifest.Team.LeaderID) {
-		writeUsersError(w, http.StatusBadRequest, "Keep the Goal's execution owner in its owner list.")
-		return
-	}
-	if manifest.Access == nil {
-		manifest.Access = &WorkflowAccess{}
-	}
-	manifest.Access.Owners, manifest.Access.Editors, manifest.Access.Readers = owners, keptEditors, filtered
-	writeCtx := r.Context()
-	if manifest.Team != nil {
-		writeCtx = context.WithValue(writeCtx, teamManifestPermitKey{}, true)
-	}
-	if err := WriteWorkflowManifest(writeCtx, req.WorkspacePath, manifest); err != nil {
-		writeUsersError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	log.Printf("[ACCESS] %s set access on %s: owners=%v editors=%v readers=%v", GetUserIDFromContext(r.Context()), req.WorkspacePath, owners, keptEditors, filtered)
-	writeUsersJSON(w, http.StatusOK, workflowAccessResponse{
-		WorkspacePath: req.WorkspacePath,
-		Owners:        describeUsers(owners, dir),
-		Editors:       describeUsers(keptEditors, dir),
-		Readers:       describeUsers(filtered, dir),
-		MyAccess:      workflowAccessForManifest(claims, manifest),
-	})
-}
-
 // GET /api/users/directory — the picker behind sharing: every enabled
 // account's id, username and email, nothing else. Any signed-in user may
 // call it (an owner needs it to share their own workflow).
@@ -629,29 +409,4 @@ func workflowManifestBlockedWriteForNonOwner(ctx context.Context, claims *UserCl
 		return ""
 	}
 	return folder + "/workflow.json"
-}
-
-// relayAccessLists is how a Flow's people are shown: its owners (the main owner first), nobody as an editor, and everyone
-// else (editors, readers) as running it.
-func relayAccessLists(m *WorkflowManifest) (owners, editors, readers []string) {
-	builder := m.relayBuilder()
-	if builder != "" {
-		owners = []string{builder}
-	}
-	seen := map[string]bool{builder: true}
-	for _, id := range m.effectiveOwners() {
-		if !seen[id] {
-			seen[id] = true
-			owners = append(owners, id)
-		}
-	}
-	for _, list := range [][]string{m.effectiveEditors(), m.effectiveReaders()} {
-		for _, id := range list {
-			if !seen[id] {
-				seen[id] = true
-				readers = append(readers, id)
-			}
-		}
-	}
-	return owners, nil, readers
 }

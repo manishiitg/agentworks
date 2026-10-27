@@ -14,14 +14,14 @@ func TestWorkflowManifestBlockedWriteForNonOwner(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[
 		{"id":"alice","username":"alice","role":"creator"},
 		{"id":"bob","username":"bob","role":"editor","products":["agentworks"]}]}`)
-	shared, _ := json.Marshal(WorkflowManifest{ID: "shared", Label: "Shared", Access: &WorkflowAccess{Owners: []string{"alice"}, Editors: []string{"bob"}}})
+	shared, _ := json.Marshal(WorkflowManifest{ID: "shared", Label: "Shared", Access: &WorkflowAccess{Owners: []string{"alice"}, Readers: []string{"bob"}}})
 	workspace := &mockWorkspaceAPI{files: map[string]string{manifestPath("Workflow/shared"): string(shared)}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
 	ctx := context.Background()
 	if got := workflowManifestBlockedWriteForNonOwner(ctx, &UserClaims{UserID: "bob", Username: "bob"}, "Workflow/shared/"); got != "Workflow/shared/workflow.json" {
-		t.Fatalf("editor: %q", got)
+		t.Fatalf("non-owner: %q", got)
 	}
 	if got := workflowManifestBlockedWriteForNonOwner(ctx, &UserClaims{UserID: "alice", Username: "alice"}, "Workflow/shared"); got != "" {
 		t.Fatalf("owner must keep write: %q", got)

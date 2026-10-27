@@ -19,7 +19,7 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		{"id":"alice","username":"alice","role":"creator"},
 		{"id":"bob","username":"bob","role":"editor","products":["agentworks"]}]}`)
 	private, _ := json.Marshal(WorkflowManifest{ID: "private", Label: "Private", Access: &WorkflowAccess{Owners: []string{"alice"}}})
-	shared, _ := json.Marshal(WorkflowManifest{ID: "shared", Label: "Shared", Access: &WorkflowAccess{Owners: []string{"alice"}, Editors: []string{"bob"}}})
+	shared, _ := json.Marshal(WorkflowManifest{ID: "shared", Label: "Shared", Access: &WorkflowAccess{Owners: []string{"alice"}}, Team: &WorkflowTeam{LeaderID: "alice", Revision: 1, Contributors: []WorkflowContributor{{UserID: "bob", Run: true}}}})
 	workspace := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath("Workflow/private"): string(private),
 		manifestPath("Workflow/shared"):  string(shared),
@@ -105,7 +105,7 @@ func TestWorkflowRoutesCheckTheNamedWorkflow(t *testing.T) {
 		{"id":"alice","username":"alice","role":"creator"},
 		{"id":"bob","username":"bob","role":"editor","products":["agentworks"]}]}`)
 	private, _ := json.Marshal(WorkflowManifest{ID: "private", Label: "Private", Access: &WorkflowAccess{Owners: []string{"alice"}}})
-	shared, _ := json.Marshal(WorkflowManifest{ID: "shared", Label: "Shared", Access: &WorkflowAccess{Owners: []string{"alice"}, Editors: []string{"bob"}}})
+	shared, _ := json.Marshal(WorkflowManifest{ID: "shared", Label: "Shared", Access: &WorkflowAccess{Owners: []string{"alice"}}, Team: &WorkflowTeam{LeaderID: "alice", Revision: 1, Contributors: []WorkflowContributor{{UserID: "bob", Run: true}}}})
 	workspace := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath("Workflow/private"): string(private),
 		manifestPath("Workflow/shared"):  string(shared),

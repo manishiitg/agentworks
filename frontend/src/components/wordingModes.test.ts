@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest'
 // vault_reader) are unchanged and out of scope, so only JSX text and
 // title/aria-label/placeholder/description strings are scanned.
 const FILES = [
-  'components/workflow/WorkflowSharePopup.tsx',
   'components/workflow/WorkflowFolderAccessView.tsx',
   'components/workflow/WorkflowTeamView.tsx',
   'components/folders/WorkflowReferenceAccess.tsx',

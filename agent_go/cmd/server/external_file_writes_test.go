@@ -74,7 +74,7 @@ func TestExternalGuardedWriteOverMCPSeparateVolume(t *testing.T) {
 		}
 	}
 	// An old editor entry grants Run access, not Builder access.
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"editors":["owner"]}}`)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"readers":["owner"]}}`)
 	projectDenied := callRemoteTool(t, ctx, relayClient, "call_tool", map[string]any{"name": "files", "arguments": map[string]any{"action": "write", "workflow_id": "invoices", "path": "docs/reader.md", "content": "denied", "expected_revision": "missing", "request_id": "reader"}})
 	if !projectDenied.IsError {
 		t.Fatal("project downgrade retained file write access")

@@ -20,7 +20,7 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	workspace := httptest.NewServer(router)
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","version":"1.0.44","code_layout_version":1,"access":{"owners":["owner"],"editors":["outsider"],"readers":["reader"]}}`)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","version":"1.0.44","code_layout_version":1,"access":{"owners":["owner","outsider"],"readers":["reader"]}}`)
 	f.write(t, "Workflow/invoices/planning/plan.json", `{"steps":[{"id":"chat","type":"agent","title":"Chat","description":"Talk to the person","items":[{"id":"hello","type":"user_message","message":"Hello"}]}]}`)
 	_, owner := f.issue(t, "owner")
 	_, reader := f.issue(t, "reader")
