@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
@@ -317,11 +318,12 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 		changed = settingsWith(changed, "mcp_servers")
 	}
 	if slices.Contains(changed, "mcp_servers") {
-		// NO_SERVERS means "nothing selected", so it stands alone: attaching a server drops it and
-		// detaching the last one restores it.
-		if real := slices.DeleteFunc(slices.Clone(s.Servers), func(name string) bool { return name == "NO_SERVERS" }); len(real) > 0 {
-			s.Servers = real
-		} else {
+		// NO_SERVERS means no MCP or Vault server (it also turns off automatic Vault apps), so attaching
+		// a real server drops it and detaching the last one restores it. Built-in tool categories are
+		// not servers and sit next to the marker.
+		if slices.ContainsFunc(s.Servers, func(name string) bool { return name != "NO_SERVERS" && !common.IsBuiltinToolCategory(name) }) {
+			s.Servers = slices.DeleteFunc(s.Servers, func(name string) bool { return name == "NO_SERVERS" })
+		} else if len(s.Servers) == 0 {
 			s.Servers = []string{"NO_SERVERS"}
 		}
 	}
