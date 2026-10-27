@@ -10,9 +10,10 @@ vi.mock('../BrowserConnectionsDialog', () => ({ default: ({ open }: { open: bool
 import { WorkspaceAccountMenu } from './WorkspaceAccountMenu'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { TooltipProvider } from '../ui/tooltip'
+import { WORKSPACE_SETTINGS_PATHS } from '../../utils/workspaceSettingsRoutes'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => {
-  useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: null, settingsTarget: null })
+  useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: null, settingsTarget: null, compactSettingsTarget: null })
   auth.user = { id: 'member', username: 'Member', can_create: true, is_admin: false, allowed_products: null }
   auth.isMultiUserMode = true; auth.providers = [{ type: 'oauth' }]
   window.history.replaceState({}, '', '/')
@@ -67,6 +68,8 @@ it('retains the explicit browser-setup event without a menu entry', async () => 
   })
 })
 it('keeps a bottom-left entry with Escape dismissal when the sidebar is collapsed', async () => {
+  window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['work', 'agentworks', 'relays', 'knowledgebase', 'bullpen', 'mcp-gateway'], gatewayUrl: 'https://example.com' }
+  auth.user.allowed_products = ['work', 'bullpen']
   await render(async host => {
     const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Account & settings"]')!
     expect(trigger.parentElement?.className).toContain('bottom-3 left-3')
@@ -74,10 +77,19 @@ it('keeps a bottom-left entry with Escape dismissal when the sidebar is collapse
     const menu = host.querySelector<HTMLElement>('[role="menu"]')!
     expect(menu.hidden).toBe(false)
     expect(menu.className).toContain('left-full')
+    expect([...menu.querySelectorAll('[data-product-option]')].map(item => item.getAttribute('aria-label'))).toEqual(['Crew', 'AgentBridge', 'Dashboards', 'CLI / MCP'])
     expect(useProductNavigationToolbarStore.getState().sidebarSettingsTarget).toBeNull()
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(menu.hidden).toBe(true)
     expect(document.activeElement).toBe(trigger)
+    await act(async () => trigger.click())
+    await act(async () => menu.querySelector<HTMLButtonElement>('[aria-label="Dashboards"]')!.click())
+    expect(window.location.pathname).toBe('/dashboards')
+    expect(menu.hidden).toBe(true)
+    await act(async () => trigger.click())
+    await act(async () => menu.querySelector<HTMLButtonElement>('[aria-label="CLI / MCP"]')!.click())
+    expect(window.location.pathname).toBe(WORKSPACE_SETTINGS_PATHS.mcp)
+    expect(menu.hidden).toBe(true)
   }, false)
 })
 it('keeps local identity without password and sign-out actions', async () => {

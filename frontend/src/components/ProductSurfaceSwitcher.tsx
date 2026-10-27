@@ -1,6 +1,6 @@
 import { useCompactProductNavigation, useProductNavigationSidebar } from './workspace/ProductTopBar'
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
-import { ChevronDown, LayoutDashboard, MessagesSquare, Network, Waypoints } from 'lucide-react'
+import { ChevronDown, LayoutDashboard, MessagesSquare, Network, Terminal, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
 import { WorkMark } from '../products/work/WorkMark'
@@ -17,6 +17,7 @@ import { useProductNavigationToolbarStore } from '../stores/useProductNavigation
 import { ProductSwitchMenu } from './workspace/ProductSwitchMenu'
 import { ProductPickerMenu, useInProductPicker } from './workspace/ProductPickerMenu'
 import { useProductSettingsMenu } from './workspace/productNavigationContexts'
+import { openWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 
 type ProductSurfaceSwitcherProps = {
   className?: string
@@ -28,6 +29,7 @@ type ProductSurfaceSwitcherProps = {
   menuColumns?: 2 | 3
   menuTitle?: string
   menuContent?: (close: () => void) => ReactNode
+  includeConnectTools?: boolean
 }
 
 // Product marks can render any element; callers only rely on the common
@@ -35,6 +37,7 @@ type ProductSurfaceSwitcherProps = {
 type ProductMarkComponent = ComponentType<{ className?: string; title?: string }>
 
 const dashboards = { id: 'dashboards', label: 'Dashboards', description: 'Open your published dashboards and dashboards shared with you.', icon: LayoutDashboard }
+const connectTools = { id: 'connect-tools', label: 'CLI / MCP', description: 'Connect your AI app or coding agent to AgentWorks.', icon: Terminal }
 
 const products: Array<{
   id: ProductSurface
@@ -55,7 +58,7 @@ const products: Array<{
 /** The product list with labels, descriptions and marks, shared with the welcome page. */
 export const PRODUCT_CARDS = products
 
-export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly = false, onSelect, variant = 'default', menuColumns = 3, menuTitle, menuContent }: ProductSurfaceSwitcherProps) {
+export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly = false, onSelect, variant = 'default', menuColumns = 3, menuTitle, menuContent, includeConnectTools = false }: ProductSurfaceSwitcherProps) {
   const sidebar = useProductNavigationSidebar()
   const inSettings = useProductSettingsMenu()
   const inPicker = useInProductPicker()
@@ -75,7 +78,7 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
     : products.filter(product => visibleProductIDs.includes(product.id) && (product.id !== 'mcp-gateway' || gatewayUrl !== null)),
   [visibleProductIDs, gatewayUrl, standalone])
   // Dashboards collects existing product publications; it needs no separate product grant.
-  const menuProducts = standalone ? visibleProducts : [...visibleProducts, dashboards]
+  const menuProducts = standalone ? visibleProducts : [...visibleProducts, dashboards, ...(includeConnectTools ? [connectTools] : [])]
   const dashboardPage = !standalone && window.location.pathname === '/dashboards'
   const currentProduct = dashboardPage ? dashboards : visibleProducts.find((product) => product.id === (standalone ? 'mcp-gateway' : productSurface)) ?? visibleProducts[0] ?? products[0]
   const CurrentIcon = currentProduct.icon
@@ -123,6 +126,7 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
   const productGrid = (popup: boolean, className = '') => <ProductSwitchMenu products={menuProducts} current={currentProduct.id} popup={false} nestedMenu={popup || (menuOnly && (inSettings || inPicker))} columns={menuColumns} className={className}
     onSelect={id => {
       if (id === 'dashboards') { setOpen(false); onSelect?.(); openAppPage('/dashboards'); return }
+      if (id === 'connect-tools') { setOpen(false); onSelect?.(); openWorkspaceSettings('mcp'); return }
       const product = visibleProducts.find(item => item.id === id); if (product) activateProduct(product.id)
     }}
     onEscape={closeMenu} />
