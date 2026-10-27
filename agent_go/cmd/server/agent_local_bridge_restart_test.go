@@ -1,11 +1,14 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,6 +63,12 @@ func TestAgentLocalBridgeAttachedChatsComeBackAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// PLAT-856-222: after recovery, the existing authenticated stream reports
+	// startup metadata without collecting local logs or requiring a tester upload.
+	if err = agentworksclient.PrepareLocalBridgeRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	agentworksclient.RecordStartupFailure(root, loginPath, "abcdef1234", "123456abcd", "early_exit")
 	start := func(alive bool) (context.CancelFunc, <-chan error) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
@@ -96,6 +105,75 @@ func TestAgentLocalBridgeAttachedChatsComeBackAfterRestart(t *testing.T) {
 		attach.Action, attach.ConfigPath, attach.Automatic = "attach", loginPath, true
 		if out := call(attach); !out.Attached {
 			t.Fatalf("%s did not attach: %+v", chat.Provider, out)
+		}
+	}
+	// Wait for the real stream callback to publish the saved startup event.
+	var diagnosticAgent namedMessageAgent
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		agentMessageMu.Lock()
+		diagnosticStore, readErr := readAgentMessageStore(context.Background())
+		if readErr == nil {
+			for _, a := range diagnosticStore.Agents {
+				if a.Attachment != nil && a.Attachment.LastStartupDiagnosticID != "" {
+					diagnosticAgent = a
+					break
+				}
+			}
+		}
+		agentMessageMu.Unlock()
+		if diagnosticAgent.ID != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("startup failure did not reach the authenticated server: %v", readErr)
+		}
+	}
+	// Valid metadata is accepted; a different attachment and raw stderr are refused.
+	d := agentworksclient.StartupDiagnostic{ID: strings.Repeat("a", 64), At: time.Now().UTC(), Version: "abcdef1234", Build: "123456abcd", OS: "windows", Arch: "amd64", Cause: "timeout", ExecutableSHA256: strings.Repeat("b", 64)}
+	for _, tc := range []struct {
+		name, attachment string
+		stderr           bool
+		want             int
+	}{
+		{"current attachment", diagnosticAgent.Attachment.ID, false, 200},
+		{"another attachment", "unrelated-attachment", false, 409},
+		{"raw private log", diagnosticAgent.Attachment.ID, true, 400},
+	} {
+		raw, _ := json.Marshal(d)
+		var metadata map[string]any
+		_ = json.Unmarshal(raw, &metadata)
+		if tc.stderr {
+			metadata["stderr"] = "private-local-value"
+		}
+		body, _ := json.Marshal(map[string]any{"action": "startup_failure", "agent_name": diagnosticAgent.Name, "attachment_id": tc.attachment, "diagnostic": metadata})
+		// Use the same bound connection token as the actual stream, never the parent login.
+		var sessions map[string]struct {
+			ConfigPath string                           `json:"config_path"`
+			Attachment agentworksclient.AgentAttachment `json:"attachment"`
+		}
+		state, _ := os.ReadFile(filepath.Join(root, "sessions.json"))
+		if err = json.Unmarshal(state, &sessions); err != nil {
+			t.Fatal(err)
+		}
+		connectionToken := ""
+		for _, session := range sessions {
+			if session.Attachment.ID == diagnosticAgent.Attachment.ID {
+				cfg, e := agentworksclient.LoadConfig(session.ConfigPath)
+				if e != nil {
+					t.Fatal(e)
+				}
+				connectionToken = cfg.Token
+			}
+		}
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+connectionToken)
+		resp, e := http.DefaultClient.Do(req)
+		if e != nil {
+			t.Fatal(e)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != tc.want {
+			t.Fatalf("%s: status %d want %d", tc.name, resp.StatusCode, tc.want)
 		}
 	}
 	// Automatic first connection is private, retains identity on repetition,

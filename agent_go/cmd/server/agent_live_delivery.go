@@ -14,20 +14,22 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
 
 type namedAgentAttachment struct {
-	Repository       string    `json:"repository,omitempty"`
-	Branch           string    `json:"branch,omitempty"`
-	Activity         string    `json:"activity,omitempty"`
-	ActivityAt       time.Time `json:"activity_at,omitempty"`
-	DeliveryContract int       `json:"delivery_contract,omitempty"`
-	DeliveryRoute    string    `json:"delivery_route,omitempty"`
-	ID               string    `json:"attachment_id"`
-	Provider         string    `json:"provider"`
-	SessionID        string    `json:"native_session_id"`
-	ConnectionID     string    `json:"connection_id"`
-	ClientBuild      string    `json:"client_build,omitempty"` // the helper build last reported by this exact connection
+	LastStartupDiagnosticID string    `json:"last_startup_diagnostic_id,omitempty"`
+	Repository              string    `json:"repository,omitempty"`
+	Branch                  string    `json:"branch,omitempty"`
+	Activity                string    `json:"activity,omitempty"`
+	ActivityAt              time.Time `json:"activity_at,omitempty"`
+	DeliveryContract        int       `json:"delivery_contract,omitempty"`
+	DeliveryRoute           string    `json:"delivery_route,omitempty"`
+	ID                      string    `json:"attachment_id"`
+	Provider                string    `json:"provider"`
+	SessionID               string    `json:"native_session_id"`
+	ConnectionID            string    `json:"connection_id"`
+	ClientBuild             string    `json:"client_build,omitempty"` // the helper build last reported by this exact connection
 }
 
 // A guest-run product keeps the owner's storage namespace but its own actor.
@@ -56,7 +58,7 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	var args map[string]any
-	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label", "inbox", "inspect"}, externalArg(args, "action")) {
+	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label", "inbox", "inspect", "startup_failure"}, externalArg(args, "action")) {
 		externalError(w, 400, "invalid_arguments", "Choose attach or detach for this exact native session.")
 		return
 	}
@@ -213,6 +215,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	a := &s.Agents[index]
 	ackDelivery, previousAttachment := "", ""
 	receiptUnchanged := false
+	var startupDiagnostic *agentworksclient.StartupDiagnostic
 	switch externalArg(args, "action") {
 	case "inspect":
 		// Current metadata for this account-owned name; no body or receipt.
@@ -245,6 +248,24 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			previousAttachment = a.Attachment.ID
 		}
 		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID, ClientBuild: cleanClientBuild(externalArg(args, "client_build"))}
+	case "startup_failure":
+		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != claims.AccessToken.ID {
+			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
+			return
+		}
+		raw, _ := json.Marshal(args["diagnostic"])
+		var d agentworksclient.StartupDiagnostic
+		decoder := json.NewDecoder(strings.NewReader(string(raw)))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&d) != nil || !d.Valid() {
+			externalError(w, 400, "invalid_arguments", "Startup diagnostics accept only build, time and failure-category metadata.")
+			return
+		}
+		receiptUnchanged = a.Attachment.LastStartupDiagnosticID == d.ID
+		if !receiptUnchanged {
+			a.Attachment.LastStartupDiagnosticID = d.ID
+			startupDiagnostic = &d
+		}
 	case "label":
 		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != claims.AccessToken.ID {
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
@@ -350,6 +371,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			externalCommunicationError(w, 400, "attachment_refused", err)
 			return
 		}
+	}
+	if d := startupDiagnostic; d != nil {
+		log.Printf("[AGENT-STARTUP] id=%s account=%s attachment=%s at=%s version=%s build=%s os=%s arch=%s cause=%s executable_sha256=%s", d.ID, a.UserID, a.Attachment.ID, d.At.Format(time.RFC3339Nano), d.Version, d.Build, d.OS, d.Arch, d.Cause, d.ExecutableSHA256)
 	}
 	out := map[string]any{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(*a), "purpose": a.Purpose, "status": externalArg(args, "action") + "ed"}
 	if externalArg(args, "action") == "attach" {

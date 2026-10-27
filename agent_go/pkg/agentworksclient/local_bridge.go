@@ -2531,6 +2531,7 @@ func (b *localBridge) deliveryRoute(s *localSession) string {
 func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	b.mu.Lock()
 	a, explicitName, client := s.Attachment, s.LabelName, s.client
+	configPath := s.ParentConfigPath
 	workspace, activity, activityAt := s.WorkspaceDir, s.Activity, s.ActivityAt
 	crossNetwork := s.Also
 	if crossNetwork {
@@ -2544,6 +2545,7 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	if !active || ctx.Err() != nil {
 		return
 	}
+	client.reportStartupFailure(ctx, b.root, configPath, a)
 	label := a.Label
 	if b.options.ChatLabel != nil {
 		label = b.options.ChatLabel(a, explicitName)

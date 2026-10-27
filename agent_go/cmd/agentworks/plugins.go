@@ -1099,6 +1099,11 @@ func bridgeCommand(o *options) *cobra.Command {
 }
 
 func ensureLocalBridge(ctx context.Context, root string, o *options) error {
+	recordFailure := func(cause string) {
+		if path, err := o.path(); err == nil {
+			agentworksclient.RecordStartupFailure(root, path, cliVersion, cliBuild, cause)
+		}
+	}
 	if _, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
 		// Hooks and MCP processes may retain an older executable. Only an
 		// explicit update restarts a responsive shared helper.
@@ -1138,6 +1143,7 @@ func ensureLocalBridge(ctx context.Context, root string, o *options) error {
 	}
 	child.Stderr = startup
 	if err = child.Start(); err != nil {
+		recordFailure("spawn_failed")
 		return err
 	}
 	exited := make(chan error, 1)
@@ -1151,8 +1157,10 @@ func ensureLocalBridge(ctx context.Context, root string, o *options) error {
 			if _, e := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); e == nil {
 				return nil
 			}
+			recordFailure("early_exit")
 			return fmt.Errorf("AgentWorks connection helper exited before it was ready (%v). Startup details: %s", exitErr, startupPath)
 		case <-ctx.Done():
+			recordFailure("timeout")
 			return fmt.Errorf("AgentWorks connection helper is not ready yet. Startup details: %s; connection log: %s", startupPath, filepath.Join(root, "bridge.log"))
 		case <-tick.C:
 			if _, err = agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "ping"}); err == nil {
