@@ -478,13 +478,17 @@ func builderConversationMessageKey(message builderConversationMessage) string {
 // CLI versions. Duplicated here (rather than imported) because that
 // resolver is unexported and this is a narrow, self-contained lookup.
 func resolveClaudeNativeTranscriptPath(workingDir, sessionID string, accountHome ...string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-
+	// A saved private account binding is sufficient; an unrelated service
+	// login HOME is needed only when no account home was supplied.
+	var home string
 	if len(accountHome) > 0 && accountHome[0] != "" {
 		home = accountHome[0]
+	} else {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
 	}
 	candidates := pathidentity.Candidates(workingDir)
 
