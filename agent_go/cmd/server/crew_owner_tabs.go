@@ -45,6 +45,9 @@ func crewOwnerChatRecords(ctx context.Context, caller, profile, project, workspa
 	}
 	store := defaultProductConversationRegistryStore()
 	out := []crewOwnerChat{}
+	// One session is one tab. A project-wide session ID ("code:project:<id>") can sit in two
+	// owners' registries (one from use before becoming a co-owner); the main owner, listed first, keeps it.
+	claimed := map[string]bool{}
 	for _, person := range people {
 		records, err := store.projectChats(ctx, person, profile, project)
 		if err != nil {
@@ -58,6 +61,10 @@ func crewOwnerChatRecords(ctx context.Context, caller, profile, project, workspa
 			if canonicalCrewWorkspaceRoot(record.WorkspacePath) != canonicalCrewWorkspaceRoot(workspace) {
 				continue
 			}
+			if record.SessionID != "" && claimed[record.SessionID] {
+				continue
+			}
+			claimed[record.SessionID] = true
 			out = append(out, crewOwnerChat{record, identities[record.ConversationKey], person})
 		}
 	}
@@ -121,6 +128,9 @@ func (api *StreamingAPI) crewSessionTabView(r *http.Request, session string) boo
 		return !tab.CanWrite
 	}
 	caller := GetUserIDFromContext(r.Context())
+	if tabOwner, found := crewTabOwnerForSession(r.Context(), caller, session); found {
+		return tabOwner != caller
+	}
 	owner := ""
 	if active, ok := api.getActiveSession(session); ok {
 		owner = active.UserID
@@ -160,6 +170,9 @@ func (api *StreamingAPI) crewSessionCanControl(r *http.Request, session string) 
 	}
 	if _, _, registered := api.goalSessionRecord(r.Context(), session); registered {
 		return false
+	}
+	if owner, found := crewTabOwnerForSession(r.Context(), GetUserIDFromContext(r.Context()), session); found {
+		return owner == GetUserIDFromContext(r.Context())
 	}
 	if active, ok := api.getActiveSession(session); ok && isCrewProjectPath(active.WorkspacePath) {
 		return active.UserID == GetUserIDFromContext(r.Context())
@@ -220,4 +233,32 @@ func ensureCrewOwnerDefaultTab(ctx context.Context, user string, profile agentpr
 		return nil
 	}
 	return setCodeTabName(ctx, user, record.ConversationKey, crewOwnerDisplayName(user)+" · Builder", profile.ID)
+}
+
+// crewTabOwnerForSession answers from the caller's own tab list: when one of the caller's Crew tabs
+// holds this session, that tab's owner controls it. The first writer recorded for a shared
+// project-wide session ID is not the tab owner (PLAT-856).
+func crewTabOwnerForSession(ctx context.Context, caller, session string) (string, bool) {
+	if caller == "" || strings.TrimSpace(session) == "" {
+		return "", false
+	}
+	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(caller))
+	if err != nil {
+		return "", false
+	}
+	for _, record := range doc.Entries {
+		if record.SessionID != session || !isSideChatConversationKey(record.ConversationKey) || !isCrewProjectPath(record.WorkspacePath) {
+			continue
+		}
+		tabs, err := crewOwnerChatRecords(ctx, caller, record.ProfileID, crewResourceProjectID(record.ConversationKey), record.WorkspacePath)
+		if err != nil {
+			return "", false
+		}
+		for _, tab := range tabs {
+			if tab.Record.SessionID == session {
+				return tab.OwnerID, true
+			}
+		}
+	}
+	return "", false
 }

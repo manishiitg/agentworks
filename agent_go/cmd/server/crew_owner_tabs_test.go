@@ -280,6 +280,42 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 	if err := env.api.verifySessionAccess(restarted, sessions["other"].SessionID); err == nil {
 		t.Fatal("restart allowed foreign stop")
 	}
+	// PLAT-856: a co-owner's registry kept a tab from before they were
+	// added that holds the main owner's session, and the co-owner was that session's first
+	// recorded writer. The main owner must keep their tab, and it must not show twice.
+	otherDoc, err := defaultProductConversationRegistryStore().loadDocument(restarted.Context(), productConversationRegistryPath("other"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := sessions["owner"]
+	stale.ConversationKey = "beta" + codeChatSideMarker + "root-stale"
+	otherDoc.Entries[productConversationRegistryEntryKey(stale.ProfileID, stale.ConversationKey)] = stale
+	if err := defaultProductConversationRegistryStore().writeDocument(restarted.Context(), productConversationRegistryPath("other"), otherDoc); err != nil {
+		t.Fatal(err)
+	}
+	env.api.eventStore.SetSessionOwner(sessions["owner"].SessionID, "other")
+	if !env.api.crewSessionCanControl(restarted, sessions["owner"].SessionID) || !env.api.canUseSessionIDForQuery(restarted, sessions["owner"].SessionID) {
+		t.Fatal("main owner lost control of their own tab to a co-owner's older record")
+	}
+	if chats := env.api.crewChats(restarted, "owner", "beta", root); len(chats) != 2 {
+		t.Fatalf("a shared session showed as a second tab: %+v", chats)
+	}
+	// Mirrored: the co-owner's own list holds that record too, but the Crew-wide tab owner decides.
+	coOwner := request("other", http.MethodPost, "/api/terminals/main", "")
+	if env.api.crewSessionCanControl(coOwner, sessions["owner"].SessionID) || env.api.canUseSessionIDForQuery(coOwner, sessions["owner"].SessionID) {
+		t.Fatal("co-owner's older record took control of the main owner's tab")
+	}
+	if !env.api.crewSessionTabView(coOwner, sessions["owner"].SessionID) {
+		t.Fatal("co-owner lost the view of the main owner's tab")
+	}
+	if chats := env.api.crewChats(coOwner, "other", "beta", root); len(chats) != 2 {
+		t.Fatalf("co-owner sees the stale record as a tab: %+v", chats)
+	}
+	delete(otherDoc.Entries, productConversationRegistryEntryKey(stale.ProfileID, stale.ConversationKey))
+	if err := defaultProductConversationRegistryStore().writeDocument(restarted.Context(), productConversationRegistryPath("other"), otherDoc); err != nil {
+		t.Fatal(err)
+	}
+	env.api.eventStore.SetSessionOwner(sessions["owner"].SessionID, "owner")
 	binding, _, err := resolveConversationBindingForUser(restarted.Context(), "owner", profile, "beta")
 	if err != nil {
 		t.Fatal(err)

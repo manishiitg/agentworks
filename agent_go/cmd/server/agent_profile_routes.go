@@ -552,6 +552,7 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
 	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey, input.Name)
 	if err != nil {
+		log.Printf("[PRODUCT_CONVERSATION] resolve refused profile=%s key=%q: %v", profile.ID, input.ConversationKey, err)
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
