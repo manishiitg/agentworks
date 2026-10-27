@@ -1,5 +1,5 @@
 import { WorkspaceImage } from './WorkspaceImage'
-import { sharedLink, repairLocalAppLink } from '../../utils/sharedLinks'
+import { sharedLink, repairLocalAppLink, isSharedAppRoute } from '../../utils/sharedLinks'
 import { dashboardWorkspaceLink, openDashboardWorkspaceLink } from '../../services/dashboardDirectory'
 import React, { lazy, Suspense, useEffect, useRef, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -76,9 +76,12 @@ const hasExplicitUrlProtocol = (href: string): boolean => /^[a-z][a-z0-9+.-]*:/i
 
 const resolveSafeExternalHref = (href?: string | null): string | null => {
   const trimmed = (href || '').trim()
-  if (/^\/(?:report\?|d\/[2-9a-hj-km-np-z]{10}$)/.test(trimmed)) return new URL(trimmed, window.location.origin).href
-  if (!/^(https?:|mailto:)/i.test(trimmed)) return null
   try {
+    if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+      const url = new URL(trimmed, window.location.origin)
+      return url.origin === window.location.origin && isSharedAppRoute(url) ? url.href : null
+    }
+    if (!/^(https?:|mailto:)/i.test(trimmed)) return null
     const url = new URL(trimmed)
     if (url.protocol === 'http:' || url.protocol === 'https:') {
       return typeof window === 'undefined' ? url.toString() : repairLocalAppLink(url.toString(), window.location.origin)

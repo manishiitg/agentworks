@@ -90,13 +90,16 @@ export function consumeSharedReturnPath(oauthState: string): string | null {
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
 const SHARED_PAGES = new Set(['/report', '/file', '/folder'])
 
+export function isSharedAppRoute(url: URL): boolean {
+  return SHARED_PAGES.has(url.pathname) && url.searchParams.has('path') || /^\/d\/[2-9a-hj-km-np-z]{10}$/.test(url.pathname)
+}
+
 export function repairLocalAppLink(href: string, currentOrigin: string): string {
   try {
     const url = new URL(href)
     const current = new URL(currentOrigin)
     if (!LOCAL_HOSTS.has(url.hostname) || !LOCAL_HOSTS.has(current.hostname)) return href
-    const shared = SHARED_PAGES.has(url.pathname) && url.searchParams.has('path') || /^\/d\/[2-9a-hj-km-np-z]{10}$/.test(url.pathname)
-    if (url.origin === current.origin || !shared) return href
+    if (url.origin === current.origin || !isSharedAppRoute(url)) return href
     return `${current.origin}${url.pathname}${url.search}${url.hash}`
   } catch {
     return href

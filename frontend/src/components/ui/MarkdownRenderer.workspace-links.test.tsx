@@ -128,3 +128,37 @@ it('opens an absolute disk path under workspace-docs as a workspace file', async
     await act(async () => root.unmount())
   }
 })
+
+// PLAT-750-82: valid relative share URLs were rendered as unclickable spans.
+it('opens relative file, folder and dashboard share links without treating them as workspace paths', async () => {
+  const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+  const workspaceOpen = vi.fn()
+  const original = window.location.pathname + window.location.search
+  window.history.replaceState({}, '', '/home')
+  const container = document.createElement('div')
+  const root = createRoot(container)
+  try {
+    for (const href of [
+      '/file?path=Q3Jldy9leGFtcGxlL3JlcG9ydC5tZA%3D%3D',
+      '/folder?path=Q3Jldy9leGFtcGxl',
+      '/report?path=Q3Jldy9leGFtcGxl&document=db%2Freports%2Findex.html',
+      '/d/23456789ab?source=chat#details',
+    ]) {
+      open.mockClear()
+      await act(async () => root.render(<MarkdownRenderer content={`[Open](${href})`} onWorkspaceLinkClick={workspaceOpen} />))
+      const anchor = container.querySelector<HTMLAnchorElement>('a')
+      expect(anchor).not.toBeNull()
+      await act(async () => anchor!.click())
+      expect(open).toHaveBeenCalledWith(new URL(href, window.location.origin).href, '_blank', 'noopener,noreferrer')
+      expect(workspaceOpen).not.toHaveBeenCalled()
+    }
+    for (const href of ['/file?other=value', '/folder', '/unknown?path=value', '//example.com/file?path=value']) {
+      await act(async () => root.render(<MarkdownRenderer content={`[Open](${href})`} />))
+      expect(container.querySelector('a')).toBeNull()
+    }
+  } finally {
+    await act(async () => root.unmount())
+    open.mockRestore()
+    window.history.replaceState({}, '', original)
+  }
+})
