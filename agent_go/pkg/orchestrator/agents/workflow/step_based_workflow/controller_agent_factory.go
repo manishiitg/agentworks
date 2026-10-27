@@ -40,13 +40,11 @@ func normalizeServerNames(servers []string) []string {
 	return servers
 }
 
-// forceWorkflowClaudeCodeInteractiveTransport sets the tmux baseline for Claude
-// Code workflow agents. Claude Code no longer supports the old print/stream-json
-// transport, so workflow execution must stay on tmux even when old step configs
-// still contain transport="structured".
+// forceWorkflowClaudeCodeInteractiveTransport clears per-agent overrides so Claude
+// uses the server's CLAUDE_CODE_TRANSPORT selection (tmux by default).
 func forceWorkflowClaudeCodeInteractiveTransport(config *agents.OrchestratorAgentConfig) {
 	if workflowAgentConfigUsesClaudeCode(config) {
-		config.ClaudeCodeTransport = mcpllm.ClaudeCodeTransportTmux
+		config.ClaudeCodeTransport = "" // Inherit CLAUDE_CODE_TRANSPORT; default remains tmux.
 	}
 }
 

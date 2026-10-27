@@ -4276,10 +4276,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		costobserver.SetRetainedInputSource(sessionID, req.TriggeredBy, req.TriggeredByLabel)
 	}
 	r = r.WithContext(context.WithValue(r.Context(), retainedQueueInputKey{}, retainedQueueInput{Request: req}))
-	if retainedWorkflowCompatible && api.tryDeliverQueryAsLiveInput(w, r, sessionID, req.Query, queryID, requestReceivedAt) {
+	var recoveredInput []string
+	if retainedWorkflowCompatible && api.tryDeliverQueryAsLiveInput(w, r, sessionID, req.Query, queryID, &recoveredInput, requestReceivedAt) {
 		return
 	}
+	if len(recoveredInput) > 0 {
+		req.Query = strings.Join(append(recoveredInput, req.Query), "\n\n")
+	}
 	if isQueuedMessageSteer(r.Context()) {
+		if pending, ok := r.Context().Value(queuedMessageRecoveredInputKey{}).(*[]string); ok {
+			*pending = append(*pending, recoveredInput...)
+		}
 		// No compatible live target accepted delivery. Keep the original queue
 		// item instead of silently starting a turn or inserting a second item.
 		rejectUnavailableQueuedSteer(w)
@@ -11057,6 +11064,18 @@ func liveInputErrorProvesNoTarget(err error) bool {
 		strings.Contains(err.Error(), "session is closed")
 }
 
+// recoverUnsentLiveInput carries acknowledged-but-unwritten queue entries into
+// the replacement turn; a typed NoSession must never silently discard them.
+func recoverUnsentLiveInput(err error, recovered *[]string) {
+	if recovered == nil {
+		return
+	}
+	var deliveryErr *mcpagent.CodingAgentDeliveryError
+	if errors.As(err, &deliveryErr) && deliveryErr.Kind == mcpagent.DeliveryErrorKindNoSession {
+		*recovered = append(*recovered, deliveryErr.UnsentMessages...)
+	}
+}
+
 // tryDeliverQueryAsLiveInput is the single-entry retained-CLI path for
 // tmux-transport coding-agent input (see handleQuery). When the session still
 // has a retained coding-agent object that supports native live input, it sends
@@ -11071,7 +11090,7 @@ func liveInputErrorProvesNoTarget(err error) bool {
 // liveInputFastResponseWindow: a send that finishes in time answers exactly as
 // before; a slower one answers "accepted" (delivery_status "delivering") at
 // once and records its real outcome later (journal + chat receipt).
-func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, receivedAt ...time.Time) bool {
+func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, recovered *[]string, receivedAt ...time.Time) bool {
 	if api == nil || strings.TrimSpace(message) == "" {
 		return false
 	}
@@ -11079,7 +11098,7 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 		// The owner action already returned 202 and this is its background
 		// dispatch. Keep the durable claim until an actual delivery result;
 		// the browser's early-accept timeout must not discard this queue row.
-		return api.deliverQueryAsLiveInputNow(w, r, sessionID, message, queryID, receivedAt...)
+		return api.deliverQueryAsLiveInputNow(w, r, sessionID, message, queryID, recovered, receivedAt...)
 	}
 	// Text typed in the CLI's own composer does not block a chat send: only the person who owns the
 	// chat can reach that terminal, and the refusal (423) was a false alarm for real users.
@@ -11087,6 +11106,7 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 	detached.Header = r.Header.Clone()
 	recorded := &internalResponseCapture{header: http.Header{}}
 	done := make(chan bool, 1)
+	var pending []string
 	go func() {
 		handled := false
 		defer func() {
@@ -11102,12 +11122,15 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 			handled = api.internalLiveInputDeliver(recorded, detached, sessionID, message, queryID)
 			return
 		}
-		handled = api.deliverQueryAsLiveInputNow(recorded, detached, sessionID, message, queryID, receivedAt...)
+		handled = api.deliverQueryAsLiveInputNow(recorded, detached, sessionID, message, queryID, &pending, receivedAt...)
 	}()
 	timer := time.NewTimer(liveInputFastResponseWindow)
 	defer timer.Stop()
 	select {
 	case handled := <-done:
+		if recovered != nil {
+			*recovered = append(*recovered, pending...)
+		}
 		if handled {
 			copyInternalResponse(w, recorded)
 		}
@@ -11129,6 +11152,9 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 		// A message the coding agent has not taken is logged while it waits, so a stalled delivery is visible in the log
 		// (no message text): one line each at these waits.
 		handled := waitForLiveInputDelivery(done, sessionID, queryID, liveInputFastResponseWindow)
+		if !handled && len(pending) > 0 {
+			handled = api.startNextTurnFromLiveInput(recorded, detached, sessionID, strings.Join(append(pending, message), "\n\n"), nil)
+		}
 		status := recorded.status
 		if status == 0 {
 			status = http.StatusOK
@@ -11180,7 +11206,7 @@ func copyInternalResponse(w http.ResponseWriter, recorded *internalResponseCaptu
 
 // deliverQueryAsLiveInputNow performs the delivery synchronously; see
 // tryDeliverQueryAsLiveInput for the response-time bound around it.
-func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, receivedAt ...time.Time) bool {
+func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, recovered *[]string, receivedAt ...time.Time) bool {
 	if isQueuedMessageSteer(r.Context()) {
 		// The asynchronous fast-response path can outlive the route's earlier
 		// eligibility check. Refuse before attempting any provider delivery.
@@ -11218,6 +11244,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			sessionInputCancel()
 			if err != nil {
 				if liveInputErrorProvesNoTarget(err) {
+					recoverUnsentLiveInput(err, recovered)
 					log.Printf("[QUERY->LIVE] No live target for session %s; starting a new turn: %v", sessionID, err)
 					return false
 				}
@@ -11270,6 +11297,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 				// was sent and a fresh turn is safe. Answering 409 delivery_uncertain here left every send, and each of its 30 s retries, rejected until the
 				// stale record cleared (Code on server B, 2026-10-04: three 409s after a provider switch).
 				if liveInputErrorProvesNoTarget(err) {
+					recoverUnsentLiveInput(err, recovered)
 					log.Printf("[QUERY->LIVE] Retained terminal for session %s has no live target; starting a new turn: %v", sessionID, err)
 					return false
 				}
@@ -11315,6 +11343,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 	})
 	if err != nil {
 		if liveInputErrorProvesNoTarget(err) {
+			recoverUnsentLiveInput(err, recovered)
 			log.Printf("[QUERY→LIVE] No live target for session %s; starting a new turn: %v", sessionID, err)
 			return false
 		}
@@ -11531,6 +11560,15 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 			delivery, err := retainedSession.Send(sessionInputCtx, req.Message)
 			sessionInputCancel()
 			if err != nil {
+				if liveInputErrorProvesNoTarget(err) {
+					var pending []string
+					recoverUnsentLiveInput(err, &pending)
+					if api.startNextTurnFromLiveInput(w, r, sessionID, strings.Join(append(pending, req.Message), "\n\n"), nil) {
+						return
+					}
+					http.Error(w, "No active turn; please send your message again", http.StatusConflict)
+					return
+				}
 				log.Printf("[LIVE INPUT] Delivery uncertain for session %s: %v", sessionID, err)
 				writeSubmissionUncertain(w, r.Header.Get("Idempotency-Key"))
 				return
@@ -11634,6 +11672,9 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		// nothing was delivered, so this is definite, not uncertain. Start
 		// the next turn with it, as /api/query does (liveInputErrorProvesNoTarget).
 		if liveInputErrorProvesNoTarget(err) {
+			var pending []string
+			recoverUnsentLiveInput(err, &pending)
+			req.Message = strings.Join(append(pending, req.Message), "\n\n")
 			if api.startNextTurnFromLiveInput(w, r, sessionID, req.Message, runningAgent) {
 				return
 			}

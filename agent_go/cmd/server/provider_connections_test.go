@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/mcpagent/llm"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -114,15 +115,24 @@ func TestProviderConnectionsLifecycleAndAuthorization(t *testing.T) {
 }
 
 func TestProviderConnectionSetupEnvironmentIsAccountScoped(t *testing.T) {
+	t.Setenv("CURSOR_AUTH_TOKEN", "global-cursor-token")
+	t.Setenv("GEMINI_API_KEY", "global-gemini-key")
+	t.Setenv("GOOGLE_API_KEY", "global-google-key")
 	t.Setenv("CODEX_API_KEY", "global-codex-key")
 	t.Setenv("META_API_KEY", "global-muse-key")
+	serverEnv := strings.Join(providerConnectionSetupEnvironment("server-test", &llm.ProviderAPIKeys{}, true), "\n")
+	for _, want := range []string{"CURSOR_AUTH_TOKEN=global-cursor-token", "GEMINI_API_KEY=global-gemini-key", "GOOGLE_API_KEY=global-google-key"} {
+		if !strings.Contains(serverEnv, want) {
+			t.Fatalf("server account lost credential %s", strings.Split(want, "=")[0])
+		}
+	}
 	keys, err := connectionCredentialKeys(storedProviderConnection{ProviderConnection: ProviderConnection{Provider: "codex-cli", AuthMethod: "cli_login"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	keys.RuntimeEnvironment = map[string]string{"HOME": "/account-B/home", "CODEX_HOME": "/account-B/codex"}
 	env := strings.Join(providerConnectionSetupEnvironment("test", keys), "\n")
-	if strings.Contains(env, "global-codex-key") || strings.Contains(env, "global-muse-key") || !strings.Contains(env, "CODEX_HOME=/account-B/codex") {
+	if strings.Contains(env, "global-codex-key") || strings.Contains(env, "global-muse-key") || strings.Contains(env, "global-cursor-token") || strings.Contains(env, "global-gemini-key") || strings.Contains(env, "global-google-key") || !strings.Contains(env, "CODEX_HOME=/account-B/codex") {
 		t.Fatal("setup inherited a global identity or lost account paths")
 	}
 }

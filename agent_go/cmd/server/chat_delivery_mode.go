@@ -100,6 +100,7 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 }
 
 type queuedMessageSteerKey struct{}
+type queuedMessageRecoveredInputKey struct{}
 
 var errQueuedSteerUnavailable = errors.New("Steer is not available; the message remains queued")
 
@@ -289,6 +290,8 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 		ctx, err = api.queuedConversationTurnContext(turn, reqMap)
 		if err == nil {
 			ctx = context.WithValue(ctx, queuedMessageSteerKey{}, true)
+			var recovered []string
+			ctx = context.WithValue(ctx, queuedMessageRecoveredInputKey{}, &recovered)
 			body, marshalErr := json.Marshal(req)
 			err = marshalErr
 			if err == nil {
@@ -299,7 +302,7 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 					recorded := &internalResponseCapture{header: http.Header{}}
 					api.handleQuery(recorded, request)
 					if recorded.header.Get("X-Queued-Steer-Unavailable") == "true" {
-						api.restoreQueuedSteer(turn)
+						api.restoreQueuedSteer(turn, recovered...)
 						return
 					}
 					status := recorded.status
@@ -343,7 +346,7 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 	api.kickConversationTurnQueue(turn.SessionID)
 }
 
-func (api *StreamingAPI) restoreQueuedSteer(turn queuedConversationTurn) {
+func (api *StreamingAPI) restoreQueuedSteer(turn queuedConversationTurn, recovered ...string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	lock := productConversationRegistryMutex(conversationTurnQueuePath(turn.UserID))
@@ -353,6 +356,9 @@ func (api *StreamingAPI) restoreQueuedSteer(turn queuedConversationTurn) {
 		for i := range turns {
 			if turns[i].ID == turn.ID && turns[i].UserID == turn.UserID && turns[i].SessionID == turn.SessionID && turns[i].Steering {
 				turns[i].StartedAt, turns[i].Steering = nil, false
+				if len(recovered) > 0 {
+					turns[i].Request.Query = strings.Join(append(recovered, turns[i].Request.Query), "\n\n")
+				}
 			}
 		}
 		err = api.writeConversationTurnQueue(ctx, turn.UserID, turns)

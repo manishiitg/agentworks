@@ -43,15 +43,7 @@ func (api *StreamingAPI) handleCursorModelPicker(w http.ResponseWriter, r *http.
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "--list-models")
 	cmd.Env = target.Env
-	if !target.Server {
-		// This ambient alternative token must not override a private account.
-		cmd.Env = nil
-		for _, entry := range target.Env {
-			if !strings.HasPrefix(entry, "CURSOR_AUTH_TOKEN=") {
-				cmd.Env = append(cmd.Env, entry)
-			}
-		}
-	}
+
 	out, err := cmd.Output()
 	if err != nil {
 		http.Error(w, "Cursor models could not be loaded. Check the account in Providers.", http.StatusBadGateway)

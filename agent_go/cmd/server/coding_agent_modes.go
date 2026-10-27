@@ -104,7 +104,7 @@ func codingAgentRequestHasAttendingUser(req *QueryRequest, sessionID string) boo
 
 func codingAgentClaudeCodeChatTransport(provider string) string {
 	if strings.ToLower(strings.TrimSpace(provider)) == strings.ToLower(string(llm.ProviderClaudeCode)) {
-		return llm.ClaudeCodeTransportTmux
+		return "" // Let the Claude-only environment setting choose tmux (default) or sdk.
 	}
 	return ""
 }

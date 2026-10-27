@@ -188,8 +188,8 @@ func TestCodingAgentRequestAllowsPersistentInteractive(t *testing.T) {
 }
 
 func TestCodingAgentClaudeCodeChatTransport(t *testing.T) {
-	if got := codingAgentClaudeCodeChatTransport(string(llm.ProviderClaudeCode)); got != llm.ClaudeCodeTransportTmux {
-		t.Fatalf("claude-code chat transport = %q, want %q", got, llm.ClaudeCodeTransportTmux)
+	if got := codingAgentClaudeCodeChatTransport(string(llm.ProviderClaudeCode)); got != "" {
+		t.Fatalf("claude-code chat transport = %q; must inherit server transport", got)
 	}
 	if got := codingAgentClaudeCodeChatTransport(string(llm.ProviderCodexCLI)); got != "" {
 		t.Fatalf("non-Claude chat transport = %q, want empty", got)
@@ -899,7 +899,7 @@ func TestTryDeliverQueryAsLiveInputUnconfirmedSendDoesNotFallThrough(t *testing.
 	req.Header.Set("X-Session-ID", sessionID)
 	rr := httptest.NewRecorder()
 
-	if !api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "steer me into the running turn", "query_test_busy") {
+	if !api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "steer me into the running turn", "query_test_busy", nil) {
 		t.Fatal("an attempted send must not fall through to a second dispatch")
 	}
 	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "delivery_uncertain") {
@@ -930,6 +930,14 @@ func TestLiveInputErrorProvesNoTarget(t *testing.T) {
 			t.Errorf("%s: liveInputErrorProvesNoTarget = %v, want %v", tc.name, got, tc.want)
 		}
 	}
+	// PLAT-872: recover previously acknowledged inputs in order before the new query.
+	err := fmt.Errorf("send: %w", &mcpagent.CodingAgentDeliveryError{Kind: mcpagent.DeliveryErrorKindNoSession, Provider: "codex-cli", UnsentMessages: []string{"first", "second"}})
+	var recovered []string
+	recoverUnsentLiveInput(err, &recovered)
+	if strings.Join(recovered, "|") != "first|second" || !liveInputErrorProvesNoTarget(err) {
+		t.Fatalf("lost undelivered input: %#v %v", recovered, err)
+	}
+
 }
 
 // A pooled-session miss proves the send never reached a CLI (the lookup runs
@@ -957,7 +965,7 @@ func TestTryDeliverQueryAsLiveInputPoolMissFallsThroughToNewTurn(t *testing.T) {
 	req.Header.Set("X-Session-ID", sessionID)
 	rr := httptest.NewRecorder()
 
-	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "steer me into the running turn", "query_test_pool_miss") {
+	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "steer me into the running turn", "query_test_pool_miss", nil) {
 		t.Fatalf("pool-miss delivery must fall through to a new turn, got %d %s", rr.Code, rr.Body.String())
 	}
 	if got := len(store.GetAllEventsRaw(sessionID)); got != 0 {
@@ -990,7 +998,7 @@ func TestTryDeliverQueryAsLiveInputAcceptsQueuedDelivery(t *testing.T) {
 	req.Header.Set("X-Session-ID", sessionID)
 	rr := httptest.NewRecorder()
 
-	if !api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "queue me into the API turn", "query_test_queued") {
+	if !api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "queue me into the API turn", "query_test_queued", nil) {
 		t.Fatal("queued delivery must be handled, not fall through to a second dispatch")
 	}
 	if rr.Code != http.StatusOK {
@@ -1026,7 +1034,7 @@ func TestTryDeliverQueryAsLiveInputRetainedCodingAgentWithStaleTmuxFallsThrough(
 
 	req := httptest.NewRequest(http.MethodPost, "/api/query", nil)
 	rr := httptest.NewRecorder()
-	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "next message", "query_test_retained") {
+	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "next message", "query_test_retained", nil) {
 		t.Fatalf("tryDeliverQueryAsLiveInput = true for stale provider registration; want normal-turn fallback. body=%s", rr.Body.String())
 	}
 	if got := len(store.GetAllEventsRaw(sessionID)); got != 0 {
@@ -1083,7 +1091,7 @@ func TestTryDeliverQueryAsLiveInputReactivatesSettledRetainedTmux(t *testing.T) 
 	req := httptest.NewRequest(http.MethodPost, "/api/query", nil)
 	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "user-a"}))
 	rr := httptest.NewRecorder()
-	if !api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "continue the retained turn", "query_retained_follow_up") {
+	if !api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "continue the retained turn", "query_retained_follow_up", nil) {
 		t.Fatalf("settled retained tmux did not accept follow-up: status=%d body=%s", rr.Code, rr.Body.String())
 	}
 
@@ -1121,7 +1129,7 @@ func TestTryDeliverQueryAsLiveInputRetainedCodingAgentWithoutLiveTmuxFallsThroug
 
 	req := httptest.NewRequest(http.MethodPost, "/api/query", nil)
 	rr := httptest.NewRecorder()
-	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "next message", "query_test_retained_no_tmx") {
+	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "next message", "query_test_retained_no_tmx", nil) {
 		t.Fatal("tryDeliverQueryAsLiveInput = true without an active foreground turn or live tmux; want normal /api/query path")
 	}
 	if got := len(store.GetAllEventsRaw(sessionID)); got != 0 {
@@ -1142,7 +1150,7 @@ func TestTryDeliverQueryAsLiveInputClosesIdleDurableSessionAfterTmuxDisappears(t
 
 	req := httptest.NewRequest(http.MethodPost, "/api/query", nil)
 	rr := httptest.NewRecorder()
-	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "resume after reap", "query_after_reap") {
+	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "resume after reap", "query_after_reap", nil) {
 		t.Fatalf("stale idle durable session handled request instead of falling through: status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	if _, ok := mcpagent.LookupSession(sessionID); ok {
@@ -1229,7 +1237,7 @@ func TestTryDeliverQueryAsLiveInputNoRetainedAgentFallsThrough(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/query", nil)
 	rr := httptest.NewRecorder()
-	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "first message", "query_test_missing") {
+	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "first message", "query_test_missing", nil) {
 		t.Fatal("tryDeliverQueryAsLiveInput = true without a retained agent; want normal /api/query path")
 	}
 	if got := len(store.GetAllEventsRaw(sessionID)); got != 0 {
@@ -1588,7 +1596,7 @@ func TestTryDeliverQueryAsLiveInputSkipsNonCodingAgent(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/query", nil)
 	rr := httptest.NewRecorder()
-	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "llm message", "query_test_llm") {
+	if api.tryDeliverQueryAsLiveInput(rr, req, sessionID, "llm message", "query_test_llm", nil) {
 		t.Fatal("tryDeliverQueryAsLiveInput = true for an API/LLM agent; want false (API/LLM routing unchanged)")
 	}
 }

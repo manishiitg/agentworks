@@ -26,6 +26,7 @@ func TestRetainedTerminalGoneStartsANewTurnInsteadOfDeliveryUncertain(t *testing
 		"muse registry gone": errors.New("failed to submit live input to muse-cli: no active Muse interactive session registered for owner session " + sessionID),
 		"session closed":     errors.New("muse session is closed"),
 		// PLAT-872-24: an idle native process is alive but has no turn to steer.
+		"orphaned native queue": &mcpagent.CodingAgentDeliveryError{Kind: mcpagent.DeliveryErrorKindNoSession, Provider: llmproviders.ProviderCodexCLI, UnsentMessages: []string{"first", "second"}},
 		"native turn completed": &mcpagent.CodingAgentDeliveryError{Kind: mcpagent.DeliveryErrorKindNoSession, Provider: llmproviders.ProviderCodexCLI, Reason: "no turn is running to take the message; start a new turn"},
 	} {
 		api := &StreamingAPI{
@@ -37,8 +38,12 @@ func TestRetainedTerminalGoneStartsANewTurnInsteadOfDeliveryUncertain(t *testing
 		}
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/code/query", nil)
-		if handled := api.deliverQueryAsLiveInputNow(recorder, request, sessionID, "hi", "query-1"); handled {
+		var recovered []string
+		if handled := api.deliverQueryAsLiveInputNow(recorder, request, sessionID, "hi", "query-1", &recovered); handled {
 			t.Fatalf("%s: the send was answered (%d %s) instead of starting a new turn", name, recorder.Code, recorder.Body.String())
+		}
+		if name == "orphaned native queue" && (len(recovered) != 2 || recovered[0] != "first" || recovered[1] != "second") {
+			t.Fatalf("lost recovered queue: %#v", recovered)
 		}
 		if recorder.Body.Len() != 0 {
 			t.Fatalf("%s: nothing may be written before the new turn starts, got %s", name, recorder.Body.String())
@@ -55,7 +60,7 @@ func TestRetainedTerminalGoneStartsANewTurnInsteadOfDeliveryUncertain(t *testing
 	}
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/code/query", nil)
-	if handled := api.deliverQueryAsLiveInputNow(recorder, request, sessionID, "hi", "query-2"); !handled || recorder.Code != http.StatusConflict {
+	if handled := api.deliverQueryAsLiveInputNow(recorder, request, sessionID, "hi", "query-2", nil); !handled || recorder.Code != http.StatusConflict {
 		t.Fatalf("an uncertain delivery must stay 409 delivery_uncertain; handled=%v code=%d", handled, recorder.Code)
 	}
 }

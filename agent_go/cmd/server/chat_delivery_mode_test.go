@@ -80,6 +80,11 @@ func TestChatDeliveryModeDurableQueueActions(t *testing.T) {
 	if _, status, _ := api.changeQueuedConversationMessage(ctx, "owner", "chat", second.ID, false); status != http.StatusConflict {
 		t.Fatalf("removing a dispatching message returned %d", status)
 	}
+	// PLAT-872: a failed steer must retain older accepted-but-unsent inputs.
+	api.restoreQueuedSteer(steered, "older first", "older second")
+	if got := api.mustReadTurnQueueForTest(t, "owner"); len(got) != 1 || got[0].Steering || got[0].Request.Query != "older first\n\nolder second\n\nsecond" {
+		t.Fatalf("lost recovered queued inputs: %+v", got)
+	}
 	// The durable queue still owns waiting messages after replacement/reload,
 	// and an explicit Queue next does not silently expire during a long task.
 	old := queuedConversationTurn{ID: "long-task", UserID: "owner", SessionID: "chat", SubmissionID: "waiting-client", Request: QueryRequest{DeliveryMode: "queue", Query: "wait"}, CreatedAt: time.Now().Add(-time.Hour)}
@@ -183,7 +188,7 @@ func TestChatDeliverySteerCannotFallBackToANewTurn(t *testing.T) {
 		t.Fatalf("duplicate inserted: %+v", got)
 	}
 	w = httptest.NewRecorder()
-	if !api.tryDeliverQueryAsLiveInput(w, r, "chat", "keep queued", "query") || w.Code != http.StatusConflict || w.Header().Get("X-Queued-Steer-Unavailable") != "true" {
+	if !api.tryDeliverQueryAsLiveInput(w, r, "chat", "keep queued", "query", nil) || w.Code != http.StatusConflict || w.Header().Get("X-Queued-Steer-Unavailable") != "true" {
 		t.Fatalf("unavailable live delivery was not refused: %d %s", w.Code, w.Body.String())
 	}
 }

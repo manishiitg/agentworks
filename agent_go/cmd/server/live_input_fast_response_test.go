@@ -34,7 +34,7 @@ func submitLiveInput(t *testing.T, api *StreamingAPI, key, sessionID, message st
 	if !ok {
 		return recorder, false
 	}
-	handled := api.tryDeliverQueryAsLiveInput(w, r, sessionID, message, "query-1")
+	handled := api.tryDeliverQueryAsLiveInput(w, r, sessionID, message, "query-1", nil)
 	finish()
 	return recorder, handled
 }
