@@ -112,9 +112,14 @@ func TestPrivateStateMigrationPreservesGitAndNativeBoundary(t *testing.T) {
 			write(worktree, "linked.txt", "linked edit")
 			git(worktree, "add", "linked.txt")
 			_, writes, _ := NativeGrants(docs, []string{"Crew/example"}, []string{"Crew/example", "Crew/example/builder", "Crew/example/db/db.sqlite", roots.Private, filepath.Join(roots.Private, "product.json"), "Crew/example/runs/current/output", roots.Files})
-			want := []string{"Crew/example", "Crew/example/runs/current/output", roots.Files}
+			want := []string{"Crew/example", "Crew/example/runs/current/output", roots.Files, filepath.Join(roots.Private, ".sandbox-cache")}
 			if !reflect.DeepEqual(writes, want) {
 				t.Fatalf("native writes: %v", writes)
+			}
+			scoped := []string{"Crew/example/runs/current/output", "Crew/example/skills/custom/SKILL.md"}
+			_, narrowWrites, _ := NativeGrants(docs, []string{"Crew/example"}, scoped)
+			if !reflect.DeepEqual(narrowWrites, scoped) {
+				t.Fatalf("narrow grants acquired private tool cache: %v", narrowWrites)
 			}
 			if n, b, e := MigratePrivateState(docs); e != nil || n != 0 || b != "" {
 				t.Fatalf("repeat conversion: %d %s %v", n, b, e)

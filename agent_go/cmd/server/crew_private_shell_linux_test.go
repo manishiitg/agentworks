@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wh "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 )
@@ -25,8 +26,20 @@ func TestCrewMCPNativeRootCreationKeepsPlatformStateProtected(t *testing.T) {
 	if os.Getenv("AGENTWORKS_LANDLOCK_RUNNER") == "" {
 		t.Skip("requires the built Linux Landlock runner")
 	}
+	// Hosted storage lives outside the launcher's writable private /tmp.
+	// Keep this fixture there too, so a temporary-tree grant cannot mask policy errors.
+	root := os.Getenv("AGENTWORKS_LINUX_TEST_ROOT")
+	if root == "" || !filepath.IsAbs(root) || root == "/tmp" || strings.HasPrefix(root, "/tmp/") {
+		t.Fatal("AGENTWORKS_LINUX_TEST_ROOT must name a writable directory outside /tmp")
+	}
+	t.Setenv("TMPDIR", root)
 	f, upstream := newExternalCrewCommandFixture(t)
+	t.Setenv("AUTH_SECRET", "crew-execution-test-signing-secret")
 	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_BROWSER_STAGING_NAMESPACE", t.TempDir())
+	t.Setenv(browserconfig.ProfileRootEnv, t.TempDir())
+	socketRoot := browserconfig.ManagedSocketRoot()
+	t.Cleanup(func() { _ = os.RemoveAll(socketRoot) })
 	if _, _, err := crewroot.MigratePrivateState(f.docs); err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +80,12 @@ func TestCrewMCPNativeRootCreationKeepsPlatformStateProtected(t *testing.T) {
 	proof, err := os.ReadFile(filepath.Join(roots.Files, "folder-check", "proof.txt"))
 	if err != nil || string(proof) != "boundary-ok" {
 		t.Fatalf("MCP command did not finish all allowed/refused checks: %s %v", marshalContent(t, result), err)
+	}
+	if _, err := os.Stat(filepath.Join(roots.Files, ".sandbox-cache")); !os.IsNotExist(err) {
+		t.Fatalf("tool home recreated in working folder: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(roots.Private, ".sandbox-cache", "npm")); err != nil {
+		t.Fatalf("private tool cache missing: %v", err)
 	}
 	t.Logf("MCP result: %s", marshalContent(t, result))
 }

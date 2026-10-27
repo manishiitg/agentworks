@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -407,6 +408,7 @@ func NativeGrants(docs string, read, write []string) ([]string, []string, []stri
 		}
 	}
 	writes := make([]string, 0, len(write))
+	caches := map[string]bool{}
 	for _, grant := range write {
 		clean := strings.TrimSuffix(grant, "/")
 		r, found, err := Lookup(docs, clean)
@@ -430,6 +432,17 @@ func NativeGrants(docs string, read, write []string) ([]string, []string, []stri
 			continue
 		}
 		writes = append(writes, grant)
+		if found && (clean == r.Virtual || clean == r.FilesPath() || clean == r.Files || clean == r.Resources) {
+			caches[filepath.Join(r.Private, ".sandbox-cache")] = true
+		}
 	}
+	// Full Builder resource access retains the existing tool/package home in
+	// private storage. Narrow file and Run-output grants acquire no shared home.
+	var cachePaths []string
+	for cache := range caches {
+		cachePaths = append(cachePaths, cache)
+	}
+	sort.Strings(cachePaths)
+	writes = append(writes, cachePaths...)
 	return reads, writes, blocked
 }

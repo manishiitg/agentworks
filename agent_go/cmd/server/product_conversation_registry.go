@@ -1104,6 +1104,10 @@ func defaultProductProjectStore() productProjectStore {
 		// Crew's files (.tmp, .calls, skills, code) several times per message, which kept the server's CPU busy
 		// and made chats and terminals slow to open.
 		listPaths: func(ctx context.Context, root string) ([]string, bool, error) {
+			if root == workspaceref.SharedCrewRoot {
+				paths, err := listSharedCrewManifestPaths(ctx, productProjectStore{}, "")
+				return paths, len(paths) > 0, err
+			}
 			listing, exists, err := listWorkspaceFolder(ctx, root, 1)
 			if err != nil || !exists {
 				return nil, exists, err

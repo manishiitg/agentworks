@@ -262,6 +262,13 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 	var crewBlocked []string
 	local.ReadPaths, local.WritePaths, crewBlocked = crewroot.NativeGrants(iso.getBaseDir(), local.ReadPaths, local.WritePaths)
 	local.BlockedPaths = append(append([]string{}, local.BlockedPaths...), crewBlocked...)
+	for _, grant := range local.WritePaths {
+		if filepath.Base(grant) == SandboxPersistentDirName && filepath.IsAbs(grant) {
+			if _, roots, found, err := crewroot.Reverse(iso.getBaseDir(), grant); err == nil && found && crewroot.Within(roots.Private, grant) {
+				ensureScratchDir(grant)
+			}
+		}
+	}
 	browserSocket, err := local.scopeBrowser()
 	if err != nil {
 		releaseScratch()
