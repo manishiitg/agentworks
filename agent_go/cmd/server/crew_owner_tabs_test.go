@@ -128,6 +128,17 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 	if sessions["owner"].SessionID == sessions["other"].SessionID || sessions["owner"].ConversationKey == sessions["other"].ConversationKey {
 		t.Fatal("owners share a physical tab")
 	}
+	// PLAT-750: dashboard-only Run chat remains stored and usable, but is not
+	// advertised as a Builder tab to any owner of the Crew.
+	viewContext := internalBotRequestContext(t.Context(), "owner")
+	viewBinding, _, err := resolveConversationBindingForUser(viewContext, "owner", profile, "beta:chat:asuser-main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userView, err := defaultProductConversationRegistryStore().resolveOrCreate(viewContext, "owner", profile, viewBinding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	request := func(person, method, path, body string) *http.Request {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		return r.WithContext(internalBotRequestContext(r.Context(), person))
@@ -161,6 +172,10 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 		_ = json.Unmarshal(rec.Body.Bytes(), &listed)
 		if rec.Code != 200 || len(listed) != 1 || listed[0].TabOwnerID != peer || listed[0].CanWrite {
 			t.Fatalf("%s views: %d %s", person, rec.Code, rec.Body.String())
+		}
+		currentView, foundView, _, viewErr := defaultProductConversationRegistryStore().history(viewContext, "owner", profile, viewBinding)
+		if viewErr != nil || !foundView || currentView.SessionID != userView.SessionID {
+			t.Fatalf("listing Builder tabs changed the dashboard conversation: %v", viewErr)
 		}
 		// Opening another owner's tab returns its canonical conversation without
 		// creating a shadow slot; typing into that same address is refused.
