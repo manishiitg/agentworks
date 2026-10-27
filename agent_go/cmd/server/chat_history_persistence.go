@@ -1119,6 +1119,7 @@ func (api *StreamingAPI) restoreResolvedResumeTarget(currentSessionID string, ta
 		return false
 	}
 
+	restored := false
 	history := append([]llmtypes.MessageContent(nil), target.History...)
 	if len(history) > 0 {
 		api.conversationMux.Lock()
@@ -1127,13 +1128,14 @@ func (api *StreamingAPI) restoreResolvedResumeTarget(currentSessionID string, ta
 				api.conversationHistory = make(map[string][]llmtypes.MessageContent)
 			}
 			api.conversationHistory[currentSessionID] = history
+			restored = true
 		}
 		api.conversationMux.Unlock()
 	}
 	if persistTarget := target.persistTarget(); persistTarget != nil {
 		api.rememberRestoredConversationPersistTarget(currentSessionID, *persistTarget)
 	}
-	return len(history) > 0
+	return restored
 }
 
 func (api *StreamingAPI) rememberedRestoredConversationPersistTarget(currentSessionID string) (*restoredChatHistoryPersistTarget, bool) {

@@ -180,6 +180,25 @@ func TestResolvedResumeTargetHydratesAndKeepsOnePersistenceDestination(t *testin
 	if !ok || remembered.ConversationPath != target.ConversationPath || remembered.SessionID != target.SessionID {
 		t.Fatalf("persistence destination changed: ok=%v target=%#v", ok, remembered)
 	}
+	// PLAT-872-32: the product resolves a saved target on EVERY turn. Only
+	// initial hydration is a restore; fresh per-turn Agent wrappers are not.
+	api.conversationHistory["saved-chat"] = append(api.conversationHistory["saved-chat"], llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "live reply"))
+	target.ConversationPath = "_users/alice/Chats/Work/projects/demo/builder/conversation/2026-09-16/session-saved-chat-conversation.json"
+	if api.restoreResolvedResumeTarget("saved-chat", target, "workshop") {
+		t.Fatal("warm follow-up must not trigger another archive restore notice")
+	}
+	if len(api.conversationHistory["saved-chat"]) != 2 {
+		t.Fatal("warm live conversation was replaced by the older saved history")
+	}
+	remembered, ok = api.rememberedRestoredConversationPersistTarget("saved-chat")
+	if !ok || remembered.ConversationPath != target.ConversationPath {
+		t.Fatal("warm continuation must still refresh the persistence destination")
+	}
+	// A server restart loses the process-local cache and really does restore.
+	restarted := &StreamingAPI{}
+	if !restarted.restoreResolvedResumeTarget("saved-chat", target, "workshop") {
+		t.Fatal("cold server must still hydrate and supply the archive notice")
+	}
 	if !target.crossesProvider("cursor-cli") || target.crossesProvider("claude-code") {
 		t.Fatalf("provider resume policy is wrong: saved=%q", target.provider())
 	}

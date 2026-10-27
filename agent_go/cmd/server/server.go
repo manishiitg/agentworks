@@ -8036,11 +8036,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// transport or opaque provider-native continuation handle owns context.
 		// Replaying the UI transcript caused repeated restore cycles to grow a
 		// coding-agent prompt without bound.
+		historyRestoredThisTurn := false
 		if !modeChangedThisTurn {
 			if target := req.resolvedResumeTarget; target != nil {
-				api.restoreResolvedResumeTarget(sessionID, target, newWorkshopMode)
+				historyRestoredThisTurn = api.restoreResolvedResumeTarget(sessionID, target, newWorkshopMode)
 			} else {
-				api.restorePersistedConversationHistory(
+				historyRestoredThisTurn = api.restorePersistedConversationHistory(
 					sessionID,
 					currentUserID,
 					workflowPhaseFolder,
@@ -8127,7 +8128,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		codingFallbackHistoryBase := -1
 		codingFallbackInjectedMessages := 0
 		if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
-			nativeResumeAlreadyLoaded := codingAgentHasNativeResume(finalProvider, underlyingAgent)
 			restoredNativeCodingResume := false
 			restoredConversationPath := strings.TrimSpace(req.RestoredConversationPath)
 			restoredConversationSessionID := strings.TrimSpace(req.RestoredConversationSessionID)
@@ -8278,8 +8278,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// Owner27Oct: a restored native thread also gets the canonical
 				// conversation archive, just like a provider change. Keep native
 				// memory and reference the file instead of replaying the full JSON.
-				// Ordinary turns on an already-loaded handle need no extra notice.
-				if !nativeResumeAlreadyLoaded {
+				// PLAT-872: the Agent wrapper is rebuilt per turn, even when its
+				// native thread continues. Use actual history hydration or a changed
+				// product definition, never the fresh wrapper's empty handle.
+				if historyRestoredThisTurn || productDefinitionRefreshed {
 					if restoredConversationPathForFallback == "" {
 						if path, ok, err := FindChatHistoryConversationPathForSession(currentUserID, sessionID, restoredConversationWorkspace); err != nil {
 							logfWithContext(queryLogCtx, "[CHAT_HISTORY] Could not resolve archive for native resume: %v", err)

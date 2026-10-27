@@ -53,8 +53,8 @@ def main():
         marker = 'CHAT_P0_' + uuid.uuid4().hex[:12]
         sequence = 0
         native = None
-        for message in [f'Remember {marker}. Reply only with that token. Do not use tools.',
-                        'Reply only with the token I asked you to remember. Do not use tools.']:
+        for turn_index, message in enumerate([f'Remember {marker}. Reply only with that token. Do not use tools.',
+                        'Reply only with the token I asked you to remember. Do not use tools.']):
             started = time.monotonic()
             admitted = request('/api/agent-profiles/work/query',
                                {'conversation_key': key, 'message': message})
@@ -62,10 +62,15 @@ def main():
                 raise AssertionError('Submission changed the durable chat identity')
             deadline = time.monotonic() + 180
             completion = None
+            restore_notice = False
             while time.monotonic() < deadline:
                 page = request(f'/api/sessions/{session}/events?limit=1000')
                 events = [e for e in page['events'] if e.get('sequence', 0) > sequence]
                 for event in events:
+                    # PLAT-872-32: recreating a per-turn Agent wrapper must not
+                    # replay the archive notice into the continuing native chat.
+                    if '[AGENTWORKS CONVERSATION CONTINUITY]' in json.dumps(event.get('data', {})):
+                        restore_notice = True
                     if event.get('type') == 'conversation_error':
                         raise AssertionError('Chat emitted conversation_error; inspect this test chat')
                     if event.get('type') == 'unified_completion':
@@ -78,6 +83,8 @@ def main():
                 raise AssertionError('No completed response within 180 seconds')
             if completion.get('final_result', '').strip() != marker:
                 raise AssertionError('Reply did not contain the requested/remembered token')
+            if turn_index > 0 and restore_notice:
+                raise AssertionError('Ordinary follow-up repeated the conversation restore notice')
             metadata = completion.get('metadata', {})
             if metadata.get('provider') != args.provider:
                 raise AssertionError('The app used a different provider')
