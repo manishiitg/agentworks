@@ -69,7 +69,11 @@ describe('terminal toolbar shared tools', () => {
     contextPreference.show = false
     useProductSurfaceStore.setState({ productSurface: 'agentworks' })
     useModeStore.setState({ selectedModeCategory: 'workflow' })
-    useLLMStore.setState({ providerManifestLoaded: true, llmConfigLocked: false })
+    // Terminal UI is now offered by the server's provider capability, not
+    // inferred from a CLI provider name. These cases exercise that UI.
+    useLLMStore.setState({ providerManifestLoaded: true, llmConfigLocked: false,
+      providerManifest: [{ id: 'claude-code', coding_agent: { supports_terminal_stream: true } }] as never,
+    })
     useChatStore.setState({ activeTabId: 'A', chatTabs: { A: terminalTab('A'), B: terminalTab('B') }, activeSessionsCache: [], tabEvents: {} })
     useWorkspaceStore.setState({ activeFolder: 'Workflow/project' })
     vi.spyOn(useWorkspaceStore.getState(), 'fetchFiles').mockResolvedValue(undefined)
