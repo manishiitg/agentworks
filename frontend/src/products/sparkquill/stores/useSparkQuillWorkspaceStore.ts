@@ -23,8 +23,6 @@ interface WorkspaceState {
   setViewerRefreshKey: (v: SetStateAction<number>) => void
   viewerImageList: string[]
   setViewerImageList: (v: SetStateAction<string[]>) => void
-  viewerContent: { isText: boolean; content: string } | null
-  setViewerContent: (v: SetStateAction<{ isText: boolean; content: string } | null>) => void
   mapRefreshKey: number
   setMapRefreshKey: (v: SetStateAction<number>) => void
   progressHtml: string | null
@@ -68,8 +66,6 @@ export const useSparkQuillWorkspaceStore = create<WorkspaceState>()((set) => ({
   setViewerRefreshKey: (v) => set((s) => ({ viewerRefreshKey: resolveSetState(v, s.viewerRefreshKey) })),
   viewerImageList: [],
   setViewerImageList: (v) => set((s) => ({ viewerImageList: resolveSetState(v, s.viewerImageList) })),
-  viewerContent: null,
-  setViewerContent: (v) => set((s) => ({ viewerContent: resolveSetState(v, s.viewerContent) })),
   mapRefreshKey: 0,
   setMapRefreshKey: (v) => set((s) => ({ mapRefreshKey: resolveSetState(v, s.mapRefreshKey) })),
   progressHtml: null,

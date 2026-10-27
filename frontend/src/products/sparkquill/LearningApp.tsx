@@ -73,6 +73,7 @@ import type { ProductNotification } from '../../platform/notifications/useProduc
 import ChildPlatformChat, { forgetChildChat, submitToChildChat, type ChildKickoff } from './platform/ChildPlatformChat'
 import { completedSparkQuillTurns } from './platform/turnRefresh'
 import { withPreviewPositionScript } from './platform/previewPosition'
+import { useFilePreview } from './platform/useFilePreview'
 import { useChatStore } from '../../stores/useChatStore'
 import { api } from './api'
 import { VoiceSettings } from './voice/VoiceSettings'
@@ -264,6 +265,11 @@ function rewriteRelativeAssetURLs(html: string, filePath: string): string {
   if (!/^\s*<(!doctype|html)/i.test(html)) return html
   const dir = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : ''
   return rewriteImgSrcsRelativeTo(html, dir)
+}
+
+async function readPreviewFile(path: string) {
+  const file = await api.readFile(path)
+  return { isText: !!file.is_text, content: file.is_text ? rewriteRelativeAssetURLs(file.content ?? '', path) : (file.content ?? '') }
 }
 
 // withSceneResizeScript appends a tiny bootstrap script to a show_scene
@@ -1292,7 +1298,7 @@ export default function LearningApp() {
     window.addEventListener('message', onMsg)
     return () => window.removeEventListener('message', onMsg)
   }, [])
-  const childViewerContent = useChildChatStore((s) => s.childViewerContent)
+  const childViewerContent = useFilePreview(childViewerPath, childViewerRefreshKey, readPreviewFile)
   // Reading childViewerScrollRef.current DURING render (instead of only here,
   // memoized) would re-bake the latest scroll position into srcDoc on every
   // unrelated re-render of this component (e.g. each composer keystroke) —
@@ -1310,7 +1316,6 @@ export default function LearningApp() {
 
     [childViewerContent, childViewerFocus, childZoom, childViewerPath],
   )
-  const setChildViewerContent = useChildChatStore((s) => s.setChildViewerContent)
   const childTreeRefreshKey = useChildChatStore((s) => s.childTreeRefreshKey)
   const setChildTreeRefreshKey = useChildChatStore((s) => s.setChildTreeRefreshKey)
   const filesSubjectFilter = useSparkQuillWorkspaceStore((s) => s.filesSubjectFilter)
@@ -1414,8 +1419,7 @@ export default function LearningApp() {
     setDrawerTab('files'); setViewerImageList([]); setViewerActivityDir(null); setViewerPath(file)
   }, [screen, setDrawerTab, setViewerImageList, setViewerPath])
 
-  const viewerContent = useSparkQuillWorkspaceStore((s) => s.viewerContent)
-  const setViewerContent = useSparkQuillWorkspaceStore((s) => s.setViewerContent)
+  const viewerContent = useFilePreview(viewerPath, viewerRefreshKey, readPreviewFile)
   const viewerScrollRef = useRef<Record<string, number>>({})
   useEffect(() => {
     const onMsg = (ev: MessageEvent) => {
@@ -1731,37 +1735,10 @@ export default function LearningApp() {
     if (first) { setChildViewerPath(first.path); setChildViewerRefreshKey((k) => k + 1) }
   }, [childActivity, screen, setChildViewerPath])
 
-  // Load the selected file for the child's own inline viewer.
-  //
-  // Re-opening the SAME file (Quill re-calls open_file after recording an
-  // answer) reloads the iframe's document and resets its scroll to the top.
-  // That used to be handled by capturing contentWindow.scrollY before the
-  // refresh and restoring it after — which never worked: the iframe is
-  // sandboxed WITHOUT allow-same-origin, so the read throws, gets caught, and
-  // returns 0. The page reliably jumped to the top.
-  // withViewerPositionScript now handles this from INSIDE the frame, restoring
-  // the offset she was actually at (reported out of the frame as she scrolls).
+  // Reopening and turn completion quietly recheck the file. Only changed
+  // content replaces the document; unchanged tests keep their live state.
+  // Actual edits still restore position from inside the sandboxed frame.
   useEffect(() => { childViewerPathRef.current = childViewerPath }, [childViewerPath])
-  useEffect(() => {
-    if (!childViewerPath) { setChildViewerContent(null); return }
-    let cancelled = false
-    setChildViewerContent(null)
-    api.readFile(childViewerPath)
-      .then((d) => { if (!cancelled) setChildViewerContent({ isText: !!d.is_text, content: d.is_text ? rewriteRelativeAssetURLs(d.content ?? '', childViewerPath) : (d.content ?? '') }) })
-      .catch(() => { if (!cancelled) setChildViewerContent({ isText: false, content: '' }) })
-    return () => { cancelled = true }
-  }, [childViewerPath, childViewerRefreshKey, setChildViewerContent])
-
-  // Load the selected file for the drawer's Files viewer.
-  useEffect(() => {
-    if (!viewerPath) { setViewerContent(null); return }
-    let cancelled = false
-    setViewerContent(null)
-    api.readFile(viewerPath)
-      .then((d) => { if (!cancelled) setViewerContent({ isText: !!d.is_text, content: d.is_text ? rewriteRelativeAssetURLs(d.content ?? '', viewerPath) : (d.content ?? '') }) })
-      .catch(() => { if (!cancelled) setViewerContent({ isText: false, content: '' }) })
-    return () => { cancelled = true }
-  }, [setViewerContent, viewerPath, viewerRefreshKey])
 
   // Probe for the file's metadata sidecar (<path>.meta.json — written by the
   // process-file skill when Quill files an upload: subject, topic, type, a short

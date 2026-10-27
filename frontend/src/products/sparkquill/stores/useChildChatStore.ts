@@ -12,8 +12,6 @@ interface ChildChatState {
   setChildActivity: (v: SetStateAction<Activity | null>) => void
   childViewerPath: string | null
   setChildViewerPath: (v: SetStateAction<string | null>) => void
-  childViewerContent: { isText: boolean; content: string } | null
-  setChildViewerContent: (v: SetStateAction<{ isText: boolean; content: string } | null>) => void
   childTreeRefreshKey: number
   setChildTreeRefreshKey: (v: SetStateAction<number>) => void
 }
@@ -23,8 +21,6 @@ export const useChildChatStore = create<ChildChatState>()((set) => ({
   setChildActivity: (v) => set((s) => ({ childActivity: resolveSetState(v, s.childActivity) })),
   childViewerPath: null,
   setChildViewerPath: (v) => set((s) => ({ childViewerPath: resolveSetState(v, s.childViewerPath) })),
-  childViewerContent: null,
-  setChildViewerContent: (v) => set((s) => ({ childViewerContent: resolveSetState(v, s.childViewerContent) })),
   childTreeRefreshKey: 0,
   setChildTreeRefreshKey: (v) => set((s) => ({ childTreeRefreshKey: resolveSetState(v, s.childTreeRefreshKey) })),
 }))
