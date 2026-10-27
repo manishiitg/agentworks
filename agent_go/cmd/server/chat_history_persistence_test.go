@@ -2633,8 +2633,9 @@ func TestSeedCodingAgentRuntimeFromRestoredConversationAppliesAgentSessionHandle
 	api := &StreamingAPI{}
 	agent := &mcpagent.Agent{}
 	runtime := &ChatHistoryAgentRuntime{
-		Kind:     "coding_agent",
-		Provider: "codex-cli",
+		Kind:      "coding_agent",
+		Provider:  "codex-cli",
+		Transport: "tmux",
 		AgentSessionHandle: &mcpagent.AgentSessionHandle{
 			SessionID: "old-chat-session",
 			Provider: llmtypes.CodingProviderSessionHandle{
@@ -2651,6 +2652,11 @@ func TestSeedCodingAgentRuntimeFromRestoredConversationAppliesAgentSessionHandle
 
 	if !api.seedCodingAgentRuntimeFromRestoredConversation("new-ui-session", "codex-cli", "", runtime, agent) {
 		t.Fatal("expected typed handle to seed native resume state")
+	}
+	// PLAT-872: Builder resume used to attempt a terminal launch after this
+	// successful seed, then fail because Codex now uses app-server.
+	if restoredRuntimeUsesLaunchableTerminalTransport(runtime) {
+		t.Fatal("restored Codex native handle must continue without terminal prelaunch")
 	}
 	handle := requireAgentHandle(t, agent)
 	if handle.SessionID != "new-ui-session" {

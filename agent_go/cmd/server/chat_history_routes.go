@@ -441,20 +441,17 @@ func restoredRuntimeTmuxSession(runtime *ChatHistoryAgentRuntime) (string, bool,
 	return tmuxSession, true, ""
 }
 
+// PLAT-872: saved transport describes a past process. Resume and terminal
+// admission must follow the installed provider contract, including after a
+// provider has moved from tmux to a native protocol.
 func restoredRuntimeCodingAgentTransport(runtime *ChatHistoryAgentRuntime) string {
 	if runtime == nil || runtime.Kind != "coding_agent" {
 		return ""
-	}
-	if transport := strings.ToLower(strings.TrimSpace(runtime.Transport)); transport != "" {
-		return transport
 	}
 	provider := strings.ToLower(strings.TrimSpace(runtime.Provider))
 	modelID := strings.TrimSpace(runtime.ModelID)
 	if runtime.AgentSessionHandle != nil && !runtime.AgentSessionHandle.Empty() {
 		handle := runtime.AgentSessionHandle.Provider
-		if transport := strings.ToLower(strings.TrimSpace(handle.Transport)); transport != "" {
-			return transport
-		}
 		if provider == "" {
 			provider = strings.ToLower(strings.TrimSpace(handle.Provider))
 		}

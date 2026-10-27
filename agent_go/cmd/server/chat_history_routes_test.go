@@ -127,68 +127,53 @@ func TestWorkflowPathFromBuilderConversation(t *testing.T) {
 	}
 }
 
-func TestRestoredRuntimeUsesLaunchableTransportFromHandle(t *testing.T) {
-	runtime := &ChatHistoryAgentRuntime{
-		Kind:     "coding_agent",
-		Provider: "future-cli",
-		AgentSessionHandle: &mcpagent.AgentSessionHandle{
-			Provider: llmtypes.CodingProviderSessionHandle{
-				Provider:        "future-cli",
-				Transport:       llmtypes.CodingProviderTransportTmux,
-				NativeSessionID: "native-thread-1",
-				TmuxSession:     "mlp-future-1",
-			},
-		},
-	}
-
-	if !restoredRuntimeUsesLaunchableTerminalTransport(runtime) {
-		t.Fatalf("expected launchable terminal transport")
-	}
-	tmuxSession, ok, reason := restoredRuntimeTmuxSession(runtime)
-	if !ok || tmuxSession != "mlp-future-1" || reason != "" {
-		t.Fatalf("restoredRuntimeTmuxSession = %q, %v, %q", tmuxSession, ok, reason)
-	}
-}
-
-func TestRestoredRuntimeUsesLaunchableTransportFromRuntime(t *testing.T) {
-	runtime := &ChatHistoryAgentRuntime{
-		Kind:      "coding_agent",
-		Provider:  "future-cli",
-		Transport: "tmux",
-		AgentSessionHandle: &mcpagent.AgentSessionHandle{
-			Provider: llmtypes.CodingProviderSessionHandle{
-				Provider:    "future-cli",
-				TmuxSession: "mlp-future-runtime-1",
-			},
-		},
-	}
-
-	if !restoredRuntimeUsesLaunchableTerminalTransport(runtime) {
-		t.Fatalf("expected launchable terminal transport")
-	}
-	tmuxSession, ok, reason := restoredRuntimeTmuxSession(runtime)
-	if !ok || tmuxSession != "mlp-future-runtime-1" || reason != "" {
-		t.Fatalf("restoredRuntimeTmuxSession = %q, %v, %q", tmuxSession, ok, reason)
-	}
-}
-
-func TestRestoredRuntimeTmuxSessionRejectsNonTmuxTransport(t *testing.T) {
-	runtime := &ChatHistoryAgentRuntime{
-		Kind:     "coding_agent",
-		Provider: "future-cli",
-		AgentSessionHandle: &mcpagent.AgentSessionHandle{
-			Provider: llmtypes.CodingProviderSessionHandle{
-				Provider:  "future-cli",
-				Transport: "api",
-			},
-		},
-	}
-
-	if restoredRuntimeUsesLaunchableTerminalTransport(runtime) {
-		t.Fatalf("non-tmux transport should not start tmux")
-	}
-	if _, ok, reason := restoredRuntimeTmuxSession(runtime); ok || reason != "not_tmux_transport" {
-		t.Fatalf("restoredRuntimeTmuxSession ok=%v reason=%q, want not_tmux_transport", ok, reason)
+// PLAT-872: an existing Builder saved tmux for Codex, causing resume to
+// prelaunch a terminal even though the installed adapter now uses app-server.
+func TestRestoredRuntimeTransportIgnoresObsoleteTmuxMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		provider  string
+		transport string
+		tmux      bool
+	}{
+		{"codex-cli", "app-server", false},
+		{"pi-cli", "rpc", false},
+		{"cursor-cli", "acp", false},
+		{"claude-code", "tmux", true},
+		{"unknown-cli", "", false},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			for _, handleOnly := range []bool{false, true} {
+				runtime := &ChatHistoryAgentRuntime{
+					Kind: "coding_agent", Provider: tc.provider, Transport: "tmux",
+					AgentSessionHandle: &mcpagent.AgentSessionHandle{
+						Provider: llmtypes.CodingProviderSessionHandle{
+							Provider: tc.provider, Transport: llmtypes.CodingProviderTransportTmux,
+							NativeSessionID: "native-thread-1", TmuxSession: "saved-pane",
+						},
+					},
+				}
+				if handleOnly {
+					runtime.Provider = ""
+				}
+				if got := restoredRuntimeCodingAgentTransport(runtime); got != tc.transport {
+					t.Fatalf("handleOnly=%v transport=%q, want %q", handleOnly, got, tc.transport)
+				}
+				if restoredRuntimeUsesLaunchableTerminalTransport(runtime) != tc.tmux {
+					t.Fatal("terminal prelaunch does not match current provider")
+				}
+				pane, ok, reason := restoredRuntimeTmuxSession(runtime)
+				if tc.tmux {
+					if !ok || pane != "saved-pane" || reason != "" {
+						t.Fatalf("valid terminal refused: %q %v %q", pane, ok, reason)
+					}
+				} else if ok || reason != "not_tmux_transport" {
+					t.Fatalf("obsolete terminal accepted: %q %v %q", pane, ok, reason)
+				}
+				if runtime.AgentSessionHandle.Provider.NativeSessionID != "native-thread-1" {
+					t.Fatal("native continuation identity was lost")
+				}
+			}
+		})
 	}
 }
 
