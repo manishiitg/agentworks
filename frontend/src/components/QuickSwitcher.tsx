@@ -1,3 +1,4 @@
+import { currentChatFindRoot, openCurrentChatFind } from '../utils/transcriptSearch'
 import { panelSearchAliases } from './workspace/workspacePanelGroups'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { isWorkSideChatTab } from '../products/work/workTabs'
@@ -117,7 +118,10 @@ interface PanelItem {
   sectionId?: string
 }
 
-type QuickSwitcherItem = PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
+type ChatFindItem = Omit<PanelItem, 'type' | 'panelId' | 'sectionId'> & { type: 'chat-find' }
+const chatFindItem: ChatFindItem = { type: 'chat-find', id: 'chat:find', label: 'Find in this chat', subtitle: 'Search loaded messages and steps · Ctrl/Cmd+F', searchText: 'search conversation find text', isActive: false, lastAccessedAt: 0, hasLocalActivity: false }
+
+type QuickSwitcherItem = ChatFindItem | PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
 
 type QuickSwitcherRow = QuickSwitcherItem & { treeChild?: boolean; treeLastChild?: boolean; treeParentLabel?: string }
 
@@ -554,7 +558,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         if (isWorkProductSession(item.session)) return visibleProducts.has('work')
       }
       return visibleProducts.has('agentworks') || visibleProducts.has('relays')
-    }), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope), ...panelItems]
+    }), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope), ...panelItems, ...(currentChatFindRoot() ? [chatFindItem] : [])]
   }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, navigationItems, panelItems, user?.allowed_products])
 
   // Filter and sort
@@ -574,7 +578,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           if (scope === 'relay' || scope === 'relays') return ((item.type === 'workflow' || item.type === 'chat') && item.preset && item.preset.workflowKind === 'relay') || creates('relays')
           if (scope === 'product' || scope === 'products') return item.type === 'product'
           if (scope === 'panel' || scope === 'panels') return item.type === 'panel'
-          if (scope === 'menu' || scope === 'menus') return item.type === 'menu' || item.type === 'panel'
+          if (scope === 'menu' || scope === 'menus') return item.type === 'menu' || item.type === 'panel' || item.type === 'chat-find'
           if (scope === 'crew') return creates('work') || creates('work') || item.type === 'crew' || (item.type === 'active' && !item.activeScopeOnly && (isWorkProductSession(item.session) || isWorkProductSession(item.session)))
           if (scope === 'chat' || scope === 'chats') return item.type === 'chat'
           return item.type === 'chat' || item.type === 'workflow' || item.type === 'crew'
@@ -658,6 +662,11 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   }, [selectedIndex])
 
   const handleSelect = useCallback(async (item: QuickSwitcherItem) => {
+    if (item.type === 'chat-find') {
+      onClose()
+      requestAnimationFrame(openCurrentChatFind)
+      return
+    }
     if (item.type === 'panel') {
       const current = useProductSurfaceStore.getState().productSurface
       if (current !== productSurface || !quickNavigationItems(useAuthStore.getState().user, current).some(candidate => candidate.surface === current)) return
@@ -799,7 +808,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           ) : (
             filteredItems.map((item, index) => {
               const isSelected = index === selectedIndex
-              const ItemIcon = item.type === 'panel' ? PanelRight : item.type === 'workflow'
+              const ItemIcon = item.type === 'chat-find' ? Search : item.type === 'panel' ? PanelRight : item.type === 'workflow'
                 ? Layers
                 : item.type === 'product'
                   ? LayoutGrid
@@ -841,7 +850,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                         {item.label}
                       </span>
                       {!item.treeChild && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
-                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? (item.preset.workflowKind === 'relay' ? 'Flow' : 'Goal') : item.type === 'crew' ? 'Crew' : item.type}
+                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? (item.preset.workflowKind === 'relay' ? 'Flow' : 'Goal') : item.type === 'crew' ? 'Crew' : item.type === 'chat-find' ? 'search' : item.type}
                       </span>}
                       {activeSession && item.type !== 'active' && (
                         runtimeNeedsUserInput(activeSession) ? (

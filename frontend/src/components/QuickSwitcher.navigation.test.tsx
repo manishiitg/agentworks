@@ -530,3 +530,20 @@ it('keeps Home during creation instead of navigating to a remembered project', a
     }
   } finally { stop(); window.history.replaceState({}, '', '/'); useGlobalPresetStore.setState({ activePresetIds: { ...useGlobalPresetStore.getState().activePresetIds, workflow: null } }) }
 })
+
+// PLAT-746-158 A3: one existing launcher opens the current main chat's search.
+it('opens find in the mounted chat from the existing quick switcher', async () => {
+  const transcript = document.createElement('div')
+  transcript.dataset.chatFindRoot = ''
+  transcript.getClientRects = () => [new DOMRect(0, 0, 600, 400)] as unknown as DOMRectList
+  const open = vi.fn()
+  transcript.addEventListener('open-current-chat-find', open)
+  document.body.append(transcript)
+  cleanups.push(() => transcript.remove())
+  const { host, onClose } = await renderNavigation('Find in this chat')
+  const row = host.querySelector<HTMLElement>('[data-navigation-id="chat:find"]')!
+  expect(row).not.toBeNull()
+  await act(async () => { row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await new Promise(resolve => requestAnimationFrame(resolve)) })
+  expect(onClose).toHaveBeenCalledOnce()
+  expect(open).toHaveBeenCalledOnce()
+})

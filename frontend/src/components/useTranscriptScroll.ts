@@ -203,6 +203,15 @@ export function useTranscriptScroll(
     cancelRestore()
     controller.pause()
   }, [cancelRestore, controller, saved])
+  const jumpToKey = useCallback((key: string) => {
+    const index = keys.indexOf(key)
+    if (index < 0) return
+    pause()
+    const anchor = { key, offset: 0 }
+    saved.anchor = anchor
+    focusAnchor.current = anchor
+    virtuoso.current?.scrollToIndex({ index, align: 'start', behavior: 'auto' })
+  }, [keys, pause, saved, virtuoso])
   const jumpToLatest = useCallback(() => {
     deliberateRef.current = false
     saved.deliberate = false
@@ -363,5 +372,5 @@ export function useTranscriptScroll(
     window.addEventListener(FOLLOW_LATEST_EVENT, follow)
     return () => window.removeEventListener(FOLLOW_LATEST_EVENT, follow)
   }, [readingKey, jumpToLatest])
-  return { following, settled, scrollerRef, layoutChanged, jumpToLatest, pause, preserveDisclosure, preserveReadingPosition }
+  return { following, settled, scrollerRef, layoutChanged, jumpToLatest, jumpToKey, pause, preserveDisclosure, preserveReadingPosition }
 }

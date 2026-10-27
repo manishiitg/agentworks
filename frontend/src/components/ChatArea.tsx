@@ -3579,7 +3579,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const shouldUseFullHeightContent = forcePreviousChats || !!EffectiveContentRenderer || hasActiveTranscript || showNormalPreviousChatsPanel || showWorkflowLandingContent
 
   return (
-    <div className="flex flex-col h-full min-w-0" data-testid="chat-area-container">
+    <div className="flex flex-col h-full min-w-0" data-testid="chat-area-container" data-chat-find-scope>
       {/* Chat Content - Separated to prevent input re-renders.
           In terminal mode the inner pane owns its own scrolling
           (the rail + log scroll independently), so this wrapper
@@ -3708,6 +3708,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                       : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
+                    searchable
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
                     runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
@@ -3777,6 +3778,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                       : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
+                    searchable
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
                     runtimeActivity={runtimeActivity}
                     events={transcriptEvents}

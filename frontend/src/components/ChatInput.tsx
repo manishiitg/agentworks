@@ -3176,6 +3176,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               className={isDraggingFiles ? 'ring-2 ring-blue-500 border-blue-500 bg-blue-50/30 dark:bg-blue-900/10' : undefined}
               disabled={inputDisabled}
               data-testid="chat-input-textarea"
+              data-chat-composer
             />
             </div>
             {isDraggingFiles && (

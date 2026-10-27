@@ -1,3 +1,5 @@
+import { TranscriptFind } from './chat/TranscriptFind'
+import { transcriptSearchText } from '../utils/transcriptSearch'
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
 import { WorkingStatus } from './chat/WorkingStatus'
 import { currentTurnActivity, currentTurnPhase, type TurnPhase } from '../utils/turnStart'
@@ -481,10 +483,15 @@ const TurnDoneSummary = memo(function TurnDoneSummary({ done }: { done: TurnDone
 // made every assistant turn look unnecessarily inset.
 const AGENT_BLOCK_CLASS = 'pl-1 pr-1'
 
+const SearchMatchContext = createContext<string | null>(null)
 const DisclosureContext = createContext<Map<string, boolean> | null>(null)
 function useDisclosure(key: string, initial = false) {
   const cache = useContext(DisclosureContext)
   const [value, setValue] = useState(() => cache?.get(key) ?? initial)
+  const searchMatch = useContext(SearchMatchContext)
+  useEffect(() => {
+    if (searchMatch) { setValue(true); cache?.set(key, true) }
+  }, [searchMatch, cache, key])
   const toggle = useCallback(() => setValue(previous => {
     const next = !previous
     cache?.set(key, next)
@@ -1137,6 +1144,8 @@ interface TerminalEventTranscriptProps {
   assistantIcon?: React.ReactNode
   /** Main chat lifecycle, scoped to this chat; never inferred from a retained terminal. */
   runtimeActivity?: ChatRuntimeActivity
+  /** Opt in only on the mounted main chat, never an execution inspector. */
+  searchable?: boolean
 }
 
 const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { readingState: TranscriptReadingState; readingKey?: string }> = ({
@@ -1164,9 +1173,12 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   assistantLabel = 'Agent',
   assistantIcon,
   runtimeActivity,
+  searchable = false,
   readingState,
   readingKey,
 }) => {
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const [searchMatch, setSearchMatch] = useState<{ key: string; query: string } | null>(null)
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
   const disclosureValues = useContext(DisclosureContext)
   const keptKinds = productRows?.kinds.join('\u0000') ?? ''
@@ -1209,6 +1221,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
       : items,
     [items, streamingStatus, streamingText, runtimeActivity?.state],
   )
+  const searchRows = useCallback(() => listData.map(item => ({ key: item.key, text: item.kind === 'working'
+    ? item.steps.map(transcriptSearchText).join('\n')
+    : item.kind === 'live' ? item.text : transcriptSearchText(item) })), [listData])
   const turnSlots = useMemo(() => buildTurnSlots(listData), [listData])
   const workingNow = runtimeActivity !== undefined && runtimeActivity.state !== 'ready'
 
@@ -1222,6 +1237,10 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     setPagination({ keys, first: firstItemIndex })
   }
   const scroll = useTranscriptScroll(keys, readingState, virtuosoRef, readingKey)
+  const selectSearchMatch = useCallback((key: string | null, query: string) => {
+    setSearchMatch(key ? { key, query } : null)
+    if (key) scroll.jumpToKey(key)
+  }, [scroll.jumpToKey])
   const latestUserMessageKey = useMemo(() => {
     for (let index = items.length - 1; index >= 0; index--) {
       const item = items[index]
@@ -1327,10 +1346,14 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
 
   return (
     <div
+      ref={rootRef}
+      data-chat-find-root={searchable ? '' : undefined}
+      tabIndex={-1}
       data-testid="terminal-clear-view"
       className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${surfaceClassName ?? 'bg-background dark:bg-[#0d100f]'}`}
       onClickCapture={scroll.preserveDisclosure}
     >
+      {searchable && <TranscriptFind rootRef={rootRef} rows={searchRows} onSelect={selectSearchMatch} hasOlder={hasOlder} loadingOlder={loadingOlder} onLoadOlder={onLoadOlder} />}
       {error && (
         <div className="flex shrink-0 items-center border-b border-red-900/60 bg-red-950/25 px-3 py-1.5 text-[11px] text-red-300">
           <span className="truncate">Refresh failed: {error}</span>
@@ -1401,17 +1424,20 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
                   hideTimestamp={!(slot?.showTime ?? true)}
                 />
               )
+          const match = searchMatch?.key === item.key ? searchMatch.query : null
+          const displayedBody = <SearchMatchContext.Provider value={match}>{body}</SearchMatchContext.Provider>
+          const matchStyle = match ? 'ring-1 ring-inset ring-yellow-400/70 bg-yellow-400/5' : ''
           if (!slot?.agent) {
-            return <div data-transcript-key={item.key} data-testid={testId} className="flow-root px-3 py-0.5">{body}</div>
+            return <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-3 py-0.5 ${matchStyle}`}>{displayedBody}</div>
           }
           // One block per agent turn: the header once at the top, then every
           // tool batch, thought and reply of that turn on the same rail.
           return (
-            <div data-transcript-key={item.key} data-testid={testId} className="flow-root px-2">
+            <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-2 ${matchStyle}`}>
               <div className={`${AGENT_BLOCK_CLASS} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
                 {slot.first && <AssistantTurnHeader event={slot.header} label={assistantLabel} />}
                 <ChatElementDisclosureContext.Provider value={disclosureValues ? { values: disclosureValues, scope: slot.widgetScope ?? item.key } : null}>
-                  {body}
+                  {displayedBody}
                 </ChatElementDisclosureContext.Provider>
                 {slot.last && slot.done && !(workingNow && index === turnSlots.length - 1) && <TurnDoneSummary done={slot.done} />}
               </div>
