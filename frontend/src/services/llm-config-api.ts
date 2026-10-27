@@ -232,6 +232,11 @@ export interface DynamicModelEntry {
   context_window?: number
   cost_input?: number
   cost_output?: number
+  /** Cursor account picker (PLAT-872): the server's family, variant chip label, row note and older-version mark. */
+  family?: string
+  variant?: string
+  family_note?: string
+  older?: boolean
 }
 
 export interface DynamicModelsResponse {

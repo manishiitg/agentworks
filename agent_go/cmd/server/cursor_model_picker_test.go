@@ -6,38 +6,45 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
-// PLAT-872: the screenshot showed duplicate effort/speed cards and older
-// generations. Use numeric versions, retain distinct families and exact IDs.
-func TestCursorPickerLatestFamiliesRetainRunnableSelectors(t *testing.T) {
+// PLAT-872: a paid Cursor account lists 270 models, each family as up to twenty
+// cards. Group by family with variant chips, keep every exact ID, fold older versions.
+func TestCursorPickerGroupsFamiliesAndVariants(t *testing.T) {
 	models, _ := parseCursorModelList(`Available models
-composer-2.5 - Composer 2.5 (default)
-grok-4.9-medium - Grok 4.9 Medium
-grok-4.10-low - Grok 4.10 Low
+auto - Auto (current, default)
+claude-opus-5-1m-max-thinking-fast - Claude Opus 5 1M Max Thinking Fast
+claude-opus-5-1m - Claude Opus 5 1M
+claude-opus-4-8-1m-extra-high - Claude Opus 4.8 1M Extra High
+claude-fable-5-1-1m-low - Claude Fable 5.1 1M Low (NO ZDR)
 grok-4.10-medium-fast - Grok 4.10  Medium Fast​​
-grok-4.10-medium - Grok 4.10 Medium
-grok-4.10-high - Grok 4.10 High
-claude-sonnet-5 - Claude Sonnet 5
-claude-opus-5 - Claude Opus 5
-auto - Auto
+grok-4.9-medium - Grok 4.9 Medium
 `)
-	got := latestCursorModelFamilies(models)
-	var ids, names []string
+	got := cursorModelChoices(models)
+	type row struct {
+		id, group, family, variant, note string
+		older                            bool
+	}
+	var rows []row
 	for _, m := range got {
-		ids = append(ids, m.ModelID)
-		names = append(names, m.ModelName)
+		rows = append(rows, row{m.ModelID, m.Group, m.Family, m.Variant, m.FamilyNote, m.Older})
 	}
-	want := []string{"composer-2.5", "grok-4.10-medium", "claude-sonnet-5", "claude-opus-5", "auto"}
-	if !reflect.DeepEqual(ids, want) {
-		t.Fatalf("picker selectors = %v; want %v", ids, want)
+	want := []row{
+		{"auto", "Cursor", "Auto", "", "", false},
+		{"claude-opus-5-1m-max-thinking-fast", "Anthropic", "Claude Opus 5", "Max · Thinking · Fast", "1M context", false},
+		{"claude-opus-5-1m", "Anthropic", "Claude Opus 5", "Standard", "1M context", false},
+		{"claude-opus-4-8-1m-extra-high", "Anthropic", "Claude Opus 4.8", "Extra High", "1M context", true},
+		{"claude-fable-5-1-1m-low", "Anthropic", "Claude Fable 5.1", "Low", "1M context · NO ZDR", false},
+		{"grok-4.10-medium-fast", "xAI", "Grok 4.10", "Medium · Fast", "", false},
+		{"grok-4.9-medium", "xAI", "Grok 4.9", "Medium", "", true},
 	}
-	if names[1] != "Grok 4.10" || !got[0].IsDefault {
-		t.Fatalf("labels/default lost: %+v", got)
+	if !reflect.DeepEqual(rows, want) {
+		t.Fatalf("choices =\n%+v\nwant\n%+v", rows, want)
 	}
-	if len(latestCursorModelFamilies(nil)) != 0 {
-		t.Fatal("failed discovery must not invent models")
+	if !got[0].IsDefault {
+		t.Fatal("Auto lost its default mark")
 	}
 }
 
@@ -65,7 +72,7 @@ esac
 		user, id, want string
 		status         int
 	}{
-		{"alice", a.ID, "first-3", http.StatusOK},
+		{"alice", a.ID, "first-2,first-3", http.StatusOK},
 		{"alice", b.ID, "second-1", http.StatusOK},
 		{"bob", a.ID, "", http.StatusForbidden},
 	} {
@@ -78,7 +85,11 @@ esac
 			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
-			if len(response.Models) != 1 || response.Models[0].ModelID != tc.want {
+			var ids []string
+			for _, m := range response.Models {
+				ids = append(ids, m.ModelID)
+			}
+			if strings.Join(ids, ",") != tc.want {
 				t.Fatalf("wrong account inventory: %+v", response.Models)
 			}
 		}

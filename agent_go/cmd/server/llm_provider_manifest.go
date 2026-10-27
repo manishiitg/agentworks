@@ -88,6 +88,12 @@ type dynamicModelEntry struct {
 	ContextWindow int     `json:"context_window,omitempty"`
 	CostInput     float64 `json:"cost_input,omitempty"`
 	CostOutput    float64 `json:"cost_output,omitempty"`
+	// Cursor's account picker (PLAT-872): one row per Family, its Variant as a chip, FamilyNote shown once on
+	// the row, Older families folded away.
+	Family     string `json:"family,omitempty"`
+	Variant    string `json:"variant,omitempty"`
+	FamilyNote string `json:"family_note,omitempty"`
+	Older      bool   `json:"older,omitempty"`
 }
 
 type dynamicModelsResponse struct {

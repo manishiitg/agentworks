@@ -144,59 +144,35 @@ describe('project reasoning settings', () => {
   })
 })
 
-const cursorIds = ['auto', 'composer-2.5', 'grok-4.7', 'grok-4.6', 'glm-5.3', 'glm-5.3-flash']
 function cursorFixture() {
-  state.options = [{ id: 'cursor-cli', provider: 'cursor-cli', model_id: 'auto', options: { reasoning_effort: 'high' } }]
-  state.providerManifest = [{
-    id: 'cursor-cli', integration_kind: 'coding_agent', runtime_available: true, usable: true,
-    models: cursorIds.map(model_id => ({ model_id, model_name: model_id, provider: 'cursor-cli', context_window: 0, input_cost_per_1m: 0, output_cost_per_1m: 0 })),
-  } as ProviderManifestEntry]
+  state.options = [{ id: 'cursor-cli', provider: 'cursor-cli', model_id: 'composer-2.5' }]
+  state.providerManifest = [{ id: 'cursor-cli', integration_kind: 'coding_agent', runtime_available: true, usable: true, models: [] } as unknown as ProviderManifestEntry]
 }
 
-it.each(['work', 'code'])('shows curated and live Cursor choices in %s, without duplicate IDs or changing the selection', async profileId => {
-  cursorFixture(); state.product.profileId = profileId
-  const extra = 'grok-4.6[effort=xhigh,fast=false]'
+// PLAT-872: a paid Cursor account lists ~270 models; the picker shows the server's families with variant chips,
+// folds older versions and sends the exact ID of the chosen variant.
+it('groups the Cursor account models into families with variant chips', async () => {
+  cursorFixture()
   vi.mocked(llmConfigService.getProviderModels).mockResolvedValue({
-    provider: 'cursor-cli', model_selection_mode: 'dynamic', source: 'cli_dynamic', cached_at: '', cache_ttl_seconds: 300,
-    models: [{ model_id: 'glm-5.3', model_name: 'Duplicate GLM' }, { model_id: extra, model_name: 'Grok extra high' }],
+    provider: 'cursor-cli', model_selection_mode: 'dynamic', source: 'cli_account', cached_at: '', cache_ttl_seconds: 0,
+    models: [
+      { model_id: 'auto', model_name: 'Auto', family: 'Auto', group: 'Cursor', is_default: true },
+      { model_id: 'claude-opus-5-1m', model_name: 'Claude Opus 5 1M', family: 'Claude Opus 5', variant: 'Standard', family_note: '1M context', group: 'Anthropic' },
+      { model_id: 'claude-opus-5-1m-max-thinking', model_name: 'Claude Opus 5 1M Max Thinking', family: 'Claude Opus 5', variant: 'Max · Thinking', family_note: '1M context', group: 'Anthropic' },
+      { model_id: 'claude-opus-4-8-1m', model_name: 'Claude Opus 4.8 1M', family: 'Claude Opus 4.8', variant: 'Standard', group: 'Anthropic', older: true },
+    ],
   })
   const { host, onRuntimeChange } = await render({ schema_version: 2, mode: 'explicit', builder_llm: {
-    provider: 'cursor-cli', model_id: 'auto', connection_id: 'global:cursor-cli', options: { reasoning_effort: 'high' },
+    provider: 'cursor-cli', model_id: 'auto', connection_id: 'global:cursor-cli', options: {},
   } })
-  expect(llmConfigService.getProviderModels).toHaveBeenCalledWith('cursor-cli')
-  const titles = Array.from(host.querySelectorAll('button .font-medium')).map(title => title.textContent)
-  expect(titles).toEqual([...cursorIds, 'Grok extra high'])
-  expect(onRuntimeChange).not.toHaveBeenCalled()
-  const choice = Array.from(host.querySelectorAll('button')).find(button => button.querySelector('.font-medium')?.textContent === 'Grok extra high')!
-  await act(async () => choice.click())
-  expect(onRuntimeChange).toHaveBeenCalledWith(expect.objectContaining({ modelId: extra, provider: 'cursor-cli', connectionId: 'global:cursor-cli' }))
-})
-
-it('offers only the models the account allows and shows a single allowed model selected', async () => {
-  cursorFixture()
-  const account = { id: 'global:cursor-cli', provider: 'cursor-cli', display_name: 'Admin-managed account', scope: 'global', auth_method: 'server', allowed_models: ['composer-2.5', 'glm-5.3'] }
-  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([account] as never)
-  const config: PresetLLMConfig = { schema_version: 2, mode: 'explicit', builder_llm: { provider: 'cursor-cli', model_id: 'grok-4.6', connection_id: 'global:cursor-cli', options: {} } }
-  const { host, onRuntimeChange } = await render(config)
-  const titles = () => Array.from(host.querySelectorAll('button .font-medium')).map(title => title.textContent)
-  expect(titles()).toEqual(['composer-2.5', 'glm-5.3'])
-  // The saved grok-4.6 is not allowed: the Model card reads as the first allowed model.
-  expect(host.textContent).toContain('composer-2.5')
-  expect(onRuntimeChange).not.toHaveBeenCalled()
-  // One allowed model: that one is offered and selected.
-  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([{ ...account, allowed_models: ['glm-5.3'] }] as never)
-  await act(async () => { root?.unmount() }); document.body.innerHTML = ''
-  const second = await render(config)
-  expect(Array.from(second.host.querySelectorAll('button .font-medium')).map(title => title.textContent)).toEqual(['glm-5.3'])
-  expect(second.host.querySelector('button[aria-expanded] p')?.textContent).toContain('glm-5.3')
-  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([])
-})
-
-it('keeps curated Cursor choices when the live model list cannot be loaded', async () => {
-  cursorFixture()
-  vi.mocked(llmConfigService.getProviderModels).mockRejectedValue(new Error('Not signed in'))
-  const { host } = await render()
-  expect(Array.from(host.querySelectorAll('button .font-medium')).map(title => title.textContent)).toEqual(cursorIds)
+  expect(host.textContent).toContain('Anthropic')
+  expect(host.textContent).not.toContain('Claude Opus 4.8')
+  const button = (text: string) => Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(b => b.textContent?.trim().startsWith(text))!
+  await act(async () => button('Claude Opus 5').click())
+  await act(async () => button('Max · Thinking').click())
+  expect(onRuntimeChange).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: 'claude-opus-5-1m-max-thinking', provider: 'cursor-cli', connectionId: 'global:cursor-cli' }))
+  await act(async () => button('Show older models').click())
+  expect(host.textContent).toContain('Claude Opus 4.8')
 })
 
 it('shows Claude effort while the model picker is collapsed and preserves its account', async () => {
@@ -213,24 +189,6 @@ it('shows Claude effort while the model picker is collapsed and preserves its ac
   expect(low).toBeDefined()
   await act(async () => low.click())
   expect(onRuntimeChange).toHaveBeenCalledWith(expect.objectContaining({ reasoningEffort: 'low', modelId: 'claude-sonnet-5-5', connectionId: 'global:claude-code' }))
-})
-
-it('restricts Cursor effort to the selected model and drops an incompatible effort on model change', async () => {
-  cursorFixture()
-  state.options[0].reasoning_efforts = ['low', 'medium', 'high', 'xhigh', 'max']
-  state.providerManifest[0].models!.forEach(model => {
-    model.supports_reasoning_effort = model.model_id.startsWith('grok') || model.model_id.startsWith('glm')
-    model.reasoning_effort_levels = model.model_id.startsWith('grok') ? ['low', 'medium', 'high', 'xhigh'] : model.model_id.startsWith('glm') ? ['low', 'high', 'max'] : []
-  })
-  const { host, onRuntimeChange } = await render({ schema_version: 2, mode: 'explicit', builder_llm: {
-    provider: 'cursor-cli', model_id: 'grok-4.6', connection_id: 'private-cursor', options: { reasoning_effort: 'xhigh' },
-  } })
-  expect(Array.from(host.querySelectorAll('[aria-label="Reasoning effort"] button')).map(button => button.textContent)).toEqual(['Low', 'Medium', 'High', 'Xhigh'])
-  const choice = (id: string) => Array.from(host.querySelectorAll('button')).find(button => button.querySelector('.font-medium')?.textContent === id)!
-  await act(async () => choice('glm-5.3').click())
-  expect(onRuntimeChange).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: 'glm-5.3', reasoningEffort: 'high', connectionId: 'private-cursor' }))
-  await act(async () => choice('auto').click())
-  expect(onRuntimeChange).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: 'auto', reasoningEffort: undefined }))
 })
 
 // Owner 2026-10-07: Models names the account the chat actually runs on. With no project choice that is

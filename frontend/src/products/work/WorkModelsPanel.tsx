@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrainCircuit, ChevronDown, Gauge, KeyRound, Loader2 } from 'lucide-react'
 import { TierModelSelector } from '../../components/ui/TierModelSelector'
+import { CursorModelPicker } from '../../components/ui/CursorModelPicker'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import GuidedProviderTerminal from '../../components/providers/GuidedProviderTerminal'
@@ -499,13 +500,20 @@ export function WorkModelsPanel({
                 </div>
               )}
               {cursorModelsError && <p role="alert" className="text-sm text-destructive">{cursorModelsError}</p>}
-              <TierModelSelector
-                models={selectableModels}
-                selectedModelId={currentModelId}
-                onSelect={selectModel}
-                className="mt-3"
-                showPrices={Boolean(keyService)}
-              />
+              {selectedOption?.provider === 'cursor-cli' && !keyService
+                ? <CursorModelPicker
+                    models={cursorModels.filter(model => selectableModels.some(choice => choice.model_id === model.model_id))}
+                    selectedModelId={currentModelId}
+                    onSelect={selectModel}
+                    className="mt-3"
+                  />
+                : <TierModelSelector
+                    models={selectableModels}
+                    selectedModelId={currentModelId}
+                    onSelect={selectModel}
+                    className="mt-3"
+                    showPrices={Boolean(keyService)}
+                  />}
             </div>
           )}
           {/* Reasoning effort belongs to the model: shown inside the Model card, not as a separate box. */}

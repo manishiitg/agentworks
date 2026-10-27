@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -69,78 +70,157 @@ func (api *StreamingAPI) handleCursorModelPicker(w http.ResponseWriter, r *http.
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(dynamicModelsResponse{Provider: "cursor-cli", ModelSelectionMode: "dynamic", Models: latestCursorModelFamilies(filtered), Source: "cli_account"})
+	json.NewEncoder(w).Encode(dynamicModelsResponse{Provider: "cursor-cli", ModelSelectionMode: "dynamic", Models: cursorModelChoices(filtered), Source: "cli_account"})
 }
 
 var cursorModelVersion = regexp.MustCompile(`[0-9]+`)
-var cursorModelVariant = regexp.MustCompile(`(?i)(?:[ -]+(?:extra[ -]+high|xhigh|high|medium|low|fast|thinking|default|current|\(default\)|\(current\)))+$`)
-var cursorModelAnnotation = regexp.MustCompile(`\s*\([^)]*(?:default|current)[^)]*\)\s*$`)
+var cursorModelParen = regexp.MustCompile(`\s*\(([^)]*)\)`)
+var cursorModelEfforts = []string{"Extra High", "Minimal", "Medium", "None", "High", "Low", "Max"}
 
-// PLAT-872: the exploded CLI list produced a card per speed/effort variant,
-// alongside older generations. Keep one actual selector per newest family;
-// never manufacture an ID or infer access from the static metadata catalog.
-func latestCursorModelFamilies(models []dynamicModelEntry) []dynamicModelEntry {
-	type choice struct {
-		model   dynamicModelEntry
+// cursorModelChoices groups the account's Cursor list (PLAT-872). Each model came as up to fourteen
+// cards ("Claude Opus 5 1M Max Thinking Fast"); split the name into its family and variant so the
+// picker shows one row per family with its variants as chips, and mark families with a newer version
+// as older. Every entry keeps its exact runnable ID; nothing is invented.
+func cursorModelChoices(models []dynamicModelEntry) []dynamicModelEntry {
+	type familyInfo struct {
+		key     string
 		version []int
-		rank    int
+		notes   []string
 	}
-	picks := map[string]choice{}
-	order := []string{}
+	families := map[string]*familyInfo{}
+	newest := map[string][]int{}
+	result := make([]dynamicModelEntry, 0, len(models))
 	for _, model := range models {
-		name := strings.Map(func(r rune) rune {
+		name := strings.Join(strings.Fields(strings.Map(func(r rune) rune {
 			if unicode.Is(unicode.Cf, r) {
 				return -1
 			}
 			return r
-		}, model.ModelName)
-		name = strings.Join(strings.Fields(cursorModelAnnotation.ReplaceAllString(name, "")), " ")
-		label := strings.TrimSpace(cursorModelVariant.ReplaceAllString(name, ""))
-		family := strings.Trim(cursorModelVersion.ReplaceAllString(strings.ToLower(label), ""), " .-")
-		var version []int
-		for _, part := range cursorModelVersion.FindAllString(label, -1) {
-			n, _ := strconv.Atoi(part)
-			version = append(version, n)
+		}, model.ModelName)), " ")
+		var notes []string
+		for _, m := range cursorModelParen.FindAllStringSubmatch(name, -1) {
+			if note := strings.TrimSpace(m[1]); note != "" && !strings.Contains(strings.ToLower(note), "default") && !strings.Contains(strings.ToLower(note), "current") {
+				notes = append(notes, note)
+			}
 		}
-		rank := 0
-		if label == name {
-			rank = 2
-		} else if strings.HasSuffix(strings.ToLower(name), " medium") {
-			rank = 1
+		name = strings.TrimSpace(cursorModelParen.ReplaceAllString(name, ""))
+		name, effort, thinking, fast, long := splitCursorModelName(name)
+		parts := []string{effort}
+		if effort == "" {
+			parts[0] = "Standard"
 		}
-		if model.IsDefault {
-			rank = 3
+		if thinking != "" {
+			parts = append(parts, thinking)
 		}
-		previous, exists := picks[family]
-		newer := !exists
-		equal := exists
-		if exists {
-			for i := 0; i < len(version) || i < len(previous.version); i++ {
-				a, b := 0, 0
-				if i < len(version) {
-					a = version[i]
-				}
-				if i < len(previous.version) {
-					b = previous.version[i]
-				}
-				if a != b {
-					newer = a > b
-					equal = false
+		if fast {
+			parts = append(parts, "Fast")
+		}
+		model.Family, model.Variant = name, strings.Join(parts, " · ")
+		if strings.EqualFold(model.ModelID, "auto") {
+			model.Family, model.Variant = "Auto", ""
+		}
+		model.Group = cursorModelMaker(model.Family)
+		info := families[model.Family]
+		if info == nil {
+			info = &familyInfo{key: strings.Trim(cursorModelVersion.ReplaceAllString(strings.ToLower(model.Family), ""), " .-")}
+			for _, part := range cursorModelVersion.FindAllString(model.Family, -1) {
+				n, _ := strconv.Atoi(part)
+				info.version = append(info.version, n)
+			}
+			families[model.Family] = info
+			if versionNewer(info.version, newest[info.key]) {
+				newest[info.key] = info.version
+			}
+		}
+		if long && !slices.Contains(info.notes, "1M context") {
+			info.notes = append(info.notes, "1M context")
+		}
+		for _, note := range notes {
+			if !slices.Contains(info.notes, note) {
+				info.notes = append(info.notes, note)
+			}
+		}
+		result = append(result, model)
+	}
+	for i := range result {
+		info := families[result[i].Family]
+		result[i].FamilyNote = strings.Join(info.notes, " · ")
+		result[i].Older = versionNewer(newest[info.key], info.version)
+	}
+	return result
+}
+
+func versionNewer(a, b []int) bool {
+	for i := 0; i < len(a) || i < len(b); i++ {
+		x, y := 0, 0
+		if i < len(a) {
+			x = a[i]
+		}
+		if i < len(b) {
+			y = b[i]
+		}
+		if x != y {
+			return x > y
+		}
+	}
+	return false
+}
+
+// splitCursorModelName peels the variant words off the end of a Cursor name:
+// "Claude Opus 5 1M Max Thinking Fast" is family "Claude Opus 5", effort Max, Thinking, Fast, 1M context.
+func splitCursorModelName(name string) (family, effort, thinking string, fast, long bool) {
+	cut := func(suffix string) bool {
+		if len(name) > len(suffix) && strings.EqualFold(name[len(name)-len(suffix)-1:], " "+suffix) {
+			name = strings.TrimSpace(name[:len(name)-len(suffix)-1])
+			return true
+		}
+		return false
+	}
+	for {
+		switch {
+		case cut("Fast"):
+			fast = true
+		case cut("No Thinking"):
+			thinking = "No thinking"
+		case cut("Thinking"):
+			thinking = "Thinking"
+		case cut("1M"):
+			long = true
+		default:
+			found := false
+			for _, e := range cursorModelEfforts {
+				if effort == "" && cut(e) {
+					effort, found = e, true
 					break
 				}
 			}
-		}
-		if !exists {
-			order = append(order, family)
-		}
-		if newer || (equal && rank > previous.rank) {
-			model.ModelName = label
-			picks[family] = choice{model, version, rank}
+			if !found {
+				return name, effort, thinking, fast, long
+			}
 		}
 	}
-	result := make([]dynamicModelEntry, 0, len(order))
-	for _, family := range order {
-		result = append(result, picks[family].model)
+}
+
+// cursorModelMaker is the company heading a Cursor family is listed under.
+func cursorModelMaker(family string) string {
+	first := strings.ToLower(strings.SplitN(family, " ", 2)[0])
+	switch {
+	case first == "auto" || first == "composer":
+		return "Cursor"
+	case first == "claude":
+		return "Anthropic"
+	case strings.HasPrefix(first, "gpt") || first == "codex":
+		return "OpenAI"
+	case first == "gemini":
+		return "Google"
+	case first == "grok":
+		return "xAI"
+	case first == "glm":
+		return "Z.AI"
+	case first == "kimi":
+		return "Moonshot"
+	case first == "deepseek":
+		return "DeepSeek"
 	}
-	return result
+	return strings.SplitN(family, " ", 2)[0]
 }
