@@ -12,7 +12,9 @@ import (
 var crewExecutionGroupedMembers = func() map[string]string {
 	result := map[string]string{}
 	for _, action := range platformtools.Actions {
-		if action.ExternalMembers != "" && slices.Contains(action.Aliases, action.ExternalMembers) {
+		// Sourced actions (such as the Crew tab and project models) keep their own handler;
+		// only native Crew tools run through crew_execution (PLAT-856).
+		if action.Source == "" && action.ExternalMembers != "" && slices.Contains(action.Aliases, action.ExternalMembers) {
 			result[action.ExternalMembers] = action.Member
 		}
 	}
