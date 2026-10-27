@@ -1,5 +1,29 @@
 # Coding CLI updates
 
+## Native SDK components
+
+Claude and Cursor's SDK transports also need their official Node packages.
+One provisioner (`agent_go/internal/codingsdks/coding-sdks.cjs`) owns the
+certified Claude0.3.311 / Cursor1.1.0 versions and import/export checks. The
+managed installer runs that file; the backend embeds the same file, so a
+desktop DMG does not need a source checkout to prepare its components.
+
+The backend checks/prepares them in the background at startup, using the
+Node/npm on its normal PATH (including Desktop's imported login-shell PATH).
+It reuses a matching global SDK, or installs into writable app state. Only
+an SDK chat waits for its provider's setup; other providers and the app remain
+available. Slow setup shows progress in chat. Failures use a plain error and
+retry on the next SDK chat. Logs record the selected Node/npm and readiness,
+without npm output or credentials. Import validation makes no model request.
+
+The existing SDK path overrides remain supported. Update-disabled/dry-run
+settings allow checks and use of installed components but prohibit downloads.
+Node.js/npm must already be available; absence is reported rather than claimed
+as successful setup. The remote Windows CLI/laptop connector does not run a
+model backend and therefore does not install these host-only components.
+
+## Coding CLI updates
+
 AgentWorks uses the user's single globally installed coding CLI for every chat.
 It does not install private copies, select release directories, or pin a CLI
 version per chat.

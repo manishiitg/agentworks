@@ -339,11 +339,12 @@ echo "==> [$PRODUCT] Checking server coding CLIs (refresh=${DEPLOY_REFRESH_TOOLS
 # Ship the installer and state helper before the server's source clone.
 cli_helpers="$(mktemp -d)"
 cp "$LOCAL_REPO_ROOT/deploy/common/install-coding-clis.sh" "$LOCAL_REPO_ROOT/deploy/common/install-agy.sh" "$LOCAL_REPO_ROOT/deploy/common/coding-cli-state.py" "$cli_helpers/"
+cp "$LOCAL_REPO_ROOT/agent_go/internal/codingsdks/coding-sdks.cjs" "$cli_helpers/"
 remote_cli_helpers="$REMOTE_APP/tools/.deploy-cli-helpers"
 "${SSH[@]}" "install -d -m 0700 '$remote_cli_helpers'"
-"${SCP[@]}" "$cli_helpers/install-coding-clis.sh" "$cli_helpers/install-agy.sh" "$cli_helpers/coding-cli-state.py" "$PRODUCT@$HOST_IP:$remote_cli_helpers/"
+"${SCP[@]}" "$cli_helpers/install-coding-clis.sh" "$cli_helpers/install-agy.sh" "$cli_helpers/coding-cli-state.py" "$cli_helpers/coding-sdks.cjs" "$PRODUCT@$HOST_IP:$remote_cli_helpers/"
 rm -rf "$cli_helpers"
-"${SSH[@]}" "set -euo pipefail; export PATH='$REMOTE_RUNTIME_PATH'; bash '$remote_cli_helpers/install-coding-clis.sh' '$REMOTE_TOOLS' '$REMOTE_APP/home' '${AGY_AUTH_MODE:-auto}' '${DEPLOY_REFRESH_TOOLS:-0}'; command -v agent-browser >/dev/null; command -v slack >/dev/null"
+"${SSH[@]}" "set -euo pipefail; export PATH='$REMOTE_RUNTIME_PATH'; bash '$remote_cli_helpers/install-coding-clis.sh' '$REMOTE_TOOLS' '$REMOTE_APP/home' '${AGY_AUTH_MODE:-auto}' '${DEPLOY_REFRESH_TOOLS:-0}' '$remote_cli_helpers/coding-sdks.cjs'; command -v agent-browser >/dev/null; command -v slack >/dev/null"
 "${SSH[@]}" "rm -rf '$remote_cli_helpers'"
 
 JOB="$PRODUCT-deploy-$(date +%Y%m%d%H%M%S)-$$"
