@@ -1,5 +1,6 @@
 import { WorkspaceImage } from './WorkspaceImage'
 import { sharedLink, repairLocalAppLink } from '../../utils/sharedLinks'
+import { dashboardWorkspaceLink, openDashboardWorkspaceLink } from '../../services/dashboardDirectory'
 import React, { lazy, Suspense, useEffect, useRef, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -75,6 +76,7 @@ const hasExplicitUrlProtocol = (href: string): boolean => /^[a-z][a-z0-9+.-]*:/i
 
 const resolveSafeExternalHref = (href?: string | null): string | null => {
   const trimmed = (href || '').trim()
+  if (/^\/report\?/.test(trimmed)) return new URL(trimmed, window.location.origin).href
   if (!/^(https?:|mailto:)/i.test(trimmed)) return null
   try {
     const url = new URL(trimmed)
@@ -1318,6 +1320,13 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => {
+                  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                  if (!untrustedContent && dashboardWorkspaceLink(externalHref)) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    void openDashboardWorkspaceLink(externalHref).then(opened => { if (!opened) openExternalHref(externalHref) })
+                    return
+                  }
                   if (openExternalHref(externalHref)) {
                     e.preventDefault()
                     e.stopPropagation()

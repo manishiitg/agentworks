@@ -22,7 +22,7 @@ type ReportViewsManifest = {
 }
 
 const DEFAULT_REPORT_PATH = 'db/reports/index.html'
-const REPORT_SELECTION_EVENT = 'report-document-selection-changed'
+export const REPORT_SELECTION_EVENT = 'report-document-selection-changed'
 
 function cleanReportPath(value: unknown): string {
   if (typeof value !== 'string') return ''

@@ -4,6 +4,9 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ChatElementDisclosureContext } from './ChatElement'
+import { sharedReportLink } from '../../utils/sharedLinks'
+
+const { dashboardPost } = vi.hoisted(() => ({ dashboardPost: vi.fn() }))
 
 vi.mock('../../stores/useWorkspaceStore', () => ({
   useWorkspaceStore: (selector: (state: Record<string, unknown>) => unknown) => selector({}),
@@ -24,6 +27,7 @@ vi.mock('../../stores/useGlobalPresetStore', () => ({
   useGlobalPresetStore: { getState: () => ({}) },
 }))
 vi.mock('../../services/api', () => ({
+  default: { post: dashboardPost },
   workspaceApi: {},
   agentApi: {},
   getApiBaseUrl: () => '',
@@ -163,4 +167,28 @@ it('keeps an opened streaming disclosure through the committed-message remount (
   await update(JSON.stringify({ type: 'details', title: 'Different evidence', body: 'Another block' }), 'different', true)
   expect(container.querySelector<HTMLDetailsElement>('details')?.open).toBe(false)
   await act(async () => root.unmount())
+})
+
+
+it('opens a known same-server dashboard link in its server-resolved Crew panel (PLAT-750-82)', async () => {
+  const original = window.location.pathname + window.location.search
+  const external = vi.spyOn(window, 'open').mockImplementation(() => null)
+  window.history.replaceState({}, '', '/crew/projects/current')
+  dashboardPost.mockResolvedValue({ data: { dashboards: [{
+    dashboard_id: 'overview', project_id: 'resolved-project', product: 'crew',
+    workspace: 'Crew/sample', document_path: 'db/reports/managed/overview/index.html',
+  }], has_more: false, next_offset: 1 } })
+  try {
+    const href = sharedReportLink(window.location.origin, 'Crew/sample', 'db/reports/managed/overview/index.html')
+    const container = await renderContent(`[Overview](${href})`, true, true)
+    await act(async () => { container.querySelector<HTMLAnchorElement>('a')!.click() })
+    expect(window.location.pathname).toBe('/crew/projects/resolved-project/dashboard')
+    expect(external).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem('report-document:Crew/sample')).toBe('db/reports/managed/overview/index.html')
+  } finally {
+    external.mockRestore()
+    dashboardPost.mockReset()
+    window.history.replaceState({}, '', original)
+    window.localStorage.removeItem('report-document:Crew/sample')
+  }
 })

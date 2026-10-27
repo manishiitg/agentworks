@@ -1,8 +1,12 @@
 import api from './api'
 import { sharedReportLink } from '../utils/sharedLinks'
+import { currentProductRoute } from '../utils/productRoutes'
+import { openAppProduct } from '../utils/appNavigation'
+import { selectReportDocument } from '../components/workflow/reportDocuments'
 
 export type DashboardDirectoryEntry = {
   dashboard_id: string
+  project_id?: string
   product: 'crew' | 'workflow' | 'relay'
   title?: string
   workspace: string
@@ -43,4 +47,43 @@ export async function loadDashboardDirectory(signal?: AbortSignal): Promise<{ da
     if (data.next_offset <= offset) throw new Error('Dashboard list did not advance')
     offset = data.next_offset
   }
+}
+
+/** Only report links clicked inside a product workspace use its dashboard panel.
+ * The standalone report route remains the entry point for shared links. */
+export function dashboardWorkspaceLink(href: string): { workspace: string; document: string } | null {
+  if (!currentProductRoute()) return null
+  try {
+    const url = new URL(href, window.location.href)
+    if (url.origin !== window.location.origin || url.pathname !== '/report') return null
+    const encoded = url.searchParams.get('path')
+    if (!encoded) return null
+    const workspace = new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(atob(encoded), ch => ch.charCodeAt(0)))
+    return { workspace, document: url.searchParams.get('document') || 'db/reports/index.html' }
+  } catch { return null }
+}
+
+export async function openDashboardWorkspaceLink(href: string): Promise<boolean> {
+  const target = dashboardWorkspaceLink(href)
+  if (!target) return false
+  try {
+    let offset = 0
+    for (;;) {
+      // The server resolves the project and checks today's access, including
+      // shared Run access. Never derive a project ID/role from a folder name.
+      const { data } = await api.post<DashboardPage>('/api/dashboards', {
+        action: 'list', workspace: target.workspace, published_only: true, limit: 200, offset,
+      })
+      const row = data.dashboards.find(row => row.document_path === target.document && row.project_id)
+      if (row?.project_id) {
+        const surface = row.product === 'crew' ? 'work' : row.product === 'workflow' ? 'agentworks' : row.product === 'relay' ? 'relays' : null
+        if (!surface) return false
+        selectReportDocument(target.workspace, row.document_path)
+        openAppProduct({ surface, id: row.project_id, view: surface === 'work' ? 'dashboard' : 'report' })
+        return true
+      }
+      if (!data.has_more || data.next_offset <= offset) return false
+      offset = data.next_offset
+    }
+  } catch { return false }
 }

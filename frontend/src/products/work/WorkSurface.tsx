@@ -16,6 +16,7 @@ import { NewTabHint } from '../../components/chat/ShortcutHint'
 import { HomeEntry } from '../../components/workspace/HomeEntry'
 import { openHome } from '../../utils/homeNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
+import { REPORT_SELECTION_EVENT } from '../../components/workflow/reportDocuments'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import { TerminalFocusLayout } from '../../components/TerminalFocusLayout'
@@ -979,6 +980,15 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     writeWorkWorkspaceView(selected?.id, product.profileId, allowedView)
   }, [selected?.id, product.profileId])
 
+
+  useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<{ workspacePath?: string }>).detail
+      if (detail?.workspacePath === selected?.workspacePath) selectWorkspaceView('dashboard')
+    }
+    window.addEventListener(REPORT_SELECTION_EVENT, open)
+    return () => window.removeEventListener(REPORT_SELECTION_EVENT, open)
+  }, [selected?.workspacePath, selectWorkspaceView])
 
   // The server's can_build response keeps owners/co-owners in the Builder
   // workspace. People the Crew is only shared with use its dashboard.
