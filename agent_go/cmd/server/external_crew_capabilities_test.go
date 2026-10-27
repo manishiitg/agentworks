@@ -27,7 +27,9 @@ func crewCapabilityHTTP(t *testing.T, f *externalToolsFixture, claims *UserClaim
 	args["crew_id"] = "team"
 	body, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
 	w := httptest.NewRecorder()
-	f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(body), claims, nil))
+	// Member tool names are internal since 9a5930513 (PLAT-825 merged tools), so
+	// call them the way the server's own callers do (PLAT-856-386).
+	f.api.dispatchExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(body), claims, nil), true)
 	externalTestBody(t, w, status)
 	return w.Body.String()
 }
