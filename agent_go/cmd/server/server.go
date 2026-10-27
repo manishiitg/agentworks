@@ -8127,6 +8127,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		codingFallbackHistoryBase := -1
 		codingFallbackInjectedMessages := 0
 		if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
+			nativeResumeAlreadyLoaded := codingAgentHasNativeResume(finalProvider, underlyingAgent)
 			restoredNativeCodingResume := false
 			restoredConversationPath := strings.TrimSpace(req.RestoredConversationPath)
 			restoredConversationSessionID := strings.TrimSpace(req.RestoredConversationSessionID)
@@ -8273,10 +8274,23 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 				}
-				cleanedChatQuery := cleanChatHistoryQuery(chatQuery)
-				if cleanedChatQuery != chatQuery {
-					chatQuery = cleanedChatQuery
-					logfWithContext(queryLogCtx, "[CHAT_HISTORY] Using native coding-agent resume; stripped restored conversation attach context from prompt")
+				chatQuery = cleanChatHistoryQuery(chatQuery)
+				// Owner27Oct: a restored native thread also gets the canonical
+				// conversation archive, just like a provider change. Keep native
+				// memory and reference the file instead of replaying the full JSON.
+				// Ordinary turns on an already-loaded handle need no extra notice.
+				if !nativeResumeAlreadyLoaded {
+					if restoredConversationPathForFallback == "" {
+						if path, ok, err := FindChatHistoryConversationPathForSession(currentUserID, sessionID, restoredConversationWorkspace); err != nil {
+							logfWithContext(queryLogCtx, "[CHAT_HISTORY] Could not resolve archive for native resume: %v", err)
+						} else if ok {
+							restoredConversationPathForFallback = path
+						}
+					}
+					if restoredConversationPathForFallback != "" {
+						chatQuery = prependCodingAgentContinuityNotice(chatQuery, restoredConversationPathForFallback, restoredConversationWorkspace, continuityHistory)
+						logfWithContext(queryLogCtx, "[CHAT_HISTORY] Native resume retained; supplied conversation archive %s", restoredConversationPathForFallback)
+					}
 				}
 			} else if req.resolvedResumeTarget != nil && req.resolvedResumeTarget.crossesProvider(finalProvider) && restoredConversationPathForFallback != "" {
 				// Provider-native handles cannot cross CLI implementations. Keep the
