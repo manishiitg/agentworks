@@ -4,10 +4,13 @@
 #   verify-change.sh --url <https git url> --sha <40-hex> [--builds-dir /srv/_builds]
 #
 # Runs on the Linux build host (see deploy/common/build-once.sh, verify_change_remote). It
-#   1. takes <builds-dir>/.verify.lock so verifications run one at a time (it does NOT take the build lock: builds stay unblocked);
-#   2. fetches the commit and main, and reads what changed against main and the Verify-* lines of the commit message;
+#   1. takes one of VERIFY_SLOTS (default 2) slot locks <builds-dir>/.verify.lock.<n>, so at most that many verifications run at
+#      once (it does NOT take the build lock: builds stay unblocked);
+#   2. fetches the commit and main into a kept mirror (<builds-dir>/.verify-mirror, only new objects each time), clones it locally,
+#      and reads what changed against main and the Verify-* lines of the commit message;
 #   3. Go (when agent_go, workspace or mcp-gateway changed, or a Verify-Test line exists): build ./..., vet the changed packages,
-#      cross-build and vet the macOS CLI, the Verify-Deploy checks, then each Verify-Test line as `go test <line> -count=1`;
+#      cross-build and vet the macOS CLI (only when something outside agent_go/cmd/server changed: the CLI never imports it),
+#      the Verify-Deploy checks, then each Verify-Test line as `go test <line> -count=1`;
 #   4. website (when frontend/ changed or a Verify-Vitest line exists): npm ci, tsc -b, Verify-Vitest files, and `npm run build`
 #      with Verify-Frontend-Build: true;
 #   5. prints VERIFY: PASSED or VERIFY: FAILED.
@@ -37,8 +40,20 @@ step() { echo "==> [${SHA:0:8}] $* ($(( $(date +%s) - STARTED ))s)"; }
 if [[ "$INNER" == 0 ]]; then
   # ---- outer (root): lock, fetch, hand the checkout to an unprivileged account ----------------------------------------------
   install -d -m 0755 "$BUILDS"
-  exec 8>"$BUILDS/.verify.lock"
-  flock -w 1800 8 || { echo "Another verification has held $BUILDS/.verify.lock for 30 minutes" >&2; exit 1; }
+  # Up to VERIFY_SLOTS verifications at once; each keeps its own CPU and memory limits (build-once.sh).
+  slots="${VERIFY_SLOTS:-2}"; slot=""; waited=0
+  while [[ -z "$slot" ]]; do
+    for n in $(seq 1 "$slots"); do
+      exec 8>"$BUILDS/.verify.lock.$n"
+      if flock -n 8; then slot="$n"; break; fi
+      exec 8>&-
+    done
+    if [[ -z "$slot" ]]; then
+      [[ "$waited" -gt 0 ]] || step "Waiting for a free verify slot ($slots in use)"
+      (( waited += 5 )); [[ "$waited" -lt 1800 ]] || { echo "No free verify slot for 30 minutes" >&2; exit 1; }
+      sleep 5
+    fi
+  done
   command -v go >/dev/null || { echo "No Go toolchain on this host: run ./deploy.sh build once (it installs one)." >&2; exit 1; }
   id -u "$USER_AS" >/dev/null 2>&1 || { echo "Account $USER_AS does not exist; set VERIFY_AS" >&2; exit 1; }
   WORK="$BUILDS/.work/verify-${SHA:0:8}-$(date -u +%Y%m%d%H%M%S)"
@@ -48,10 +63,17 @@ if [[ "$INNER" == 0 ]]; then
   install -d -m 1777 "$BUILDS/.verify-logs"
   find "$BUILDS/.verify-logs" -type f -mtime +2 -delete 2>/dev/null || true
   trap 'rm -rf "$WORK"' EXIT
-  step "Fetching the commit and main"
-  git init -q "$WORK/repo"
-  git -C "$WORK/repo" remote add origin "$URL"
-  GIT_TERMINAL_PROMPT=0 git -C "$WORK/repo" fetch -q --filter=blob:none origin main "$SHA"
+  step "Fetching the commit and main (slot $slot)"
+  MIRROR="$BUILDS/.verify-mirror"
+  (
+    flock -w 600 9 || { echo "The verify mirror has been busy for 10 minutes" >&2; exit 1; }
+    [[ -d "$MIRROR/objects" ]] || git init -q --bare "$MIRROR"
+    git -C "$MIRROR" remote get-url origin >/dev/null 2>&1 || git -C "$MIRROR" remote add origin "$URL"
+    git -C "$MIRROR" remote set-url origin "$URL"
+    GIT_TERMINAL_PROMPT=0 git -C "$MIRROR" fetch -q origin "+refs/heads/main:refs/heads/main" "$SHA"
+  ) 9>"$BUILDS/.verify-mirror.lock"
+  # --shared reads objects from the mirror; the mirror only grows, so no object can vanish under a running verification.
+  git clone -q --shared --no-checkout "$MIRROR" "$WORK/repo"
   git -C "$WORK/repo" -c advice.detachedHead=false checkout -q --detach "$SHA"
   [[ "$(git -C "$WORK/repo" rev-parse HEAD)" == "$SHA" ]] || { echo "Checked out the wrong commit" >&2; exit 1; }
   GROUP_AS="$(id -gn "$USER_AS")"
@@ -101,9 +123,13 @@ if [[ "$go_needed" == true ]]; then
   existing=""
   for pkg in $pkgs; do [[ -d "$pkg" ]] && existing="$existing $pkg"; done
   [[ -z "$existing" ]] || run "go vet$existing" go vet $existing
-  for arch in arm64 amd64; do
-    run "macOS CLI build and vet ($arch)" env GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 bash -c 'go build -o /dev/null ./cmd/agentworks && go vet ./cmd/agentworks ./pkg/agentworksclient'
-  done
+  if grep -E '^agent_go/' "$WORK/changed.txt" | grep -qvE '^agent_go/cmd/server/'; then
+    for arch in arm64 amd64; do
+      run "macOS CLI build and vet ($arch)" env GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 bash -c 'go build -o /dev/null ./cmd/agentworks && go vet ./cmd/agentworks ./pkg/agentworksclient'
+    done
+  else
+    echo "macOS CLI skipped: only agent_go/cmd/server changed (the laptop CLI does not import it)."
+  fi
   while IFS= read -r file; do
     [[ -n "$file" ]] || continue
     [[ "$file" =~ ^deploy/(common|rootless-linux)/test_[a-z0-9_]+\.py$ && -f "$WORK/repo/$file" ]] || fail "Invalid deployment check: $file"

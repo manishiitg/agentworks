@@ -69,7 +69,8 @@ verify_change_remote() {
   url="$(to_https_url "$(git -C "$REPO_ROOT" remote get-url origin)")" || return 1
   git -C "$REPO_ROOT" push -q -f origin "HEAD:refs/heads/$branch" || { echo "Could not push $branch" >&2; return 1; }
   echo "==> Verifying ${sha:0:10} on ${BUILD_HOST:-the build host}" >&2
-  build_ssh "install -d -m 0755 '$BUILDS_DIR' && cat > '$BUILDS_DIR/.verify-change.sh' && chmod 0755 '$BUILDS_DIR/.verify-change.sh'" < "$REPO_ROOT/deploy/common/verify-change.sh" \
+  # Replace the script with a new file (rename), never rewrite it in place: another verification may be running it.
+  build_ssh "install -d -m 0755 '$BUILDS_DIR' && t=\$(mktemp '$BUILDS_DIR/.verify-change.XXXXXX') && cat > \"\$t\" && chmod 0755 \"\$t\" && mv -f \"\$t\" '$BUILDS_DIR/.verify-change.sh'" < "$REPO_ROOT/deploy/common/verify-change.sh" \
     || { git -C "$REPO_ROOT" push -q origin --delete "$branch" >/dev/null 2>&1; echo "Cannot reach the build host" >&2; return 1; }
   # Lower limits than a build so a verification never starves a deploy build that runs at the same time.
   rc=0
