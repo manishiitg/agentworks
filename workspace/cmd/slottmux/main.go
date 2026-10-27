@@ -324,6 +324,20 @@ func run(args []string) int {
 		return passthroughFn(args) // a slot's own tmux is plain tmux
 	}
 	c := slots.ParseTmux(args)
+	// A slot launch hidden behind an unknown command list must never fall
+	// through to the service account (PLAT-872-55).
+	if !c.IsNewSession() && cfg.SlotNamedByScript(strings.Join(args, " ")) != "" {
+		for i := 1; i < len(args); i++ {
+			if args[i-1] != ";" {
+				continue
+			}
+			switch args[i] {
+			case "new-session", "new", "new-window", "split-window":
+				_, _ = io.WriteString(os.Stderr, "tmux: unsupported slot launch command list\n")
+				return exitMismatch
+			}
+		}
+	}
 	if c.ExplicitSocket || c.Subcommand == "" {
 		return passthroughFn(args)
 	}

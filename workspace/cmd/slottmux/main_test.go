@@ -121,3 +121,21 @@ func TestRunWithoutSlotsPassesThrough(t *testing.T) {
 		t.Fatalf("exit=%d passthrough=%v", code, passed)
 	}
 }
+
+// PLAT-872-55: an unsupported preamble must not launch a slot's script as the service.
+func TestUnknownSlotLaunchListNeverFallsThroughToService(t *testing.T) {
+	cfg, _ := frontendEnv(t)
+	oldP, oldA := passthroughFn, asSlotFn
+	t.Cleanup(func() { passthroughFn, asSlotFn = oldP, oldA })
+	passthroughFn = func([]string) int { t.Fatal("slot launch reached service tmux"); return 0 }
+	asSlotFn = func(slots.ExecConfig, string, []string, []string, io.Writer, io.Writer) int {
+		t.Fatal("unsupported launch was accepted")
+		return 0
+	}
+	for _, command := range []string{"new-session", "new", "new-window", "split-window"} {
+		args := []string{"set-option", "-g", "mouse", "off", ";", command, "-d", "/bin/sh " + filepath.Join(cfg.SlotRunRoot, "slot08", "launch.sh")}
+		if got := run(args); got != exitMismatch {
+			t.Fatalf("%s exit=%d", command, got)
+		}
+	}
+}
