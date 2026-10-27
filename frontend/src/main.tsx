@@ -5,6 +5,7 @@ import './index.css'
 import App from './App.tsx'
 import ServerConnectionStatus from './components/ServerConnectionStatus'
 import ErrorBoundary from './components/ErrorBoundary'
+import { UpdateAvailableBar } from './components/UpdateAvailableBar'
 import { applyRuntimeBranding } from './runtime-branding'
 import { useCapabilitiesStore } from './stores/useCapabilitiesStore'
 import { clearStaleChunkReloadFlag, reloadOnceForStaleChunk } from './utils/staleChunkReload'
@@ -63,6 +64,7 @@ window.addEventListener('unhandledrejection', (e) => reportRendererError('unhand
 createRoot(document.getElementById('root')!).render(
   <ErrorBoundary onError={(error) => reportRendererError('react', error)}>
     <ServerConnectionStatus>
+      <UpdateAvailableBar />
       <App />
     </ServerConnectionStatus>
   </ErrorBoundary>
