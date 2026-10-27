@@ -1,6 +1,8 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { parseChatElement, type ChatElement as ElementSpec } from './chatElementSpec'
 import { parseStreamingChatElement } from './chatElementStream'
+import { ChatCards } from './ChatCards'
+import { ChatDiagram } from './ChatDiagram'
 
 // Reuse the transcript's reading state when a live reply becomes its saved row.
 export const ChatElementDisclosureContext = createContext<{ values: Map<string, boolean>; scope: string } | null>(null)
@@ -65,6 +67,8 @@ export function ChatElement({ spec, renderMarkdown, disclosureKey }: { spec: Ele
   const key = disclosure && disclosureKey !== undefined
     ? `${disclosure.scope}:widget:${disclosureKey}:${spec.type}:${spec.title}` : undefined
   if (spec.type === 'chart') return <SmallChart spec={spec} />
+  if (spec.type === 'cards') return <ChatCards spec={spec} renderMarkdown={renderMarkdown} />
+  if (spec.type === 'diagram') return <ChatDiagram spec={spec} />
   if (spec.type === 'details') return (
     <details className={frame} data-chat-element="details" open={key ? disclosure?.values.get(key) : undefined}
       onToggle={event => { if (key) disclosure?.values.set(key, event.currentTarget.open) }}>

@@ -5,6 +5,7 @@ import { expect, it, vi } from 'vitest'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ChatElementDisclosureContext } from './ChatElement'
 import { sharedReportLink } from '../../utils/sharedLinks'
+import { parseChatElement } from './chatElementSpec'
 
 const { dashboardPost, dashboardGet } = vi.hoisted(() => ({ dashboardPost: vi.fn(), dashboardGet: vi.fn() }))
 
@@ -167,6 +168,43 @@ it('keeps an opened streaming disclosure through the committed-message remount (
   await update(JSON.stringify({ type: 'details', title: 'Different evidence', body: 'Another block' }), 'different', true)
   expect(container.querySelector<HTMLDetailsElement>('details')?.open).toBe(false)
   await act(async () => root.unmount())
+})
+
+it('streams complete cards and forward-referenced diagram nodes without exposing source (PLAT-750-83)', async () => {
+  const container = document.createElement('div')
+  const root = createRoot(container)
+  const update = async (source: string) => {
+    await act(async () => root.render(<MarkdownRenderer content={'```chat-ui\n' + source} chatElements chatElementStream="progressive" />))
+  }
+  await update('{"type":"cards","title":"Options","layout":"grid","items":[{"title":"One","description":"A complete option"},{"title":"Unfinished')
+  expect(container.querySelectorAll('[data-chat-element="cards"] li')).toHaveLength(1)
+  const graph = '{"type":"diagram","title":"Flow","direction":"vertical","edges":[{"from":"first","to":"next"}],"nodes":['
+  await update(graph + '{"id":"first","title":"<script>label</script>"},')
+  expect(container.querySelectorAll('[data-diagram-node]')).toHaveLength(1)
+  expect(container.querySelector('pre, code, script')).toBeNull()
+  await update(graph + '{"id":"first","title":"First"},{"id":"next","title":"Next","items":[{"title":"Worker","description":"Grouped component"}]}]}')
+  expect(container.querySelectorAll('[data-diagram-node]')).toHaveLength(2)
+  expect(container.textContent).toContain('Grouped component')
+  expect(container.querySelectorAll('path[marker-end]')).toHaveLength(1)
+  await act(async () => root.unmount())
+})
+
+it('refuses executable card URLs and ambiguous or dangling graph identities (PLAT-750-83)', () => {
+  for (const image of ['data:image/svg+xml,<svg/>', 'file:///private/image.png', 'javascript:alert(1)', 'Crew/example/../private.png']) {
+    expect(parseChatElement(JSON.stringify({ type: 'cards', title: 'Images', items: [{ title: 'Card', image }] }))).toBeNull()
+  }
+  for (const href of ['javascript:alert(1)', 'https://example.com/x>)[Injected](https://example.com)']) {
+    expect(parseChatElement(JSON.stringify({ type: 'cards', title: 'Links', items: [{ title: 'Card', href }] }))).toBeNull()
+  }
+  const base = { type: 'diagram', title: 'Flow', nodes: [{ id: 'a', title: 'One' }], edges: [] }
+  for (const bad of [
+    { ...base, nodes: [...base.nodes, ...base.nodes] },
+    { ...base, edges: [{ from: 'a', to: 'missing' }] },
+    { ...base, nodes: Array.from({ length: 17 }, (_, i) => ({ id: `n${i}`, title: 'Node' })) },
+    { ...base, edges: Array.from({ length: 25 }, () => ({ from: 'a', to: 'a' })) },
+  ]) expect(parseChatElement(JSON.stringify(bad))).toBeNull()
+  expect(parseChatElement(JSON.stringify({ type: 'cards', title: 'Images', items: [{ title: 'Card', image: 'https://example.com/photo.jpg' }, { title: 'Saved', image: 'Crew/example/photo.png' }] }))).not.toBeNull()
+  expect(parseChatElement(JSON.stringify({ ...base, edges: [{ from: 'a', to: 'a' }] }))).not.toBeNull()
 })
 
 

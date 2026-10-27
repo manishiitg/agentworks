@@ -55,6 +55,7 @@ export function parseStreamingChatElement(source: string): ChatElement | null {
     skip()
     if (source[cursor++] !== '{') return null
     const fields: Record<string, unknown> = Object.create(null)
+    let incompleteArray = ''
     while (cursor < source.length) {
       skip()
       if (source[cursor] === '}') break
@@ -67,7 +68,7 @@ export function parseStreamingChatElement(source: string): ChatElement | null {
       skip()
       if (source[cursor++] !== ':') break
       skip()
-      if ((key === 'data' || key === 'items') && source[cursor] === '[') {
+      if (['data', 'items', 'nodes', 'edges'].includes(key) && source[cursor] === '[') {
         const records: unknown[] = []
         fields[key] = records
         cursor++
@@ -88,7 +89,7 @@ export function parseStreamingChatElement(source: string): ChatElement | null {
           }
           cursor++
         }
-        if (!closed) break
+        if (!closed) { incompleteArray = key; break }
       } else {
         const end = valueEnd(cursor)
         if (end < 0) {
@@ -105,6 +106,12 @@ export function parseStreamingChatElement(source: string): ChatElement | null {
         break
       }
       cursor++
+    }
+    // An edge declared before its nodes waits until both complete nodes exist.
+    // Do not drop bad references from a completed graph; final validation stays strict.
+    if (fields.type === 'diagram' && incompleteArray === 'nodes' && Array.isArray(fields.nodes) && Array.isArray(fields.edges)) {
+      const ids = new Set(fields.nodes.map(node => node?.id))
+      fields.edges = fields.edges.filter(edge => ids.has(edge?.from) && ids.has(edge?.to))
     }
     return parseChatElement(JSON.stringify(fields))
   } catch { return null }
