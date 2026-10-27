@@ -27,6 +27,7 @@ function spawnServer({ name, bin, args, preferredPort, cwd, env, log, onExit, ec
     const resolvedEnv = typeof env === 'function' ? env(port) : env;
     const child = spawn(bin, finalArgs, { cwd, env: resolvedEnv, stdio: ['ignore', 'pipe', 'pipe'] });
     let portFound = false;
+    let crewUpdateFailed = false;
 
     child.on('error', (err) => {
       const msg = `[${name}] spawn error: ${err}\n`;
@@ -37,10 +38,13 @@ function spawnServer({ name, bin, args, preferredPort, cwd, env, log, onExit, ec
     child.on('exit', (code, signal) => {
       log.write(`\n=== ${name}-server exited code=${code} signal=${signal} ===\n`);
       if (onExit) onExit(code, signal);
-      if (!portFound) reject(new Error(`${name} stopped before startup completed (exit ${code}, signal ${signal || 'none'}). Check its log for the cause.`));
+      if (!portFound) reject(new Error(crewUpdateFailed
+        ? "AgentWorks couldn't finish updating your Crews. Your working folders are unchanged. Quit and reopen to try again."
+        : `${name} stopped before startup completed (exit ${code}, signal ${signal || 'none'}). Check its log for the cause.`));
     });
     child.stdout.on('data', (d) => {
       const output = d.toString();
+      if (name === 'workspace' && output.includes('[CREW_STATE_MIGRATION] failed:')) crewUpdateFailed = true;
       log.write(output);
       if (echoToConsole) process.stdout.write(`[${name}] ${output}`);
       if (!portFound) {

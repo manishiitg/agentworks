@@ -94,6 +94,7 @@ test('spawnServer resolves on the DynamicPort line, substitutes the port and log
   assert.match(content, /fake-server exited/);
   // PLAT-856-383: a failed startup migration exits before DynamicPort; do not hang the desktop.
   await assert.rejects(spawnServer({ name: 'migration-failed', bin: process.execPath, args: ['-e', 'process.exit(1)'], preferredPort: 47657, cwd: dir, env: process.env, log }), /stopped before startup completed/);
+  await assert.rejects(spawnServer({ name: 'workspace', bin: process.execPath, args: ['-e', "console.log('[CREW_STATE_MIGRATION] failed: fixture'); process.exit(1)"], preferredPort: 47658, cwd: dir, env: process.env, log }), /couldn't finish updating your Crews/);
   await assert.rejects(spawnServer({ name: 'missing', bin: path.join(dir, 'nope'), args: [], preferredPort: 47655, cwd: dir, env: process.env, log }));
 });
 

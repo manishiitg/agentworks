@@ -128,6 +128,9 @@ func TestPrivateStateMigrationPreservesGitAndNativeBoundary(t *testing.T) {
 			if _, e := os.Stat(filepath.Join(files, "new-folder/hello.txt")); e != nil {
 				t.Fatal("restore touched person files", e)
 			}
+			if n, nextBackup, e := MigratePrivateState(docs); e != nil || n != count || nextBackup == backup {
+				t.Fatalf("retry after restore: moved=%d freshBackup=%t error=%v", n, nextBackup != backup, e)
+			}
 		})
 	}
 }
