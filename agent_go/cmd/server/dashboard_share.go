@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 
@@ -186,6 +187,10 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 	}()
 	if mode != runShareEveryone && mode != runSharePeople && mode != runSharePrivate {
 		return runShareState{}, dashboardFailure(400, "mode must be everyone, people or private")
+	}
+	// Named people with nobody named is the owners alone: the screen sends the list, the server decides the mode.
+	if mode == runSharePeople && !slices.ContainsFunc(emails, func(email string) bool { return strings.TrimSpace(email) != "" }) {
+		mode = runSharePrivate
 	}
 	stage = "owner"
 

@@ -139,7 +139,8 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', variant =
   // the Run share's list; only the company-wide choice switches between everyone and named people, so removing one person
   // never changes anyone else's access. Owner changes use the same server operation as the chat tool.
   const companyWide = state.mode === 'everyone'
-  const shareList = (list: string[]) => putShare(list.length ? 'people' : 'private', list.length ? list : undefined)
+  // The server stores an empty named list as private.
+  const shareList = (list: string[]) => putShare('people', list)
   const refreshShare = async () => {
     const { data } = await api.post<ShareState>('/api/dashboards', { workspace: workspacePath, action: 'share_status' })
     setSnapshot({ scope, state: data })
