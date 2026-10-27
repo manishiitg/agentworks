@@ -60,8 +60,8 @@ func TestSlackVaultSelectionPermissionsAcrossSurfaces(t *testing.T) {
 	}
 	// Exercise the public merged MCP action too, including catalog admission.
 	for _, action := range []string{"list_saved", "select"} {
-		body, _ := json.Marshal(map[string]any{"name": "settings", "arguments": map[string]any{
-			"workflow_id": "wf_alpha", "action": "slack_bot", "bot": map[string]any{"action": action, "connection_id": conn.ID},
+		body, _ := json.Marshal(map[string]any{"name": "integrations", "arguments": map[string]any{
+			"workflow_id": "wf_alpha", "action": "slack_bot_" + action, "connection_id": conn.ID,
 		}})
 		claims := slackConnectionClaims("alice")
 		rec := httptest.NewRecorder()
