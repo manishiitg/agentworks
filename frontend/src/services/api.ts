@@ -1227,6 +1227,16 @@ export const agentApi = {
     return response.data
   },
 
+  getLocalProjectContext: async (projectId: string, sessions = false): Promise<import('../products/work/LocalProjectContext').LocalProjectContextData> => {
+    const response = await api.get('/api/agent-profiles/work/local-project', { params: { project_id: projectId, sessions } })
+    return response.data
+  },
+
+  resumeLocalProjectSession: async (projectId: string, id: string): Promise<{ conversation_key: string; session_id: string }> => {
+    const response = await api.post('/api/agent-profiles/work/local-project', { project_id: projectId, id }, { headers: { 'X-Session-ID': false }, skipSessionContext: true })
+    return response.data
+  },
+
   /** The open side tabs of a Code or Crew project as the server knows them (a tab another chat opened exists only there). */
   listAgentProfileSideChats: async (profileId: string, projectId: string): Promise<AgentProfileSideChat[]> => {
     const response = await api.get(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats`, { params: { project_id: projectId } })

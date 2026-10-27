@@ -90,6 +90,23 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 		}
 		return body, nil
 	}
+	if _, bound, rootErr := localCrewRoots(ref.Root); bound && rootErr == nil {
+		if err := register("manage_crew_chats", "Recognize this existing local folder (project_context), list your own native Claude/Codex conversations (native_list), or reopen an explicitly chosen native_id in its own private tab (native_resume). Found files are not a claim that they were loaded. The original account and current permissions apply; opening never starts a model turn.", map[string]any{
+			"action":    map[string]any{"type": "string", "enum": []string{"project_context", "native_list", "native_resume"}},
+			"native_id": externalString("Opaque id from native_list; required for native_resume."),
+		}, []string{"action"}, func(r *http.Request, args map[string]any) (string, error) {
+			switch externalArg(args, "action") {
+			case "project_context", "native_list", "native_resume":
+			default:
+				return "", errors.New("Choose project_context, native_list or native_resume.")
+			}
+			w := httptest.NewRecorder()
+			api.externalCrewChatsCall(w, r, args)
+			return responseText(w)
+		}); err != nil {
+			return err
+		}
+	}
 	if agentprofiles.HasFeature(profile.Definition, "browser") {
 		props := map[string]any{
 			"action":     map[string]any{"type": "string", "enum": []string{"list", "setup", "select", "disconnect"}},

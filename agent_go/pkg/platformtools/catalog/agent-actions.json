@@ -1644,5 +1644,29 @@
     "name": "restore_file",
     "member": "builder_restore_file",
     "description": "Use the existing workflow or Flow Builder conversation service for your own session."
+  },
+  {
+    "family": "sessions",
+    "name": "project_context",
+    "member": "sessions_project_context_crew",
+    "description": "List instruction and skill paths found in your existing local project folder; discovery does not mean loaded.",
+    "source": "manage_crew_chats",
+    "source_action": "project_context"
+  },
+  {
+    "family": "sessions",
+    "name": "native_list",
+    "member": "sessions_native_list_crew",
+    "description": "List your own Claude/Codex conversations for this exact local folder and their original accounts.",
+    "source": "manage_crew_chats",
+    "source_action": "native_list"
+  },
+  {
+    "family": "sessions",
+    "name": "native_resume",
+    "member": "sessions_native_resume_crew",
+    "description": "Resume a listed native conversation in a separate private Crew tab with its original account. Opening does not start a turn.",
+    "source": "manage_crew_chats",
+    "source_action": "native_resume"
   }
 ]

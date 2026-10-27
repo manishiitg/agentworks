@@ -48,9 +48,10 @@ func externalChatName(args map[string]any) (string, error) {
 }
 
 func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_crew_chats", "Crew chat tabs, as in the Crew screen. Owners see all owners' tabs; only the tab's owner can write, stop, rename, reset, close or change its model. message: send an attributed agent message to any owner’s tab, using the normal messaging path. Agents may also use ask_project_chat from their own tab. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", name required) or close a side chat; side_rename: give a side chat a new name (chat_id, name); talk in it with ask_crew chat_id. set_model: give one chat (main or a side chat) its own model (engine, model_id, optional reasoning_effort), used by everything that reaches that chat; an empty engine returns it to the Crew's model; list shows each chat's own model. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. Human confirmations remain in the chat.", true, false, map[string]any{
+	add("manage_crew_chats", "Crew chat tabs, as in the Crew screen. Owners see all owners' tabs; only the tab's owner can write, stop, rename, reset, close or change its model. message: send an attributed agent message to any owner’s tab, using the normal messaging path. Agents may also use ask_project_chat from their own tab. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", name required) or close a side chat; side_rename: give a side chat a new name (chat_id, name); talk in it with ask_crew chat_id. set_model: give one chat (main or a side chat) its own model (engine, model_id, optional reasoning_effort), used by everything that reaches that chat; an empty engine returns it to the Crew's model; list shows each chat's own model. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. project_context: names of instructions and skills found in an own existing local folder, not a loaded claim. native_list: own Claude/Codex conversations for the exact folder and available original accounts. native_resume: reopen native_id from that list in a separate private tab; no turn starts. Human confirmations remain in the chat.", true, false, map[string]any{
 		"crew_id":          externalString("Crew ID from list_crews."),
-		"action":           map[string]any{"type": "string", "enum": []any{"list", "read", "new", "side_open", "side_close", "side_rename", "set_model", "delete", "stop", "message", "tools", "tool"}},
+		"native_id":        externalString("Opaque id from native_list, required for native_resume. Owner-only local existing-folder Crews. Reopens in a separate private chat tab; no model turn starts until you send a message."),
+		"action":           map[string]any{"type": "string", "enum": []any{"list", "read", "project_context", "native_list", "native_resume", "new", "side_open", "side_close", "side_rename", "set_model", "delete", "stop", "message", "tools", "tool"}},
 		"engine":           externalString("For set_model: a provider option of this Crew (as on its Models page, e.g. claude-code, codex-cli); empty returns the chat to the Crew's model."),
 		"model_id":         externalString("For set_model: a model of that provider."),
 		"connection_id":    externalString("For a chat model: your personal or available company account ID from provider_connections in the chats list. Only this chat uses it; empty engine restores the Crew default."),
@@ -146,7 +147,7 @@ func crewChatActionScope(action, tool string, inputs ...map[string]any) string {
 	if action == "message" {
 		scope = "crews:run"
 	}
-	if action == "list" || action == "read" || action == "tools" {
+	if action == "list" || action == "read" || action == "tools" || action == "project_context" || action == "native_list" {
 		scope = "crews:read"
 	}
 	if action == "tool" {
@@ -182,6 +183,10 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 			externalError(w, 403, "insufficient_scope", "This connection does not allow "+action+" on this Crew.")
 			return
 		}
+	}
+	if action == "project_context" || action == "native_list" || action == "native_resume" {
+		localProjectRecognitionAction(api, w, r, args)
+		return
 	}
 	crew, manifest, _, ok := api.externalCrewResolve(ctx, claims, crewID)
 	if !ok {

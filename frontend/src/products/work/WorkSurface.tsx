@@ -39,6 +39,7 @@ import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from 
 import { workProjectActivity } from './workProjectPresentation'
 import { SharedCrewWorkspace } from './SharedCrewWorkspace'
 import { CreateCrewWizard } from './CreateCrewWizard'
+import { LocalProjectContext } from './LocalProjectContext'
 import { prepareCrewOnboarding } from './crewOnboarding'
 import type { CrewOnboarding } from './crewStarterTypes'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
@@ -641,8 +642,12 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     if (!allowSideChats) return
     let cancelled = false
     let busy = false
-    const sync = async () => {
-      if (busy || openingRef.current || document.visibilityState === 'hidden') return
+    let pendingNativeKey: string | undefined
+    let refreshRequested = false
+    const sync = async (nativeKey?: string) => {
+      if (nativeKey) pendingNativeKey = nativeKey
+      if (busy) { if (nativeKey) refreshRequested = true; return }
+      if (openingRef.current || document.visibilityState === 'hidden') return
       busy = true
       try {
         const listed = await agentApi.listAgentProfileSideChats(profileId, projectId)
@@ -696,20 +701,32 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             preferChatHistory: true,
           })
         }
+        if (pendingNativeKey) {
+          const target = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileConversationKey === pendingNativeKey)
+          if (target) { activateTab(target.tabId); pendingNativeKey = undefined }
+        }
       } catch {
         // The list is a convenience; the next pass tries again.
       } finally {
         busy = false
+        if (refreshRequested && !cancelled) { refreshRequested = false; void sync() }
       }
     }
     syncRef.current = sync
     void sync()
     const timer = window.setInterval(() => { void sync() }, 15000)
-    window.addEventListener('focus', sync)
+    const onFocus = () => { void sync() }
+    const onNativeChat = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId: string; conversationKey: string }>).detail
+      if (detail.projectId === projectId) void sync(detail.conversationKey)
+    }
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('agentworks:local-chat-opened', onNativeChat)
     return () => {
       cancelled = true
       window.clearInterval(timer)
-      window.removeEventListener('focus', sync)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('agentworks:local-chat-opened', onNativeChat)
     }
   }, [allowSideChats, canonicalTabId, profileId, projectId])
   return <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName}
@@ -1418,6 +1435,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>
+                  {!isShared && selected.filesPath && selected.filesPath !== selected.workspacePath && <LocalProjectContext key={selected.id} projectId={selected.id} />}
                   {tabId ? (
                       <div className="min-h-0 flex-1">
                         <ChatArea

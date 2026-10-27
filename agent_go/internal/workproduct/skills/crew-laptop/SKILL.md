@@ -51,3 +51,19 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 - Change the saved folders only when the person asks.
 
 Connect the computer once in My Vault (manage_my_vaults operation=laptops lists your computers and setup steps), then choose it in this project. Goals use the same optional connection for Builder chats; their steps and schedules stay on the server. copy_local_file_to_project takes local_path and project_path.
+
+## Recognize an existing local project
+
+The compact folder row above chat lists instruction files and skills found in
+that folder, including native skill directories. This is discovery, not proof
+that a model loaded every file. Keep existing instructions and configuration
+in place. Use `sessions action=project_context` for the same names-only scan.
+
+On the local Mac app, `sessions action=native_list` finds the person's own
+Claude/Codex conversations for this exact folder and shows the original account.
+When the person asks to continue one, pass its returned opaque `native_id` to
+`sessions action=native_resume`. It opens a separate private chat tab; the next
+message resumes the native conversation with the Crew's current tools and
+permissions. Never copy native history between accounts, select a different
+folder's conversation or imply that opening a tab ran the agent. Other people's
+or shared-account owners' private chats are not listed.

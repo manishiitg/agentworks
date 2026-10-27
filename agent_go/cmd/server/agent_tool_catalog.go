@@ -64,7 +64,7 @@ func agentSourceMutates(source, operation string, original bool) bool {
 	case externalCrewCommandsTool:
 		return operation != "list"
 	case "manage_crew_chats":
-		return operation != "list" && operation != "read" && operation != "tools"
+		return operation != "list" && operation != "read" && operation != "tools" && operation != "project_context" && operation != "native_list"
 	case "builder_tabs":
 		return operation != "list" && operation != "read"
 	}
