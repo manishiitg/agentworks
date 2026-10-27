@@ -87,7 +87,7 @@ func GetProviderInfoList(baseURL string) []ProviderInfo {
 	infos := make([]ProviderInfo, 0, len(providers))
 
 	for _, p := range providers {
-		if publicNetworkSSOOnly() && p.Name() != "supabase-google" {
+		if publicNetworkSSOOnly() && !publicNetworkSSOProviderAllowed(p.Name()) {
 			continue
 		}
 		info := ProviderInfo{
@@ -149,6 +149,8 @@ func initializeProviders() map[string]AuthProvider {
 	// Initialize Google-via-Supabase social login provider
 	supabaseGoogle := NewSupabaseGoogleProvider()
 	providers[supabaseGoogle.Name()] = supabaseGoogle
+	supabaseGitHub := NewSupabaseGitHubProvider()
+	providers[supabaseGitHub.Name()] = supabaseGitHub
 
 	return providers
 }
@@ -627,8 +629,7 @@ func (p *SupabaseProvider) IsConfigured() bool {
 // to exchange the code, and it never leaves this server.
 
 // SupabaseSocialProvider implements AuthProvider for one Supabase-hosted
-// social login. Today only Google is registered ("supabase-google"); adding
-// another is a new constructor plus a frontend button.
+// social login. Only explicitly registered providers are available.
 type SupabaseSocialProvider struct {
 	SocialProvider string // Supabase provider id, e.g. "google"
 	URL            string
@@ -644,8 +645,16 @@ func NewSupabaseGoogleProvider() *SupabaseSocialProvider {
 	}
 }
 
+func NewSupabaseGitHubProvider() *SupabaseSocialProvider {
+	return &SupabaseSocialProvider{
+		SocialProvider: "github",
+		URL:            strings.TrimSuffix(os.Getenv("SUPABASE_URL"), "/"),
+		AnonKey:        os.Getenv("SUPABASE_ANON_KEY"),
+	}
+}
+
 func (p *SupabaseSocialProvider) Name() string {
-	return "supabase-google"
+	return "supabase-" + p.SocialProvider
 }
 
 func (p *SupabaseSocialProvider) Type() string {
@@ -669,7 +678,7 @@ func (p *SupabaseSocialProvider) GetAuthURL(state, redirectURI string) string {
 
 func (p *SupabaseSocialProvider) ExchangeCode(ctx context.Context, code, redirectURI, state string) (*ExternalUser, error) {
 	if !p.IsConfigured() {
-		return nil, fmt.Errorf("supabase-google provider not configured")
+		return nil, fmt.Errorf("%s provider not configured", p.Name())
 	}
 	verifier, ok := consumeSupabasePKCEVerifier(state)
 	if !ok {
@@ -694,8 +703,7 @@ func (p *SupabaseSocialProvider) ExchangeCode(ctx context.Context, code, redirec
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("[AUTH:SupabaseGoogle] Token exchange failed: %s", string(body))
+		log.Printf("[AUTH:SupabaseSocial] Token exchange failed provider=%s status=%d", p.Name(), resp.StatusCode)
 		return nil, fmt.Errorf("token exchange failed: %s", resp.Status)
 	}
 
@@ -705,7 +713,14 @@ func (p *SupabaseSocialProvider) ExchangeCode(ctx context.Context, code, redirec
 			ID               string `json:"id"`
 			Email            string `json:"email"`
 			EmailConfirmedAt string `json:"email_confirmed_at"`
-			UserMetadata     struct {
+			Identities       []struct {
+				Provider     string `json:"provider"`
+				IdentityData struct {
+					Email         string `json:"email"`
+					EmailVerified bool   `json:"email_verified"`
+				} `json:"identity_data"`
+			} `json:"identities"`
+			UserMetadata struct {
 				Name     string `json:"name"`
 				FullName string `json:"full_name"`
 			} `json:"user_metadata"`
@@ -726,11 +741,26 @@ func (p *SupabaseSocialProvider) ExchangeCode(ctx context.Context, code, redirec
 		username = tokenResp.User.ID
 	}
 
-	log.Printf("[AUTH:SupabaseGoogle] User authenticated: %s (id: %s)", username, tokenResp.User.ID)
+	verified := tokenResp.User.EmailConfirmedAt != ""
+	if p.SocialProvider == "github" {
+		// Confirmation can be automatic or belong to an older sign-in. Only
+		// the trusted GitHub identity's verification can authorize email linking.
+		verified = false
+		matches := 0
+		for _, identity := range tokenResp.User.Identities {
+			if identity.Provider == "github" {
+				matches++
+				verified = identity.IdentityData.EmailVerified && strings.TrimSpace(identity.IdentityData.Email) != "" &&
+					strings.EqualFold(strings.TrimSpace(identity.IdentityData.Email), strings.TrimSpace(tokenResp.User.Email))
+			}
+		}
+		verified = matches == 1 && verified
+	}
+	log.Printf("[AUTH:SupabaseSocial] identity_received provider=%s user_id=%s email_verified=%t", p.Name(), tokenResp.User.ID, verified)
 
 	return &ExternalUser{
 		ExternalID:    tokenResp.User.ID,
-		EmailVerified: tokenResp.User.EmailConfirmedAt != "",
+		EmailVerified: verified,
 		Email:         tokenResp.User.Email,
 		Username:      username,
 		Provider:      p.Name(),
@@ -738,7 +768,7 @@ func (p *SupabaseSocialProvider) ExchangeCode(ctx context.Context, code, redirec
 }
 
 func (p *SupabaseSocialProvider) ValidateCredentials(username, password string) (*ExternalUser, error) {
-	return nil, fmt.Errorf("supabase-google provider uses OAuth flow, not direct credentials")
+	return nil, fmt.Errorf("%s provider uses OAuth flow, not direct credentials", p.Name())
 }
 
 func (p *SupabaseSocialProvider) IsConfigured() bool {

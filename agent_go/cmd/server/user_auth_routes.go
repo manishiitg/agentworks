@@ -223,7 +223,7 @@ func (api *StreamingAPI) handleRegister(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	if publicNetworkSSOOnly() {
 		log.Printf("[PUBLIC_NETWORK] password_registration_refused reason=sso_required")
-		http.Error(w, `{"error":"Use Continue with Google to create your account."}`, http.StatusForbidden)
+		http.Error(w, `{"error":"Use Google or GitHub to create your account."}`, http.StatusForbidden)
 		return
 	}
 	http.Error(w, `{"error": "Registration is disabled - users are configured via AUTH_USERS environment variable"}`, http.StatusForbidden)
@@ -281,7 +281,7 @@ func (api *StreamingAPI) handleLogin(w http.ResponseWriter, r *http.Request) {
 		rec := publicNetworkInternalTestUser(req.Username)
 		if providerName != "simple" || rec == nil {
 			log.Printf("[PUBLIC_NETWORK] password_login_refused reason=sso_required")
-			http.Error(w, `{"error":"Use Continue with Google to sign in."}`, http.StatusForbidden)
+			http.Error(w, `{"error":"Use Google or GitHub to sign in."}`, http.StatusForbidden)
 			return
 		}
 		// Do not fall back to bootstrap credentials for the internal exception.
@@ -365,8 +365,8 @@ func (api *StreamingAPI) handleAuthStart(w http.ResponseWriter, r *http.Request)
 		http.Error(w, `{"error": "Provider is required"}`, http.StatusBadRequest)
 		return
 	}
-	if publicNetworkSSOOnly() && req.Provider != "supabase-google" {
-		http.Error(w, `{"error":"Use Continue with Google to sign in."}`, http.StatusForbidden)
+	if publicNetworkSSOOnly() && !publicNetworkSSOProviderAllowed(req.Provider) {
+		http.Error(w, `{"error":"Use Google or GitHub to sign in."}`, http.StatusForbidden)
 		return
 	}
 
@@ -446,8 +446,8 @@ func (api *StreamingAPI) handleAuthCallback(w http.ResponseWriter, r *http.Reque
 		http.Error(w, `{"error": "Invalid or expired state parameter"}`, http.StatusBadRequest)
 		return
 	}
-	if publicNetworkSSOOnly() && stateEntry.Provider != "supabase-google" {
-		http.Error(w, `{"error":"Use Continue with Google to sign in."}`, http.StatusForbidden)
+	if publicNetworkSSOOnly() && !publicNetworkSSOProviderAllowed(stateEntry.Provider) {
+		http.Error(w, `{"error":"Use Google or GitHub to sign in."}`, http.StatusForbidden)
 		return
 	}
 
@@ -462,6 +462,11 @@ func (api *StreamingAPI) handleAuthCallback(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		log.Printf("[AUTH] Failed to exchange code for provider %s: %v", stateEntry.Provider, err)
 		http.Error(w, `{"error": "Failed to authenticate with provider"}`, http.StatusInternalServerError)
+		return
+	}
+	if !externalAuthIdentityCanLink(extUser) {
+		log.Printf("[AUTH] OAuth login refused provider=%s reason=github_email_not_verified", stateEntry.Provider)
+		http.Error(w, `{"error":"Verify this email on GitHub, or use Continue with Google."}`, http.StatusForbidden)
 		return
 	}
 	if !externalAuthIdentityApproved(extUser.Email) && !publicNetworkExternalSignup(extUser) {

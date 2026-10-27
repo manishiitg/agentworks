@@ -17,6 +17,7 @@ func TestPublicNetworkSignupAndConsent(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "bullpen")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "bullpen")
 	t.Setenv("AUTH_PUBLIC_SIGNUP", "true")
+	t.Setenv("AUTH_PROVIDERS", "simple,supabase-google")
 	t.Setenv("AUTH_PUBLIC_SSO_ONLY", "false")
 	t.Setenv("ADMIN_USERS", "administrator")
 	withMemoryUserDirectory(t, `{"version":1,"users":[]}`)
@@ -111,12 +112,12 @@ func TestPublicNetworkSSOOnlyWithInternalTestIdentity(t *testing.T) {
 	t.Setenv("AUTH_PUBLIC_SIGNUP", "true")
 	t.Setenv("AUTH_PUBLIC_SSO_ONLY", "true")
 	t.Setenv("AUTH_INTERNAL_TEST_USER_IDS", "test-id,disabled-id")
-	t.Setenv("AUTH_PROVIDERS", "simple,supabase-google")
+	t.Setenv("AUTH_PROVIDERS", "simple,supabase-google,supabase-github")
 	t.Setenv("SUPABASE_URL", "https://example.supabase.co")
 	t.Setenv("SUPABASE_ANON_KEY", "test-anon-key")
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	original := GetAuthProviders()
-	authProviders = map[string]AuthProvider{"simple": NewSimpleProvider(), "supabase-google": NewSupabaseGoogleProvider()}
+	authProviders = map[string]AuthProvider{"simple": NewSimpleProvider(), "supabase-google": NewSupabaseGoogleProvider(), "supabase-github": NewSupabaseGitHubProvider()}
 	t.Cleanup(func() { authProviders = original })
 	hash, err := hashPassword("a-long-test-password")
 	if err != nil {
@@ -168,11 +169,24 @@ func TestPublicNetworkSSOOnlyWithInternalTestIdentity(t *testing.T) {
 	w = httptest.NewRecorder()
 	api.handleGetAuthMode(w, httptest.NewRequest("GET", "/api/auth/mode", nil))
 	var mode AuthModeResponse
-	if json.Unmarshal(w.Body.Bytes(), &mode) != nil || mode.RegistrationEnabled || len(mode.Providers) != 1 || mode.Providers[0].Name != "supabase-google" {
+	if json.Unmarshal(w.Body.Bytes(), &mode) != nil || mode.RegistrationEnabled || len(mode.Providers) != 2 || mode.Providers[0].Name != "supabase-google" || mode.Providers[1].Name != "supabase-github" {
 		t.Fatal("public screen offered a password alternative")
 	}
 	if !publicNetworkExternalSignup(&ExternalUser{Provider: "supabase-google", ExternalID: "verified-id", Email: "person@example.com", EmailVerified: true}) {
 		t.Fatal("verified Google enrollment disabled")
+	}
+	if got := post("/api/auth/start", `{"provider":"supabase-github","redirect_uri":"https://example.com/auth/callback"}`, api.handleAuthStart).Code; got != 200 {
+		t.Fatalf("GitHub OAuth start=%d", got)
+	}
+	t.Setenv("AUTH_PROVIDERS", "simple,supabase-google")
+	if got := post("/api/auth/start", `{"provider":"supabase-github","redirect_uri":"https://example.com/auth/callback"}`, api.handleAuthStart).Code; got != 403 {
+		t.Fatalf("unselected GitHub provider=%d", got)
+	}
+	storeState("unselected-github-state", "supabase-github", "https://example.com/auth/callback", "")
+	w = httptest.NewRecorder()
+	api.handleAuthCallback(w, httptest.NewRequest("GET", "/api/auth/callback?state=unselected-github-state&code=test-code", nil))
+	if w.Code != 403 {
+		t.Fatalf("unselected GitHub callback=%d", w.Code)
 	}
 	t.Setenv("AUTH_INTERNAL_TEST_USER_IDS", "")
 	if got := post("/api/auth/login", `{"username":"internal-test","password":"a-long-test-password"}`, api.handleLogin).Code; got != 403 {

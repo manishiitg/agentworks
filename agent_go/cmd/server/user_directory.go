@@ -635,6 +635,12 @@ func externalAuthIdentityApproved(email string) bool {
 	return err == nil && dir != nil && dir.byEmail(email) != nil
 }
 
+// GitHub addresses must be verified before either linking or enrollment.
+// Other installed providers retain their existing identity rules.
+func externalAuthIdentityCanLink(ext *ExternalUser) bool {
+	return ext != nil && (ext.Provider != "supabase-github" || (ext.EmailVerified && strings.TrimSpace(ext.Email) != ""))
+}
+
 // hardcodedUsersSource is GetHardcodedUsers, swappable in tests (the real
 // one is guarded by a sync.Once over the environment).
 var hardcodedUsersSource = GetHardcodedUsers
@@ -694,6 +700,9 @@ func bootstrapUserDirectory(ctx context.Context) {
 // products) unless ADMIN_USERS names them — the safe default for an open
 // sign-in provider; an admin switches them on. Returns the record.
 func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecord {
+	if !externalAuthIdentityCanLink(ext) {
+		return nil
+	}
 	userDirectoryMutationMu.Lock()
 	defer userDirectoryMutationMu.Unlock()
 	dir, err := readUserDirectoryFile()

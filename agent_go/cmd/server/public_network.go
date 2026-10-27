@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -32,6 +33,12 @@ func publicNetworkSignupEnabled() bool {
 
 func publicNetworkSSOOnly() bool {
 	return IsMultiUserMode() && agentBridgeOnlyDeployment() && strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_PUBLIC_SSO_ONLY")), "true")
+}
+
+// This is the one network sign-in policy used by discovery and execution.
+func publicNetworkSSOProviderAllowed(name string) bool {
+	return slices.Contains([]string{"supabase-google", "supabase-github"}, name) &&
+		slices.Contains(getEnabledProviderNames(), name)
 }
 
 func publicNetworkPasswordSignupEnabled() bool {
@@ -145,7 +152,7 @@ func (api *StreamingAPI) registerPublicNetworkUser(w http.ResponseWriter, r *htt
 }
 
 func publicNetworkExternalSignup(ext *ExternalUser) bool {
-	return publicNetworkSignupEnabled() && ext != nil && ext.Provider == "supabase-google" && ext.EmailVerified && strings.TrimSpace(ext.Email) != "" && ext.ExternalID != ""
+	return publicNetworkSignupEnabled() && ext != nil && publicNetworkSSOProviderAllowed(ext.Provider) && ext.EmailVerified && strings.TrimSpace(ext.Email) != "" && ext.ExternalID != ""
 }
 
 func cliPersonScopes(user *UserClaims) []string {

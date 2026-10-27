@@ -5,7 +5,7 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card'
 import { Alert, AlertDescription } from '../components/ui/alert'
-import { Loader2, KeyRound, Mail, User, Lock, AlertCircle } from 'lucide-react'
+import { Loader2, KeyRound, Mail, User, Lock, AlertCircle, Github } from 'lucide-react'
 import { authApi, type AuthProvider } from '../services/api'
 import { RunloopMark } from '../components/branding/RunloopLogo'
 import { getRuntimeAppName, runtimeBrandAsset, runtimeLoginNote } from '../runtime-branding'
@@ -71,6 +71,12 @@ const providerConfig: Record<string, {
     displayName: 'Google',
     icon: <GoogleIcon />,
     description: 'Sign in with your Google account',
+    buttonClass: 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 dark:border-gray-600'
+  },
+  'supabase-github': {
+    displayName: 'GitHub',
+    icon: <Github className="w-5 h-5" />,
+    description: 'Sign in with your GitHub account',
     buttonClass: 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 dark:border-gray-600'
   }
 }

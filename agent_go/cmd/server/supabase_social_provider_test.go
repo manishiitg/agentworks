@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -198,16 +199,85 @@ func TestSupabaseGoogleExchangeCodeServerError(t *testing.T) {
 	}
 }
 
-func TestSupabaseGoogleProviderRegistered(t *testing.T) {
-	p, ok := GetProvider("supabase-google")
-	if !ok {
-		t.Fatal("supabase-google provider is not registered")
+func TestSupabaseSocialProvidersRequireOAuth(t *testing.T) {
+	for _, name := range []string{"supabase-google", "supabase-github"} {
+		p, ok := GetProvider(name)
+		if !ok || p.Type() != "oauth" {
+			t.Fatalf("OAuth provider %s is unavailable", name)
+		}
+		if _, err := p.ValidateCredentials("u", "p"); err == nil {
+			t.Fatal("social provider accepted a password")
+		}
 	}
-	if p.Type() != "oauth" {
-		t.Errorf("type = %q, want oauth", p.Type())
-	}
-	if _, err := p.ValidateCredentials("u", "p"); err == nil {
-		t.Error("expected ValidateCredentials to refuse (OAuth-only provider)")
+}
+
+// PLAT-856-379: a confirmed Supabase account or mutable metadata must never
+// let an unverified GitHub email link to an existing account or enroll.
+func TestGitHubVerifiedIdentityProtectsAccountLinking(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENT_PRODUCTS", "bullpen")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "bullpen")
+	t.Setenv("AUTH_PUBLIC_SIGNUP", "true")
+	t.Setenv("AUTH_PUBLIC_SSO_ONLY", "true")
+	t.Setenv("AUTH_PROVIDERS", "supabase-google,supabase-github")
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	p := &SupabaseSocialProvider{SocialProvider: "github", URL: "https://example.supabase.co", AnonKey: "test-anon-key"}
+	original := GetAuthProviders()
+	authProviders = map[string]AuthProvider{"supabase-github": p}
+	t.Cleanup(func() { authProviders = original })
+	for _, tc := range []struct {
+		name, email, identityEmail string
+		verified                   bool
+		identities                 int
+		allowed                    bool
+	}{
+		{"same verified email", "person@example.com", "person@example.com", true, 1, true},
+		{"unverified existing email", "person@example.com", "person@example.com", false, 1, false},
+		{"verified new email", "new@example.com", "new@example.com", true, 1, true},
+		{"unverified new email", "new@example.com", "new@example.com", false, 1, false},
+		{"missing trusted identity", "person@example.com", "person@example.com", true, 0, false},
+		{"mismatched identity email", "person@example.com", "other@example.com", true, 1, false},
+		{"ambiguous trusted identities", "person@example.com", "person@example.com", true, 2, false},
+		{"missing email", "", "", true, 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			initial := `{"users":[{"id":"existing-account","username":"person","email":"person@example.com","sso":{"provider":"supabase-google","external_id":"google-identity"},"products":["bullpen"]}]}`
+			content := withMemoryUserDirectory(t, initial)
+			identities := []any{}
+			for i := 0; i < tc.identities; i++ {
+				identities = append(identities, map[string]any{"provider": "github", "identity_data": map[string]any{"email": tc.identityEmail, "email_verified": tc.verified}})
+			}
+			body, _ := json.Marshal(map[string]any{"access_token": "not-retained-auth-token", "provider_token": "not-retained-provider-token", "user": map[string]any{
+				"id": "github-identity", "email": tc.email, "email_confirmed_at": "2026-01-01T00:00:00Z",
+				"user_metadata": map[string]any{"name": "Example", "email_verified": true}, "identities": identities,
+			}})
+			var captured map[string]string
+			withStubSupabasePKCE(t, http.StatusOK, string(body), &captured)
+			state := "github-state"
+			storeState(state, p.Name(), "https://example.com/auth/callback", "")
+			p.GetAuthURL(state, "https://example.com/auth/callback")
+			w := httptest.NewRecorder()
+			(&StreamingAPI{}).handleAuthCallback(w, httptest.NewRequest("GET", "/api/auth/callback?state="+state+"&code=test-code", nil))
+			if !tc.allowed {
+				if w.Code != http.StatusForbidden || *content != initial {
+					t.Fatalf("unverified identity changed an account: status=%d", w.Code)
+				}
+				return
+			}
+			if w.Code != http.StatusOK {
+				t.Fatalf("verified sign-in refused: status=%d", w.Code)
+			}
+			var result AuthResponse
+			if json.Unmarshal(w.Body.Bytes(), &result) != nil {
+				t.Fatal("invalid sign-in response")
+			}
+			if tc.email == "person@example.com" && result.User.ID != "existing-account" {
+				t.Fatal("matching verified email created a different account")
+			}
+			if strings.Contains(*content, "not-retained-") {
+				t.Fatal("upstream token was persisted")
+			}
+		})
 	}
 }
 
