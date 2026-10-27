@@ -100,7 +100,9 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 const [root, entry, exportName] = process.argv.slice(2);
 const sdk = await import(pathToFileURL(`${root}/${entry}`).href);
-if (typeof sdk[exportName] !== 'function') throw new Error(`Missing SDK export ${exportName}`);
+// Bundled CommonJS exposes its namespace as default under dynamic import.
+const exported = sdk[exportName] ?? sdk.default?.[exportName];
+if (typeof exported !== 'function') throw new Error(`Missing SDK export ${exportName}`);
 console.log(JSON.parse(readFileSync(`${root}/package.json`, 'utf8')).version);
 JS
   }

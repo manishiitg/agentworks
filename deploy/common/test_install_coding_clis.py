@@ -47,7 +47,7 @@ packages={'@anthropic-ai/claude-code':'claude','@openai/codex':'codex','@earendi
 for package,name in packages.items():
  if package+'@latest' not in args:continue
  p=prefix/'bin'/name;p.write_text('#!/bin/sh\\necho 1.2.14\\n'+('exit 47\\n' if name=='codex' and os.environ.get('FAIL_CODEX') else ''));p.chmod(0o755)
-sdks={'@anthropic-ai/claude-agent-sdk':('sdk.mjs','export function query() {}'), '@cursor/sdk':('dist/cjs/index.js','exports.Agent = class Agent {};')}
+sdks={'@anthropic-ai/claude-agent-sdk':('sdk.mjs','export function query() {}'), '@cursor/sdk':('dist/cjs/index.js','const sdk = { Agent: class Agent {} }; module.exports = sdk;')}
 for package,(entry,source) in sdks.items():
  requested=next((a for a in args if a.startswith(package+'@')),None)
  if not requested:continue
@@ -127,7 +127,7 @@ sys.exit(0 if hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()==expec
         self.assertEqual(sum('cursor.com' in url for url in urls), 1)
 
     def test_missing_sdk_export_repairs_that_sdk_before_native_default_launch(self):
-        # PLAT-872-55: a CLI binary alone cannot launch the default SDK transport.
+        # PLAT-872-55/60: bundled CJS exports through default on import; a missing export still needs repair.
         self.assertEqual(self.run_installer().returncode, 0)
         before = len((self.root/'npm-calls').read_text().splitlines())
         entry = self.prefix/'lib/node_modules/@cursor/sdk/dist/cjs/index.js'
