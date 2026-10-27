@@ -194,6 +194,15 @@ func TestPublicNetworkSSOOnlyWithInternalTestIdentity(t *testing.T) {
 	}
 	t.Setenv("AGENT_PRODUCTS", "work,bullpen")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "work,bullpen")
+	if got := post("/api/auth/start", `{"provider":"supabase-github","redirect_uri":"https://example.com/auth/callback"}`, api.handleAuthStart).Code; got != 403 {
+		t.Fatalf("company GitHub enabled without selection=%d", got)
+	}
+	storeState("company-unselected-github-state", "supabase-github", "https://example.com/auth/callback", "")
+	w = httptest.NewRecorder()
+	api.handleAuthCallback(w, httptest.NewRequest("GET", "/api/auth/callback?state=company-unselected-github-state&code=test-code", nil))
+	if w.Code != 403 {
+		t.Fatalf("company unselected GitHub callback=%d", w.Code)
+	}
 	if got := post("/api/auth/login", `{"username":"public-person","password":"a-long-test-password"}`, api.handleLogin).Code; got != 200 {
 		t.Fatalf("company password login changed=%d", got)
 	}

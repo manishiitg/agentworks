@@ -365,7 +365,9 @@ func (api *StreamingAPI) handleAuthStart(w http.ResponseWriter, r *http.Request)
 		http.Error(w, `{"error": "Provider is required"}`, http.StatusBadRequest)
 		return
 	}
-	if publicNetworkSSOOnly() && !publicNetworkSSOProviderAllowed(req.Provider) {
+	// GitHub is opt-in on every installation. Existing company providers
+	// retain their current policy; public networks allow only selected SSO.
+	if (publicNetworkSSOOnly() || req.Provider == "supabase-github") && !publicNetworkSSOProviderAllowed(req.Provider) {
 		http.Error(w, `{"error":"Use Google or GitHub to sign in."}`, http.StatusForbidden)
 		return
 	}
@@ -446,7 +448,7 @@ func (api *StreamingAPI) handleAuthCallback(w http.ResponseWriter, r *http.Reque
 		http.Error(w, `{"error": "Invalid or expired state parameter"}`, http.StatusBadRequest)
 		return
 	}
-	if publicNetworkSSOOnly() && !publicNetworkSSOProviderAllowed(stateEntry.Provider) {
+	if (publicNetworkSSOOnly() || stateEntry.Provider == "supabase-github") && !publicNetworkSSOProviderAllowed(stateEntry.Provider) {
 		http.Error(w, `{"error":"Use Google or GitHub to sign in."}`, http.StatusForbidden)
 		return
 	}
