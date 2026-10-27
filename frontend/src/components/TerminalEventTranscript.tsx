@@ -849,13 +849,18 @@ const ToolCallField: React.FC<{ label: string; value: string }> = ({ label, valu
   )
 }
 
-// Thinking is a collapsible block like a tool batch, open by default (user
-// decision 2026-09-03: it used to minimise once the answer streamed, which
-// hid commentary people were still reading). `live` only drives the pulse dot
-// while the agent is still reasoning; the toggle is the user's alone.
+// Thinking is a collapsible block like a tool batch, closed by default: the person opens the ones they
+// want (owner 2026-10-27, replacing open-by-default from 2026-09-03). While the agent is still reasoning
+// the label animates (Thinking. .. ...) so it reads as live; the toggle is the person's alone.
 const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking' }>; live: boolean }> = ({ item, live }) => {
-  const [expanded, toggle] = useDisclosure(`thinking:${item.key}`, true)
+  const [expanded, toggle] = useDisclosure(`thinking:${item.key}`, false)
   const hasText = Boolean(item.text.trim())
+  const [dots, setDots] = React.useState(1)
+  React.useEffect(() => {
+    if (!live) return
+    const timer = window.setInterval(() => setDots(count => count % 3 + 1), 450)
+    return () => window.clearInterval(timer)
+  }, [live])
 
   if (item.assistantUpdate) {
     return (
@@ -874,8 +879,7 @@ const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking'
         data-testid="terminal-clear-thinking-batch-toggle"
         className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <span>Thinking</span>
-        {live && <span aria-hidden="true" className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/70" />}
+        <span>Thinking{live ? <span aria-hidden="true" className="inline-block w-4 text-left">{'.'.repeat(dots)}</span> : null}</span>
         {hasText && (expanded
           ? <ChevronDown className="h-3 w-3 shrink-0" />
           : <ChevronRight className="h-3 w-3 shrink-0" />)}

@@ -76,8 +76,8 @@ describe('shared transcript failure retry', () => {
       thinking: '', metadata: { thinking_active: true },
     })])
     const toggle = host.querySelector('[data-testid="terminal-clear-thinking-batch-toggle"]')
-    expect(toggle?.textContent).toBe('Thinking')
-    expect(toggle?.querySelector('.animate-pulse')).not.toBeNull()
+    // Live reasoning animates its label (Thinking. .. ...) and stays closed until the person opens it.
+    expect(toggle?.textContent).toMatch(/^Thinking\.{1,3}$/)
     expect(host.querySelector('[data-testid="terminal-clear-thinking-batch-content"]')).toBeNull()
   })
 
