@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -261,4 +262,34 @@ func crewTabOwnerForSession(ctx context.Context, caller, session string) (string
 		}
 	}
 	return "", false
+}
+
+// claimCrewMainSession keeps a Crew's own main session ("<profile>:project:<crew id>", made at creation for its main
+// owner) recorded under that main owner. The ID is the same for everyone, so a person who used the Crew before its owner
+// could otherwise be recorded as its owner, and the main owner's turns would be saved and authorized under the wrong
+// person (PLAT-856). Only the main owner's own turn moves the record; nobody else can take it.
+func (api *StreamingAPI) claimCrewMainSession(sessionID, userID string) {
+	_, crewID, ok := strings.Cut(strings.TrimSpace(sessionID), ":project:")
+	if !ok || crewID == "" || strings.Contains(crewID, ":") || strings.TrimSpace(userID) == "" {
+		return
+	}
+	records, err := defaultProjectOwners().All()
+	if err != nil {
+		return
+	}
+	for _, record := range records {
+		if record.ProjectID != crewID || sanitizeUserIDForPath(record.OwnerID) != sanitizeUserIDForPath(userID) {
+			continue
+		}
+		owner, err := api.eventStore.DurableChatOwner(sessionID)
+		if err != nil || owner == "" || owner == userID {
+			return
+		}
+		if err := api.eventStore.ReassignDurableChatOwner(sessionID, userID); err != nil {
+			log.Printf("[CREW_MAIN_SESSION] could not record main owner for %s: %v", sessionID, err)
+			return
+		}
+		log.Printf("[CREW_MAIN_SESSION] %s recorded under its main owner %s (was %s)", sessionID, userID, owner)
+		return
+	}
 }

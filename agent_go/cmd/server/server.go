@@ -8945,6 +8945,7 @@ func isScheduledSessionIdentity(sessionID, triggeredBy string) bool {
 // trackActiveSession tracks a new active session
 func (api *StreamingAPI) trackActiveSession(sessionID, agentMode, query, userID, botPlatform, triggeredBy, sessionTitle, parentSessionID, sessionKind string) {
 	if api.eventStore != nil {
+		api.claimCrewMainSession(sessionID, userID)
 		api.eventStore.SetSessionOwner(sessionID, userID)
 	}
 

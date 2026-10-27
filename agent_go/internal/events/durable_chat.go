@@ -258,6 +258,20 @@ func (es *EventStore) ImportDurableChatEvents(sessionID string, imported []Event
 	return nil
 }
 
+// ReassignDurableChatOwner records a new owner for a durable chat; the server calls it only for a Crew's own main session.
+func (es *EventStore) ReassignDurableChatOwner(sessionID, ownerID string) error {
+	if es == nil || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(ownerID) == "" {
+		return nil
+	}
+	es.mu.RLock()
+	journal := es.durableJournal
+	es.mu.RUnlock()
+	if ownership, ok := journal.(DurableEventJournalOwnership); ok {
+		return ownership.ReassignOwner(sessionID, ownerID)
+	}
+	return nil
+}
+
 func (es *EventStore) DurableChatOwner(sessionID string) (string, error) {
 	if es == nil || strings.TrimSpace(sessionID) == "" {
 		return "", nil

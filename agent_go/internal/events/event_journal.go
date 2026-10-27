@@ -57,6 +57,8 @@ type DurableEventJournalSessionProbe interface {
 type DurableEventJournalOwnership interface {
 	RegisterOwner(sessionID, ownerID string) error
 	Owner(sessionID string) (string, error)
+	// ReassignOwner replaces a recorded owner. Callers decide when that is right; the journal only records it.
+	ReassignOwner(sessionID, ownerID string) error
 }
 
 type DurableEventPageOptions struct {
@@ -148,6 +150,14 @@ func (j *SQLiteEventJournal) RegisterOwner(sessionID, ownerID string) error {
 	}
 	_, err = j.db.Exec(`INSERT INTO structured_chat_sessions(session_id, owner_id, updated_at) VALUES(?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET updated_at = excluded.updated_at`, sessionID, ownerID, time.Now().UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+func (j *SQLiteEventJournal) ReassignOwner(sessionID, ownerID string) error {
+	if j == nil || j.db == nil || sessionID == "" || ownerID == "" {
+		return nil
+	}
+	_, err := j.db.Exec(`UPDATE structured_chat_sessions SET owner_id = ?, updated_at = ? WHERE session_id = ?`, ownerID, time.Now().UTC().Format(time.RFC3339Nano), sessionID)
 	return err
 }
 

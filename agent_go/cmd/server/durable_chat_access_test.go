@@ -162,3 +162,23 @@ func TestBulkDeleteRemovesDurableRowsForDeletedTranscripts(t *testing.T) {
 		t.Fatalf("untouched session lost durable rows (owner %q)", owner)
 	}
 }
+
+// PLAT-856: a Crew's main session ID is the same for everyone, so a person who used the Crew first was recorded as its
+// owner and the main owner's own turns were saved under them. The main owner's turn takes the record back; nobody else's does.
+func TestCrewMainSessionIsRecordedUnderItsMainOwner(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "example", OwnerID: "owner", ProjectID: "example", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	const session = "work:project:example"
+	api, store := newDurableChatAPI(t, session, "co-owner")
+	api.activeSessions = map[string]*ActiveSessionInfo{}
+	api.trackActiveSession(session, "multi-agent", "hi", "someone-else", "", "", "", "", "")
+	if owner, _ := store.DurableChatOwner(session); owner != "co-owner" {
+		t.Fatalf("a person who is not the main owner moved the record to %q", owner)
+	}
+	api.trackActiveSession(session, "multi-agent", "hi", "owner", "", "", "", "", "")
+	if owner, err := store.DurableChatOwner(session); err != nil || owner != "owner" {
+		t.Fatalf("durable owner = %q, %v; want the main owner", owner, err)
+	}
+}
