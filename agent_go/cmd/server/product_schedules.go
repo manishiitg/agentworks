@@ -1334,7 +1334,12 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 			functionCall.mu.Unlock()
 			functionCall.persist()
 			runCtx = costActivityContext(runCtx, functionCall.UserID, "function_call", functionCall.ID)
-			common.SetSessionShellEnv(sessionID, structuredFunctionShellEnvironment(functionCall))
+			functionEnv, envErr := checkedStructuredFunctionShellEnvironment(functionCall)
+			if envErr != nil {
+				s.failAutomationSetupRun(job, options, envErr)
+				return "", envErr
+			}
+			common.SetSessionShellEnv(sessionID, functionEnv)
 		}
 		if job.Schedule.Isolated {
 			defer retireProductCodingCLI(sessionID, "isolated function execution ended")

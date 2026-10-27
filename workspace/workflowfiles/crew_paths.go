@@ -48,6 +48,12 @@ func BoundCrewFileRequest(docs, root, p, destination string, guard *FolderGuard)
 	}
 	if root == roots.FilesPath() {
 		for _, input := range []string{p, destination} {
+			if input == "" {
+				continue
+			}
+			if _, _, err := crewroot.Resolve(docs, root+"/"+input); err != nil {
+				return "", "", "", nil, "", err
+			}
 			first := strings.SplitN(strings.ToLower(input), "/", 2)[0]
 			if first == ".agentworks" {
 				return "", "", "", nil, "", fmt.Errorf("use the Crew resource paths for .agentworks files")

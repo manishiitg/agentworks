@@ -334,7 +334,7 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 		if err != nil {
 			return map[string]any{"success": false, "error": err.Error()}
 		}
-		policyRoot, policyCache = roots.Resources, reportRunCacheFolder
+		policyRoot, policyCache = roots.ResourcePathRoot(reportRunCacheFolder), reportRunCacheFolder
 	}
 	if _, err := workspacepathpolicy.Materialize(policyRoot, []workspacepathpolicy.Grant{{
 		Path: policyCache, Lifecycle: workspacepathpolicy.PlatformManaged, Kind: workspacepathpolicy.Directory, Mode: 0o700,

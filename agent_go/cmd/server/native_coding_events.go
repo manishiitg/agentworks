@@ -154,7 +154,7 @@ func (o *nativeTerminalObserver) nativeRecordPath() string {
 	}
 	home := o.home
 	if filepath.IsAbs(o.workingDir) {
-		private := filepath.Join(o.workingDir, security.SandboxPersistentDirName, "cli-home", cliHomeName(o.provider))
+		private := filepath.Join(cliArtifactRoot(o.workingDir, o.runtimeDir), security.SandboxPersistentDirName, "cli-home", cliHomeName(o.provider))
 		if info, err := os.Stat(private); err == nil && info.IsDir() {
 			home = private
 		}

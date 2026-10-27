@@ -146,6 +146,14 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		return wf.Result{}, err
 	}
 	shared := externalRootUsesSharedKnowledge(root)
+	if localBound {
+		private, openErr := os.OpenRoot(localRoots.Private)
+		if openErr != nil {
+			return wf.Result{}, openErr
+		}
+		shared = !localFiles && externalRootUsesSharedKnowledge(private)
+		private.Close()
+	}
 	if shared && (p == "knowledgebase" || strings.HasPrefix(p, "knowledgebase/")) {
 		return wf.Result{}, &externalUpstreamError{403, "local knowledge archive is unavailable; use shared Brain MCP"}
 	}
@@ -157,7 +165,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		}
 		return wf.Result{File: file}, err
 	case "list", "search":
-		result, err := externalListFiles(ctx, root, p, req, crewRoot, localFiles)
+		result, err := externalListFiles(ctx, root, p, req, crewRoot, localFiles, shared, localBound && !localFiles)
 		if err == nil && sourcePublication != nil && rootPath == sourcePublication.sourceRoot() {
 			runtimeReq := req
 			// Agent runtime paths have their own namespace. An ordinary Crew's
@@ -184,9 +192,6 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 				}
 			}
 			result.Truncated = result.Truncated || live.Truncated
-		}
-		if err == nil && localBound && !localFiles && p == "." && req.Offset == 0 && guard.AllowsTraversal("_files") {
-			result.Entries = append(result.Entries, wf.Entry{Path: "_files", Type: "folder"})
 		}
 		result, err = externalGuardReadResult(result, err, guard)
 		if filesPrefix != "" {
@@ -296,7 +301,7 @@ func externalPathPrivate(crewRoot bool, p string) bool {
 	return !private && p != "." && p != ""
 }
 
-func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Request, crewRoot bool, localFiles bool) (wf.Result, error) {
+func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Request, crewRoot bool, localFiles bool, shared bool, includeFiles bool) (wf.Result, error) {
 	guard := externalFileGuard(ctx, crewRoot)
 	if req.Limit <= 0 {
 		req.Limit = 100
@@ -325,8 +330,10 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 		}
 		return wf.Result{}, err
 	}
-	shared := externalRootUsesSharedKnowledge(root)
 	all := make([]wf.Entry, 0)
+	if includeFiles && p == "." && req.Operation == "list" && guard.AllowsTraversal("_files") && wf.MatchGlob(req.Glob, "_files") {
+		all = append(all, wf.Entry{Path: "_files", Type: "folder"})
+	}
 	visited := 0
 	var scannedBytes int64
 	truncated := false

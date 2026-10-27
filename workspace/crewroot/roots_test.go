@@ -61,7 +61,7 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(project, "escape")); err != nil {
 		t.Fatal(err)
 	}
-	for _, virtual := range []string{"Crew/example/_files/../outside", "Crew/example/_files/escape/secret.txt"} {
+	for _, virtual := range []string{"Crew/example/_files/../outside", "Crew/example/_files/escape/secret.txt", "Crew/example/_files/.agentworks/db/db.sqlite"} {
 		if _, _, err := Resolve(docs, virtual); err == nil {
 			t.Fatalf("accepted escape %s", virtual)
 		}

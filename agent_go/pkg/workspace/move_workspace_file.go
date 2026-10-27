@@ -16,6 +16,8 @@ type MoveWorkspaceFileParams struct {
 
 // MoveWorkspaceFile moves a file from one location to another
 func (c *Client) MoveWorkspaceFile(ctx context.Context, params MoveWorkspaceFileParams) (MoveFileResult, error) {
+	params.SourceFilepath = c.resolveLocalCrewRelativePath(ctx, params.SourceFilepath)
+	params.DestinationFilepath = c.resolveLocalCrewRelativePath(ctx, params.DestinationFilepath)
 	if BeforePathMutation != nil {
 		if err := BeforePathMutation(ctx, params.SourceFilepath, params.DestinationFilepath); err != nil {
 			return MoveFileResult{}, err

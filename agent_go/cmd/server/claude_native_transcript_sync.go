@@ -661,3 +661,23 @@ func nativeTranscriptWorkingDir(provider, workingDir, runtimeDir string) string 
 	}
 	return workingDir
 }
+
+// Keep the real cwd for providers that key history by project while locating
+// generated runtime records only in the saved private binding.
+func nativeTranscriptMessagesForBinding(provider, nativeID, workingDir, runtimeDir, home string) ([]builderConversationMessage, time.Time, string, bool, error) {
+	if runtimeDir == "" {
+		return nativeTranscriptMessagesForRuntimeUncapped(provider, nativeID, workingDir, home)
+	}
+	if provider == "cursor-cli" {
+		transcript, found, err := cursorcli.ReadNativeTranscriptFromConfigDir(filepath.Join(runtimeDir, "cursor-config"), nativeID)
+		return filterNativeContinuityMessagesUncapped(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, found, err
+	}
+	privateHome := filepath.Join(runtimeDir, security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
+	if info, err := os.Stat(privateHome); err == nil && info.IsDir() {
+		messages, stamp, path, found, err := readNativeTranscriptMessagesForHome(provider, nativeID, nativeTranscriptWorkingDir(provider, workingDir, runtimeDir), privateHome)
+		if found || err != nil {
+			return messages, stamp, path, found, err
+		}
+	}
+	return readNativeTranscriptMessagesForHome(provider, nativeID, nativeTranscriptWorkingDir(provider, workingDir, runtimeDir), home)
+}

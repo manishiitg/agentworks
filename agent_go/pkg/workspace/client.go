@@ -672,6 +672,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 // data is the raw binary content.
 // Returns the saved workspace filepath on success.
 func (c *Client) UploadBinary(ctx context.Context, folderPath, fileName string, data []byte) (string, error) {
+	folderPath = c.resolveLocalCrewRelativePath(ctx, folderPath)
 	if err := c.ValidatePathWithContext(ctx, folderPath, true); err != nil {
 		return "", err
 	}
@@ -754,6 +755,7 @@ func (c *Client) DownloadFile(ctx context.Context, filePath string) ([]byte, err
 
 // CreateFolder creates a folder via the workspace API: POST /api/folders
 func (c *Client) CreateFolder(ctx context.Context, folderPath string) error {
+	folderPath = c.resolveLocalCrewRelativePath(ctx, folderPath)
 	if err := c.ValidatePathWithContext(ctx, folderPath, true); err != nil {
 		return err
 	}

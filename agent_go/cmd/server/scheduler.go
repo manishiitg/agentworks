@@ -3223,7 +3223,10 @@ func listScheduleRunsForResume(ctx context.Context, workspacePath, scheduleID st
 }
 
 func readLocalScheduleRuns(workspacePath string) ([]ScheduleRunEntry, bool, error) {
-	localPath := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(scheduleRunsPath(workspacePath)))
+	localPath, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), scheduleRunsPath(workspacePath))
+	if err != nil {
+		return nil, true, err
+	}
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		if os.IsNotExist(err) {

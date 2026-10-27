@@ -131,6 +131,9 @@ func applyCLISeatbelt(llmAgent *agent.LLMAgentWrapper, sessionID, provider, work
 	policy.Seatbelt = true
 	policy.LandlockRunner = ""
 	policy.ProtectedRoots = cliSeatbeltProtectedRoots()
+	if len(runtimeDir) > 0 && runtimeDir[0] != "" {
+		policy.ProtectedRoots = append(policy.ProtectedRoots, workingDir)
+	}
 	policy.PrivateHome = filepath.Join(cliArtifactRoot(workingDir, runtimeDir...), security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
 	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
 		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Seatbelt policy could not be attached (%v)", err))

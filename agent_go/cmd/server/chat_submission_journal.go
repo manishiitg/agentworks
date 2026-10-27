@@ -469,6 +469,7 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 	provider := strings.ToLower(strings.TrimSpace(runtime.Provider))
 	nativeSessionID := strings.TrimSpace(runtime.ExternalSessionID)
 	workingDir := ""
+	runtimeDir := ""
 	accountHome := ""
 	if runtime.AgentSessionHandle != nil && runtime.AgentSessionHandle.Provider != nil {
 		if provider == "" {
@@ -478,6 +479,7 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 			nativeSessionID = strings.TrimSpace(runtime.AgentSessionHandle.Provider.NativeSessionID)
 		}
 		workingDir = strings.TrimSpace(runtime.AgentSessionHandle.Provider.WorkingDir)
+		runtimeDir = strings.TrimSpace(runtime.AgentSessionHandle.Provider.RuntimeDir)
 		if runtime.AgentSessionHandle.ConnectionID != "" {
 			keys, keyErr := api.connectionAPIKeys(ctx, providerAccountScope{Principal: record.Owner, WorkspacePath: record.Project}, provider, runtime.AgentSessionHandle.ConnectionID)
 			if keyErr != nil {
@@ -486,7 +488,7 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 			accountHome = keys.RuntimeEnvironment["HOME"]
 		}
 	}
-	messages, maxTimestamp, _, ok, err := nativeTranscriptMessagesForRuntime(provider, nativeSessionID, workingDir, accountHome)
+	messages, maxTimestamp, _, ok, err := nativeTranscriptMessagesForBinding(provider, nativeSessionID, workingDir, runtimeDir, accountHome)
 	if err != nil || !ok || maxTimestamp.IsZero() {
 		return false
 	}

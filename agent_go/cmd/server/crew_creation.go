@@ -493,7 +493,11 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		if err := os.Mkdir(filepath.Join(settings.LocalRoot, ".agentworks"), 0700); err != nil {
 			return CreatedCrew{}, fmt.Errorf("create Crew resources: %w", err)
 		}
-		if err := os.MkdirAll(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath)), 0700); err != nil {
+		if err := os.MkdirAll(filepath.Join(fsutil.WorkspaceDocsRoot(), "Crew"), 0700); err != nil {
+			_ = os.Remove(filepath.Join(settings.LocalRoot, ".agentworks"))
+			return CreatedCrew{}, err
+		}
+		if err := os.Mkdir(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath)), 0700); err != nil {
 			_ = os.Remove(filepath.Join(settings.LocalRoot, ".agentworks"))
 			return CreatedCrew{}, err
 		}

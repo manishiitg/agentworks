@@ -940,6 +940,10 @@ func externalCrewDescription(ctx context.Context, crew crewProjectBinding, manif
 			"sharing": crewSharingModel,
 		},
 	}
+	if files := crewFilesPath(crew.Binding.WorkspacePath); files != crew.Binding.WorkspacePath {
+		out["files_path"] = files
+		out["user_files_prefix"] = "_files/"
+	}
 	if llm := manifest.Capabilities.LLMConfig; llm != nil {
 		out["model"] = map[string]any{"mode": llm.Mode, "provider": llm.Provider}
 	}

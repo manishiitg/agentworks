@@ -120,9 +120,12 @@ func (r Roots) FilesPath() string { return r.Virtual + "/" + FilesSegment }
 // Settings keep their managed namespace. All other resource paths resolve
 // under .agentworks, including project skills, memory, functions and outputs.
 func privatePath(rel string) bool {
+	if rel == "triggers/deliveries" || strings.HasPrefix(rel, "triggers/deliveries/") {
+		return true
+	}
 	first := strings.SplitN(rel, "/", 2)[0]
 	switch first {
-	case "product.json", "workflow.json", "workflow.json.kb-lock", "builder", "conversation", "chat_history":
+	case "product.json", "workflow.json", "workflow.json.kb-lock", "product-schedules.json", "schedule-runs.json", ".sandbox-cache", ".report-cache", "builder", "conversation", "chat_history":
 		return true
 	}
 	return false
@@ -204,6 +207,25 @@ func Resolve(docs, virtual string) (string, bool, error) {
 		root = r.Private
 	}
 	path, err := ResolveContained(root, rel)
+	if err == nil && root == r.Files {
+		for existing := path; ; existing = filepath.Dir(existing) {
+			if _, statErr := os.Lstat(existing); statErr == nil {
+				real, evalErr := filepath.EvalSymlinks(existing)
+				if evalErr != nil {
+					return "", true, evalErr
+				}
+				if Within(r.Resources, real) {
+					return "", true, fmt.Errorf("use the Crew resource paths for .agentworks files")
+				}
+				break
+			} else if !os.IsNotExist(statErr) {
+				return "", true, statErr
+			}
+			if existing == root {
+				break
+			}
+		}
+	}
 	return path, true, err
 }
 

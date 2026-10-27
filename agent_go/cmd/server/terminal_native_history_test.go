@@ -161,3 +161,24 @@ func TestTerminalToChatPageRecoversPrivateClaudeTurnsOnce(t *testing.T) {
 		t.Fatalf("durable history lost terminal turns: %+v, %v", persisted, err)
 	}
 }
+
+// PLAT-856-145: a local project cwd must not become its private transcript root.
+func TestNativeTranscriptUsesPrivateRuntimeWithRealProjectCWD(t *testing.T) {
+	project, runtimeDir, home := t.TempDir(), t.TempDir(), t.TempDir()
+	private := filepath.Join(runtimeDir, security.SandboxPersistentDirName, "cli-home", "claude-code")
+	path := filepath.Join(private, ".claude", "projects", claudeNativeTranscriptProjectSlug(project), "bound-session.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeClaudeChatTurns(t, path, "local question", "local answer")
+	messages, _, got, found, err := nativeTranscriptMessagesForBinding("claude-code", "bound-session", project, runtimeDir, home)
+	if err != nil || !found || got != path || len(messages) != 2 {
+		t.Fatalf("private binding: %s %v %v %+v", got, found, err, messages)
+	}
+	if _, _, _, found, err := nativeTranscriptMessagesForBinding("claude-code", "other-session", project, runtimeDir, home); found || err != nil {
+		t.Fatal("substituted a different native session", err)
+	}
+	if files, err := os.ReadDir(project); err != nil || len(files) != 0 {
+		t.Fatal("history reader wrote into project", err)
+	}
+}

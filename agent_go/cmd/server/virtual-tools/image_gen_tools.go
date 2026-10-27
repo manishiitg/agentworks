@@ -541,7 +541,11 @@ func CreateImageGenExecutor(cfg ImageGenExecutorConfig) func(ctx context.Context
 			}
 			log.Printf("[IMAGE_GEN] Saved image %d to workspace: %s", i+1, savedPath)
 			savedPaths = append(savedPaths, savedPath)
-			absolutePaths = append(absolutePaths, workspaceAbsolutePath(savedPath))
+			absolutePath, pathErr := workspaceAbsolutePath(savedPath)
+			if pathErr != nil {
+				return "", pathErr
+			}
+			absolutePaths = append(absolutePaths, absolutePath)
 		}
 
 		costPerImage, costNote := imageGenerationCostMetadata(provider, modelID)
@@ -858,7 +862,11 @@ func CreateImageEditExecutor(cfg ImageGenExecutorConfig) func(ctx context.Contex
 			}
 			log.Printf("[IMAGE_EDIT] Saved edited image %d: %s", i+1, savedPath)
 			savedPaths = append(savedPaths, savedPath)
-			absolutePaths = append(absolutePaths, workspaceAbsolutePath(savedPath))
+			absolutePath, pathErr := workspaceAbsolutePath(savedPath)
+			if pathErr != nil {
+				return "", pathErr
+			}
+			absolutePaths = append(absolutePaths, absolutePath)
 		}
 
 		costPerImage, costNote := imageGenerationCostMetadata(provider, modelID)

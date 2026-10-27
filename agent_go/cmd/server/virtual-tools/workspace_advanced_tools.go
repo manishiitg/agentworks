@@ -722,7 +722,10 @@ func wrapReadImageWithLLM(
 			},
 		}
 		if readsImageByPath(provider) {
-			absoluteImagePath := workspaceAbsolutePath(normalizeWorkspaceDocumentPath(imageData.Filepath))
+			absoluteImagePath, pathErr := workspaceAbsolutePath(normalizeWorkspaceDocumentPath(imageData.Filepath))
+			if pathErr != nil {
+				return "", pathErr
+			}
 			if _, statErr := os.Stat(absoluteImagePath); statErr != nil {
 				return "", fmt.Errorf("%s image analysis requires a readable local workspace file at %q: %w", provider, absoluteImagePath, statErr)
 			}

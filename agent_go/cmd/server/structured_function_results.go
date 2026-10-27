@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -79,7 +80,10 @@ func sweepStructuredFunctionOutputs(targetPath string) {
 		return
 	}
 	structuredFunctionLastSweep.Store(key, time.Now())
-	dir := filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(strings.TrimSuffix(targetPath, "/")), ".calls")
+	dir, err := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), strings.TrimSuffix(targetPath, "/")+"/.calls")
+	if err != nil {
+		return
+	}
 	if info, err := os.Lstat(dir); err != nil || !info.IsDir() {
 		return
 	}
@@ -134,7 +138,14 @@ func openStructuredFunctionFolder(call *crewFunctionCall) (*os.Root, error) {
 	if err != nil {
 		return nil, err
 	}
-	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
+	basePath := getWorkspaceDocsAbsPath()
+	if roots, bound, err := localCrewRoots(call.TargetPath); err != nil {
+		return nil, err
+	} else if bound {
+		basePath = roots.ResourcePathRoot(call.outputRelativeFolder())
+		p = call.outputRelativeFolder()
+	}
+	base, err := os.OpenRoot(basePath)
 	if err != nil {
 		return nil, err
 	}
@@ -496,7 +507,16 @@ func (api *StreamingAPI) addCrewFunctionReadDetails(ctx context.Context, out map
 }
 
 func structuredFunctionShellEnvironment(call *crewFunctionCall) map[string]string {
-	return map[string]string{"FUNCTION_CALL_ID": call.ID, "FUNCTION_OUTPUT_DIR": filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(call.outputFolder())), "FUNCTION_RESULT_FILE": filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(call.outputFolder()), "result.json")}
+	env, _ := checkedStructuredFunctionShellEnvironment(call)
+	return env
+}
+
+func checkedStructuredFunctionShellEnvironment(call *crewFunctionCall) (map[string]string, error) {
+	dir, err := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), call.outputFolder())
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{"FUNCTION_CALL_ID": call.ID, "FUNCTION_OUTPUT_DIR": dir, "FUNCTION_RESULT_FILE": filepath.Join(dir, "result.json")}, nil
 }
 
 func persistStructuredFunctionAdmission(ctx context.Context, call *crewFunctionCall) error {

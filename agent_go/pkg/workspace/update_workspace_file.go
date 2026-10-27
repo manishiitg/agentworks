@@ -15,6 +15,7 @@ type UpdateWorkspaceFileParams struct {
 
 // UpdateWorkspaceFile creates or updates a file using the REST API: PUT /api/documents/{filepath}
 func (c *Client) UpdateWorkspaceFile(ctx context.Context, params UpdateWorkspaceFileParams) (UpdateFileResult, error) {
+	params.Filepath = c.resolveLocalCrewRelativePath(ctx, params.Filepath)
 	if params.Filepath == "" {
 		return UpdateFileResult{}, fmt.Errorf("filepath is required")
 	}

@@ -120,13 +120,16 @@ func (c *Client) DiffPatchWorkspaceFile(ctx context.Context, params DiffPatchWor
 // root for diff_patch_workspace_file as well. Multiple writable roots are
 // intentionally left unresolved because choosing one would be ambiguous.
 func (c *Client) resolveGuardRelativeWorkspacePath(ctx context.Context, input string) string {
+	if resolved := c.resolveLocalCrewRelativePath(ctx, input); resolved != input {
+		return resolved
+	}
 	clean := filepath.Clean(strings.TrimSpace(input))
 	if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return input
 	}
 	firstPart := strings.SplitN(filepath.ToSlash(clean), "/", 2)[0]
 	switch firstPart {
-	case workspaceref.UsersDir, "Chats", "Workflow":
+	case workspaceref.UsersDir, "Chats", "Workflow", "Crew":
 		// These are already workspace-root-qualified. A denied qualified path
 		// must stay denied rather than being smuggled below the project root.
 		return clean
@@ -267,4 +270,29 @@ func deduplicatePathStrings(paths []string) []string {
 		out = append(out, p)
 	}
 	return out
+}
+
+// A bound local Crew has an explicit default files namespace. Mapping a bare
+// path does not grant access: the caller still applies its effective guard.
+func (c *Client) resolveLocalCrewRelativePath(ctx context.Context, input string) string {
+	if strings.TrimSpace(input) == "" {
+		return input
+	}
+	clean := filepath.Clean(strings.TrimSpace(input))
+	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return input
+	}
+	switch strings.SplitN(filepath.ToSlash(clean), "/", 2)[0] {
+	case workspaceref.UsersDir, "Chats", "Workflow", "Crew", "_system":
+		return input
+	}
+	cfg := GetSessionShellConfig(c.sessionIDFromContext(ctx))
+	if cfg == nil {
+		return input
+	}
+	parts := strings.Split(filepath.ToSlash(cfg.WorkingDir), "/")
+	if len(parts) != 3 || parts[0] != "Crew" || parts[2] != "_files" {
+		return input
+	}
+	return filepath.Join(cfg.WorkingDir, clean)
 }

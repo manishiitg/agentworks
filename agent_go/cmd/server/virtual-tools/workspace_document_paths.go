@@ -94,6 +94,6 @@ func dedupeWorkspaceDocumentRoots(roots []string) []string {
 	return out
 }
 
-func workspaceAbsolutePath(relativePath string) string {
-	return filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(path.Clean(relativePath)))
+func workspaceAbsolutePath(relativePath string) (string, error) {
+	return fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), relativePath)
 }

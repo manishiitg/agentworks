@@ -175,7 +175,7 @@ func (o *nativeTerminalObserver) read() ([]builderConversationMessage, string, b
 			return nil, o.path, false
 		}
 	}
-	messages, _, path, ok, err := nativeTranscriptMessagesForRuntimeUncapped(o.provider, o.nativeID, nativeTranscriptWorkingDir(o.provider, o.workingDir, o.runtimeDir), o.home)
+	messages, _, path, ok, err := nativeTranscriptMessagesForBinding(o.provider, o.nativeID, o.workingDir, o.runtimeDir, o.home)
 	if ok && err == nil {
 		afterStamp := nativeTerminalFileStamp(path)
 		o.fileStamp = ""

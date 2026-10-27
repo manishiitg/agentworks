@@ -30,7 +30,11 @@ func CreateScriptDBToolRegistry(fallbackSessionID string) ScriptDBToolRegistry {
 		if err != nil {
 			return "", err
 		}
-		findings, scanned, err := scriptdb.ScanDir(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath), "code"))
+		codePath, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), filepath.ToSlash(filepath.Join(workspacePath, "code")))
+		if err != nil {
+			return "", err
+		}
+		findings, scanned, err := scriptdb.ScanDir(codePath)
 		if err != nil {
 			return "", fmt.Errorf("scan the scripts under code/: %w", err)
 		}

@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/parsers"
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
@@ -216,8 +217,21 @@ func getAllDocumentsRecursively(searchPath, docsDir string, maxDepth int, limit,
 		"venv":         true,
 	}
 
+	searchVirtual, _, localBound, bindingErr := crewroot.Reverse(docsDir, searchPath)
+	if bindingErr != nil {
+		return nil, bindingErr
+	}
 	var walk func(path string) error
 	walk = func(path string) error {
+		if localBound {
+			issued, _, bound, err := crewroot.Reverse(docsDir, path)
+			if err != nil || !bound || (issued != searchVirtual && !strings.HasPrefix(issued, searchVirtual+"/")) {
+				return nil
+			}
+			if _, _, err := crewroot.Resolve(docsDir, issued); err != nil {
+				return nil
+			}
+		}
 		// os.Stat follows symlinks, so symlinked directories are recognised as directories.
 		info, err := os.Stat(path)
 		if err != nil {
@@ -256,7 +270,7 @@ func getAllDocumentsRecursively(searchPath, docsDir string, maxDepth int, limit,
 			}
 		}
 
-		relPathFromDocs, err := filepath.Rel(docsDir, path)
+		relPathFromDocs, err := utils.GetRelativePath(path, docsDir)
 		if err != nil {
 			return nil
 		}

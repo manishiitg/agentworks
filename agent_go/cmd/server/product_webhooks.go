@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"io"
 	"log"
 	"mime"
@@ -774,6 +775,11 @@ const triggerAutonomyNote = "This is an automated trigger run, not an interactiv
 // trigger input is a live server file. Its source-relative spelling cannot
 // reach that input. Keep ordinary trigger/bridge references as before.
 func publishedFunctionPayloadReference(callID, payloadPath, relativePath string) string {
+	if roots, bound, err := localCrewRoots(payloadPath); bound && err == nil {
+		if physical, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), payloadPath); err == nil && roots.Virtual != "" {
+			return physical
+		}
+	}
 	if call := lookupCrewFunctionCall(callID); call != nil && call.Publication != nil {
 		return filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(payloadPath))
 	}

@@ -14,6 +14,7 @@ type DeleteWorkspaceFileParams struct {
 
 // DeleteWorkspaceFile deletes a file from the workspace
 func (c *Client) DeleteWorkspaceFile(ctx context.Context, params DeleteWorkspaceFileParams) (DeleteFileResult, error) {
+	params.Filepath = c.resolveLocalCrewRelativePath(ctx, params.Filepath)
 	if BeforePathMutation != nil {
 		if err := BeforePathMutation(ctx, params.Filepath); err != nil {
 			return DeleteFileResult{}, err
