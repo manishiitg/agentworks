@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
@@ -50,7 +51,20 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
 	}
+	if err := prepareCrewGit(dir, project, provider); err != nil {
+		return "", err
+	}
 	return dir, nil
+}
+
+func prepareCrewGit(runtimeDir, project, provider string) error {
+	if cliHostOS != "linux" {
+		return nil // A personal Mac keeps its own HOME and Git configuration.
+	}
+	if err := cliruntime.PrepareProjectGit(filepath.Clean(runtimeDir), cliHomeName(provider), project); err != nil {
+		return fmt.Errorf("cannot prepare Crew Git: %w", err)
+	}
+	return nil
 }
 
 func crewCLIWorkspaceInstructions(folder string) string {
@@ -69,7 +83,11 @@ func crewPrivateRuntimeDir(folder, user, session, provider string, readOnly bool
 	if err != nil {
 		return "", err
 	}
-	return cliruntime.PrepareMoved(state, fsutil.WorkspaceDocsRoot(), user, roots.Private, roots.Virtual, session, provider, crewCLIMode(readOnly))
+	dir, err := cliruntime.PrepareMoved(state, fsutil.WorkspaceDocsRoot(), user, roots.Private, roots.Virtual, session, provider, crewCLIMode(readOnly))
+	if err == nil {
+		err = prepareCrewGit(dir, roots.Files, provider)
+	}
+	return dir, err
 }
 
 // applyCrewChatMode runs after target admission, before fingerprinting or skill

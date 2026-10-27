@@ -66,7 +66,7 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	call("migrate", map[string]any{"migration_file": "2026-10-11-example.sql"})
 	call("mutate", map[string]any{"sql": "INSERT INTO example (id,value) VALUES (?,?)", "params": []any{1, "saved via MCP"}})
 	call("snapshot", map[string]any{})
-	live, err := sql.Open("sqlite", filepath.Join(f.docs, externalCommandCrewRoot, "db", "db.sqlite"))
+	live, err := sql.Open("sqlite", filepath.Join(f.docs, externalCommandCrewState, "db", "db.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

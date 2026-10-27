@@ -2,9 +2,83 @@ package cliruntime
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// PLAT-856-383: native CLI and MCP-created repositories can have different UIDs.
+func TestPrivateGitTrustCoversProjectReposButNotSiblingOrSymlink(t *testing.T) {
+	base := t.TempDir()
+	project, outside, runtimeDir := filepath.Join(base, "project with spaces"), filepath.Join(base, "outside"), filepath.Join(base, "runtime")
+	git := func(env []string, args ...string) (string, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Env = append(append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"), env...)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	must := func(args ...string) {
+		t.Helper()
+		if out, err := git(nil, args...); err != nil {
+			t.Fatalf("git: %v: %s", err, out)
+		}
+	}
+	nested, linked := filepath.Join(project, "code", "nested"), filepath.Join(project, "linked")
+	dependency := filepath.Join(project, "node_modules", "dependency")
+	for _, path := range []string{project, nested, outside, dependency} {
+		must("init", "-q", path)
+	}
+	must("-C", project, "-c", "user.name=QA", "-c", "user.email=qa@example.com", "commit", "-q", "--allow-empty", "-m", "baseline")
+	must("-C", project, "worktree", "add", "-q", "-b", "linked", linked)
+	if err := os.Symlink(outside, filepath.Join(project, "outside-link")); err != nil {
+		t.Fatal(err)
+	}
+	forced := []string{"GIT_TEST_ASSUME_DIFFERENT_OWNER=1"}
+	if out, err := git(forced, "-C", project, "status", "--porcelain"); err == nil || !strings.Contains(out, "dubious ownership") {
+		t.Fatalf("fixture must reproduce ownership refusal: %v %s", err, out)
+	}
+	if err := PrepareProjectGit(runtimeDir, "codex-cli", project); err != nil {
+		t.Fatal(err)
+	}
+	config := filepath.Join(runtimeDir, ".sandbox-cache", "cli-home", "codex-cli", ".gitconfig")
+	must("config", "--file", config, "user.name", "keep this name")
+	if err := PrepareProjectGit(runtimeDir, "codex-cli", project); err != nil {
+		t.Fatal(err)
+	}
+	env := append(forced, "GIT_CONFIG_GLOBAL="+config)
+	for _, path := range []string{project, nested, linked} {
+		if out, err := git(env, "-C", path, "status", "--porcelain"); err != nil {
+			t.Fatalf("authorized repo %s: %v %s", path, err, out)
+		}
+	}
+	for _, path := range []string{outside, filepath.Join(project, "outside-link"), dependency} {
+		if out, err := git(env, "-C", path, "status", "--porcelain"); err == nil || !strings.Contains(out, "dubious ownership") {
+			t.Fatalf("outside repo trusted: %v %s", err, out)
+		}
+	}
+	if out, err := git(env, "config", "--global", "--get", "user.name"); err != nil || strings.TrimSpace(out) != "keep this name" {
+		t.Fatalf("private settings lost: %v %s", err, out)
+	}
+	if err := PrepareProjectGit(runtimeDir, "codex-cli", outside); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := git(env, "-C", project, "status", "--porcelain"); err == nil || !strings.Contains(out, "dubious ownership") {
+		t.Fatalf("old project trust retained: %v %s", err, out)
+	}
+	if err := os.Remove(config); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "untouched"), config); err != nil {
+		t.Fatal(err)
+	}
+	if err := PrepareProjectGit(runtimeDir, "codex-cli", project); err == nil {
+		t.Fatal("followed private config symlink")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "untouched")); !os.IsNotExist(err) {
+		t.Fatal("changed symlink target")
+	}
+}
 
 func TestLinkedProjectKeepsDataSharedAndRuntimePrivate(t *testing.T) {
 	root := t.TempDir()
