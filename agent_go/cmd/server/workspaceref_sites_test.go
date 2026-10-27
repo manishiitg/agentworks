@@ -16,6 +16,9 @@ const (
 	crewLogic  = "Chats/Work/projects/c1"
 	codeLogic  = "Chats/Code/projects/p1"
 	crewDeeper = "Chats/Work/projects/c1/db/x.json"
+	// Crews and Code projects live at Crew/<id> since the Crew-only move (PLAT-856-145); the
+	// _users/<u>/Chats/Work|Code/projects forms above are retired there.
+	crewShared = "Crew/c1"
 )
 
 func TestRefSitesCleanAgentProfileWorkspace(t *testing.T) {
@@ -45,20 +48,12 @@ func TestRefSitesProductConversationRuntimeWorkspace(t *testing.T) {
 }
 
 func TestRefSitesCrewOwnership(t *testing.T) {
-	reftest.BothSpellings(t, refUser, crewDeeper, func(t *testing.T, spelling string) {
-		if !crewProjectOwnedByCaller(refUser, spelling) || !isCrewProjectPath(spelling) {
-			t.Fatalf("%q not owned crew project", spelling)
-		}
-	})
-	other := reftest.OtherUser(refUser, crewDeeper)
-	if crewProjectOwnedByCaller(refUser, other) || !isCrewProjectPath(other) {
-		t.Fatalf("%q must be a crew path but not owned", other)
+	if !isCrewProjectPath(crewShared + "/db/x.json") {
+		t.Fatal("a Crew/<id> path is a Crew project")
 	}
+	other := reftest.OtherUser(refUser, crewDeeper)
 	if crewProjectOwnedByCaller(refUser, "/docs/"+other) {
 		t.Fatal("absolute path of another user must not be owned")
-	}
-	if owner, ok := crewProjectOwnerID(other); !ok || owner != "other-"+refUser {
-		t.Fatalf("owner = %q %v", owner, ok)
 	}
 	if _, ok := crewProjectOwnerID(crewLogic); ok {
 		t.Fatal("a logical path has no owner")
@@ -69,11 +64,6 @@ func TestRefSitesCrewOwnership(t *testing.T) {
 }
 
 func TestRefSitesWorkspaceProxyOtherUser(t *testing.T) {
-	reftest.BothSpellings(t, refUser, crewDeeper, func(t *testing.T, spelling string) {
-		if workspaceProxyPathIsOtherUser(spelling, refUser) {
-			t.Fatalf("%q is the caller's own", spelling)
-		}
-	})
 	for _, bad := range []string{reftest.OtherUser(refUser, crewDeeper), "_users", "/_users/", "x/../_users/bob/y"} {
 		if !workspaceProxyPathIsOtherUser(bad, refUser) {
 			t.Errorf("%q must be refused", bad)
@@ -113,13 +103,11 @@ func TestRefSitesRestoredConversationPath(t *testing.T) {
 	}
 }
 
-func TestRefSitesPlaceAttachRoots(t *testing.T) {
+func TestRefSitesProjectRoots(t *testing.T) {
 	phys := workspaceref.MustParse(codeLogic).Physical(refUser)
-	reftest.BothSpellings(t, refUser, codeLogic+"/src/a.go", func(t *testing.T, spelling string) {
-		if got := projectRootOf(spelling); spelling == phys+"/src/a.go" && got != phys {
-			t.Fatalf("projectRootOf(%q) = %q", spelling, got)
-		}
-	})
+	if got := projectRootOf(crewShared + "/src/a.go"); got != crewShared {
+		t.Fatalf("projectRootOf = %q", got)
+	}
 	for _, bad := range []string{
 		phys + "/src", "_users/" + refUser + "/Chats/Other/projects/x", "_users/" + refUser, codeLogic,
 	} {
@@ -149,14 +137,8 @@ func TestRefSitesCrewRootsAndRefs(t *testing.T) {
 		t.Fatal("externalIsCrewRoot")
 	}
 
-	reftest.BothSpellings(t, refUser, crewDeeper, func(t *testing.T, spelling string) {
-		ref, ok := parseCrewPath(refUser, spelling)
-		if !ok || ref.OwnerID != refUser || ref.Root != phys || ref.Rest != "db/x.json" {
-			t.Fatalf("%q -> %+v %v", spelling, ref, ok)
-		}
-	})
-	if ref, ok := parseCrewPath(refUser, other+"/db"); !ok || ref.OwnerID != "other-"+refUser || ref.Rest != "db" {
-		t.Fatalf("other user's crew = %+v %v", ref, ok)
+	if ref, ok := parseCrewPath(refUser, crewShared+"/db/x.json"); !ok || !ref.Shared || ref.Root != crewShared || ref.Rest != "db/x.json" {
+		t.Fatalf("Crew path -> %+v %v", ref, ok)
 	}
 	if _, ok := parseCrewPath(refUser, "_users/a/../b/Chats/Work/projects/c"); ok {
 		t.Fatal("traversal accepted")
@@ -184,27 +166,20 @@ func TestRefSitesBrowserKeyAndCosts(t *testing.T) {
 		name != "Code · p1" || owner != refUser {
 		t.Fatalf("costOverviewRoot = %q %q %q %q", root, kind, name, owner)
 	}
-	if !costOverviewIsCode(codePhys) || costOverviewIsCode(want) || costOverviewIsCode(codeLogic) {
+	if !costOverviewIsCode(crewShared) || costOverviewIsCode(codeLogic) {
 		t.Fatal("costOverviewIsCode")
 	}
 }
 
 func TestRefSitesFolderPolicies(t *testing.T) {
-	reftest.BothSpellings(t, refUser, "Chats/Code/projects", func(t *testing.T, spelling string) {
-		if !codeFilesDeletionProtected(spelling) {
-			t.Fatalf("%q must be protected", spelling)
+	for _, protected := range []string{"Crew", crewShared, crewShared + "/workflow.json"} {
+		if !codeFilesDeletionProtected(protected) {
+			t.Fatalf("%q must be protected", protected)
 		}
-	})
-	reftest.BothSpellings(t, refUser, codeLogic, func(t *testing.T, spelling string) {
-		if !codeFilesDeletionProtected(spelling) {
-			t.Fatalf("project root %q must be protected", spelling)
-		}
-	})
-	reftest.BothSpellings(t, refUser, "Chats/Code/projects/p1/src/a.go", func(t *testing.T, spelling string) {
-		if codeFilesDeletionProtected(spelling) {
-			t.Fatalf("%q is an ordinary file", spelling)
-		}
-	})
+	}
+	if codeFilesDeletionProtected(crewShared + "/src/a.go") {
+		t.Fatal("an ordinary project file is not protected")
+	}
 	reftest.BothSpellings(t, refUser, "Chats/notes", func(t *testing.T, spelling string) {
 		if !isChatsWriteFolder(spelling) {
 			t.Fatalf("%q is a chats folder", spelling)
