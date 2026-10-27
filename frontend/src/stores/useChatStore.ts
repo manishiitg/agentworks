@@ -911,7 +911,7 @@ function applyStreamingChunk(state: ChatState, sessionId: string, chunkIndex: nu
           return {
             streamingChatUIMode: {
               ...state.streamingChatUIMode,
-              [sessionId]: meta?.chatUIStreamMode === 'progressive' ? 'progressive' : 'complete',
+              [sessionId]: meta?.chatUIStreamMode === 'progressive' || (!clearCompleted && state.streamingChatUIMode[sessionId] === 'progressive') ? 'progressive' : 'complete',
             },
             streamingText: nextStreamingText,
             streamingStatus: newStreamingStatus,

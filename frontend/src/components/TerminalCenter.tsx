@@ -5450,7 +5450,7 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
                       // The backend's native-delta flag permits progressive UI;
                       // terminal/pane frames never supply widget content.
                       streamingChatUIMode={sessionChatUIMode}
-                      streamingText={selectedTerminalUsesSessionEvents && sessionChatUIMode === 'progressive'
+                      streamingText={selectedTerminalUsesSessionEvents && (sessionChatUIMode === 'progressive' || !selectedTerminalView?.tmux_session)
                         ? sessionStreamingText
                         : undefined}
                       // Only display a live status that the event stream itself

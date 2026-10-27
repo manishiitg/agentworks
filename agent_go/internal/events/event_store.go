@@ -1009,9 +1009,9 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 	if event.Data != nil {
 		if cloned := events.CloneAgentEvent(event.Data); cloned != nil {
 			event.Data = cloned
+			stampChatUIStreamMode(event)
 		}
 	}
-	stampChatUIStreamMode(event)
 	if strings.TrimSpace(event.ID) == "" {
 		event.ID = StableAgentEventID("event-store:"+sessionID, event.Data)
 	}
