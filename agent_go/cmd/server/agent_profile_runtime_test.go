@@ -14,6 +14,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 func TestAgentProfileSessionKeyTracksDefinitionAndIdentity(t *testing.T) {
@@ -421,22 +422,25 @@ func TestResolveCrewProfileUsesOnlyExplicitlySelectedGlobalSecrets(t *testing.T)
 		t.Fatal(err)
 	}
 	const userID = "user-1"
-	const workspacePath = "Chats/Work/projects/site"
-	const physicalWorkspacePath = "_users/user-1/Chats/Work/projects/site"
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	// Crews live at the shared Crew root and are found through their registered owner.
+	workspacePath := registerTestCrew(t, "site", userID, false)
 	workspace := &mockWorkspaceAPI{files: map[string]string{
-		physicalWorkspacePath + "/product.json":  `{"schema_version":1,"product":"work","id":"site","title":"Site","session_id":"work:site"}`,
-		physicalWorkspacePath + "/workflow.json": `{"capabilities":{"selected_secrets":[],"selected_global_secret_names":["SHARED_TOKEN"]}}`,
-		workspacePath + "/workflow.json":         `{"capabilities":{"selected_secrets":[],"selected_global_secret_names":["SHARED_TOKEN"]}}`,
+		workspacePath + "/product.json":  `{"schema_version":1,"product":"work","id":"site","title":"Site","session_id":"work:site"}`,
+		workspacePath + "/workflow.json": `{"capabilities":{"selected_secrets":[],"selected_global_secret_names":["SHARED_TOKEN"]}}`,
 	}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
-	previousGlobals := globalSecrets
-	globalSecrets = []globalSecretEntry{
-		{Name: "SHARED_TOKEN", Value: "selected-value"},
-		{Name: "UNRELATED_TOKEN", Value: "must-not-be-granted"},
-	}
-	t.Cleanup(func() { globalSecrets = previousGlobals })
+	managedGlobalsMu.Lock()
+	previousGlobals := managedGlobals
+	managedGlobals = map[string]string{"SHARED_TOKEN": "selected-value", "UNRELATED_TOKEN": "must-not-be-granted"}
+	managedGlobalsMu.Unlock()
+	t.Cleanup(func() {
+		managedGlobalsMu.Lock()
+		managedGlobals = previousGlobals
+		managedGlobalsMu.Unlock()
+	})
 
 	registry := agentprofiles.NewRegistry()
 	if err := registry.RegisterProfile(agentprofiles.Profile{
@@ -444,7 +448,7 @@ func TestResolveCrewProfileUsesOnlyExplicitlySelectedGlobalSecrets(t *testing.T)
 		SystemPromptTemplate: "{{.ProjectTitle}}",
 		Runtime: agentprofiles.RuntimePolicy{
 			Transport:    "structured",
-			Workspace:    agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Work/projects"},
+			Workspace:    agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: workspaceref.CrewProjectsRoot},
 			Conversation: agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject},
 			Capabilities: agentprofiles.RuntimeCapabilities{Secrets: agentprofiles.CapabilityRequired},
 		},

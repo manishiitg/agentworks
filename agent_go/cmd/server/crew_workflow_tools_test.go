@@ -55,7 +55,8 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
 	manifest.Schedules = []WorkflowSchedule{
 		{ID: "trig-crew-on", Name: "Crew bound", ScheduleType: "webhook", Enabled: true, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "project-a", ProfileID: "work"}},
-		{ID: "trig-crew-off", Name: "Crew disabled", ScheduleType: "webhook", Enabled: false, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "project-a", ProfileID: "work"}},
+		// Reuse takes the caller's first stored binding (stored sorted by ID), so the paused one sorts after trig-crew-on.
+		{ID: "trig-crew-paused", Name: "Crew disabled", ScheduleType: "webhook", Enabled: false, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "project-a", ProfileID: "work"}},
 		{ID: "trig-other", Name: "Other crew", ScheduleType: "webhook", Enabled: true, WorkshopMode: "run", Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "other", ProfileID: "work"}},
 	}
 	raw, err := json.Marshal(manifest)
@@ -82,6 +83,10 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 	ws := httptest.NewServer(mock)
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	// Webhooks and caller bindings are stored outside workflow.json (PLAT-871).
+	if err := saveWorkflowEntryActions(context.Background(), "Workflow/test", manifest); err != nil {
+		t.Fatal(err)
+	}
 
 	api := &StreamingAPI{projectActions: crews}
 	api.scheduler = NewSchedulerService(api)
@@ -155,7 +160,7 @@ func TestRunWorkflowTriggerRejectsBeforeStart(t *testing.T) {
 		{"missing workflow", map[string]interface{}{"workspace_path": "Workflow/other", "trigger_id": "trig-crew-on"}, "trigger not found"},
 		{"unknown trigger", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "missing"}, "trigger not found"},
 		{"foreign binding", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-other"}, "no longer names this caller"},
-		{"disabled binding", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-crew-off"}, "disabled"},
+		{"disabled binding", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-crew-paused"}, "disabled"},
 		{"bad payload", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-crew-on", "payload": "nope"}, "payload must be a JSON object"},
 	} {
 		if _, err := tool.exec(ctx, tt.args); err == nil || !strings.Contains(err.Error(), tt.want) {
@@ -204,8 +209,8 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
-	var saved WorkflowManifest
-	if err := json.Unmarshal([]byte(mock.files[manifestPath("Workflow/plain")]), &saved); err != nil {
+	saved, _, err := ReadWorkflowManifest(ctx, "Workflow/plain")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if len(saved.Schedules) != 1 || saved.Schedules[0].ID != created {

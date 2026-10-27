@@ -37,7 +37,7 @@ func TestExternalCrewDetachesSavedUnavailableReferences(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	stale := []string{"Chats/Work/projects/deleted", "_users/owner/Chats/Code/projects/deleted", "Crew/missing"}
 	raw, _ := json.Marshal(map[string]any{"id": "team", "workflow_context_paths": append(stale, "Workflow/keep"), "custom": "preserved"})
-	f.write(t, externalCommandCrewRoot+"/workflow.json", string(raw))
+	f.write(t, externalCommandCrewState+"/workflow.json", string(raw))
 	// This removes only an exact saved entry in the caller's owned Crew.
 	crewCapabilityHTTP(t, f, crewWriter("other"), "workspace", map[string]any{"action": "reference_detach", "workspace_path": stale[0]}, 403)
 	for _, path := range stale {
@@ -47,7 +47,7 @@ func TestExternalCrewDetachesSavedUnavailableReferences(t *testing.T) {
 		Paths  []string `json:"workflow_context_paths"`
 		Custom string   `json:"custom"`
 	}
-	if err := json.Unmarshal([]byte(f.read(t, externalCommandCrewRoot+"/workflow.json")), &saved); err != nil || !reflect.DeepEqual(saved.Paths, []string{"Workflow/keep"}) || saved.Custom != "preserved" {
+	if err := json.Unmarshal([]byte(f.read(t, externalCommandCrewState+"/workflow.json")), &saved); err != nil || !reflect.DeepEqual(saved.Paths, []string{"Workflow/keep"}) || saved.Custom != "preserved" {
 		t.Fatalf("saved paths=%v custom=%q err=%v", saved.Paths, saved.Custom, err)
 	}
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", map[string]any{"action": "reference_detach", "workspace_path": stale[0]}, 400)

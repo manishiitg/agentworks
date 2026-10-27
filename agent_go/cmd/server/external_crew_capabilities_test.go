@@ -254,7 +254,7 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	f.api.logger = loggerv2.NewNoop()
 	// Diagnostics now reads central Vault, never the retired personal store
 	// or its tool cache. Only the selected account's metadata is shared.
-	f.write(t, externalCommandCrewRoot+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_attached"]}}`)
+	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_attached"],"chosen_vault_apps_only":true}}`)
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/admin/runtime/servers" || r.Header.Get("X-CapLayer-Actor") != "owner" {
 			w.WriteHeader(403)
@@ -336,22 +336,9 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	// Real capability probes can carry a workspace host/error or CDP endpoint.
 	// Exercise both failure and success; neither may appear in diagnostics.
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
-	raw, found, readErr := readFileFromWorkspace(context.Background(), externalCommandCrewRoot+"/workflow.json")
-	if readErr != nil || !found {
-		t.Fatal("Crew manifest missing")
-	}
-	var browserManifest map[string]any
-	if err := json.Unmarshal([]byte(raw), &browserManifest); err != nil {
+	if err := saveWorkspaceBrowserSettings(t.Context(), externalCommandCrewRoot, workspaceBrowserSettings{Mode: "cdp", Port: defaultCDPPort}); err != nil {
 		t.Fatal(err)
 	}
-	capabilities, _ := browserManifest["capabilities"].(map[string]any)
-	if capabilities == nil {
-		capabilities = map[string]any{}
-		browserManifest["capabilities"] = capabilities
-	}
-	capabilities["browser_mode"] = "cdp"
-	encodedBrowserManifest, _ := json.Marshal(browserManifest)
-	f.write(t, externalCommandCrewRoot+"/workflow.json", string(encodedBrowserManifest))
 	upstream, err := url.Parse(workspaceURL)
 	if err != nil {
 		t.Fatal(err)
@@ -372,6 +359,8 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	if got := call(map[string]any{"action": "browser"})["capabilities"].(map[string]any)["effective_mode"]; got != "cdp" {
 		t.Fatalf("reachable CDP summary = %v", got)
 	}
+	// Vault connections are a server feature; leave the local mode used for the CDP probe.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "")
 	connections := call(map[string]any{"action": "connections"})
 	if connections["connections"].(map[string]any)["total"] != float64(1) {
 		t.Fatalf("attached connections = %v", connections)

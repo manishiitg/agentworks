@@ -33,6 +33,10 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 		GroupNames: []string{"default"}, RouteSelections: map[string]string{"parent": "first"}}}
 	b, _ := json.Marshal(m)
 	f.write(t, "Workflow/invoices/workflow.json", string(b))
+	// Timers are stored in schedules.json, not workflow.json (PLAT-871).
+	if err := saveWorkflowTimerActions(t.Context(), "Workflow/invoices", m); err != nil {
+		t.Fatal(err)
+	}
 	ownerToken, owner := f.issue(t, "owner")
 	contributorToken, contributor := f.issue(t, "outsider")
 	claims, err := accessTokenClaims(ownerToken)
@@ -73,11 +77,11 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 	requireRemoteSuccess(t, result, "team enablement")
 	read := func() *WorkflowManifest {
 		t.Helper()
-		var saved WorkflowManifest
-		if err := json.Unmarshal([]byte(f.read(t, "Workflow/invoices/workflow.json")), &saved); err != nil {
-			t.Fatal(err)
+		saved, found, err := ReadWorkflowManifest(t.Context(), "Workflow/invoices")
+		if err != nil || !found {
+			t.Fatalf("read manifest: found=%v err=%v", found, err)
 		}
-		return &saved
+		return saved
 	}
 	saved := read()
 	if saved.Team == nil || saved.Team.Revision != 1 || saved.Team.LeaderID != "owner" || !saved.Team.Contributors[0].ManageSchedules ||
@@ -162,6 +166,11 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 	removed.Access.Owners = []string{"outsider"}
 	body, err := json.Marshal(removed)
 	if err != nil {
+		t.Fatal(err)
+	}
+	// A timer must run as a current owner (PLAT-871). The rest of this test is about team authority only, so
+	// remove the timer before the direct owner edit rather than leave it running as a removed owner.
+	if err := writeProjectSchedules(t.Context(), "Workflow/invoices", nil); err != nil {
 		t.Fatal(err)
 	}
 	f.write(t, "Workflow/invoices/workflow.json", string(body))
