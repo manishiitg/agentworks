@@ -29,8 +29,21 @@ func BoundCrewFileRequest(docs, root, p, destination string, guard *FolderGuard)
 	if err != nil || !bound {
 		return root, p, destination, guard, "", err
 	}
-	if root != roots.Virtual && root != roots.FilesPath() {
+	if root != roots.Virtual {
 		return "", "", "", nil, "", fmt.Errorf("use the issued Crew root")
+	}
+	for _, input := range []string{p, destination} {
+		if input != "" {
+			if _, _, err := crewroot.Resolve(docs, root+"/"+input); err != nil {
+				return "", "", "", nil, "", err
+			}
+		}
+	}
+	isFiles := func(s string) bool {
+		return s == crewroot.FilesSegment || strings.HasPrefix(s, crewroot.FilesSegment+"/")
+	}
+	if destination != "" && (isFiles(p) != isFiles(destination) || (!isFiles(p) && roots.ResourcePathRoot(p) != roots.ResourcePathRoot(destination))) {
+		return "", "", "", nil, "", fmt.Errorf("move files within the same Crew folder")
 	}
 	prefix := ""
 	if root == roots.Virtual && (p == crewroot.FilesSegment || strings.HasPrefix(p, crewroot.FilesSegment+"/")) {
@@ -46,20 +59,7 @@ func BoundCrewFileRequest(docs, root, p, destination string, guard *FolderGuard)
 		destination = strings.TrimPrefix(strings.TrimPrefix(destination, prefix), "/")
 		root = roots.FilesPath()
 	}
-	if root == roots.FilesPath() {
-		for _, input := range []string{p, destination} {
-			if input == "" {
-				continue
-			}
-			if _, _, err := crewroot.Resolve(docs, root+"/"+input); err != nil {
-				return "", "", "", nil, "", err
-			}
-			first := strings.SplitN(strings.ToLower(input), "/", 2)[0]
-			if first == ".agentworks" {
-				return "", "", "", nil, "", fmt.Errorf("use the Crew resource paths for .agentworks files")
-			}
-		}
-	}
+
 	return root, p, destination, guard, prefix, nil
 }
 

@@ -52,7 +52,11 @@ func DiffPatchDocument(c *gin.Context) {
 	filePathParam = utils.SanitizeInputPath(filePathParam, docsDir)
 	log.Printf("[DIFF_PATCH] start path=%s diff_bytes=%d", filePathParam, len(req.Diff))
 
-	filePath := filepath.Join(docsDir, filePathParam)
+	filePath, resolveErr := resolveUserPath(c, filePathParam)
+	if resolveErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": resolveErr.Error()})
+		return
+	}
 
 	// Validate file path for security
 	if !utils.IsValidFilePath(filePath, docsDir) {

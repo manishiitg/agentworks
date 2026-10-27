@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 
@@ -47,7 +48,12 @@ func SearchDocuments(c *gin.Context) {
 	// Build search path
 	var searchPath string
 	if folder != "" {
-		searchPath = filepath.Join(docsDir, folder)
+		var err error
+		searchPath, err = resolveUserPath(c, folder)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 
 		// Validate that the folder exists and is within docs directory
 		if !utils.IsValidFilePath(searchPath, docsDir) {
@@ -338,7 +344,15 @@ func ripgrepRegexSearch(docsDir, query string, limit int, blockedPaths []string)
 
 		// Extract file information
 		filePath := rgResult.Data.Path.Text
+		if !admittedCrewSearchPath(docsDir, filePath) {
+			continue
+		}
 		relPath, _ := filepath.Rel(docsDir, filePath)
+		outputPath := filePath
+		if virtual, _, bound, err := crewroot.Reverse(viper.GetString("docs-dir"), filePath); bound && err == nil {
+			outputPath = virtual
+			relPath = virtual
+		}
 		docID := strings.TrimSuffix(filepath.Base(filePath), ".md")
 
 		// Determine folder
@@ -365,7 +379,7 @@ func ripgrepRegexSearch(docsDir, query string, limit int, blockedPaths []string)
 		result := map[string]interface{}{
 			"id":              docID,
 			"title":           docID,
-			"filepath":        filePath,
+			"filepath":        outputPath,
 			"folder":          folder,
 			"matches":         []string{fmt.Sprintf("line %d: %s", rgResult.Data.LineNumber, rgResult.Data.Lines.Text)},
 			"score":           score,
@@ -416,6 +430,12 @@ func basicRegexSearch(docsDir, query string, limit int, blockedPaths []string) (
 			return err
 		}
 
+		if !admittedCrewSearchPath(docsDir, path) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		// Get relative path for blocking check
 		relPath, _ := filepath.Rel(docsDir, path)
 
@@ -447,6 +467,9 @@ func basicRegexSearch(docsDir, query string, limit int, blockedPaths []string) (
 		contentStr := string(content)
 		// relPath already computed above for blocking check
 
+		if virtual, _, bound, err := crewroot.Reverse(viper.GetString("docs-dir"), path); bound && err == nil {
+			relPath = virtual
+		}
 		// Determine folder
 		folder := ""
 		if dir := filepath.Dir(relPath); dir != "." {
@@ -518,4 +541,23 @@ func calculateScore(lineText, query string, submatches []struct {
 	}
 
 	return score
+}
+
+// Search must not cross from person files into Crew resources (or through a
+// symlink to a different root), including when ripgrep is unavailable.
+func admittedCrewSearchPath(searchRoot, physical string) bool {
+	docs := viper.GetString("docs-dir")
+	issued, _, bound, err := crewroot.Reverse(docs, searchRoot)
+	if err != nil {
+		return false
+	}
+	if !bound {
+		return true
+	}
+	candidate, _, ok, err := crewroot.Reverse(docs, physical)
+	if err != nil || !ok || (candidate != issued && !strings.HasPrefix(candidate, issued+"/")) {
+		return false
+	}
+	_, _, err = crewroot.Resolve(docs, candidate)
+	return err == nil
 }

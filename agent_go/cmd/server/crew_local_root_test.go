@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	ws "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wh "github.com/manishiitg/coding-agent-loop/workspace/handlers"
@@ -55,6 +57,9 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	router.GET("/api/documents", wh.ListDocuments)
 	router.POST("/api/folders", wh.CreateFolder)
 	router.POST("/api/shared-file-write", wh.SharedFileWrite)
+	router.POST("/api/shared-file-lifecycle", wh.SharedFileLifecycle)
+	router.PATCH("/api/patch/*filepath", wh.DiffPatchDocument)
+	router.GET("/api/search", wh.SearchDocuments)
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	t.Setenv("WORKSPACE_API_URL", server.URL)
@@ -101,6 +106,52 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	if w := write("reports/summary.md", "portable resource", "write-resource", guard); w.Code != 200 {
 		t.Fatalf("write resource: %d %s", w.Code, w.Body.String())
 	}
+	// Patch/search must hit the selected directory, never a managed _files shadow.
+	patch := httptest.NewRecorder()
+	data, _ := json.Marshal(map[string]any{"diff": "--- a/patch.txt\n+++ b/patch.txt\n@@ -1 +1 @@\n-before\n+after\n"})
+	if err := os.WriteFile(filepath.Join(project, "patch.txt"), []byte("before\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	router.ServeHTTP(patch, httptest.NewRequest("PATCH", "/api/patch/"+logical+"/_files/patch.txt", bytes.NewReader(data)))
+	if patch.Code != 200 {
+		t.Fatalf("patch selected folder: %d %s", patch.Code, patch.Body.String())
+	}
+	if raw, err := os.ReadFile(filepath.Join(project, "patch.txt")); err != nil || string(raw) != "after\n" {
+		t.Fatal("patch missed selected folder", err)
+	}
+	search := httptest.NewRecorder()
+	router.ServeHTTP(search, httptest.NewRequest("GET", "/api/search?folder="+roots.FilesPath()+"&query=actual&limit=20", nil))
+	if search.Code != 200 || !strings.Contains(search.Body.String(), logical+"/_files/notes.txt") || strings.Contains(search.Body.String(), project) {
+		t.Fatalf("search selected folder: %d %s", search.Code, search.Body.String())
+	}
+	// Private settings writes and subsequent reads agree on the physical root.
+	for i, name := range []string{"product-schedules.json", "triggers/deliveries/new.json"} {
+		if w := write(name, "{}", fmt.Sprintf("private-%d", i), &wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}); w.Code != 200 {
+			t.Fatalf("private write: %d %s", w.Code, w.Body.String())
+		}
+		if raw, err := os.ReadFile(filepath.Join(roots.Private, name)); err != nil || string(raw) != "{}" {
+			t.Fatal("settings write missed private root", err)
+		}
+		if _, err := os.Stat(filepath.Join(roots.Resources, name)); !os.IsNotExist(err) {
+			t.Fatal("private write shadowed in resources", err)
+		}
+	}
+	for _, pair := range [][2]string{{"reports/summary.md", "_files/moved.md"}, {"_files/notes.txt", "reports/moved.md"}, {"reports/summary.md", "product-schedules.json"}, {"product-schedules.json", "reports/moved.json"}} {
+		data, _ := json.Marshal(wf.LifecycleRequest{Root: logical, Path: pair[0], Destination: pair[1], Action: "move", Guard: &wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}})
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("POST", "/api/shared-file-lifecycle", bytes.NewReader(data)))
+		if w.Code == 200 {
+			t.Fatalf("cross-namespace move admitted: %v", pair)
+		}
+	}
+	if _, _, _, _, _, err := wf.BoundCrewFileRequest(docs, roots.FilesPath(), "notes.txt", "", guard); err == nil {
+		t.Fatal("direct _files root lost Crew-relative guard")
+	}
+	for _, p := range []string{"Chats/another-person/chat.json", "_users/another-person/chats/chat.json", "Downloads/report.pdf"} {
+		if actual, err := fsutil.WorkspacePath(docs, p); err != nil || actual != filepath.Join(docs, p) {
+			t.Fatalf("caller namespace rewritten: %s %s %v", p, actual, err)
+		}
+	}
 	readCtx := context.WithValue(ctx, sparkquillFileGuardKey{}, guard)
 	result, err := externalFileRequest(readCtx, wf.Request{Root: logical, Operation: "read", Path: "_files/notes.txt"})
 	if err != nil || result.Content != "actual project file" || result.Path != "_files/notes.txt" {
@@ -135,7 +186,7 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	common.SetSessionFolderGuard(fileSession, []string{roots.FilesPath()}, []string{roots.FilesPath()})
 	t.Cleanup(func() { common.ClearSessionShellConfig(fileSession) })
 	fileCtx := context.WithValue(ctx, common.ChatSessionIDKey, fileSession)
-	cli := ws.NewClient(server.URL)
+	cli := ws.NewClient(server.URL, ws.WithUserID("owner"))
 	bare, err := cli.ReadWorkspaceFile(fileCtx, ws.ReadWorkspaceFileParams{Filepath: "notes.txt"})
 	if err != nil || bare.Content != "actual project file" {
 		t.Fatalf("bare file read: %+v %v", bare, err)
@@ -218,5 +269,16 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	}
 	if !saved["resources/reports/summary.md"] || !saved["settings/product.json"] {
 		t.Fatal("incomplete archive", saved)
+	}
+	// Retry after resources/private state have already been removed, as happens
+	// when publication cleanup failed after the first removal.
+	if err := removeLocalCrew(logical); err != nil {
+		t.Fatalf("removal retry: %v", err)
+	}
+	if err := os.RemoveAll(project); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeLocalCrew(logical); err != nil {
+		t.Fatalf("missing selected folder removal: %v", err)
 	}
 }

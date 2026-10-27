@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
@@ -297,6 +298,14 @@ func StartInteractiveShell(c *gin.Context) {
 		Interactive:       true,
 		ExtraEnv:          extraEnv,
 	}
+	// A bound Crew's generated shell home stays private. Grant only that home,
+	// not the rest of its managed settings, and retain it for later attaches.
+	if _, roots, bound, err := crewroot.Reverse(docsDir, workingDir); err != nil {
+		shellError(c, http.StatusBadRequest, "Crew folder is unavailable")
+		return
+	} else if bound {
+		isolator.WritePaths = append(isolator.WritePaths, filepath.Join(roots.Private, ".sandbox-cache", "home"))
+	}
 	// Attaches run in this same sandbox (interactive_shell_attach.go). The
 	// agent server calls start before every attach, so a restarted service
 	// learns the sandbox of a shell that outlived it.
@@ -316,7 +325,13 @@ func StartInteractiveShell(c *gin.Context) {
 	for _, wp := range req.FolderGuard.WritePaths {
 		physical := wp
 		if !filepath.IsAbs(physical) {
-			physical = filepath.Join(docsDir, physical)
+			if resolved, bound, err := crewroot.Resolve(docsDir, physical); err != nil {
+				continue
+			} else if bound {
+				physical = resolved
+			} else {
+				physical = filepath.Join(docsDir, physical)
+			}
 		}
 		_ = os.MkdirAll(physical, 0o755)
 	}
@@ -512,13 +527,25 @@ func interactiveShellHome(docsDir string, writePaths []string, workingDir string
 	for _, wp := range writePaths {
 		physical := wp
 		if !filepath.IsAbs(physical) {
-			physical = filepath.Join(docsDir, physical)
+			if resolved, bound, err := crewroot.Resolve(docsDir, physical); err != nil {
+				continue
+			} else if bound {
+				physical = resolved
+			} else {
+				physical = filepath.Join(docsDir, physical)
+			}
 		}
 		physical = filepath.Clean(physical)
 		if workingDir == physical || strings.HasPrefix(workingDir+string(filepath.Separator), physical+string(filepath.Separator)) {
 			root = physical
 			break
 		}
+	}
+	// A bound Crew's shell home is generated private state, never a project file.
+	if _, roots, bound, err := crewroot.Reverse(docsDir, workingDir); err != nil {
+		return ""
+	} else if bound {
+		root = roots.Private
 	}
 	home := filepath.Join(root, ".sandbox-cache", "home")
 	if err := os.MkdirAll(filepath.Join(home, ".config"), 0o700); err != nil {

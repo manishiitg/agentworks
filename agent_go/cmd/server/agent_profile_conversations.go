@@ -407,7 +407,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	deleteCtx := context.WithValue(r.Context(), publicationLifecycleKey{}, publicationRoot)
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(actingFor))
 	var deleteErr error
-	if _, bound, rootErr := localCrewRoots(binding.WorkspacePath); rootErr != nil {
+	if _, bound, rootErr := localCrewRemovalRoots(binding.WorkspacePath); rootErr != nil {
 		deleteErr = rootErr
 	} else if bound {
 		deleteErr = removeLocalCrew(binding.WorkspacePath)

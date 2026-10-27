@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,6 +83,31 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 		if err != nil || string(data) != "person's original file" {
 			t.Fatalf("original file changed: %s", name)
 		}
+	}
+	for _, virtual := range []string{"crew/example/_files", "CREW/example/workflow.json", "Crew/EXAMPLE/_files", "Crew/example/_FILES/a"} {
+		if _, _, err := Resolve(docs, virtual); err == nil {
+			t.Fatalf("case alias admitted: %s", virtual)
+		}
+	}
+	for _, root := range []string{project, filepath.Join(project, ".agentworks"), filepath.Join(docs, "Crew", "example")} {
+		if err := CheckRootMutation(docs, strings.ToUpper(root)); err == nil {
+			t.Fatalf("case-alias root deletion admitted: %s", root)
+		}
+	}
+	if err := os.RemoveAll(filepath.Join(project, ".agentworks")); err != nil {
+		t.Fatal(err)
+	}
+	if _, bound, err := LookupForRemoval(docs, "Crew/example"); err != nil || !bound {
+		t.Fatalf("partial removal cannot retry: %v", err)
+	}
+	if _, _, err := Lookup(docs, "Crew/example"); err == nil {
+		t.Fatal("missing resource root granted access")
+	}
+	if err := os.Symlink(outside, filepath.Join(project, ".agentworks")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LookupForRemoval(docs, "Crew/example"); err == nil {
+		t.Fatal("removal accepted replacement symlink")
 	}
 	t.Setenv("LOCAL_MODE", "false")
 	if _, bound, err := Resolve(docs, "Crew/example/_files"); bound || err != nil {

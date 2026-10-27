@@ -14,7 +14,7 @@ import (
 // Removing a binding never removes the selected folder. Retain a plain private
 // backup of its Crew resources before deleting only our .agentworks directory.
 func removeLocalCrew(folder string) error {
-	roots, bound, err := localCrewRoots(folder)
+	roots, bound, err := localCrewRemovalRoots(folder)
 	if err != nil {
 		return err
 	}
@@ -36,6 +36,11 @@ func removeLocalCrew(folder string) error {
 	gz := gzip.NewWriter(file)
 	tw := tar.NewWriter(gz)
 	copyTree := func(base, prefix string) error {
+		if _, err := os.Lstat(base); os.IsNotExist(err) {
+			return nil
+		} else if err != nil {
+			return err
+		}
 		return filepath.WalkDir(base, func(p string, d fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr

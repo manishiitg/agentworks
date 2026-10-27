@@ -44,7 +44,7 @@ func SharedFileWrite(c *gin.Context) {
 		return
 	}
 	var editor *wf.Editor
-	if physical, bound, resolveErr := crewroot.Resolve(docs, req.Root); bound || resolveErr != nil {
+	if physical, bound, resolveErr := crewroot.ScopeRoot(docs, req.Root, req.Path); bound || resolveErr != nil {
 		if resolveErr != nil {
 			c.JSON(400, gin.H{"error": resolveErr.Error()})
 			return

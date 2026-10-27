@@ -71,17 +71,33 @@ func records() (map[string]Record, error) {
 	return doc.Projects, nil
 }
 
-func roots(docs string, r Record) (Roots, error) {
+func roots(docs string, r Record) (Roots, error) { return rootsForOperation(docs, r, false) }
+
+// Removal accepts absent directories after a partial cleanup, but an existing
+// parent must still be the original directory, never a replacement symlink.
+func unchangedDirectory(dir string, allowMissing bool) error {
+	for current := dir; ; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if err == nil {
+			real, evalErr := filepath.EvalSymlinks(current)
+			if evalErr != nil || real != current || !info.IsDir() {
+				return fmt.Errorf("the Crew folder is unavailable or has changed; restore its original folder")
+			}
+			return nil
+		}
+		if !allowMissing || !os.IsNotExist(err) || filepath.Dir(current) == current {
+			return fmt.Errorf("the Crew folder is unavailable or has changed; restore its original folder")
+		}
+	}
+}
+
+func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) {
 	if r.Product != "work" || r.ID == "" || r.Owner == "" || r.Folder == "" || strings.ContainsAny(r.Folder, "/\\") || strings.HasPrefix(r.Folder, ".") || !filepath.IsAbs(r.LocalRoot) {
 		return Roots{}, fmt.Errorf("invalid local Crew binding")
 	}
-	canonical, err := filepath.EvalSymlinks(r.LocalRoot)
-	if err != nil || canonical != filepath.Clean(r.LocalRoot) {
-		return Roots{}, fmt.Errorf("the Crew folder is unavailable or has changed; restore its original folder")
-	}
-	info, err := os.Stat(canonical)
-	if err != nil || !info.IsDir() {
-		return Roots{}, fmt.Errorf("the Crew folder is unavailable")
+	canonical := filepath.Clean(r.LocalRoot)
+	if err := unchangedDirectory(canonical, allowMissing); err != nil {
+		return Roots{}, err
 	}
 	realDocs, err := filepath.EvalSymlinks(docs)
 	if err != nil {
@@ -89,18 +105,24 @@ func roots(docs string, r Record) (Roots, error) {
 	}
 	resource, private := filepath.Join(canonical, ".agentworks"), filepath.Join(realDocs, "Crew", r.Folder)
 	for _, dir := range []string{resource, private} {
-		real, err := filepath.EvalSymlinks(dir)
-		if err != nil || real != dir {
-			return Roots{}, fmt.Errorf("the Crew resource or settings folder is unavailable or has changed")
+		if err := unchangedDirectory(dir, allowMissing); err != nil {
+			return Roots{}, err
 		}
 	}
+
 	return Roots{ID: r.ID, Owner: r.Owner, Virtual: "Crew/" + r.Folder, Files: canonical, Resources: resource, Private: private}, nil
 }
 
 // Lookup accepts the stable virtual project root, never an absolute input.
-func Lookup(docs, virtual string) (Roots, bool, error) {
+func Lookup(docs, virtual string) (Roots, bool, error) { return lookup(docs, virtual, false) }
+
+// LookupForRemoval is deliberately separate from access resolution: an absent
+// tree can be removed from the registry but must never grant file access.
+func LookupForRemoval(docs, virtual string) (Roots, bool, error) { return lookup(docs, virtual, true) }
+
+func lookup(docs, virtual string, allowMissing bool) (Roots, bool, error) {
 	parts := strings.Split(filepath.ToSlash(virtual), "/")
-	if len(parts) < 2 || parts[0] != "Crew" {
+	if len(parts) < 2 || !strings.EqualFold(parts[0], "Crew") {
 		return Roots{}, false, nil
 	}
 	all, err := records()
@@ -109,9 +131,20 @@ func Lookup(docs, virtual string) (Roots, bool, error) {
 	}
 	r, ok := all["work/"+parts[1]]
 	if !ok || r.LocalRoot == "" {
+		for _, candidate := range all {
+			if candidate.LocalRoot != "" && strings.EqualFold(candidate.Folder, parts[1]) {
+				r, ok = candidate, true
+				break
+			}
+		}
+	}
+	if !ok || r.LocalRoot == "" {
 		return Roots{}, false, nil
 	}
-	out, err := roots(docs, r)
+	if parts[0] != "Crew" || parts[1] != r.Folder {
+		return Roots{}, true, fmt.Errorf("use the issued Crew path with its original capitalization")
+	}
+	out, err := rootsForOperation(docs, r, allowMissing)
 	return out, true, err
 }
 
@@ -120,6 +153,7 @@ func (r Roots) FilesPath() string { return r.Virtual + "/" + FilesSegment }
 // Settings keep their managed namespace. All other resource paths resolve
 // under .agentworks, including project skills, memory, functions and outputs.
 func privatePath(rel string) bool {
+	rel = strings.ToLower(rel)
 	if rel == "triggers/deliveries" || strings.HasPrefix(rel, "triggers/deliveries/") {
 		return true
 	}
@@ -197,6 +231,9 @@ func Resolve(docs, virtual string) (string, bool, error) {
 	}
 	rel := strings.TrimPrefix(strings.TrimPrefix(filepath.ToSlash(virtual), r.Virtual), "/")
 	root := r.Resources
+	if first := strings.SplitN(rel, "/", 2)[0]; strings.EqualFold(first, FilesSegment) && first != FilesSegment {
+		return "", true, fmt.Errorf("use the issued _files path")
+	}
 	if rel == FilesSegment || strings.HasPrefix(rel, FilesSegment+"/") {
 		root = r.Files
 		rel = strings.TrimPrefix(strings.TrimPrefix(rel, FilesSegment), "/")
@@ -276,7 +313,7 @@ func CheckRootMutation(docs, physical string) error {
 		}
 		private := filepath.Join(docs, "Crew", rec.Folder)
 		for _, root := range []string{rec.LocalRoot, filepath.Join(rec.LocalRoot, ".agentworks"), private} {
-			if Within(physical, root) {
+			if Within(strings.ToLower(physical), strings.ToLower(root)) {
 				return fmt.Errorf("remove this Crew from its settings to keep your project folder and files")
 			}
 		}
@@ -298,4 +335,20 @@ func PrivateStateFor(physical string) (string, bool, error) {
 		}
 	}
 	return "", false, nil
+}
+
+// ScopeRoot chooses the physical editor root for a validated relative request.
+// Resources and settings share a virtual identity, but never a physical root.
+func ScopeRoot(docs, virtual, rel string) (string, bool, error) {
+	r, bound, err := Lookup(docs, virtual)
+	if err != nil || !bound {
+		return "", bound, err
+	}
+	if virtual == r.FilesPath() {
+		return r.Files, true, nil
+	}
+	if virtual != r.Virtual {
+		return "", true, fmt.Errorf("use the issued Crew root")
+	}
+	return r.ResourcePathRoot(rel), true, nil
 }

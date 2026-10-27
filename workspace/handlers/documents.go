@@ -37,6 +37,9 @@ func getUserID(c *gin.Context) string {
 func resolveUserPath(c *gin.Context, requestedPath string) (string, error) {
 	docsDir := viper.GetString("docs-dir")
 	userID := getUserID(c)
+	// Gin wildcard routes include a leading slash; it is a virtual route,
+	// not an absolute host path. Normalize it before resolving a Crew binding.
+	requestedPath = strings.TrimPrefix(utils.SanitizeInputPath(requestedPath, docsDir), "/")
 	return utils.ResolveUserPath(docsDir, requestedPath, userID)
 }
 

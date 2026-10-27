@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 
@@ -98,7 +99,13 @@ func pathCoveredByWriteGuard(candidate, docsDir string, writePaths []string) boo
 			continue
 		}
 		if !filepath.IsAbs(granted) {
-			granted = filepath.Join(docsDir, granted)
+			if resolved, bound, err := crewroot.Resolve(docsDir, granted); err != nil {
+				continue
+			} else if bound {
+				granted = resolved
+			} else {
+				granted = filepath.Join(docsDir, granted)
+			}
 		}
 		rel, err := filepath.Rel(granted, candidate)
 		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
