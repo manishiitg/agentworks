@@ -54,7 +54,8 @@ export function WorkingStatus({ realStatus, startedAt, lastOutputAt, phase, clas
   }, [startedAt, lastOutputAt, phase?.since])
   // Only server state decides quiet/waiting. The clock uses the same last
   // output/tool time as server inactivity handling, never the phase start.
-  const notYetRunning = phase !== undefined && phase.phase !== 'running' && phase.text !== ''
+  // Any server text wins: a launch not yet running, a retry, or the tool the agent is running right now.
+  const notYetRunning = phase !== undefined && phase.text !== ''
   const resolved = resolveWorkingLabel(realStatus, WORKING_WORDS[reduced ? 0 : word.index])
   const text = notYetRunning ? phase.text : resolved.text
   const accessibleText = notYetRunning ? phase.text : resolved.real ? resolved.text : WORKING_ACCESSIBLE_LABEL

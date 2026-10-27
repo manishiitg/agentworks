@@ -46,6 +46,10 @@ func TestTurnPhaseFollowsTheAgentNotTheClock(t *testing.T) {
 	// A quiet CLI that took the prompt is running even before its first word.
 	add(es, session, "user_message", nil)
 	add(es, session, "streaming_chunk", &mcpevents.StreamingChunkEvent{Source: mcpevents.StreamingChunkSourcePromptAccepted})
+	// Server B 2026-10-27: a 12-minute polling script showed only "Penciling in... since update". A running tool names
+	// what it does until it ends.
+	add(es, session, "tool_call_start", &mcpevents.ToolCallStartEvent{ToolName: "Shell", ToolCallID: "call-1", ToolParams: mcpevents.ToolParams{Arguments: `{"command":"python3 wait_for_deploy.py"}`}})
+	add(es, session, "tool_call_end", &mcpevents.ToolCallEndEvent{ToolCallID: "call-1"})
 
 	// A model family cannot identify the CLI (Cursor can run Claude models). Startup stays neutral.
 	want := []string{
@@ -54,6 +58,8 @@ func TestTurnPhaseFollowsTheAgentNotTheClock(t *testing.T) {
 		"starting: Starting the agent",
 		"running: ",
 		"starting: Starting the agent",
+		"running: ",
+		"running: Running python3 wait_for_deploy.py",
 		"running: ",
 	}
 	got := phaseEvents(es, session)
