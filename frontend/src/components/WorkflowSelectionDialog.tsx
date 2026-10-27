@@ -6,6 +6,7 @@ import { loadProductProjects } from '../platform/chat/productProjects'
 import { WORK_PROFILE_ID, WORK_PROJECTS_ROOT } from '../products/work/workData'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
 import { AGENTWORKS_SUBTITLE, AgentWorksIcon, agentWorksFirst, isOwnAgentWorks } from './ui/AgentWorksIdentity'
+import { isPlainPickerKey } from '../utils/composerReferences'
 
 interface WorkflowItem {
   presetId: string
@@ -23,7 +24,7 @@ const referenceRowKey = (item: WorkflowItem) => item.presetId
 
 interface WorkflowSelectionDialogProps {
   isOpen: boolean
-  onClose: () => void
+  onClose: (reason?: 'delete-trigger') => void
   onSelectWorkflow: (workflow: WorkflowItem) => void
   searchQuery: string
   position: { bottom: number; left: number }
@@ -247,7 +248,12 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
             value={localQuery}
             onChange={e => setLocalQuery(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleEnter() }
+              // The popup owns focus, but an empty search still belongs to
+              // the # in the composer. Let Backspace remove that trigger.
+              if (e.key === 'Backspace' && !e.currentTarget.value && isPlainPickerKey(e.nativeEvent)) {
+                e.preventDefault(); e.stopPropagation(); onCloseRef.current('delete-trigger')
+              }
+              else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleEnter() }
               else if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); moveSelection(1) }
               else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); moveSelection(-1) }
               else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCloseRef.current() }

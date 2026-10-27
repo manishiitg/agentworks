@@ -32,7 +32,8 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
-import api, { agentApi } from '../services/api'
+import api, { agentApi, workflowManifestApi } from '../services/api'
+import * as productProjects from '../platform/chat/productProjects'
 import { setProductCommands, setUserCommands } from '../commands/registry'
 import { MAIN_TERMINAL_FOCUS_EVENT } from '../utils/mainTerminalFocus'
 
@@ -84,6 +85,46 @@ describe('terminal toolbar shared tools', () => {
   afterEach(async () => {
     await act(async () => root?.unmount())
     useProductSurfaceStore.setState({ productSurface: 'agentworks' }); client?.clear(); host?.remove(); setUserCommands([]); setProductCommands([]); vi.restoreAllMocks(); send.mockClear(); stopTurn.mockClear(); newChat.mockClear()
+  })
+  it('removes # from the draft with Backspace in an empty reference search and returns the caret', async () => {
+    vi.spyOn(workflowManifestApi, 'listWorkflowManifests').mockResolvedValue({ success: true, total: 1,
+      workflows: [{ workspace_path: 'Workflow/project', manifest: { id: 'project', label: 'Project' } }],
+    } as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>)
+    vi.spyOn(productProjects, 'loadProductProjects').mockResolvedValue([])
+    await act(async () => {
+      useChatStore.getState().setTabViewMode('A', 'formatted')
+      renderComposer('A', false)
+    })
+    const input = host.querySelector('textarea')!
+    await act(async () => {
+      input.focus()
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'Keep # suffix')
+      input.setSelectionRange(6, 6)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    const search = host.querySelector<HTMLInputElement>('[aria-label="Search references"]')!
+    expect(document.activeElement).toBe(search)
+    // Deleting search text is ordinary editing; only an already empty
+    // search should hand Backspace back to the composer's trigger.
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'project')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true }))
+    })
+    expect(input.value).toBe('Keep # suffix')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, '')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true }))
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+    expect(host.querySelector('[aria-label="Search references"]')).toBeNull()
+    expect(input.value).toBe('Keep  suffix')
+    expect(useChatStore.getState().getTabConfig('A')?.inputText).toBe('Keep  suffix')
+    expect(document.activeElement).toBe(input)
+    expect(input.selectionStart).toBe(5)
+    expect(input.selectionEnd).toBe(5)
+    expect(send).not.toHaveBeenCalled()
   })
   it('shows the Goal Builder model under the server lock and the existing on-open agents menu', async () => {
     const llms = useLLMStore.getState(), presets = useGlobalPresetStore.getState()

@@ -2505,12 +2505,23 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }, 0)
   }, [inputText, hashPosition, workflowSearchQuery, activeTabId, setTabConfig, writeComposerText])
 
-  const handleWorkflowDialogClose = useCallback(() => {
+  const handleWorkflowDialogClose = useCallback((reason?: 'delete-trigger') => {
+    const trigger = composerTriggerRef.current
+    if (reason === 'delete-trigger' && trigger?.kind === '#' && textareaRef.current) {
+      const replacement = replaceComposerTrigger(textareaRef.current.value, trigger, '')
+      writeComposerText(replacement.text)
+      closeComposerPickers()
+      setTimeout(() => {
+        textareaRef.current?.focus()
+        textareaRef.current?.setSelectionRange(replacement.caret, replacement.caret)
+      }, 0)
+      return
+    }
     setShowWorkflowDialog(false)
     setHashPosition(-1)
     setWorkflowSearchQuery('')
     textareaRef.current?.focus()
-  }, [])
+  }, [writeComposerText, closeComposerPickers])
 
   const uploadTargetFolder = useMemo(() => {
     if (agentProfileWorkspace) {
