@@ -76,7 +76,7 @@ const hasExplicitUrlProtocol = (href: string): boolean => /^[a-z][a-z0-9+.-]*:/i
 
 const resolveSafeExternalHref = (href?: string | null): string | null => {
   const trimmed = (href || '').trim()
-  if (/^\/report\?/.test(trimmed)) return new URL(trimmed, window.location.origin).href
+  if (/^\/(?:report\?|d\/[2-9a-hj-km-np-z]{10}$)/.test(trimmed)) return new URL(trimmed, window.location.origin).href
   if (!/^(https?:|mailto:)/i.test(trimmed)) return null
   try {
     const url = new URL(trimmed)

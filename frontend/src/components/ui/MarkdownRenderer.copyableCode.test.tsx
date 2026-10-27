@@ -6,7 +6,7 @@ import { MarkdownRenderer } from './MarkdownRenderer'
 import { ChatElementDisclosureContext } from './ChatElement'
 import { sharedReportLink } from '../../utils/sharedLinks'
 
-const { dashboardPost } = vi.hoisted(() => ({ dashboardPost: vi.fn() }))
+const { dashboardPost, dashboardGet } = vi.hoisted(() => ({ dashboardPost: vi.fn(), dashboardGet: vi.fn() }))
 
 vi.mock('../../stores/useWorkspaceStore', () => ({
   useWorkspaceStore: (selector: (state: Record<string, unknown>) => unknown) => selector({}),
@@ -27,7 +27,7 @@ vi.mock('../../stores/useGlobalPresetStore', () => ({
   useGlobalPresetStore: { getState: () => ({}) },
 }))
 vi.mock('../../services/api', () => ({
-  default: { post: dashboardPost },
+  default: { post: dashboardPost, get: dashboardGet },
   workspaceApi: {},
   agentApi: {},
   getApiBaseUrl: () => '',
@@ -178,16 +178,21 @@ it('opens a known same-server dashboard link in its server-resolved Crew panel (
     dashboard_id: 'overview', project_id: 'resolved-project', product: 'crew',
     workspace: 'Crew/sample', document_path: 'db/reports/managed/overview/index.html', published_revision: '',
   }], has_more: false, next_offset: 1 } })
+  dashboardGet.mockResolvedValue({ data: { root: 'Crew/sample', document_path: 'db/reports/managed/overview/index.html', product: 'crew', project_id: 'resolved-project' } })
   try {
     const href = sharedReportLink(window.location.origin, 'Crew/sample', 'db/reports/managed/overview/index.html')
-    const container = await renderContent(`[Overview](${href})`, true, true)
-    await act(async () => { container.querySelector<HTMLAnchorElement>('a')!.click() })
-    expect(window.location.pathname).toBe('/crew/projects/resolved-project/dashboard')
-    expect(external).not.toHaveBeenCalled()
-    expect(window.localStorage.getItem('report-document:Crew/sample')).toBe('db/reports/managed/overview/index.html')
+    const revisionLink = sharedReportLink(window.location.origin, 'Crew/sample', 'db/reports/managed/overview/' + 'a'.repeat(64) + '/index.html')
+    for (const link of [href, revisionLink, window.location.origin + '/d/23456789ab']) {
+      const container = await renderContent(`[Overview](${link})`, true, true)
+      await act(async () => { container.querySelector<HTMLAnchorElement>('a')!.click() })
+      expect(window.location.pathname).toBe('/crew/projects/resolved-project/dashboard')
+      expect(external).not.toHaveBeenCalled()
+      expect(window.localStorage.getItem('report-document:Crew/sample')).toBe('db/reports/managed/overview/index.html')
+    }
   } finally {
     external.mockRestore()
     dashboardPost.mockReset()
+    dashboardGet.mockReset()
     window.history.replaceState({}, '', original)
     window.localStorage.removeItem('report-document:Crew/sample')
   }

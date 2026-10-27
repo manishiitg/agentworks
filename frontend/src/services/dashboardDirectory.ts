@@ -51,11 +51,14 @@ export async function loadDashboardDirectory(signal?: AbortSignal): Promise<{ da
 
 /** Only report links clicked inside a product workspace use its dashboard panel.
  * The standalone report route remains the entry point for shared links. */
-export function dashboardWorkspaceLink(href: string): { workspace: string; document: string } | null {
+export function dashboardWorkspaceLink(href: string): { workspace: string; document: string } | { code: string } | null {
   if (!currentProductRoute()) return null
   try {
     const url = new URL(href, window.location.href)
-    if (url.origin !== window.location.origin || url.pathname !== '/report') return null
+    if (url.origin !== window.location.origin) return null
+    const short = /^\/d\/([2-9a-hj-km-np-z]{10})$/.exec(url.pathname)
+    if (short) return { code: short[1] }
+    if (url.pathname !== '/report') return null
     const encoded = url.searchParams.get('path')
     if (!encoded) return null
     const workspace = new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(atob(encoded), ch => ch.charCodeAt(0)))
@@ -67,6 +70,11 @@ export async function openDashboardWorkspaceLink(href: string): Promise<boolean>
   const target = dashboardWorkspaceLink(href)
   if (!target) return false
   try {
+    if ('code' in target) {
+      const { data } = await api.get<{ root: string; document_path: string; product: DashboardDirectoryEntry['product']; project_id: string }>(`/api/dashboards/by-code/${encodeURIComponent(target.code)}`)
+      return openResolvedDashboard(data.root, data.document_path, data.product, data.project_id)
+    }
+    const managed = /^db\/reports\/managed\/([^/]+)\/(?:[a-f0-9]{64}\/)?index\.html$/.exec(target.document)
     let offset = 0
     for (;;) {
       // The server resolves the project and checks today's access, including
@@ -74,16 +82,20 @@ export async function openDashboardWorkspaceLink(href: string): Promise<boolean>
       const { data } = await api.post<DashboardPage>('/api/dashboards', {
         action: 'list', workspace: target.workspace, limit: 200, offset,
       })
-      const row = data.dashboards.find(row => row.document_path === target.document && row.project_id)
+      const row = data.dashboards.find(row => row.project_id && (row.document_path === target.document || managed?.[1] === row.dashboard_id))
       if (row?.project_id) {
-        const surface = row.product === 'crew' ? 'work' : row.product === 'workflow' ? 'agentworks' : row.product === 'relay' ? 'relays' : null
-        if (!surface) return false
-        selectReportDocument(target.workspace, row.document_path)
-        openAppProduct({ surface, id: row.project_id, view: surface === 'work' ? 'dashboard' : 'report' })
-        return true
+        return openResolvedDashboard(target.workspace, row.document_path, row.product, row.project_id)
       }
       if (!data.has_more || data.next_offset <= offset) return false
       offset = data.next_offset
     }
   } catch { return false }
+}
+
+function openResolvedDashboard(workspace: string, document: string, product: DashboardDirectoryEntry['product'], project: string): boolean {
+  const surface = product === 'crew' ? 'work' : product === 'workflow' ? 'agentworks' : product === 'relay' ? 'relays' : null
+  if (!surface || !workspace || !document || !project) return false
+  selectReportDocument(workspace, document)
+  openAppProduct({ surface, id: project, view: surface === 'work' ? 'dashboard' : 'report' })
+  return true
 }

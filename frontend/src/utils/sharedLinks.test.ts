@@ -81,6 +81,7 @@ describe('repairLocalAppLink', () => {
   it('moves only local share-page links to the current local origin', () => {
     const current = 'http://127.0.0.1:18743'
     expect(repairLocalAppLink('http://localhost:5173/report?path=V29yaw%3D%3D', current)).toBe('http://127.0.0.1:18743/report?path=V29yaw%3D%3D')
+    expect(repairLocalAppLink('http://localhost:3000/d/23456789ab', current)).toBe(current + '/d/23456789ab')
     expect(repairLocalAppLink('http://localhost:5173/settings', current)).toBe('http://localhost:5173/settings')
     expect(repairLocalAppLink('https://example.com/report?path=x', current)).toBe('https://example.com/report?path=x')
     expect(repairLocalAppLink('http://localhost:5173/report?path=x', 'https://project-a.example.com')).toBe('http://localhost:5173/report?path=x')
