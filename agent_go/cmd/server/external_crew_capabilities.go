@@ -238,8 +238,12 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 		}
 	}
 	if group == "crew_mcp" && action == "discover" {
-		if _, found := placeAttachmentNamed(root, externalArg(args, "name")); !found {
-			externalError(w, 403, "forbidden", "Discovery is limited to this Crew's attached connections.")
+		// Only a Vault app this Crew uses (its "Use all my Vault apps automatically" setting, or its chosen apps). The
+		// retired place attachments (PLAT-856-217) are no longer consulted.
+		selected, chosenOnly, err := projectAppSelection(r.Context(), root)
+		id := strings.TrimPrefix(strings.TrimSpace(externalArg(args, "name")), "vault_")
+		if err != nil || id == "" || !projectVaultAppInUse(selected, chosenOnly, id) {
+			externalError(w, 403, "forbidden", "Discovery is limited to the Vault apps this Crew uses.")
 			return
 		}
 	}

@@ -101,11 +101,14 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	if !strings.Contains(result, "OAuth callback address") {
 		t.Fatal("pending account did not explain sign-in setup")
 	}
-	selected, err := projectSelectedServers(t.Context(), externalCommandCrewRoot)
+	selected, _, err := projectAppSelection(t.Context(), externalCommandCrewRoot)
 	if err != nil || len(selected) != 1 {
 		t.Fatalf("project selection: %v %v", selected, err)
 	}
 	connection := selected[0]
+	// Discovery is limited to the Vault apps this Crew uses (not the retired place attachments).
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "discover", "name": "vault_c-0123456789ab"}, 403)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "discover", "name": connection}, 200)
 	// The saved Vault account can be selected by more than one project.
 	otherRoot := "Crew/another"
 	f.write(t, otherRoot+"/workflow.json", `{"id":"another","created_by":"owner","capabilities":{"selected_servers":["`+connection+`"]}}`)
@@ -114,8 +117,8 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	crewCapabilityHTTP(t, f, crewWriter("other"), "mcp", map[string]any{"action": "remove", "name": connection}, 403)
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "install", "name": "Example", "client_secret": "denied"}, 400)
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "remove", "name": connection}, 200)
-	current, _ := projectSelectedServers(t.Context(), externalCommandCrewRoot)
-	other, _ := projectSelectedServers(t.Context(), otherRoot)
+	current, _, _ := projectAppSelection(t.Context(), externalCommandCrewRoot)
+	other, _, _ := projectAppSelection(t.Context(), otherRoot)
 	if slices.Contains(current, connection) || !slices.Contains(other, connection) || gateway.count() != 1 {
 		t.Fatal("detach changed another product or deleted the saved account")
 	}
@@ -167,7 +170,7 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 		t.Fatal(result)
 	}
 	crewCapabilityHTTP(t, f, claims, "crew_references", map[string]any{"action": "attach", "workspace_path": "Workflow/research"}, 200)
-	if !strings.Contains(f.read(t, externalCommandCrewRoot+"/workflow.json"), "Workflow/research") {
+	if manifest, _, _ := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json"); !strings.Contains(manifest, "Workflow/research") {
 		t.Fatal("reference was not persisted")
 	}
 	crewCapabilityHTTP(t, f, claims, "crew_references", map[string]any{"action": "detach", "workspace_path": "Workflow/research"}, 200)

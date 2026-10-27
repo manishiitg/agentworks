@@ -66,6 +66,8 @@ func newCrewConnectionVaultFixture(t *testing.T) *crewConnectionVaultFixture {
 			c := map[string]any{"ID": id, "id": id, "VaultID": "v-123456", "Label": in["Label"], "Provider": "example", "Status": status, "OAuthServer": oauth, "OAuthCredentialID": id}
 			f.connections[id] = c
 			json.NewEncoder(w).Encode(c)
+		case strings.HasPrefix(r.URL.Path, "/api/vaults/v-123456/connectors/") && strings.HasSuffix(r.URL.Path, "/sync") && r.Method == http.MethodPost:
+			json.NewEncoder(w).Encode(map[string]any{"tools": []any{}})
 		case strings.HasPrefix(r.URL.Path, "/api/admin/connectors/"):
 			id := strings.TrimPrefix(r.URL.Path, "/api/admin/connectors/")
 			c, ok := f.connections[id]
