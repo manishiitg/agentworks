@@ -53,6 +53,15 @@ func TestVaultOwnershipRules(t *testing.T) {
 	if err := s.VaultAttachConnector("alice", "v-2", "c1"); err == nil {
 		t.Fatal("a connection that belongs to another vault must not be taken over")
 	}
+	// Only an owner of the connection's vault may change or remove it (the Vault connector routes check this): a member
+	// of that vault, or the same owner through another vault, cannot. Replaces the retired personal-connection rule that
+	// one person's disconnect never removes another person's login.
+	if err := s.VaultSetMember("alice", "v-1", "bob", true); err != nil {
+		t.Fatal(err)
+	}
+	if !s.VaultConnectorOwnedBy("alice", "v-1", "c1") || s.VaultConnectorOwnedBy("bob", "v-1", "c1") || s.VaultConnectorOwnedBy("alice", "v-2", "c1") {
+		t.Fatal("someone other than the vault's owner could change or remove its connection")
+	}
 	s.AddConnector(Connector{ID: "c2", WorkspaceID: "w1", Provider: "linear", Status: StatusActive})
 	if err := s.VaultAttachConnector("alice", "v-1", "c2"); err == nil {
 		t.Fatal("a platform connection must not be taken over")

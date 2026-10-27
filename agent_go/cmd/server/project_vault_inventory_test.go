@@ -79,7 +79,10 @@ func TestProjectVaultSelectionsUseCanonicalCrewSettings(t *testing.T) {
 	if _, err := defaultProjectOwners().AddCoOwner("work", "test-team", "other"); err != nil {
 		t.Fatal(err)
 	}
-	f.write(t, externalCommandCrewRoot+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_lent"]}}`)
+	// Through the workspace API, which routes a Crew's record to its private folder (PLAT-856-383), as the product does.
+	if err := writeFileToWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_lent"],"chosen_vault_apps_only":true}}`); err != nil {
+		t.Fatal(err)
+	}
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/admin/runtime/servers":
@@ -123,15 +126,15 @@ func TestProjectVaultSelectionsUseCanonicalCrewSettings(t *testing.T) {
 	if err != nil || len(saved) != 0 || !chosenOnly {
 		t.Fatalf("last untick became implicit all: %v, %v, %v", saved, chosenOnly, err)
 	}
+	args["selected"] = true
+	if _, err := f.api.myVaultsOperation(ctx, "other", args); err == nil {
+		t.Fatal("could select an item outside the caller's current panel inventory")
+	}
 	if _, err := f.api.myVaultsOperation(ctx, "other", map[string]any{"operation": "project_select", "workspace_path": externalCommandCrewRoot, "kind": "all_vault_apps", "item_id": "", "selected": true}); err != nil {
 		t.Fatal(err)
 	}
 	if _, chosenOnly, _ = projectAppSelection(ctx, externalCommandCrewRoot); chosenOnly {
 		t.Fatal("Use all my Vault apps automatically did not switch back on")
-	}
-	args["selected"] = true
-	if _, err := f.api.myVaultsOperation(ctx, "other", args); err == nil {
-		t.Fatal("could select an item outside the caller's current panel inventory")
 	}
 	// Project ticks cannot write into a project the caller only uses.
 	if _, err := f.api.projectVaultInventory(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "stranger"}), "stranger", externalCommandCrewRoot); err == nil {

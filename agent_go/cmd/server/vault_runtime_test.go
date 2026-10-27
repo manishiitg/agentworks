@@ -20,49 +20,6 @@ import (
 func personContext(person string) context.Context {
 	return context.WithValue(context.Background(), common.UserIDKey, person)
 }
-func TestPrivateMCPRuntimeDoesNotShareOwnerCredentials(t *testing.T) {
-	withMCPConnectionsRoot(t)
-	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv("AUTH_SECRET", strings.Repeat("a", 32))
-	t.Setenv("CAPLAYER_SERVICE_URL", "")
-	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
-	for _, person := range []string{"alice", "bob"} {
-		if err := setPersonalSecret(person, "KEY", person+"-secret"); err != nil {
-			t.Fatal(err)
-		}
-		_, err := addPlaceMCPServer(person, placeMCPServer{Name: "linear", Catalog: "Linear", URL: "https://example.com/mcp", Transport: "http", Headers: map[string]placeMCPHeader{"Authorization": {Secret: "KEY", Format: "Bearer {}"}}})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	api := &StreamingAPI{}
-	a, err := api.resolveGovernedMCP(personContext("alice"), "alice", "Linear")
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := api.resolveGovernedMCP(personContext("bob"), "bob", "Linear")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if a.Name == b.Name || a.ConnectionSessionID == b.ConnectionSessionID || a.Config.Headers["Authorization"] != "Bearer alice-secret" || b.Config.Headers["Authorization"] != "Bearer bob-secret" {
-		t.Fatal("private credentials or connection pools crossed users")
-	}
-	if _, err := api.resolveGovernedMCP(personContext("bob"), "bob", a.Name); err == nil {
-		t.Fatal("another user's internal server resolved")
-	}
-	names, overrides, _, err := api.scopeAgentMCP(personContext("bob"), "", []string{a.Name}, mcpclient.RuntimeOverrides{a.Name: {Server: &a.Config}})
-	if err != nil || len(overrides) != 0 || len(names) != 1 || names[0] != mcpclient.NoServers {
-		t.Fatal("forged private override admitted")
-	}
-	if err := attachPersonalLoginToPlace("alice", "linear", "Workflow/w"); err != nil {
-		t.Fatal(err)
-	}
-	// A connection added to a place belongs to that place (DECISIONS 2026-10-04): bob, who has access to
-	// Workflow/w, has the one alice attached. His own credentials still never cross to anyone else.
-	if names, _ := attachedMCPServersForRoot(personContext("bob"), "Workflow/w"); len(names) != 1 {
-		t.Fatal("the place's connection was not available to a person with access to the place")
-	}
-}
 func TestVaultDelegationCannotChangeActorOrConnector(t *testing.T) {
 	secret := strings.Repeat("s", 32)
 	valid := vaultDelegation{Person: "alice", Connector: "c1", Expires: time.Now().Add(time.Hour).Unix()}
@@ -158,17 +115,6 @@ func TestVaultRuntimeNamesSeparateUsersSessionsAndCredentialLifetimes(t *testing
 			t.Fatal("new token lifetime would reuse an expired pooled client")
 		}
 	}
-	for _, person := range []string{"alice", "bob"} {
-		_, err := addPlaceMCPServer(person, placeMCPServer{Name: "linear", Catalog: "Linear", URL: "https://example.com/mcp", Transport: "http"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		names, overrides, aliases, err := api.scopeAgentMCP(personContext(person), "", []string{"Linear", placeMCPInternalName(person, "linear")}, nil)
-		want := placeMCPInternalName(person, "linear")
-		if err != nil || len(names) != 2 || names[0] != want || overrides[want].Server == nil || aliases["linear"] != want {
-			t.Fatal("private SDK pool retained a shared catalog name")
-		}
-	}
 }
 
 func TestVaultRuntimeProxyStripsSpoofedServiceIdentity(t *testing.T) {
@@ -244,101 +190,6 @@ func TestCreateCrewMCPAvailabilityUsesCreatorScope(t *testing.T) {
 	}
 	if _, _, err := svc.validateCrewCreationServers(personContext("bob"), "bob", []string{"vault_c1"}); err == nil {
 		t.Fatal("Bob inherited Alice's Vault grant")
-	}
-}
-
-func TestPrivateMCPHTTPDefaultsToCallerAndCannotDisconnectAnotherUser(t *testing.T) {
-	withMCPConnectionsRoot(t)
-	t.Setenv("MULTI_USER_MODE", "true")
-	t.Setenv("MCP_CONFIG_LOCKED", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","is_admin":true},{"id":"bob","username":"bob"}]}`)
-	file := filepath.Join(t.TempDir(), "mcp.json")
-	cfg := &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{"Test": {URL: "https://example.com/mcp", Protocol: mcpclient.ProtocolHTTP}}}
-	if err := mcpclient.SaveConfig(file, cfg); err != nil {
-		t.Fatal(err)
-	}
-	api := &StreamingAPI{mcpConfig: cfg, mcpConfigPath: file, logger: loggerv2.NewNoop()}
-	request := func(person, body string, disconnect bool) *httptest.ResponseRecorder {
-		ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: person, Username: person})
-		r := httptest.NewRequest("POST", "/api/mcp/connect", strings.NewReader(body)).WithContext(ctx)
-		r.Header.Set("X-CapLayer-Actor", "another-user")
-		w := httptest.NewRecorder()
-		if disconnect {
-			api.handleDisconnectServer(w, r)
-		} else {
-			api.handleConnectServer(w, r)
-		}
-		return w
-	}
-	if w := request("alice", `{"server_name":"Test","api_key":"alice-test-key"}`, false); w.Code != 200 {
-		t.Fatalf("private connect: %d %s", w.Code, w.Body.String())
-	}
-	alice, err := api.resolveGovernedMCP(personContext("alice"), "alice", "Test")
-	if err != nil || alice.Config.Headers["Authorization"] != "Bearer alice-test-key" {
-		t.Fatalf("private credential was not saved: %v", err)
-	}
-	if own, _ := listPlaceMCPServers("bob"); len(own) != 0 {
-		t.Fatal("new account was shared with another user")
-	}
-	if w := request("bob", `{"server_name":"Test"}`, true); w.Code != 200 {
-		t.Fatalf("own disconnect: %d", w.Code)
-	}
-	if _, err := api.resolveGovernedMCP(personContext("alice"), "alice", "Test"); err != nil {
-		t.Fatal("Bob's disconnect removed Alice's login")
-	}
-	if w := request("bob", `{"server_name":"Test","scope":"vault"}`, false); w.Code != 403 {
-		t.Fatal("non-admin could modify Vault connections")
-	}
-}
-
-func TestPrivateMCPInventoryAndToolTesterUseCallerWithoutGlobalFallback(t *testing.T) {
-	withMCPConnectionsRoot(t)
-	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv("CAPLAYER_SERVICE_URL", "")
-	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
-	t.Setenv("AUTH_SECRET", strings.Repeat("a", 32))
-	cfg := &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{"Catalog": {URL: "https://example.com/catalog"}}}
-	file := filepath.Join(t.TempDir(), "mcp.json")
-	if err := mcpclient.SaveConfig(file, cfg); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := addPlaceMCPServer("alice", placeMCPServer{Name: "custom", URL: "https://example.com/mcp"}); err != nil {
-		t.Fatal(err)
-	}
-	api := &StreamingAPI{mcpConfig: cfg, mcpConfigPath: file, logger: loggerv2.NewNoop()}
-	inventory := func(person string) []ToolStatus {
-		w := httptest.NewRecorder()
-		api.handleGetTools(w, httptest.NewRequest("GET", "/api/tools", nil).WithContext(personContext(person)))
-		var rows []ToolStatus
-		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &rows) != nil {
-			t.Fatal("could not list caller inventory")
-		}
-		return rows
-	}
-	own := inventory("alice")
-	if len(own) != 2 {
-		t.Fatal("custom private connection missing from inventory")
-	}
-	for _, status := range own {
-		if status.Name == "Catalog" && status.Connection != connectionAvailable {
-			t.Fatal("catalog template advertised as connected")
-		}
-		if status.Name == "custom" && status.Connection != connectionConnected {
-			t.Fatal("own private connection not connected")
-		}
-	}
-	if other := inventory("bob"); len(other) != 1 || other[0].Name != "Catalog" {
-		t.Fatal("private custom metadata leaked to Bob")
-	}
-	resolved, err := api.resolveMCPServer(personContext("alice"), "", "custom", "read")
-	if err != nil || resolved == nil || resolved.Name != placeMCPInternalName("alice", "custom") {
-		t.Fatal("tool tester could not resolve the authenticated owner's connection")
-	}
-	if _, err := api.resolveMCPServer(personContext("bob"), "", "custom", "read"); err == nil {
-		t.Fatal("tool tester accepted someone else's connection")
-	}
-	if _, err := api.resolveMCPServer(personContext("alice"), "unknown-session", "custom", "read"); err == nil {
-		t.Fatal("unknown session fell back to browser identity")
 	}
 }
 
