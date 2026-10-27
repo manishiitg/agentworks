@@ -49,11 +49,13 @@ for package,name in packages.items():
  p=prefix/'bin'/name;p.write_text('#!/bin/sh\\necho 1.2.14\\n'+('exit 47\\n' if name=='codex' and os.environ.get('FAIL_CODEX') else ''));p.chmod(0o755)
 sdks={'@anthropic-ai/claude-agent-sdk':('sdk.mjs','export function query() {}'), '@cursor/sdk':('dist/cjs/index.js','exports.Agent = class Agent {};')}
 for package,(entry,source) in sdks.items():
- if package+'@latest' not in args:continue
+ requested=next((a for a in args if a.startswith(package+'@')),None)
+ if not requested:continue
+ version=requested[len(package)+1:]
  target=prefix/'lib/node_modules'/package
  (target/entry).parent.mkdir(parents=True,exist_ok=True)
  (target/entry).write_text(source)
- (target/'package.json').write_text('{"version":"1.2.14"}')
+ (target/'package.json').write_text('{"version":"'+version+'"}')
 ''')
         self.tool('curl', '''#!/usr/bin/env python3
 import os,pathlib,sys
@@ -87,7 +89,7 @@ sys.exit(0 if hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()==expec
         for name in ('claude', 'codex', 'cursor-agent', 'pi', 'muse', 'agy'):
             self.assertTrue((self.prefix/'bin'/name).is_file(), name)
         calls = (self.root/'npm-calls').read_text().splitlines()
-        for package in ('@anthropic-ai/claude-code@latest', '@openai/codex@latest', '@earendil-works/pi-coding-agent@latest', 'agent-browser@latest', '@anthropic-ai/claude-agent-sdk@latest', '@cursor/sdk@latest'):
+        for package in ('@anthropic-ai/claude-code@latest', '@openai/codex@latest', '@earendil-works/pi-coding-agent@latest', 'agent-browser@latest', '@anthropic-ai/claude-agent-sdk@0.3.311', '@cursor/sdk@1.1.0'):
             self.assertEqual(sum(package in call for call in calls), 1)
         self.assertEqual((self.root/'curl-calls').read_text().count('https://cursor.com/install'), 1)
         self.assertFalse((self.home/'.gemini/antigravity-cli/settings.json').exists())
@@ -134,7 +136,21 @@ sys.exit(0 if hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()==expec
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = (self.root/'npm-calls').read_text().splitlines()[before:]
         self.assertEqual(len(calls), 1)
-        self.assertIn('@cursor/sdk@latest', calls[0])
+        self.assertIn('@cursor/sdk@1.1.0', calls[0])
+
+    def test_wrong_sdk_version_is_repaired_and_broken_export_fails_deploy(self):
+        self.assertEqual(self.run_installer().returncode, 0)
+        metadata = self.prefix/'lib/node_modules/@cursor/sdk/package.json'
+        metadata.write_text('{"version":"999.0.0"}')
+        before = len((self.root/'npm-calls').read_text().splitlines())
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len((self.root/'npm-calls').read_text().splitlines()), before + 1)
+        self.assertEqual(json.loads(metadata.read_text())['version'], '1.1.0')
+        entry = self.prefix/'lib/node_modules/@cursor/sdk/dist/cjs/index.js'
+        entry.write_text('exports.unrelated = true;')
+        self.tool('npm', '#!/bin/sh\nexit 0\n')
+        self.assertNotEqual(self.run_installer().returncode, 0)
 
     def test_existing_healthy_managed_tools_are_adopted_without_installers(self):
         self.assertEqual(self.run_installer().returncode, 0)

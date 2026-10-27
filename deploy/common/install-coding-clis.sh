@@ -93,7 +93,7 @@ install_node_cli pi @earendil-works/pi-coding-agent
 # SDKs share the managed CLI prefix. Adapters resolve beside the PATH entry,
 # then use npm's global root only for installations managed outside the server.
 install_node_sdk() {
-  local package="$1" entry="$2" export_name="$3" version
+  local package="$1" expected_version="$2" entry="$3" export_name="$4" version
   sdk_version() {
     timeout 45 node --input-type=module - "$prefix/lib/node_modules/$package" "$entry" "$export_name" <<'JS'
 import { readFileSync } from 'node:fs';
@@ -104,17 +104,17 @@ if (typeof sdk[exportName] !== 'function') throw new Error(`Missing SDK export $
 console.log(JSON.parse(readFileSync(`${root}/package.json`, 'utf8')).version);
 JS
   }
-  if [[ "$refresh" == 0 ]] && version="$(sdk_version 2>/dev/null)" && [[ -n "$version" ]]; then
+  if [[ "$refresh" == 0 ]] && version="$(sdk_version 2>/dev/null)" && [[ "$version" == "$expected_version" ]]; then
     printf '    %s: %s (unchanged)\n' "$package" "$version"
     return
   fi
   npm install -g --prefix "$prefix" --include=optional \
-    --allow-scripts=@anthropic-ai/claude-agent-sdk,@anthropic-ai/claude-code,esbuild "$package@latest"
-  version="$(sdk_version)" && [[ -n "$version" ]] || { echo "FATAL: $package SDK does not load" >&2; return 1; }
+    --allow-scripts=@anthropic-ai/claude-agent-sdk,@anthropic-ai/claude-code,esbuild "$package@$expected_version"
+  version="$(sdk_version)" && [[ "$version" == "$expected_version" ]] || { echo "FATAL: $package SDK does not load" >&2; return 1; }
   printf '    %s: %s\n' "$package" "$version"
 }
-install_node_sdk @anthropic-ai/claude-agent-sdk sdk.mjs query
-install_node_sdk @cursor/sdk dist/cjs/index.js Agent
+install_node_sdk @anthropic-ai/claude-agent-sdk 0.3.311 sdk.mjs query
+install_node_sdk @cursor/sdk 1.1.0 dist/cjs/index.js Agent
 
 if needs_install cursor-agent; then
   curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 https://cursor.com/install | bash
