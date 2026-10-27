@@ -5805,7 +5805,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if isWorkflowPhase && workflowPhaseFolder != "" && workflowPhaseFolder != "default_workspace" {
 			chatWorkingFolder = workflowPhaseFolder
 		}
-		workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
+		workspace.SetSessionWorkingDir(sessionID, crewFilesPath(chatWorkingFolder))
 		turnProfileID := ""
 		if resolvedProfile != nil {
 			turnProfileID = resolvedProfile.Definition.ID
@@ -5833,6 +5833,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		cliReadPaths := []string{sharedChatWorkingDir}
 		cliWritePaths := []string{sharedChatWorkingDir}
+		chatRuntimeDir := ""
+		if turnProfileID == crewProfileID {
+			chatRuntimeDir, err = crewPrivateRuntimeDir(cliWorkspaceFolder, currentUserID, sessionID, finalProvider, currentUserIsReadOnly)
+			if err != nil {
+				sendError(err.Error(), true)
+				return
+			}
+		}
 		crewReaderCLI := currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID)
 		if currentUserIsReadOnly && (isWorkflowPhase || crewReaderCLI) {
 			cliWritePaths = nil
@@ -5848,6 +5856,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if chatWorkingDir != sharedChatWorkingDir {
 			cliReadPaths = append(cliReadPaths, chatWorkingDir)
 			cliWritePaths = append(cliWritePaths, chatWorkingDir)
+		}
+		if chatRuntimeDir != "" {
+			cliReadPaths = append(cliReadPaths, chatRuntimeDir)
+			cliWritePaths = append(cliWritePaths, chatRuntimeDir)
 		}
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			grantRead, grantWrite, _, _ := workFolderGuardInputs(r.Context())
@@ -6113,6 +6125,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			ClaudeCodeTransport:                    claudeCodeTransport,
 			ForceStructuredCodingAgent:             forceStructuredCodingAgent,
 			CodingAgentWorkingDir:                  chatWorkingDir,
+			CodingAgentRuntimeDir:                  chatRuntimeDir,
 			CLISecurityPolicy:                      cliSecurityPolicy,
 			CodingAgentSecretEnvironment:           codingAgentSecretEnvironment,
 			// A native_shell profile reaches its product APIs over session-scoped
@@ -6493,7 +6506,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						executorWrite = append(executorWrite, brainGrant)
 					}
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, guardWriteRoot, guardReadOnly, executorWrite...)
-					workspace.SetSessionWorkingDir(sessionID, profileRoot)
+					workspace.SetSessionWorkingDir(sessionID, crewFilesPath(profileRoot))
 					if source := publicationSourceForProfile(resolvedProfile); source != "" {
 						workspace.SetSessionWorkingDir(sessionID, source)
 					}
@@ -6507,6 +6520,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 
 					guardRead := append(append(append([]string{profileWrite}, chatHistoryGrants...), profileReadOnly...), crewRefWrite...)
+					if roots, bound, rootErr := localCrewRoots(profileRoot); bound || rootErr != nil {
+						if rootErr != nil {
+							sendError(rootErr.Error(), true)
+							return
+						}
+						guardRead = append(guardRead, roots.FilesPath())
+						if !crewReadOnlyTurn {
+							guardWrite = append(guardWrite, roots.FilesPath())
+						}
+					}
+
 					if brainGrant != "" {
 						guardRead = append(guardRead, brainGrant)
 					}
@@ -6558,7 +6582,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					additionalFolders = append(additionalFolders, perUserChatHistory)
 					additionalFolders = append(additionalFolders, orgPulseWrite)
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, perUserChatsFolder, workflowReadOnlyFolders, additionalFolders...)
-					workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
+					workspace.SetSessionWorkingDir(sessionID, crewFilesPath(chatWorkingFolder))
 					// Other workflows are readable only when attached to this chat
 					// (workflowReadOnlyFolders below), never the whole Workflow/ tree.
 					readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "subagents/"}, additionalFolders...)
@@ -6589,7 +6613,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				extraFolders := append(append([]string{}, extraWriteFolders...), perUserChatHistory)
 				workspaceExecutors = wrapExecutorsWithWorkflowPhaseFolderGuard(workspaceExecutors, effectiveWorkflowPhaseFolderForWrites, workflowReadOnlyFolders, fileContextBlockedWriteFolders, extraFolders...)
 				workspaceExecutors = wrapExecutorsWithReferenceMapNotes(workspaceExecutors, workflowPhaseFolder)
-				workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
+				workspace.SetSessionWorkingDir(sessionID, crewFilesPath(chatWorkingFolder))
 				workflowReadRoot := tokenSessionWorkflowReadRoot(GetUserFromContext(r.Context()), workflowPhaseFolder)
 				readPaths := []string{perUserChatsWrite, perUserChatHistory, "subagents/"}
 				if workflowReadRoot != "" {
@@ -6642,7 +6666,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// those readable for the CLI but outside the agent's write authority.
 			protectManagedCodingAgentProjectionWrites(sessionID, chatWorkingFolder)
 			// PLAT-364: the guard above is final, so the CLI can be confined to it.
-			applyCLILandlock(llmAgent, sessionID, currentUserID, finalProvider, chatWorkingDir, cliSecurityPolicy)
+			applyCLILandlock(llmAgent, sessionID, currentUserID, finalProvider, chatWorkingDir, cliSecurityPolicy, chatRuntimeDir)
 			if resolvedProfile != nil && resolvedProfile.IsolateCodeCLI {
 				log.Printf("[PROJECT_CLI] session=%s actor=%s profile=code mode=%s cwd=%s linked_project=%s", sessionID, sanitizeUserIDForPath(currentUserID), llmAgent.CodingAgentToolsMode(), chatWorkingDir, sharedChatWorkingDir)
 			}
@@ -7143,7 +7167,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Applied %s@%d system prompt", resolvedProfile.Definition.ID, resolvedProfile.Definition.Version)
-				if isProjectProfileID(resolvedProfile.Definition.ID) && chatWorkingDir != sharedChatWorkingDir {
+				if isProjectProfileID(resolvedProfile.Definition.ID) && (chatWorkingDir != sharedChatWorkingDir || chatRuntimeDir != "") {
 					if err := llmAgent.AddInstructions(crewCLIWorkspaceInstructions(chatWorkingFolder)); err != nil {
 						sendError(fmt.Sprintf("Failed to apply Crew runtime instructions: %v", err), true)
 						return

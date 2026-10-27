@@ -181,13 +181,9 @@ func orgDashboardDBPath(rawWorkspacePath string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	dbPath, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(workspacePath), "db", "db.sqlite"))
+	dbPath, err := fsutil.WorkspacePath(root, workspacePath+"/db/db.sqlite")
 	if err != nil {
 		return "", "", err
-	}
-	rel, err := filepath.Rel(root, dbPath)
-	if err != nil || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", "", fmt.Errorf("workspace path escapes workspace root")
 	}
 	return workspacePath, dbPath, nil
 }

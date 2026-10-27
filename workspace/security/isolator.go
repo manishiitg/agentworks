@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/gogconfig"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 )
@@ -136,6 +137,11 @@ func sandboxQuoted(path string) string {
 
 func (iso *Isolator) sandboxPath(path string) string {
 	if !filepath.IsAbs(path) {
+		if resolved, bound, err := crewroot.Resolve(iso.getBaseDir(), strings.TrimSuffix(path, "/")); bound && err == nil {
+			return canonicalPath(resolved)
+		}
+	}
+	if !filepath.IsAbs(path) {
 		path = filepath.Join(iso.getBaseDir(), strings.TrimSuffix(path, "/"))
 	}
 	return canonicalPath(path)
@@ -160,6 +166,9 @@ func (iso *Isolator) sandboxAllowedPath(path string) (string, bool) {
 
 	resolvedPath := path
 	if workspaceScoped {
+		if resolved, bound, err := crewroot.Resolve(baseDir, strings.TrimSuffix(path, "/")); bound || err != nil {
+			return resolved, err == nil
+		}
 		resolvedPath = filepath.Join(baseDir, strings.TrimSuffix(path, "/"))
 	} else {
 		resolvedPath = filepath.Clean(path)

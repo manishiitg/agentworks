@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
@@ -19,6 +20,9 @@ func crewCLIMode(readOnly bool) string {
 }
 
 func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (string, error) {
+	if roots, bound, err := localCrewRoots(folder); bound || err != nil {
+		return roots.Files, err
+	}
 	project := codingAgentWorkspaceWorkingDir(folder)
 	if !isCodingAgentProvider(provider, "") {
 		return project, nil
@@ -41,7 +45,22 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 }
 
 func crewCLIWorkspaceInstructions(folder string) string {
+	if roots, bound, err := localCrewRoots(folder); bound && err == nil {
+		return fmt.Sprintf("\nThis Crew works directly in %q. Native file tools and terminal commands start there. Crew skills, memory, knowledge, functions, database and reports live in .agentworks/; use %q as their resource root. Workspace file tools use %q for the person's files and %q for Crew resources. Keep generated provider configuration and private session data in the supplied private runtime. Preserve the project's existing AGENTS.md, CLAUDE.md and provider configuration.\n", roots.Files, roots.Resources, roots.FilesPath(), roots.Virtual)
+	}
 	return fmt.Sprintf("\nCrew CLI runtime: your current directory holds this session's mode-specific instructions, skills and CLI configuration. `project/` links to the real Crew project at %q. Read project files through `project/<path>`; in Builder, create and edit durable files there too. For commands that require the project as their working directory, cd to that absolute path (`cd <that path> && ...`), never `cd project`, which the CLI's permission check refuses; do not put project outputs in the runtime root. Search and glob tools do not look inside the link unless you name it: always pass `project` (or `project/<folder>`) as the search path, because a search from the current directory finds none of the project's files. Workspace bridge paths remain relative to the real Crew project and must not include `project/`. Keep generated CLI instructions/configuration in the runtime root, preserve the project's own instructions, and obey this session's Run/Builder permissions even when reading project guidance.\n", codingAgentWorkspaceWorkingDir(folder)) + linkedProjectRuntimeSkillInstructions
+}
+
+func crewPrivateRuntimeDir(folder, user, session, provider string, readOnly bool) (string, error) {
+	roots, bound, err := localCrewRoots(folder)
+	if err != nil || !bound {
+		return "", err
+	}
+	state, err := workflowCLIStateRoot()
+	if err != nil {
+		return "", err
+	}
+	return cliruntime.Prepare(state, fsutil.WorkspaceDocsRoot(), user, filepath.Clean(roots.Private), session, provider, crewCLIMode(readOnly))
 }
 
 // applyCrewChatMode runs after target admission, before fingerprinting or skill

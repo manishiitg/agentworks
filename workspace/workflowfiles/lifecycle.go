@@ -45,7 +45,7 @@ func (e *Editor) Lifecycle(ctx context.Context, r LifecycleRequest) error {
 			return fileError(400, "cannot move a path into itself")
 		}
 	}
-	scoped, err := OpenDirectory(e.root, scope, false)
+	scoped, err := e.openScope(scope)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func (e *Editor) Lifecycle(ctx context.Context, r LifecycleRequest) error {
 			return fileError(409, "parent directory changed")
 		}
 	}
-	check, err := OpenDirectory(e.root, scope, false)
+	check, err := e.openScope(scope)
 	if err != nil {
 		return err
 	}

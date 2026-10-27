@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/spf13/viper"
 )
@@ -27,6 +28,10 @@ func lockFileMutation(c *gin.Context, paths ...string) (func(), bool) {
 		if err != nil {
 			log.Printf("[FILE_MUTATION] user_id=%s stage=resolve path=%q error=%q", getUserID(c), input, err.Error())
 			c.JSON(400, gin.H{"error": "invalid mutation path"})
+			return nil, false
+		}
+		if err := crewroot.CheckRootMutation(viper.GetString("docs-dir"), file); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
 			return nil, false
 		}
 		root, err := wf.MutationRoot(viper.GetString("docs-dir"), file)

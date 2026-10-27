@@ -50,6 +50,9 @@ type projectOwnerRecord struct {
 	// BindingRoot pins path-keyed private stores and publication IDs when the
 	// project moves. Only a trusted storage relocation can set it.
 	BindingRoot string `json:"binding_root,omitempty"`
+	// LocalRoot is an immutable create-time binding for a local Crew. It is
+	// never read from product.json or accepted by settings updates.
+	LocalRoot string `json:"local_root,omitempty"`
 	// ProjectID is the manifest's id when the entry was written: informational (the manifest is user-writable).
 	ProjectID string `json:"project_id,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
@@ -233,6 +236,9 @@ func (r *projectOwnerRegistry) Register(rec projectOwnerRecord) error {
 			return false, fmt.Errorf("%w: %s is registered to %q, not %q", errProjectOwnerConflict, key, current.OwnerID, rec.OwnerID)
 		}
 		changed := false
+		if rec.LocalRoot != "" && rec.LocalRoot != current.LocalRoot {
+			return false, fmt.Errorf("a Crew's local folder is chosen only at creation")
+		}
 		if rec.BindingRoot != "" && rec.BindingRoot != current.BindingRoot {
 			return false, fmt.Errorf("private state identity can only be pinned by the storage migration")
 		}

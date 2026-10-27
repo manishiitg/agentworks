@@ -111,6 +111,14 @@ func codingAgentClaudeCodeChatTransport(provider string) string {
 
 func codingAgentWorkspaceWorkingDir(workspaceRelativeFolder string) string {
 	rel := strings.TrimSpace(workspaceRelativeFolder)
+	if roots, bound, err := localCrewRoots(rel); bound && err == nil {
+		if rel == roots.Virtual {
+			return roots.Files
+		}
+		if resolved, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), rel); err == nil {
+			return resolved
+		}
+	}
 	if rel == "" {
 		rel = perUserChatsFolderFor("")
 	}

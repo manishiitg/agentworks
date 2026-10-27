@@ -49,23 +49,23 @@ func failClosedToBridgeOnly(llmAgent *agent.LLMAgentWrapper, sessionID, why stri
 // finalized. A read-only guard path stays read-only for the CLI; blocked paths
 // inside a granted folder are not carved out (Landlock only adds access), and
 // the bridge tools still enforce them.
-func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, personID, provider, workingDir string, base *llmtypes.CLISecurityPolicy) {
+func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, personID, provider, workingDir string, base *llmtypes.CLISecurityPolicy, runtimeDir ...string) {
 	if llmAgent == nil {
 		return
 	}
 	decision, runner, why := decideCLIConfinement(provider, workingDir)
 	switch decision {
 	case cliRunSeatbelt:
-		applyCLISeatbelt(llmAgent, sessionID, provider, workingDir, base)
+		applyCLISeatbelt(llmAgent, sessionID, provider, workingDir, base, runtimeDir...)
 		return
 	case cliRunBridgeOnly:
 		failClosedToBridgeOnly(llmAgent, sessionID, why)
 		return
 	}
-	policy := cliLandlockPolicyForSession(sessionID, provider, workingDir, base)
+	policy := cliLandlockPolicyForSession(sessionID, provider, workingDir, base, runtimeDir...)
 	policy.Mode = llmtypes.CLISecurityModeIsolated
 	policy.LandlockRunner = runner
-	policy.PrivateHome = filepath.Join(workingDir, security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
+	policy.PrivateHome = filepath.Join(cliArtifactRoot(workingDir, runtimeDir...), security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
 	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
 		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Landlock policy could not be attached (%v)", err))
 		return
@@ -125,13 +125,13 @@ func decideCLIConfinement(provider, workingDir string) (cliRunDecision, string, 
 // refused, and opening or scripting other apps is blocked. The CLI keeps its
 // real home (its Keychain login is tied to its config folder); PrivateHome only
 // holds the profile. If the policy cannot be attached the chat runs bridge-only.
-func applyCLISeatbelt(llmAgent *agent.LLMAgentWrapper, sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy) {
-	policy := cliLandlockPolicyForSession(sessionID, provider, workingDir, base)
+func applyCLISeatbelt(llmAgent *agent.LLMAgentWrapper, sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy, runtimeDir ...string) {
+	policy := cliLandlockPolicyForSession(sessionID, provider, workingDir, base, runtimeDir...)
 	policy.Mode = llmtypes.CLISecurityModeIsolated
 	policy.Seatbelt = true
 	policy.LandlockRunner = ""
 	policy.ProtectedRoots = cliSeatbeltProtectedRoots()
-	policy.PrivateHome = filepath.Join(workingDir, security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
+	policy.PrivateHome = filepath.Join(cliArtifactRoot(workingDir, runtimeDir...), security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
 	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
 		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Seatbelt policy could not be attached (%v)", err))
 		return
@@ -164,7 +164,7 @@ var cliLandlockRunner = security.CLILandlockRunner
 // runtime must never promote the linked real project through an initial grant
 // or an attached folder alias. Landlock grants are additive, so dropping that
 // write authority is essential; the link is not a read-only boundary itself.
-func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy) llmtypes.CLISecurityPolicy {
+func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy, runtimeDir ...string) llmtypes.CLISecurityPolicy {
 	policy := llmtypes.CLISecurityPolicy{Provider: provider}
 	if base != nil {
 		policy = base.Clone()
@@ -180,7 +180,7 @@ func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *l
 			}
 		}
 	}
-	policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, workingDir)
+	policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, cliArtifactRoot(workingDir, runtimeDir...))
 	if cfg != nil {
 		for _, rel := range cfg.ReadPaths {
 			if path := cliPolicyPath(rel); path != "" {
@@ -234,4 +234,11 @@ func cliSeatbeltProtectedRoots() []string {
 		}
 	}
 	return roots
+}
+
+func cliArtifactRoot(workingDir string, runtimeDir ...string) string {
+	if len(runtimeDir) > 0 && runtimeDir[0] != "" {
+		return runtimeDir[0]
+	}
+	return workingDir
 }

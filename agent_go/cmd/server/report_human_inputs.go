@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -156,13 +157,9 @@ func reportHumanInputDBPath(workspacePath string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	dbPath, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(normalized), "db", "db.sqlite"))
+	dbPath, err := fsutil.WorkspacePath(root, normalized+"/db/db.sqlite")
 	if err != nil {
 		return "", "", err
-	}
-	rel, err := filepath.Rel(root, dbPath)
-	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
-		return "", "", fmt.Errorf("workspace_path escapes workspace docs root")
 	}
 	return normalized, dbPath, nil
 }

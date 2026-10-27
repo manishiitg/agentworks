@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/spf13/viper"
 )
@@ -31,12 +32,30 @@ func SharedFileWrite(c *gin.Context) {
 		c.AbortWithStatus(503)
 		return
 	}
+	var prefix string
+	req.Root, req.Path, _, req.Guard, prefix, err = wf.BoundCrewFileRequest(docs, req.Root, req.Path, "", req.Guard)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
 	state, err := wf.DefaultStateDir(docs)
 	if err != nil {
 		c.AbortWithStatus(503)
 		return
 	}
-	editor, err := wf.OpenEditor(docs, state)
+	var editor *wf.Editor
+	if physical, bound, resolveErr := crewroot.Resolve(docs, req.Root); bound || resolveErr != nil {
+		if resolveErr != nil {
+			c.JSON(400, gin.H{"error": resolveErr.Error()})
+			return
+		}
+		state, err = wf.DefaultStateDir(physical)
+		if err == nil {
+			editor, err = wf.OpenScopedEditor(physical, state, req.Root)
+		}
+	} else {
+		editor, err = wf.OpenEditor(docs, state)
+	}
 	if err != nil {
 		c.JSON(503, gin.H{"error": "file editor unavailable"})
 		return
@@ -47,6 +66,9 @@ func SharedFileWrite(c *gin.Context) {
 		code, message := wf.ErrorDetails(err)
 		c.JSON(wf.StatusCode(err), gin.H{"error": message, "code": code})
 		return
+	}
+	if prefix != "" {
+		receipt.Path = prefix + "/" + receipt.Path
 	}
 	c.JSON(200, receipt)
 }

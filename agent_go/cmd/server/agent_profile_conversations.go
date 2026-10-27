@@ -406,7 +406,15 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	defer lockPublication("target:" + canonicalCrewWorkspaceRoot(publicationRoot))()
 	deleteCtx := context.WithValue(r.Context(), publicationLifecycleKey{}, publicationRoot)
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(actingFor))
-	if err := client.DeleteFolder(deleteCtx, binding.WorkspacePath); err != nil {
+	var deleteErr error
+	if _, bound, rootErr := localCrewRoots(binding.WorkspacePath); rootErr != nil {
+		deleteErr = rootErr
+	} else if bound {
+		deleteErr = removeLocalCrew(binding.WorkspacePath)
+	} else {
+		deleteErr = client.DeleteFolder(deleteCtx, binding.WorkspacePath)
+	}
+	if err := deleteErr; err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "delete project folder: "+err.Error())
 		return
 	}

@@ -48,6 +48,7 @@ const (
 // crewSpec is the portable Crew definition: create_crew's input, export_crew's
 // output and import_crew's input: identity, selected skills and project files.
 type crewSpec struct {
+	RootPath         string                         `json:"root_path,omitempty"`
 	SchemaVersion    int                            `json:"schema_version,omitempty"`
 	Kind             string                         `json:"kind,omitempty"`
 	Name             string                         `json:"name"`
@@ -509,6 +510,15 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 	if err != nil {
 		return "", err
 	}
+	if spec.RootPath != "" {
+		spec.RootPath, err = validateNewLocalCrewRoot(spec.RootPath)
+		if err != nil {
+			return "", err
+		}
+		if creation.Role != "" {
+			return "", fmt.Errorf("platform Crews use managed folders")
+		}
+	}
 	if spec.Mode != "" && spec.Mode != "dev" && spec.Mode != "cowork" {
 		return "", fmt.Errorf("Choose Dev or Cowork for this Crew")
 	}
@@ -542,7 +552,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
 	}
-	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{Mode: spec.Mode, LLMConfig: spec.LLMConfig, Role: creation.Role}); err != nil {
+	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{Mode: spec.Mode, LLMConfig: spec.LLMConfig, Role: creation.Role, LocalRoot: spec.RootPath}); err != nil {
 		return "", err
 	}
 	if spec.ChatInstructions != "" {
@@ -966,6 +976,7 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"run_destination": map[string]any{"type": "string", "enum": []any{runDestinationCrewChat, runDestinationIsolated}, "description": "crew_chat (default) or isolated."},
 	}}
 	props := map[string]any{
+		"root_path":         str("Local app only, at creation: full path of an existing folder to use directly. Crew resources are kept in its .agentworks folder; existing files and instructions are preserved. Omit for a managed folder."),
 		"schema_version":    map[string]any{"type": "integer"},
 		"kind":              map[string]any{"type": "string", "enum": []any{crewSpecKind}},
 		"name":              map[string]any{"type": "string", "minLength": 1, "maxLength": 60, "description": "Display name."},

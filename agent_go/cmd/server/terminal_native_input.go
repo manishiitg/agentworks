@@ -21,28 +21,28 @@ import (
 // One observer belongs to the provider process, not its browser viewer. It
 // survives view switches and resize reconnects, and stops when tmux exits.
 type nativeTerminalObserver struct {
-	api                                      *StreamingAPI
-	snapshot                                 terminals.Snapshot
-	ready                                    chan struct{}
-	mu                                       sync.Mutex
-	lastAssistant                            string
-	nativeInputs                             bool
-	sessionOwnsCompletion                    bool
-	primed                                   bool
-	initialSubmissions                       uint64
-	fileStamp                                string
-	homeResolved                             bool
-	cachedNativeID                           string
-	runtime                                  claudeNativeTranscriptRuntime
-	home                                     string
-	provider, nativeID, workingDir, path     string
-	users                                    []string
-	nativeCounts, coveredCounts, eventCounts map[string]int
-	previous                                 []builderConversationMessage
-	lastRead                                 time.Time
-	nativeRecords                            *nativeCodingRecordState
-	done                                     chan struct{}
-	stop                                     sync.Once
+	api                                              *StreamingAPI
+	snapshot                                         terminals.Snapshot
+	ready                                            chan struct{}
+	mu                                               sync.Mutex
+	lastAssistant                                    string
+	nativeInputs                                     bool
+	sessionOwnsCompletion                            bool
+	primed                                           bool
+	initialSubmissions                               uint64
+	fileStamp                                        string
+	homeResolved                                     bool
+	cachedNativeID                                   string
+	runtime                                          claudeNativeTranscriptRuntime
+	home                                             string
+	provider, nativeID, workingDir, path, runtimeDir string
+	users                                            []string
+	nativeCounts, coveredCounts, eventCounts         map[string]int
+	previous                                         []builderConversationMessage
+	lastRead                                         time.Time
+	nativeRecords                                    *nativeCodingRecordState
+	done                                             chan struct{}
+	stop                                             sync.Once
 }
 
 func (api *StreamingAPI) ensureNativeTerminalObserver(snapshot terminals.Snapshot) {
@@ -126,7 +126,7 @@ func (o *nativeTerminalObserver) read() ([]builderConversationMessage, string, b
 				o.snapshot.TmuxSession = h.Provider.TmuxSession
 				o.api.nativeObserversMu.Unlock()
 			}
-			o.provider, o.nativeID, o.workingDir = string(h.Provider.Provider), h.Provider.NativeSessionID, h.Provider.WorkingDir
+			o.provider, o.nativeID, o.workingDir, o.runtimeDir = string(h.Provider.Provider), h.Provider.NativeSessionID, h.Provider.WorkingDir, h.Provider.RuntimeDir
 			if !o.homeResolved && h.ConnectionID != "" && owner != "" {
 				if keys, err := o.api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: owner, WorkspacePath: workspace}, o.provider, h.ConnectionID); err == nil {
 					o.home = keys.RuntimeEnvironment["HOME"]
@@ -154,6 +154,7 @@ func (o *nativeTerminalObserver) read() ([]builderConversationMessage, string, b
 						o.nativeID = h.Provider.NativeSessionID
 					}
 					o.workingDir = h.Provider.WorkingDir
+					o.runtimeDir = h.Provider.RuntimeDir
 					if h.ConnectionID != "" {
 						if keys, err := o.api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: owner, WorkspacePath: workspace}, o.provider, h.ConnectionID); err == nil {
 							o.home = keys.RuntimeEnvironment["HOME"]
@@ -174,7 +175,7 @@ func (o *nativeTerminalObserver) read() ([]builderConversationMessage, string, b
 			return nil, o.path, false
 		}
 	}
-	messages, _, path, ok, err := nativeTranscriptMessagesForRuntimeUncapped(o.provider, o.nativeID, o.workingDir, o.home)
+	messages, _, path, ok, err := nativeTranscriptMessagesForRuntimeUncapped(o.provider, o.nativeID, nativeTranscriptWorkingDir(o.provider, o.workingDir, o.runtimeDir), o.home)
 	if ok && err == nil {
 		afterStamp := nativeTerminalFileStamp(path)
 		o.fileStamp = ""

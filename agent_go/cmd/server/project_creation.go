@@ -61,7 +61,7 @@ func (api *StreamingAPI) createdProjectResponse(ctx context.Context, claims *Use
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"workspace_id": profileID + ":" + id, "id": id, "workspace_path": root, "product_manifest": manifest, "runtime_manifest": runtime}, nil
+	return map[string]any{"workspace_id": profileID + ":" + id, "id": id, "workspace_path": root, "files_path": crewFilesPath(root), "product_manifest": manifest, "runtime_manifest": runtime}, nil
 }
 
 func (api *StreamingAPI) handleCreateAgentProfileProject(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +116,7 @@ func (api *StreamingAPI) projectCreationTool(profileID, userID, sessionID string
 			return "", fmt.Errorf("open your Crew's Builder to create another Crew")
 		}
 		ctx = context.WithValue(ctx, UserContextKey, claims)
-		spec := crewSpec{Name: externalArg(args, "name"), Icon: externalArg(args, "icon"), Purpose: externalArg(args, "description")}
+		spec := crewSpec{Name: externalArg(args, "name"), Icon: externalArg(args, "icon"), Purpose: externalArg(args, "description"), RootPath: externalArg(args, "root_path")}
 		id, setupErr := api.createWorkspaceFromSpec(ctx, claims, profileID, spec, false)
 		if setupErr != nil && id == "" {
 			return "", fmt.Errorf("%s", externalCrewCreateError(id, setupErr))

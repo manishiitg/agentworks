@@ -22,6 +22,7 @@ type nativeCostState struct {
 	Provider          string                      `json:"provider"`
 	NativeID          string                      `json:"native_id"`
 	WorkingDir        string                      `json:"working_dir"`
+	RuntimeDir        string                      `json:"runtime_dir,omitempty"`
 	Path              string                      `json:"path"`
 	Floor             time.Time                   `json:"floor"`
 	PendingForeground bool                        `json:"pending_foreground"`
@@ -183,7 +184,8 @@ func (a *nativeCostAccountant) bind() error {
 			}
 			a.bindNativeID(h.Provider.NativeSessionID)
 			a.state.WorkingDir = h.Provider.WorkingDir
-			o := nativeTerminalObserver{api: a.api, provider: a.state.Provider, nativeID: a.state.NativeID, workingDir: a.state.WorkingDir}
+			a.state.RuntimeDir = h.Provider.RuntimeDir
+			o := nativeTerminalObserver{api: a.api, provider: a.state.Provider, nativeID: a.state.NativeID, workingDir: a.state.WorkingDir, runtimeDir: a.state.RuntimeDir}
 			a.state.Path = o.nativeRecordPath()
 		}
 	}
@@ -196,7 +198,7 @@ func (a *nativeCostAccountant) bindNativeID(id string) {
 	if a.state.NativeID != "" && a.state.NativeID != id {
 		a.state.Contexts = map[string]costledger.Entry{}
 		a.state.Floor = a.state.Current.Timestamp
-		a.state.Path, a.state.WorkingDir = "", ""
+		a.state.Path, a.state.WorkingDir, a.state.RuntimeDir = "", "", ""
 		a.state.PendingForeground = false
 		a.usage = nativeusage.PrivateUsage{}
 		a.stamp = ""

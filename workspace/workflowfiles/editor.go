@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/filemetadata"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	_ "modernc.org/sqlite"
@@ -76,10 +77,36 @@ type editRecord struct {
 // outside that root. SQLite supplies a cross-process lock; durable JSON records
 // are written before mutation, allowing interrupted requests to be reconciled.
 type Editor struct {
+	issuedScope  string
 	rootIdentity string
 	root         *os.Root
 	state        *os.Root
 	db           *sql.DB
+}
+
+// OpenScopedEditor binds one trusted virtual project identity to its resolved
+// physical root. Requests still name the virtual scope; no request can select
+// a sibling directory or substitute another root.
+func OpenScopedEditor(rootDir, stateDir, virtualScope string) (*Editor, error) {
+	clean, err := CleanRelative(virtualScope)
+	if err != nil || clean == "." {
+		return nil, fmt.Errorf("project scope required")
+	}
+	e, err := OpenEditor(rootDir, stateDir)
+	if err == nil {
+		e.issuedScope = clean
+	}
+	return e, err
+}
+
+func (e *Editor) openScope(scope string) (*os.Root, error) {
+	if e.issuedScope != "" {
+		if scope != e.issuedScope {
+			return nil, fileError(403, "project scope does not match")
+		}
+		return e.root.OpenRoot(".")
+	}
+	return OpenDirectory(e.root, scope, false)
 }
 
 func OpenEditor(rootDir, stateDir string) (*Editor, error) {
@@ -445,7 +472,7 @@ func (e *Editor) WriteWithPatch(ctx context.Context, r WriteRequest, patch func(
 	fingerprintData, _ := json.Marshal(r)
 	fingerprint := Revision(append([]byte(e.rootIdentity), fingerprintData...))
 	key := Revision([]byte(r.Actor+"\x00"+scope+"\x00"+r.RequestID)) + ".json"
-	scoped, err := OpenDirectory(e.root, scope, false)
+	scoped, err := e.openScope(scope)
 	if err != nil {
 		return WriteReceipt{}, err
 	}
@@ -543,7 +570,7 @@ func (e *Editor) WriteWithPatch(ctx context.Context, r WriteRequest, patch func(
 		return WriteReceipt{}, err
 	}
 	// Detect replacement or relocation of the authorized scope itself.
-	checkScope, err := OpenDirectory(e.root, scope, false)
+	checkScope, err := e.openScope(scope)
 	if err != nil {
 		return WriteReceipt{}, err
 	}
@@ -592,7 +619,7 @@ func (e *Editor) ReadBytes(scope, p string, g *FolderGuard) ([]byte, error) {
 	if Private(p) || !g.Allows(p, false) {
 		return nil, fileError(403, "file is private or outside read grants")
 	}
-	root, err := OpenDirectory(e.root, scope, false)
+	root, err := e.openScope(scope)
 	if err != nil {
 		return nil, err
 	}
@@ -662,6 +689,12 @@ func DefaultStateDir(rootDir string) (string, error) {
 			return "", fmt.Errorf("AGENTWORKS_STATE_ROOT must be absolute")
 		}
 		return filepath.Join(configured, "file-edits", Revision([]byte(rootDir))), nil
+	}
+	if state, bound, err := crewroot.PrivateStateFor(rootDir); bound || err != nil {
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(state, "file-edits", Revision([]byte(rootDir))), nil
 	}
 	return filepath.Join(filepath.Dir(rootDir), "."+filepath.Base(rootDir)+"-file-edits"), nil
 }

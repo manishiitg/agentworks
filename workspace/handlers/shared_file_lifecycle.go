@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/spf13/viper"
 )
@@ -26,12 +27,30 @@ func SharedFileLifecycle(c *gin.Context) {
 		c.AbortWithStatus(503)
 		return
 	}
+	var prefix string
+	req.Root, req.Path, req.Destination, req.Guard, prefix, err = wf.BoundCrewFileRequest(docs, req.Root, req.Path, req.Destination, req.Guard)
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
 	state, err := wf.DefaultStateDir(docs)
 	if err != nil {
 		c.AbortWithStatus(503)
 		return
 	}
-	editor, err := wf.OpenEditor(docs, state)
+	var editor *wf.Editor
+	if physical, bound, resolveErr := crewroot.Resolve(docs, req.Root); bound || resolveErr != nil {
+		if resolveErr != nil {
+			c.JSON(400, gin.H{"error": resolveErr.Error()})
+			return
+		}
+		state, err = wf.DefaultStateDir(physical)
+		if err == nil {
+			editor, err = wf.OpenScopedEditor(physical, state, req.Root)
+		}
+	} else {
+		editor, err = wf.OpenEditor(docs, state)
+	}
 	if err != nil {
 		c.AbortWithStatus(503)
 		return
@@ -41,6 +60,12 @@ func SharedFileLifecycle(c *gin.Context) {
 		code, message := wf.ErrorDetails(err)
 		c.JSON(wf.StatusCode(err), gin.H{"error": message, "code": code})
 		return
+	}
+	if prefix != "" {
+		req.Path = prefix + "/" + req.Path
+		if req.Destination != "" {
+			req.Destination = prefix + "/" + req.Destination
+		}
 	}
 	c.JSON(200, gin.H{"action": req.Action, "path": req.Path, "destination": req.Destination, "applied": true})
 }

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"os"
 	"path/filepath"
@@ -17,8 +18,12 @@ func IsValidFilePath(filePath, docsDir string) bool {
 		return false
 	}
 	cleanDocsDir, err := filepath.Abs(filepath.Clean(docsDir))
-	if err != nil || !pathWithinRoot(cleanPath, cleanDocsDir) {
+	if err != nil {
 		return false
+	}
+	if !pathWithinRoot(cleanPath, cleanDocsDir) {
+		_, _, bound, err := crewroot.Reverse(cleanDocsDir, cleanPath)
+		return bound && err == nil
 	}
 
 	resolvedRoot, err := filepath.EvalSymlinks(cleanDocsDir)
@@ -104,6 +109,9 @@ func pathWithinRoot(candidate, root string) bool {
 // GetRelativePath converts a full internal path to a relative path for API responses
 // This ensures that internal directory structure (like /app/workspace-docs) is never exposed
 func GetRelativePath(fullPath, docsDir string) (string, error) {
+	if virtual, _, bound, err := crewroot.Reverse(docsDir, fullPath); bound || err != nil {
+		return virtual, err
+	}
 	return filepath.Rel(docsDir, fullPath)
 }
 
@@ -199,6 +207,9 @@ func IsPerUserPath(relPath string) bool {
 // Shared folders (skills/, Workflow/, etc.) resolve to docsDir directly.
 func ResolveUserPath(docsDir, requestedPath, userID string) (string, error) {
 	cleanPath := SanitizeInputPath(requestedPath, docsDir)
+	if resolved, bound, err := crewroot.Resolve(docsDir, cleanPath); bound || err != nil {
+		return resolved, err
+	}
 
 	var resolved string
 	if IsPerUserPath(cleanPath) {
@@ -249,7 +260,7 @@ func userTreeOwner(root, path string) (string, bool) {
 // ConvertToUserRelativePath converts an absolute path back to a relative path
 // for API responses. Strips _users/{userID}/ prefix so callers see clean paths.
 func ConvertToUserRelativePath(fullPath, docsDir string) (string, error) {
-	rel, err := filepath.Rel(docsDir, fullPath)
+	rel, err := GetRelativePath(fullPath, docsDir)
 	if err != nil {
 		return "", err
 	}

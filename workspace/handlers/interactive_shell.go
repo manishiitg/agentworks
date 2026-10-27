@@ -259,8 +259,8 @@ func StartInteractiveShell(c *gin.Context) {
 	docsDir := viper.GetString("docs-dir")
 	workingDir := docsDir
 	if req.WorkingDirectory != "" {
-		full := filepath.Join(docsDir, utils.SanitizeInputPath(req.WorkingDirectory, docsDir))
-		if !utils.IsValidFilePath(full, docsDir) {
+		full, resolveErr := utils.ResolveUserPath(docsDir, req.WorkingDirectory, getUserID(c))
+		if resolveErr != nil || !utils.IsValidFilePath(full, docsDir) {
 			shellError(c, http.StatusBadRequest, "Working directory must be within the workspace")
 			return
 		}

@@ -32,6 +32,12 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	}
 	parts := strings.Split(rootPath, "/")
 	crewRoot := externalIsCrewRoot(rootPath)
+	localRoots, localBound, localErr := localCrewRoots(rootPath)
+	if localErr != nil {
+		return wf.Result{}, localErr
+	}
+	localFiles := localBound && rootPath == localRoots.FilesPath()
+	crewRoot = crewRoot || localFiles
 	// A Flow release folder is allowed only when it maps back to a live Flow;
 	// callers pass it after checking access to that Flow.
 	releaseRoot := len(parts) == 4 && parts[0] == "Workflow" && parts[1] == relayReleasesFolder
@@ -58,9 +64,20 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	if err := wf.ValidateGlob(req.Glob); err != nil {
 		return wf.Result{}, &externalUpstreamError{400, err.Error()}
 	}
+	var filesPrefix string
+	req.Root, p, _, guard, filesPrefix, err = wf.BoundCrewFileRequest(getWorkspaceDocsAbsPath(), rootPath, p, "", guard)
+	if err != nil {
+		return wf.Result{}, err
+	}
+	req.Path = p
+	rootPath = req.Root
+	localFiles = localBound && rootPath == localRoots.FilesPath()
+	if filesPrefix != "" {
+		ctx = context.WithValue(ctx, sparkquillFileGuardKey{}, guard)
+	}
 	var sourcePublication *publishedProject
 	skipPublication, _ := ctx.Value(publicationFileReadKey{}).(bool)
-	if crewRoot && !skipPublication {
+	if crewRoot && !skipPublication && !localBound {
 		pub, e := readPublishedProject(ctx, rootPath)
 		if e != nil {
 			return wf.Result{}, e
@@ -92,25 +109,37 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		}
 	}
 
-	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			result, err := externalRemoteFileRequest(ctx, req, p)
-			return externalGuardReadResult(result, err, guard)
+	var root *os.Root
+	if localBound {
+		physical := localRoots.ResourcePathRoot(p)
+		if localFiles {
+			physical = localRoots.Files
 		}
-		return wf.Result{}, err
-	}
-	defer base.Close()
-	if err := externalNoSymlinks(base, rootPath); err != nil {
-		return wf.Result{}, err
-	}
-	root, err := base.OpenRoot(rootPath)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			result, err := externalRemoteFileRequest(ctx, req, p)
-			return externalGuardReadResult(result, err, guard)
+		root, err = os.OpenRoot(physical)
+		if err != nil {
+			return wf.Result{}, err
 		}
-		return wf.Result{}, err
+	} else {
+		base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				result, err := externalRemoteFileRequest(ctx, req, p)
+				return externalGuardReadResult(result, err, guard)
+			}
+			return wf.Result{}, err
+		}
+		defer base.Close()
+		if err := externalNoSymlinks(base, rootPath); err != nil {
+			return wf.Result{}, err
+		}
+		root, err = base.OpenRoot(rootPath)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				result, err := externalRemoteFileRequest(ctx, req, p)
+				return externalGuardReadResult(result, err, guard)
+			}
+			return wf.Result{}, err
+		}
 	}
 	defer root.Close()
 	if err := externalNoSymlinks(root, p); err != nil {
@@ -123,9 +152,12 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	switch req.Operation {
 	case "read":
 		file, err := externalScopedFile(root, p)
+		if filesPrefix != "" {
+			file.Path = path.Join(filesPrefix, file.Path)
+		}
 		return wf.Result{File: file}, err
 	case "list", "search":
-		result, err := externalListFiles(ctx, root, p, req, crewRoot)
+		result, err := externalListFiles(ctx, root, p, req, crewRoot, localFiles)
 		if err == nil && sourcePublication != nil && rootPath == sourcePublication.sourceRoot() {
 			runtimeReq := req
 			// Agent runtime paths have their own namespace. An ordinary Crew's
@@ -153,7 +185,17 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 			}
 			result.Truncated = result.Truncated || live.Truncated
 		}
-		return externalGuardReadResult(result, err, guard)
+		if err == nil && localBound && !localFiles && p == "." && req.Offset == 0 && guard.AllowsTraversal("_files") {
+			result.Entries = append(result.Entries, wf.Entry{Path: "_files", Type: "folder"})
+		}
+		result, err = externalGuardReadResult(result, err, guard)
+		if filesPrefix != "" {
+			result.File.Path = path.Join(filesPrefix, result.File.Path)
+			for i := range result.Entries {
+				result.Entries[i].Path = path.Join(filesPrefix, result.Entries[i].Path)
+			}
+		}
+		return result, err
 	default:
 		return wf.Result{}, &externalUpstreamError{400, "unsupported file operation"}
 	}
@@ -254,7 +296,7 @@ func externalPathPrivate(crewRoot bool, p string) bool {
 	return !private && p != "." && p != ""
 }
 
-func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Request, crewRoot bool) (wf.Result, error) {
+func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Request, crewRoot bool, localFiles bool) (wf.Result, error) {
 	guard := externalFileGuard(ctx, crewRoot)
 	if req.Limit <= 0 {
 		req.Limit = 100
@@ -302,6 +344,12 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 		}
 		if walkErr != nil {
 			return walkErr
+		}
+		if localFiles && (strings.EqualFold(name, ".agentworks") || strings.HasPrefix(strings.ToLower(name), ".agentworks/")) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		}
 		if d.Type()&os.ModeSymlink != 0 || externalFilePathPrivate(ctx, crewRoot, name) || shared && (name == "knowledgebase" || strings.HasPrefix(name, "knowledgebase/")) {
 			if d.IsDir() {

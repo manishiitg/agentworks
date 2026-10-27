@@ -122,7 +122,7 @@ func runtimeConfigForLLMAgent(config LLMAgentConfig, model llmtypes.Model, trace
 		MCP: mcpagent.MCPRuntimeConfig{
 			SessionID: config.SessionID, UserID: config.UserID, RuntimeOverrides: config.RuntimeOverrides,
 		},
-		Workspace: mcpagent.WorkspaceRuntimeConfig{CodingAgentWorkingDir: config.CodingAgentWorkingDir},
+		Workspace: mcpagent.WorkspaceRuntimeConfig{CodingAgentWorkingDir: config.CodingAgentWorkingDir, CodingAgentRuntimeDir: config.CodingAgentRuntimeDir},
 		Observability: mcpagent.ObservabilityRuntimeConfig{
 			Logger: logger, Tracers: []observability.Tracer{tracer}, TraceID: traceID,
 			// GenerationStreamingEvents true is what makes clean per-token content
@@ -339,6 +339,7 @@ type LLMAgentConfig struct {
 	// workflow step config AgentConfigs.Transport == "structured".
 	ForceStructuredCodingAgent   bool
 	CodingAgentWorkingDir        string
+	CodingAgentRuntimeDir        string
 	CLISecurityPolicy            *llmtypes.CLISecurityPolicy
 	CodingAgentSecretEnvironment map[string]string
 	// CodexNetworkAccess lets codex's sandboxed native shell reach the network.
@@ -421,7 +422,11 @@ func NewLLMAgentWrapperWithTrace(ctx context.Context, config LLMAgentConfig, tra
 	config.AdmitTool = func(name string) bool {
 		return selection.AllowsTool(name) && (admit == nil || admit(name))
 	}
-	if err := productpolicy.CleanupProjected(config.CodingAgentWorkingDir); err != nil {
+	artifactDir := config.CodingAgentWorkingDir
+	if config.CodingAgentRuntimeDir != "" {
+		artifactDir = config.CodingAgentRuntimeDir
+	}
+	if err := productpolicy.CleanupProjected(artifactDir); err != nil {
 		return nil, err
 	}
 	if common.ScopeAgentMCP != nil {

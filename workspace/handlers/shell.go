@@ -112,10 +112,10 @@ func ExecuteShellCommand(c *gin.Context) {
 		sanitizedDir := utils.SanitizeInputPath(req.WorkingDirectory, docsDir)
 
 		// Build full path
-		fullWorkingDir := filepath.Join(docsDir, sanitizedDir)
+		fullWorkingDir, resolveErr := utils.ResolveUserPath(docsDir, sanitizedDir, resolvedUserID)
 
 		// Validate path is within docs-dir boundary
-		if !utils.IsValidFilePath(fullWorkingDir, docsDir) {
+		if resolveErr != nil || !utils.IsValidFilePath(fullWorkingDir, docsDir) {
 			c.JSON(http.StatusBadRequest, models.APIResponse[any]{
 				Success: false,
 				Message: "Invalid working directory",
@@ -126,7 +126,7 @@ func ExecuteShellCommand(c *gin.Context) {
 
 		// Check if directory exists (for FolderGuard mode, the logical path may exist
 		// as a mount point artifact from previous isolator runs)
-		if info, err := os.Stat(fullWorkingDir); os.IsNotExist(err) || !info.IsDir() {
+		if info, err := os.Stat(fullWorkingDir); err != nil || !info.IsDir() {
 			c.JSON(http.StatusBadRequest, models.APIResponse[any]{
 				Success: false,
 				Message: "Working directory does not exist",

@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -33,6 +34,9 @@ func projectDiscoveryRootIsCurrent(root string) bool {
 }
 
 func validateProjectStorageRecord(rec projectOwnerRecord) error {
+	if rec.LocalRoot != "" && (!filepath.IsAbs(rec.LocalRoot) || filepath.Clean(rec.LocalRoot) != rec.LocalRoot || rec.ProjectID == "") {
+		return fmt.Errorf("invalid local Crew folder binding")
+	}
 	if rec.Product != crewProfileID || rec.Folder == "" || strings.ContainsAny(rec.Folder, "/\\") || strings.HasPrefix(rec.Folder, ".") {
 		return fmt.Errorf("invalid Crew identity")
 	}
@@ -108,6 +112,9 @@ func checkProjectStorageClaim(records map[string]projectOwnerRecord, key string,
 		}
 		if root == projectStorageRoot(other) {
 			return fmt.Errorf("project location is already registered")
+		}
+		if rec.LocalRoot != "" && other.LocalRoot != "" && (crewLocalPathsOverlap(rec.LocalRoot, other.LocalRoot)) {
+			return fmt.Errorf("this folder overlaps another Crew's folder; choose a separate folder")
 		}
 		for _, alias := range rec.Aliases {
 			if alias == projectStorageRoot(other) || registryListHas(other.Aliases, alias) {

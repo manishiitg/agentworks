@@ -444,6 +444,7 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 					"name":        map[string]interface{}{"type": "string", "maxLength": workIdentityNameLimit, "description": "Crew display name and project title."},
 					"icon":        map[string]interface{}{"type": "string", "maxLength": workIdentityIconLimit, "description": "One emoji or short glyph. Omit to use the name's initial."},
 					"description": map[string]interface{}{"type": "string", "maxLength": 1000, "description": "Optional short purpose for this Crew."},
+					"root_path":   map[string]interface{}{"type": "string", "description": "Local app only: full path to an existing folder the person chose for this new Crew. Files stay there; Crew resources use .agentworks."},
 				},
 				"required": []string{"name"},
 			},

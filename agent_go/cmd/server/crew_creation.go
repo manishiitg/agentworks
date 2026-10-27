@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
@@ -408,6 +410,7 @@ func ensureCrewCreationTrigger(ctx context.Context, svc *ProjectActionDispatcher
 // writeCrewCreationManifests writes a fresh crew's runtime manifest, identity
 // manifest, and code folder, mirroring the UI creation layout.
 type crewCreationOptions struct {
+	LocalRoot string
 	Mode      string
 	LLMConfig *workflowtypes.PresetLLMConfig
 	// Role is set only by the server (agentWorksRole); a spec never supplies it.
@@ -484,7 +487,28 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	folder := filepath.Base(filepath.ToSlash(workspacePath))
 	_, registeredBefore := registry.Lookup(profileID, folder)
 	registeredHere := false
+	if settings.LocalRoot != "" {
+		// Only create our new resource directory; never adopt or write into a
+		// pre-existing .agentworks tree or the person's ordinary files.
+		if err := os.Mkdir(filepath.Join(settings.LocalRoot, ".agentworks"), 0700); err != nil {
+			return CreatedCrew{}, fmt.Errorf("create Crew resources: %w", err)
+		}
+		if err := os.MkdirAll(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath)), 0700); err != nil {
+			_ = os.Remove(filepath.Join(settings.LocalRoot, ".agentworks"))
+			return CreatedCrew{}, err
+		}
+	}
 	defer func() {
+		if createErr != nil && settings.LocalRoot != "" {
+			// These two directories were created by this attempt. The chosen
+			// folder itself and all its pre-existing files are never removed.
+			_ = os.RemoveAll(filepath.Join(settings.LocalRoot, ".agentworks"))
+			_ = os.RemoveAll(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath)))
+			if registeredHere {
+				_ = registry.Remove(profileID, folder)
+			}
+			return
+		}
 		if createErr == nil || !registeredHere {
 			return
 		}
@@ -500,6 +524,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	if err := defaultProjectOwners().Register(projectOwnerRecord{
 		Product: profileID, Folder: filepath.Base(filepath.ToSlash(workspacePath)), OwnerID: userID, ProjectID: crewID,
 		CanonicalRoot: workspacePath,
+		LocalRoot:     settings.LocalRoot,
 		Shared:        workspaceref.MustParse(filepath.ToSlash(workspacePath)).IsShared(), Private: true, AudienceConfigured: true,
 	}); err != nil {
 		// A project in its owner's tree still resolves by its path; one at the shared root would belong to

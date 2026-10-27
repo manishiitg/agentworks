@@ -46,6 +46,7 @@ type sharedProjectSummary struct {
 	// to scope chat history; file reads for shared crews go through the
 	// mediated endpoints, never through the proxy with this path.
 	WorkspacePath        string                     `json:"workspace_path"`
+	FilesPath            string                     `json:"files_path"`
 	CreatedAt            string                     `json:"created_at,omitempty"`
 	UpdatedAt            string                     `json:"updated_at,omitempty"`
 	LLM                  *sharedProjectLLM          `json:"llm,omitempty"`
@@ -199,10 +200,11 @@ func (api *StreamingAPI) handleListOwnSharedProjects(w http.ResponseWriter, r *h
 		ID            string `json:"id"`
 		Title         string `json:"title,omitempty"`
 		WorkspacePath string `json:"workspace_path"`
+		FilesPath     string `json:"files_path"`
 	}
 	rows := []ownProject{}
 	for _, project := range listProjectsForOwner(r.Context(), claims, profile, claims.UserID, false) {
-		rows = append(rows, ownProject{ID: project.ID, Title: project.Title, WorkspacePath: project.WorkspacePath})
+		rows = append(rows, ownProject{ID: project.ID, Title: project.Title, WorkspacePath: project.WorkspacePath, FilesPath: crewFilesPath(project.WorkspacePath)})
 	}
 
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].WorkspacePath < rows[j].WorkspacePath })
@@ -378,6 +380,7 @@ func summarizeSharedProject(ctx context.Context, claims *UserClaims, ownerID, pr
 		OwnerID:         ownerID,
 		OwnerUsername:   crewOwnerDisplayName(ownerID),
 		WorkspacePath:   projectRoot,
+		FilesPath:       crewFilesPath(projectRoot),
 		CreatedAt:       strings.TrimSpace(manifest.CreatedAt),
 		UpdatedAt:       strings.TrimSpace(manifest.UpdatedAt),
 		SelectedServers: append([]string(nil), manifest.Capabilities.SelectedServers...),

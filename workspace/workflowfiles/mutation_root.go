@@ -2,6 +2,7 @@ package workflowfiles
 
 import (
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"path/filepath"
 	"strings"
 
@@ -15,11 +16,17 @@ func MutationRoot(docs, file string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if _, roots, bound, err := crewroot.Reverse(docs, file); bound || err != nil {
+		return roots.Files, err
+	}
 	rel, err := filepath.Rel(docs, file)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("mutation outside documents")
 	}
 	slash := filepath.ToSlash(rel)
+	if roots, bound, err := crewroot.Lookup(docs, slash); bound || err != nil {
+		return roots.Files, err
+	}
 	prefix := "" // the "_users/<owner>/" in front of an owner's path is kept in the result
 	if ref, ok := workspaceref.Parse(slash); ok && ref.HasOwner() && ref.Logical() != "" {
 		prefix = strings.TrimSuffix(slash, ref.Logical())

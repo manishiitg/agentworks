@@ -34,6 +34,7 @@ type claudeNativeTranscriptRuntime struct {
 			Provider        string `json:"provider"`
 			NativeSessionID string `json:"native_session_id"`
 			WorkingDir      string `json:"working_dir"`
+			RuntimeDir      string `json:"runtime_dir,omitempty"`
 		} `json:"provider"`
 	} `json:"agent_session_handle"`
 }
@@ -650,4 +651,13 @@ func extractClaudeTranscriptText(content json.RawMessage) string {
 		}
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+// Pi records live below its private runtime; other providers key native history
+// by the real cwd or the selected account's private home.
+func nativeTranscriptWorkingDir(provider, workingDir, runtimeDir string) string {
+	if provider == "pi-cli" && runtimeDir != "" {
+		return runtimeDir
+	}
+	return workingDir
 }

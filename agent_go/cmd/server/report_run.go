@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacepathpolicy"
@@ -279,8 +280,16 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	}
 	sourceCode := publishedReadPath(r.Context(), filepath.ToSlash(filepath.Join(workspacePath, "code")))
 	sourceScript := publishedReadPath(r.Context(), filepath.ToSlash(filepath.Join(workspacePath, script)))
-	codeRoot := filepath.Join(docsRoot, filepath.FromSlash(sourceCode))
-	absScript := filepath.Join(docsRoot, filepath.FromSlash(sourceScript))
+	codeRoot, err := fsutil.WorkspacePath(docsRoot, sourceCode)
+	if err != nil {
+		http.Error(w, "Crew code folder is unavailable", http.StatusBadRequest)
+		return
+	}
+	absScript, err := fsutil.WorkspacePath(docsRoot, sourceScript)
+	if err != nil {
+		http.Error(w, "Script path is unavailable", http.StatusBadRequest)
+		return
+	}
 	// A symlink must not lead a report outside its own code/ folder.
 	if resolved, err := filepath.EvalSymlinks(absScript); err != nil {
 		writeReportRunResult(w, http.StatusNotFound, map[string]any{"success": false, "error": fmt.Sprintf("script %s not found", script)})
@@ -320,8 +329,15 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 	}
 	docsRoot := workshop.GetPromptDocsRoot()
 	cacheRel := filepath.ToSlash(filepath.Join(workspacePath, reportRunCacheFolder))
-	if _, err := workspacepathpolicy.Materialize(docsRoot, []workspacepathpolicy.Grant{{
-		Path: cacheRel, Lifecycle: workspacepathpolicy.PlatformManaged, Kind: workspacepathpolicy.Directory, Mode: 0o700,
+	policyRoot, policyCache := docsRoot, cacheRel
+	if roots, bound, err := localCrewRoots(workspacePath); bound || err != nil {
+		if err != nil {
+			return map[string]any{"success": false, "error": err.Error()}
+		}
+		policyRoot, policyCache = roots.Resources, reportRunCacheFolder
+	}
+	if _, err := workspacepathpolicy.Materialize(policyRoot, []workspacepathpolicy.Grant{{
+		Path: policyCache, Lifecycle: workspacepathpolicy.PlatformManaged, Kind: workspacepathpolicy.Directory, Mode: 0o700,
 	}}); err != nil {
 		return map[string]any{"success": false, "error": "could not prepare the report cache folder"}
 	}
@@ -345,18 +361,30 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 		}
 	}
 	env["REPORT_ARGS"] = args
-	env["REPORT_CACHE_DIR"] = filepath.Join(docsRoot, cacheRel)
+	env["REPORT_CACHE_DIR"], err = fsutil.WorkspacePath(docsRoot, cacheRel)
+	if err != nil {
+		return map[string]any{"success": false, "error": err.Error()}
+	}
 	// The workspace service copies the DB into STEP_OUTPUT_DIR/.runtime and
 	// points DB_PATH at that snapshot, so a report never writes the store.
 	env["STEP_OUTPUT_DIR"] = env["REPORT_CACHE_DIR"]
-	env["DB_PATH"] = filepath.Join(docsRoot, workspacePath, "db", "db.sqlite")
+	env["DB_PATH"], err = fsutil.WorkspacePath(docsRoot, workspacePath+"/db/db.sqlite")
+	if err != nil {
+		return map[string]any{"success": false, "error": err.Error()}
+	}
 	_, dbErr := os.Stat(env["DB_PATH"])
 	if dbErr != nil {
 		delete(env, "DB_PATH")
 	}
 	codePath := publishedReadPath(ctx, filepath.ToSlash(filepath.Join(workspacePath, "code")))
-	env["WORKFLOW_CODE_ROOT"] = filepath.Join(docsRoot, filepath.FromSlash(codePath))
-	deps := filepath.Join(docsRoot, workspacePath, ".sandbox-cache", "python-packages")
+	env["WORKFLOW_CODE_ROOT"], err = fsutil.WorkspacePath(docsRoot, codePath)
+	if err != nil {
+		return map[string]any{"success": false, "error": err.Error()}
+	}
+	deps, err := fsutil.WorkspacePath(docsRoot, workspacePath+"/.sandbox-cache/python-packages")
+	if err != nil {
+		return map[string]any{"success": false, "error": err.Error()}
+	}
 	env["WORKFLOW_CODE_DEPS"] = deps
 	env["PYTHONPATH"] = env["WORKFLOW_CODE_ROOT"] + string(filepath.ListSeparator) + deps
 	env["PYTHONDONTWRITEBYTECODE"] = "1"

@@ -32,6 +32,7 @@ type nativeCodingRecordState struct {
 	OwnerID     string                           `json:"owner_id"`
 	Workspace   string                           `json:"workspace"`
 	WorkingDir  string                           `json:"working_dir"`
+	RuntimeDir  string                           `json:"runtime_dir,omitempty"`
 	TmuxSession string                           `json:"tmux_session,omitempty"`
 	Provider    string                           `json:"provider"`
 	NativeID    string                           `json:"native_session_id"`
@@ -114,7 +115,7 @@ func (api *StreamingAPI) restoreNativeCodingObservers() {
 		api.sessionWorkspaceFolders[saved.SessionID] = saved.Workspace
 		api.sessionWorkspaceMu.Unlock()
 		saved.filename = file
-		o := &nativeTerminalObserver{api: api, snapshot: terminals.Snapshot{SessionID: saved.SessionID, TmuxSession: saved.TmuxSession, ExecutionKind: "main_agent", CreatedAt: saved.BaselineAt}, provider: saved.Provider, nativeID: saved.NativeID, workingDir: saved.WorkingDir, nativeRecords: &saved, ready: make(chan struct{}), done: make(chan struct{}), nativeCounts: map[string]int{}, coveredCounts: map[string]int{}, eventCounts: map[string]int{}}
+		o := &nativeTerminalObserver{api: api, snapshot: terminals.Snapshot{SessionID: saved.SessionID, TmuxSession: saved.TmuxSession, ExecutionKind: "main_agent", CreatedAt: saved.BaselineAt}, provider: saved.Provider, nativeID: saved.NativeID, workingDir: saved.WorkingDir, runtimeDir: saved.RuntimeDir, nativeRecords: &saved, ready: make(chan struct{}), done: make(chan struct{}), nativeCounts: map[string]int{}, coveredCounts: map[string]int{}, eventCounts: map[string]int{}}
 		api.nativeObserversMu.Lock()
 		if api.nativeObservers == nil {
 			api.nativeObservers = map[string]*nativeTerminalObserver{}
@@ -166,9 +167,12 @@ func (o *nativeTerminalObserver) nativeRecordPath() string {
 		p, _ := resolveCodexNativeTranscriptPath(o.nativeID, home)
 		return p
 	case "cursor-cli":
+		if o.runtimeDir != "" {
+			return filepath.Join(o.runtimeDir, "cursor-config", "acp-sessions", o.nativeID, "store.db")
+		}
 		return cursorcli.NativeRecordPath(o.workingDir, o.nativeID, home)
 	case "pi-cli":
-		return picli.NativeRecordPath(o.workingDir, o.nativeID)
+		return picli.NativeRecordPath(nativeTranscriptWorkingDir(o.provider, o.workingDir, o.runtimeDir), o.nativeID)
 	case "muse-cli":
 		dataHome := ""
 		if home != "" {
@@ -213,7 +217,7 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		o.api.sessionWorkspaceMu.RLock()
 		workspace := o.api.sessionWorkspaceFolders[o.snapshot.SessionID]
 		o.api.sessionWorkspaceMu.RUnlock()
-		s = &nativeCodingRecordState{SessionID: o.snapshot.SessionID, OwnerID: o.api.eventStore.GetSessionOwner(o.snapshot.SessionID), Workspace: workspace, WorkingDir: o.workingDir, TmuxSession: o.snapshot.TmuxSession, Provider: o.provider, NativeID: o.nativeID, Path: path, BaselineAt: baseline, Work: map[string]llmtypes.NativeRecord{}, Turns: map[string]llmtypes.NativeRecord{}, filename: filepath.Join(root, "native-records", fmt.Sprintf("%x.json", key[:20]))}
+		s = &nativeCodingRecordState{SessionID: o.snapshot.SessionID, OwnerID: o.api.eventStore.GetSessionOwner(o.snapshot.SessionID), Workspace: workspace, WorkingDir: o.workingDir, RuntimeDir: o.runtimeDir, TmuxSession: o.snapshot.TmuxSession, Provider: o.provider, NativeID: o.nativeID, Path: path, BaselineAt: baseline, Work: map[string]llmtypes.NativeRecord{}, Turns: map[string]llmtypes.NativeRecord{}, filename: filepath.Join(root, "native-records", fmt.Sprintf("%x.json", key[:20]))}
 		if raw, err := os.ReadFile(s.filename); err == nil {
 			var saved nativeCodingRecordState
 			if json.Unmarshal(raw, &saved) == nil && saved.Provider == s.Provider && saved.NativeID == s.NativeID && saved.Path == path {
