@@ -262,7 +262,6 @@ export default function ChildPlatformChat({ activityDir, title, childName, theme
             onNewChat={() => {}}
             landingContent={null}
             contentRenderer={ChildConversation}
-            inputVariant="product"
             hideRuntimeStatus
             composerPlaceholder={`Type your answer or ask for help, ${childName || 'friend'}…`}
           />

@@ -500,11 +500,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // being a profile-backed product; coupling runtime behavior to
   // surfaceVariant made it ignore the project's saved provider/model.
   const isProductProfile = Boolean(agentProfileId)
-  // SparkQuill's own composer groups controls the opposite way from every
-  // other product: attachment/commands on the left, mic+send on the
-  // right. Scoped to its two profiles so AgentWorks and Video Studio keep
-  // the default arrangement.
-  const sparkQuillComposerLayout = agentProfileId === 'sparkquill' || agentProfileId === 'sparkquill-child'
+  const isSparkQuillProfile = agentProfileId === 'sparkquill' || agentProfileId === 'sparkquill-child'
   // Mic control. On a product surface it is gated per-profile
   // (agentprofiles.RuntimeCapabilities.Voice) rather than hardcoded to any one
   // product — see agentProfileCapabilities.ts. AgentWorks' own composer has no
@@ -2894,7 +2890,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     )
   }
 
-  const compactComposerActions = agentProfileId === 'work' || isWorkflowPhaseChat
+  const compactComposerActions = agentProfileId === 'work' || isWorkflowPhaseChat || isSparkQuillProfile
   const nativeTerminalTools = terminalViewSelected && liveTerminalOffered && !!activeTabId
   const openAttachmentPicker = () => {
     closeComposerPickers()
@@ -2915,7 +2911,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       onStateChange={handleMicStateChange}
       bannerHost={micBannerHost}
       shortcutEnabled={!scopedTabId}
-      autoSubmitOnStop={sparkQuillComposerLayout ? () => readVoiceAutoSendPref() : undefined}
+      autoSubmitOnStop={isSparkQuillProfile ? () => readVoiceAutoSendPref() : undefined}
     />
   )
   const attachmentEl = (
@@ -2939,7 +2935,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        <p>{isUploadingFiles ? 'Uploading files...' : isProductSurface ? 'Attach files to this project' : `Upload file(s) to ${uploadTargetFolder}`}</p>
+        <p>{isUploadingFiles ? 'Uploading files...' : isProductProfile ? 'Attach files to this chat' : `Upload file(s) to ${uploadTargetFolder}`}</p>
       </TooltipContent>
     </Tooltip>
   )

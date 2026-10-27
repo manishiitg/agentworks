@@ -1238,15 +1238,8 @@ audio.fl-viewer-media { background: var(--surface); }
 .fl-update-notice { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 90; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid #bcd8f5; border-radius: 999px; background: #eaf5ff; color: #2f6db0; font: inherit; font-weight: 700; font-size: var(--text-secondary); box-shadow: 0 6px 18px rgba(13, 35, 76, .12); cursor: pointer; }
 .fl-update-notice:hover { background: #dcedfc; }
 
-/* ===== Chat surfaces (2026-09-06 design notes) =====
-   The composer sits on the chat's own background — no separate band, rule or
-   shadow above it; the family read that as a second colour. Parent and child
-   chats are different rooms: cream for the parent, the child's soft blue, and
-   the composer follows through --background. The Progress map fills the
-   drawer edge to edge instead of sitting in an 8px inset. */
-.fl-platform-chat [data-product-chat-input] { background: transparent; border-top: 0; box-shadow: none; }
-/* Send button: brand yellow instead of ChatInput's default violet, for both
-   parent and child chats — dark ink icon, not white, for contrast on yellow. */
+/* Parent and child use the main ChatInput layout with SparkQuill's theme.
+   Keep the yellow send accent and dark ink in both rooms. */
 .fl-platform-chat [data-testid="chat-submit-button"] { background: var(--yellow); color: var(--heading); }
 .fl-platform-chat [data-testid="chat-submit-button"]:hover { background: var(--yellow); filter: brightness(1.04); }
 .fl-child-chat { background: var(--blue-soft); }
