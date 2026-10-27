@@ -26,6 +26,8 @@ import { agentApi, resetSessionId, getSessionId, COMPACT_CHAT_OLDER_PAGE_MESSAGE
 import type { PollingEvent, ExtendedLLMConfiguration, SSEEventMessage, SSEStatusMessage, ExecutionOptions } from '../services/api-types'
 import type { AgentMode } from '../stores/types'
 import { ChatInput } from './ChatInput'
+import { ComposerPendingPrompt } from './chat/ComposerPendingPrompt'
+import { codingAgentQuestionCards, withClosedQuestions } from '../utils/codingAgentQuestions'
 import { StepInspectionTabs } from './chat/StepInspectionTabs'
 import { SessionStopButton } from './SessionStopButton'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
@@ -427,6 +429,8 @@ export interface ChatContentRendererProps {
   onRetryLastMessage?: () => void | Promise<void>
   /** Submit a message on the user's behalf (a suggestion pill, a button in the transcript). */
   onSubmitQuery?: (query: string) => void
+  /** The pending prompt with this ID is answered above the message box, not in the transcript. */
+  dockedCodingAgentQuestion?: string
 }
 
 function prepareQueuedChatMessages(queuedMessages: string[]) {
@@ -925,6 +929,14 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     (item) => item.codingAgentQuestion?.state === 'pending' && !closedCodingAgentQuestions.has(item.codingAgentQuestion.promptId),
   ), [activeTabIsStreaming, transcriptEvents, closedCodingAgentQuestions])
 
+  // The newest pending approval or question while the turn runs, docked above the message box
+  // until it is answered (PLAT-746-158 A1). Same rule as the composer lock above.
+  const dockedCodingAgentPrompt = useMemo(() => {
+    if (!activeTabIsStreaming) return undefined
+    const prompts = [...codingAgentQuestionCards(transcriptEvents).cards.values()].map(prompt => withClosedQuestions(prompt, closedCodingAgentQuestions))
+    return prompts.reverse().find(prompt => prompt.state === 'pending')
+  }, [activeTabIsStreaming, transcriptEvents, closedCodingAgentQuestions])
+
   // Primitive deps only: the tab object changes on every composer keystroke,
   // and this callback is a prop of the memoized transcript.
   const answerCodingAgentQuestion = useCallback(async (provider: string, promptId: string, answers: Array<{ id: string; selectedLabels: string[]; otherText?: string }>, auto?: boolean) => {
@@ -1078,6 +1090,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const observingOwnerTab = activeTab?.metadata?.agentProfileTabCanWrite === false
   const isReadOnlyRunView =
     !!activeTab?.metadata?.isScheduledRun || !!activeTab?.metadata?.isBotRun
+  // Dock a pending prompt above the message box only where this person can answer it and the
+  // message box is shown; otherwise it stays in the transcript as before.
+  const canDockCodingAgentQuestion = !hideInput && !observingOwnerTab && !activeTab?.metadata?.isViewOnly && !isReadOnlyRunView
   // A resumed conversation becomes active when its durable events arrive. Never
   // use a tmux snapshot as a proxy for product-visible chat content.
   const hasRestoredLiveContent = activeTabHasRestoredConversation && hasConversationContent
@@ -3639,6 +3654,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             onRetryLastMessage={retryLastProductMessage}
             onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
             closedCodingAgentQuestions={closedCodingAgentQuestions}
+            dockedCodingAgentQuestion={canDockCodingAgentQuestion ? dockedCodingAgentPrompt?.promptId : undefined}
             onSubmitQuery={(query) => submitQueryWithQuery(query)}
           />
         ) : selectedModeCategory === 'workflow' ? (
@@ -3694,6 +3710,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     terminal={null}
                     onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
                     closedCodingAgentQuestions={closedCodingAgentQuestions}
+            dockedCodingAgentQuestion={canDockCodingAgentQuestion ? dockedCodingAgentPrompt?.promptId : undefined}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
                     streamingText={activeStreamingText}
@@ -3762,6 +3779,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     terminal={null}
                     onAnswerCodingAgentQuestion={activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView ? undefined : answerCodingAgentQuestion}
                     closedCodingAgentQuestions={closedCodingAgentQuestions}
+            dockedCodingAgentQuestion={canDockCodingAgentQuestion ? dockedCodingAgentPrompt?.promptId : undefined}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
                     streamingText={activeStreamingText}
@@ -3782,6 +3800,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       {/* Input Area - completely isolated from event updates. AgentWorks keeps
           this composer on its one persistent Chat; Workshop history is rendered
           outside ChatArea and therefore never exposes a composer. */}
+      {canDockCodingAgentQuestion && dockedCodingAgentPrompt && (
+        <ComposerPendingPrompt key={`${dockedCodingAgentPrompt.provider}:${dockedCodingAgentPrompt.promptId}`} prompt={dockedCodingAgentPrompt} onAnswer={answerCodingAgentQuestion} />
+      )}
       {!hideInput && !observingOwnerTab && (
         <ChatInput
           // The composer owns tab-local draft, paste, upload and submit state.

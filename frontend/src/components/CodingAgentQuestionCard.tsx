@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { Check, CheckCircle2, CircleHelp } from 'lucide-react'
 import type { CodingAgentQuestionPrompt, CodingAgentChoiceAnswer } from '../utils/codingAgentQuestions'
 
-export function CodingAgentQuestionCard({ prompt, onAnswer }: {
+export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
   prompt: CodingAgentQuestionPrompt
   onAnswer?: (provider: string, promptId: string, answers: CodingAgentChoiceAnswer[], auto?: boolean) => Promise<void>
+  // The pending prompt is answered in the panel above the message box (ComposerPendingPrompt).
+  docked?: boolean
 }) {
   const [selected, setSelected] = useState<Record<string, string[]>>({})
   const [useOther, setUseOther] = useState<Record<string, boolean>>({})
@@ -38,6 +40,11 @@ export function CodingAgentQuestionCard({ prompt, onAnswer }: {
       setError(cause instanceof Error ? cause.message : 'Could not submit this choice. Refresh and try again.')
       setSubmitting(false)
     }
+  }
+  if (pending && docked) {
+    return <p className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="coding-agent-question-docked">
+      <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" /> Waiting for your answer just above the message box.
+    </p>
   }
   return <section className="w-full rounded-xl border border-border bg-card p-3 text-card-foreground" data-testid="coding-agent-question-card">
     <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">

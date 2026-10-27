@@ -26,6 +26,8 @@ export interface CleanConversationSurfaceProps {
   onAnswerCodingAgentQuestion?: (provider: string, promptId: string, answers: Array<{ id: string; selectedLabels: string[]; otherText?: string }>, auto?: boolean) => Promise<void>
   // Prompts the server no longer holds (after a restart): shown closed instead of answerable.
   closedCodingAgentQuestions?: ReadonlySet<string>
+  // The pending prompt with this ID is shown above the message box instead of here.
+  dockedCodingAgentQuestion?: string
 }
 
 function messageTime(timestamp?: string): string {
@@ -123,6 +125,7 @@ export function CleanConversationSurface({
   onRetryLastMessage,
   onAnswerCodingAgentQuestion,
   closedCodingAgentQuestions,
+  dockedCodingAgentQuestion,
 }: CleanConversationSurfaceProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [retryingFailureId, setRetryingFailureId] = useState<string | null>(null)
@@ -204,7 +207,7 @@ export function CleanConversationSurface({
             <span className="whitespace-pre-wrap break-words">{item.content}</span>
           </div>
         ) : item.role === 'question' && item.codingAgentQuestion ? (
-          <CodingAgentQuestionCard prompt={withClosedQuestions(item.codingAgentQuestion, closedCodingAgentQuestions)} onAnswer={onAnswerCodingAgentQuestion} />
+          <CodingAgentQuestionCard prompt={withClosedQuestions(item.codingAgentQuestion, closedCodingAgentQuestions)} onAnswer={onAnswerCodingAgentQuestion} docked={item.codingAgentQuestion.promptId === dockedCodingAgentQuestion} />
         ) : item.role === 'notification' ? (
           // An automatic update the runtime delivered to the agent (a background
           // step finishing), not something the user typed or the agent said. It

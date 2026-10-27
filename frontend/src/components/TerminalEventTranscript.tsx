@@ -1116,6 +1116,8 @@ interface TerminalEventTranscriptProps {
   onSendMessage?: (msg: string) => void
   onAnswerCodingAgentQuestion?: CodingAgentQuestionAnswerHandler
   closedCodingAgentQuestions?: ReadonlySet<string>
+  /** The pending prompt with this ID is shown above the message box instead of here. */
+  dockedCodingAgentQuestion?: string
   onRetryLastMessage?: () => void | Promise<void>
   /** Resends a user message whose delivery failed. */
   onResendMessage?: (msg: string) => void
@@ -1154,6 +1156,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   onSendMessage,
   onAnswerCodingAgentQuestion,
   closedCodingAgentQuestions,
+  dockedCodingAgentQuestion,
   onRetryLastMessage,
   onResendMessage,
   loading = false,
@@ -1385,7 +1388,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           const question = item.kind === 'event' ? questions.cards.get(item.event.id) : undefined
           const questionPrompt = question ? withClosedQuestions(question, closedCodingAgentQuestions) : question
           const body = questionPrompt
-            ? <CodingAgentQuestionCard prompt={questionPrompt} onAnswer={onAnswerCodingAgentQuestion} />
+            ? <CodingAgentQuestionCard prompt={questionPrompt} onAnswer={onAnswerCodingAgentQuestion} docked={questionPrompt.promptId === dockedCodingAgentQuestion} />
             : item.kind === 'live'
             ? <LiveAssistantTranscript chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
             : item.kind === 'working'
