@@ -60,6 +60,25 @@ func TestPrivateStateMigrationPreservesGitAndNativeBoundary(t *testing.T) {
 			write(resources, "triggers/custom.js", "person code")
 			write(resources, "skills/research/SKILL.md", "person skill")
 			write(files, "notes.txt", "person file")
+			// PLAT-856-383: old slot-created cache descendants can be unreadable.
+			write(resources, ".sandbox-cache/locked/login-placeholder", "cache retained")
+			lockedCache := filepath.Join(resources, ".sandbox-cache/locked")
+			privateCache := filepath.Join(docs, "_system/crew-data/stable-id/.sandbox-cache/locked")
+			if err := os.Chmod(lockedCache, 0); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(lockedCache, 0700); _ = os.Chmod(privateCache, 0700) })
+			if os.Geteuid() != 0 {
+				protected := filepath.Join(old, "builder/conversation")
+				if err := os.Chmod(protected, 0); err != nil {
+					t.Fatal(err)
+				}
+				_, _, denied := MigratePrivateState(docs)
+				_ = os.Chmod(protected, 0700)
+				if !os.IsPermission(denied) {
+					t.Fatalf("unreadable platform record must abort: %v", denied)
+				}
+			}
 			git := func(dir string, args ...string) string {
 				t.Helper()
 				c := exec.Command("git", args...)
@@ -81,7 +100,7 @@ func TestPrivateStateMigrationPreservesGitAndNativeBoundary(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			if count != 4 || backup == "" {
+			if count != 5 || backup == "" {
 				t.Fatalf("moved=%d backup=%s", count, backup)
 			}
 			roots, found, e := Lookup(docs, "Crew/example")
@@ -120,6 +139,28 @@ func TestPrivateStateMigrationPreservesGitAndNativeBoundary(t *testing.T) {
 			_, narrowWrites, _ := NativeGrants(docs, []string{"Crew/example"}, scoped)
 			if !reflect.DeepEqual(narrowWrites, scoped) {
 				t.Fatalf("narrow grants acquired private tool cache: %v", narrowWrites)
+			}
+			if os.Geteuid() != 0 {
+				data, err := os.ReadFile(filepath.Join(backup, "journal.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var journal PrivateMigration
+				if err := json.Unmarshal(data, &journal); err != nil {
+					t.Fatal(err)
+				}
+				omitted := 0
+				for _, entry := range journal.Entries {
+					if entry.UnbackedCache {
+						omitted++
+						if !isPrivateCache(entry.Source) || entry.Saved != "" {
+							t.Fatal("platform backup omitted", entry)
+						}
+					}
+				}
+				if omitted != 1 {
+					t.Fatalf("unreadable cache count=%d", omitted)
+				}
 			}
 			if n, b, e := MigratePrivateState(docs); e != nil || n != 0 || b != "" {
 				t.Fatalf("repeat conversion: %d %s %v", n, b, e)

@@ -2,12 +2,14 @@ package crewroot
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/filemetadata"
@@ -19,7 +21,15 @@ type PrivateMigration struct {
 	Marker  string        `json:"marker"`
 	Entries []privateMove `json:"entries"`
 }
-type privateMove struct{ Source, Target, Saved string }
+type privateMove struct {
+	Source, Target, Saved string
+	UnbackedCache         bool `json:"unbacked_cache,omitempty"`
+}
+
+func isPrivateCache(path string) bool {
+	name := filepath.Base(path)
+	return name == ".sandbox-cache" || name == ".report-cache"
+}
 
 func copyPrivateEntry(source, target string) error {
 	info, err := os.Lstat(source)
@@ -174,6 +184,26 @@ func RestorePrivateStateBackup(backup string) error {
 		return err
 	}
 	for _, entry := range journal.Entries {
+		if entry.UnbackedCache {
+			// Cache bytes were never copied or changed. Undo only their rename.
+			if _, err := os.Lstat(entry.Target); os.IsNotExist(err) {
+				continue
+			} else if err != nil {
+				return err
+			}
+			if _, err := os.Lstat(entry.Source); err == nil {
+				return fmt.Errorf("cannot restore cache over existing source: %s", entry.Source)
+			} else if !os.IsNotExist(err) {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(entry.Source), 0700); err != nil {
+				return err
+			}
+			if err := os.Rename(entry.Target, entry.Source); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := os.RemoveAll(entry.Target); err != nil {
 			return err
 		}
@@ -284,6 +314,10 @@ func MigratePrivateState(docs string) (count int, backup string, err error) {
 	}
 	// Copy every affected record before moving any of them.
 	for i := range journal.Entries {
+		if journal.Entries[i].UnbackedCache {
+			fmt.Printf("[CREW_STATE_MIGRATION] unreadable cache will move unchanged without backup: %s\n", journal.Entries[i].Source)
+			continue
+		}
 		journal.Entries[i].Saved = filepath.Join(backup, fmt.Sprintf("%06d", i))
 		if err = copyPrivateEntry(journal.Entries[i].Source, journal.Entries[i].Saved); err != nil {
 			return 0, backup, err
@@ -319,11 +353,19 @@ func MigratePrivateState(docs string) (count int, backup string, err error) {
 		if err = os.MkdirAll(filepath.Dir(entry.Target), 0750); err != nil {
 			return 0, backup, err
 		}
-		// Local selected folders may be on a different filesystem.
-		if err = copyPrivateEntry(entry.Source, entry.Target); err != nil {
-			return 0, backup, err
+		// Hosted entries stay on one filesystem. Rename preserves even a
+		// slot-owned 0700 cache without reading or changing its permissions.
+		err = os.Rename(entry.Source, entry.Target)
+		if errors.Is(err, syscall.EXDEV) {
+			if entry.UnbackedCache {
+				return 0, backup, fmt.Errorf("unreadable cache cannot move across filesystems: %s", entry.Source)
+			}
+			err = copyPrivateEntry(entry.Source, entry.Target)
+			if err == nil {
+				err = os.RemoveAll(entry.Source)
+			}
 		}
-		if err = os.RemoveAll(entry.Source); err != nil {
+		if err != nil {
 			return 0, backup, err
 		}
 		count++
@@ -339,5 +381,14 @@ func MigratePrivateState(docs string) (count int, backup string, err error) {
 		return count, backup, err
 	}
 	err = os.WriteFile(marker, []byte(backup+"\n"), 0600)
+	if err == nil {
+		unbacked := 0
+		for _, entry := range journal.Entries {
+			if entry.UnbackedCache {
+				unbacked++
+			}
+		}
+		fmt.Printf("[CREW_STATE_MIGRATION] backed_up_entries=%d unreadable_caches_moved_unchanged=%d\n", len(journal.Entries)-unbacked, unbacked)
+	}
 	return count, backup, err
 }

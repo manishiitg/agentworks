@@ -3,9 +3,11 @@
 package crewroot
 
 import (
+	"errors"
 	"fmt"
 	"golang.org/x/sys/unix"
 	"io/fs"
+	"os"
 	"path/filepath"
 )
 
@@ -13,7 +15,8 @@ import (
 // before moving a record. Conservatively require both copies on either volume.
 func checkMigrationSpace(docs, state string, entries []privateMove) error {
 	var bytes uint64
-	for _, entry := range entries {
+	for i, entry := range entries {
+		before := bytes
 		if err := filepath.WalkDir(entry.Source, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -28,6 +31,13 @@ func checkMigrationSpace(docs, state string, entries []privateMove) error {
 			}
 			return nil
 		}); err != nil {
+			if isPrivateCache(entry.Source) && errors.Is(err, os.ErrPermission) {
+				// These are personal tool caches, not platform records. Move
+				// the intact tree by rename; all actual records must be backed up.
+				entries[i].UnbackedCache = true
+				bytes = before
+				continue
+			}
 			return err
 		}
 	}
