@@ -306,7 +306,7 @@ func providerOptionOffersModel(option agentprofiles.ProviderOption, modelID stri
 	// (OpenRouter, NVIDIA NIM, ...) and custom ids typed into the picker are not in the platform catalog, and
 	// rejecting them made a key account's model impossible to change (422, server B 2026-10-08, PLAT-720).
 	// Which models an account may use is the account's own list, enforced when the turn runs.
-	if strings.EqualFold(strings.TrimSpace(option.Provider), "pi-cli") && piServiceModelID(modelID) {
+	if accountListedModel(option.Provider, modelID) {
 		return true
 	}
 	if len(option.Models) > 0 {
@@ -318,6 +318,33 @@ func providerOptionOffersModel(option agentprofiles.ProviderOption, modelID stri
 		return false
 	}
 	return providerOffersModel(option.Provider, modelID)
+}
+
+// accountListedModel is a model the selected account itself lists, which the static catalog cannot know:
+// Pi's "<service>/<model>" on a person's key, and any Cursor model from the account's live --list-models
+// (Auto and DeepSeek on paid plans were refused with 422 once the static list dropped Auto, PLAT-872).
+// The account's own models are enforced when the turn runs.
+func accountListedModel(provider, modelID string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "pi-cli":
+		return piServiceModelID(modelID)
+	case "cursor-cli":
+		return cursorModelID(modelID)
+	}
+	return false
+}
+
+// cursorModelID is one plain Cursor selector ("auto", "composer-2.5", "deepseek-v41-flash-1017-max").
+func cursorModelID(modelID string) bool {
+	if modelID == "" || len(modelID) > 120 {
+		return false
+	}
+	for _, r := range modelID {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-_.:", r)) {
+			return false
+		}
+	}
+	return true
 }
 
 // piServiceModelID is a "<service>/<model>" id: a lowercase service name, then a non-empty model path of

@@ -20,6 +20,16 @@ func TestPiAcceptsServiceModelsFromAPersonsKey(t *testing.T) {
 			t.Fatalf("pi accepted malformed %q", id)
 		}
 	}
+	// PLAT-872: the picker offered the account's Auto and DeepSeek, then the server refused them (422).
+	cursor := agentprofiles.ProviderOption{ID: "cursor-cli", Provider: "cursor-cli"}
+	for _, id := range []string{"auto", "deepseek-v41-flash-1017-max"} {
+		if !providerOptionOffersModel(cursor, id) {
+			t.Fatalf("cursor refused account model %q", id)
+		}
+	}
+	if providerOptionOffersModel(cursor, "auto $(id)") {
+		t.Fatal("cursor accepted a malformed model id")
+	}
 	other := agentprofiles.ProviderOption{ID: "codex-cli", Provider: "codex-cli", Models: []string{"gpt-6-luna"}}
 	if providerOptionOffersModel(other, "nvidia/z-ai/glm-5.3-flash") {
 		t.Fatal("a non-Pi engine accepted a model it does not list")
