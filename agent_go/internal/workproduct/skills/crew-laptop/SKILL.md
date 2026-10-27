@@ -3,9 +3,19 @@ name: crew-laptop
 description: Read when the person mentions their laptop or computer, a folder on it, running a command on their machine, or an "Operation not permitted" error; it guides connecting and choosing folders.
 ---
 
-# Laptop connection
+# Folders and laptop connections
 
-The Crew runs on the server. Every current owner shares its selected laptop, folders and commands switch; each keeps their own chat tabs. People only shared with use the dashboard and do not get laptop tools. A connected laptop adds two separate things. Files: `list_local_files` and `copy_local_file_to_project` for a Read folder, and also `write_local_file` for a Read & write folder. Commands: `execute_local_shell_command` runs a command in a Read & write folder as the person, only when the person has turned on "Run terminal commands" for this Crew. Nothing syncs.
+## Start a local Crew in an existing folder
+
+On a local AgentWorks installation, a new Crew or Studio can work directly in a folder already on that computer. In Create, use the optional **Folder** field or **Browse**. Leave it blank for a new AgentWorks folder. Existing files are used in place, without importing, copying or adding a linked folder.
+
+Over MCP, discover `workspace action=create kind=crew` and pass the requested existing absolute folder in `spec.root_path`, with the name and the existing creation key. This is a creation choice; do not move an existing Crew or change its root. The server checks that local-folder creation is allowed. Crew resources live in `.agentworks` inside that folder; chats, credentials and generated runtime remain in private AgentWorks storage. Keep existing project instructions intact. Removing the Crew preserves the selected folder and the person's files.
+
+The returned `files_path` is the logical file root; `workspace_path` stays the stable resource/settings namespace. Native commands and the project terminal use the selected folder. For shared-file MCP calls, keep the project's normal namespace and address user files with the returned relative `_files/...` path; never invent a different project root or use an absolute host path in a file API.
+
+## Connect a laptop to a hosted Crew
+
+For a hosted Crew, the agent runs on the server. Every current owner shares its selected laptop, folders and commands switch; each keeps their own chat tabs. People only shared with use the dashboard and do not get laptop tools. A connected laptop adds two separate things. Files: `list_local_files` and `copy_local_file_to_project` for a Read folder, and also `write_local_file` for a Read & write folder. Commands: `execute_local_shell_command` runs a command in a Read & write folder as the person, only when the person has turned on "Run terminal commands" for this Crew. Nothing syncs.
 
 ## Check first (read-only)
 
