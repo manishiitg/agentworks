@@ -15,6 +15,9 @@ an SDK chat waits for its provider's setup; other providers and the app remain
 available. Slow setup shows progress in chat. Failures use a plain error and
 retry on the next SDK chat. Logs record the selected Node/npm and readiness,
 without npm output or credentials. Import validation makes no model request.
+Hosted servers only check and bind the components provisioned by deployment;
+they do not install SDK packages while serving chats. Managed CLI prefixes are
+checked before npm's default global directory.
 
 The existing SDK path overrides remain supported. Update-disabled/dry-run
 settings allow checks and use of installed components but prohibit downloads.

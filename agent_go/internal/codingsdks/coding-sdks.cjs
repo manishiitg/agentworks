@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+class SetupError extends Error {}
 
 const sdks = [
   { provider: 'claude-code', label: 'Claude', package: '@anthropic-ai/claude-agent-sdk', version: '0.3.311', entry: 'sdk.mjs', exported: 'query', variable: 'CLAUDE_AGENT_SDK_PATH' },
@@ -36,7 +37,18 @@ function npmCommand() {
     }
   }
   if (process.platform !== 'win32') return ['npm', []];
-  throw new Error('Node.js and npm are needed. Install Node.js, then open AgentWorks again.');
+  throw new SetupError('Node.js and npm are needed. Install Node.js, then open AgentWorks again.');
+}
+function managedEntry(sdk) {
+  const commands = sdk.provider === 'claude-code' ? ['claude'] : ['cursor-agent', 'agent'];
+  const extensions = process.platform === 'win32' ? ['', '.cmd', '.exe'] : [''];
+  for (const dir of (process.env.PATH || process.env.Path || '').split(path.delimiter)) {
+    if (!commands.some(name => extensions.some(extension => fs.existsSync(path.join(dir, name + extension))))) continue;
+    const root = process.platform === 'win32' ? path.join(dir, 'node_modules', sdk.package) : path.resolve(dir, '..', 'lib', 'node_modules', sdk.package);
+    const entry = path.join(root, sdk.entry);
+    return healthy(sdk, entry, path.join(root, 'package.json')) ? entry : '';
+  }
+  return '';
 }
 function main(args) {
   const option = name => { const i = args.indexOf(name); return i < 0 ? '' : args[i + 1] || ''; };
@@ -44,7 +56,7 @@ function main(args) {
   const provider = option('--provider');
   if (!path.isAbsolute(prefix) || (provider && !sdks.some(s => s.provider === provider))) throw new Error('Invalid SDK setup destination.');
   const modules = path.join(prefix, process.platform === 'win32' ? '' : 'lib', 'node_modules');
-  const result = { entries: {}, ready: [], errors: [], node: process.execPath, npm: '' };
+  const result = { entries: {}, ready: [], errors: [], node: process.execPath, npm: 'not needed' };
   let npm, globalRoot;
   const runNpm = npmArgs => {
     npm ||= npmCommand();
@@ -56,11 +68,15 @@ function main(args) {
       let entry = process.env[sdk.variable];
       if (entry) {
         entry = path.resolve(entry);
-        if (!healthy(sdk, entry)) throw new Error('The configured component could not be loaded.');
+        if (!healthy(sdk, entry)) throw new SetupError('The configured component could not be loaded.');
       } else {
         const root = path.join(modules, sdk.package);
         entry = path.join(root, sdk.entry);
         let found = !args.includes('--force') && healthy(sdk, entry, path.join(root, 'package.json'));
+        if (!found && args.includes('--prefer-global') && !args.includes('--force')) {
+          const managed = managedEntry(sdk);
+          if (managed) { entry = managed; found = true; }
+        }
         if (!found && args.includes('--prefer-global') && !args.includes('--force')) {
           if (globalRoot === undefined) {
             const probe = runNpm(['root', '--global']);
@@ -76,11 +92,11 @@ function main(args) {
           }
         }
         if (!found) {
-          if (args.includes('--check-only')) throw new Error('A required component is missing. Update the app and try again.');
+          if (args.includes('--check-only')) throw new SetupError('A required component is missing. Update the app and try again.');
           const install = runNpm(['install', '--global', '--prefix', prefix, '--include=optional', '--no-audit', '--no-fund',
             '--allow-scripts=@anthropic-ai/claude-agent-sdk,@anthropic-ai/claude-code,esbuild', `${sdk.package}@${sdk.version}`]);
           if (install.status !== 0 || !healthy(sdk, entry, path.join(root, 'package.json'))) {
-            throw new Error('Setup could not finish. Check your internet connection and try again.');
+            throw new SetupError('Setup could not finish. Check your internet connection and try again.');
           }
         }
       }
@@ -88,7 +104,7 @@ function main(args) {
       result.ready.push(sdk.label);
     } catch (error) {
       // npm output may contain proxy credentials. Never print it or a stack.
-      result.errors.push(`${sdk.label}: ${error.message}`);
+      result.errors.push(`${sdk.label}: ${error instanceof SetupError ? error.message : 'Setup could not finish. Update the app and try again.'}`);
     }
   }
   console.log(JSON.stringify(result));
