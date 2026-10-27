@@ -65,9 +65,15 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 	if got := b.Status().ExtensionVersion; got != "0.4.8" {
 		t.Fatalf("extension version = %q, want 0.4.8", got)
 	}
-	if _, _, err := b.AcquireClient(context.Background(), "code-chat", false); err == nil || !strings.Contains(err.Error(), "CHROME_EXTENSION_UPDATE_REQUIRED") {
-		t.Fatal("old extension did not fail closed for Code multi-chat", err)
+	t.Setenv("PUBLIC_URL", "https://example.com")
+	if _, _, err := b.AcquireClient(context.Background(), "code-chat", false); err == nil || !strings.Contains(err.Error(), "CHROME_EXTENSION_UPDATE_REQUIRED") || !strings.Contains(err.Error(), "https://example.com/api/downloads/chrome-extension.zip") {
+		t.Fatal("old extension did not return this installation's download step", err)
 	}
+	status := m.Status("alice", "project-one")
+	if !status.UpdateNeeded || status.UpdateURL != "https://example.com/api/downloads/chrome-extension.zip" {
+		t.Fatalf("panel update state missing: %+v", status)
+	}
+
 	endpoint, release, err := b.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)

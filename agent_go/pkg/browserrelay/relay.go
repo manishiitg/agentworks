@@ -38,6 +38,8 @@ type projectGrant struct {
 	Name      string `json:"name,omitempty"`
 }
 type Status struct {
+	UpdateNeeded     bool     `json:"update_needed,omitempty"`
+	UpdateURL        string   `json:"update_url,omitempty"`
 	Selected         bool     `json:"selected"`
 	Connected        bool     `json:"connected"`
 	AccountConnected bool     `json:"account_connected"`
@@ -412,12 +414,23 @@ func (m *Manager) Status(user, scope string) Status {
 			break
 		}
 	}
+	status.UpdateNeeded = status.UpdateNeeded || extensionVersionBefore(status.ExtensionVersion, status.LatestVersion)
+	if failure, ok := m.pairingFailures[user]; ok && failure.Reason == "extension_outdated" && time.Since(time.UnixMilli(failure.At)) <= 10*time.Minute {
+		status.UpdateNeeded = true
+		if status.ExtensionVersion == "" {
+			status.ExtensionVersion = failure.Version
+		}
+	}
+	if status.UpdateNeeded {
+		status.UpdateURL = DownloadURL()
+		status.Message = ExtensionUpdateMessage()
+	}
 	return status
 }
 func (b *Binding) Status() Status {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return Status{Selected: true, Connected: b.extension != nil && time.Now().Before(b.expires), Workspace: b.label, Tabs: b.tabs, ConnectionID: b.session, TabTitles: append([]string(nil), b.tabTitles...), ExtensionVersion: b.version}
+	return Status{UpdateNeeded: b.extension != nil && !b.chatClients, UpdateURL: DownloadURL(), Selected: true, Connected: b.extension != nil && time.Now().Before(b.expires), Workspace: b.label, Tabs: b.tabs, ConnectionID: b.session, TabTitles: append([]string(nil), b.tabTitles...), ExtensionVersion: b.version}
 }
 func (b *Binding) disconnectedError() error {
 	name := b.browserName

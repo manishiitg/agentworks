@@ -462,7 +462,15 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 				if !canInteract() {
 					return
 				}
-				if err := forwardBrowserViewerText(ctx, workspaceURL, session, userID, text); err != nil {
+				started := time.Now()
+				log.Printf("[BROWSER_INPUT] event=accepted session=%q user=%q kind=input_text transport=workspace", session, userID)
+				err := forwardBrowserViewerText(ctx, workspaceURL, session, userID, text)
+				result := "completed"
+				if err != nil {
+					result = "failed"
+				}
+				log.Printf("[BROWSER_INPUT] event=result session=%q user=%q kind=input_text transport=workspace result=%s elapsed_ms=%d", session, userID, result, time.Since(started).Milliseconds())
+				if err != nil {
 					sendError("Unable to paste into this browser. Select the field and try again.")
 				}
 			})
@@ -494,10 +502,14 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			if !canInteract() {
 				continue
 			}
+			started := time.Now()
+			log.Printf("[BROWSER_INPUT] event=accepted session=%q user=%q kind=%s transport=workspace", session, GetUserIDFromContext(r.Context()), message.Type)
 			upstream.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			if err := upstream.WriteMessage(websocket.TextMessage, data); err != nil {
+				log.Printf("[BROWSER_INPUT] event=result session=%q kind=%s transport=workspace result=failed elapsed_ms=%d", session, message.Type, time.Since(started).Milliseconds())
 				return
 			}
+			log.Printf("[BROWSER_INPUT] event=result session=%q kind=%s transport=workspace result=forwarded elapsed_ms=%d", session, message.Type, time.Since(started).Milliseconds())
 		}
 	}
 }

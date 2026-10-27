@@ -79,7 +79,7 @@ func (b *Binding) AcquireClient(ctx context.Context, owner string, active bool) 
 		return fail(b.disconnectedError())
 	}
 	if !b.chatClients {
-		return fail(errors.New("CHROME_EXTENSION_UPDATE_REQUIRED: reload Browser Bridge 0.4.6 or newer so each chat gets its own tabs"))
+		return fail(errors.New("CHROME_EXTENSION_UPDATE_REQUIRED: " + ExtensionUpdateMessage()))
 	}
 	var client *Client
 	for _, c := range b.clients {

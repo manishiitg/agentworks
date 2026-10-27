@@ -49,3 +49,20 @@ it('choosing Chrome in Crew reuses the account browser without copying another t
     vi.unstubAllGlobals()
   }
 })
+
+// PLAT-856-311: even an unknown-version rejected connection needs a usable,
+// server-selected download step; the panel must not guess from version text.
+it('shows the backend update step before a browser can connect', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  mocks.post.mockClear()
+  mocks.get.mockResolvedValue({ data: { selected: false, connected: false, tabs: 0,
+    update_needed: true, update_url: 'https://example.com/api/downloads/chrome-extension.zip', browsers: [] } })
+  try {
+    await act(async () => root.render(<TooltipProvider><BrowserWorkspacePanel workspacePath="Crew/example" profileId="work" browserMode="extension" onBrowserModeChange={vi.fn()} cdpConnected={null} cdpError={null} cdpChecking={false} onCheckCdpConnection={vi.fn()} /></TooltipProvider>))
+    const download = host.querySelector('a[download]') as HTMLAnchorElement
+    expect(download?.href).toBe('https://example.com/api/downloads/chrome-extension.zip')
+    expect(mocks.post).not.toHaveBeenCalled()
+  } finally { await act(async () => root.unmount()) }
+})

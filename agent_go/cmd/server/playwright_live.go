@@ -208,10 +208,22 @@ func (api *StreamingAPI) handlePlaywrightPublisher(w http.ResponseWriter, r *htt
 			case <-writerStop:
 				return
 			case command := <-s.input:
+				var input struct {
+					Type string `json:"type"`
+				}
+				_ = json.Unmarshal(command, &input)
+				isInput := strings.HasPrefix(input.Type, "input_")
+				started := time.Now()
 				_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 				if conn.WriteMessage(websocket.TextMessage, command) != nil {
+					if isInput {
+						log.Printf("[BROWSER_INPUT] event=result session=%q kind=%s transport=playwright result=failed elapsed_ms=%d", s.id, input.Type, time.Since(started).Milliseconds())
+					}
 					_ = conn.Close()
 					return
+				}
+				if isInput {
+					log.Printf("[BROWSER_INPUT] event=result session=%q kind=%s transport=playwright result=forwarded elapsed_ms=%d", s.id, input.Type, time.Since(started).Milliseconds())
 				}
 			}
 		}
@@ -367,6 +379,9 @@ func (api *StreamingAPI) handlePlaywrightViewer(w http.ResponseWriter, r *http.R
 			}
 			select {
 			case s.input <- command:
+				if strings.HasPrefix(message.Type, "input_") {
+					log.Printf("[BROWSER_INPUT] event=accepted session=%q user=%q kind=%s transport=playwright", id, GetUserIDFromContext(r.Context()), message.Type)
+				}
 			case <-s.done:
 				return
 			default:

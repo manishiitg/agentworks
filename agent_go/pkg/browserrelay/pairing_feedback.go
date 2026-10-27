@@ -70,6 +70,9 @@ func (m *Manager) rejectPairing(conn *websocket.Conn, user, reason, message, ver
 }
 
 func (m *Manager) rejectPairingWithCause(conn *websocket.Conn, user, reason, message, version, cause string) {
+	if reason == "extension_outdated" {
+		message = ExtensionUpdateMessage()
+	}
 	if !validExtensionVersion(version) {
 		version = ""
 	}

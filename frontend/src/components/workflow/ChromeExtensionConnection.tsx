@@ -4,10 +4,10 @@ import api from '../../services/api'
 import { Button } from '../ui/Button'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { openBrowserConnections, type SavedBrowserConnection } from '../BrowserConnectionsDialog'
-import { extensionVersionOlder } from '../../utils/extensionVersion'
 export { extensionVersionOlder } from '../../utils/extensionVersion'
 
 export interface ChromeExtensionStatus {
+  update_needed?: boolean; update_url?: string
   mode?: 'none' | 'extension' | 'headless' | 'cdp'; allowed_modes?: ('extension' | 'headless' | 'cdp')[]; selected: boolean; connected: boolean; account_connected?: boolean; tabs: number; workspace?: string; connection_id?: string; tab_titles?: string[]
   browser_id?: string; browsers?: SavedBrowserConnection[]; message?: string; extension_version?: string; latest_extension_version?: string
 }
@@ -85,19 +85,20 @@ export function ChromeExtensionConnection({ connection, workspaceBrowser }: { co
       <Button size="sm" variant="ghost" onClick={openBrowserConnections}>Connections</Button>
     </div>
     {!status.selected && !!status.browsers?.some(b => b.connected) && <p className="text-xs text-muted-foreground">Chrome or Edge is connected to your account. Choose a saved browser above to use it here.</p>}
-    {status.selected && status.connected && <ExtensionVersionLine status={status} download={download} />}
+    {(status.update_needed || (status.selected && status.connected)) && <ExtensionVersionLine status={status} download={download} />}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
 }
 
 function ExtensionVersionLine({ status, download }: { status: ChromeExtensionStatus; download: string }) {
   const installed = status.extension_version, latest = status.latest_extension_version
-  const outdated = extensionVersionOlder(installed, latest)
-  if (!installed) return <p className="mt-1 text-xs text-muted-foreground">Browser Bridge version unknown{latest ? ` · latest is ${latest}` : ''}</p>
+  const outdated = status.update_needed === true
+  const updateURL = status.update_url ? new URL(status.update_url, download).href : download
+  if (!installed && !outdated) return <p className="mt-1 text-xs text-muted-foreground">Browser Bridge version unknown{latest ? ` · latest is ${latest}` : ''}</p>
   if (!outdated) return <p className="mt-1 text-xs text-muted-foreground">Browser Bridge {installed} · up to date</p>
   return <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs">
-    <p className="font-medium text-amber-700 dark:text-amber-300">Browser Bridge {installed} · update to {latest}</p>
-    <p className="mt-1 leading-relaxed text-muted-foreground">Download it, replace the files in your unpacked extension folder, then click reload on Browser Bridge in your browser's extensions page.</p>
-    <Button asChild size="xs" variant="outline" className="mt-2"><a href={download} download><Download />Download {latest}</a></Button>
+    <p className="font-medium text-amber-700 dark:text-amber-300">Browser Bridge{installed ? ` ${installed}` : ''} · update available</p>
+    <p className="mt-1 leading-relaxed text-muted-foreground">Download the new Browser Bridge from this page.</p>
+    <Button asChild size="xs" variant="outline" className="mt-2"><a href={updateURL} download><Download />Download Browser Bridge</a></Button>
   </div>
 }

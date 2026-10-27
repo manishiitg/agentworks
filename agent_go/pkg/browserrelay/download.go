@@ -6,6 +6,8 @@ import (
 	_ "embed"
 	"encoding/json"
 	"io"
+	"os"
+	"strings"
 	"sync"
 )
 
@@ -54,4 +56,14 @@ func validExtensionVersion(v string) bool {
 		}
 	}
 	return true
+}
+
+// DownloadURL uses the public app origin, never the private CDP relay endpoint.
+// Local installations without a public origin use the same-origin app path.
+func DownloadURL() string {
+	return strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/") + "/api/downloads/chrome-extension.zip"
+}
+
+func ExtensionUpdateMessage() string {
+	return "Download the new Browser Bridge from this page: " + DownloadURL()
 }
