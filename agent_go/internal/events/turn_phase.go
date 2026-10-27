@@ -109,13 +109,22 @@ func turnPhaseToolText(event Event) (text, id string) {
 	var args map[string]interface{}
 	_ = json.Unmarshal([]byte(start.ToolParams.Arguments), &args)
 	if command, _ := args["command"].(string); strings.TrimSpace(command) != "" {
-		command = strings.Join(strings.Fields(command), " ")
+		// The first line only: a script written inline shows as its command, not its code.
+		command = strings.Join(strings.Fields(strings.SplitN(strings.TrimSpace(command), "\n", 2)[0]), " ")
 		if runes := []rune(command); len(runes) > 80 {
 			command = string(runes[:80]) + "…"
 		}
 		return "Running " + command, start.ToolCallID
 	}
-	if name := strings.TrimSpace(start.ToolName); name != "" {
+	name := strings.TrimSpace(start.ToolName)
+	// Cursor reports every MCP call as "mcp"; the tool's own name is in its arguments.
+	for _, key := range []string{"toolName", "tool_name", "name"} {
+		if inner, _ := args[key].(string); strings.EqualFold(name, "mcp") && strings.TrimSpace(inner) != "" {
+			name = strings.TrimSpace(inner)
+			break
+		}
+	}
+	if name != "" {
 		return "Using " + strings.ReplaceAll(name, "_", " "), start.ToolCallID
 	}
 	return "", start.ToolCallID

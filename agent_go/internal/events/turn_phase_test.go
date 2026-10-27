@@ -50,6 +50,8 @@ func TestTurnPhaseFollowsTheAgentNotTheClock(t *testing.T) {
 	// what it does until it ends.
 	add(es, session, "tool_call_start", &mcpevents.ToolCallStartEvent{ToolName: "Shell", ToolCallID: "call-1", ToolParams: mcpevents.ToolParams{Arguments: `{"command":"python3 wait_for_deploy.py"}`}})
 	add(es, session, "tool_call_end", &mcpevents.ToolCallEndEvent{ToolCallID: "call-1"})
+	add(es, session, "tool_call_start", &mcpevents.ToolCallStartEvent{ToolName: "Shell", ToolCallID: "call-2", ToolParams: mcpevents.ToolParams{Arguments: `{"command":"python3 - << 'PY'\nimport os\nPY"}`}})
+	add(es, session, "tool_call_start", &mcpevents.ToolCallStartEvent{ToolName: "mcp", ToolCallID: "call-3", ToolParams: mcpevents.ToolParams{Arguments: `{"toolName":"get_workflow_status"}`}})
 
 	// A model family cannot identify the CLI (Cursor can run Claude models). Startup stays neutral.
 	want := []string{
@@ -61,6 +63,8 @@ func TestTurnPhaseFollowsTheAgentNotTheClock(t *testing.T) {
 		"running: ",
 		"running: Running python3 wait_for_deploy.py",
 		"running: ",
+		"running: Running python3 - << 'PY'",
+		"running: Using get workflow status",
 	}
 	got := phaseEvents(es, session)
 	if len(got) != len(want) {
