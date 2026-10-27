@@ -23,8 +23,8 @@ export interface ProviderAccountSharing {
   users?: string[]
 }
 
-/** Who may use a server account: everyone, admins, or products and people. */
-export type ProviderAvailableTo = 'all' | 'admins' | { admins?: boolean; products?: string[]; users?: string[] }
+/** Admins always have access; an explicit audience names people only. */
+export type ProviderAvailableTo = 'all' | 'admins' | { users: string[] }
 
 export interface ServerAccountAvailability {
   available_to: ProviderAvailableTo

@@ -398,7 +398,6 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
 
   const serverBlock = (record: ProviderConnection) => {
     const availability = record.availability
-    const choice = availabilityDraft === null ? null : availabilityDraft === 'all' ? 'all' : availabilityDraft === 'admins' ? 'admins' : 'chosen'
     return (
       <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -437,32 +436,11 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             </div>
           )}
         </div>
-        {choice !== null && record.availability_editable && (
-          <div className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700">
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Who can use the admin-managed account
-              <select aria-label="Who can use the admin-managed account" disabled={busy} value={choice} className={inputClass}
-                onChange={event => {
-                  const value = event.target.value
-                  // Everyone and Only admins save at once; Specific people opens the pickers.
-                  if (value === 'all' || value === 'admins') void saveAvailability(value)
-                  else setAvailabilityDraft({ admins: true, products: [], users: [] })
-                }}>
-                <option value="all">Everyone</option>
-                <option value="admins">Only admins</option>
-                <option value="chosen">Specific people or products…</option>
-              </select>
-            </label>
-            {choice === 'chosen' && availabilityDraft !== null && (
-              <form className="space-y-3" onSubmit={event => { event.preventDefault(); void saveAvailability(availabilityDraft) }}>
-                <AvailabilityFields value={availabilityDraft} onChange={setAvailabilityDraft} disabled={busy} />
-                <button disabled={busy} type="submit" className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
-              </form>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {availability?.source === 'admin' && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => void saveAvailability(null)}>Reset to installation policy</button>}
-              <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setAvailabilityDraft(null)}>Done</button>
-            </div>
-          </div>
+        {availabilityDraft !== null && record.availability_editable && (
+          <form className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveAvailability(availabilityDraft) }} onKeyDown={event => { if (event.key === 'Escape') setAvailabilityDraft(null) }}>
+            <AvailabilityFields value={availabilityDraft} onChange={setAvailabilityDraft} disabled={busy} />
+            <button disabled={busy} type="submit" className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
+          </form>
         )}
         {limitsDraft !== null && record.can_manage && (
           <form className="mt-3 space-y-2 border-t border-gray-200 pt-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveTokenLimits(limitsDraft) }}>

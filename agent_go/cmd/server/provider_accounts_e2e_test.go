@@ -151,7 +151,7 @@ func TestProviderAccountsInstalledAccountAdminsOnly(t *testing.T) {
 	t.Setenv("CURSOR_API_KEY", "server-cursor-key")
 
 	memberView, ok := findAccountView(env.list(t, "bob", "?workspace_path=Workflow/v"), "global:cursor-cli")
-	if !ok || memberView.Usable || memberView.Availability == nil || memberView.Availability.Text != "Admins only" || memberView.Kind != "installed" || memberView.Source != "Installation (.env: CURSOR_API_KEY)" {
+	if !ok || memberView.Usable || memberView.Availability == nil || memberView.Availability.Text != "Only admins" || memberView.Kind != "installed" || memberView.Source != "Installation (.env: CURSOR_API_KEY)" {
 		t.Fatalf("member view of the admins-only account: %+v", memberView)
 	}
 	if strings.Contains(mustJSON(t, env.list(t, "bob", "")), "server-cursor-key") {
@@ -699,24 +699,24 @@ func TestProviderAccountsCostSplitVisibility(t *testing.T) {
 
 // Product defaults: validated at start, served to the UI, admin-editable.
 func TestProviderAccountsProductDefaults(t *testing.T) {
-	env := newProviderAccountsEnv(t, `{"muse-cli":{"available_to":{"products":["code"]}}}`)
-	t.Setenv("AGENTWORKS_PRODUCT_DEFAULTS", `{"code":{"provider":"muse-cli","model":"muse-1"},"agentworks":{"provider":"claude-code","model":"sonnet"}}`)
+	env := newProviderAccountsEnv(t, `{"muse-cli":{"available_to":{"users":["alice"]}}}`)
+	t.Setenv("AGENTWORKS_PRODUCT_DEFAULTS", `{"agentworks":{"provider":"muse-cli","model":"muse-1"},"work":{"provider":"claude-code","model":"sonnet"}}`)
 	if err := validateProviderAccountInstallation(); err != nil {
 		t.Fatalf("valid defaults refused: %v", err)
 	}
 	t.Setenv("AGENTWORKS_PRODUCT_DEFAULTS", `{"work":{"provider":"muse-cli","model":"muse-1"}}`)
-	if err := validateProviderAccountInstallation(); err == nil || !strings.Contains(err.Error(), "not available to Crews") {
-		t.Fatalf("a default its policy does not admit must stop the server: %v", err)
+	if err := validateProviderAccountInstallation(); err != nil {
+		t.Fatalf("a default may name a restricted account; each person is checked at run time: %v", err)
 	}
 	t.Setenv("AGENTWORKS_PROVIDER_POLICY", `{"muse-cli":{"available_to":"sometimes"}}`)
 	if err := validateProviderAccountInstallation(); err == nil {
 		t.Fatal("an invalid policy must stop the server")
 	}
-	t.Setenv("AGENTWORKS_PROVIDER_POLICY", `{"muse-cli":{"available_to":{"products":["code"]}}}`)
-	t.Setenv("AGENTWORKS_PRODUCT_DEFAULTS", `{"code":{"provider":"muse-cli","model":"muse-1","pinned":true}}`)
+	t.Setenv("AGENTWORKS_PROVIDER_POLICY", `{"muse-cli":{"available_to":{"users":["alice"]}}}`)
+	t.Setenv("AGENTWORKS_PRODUCT_DEFAULTS", `{"agentworks":{"provider":"muse-cli","model":"muse-1","pinned":true}}`)
 
-	// The Code profile starts with the installation default.
-	profile := agentprofiles.Profile{Product: "code", Runtime: agentprofiles.RuntimePolicy{ProviderOptions: []agentprofiles.ProviderOption{{ID: "claude", Provider: "claude-code", ModelID: "sonnet", Default: true}}}}
+	// A workflow profile starts with the installation default.
+	profile := agentprofiles.Profile{Product: "agentworks", Runtime: agentprofiles.RuntimePolicy{ProviderOptions: []agentprofiles.ProviderOption{{ID: "claude", Provider: "claude-code", ModelID: "sonnet", Default: true}}}}
 	applyInstallationProductDefault(&profile)
 	defaults := 0
 	for _, option := range profile.Runtime.ProviderOptions {
@@ -730,9 +730,9 @@ func TestProviderAccountsProductDefaults(t *testing.T) {
 	if defaults != 1 {
 		t.Fatalf("want exactly one default engine: %+v", profile.Runtime.ProviderOptions)
 	}
-	// The real Code and Crew profiles still register with a default engine
-	// they did not list.
-	for _, builtin := range append(workproduct.BuiltinAgentProfiles(), workproduct.BuiltinAgentProfiles()...) {
+	// The real Crew profiles still register with a default engine they
+	// did not list.
+	for _, builtin := range workproduct.BuiltinAgentProfiles() {
 		builtin.Product = builtin.ID
 		value := productDefault{Provider: "muse-cli", Model: "muse-1"}
 		applyProductDefaultToProfile(&builtin, value, true)
@@ -741,19 +741,19 @@ func TestProviderAccountsProductDefaults(t *testing.T) {
 		}
 	}
 
-	// Pinned products are read-only; members cannot edit; a default must be
-	// admitted for its product.
+	// Pinned defaults and member writes keep their existing checks. An
+	// account audience is independent of which product uses it as a default.
 	put := func(user string, body map[string]interface{}) *httptest.ResponseRecorder {
 		return env.do(t, env.api.handleProductDefaults, http.MethodPut, "/", user, body, nil)
 	}
-	if w := put("admin", map[string]interface{}{"product_defaults": map[string]interface{}{"code": map[string]string{"provider": "claude-code", "model": "sonnet"}}}); w.Code != http.StatusConflict {
+	if w := put("admin", map[string]interface{}{"product_defaults": map[string]interface{}{"agentworks": map[string]string{"provider": "claude-code", "model": "sonnet"}}}); w.Code != http.StatusConflict {
 		t.Fatalf("pinned default edited: %d", w.Code)
 	}
 	if w := put("bob", map[string]interface{}{"product_defaults": map[string]interface{}{"work": map[string]string{"provider": "claude-code", "model": "sonnet"}}}); w.Code != http.StatusForbidden {
 		t.Fatalf("member edited defaults: %d", w.Code)
 	}
-	if w := put("admin", map[string]interface{}{"product_defaults": map[string]interface{}{"work": map[string]string{"provider": "muse-cli", "model": "muse-1"}}}); w.Code != http.StatusBadRequest {
-		t.Fatalf("default not admitted for its product accepted: %d", w.Code)
+	if w := put("admin", map[string]interface{}{"product_defaults": map[string]interface{}{"work": map[string]string{"provider": "muse-cli", "model": "muse-1"}}}); w.Code != http.StatusOK {
+		t.Fatalf("default on a chosen-people account refused: %d %s", w.Code, w.Body.String())
 	}
 	if w := put("admin", map[string]interface{}{"product_defaults": map[string]interface{}{"work": map[string]string{"provider": "claude-code", "model": "sonnet"}}}); w.Code != http.StatusOK {
 		t.Fatalf("admin default: %d %s", w.Code, w.Body.String())
@@ -771,9 +771,13 @@ func TestProviderAccountsProductDefaults(t *testing.T) {
 	if body.PrimaryConfig["provider"] != "codex-cli" || body.ProductDefaults["work"]["provider"] != "claude-code" || body.ProductDefaults["agentworks"]["connection_id"] != "global:codex-cli" {
 		t.Fatalf("defaults response: %+v", body)
 	}
-	// Taking a provider away from a product whose default uses it is refused.
-	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "admin", map[string]interface{}{"available_to": "admins"}, map[string]string{"connectionID": "global:claude-code"}); w.Code != http.StatusBadRequest {
-		t.Fatalf("availability change broke the Crews default: %d", w.Code)
+	// Narrowing an audience is allowed even when this is a product default.
+	// The next run checks the current person; it never switches accounts.
+	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "admin", map[string]interface{}{"available_to": "admins"}, map[string]string{"connectionID": "global:claude-code"}); w.Code != http.StatusNoContent {
+		t.Fatalf("availability change refused: %d %s", w.Code, w.Body.String())
+	}
+	if _, err := env.resolveForRun("bob", "Workflow/v", "claude-code", "global:claude-code"); err == nil || !strings.Contains(err.Error(), "Pick another model") {
+		t.Fatalf("restricted default did not refuse with a next step: %v", err)
 	}
 }
 

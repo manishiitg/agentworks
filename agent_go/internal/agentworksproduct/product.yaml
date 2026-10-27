@@ -526,6 +526,9 @@ chat:
       - get_token_usage
       - set_token_limits
       - set_allowed_models
+      # Company account audiences: admins with users:manage, same handler as the screen.
+      - get_account_availability
+      - set_account_availability
       # AgentBridge administration (users:manage, admins; every change needs a reason and is audited).
       - server_product
       - bullpen_admin

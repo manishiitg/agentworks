@@ -163,7 +163,6 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 		return nil, err
 	}
 	run := api.describeProviderAccountRun(ctx, scope)
-	anyProduct := strings.TrimSpace(scope.WorkspacePath) == "" && strings.TrimSpace(scope.Product) == ""
 	stored, _ := LoadProviderKeys(ctx)
 	accountSettings, _ := loadProviderAccountSettings(ctx)
 	views := []providerAccountView{}
@@ -175,13 +174,7 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 		kind, source := serverAccountSource(provider, stored)
 		_, credentialErr := connectionCredentialKeys(storedProviderConnection{ProviderConnection: ProviderConnection{Provider: provider, UnderlyingProvider: "placeholder"}, Credential: "placeholder"})
 		allowed := credentialErr == nil && !personalProviderConnectionsLocked(provider)
-		usable := availability.AvailableTo.admits(userID, run.Product)
-		if anyProduct {
-			usable = false
-			for _, product := range []string{productWorkflows, productCrews} {
-				usable = usable || availability.AvailableTo.admits(userID, product)
-			}
-		}
+		usable := availability.AvailableTo.admits(userID)
 		defaultModels := serverAccountModels(accountSettings, provider)
 		view := providerAccountView{
 			ProviderConnection:   ProviderConnection{PersonalAccountsAllowed: &allowed, ID: "global:" + provider, Provider: provider, DisplayName: adminManagedProviderAccountName, Scope: "global", AuthMethod: "server", AllowedModels: effectiveAllowedModels(accountSettings.AllowedModels[provider], personAccountAllowedModels(userID, provider))},
@@ -553,23 +546,6 @@ func (api *StreamingAPI) updateServerAccount(w http.ResponseWriter, r *http.Requ
 	} else {
 		settings.AvailableTo[provider] = next
 	}
-	// A product default must stay usable by its whole product.
-	effective := providerAvailability{All: true}
-	if next != nil {
-		effective = *next
-	} else if policy, _ := installationProviderPolicy(); policy != nil {
-		if entry, ok := policy[provider]; ok {
-			effective = *entry.AvailableTo
-		}
-	}
-	if defaults, err := effectiveProductDefaults(r.Context()); err == nil {
-		for product, value := range defaults {
-			if value.Provider == provider && !effective.admitsProduct(product) {
-				http.Error(w, fmt.Sprintf("%s is the %s default; keep it available to %s or change that default first", provider, productDisplayName(product), productDisplayName(product)), http.StatusBadRequest)
-				return
-			}
-		}
-	}
 	if request.AllowedModels != nil {
 		models, err := validateAllowedModels(*request.AllowedModels)
 		if err != nil {
@@ -820,12 +796,7 @@ func (api *StreamingAPI) handleProductDefaults(w http.ResponseWriter, r *http.Re
 				continue
 			}
 			value.Provider, value.Model, value.Account, value.Pinned = strings.TrimSpace(value.Provider), strings.TrimSpace(value.Model), strings.TrimSpace(value.Account), false
-			availability, err := effectiveServerAccountAvailability(r.Context(), value.Provider)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if err := validateProductDefault(product, *value, availability.AvailableTo); err != nil {
+			if err := validateProductDefault(product, *value); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}

@@ -1239,18 +1239,13 @@ func (api *StreamingAPI) providerSetupAccount(ctx context.Context, request start
 }
 
 // serverAccountAvailableToCaller reports whether the server account of
-// provider is available to caller for any product.
+// provider is available to this person, independently of the product.
 func (api *StreamingAPI) serverAccountAvailableToCaller(ctx context.Context, caller, provider string) bool {
 	availability, err := effectiveServerAccountAvailability(ctx, provider)
 	if err != nil {
 		return false
 	}
-	for _, product := range []string{productWorkflows, productCrews} {
-		if availability.AvailableTo.admits(caller, product) {
-			return true
-		}
-	}
-	return false
+	return availability.AvailableTo.admits(caller)
 }
 
 // setupHome is the HOME the setup CLI runs with: the account's own, else the service's.

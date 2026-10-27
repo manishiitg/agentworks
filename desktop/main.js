@@ -26,6 +26,7 @@ app.setName('AgentWorks');
 app.setPath('userData', USER_DATA_PATH);
 
 const { localProductEnv } = require('./lib/localProducts');
+const { migrateAccountAvailability } = require('./lib/accountAvailabilityMigration');
 const { createWalkthroughState } = require('./walkthroughState');
 // Initialize lazily, after legacy profile migration has completed.
 let walkthroughState;
@@ -1159,6 +1160,11 @@ function spawnAgent(userDataPath) {
       NATIVE_WORKSPACE: 'true',
       WORKSPACE_API_TOKEN: workspaceApiToken
     };
+    try {
+      migrateAccountAvailability({ workspaceDir: docsDir, stateDir: env.AGENTWORKS_STATE_ROOT, env });
+    } catch {
+      return reject(new Error('Could not migrate saved AI-account access. No account credentials were changed.'));
+    }
     // Debug: persist the final system prompt + user message + tool calls for
     // every LLM call to <cwd>/logs/agent_prompts/{session_id}/. Off by default
     // because output is verbose; useful when debugging why the LLM produced

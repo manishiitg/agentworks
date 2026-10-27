@@ -1618,6 +1618,23 @@ run_local_builder_chat_migration() {
 
 run_local_builder_chat_migration || exit 1
 
+# Migrate non-secret account audiences before launching the new server. Backups
+# of environment files stay outside workspace documents and are private.
+account_audience_backup="${AGENTWORKS_STATE_ROOT:-$HOME/.config/agentworks/state}/migration-backups/account-audiences-$(date -u +%Y%m%dT%H%M%SZ)"
+account_audience_args=()
+if [ -n "$ENV_FILE_PATH" ]; then account_audience_args+=(--env-file "$ENV_FILE_PATH"); fi
+python3 "$SCRIPT_DIR/../scripts/migrations/account-availability.py" \
+    --workspace-dir "$WORKSPACE_DOCS_PATH" \
+    --backup-dir "$account_audience_backup" \
+    "${account_audience_args[@]}" || exit 1
+# Convert only the already-exported non-secret policy. Re-sourcing the full .env
+# here would overwrite the native workspace/port settings resolved above.
+if [ -n "${AGENTWORKS_PROVIDER_POLICY:-}" ]; then
+    AGENTWORKS_PROVIDER_POLICY="$(python3 "$SCRIPT_DIR/../scripts/migrations/account-availability.py" --workspace-dir "$WORKSPACE_DOCS_PATH" --backup-dir "$account_audience_backup" --export-current-policy)" || exit 1
+    export AGENTWORKS_PROVIDER_POLICY
+fi
+
+
 # Log rotation cap (used by background daemon)
 LOG_ROTATE_LINES=500000
 

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,8 +33,7 @@ import (
 
 const providerAccountSettingsPath = "config/provider-account-settings.json"
 
-// Product IDs a policy or a product default may name. agentworks is
-// workflows, work is Crews, code is Code.
+// Product IDs used by account attribution and product defaults.
 const (
 	productWorkflows = "agentworks"
 	productCrews     = "work"
@@ -43,63 +43,50 @@ var providerAccountSettingsMu sync.Mutex
 
 // ---- availability ----------------------------------------------------------
 
-// providerAvailability is who may use a server account: everyone, admins,
-// or any mix of products and people (email, username or user id).
+// providerAvailability names people, never products. Admins always have access.
 type providerAvailability struct {
-	All      bool
-	Admins   bool
-	Products []string
-	Users    []string
+	All   bool
+	Users []string
 }
 
 type providerAvailabilityObject struct {
-	Admins   bool     `json:"admins,omitempty"`
-	Products []string `json:"products,omitempty"`
-	Users    []string `json:"users,omitempty"`
+	Users []string `json:"users"`
 }
 
 func (a providerAvailability) MarshalJSON() ([]byte, error) {
 	if a.All {
 		return json.Marshal("all")
 	}
-	if a.Admins && len(a.Products) == 0 && len(a.Users) == 0 {
+	if len(a.Users) == 0 {
 		return json.Marshal("admins")
 	}
-	return json.Marshal(providerAvailabilityObject{Admins: a.Admins, Products: a.Products, Users: a.Users})
+	return json.Marshal(providerAvailabilityObject{Users: a.Users})
 }
 
 func (a *providerAvailability) UnmarshalJSON(data []byte) error {
 	var word string
 	if json.Unmarshal(data, &word) == nil {
-		switch strings.ToLower(strings.TrimSpace(word)) {
-		case "all", "everyone":
+		switch word {
+		case "all":
 			*a = providerAvailability{All: true}
 			return nil
 		case "admins":
-			*a = providerAvailability{Admins: true}
+			*a = providerAvailability{}
 			return nil
 		}
-		return fmt.Errorf(`available_to must be "all", "admins", or an object with products and users`)
+		return fmt.Errorf(`available_to must be "all", "admins", or {"users":[person IDs]}`)
 	}
 	var object providerAvailabilityObject
-	if err := json.Unmarshal(data, &object); err != nil {
-		return fmt.Errorf(`available_to must be "all", "admins", or an object with products and users`)
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&object); err != nil || object.Users == nil {
+		return fmt.Errorf(`available_to must be "all", "admins", or {"users":[person IDs]}; product grants must be migrated before starting this version`)
 	}
-	result := providerAvailability{Admins: object.Admins}
-	for _, product := range object.Products {
-		normalized, ok := normalizePolicyProduct(product)
-		if !ok {
-			return fmt.Errorf("available_to names an unknown product %q (use agentworks, work or code)", strings.TrimSpace(product))
-		}
-		result.Products = appendUniqueFold(result.Products, normalized)
-	}
+	result := providerAvailability{}
 	for _, user := range object.Users {
 		if user = strings.TrimSpace(user); user != "" {
 			result.Users = appendUniqueFold(result.Users, user)
 		}
-	}
-	if !result.Admins && len(result.Products) == 0 && len(result.Users) == 0 {
-		return fmt.Errorf("available_to names nobody; use \"admins\" to keep an account for admins only")
 	}
 	*a = result
 	return nil
@@ -154,56 +141,22 @@ func productDisplayName(product string) string {
 // Describe says who may use the account, in words for the UI.
 func (a providerAvailability) Describe() string {
 	if a.All {
-		return "Everyone"
+		return "Everyone in the company"
 	}
-	parts := []string{}
-	if a.Admins {
-		parts = append(parts, "Admins")
+	if len(a.Users) == 0 {
+		return "Only admins"
 	}
-	for _, product := range a.Products {
-		parts = append(parts, productDisplayName(product))
-	}
-	parts = append(parts, a.Users...)
-	switch len(parts) {
-	case 0:
-		return "Nobody"
-	case 1:
-		if a.Admins && len(a.Products) == 0 && len(a.Users) == 0 {
-			return "Admins only"
-		}
-		return parts[0]
-	}
-	return strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1]
+	return "Chosen people"
 }
 
-// admitsProduct reports whether every principal of product may use the
-// account (what a product default needs).
-func (a providerAvailability) admitsProduct(product string) bool {
+func (a providerAvailability) admits(principal string) bool {
 	if a.All {
-		return true
-	}
-	for _, candidate := range a.Products {
-		if strings.EqualFold(candidate, product) {
-			return true
-		}
-	}
-	return false
-}
-
-func (a providerAvailability) admits(principal, product string) bool {
-	if a.All {
-		return true
-	}
-	if a.admitsProduct(product) && strings.TrimSpace(principal) != "" {
 		return true
 	}
 	if strings.TrimSpace(principal) == "" {
 		return false
 	}
-	if a.Admins && principalIsAdmin(principal) {
-		return true
-	}
-	return principalMatchesAny(principal, a.Users)
+	return principalIsAdmin(principal) || principalMatchesAny(principal, a.Users)
 }
 
 // ---- principals ------------------------------------------------------------
@@ -512,8 +465,8 @@ func effectiveProductDefaults(ctx context.Context) (map[string]productDefault, e
 }
 
 // validateProductDefault checks a default against the enabled providers and
-// the provider's effective availability for that product.
-func validateProductDefault(product string, value productDefault, availability providerAvailability) error {
+// the selected server account. Each person's access is checked at run time.
+func validateProductDefault(product string, value productDefault) error {
 	if value.Provider == "" || value.Model == "" {
 		return fmt.Errorf("the %s default needs a provider and a model", productDisplayName(product))
 	}
@@ -529,17 +482,14 @@ func validateProductDefault(product string, value productDefault, availability p
 	if value.Account != "" && value.Account != "global:"+value.Provider {
 		return fmt.Errorf("the %s default account must be the %s server account (global:%s)", productDisplayName(product), value.Provider, value.Provider)
 	}
-	if !availability.admitsProduct(product) {
-		return fmt.Errorf("the %s default uses %s, but that provider's server account is not available to %s", productDisplayName(product), value.Provider, productDisplayName(product))
-	}
+
 	return nil
 }
 
 // validateProviderAccountInstallation runs at server start: a broken policy
-// or a product default its provider's policy does not admit stops the
-// server instead of failing runs later.
+// or invalid product default stops the server before it accepts work.
 func validateProviderAccountInstallation() error {
-	policy, err := installationProviderPolicy()
+	_, err := installationProviderPolicy()
 	if err != nil {
 		return err
 	}
@@ -548,11 +498,7 @@ func validateProviderAccountInstallation() error {
 		return err
 	}
 	for product, value := range defaults {
-		availability := providerAvailability{All: true}
-		if entry, ok := policy[strings.ToLower(value.Provider)]; ok {
-			availability = *entry.AvailableTo
-		}
-		if err := validateProductDefault(product, value, availability); err != nil {
+		if err := validateProductDefault(product, value); err != nil {
 			return fmt.Errorf("AGENTWORKS_PRODUCT_DEFAULTS: %w", err)
 		}
 	}
@@ -690,9 +636,9 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 			log.Printf("[PROVIDER_ACCOUNT] %s server account denied for %q: %v", provider, scope.Principal, err)
 			return nil, fmt.Errorf("the %s server account policy cannot be read", provider)
 		}
-		if !availability.AvailableTo.admits(scope.Principal, run.Product) {
+		if !availability.AvailableTo.admits(scope.Principal) {
 			log.Printf("[PROVIDER_ACCOUNT] %s server account denied for %q (%s): available to %s", provider, scope.Principal, run.Product, availability.Text)
-			return nil, fmt.Errorf("the %s server account is not available to you here (available to: %s). Choose another coding agent in this project's Models panel; your next message uses it", provider, availability.Text)
+			return nil, fmt.Errorf("This chat's model uses an account that is not available to you. Pick another model or ask an admin to add you")
 		}
 		// Per-user token limits count and cap server accounts only: this
 		// account's own limit, then the overall cap (PLAT-683, PLAT-693).

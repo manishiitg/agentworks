@@ -47,15 +47,17 @@ export function sharingSummary(sharing?: ProviderAccountSharing): string {
 
 export const SHARING_WARNING = 'Runs by others act as your account and are billed to it. Nobody else sees the key or the login files.'
 
-type PickOption = { id: string; label: string; detail?: string }
+type PickOption = { id: string; label: string; detail?: string; searchText?: string }
 
-export function PickList({ label, options, selected, onChange, disabled, emptyText }: {
+export function PickList({ label, options, selected, onChange, disabled, emptyText, searchable = false, selectedFirst = false }: {
   label: string
   options: PickOption[]
   selected: string[]
   onChange: (ids: string[]) => void
   disabled?: boolean
   emptyText: string
+  searchable?: boolean
+  selectedFirst?: boolean
 }) {
   const [filter, setFilter] = useState('')
   // Keep chosen IDs the caller can no longer see (another admin's pick, a
@@ -65,12 +67,13 @@ export function PickList({ label, options, selected, onChange, disabled, emptyTe
     return [...options, ...selected.filter(id => !known.has(id)).map(id => ({ id, label: id, detail: 'Not visible to you' }))]
   }, [options, selected])
   const needle = filter.trim().toLowerCase()
-  const shown = needle ? all.filter(option => `${option.label} ${option.detail ?? ''}`.toLowerCase().includes(needle)) : all
+  const filtered = needle ? all.filter(option => `${option.label} ${option.detail ?? ''} ${'searchText' in option ? option.searchText ?? '' : ''}`.toLowerCase().includes(needle)) : all
+  const shown = selectedFirst ? [...filtered].sort((a, b) => Number(selected.includes(b.id)) - Number(selected.includes(a.id)) || a.label.localeCompare(b.label)) : filtered
   const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter(value => value !== id) : [...selected, id])
   return (
     <fieldset className="min-w-0" disabled={disabled}>
       <legend className="text-xs font-medium text-gray-700 dark:text-gray-300">{label}{selected.length > 0 ? ` (${selected.length})` : ''}</legend>
-      {all.length > 6 && <input aria-label={`Filter ${label.toLowerCase()}`} placeholder="Filter" value={filter} onChange={event => setFilter(event.target.value)} className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 outline-none focus:border-violet-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />}
+      {(searchable || all.length > 6) && <input aria-label={`Filter ${label.toLowerCase()}`} placeholder={searchable ? 'Search people' : 'Filter'} value={filter} onChange={event => setFilter(event.target.value)} className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 outline-none focus:border-violet-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />}
       <div className="mt-1 max-h-36 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700">
         {shown.length === 0 && <p className="px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400">{all.length === 0 ? emptyText : 'No matches.'}</p>}
         {shown.map(option => (
@@ -131,12 +134,6 @@ export function SharingFields({ value, onChange, disabled, peopleOnly = false }:
   )
 }
 
-const PRODUCTS = [
-  { id: 'agentworks', label: 'Workflows' },
-  { id: 'work', label: 'Crews' },
-  { id: 'code', label: 'Code' },
-]
-
 type AvailabilityChoice = 'all' | 'admins' | 'chosen'
 
 /** Admin editor for who may use a server account. */
@@ -146,29 +143,22 @@ export function AvailabilityFields({ value, onChange, disabled }: {
   disabled?: boolean
 }) {
   const choice: AvailabilityChoice = value === 'all' ? 'all' : value === 'admins' ? 'admins' : 'chosen'
-  const object = typeof value === 'object' ? value : {}
+  const object = typeof value === 'object' ? value : { users: [] }
   const { targets, error } = useShareTargets(choice === 'chosen')
-  const setObject = (next: { admins?: boolean; products?: string[]; users?: string[] }) => onChange(next)
+  const people = [...new Map(targets.users.map(person => [person.id, person])).values()]
+  const selected = object.users.map(id => people.find(person => [person.id, person.email, person.name].some(identity => identity?.toLowerCase() === id.toLowerCase()))?.id || id)
   return (
     <fieldset className="space-y-3" disabled={disabled}>
-      <legend className="text-xs font-medium text-gray-700 dark:text-gray-300">Who can use it</legend>
+      <legend className="text-sm font-medium text-gray-900 dark:text-gray-100">Who can use this account?</legend>
       <div className="flex flex-wrap gap-4 text-sm text-gray-800 dark:text-gray-200">
-        <label className="inline-flex items-center gap-2"><input type="radio" name="server-availability" checked={choice === 'all'} onChange={() => onChange('all')} /> Everyone</label>
-        <label className="inline-flex items-center gap-2"><input type="radio" name="server-availability" checked={choice === 'admins'} onChange={() => onChange('admins')} /> Admins only</label>
-        <label className="inline-flex items-center gap-2"><input type="radio" name="server-availability" checked={choice === 'chosen'} onChange={() => setObject({ admins: true, products: [], users: [] })} /> Chosen products and people</label>
+        <label className="inline-flex items-center gap-2"><input type="radio" name="server-availability" checked={choice === 'all'} onChange={() => onChange('all')} /> Everyone in the company</label>
+        <label className="inline-flex items-center gap-2"><input type="radio" name="server-availability" checked={choice === 'admins'} onChange={() => onChange('admins')} /> Only admins</label>
+        <label className="inline-flex items-center gap-2"><input type="radio" name="server-availability" checked={choice === 'chosen'} onChange={() => onChange({ users: object.users })} /> Chosen people</label>
       </div>
       {choice === 'chosen' && <>
         {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
-        <div className="flex flex-wrap gap-4 text-xs text-gray-800 dark:text-gray-200">
-          <label className="inline-flex items-center gap-2"><input type="checkbox" checked={object.admins === true} onChange={event => setObject({ ...object, admins: event.target.checked })} /> Admins</label>
-          {PRODUCTS.map(product => (
-            <label key={product.id} className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={(object.products ?? []).includes(product.id)} onChange={event => setObject({ ...object, products: event.target.checked ? [...(object.products ?? []), product.id] : (object.products ?? []).filter(id => id !== product.id) })} />
-              Everyone in {product.label}
-            </label>
-          ))}
-        </div>
-        <PickList label="People" options={targets.users.map(item => ({ id: item.email || item.id, label: item.self ? `${item.name} (you)` : item.name, detail: item.email }))} selected={(object.users ?? []).map(user => targets.users.find(item => item.id === user)?.email || user)} onChange={users => setObject({ ...object, users })} emptyText="No other people." />
+        <p className="text-xs text-gray-500 dark:text-gray-400">Admins always have access.</p>
+        <PickList label="People" options={people.map(person => ({ id: person.id, label: person.name || person.email || person.id, searchText: person.email }))} selected={selected} onChange={users => onChange({ users })} searchable selectedFirst emptyText="No people available." />
       </>}
     </fieldset>
   )

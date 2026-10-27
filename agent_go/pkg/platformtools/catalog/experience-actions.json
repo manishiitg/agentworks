@@ -135,6 +135,18 @@
     "description": "Use the current ui get operation."
   },
   {
+    "family": "account",
+    "name": "set_availability",
+    "member": "set_account_availability",
+    "description": "Choose who can use an admin-managed AI account."
+  },
+  {
+    "family": "account",
+    "name": "availability",
+    "member": "get_account_availability",
+    "description": "Show who can use an admin-managed AI account."
+  },
+  {
     "family": "help",
     "name": "command",
     "member": "get_workflow_command_guidance",

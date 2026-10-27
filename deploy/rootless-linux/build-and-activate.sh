@@ -97,6 +97,7 @@ install -m 0755 "$REPO_ROOT/scripts/migrations/crew-owner-tabs.py" "$BUILD_DIR/m
 install -m 0755 "$REPO_ROOT/scripts/migrations/agentbridge-receipts.py" "$BUILD_DIR/migrations/agentbridge-receipts.py"
 install -m 0755 "$REPO_ROOT/scripts/migrations/retire-agent-server-relay.py" "$BUILD_DIR/migrations/retire-agent-server-relay.py"
 install -m 0755 "$REPO_ROOT/scripts/migrations/fold-crew-role.py" "$BUILD_DIR/migrations/fold-crew-role.py"
+install -m 0755 "$REPO_ROOT/scripts/migrations/account-availability.py" "$BUILD_DIR/migrations/account-availability.py"
 install -m 0755 "$REPO_ROOT/scripts/remove-autopilot-engine.py" "$BUILD_DIR/migrations/remove-autopilot-engine.py"
 install -m 0755 "$REPO_ROOT/scripts/simplify-workflow-settings.py" "$BUILD_DIR/migrations/simplify-workflow-settings.py"
 install -m 0755 "$REPO_ROOT/scripts/group-platform-tool-selections.py" "$BUILD_DIR/migrations/group-platform-tool-selections.py"
@@ -422,6 +423,9 @@ done
 # Back up and retire personal Gmail intake before starting company inbox code.
 MIGRATION_STOPPED_AGENT=1
 systemctl --user stop "$PRODUCT-agent"
+# Retire product-wide account grants before the new server reads its policy.
+# On failure, cleanup_build restarts the old agent (current has not moved).
+python3 "$BUILD_DIR/migrations/account-availability.py" --workspace-dir "$REMOTE_APP/data/docs" --env-file "$REMOTE_APP/.env" --backup-dir "$REMOTE_APP/state/migration-backups/account-audiences-$(date -u +%Y%m%dT%H%M%SZ)"
 python3 "$BUILD_DIR/migrations/agent-email-inboxes.py" \
   "$REMOTE_APP/state/gmail-inbound/email.db" --workspace-root "$REMOTE_APP/data/docs"
 python3 "$BUILD_DIR/migrations/crew-owner-tabs.py" --workspace-root "$REMOTE_APP/data/docs" --state-root "$REMOTE_APP/state"

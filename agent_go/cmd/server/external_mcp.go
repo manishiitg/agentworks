@@ -600,7 +600,7 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 			group = "Vault"
 		case name == "workspace_review":
 			group = "Crew review"
-		case name == "chat_preferences" || name == "users" || name == "costs" || name == "account" || name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models":
+		case name == "chat_preferences" || name == "users" || name == "costs" || name == "account" || name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models" || name == "set_account_availability" || name == "get_account_availability":
 			group = "Account"
 		case name == "help" || name == "get_agent_context" || name == "get_skill" || strings.Contains(name, "guidance_topic"):
 			group = "Help"

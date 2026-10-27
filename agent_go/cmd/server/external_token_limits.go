@@ -44,14 +44,16 @@ import (
 // limits, models and usage leave the server.
 
 var externalTokenLimitTools = map[string]bool{
-	"get_token_usage":    true,
-	"set_token_limits":   true,
-	"set_allowed_models": true,
+	"get_token_usage":          true,
+	"set_token_limits":         true,
+	"set_allowed_models":       true,
+	"set_account_availability": true,
+	"get_account_availability": true,
 }
 
 // isTokenLimitWrite is an admin write (users:manage and an admin account).
 func isTokenLimitWrite(name string) bool {
-	return name == "set_token_limits" || name == "set_allowed_models"
+	return name == "set_token_limits" || name == "set_allowed_models" || name == "set_account_availability"
 }
 
 func isExternalTokenLimitTool(name string) bool { return externalTokenLimitTools[name] }
@@ -74,7 +76,7 @@ func externalTokenLimitAllowed(c *UserClaims, name string) bool {
 	}
 	allows := func(scope string) bool { return c.AccessToken == nil || c.AccessToken.Allows(scope) }
 	adminWrite := claimsIsAdmin(c) && allows("users:manage")
-	if isTokenLimitWrite(name) {
+	if isTokenLimitWrite(name) || name == "get_account_availability" {
 		return adminWrite
 	}
 	return adminWrite || (claimsCanReviewCode(c) && allows("crews:review"))
@@ -87,7 +89,7 @@ func externalTokenLimitCallAllowed(r *http.Request, name string) bool {
 	}
 	allows := func(scope string) bool { return c.AccessToken == nil || c.AccessToken.Allows(scope) }
 	adminWrite := currentUserIsAdmin(r) && allows("users:manage")
-	if isTokenLimitWrite(name) {
+	if isTokenLimitWrite(name) || name == "get_account_availability" {
 		return adminWrite
 	}
 	return adminWrite || (currentUserCanReviewCode(r) && allows("crews:review"))
@@ -106,6 +108,14 @@ func externalTokenLimitDefinitions(add func(name, description string, write, sco
 	account := func(what string) map[string]any {
 		return map[string]any{"type": "string", "enum": stringsToAny(supportedLLMProviders), "description": what}
 	}
+	add("get_account_availability", "Show who can use an admin-managed AI account, including whether the installation pins this choice. Requires users:manage and an admin account. Returns no credentials or personal logins.", false, false, map[string]any{"account": account("The admin-managed account provider.")}, "account")
+	add("set_account_availability", "Choose who can use an admin-managed AI account: everyone in the company, only admins, or chosen people. Admins always have access. Use person IDs from account action=users_list. This applies across products; it does not share anyone's personal AI account or change project access, models, limits or saved logins. Uses the AI accounts screen's write path; installation-pinned access cannot be changed here. Recorded in the admin audit log. Requires users:manage and an admin account.", true, false, map[string]any{
+		"account": account("The admin-managed account's provider, such as codex-cli."),
+		"available_to": map[string]any{"description": "all = everyone in the company; admins = only admins; users = chosen person IDs. Admins always have access.", "oneOf": []any{
+			map[string]any{"type": "string", "enum": []any{"all", "admins"}},
+			map[string]any{"type": "object", "additionalProperties": false, "required": []any{"users"}, "properties": map[string]any{"users": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}}},
+		}},
+	}, "account", "available_to")
 	add("get_token_usage", "Shared server-account token usage per person against their admin-set limits: usage toward limits today and this week (UTC; weeks start Monday); cache reads count at 10%, fresh input/cache writes/output in full; daily_cache_read_tokens and weekly_cache_read_tokens show raw cache reads, daily_limit/weekly_limit (0 = unlimited), state ok|warning (80%)|over, and reset times. The top-level figures are the person's overall cap across all shared accounts; accounts has each shared account (by provider) with its own use, effective limits, the account default (default_limits) and the person's override. account_defaults lists every account's default. Only tokens spent on the server's shared accounts count; a person's own accounts never do. Slack channel bot turns count to the owner of the workflow, Crew or Code they answer for (daily_via_bot/weekly_via_bot is that part). Without user_id/email it lists every active person; account limits accounts to one shared account. Models: account_allowed_models is each shared account's own model list (null = all models); each person's allowed_models has, per shared account that limits their models, models (their effective list; null = all models) and source (account = the account's list, person = their own override); an account not listed there allows them every model. Pass from/to (YYYY-MM-DD, UTC, inclusive) for each person's shared-account token totals over that range instead. Read-only; every call is recorded in the Code review audit log. Requires crews:review and an admin or Code reviewer account, or users:manage and an admin account.", false, false, who(map[string]any{"from": date, "to": date, "account": account("Only this shared account (provider, e.g. codex-cli).")}))
 	add("set_token_limits", "Set daily and/or weekly token limits on the shared server accounts. Without account: a person's overall cap across all shared accounts. With account (provider, e.g. codex-cli) and a person: that person's override of the account's default (a field set replaces that field of the default; 0 or null falls back to it; -1 is unlimited for this person even when the account has a default). With account and no person: the account's default per-person limit for everyone. With account, model and no person: that one model's default per-person limit on the account, counted on top of the account's (a person at it is moved to another allowed model, else refused; 0 or null removes the model's limit). Integers; 0 or null is unlimited; an omitted field stays as it is. Identify a person by user_id or email. Returns the new limits and current usage. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{"daily": limit("Daily (UTC day)"), "weekly": limit("Weekly (Monday-start UTC week)"), "account": account("The shared account (provider) whose limit to set; omit for the overall cap."), "model": externalString("With account and no person: set the limit of this one model (a model ID from the provider's list) instead of the account's.")}))
 	add("set_allowed_models", "Set which models may run on a shared server account (provider, e.g. codex-cli). With account and no person: the account's list for everyone (models null or [] = all models). With account and a person (user_id or email): that person's override (a list replaces the account's list for them; null or [] clears it back to the account's; [\"*\"] or all_models true = every model for this person). A turn whose model is not allowed runs on the first allowed one; it never fails. Model ids are checked against the provider's model catalog when the server has one. Returns the new lists. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{
@@ -252,6 +262,9 @@ func (api *StreamingAPI) externalTokenLimitCall(w http.ResponseWriter, r *http.R
 		if name == "set_allowed_models" {
 			msg = "Setting allowed models needs users:manage and an admin account."
 		}
+		if name == "set_account_availability" || name == "get_account_availability" {
+			msg = "Changing who can use an AI account needs users:manage and an admin account."
+		}
 		externalError(w, http.StatusForbidden, "forbidden", msg)
 		return
 	}
@@ -266,8 +279,16 @@ func (api *StreamingAPI) externalTokenLimitCall(w http.ResponseWriter, r *http.R
 		externalError(w, http.StatusBadRequest, "invalid_arguments", "Unknown shared account; pass a provider such as codex-cli.")
 		return
 	}
-	if name == "set_allowed_models" && account == "" {
+	if (name == "set_allowed_models" || name == "set_account_availability" || name == "get_account_availability") && account == "" {
 		externalError(w, http.StatusBadRequest, "invalid_arguments", "Pass account (a provider such as codex-cli).")
+		return
+	}
+	if name == "get_account_availability" {
+		api.externalGetAccountAvailability(w, r, account)
+		return
+	}
+	if name == "set_account_availability" {
+		api.externalSetAccountAvailability(w, r, account, args)
 		return
 	}
 	if name == "set_allowed_models" && !named {

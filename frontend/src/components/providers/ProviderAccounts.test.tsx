@@ -99,9 +99,35 @@ it('shows the server account with its origin and lets an admin change who can us
   const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
   expect(container.textContent).toContain('Used by everyone')
   await click(await menuItem(container, 'More for the admin-managed account', 'Who can use it'))
-  // Everyone / Only admins save at once, no Save button.
-  await setValue(container.querySelector<HTMLSelectElement>('select[aria-label="Who can use the admin-managed account"]')!, 'admins')
+  expect(container.querySelectorAll('input[type="radio"]')).toHaveLength(3)
+  expect(container.querySelector('select[aria-label="Who can use the admin-managed account"]')).toBeNull()
+  const admins = [...container.querySelectorAll('label')].find(label => label.textContent?.trim() === 'Only admins')!.querySelector('input')!
+  await click(admins)
+  expect(llmConfigService.setServerAccountAvailability).not.toHaveBeenCalled()
+  expect(buttonByText(container, 'Done')).toBeUndefined()
+  expect(buttonByText(container, 'Reset installation policy')).toBeUndefined()
+  await click(buttonByText(container, 'Save'))
   expect(llmConfigService.setServerAccountAvailability).toHaveBeenCalledWith('claude-code', 'admins')
+})
+
+it('shows chosen people once, selected first, and searches by name or email', async () => {
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([{ ...server, availability: { available_to: { users: ['u-zoe'] }, text: 'Chosen people', source: 'admin', pinned: false } }])
+  vi.mocked(llmConfigService.getProviderShareTargets).mockResolvedValue({ workflows: [], crews: [], users: [
+    { id: 'u-amy', name: 'Amy', email: 'amy@example.com' },
+    { id: 'u-zoe', name: 'Zoe', email: 'zoe@example.com' },
+    { id: 'u-only-email', name: '', email: 'colleague@example.com' },
+    { id: 'u-zoe', name: 'Zoe', email: 'zoe@example.com' },
+  ] })
+  const container = await render(<ProviderAccounts provider="claude-code" />)
+  await click(await menuItem(container, 'More for the admin-managed account', 'Who can use it'))
+  const personLabels = () => [...container.querySelectorAll('label')].filter(label => label.querySelector('input[type="checkbox"]')).map(label => label.textContent)
+  expect(personLabels()).toEqual(['Zoe', 'Amy', 'colleague@example.com'])
+  const search = container.querySelector<HTMLInputElement>('input[placeholder="Search people"]')!
+  await setValue(search, 'amy@example.com')
+  expect(personLabels()).toEqual(['Amy'])
+  await click(container.querySelector('input[type="checkbox"]'))
+  await click(buttonByText(container, 'Save'))
+  expect(llmConfigService.setServerAccountAvailability).toHaveBeenCalledWith('claude-code', { users: ['u-zoe', 'u-amy'] })
 })
 
 it('says when the installation pins who can use the server account', async () => {

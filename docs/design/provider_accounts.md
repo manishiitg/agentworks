@@ -63,15 +63,25 @@ or `.env`, e.g.
 AGENTWORKS_PROVIDER_POLICY='{
   "claude-code": {"available_to": "all"},
   "cursor-cli":  {"available_to": "admins"},
-  "muse-cli":    {"available_to": {"products": ["code"], "users": ["alice@x.com"]}}
+  "muse-cli":    {"available_to": {"users": ["person-id"]}}
 }'
 ```
 
-`available_to`: `all` (default, today's behaviour), `admins`, or any mix of
-`products` (agentworks = workflows, work = Crews, code = Code) and `users`
-(email or user id). A provider absent from the policy keeps today's
-behaviour. The UI shows the policy in words ("Available to: Code, and
-alice@x.com").
+`available_to`: `all` (Everyone in the company, including future members),
+`admins` (Only admins), or `{"users":[person IDs]}` (Chosen people).
+Admins always have access. A provider absent from the policy allows everyone.
+The screen has one audience question and one Save; only Chosen people opens a
+searchable list, with selected people first and a name or email shown once.
+MCP `account action=availability/set_availability` reads/saves the same setting
+through the existing admin handler and users:manage scope. Installation pins
+still apply. Product groups and object-level admin flags are retired; migrate
+old settings/environment policies with the stopped-app migration before booting.
+The owner chose to map every old product-wide grant to `all`, including future
+company members. Explicit people stay chosen; limits, defaults and pins stay intact.
+Server deploys and local launchers run the one-off migration before the new server.
+Packaged Desktop uses the equivalent pre-start JavaScript migration without Python.
+Backups stay in private state storage; remove these one-off hooks after all installations move.
+Personal account sharing and private native login folders are unchanged.
 
 **Product defaults** (owner decision 2026-09-28). The same setting names the
 provider, model and account a product starts with, so a new workflow, Crew
@@ -87,12 +97,13 @@ AGENTWORKS_PRODUCT_DEFAULTS='{
 
 - The account is the provider's installed account unless `account` names an
   admin-configured one.
-- A default must be admitted by that provider's `available_to` for the
-  product; the server refuses to start otherwise.
+- A default must name an enabled provider and valid account. Its audience is
+  checked for the current person on every run. A denied person gets a next step;
+  the server never silently selects another account.
 - New items copy the default into their own settings when created, so a
   later default change does not silently switch existing workflows.
-- The Providers page shows each product's default; admins change it there
-  (an admin-configured default) unless the installation pins it.
+- Admins can change product defaults through the existing configuration API
+  unless the installation pins them; the old Product defaults screen is retired.
 
 ### 2. User accounts (added by a person)
 
@@ -289,20 +300,17 @@ Built on branch `feat/provider-accounts` (2026-09-28).
 ### What was built
 
 - **Installation policy.** `AGENTWORKS_PROVIDER_POLICY` per provider:
-  `available_to` is `all`, `admins`, or `{admins, products, users}`
-  (products: `agentworks`/`workflows`, `work`/`crews`, `code`; users: email,
-  username or user ID). An entry may add `"pinned": true`. An absent policy
-  or provider means everyone (today's behaviour). A broken policy stops the
-  server at start.
-- **Admin "Available to".** Admins change any server account's "Available
-  to" on the Providers page (`PATCH /api/provider-connections/global:<p>`,
-  stored in `config/provider-account-settings.json`); `null` returns to the
-  installation policy. A pinned entry is read-only (409). A change that
-  would take a provider away from a product whose default uses it is
-  refused.
+  `available_to` is `all`, `admins`, or `{users:[person IDs]}`. Admins always
+  have access. An entry may add `"pinned": true`; absent means everyone.
+  Invalid policy stops startup; the one-off migration handles old product grants.
+- **Admin audience.** `PATCH /api/provider-connections/global:<p>` stores the
+  audience in `config/provider-account-settings.json`. A pinned entry cannot be
+  changed here (409). MCP `account action=availability/set_availability` uses the
+  same handler with admin/users:manage checks and audited reads/writes. The
+  screen has one Save for all three audience choices.
 - **Product defaults.** `AGENTWORKS_PRODUCT_DEFAULTS` (`provider`, `model`,
   optional `account` = `global:<provider>`, optional `pinned`). Checked at
-  start against the provider's policy. Admins change unpinned products
+  start against enabled providers and valid accounts. Admins change unpinned products
   (`GET/PUT /api/provider-accounts/product-defaults`). Applied where new
   items read their model: `primary_config` and `product_defaults` in
   `/api/llm-config/defaults` (workflows), the default engine of the Crew

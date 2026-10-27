@@ -11,11 +11,12 @@ import (
 // Without a saved default (installation or admin), a product starts with a
 // provider that works for everyone there: the first, in the product's own
 // order, whose shared server account is signed in (or has a key) and is
-// available to everyone in that product. Nothing is hard-coded: Server B
-// with only Muse signed in starts new Codes on Muse.
+// available to everyone in the company. Nothing is hard-coded: an installation
+// with only one provider signed in can use that provider as its starting choice.
 
 // providerReadyForEveryone reports whether provider's shared account can run
-// for any signed-in user of product.
+// for everyone. Explicit defaults may use a narrower audience; each run still
+// checks its person. The product argument only keeps profile ordering separate.
 var providerReadyForEveryone = func(ctx context.Context, provider, product string) bool {
 	if !providerEnabled(provider) {
 		return false
@@ -27,7 +28,7 @@ var providerReadyForEveryone = func(ctx context.Context, provider, product strin
 	if err != nil {
 		return false
 	}
-	return availability.AvailableTo.All || availability.AvailableTo.admitsProduct(product)
+	return availability.AvailableTo.All
 }
 
 // dynamicDefaultProviderOption picks the option to start with: the profile's
