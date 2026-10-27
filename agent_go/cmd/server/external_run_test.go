@@ -99,7 +99,8 @@ func TestExternalRunStatusRejectsUnknownSession(t *testing.T) {
 
 func TestExternalListSchedulesEmptyAndUnknownRuns(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	body := externalTestBody(t, f.call(t, "owner", "list_schedules", map[string]any{"workflow_id": "invoices"}), 200)
+	f.api.scheduler = NewSchedulerService(f.api) // the schedules tool reads through the scheduler
+	body := externalTestBody(t, f.call(t, "owner", "schedules", map[string]any{"action": "list", "project": "invoices"}), 200)
 	schedules, _ := body["schedules"].([]any)
 	if schedules == nil || len(schedules) != 0 {
 		t.Fatalf("expected empty schedules, got %v", body)
@@ -112,6 +113,7 @@ func TestExternalListSchedulesEmptyAndUnknownRuns(t *testing.T) {
 
 func TestExternalScheduleRunsRemainReadableAfterScheduleDeletion(t *testing.T) {
 	f := newExternalToolsFixture(t)
+	f.api.scheduler = NewSchedulerService(f.api) // the schedules tool reads through the scheduler
 	runs, err := json.Marshal([]ScheduleRunEntry{{ID: "retained-run", ScheduleID: "deleted-schedule", Status: "success", StartedAt: time.Now().UTC()}})
 	if err != nil {
 		t.Fatal(err)
@@ -129,6 +131,7 @@ func TestExternalScheduleRunsRemainReadableAfterScheduleDeletion(t *testing.T) {
 
 func TestExternalScheduleRunsPagesPastTwoHundred(t *testing.T) {
 	f := newExternalToolsFixture(t)
+	f.api.scheduler = NewSchedulerService(f.api) // the schedules tool reads through the scheduler
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoice processing","created_by":"owner","access":{"owners":["owner"]},"schedules":[{"id":"deploy-hook","name":"Deploy hook","schedule_type":"webhook","enabled":true}]}`)
 	runs := make([]ScheduleRunEntry, maxScheduleRuns+5)
 	for index := range runs {
@@ -147,6 +150,7 @@ func TestExternalScheduleRunsPagesPastTwoHundred(t *testing.T) {
 
 func TestExternalWebhookRunExposesAcceptedDeployMetadata(t *testing.T) {
 	f := newExternalToolsFixture(t)
+	f.api.scheduler = NewSchedulerService(f.api) // the schedules tool reads through the scheduler
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoice processing","created_by":"owner","access":{"owners":["owner"]},"schedules":[{"id":"deploy-hook","name":"Rerun Basic Smoke Suite","schedule_type":"webhook","enabled":true}]}`)
 	const sha = "0b8b40e69a1234567890abcdef1234567890abcd"
 	sctx := &ScheduleContext{
@@ -207,7 +211,7 @@ func bodyString(t *testing.T, value any) string {
 
 func TestExternalTriggerScheduleWithoutScheduler(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	body := externalTestBody(t, f.call(t, "owner", "trigger_schedule", map[string]any{"workflow_id": "invoices", "schedule_id": "daily"}), 503)
+	body := externalTestBody(t, f.call(t, "owner", "schedules", map[string]any{"action": "run_now", "project": "invoices", "schedule_id": "daily"}), 503)
 	if body["error"].(map[string]any)["code"] != "scheduler_unavailable" {
 		t.Fatalf("wrong error: %v", body)
 	}

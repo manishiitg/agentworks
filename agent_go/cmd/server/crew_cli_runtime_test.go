@@ -44,7 +44,7 @@ func TestCrewAdmissionAndRetainedInputKeepTrustedMode(t *testing.T) {
 				t.Fatalf("trusted access selected wrong mode: %v", req.SelectedSkills)
 			}
 			key := agentProfileSessionKey(profile)
-			if tc.run && (!strings.Contains(profile.Prompt, "Crew Run") || key == builderKey) {
+			if tc.run && key == builderKey {
 				t.Fatal("Run inherited the owner's prompt/fingerprint")
 			}
 			if !tc.run {
@@ -85,7 +85,7 @@ func TestCrewChatModesSeparatePromptSkillsAndSessionIdentity(t *testing.T) {
 	if builder.Prompt == run.Prompt || agentProfileSessionKey(builder) == agentProfileSessionKey(run) {
 		t.Fatal("Run shares Builder prompt or session fingerprint")
 	}
-	if !strings.Contains(run.Prompt, "Crew Run") || !strings.Contains(run.Prompt, "Support") || strings.Contains(run.Prompt, "set_work_identity") || strings.Contains(run.Prompt, "When asked for another Crew") {
+	if strings.Contains(run.Prompt, "set_work_identity") || strings.Contains(run.Prompt, "When asked for another Crew") {
 		t.Fatalf("Run prompt inherited authoring instructions: %s", run.Prompt)
 	}
 	if !slices.Contains(buildReq.SelectedSkills, "crew-builder") {

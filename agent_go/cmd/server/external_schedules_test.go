@@ -70,10 +70,10 @@ func TestExternalCrewOnlyConnectionCannotReachWorkflows(t *testing.T) {
 		return w
 	}
 	for _, args := range []map[string]any{
-		{"workflow_id": "invoices", "action": "get_access"},
+		{"workflow_id": "invoices", "action": "access_get"},
 		{"workflow_id": "invoices", "action": "rename", "label": "Taken over"},
 	} {
-		if w := call("manage_project", args); w.Code != 403 {
+		if w := call("workspace", args); w.Code != 403 {
 			t.Fatalf("Crew-only connection %v: %d %s", args["action"], w.Code, w.Body)
 		}
 	}

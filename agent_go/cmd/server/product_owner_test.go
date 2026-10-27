@@ -78,6 +78,7 @@ func mustRead(t *testing.T, path string) string {
 	return string(raw)
 }
 
+// Fails on main (retired per-user layout): retire with migrateProductOwners after the last server moves (856-145).
 func TestMigrateProductOwnersRegistersFromThePathAndStampsInformationOnly(t *testing.T) {
 	registry := withProjectOwnerRegistry(t)
 	docs := t.TempDir()
@@ -124,6 +125,7 @@ func TestMigrateProductOwnersRegistersFromThePathAndStampsInformationOnly(t *tes
 }
 
 // PLAT-449: the manifest is user-writable, so editing its owner_id never changes who owns the project.
+// Fails on main (retired per-user layout): retire with migrateProductOwners after the last server moves (856-145).
 func TestResolveProjectOwnerIgnoresTheManifest(t *testing.T) {
 	registry := withProjectOwnerRegistry(t)
 	docs := t.TempDir()
@@ -166,6 +168,7 @@ func TestResolveProjectOwnerIgnoresTheManifest(t *testing.T) {
 }
 
 // PLAT-450: the backfill never writes through a symlink and never leaves the owner's real directories.
+// Fails on main (retired per-user layout): retire with migrateProductOwners after the last server moves (856-145).
 func TestMigrateProductOwnersNeverFollowsSymlinks(t *testing.T) {
 	registry := withProjectOwnerRegistry(t)
 	docs := t.TempDir()
@@ -227,6 +230,7 @@ func TestMigrateProductOwnersNeverFollowsSymlinks(t *testing.T) {
 
 // The manifest owner, the path owner and the registered owner agree for every physical project root a test fixture
 // in this package spells out.
+// Fails on main (retired per-user layout): retire with migrateProductOwners after the last server moves (856-145).
 func TestProductOwnerFromPathAgreesWithBackfillForEveryFixtureRoot(t *testing.T) {
 	roots := regexp.MustCompile(`"(_users/([A-Za-z0-9_-]+)/Chats/(?:Work|Code)/projects/[A-Za-z0-9_-]+)/product\.json"`)
 	files, _ := filepath.Glob("*_test.go")

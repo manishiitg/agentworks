@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
+
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
@@ -57,7 +59,9 @@ func TestExternalServerProductManagementAuthority(t *testing.T) {
 		return &UserClaims{UserID: user, AccessToken: &accesstokens.Token{ID: "management", Scopes: []string{scope}}}
 	}
 	call := func(c *UserClaims, args map[string]any) *httptest.ResponseRecorder {
-		raw, _ := json.Marshal(map[string]any{"name": serverProductManagementTool, "arguments": args})
+		// The server_product actions are reached through account action=server_tools / server_call (PLAT-825).
+		name, input := catalog.Invocation(serverProductManagementTool, args)
+		raw, _ := json.Marshal(map[string]any{"name": name, "arguments": input})
 		r := adminRequest("POST", "/api/external/v1/call", string(raw), c, nil)
 		r.Header.Set("Cookie", "client-cookie")
 		r.Header.Set("X-AgentWorks-Actor", "spoofed")

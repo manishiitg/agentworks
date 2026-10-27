@@ -64,8 +64,12 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 		t.Fatalf("identity = %v", identity)
 	}
 	runtime := crewAuthoringFile(t, env, root+"/workflow.json")
-	if !strings.Contains(runtime, `"triage"`) || !strings.Contains(runtime, "Morning sweep") || strings.Contains(runtime, "Workflow/") {
-		t.Fatalf("workflow.json must hold skills, schedules and no workflow context: %s", runtime)
+	if !strings.Contains(runtime, `"triage"`) || strings.Contains(runtime, "Workflow/") {
+		t.Fatalf("workflow.json must hold skills and no workflow context: %s", runtime)
+	}
+	// Schedules are stored next to it in schedules.json since the common project entry storage (PLAT-871).
+	if !strings.Contains(crewAuthoringFile(t, env, root+"/schedules.json"), "Morning sweep") {
+		t.Fatal("schedules.json must hold the authored schedule")
 	}
 	if !strings.Contains(crewAuthoringFile(t, env, root+"/functions.json"), "triage_ticket") {
 		t.Fatal("functions.json must hold the declared function")
@@ -110,7 +114,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 		"functions": map[string]any{"upsert": []any{map[string]any{"name": "escalate", "description": "Escalate a ticket.", "instructions": "Page the on-call owner."}}},
 		"schedules": map[string]any{
 			"update": []any{map[string]any{"id": scheduleID, "enabled": false, "run_destination": "isolated"}},
-			"add":    []any{map[string]any{"name": "Weekly report", "message": "Summarize the week.", "cadence_hours": 168}},
+			"add":    []any{map[string]any{"name": "Weekly report", "message": "Summarize the week.", "cron_expression": "0 9 * * 1"}},
 		},
 		"files":       map[string]any{"notes/runbook.md": "Escalation runbook"},
 		"return_spec": true,
@@ -147,7 +151,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	}
 	// A retry after a dropped connection is safe: the same add is not added twice, and removing a gone id is not an error.
 	code, out = externalCrewRequest(t, env, owner, "update_crew", map[string]any{"crew_id": crewID, "return_spec": true, "schedules": map[string]any{
-		"add":    []any{map[string]any{"name": "Weekly report", "message": "Summarize the week.", "cadence_hours": 168}},
+		"add":    []any{map[string]any{"name": "Weekly report", "message": "Summarize the week.", "cron_expression": "0 9 * * 1"}},
 		"remove": []any{"already-gone"},
 	}})
 	if code != 200 || len(out["schedules"].([]any)) != 2 {
@@ -224,8 +228,9 @@ func TestExternalCrewAuthoringAccess(t *testing.T) {
 	if code, _ := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": "beta", "purpose": "x"}); code != 404 {
 		t.Fatalf("Crew outside the token bound must be not-found, got %d", code)
 	}
-	// Another person's unshared Crew is not exposed through authoring.
-	if code, _ := externalCrewRequest(t, env, crewWriter("owner"), "update_crew", map[string]any{"crew_id": "gamma", "purpose": "x"}); code != 404 {
+	// Another person's Crew cannot be changed through authoring; gamma is shared for use, so it is visible and the
+	// change is forbidden rather than not found.
+	if code, _ := externalCrewRequest(t, env, crewWriter("owner"), "update_crew", map[string]any{"crew_id": "gamma", "purpose": "x"}); code != 403 {
 		t.Fatalf("another owner's Crew must be refused, got %d", code)
 	}
 	if code, _ := externalCrewRequest(t, env, crewWriter("owner"), "create_crew", map[string]any{"name": "Bad", "purpose": "y", "selected_skills": []any{"no-such-skill"}}); code != 400 {

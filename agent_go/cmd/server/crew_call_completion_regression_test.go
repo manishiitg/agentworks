@@ -41,7 +41,7 @@ func TestCodeAskSharedCrewCompletesOrReportsRevocation(t *testing.T) {
 			}
 			tools := env.functionTools(t, sourceRoot, "sess-caller", []string{targetRoot})
 			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-			out, err := tools["project_functions_call"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "ask", "args": map[string]interface{}{"message": "Summarize the bugs"}, "wait_seconds": 0})
+			out, err := tools["project_functions_call"].exec(ctx, map[string]interface{}{"project": "Beta", "function": "ask", "args": map[string]interface{}{"message": "Summarize the bugs"}, "wait_seconds": 0})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -310,7 +310,7 @@ func TestExternalWorkflowKnowledgeRequiresFilesRead(t *testing.T) {
 	// Same call with an explicit PAT lacking files:read is rejected on scope,
 	// proving knowledge reads cannot smuggle workflow content past the token.
 	w := httptest.NewRecorder()
-	data := `{"name":"list_workflow_knowledge","arguments":{"workflow_id":"invoices"}}`
+	data := `{"name":"files","arguments":{"action":"knowledge_list","workflow_id":"invoices"}}`
 	f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", data, patClaims("reader", []string{"workflows:read"}), nil))
 	scoped := externalTestBody(t, w, 403)
 	if scoped["error"].(map[string]any)["code"] != "insufficient_scope" {

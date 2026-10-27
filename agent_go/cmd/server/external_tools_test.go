@@ -305,9 +305,12 @@ func TestExternalRunAuthorityBoundary(t *testing.T) {
 	for _, tool := range catalog {
 		byName[tool.Name] = tool
 	}
+	// A denied tool may stay in the catalog only as a hidden Builder member (google_workspace_cli behind
+	// integrations action=google since 9a5930513); a Run-mode token must never be allowed to use it.
+	runner := &UserClaims{UserID: "runner", AccessToken: &accesstokens.Token{Scopes: []string{"runs:execute", "crews:run", "crews:read", "workflows:read"}, AllWorkflows: true, AllCrews: true}}
 	for _, name := range denied {
-		if _, exposed := byName[name]; exposed {
-			t.Fatalf("internal tool %s leaked into the external API", name)
+		if tool, exposed := byName[name]; exposed && (!tool.internalOnly || externalTokenAllows(runner, tool)) {
+			t.Fatalf("internal tool %s is usable by a Run token through the external API", name)
 		}
 	}
 	for _, name := range []string{"send_slack_message", "trigger_schedule"} {
@@ -325,8 +328,9 @@ func TestExternalRunAuthorityBoundary(t *testing.T) {
 	if retired["error"].(map[string]any)["code"] != "unknown_tool" {
 		t.Fatalf("retired notification tool remains externally callable: %v", retired)
 	}
-	body := externalTestBody(t, f.call(t, "owner", "google_workspace_cli", map[string]any{"workflow_id": "invoices"}), 404)
-	if body["error"].(map[string]any)["code"] != "unknown_tool" {
+	// The denylisted Google tool is a Builder-only Crew integration member: called by name it is refused.
+	body := externalTestBody(t, f.call(t, "owner", "google_workspace_cli", map[string]any{"workflow_id": "invoices"}), 403)
+	if body["error"].(map[string]any)["code"] != "insufficient_scope" {
 		t.Fatalf("wrong error for denylisted tool: %v", body)
 	}
 }

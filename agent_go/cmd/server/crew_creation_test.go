@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -141,8 +143,8 @@ func TestCreateCrewProjectWritesUILayout(t *testing.T) {
 	// struct, so empty plain-slice selections serialize as absent (the same
 	// as any trigger save); populated selections and scalar defaults
 	// survive, and pointer-held secret lists keep their explicit empties.
-	if caps["browser_mode"] != "auto" {
-		t.Fatalf("browser_mode = %v, want auto", caps["browser_mode"])
+	if caps["browser_mode"] != browser.DefaultMode() { // the deployment's default since PLAT-788
+		t.Fatalf("browser_mode = %v, want %s", caps["browser_mode"], browser.DefaultMode())
 	}
 	for _, key := range []string{"selected_secrets", "selected_global_secret_names"} {
 		raw, _ := caps[key].([]interface{})
@@ -530,7 +532,7 @@ func TestCrewManifestRewritePreservesContextPaths(t *testing.T) {
 		t.Fatalf("workflow_context_paths = %v after rewrite", contexts)
 	}
 	caps, _ := runtime["capabilities"].(map[string]interface{})
-	if caps["browser_mode"] != "auto" {
+	if caps["browser_mode"] != browser.DefaultMode() {
 		t.Fatalf("browser_mode = %v after rewrite", caps["browser_mode"])
 	}
 	triggers, err := svc.projectWebhookConfigs(ctx, "owner", "work", created.CrewID)

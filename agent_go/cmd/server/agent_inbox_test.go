@@ -316,5 +316,6 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	init(pat)
+	// Fails on main since about 27 Oct: a PAT can register a name. Open owner question (17 Oct decision vs ease of use).
 	call(pat, map[string]any{"action": "register", "agent_name": "spoofed"}, false)
 }
