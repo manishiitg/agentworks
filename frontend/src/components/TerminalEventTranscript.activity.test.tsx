@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PollingEvent } from '../services/api-types'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { CleanConversationSurface } from './CleanConversationSurface'
+import api from '../services/api'
 import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import type { ActiveSessionInfo } from '../services/api-types'
@@ -14,6 +15,7 @@ vi.mock('react-virtuoso', () => ({
     <div>{data.map((item, index) => <div key={computeItemKey(firstItemIndex + index, item)}>{itemContent(firstItemIndex + index, item)}</div>)}{components?.Footer && <components.Footer context={context} />}</div>
   ),
 }))
+vi.mock('./FileContentViewer', () => ({ FileContentViewerBody: ({ source }: { source: { fileContent: string } }) => <pre data-testid="saved-preview">{source.fileContent}</pre> }))
 vi.mock('./events/EventDispatcher', () => ({ EventDispatcher: () => null }))
 vi.mock('./ui/MarkdownRenderer', () => ({ ConversationMarkdownRenderer: ({ content }: { content: string }) => <div>{content}</div> }))
 type TerminalEventTranscriptProps = React.ComponentProps<typeof TerminalEventTranscript>
@@ -348,4 +350,49 @@ it.each(['query_1791824440777049000', 'synthetic-turn:steer-message-179182444077
     expect(host.querySelector('[data-testid="terminal-inspectable-background-activity"]')?.textContent).toContain(status)
     expect(host.querySelector('[aria-label="Inspect Example step"]')).not.toBeNull()
   }
+})
+
+// PLAT-746-158 B2: capture can finish after the following reply. Both views
+// must attach it to its recorded reply and read saved bytes, not today's file.
+it('keeps a late file comparison on its original reply in both transcript views after reload', async () => {
+  const get = vi.spyOn(api, 'get').mockImplementation(async (_url, config) => {
+    if (config?.params?.op === 'snapshot_file') return { data: new TextEncoder().encode('Saved report from the first reply').buffer } as never
+    return { data: { snapshot: { status: 'complete' }, changes: [
+      { path: 'report.md', status: 'M', added: 2, removed: 1 },
+      { path: 'image.png', status: 'M', binary: true },
+    ] } } as never
+  })
+  const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) { this.open = true })
+  const numbered = (id: string, type: string, data: Record<string, unknown>, sequence: number) => ({ ...event(id, type, data), sequence, session_id: 'files-session' })
+  const first = numbered('first-reply', 'llm_generation_end', { content: 'First report is ready.' }, 2)
+  const next = numbered('next-reply', 'llm_generation_end', { content: 'Second report is ready.' }, 5)
+  const history = [numbered('first-user', 'user_message', { content: 'Make the first report' }, 1), first,
+    numbered('next-user', 'user_message', { content: 'Make another report' }, 4), next]
+  const late = numbered('saved-files', 'reply_file_changes', { snapshot_id: 'saved-first', workspace_path: 'Crew/example', start_sequence: 0, end_sequence: 3 }, 6)
+  try {
+    for (const clean of [false, true]) {
+      const host = document.createElement('div'); document.body.appendChild(host)
+      const root = createRoot(host)
+      vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+      const render = async (events: PollingEvent[]) => act(async () => root.render(clean
+        ? <CleanConversationSurface events={events} isStreaming={false} isRestoring={false} streamingText="" />
+        : <TerminalEventTranscript terminal={null} events={events} />))
+      try {
+        await render(history)
+        expect(host.querySelector('[aria-label="Files changed during this reply"]')).toBeNull()
+        await render([...history, late])
+        const card = host.querySelector('[aria-label="Files changed during this reply"]')!
+        expect(card).not.toBeNull()
+        const reply = clean ? card.closest('article') : card.closest('[data-testid="terminal-clear-event-first-reply"]')
+        expect(reply?.textContent).toContain('First report is ready.')
+        expect(reply?.textContent).not.toContain('Second report is ready.')
+        const binary = [...card.querySelectorAll('li')].find(row => row.textContent?.includes('image.png'))!
+        expect(binary.querySelector('[aria-label*="lines added"]')).toBeNull()
+        await act(async () => [...card.querySelectorAll('button')].find(button => button.textContent === 'report.md')!.click())
+        expect(host.querySelector('[data-testid="saved-preview"]')?.textContent).toBe('Saved report from the first reply')
+        expect(get).toHaveBeenCalledWith('/api/workspace-snapshots', expect.objectContaining({ params: expect.objectContaining({ op: 'snapshot_file', snapshot_id: 'saved-first', file: 'report.md', side: 'after' }) }))
+        expect(host.textContent).toContain('Open current file')
+      } finally { await act(async () => root.unmount()); host.remove() }
+    }
+  } finally { get.mockRestore(); showModal.mockRestore() }
 })

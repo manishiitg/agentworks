@@ -14,6 +14,7 @@ const maxDurableChatEventBytes = 64 * 1024
 // not make it part of conversation history until its bounded, user-visible
 // meaning is reviewed here.
 var durableChatEventTypes = map[string]bool{
+	"reply_file_changes":           true,
 	"background_results_waiting":   true,
 	"agent_end":                    true,
 	"agent_error":                  true,

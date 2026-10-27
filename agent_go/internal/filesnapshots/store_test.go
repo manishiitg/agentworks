@@ -30,6 +30,7 @@ func TestNestedRepositoriesKeepHistoricalComparisons(t *testing.T) {
 		}
 	}
 	write("code/main.py", "print(0)\n")
+	write("image.bin", "before\x00bytes")
 	write("code/.gitignore", "ignored.txt\n")
 	write("code/ignored.txt", "ignored bytes")
 	write("code/.env", "credential bytes")
@@ -59,6 +60,7 @@ func TestNestedRepositoriesKeepHistoricalComparisons(t *testing.T) {
 		}
 		write("code/main.py", fmt.Sprintf("print(%d)\n", turn))
 		if turn == 1 {
+			write("image.bin", "after\x00bytes")
 			write("code/[x].txt", "literal after\n")
 			write("code/x.txt", "other after\n")
 			write("code/.gitignore", "ignored.txt\nbecomes-ignored.txt\n")
@@ -93,6 +95,25 @@ func TestNestedRepositoriesKeepHistoricalComparisons(t *testing.T) {
 	}
 	if _, err := s.Compare(ctx, ID("1"), "code/x.txt", func(p string) bool { return p == "code/[x].txt" }); err == nil {
 		t.Fatal("denied file diff was exposed")
+	}
+	// B2: the saved bytes and text counts remain historical, binary files
+	// have no invented line counts, and revoking a path blocks every side.
+	for _, change := range later.Changes {
+		if change.Path == "code/main.py" && (change.Added == nil || *change.Added != 1 || change.Removed == nil || *change.Removed != 1) {
+			t.Fatalf("text counts: %+v", change)
+		}
+		if change.Path == "image.bin" && (!change.Binary || change.Added != nil || change.Removed != nil) {
+			t.Fatalf("binary line counts: %+v", change)
+		}
+	}
+	for side, want := range map[string]string{"before": "print(0)\n", "after": "print(1)\n"} {
+		got, err := s.ReadFile(ctx, ID("1"), "code/main.py", side, func(string) bool { return true })
+		if err != nil || string(got) != want {
+			t.Fatalf("saved %s: %q %v", side, got, err)
+		}
+		if _, err := s.ReadFile(ctx, ID("1"), "code/main.py", side, func(string) bool { return false }); err == nil {
+			t.Fatal("revoked file preview exposed")
+		}
 	}
 	r, _ := s.read(ID("1"))
 	tree, err := s.command(ctx, "ls-tree", "-r", r.Before).Output()

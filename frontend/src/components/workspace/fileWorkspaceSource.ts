@@ -5,6 +5,7 @@ import type { PlannerFile } from '../../services/api-types'
 export interface FileViewerSource {
   selectedFile: { name: string; path: string } | null
   fileContent: string
+  binaryFileData?: ArrayBuffer | null
   loadingFileContent: boolean
   showFileContent: boolean
   setShowFileContent: (show: boolean) => void

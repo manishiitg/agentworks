@@ -1,6 +1,7 @@
 package events
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -240,4 +241,38 @@ func TestCompactDefaultWindowReportsHasOlderAcrossManyTurns(t *testing.T) {
 	if messages < CompactMessageWindow || messages > CompactMessageWindow+6 || !page.HasOlder || page.Events[0].Type != "user_message" {
 		t.Fatalf("messages=%d hasOlder=%v", messages, page.HasOlder)
 	}
+}
+
+// PLAT-746-158 B2: older turns retain their comparison reference on reload,
+// even when capture finished after a newer turn started.
+func TestCompactHistoryKeepsLateFileComparisonReference(t *testing.T) {
+	journal := compactTestJournal(t)
+	compactAppend(t, journal, "s", cTurn(1, 1)...)
+	compactAppend(t, journal, "s", cTurn(2, 1)...)
+	data := NewGenericEventData("reply_file_changes", map[string]interface{}{"snapshot_id": "saved", "workspace_path": "Crew/example", "start_sequence": int64(0), "end_sequence": int64(5)})
+	ref := Event{ID: "files", Type: "reply_file_changes", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(data)}
+	if !IsDurableChatEvent(ref) {
+		t.Fatal("comparison reference is not durable")
+	}
+	compactAppend(t, journal, "s", ref)
+	compactAppend(t, journal, "s", cTurn(3, 1)...)
+	page, err := journal.ReadCompactPage("s", CompactPageOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range page.Events {
+		if event.ID == "files" {
+			raw, _ := json.Marshal(event)
+			var decoded map[string]interface{}
+			if err := json.Unmarshal(raw, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			fields := decoded["data"].(map[string]interface{})["data"].(map[string]interface{})
+			if fields["snapshot_id"] != "saved" || fields["end_sequence"] != float64(5) {
+				t.Fatalf("lost boundary: %s", raw)
+			}
+			return
+		}
+	}
+	t.Fatal("older comparison reference lost during compact restore")
 }

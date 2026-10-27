@@ -1,3 +1,5 @@
+import { ReplyFileChanges } from './chat/ReplyFileChanges'
+import { replyFileChangesByMessage } from '../utils/replyFileChanges'
 import { TranscriptFind } from './chat/TranscriptFind'
 import { transcriptSearchText } from '../utils/transcriptSearch'
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
@@ -1206,6 +1208,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     () => groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled'))))),
     [scoped, questions],
   )
+  const fileChanges = useMemo(() => replyFileChangesByMessage(events ?? [], new Set(items.flatMap(item => item.kind === 'event' && isAgentResponseEvent(item.event) ? [item.event.id] : []))), [events, items])
   // Retry belongs to the latest human turn, never an older failed message
   // after the user has continued the conversation.
   const retryItem = useMemo(() => [...items].reverse().find(item =>
@@ -1423,7 +1426,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
                 />
               )
           const match = searchMatch?.key === item.key ? searchMatch.query : null
-          const displayedBody = <SearchMatchContext.Provider value={match}>{body}</SearchMatchContext.Provider>
+          const changeRef = item.kind === 'event' ? fileChanges.get(item.event.id) : undefined
+          const displayedBody = <SearchMatchContext.Provider value={match}>{body}{changeRef && <ReplyFileChanges reference={changeRef} />}</SearchMatchContext.Provider>
           const matchStyle = match ? 'ring-1 ring-inset ring-yellow-400/70 bg-yellow-400/5' : ''
           if (!slot?.agent) {
             return <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-3 py-0.5 ${matchStyle}`}>{displayedBody}</div>

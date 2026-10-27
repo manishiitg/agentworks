@@ -51,8 +51,11 @@ type diskRecord struct {
 	Omitted    []string `json:"omitted,omitempty"`
 }
 type Change struct {
-	Path   string `json:"path"`
-	Status string `json:"status"`
+	Path    string `json:"path"`
+	Status  string `json:"status"`
+	Added   *int   `json:"added,omitempty"`
+	Removed *int   `json:"removed,omitempty"`
+	Binary  bool   `json:"binary,omitempty"`
 }
 type Comparison struct {
 	Record    Record   `json:"snapshot"`
@@ -534,6 +537,33 @@ func (s Store) Compare(ctx context.Context, id, file string, allow func(string) 
 			out.Changes = append(out.Changes, Change{Path: p, Status: string(parts[i])})
 		}
 	}
+	stats, err := s.command(ctx, "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--numstat", "-z", r.Before, r.After, "--").Output()
+	if err != nil {
+		return out, err
+	}
+	byPath := map[string]*Change{}
+	for i := range out.Changes {
+		byPath[out.Changes[i].Path] = &out.Changes[i]
+	}
+	for _, row := range bytes.Split(stats, []byte{0}) {
+		fields := bytes.SplitN(row, []byte{'\t'}, 3)
+		if len(fields) != 3 {
+			continue
+		}
+		change := byPath[string(fields[2])]
+		if change == nil {
+			continue
+		}
+		if string(fields[0]) == "-" || string(fields[1]) == "-" {
+			change.Binary = true
+			continue
+		}
+		added, aerr := strconv.Atoi(string(fields[0]))
+		removed, rerr := strconv.Atoi(string(fields[1]))
+		if aerr == nil && rerr == nil {
+			change.Added, change.Removed = &added, &removed
+		}
+	}
 	if file != "" {
 		found := false
 		for _, c := range out.Changes {
@@ -554,4 +584,30 @@ func (s Store) Compare(ctx context.Context, id, file string, allow func(string) 
 		out.Truncated = buf.truncated
 	}
 	return out, nil
+}
+
+// ReadFile returns a saved blob only when this exact historical path still
+// passes today's file guard. Git reads the blob itself, never a symlink target.
+func (s Store) ReadFile(ctx context.Context, id, file, side string, allow func(string) bool) ([]byte, error) {
+	if file == "" || (side != "before" && side != "after") {
+		return nil, errors.New("choose a historical file and side")
+	}
+	comparison, err := s.Compare(ctx, id, file, allow)
+	if err != nil {
+		return nil, err
+	}
+	tree := comparison.Record.After
+	if side == "before" {
+		tree = comparison.Record.Before
+	}
+	object := tree + ":" + file
+	size, err := s.command(ctx, "cat-file", "-s", object).Output()
+	if err != nil {
+		return nil, err
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(string(size)), 10, 64)
+	if err != nil || n < 0 || n > MaxFileBytes {
+		return nil, errors.New("historical file is too large to preview")
+	}
+	return s.command(ctx, "cat-file", "blob", object).Output()
 }

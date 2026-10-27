@@ -1,3 +1,5 @@
+import { ReplyFileChanges } from './chat/ReplyFileChanges'
+import { replyFileChangesByMessage } from '../utils/replyFileChanges'
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { WorkingStatus } from './chat/WorkingStatus'
 import { formatElapsed } from './chat/workingWords'
@@ -136,6 +138,7 @@ export function CleanConversationSurface({
   const [retryingFailureId, setRetryingFailureId] = useState<string | null>(null)
   const [showWorkingIndicator, setShowWorkingIndicator] = useState(isStreaming)
   const items = useMemo(() => buildCleanConversationItems(events), [events])
+  const fileChanges = useMemo(() => replyFileChangesByMessage(events, new Set(items.filter(item => item.role === 'assistant').map(item => item.id))), [events, items])
   const turnActivity = useMemo(() => currentTurnActivity(events), [events])
   const activityTurns = useMemo(() => buildProductionActivityTurns(events), [events])
 
@@ -286,6 +289,7 @@ export function CleanConversationSurface({
               ) : (
                 <p className="whitespace-pre-wrap text-sm leading-6">{item.content}</p>
               )}
+              {fileChanges.has(item.id) && <ReplyFileChanges reference={fileChanges.get(item.id)!} />}
               {(item.role === 'assistant' && item.usage) || messageTime(item.timestamp) ? (
                 <div className={`mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-2 text-[10px] font-medium text-slate-400 ${item.role === 'assistant' && item.usage ? 'border-t border-slate-100 dark:border-slate-800' : ''}`}>
                   {item.role === 'assistant' && item.usage ? (

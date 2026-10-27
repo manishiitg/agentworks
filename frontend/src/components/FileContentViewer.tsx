@@ -198,7 +198,7 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
     showFileContent,
     setShowFileContent,
     binaryFileData,
-  } = source ? { ...source, binaryFileData: null } : workspaceState
+  } = source ? { ...source, binaryFileData: source.binaryFileData ?? null } : workspaceState
 
   const videoObjectUrl = useMediaObjectUrl(
     selectedFile?.path ? mimeForExtension(selectedFile.path, VIDEO_MIME_TYPES) : null,
@@ -469,7 +469,7 @@ export function FileContentViewerBody({ headerAction, source, editable = false }
             </div>
           ) : (
             <>
-              {!source && fileContent.startsWith('data:image/') ? (
+              {fileContent.startsWith('data:image/') ? (
                 <div className="flex flex-col items-center justify-center h-full p-4">
                   {failedImagePath === selectedFile?.path ? (
                     <div className="rounded-md border border-border bg-muted p-8 text-center">

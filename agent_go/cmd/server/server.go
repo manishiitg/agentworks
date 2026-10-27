@@ -5646,6 +5646,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				api.updateSessionStatus(sessionID, "running")
 			}
 			api.observeRuntimeSnapshot(sessionID)
+			if !api.retainedMainTurnTracked(sessionID) {
+				api.bindCrewSnapshotCompletion(queryID, 0)
+			}
 			clearDeliveredSender()
 			if queryInputLaneRelease != nil {
 				queryInputLaneRelease()
@@ -10100,6 +10103,7 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	if !stillTracked {
 		return
 	}
+	api.bindCrewSnapshotCompletion(executionID, event.Sequence)
 	if watchCancel != nil {
 		watchCancel()
 	}

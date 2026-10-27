@@ -38,6 +38,7 @@ const (
 // results, status, live-input receipts and background-agent chatter are not
 // returned for older turns.
 var compactKeptTypes = []string{
+	"reply_file_changes",
 	"user_message", "streaming_chunk",
 	"unified_completion", "agent_end", "conversation_end", "background_agent_completed",
 	"agent_error", "conversation_error",

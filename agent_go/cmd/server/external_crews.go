@@ -289,6 +289,14 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		op := "snapshots"
 		if name == "compare_crew_snapshot" {
 			op = "snapshot_compare"
+			if side := str("side"); side != "" {
+				op = "snapshot_file"
+				r = r.Clone(r.Context())
+				q := r.URL.Query()
+				q.Set("side", side)
+				q.Set("format", "json")
+				r.URL.RawQuery = q.Encode()
+			}
 		}
 		api.serveCrewFileSnapshots(w, r, crew.Binding.WorkspacePath, op, str("snapshot_id"), str("file"))
 	case "get_crew":

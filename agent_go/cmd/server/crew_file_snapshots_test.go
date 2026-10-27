@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -57,6 +58,8 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	write("visible/main.txt", "before\n")
 	write("denied/other.txt", "private before\n")
 	api := lifecycleTestAPI()
+	api.eventStore = storeevents.NewEventStore(100)
+	api.eventStore.AddEvent("session", storeevents.Event{ID: "earlier", Type: "user_message", SessionID: "session"})
 	api.lastQueryRequests = map[string]QueryRequest{"session": {SelectedFolder: linkBetaPath}}
 	api.trackConversationTurnStart("turn", "session", QueryRequest{SelectedFolder: linkBetaPath})
 	api.prepareCrewTurnSnapshot("turn", "session", QueryRequest{SelectedFolder: linkBetaPath})
@@ -66,6 +69,9 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	}
 	snapshot := value.(*crewTurnSnapshot)
 	api.trackSyntheticConversationTurnStart("child", "session", "turn", "child task")
+	api.eventStore.AddEvent("session", storeevents.Event{ID: "reply", Type: "unified_completion", SessionID: "session"})
+	api.bindCrewSnapshotCompletion("turn", 0)
+	endSequence := api.crewSnapshotSequence("session")
 	api.completeTrackedExecution("turn", trackedExecutionStatusCompleted, "", nil)
 	if api.crewSnapshotReady(snapshot) {
 		t.Fatal("snapshot finished while child still writes")
@@ -77,7 +83,17 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	if !api.crewSnapshotReady(snapshot) {
 		t.Fatal("completed child did not settle")
 	}
+	// A subsequent response arrives before the asynchronous file capture.
+	api.eventStore.AddEvent("session", storeevents.Event{ID: "next-reply", Type: "unified_completion", SessionID: "session"})
 	api.finishCrewTurnSnapshot(snapshot)
+	reference := api.eventStore.LastEventsRaw("session", 1)[0]
+	payload, _ := json.Marshal(reference)
+	if reference.Type != "reply_file_changes" || strings.Contains(string(payload), "visible/") || strings.Contains(string(payload), "denied/") || snapshot.completedSequence.Load() != endSequence {
+		t.Fatalf("late snapshot lost its reply boundary or exposed filenames: %s", payload)
+	}
+	if got := api.trackedWorkflowExecutions["turn"].Metadata["file_snapshot_id"]; got != filesnapshots.ID("turn") {
+		t.Fatalf("execution reference: %q", got)
+	}
 	write("visible/main.txt", "later turn\n")
 	bounded := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{"beta"}, FileGuard: &wf.FolderGuard{ReadPaths: []string{"visible"}}}}
 	args := map[string]any{"crew_id": "beta", "snapshot_id": filesnapshots.ID("turn"), "file": "visible/main.txt"}
@@ -86,6 +102,16 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	if code != 200 || !strings.Contains(string(encoded), "+after") || strings.Contains(string(encoded), "private after") || strings.Contains(string(encoded), "later turn") || strings.Contains(string(encoded), "denied/") {
 		t.Fatalf("historical file access: %d %s", code, encoded)
 	}
+	args["side"] = "after"
+	code, out = externalCrewRequest(t, env, bounded, "compare_crew_snapshot", args)
+	if code != 200 || out["content"] != "after\n" {
+		t.Fatalf("MCP saved file: %d %+v", code, out)
+	}
+	args["file"] = "denied/other.txt"
+	if code, _ := externalCrewRequest(t, env, bounded, "compare_crew_snapshot", args); code != 404 {
+		t.Fatalf("MCP denied saved file: %d", code)
+	}
+	delete(args, "side")
 	args["file"] = "denied/other.txt"
 	if code, _ := externalCrewRequest(t, env, bounded, "compare_crew_snapshot", args); code != 404 {
 		t.Fatalf("denied file: %d", code)
@@ -101,6 +127,22 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	requireWorkflowReadAccessCallerRelative(env.api.handleCrewFileSnapshots)(w, req)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "+after") {
 		t.Fatalf("HTTP history: %d %s", w.Code, w.Body.String())
+	}
+	query := req.URL.Query()
+	query.Set("op", "snapshot_file")
+	query.Set("side", "after")
+	req.URL.RawQuery = query.Encode()
+	w = httptest.NewRecorder()
+	requireWorkflowReadAccessCallerRelative(env.api.handleCrewFileSnapshots)(w, req)
+	if w.Code != 200 || w.Body.String() != "after\n" {
+		t.Fatalf("HTTP saved file: %d %s", w.Code, w.Body.String())
+	}
+	query.Set("file", "denied/other.txt")
+	req.URL.RawQuery = query.Encode()
+	w = httptest.NewRecorder()
+	requireWorkflowReadAccessCallerRelative(env.api.handleCrewFileSnapshots)(w, req)
+	if w.Code != 404 {
+		t.Fatalf("HTTP denied saved file: %d", w.Code)
 	}
 	// A website route must not bypass the token's Crew selection merely because
 	// the same person owns another Crew. Both roots exist in this fixture.

@@ -1,16 +1,24 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"log"
+	"mime"
 	"net/http"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
 
 const crewSnapshotTimeout = 15 * time.Second
@@ -19,6 +27,8 @@ const crewSnapshotBeforeTimeout = 2 * time.Second
 type crewTurnSnapshot struct {
 	store                        filesnapshots.Store
 	root, executionID, sessionID string
+	startSequence                int64
+	completedSequence            atomic.Int64
 	watching                     atomic.Bool
 	finish                       sync.Once
 }
@@ -42,7 +52,7 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 	if err != nil || !found {
 		return
 	}
-	snapshot := &crewTurnSnapshot{store: filesnapshots.Store{Root: roots.Files, Private: roots.Private}, root: roots.Virtual, executionID: executionID, sessionID: sessionID}
+	snapshot := &crewTurnSnapshot{store: filesnapshots.Store{Root: roots.Files, Private: roots.Private}, root: roots.Virtual, executionID: executionID, sessionID: sessionID, startSequence: api.crewSnapshotSequence(sessionID)}
 	if _, loaded := api.crewTurnSnapshots.LoadOrStore(executionID, snapshot); loaded {
 		return
 	}
@@ -106,8 +116,60 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		started := time.Now()
 		record, err := snapshot.store.Finish(ctx, snapshot.executionID)
 		log.Printf("[FILE_SNAPSHOT] phase=after session=%s execution=%s snapshot=%s status=%s elapsed_ms=%d success=%t error=%v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, time.Since(started).Milliseconds(), err == nil, err)
+		if err == nil && (record.Status == "complete" || record.Status == "partial") {
+			api.publishCrewSnapshot(snapshot, record)
+		}
 	})
 }
+
+// Capture the reply boundary before the next turn is released. After-capture
+// can finish later; neither event arrival nor a clock identifies its reply.
+func (api *StreamingAPI) crewSnapshotSequence(sessionID string) int64 {
+	if api.eventStore == nil {
+		return 0
+	}
+	events := api.eventStore.LastEventsRaw(sessionID, 1)
+	if len(events) == 0 {
+		return 0
+	}
+	return events[0].Sequence
+}
+func (api *StreamingAPI) bindCrewSnapshotCompletion(executionID string, sequence int64) {
+	if value, ok := api.crewTurnSnapshots.Load(executionID); ok {
+		snapshot := value.(*crewTurnSnapshot)
+		if sequence == 0 {
+			sequence = api.crewSnapshotSequence(snapshot.sessionID)
+		}
+		snapshot.completedSequence.CompareAndSwap(0, sequence)
+	}
+}
+func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, record filesnapshots.Record) {
+	end := snapshot.completedSequence.Load()
+	if api.eventStore == nil || end <= snapshot.startSequence {
+		return
+	}
+	api.trackedWorkflowExecutionsMux.Lock()
+	if execution := api.trackedWorkflowExecutions[snapshot.executionID]; execution != nil {
+		if execution.Metadata == nil {
+			execution.Metadata = map[string]string{}
+		}
+		execution.Metadata["file_snapshot_id"] = record.ID
+		execution.Metadata["file_snapshot_end_sequence"] = strconv.FormatInt(end, 10)
+	}
+	api.trackedWorkflowExecutionsMux.Unlock()
+	data := storeevents.NewGenericEventData("reply_file_changes", map[string]interface{}{
+		"snapshot_id": record.ID, "workspace_path": snapshot.root,
+		"execution_id": snapshot.executionID, "start_sequence": snapshot.startSequence, "end_sequence": end,
+	})
+	event := unifiedevents.NewAgentEvent(data)
+	event.SessionID = snapshot.sessionID
+	api.eventStore.AddEvent(snapshot.sessionID, storeevents.Event{
+		ID: "file-snapshot:" + record.ID, Type: "reply_file_changes", Timestamp: time.Now(), SessionID: snapshot.sessionID,
+		ExecutionID: snapshot.executionID, ExecutionKind: "main_agent", TerminalOwnerID: "main:" + snapshot.sessionID, Data: event,
+	})
+	log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s snapshot=%s start_sequence=%d end_sequence=%d", snapshot.sessionID, snapshot.executionID, record.ID, snapshot.startSequence, end)
+}
+
 func (api *StreamingAPI) discardUnstartedCrewSnapshot(executionID string) {
 	if value, ok := api.crewTurnSnapshots.Load(executionID); ok {
 		snapshot := value.(*crewTurnSnapshot)
@@ -167,8 +229,8 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 		externalJSON(w, map[string]any{"snapshots": records, "note": "File comparisons cover changes observed during a turn. Other chats or editors may contribute. Undo is not available.", "limits": map[string]any{"max_file_bytes": filesnapshots.MaxFileBytes, "retained_turns": 50, "retained_days": 14}})
 		return
 	}
-	if op != "snapshot_compare" {
-		externalError(w, 400, "invalid_action", "Choose snapshots or snapshot_compare.")
+	if op != "snapshot_compare" && op != "snapshot_file" {
+		externalError(w, 400, "invalid_action", "Choose snapshots, snapshot_compare or snapshot_file.")
 		return
 	}
 	if prefix != "" && file != "" {
@@ -180,6 +242,36 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), crewSnapshotTimeout)
 	defer cancel()
+	if op == "snapshot_file" {
+		content, err := store.ReadFile(ctx, id, file, r.URL.Query().Get("side"), allow)
+		if err != nil {
+			externalError(w, 404, "snapshot_unavailable", "This saved file is unavailable or you cannot read it.")
+			return
+		}
+		if r.URL.Query().Get("format") == "json" {
+			out := map[string]any{"path": prefix + file, "side": r.URL.Query().Get("side"), "size": len(content)}
+			binary := !utf8.Valid(content) || bytes.IndexByte(content, 0) >= 0
+			limit := 2 << 20
+			if binary {
+				limit = 512 << 10
+			}
+			if len(content) > limit {
+				out["content_omitted"] = true
+				out["note"] = "This saved file is too large for a chat response. Open its saved version in the file-change card."
+			} else if binary {
+				out["content_base64"] = base64.StdEncoding.EncodeToString(content)
+			} else {
+				out["content"] = string(content)
+			}
+			externalJSON(w, out)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(file)}))
+		w.Header().Set("Cache-Control", "no-store")
+		w.Write(content)
+		return
+	}
 	comparison, err := store.Compare(ctx, id, file, allow)
 	if err != nil {
 		externalError(w, 404, "snapshot_unavailable", "This file comparison is not available. List snapshots and choose a completed turn.")
