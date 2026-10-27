@@ -673,7 +673,7 @@ func nativeTranscriptMessagesForBinding(provider, nativeID, workingDir, runtimeD
 		return nativeTranscriptMessagesForRuntimeUncapped(provider, nativeID, workingDir, home)
 	}
 	if provider == "cursor-cli" {
-		transcript, found, err := cursorcli.ReadNativeTranscriptFromConfigDir(filepath.Join(runtimeDir, "cursor-config"), nativeID)
+		transcript, found, err := cursorcli.ReadNativeTranscriptFromConfigDir(filepath.Join(runtimeDir, "cursor-config"), nativeID, workingDir)
 		return filterNativeContinuityMessagesUncapped(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, found, err
 	}
 	privateHome := filepath.Join(runtimeDir, security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))

@@ -168,7 +168,7 @@ func (o *nativeTerminalObserver) nativeRecordPath() string {
 		return p
 	case "cursor-cli":
 		if o.runtimeDir != "" {
-			return filepath.Join(o.runtimeDir, "cursor-config", "acp-sessions", o.nativeID, "store.db")
+			return cursorcli.NativeRecordPathFromConfigDir(filepath.Join(o.runtimeDir, "cursor-config"), o.workingDir, o.nativeID)
 		}
 		return cursorcli.NativeRecordPath(o.workingDir, o.nativeID, home)
 	case "pi-cli":

@@ -220,22 +220,21 @@ func TestWatchLiveInputDurableMapsAwaitErrorToFailed(t *testing.T) {
 }
 
 func TestDurableAckDispatchCoversAckContracts(t *testing.T) {
-	// Every SupportsDurableAck contract must have a dispatch entry: the
-	// watch only runs for flag-holders, so a missing entry would
-	// silently report failed for a provider that proves durability.
-	for _, contract := range llmproviders.CodingAgentProviderContracts() {
-		if !contract.SupportsDurableAck {
-			continue
-		}
-		if _, ok := durableAckAwaiters[contract.Provider]; !ok {
-			t.Errorf("contract claims durable ack for %s but no dispatch entry is registered", contract.Provider)
-		}
-	}
-	for provider := range durableAckAwaiters {
-		contract, ok := llmproviders.GetCodingAgentProviderContract(provider, "")
-		if !ok || !contract.SupportsDurableAck {
-			t.Errorf("dispatch entry %s has no durable-ack contract", provider)
-		}
+	// PLAT-872-55: SDK defaults may not need durable-ack polling, while their
+	// explicit terminal transports still must have an awaiter.
+	for _, mode := range []string{"", "tmux"} {
+		t.Run("transport_"+mode, func(t *testing.T) {
+			t.Setenv("CLAUDE_CODE_TRANSPORT", mode)
+			t.Setenv("CODEX_CLI_TRANSPORT", mode)
+			t.Setenv("CURSOR_CLI_TRANSPORT", mode)
+			for _, contract := range llmproviders.CodingAgentProviderContracts() {
+				if contract.SupportsDurableAck {
+					if _, ok := durableAckAwaiters[contract.Provider]; !ok {
+						t.Errorf("contract claims durable ack for %s but no dispatch entry is registered", contract.Provider)
+					}
+				}
+			}
+		})
 	}
 }
 

@@ -161,6 +161,9 @@ func (api *StreamingAPI) watchLiveInputDurableRecording(sessionID, provider, mes
 // TestDurableAckDispatchCoversAckContracts fails otherwise. The zero
 // timeout selects each adapter's env-tuned budget.
 var durableAckAwaiters = map[llmproviders.Provider]func(ctx context.Context, sessionID, message string) (llmtypes.DurableAck, error){
+	llmproviders.ProviderCursorCLI: func(ctx context.Context, sessionID, message string) (llmtypes.DurableAck, error) {
+		return llm.AwaitCursorInputDurable(ctx, sessionID, message, 0)
+	},
 	llmproviders.ProviderClaudeCode: func(ctx context.Context, sessionID, message string) (llmtypes.DurableAck, error) {
 		return llm.AwaitClaudeInputDurable(ctx, sessionID, message, 0)
 	},

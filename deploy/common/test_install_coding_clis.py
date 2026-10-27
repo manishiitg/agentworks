@@ -47,6 +47,13 @@ packages={'@anthropic-ai/claude-code':'claude','@openai/codex':'codex','@earendi
 for package,name in packages.items():
  if package+'@latest' not in args:continue
  p=prefix/'bin'/name;p.write_text('#!/bin/sh\\necho 1.2.14\\n'+('exit 47\\n' if name=='codex' and os.environ.get('FAIL_CODEX') else ''));p.chmod(0o755)
+sdks={'@anthropic-ai/claude-agent-sdk':('sdk.mjs','export function query() {}'), '@cursor/sdk':('dist/cjs/index.js','exports.Agent = class Agent {};')}
+for package,(entry,source) in sdks.items():
+ if package+'@latest' not in args:continue
+ target=prefix/'lib/node_modules'/package
+ (target/entry).parent.mkdir(parents=True,exist_ok=True)
+ (target/entry).write_text(source)
+ (target/'package.json').write_text('{"version":"1.2.14"}')
 ''')
         self.tool('curl', '''#!/usr/bin/env python3
 import os,pathlib,sys
@@ -80,8 +87,7 @@ sys.exit(0 if hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()==expec
         for name in ('claude', 'codex', 'cursor-agent', 'pi', 'muse', 'agy'):
             self.assertTrue((self.prefix/'bin'/name).is_file(), name)
         calls = (self.root/'npm-calls').read_text().splitlines()
-        self.assertEqual(len(calls), 4)
-        for package in ('@anthropic-ai/claude-code@latest', '@openai/codex@latest', '@earendil-works/pi-coding-agent@latest', 'agent-browser@latest'):
+        for package in ('@anthropic-ai/claude-code@latest', '@openai/codex@latest', '@earendil-works/pi-coding-agent@latest', 'agent-browser@latest', '@anthropic-ai/claude-agent-sdk@latest', '@cursor/sdk@latest'):
             self.assertEqual(sum(package in call for call in calls), 1)
         self.assertEqual((self.root/'curl-calls').read_text().count('https://cursor.com/install'), 1)
         self.assertFalse((self.home/'.gemini/antigravity-cli/settings.json').exists())
@@ -93,14 +99,16 @@ sys.exit(0 if hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()==expec
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('DEPLOY_REFRESH_TOOLS=1', result.stderr)
         self.assertEqual(json.loads(receipt.read_text())['recorded_at'], recorded['recorded_at'])
-        self.assertEqual(len((self.root/'npm-calls').read_text().splitlines()), 4)
+        self.assertEqual((self.root/'npm-calls').read_text().splitlines(), calls)
         result = self.run_installer(refresh='1')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len((self.root/'npm-calls').read_text().splitlines()), 8)
+        refreshed = (self.root/'npm-calls').read_text().splitlines()[len(calls):]
+        self.assertCountEqual(refreshed, calls)
         self.assertEqual((self.root/'curl-calls').read_text().count('https://cursor.com/install'), 2)
 
     def test_missing_broken_or_policy_changed_tool_repairs_only_that_tool(self):
         self.assertEqual(self.run_installer().returncode, 0)
+        before = len((self.root/'npm-calls').read_text().splitlines())
         (self.prefix/'bin/pi').unlink()
         broken = self.prefix/'bin/codex'
         broken.write_text('#!/bin/sh\nexit 47\n')
@@ -108,13 +116,25 @@ sys.exit(0 if hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()==expec
         receipt.write_text('{"schema":0}')
         result = self.run_installer()
         self.assertEqual(result.returncode, 0, result.stderr)
-        calls = (self.root/'npm-calls').read_text().splitlines()[4:]
+        calls = (self.root/'npm-calls').read_text().splitlines()[before:]
         self.assertEqual(len(calls), 2)
         self.assertTrue(any('@openai/codex@latest' in call for call in calls))
         self.assertTrue(any('@earendil-works/pi-coding-agent@latest' in call for call in calls))
         urls = (self.root/'curl-calls').read_text().splitlines()
         self.assertEqual(sum('dev.meta.ai' in url for url in urls), 2)
         self.assertEqual(sum('cursor.com' in url for url in urls), 1)
+
+    def test_missing_sdk_export_repairs_that_sdk_before_native_default_launch(self):
+        # PLAT-872-55: a CLI binary alone cannot launch the default SDK transport.
+        self.assertEqual(self.run_installer().returncode, 0)
+        before = len((self.root/'npm-calls').read_text().splitlines())
+        entry = self.prefix/'lib/node_modules/@cursor/sdk/dist/cjs/index.js'
+        entry.write_text('exports.unrelated = true;')
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = (self.root/'npm-calls').read_text().splitlines()[before:]
+        self.assertEqual(len(calls), 1)
+        self.assertIn('@cursor/sdk@latest', calls[0])
 
     def test_existing_healthy_managed_tools_are_adopted_without_installers(self):
         self.assertEqual(self.run_installer().returncode, 0)

@@ -257,6 +257,8 @@ func gracefulCloseCodingCLITmuxByName(tmuxName, reason string) bool {
 	switch {
 	case strings.HasPrefix(name, "mlp-claude-code"):
 		llmproviders.CloseClaudeCodeInteractiveSessionByTmux(name, reason)
+	case strings.HasPrefix(name, "mlp-cursor-cli"):
+		llmproviders.CloseCursorCLIInteractiveSessionByTmux(name, reason)
 	case strings.HasPrefix(name, "mlp-codex-cli"):
 		llmproviders.CloseCodexCLIInteractiveSessionByTmux(name, reason)
 	case strings.HasPrefix(name, "mlp-muse-"):

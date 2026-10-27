@@ -89,6 +89,33 @@ install_node_cli() {
 install_node_cli claude @anthropic-ai/claude-code
 install_node_cli codex @openai/codex
 install_node_cli pi @earendil-works/pi-coding-agent
+
+# SDKs share the managed CLI prefix. Adapters resolve beside the PATH entry,
+# then use npm's global root only for installations managed outside the server.
+install_node_sdk() {
+  local package="$1" entry="$2" export_name="$3" version
+  sdk_version() {
+    timeout 45 node --input-type=module - "$prefix/lib/node_modules/$package" "$entry" "$export_name" <<'JS'
+import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+const [root, entry, exportName] = process.argv.slice(2);
+const sdk = await import(pathToFileURL(`${root}/${entry}`).href);
+if (typeof sdk[exportName] !== 'function') throw new Error(`Missing SDK export ${exportName}`);
+console.log(JSON.parse(readFileSync(`${root}/package.json`, 'utf8')).version);
+JS
+  }
+  if [[ "$refresh" == 0 ]] && version="$(sdk_version 2>/dev/null)" && [[ -n "$version" ]]; then
+    printf '    %s: %s (unchanged)\n' "$package" "$version"
+    return
+  fi
+  npm install -g --prefix "$prefix" --include=optional \
+    --allow-scripts=@anthropic-ai/claude-agent-sdk,@anthropic-ai/claude-code,esbuild "$package@latest"
+  version="$(sdk_version)" && [[ -n "$version" ]] || { echo "FATAL: $package SDK does not load" >&2; return 1; }
+  printf '    %s: %s\n' "$package" "$version"
+}
+install_node_sdk @anthropic-ai/claude-agent-sdk sdk.mjs query
+install_node_sdk @cursor/sdk dist/cjs/index.js Agent
+
 if needs_install cursor-agent; then
   curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 https://cursor.com/install | bash
   test -x "$service_home/.local/bin/cursor-agent"
