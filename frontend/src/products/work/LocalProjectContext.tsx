@@ -23,7 +23,11 @@ export function LocalProjectContext({ projectId }: { projectId: string }) {
     setLoading(true)
     setError('')
     agentApi.getLocalProjectContext(projectId, sessionsShown).then(result => {
-      if (!cancelled) setData(result)
+      if (cancelled) return
+      if (!result || typeof result.folder !== 'string' || !Array.isArray(result.instructions) || !Array.isArray(result.skills) || !Array.isArray(result.sessions)) {
+        throw new Error('Project folder details are unavailable.')
+      }
+      setData(result)
     }).catch(() => {
       if (!cancelled) setError('Couldn’t check this folder. Try refreshing.')
     }).finally(() => { if (!cancelled) setLoading(false) })

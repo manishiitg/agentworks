@@ -50,3 +50,16 @@ it('reports a failed scan and lets the person retry without an empty success cla
   expect(host.querySelector('[role="alert"]')).toBeNull()
   expect(host.querySelector('summary')!.textContent).toContain('example-project')
 })
+it.each([
+  '<!doctype html><html></html>',
+  { folder: 'example-project' },
+  { ...data, skills: null },
+])('keeps the chat usable when the server returns invalid folder details: %j', async response => {
+  api.getLocalProjectContext.mockResolvedValueOnce(response).mockResolvedValue(data)
+  const host = await render()
+  expect(host.querySelector('[role="alert"]')!.textContent).toContain('Couldn’t check this folder')
+  expect(host.querySelector('summary')!.textContent).not.toContain('0 instructions')
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Refresh project context"]')!.click())
+  expect(host.querySelector('[role="alert"]')).toBeNull()
+  expect(host.querySelector('summary')!.textContent).toContain('2 instructions · 1 skill')
+})
