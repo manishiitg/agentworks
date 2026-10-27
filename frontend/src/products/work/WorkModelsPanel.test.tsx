@@ -51,7 +51,7 @@ function museFixture() {
     options: { reasoning_effort: 'max' },
   }]
   state.providerManifest = [{
-    id: 'muse-cli', integration_kind: 'coding_agent', runtime_available: true, usable: true,
+    id: 'muse-cli', integration_kind: 'coding_agent', runtime_available: true, usable: true, usage_supported: true,
     models: ['muse-spark-1.3-contributor', 'muse-spark-1.3'].map(model_id => ({
       model_id, model_name: model_id, provider: 'muse-cli', context_window: 1000000,
       input_cost_per_1m: 0, output_cost_per_1m: 0,

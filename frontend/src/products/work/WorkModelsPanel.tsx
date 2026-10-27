@@ -30,8 +30,6 @@ import { SharedTokenUsageNotice } from '../../components/providers/SharedTokenUs
 import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ChatDisplayPreferences } from '../../components/chat/ChatDisplayPreferences'
 
-const PROVIDERS_WITH_USAGE = new Set(['claude-code', 'codex-cli', 'muse-cli'])
-
 export function WorkModelsPanel({
   tabId,
   workspacePath,
@@ -339,7 +337,7 @@ export function WorkModelsPanel({
   const selectedProviderManifest = providerManifest.find(provider => provider.id === selectedOption?.provider)
   const usageSupported = Boolean(
     selectedOption?.provider
-    && PROVIDERS_WITH_USAGE.has(selectedOption.provider)
+    && selectedProviderManifest?.usage_supported
     && selectedProviderManifest?.usable,
   )
 

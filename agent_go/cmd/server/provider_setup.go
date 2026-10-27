@@ -972,6 +972,15 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 		}
 	}
 	log.Printf("[PROVIDER_SETUP] %s %s for %s (HOME %s) by %s", request.Provider, request.Action, target, home, caller)
+	if request.Action == "usage" && nativeProviderUsage(request.Provider) {
+		nativeEnvironment := environment
+		if nativeEnvironment == nil {
+			nativeEnvironment = providerConnectionSetupEnvironment(providerConnectionEnvLabel(request.Provider, request.ConnectionID), MergedProviderAPIKeys(r.Context()), true)
+		}
+		if writeNativeProviderUsage(w, r, request.Provider, nativeEnvironment) {
+			return
+		}
+	}
 	// Someone who does not manage the account never gets an interactive
 	// terminal: the server runs the usage command and returns its text.
 	manages := admin || (request.ConnectionID != "" && !strings.HasPrefix(request.ConnectionID, "global:") && accountOwner == caller)

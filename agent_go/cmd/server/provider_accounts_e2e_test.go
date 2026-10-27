@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"github.com/gorilla/mux"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/mcpagent/llm"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -410,10 +412,17 @@ func TestProviderAccountsServerSignInAdminOnly(t *testing.T) {
 func TestProviderAccountsUsageRunsInAccountHome(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "server-chat-token")
+	originalReader := readNativeAccountUsage
+	readNativeAccountUsage = func(ctx context.Context, provider string, environment []string) (llmtypes.AccountUsage, error) {
+		if provider != "claude-code" || envValue(environment, "CLAUDE_CODE_OAUTH_TOKEN") != "server-chat-token" {
+			t.Fatal("server usage lost the configured chat credential")
+		}
+		return llmtypes.AccountUsage{Windows: []llmtypes.AccountUsageWindow{{Label: "server-usage", UsedPercent: 42}}}, nil
+	}
+	t.Cleanup(func() { readNativeAccountUsage = originalReader })
 	original := providerSetupCommands
 	providerSetupCommands = map[string]map[string]providerSetupCommand{
-		"muse-cli":    {"usage": {command: "/bin/sh", args: []string{"-c", `printf '❯\n'; IFS= read -r command; printf 'submitted:%s home:%s\n' "$command" "$HOME"; sleep 1`}}},
-		"claude-code": {"usage": {command: "/bin/sh", args: []string{"-c", `printf '❯\n'; IFS= read -r command; if [ "$command" = /usage ] && [ "$CLAUDE_CODE_OAUTH_TOKEN" = server-chat-token ]; then printf 'server-usage\n'; else printf 'missing-chat-credential\n'; fi; sleep 1`}}},
+		"muse-cli": {"usage": {command: "/bin/sh", args: []string{"-c", `printf '❯\n'; IFS= read -r command; printf 'submitted:%s home:%s\n' "$command" "$HOME"; sleep 1`}}},
 	}
 	t.Cleanup(func() { providerSetupCommands = original })
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "muse-cli", "display_name": "Alice Muse", "auth_method": "cli_login"})
@@ -961,6 +970,77 @@ func TestProviderAccountsMultipleCodexCLILogins(t *testing.T) {
 	for _, account := range env.list(t, "bob", "") {
 		if account.ID == a.ID || account.ID == b.ID {
 			t.Fatal("private login exposed to another person")
+		}
+	}
+}
+
+// PLAT-872-52: native quota reads keep the existing account authorization and
+// selected HOME. Owners, admins and permitted colleagues receive text, no PTY.
+func TestProviderAccountsNativeUsageKeepsSelectionAndAccess(t *testing.T) {
+	for _, provider := range []string{"claude-code", "codex-cli", "cursor-cli"} {
+		t.Run(provider, func(t *testing.T) {
+			env := newProviderAccountsEnv(t, "")
+			t.Setenv("CURSOR_AUTH_TOKEN", "ambient-account")
+			account := env.addAccount(t, "alice", map[string]interface{}{"provider": provider, "display_name": "Selected account", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "users": []string{"bob"}}})
+			wantHome, _ := providerConnectionHome(account.ID)
+			original := readNativeAccountUsage
+			calls := 0
+			readNativeAccountUsage = func(ctx context.Context, gotProvider string, environment []string) (llmtypes.AccountUsage, error) {
+				calls++
+				if gotProvider != provider || envValue(environment, "HOME") != wantHome || envValue(environment, "CURSOR_AUTH_TOKEN") != "" || envValue(environment, "AUTH_SECRET") != "" {
+					t.Fatal("quota probe used a different account environment")
+				}
+				return llmtypes.AccountUsage{Windows: []llmtypes.AccountUsageWindow{{Label: "Weekly", UsedPercent: 42}}}, nil
+			}
+			t.Cleanup(func() { readNativeAccountUsage = original })
+			for _, user := range []string{"alice", "bob", "admin", "carol"} {
+				before := calls
+				w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", user, map[string]interface{}{"provider": provider, "action": "usage", "connection_id": account.ID}, nil)
+				if user == "carol" {
+					if w.Code != http.StatusForbidden || calls != before {
+						t.Fatal("private usage probe ran for unauthorized caller")
+					}
+					continue
+				}
+				if w.Code != http.StatusOK || calls != before+1 || !strings.Contains(w.Body.String(), "42.0% used") || strings.Contains(w.Body.String(), `"session"`) {
+					t.Fatalf("usage did not return native text: %d %s", w.Code, w.Body.String())
+				}
+			}
+		})
+	}
+}
+
+// PLAT-872-52: terminal backup is for probe failures, not unavailable quotas.
+func TestProviderAccountsNativeUsageFallbackOnlyOnFailure(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	originalReader, originalCommands := readNativeAccountUsage, providerSetupCommands
+	t.Cleanup(func() {
+		readNativeAccountUsage = originalReader
+		providerSetupCommands = originalCommands
+		closeProviderSetups(env.api)
+	})
+	providerSetupCommands = map[string]map[string]providerSetupCommand{
+		"claude-code": {"usage": {command: "/bin/sh", args: []string{"-c", "read answer"}}},
+		"codex-cli":   {"usage": {command: "/bin/sh", args: []string{"-c", "read answer"}}},
+	}
+	for _, provider := range []string{"claude-code", "codex-cli", "cursor-cli"} {
+		for _, failure := range []bool{false, true} {
+			readNativeAccountUsage = func(context.Context, string, []string) (llmtypes.AccountUsage, error) {
+				if failure {
+					return llmtypes.AccountUsage{}, fmt.Errorf("fixture probe failed")
+				}
+				return llmtypes.AccountUsage{}, nil
+			}
+			w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "admin", map[string]interface{}{"provider": provider, "action": "usage"}, nil)
+			terminal := failure && provider != "cursor-cli"
+			if terminal {
+				if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"session"`) {
+					t.Fatalf("missing terminal backup: %s %d %s", provider, w.Code, w.Body.String())
+				}
+				closeProviderSetups(env.api)
+			} else if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "unavailable") || strings.Contains(w.Body.String(), `"session"`) {
+				t.Fatalf("unavailable spawned a terminal: %s %d %s", provider, w.Code, w.Body.String())
+			}
 		}
 	}
 }

@@ -42,6 +42,7 @@ type providerManifestEntry struct {
 	AuthConfigured        bool                              `json:"auth_configured"`
 	AuthSource            string                            `json:"auth_source,omitempty"`
 	Usable                bool                              `json:"usable"`
+	UsageSupported        bool                              `json:"usage_supported"`
 	SetupHint             string                            `json:"setup_hint,omitempty"`
 	RequiresAPIKey        bool                              `json:"requires_api_key"`
 	SupportsDynamicModels bool                              `json:"supports_dynamic_models"`
@@ -433,6 +434,7 @@ func (api *StreamingAPI) handleGetProviderManifest(w http.ResponseWriter, r *htt
 			AuthConfigured:        authConfigured,
 			AuthSource:            authSource,
 			Usable:                usable,
+			UsageSupported:        nativeProviderUsage(provider) || provider == "muse-cli",
 			SetupHint:             setupHint,
 			RequiresAPIKey:        info.requiresAPIKey,
 			SupportsDynamicModels: selectionMode == "dynamic",

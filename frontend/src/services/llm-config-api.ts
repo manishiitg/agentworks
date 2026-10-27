@@ -138,6 +138,7 @@ export interface ProviderManifestEntry {
   auth_configured: boolean
   auth_source?: string
   usable: boolean
+  usage_supported?: boolean
   setup_hint?: string
   deprecated?: boolean
   deprecation_reason?: string
