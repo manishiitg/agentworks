@@ -350,7 +350,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		// Local presets and knowledge-base connections remain independent;
 		// cancel sessions only for grants actually replaced in the store.
 		for _, old := range previous {
-			if !t.LocalPreset && !old.LocalPreset && !t.KnowledgebaseAccess() && !t.Allows("devices:connect") && !old.KnowledgebaseAccess() && !old.Allows("devices:connect") && old.RevokedAt == nil && old.ExpiresAt.After(now) {
+			if !t.LocalPreset && !old.LocalPreset && !t.KnowledgebaseAccess() && !t.SparkQuillAccess() && !t.Allows("devices:connect") && !old.KnowledgebaseAccess() && !old.SparkQuillAccess() && !old.Allows("devices:connect") && old.RevokedAt == nil && old.ExpiresAt.After(now) {
 				api.cancelAccessTokenSessions(old.ID)
 			}
 		}
