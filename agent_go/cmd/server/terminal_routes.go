@@ -1775,6 +1775,10 @@ func (api *StreamingAPI) canUseSessionIDForQuery(r *http.Request, sessionID stri
 	}
 
 	currentUserID := GetUserIDFromContext(r.Context())
+	// A Crew tab's owner decides, not the first writer recorded for a shared session ID (PLAT-856).
+	if owner, found := crewTabOwnerForSession(r.Context(), currentUserID, sessionID); found {
+		return owner == currentUserID
+	}
 	activeSession, exists := api.getActiveSession(sessionID)
 	if exists {
 		return sessionVisibleTo(activeSession.UserID, GetUserFromContext(r.Context()))
