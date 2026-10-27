@@ -11276,7 +11276,10 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 				sessionInputCancel()
 				return true
 			}
-			delivery, err := retainedSession.Send(sessionInputCtx, withSessionMode(sessionModeFromContext(r.Context()), message))
+			// The message's identity goes with it: if it has to wait for the turn's next step, the turn records it
+			// once under this identity, matching the person's bubble (PLAT-872-59).
+			delivery, err := retainedSession.SendIdentified(sessionInputCtx, withSessionMode(sessionModeFromContext(r.Context()), message),
+				mcpagent.QueuedMessageIdentity{ID: newSteerMessageID(), ClientID: clientMessageIDFromContext(r.Context())})
 			sessionInputCancel()
 			if err != nil {
 				if liveInputErrorProvesNoTarget(err) {
@@ -11597,7 +11600,8 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 				sessionInputCancel()
 				return
 			}
-			delivery, err := retainedSession.Send(sessionInputCtx, req.Message)
+			delivery, err := retainedSession.SendIdentified(sessionInputCtx, req.Message,
+				mcpagent.QueuedMessageIdentity{ID: newSteerMessageID(), ClientID: clientMessageIDFromContext(r.Context())})
 			sessionInputCancel()
 			if err != nil {
 				if liveInputErrorProvesNoTarget(err) {
