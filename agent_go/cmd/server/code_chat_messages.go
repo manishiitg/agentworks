@@ -96,6 +96,10 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 		if record.SessionID == sessionID && tab.OwnerID == userID {
 			project.Self, found = chat, true
 		}
+		// A dashboard user-view chat can be the caller, but it is not another agent to list (PLAT-750).
+		if isUserViewConversationKey(record.ConversationKey) {
+			continue
+		}
 		project.Chats = append(project.Chats, chat)
 	}
 	if !found {

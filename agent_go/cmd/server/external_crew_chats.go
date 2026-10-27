@@ -103,6 +103,10 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 	}
 	for _, tab := range owned {
 		record := tab.Record
+		// Dashboard user-view chats belong to that page, not the Builder tab list (as on the website, PLAT-750).
+		if isUserViewConversationKey(record.ConversationKey) {
+			continue
+		}
 		ownMain := tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(crewID, userID))
 		chat := externalCrewChat{OwnerID: tab.OwnerID, OwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, SessionID: record.SessionID, UpdatedAt: record.UpdatedAt, key: record.ConversationKey, IsMain: ownMain}
 		switch {
