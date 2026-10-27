@@ -88,7 +88,7 @@ it('lists Crew projects with identity and selects their guarded workspace path',
   expect(host.textContent).toContain('Harbor')
   expect(host.textContent).not.toContain('Release operations')
   expect(host.textContent).not.toContain('Chats/Work/projects/')
-  expect(host.textContent).toContain('crew')
+  expect([...host.querySelectorAll('svg[role="img"] > title')].map(title => title.textContent)).toEqual(expect.arrayContaining(['Crew', 'Workflow']))
   const crewRow = [...host.querySelectorAll('[class*="cursor-pointer"]')].find(row => row.textContent?.includes('Harbor'))
   expect(crewRow).toBeDefined()
   expect(crewRow!.getAttribute('title')).toContain('Release operations')

@@ -7,6 +7,8 @@ import { WORK_PROFILE_ID, WORK_PROJECTS_ROOT } from '../products/work/workData'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
 import { AGENTWORKS_SUBTITLE, AgentWorksIcon, agentWorksFirst, isOwnAgentWorks } from './ui/AgentWorksIdentity'
 import { isPlainPickerKey } from '../utils/composerReferences'
+import { WorkMark } from '../products/work/WorkMark'
+import { RunloopMark } from './branding/RunloopLogo'
 
 interface WorkflowItem {
   presetId: string
@@ -291,7 +293,9 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
               <div className="flex-1 min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="truncate font-medium">{workflow.label}</div>
-                  <span className="shrink-0 rounded border border-border px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{workflow.kind}</span>
+                  {workflow.kind === 'crew'
+                    ? <WorkMark title="Crew" className="h-4 w-4 shrink-0" />
+                    : <RunloopMark title="Workflow" className="h-4 w-4 shrink-0" />}
                   {workflow.shared && <span className="shrink-0 text-[10px] text-muted-foreground">Shared</span>}
                 </div>
                 {workflow.agentWorks && <div className="truncate text-xs text-muted-foreground">{AGENTWORKS_SUBTITLE}</div>}
