@@ -272,10 +272,9 @@ func (h FunctionElicitationHost) Resume(ctx context.Context, target string, args
 	}
 	// A retried poll must name the same call, operation or session; a retried
 	// chat has no such argument yet (its session was created by the first call).
-	if family.poll || strings.HasPrefix(target, "get_") || target == "builder_status" || target == "run_status" {
-		if id, _ := args[family.idField].(string); id != state.CallID {
-			return mcp.NewToolResultError("invalid_request_state: " + family.idField + " changed during elicitation")
-		}
+	// Any call that names one (also through a merged tool) must name the same one.
+	if id, _ := args[family.idField].(string); (id != "" || family.poll || strings.HasPrefix(target, "get_") || target == "builder_status" || target == "run_status") && id != state.CallID {
+		return mcp.NewToolResultError("invalid_request_state: " + family.idField + " changed during elicitation")
 	}
 	crewID, _ := args["crew_id"].(string)
 	if crewID != state.CrewID {
