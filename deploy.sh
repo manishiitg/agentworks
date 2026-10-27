@@ -22,6 +22,8 @@ Servers (each one's host, domain and settings live in the private deployments re
   dominion              legacy host alias for the shared workflow deployment
   check <server|all>    read-only health check of a server (site, certificate, MCP, website callback, release, services, disk)
   report [server]       how each server differs from the standard runtime profile (read-only)
+  smoke <server>        post-deploy smoke check: one real tool call per configured provider over public MCP (PLAT-424); every
+                        deploy runs it when the private products/<server>/smoke.env exists. Reports only; never fails a deploy
   slotcheck <server> [basic|full]   the slot self-test of a deployed server (read-only; PLAT-478): a real slotted `pwd` per slot in the
                         docs root, a workflow, a Crew and a Code project, the slotctl/slot table/launcher checks, and the
                         secret admission scan (warnings). Exits 1 on any FAIL. Every deploy of a slot host runs it too.
@@ -179,6 +181,27 @@ deployments_dir() { printf '%s\n' "${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$REPO_ROO
 product_config_dir() {
   local private_dir; private_dir="$(deployments_dir)/products/$1"
   if [[ -f "$private_dir/product.env" ]]; then printf '%s\n' "$private_dir"; else printf '%s\n' "$REPO_ROOT/deploy/rootless-linux/products/$1"; fi
+}
+
+# --- Post-deploy smoke check (PLAT-424) -------------------------------------
+# One real AgentWorks tool call per configured company provider, over the server's public MCP, in a dedicated smoke
+# Crew. It reports PASS/FAIL per provider and never fails a deploy. The private products/<name>/smoke.env names the
+# saved login on this computer (SMOKE_LOGIN, from `agentworks login --name`) and the Crew (SMOKE_WORKSPACE=work:<id>);
+# without it nothing runs. DEPLOY_SMOKE=0 skips it for one deploy.
+post_deploy_smoke() {
+  local product="$1" config
+  config="$(deployments_dir)/products/$product/smoke.env"
+  [[ "${DEPLOY_SMOKE:-1}" != 0 ]] || { echo "==> [$product] Smoke check skipped (DEPLOY_SMOKE=0)."; return 0; }
+  [[ -f "$config" ]] || { echo "==> [$product] Smoke check not set up (no products/$product/smoke.env)."; return 0; }
+  (
+    # shellcheck disable=SC1090
+    source "$config"
+    [[ -n "${SMOKE_LOGIN:-}" && -n "${SMOKE_WORKSPACE:-}" ]] || { echo "==> [$product] smoke.env needs SMOKE_LOGIN and SMOKE_WORKSPACE" >&2; exit 0; }
+    echo "==> [$product] Smoke check: one tool call per provider in $SMOKE_WORKSPACE"
+    python3 -I "$REPO_ROOT/scripts/post-deploy-smoke.py" --login "$SMOKE_LOGIN" --workspace-id "$SMOKE_WORKSPACE" ${SMOKE_PROVIDERS:+--providers "$SMOKE_PROVIDERS"} \
+      || echo "==> [$product] Smoke check could not run (the deploy itself succeeded)."
+  )
+  return 0
 }
 
 # --- Rootless Linux products (Confida, SparkQuill) -------------------------
@@ -563,6 +586,14 @@ if [[ "$SERVER" == build ]]; then
   exit 0
 fi
 
+# ./deploy.sh smoke <server>: the post-deploy smoke check alone (PLAT-424); reports, changes only its own side chats.
+if [[ "$SERVER" == smoke ]]; then
+  [[ $# -eq 1 ]] || { echo "Usage: ./deploy.sh smoke <server>" >&2; exit 2; }
+  product="$1"; [[ "$product" == excellence ]] && product=agents
+  post_deploy_smoke "$product"
+  exit 0
+fi
+
 # ./deploy.sh slotcheck <server>: run the deployed release's slot self-test (deploy/common/slotcheck.sh) as the service
 # account. Read-only; changes nothing on the server.
 if [[ "$SERVER" == slotcheck ]]; then
@@ -620,6 +651,7 @@ case "$SERVER" in
     deploy_rts
     report_rts_cloudfront_usage || echo "CloudFront usage report unavailable (deploy succeeded)." >&2
     prune_builds_remote
+    post_deploy_smoke "$SERVER"
     ;;
   confida|sparkquill|dominion|citymall)
     # Dominion is deployed like Confida since 2026-10-07 (owner: "everything same as excellence/confida").
@@ -627,6 +659,7 @@ case "$SERVER" in
     reject_extra_arguments "$@"
     deploy_rootless_product "$SERVER"
     prune_builds_remote
+    post_deploy_smoke "$SERVER"
     ;;
   excellence)
     # the Hetzner server; its account, units and product
@@ -634,6 +667,7 @@ case "$SERVER" in
     reject_extra_arguments "$@"
     deploy_rootless_product agents
     prune_builds_remote
+    post_deploy_smoke agents
     ;;
   all-hetzner)
     # Excellence, Confida and SparkQuill from ONE build, one after the other; stops at the first failure. Never Dominion.
@@ -646,6 +680,7 @@ case "$SERVER" in
     deploy_rootless_product confida
     deploy_rootless_product sparkquill
     prune_builds_remote  # once, after all three: a chosen older build must still exist for the next product
+    post_deploy_smoke agents; post_deploy_smoke confida; post_deploy_smoke sparkquill
     ;;
   -h|--help|help)
     usage
@@ -662,6 +697,7 @@ case "$SERVER" in
       reject_extra_arguments "$@"
       deploy_rootless_product "$SERVER"
       prune_builds_remote
+      post_deploy_smoke "$SERVER"
     else
       echo "Unknown deployment server: $SERVER" >&2
       usage >&2
