@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/manishiitg/coding-agent-loop/workspace/migrations/dashboardjson"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
@@ -34,6 +35,8 @@ The server provides endpoints for:
 
 func init() {
 	serverCmd.Flags().Bool("debug", false, "Enable debug mode")
+	serverCmd.Flags().Bool("migrate-crew-state-only", false, "Convert Crew platform storage and exit before serving")
+	serverCmd.Flags().String("restore-crew-state-backup", "", "Restore a stopped Crew storage conversion and exit")
 	viper.BindPFlag("debug", serverCmd.Flags().Lookup("debug"))
 }
 
@@ -62,6 +65,23 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := os.MkdirAll(docsDir, 0755); err != nil {
 		fmt.Printf("Failed to create docs directory: %v\n", err)
 		os.Exit(1)
+	}
+
+	if backup, _ := cmd.Flags().GetString("restore-crew-state-backup"); backup != "" {
+		if err := crewroot.RestorePrivateStateBackup(backup); err != nil {
+			fmt.Printf("[CREW_STATE_MIGRATION] restore failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if count, backup, err := crewroot.MigratePrivateState(docsDir); err != nil {
+		fmt.Printf("[CREW_STATE_MIGRATION] failed: %v; backup=%s\n", err, backup)
+		os.Exit(1)
+	} else if backup != "" {
+		fmt.Printf("[CREW_STATE_MIGRATION] moved=%d backup=%s\n", count, backup)
+	}
+	if only, _ := cmd.Flags().GetBool("migrate-crew-state-only"); only {
+		return
 	}
 
 	// One-off source migration, before any workspace requests or processes.

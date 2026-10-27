@@ -24,6 +24,8 @@ def project_roots(root):
     for base in bases:
         for kind in ("Workflow", "Crew"):
             folder = base / kind
+            if base == root and kind == "Crew" and (root / "_system/crew-data").is_dir():
+                folder = root / "_system/crew-data"
             if folder.is_symlink():
                 continue
             for project in sorted(folder.glob("*")):

@@ -187,8 +187,22 @@ func knowledgeReadMigration(id, owner string) (*knowledgeMigrationReceipt, error
 
 // Inventory only an owned workspace's knowledgebase directory. Neither the
 // caller nor a symlink can choose a host path; learnings are never traversed.
+func knowledgeProjectResource(project *knowledgeProject, relative string) (string, error) {
+	roots, found, err := crewStorageRoots(project.Workspace)
+	if err != nil {
+		return "", err
+	}
+	if found {
+		return filepath.Join(roots.ResourcePathRoot(relative), relative), nil
+	}
+	return filepath.Join(filepath.Dir(project.Path), relative), nil
+}
+
 func knowledgeMigrationInventory(project *knowledgeProject) ([]knowledgeImportFile, []string, string, error) {
-	root := filepath.Join(filepath.Dir(project.Path), "knowledgebase")
+	root, err := knowledgeProjectResource(project, "knowledgebase")
+	if err != nil {
+		return nil, nil, "", err
+	}
 	if info, err := os.Lstat(root); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, nil, "", fmt.Errorf("the workspace requires a real local knowledgebase directory")
 	}
@@ -197,7 +211,7 @@ func knowledgeMigrationInventory(project *knowledgeProject) ([]knowledgeImportFi
 	all := map[string]string{}
 	var total int64
 	count := 0
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -374,7 +388,11 @@ func knowledgeMigration(ctx context.Context, service *knowledgebase.Service, p k
 				parent = child
 			}
 		}
-		b, err := knowledgeReadSource(filepath.Join(filepath.Dir(project.Path), "knowledgebase"), file.Path)
+		source, err := knowledgeProjectResource(project, "knowledgebase")
+		if err != nil {
+			return nil, err
+		}
+		b, err := knowledgeReadSource(source, file.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -607,8 +625,11 @@ func knowledgeMigrationCutover(ctx context.Context, service *knowledgebase.Servi
 // cutover until their owner adapts them, just like other contract migrations.
 func knowledgeMigrationCheckScripts(project *knowledgeProject) error {
 	for _, root := range []string{"code", "planning"} {
-		base := filepath.Join(filepath.Dir(project.Path), root)
-		err := filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
+		base, err := knowledgeProjectResource(project, root)
+		if err != nil {
+			return err
+		}
+		err = filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
 			if os.IsNotExist(err) {
 				return nil
 			}
@@ -624,11 +645,11 @@ func knowledgeMigrationCheckScripts(project *knowledgeProject) error {
 			if filepath.Ext(path) != ".py" && filepath.Ext(path) != ".sh" && filepath.Ext(path) != ".js" && filepath.Ext(path) != ".ts" {
 				return nil
 			}
-			rel, err := filepath.Rel(filepath.Dir(project.Path), path)
+			rel, err := filepath.Rel(base, path)
 			if err != nil {
 				return err
 			}
-			b, err := knowledgeReadSource(filepath.Dir(project.Path), rel)
+			b, err := knowledgeReadSource(base, rel)
 			if err != nil {
 				return err
 			}

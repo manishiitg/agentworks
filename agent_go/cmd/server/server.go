@@ -6665,7 +6665,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Coding-agent adapters project system instructions, selected skills,
 			// MCP config and provider metadata into the working directory. Keep
 			// those readable for the CLI but outside the agent's write authority.
-			protectManagedCodingAgentProjectionWrites(sessionID, chatWorkingFolder)
+			// Generated Crew projections live in its private runtime; similarly
+			// named project files belong to the person.
+			if resolvedProfile == nil || !isProjectProfileID(resolvedProfile.Definition.ID) {
+				protectManagedCodingAgentProjectionWrites(sessionID, chatWorkingFolder)
+			}
 			// PLAT-364: the guard above is final, so the CLI can be confined to it.
 			applyCLILandlock(llmAgent, sessionID, currentUserID, finalProvider, chatWorkingDir, cliSecurityPolicy, chatRuntimeDir)
 			if resolvedProfile != nil && resolvedProfile.IsolateCodeCLI {

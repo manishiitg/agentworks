@@ -32,6 +32,12 @@ func BoundCrewFileRequest(docs, root, p, destination string, guard *FolderGuard)
 	if root != roots.Virtual {
 		return "", "", "", nil, "", fmt.Errorf("use the issued Crew root")
 	}
+	if !roots.Local {
+		if destination != "" && roots.ResourcePathRoot(p) != roots.ResourcePathRoot(destination) {
+			return "", "", "", nil, "", fmt.Errorf("move files within the same Crew folder")
+		}
+		return root, p, destination, guard, "", nil
+	}
 	for _, input := range []string{p, destination} {
 		if input != "" {
 			if _, _, err := crewroot.Resolve(docs, root+"/"+input); err != nil {

@@ -66,7 +66,8 @@ def child_dirs(path: Path) -> list[Path]:
 
 
 def manifests(docs: Path) -> list[Path]:
-    roots = [docs / "Workflow", docs / "Crew", docs / "Relays"] + [docs / r for r in PROJECT_ROOTS]
+    crew = docs / "_system/crew-data"
+    roots = [docs / "Workflow", crew if crew.is_dir() else docs / "Crew", docs / "Relays"] + [docs / r for r in PROJECT_ROOTS]
     for user in child_dirs(docs / USERS):
         if user.name in (SHARED_OWNER, MANAGED_GLOBALS_OWNER):
             continue
@@ -144,6 +145,15 @@ def scan(docs: Path, env: dict[str, str], grants: set[str] | None) -> tuple[list
         if not isinstance(caps, dict):
             continue
         workspace = "/".join(path.parent.relative_to(docs).parts)
+        if path.parent.parent == docs / "_system/crew-data" and env.get("AGENTWORKS_STATE_ROOT"):
+            try:
+                registry = json.loads((Path(env["AGENTWORKS_STATE_ROOT"]) / "ownership/projects.json").read_text())
+                for record in registry.get("projects", {}).values():
+                    if record.get("product") == "work" and record.get("project_id") == path.parent.name:
+                        workspace = "Crew/" + record["folder"]
+                        break
+            except (OSError, ValueError):
+                warnings.append("WARN Crew secret admission: owner registry unavailable")
         digest = hashlib.sha256(workspace.encode()).hexdigest()
         available = set(globals_)
         for owner in owners:

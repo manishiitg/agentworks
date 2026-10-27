@@ -330,7 +330,7 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 	docsRoot := workshop.GetPromptDocsRoot()
 	cacheRel := filepath.ToSlash(filepath.Join(workspacePath, reportRunCacheFolder))
 	policyRoot, policyCache := docsRoot, cacheRel
-	if roots, bound, err := localCrewRoots(workspacePath); bound || err != nil {
+	if roots, bound, err := crewStorageRoots(workspacePath); bound || err != nil {
 		if err != nil {
 			return map[string]any{"success": false, "error": err.Error()}
 		}

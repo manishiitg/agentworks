@@ -14,6 +14,8 @@ def projects(root):
     bases = [root] + [p for p in (root / '_users').glob('*') if p.is_dir() and not p.is_symlink()]
     for base in bases:
         for folder in (base / 'Workflow', base / 'Crew', base / 'Chats/Work/projects'):
+            if folder == root / 'Crew' and (root / '_system/crew-data').is_dir():
+                folder = root / '_system/crew-data'
             if folder.is_symlink():
                 continue
             for project in sorted(folder.glob('*')):

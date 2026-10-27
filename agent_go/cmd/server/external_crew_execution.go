@@ -465,11 +465,13 @@ func crewExecutionFilePaths(root string, guard *wf.FolderGuard) (reads, writes, 
 		blocked = join(guard.BlockedPaths)
 		blockedWrites = join(append(append([]string{}, guard.BlockedWritePaths...), guard.ReadOnlyPaths...))
 	}
-	// Shared shell sandbox policy protects coding-agent projections and the
-	// same root metadata already protected by external file authoring.
-	blockedWrites = append(blockedWrites, common.CodingAgentProjectionBlockedWrites(root)...)
-	for _, p := range []string{"workflow.json", "product.json", "functions.json", "schedule-runs.json", "builder", "chat_history", "costs", "human_inputs", "runs", "planning", "db/db.sqlite", "db/db.sqlite-wal", "db/db.sqlite-shm"} {
+	// These are logical paths: the workspace resolver maps platform records
+	// into the separate private tree before constructing native restrictions.
+	for _, p := range []string{"workflow.json", "product.json", "functions.json", "schedules.json", "webhooks.json", "schedule-runs.json", "builder", "chat_history", "costs", "human_inputs", "runs", "planning", "db/db.sqlite", "db/db.sqlite-wal", "db/db.sqlite-shm", "db/db.sqlite-journal"} {
 		blockedWrites = append(blockedWrites, path.Join(root, p))
+	}
+	for _, p := range []string{"db/db.sqlite", "db/db.sqlite-wal", "db/db.sqlite-shm", "db/db.sqlite-journal"} {
+		blocked = append(blocked, path.Join(root, p))
 	}
 	return
 }

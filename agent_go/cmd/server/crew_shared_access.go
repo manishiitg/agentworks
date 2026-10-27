@@ -11,6 +11,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // crewCreationRoot is the folder new projects of a profile are created in: every new Crew goes to the shared root,
@@ -63,27 +64,33 @@ func ensureSharedCrewFolderAccess(folder, ownerID string) {
 		log.Printf("[CREW_ACCESS] cannot prepare %s: %v", workspaceref.SharedCrewRoot, err)
 	}
 	root := filepath.Join(docsRoot, workspaceref.SharedCrewRoot, folder)
-	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		info, err := entry.Info()
+	roots := []string{root}
+	if r, found, e := crewroot.Lookup(docsRoot, "Crew/"+folder); found && e == nil {
+		roots = append(roots, r.Private)
+	}
+	for _, root := range roots {
+		err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if info.Mode()&fs.ModeSymlink != 0 {
+				return nil
+			}
+			if err := os.Lchown(path, -1, gid); err != nil {
+				return err
+			}
+			mode := info.Mode().Perm()&^0o007 | 0o060
+			if entry.IsDir() {
+				mode = 0o770 | fs.ModeSetgid
+			}
+			return os.Chmod(path, mode)
+		})
 		if err != nil {
-			return err
+			log.Printf("[CREW_ACCESS] %s: could not give the owner's slot %s access: %v", root, slot, err)
 		}
-		if info.Mode()&fs.ModeSymlink != 0 {
-			return nil
-		}
-		if err := os.Lchown(path, -1, gid); err != nil {
-			return err
-		}
-		mode := info.Mode().Perm()&^0o007 | 0o060
-		if entry.IsDir() {
-			mode = 0o770 | fs.ModeSetgid
-		}
-		return os.Chmod(path, mode)
-	})
-	if err != nil {
-		log.Printf("[CREW_ACCESS] %s: could not give the owner's slot %s access: %v", root, slot, err)
 	}
 }

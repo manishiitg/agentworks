@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"net/http"
 	"os"
-	"path/filepath"
 )
 
 // reportHumanInputAccess is what a caller may do with the decisions stored
@@ -105,7 +105,11 @@ func localDecisionTeam(root string) (*WorkflowTeam, error) {
 	if e != nil {
 		return nil, e
 	}
-	raw, e := os.ReadFile(filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(normalized), "workflow.json"))
+	manifestPath, e := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), normalized+"/workflow.json")
+	if e != nil {
+		return nil, e
+	}
+	raw, e := os.ReadFile(manifestPath)
 	if os.IsNotExist(e) {
 		return nil, nil
 	}

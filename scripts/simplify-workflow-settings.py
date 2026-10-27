@@ -43,7 +43,8 @@ def simplify(manifest):
 
 
 def migrate(root, backups):
-    folders = [root / "Workflow", root / "Crew"]
+    crew = root / "_system/crew-data"
+    folders = [root / "Workflow", crew if crew.is_dir() else root / "Crew"]
     for user in (root / "_users").glob("*"):
         if user.is_dir() and not user.is_symlink():
             folders.extend([user / "Workflow", user / "Crew"])

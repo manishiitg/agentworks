@@ -67,9 +67,9 @@ func CreateWorkflowDatabaseBackupSnapshot(c *gin.Context) {
 		return
 	}
 
-	workflowRoot := filepath.Dir(filepath.Dir(sourcePath))
-	destinationPath := filepath.Join(workflowRoot, filepath.FromSlash(workflowDatabaseBackupSnapshotRelativePath))
-	if !utils.IsValidFilePath(destinationPath, docsDir) {
+	workflowRelativeSnapshot := filepath.ToSlash(filepath.Join(filepath.Dir(filepath.Dir(cleanRequest)), workflowDatabaseBackupSnapshotRelativePath))
+	destinationPath, err := resolveUserPath(c, workflowRelativeSnapshot)
+	if err != nil || !utils.IsValidFilePath(destinationPath, docsDir) {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Invalid snapshot path", Error: "snapshot path escapes the workspace boundary"})
 		return
 	}
@@ -79,9 +79,8 @@ func CreateWorkflowDatabaseBackupSnapshot(c *gin.Context) {
 		return
 	}
 	result.SourceDBPath = cleanRequest
-	workflowRelativeSnapshot := filepath.ToSlash(filepath.Join(filepath.Dir(filepath.Dir(cleanRequest)), workflowDatabaseBackupSnapshotRelativePath))
 	result.SnapshotPath = workflowRelativeSnapshot
-	checksumPath := filepath.Join(workflowRoot, filepath.FromSlash(workflowDatabaseBackupChecksumRelativePath))
+	checksumPath := destinationPath + ".sha256"
 	if err := writeWorkflowDatabaseBackupChecksum(checksumPath, result.SHA256); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Failed to write workflow database backup checksum", Error: err.Error()})
 		return

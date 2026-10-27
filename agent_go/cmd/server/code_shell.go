@@ -19,7 +19,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 )
@@ -116,12 +115,11 @@ func (api *StreamingAPI) codeShellFolderGuard(ctx context.Context, userID, root 
 	reads = appendUniqueStrings(reads, grantRead...)
 	writes = appendUniqueStrings(writes, grantWrite...)
 	return &workspace.FolderGuardConfig{
-		Enabled:           true,
-		ReadPaths:         reads,
-		WritePaths:        writes,
-		BlockedWritePaths: common.CodingAgentProjectionBlockedWrites(root),
-		StrictAllowlist:   sandbox.IsStrict(),
-		BrowserSession:    browserSessionForWorkspace(userID, root),
+		Enabled:         true,
+		ReadPaths:       reads,
+		WritePaths:      writes,
+		StrictAllowlist: sandbox.IsStrict(),
+		BrowserSession:  browserSessionForWorkspace(userID, root),
 	}
 }
 

@@ -2,6 +2,7 @@ package workflowkb
 
 import (
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"os"
 	"path/filepath"
@@ -21,7 +22,11 @@ func sharedConfig(root, workspace string, compact bool) (bool, string) {
 	if err != nil {
 		return false, ""
 	}
-	path, err := filepath.EvalSymlinks(filepath.Join(base, filepath.FromSlash(workspace), "workflow.json"))
+	manifest, err := fsutil.WorkspacePath(base, filepath.ToSlash(filepath.Join(workspace, "workflow.json")))
+	if err != nil {
+		return true, "Knowledge configuration unavailable."
+	}
+	path, err := filepath.EvalSymlinks(manifest)
 	if os.IsNotExist(err) {
 		return false, ""
 	}

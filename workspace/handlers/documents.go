@@ -1868,6 +1868,17 @@ func CopyFolder(c *gin.Context) {
 
 // DeleteFolder handles DELETE /api/folders/*folderpath
 func DeleteFolder(c *gin.Context) {
+	logical := strings.TrimPrefix(c.Param("folderpath"), "/")
+	if c.Query("confirm") == "true" {
+		roots, found, err := crewroot.LookupForRemoval(viper.GetString("docs-dir"), logical)
+		if err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if found && !roots.Local && logical == roots.Virtual {
+			c.Set("managed-crew-removal", roots)
+		}
+	}
 	release, ok := lockFileMutation(c, strings.TrimSuffix(c.Param("folderpath"), "/files"))
 	if !ok {
 		return
@@ -1906,6 +1917,10 @@ func DeleteFolder(c *gin.Context) {
 
 	// Resolve user path
 	folderPath, err := resolveUserPath(c, folderPathParam)
+	if roots, ok := c.Get("managed-crew-removal"); ok {
+		folderPath, err = roots.(crewroot.Roots).Resources, nil
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
@@ -1923,6 +1938,19 @@ func DeleteFolder(c *gin.Context) {
 			Error:   "Folder path contains invalid characters or attempts directory traversal",
 		})
 		return
+	}
+
+	if value, wholeCrew := c.Get("managed-crew-removal"); wholeCrew {
+		roots := value.(crewroot.Roots)
+		if _, err := os.Stat(roots.Private); err == nil {
+			if _, err := removeFolderAtomicallyWithContext(c.Request.Context(), docsDir, roots.Private); err != nil {
+				c.JSON(500, gin.H{"error": err.Error()})
+				return
+			}
+		} else if !os.IsNotExist(err) {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	// Check if folder exists

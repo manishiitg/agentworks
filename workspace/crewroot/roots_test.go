@@ -41,13 +41,17 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	private, err := EnsurePrivateRoot(docs, "stable-id", filepath.Join(docs, "Crew", "example"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	cases := map[string]string{
 		"Crew/example/_files":                         project,
 		"Crew/example/_files/product.json":            filepath.Join(project, "product.json"),
-		"Crew/example/product.json":                   filepath.Join(docs, "Crew", "example", "product.json"),
-		"Crew/example/builder/conversation/chat.json": filepath.Join(docs, "Crew", "example", "builder", "conversation", "chat.json"),
+		"Crew/example/product.json":                   filepath.Join(private, "product.json"),
+		"Crew/example/builder/conversation/chat.json": filepath.Join(private, "builder", "conversation", "chat.json"),
 		"Crew/example/skills/research/SKILL.md":       filepath.Join(project, ".agentworks", "skills", "research", "SKILL.md"),
-		"Crew/example/db/db.sqlite":                   filepath.Join(project, ".agentworks", "db", "db.sqlite"),
+		"Crew/example/db/db.sqlite":                   filepath.Join(private, "db", "db.sqlite"),
 	}
 	for virtual, want := range cases {
 		got, bound, err := Resolve(docs, virtual)
@@ -110,7 +114,7 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 		t.Fatal("removal accepted replacement symlink")
 	}
 	t.Setenv("LOCAL_MODE", "false")
-	if _, bound, err := Resolve(docs, "Crew/example/_files"); bound || err != nil {
+	if _, bound, err := Resolve(docs, "Crew/example/_files"); !bound || err == nil {
 		t.Fatal("hosted mode admitted local binding")
 	}
 }

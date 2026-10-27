@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http"
 	"os"
 	"os/exec"
@@ -137,6 +138,16 @@ func workspaceGitPhysicalPath(r *http.Request, raw string) (string, bool) {
 	root := workspaceGitDocsRoot()
 	if root == "" {
 		return "", false
+	}
+	if roots, bound, err := crewroot.Lookup(root, clean); bound || err != nil {
+		if err != nil {
+			return "", false
+		}
+		if clean == roots.Virtual {
+			return roots.Files, true
+		}
+		physical, _, err := crewroot.Resolve(root, clean)
+		return physical, err == nil
 	}
 	return filepath.Join(root, filepath.FromSlash(clean)), true
 }

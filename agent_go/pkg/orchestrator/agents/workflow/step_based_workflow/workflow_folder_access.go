@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -78,7 +79,10 @@ func upsertWorkflowFolderAccessRequest(raw []byte, request workflowtypes.Workflo
 // Missing host paths are skipped rather than making a restored workflow
 // unloadable; the Builder UI reports those grants as unavailable.
 func workflowFolderAccess(workspacePath string) []workflowtypes.WorkflowFolderGrant {
-	manifestPath := filepath.Join(GetPromptDocsRoot(), filepath.FromSlash(strings.TrimSpace(workspacePath)), "workflow.json")
+	manifestPath, err := fsutil.WorkspacePath(GetPromptDocsRoot(), filepath.ToSlash(filepath.Join(strings.TrimSpace(workspacePath), "workflow.json")))
+	if err != nil {
+		return nil
+	}
 	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil
@@ -108,7 +112,10 @@ func workflowFolderAccess(workspacePath string) []workflowtypes.WorkflowFolderGr
 }
 
 func workflowFolderAccessRequests(workspacePath string) []workflowtypes.WorkflowFolderAccessRequest {
-	manifestPath := filepath.Join(GetPromptDocsRoot(), filepath.FromSlash(strings.TrimSpace(workspacePath)), "workflow.json")
+	manifestPath, err := fsutil.WorkspacePath(GetPromptDocsRoot(), filepath.ToSlash(filepath.Join(strings.TrimSpace(workspacePath), "workflow.json")))
+	if err != nil {
+		return nil
+	}
 	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil

@@ -2,7 +2,6 @@ package server
 
 import (
 	"net/http"
-	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -122,5 +121,9 @@ func codingAgentWorkspaceWorkingDir(workspaceRelativeFolder string) string {
 	if rel == "" {
 		rel = perUserChatsFolderFor("")
 	}
-	return filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(rel))
+	resolved, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), rel)
+	if err != nil {
+		return ""
+	}
+	return resolved
 }

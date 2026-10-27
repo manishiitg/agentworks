@@ -86,6 +86,7 @@ RELEASE_ID="${PRODUCT}-${builder_revision:0:8}-$(date +%Y%m%d%H%M%S)"
 REMOTE_RELEASE="$REMOTE_APP/releases/$RELEASE_ID"
 BUILD_DIR="$REMOTE_RELEASE"
 MIGRATION_STOPPED_AGENT=0
+MIGRATION_STOPPED_WORKSPACE=0
 # Make room first (PLAT-545): only when space is short, and never the live release, the newest one before it, or one in use.
 python3 "$REPO_ROOT/deploy/common/prune-releases.py" "$REMOTE_APP" --apply --only-if-free-below-gb 15 \
   || echo 'warning: could not make room before the deploy' >&2
@@ -109,6 +110,9 @@ for grouped_tool_catalog in "$REPO_ROOT/agent_go/pkg/platformtools/catalog/"*-ac
   install -m 0644 "$grouped_tool_catalog" "$BUILD_DIR/migrations/$(basename "$grouped_tool_catalog")"
 done
 cleanup_build() {
+  if [[ "$MIGRATION_STOPPED_WORKSPACE" == 1 ]]; then
+    systemctl --user restart "$PRODUCT-workspace" >/dev/null 2>&1 || true
+  fi
   if declare -F vault_recover >/dev/null; then vault_recover; fi
   if [[ "$MIGRATION_STOPPED_AGENT" == 1 ]]; then
     systemctl --user restart "$PRODUCT-agent" >/dev/null 2>&1 || true
@@ -491,8 +495,14 @@ python3 "$BUILD_DIR/migrations/migrate-project-schedules.py" --workspace-dir "$R
 python3 "$BUILD_DIR/migrations/migrate-browser-modes.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/browser-modes-$RELEASE_ID" --state-root "$REMOTE_APP/state" --deployment-mode server
 python3 "$BUILD_DIR/migrations/repair-workflow-builder-tabs.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/workflow-builder-tabs-$(date -u +%Y%m%dT%H%M%SZ)"
 python3 "$BUILD_DIR/migrations/migrate-saved-platform-references.py" --workspace-dir "$REMOTE_APP/data/docs" --backup-dir "$REMOTE_APP/state/migration-backups/saved-platform-references-$RELEASE_ID" --catalog-dir "$BUILD_DIR/migrations" --workspace-api-url "http://127.0.0.1:$WORKSPACE_PORT" --workspace-env-file "$REMOTE_APP/.env"
+# Convert only platform records after older one-off hooks, with every writer stopped.
+# The same compiled conversion runs on desktop workspace startup.
+systemctl --user stop "$PRODUCT-workspace"
+MIGRATION_STOPPED_WORKSPACE=1
+AGENTWORKS_STATE_ROOT="$REMOTE_APP/state" LOCAL_MODE=false "$BUILD_DIR/bin/$PRODUCT-workspace" server --docs-dir "$REMOTE_APP/data/docs" --migrate-crew-state-only
 systemctl --user daemon-reload
 systemctl --user restart "$PRODUCT-workspace"
+MIGRATION_STOPPED_WORKSPACE=0
 sleep 2
 vault_start "$PRODUCT" "${VAULT_PORT:-$((WORKSPACE_PORT + 2))}"
 systemctl --user restart "$PRODUCT-agent"

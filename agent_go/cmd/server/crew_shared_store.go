@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -45,37 +46,20 @@ func listSharedCrewManifestPaths(ctx context.Context, store productProjectStore,
 // listSharedCrewEntries lists every owned Crew at the shared root with its manifest owner (one listing, one
 // manifest read per Crew).
 func listSharedCrewEntries(ctx context.Context, store productProjectStore) ([]sharedCrewEntry, error) {
-	paths, exists, err := store.listPaths(ctx, workspaceref.SharedCrewRoot)
+	// The registry owns identity. Platform manifests no longer live in the
+	// working tree and must not be discovered from person-editable files.
+	records, err := defaultProjectOwners().All()
 	if err != nil {
 		return nil, err
 	}
-	if !exists {
-		return nil, nil
-	}
-	prefix := workspaceref.SharedCrewRoot + "/"
-	seen := map[string]struct{}{}
 	var out []sharedCrewEntry
-	for _, candidate := range paths {
-		candidate = filepath.ToSlash(strings.TrimSpace(candidate))
-		if !strings.HasPrefix(candidate, prefix) || !strings.HasSuffix(candidate, "/product.json") {
+	for _, rec := range records {
+		if rec.Product != crewProfileID || validateProjectStorageRecord(rec) != nil {
 			continue
 		}
-		folder := strings.TrimSuffix(strings.TrimPrefix(candidate, prefix), "/product.json")
-		if folder == "" || strings.Contains(folder, "/") || strings.HasPrefix(folder, ".") {
-			continue
-		}
-		if _, dup := seen[candidate]; dup {
-			continue
-		}
-		seen[candidate] = struct{}{}
-		// The owner is the server's registry entry for the folder (PLAT-449), not what the manifest says; a Crew
-		// without one belongs to nobody and is not listed.
-		rec, found := defaultProjectOwners().sharedRootRecord(folder)
-		if !found || projectStorageRoot(rec) != prefix+folder {
-			continue
-		}
-		out = append(out, sharedCrewEntry{ManifestPath: candidate, OwnerID: rec.OwnerID, ProfileID: rec.Product})
+		out = append(out, sharedCrewEntry{ManifestPath: projectStorageRoot(rec) + "/product.json", OwnerID: rec.OwnerID, ProfileID: rec.Product})
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ManifestPath < out[j].ManifestPath })
 	return out, nil
 }
 

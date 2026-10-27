@@ -20,6 +20,11 @@ func Prepare(stateRoot, workspaceRoot, user, workflow, session, provider, mode s
 	return prepare(stateRoot, workspaceRoot, user, workflow, "", session, provider, mode)
 }
 
+// PrepareMoved retains a Crew session identity when its private storage moves.
+func PrepareMoved(stateRoot, workspaceRoot, user, workflow, identityRel, session, provider, mode string) (string, error) {
+	return prepare(stateRoot, workspaceRoot, user, workflow, identityRel, session, provider, mode)
+}
+
 // prepare is Prepare with an optional legacy digest input: a workspace-relative path whose resolved spelling replaces
 // the workflow's in the v1 digest, so a project that moved keeps the runtime folder, and with it the native CLI
 // session, it always had (PLAT-442 step 4).

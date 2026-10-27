@@ -1,4 +1,4 @@
-// Package crewroot resolves server-owned local Crew bindings. Virtual Crew
+// Package crewroot resolves server-owned Crew storage bindings. Virtual Crew
 // identities stay stable; a user's folder never supplies routing or ownership.
 package crewroot
 
@@ -11,10 +11,12 @@ import (
 )
 
 const FilesSegment = "_files"
+const PrivateDirectory = "_system/crew-data"
 
 type Roots struct {
 	ID, Owner, Virtual        string
 	Files, Resources, Private string
+	Local                     bool
 }
 
 type Record struct {
@@ -48,9 +50,6 @@ func StateRoot() (string, error) {
 }
 
 func records() (map[string]Record, error) {
-	if os.Getenv("LOCAL_MODE") != "true" {
-		return nil, nil
-	}
 	state, err := StateRoot()
 	if err != nil {
 		return nil, err
@@ -91,26 +90,41 @@ func unchangedDirectory(dir string, allowMissing bool) error {
 	}
 }
 
-func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) {
-	if r.Product != "work" || r.ID == "" || r.Owner == "" || r.Folder == "" || strings.ContainsAny(r.Folder, "/\\") || strings.HasPrefix(r.Folder, ".") || !filepath.IsAbs(r.LocalRoot) {
-		return Roots{}, fmt.Errorf("invalid local Crew binding")
+// PrivateRoot is selected only from a server-owned registry record.
+func PrivateRoot(docs, id string) (string, error) {
+	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, "/\\") {
+		return "", fmt.Errorf("invalid Crew identity")
 	}
-	canonical := filepath.Clean(r.LocalRoot)
-	if err := unchangedDirectory(canonical, allowMissing); err != nil {
-		return Roots{}, err
+	return filepath.Join(docs, filepath.FromSlash(PrivateDirectory), id), nil
+}
+
+func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) {
+	if r.Product != "work" || r.Owner == "" || r.Folder == "" || strings.ContainsAny(r.Folder, "/\\") || strings.HasPrefix(r.Folder, ".") {
+		return Roots{}, fmt.Errorf("invalid Crew binding")
 	}
 	realDocs, err := filepath.EvalSymlinks(docs)
 	if err != nil {
 		return Roots{}, err
 	}
-	resource, private := filepath.Join(canonical, ".agentworks"), filepath.Join(realDocs, "Crew", r.Folder)
-	for _, dir := range []string{resource, private} {
+	private, err := PrivateRoot(realDocs, r.ID)
+	if err != nil {
+		return Roots{}, err
+	}
+	files := filepath.Join(realDocs, "Crew", r.Folder)
+	resources := files
+	if r.LocalRoot != "" {
+		if os.Getenv("LOCAL_MODE") != "true" || !filepath.IsAbs(r.LocalRoot) {
+			return Roots{}, fmt.Errorf("local Crew binding is unavailable on this server")
+		}
+		files = filepath.Clean(r.LocalRoot)
+		resources = filepath.Join(files, ".agentworks")
+	}
+	for _, dir := range []string{files, resources, private} {
 		if err := unchangedDirectory(dir, allowMissing); err != nil {
 			return Roots{}, err
 		}
 	}
-
-	return Roots{ID: r.ID, Owner: r.Owner, Virtual: "Crew/" + r.Folder, Files: canonical, Resources: resource, Private: private}, nil
+	return Roots{ID: r.ID, Owner: r.Owner, Virtual: "Crew/" + r.Folder, Files: files, Resources: resources, Private: private, Local: r.LocalRoot != ""}, nil
 }
 
 // Lookup accepts the stable virtual project root, never an absolute input.
@@ -130,15 +144,15 @@ func lookup(docs, virtual string, allowMissing bool) (Roots, bool, error) {
 		return Roots{}, false, err
 	}
 	r, ok := all["work/"+parts[1]]
-	if !ok || r.LocalRoot == "" {
+	if !ok {
 		for _, candidate := range all {
-			if candidate.LocalRoot != "" && strings.EqualFold(candidate.Folder, parts[1]) {
+			if candidate.Product == "work" && strings.EqualFold(candidate.Folder, parts[1]) {
 				r, ok = candidate, true
 				break
 			}
 		}
 	}
-	if !ok || r.LocalRoot == "" {
+	if !ok {
 		return Roots{}, false, nil
 	}
 	if parts[0] != "Crew" || parts[1] != r.Folder {
@@ -148,18 +162,26 @@ func lookup(docs, virtual string, allowMissing bool) (Roots, bool, error) {
 	return out, true, err
 }
 
-func (r Roots) FilesPath() string { return r.Virtual + "/" + FilesSegment }
+func (r Roots) FilesPath() string {
+	if !r.Local {
+		return r.Virtual
+	}
+	return r.Virtual + "/" + FilesSegment
+}
 
-// Settings keep their managed namespace. All other resource paths resolve
-// under .agentworks, including project skills, memory, functions and outputs.
+// Platform records keep their managed namespace outside the working folder. All other resource paths resolve
+// under the resource root, including skills, memory, code and outputs.
 func privatePath(rel string) bool {
 	rel = strings.ToLower(rel)
+	if rel == "db/db.sqlite" || rel == "db/db.sqlite-wal" || rel == "db/db.sqlite-shm" || rel == "db/db.sqlite-journal" {
+		return true
+	}
 	if rel == "triggers/deliveries" || strings.HasPrefix(rel, "triggers/deliveries/") {
 		return true
 	}
 	first := strings.SplitN(rel, "/", 2)[0]
 	switch first {
-	case "product.json", "workflow.json", "workflow.json.kb-lock", "product-schedules.json", "schedule-runs.json", ".sandbox-cache", ".report-cache", "builder", "conversation", "chat_history":
+	case "product.json", "workflow.json", "workflow.json.kb-lock", "schedules.json", "webhooks.json", "product-schedules.json", "schedule-runs.json", "functions.json", "costs", "human_inputs", "runs", "planning", "knowledgebase", ".sandbox-cache", ".report-cache", "builder", "conversation", "chat_history":
 		return true
 	}
 	return false
@@ -231,10 +253,10 @@ func Resolve(docs, virtual string) (string, bool, error) {
 	}
 	rel := strings.TrimPrefix(strings.TrimPrefix(filepath.ToSlash(virtual), r.Virtual), "/")
 	root := r.Resources
-	if first := strings.SplitN(rel, "/", 2)[0]; strings.EqualFold(first, FilesSegment) && first != FilesSegment {
+	if first := strings.SplitN(rel, "/", 2)[0]; r.Local && strings.EqualFold(first, FilesSegment) && first != FilesSegment {
 		return "", true, fmt.Errorf("use the issued _files path")
 	}
-	if rel == FilesSegment || strings.HasPrefix(rel, FilesSegment+"/") {
+	if r.Local && (rel == FilesSegment || strings.HasPrefix(rel, FilesSegment+"/")) {
 		root = r.Files
 		rel = strings.TrimPrefix(strings.TrimPrefix(rel, FilesSegment), "/")
 		if first := strings.SplitN(strings.ToLower(rel), "/", 2)[0]; first == ".agentworks" {
@@ -244,7 +266,7 @@ func Resolve(docs, virtual string) (string, bool, error) {
 		root = r.Private
 	}
 	path, err := ResolveContained(root, rel)
-	if err == nil && root == r.Files {
+	if err == nil && r.Local && root == r.Files {
 		for existing := path; ; existing = filepath.Dir(existing) {
 			if _, statErr := os.Lstat(existing); statErr == nil {
 				real, evalErr := filepath.EvalSymlinks(existing)
@@ -274,10 +296,15 @@ func Reverse(docs, physical string) (string, Roots, bool, error) {
 		return "", Roots{}, false, err
 	}
 	for _, rec := range all {
-		if rec.LocalRoot == "" {
+		if rec.Product != "work" {
 			continue
 		}
-		if !Within(rec.LocalRoot, physical) {
+		private, err := PrivateRoot(docs, rec.ID)
+		if err != nil {
+			return "", Roots{}, true, err
+		}
+		managed := filepath.Join(docs, "Crew", rec.Folder)
+		if !Within(managed, physical) && !Within(private, physical) && (rec.LocalRoot == "" || !Within(rec.LocalRoot, physical)) {
 			continue
 		}
 		r, err := roots(docs, rec)
@@ -285,6 +312,9 @@ func Reverse(docs, physical string) (string, Roots, bool, error) {
 			return "", Roots{}, true, err
 		}
 		root, prefix := r.Files, r.FilesPath()
+		if Within(r.Private, physical) {
+			root, prefix = r.Private, r.Virtual
+		}
 		if Within(r.Resources, physical) {
 			root, prefix = r.Resources, r.Virtual
 		}
@@ -308,11 +338,18 @@ func CheckRootMutation(docs, physical string) error {
 		return err
 	}
 	for _, rec := range all {
-		if rec.LocalRoot == "" {
+		if rec.Product != "work" {
 			continue
 		}
-		private := filepath.Join(docs, "Crew", rec.Folder)
-		for _, root := range []string{rec.LocalRoot, filepath.Join(rec.LocalRoot, ".agentworks"), private} {
+		private, err := PrivateRoot(docs, rec.ID)
+		if err != nil {
+			return err
+		}
+		roots := []string{private, filepath.Join(docs, "Crew", rec.Folder)}
+		if rec.LocalRoot != "" {
+			roots = append(roots, rec.LocalRoot, filepath.Join(rec.LocalRoot, ".agentworks"))
+		}
+		for _, root := range roots {
 			if Within(strings.ToLower(physical), strings.ToLower(root)) {
 				return fmt.Errorf("remove this Crew from its settings to keep your project folder and files")
 			}
@@ -344,11 +381,55 @@ func ScopeRoot(docs, virtual, rel string) (string, bool, error) {
 	if err != nil || !bound {
 		return "", bound, err
 	}
-	if virtual == r.FilesPath() {
+	if r.Local && virtual == r.FilesPath() {
 		return r.Files, true, nil
 	}
 	if virtual != r.Virtual {
 		return "", true, fmt.Errorf("use the issued Crew root")
 	}
 	return r.ResourcePathRoot(rel), true, nil
+}
+
+// NativeGrants separates broad resource grants from platform state. The file
+// service keeps its logical grants for typed operations; shell processes don't
+// inherit writes to settings or conversation records. An explicitly granted
+// run output directory remains writable.
+func NativeGrants(docs string, read, write []string) ([]string, []string, []string) {
+	var blocked []string
+	reads := append([]string(nil), read...)
+	for _, grant := range read {
+		clean := strings.TrimSuffix(grant, "/")
+		if r, found, err := Lookup(docs, clean); err == nil && found && clean == r.Virtual {
+			reads = append(reads, r.Private)
+			for _, name := range []string{"db.sqlite", "db.sqlite-wal", "db.sqlite-shm", "db.sqlite-journal"} {
+				blocked = append(blocked, filepath.Join(r.Private, "db", name))
+			}
+		}
+	}
+	writes := make([]string, 0, len(write))
+	for _, grant := range write {
+		clean := strings.TrimSuffix(grant, "/")
+		r, found, err := Lookup(docs, clean)
+		suffix := ""
+		if found && err == nil {
+			suffix = strings.TrimPrefix(strings.TrimPrefix(clean, r.Virtual), "/")
+		}
+		if filepath.IsAbs(clean) {
+			logical, roots, match, e := Reverse(docs, clean)
+			r, found, err = roots, match, e
+			if match && e == nil {
+				suffix = strings.TrimPrefix(strings.TrimPrefix(logical, r.Virtual), "/")
+			}
+		}
+		if err != nil && found {
+			continue
+		}
+		privateGrant := found && (r.ResourcePathRoot(suffix) == r.Private || filepath.IsAbs(clean) && Within(r.Private, clean))
+		shellHome := suffix == ".sandbox-cache/home" || strings.HasPrefix(suffix, ".sandbox-cache/home/")
+		if privateGrant && !strings.HasPrefix(suffix, "runs/") && !shellHome {
+			continue
+		}
+		writes = append(writes, grant)
+	}
+	return reads, writes, blocked
 }

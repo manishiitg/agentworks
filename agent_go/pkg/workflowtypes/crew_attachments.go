@@ -2,6 +2,7 @@ package workflowtypes
 
 import (
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -148,7 +149,10 @@ func CrewAttachmentEnvKeys(attachments []CrewAttachment) map[string]string {
 // manifest exists there; a manifest without attachments returns an empty
 // list with found=true.
 func ReadCrewAttachments(docsRoot, workspacePath string) ([]CrewAttachment, bool) {
-	manifestPath := filepath.Join(docsRoot, filepath.FromSlash(strings.TrimSpace(workspacePath)), "workflow.json")
+	manifestPath, err := fsutil.WorkspacePath(docsRoot, filepath.ToSlash(filepath.Join(strings.TrimSpace(workspacePath), "workflow.json")))
+	if err != nil {
+		return nil, false
+	}
 	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, false

@@ -48,12 +48,18 @@ func validateNewLocalCrewRoot(input string) (string, error) {
 	return root, nil
 }
 
-func localCrewRoots(folder string) (crewroot.Roots, bool, error) {
+func crewStorageRoots(folder string) (crewroot.Roots, bool, error) {
 	return crewroot.Lookup(fsutil.WorkspaceDocsRoot(), folder)
 }
 
+func localCrewRoots(folder string) (crewroot.Roots, bool, error) {
+	r, found, err := crewroot.Lookup(fsutil.WorkspaceDocsRoot(), folder)
+	return r, found && r.Local, err
+}
+
 func localCrewRemovalRoots(folder string) (crewroot.Roots, bool, error) {
-	return crewroot.LookupForRemoval(fsutil.WorkspaceDocsRoot(), folder)
+	r, found, err := crewroot.LookupForRemoval(fsutil.WorkspaceDocsRoot(), folder)
+	return r, found && r.Local, err
 }
 
 func crewFilesPath(folder string) string {

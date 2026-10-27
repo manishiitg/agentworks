@@ -3,6 +3,7 @@ package step_based_workflow
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"os"
 	"path/filepath"
@@ -42,7 +43,11 @@ func platformStoresForProduct(kind string) (bool, error) {
 // Managed Builder sessions are set up outside the controller. Use the same
 // product policy on setup and restore, without depending on a step config.
 func workspacePlatformStoresEnabled(workspacePath string) bool {
-	raw, err := os.ReadFile(filepath.Join(GetPromptDocsRoot(), workspacePath, "workflow.json"))
+	manifest, err := fsutil.WorkspacePath(GetPromptDocsRoot(), filepath.ToSlash(filepath.Join(workspacePath, "workflow.json")))
+	if err != nil {
+		return false
+	}
+	raw, err := os.ReadFile(manifest)
 	if os.IsNotExist(err) {
 		return true
 	}

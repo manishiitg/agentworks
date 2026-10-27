@@ -189,9 +189,23 @@ func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *l
 			if path := cliPolicyPath(rel); path != "" {
 				policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, path)
 			}
+			if roots, found, err := crewStorageRoots(strings.TrimSuffix(rel, "/")); err == nil && found && strings.TrimSuffix(rel, "/") == roots.Virtual {
+				policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, roots.Private)
+				for _, name := range []string{"db.sqlite", "db.sqlite-wal", "db.sqlite-shm", "db.sqlite-journal"} {
+					policy.BlockedPaths = appendUniqueStrings(policy.BlockedPaths, filepath.Join(roots.Private, "db", name))
+				}
+			}
 		}
 		if !readOnly {
 			for _, rel := range cfg.WritePaths {
+				// Platform tools retain their logical write grants. Native tools
+				// write user resources, never the separated platform records.
+				if roots, found, err := crewStorageRoots(strings.TrimSuffix(rel, "/")); err == nil && found {
+					suffix := strings.TrimPrefix(strings.TrimPrefix(rel, roots.Virtual), "/")
+					if roots.ResourcePathRoot(suffix) == roots.Private {
+						continue
+					}
+				}
 				if path := cliPolicyPath(rel); path != "" {
 					policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, path)
 				}

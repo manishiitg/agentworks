@@ -45,7 +45,8 @@ def migrate(root, backups, catalogs, native_namespaces=()):
             result[key] = rewrite(item, key)
         return result
 
-    folders = [root / "Workflow", root / "Crew"]
+    crew = root / "_system/crew-data"
+    folders = [root / "Workflow", crew if crew.is_dir() else root / "Crew"]
     for user in (root / "_users").glob("*"):
         folders += [user / "Workflow", user / "Crew"]
     changes = []

@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -28,7 +27,10 @@ type workflowReviewItem struct {
 
 // LatestWorkflowReview reads old history without changing it or starting work.
 func LatestWorkflowReview(workspacePath string) *WorkflowReviewRecord {
-	path := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(strings.Trim(strings.TrimSpace(workspacePath), "/")), "planning", "workflow_review.json")
+	path, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), strings.Trim(strings.TrimSpace(workspacePath), "/")+"/planning/workflow_review.json")
+	if err != nil {
+		return nil
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil

@@ -27,8 +27,12 @@ func TestBoundCrewShellPathsKeepHomePrivateAndResolveWrites(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(state, "ownership", "projects.json"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
+	private, err := crewroot.EnsurePrivateRoot(docs, "example", filepath.Join(docs, "Crew", "example"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	home := interactiveShellHome(docs, []string{"Crew/example/_files"}, project)
-	if home != filepath.Join(docs, "Crew", "example", ".sandbox-cache", "home") {
+	if home != filepath.Join(private, ".sandbox-cache", "home") {
 		t.Fatalf("wrong home %s", home)
 	}
 	if _, err := os.Stat(filepath.Join(project, ".sandbox-cache")); !os.IsNotExist(err) {

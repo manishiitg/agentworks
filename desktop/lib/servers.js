@@ -37,6 +37,7 @@ function spawnServer({ name, bin, args, preferredPort, cwd, env, log, onExit, ec
     child.on('exit', (code, signal) => {
       log.write(`\n=== ${name}-server exited code=${code} signal=${signal} ===\n`);
       if (onExit) onExit(code, signal);
+      if (!portFound) reject(new Error(`${name} stopped before startup completed (exit ${code}, signal ${signal || 'none'}). Check its log for the cause.`));
     });
     child.stdout.on('data', (d) => {
       const output = d.toString();

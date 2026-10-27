@@ -48,6 +48,8 @@ def migrate(workspace, state):
                 continue
             project_id = project.get('project_id')
             root = workspace / project.get('canonical_root', 'Crew/' + project['folder'])
+            if (workspace / '_system/crew-data').is_dir():
+                root = workspace / '_system/crew-data' / project_id
             manifest_path = root / 'product.json'
             if not manifest_path.exists():
                 continue

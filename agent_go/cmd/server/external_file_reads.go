@@ -32,11 +32,11 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	}
 	parts := strings.Split(rootPath, "/")
 	crewRoot := externalIsCrewRoot(rootPath)
-	localRoots, localBound, localErr := localCrewRoots(rootPath)
+	localRoots, localBound, localErr := crewStorageRoots(rootPath)
 	if localErr != nil {
 		return wf.Result{}, localErr
 	}
-	localFiles := localBound && rootPath == localRoots.FilesPath()
+	localFiles := localBound && localRoots.Local && rootPath == localRoots.FilesPath()
 	crewRoot = crewRoot || localFiles
 	// A Flow release folder is allowed only when it maps back to a live Flow;
 	// callers pass it after checking access to that Flow.
@@ -71,13 +71,13 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	}
 	req.Path = p
 	rootPath = req.Root
-	localFiles = localBound && rootPath == localRoots.FilesPath()
+	localFiles = localBound && localRoots.Local && rootPath == localRoots.FilesPath()
 	if filesPrefix != "" {
 		ctx = context.WithValue(ctx, sparkquillFileGuardKey{}, guard)
 	}
 	var sourcePublication *publishedProject
 	skipPublication, _ := ctx.Value(publicationFileReadKey{}).(bool)
-	if crewRoot && !skipPublication && !localBound {
+	if crewRoot && !skipPublication && !localRoots.Local {
 		pub, e := readPublishedProject(ctx, rootPath)
 		if e != nil {
 			return wf.Result{}, e
@@ -106,6 +106,15 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 					}
 				}
 			}
+		}
+	}
+
+	// A published source may be outside the live Crew. Resolve the selected
+	// root after publication routing, never the original live resource tree.
+	if !localRoots.Local {
+		localRoots, localBound, localErr = crewStorageRoots(rootPath)
+		if localErr != nil {
+			return wf.Result{}, localErr
 		}
 	}
 
@@ -165,7 +174,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		}
 		return wf.Result{File: file}, err
 	case "list", "search":
-		result, err := externalListFiles(ctx, root, p, req, crewRoot, localFiles, shared, localBound && !localFiles)
+		result, err := externalListFiles(ctx, root, p, req, crewRoot, localFiles, shared, localBound && localRoots.Local && !localFiles)
 		if err == nil && sourcePublication != nil && rootPath == sourcePublication.sourceRoot() {
 			runtimeReq := req
 			// Agent runtime paths have their own namespace. An ordinary Crew's

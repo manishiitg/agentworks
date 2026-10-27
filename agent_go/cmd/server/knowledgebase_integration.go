@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -80,7 +81,11 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 	if err != nil {
 		return nil, err
 	}
-	path, err := filepath.EvalSymlinks(filepath.Join(base, filepath.FromSlash(root), "workflow.json"))
+	manifestPath, err := fsutil.WorkspacePath(base, root+"/workflow.json")
+	if err != nil {
+		return nil, err
+	}
+	path, err := filepath.EvalSymlinks(manifestPath)
 	if err != nil {
 		return nil, err
 	}
@@ -438,7 +443,11 @@ func knowledgeRuntimeConfigKey(workspace string) string {
 	if err != nil {
 		return ""
 	}
-	target, err := filepath.EvalSymlinks(filepath.Join(base, workspace, "workflow.json"))
+	manifestPath, err := fsutil.WorkspacePath(base, workspace+"/workflow.json")
+	if err != nil {
+		return ""
+	}
+	target, err := filepath.EvalSymlinks(manifestPath)
 	if err != nil || !workflowkb.Within(base, target) {
 		return ""
 	}

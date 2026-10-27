@@ -142,9 +142,11 @@ func (api *StreamingAPI) runtimeSkillsHandler(w http.ResponseWriter, r *http.Req
 		http.Error(w, "runtime storage unavailable", 500)
 		return
 	}
-	legacy := ""
+	legacy := workspace
 	if shared, ok := workspaceref.MustParse(workspace).SharedProject(); ok {
-		legacy = crewLegacyKey(shared)
+		if old := crewLegacyKey(shared); old != "" {
+			legacy = old
+		}
 	}
 	dir, err := cliruntime.ExistingLinkedProject(state, fsutil.WorkspaceDocsRoot(), user, codingAgentWorkspaceWorkingDir(workspace), legacy, session, provider, mode)
 	if os.IsNotExist(err) {

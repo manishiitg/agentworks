@@ -259,6 +259,9 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 		return nil, nil, fmt.Errorf("prepare database helper: %w", err)
 	}
 	local.WritePaths = append(append([]string{}, iso.WritePaths...), canonicalPath(tmp))
+	var crewBlocked []string
+	local.ReadPaths, local.WritePaths, crewBlocked = crewroot.NativeGrants(iso.getBaseDir(), local.ReadPaths, local.WritePaths)
+	local.BlockedPaths = append(append([]string{}, local.BlockedPaths...), crewBlocked...)
 	browserSocket, err := local.scopeBrowser()
 	if err != nil {
 		releaseScratch()
@@ -270,7 +273,7 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 			return nil, nil, fmt.Errorf("prepare GOG_HOME: %w", err)
 		}
 		local.WritePaths = append(local.WritePaths, canonicalPath(home))
-		local.ReadPaths = append(append([]string{}, iso.ReadPaths...), canonicalPath(home))
+		local.ReadPaths = append(local.ReadPaths, canonicalPath(home))
 	}
 	var cmd *exec.Cmd
 	var backendCleanup func()

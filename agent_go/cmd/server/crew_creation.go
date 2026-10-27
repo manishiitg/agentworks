@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"log"
 	"os"
 	"path/filepath"
@@ -525,6 +526,21 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 			log.Printf("[PROJECT_CREATE] incomplete owner cleanup failed for %s: %v", crewID, err)
 		}
 	}()
+	privateRoot, err := crewroot.PrivateRoot(fsutil.WorkspaceDocsRoot(), crewID)
+	if err != nil {
+		return CreatedCrew{}, err
+	}
+	if err := os.MkdirAll(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath)), 0700); err != nil {
+		return CreatedCrew{}, err
+	}
+	if _, err := crewroot.EnsurePrivateRoot(fsutil.WorkspaceDocsRoot(), crewID, filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath))); err != nil {
+		return CreatedCrew{}, err
+	}
+	defer func() {
+		if createErr != nil && !registeredBefore {
+			_ = os.RemoveAll(privateRoot)
+		}
+	}()
 	if err := defaultProjectOwners().Register(projectOwnerRecord{
 		Product: profileID, Folder: filepath.Base(filepath.ToSlash(workspacePath)), OwnerID: userID, ProjectID: crewID,
 		CanonicalRoot: workspacePath,
@@ -558,6 +574,9 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	// A Crew at the shared root gets its owner's slot group (the owner's tree gave that implicitly).
 	if folder, shared := workspaceref.MustParse(filepath.ToSlash(workspacePath)).SharedProject(); shared {
 		ensureSharedCrewFolderAccess(folder, userID)
+	}
+	if settings.LocalRoot != "" {
+		_ = os.Remove(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath)))
 	}
 	return CreatedCrew{CrewID: crewID, Title: title, WorkspacePath: workspacePath, ManifestPath: manifestPath, SessionID: sessionID}, nil
 }

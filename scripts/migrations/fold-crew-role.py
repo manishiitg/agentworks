@@ -31,7 +31,10 @@ def migrate(workspace, state):
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     backup = state / 'migrations' / ('fold-crew-role-backup-' + stamp)
     checked = changed = 0
-    for path in sorted((workspace / 'Crew').glob('*/product.json')):
+    crew = workspace / '_system/crew-data'
+    if not crew.is_dir():
+        crew = workspace / 'Crew'
+    for path in sorted(crew.glob('*/product.json')):
         checked += 1
         original = path.read_bytes()
         try:

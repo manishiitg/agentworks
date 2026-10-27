@@ -139,7 +139,7 @@ func openStructuredFunctionFolder(call *crewFunctionCall) (*os.Root, error) {
 		return nil, err
 	}
 	basePath := getWorkspaceDocsAbsPath()
-	if roots, bound, err := localCrewRoots(call.TargetPath); err != nil {
+	if roots, bound, err := crewStorageRoots(call.TargetPath); err != nil {
 		return nil, err
 	} else if bound {
 		basePath = roots.ResourcePathRoot(call.outputRelativeFolder())

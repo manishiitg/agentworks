@@ -26,7 +26,10 @@ func protectOtherWorkflowBuilderChats(sessionID, workspacePath, userID string) {
 		return
 	}
 
-	conversationRoot := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath), "builder", "conversation")
+	conversationRoot, resolveErr := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), workspacePath+"/builder/conversation")
+	if resolveErr != nil {
+		return
+	}
 	privateUsersRoot := filepath.Join(conversationRoot, "users")
 	currentUserSegment := sanitizeUserIDForPath(userID)
 	blocked := []string{filepath.ToSlash(filepath.Join(workspacePath, "builder", "conversation", "system"))}

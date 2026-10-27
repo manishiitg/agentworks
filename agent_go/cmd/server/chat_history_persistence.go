@@ -2318,6 +2318,9 @@ func resolveLocalChatHistoryDir(workspaceRoot string) (string, bool) {
 }
 
 func resolveLocalWorkflowDir(workflowPath string) (string, bool) {
+	if roots, found, err := crewStorageRoots(workflowPath); found || err != nil {
+		return roots.Private, err == nil
+	}
 	workflowPath = chatHistoryStoragePath(workflowPath)
 	workflowPath = normalizeChatHistoryWorkspacePath(workflowPath)
 	if workflowPath == "" {
