@@ -119,20 +119,7 @@ func TestRefSitesPlaceAttachRoots(t *testing.T) {
 		if got := placeRootOf(spelling); spelling == phys+"/src/a.go" && got != phys {
 			t.Fatalf("placeRootOf(%q) = %q", spelling, got)
 		}
-		if got := attachRootForCaller(refUser, workspaceref.MustParse(spelling).Logical()); got != phys && got != "" {
-			t.Fatalf("attachRootForCaller = %q", got)
-		}
 	})
-	if got := attachRootForCaller(refUser, codeLogic); got != phys {
-		t.Fatalf("logical -> %q", got)
-	}
-	if got := attachRootForCaller(refUser, phys); got != phys {
-		t.Fatalf("physical -> %q", got)
-	}
-	if got := attachRootForCaller(refUser, reftest.OtherUser(refUser, codeLogic)); got != reftest.OtherUser(refUser, codeLogic) {
-		t.Fatalf("another user's root stays theirs: %q", got)
-	}
-
 	for _, bad := range []string{
 		phys + "/src", "_users/" + refUser + "/Chats/Other/projects/x", "_users/" + refUser, codeLogic,
 	} {

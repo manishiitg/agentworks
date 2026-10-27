@@ -72,15 +72,6 @@ func readPlaceMCPGroupConsent(dir string) map[string][]string {
 	return consent
 }
 
-// recordPlaceMCPGroupConsent notes the scopes a group sign-in granted.
-func recordPlaceMCPGroupConsent(dir, group string, scopes []string) error {
-	placeMCPMu.Lock()
-	defer placeMCPMu.Unlock()
-	consent := readPlaceMCPGroupConsent(dir)
-	consent[group] = append([]string(nil), scopes...)
-	return writePlaceMCPJSON(filepath.Join(dir, placeMCPGroupsFile), consent)
-}
-
 // placeMCPServerConnected reports whether the server has a usable login:
 // its group's login covering its scopes, or its own login.
 func placeMCPServerConnected(dir, userID string, server placeMCPServer) bool {
@@ -106,17 +97,6 @@ func placeMCPServerConnected(dir, userID string, server placeMCPServer) bool {
 		}
 	}
 	return true
-}
-
-// placeMCPGroupMembers lists the names of the person's servers in group.
-func placeMCPGroupMembers(dir, userID, group string, servers []placeMCPServer) []string {
-	names := []string{}
-	for _, server := range servers {
-		if placeMCPGroupOf(dir, userID, server) == group {
-			names = append(names, server.Name)
-		}
-	}
-	return names
 }
 
 // forgetUnusedPlaceMCPGroups deletes group logins no remaining server

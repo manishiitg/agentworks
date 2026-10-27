@@ -2,18 +2,13 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/gorilla/mux"
-	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // The server-owned attachment index links a user's private MCP to a project.
@@ -51,21 +46,6 @@ func storeForAttachment(owner, server, root string) string {
 		}
 	}
 	return owner
-}
-func attachPersonalLoginToPlace(owner, server, root string) error {
-	placeMCPMu.Lock()
-	defer placeMCPMu.Unlock()
-	all, err := readPlaceMCPAttachmentsLocked()
-	if err != nil {
-		return err
-	}
-	for _, a := range all[root] {
-		if a.Owner == owner && a.Server == server {
-			return nil
-		}
-	}
-	all[root] = append(all[root], placeMCPAttachment{Owner: owner, Server: server, Scope: "user", AttachedAt: time.Now().UTC().Format(time.RFC3339)})
-	return writePlaceMCPAttachmentsLocked(all)
 }
 
 // placeMCPStoreID is the personal-store id of owner's connections in root.
@@ -114,14 +94,6 @@ func placeRootOf(raw string) string {
 		return cleanAttachRoot(strings.Join(segments[:2], "/"))
 	}
 	return ""
-}
-
-// attachRootForCaller maps the workspace path the UI sends to the stored
-// root: a caller's own Crew or Code arrives in its logical form
-// (Chats/Work/projects/<id>, Chats/Code/projects/<id>), which is their
-// _users tree.
-func attachRootForCaller(_ string, raw string) string {
-	return cleanAttachRoot(strings.Trim(strings.TrimSpace(raw), "/"))
 }
 
 func readPlaceMCPAttachmentsLocked() (map[string][]placeMCPAttachment, error) {
@@ -182,48 +154,6 @@ func placeMCPCanAttach(ctx context.Context, userID, root string) bool {
 	return ok && crewAccessFor(claims, ref) == crewAccessOwner
 }
 
-// placeMCPUsableBy reports whether a session may use root's connections. A connection added to a workflow,
-// Relay or Crew belongs to that place and is used by everyone with access to it (DECISIONS 2026-10-04):
-// a person needs access to the place, and a session with no person (a run, step or schedule of the place,
-// whose place comes from server-set session data) uses them as the place's own.
-func placeMCPUsableBy(ctx context.Context, person, root string) bool {
-	root = cleanAttachRoot(root)
-	if root == "" {
-		return false
-	}
-	person = strings.TrimSpace(person)
-	if person == "" {
-		return true
-	}
-	claims := userClaimsForDirectoryID(person)
-	if claims == nil {
-		return false
-	}
-	if strings.HasPrefix(root, "Workflow/") {
-		level, _ := workflowAccessForWorkspacePath(ctx, claims, root)
-		return level != WorkflowAccessNone
-	}
-	ref, ok := resolveCrewPath(ctx, person, root)
-	return ok && crewAccessFor(claims, ref) != crewAccessNone
-}
-
-// recordPlaceMCP adds owner's server to root's index.
-func recordPlaceMCP(owner, server, root string) error {
-	placeMCPMu.Lock()
-	defer placeMCPMu.Unlock()
-	all, err := readPlaceMCPAttachmentsLocked()
-	if err != nil {
-		return err
-	}
-	for _, a := range all[root] {
-		if a.Owner == owner && a.Server == server {
-			return nil
-		}
-	}
-	all[root] = append(all[root], placeMCPAttachment{Owner: owner, Server: server, AttachedAt: time.Now().UTC().Format(time.RFC3339)})
-	return writePlaceMCPAttachmentsLocked(all)
-}
-
 // forgetPlaceMCP drops owner's server from root's index.
 func forgetPlaceMCP(owner, server, root string) error {
 	placeMCPMu.Lock()
@@ -267,274 +197,6 @@ func placeMCPAttachmentsFor(root string) ([]placeMCPAttachment, error) {
 		return list[i].Owner < list[j].Owner
 	})
 	return list, nil
-}
-
-// attachedMCPServersForRoot is the runtime side: a workflow's, Crew's or Code's own
-// connections as ordinary server names plus complete configs, for any chat or
-// run there. They are the place's, whoever added them: everyone with access to
-// the place gets them, and the caller's own access is the only check.
-func attachedMCPServersForRoot(ctx context.Context, root string) ([]string, mcpclient.RuntimeOverrides) {
-	root = placeRootOf(root)
-	if !placeMCPUsableBy(ctx, mcpCaller(ctx), root) {
-		return nil, nil
-	}
-	return placeAttachedConfigs(root)
-}
-
-// placeAttachedConfigs is every connection attached to root as names plus configs, with no caller check.
-func placeAttachedConfigs(root string) ([]string, mcpclient.RuntimeOverrides) {
-	attachments, err := placeMCPAttachmentsFor(root)
-	if err != nil {
-		log.Printf("[PLACE_MCP] connections of %s: %v", root, err)
-		return nil, nil
-	}
-	if len(attachments) == 0 {
-		return nil, nil
-	}
-	names := make([]string, 0, len(attachments))
-	overrides := mcpclient.RuntimeOverrides{}
-	for _, a := range attachments {
-		internal, cfg, err := placeMCPServerConfig(attachmentStore(a, root), a.Server)
-		if err != nil {
-			log.Printf("[PLACE_MCP] skipping %s in %s: %v", a.Server, root, err)
-			continue
-		}
-		config := cfg
-		names = append(names, internal)
-		overrides[internal] = mcpclient.RuntimeConfigOverride{Server: &config}
-	}
-	return names, overrides
-}
-
-// placeMCPSignedInInternalNames is the set of a place's attached connections (by internal
-// name) whose sign-in is done, judged the way the connections list shows "connected".
-func placeMCPSignedInInternalNames(ctx context.Context, root string) map[string]bool {
-	out := map[string]bool{}
-	root = placeRootOf(root)
-	attachments, err := placeMCPAttachmentsFor(root)
-	if err != nil {
-		return out
-	}
-	if !placeMCPUsableBy(ctx, mcpCaller(ctx), root) {
-		return out
-	}
-	for _, a := range attachments {
-		store := attachmentStore(a, root)
-		internal, _, err := placeMCPServerConfig(store, a.Server)
-		if err != nil {
-			continue
-		}
-		servers, _ := listPlaceMCPServers(store)
-		dir, _ := placeMCPDir(store)
-		for _, server := range servers {
-			if server.Name == a.Server {
-				out[internal] = placeMCPServerConnected(dir, store, server)
-			}
-		}
-	}
-	return out
-}
-
-// placeMCPRoot reads and checks the workspace_path of a place route.
-func placeMCPRoot(w http.ResponseWriter, userID, raw string) (string, bool) {
-	root := attachRootForCaller(userID, raw)
-	if root == "" {
-		writeAgentProfileError(w, http.StatusBadRequest, "workspace_path must be a workflow, a Crew or a Code")
-		return "", false
-	}
-	return root, true
-}
-
-// GET /api/mcp/place?workspace_path=: only the caller's project connections,
-// after project read authorization (never tokens or secrets).
-func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Request) {
-	userID, ok := placeMCPUser(w, r)
-	if !ok {
-		return
-	}
-	root, ok := placeMCPRoot(w, userID, r.URL.Query().Get("workspace_path"))
-	if !ok {
-		return
-	}
-	if !workspaceReadAllowed(r.Context(), GetUserFromContext(r.Context()), root, logicalPathIsCaller, true) {
-		writeAgentProfileError(w, http.StatusForbidden, "no access to this workflow")
-		return
-	}
-	attachments, err := placeMCPAttachmentsFor(root)
-	if err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	type row struct {
-		Name      string `json:"name"`
-		Label     string `json:"label,omitempty"`
-		Catalog   string `json:"catalog,omitempty"`
-		URL       string `json:"url"`
-		Owner     string `json:"owner"`
-		OwnerName string `json:"owner_name"`
-		Mine      bool   `json:"mine"`
-		Connected bool   `json:"connected"`
-		SignIn    bool   `json:"sign_in"`
-		// Active is false once the person who added it can no longer edit
-		// this place: it is then skipped at runtime.
-		Active  bool   `json:"active"`
-		AddedAt string `json:"added_at,omitempty"`
-	}
-	dir, _ := loadUserDirectory()
-	rows := make([]row, 0, len(attachments))
-	for _, a := range attachments {
-		store := attachmentStore(a, root)
-		servers, _ := listPlaceMCPServers(store)
-		var server *placeMCPServer
-		for i := range servers {
-			if servers[i].Name == a.Server {
-				server = &servers[i]
-			}
-		}
-		if server == nil {
-			continue
-		}
-		storeDir, _ := placeMCPDir(store)
-		connected := placeMCPServerConnected(storeDir, store, *server)
-		ownerName := a.Owner
-		if dir != nil {
-			if rec := dir.byID(a.Owner); rec != nil && rec.Username != "" {
-				ownerName = rec.Username
-			}
-		}
-		rows = append(rows, row{
-			Name: a.Server, Label: server.Label, Catalog: server.Catalog, URL: redactedURL(server.URL),
-			Owner: a.Owner, OwnerName: ownerName, Mine: a.Owner == userID, Connected: connected, SignIn: server.OAuth != nil,
-			Active: true, AddedAt: a.AttachedAt,
-		})
-	}
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"servers": rows})
-}
-
-// POST /api/mcp/place {workspace_path, catalog | name+url+transport}: add a
-// connection with the caller's own login to a workflow or Crew they can edit.
-func (api *StreamingAPI) handleAddPlaceMCP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	userID, ok := placeMCPUser(w, r)
-	if !ok {
-		return
-	}
-	var request struct {
-		placeMCPServer
-		Catalog       string `json:"catalog"`
-		WorkspacePath string `json:"workspace_path"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&request); err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, "invalid request")
-		return
-	}
-	root, ok := placeMCPRoot(w, userID, request.WorkspacePath)
-	if !ok {
-		return
-	}
-	if !placeMCPCanAttach(r.Context(), userID, root) {
-		writeAgentProfileError(w, http.StatusForbidden, "you can add connections only where you can edit")
-		return
-	}
-	// Credential headers are built from the adder's own personal secrets
-	// (Setup > Secrets), resolved when the connection is made.
-	store := userID
-	if strings.TrimSpace(request.Label) == "" {
-		store = storeForAttachment(userID, request.Name, root)
-	}
-	saved, status, err := api.ensurePersonalMCP(r.Context(), store, request.placeMCPServer, request.Catalog)
-	if err != nil {
-		writeAgentProfileError(w, status, err.Error())
-		return
-	}
-	if err := attachPersonalLoginToPlace(userID, saved.Name, root); err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	log.Printf("[PLACE_MCP] %s added %s to %s", userID, saved.Name, root)
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"name": saved.Name, "label": saved.Label, "oauth": saved.OAuth != nil})
-}
-
-// POST /api/mcp/place/{name}/connect?workspace_path= {client_id?}: sign in to
-// the caller's own connection in this place.
-func (api *StreamingAPI) handleConnectPlaceMCP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	userID, ok := placeMCPUser(w, r)
-	if !ok {
-		return
-	}
-	root, ok := placeMCPRoot(w, userID, r.URL.Query().Get("workspace_path"))
-	if !ok {
-		return
-	}
-	if !placeMCPCanAttach(r.Context(), userID, root) {
-		writeAgentProfileError(w, http.StatusForbidden, "you can connect only where you can edit")
-		return
-	}
-	var body struct {
-		SessionID    string `json:"session_id,omitempty"`
-		ClientID     string `json:"client_id"`
-		ClientSecret string `json:"client_secret"`
-	}
-	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body)
-	sessionID, sessionErr := api.oauthNotificationSession(r, body.SessionID)
-	if sessionErr != nil {
-		writeAgentProfileError(w, http.StatusForbidden, "chat session not found or access denied")
-		return
-	}
-	var entered *registeredClient
-	if clientID := strings.TrimSpace(body.ClientID); clientID != "" {
-		entered = &registeredClient{ClientID: clientID, ClientSecret: strings.TrimSpace(body.ClientSecret)}
-	}
-	authURL, discovery, status, err := api.startPlaceMCPSignIn(storeForAttachment(userID, mux.Vars(r)["name"], root), mux.Vars(r)["name"], deriveOAuthRedirectURI(r), sessionID, entered)
-	if err != nil {
-		writeAgentProfileError(w, status, err.Error())
-		return
-	}
-	if discovery != nil {
-		writeAgentProfileJSON(w, http.StatusOK, discovery)
-		return
-	}
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"auth_url": authURL})
-}
-
-// DELETE /api/mcp/place/{name}?workspace_path=&owner=: remove a connection
-// from a workflow or Crew. Only its owner may detach it. New private logins
-// are retained for that owner's other projects.
-func (api *StreamingAPI) handleRemovePlaceMCP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	userID, ok := placeMCPUser(w, r)
-	if !ok {
-		return
-	}
-	root, ok := placeMCPRoot(w, userID, r.URL.Query().Get("workspace_path"))
-	if !ok {
-		return
-	}
-	owner := strings.TrimSpace(r.URL.Query().Get("owner"))
-	if owner == "" {
-		owner = userID
-	}
-	if owner != userID && !placeMCPCanAttach(r.Context(), userID, root) {
-		writeAgentProfileError(w, http.StatusForbidden, "you can remove connections only where you can edit")
-		return
-	}
-	name := mux.Vars(r)["name"]
-	if err := removePlaceMCP(owner, name, root); err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	log.Printf("[PLACE_MCP] %s removed %s (added by %s) from %s", userID, name, owner, root)
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"removed": name})
 }
 
 // removePlaceMCP removes owner's connection from root with its login.

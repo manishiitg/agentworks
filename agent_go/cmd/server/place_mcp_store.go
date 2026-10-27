@@ -330,28 +330,6 @@ func placeMCPTokenFile(dir, userID, name string) string {
 	return filepath.Join(dir, "tokens", placeMCPInternalName(userID, name)+".json")
 }
 
-// setPersonalMCPEnabledNames replaces the names switched on in one Code (the
-// migration records what it has not moved yet).
-func setPersonalMCPEnabledNames(userID, codeRoot string, names []string) error {
-	placeMCPMu.Lock()
-	defer placeMCPMu.Unlock()
-	dir, err := placeMCPDir(userID)
-	if err != nil {
-		return err
-	}
-	enabled := map[string][]string{}
-	if err := readPlaceMCPJSON(filepath.Join(dir, "enabled.json"), &enabled); err != nil {
-		return err
-	}
-	root := cleanCodeRoot(codeRoot)
-	if len(names) == 0 {
-		delete(enabled, root)
-	} else {
-		enabled[root] = append([]string(nil), names...)
-	}
-	return writePlaceMCPJSON(filepath.Join(dir, "enabled.json"), enabled)
-}
-
 // ---- private personal secrets -------------------------------------------
 // New private header connections use the owner's sealed secrets. Legacy
 // per-place stores keep their project secret resolver for compatibility.
@@ -360,31 +338,6 @@ var personalSecretNamePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 
 func personalSecretAAD(userID, name string) []byte {
 	return []byte("personal-secret\x00" + mcpStoreKey(userID) + "\x00" + name)
-}
-
-func setPersonalSecret(userID, name, value string) error {
-	if !personalSecretNamePattern.MatchString(name) {
-		return fmt.Errorf("secret names are UPPER_SNAKE_CASE, up to 64 characters")
-	}
-	if value == "" {
-		return fmt.Errorf("a secret needs a value")
-	}
-	sealed, err := encryptSecretValueWithAAD(value, personalSecretAAD(userID, name))
-	if err != nil {
-		return err
-	}
-	placeMCPMu.Lock()
-	defer placeMCPMu.Unlock()
-	dir, err := placeMCPDir(userID)
-	if err != nil {
-		return err
-	}
-	secrets := map[string]string{}
-	if err := readPlaceMCPJSON(filepath.Join(dir, "secrets.json"), &secrets); err != nil {
-		return err
-	}
-	secrets[name] = sealed
-	return writePlaceMCPJSON(filepath.Join(dir, "secrets.json"), secrets)
 }
 
 // personalSecretValue resolves one secret from this person's sealed store.
@@ -537,12 +490,6 @@ func (placeMCPTokenSealer) Handles(path string) bool {
 	return err == nil && rel != "." && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)
 }
 
-func placeMCPTokenAAD(path string) []byte {
-	root, _ := mcpConnectionsRoot()
-	rel, _ := filepath.Rel(root, filepath.Clean(path))
-	return []byte("personal-mcp-token\x00" + filepath.ToSlash(rel))
-}
-
 func (placeMCPTokenSealer) Seal(path string, plaintext []byte) ([]byte, error) {
 	sealed, err := encryptSecretValueWithAAD(string(plaintext), placeMCPTokenAAD(path))
 	return []byte(sealed), err
@@ -589,4 +536,10 @@ func placeMCPAppKey(server placeMCPServer) string {
 		return mcpAppKeyFor(server.Catalog, server.OAuth)
 	}
 	return ""
+}
+
+func placeMCPTokenAAD(path string) []byte {
+	root, _ := mcpConnectionsRoot()
+	rel, _ := filepath.Rel(root, filepath.Clean(path))
+	return []byte("personal-mcp-token\x00" + filepath.ToSlash(rel))
 }

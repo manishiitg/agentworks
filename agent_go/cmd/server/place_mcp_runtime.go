@@ -17,20 +17,6 @@ import (
 // bridge call from a Code session is decided by resolveCodeMCPServer, which
 // never falls back to the platform catalog by name.
 
-// mergeServerLists appends extra names, dropping the "no servers" marker.
-func mergeServerLists(selected, extra []string) []string {
-	if len(extra) == 0 {
-		return selected
-	}
-	out := make([]string, 0, len(selected)+len(extra))
-	for _, name := range selected {
-		if name != mcpclient.NoServers {
-			out = append(out, name)
-		}
-	}
-	return append(out, extra...)
-}
-
 // resolveMCPServer is the bridge's resolver: Code sessions first (decided
 // only here, fail closed), then the existing report-run and workshop scopes.
 func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server, tool string) (*executor.ResolvedMCPServer, error) {
@@ -124,24 +110,9 @@ func isPlaceMCPInternalName(name string) bool {
 	return true
 }
 
-// serverListHasName reports whether names holds name, ignoring case.
-func serverListHasName(names []string, name string) bool {
-	for _, candidate := range names {
-		if strings.EqualFold(strings.TrimSpace(candidate), strings.TrimSpace(name)) {
-			return true
-		}
-	}
-	return false
-}
-
 // placeScopedKey marks a context as belonging to a session of a workflow, Relay, Crew or Code: every MCP resolver
 // below it then sees only that place's connections and Vault, never a person's connections from elsewhere.
 type placeScopedKey struct{}
-
-func placeScopedContext(ctx context.Context) bool {
-	scoped, _ := ctx.Value(placeScopedKey{}).(bool)
-	return scoped
-}
 
 // placeRootForSession is the workflow, Relay, Crew or Code a session works in, taken only from data the server
 // recorded for the session (never from anything the client sent); "" when it has none (a chat outside any place).
@@ -170,54 +141,6 @@ func (api *StreamingAPI) placeRootForSession(sessionID string) string {
 		}
 	}
 	return ""
-}
-
-// placeAttachedMatch finds, among the connections attached to the session's own place, the one named server
-// (its internal name or its plain name). found is false when the place has no such connection, so the caller
-// falls through to the platform and Vault servers; denied is true when it has one the session may not use.
-func (api *StreamingAPI) placeAttachedMatch(ctx context.Context, sessionID, server string) (internal string, cfg mcpclient.MCPServerConfig, found, denied bool, err error) {
-	server = strings.TrimSpace(server)
-	root := api.mcpPlaceRoot(ctx, sessionID)
-	if root == "" || server == "" {
-		return "", mcpclient.MCPServerConfig{}, false, false, nil
-	}
-	names, overrides := placeAttachedConfigs(root)
-	var matches []string
-	for _, name := range names {
-		if name == server || strings.EqualFold(placeMCPPlainName(name), server) {
-			matches = append(matches, name)
-		}
-	}
-	if len(matches) == 0 {
-		return "", mcpclient.MCPServerConfig{}, false, false, nil
-	}
-	if len(matches) > 1 {
-		return "", mcpclient.MCPServerConfig{}, true, true, fmt.Errorf("more than one connection of this place is named %q; use the exact name", server)
-	}
-	person := GetUserIDFromContext(ctx)
-	if api.eventStore != nil && sessionID != "" {
-		person = api.mcpSessionPerson(sessionID)
-	}
-	if !placeMCPUsableBy(ctx, person, root) {
-		return "", mcpclient.MCPServerConfig{}, true, true, fmt.Errorf("you do not have access to this place's connections")
-	}
-	override := overrides[matches[0]]
-	if override.Server == nil {
-		return "", mcpclient.MCPServerConfig{}, true, true, errPlaceMCPUnavailable
-	}
-	return matches[0], *override.Server, true, false, nil
-}
-
-// resolvePlaceAttachedMCP resolves a call against the session's own place (see placeAttachedMatch).
-func (api *StreamingAPI) resolvePlaceAttachedMCP(ctx context.Context, sessionID, server string) (*executor.ResolvedMCPServer, bool, error) {
-	internal, cfg, found, denied, err := api.placeAttachedMatch(ctx, sessionID, server)
-	if !found {
-		return nil, false, nil
-	}
-	if denied || err != nil {
-		return nil, true, err
-	}
-	return &executor.ResolvedMCPServer{Name: internal, Config: cfg, ConnectionSessionID: internal}, true, nil
 }
 
 // Set only after the external transport resolves and authorizes a Crew ID.

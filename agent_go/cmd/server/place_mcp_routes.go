@@ -2,11 +2,8 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,7 +17,6 @@ import (
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/netguard"
 	"github.com/manishiitg/mcpagent/oauth"
-	"golang.org/x/oauth2"
 )
 
 // /api/me/mcp/* and /api/me/secrets/*: a person manages their own MCP
@@ -47,51 +43,6 @@ func redactedURL(raw string) string {
 	}
 	u.RawQuery, u.Fragment, u.User = "", "", nil
 	return u.String()
-}
-
-// ensurePersonalMCP is shared by project UI, Code and builder setup tools.
-// A label creates a new account. Unlabelled requests reuse an exact connection
-// ID or an unambiguous provider alias without clearing its stored login.
-func (api *StreamingAPI) ensurePersonalMCP(ctx context.Context, person string, body placeMCPServer, catalog string) (placeMCPServer, int, error) {
-	if strings.TrimSpace(body.Label) == "" && strings.TrimSpace(body.URL) == "" {
-		selector := strings.TrimSpace(body.Name)
-		if selector == "" {
-			selector = catalog
-		}
-		saved, found, err := lookupPersonalMCP(person, selector)
-		if err != nil {
-			return placeMCPServer{}, http.StatusBadRequest, err
-		}
-		if found {
-			if catalog != "" && !strings.EqualFold(saved.Catalog, catalog) && !strings.EqualFold(saved.Name, catalog) {
-				return placeMCPServer{}, http.StatusBadRequest, fmt.Errorf("connection does not belong to requested provider")
-			}
-			return saved, http.StatusOK, nil
-		}
-	}
-	if strings.TrimSpace(body.Label) != "" {
-		baseName := body.Name
-		if catalog != "" {
-			entry, ok := api.placeMCPCatalogEntry(catalog)
-			if !ok {
-				return placeMCPServer{}, http.StatusBadRequest, fmt.Errorf("%q is not a remote server in the catalog", catalog)
-			}
-			baseName = entry.Name
-		}
-		base := strings.Trim(placeMCPCatalogNameCleaner.ReplaceAllString(strings.ToLower(baseName), "_"), "_")
-		if base == "" {
-			base = "mcp"
-		}
-		if len(base) > 24 {
-			base = base[:24]
-		}
-		random := make([]byte, 6)
-		if _, err := rand.Read(random); err != nil {
-			return placeMCPServer{}, http.StatusInternalServerError, err
-		}
-		body.Name = base + "_" + hex.EncodeToString(random)
-	}
-	return api.addPlaceMCP(ctx, person, body, catalog)
 }
 
 // addPlaceMCP adds (or replaces) one of the person's servers: a catalog
@@ -174,109 +125,6 @@ func (api *StreamingAPI) addPlaceMCP(ctx context.Context, userID string, body pl
 	}
 	closePlaceMCPConnection(userID, saved.Name)
 	return saved, http.StatusOK, nil
-}
-
-// startPlaceMCPSignIn starts the person's OAuth sign-in to one of their
-// servers: through the shared flow with public-only discovery, registration
-// and token requests, the token sealed in their own store. It returns the
-// URL to open, or a discovery answer when the provider needs the person's own
-// OAuth app (entered then carries its client ID and secret).
-func (api *StreamingAPI) startPlaceMCPSignIn(userID, name, redirectURI, sessionID string, entered *registeredClient) (string, *OAuthDiscoveryResponse, int, error) {
-	internal, cfg, err := placeMCPServerConfigFor(userID, name, true)
-	if err != nil {
-		return "", nil, http.StatusNotFound, err
-	}
-	// A grouped server signs in once for its whole group (the union of
-	// scopes); the success handler moves every member onto that login.
-	var group string
-	var members []string
-	display := name
-	if servers, listErr := listPlaceMCPServers(userID); listErr == nil {
-		for _, server := range servers {
-			if server.Name == name && server.Catalog != "" {
-				display = server.Catalog
-			}
-		}
-		if storeDir, dirErr := placeMCPDir(userID); dirErr == nil {
-			for _, server := range servers {
-				if server.Name == name {
-					group = placeMCPGroupOf(storeDir, userID, server)
-				}
-			}
-			if group != "" {
-				members = placeMCPGroupMembers(storeDir, userID, group, servers)
-			}
-		}
-	}
-	if cfg.OAuth == nil {
-		return "", nil, http.StatusBadRequest, fmt.Errorf("this server does not use sign-in")
-	}
-	cfg.OAuth.RedirectURL = redirectURI
-	dir, err := placeMCPDir(userID)
-	if err != nil {
-		return "", nil, http.StatusInternalServerError, err
-	}
-	// An entered client is kept sealed once the sign-in succeeds, so
-	// refreshes keep working and a mistyped one never replaces a client that
-	// works.
-	if entered != nil {
-		entered.RedirectURI = redirectURI
-		cfg.OAuth.ClientID, cfg.OAuth.ClientSecret = entered.ClientID, entered.ClientSecret
-	} else if cfg.OAuth.RegistrationEndpoint != "" {
-		// A dynamic registration is tied to its callback; one made for
-		// another address registers again.
-		if client, _ := readPlaceMCPClient(dir, userID, name); client != nil && client.RedirectURI != redirectURI {
-			cfg.OAuth.ClientID, cfg.OAuth.ClientSecret = "", ""
-		}
-	}
-	var validateToken func(context.Context, *oauth2.Token) error
-	if servers, err := listPlaceMCPServers(userID); err == nil {
-		for _, server := range servers {
-			if server.Name == name && isPersonalSlack(server) {
-				validateToken = func(ctx context.Context, token *oauth2.Token) error {
-					return validatePersonalSlackToken(ctx, userID, name, token)
-				}
-			}
-		}
-	}
-	notificationID := "private-oauth:" + name + ":" + newSteerMessageID()
-	start, discovery, err := api.runOAuthFlow(sessionID, redirectURI, oauthFlowTarget{
-		ValidateToken: validateToken,
-		Name:          internal,
-		DisplayName:   display,
-		Config:        cfg,
-		ClientFile:    placeMCPClientFile(dir, userID, name),
-		Notify: func(success bool, detail string) {
-			api.notifyPlaceOAuthFlowOutcome(sessionID, name, notificationID, success, detail)
-		},
-		Discoverer: oauth.Discoverer{Client: netguard.Client(30 * time.Second)},
-		OnSuccess: func(*OAuthFlowState) {
-			if entered != nil {
-				if err := writePlaceMCPClient(userID, name, *entered); err != nil {
-					log.Printf("[PERSONAL_MCP] keep sign-in client for %s: %v", name, err)
-				}
-			}
-			if group != "" && entered == nil {
-				if err := recordPlaceMCPGroupConsent(dir, group, cfg.OAuth.Scopes); err != nil {
-					log.Printf("[PERSONAL_MCP] record %s sign-in: %v", group, err)
-				}
-				// Every member now uses the group's login; their old
-				// separate logins go.
-				for _, member := range members {
-					_ = os.Remove(placeMCPTokenFile(dir, userID, member))
-					closePlaceMCPConnection(userID, member)
-				}
-			}
-			closePlaceMCPConnection(userID, name)
-		},
-	})
-	if err != nil {
-		return "", nil, http.StatusBadRequest, err
-	}
-	if discovery != nil {
-		return "", discovery, http.StatusOK, nil
-	}
-	return start.AuthURL, nil, http.StatusOK, nil
 }
 
 func placeMCPClientFile(dir, userID, name string) string {

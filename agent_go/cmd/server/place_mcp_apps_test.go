@@ -15,11 +15,10 @@ import (
 	"github.com/manishiitg/mcpagent/oauth"
 )
 
-// An admin sets up the deployment's Google app once. People then connect any
-// Google server with no client ID or secret of their own: the app is read
-// live (a rotation reaches everyone), a client a person entered for their own
-// app wins, the secret is sealed at rest and never returned, and only admins
-// can touch the app.
+// An admin sets up the deployment's Google app once: the secret is sealed at
+// rest and never returned, the catalog stops asking for a client, only admins
+// can touch the app, and removing it takes it away. (Connecting through the
+// retired place routes was removed with them, PLAT-856-217.)
 func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	withMCPAppFocus(t, "google")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -81,17 +80,6 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 		}
 	}
 
-	// Before the app exists, Connect still asks for a client.
-	ownerStore := "owner"
-	otherStore := "other"
-	before := personalRoute(api, (*StreamingAPI).handleAddPlaceMCP, http.MethodPost, "/x", `{"workspace_path":"Chats/Code/projects/app-c0de0001","catalog":"GoogleGmail","name":"gmail"}`, "owner", nil)
-	if before.Code != http.StatusOK {
-		t.Fatalf("add = %d %s", before.Code, before.Body.String())
-	}
-	if rec := personalRoute(api, (*StreamingAPI).handleConnectPlaceMCP, http.MethodPost, "/x?workspace_path=Chats/Code/projects/app-c0de0001", `{}`, "owner", map[string]string{"name": "gmail"}); !strings.Contains(rec.Body.String(), "needs_client_id") {
-		t.Fatalf("connect without an app = %s", rec.Body.String())
-	}
-
 	// The admin sets the app once.
 	if code := put("google", `{"client_id":"965.apps.googleusercontent.com","client_secret":"GOCSPX-shared-secret"}`); code != http.StatusOK {
 		t.Fatalf("set app = %d", code)
@@ -109,41 +97,12 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 		t.Fatalf("a configured app still needs a client: %s", catalogRec.Body.String())
 	}
 
-	// The server added before the app existed now connects with no client
-	// entered: it reads the app live.
-	rec := personalRoute(api, (*StreamingAPI).handleConnectPlaceMCP, http.MethodPost, "/x?workspace_path=Chats/Code/projects/app-c0de0001", `{}`, "owner", map[string]string{"name": "gmail"})
-	if !strings.Contains(rec.Body.String(), "client_id=965.apps.googleusercontent.com") || !strings.Contains(rec.Body.String(), "access_type=offline") {
-		t.Fatalf("connect with the app = %s", rec.Body.String())
-	}
-	// A new server records the app, and another person's Connect works too.
-	if r := personalRoute(api, (*StreamingAPI).handleAddPlaceMCP, http.MethodPost, "/x", `{"workspace_path":"Chats/Code/projects/theirs","catalog":"GoogleDrive","name":"drive"}`, "other", nil); r.Code != http.StatusOK {
-		t.Fatalf("other add = %d %s", r.Code, r.Body.String())
-	}
-	if _, cfg, err := placeMCPServerConfig(otherStore, "drive"); err != nil || cfg.OAuth.ClientID != "965.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-shared-secret" {
-		t.Fatalf("other's config = %+v %v", cfg.OAuth, err)
-	}
-
-	// Rotation reaches everyone at once.
-	if code := put("google", `{"client_id":"new.apps.googleusercontent.com","client_secret":"GOCSPX-rotated"}`); code != http.StatusOK {
-		t.Fatalf("rotate = %d", code)
-	}
-	if _, cfg, _ := placeMCPServerConfig(otherStore, "drive"); cfg.OAuth.ClientID != "new.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-rotated" {
-		t.Fatalf("rotation did not reach the person: %+v", cfg.OAuth)
-	}
-	// A client the person entered for their own app wins.
-	if err := writePlaceMCPClient(ownerStore, "gmail", registeredClient{ClientID: "mine.apps.googleusercontent.com", ClientSecret: "GOCSPX-mine"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, cfg, _ := placeMCPServerConfig(ownerStore, "gmail"); cfg.OAuth.ClientID != "mine.apps.googleusercontent.com" {
-		t.Fatalf("own client lost to the deployment app: %+v", cfg.OAuth)
-	}
-
 	// Removing the app takes it away again.
 	if code := personalRoute(api, (*StreamingAPI).handlePutMCPApp, http.MethodDelete, "/x", "", "owner", map[string]string{"key": "google"}).Code; code != http.StatusOK {
 		t.Fatalf("delete = %d", code)
 	}
-	if _, cfg, _ := placeMCPServerConfig(otherStore, "drive"); cfg.OAuth.ClientID != "" {
-		t.Fatalf("removed app still resolves: %+v", cfg.OAuth)
+	if groups, _ := list(); groups[0].Configured {
+		t.Fatalf("removed app is still configured: %+v", groups[0])
 	}
 }
 
