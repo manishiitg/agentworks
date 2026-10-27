@@ -16,7 +16,7 @@ import (
 // registry and persisted manifests. No Slack network or message is needed.
 func TestSlackVaultSelectionPermissionsAcrossSurfaces(t *testing.T) {
 	api, workspace := setupSlackConnectionTest(t)
-	workspace.files["Workflow/flow/workflow.json"] = `{"schema_version":1,"id":"flow","kind":"relay","access":{"owners":["alice"]}}`
+	workspace.files["Workflow/flow/workflow.json"] = `{"schema_version":1,"id":"flow","label":"Flow","kind":"relay","access":{"owners":["alice"]}}`
 	svc, err := ensureSlackService()
 	if err != nil {
 		t.Fatal(err)
