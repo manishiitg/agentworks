@@ -510,7 +510,7 @@ func (api *StreamingAPI) handleAuthCallback(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	log.Printf("[AUTH] User %s authenticated via OAuth provider %s", extUser.Username, extUser.Provider)
+	log.Printf("[AUTH] sso_login provider=%s user_id=%s", extUser.Provider, userID)
 	json.NewEncoder(w).Encode(AuthResponse{
 		Token:    token,
 		ReturnTo: stateEntry.ReturnTo,
