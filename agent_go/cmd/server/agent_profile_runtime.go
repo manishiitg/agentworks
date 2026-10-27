@@ -463,12 +463,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// readers keep AgentWorks-only tools. Hybrid needs an allowlist tool
 		// policy (agentprofiles validation); the switch is on by default, so a
 		// profile without one keeps AgentWorks-only tools instead of failing.
-		if crewProjectOwnedByCaller(userID, crewRoot) && crew.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
-			profile.Runtime.AgentTools.Mode = "full"
-		}
-		if !crewProjectOwnedByCaller(userID, crewRoot) {
-			profile.Runtime.AgentTools.Mode = "mcp_only"
-		}
+		applyCrewNativeToolPolicy(&profile, crewProjectOwnedByCaller(userID, crewRoot), crew.Binding.ProjectNativeAgentTools)
 		if !crewOwned {
 			// The client may still send the old spelling of a migrated crew (PLAT-442 step 4): same crew when
 			// the alias resolver says so, and the verified binding root is what the turn runs in.

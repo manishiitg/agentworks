@@ -82,7 +82,7 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("LOCAL_MODE", "true")
 	t.Setenv("MULTI_USER_MODE", "")
-	t.Setenv("AGENTWORKS_ENABLED_PROVIDERS", "claude-code,codex-cli")
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code,codex-cli")
 	t.Setenv("AGENTWORKS_PROVIDER_POLICY", `{"claude-code":{"available_to":"all"},"codex-cli":{"available_to":"all"}}`)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -91,16 +91,16 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	oldOS := cliHostOS
 	cliHostOS = "darwin"
 	t.Cleanup(func() { cliHostOS = oldOS })
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","can_create":true,"products":["work"]},{"id":"other","can_create":true,"products":["work"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"default","can_create":true,"products":["work"]},{"id":"other","can_create":true,"products":["work"]}]}`)
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	if err := os.Mkdir(filepath.Join(root, ".agentworks"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	const project = "local-example"
 	const virtual = "Crew/local-example"
-	f.write(t, virtual+"/product.json", `{"schema_version":1,"product":"work","id":"local-example","title":"Local example","session_id":"local-main","owner_id":"owner"}`)
-	f.write(t, virtual+"/workflow.json", `{"id":"local-example","label":"Local example","created_by":"owner"}`)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: project, ProjectID: project, OwnerID: "owner", Shared: true, Private: true, CanonicalRoot: virtual, LocalRoot: root}); err != nil {
+	f.write(t, virtual+"/product.json", `{"schema_version":1,"product":"work","id":"local-example","title":"Local example","session_id":"local-main","owner_id":"default"}`)
+	f.write(t, virtual+"/workflow.json", `{"id":"local-example","label":"Local example","created_by":"default"}`)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: project, ProjectID: project, OwnerID: "default", Shared: true, Private: true, CanonicalRoot: virtual, LocalRoot: root}); err != nil {
 		t.Fatal(err)
 	}
 	recognitionWrite(t, filepath.Join(root, "CLAUDE.md"), "Existing project guidance")
@@ -113,7 +113,24 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 		f.api.handleLocalProject(w, r)
 		return w
 	}
-	owner := crewWriter("owner")
+	// An account shared for running models still keeps its owner's chats private.
+	providerConnectionsCache.Lock()
+	oldLoaded, oldURL, oldRecords := providerConnectionsCache.loaded, providerConnectionsCache.url, providerConnectionsCache.records
+	providerConnectionsCache.loaded = true
+	providerConnectionsCache.url = getWorkspaceAPIURL()
+	providerConnectionsCache.records = []storedProviderConnection{{ProviderConnection: ProviderConnection{ID: "shared-login", Provider: "claude-code", DisplayName: "Shared login", OwnerUserID: "other", AuthMethod: "cli_login", Sharing: &ProviderConnectionSharing{Mode: "users", Users: []string{"default"}}}}}
+	providerConnectionsCache.Unlock()
+	t.Cleanup(func() {
+		providerConnectionsCache.Lock()
+		providerConnectionsCache.loaded, providerConnectionsCache.url, providerConnectionsCache.records = oldLoaded, oldURL, oldRecords
+		providerConnectionsCache.Unlock()
+	})
+	sharedHome, err := providerConnectionHome("shared-login")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recognitionWrite(t, filepath.Join(sharedHome, ".claude", "projects", "example", "private-shared.jsonl"), fmt.Sprintf(`{"type":"user","sessionId":"private-shared","cwd":%q,"message":{"content":"Other person's private chat"}}`+"\n", root))
+	owner := crewWriter("default")
 	w := request(http.MethodGet, "?project_id="+project+"&sessions=true", "", owner)
 	if w.Code != 200 {
 		t.Fatalf("list: %d %s", w.Code, w.Body.String())
@@ -136,7 +153,7 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	if denied := request(http.MethodGet, "?project_id="+project, "", crewWriter("other")); denied.Code != 404 {
 		t.Fatalf("other person saw project: %d", denied.Code)
 	}
-	limited := crewWriter("owner")
+	limited := crewWriter("default")
 	limited.AccessToken = &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}
 	body := fmt.Sprintf(`{"project_id":%q,"id":%q}`, project, data.Sessions[0].ID)
 	if denied := request(http.MethodPost, "", body, limited); denied.Code != 403 {
@@ -154,9 +171,14 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	if !strings.HasPrefix(response.Key, project+codeChatSideMarker) {
 		t.Fatal("replaced main chat")
 	}
-	runtime, found, err := ReadChatHistoryRuntimeForSession("owner", response.SessionID, virtual)
+	runtime, found, err := ReadChatHistoryRuntimeForSession("default", response.SessionID, virtual)
 	if err != nil || !found || runtime.AgentSessionHandle.Provider.NativeSessionID != "native-example" || runtime.AgentSessionHandle.ConnectionID != "global:claude-code" {
 		t.Fatalf("lost original native/account: %+v %v", runtime, err)
+	}
+	currentProfile, _ := f.api.agentProfiles.Resolve("work", 0, "default")
+	applyCrewNativeToolPolicy(&currentProfile, true, true)
+	if runtime.WorkshopMode != crewCLIMode(false) || runtime.AgentToolsMode != normalizeAgentToolsMode(currentProfile.Runtime.AgentTools.Mode) || runtime.AgentSessionHandle.Provider.WorkingDir != root {
+		t.Fatal("resume changed Crew mode or canonical cwd")
 	}
 	w = request(http.MethodPost, "", body, owner)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), response.SessionID) {

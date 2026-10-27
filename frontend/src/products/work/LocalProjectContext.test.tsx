@@ -38,6 +38,9 @@ it('stays compact, identifies found paths and opens native history only when req
     expect(api.resumeLocalProjectSession).toHaveBeenCalledExactlyOnceWith('example', 'opaque')
     expect(event.mock.calls[0][0].detail).toEqual({ projectId: 'example', conversationKey: 'example:side:native' })
   } finally { window.removeEventListener('agentworks:local-chat-opened', event) }
+  api.resumeLocalProjectSession.mockRejectedValueOnce({ response: { data: { error: { code: 'session_unavailable', message: 'This session is no longer available on this computer.' } } } })
+  await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Open tab')!.click())
+  expect(host.querySelector('[role="alert"]')!.textContent).toContain('no longer available')
 })
 it('reports a failed scan and lets the person retry without an empty success claim', async () => {
   api.getLocalProjectContext.mockRejectedValueOnce(new Error('unavailable')).mockResolvedValue(data)

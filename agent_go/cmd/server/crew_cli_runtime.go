@@ -12,6 +12,16 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
+// One native-tool policy for ordinary Crew turns and explicit local resume.
+func applyCrewNativeToolPolicy(profile *agentprofiles.Profile, owned, nativeTools bool) {
+	if owned && nativeTools && profile.ToolPolicy.IsAllowlist() {
+		profile.Runtime.AgentTools.Mode = "full"
+	}
+	if !owned {
+		profile.Runtime.AgentTools.Mode = "mcp_only"
+	}
+}
+
 func crewCLIMode(readOnly bool) string {
 	if readOnly {
 		return "run"

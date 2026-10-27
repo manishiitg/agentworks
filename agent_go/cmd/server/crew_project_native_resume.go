@@ -65,6 +65,8 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 		externalFailure(w, err)
 		return
 	}
+	applyCrewNativeToolPolicy(&profile, crewProjectOwnedByCaller(roots.Owner, crew.Binding.WorkspacePath), crew.Binding.ProjectNativeAgentTools)
+	mode := crewCLIMode(!crewProjectOwnedByCaller(roots.Owner, crew.Binding.WorkspacePath))
 	engine, model := "", ""
 	for _, option := range profile.Runtime.ProviderOptions {
 		if option.Provider == selected.Provider {
@@ -140,8 +142,8 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 			externalFailure(w, err)
 			return
 		}
-		runtime := &ChatHistoryAgentRuntime{Kind: "coding_agent", Provider: selected.Provider, ModelID: model, ExternalSessionID: selected.NativeID, ResumeSupported: true, WorkspacePath: crew.Binding.WorkspacePath, WorkshopMode: "builder", AgentToolsMode: "full", AgentSessionHandle: &mcpagent.AgentSessionHandle{ConnectionID: selected.Source.ConnectionID, SessionID: conversation.SessionID, OwnerID: conversation.SessionID, Scope: "coding_agent", Provider: llmtypes.CodingProviderSessionHandle{Provider: selected.Provider, NativeSessionID: selected.NativeID, WorkingDir: roots.Files, Model: model}}}
-		data, _ := json.Marshal(map[string]any{"session_id": conversation.SessionID, "user_id": roots.Owner, "agent_mode": "multi-agent", "workspace_path": crew.Binding.WorkspacePath, "workshop_mode": "builder", "title": selected.Title, "conversation_history": history, "runtime": runtime, "created_at": conversation.CreatedAt, "updated_at": time.Now().UTC().Format(time.RFC3339)})
+		runtime := &ChatHistoryAgentRuntime{Kind: "coding_agent", Provider: selected.Provider, ModelID: model, ExternalSessionID: selected.NativeID, ResumeSupported: true, WorkspacePath: crew.Binding.WorkspacePath, WorkshopMode: mode, AgentToolsMode: normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode), AgentSessionHandle: &mcpagent.AgentSessionHandle{ConnectionID: selected.Source.ConnectionID, SessionID: conversation.SessionID, OwnerID: conversation.SessionID, Scope: "coding_agent", Provider: llmtypes.CodingProviderSessionHandle{Provider: selected.Provider, NativeSessionID: selected.NativeID, WorkingDir: roots.Files, Model: model}}}
+		data, _ := json.Marshal(map[string]any{"session_id": conversation.SessionID, "user_id": roots.Owner, "agent_mode": "multi-agent", "workspace_path": crew.Binding.WorkspacePath, "workshop_mode": mode, "title": selected.Title, "conversation_history": history, "runtime": runtime, "created_at": conversation.CreatedAt, "updated_at": time.Now().UTC().Format(time.RFC3339)})
 		if err := writeRawFileToWorkspace(r.Context(), path, string(data)); err != nil {
 			externalFailure(w, err)
 			return

@@ -37,8 +37,9 @@ export function LocalProjectContext({ projectId }: { projectId: string }) {
       const conversation = await agentApi.resumeLocalProjectSession(projectId, id)
       window.dispatchEvent(new CustomEvent('agentworks:local-chat-opened', { detail: { projectId, conversationKey: conversation.conversation_key } }))
     } catch (cause) {
-      const response = cause as { response?: { data?: { message?: string; error?: string } } }
-      setError(response.response?.data?.message || response.response?.data?.error || 'Couldn’t open this conversation. Refresh and try again.')
+      const response = cause as { response?: { data?: { message?: string; error?: string | { message?: string } } } }
+      const error = response.response?.data?.error
+      setError(response.response?.data?.message || (typeof error === 'string' ? error : error?.message) || 'Couldn’t open this conversation. Refresh and try again.')
     } finally { setResuming('') }
   }
 
