@@ -173,7 +173,6 @@ export function WorkModelsPanel({
   }, [loadProviderManifest, effectiveProfileId, effectiveProfileVersion, effectiveAccountProduct, workspacePath])
 
   const readyProviders = useMemo(() => accounts === null ? [] : readyCodingProviders(providerManifest, accounts), [providerManifest, accounts])
-  const cursorReady = readyProviders.some(provider => provider.id === 'cursor-cli')
   const modelCatalog = useMemo(() => {
     const models = readyProviders.flatMap(provider => provider.id === 'cursor-cli' ? [] : provider.models || [])
     // Cursor's selected-account inventory is authoritative. Static metadata
@@ -232,16 +231,21 @@ export function WorkModelsPanel({
   const inUseConnectionId = selectedConnectionId || recordedConnectionId || ownDefaultConnectionId
   // A model key account (PLAT-717): its own models (the person's picks), with the live catalog's free and price data.
   const inUseAccount = accounts?.find(account => account.id === inUseConnectionId)
-  const cursorAccountId = cursorReady && selectedOption?.provider === 'cursor-cli' ? inUseConnectionId || 'global:cursor-cli' : undefined
+  const cursorAccountId = selectedOption?.provider === 'cursor-cli' ? inUseConnectionId || 'global:cursor-cli' : undefined
   const [cursorModelsError, setCursorModelsError] = useState('')
+  const [cursorSelectionDisabled, setCursorSelectionDisabled] = useState(false)
   useEffect(() => {
     let cancelled = false
-    setCursorModels([]); setCursorModelsError('')
+    setCursorModels([]); setCursorModelsError(''); setCursorSelectionDisabled(false)
     if (cursorAccountId) {
       void llmConfigService.getProviderModels('cursor-cli', false, false, {
         connection_id: cursorAccountId, workspace_path: workspacePath, product: effectiveAccountProduct,
       }).then(result => {
-        if (!cancelled) setCursorModels(result.models || [])
+        if (!cancelled) {
+          setCursorModels(result.models || [])
+          setCursorModelsError(result.error || '')
+          setCursorSelectionDisabled(result.selection_disabled === true)
+        }
       }).catch(() => { if (!cancelled) setCursorModelsError('Cursor models could not be loaded. Check this account in Providers, then refresh.') })
     }
     return () => { cancelled = true }
@@ -500,9 +504,10 @@ export function WorkModelsPanel({
               {cursorModelsError && <p role="alert" className="text-sm text-destructive">{cursorModelsError}</p>}
               {selectedOption?.provider === 'cursor-cli' && !keyService
                 ? <CursorModelPicker
-                    models={cursorModels.filter(model => selectableModels.some(choice => choice.model_id === model.model_id))}
+                    models={cursorSelectionDisabled ? cursorModels : cursorModels.filter(model => selectableModels.some(choice => choice.model_id === model.model_id))}
                     selectedModelId={currentModelId}
                     onSelect={selectModel}
+                    selectionDisabled={cursorSelectionDisabled}
                     className="mt-3"
                   />
                 : <TierModelSelector

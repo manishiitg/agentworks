@@ -107,4 +107,33 @@ esac
 			}
 		}
 	}
+	// PLAT-872-64: a signed-out SDK keeps only this account's previous catalog,
+	// visibly disabled; another caller still cannot read it.
+	t.Setenv("CURSOR_CLI_TRANSPORT", "sdk")
+	if err := os.WriteFile(sdk, []byte(`exports.Cursor={models:{list:async()=>{throw Error('sign in again')}}};`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		user, id, want string
+		status         int
+	}{
+		{"alice", a.ID, "first-2", http.StatusOK},
+		{"alice", b.ID, "second-1", http.StatusOK},
+		{"bob", a.ID, "", http.StatusForbidden},
+	} {
+		w := env.do(t, env.api.handleGetProviderModels, http.MethodGet, "/models?latest=true&connection_id="+tc.id, tc.user, nil, map[string]string{"provider": "cursor-cli"})
+		if w.Code != tc.status {
+			t.Fatalf("signed-out catalog status: %d", w.Code)
+		}
+		if w.Code != http.StatusOK {
+			continue
+		}
+		var response dynamicModelsResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		if !response.SelectionDisabled || response.Error == "" || response.Source != "account_cache" || len(response.Models) == 0 || response.Models[0].ModelID != tc.want {
+			t.Fatalf("wrong display-only catalog: %+v", response)
+		}
+	}
 }

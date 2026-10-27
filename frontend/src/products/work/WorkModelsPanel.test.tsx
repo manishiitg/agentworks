@@ -149,6 +149,26 @@ function cursorFixture() {
   state.providerManifest = [{ id: 'cursor-cli', integration_kind: 'coding_agent', runtime_available: true, usable: true, models: [] } as unknown as ProviderManifestEntry]
 }
 
+// PLAT-872-64: a failed refresh keeps the selected account's models visible for
+// reference, but stale inventory cannot be used to change the running model.
+it('shows cached Cursor models without allowing selection after discovery fails', async () => {
+  cursorFixture()
+  state.providerManifest[0].usable = false
+  vi.mocked(llmConfigService.getProviderModels).mockResolvedValue({
+    provider: 'cursor-cli', model_selection_mode: 'dynamic', source: 'account_cache', cached_at: '', cache_ttl_seconds: 0,
+    selection_disabled: true, error: 'Check this account in Providers.',
+    models: [{ model_id: 'composer-2.5', model_name: 'Composer 2.5', family: 'Composer 2.5', group: 'Cursor' }],
+  })
+  const { host, onRuntimeChange } = await render({ schema_version: 2, mode: 'explicit', builder_llm: {
+    provider: 'cursor-cli', model_id: 'composer-2.5', connection_id: 'global:cursor-cli', options: {},
+  } })
+  expect(host.textContent).toContain('Check this account in Providers.')
+  const choice = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.trim() === 'Composer 2.5')
+  expect(choice?.disabled).toBe(true)
+  await act(async () => choice?.click())
+  expect(onRuntimeChange).not.toHaveBeenCalled()
+})
+
 // PLAT-872: a paid Cursor account lists ~270 models; the picker shows the server's families with variant chips,
 // folds older versions and sends the exact ID of the chosen variant.
 it('groups the Cursor account models into families with variant chips', async () => {

@@ -241,6 +241,7 @@ export interface DynamicModelEntry {
 }
 
 export interface DynamicModelsResponse {
+  selection_disabled?: boolean
   provider: string
   model_selection_mode: string
   models: DynamicModelEntry[]

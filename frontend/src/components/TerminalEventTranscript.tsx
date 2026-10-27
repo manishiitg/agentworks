@@ -599,14 +599,17 @@ const AssistantTranscriptMessage: React.FC<{ event: PollingEvent; content: strin
   )
 }
 
-function failureHints(payload: Record<string, unknown>): { code?: unknown; provider?: unknown; retryAt?: unknown; technicalDetails?: unknown } {
+function failureHints(payload: Record<string, unknown>) {
   const metadata = payload.metadata && typeof payload.metadata === 'object' ? payload.metadata as Record<string, unknown> : {}
   const error = payload.error && typeof payload.error === 'object' ? payload.error as Record<string, unknown> : {}
   return {
-    code: payload.code ?? payload.error_kind ?? payload.kind ?? error.code ?? metadata.code ?? metadata.error_kind,
+    code: payload.code ?? payload.error_code ?? payload.error_kind ?? payload.kind ?? error.code ?? metadata.code ?? metadata.error_code ?? metadata.error_kind,
     provider: payload.provider ?? error.provider ?? metadata.provider,
     retryAt: payload.retry_at ?? payload.retryAt ?? error.retry_at ?? error.retryAt ?? metadata.retry_at ?? metadata.retryAt,
     technicalDetails: payload.technical_details ?? payload.technicalDetails ?? error.technical_details ?? error.technicalDetails ?? metadata.technical_details ?? metadata.technicalDetails,
+    providerMessage: payload.provider_message ?? metadata.provider_message,
+    nextStep: payload.next_step ?? metadata.next_step,
+    retryable: payload.retryable ?? metadata.retryable,
   }
 }
 

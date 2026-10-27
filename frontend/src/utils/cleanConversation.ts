@@ -92,6 +92,9 @@ function failureHints(payload: Record<string, unknown>) {
     provider: firstText(payload.provider, payload.llm_provider, error?.provider, metadata?.provider),
     retryAt: payload.retry_at ?? payload.resume_after ?? error?.retry_at ?? error?.retryAt ?? metadata?.retry_at ?? metadata?.resume_after,
     technicalDetails: firstText(payload.technical_details, payload.technicalDetails, error?.technical_details, error?.technicalDetails, metadata?.technical_details, metadata?.technicalDetails),
+    providerMessage: firstText(payload.provider_message, metadata?.provider_message),
+    nextStep: firstText(payload.next_step, metadata?.next_step),
+    retryable: payload.retryable ?? metadata?.retryable,
   }
 }
 

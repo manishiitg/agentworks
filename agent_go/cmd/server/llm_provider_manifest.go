@@ -108,6 +108,7 @@ type dynamicModelsResponse struct {
 	CachedAt           string              `json:"cached_at,omitempty"`
 	CacheTTLSeconds    int                 `json:"cache_ttl_seconds,omitempty"`
 	Error              string              `json:"error,omitempty"`
+	SelectionDisabled  bool                `json:"selection_disabled,omitempty"`
 }
 
 // --- Provider static metadata ---

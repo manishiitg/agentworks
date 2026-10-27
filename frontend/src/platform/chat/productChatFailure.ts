@@ -28,6 +28,9 @@ type FailureHints = {
   provider?: unknown
   retryAt?: unknown
   technicalDetails?: unknown
+  providerMessage?: unknown
+  nextStep?: unknown
+  retryable?: unknown
 }
 
 const QUOTA_MARKERS = [
@@ -106,6 +109,22 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
   const resetLabel = museResetLabelFrom(evidence)
   const actionUrl = museUpgradeUrlFrom(evidence)
   const providerLabel = provider || 'The AI provider'
+
+  // New completion events carry the server's classified, masked explanation.
+  // Keep the older parsing below for other existing event kinds, not as a second policy.
+  const providerMessage = text(hints.providerMessage)
+  if (providerMessage && normalizedCode) {
+    return {
+      code: normalizedCode as ProductChatFailureCode,
+      title: normalizedCode === 'internal_error' ? 'The response could not be completed' : 'The provider could not complete this response',
+      message: [providerMessage, text(hints.nextStep)].filter(Boolean).join(' '),
+      provider,
+      retryAt: retryAtFrom('', hints.retryAt),
+      actionUrl,
+      retryable: hints.retryable === true,
+      technicalDetails,
+    }
+  }
 
   if (normalizedCode === 'access_denied' || normalizedCode === 'project_unavailable') {
     return {

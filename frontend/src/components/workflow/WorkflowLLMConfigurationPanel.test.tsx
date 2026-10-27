@@ -78,6 +78,22 @@ afterEach(() => {
 })
 
 describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
+  it('keeps an authorized signed-out Cursor account visible with a sign-in route (PLAT-872-64)', async () => {
+    storeState.providerManifest = [provider({ id: 'cursor-cli', display_name: 'Cursor', auth_configured: false, usable: false })]
+    vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([{id:'global:cursor-cli',provider:'cursor-cli',scope:'global',auth_method:'cli_login',display_name:'Shared',usable:true,configured:false}])
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    const onChange = vi.fn()
+    try {
+      await act(async () => root.render(<WorkflowLLMConfigurationPanel workspacePath="/project" splitPiProviders={false} onChange={onChange} />))
+      const signIn = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(b => b.textContent?.includes('Sign in again in Providers'))
+      expect(signIn).toBeDefined()
+      await act(async () => signIn!.click())
+      expect(storeState.setShowLLMModal).toHaveBeenCalledWith(true)
+      expect(onChange).not.toHaveBeenCalled()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it.each(['agentworks', 'work', 'code'])('shows only installed, ready providers in %s setup', async product => {
     storeState.providerManifest = [
       provider({}),

@@ -401,7 +401,11 @@ export default function WorkflowLLMConfigurationPanel({
   }, [globalLockApplies, llmConfig, manifestEntries, piRowFor, publishedLLMs, splitPiProviders])
 
   const visibleRows = useMemo(() => {
-    const readyRows = rows.filter(providerIsReadyForUse)
+    const readyRows = rows.filter(row => providerIsReadyForUse(row) || (
+      row.entry.id === 'cursor-cli' && accountRecords.some(account => account.provider === 'cursor-cli'
+        && account.usable !== false && accountRelation(account) !== 'admin_view'
+        && (account.scope === 'global' || accountRecords.find(item => item.id === 'global:cursor-cli')?.personal_accounts_allowed !== false))
+    ))
     // The row this workflow is actually using bubbles to the top -- scanning
     // status dots down the list otherwise can't tell "in use" from "also ready".
     // Pi rows keep their catalog order: the company in use is already
@@ -413,7 +417,7 @@ export default function WorkflowLLMConfigurationPanel({
       if (b.id === selectedRowId) return 1
       return 0
     })
-  }, [rows, selectedRowId, providerIsReadyForUse])
+  }, [rows, selectedRowId, providerIsReadyForUse, accountRecords])
 
   const selectedRow = useMemo(() => rows.find(row => row.id === selectedRowId) ?? null, [rows, selectedRowId])
 
@@ -826,7 +830,7 @@ export default function WorkflowLLMConfigurationPanel({
               title={`Manage ${row.name} accounts in Providers`}
               className="shrink-0"
             >
-              Manage in Providers
+              {row.entry.id === 'cursor-cli' ? 'Sign in again in Providers' : 'Manage in Providers'}
             </Button>
           ) : null}
         </div>

@@ -8,9 +8,15 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 )
+
+var cursorAccountCatalog = struct {
+	sync.Mutex
+	models map[string][]dynamicModelEntry
+}{models: make(map[string][]dynamicModelEntry)}
 
 // The product picker discovers the selected account, never another account's
 // cached inventory. Admission and allowed-model rules are the execution rules.
@@ -46,11 +52,26 @@ func (api *StreamingAPI) handleCursorModelPicker(w http.ResponseWriter, r *http.
 		return
 	}
 	out, err := runProviderAccountCommand(ctx, target, spec, 15*time.Second)
-	if err != nil {
-		http.Error(w, "Cursor models could not be loaded. Check the account in Providers.", http.StatusBadGateway)
-		return
-	}
 	models, _ := parseCursorModelList(string(out))
+	// PLAT-872-64: losing SDK authentication must not erase the account's
+	// model display. Cached rows never establish readiness or execution rights.
+	cacheKey := id + "\x00" + target.Home + "\x00" + spec.command + "\x00" + strings.Join(spec.args, "\x00")
+	selectionDisabled := err != nil || len(models) == 0
+	source, detail := "cli_account", ""
+	cursorAccountCatalog.Lock()
+	if selectionDisabled {
+		models = append([]dynamicModelEntry(nil), cursorAccountCatalog.models[cacheKey]...)
+		source, detail = "account_cache", "Cursor models could not be refreshed. Check this account in Providers."
+		if len(models) == 0 {
+			models, source = cursorFallbackModels(), "fallback_metadata"
+		}
+		if configured, ok := cachedProviderAccountConfigured(id); ok && configured != nil && !*configured {
+			detail = "Cursor — sign in again in Providers. Models are shown for reference."
+		}
+	} else {
+		cursorAccountCatalog.models[cacheKey] = append([]dynamicModelEntry(nil), models...)
+	}
+	cursorAccountCatalog.Unlock()
 	allowed, _, err := accountAllowedModels(withModelLimitPerson(r.Context(), caller), "cursor-cli", id)
 	if err != nil {
 		http.Error(w, "Account model settings could not be loaded. Reopen Models to retry.", http.StatusServiceUnavailable)
@@ -63,7 +84,7 @@ func (api *StreamingAPI) handleCursorModelPicker(w http.ResponseWriter, r *http.
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(dynamicModelsResponse{Provider: "cursor-cli", ModelSelectionMode: "dynamic", Models: cursorModelChoices(filtered), Source: "cli_account"})
+	json.NewEncoder(w).Encode(dynamicModelsResponse{Provider: "cursor-cli", ModelSelectionMode: "dynamic", Models: cursorModelChoices(filtered), Source: source, Error: detail, SelectionDisabled: selectionDisabled})
 }
 
 var cursorModelVersion = regexp.MustCompile(`[0-9]+`)

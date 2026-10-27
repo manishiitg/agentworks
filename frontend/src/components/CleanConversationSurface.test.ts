@@ -325,6 +325,15 @@ describe('buildCleanConversationItems', () => {
     expect(failure).not.toHaveProperty('actionUrl')
   })
 
+  it('renders the server provider refusal and next step without offering a retry (PLAT-872-64)', () => {
+    const items = buildCleanConversationItems([
+      event('failure', 'unified_completion', { status: 'error', error: 'selected LLM failed', metadata: {
+        error_code: 'billing_error', provider_message: 'Model unavailable on Plus.', next_step: 'Choose another model or model setting.', retryable: false,
+      } }),
+    ])
+    expect(items.at(-1)?.failure).toEqual(expect.objectContaining({code: 'billing_error', retryable: false, message: 'Model unavailable on Plus. Choose another model or model setting.'}))
+  })
+
   it('shows the Muse reset time and upgrade action instead of a network failure', () => {
     const raw = `all LLMs failed (primary + 0 fallbacks): muse-cli/muse-spark-1.3-contributor [quota_exhausted]: Usage limit reached · /upgrade
 (https://accountscenter.meta.com/muse_code/?ep=xgrade) for increased limits, or

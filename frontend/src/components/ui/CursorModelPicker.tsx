@@ -7,6 +7,7 @@ interface CursorModelPickerProps {
   models: DynamicModelEntry[]
   selectedModelId: string
   onSelect: (modelId: string) => void
+  selectionDisabled?: boolean
   className?: string
 }
 
@@ -20,7 +21,7 @@ interface Family {
 // PLAT-872: a paid Cursor account lists hundreds of models. The server splits
 // each into family + variant (and maker, older); this only lays them out:
 // one row per family, its variants as chips, older versions folded away.
-export function CursorModelPicker({ models, selectedModelId, onSelect, className }: CursorModelPickerProps) {
+export function CursorModelPicker({ models, selectedModelId, onSelect, selectionDisabled = false, className }: CursorModelPickerProps) {
   const [search, setSearch] = useState('')
   const [showOlder, setShowOlder] = useState(false)
   const selectedFamily = models.find(model => model.model_id === selectedModelId)?.family
@@ -75,9 +76,10 @@ export function CursorModelPicker({ models, selectedModelId, onSelect, className
                 <div key={family.name} className={cn('border-t border-border first:border-t-0', selected && 'bg-primary/5')}>
                   <button
                     type="button"
+                    disabled={single && selectionDisabled}
                     aria-expanded={single ? undefined : open}
                     onClick={() => single ? onSelect(family.variants[0].model_id) : setOpenFamily(open ? undefined : family.name)}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/50"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/50 disabled:opacity-60"
                   >
                     {single
                       ? <span className="w-3.5" />
@@ -92,9 +94,10 @@ export function CursorModelPicker({ models, selectedModelId, onSelect, className
                         <button
                           key={model.model_id}
                           type="button"
+                          disabled={selectionDisabled}
                           aria-pressed={model.model_id === selectedModelId}
                           onClick={() => onSelect(model.model_id)}
-                          className={cn('rounded-md border px-2 py-1 text-xs transition-colors',
+                          className={cn('rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-60',
                             model.model_id === selectedModelId ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:bg-muted')}
                         >
                           {model.variant || model.model_name}
