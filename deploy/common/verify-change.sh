@@ -114,7 +114,8 @@ run() { # run <label> <command...>: prints the last lines of the output when it 
 
 go_needed=false; frontend_needed=false
 { grep -qE '^(agent_go|workspace|mcp-gateway)/' "$WORK/changed.txt" || grep -q '^Verify-Test:' "$WORK/message.txt"; } && go_needed=true
-{ grep -q '^frontend/' "$WORK/changed.txt" || grep -q '^Verify-Vitest:' "$WORK/message.txt"; } && frontend_needed=true
+# The pre-commit hook bumps frontend/src/version.ts on every commit; that alone does not need a website check.
+{ grep '^frontend/' "$WORK/changed.txt" | grep -qvx 'frontend/src/version.ts' || grep -q '^Verify-Vitest:' "$WORK/message.txt"; } && frontend_needed=true
 
 if [[ "$go_needed" == true ]]; then
   cd "$WORK/repo/agent_go"
