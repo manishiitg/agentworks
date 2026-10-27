@@ -20,8 +20,8 @@ func TestPlaceRootOfAndCleanAttachRoot(t *testing.T) {
 		"Downloads/x":                                     "",
 	}
 	for in, want := range cases {
-		if got := placeRootOf(in); got != want {
-			t.Errorf("placeRootOf(%q) = %q, want %q", in, got, want)
+		if got := projectRootOf(in); got != want {
+			t.Errorf("projectRootOf(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

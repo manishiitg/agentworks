@@ -18,7 +18,7 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 		return "", fmt.Errorf("active user required")
 	}
 	session := executor.SessionIDFromContext(ctx)
-	root := api.mcpPlaceRoot(ctx, session)
+	root := api.mcpProjectRoot(ctx, session)
 	if args["_vault_only"] == true {
 		root = ""
 	}
@@ -31,7 +31,7 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 		if err != nil {
 			return "", err
 		}
-		data, _ := json.Marshal(map[string]any{"vault": access, "own_vaults": own.Vaults, "catalog": api.placeMCPCatalog(), "setup": "Use Vault in this chat. Return the real provider sign-in link, verify discovery and select the requested account. Never repeat credentials."})
+		data, _ := json.Marshal(map[string]any{"vault": access, "own_vaults": own.Vaults, "catalog": api.mcpCatalog(), "setup": "Use Vault in this chat. Return the real provider sign-in link, verify discovery and select the requested account. Never repeat credentials."})
 		return string(data), nil
 	}
 	name, _ := args["name"].(string)
@@ -63,7 +63,7 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 		return "", fmt.Errorf("choose API key or OAuth app credentials")
 	}
 	// Existing native project authoring gates remain authoritative.
-	if operation != "trigger_mcp_discovery" && root != "" && !placeMCPCanAttach(ctx, person, root) {
+	if operation != "trigger_mcp_discovery" && root != "" && !canManageProjectApps(ctx, person, root) {
 		return "", fmt.Errorf("only a current Builder can change this project's connections")
 	}
 	id := strings.TrimPrefix(strings.TrimSpace(name), "vault_")
@@ -185,7 +185,7 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 			catalog = name
 		}
 		if rawURL == "" {
-			if entry, ok := api.placeMCPCatalogEntry(catalog); ok {
+			if entry, ok := api.mcpCatalogEntry(catalog); ok {
 				if apiKey != "" || credential != "" {
 					rawURL = entry.config.URL
 					if name == "" {

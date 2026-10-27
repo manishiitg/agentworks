@@ -104,11 +104,11 @@ func (api *StreamingAPI) removeVaultSecret(ctx context.Context, person, vaultID,
 // promoteSecretToVault copies a secret of this chat's Crew, Code or workflow into a vault the person owns. The agent
 // names the secret and confirms; the value moves server-side and is never shown. The original stays where it is.
 func (api *StreamingAPI) promoteSecretToVault(ctx context.Context, person, vaultID, name string, confirm bool) (string, error) {
-	place := api.placeRootForSession(sessionIDFromContextForVaults(ctx))
+	place := api.projectRootForSession(sessionIDFromContextForVaults(ctx))
 	if place == "" {
 		return "", errors.New("promote a secret from a Crew, Code or workflow chat")
 	}
-	if !placeMCPCanAttach(ctx, person, place) {
+	if !canManageProjectApps(ctx, person, place) {
 		return "", errors.New("only someone who can edit this place can copy its secrets into a vault")
 	}
 	name = strings.TrimSpace(name)
@@ -157,7 +157,7 @@ func (api *StreamingAPI) checkVaultSecretProjectScope(ctx context.Context, perso
 		}
 		return nil
 	}
-	if api.projectSecretsOwner(person, root) != person || !placeMCPCanAttach(ctx, person, root) {
+	if api.projectSecretsOwner(person, root) != person || !canManageProjectApps(ctx, person, root) {
 		return errors.New("project secret access follows its current owner")
 	}
 	return nil

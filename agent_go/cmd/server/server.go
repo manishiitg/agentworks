@@ -2493,7 +2493,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		api.sweepOrphanCodeSessionPins(context.Background())
 	}()
 	// The catalog of servers that can be connected, and connections of a place.
-	apiRouter.HandleFunc("/mcp/catalog", api.handlePlaceMCPCatalog).Methods("GET")
+	apiRouter.HandleFunc("/mcp/catalog", api.handleMCPCatalog).Methods("GET")
 	apiRouter.HandleFunc("/vault/connections", api.handleMyVaultServers).Methods("GET")
 	apiRouter.HandleFunc("/vault/migration", requireAdmin(api.handleVaultMigration)).Methods("POST")
 	// The old path, kept for a browser tab still running the previous frontend.

@@ -116,15 +116,15 @@ func TestRefSitesRestoredConversationPath(t *testing.T) {
 func TestRefSitesPlaceAttachRoots(t *testing.T) {
 	phys := workspaceref.MustParse(codeLogic).Physical(refUser)
 	reftest.BothSpellings(t, refUser, codeLogic+"/src/a.go", func(t *testing.T, spelling string) {
-		if got := placeRootOf(spelling); spelling == phys+"/src/a.go" && got != phys {
-			t.Fatalf("placeRootOf(%q) = %q", spelling, got)
+		if got := projectRootOf(spelling); spelling == phys+"/src/a.go" && got != phys {
+			t.Fatalf("projectRootOf(%q) = %q", spelling, got)
 		}
 	})
 	for _, bad := range []string{
 		phys + "/src", "_users/" + refUser + "/Chats/Other/projects/x", "_users/" + refUser, codeLogic,
 	} {
-		if got := cleanAttachRoot(bad); got != "" {
-			t.Errorf("cleanAttachRoot(%q) = %q", bad, got)
+		if got := cleanProjectRoot(bad); got != "" {
+			t.Errorf("cleanProjectRoot(%q) = %q", bad, got)
 		}
 	}
 }

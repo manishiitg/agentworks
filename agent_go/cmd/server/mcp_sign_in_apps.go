@@ -50,7 +50,7 @@ func mcpAppKeyFor(catalogName string, cfg *oauth.OAuthConfig) string {
 			}
 		}
 	}
-	key := strings.Trim(placeMCPCatalogNameCleaner.ReplaceAllString(strings.ToLower(catalogName), "_"), "_")
+	key := strings.Trim(mcpCatalogNameCleaner.ReplaceAllString(strings.ToLower(catalogName), "_"), "_")
 	if len(key) > 40 {
 		key = key[:40]
 	}

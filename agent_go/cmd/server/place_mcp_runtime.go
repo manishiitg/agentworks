@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -25,7 +24,7 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	}
 	// A session of a workflow, Relay, Crew or Code uses that place's connections and Vault; a connection added
 	// to another place, or kept in a person's own store, is never reachable from it.
-	if api.placeRootForSession(sessionID) != "" {
+	if api.projectRootForSession(sessionID) != "" {
 		ctx = context.WithValue(ctx, placeScopedKey{}, true)
 	}
 	if resolved, isCode, err := api.resolveCodeMCPServer(ctx, sessionID, server, tool); isCode {
@@ -50,10 +49,10 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	// A Crew's or Goal's Vault MCPs are its owner's for everyone who uses it (scopeAgentMCP); the Vault proxy keeps a lent
 	// personal Slack to its send side for anyone else (lentVaultSlackRefusal).
 	lender := person
-	if root := api.placeRootForSession(sessionID); root != "" && person != "" {
+	if root := api.projectRootForSession(sessionID); root != "" && person != "" {
 		lender = api.projectSecretsOwner(person, root)
 	}
-	if root := api.placeRootForSession(sessionID); root != "" {
+	if root := api.projectRootForSession(sessionID); root != "" {
 		manifest, found, e := ReadWorkflowManifest(ctx, root)
 		if e != nil || !found || manifest == nil {
 			return nil, fmt.Errorf("project MCP selection unavailable")
@@ -87,68 +86,9 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 	return resolved, true, err
 }
 
-// placeMCPPlainName is the name a connection has without its store prefix
-// (u<32 hex>__<name> -> <name>).
-func placeMCPPlainName(internal string) string {
-	if isPlaceMCPInternalName(internal) {
-		return internal[35:]
-	}
-	return internal
-}
-
-// isPlaceMCPInternalName reports whether name has the personal-server
-// shape (u<32 hex>__<name>), whoever it belongs to.
-func isPlaceMCPInternalName(name string) bool {
-	if len(name) < 36 || name[0] != 'u' || name[33:35] != "__" {
-		return false
-	}
-	for _, c := range name[1:33] {
-		if !strings.ContainsRune("0123456789abcdef", c) {
-			return false
-		}
-	}
-	return true
-}
-
 // placeScopedKey marks a context as belonging to a session of a workflow, Relay, Crew or Code: every MCP resolver
 // below it then sees only that place's connections and Vault, never a person's connections from elsewhere.
 type placeScopedKey struct{}
 
-// placeRootForSession is the workflow, Relay, Crew or Code a session works in, taken only from data the server
-// recorded for the session (never from anything the client sent); "" when it has none (a chat outside any place).
-func (api *StreamingAPI) placeRootForSession(sessionID string) string {
-	if sessionID == "" {
-		return ""
-	}
-	if pin, ok, _ := codeSessionPinFor(sessionID); ok {
-		if root := placeRootOf(pin.CodeRoot); root != "" {
-			return root
-		}
-	}
-	if cfg := common.GetSessionShellConfig(sessionID); cfg != nil {
-		for _, candidate := range []string{cfg.WorkflowPath, cfg.WorkingDir} {
-			if root := placeRootOf(candidate); root != "" {
-				return root
-			}
-		}
-	}
-	if api != nil {
-		api.sessionWorkspaceMu.RLock()
-		folder := api.sessionWorkspaceFolders[sessionID]
-		api.sessionWorkspaceMu.RUnlock()
-		if root := placeRootOf(folder); root != "" {
-			return root
-		}
-	}
-	return ""
-}
-
 // Set only after the external transport resolves and authorizes a Crew ID.
 type externalCrewMCPPlaceKey struct{}
-
-func (api *StreamingAPI) mcpPlaceRoot(ctx context.Context, sessionID string) string {
-	if root, _ := ctx.Value(externalCrewMCPPlaceKey{}).(string); root != "" {
-		return root
-	}
-	return api.placeRootForSession(sessionID)
-}

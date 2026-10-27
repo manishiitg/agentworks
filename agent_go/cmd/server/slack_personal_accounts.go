@@ -156,10 +156,10 @@ const personalSlackCallError = "Only the person who connected this Slack can rea
 // 2026-10-16, the decisions log): its owner may use every tool; anyone else only the send-side tools. It returns an error
 // for a refused call and logs the attempt or the refusal. Calls on any other server pass unchanged.
 func (api *StreamingAPI) guardPersonalSlackCall(ctx context.Context, session, server, tool string) error {
-	if strings.TrimSpace(tool) == "" || !isPlaceMCPInternalName(server) && !strings.HasPrefix(strings.ToLower(server), "slack") {
+	if strings.TrimSpace(tool) == "" || !isOwnerScopedMCPName(server) && !strings.HasPrefix(strings.ToLower(server), "slack") {
 		return nil
 	}
-	root := api.mcpPlaceRoot(ctx, session)
+	root := api.mcpProjectRoot(ctx, session)
 	attachments, _ := placeMCPAttachmentsFor(root)
 	for _, a := range attachments {
 		if a.Scope != "user" || server != placeMCPInternalName(a.Owner, a.Server) && !strings.EqualFold(server, a.Server) {
@@ -184,10 +184,10 @@ func (api *StreamingAPI) guardPersonalSlackCall(ctx context.Context, session, se
 
 // Resolution logs a send attempt, not delivery. Slack's reply determines delivery.
 func (api *StreamingAPI) logPersonalSlackCall(ctx context.Context, session, server, tool, stage string) {
-	if strings.TrimSpace(tool) == "" || !isPlaceMCPInternalName(server) && !strings.HasPrefix(strings.ToLower(server), "slack") {
+	if strings.TrimSpace(tool) == "" || !isOwnerScopedMCPName(server) && !strings.HasPrefix(strings.ToLower(server), "slack") {
 		return
 	}
-	root := api.mcpPlaceRoot(ctx, session)
+	root := api.mcpProjectRoot(ctx, session)
 	attachments, _ := placeMCPAttachmentsFor(root)
 	for _, a := range attachments {
 		if a.Scope != "user" || server != placeMCPInternalName(a.Owner, a.Server) && !strings.EqualFold(server, a.Server) {
@@ -208,7 +208,7 @@ func (api *StreamingAPI) logPersonalSlackCall(ctx context.Context, session, serv
 // added to root that does not belong to caller, with the account's internal server names. A turn for someone who is not
 // the account's owner offers only these tools of that server (the read side is also refused on the server).
 func personalSlackSendOnlyEntries(root, caller string) (entries []string, servers map[string]bool) {
-	attachments, _ := placeMCPAttachmentsFor(placeRootOf(root))
+	attachments, _ := placeMCPAttachmentsFor(projectRootOf(root))
 	servers = map[string]bool{}
 	for _, a := range attachments {
 		if a.Scope != "user" || a.Owner == caller {

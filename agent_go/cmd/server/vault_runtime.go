@@ -374,7 +374,7 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if in.Session != "" {
-		if root := api.placeRootForSession(in.Session); root != "" {
+		if root := api.projectRootForSession(in.Session); root != "" {
 			selected, chosenOnly, err := projectAppSelection(r.Context(), root)
 			if err != nil {
 				http.Error(w, "project connection selection unavailable", 403)
@@ -389,7 +389,7 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 		// The session's own person, or the owner of its Crew/Goal lending that project's Vault MCPs (scopeAgentMCP).
 		owner := api.mcpSessionPerson(in.Session)
 		if owner != in.Person {
-			root := api.placeRootForSession(in.Session)
+			root := api.projectRootForSession(in.Session)
 			if owner == "" || root == "" || api.projectSecretsOwner(owner, root) != in.Person {
 				http.Error(w, "session ownership changed", 403)
 				return
@@ -482,7 +482,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 
 func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, names []string, overrides mcpclient.RuntimeOverrides) ([]string, mcpclient.RuntimeOverrides, map[string]string, error) {
 	person := mcpCaller(ctx)
-	inPlace := api.placeRootForSession(sessionID) != ""
+	inPlace := api.projectRootForSession(sessionID) != ""
 	if inPlace {
 		ctx = context.WithValue(ctx, placeScopedKey{}, true)
 	}
@@ -496,7 +496,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 	// projectSecretsOwner; owner 2026-10-21 "one store, Vault only"). The gateway checks the owner's grants; a lent
 	// personal Slack is limited to its send side for anyone else (lentVaultSlackRefusal).
 	lender := person
-	if root := api.placeRootForSession(sessionID); root != "" && person != "" {
+	if root := api.projectRootForSession(sessionID); root != "" && person != "" {
 		lender = api.projectSecretsOwner(person, root)
 	}
 	// A product that picks Vault connections gets only those (MCPs come from Vault, owner 2026-10-20); one that picks
@@ -607,8 +607,8 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 
 	canonical := func(name string) string {
 		name = vaultSelectionName(name)
-		if isPlaceMCPInternalName(name) {
-			name = placeMCPPlainName(name)
+		if isOwnerScopedMCPName(name) {
+			name = plainMCPName(name)
 		}
 		if catalog != nil {
 			if n, _, err := catalog.ResolveServer(name); err == nil {
@@ -702,7 +702,7 @@ func (api *StreamingAPI) discoverResolvedServerTools(ctx context.Context, resolv
 		_ = json.Unmarshal(encoded, &parameters)
 		details = append(details, mcpclient.ToolDetail{Name: tool.Function.Name, Description: tool.Function.Description, Parameters: parameters})
 	}
-	shown := placeMCPPlainName(resolved.Name)
+	shown := plainMCPName(resolved.Name)
 	return &ToolStatus{Name: shown, Server: shown, Connection: connectionConnected, Status: "ok", Tools: details, FunctionNames: names, ToolsEnabled: len(names)}, nil
 }
 

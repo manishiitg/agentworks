@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"path"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -61,41 +59,6 @@ func placeMCPAttachmentsPath() (string, error) {
 	return filepath.Join(root, placeMCPAttachmentsFile), nil
 }
 
-// cleanAttachRoot normalizes a workflow or Crew root. It returns "" for
-// any path that is not one.
-func cleanAttachRoot(raw string) string {
-	root := strings.Trim(strings.TrimSpace(raw), "/")
-	if root == "" || strings.ContainsAny(root, "\\\x00") || path.Clean(root) != root {
-		return ""
-	}
-	segments := strings.Split(root, "/")
-	for _, segment := range segments {
-		if segment == "" || segment == "." || segment == ".." {
-			return ""
-		}
-	}
-
-	switch {
-	case len(segments) == 2 && segments[0] == "Workflow" && !strings.HasPrefix(segments[1], "."):
-		return root
-	case len(segments) == 2 && segments[0] == crewSharedRootName:
-
-		return root
-	}
-	return ""
-}
-
-// placeRootOf returns the workflow or Crew root a path lies in (a run
-// folder or file inside it included), or "".
-func placeRootOf(raw string) string {
-	segments := strings.Split(strings.Trim(strings.TrimSpace(raw), "/"), "/")
-	switch {
-	case len(segments) >= 2 && (segments[0] == "Workflow" || segments[0] == crewSharedRootName):
-		return cleanAttachRoot(strings.Join(segments[:2], "/"))
-	}
-	return ""
-}
-
 func readPlaceMCPAttachmentsLocked() (map[string][]placeMCPAttachment, error) {
 	file, err := placeMCPAttachmentsPath()
 	if err != nil {
@@ -115,43 +78,6 @@ func writePlaceMCPAttachmentsLocked(all map[string][]placeMCPAttachment) error {
 		return err
 	}
 	return writePlaceMCPJSON(file, all)
-}
-
-// userClaimsForDirectoryID builds the claims access checks need (access
-// lists name usernames and emails) for a user who is not the caller. A
-// disabled account has none.
-func userClaimsForDirectoryID(userID string) *UserClaims {
-	claims := &UserClaims{UserID: userID, Username: userID}
-	if dir, err := loadUserDirectory(); err == nil && dir != nil {
-		if rec := dir.byID(userID); rec != nil {
-			if rec.Disabled {
-				return nil
-			}
-			claims.Username, claims.Email = rec.Username, rec.Email
-		}
-	}
-	return claims
-}
-
-// placeMCPCanAttach reports whether userID may add connections to root:
-// they must be able to edit that workflow, or own that Crew or Code. It is
-// checked on add and again on every use, so losing edit access stops their
-// connection there at once.
-func placeMCPCanAttach(ctx context.Context, userID, root string) bool {
-	root = cleanAttachRoot(root)
-	if root == "" || strings.TrimSpace(userID) == "" {
-		return false
-	}
-	claims := userClaimsForDirectoryID(userID)
-	if claims == nil {
-		return false
-	}
-	if strings.HasPrefix(root, "Workflow/") {
-		level, _ := workflowAccessForWorkspacePath(ctx, claims, root)
-		return level == WorkflowAccessOwner || level == WorkflowAccessWrite
-	}
-	ref, ok := resolveCrewPath(ctx, userID, root)
-	return ok && crewAccessFor(claims, ref) == crewAccessOwner
 }
 
 // forgetPlaceMCP drops owner's server from root's index.
@@ -179,7 +105,7 @@ func forgetPlaceMCP(owner, server, root string) error {
 
 // placeMCPAttachmentsFor lists root's connections, sorted by name.
 func placeMCPAttachmentsFor(root string) ([]placeMCPAttachment, error) {
-	root = cleanAttachRoot(root)
+	root = cleanProjectRoot(root)
 	if root == "" {
 		return nil, nil
 	}
@@ -219,7 +145,7 @@ func removePlaceMCP(owner, name, root string) error {
 // forgetPlaceConnections removes every connection of a deleted workflow, Crew
 // or Code, with their logins.
 func forgetPlaceConnections(root string) {
-	root = cleanAttachRoot(root)
+	root = cleanProjectRoot(root)
 	if root == "" {
 		return
 	}

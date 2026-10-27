@@ -92,7 +92,7 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	if raw, _ := os.ReadFile(path); strings.Contains(string(raw), "shared-secret") || strings.Contains(string(raw), "965.apps") {
 		t.Fatalf("the app is stored in the clear: %s", raw)
 	}
-	catalogRec := personalRoute(api, (*StreamingAPI).handlePlaceMCPCatalog, http.MethodGet, "/x", "", "owner", nil)
+	catalogRec := personalRoute(api, (*StreamingAPI).handleMCPCatalog, http.MethodGet, "/x", "", "owner", nil)
 	if strings.Contains(catalogRec.Body.String(), `"needs_client":true`) {
 		t.Fatalf("a configured app still needs a client: %s", catalogRec.Body.String())
 	}
@@ -333,7 +333,7 @@ func TestGoogleAndSlackSignInAppsAndNoGoogleOrGitHubConnectors(t *testing.T) {
 		t.Fatalf("sign-in app cards = %+v, want Google and Slack apps", cards)
 	}
 	var names []string
-	for _, entry := range api.placeMCPCatalog() {
+	for _, entry := range api.mcpCatalog() {
 		names = append(names, entry.Catalog)
 	}
 	if strings.Join(names, ",") != "Linear,Slack" {

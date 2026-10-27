@@ -159,7 +159,7 @@ func (api *StreamingAPI) setProjectSelectedServers(ctx context.Context, workspac
 // selectVaultServer adds or removes one Vault connection from the project. A project using all its owner's Vault apps
 // switches to chosen apps only with every app in use kept, so one change never silently drops the others.
 func (api *StreamingAPI) selectVaultServer(ctx context.Context, person, workspace, connectionID string, on bool) error {
-	if !placeMCPCanAttach(ctx, person, workspace) {
+	if !canManageProjectApps(ctx, person, workspace) {
 		return errors.New("only a current Builder can change project connections")
 	}
 	name := vaultServerName(connectionID)
