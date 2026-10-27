@@ -2725,10 +2725,12 @@ func (api *StreamingAPI) steerBackgroundAgentCompletion(sessionID, agentID strin
 
 	inputCtx, cancel := context.WithTimeout(context.Background(), liveCodingAgentInputTimeout)
 	defer cancel()
+	messageID := newSteerMessageID()
 	delivery, err := api.deliverRunningAgentUserMessage(inputCtx, runningAgent, mcpagent.UserMessageDeliveryRequest{
 		SessionID: sessionID,
 		Message:   msg,
 		Intent:    mcpagent.UserMessageDeliveryIntentLiveInput,
+		MessageID: messageID,
 	})
 	if err != nil {
 		log.Printf("[BG AGENT] Live steer delivery failed for session %s agent %s: %v — falling back to queue", sessionID, agentID, err)
@@ -2751,7 +2753,7 @@ func (api *StreamingAPI) steerBackgroundAgentCompletion(sessionID, agentID strin
 	// to the queue path so the completion is reliably re-delivered.
 	if delivery.DeliveryStatus != mcpagent.UserMessageDeliveryStatusSentToCLI {
 		log.Printf("[BG AGENT] Steer for agent %s in session %s returned status=%s — falling back to queue", agentID, sessionID, deliveryStatus)
-		api.recordLiveCodingAgentUserMessage(sessionID, msg, provider, newSteerMessageID(), deliveryStatus, "")
+		// The foreground turn records the message where it takes it (same message ID); no row here.
 		return false
 	}
 
@@ -2760,7 +2762,6 @@ func (api *StreamingAPI) steerBackgroundAgentCompletion(sessionID, agentID strin
 	// notification hold so the exact conversation tree can never appear
 	// terminal in the hand-off gap. The retained-turn observer settles this node
 	// only after the coding CLI returns to its idle composer.
-	messageID := newSteerMessageID()
 	continuationExecutionID := "synthetic-turn:" + messageID
 	api.trackSyntheticConversationTurnStart(continuationExecutionID, sessionID, snap.ParentExecutionID, msg)
 	api.markRetainedMainCodingTurnRunning(sessionID, continuationExecutionID)

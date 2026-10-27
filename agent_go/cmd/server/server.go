@@ -11090,14 +11090,25 @@ func liveInputErrorProvesNoTarget(err error) bool {
 
 // recoverUnsentLiveInput carries acknowledged-but-unwritten queue entries into
 // the replacement turn; a typed NoSession must never silently discard them.
-func recoverUnsentLiveInput(err error, recovered *[]string) {
+
+// recoverUnsentLiveInput hands queued messages to the new turn that replaces a gone session. Each message a
+// person sent is recorded as its own row first, so its bubble settles instead of waiting forever (PLAT-872).
+func (api *StreamingAPI) recoverUnsentLiveInput(sessionID string, err error, recovered *[]string) {
 	if recovered == nil {
 		return
 	}
 	var deliveryErr *mcpagent.CodingAgentDeliveryError
-	if errors.As(err, &deliveryErr) && deliveryErr.Kind == mcpagent.DeliveryErrorKindNoSession {
-		*recovered = append(*recovered, deliveryErr.UnsentMessages...)
+	if !errors.As(err, &deliveryErr) || deliveryErr.Kind != mcpagent.DeliveryErrorKindNoSession {
+		return
 	}
+	for i, text := range deliveryErr.UnsentMessages {
+		if i < len(deliveryErr.UnsentIdentities) {
+			if id := deliveryErr.UnsentIdentities[i]; id.ID != "" {
+				api.recordLiveCodingAgentUserMessage(sessionID, text, string(deliveryErr.Provider), id.ID, "next_turn_started", id.ClientID)
+			}
+		}
+	}
+	*recovered = append(*recovered, deliveryErr.UnsentMessages...)
 }
 
 // tryDeliverQueryAsLiveInput is the single-entry retained-CLI path for
@@ -11268,7 +11279,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			sessionInputCancel()
 			if err != nil {
 				if liveInputErrorProvesNoTarget(err) {
-					recoverUnsentLiveInput(err, recovered)
+					api.recoverUnsentLiveInput(sessionID, err, recovered)
 					log.Printf("[QUERY->LIVE] No live target for session %s; starting a new turn: %v", sessionID, err)
 					return false
 				}
@@ -11321,7 +11332,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 				// was sent and a fresh turn is safe. Answering 409 delivery_uncertain here left every send, and each of its 30 s retries, rejected until the
 				// stale record cleared (Code on server B, 2026-10-04: three 409s after a provider switch).
 				if liveInputErrorProvesNoTarget(err) {
-					recoverUnsentLiveInput(err, recovered)
+					api.recoverUnsentLiveInput(sessionID, err, recovered)
 					log.Printf("[QUERY->LIVE] Retained terminal for session %s has no live target; starting a new turn: %v", sessionID, err)
 					return false
 				}
@@ -11360,14 +11371,19 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 
 	inputCtx, cancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 	defer cancel()
+	// The message's identity exists before delivery: a queued message keeps it and is recorded once, where
+	// the agent takes it, so the chat matches the person's bubble instead of adding a second (PLAT-872).
+	messageID := newSteerMessageID()
 	delivery, err := api.deliverRunningAgentUserMessage(inputCtx, runningAgent, mcpagent.UserMessageDeliveryRequest{
-		SessionID: sessionID,
-		Message:   message,
-		Intent:    mcpagent.UserMessageDeliveryIntentLiveInput,
+		SessionID:       sessionID,
+		Message:         message,
+		Intent:          mcpagent.UserMessageDeliveryIntentLiveInput,
+		MessageID:       messageID,
+		ClientMessageID: clientMessageIDFromContext(r.Context()),
 	})
 	if err != nil {
 		if liveInputErrorProvesNoTarget(err) {
-			recoverUnsentLiveInput(err, recovered)
+			api.recoverUnsentLiveInput(sessionID, err, recovered)
 			log.Printf("[QUERY→LIVE] No live target for session %s; starting a new turn: %v", sessionID, err)
 			return false
 		}
@@ -11379,7 +11395,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 	}
 	if delivery.DeliveryStatus == mcpagent.UserMessageDeliveryStatusQueuedForInjection {
 		// Same accepted shape as the retained-session queue branch above:
-		// the running turn owns this message at its next boundary.
+		// the running turn owns this message at its next boundary and records it there under its identity.
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "status": "accepted", "session_id": sessionID, "delivery_status": string(delivery.DeliveryStatus), "provider": string(delivery.Provider)})
 		return true
@@ -11390,7 +11406,6 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		return true
 	}
 
-	messageID := newSteerMessageID()
 	provider := string(delivery.Provider)
 	if provider == "" {
 		provider = string(mcpagent.ReadAgentRuntimeInfo(runningAgent).Provider)
@@ -11586,7 +11601,7 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 			if err != nil {
 				if liveInputErrorProvesNoTarget(err) {
 					var pending []string
-					recoverUnsentLiveInput(err, &pending)
+					api.recoverUnsentLiveInput(sessionID, err, &pending)
 					if api.startNextTurnFromLiveInput(w, r, sessionID, strings.Join(append(pending, req.Message), "\n\n"), nil) {
 						return
 					}
@@ -11685,10 +11700,13 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 
 	inputCtx, cancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 	defer cancel()
+	messageID := newSteerMessageID()
 	delivery, err := api.deliverRunningAgentUserMessage(inputCtx, runningAgent, mcpagent.UserMessageDeliveryRequest{
-		SessionID: sessionID,
-		Message:   req.Message,
-		Intent:    mcpagent.UserMessageDeliveryIntentLiveInput,
+		SessionID:       sessionID,
+		Message:         req.Message,
+		Intent:          mcpagent.UserMessageDeliveryIntentLiveInput,
+		MessageID:       messageID,
+		ClientMessageID: clientMessageIDFromContext(r.Context()),
 	})
 	if err != nil {
 		log.Printf("[LIVE INPUT] Live input unavailable for provider %s session %s: %v", mcpagent.ReadAgentRuntimeInfo(runningAgent).Provider, sessionID, err)
@@ -11697,7 +11715,7 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		// the next turn with it, as /api/query does (liveInputErrorProvesNoTarget).
 		if liveInputErrorProvesNoTarget(err) {
 			var pending []string
-			recoverUnsentLiveInput(err, &pending)
+			api.recoverUnsentLiveInput(sessionID, err, &pending)
 			req.Message = strings.Join(append(pending, req.Message), "\n\n")
 			if api.startNextTurnFromLiveInput(w, r, sessionID, req.Message, runningAgent) {
 				return
@@ -11714,7 +11732,6 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	messageID := newSteerMessageID()
 	provider := string(delivery.Provider)
 	if provider == "" {
 		provider = string(mcpagent.ReadAgentRuntimeInfo(runningAgent).Provider)
@@ -11723,8 +11740,12 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	if deliveryStatus == "" {
 		deliveryStatus = "queued_for_injection"
 	}
-	api.recordLiveCodingAgentUserMessage(sessionID, req.Message, provider, messageID, deliveryStatus, clientMessageIDFromContext(r.Context()))
-	api.persistLiveInputUserMessage(r.Context(), sessionID, req.Message)
+	// A queued message is recorded by the turn that takes it, under this identity; recording it here too
+	// showed it twice (PLAT-872).
+	if delivery.DeliveryStatus != mcpagent.UserMessageDeliveryStatusQueuedForInjection {
+		api.recordLiveCodingAgentUserMessage(sessionID, req.Message, provider, messageID, deliveryStatus, clientMessageIDFromContext(r.Context()))
+		api.persistLiveInputUserMessage(r.Context(), sessionID, req.Message)
+	}
 	if !hasActiveForegroundTurn {
 		executionID := "live-turn:" + messageID
 		api.trackConversationTurnStart(executionID, sessionID, QueryRequest{Query: req.Message, TriggeredBy: "interactive"})

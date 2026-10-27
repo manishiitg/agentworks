@@ -930,14 +930,21 @@ func TestLiveInputErrorProvesNoTarget(t *testing.T) {
 			t.Errorf("%s: liveInputErrorProvesNoTarget = %v, want %v", tc.name, got, tc.want)
 		}
 	}
-	// PLAT-872: recover previously acknowledged inputs in order before the new query.
-	err := fmt.Errorf("send: %w", &mcpagent.CodingAgentDeliveryError{Kind: mcpagent.DeliveryErrorKindNoSession, Provider: "codex-cli", UnsentMessages: []string{"first", "second"}})
+	// PLAT-872: recover previously acknowledged inputs in order before the new query. A person's message
+	// also gets its own row under its identity, so its bubble settles instead of staying pending.
+	err := fmt.Errorf("send: %w", &mcpagent.CodingAgentDeliveryError{Kind: mcpagent.DeliveryErrorKindNoSession, Provider: "codex-cli",
+		UnsentMessages: []string{"first", "second"}, UnsentIdentities: []mcpagent.QueuedMessageIdentity{{ID: "steer-1", ClientID: "sub-1"}, {}}})
+	const session = "recover-identities"
+	store := openClientIdentityTestStore(t, session)
+	api := &StreamingAPI{eventStore: store}
 	var recovered []string
-	recoverUnsentLiveInput(err, &recovered)
+	api.recoverUnsentLiveInput(session, err, &recovered)
 	if strings.Join(recovered, "|") != "first|second" || !liveInputErrorProvesNoTarget(err) {
 		t.Fatalf("lost undelivered input: %#v %v", recovered, err)
 	}
-
+	if got := durableChatIDs(t, store, session); len(got) != 1 || got[0] != "user:sub-1" {
+		t.Fatalf("journal = %v, want one row for the person's message (user:sub-1)", got)
+	}
 }
 
 // A pooled-session miss proves the send never reached a CLI (the lookup runs
