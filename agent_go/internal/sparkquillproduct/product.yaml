@@ -18,6 +18,29 @@ schema_version: 2
 # archive/.
 dependencies: {}
 
+# External clients receive only the family-scoped MCP catalog.
+chat:
+  run:
+    prompt:
+      file: prompts/parent.md
+    external_tools:
+      - get_learning_context
+      - get_learning_progress
+      - list_materials
+      - read_material
+      - list_activities
+      - list_files
+      - read_file
+      - get_file_link
+      - create_file
+      - update_file
+      - upload_file
+      - create_learning_activity
+      - update_learning_activity
+      - get_activity_status
+      - finalize_activity
+      - assign_activity
+
 prompt:
   file: prompts/parent.md
   variables: {}
@@ -62,46 +85,46 @@ profile:
   commands:
     - name: create-learning-game
       description: "Create a learning game"
-      prompt: "Create a complete, immersive learning game for my child about the topic we are working on. Follow your learning-game skill. Choose a genre and scope that fit her age and interests, make the learning drive meaningful gameplay, and use polished visuals, responsive controls, feedback and progression. You are free to build a substantial game; choose the mechanics and number of levels yourself. Build and play-check the finished experience, then show it for my preview."
+      prompt: "Create a complete, immersive learning game for my child about the topic I specify or we are working on. Follow your learning-game skill. Choose a genre, mechanics and scope that fit my child's level and interests, with meaningful gameplay, polished visuals, responsive controls, feedback and progression. Substantial games are welcome; choose the number of levels yourself. Finish and play-check it, then show it for my preview.\n\nAdditional context from me (optional): {{context}}"
     - name: create-interactive-quiz
       description: "Create an interactive quiz"
-      prompt: "Create an engaging, playable quiz for my child about the topic we are working on. Follow your learning-game skill, choose an experience that fits her age and interests, and make her answers influence what happens. Include useful feedback and recovery from mistakes. Choose the format and depth yourself, finish and play-check it, then show it for my preview."
+      prompt: "Create an engaging, playable quiz for my child about the topic I specify or we are working on. Follow your learning-game skill. Choose an experience that fits my child's level and interests and makes answers influence what happens, with useful feedback and recovery from mistakes. Choose the format and depth yourself, finish and play-check it, then show it for my preview.\n\nAdditional context from me (optional): {{context}}"
     - name: create-animated-video
       description: "Create an animated video"
-      prompt: "Create an animated explainer video for my child using HyperFrames, on the topic we are working on. Use her reading level and language, clear visual examples, captions and a short recap. Make it a playable learning activity I can preview and give to her."
+      prompt: "Create a complete animated explainer video for my child on the topic I specify or we are working on. Follow your animated-learning-video skill and use HyperFrames. Match my child's language and level, with visuals that explain the idea, captions, a transcript and a recap. Choose the length and style that fit the lesson unless I specify them. Render and check the playable video, then show the finished activity for my preview.\n\nAdditional context from me (optional): {{context}}"
     - name: create-reading-book
       description: "Create a reading book"
-      prompt: "Create illustrated reading material for my child in book format, page by page, on the topic we are working on. Match her reading level and language, with a cover, numbered pages, Previous and Next controls, and a short recap. Make the complete book a learning activity I can preview and give to her."
+      prompt: "Create a complete illustrated reading book for my child on the topic I specify or we are working on. Follow your reading-book skill. Match my child's reading level and language, with a cover, numbered pages, Previous and Next controls and a satisfying ending or recap. Choose the length that fits the material unless I specify it. Finish all pages, check the reading experience, then show the activity for my preview.\n\nAdditional context from me (optional): {{context}}"
     - name: create-study-material
       description: "Create study material"
-      prompt: "Create study material for my child on the topic she is working on \u2014 explain it properly first, then a short practice, and a summary she can reread."
+      prompt: "Create a complete study activity for my child on the topic I specify or we are working on. Use the known grade, language and school material to choose the depth, with clear explanations, worked examples, useful practice and a recap. Finish and check it, then show it for my preview.\n\nAdditional context from me (optional): {{context}}"
     - name: create-study-material-ib
       description: "Study material (IB style)"
-      prompt: "Create study material for my child on the topic she is working on, in IB style - concept-based framing with IB command terms and inquiry-led explanation, then practice and a summary she can reread."
+      prompt: "Create a complete study activity for my child in IB style on the topic I specify or we are working on. Use the known grade and programme and supplied school material, with concept-based inquiry, appropriate command terms, worked examples, practice and a recap. Verify current syllabus details when needed. Finish and check it, then show it for my preview.\n\nAdditional context from me (optional): {{context}}"
     - name: create-study-material-cbse
       description: "Study material (CBSE style)"
-      prompt: "Create study material for my child on the topic she is working on, in CBSE style - NCERT-aligned explanation, then competency and case-based practice, and a summary she can reread."
+      prompt: "Create a complete study activity for my child in CBSE style on the topic I specify or we are working on. Use the known grade and supplied school material for NCERT-aligned explanations, worked examples, competency and case-based practice and a recap. Verify current syllabus details when needed. Finish and check it, then show it for my preview.\n\nAdditional context from me (optional): {{context}}"
     - name: create-study-material-icse
       description: "Study material (ICSE style)"
-      prompt: "Create study material for my child on the topic she is working on, in ICSE style - thorough explanation with precise definitions, application-heavy practice, and a summary she can reread."
+      prompt: "Create a complete study activity for my child in ICSE style on the topic I specify or we are working on. Use the known grade and supplied school material for clear definitions, worked examples, application practice and a recap. Verify current syllabus details when needed. Finish and check it, then show it for my preview.\n\nAdditional context from me (optional): {{context}}"
     - name: create-a-practice-test
       description: "Create a practice test"
-      prompt: "Create a practice test for my child \u2014 a short refresher, then a proper check with real tiers, plus the answer key for me."
+      prompt: "Create a complete practice test for my child on the topic I specify or we are working on. Match the known grade, board and requested coverage and difficulty. Use my stated help and time limits; ask only for necessary missing decisions. Keep the answer key and marking notes parent-only, outside the child's activity. Check the questions and answers, then show the test for my preview.\n\nAdditional context from me (optional): {{context}}"
     - name: surprise-her
       description: "Surprise her with something new"
-      prompt: "Surprise her with a complete, immersive learning game about something fun and new to discover this week. Follow your learning-game skill. Choose a topic, genre and scope that fit her age and interests, with meaningful actions, visual feedback and progression. Finish and play-check the game, then show it for my preview."
+      prompt: "Surprise my child with a complete, immersive learning game about something fun and new to discover. Follow your learning-game skill. Choose a topic, genre and scope that fit my child's level and interests, with meaningful actions, visual feedback and progression. Finish and play-check the game, then show it for my preview.\n\nAdditional context from me (optional): {{context}}"
     - name: update-progress-report
       description: "Update progress report"
-      prompt: "Build an updated progress report \u2014 follow your create-progress-report skill, make it a designed HTML page, and give me a short coach-style read of the evidence here in chat too."
+      prompt: "Update the Progress page from real learning evidence by following your create-progress-report skill. Tell me briefly what has improved, where help is needed and a useful next step. Be clear when there is too little evidence to judge.\n\nAdditional context from me (optional): {{context}}"
     - name: run-check-in
       description: "Run check-in now"
-      prompt: "Run the check-in now: review her recent learning and school subjects from real evidence, check the school websites I'm watching (log in with my saved secrets where needed), rebuild the progress page, and tell me the headline here in chat."
+      prompt: "Run a check-in now: review my child's recent learning and school subjects from real evidence, check my watched school websites if any, refresh the Progress page and tell me what changed or needs attention. Use saved credentials when needed. Keep the summary grounded in what you actually found.\n\nAdditional context from me (optional): {{context}}"
     - name: check-school-websites
       description: "Check school websites"
-      prompt: "Check my watched school websites now - log in with my saved secrets where needed - and tell me anything new or needing attention: homework, grades, notices, deadlines."
+      prompt: "Check my watched school websites now, using saved credentials when needed. Tell me what is new or needs attention: homework, grades, notices and deadlines. Distinguish new findings from older notices and say if a site could not be checked.\n\nAdditional context from me (optional): {{context}}"
     - name: back-up-workspace
       description: "Back up workspace"
-      prompt: "Back up my workspace now \u2014 follow your backup skill."
+      prompt: "Back up my workspace now by following your backup skill. Verify the result and tell me whether it succeeded or what is needed to finish.\n\nAdditional context from me (optional): {{context}}"
   tool_policy:
     mode: allowlist
     enabled:
@@ -222,22 +245,22 @@ profiles:
     commands:
       - name: score-by-answer
         description: "Score by answer"
-        prompt: "Go through every question I've answered so far on this page and score me question by question: for each one, show the question, my answer, and whether it's right or wrong with the correct answer if it's wrong. Then give me a total score."
+        prompt: "Review the questions I have actually answered in this activity. Use my real answers and the activity's marking and help rules; do not invent missing answers or scores. During exam conditions, wait until the test ends to give marks or reveal answers. When review is allowed, show which answers are right, explain mistakes at my level and give the score for the work you could check.\n\nAdditional context from me (optional): {{context}}"
       - name: recap
         description: "Recap"
-        prompt: "Can you recap how I'm doing in this activity? Tell me what I've finished so far, what I'm getting right, where I still make mistakes, and what I should work on next."
+        prompt: "Recap how I am doing in this activity from what I have actually done: what I have finished, what I am getting right, where I need help and a useful next step. Keep it short and encouraging; do not invent a score or progress.\n\nAdditional context from me (optional): {{context}}"
       - name: walk-me-through-my-mistakes
         description: "Walk me through my mistakes"
-        prompt: "Can you walk me through the questions I got wrong, one at a time? For each one, show me the question and what I answered, help me spot my mistake with hints instead of just telling me, and only move to the next one once I've got it right. At the end, tell me the pattern in my mistakes."
+        prompt: "Help me learn from the questions I got wrong in this activity, one at a time. Use what I actually answered, help me spot the mistake with a hint and let me try again before moving on. Respect the activity's test and help rules; if solutions must stay hidden, use a similar example. At the end, explain any pattern the evidence supports.\n\nAdditional context from me (optional): {{context}}"
       - name: check-strictly
         description: "Check strictly"
-        prompt: "Check my last answer strictly, like an examiner: mark it exact, name every error precisely, and don't count a partial or close answer as correct. But I answer by voice, so ignore spelling slips from transcription and judge what I meant - unless this is a spelling test, where spelling counts."
+        prompt: "Check the accuracy of my last answer carefully and explain errors clearly at my level when the activity allows feedback. Respect its marking, help and timing rules, including waiting until the end under exam conditions. I may answer by voice, so ignore transcription spelling slips and judge what I meant unless spelling is being tested.\n\nAdditional context from me (optional): {{context}}"
       - name: keep-quizzing-me-harder-each-time
         description: "Adaptive quiz"
-        prompt: "Quiz me adaptively like the GMAT: start at medium difficulty, one question at a time. If I get one right, make the next harder; if I get one wrong, make the next easier and quickly teach me what I missed before moving on. Tell me right or wrong with one short why each time, keep track of my level, and after about 8 questions (or when I say stop) tell me where I landed and what to practice."
+        prompt: "Quiz me adaptively within this activity, one question at a time, at a level suited to my grade and what I have shown so far. Adjust difficulty from my answers and help me understand mistakes according to the activity's help rules. Respect any test conditions and time limits. When I stop or we reach a natural stopping point, give a short evidence-based recap and a useful next step.\n\nAdditional context from me (optional): {{context}}"
       - name: give-me-a-real-example
         description: "Give me a real example"
-        prompt: "Can you give me a real-world example of this, not just the definition?"
+        prompt: "Give me a clear real-world example of the idea we are discussing in this activity, using something suited to my age and interests. Respect the activity's help rules; use a similar problem if an assessed answer must stay hidden.\n\nAdditional context from me (optional): {{context}}"
     tool_policy:
       mode: allowlist
       enabled:

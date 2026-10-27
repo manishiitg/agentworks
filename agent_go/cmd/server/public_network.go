@@ -164,6 +164,9 @@ func cliPersonScopes(user *UserClaims) []string {
 }
 
 func mcpOAuthAdvertisedScopes() []string {
+	if sparkquillOnlyDeployment() {
+		return slices.Clone(sparkquillScopes)
+	}
 	if agentBridgeOnlyDeployment() {
 		return []string{"messages:read", "messages:send"}
 	}

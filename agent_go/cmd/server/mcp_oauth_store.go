@@ -303,6 +303,9 @@ func (s *mcpOAuthStore) decide(ctx context.Context, raw string, user *UserClaims
 		workflowIDs = slices.Clone(selected[0])
 	}
 	granted := mcpOAuthPersonScopes(user)
+	if hasSparkQuillScopes(req.Scopes) {
+		granted = sparkquillOAuthScopesFor(user, req.Scopes)
+	}
 	if audience, bound := projectMCPAudienceForResource(req.Resource); bound {
 		granted = audience.scopes()
 		if approve && projectIdentity == "" {
@@ -579,7 +582,7 @@ func (s *mcpOAuthStore) Connections(ctx context.Context, userID string) ([]mcpOA
 			return nil, err
 		}
 		_, projectBound := projectMCPAudienceForResource(c.Resource)
-		c.AllWorkflows = !projectBound && len(c.WorkflowIDs) == 0 && !strings.HasPrefix(c.ClientName, "Agent: ")
+		c.AllWorkflows = !projectBound && !hasSparkQuillScopes(c.Scopes) && len(c.WorkflowIDs) == 0 && !strings.HasPrefix(c.ClientName, "Agent: ")
 		c.ExpiresAt = time.Unix(expiry, 0)
 		connections = append(connections, c)
 	}

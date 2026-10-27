@@ -89,7 +89,13 @@ export type Activity = {
 }
 
 /** One entry of the composer's quick menu: the label shown, the message sent as if typed. */
-export type QuickCommand = { label: string; message: string }
+export type QuickCommand = {
+  name: string
+  label: string
+  message: string
+  aliases?: string[]
+  menuHidden?: boolean
+}
 
 /** A page the parent keeps one tap away as a tab at the top (state key "pins"). */
 export type PinnedPage = { path: string; title: string }

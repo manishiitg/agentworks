@@ -28,6 +28,7 @@ type externalTool struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
+	sparkquill  bool
 	mutates     bool
 	executes    bool
 	plan        bool
@@ -474,7 +475,7 @@ func (api *StreamingAPI) handleExternalTools(w http.ResponseWriter, r *http.Requ
 		externalError(w, 401, "unauthorized", "Sign in to AgentWorks.")
 		return
 	}
-	catalog, err := externalTools()
+	catalog, err := externalToolsForClaims(GetUserFromContext(r.Context()))
 	if err != nil {
 		externalError(w, 500, "schema_error", err.Error())
 		return
@@ -606,7 +607,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 			return
 		}
 	}
-	catalog, err := externalTools()
+	catalog, err := externalToolsForClaims(GetUserFromContext(r.Context()))
 	if err != nil {
 		externalError(w, 500, "schema_error", err.Error())
 		return
@@ -653,6 +654,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if err = tool.validator.Validate(call.Arguments); err != nil {
 		externalError(w, 400, "invalid_arguments", err.Error())
+		return
+	}
+	if tool.sparkquill {
+		api.externalSparkQuillCall(w, r, tool.Name, call.Arguments)
 		return
 	}
 	if _, ok := agentSourceAction(tool.Name); ok {

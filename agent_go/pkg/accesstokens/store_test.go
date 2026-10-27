@@ -533,3 +533,47 @@ func TestGatewayTokenDoesNotRequireWorkflowAttachment(t *testing.T) {
 		t.Fatal(token, err)
 	}
 }
+
+func TestSparkQuillConnectionsAreIsolatedAndIndependentlyRevocable(t *testing.T) {
+	now := time.Now()
+	base := Token{Name: "SparkQuill", UserID: "owner", Scopes: []string{"sparkquill:read", "sparkquill:write", "sparkquill:run"}, ExpiresAt: now.Add(time.Hour)}
+	if err := Validate(base, now); err != nil {
+		t.Fatal(err)
+	}
+	for _, scopes := range [][]string{{"sparkquill:write"}, {"sparkquill:run"}, {"sparkquill:read", "files:read"}, {"sparkquill:read", "vault:manage"}} {
+		token := base
+		token.Scopes = scopes
+		if Validate(token, now) == nil {
+			t.Fatalf("accepted mixed/incomplete scopes: %v", scopes)
+		}
+	}
+	bounded := base
+	bounded.AllWorkflows = true
+	if Validate(bounded, now) == nil {
+		t.Fatal("SparkQuill acquired workflow bounds")
+	}
+	store, err := Open(filepath.Join(t.TempDir(), "tokens.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	workflow := Token{Name: "AgentWorks", UserID: "owner", Scopes: []string{"workflows:read"}, AllWorkflows: true, ExpiresAt: now.Add(time.Hour)}
+	_, aw, err := store.Issue(context.Background(), workflow, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, sq, err := store.Issue(context.Background(), base, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(context.Background(), aw, now); err != nil {
+		t.Fatalf("SparkQuill revoked AgentWorks: %v", err)
+	}
+	_, _, err = store.Issue(context.Background(), workflow, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(context.Background(), sq, now); err != nil {
+		t.Fatalf("AgentWorks revoked SparkQuill: %v", err)
+	}
+}
