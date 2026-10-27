@@ -7,6 +7,8 @@ import { gitFullPath, type GitPanel } from '../../stores/useWorkspaceGitStore'
 import { FileTypeIcon } from './fileTypeIcon'
 import { BranchPicker, ConflictSection, GitBlamePanel, StashSection, type AskAgent, type RunAction } from './GitExtras'
 import { gitAgentPrompts } from '../../utils/gitAgentPrompts'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
 const STATUS_STYLE = {
   modified: { letter: 'M', text: 'text-amber-500', title: 'Modified' },
@@ -193,10 +195,10 @@ function GitGraph({ workspacePath, repo, reloadKey }: { workspacePath: string; r
   )
 }
 
-function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, reloadKey }: {
+function RepoSection({ repo, workspacePath, preferenceKey, onAsk, run, busy, error, reloadKey }: {
   repo: GitRepo
   workspacePath: string
-  showName: boolean
+  preferenceKey: string
   onAsk?: AskAgent
   run: RunAction
   busy: boolean
@@ -205,6 +207,17 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, r
   reloadKey: number
 }) {
   const git = useFileGit()
+  const [open, setOpen] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem(preferenceKey)
+      if (saved === 'open' || saved === 'closed') return saved === 'open'
+    } catch { /* Optional viewer preference. */ }
+    return repo.files.length > 0
+  })
+  const toggle = () => {
+    setOpen(!open)
+    try { window.localStorage.setItem(preferenceKey, open ? 'closed' : 'open') } catch { /* Optional viewer preference. */ }
+  }
   const [message, setMessage] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [graphKey, setGraphKey] = useState(0)
@@ -230,7 +243,11 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, r
     <section className="border-b border-border pb-1">
       <div className="flex h-9 items-center gap-1 px-2 text-xs">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {showName && <span className="truncate text-muted-foreground">{repoLabel(repo)}:</span>}
+          <button type="button" onClick={toggle} aria-expanded={open} aria-label={`Repository ${repoLabel(repo)}`} className="flex min-w-0 items-center gap-1 text-left hover:text-foreground">
+            {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+            <span className="truncate">{repoLabel(repo)}</span>
+            <span className="shrink-0 text-muted-foreground">{repo.files.length ? `${repo.files.length}${repo.truncated ? '+' : ''} changes` : 'clean'}</span>
+          </button>
           <BranchPicker workspacePath={workspacePath} repo={repo} run={run} busy={busy} />
           {repo.ahead > 0 && <span className="inline-flex items-center text-emerald-500" title={`${repo.ahead} to push`}><ArrowUp className="h-3 w-3" />{repo.ahead}</span>}
           {repo.behind > 0 && <span className="inline-flex items-center text-amber-500" title={`${repo.behind} to pull`}><ArrowDown className="h-3 w-3" />{repo.behind}</span>}
@@ -242,6 +259,8 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, r
           </>
         )}
       </div>
+      {error && <p role="alert" className="px-2 pb-1 text-xs text-destructive">{error}</p>}
+      {open && <>
       <div className="px-2 pb-2">
         <div className="relative">
           <textarea
@@ -295,7 +314,6 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, r
             </div>
           )}
         </div>
-        {error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>}
       </div>
       {repo.files.length === 0 && (
         <p className="flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5 text-emerald-500" />No changes. The working tree is clean.</p>
@@ -318,6 +336,7 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, r
       {repo.truncated && <p className="px-3 py-1 text-xs text-muted-foreground">Showing the first changes only.</p>}
       <StashSection workspacePath={workspacePath} repo={repo} run={run} busy={busy} reloadKey={graphKey + reloadKey} />
       <GitGraph workspacePath={workspacePath} repo={repo} reloadKey={graphKey + reloadKey} />
+      </> }
     </section>
   )
 }
@@ -325,6 +344,9 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, r
 /** Source Control view: commit box and staged / unstaged changes, per repo. */
 export function GitChangesList({ workspacePath, onAsk }: { workspacePath: string; onAsk?: AskAgent }) {
   const git = useFileGit()
+  const viewer = useAuthStore(state => state.user?.id)
+  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const preferenceKey = (repo: GitRepo) => `git_repo_open:${JSON.stringify([server, viewer, workspacePath, repo.root])}`
   const repos = useFileGitStore(state => state.repos)
   const refresh = useFileGitStore(state => state.refresh)
   const [busyRepo, setBusyRepo] = useState<string | null>(null)
@@ -356,10 +378,10 @@ export function GitChangesList({ workspacePath, onAsk }: { workspacePath: string
       <div className="min-h-0 flex-1 overflow-y-auto">
       {repos.map(repo => (
         <RepoSection
-          key={repo.root}
+          key={preferenceKey(repo)}
           repo={repo}
           workspacePath={workspacePath}
-          showName={repos.length > 1}
+          preferenceKey={preferenceKey(repo)}
           onAsk={onAsk}
           run={run}
           busy={busyRepo === repo.root || git.writable === false}
