@@ -114,6 +114,6 @@ func (api *StreamingAPI) cleanupOrphanedConversationTurn(sessionID, rootExecutio
 	}
 	api.updateSessionStatus(sessionID, "error")
 	api.setSessionBusy(sessionID, false)
-	api.completeTrackedExecution(rootExecutionID, trackedExecutionStatusFailed, "workshop idle wait timed out", nil)
+	api.completeTrackedExecution(rootExecutionID, trackedExecutionStatusFailed, "This reply stopped because no progress was detected. Send a message to continue.", nil)
 	api.removeSessionQueryID(sessionID, rootExecutionID)
 }
