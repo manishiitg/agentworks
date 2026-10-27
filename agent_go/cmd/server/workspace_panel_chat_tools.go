@@ -72,7 +72,16 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 		}
 		description := "For this project's Builder chat only; the project is bound by the server. " + tool.Description
 		if err := reg.RegisterCustomToolWithTimeout(name, description, schema, func(ctx context.Context, args map[string]any) (out string, err error) {
-			defer func() { log.Printf("[PANEL_SETTINGS] tool=%s session=%s success=%t", name, session, err == nil) }()
+			// A refusal from the dispatched call is already logged by [EXTERNAL_CALL] (envelopes only, never
+			// echoed arguments); log this panel's own refusal text here so a failed call is never blind.
+			dispatched := false
+			defer func() {
+				reason := ""
+				if err != nil && !dispatched {
+					reason = fmt.Sprintf(" reason=%q", err.Error())
+				}
+				log.Printf("[PANEL_SETTINGS] tool=%s session=%s success=%t%s", name, session, err == nil, reason)
+			}()
 			claims := GetUserFromContext(ctx)
 			if name == "chat_preferences" {
 				if claims == nil || claims.UserID != user {
@@ -141,7 +150,11 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 			}
 			request := httptest.NewRequest(http.MethodPost, "/api/external/call", bytes.NewReader(data)).WithContext(ctx)
 			recorder := httptest.NewRecorder()
-			api.dispatchExternalCall(recorder, request, false)
+			// Translated: the server chose this tool and project after the caller checks above. Panel tools such as
+			// crew_owners are internal members of a merged MCP tool (workspace action=owners), so an untranslated
+			// call was refused as unknown_tool (PLAT-856).
+			dispatched = true
+			api.dispatchExternalCall(recorder, request, true)
 			body := strings.TrimSpace(recorder.Body.String())
 			if recorder.Code >= 400 {
 				return "", errors.New(laptopActionErrorText(body))
