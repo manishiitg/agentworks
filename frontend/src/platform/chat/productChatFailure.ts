@@ -122,8 +122,8 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
   if (normalizedCode === 'billing_error' || /\[billing_error\]/i.test(evidence)) {
     return {
       code: 'billing_error',
-      title: 'AI account billing check failed',
-      message: "This AI account couldn't be used: its billing check failed. Ask your admin to check the account's payment, or choose another model.",
+      title: 'AI account plan or billing needs attention',
+      message: "Check this account's plan and billing, or choose another account. For a shared account, ask your admin to check it.",
       provider,
       retryable: false,
       technicalDetails,

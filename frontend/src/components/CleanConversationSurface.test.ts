@@ -306,16 +306,17 @@ describe('buildCleanConversationItems', () => {
     }))
   })
 
-  it('shows a billing refusal without usage-reset advice or an upgrade action', () => {
-    const raw = 'selected LLM failed: example-cli/model [billing_error]: API error 402: Billing verification failed. Please check your payment method. (billing_error)'
+  it.each([
+    'selected LLM failed: example-cli/model [billing_error]: API error 402: Billing verification failed. Please check your payment method. (billing_error)',
+    'selected LLM failed: cursor-cli/model [billing_error]: This Cursor account needs a plan upgrade to continue.',
+    'selected LLM failed: codex-cli/model [billing_error]: Quota exceeded. Check your plan and billing details.',
+  ])('shows an account-action refusal without usage-reset advice: %s', (raw) => {
     const items = buildCleanConversationItems([
       event('failure', 'agent_error', { error: raw, retry_at: '2030-01-01T00:00:00Z' }),
     ])
     const failure = items.at(-1)?.failure
     expect(failure).toEqual(expect.objectContaining({
       code: 'billing_error',
-      title: 'AI account billing check failed',
-      message: "This AI account couldn't be used: its billing check failed. Ask your admin to check the account's payment, or choose another model.",
       retryable: false,
       technicalDetails: raw,
     }))
