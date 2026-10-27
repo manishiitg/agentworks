@@ -109,6 +109,26 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	// Discovery is limited to the Vault apps this Crew uses (not the retired place attachments).
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "discover", "name": "vault_c-0123456789ab"}, 403)
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "discover", "name": connection}, 200)
+	// With "Use all my Vault apps automatically" on, the Crew gate accepts any Vault app ID; the discover
+	// operation itself still refuses a connection the caller can neither use nor manage.
+	raw, _, err := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json")
+	var manifest map[string]any
+	if err != nil || json.Unmarshal([]byte(raw), &manifest) != nil {
+		t.Fatalf("crew manifest: %v", err)
+	}
+	capabilities, _ := manifest["capabilities"].(map[string]any)
+	if capabilities == nil {
+		capabilities = map[string]any{}
+	}
+	capabilities["chosen_vault_apps_only"] = false
+	manifest["capabilities"] = capabilities
+	updated, _ := json.Marshal(manifest)
+	if err := writeFileToWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json", string(updated)); err != nil {
+		t.Fatal(err)
+	}
+	if foreign := crewCapabilityHTTP(t, f, crewWriter("owner"), "mcp", map[string]any{"action": "discover", "name": "vault_" + crewForeignConnection}, 400); !strings.Contains(foreign, "not available to your account") {
+		t.Fatalf("another person's connection: %s", foreign)
+	}
 	// The saved Vault account can be selected by more than one project.
 	otherRoot := "Crew/another"
 	f.write(t, otherRoot+"/workflow.json", `{"id":"another","created_by":"owner","capabilities":{"selected_servers":["`+connection+`"]}}`)

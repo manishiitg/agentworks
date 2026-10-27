@@ -12,6 +12,10 @@ import (
 	"testing"
 )
 
+// crewForeignConnection is a saved connection in another person's vault, which the fixture's owner
+// cannot use or manage.
+const crewForeignConnection = "c-0000ffff"
+
 type crewConnectionVaultFixture struct {
 	catalog     string
 	mu          sync.Mutex
@@ -68,6 +72,10 @@ func newCrewConnectionVaultFixture(t *testing.T) *crewConnectionVaultFixture {
 			json.NewEncoder(w).Encode(c)
 		case strings.HasPrefix(r.URL.Path, "/api/vaults/v-123456/connectors/") && strings.HasSuffix(r.URL.Path, "/sync") && r.Method == http.MethodPost:
 			json.NewEncoder(w).Encode(map[string]any{"tools": []any{}})
+		case r.URL.Path == "/api/admin/connectors/"+crewForeignConnection:
+			json.NewEncoder(w).Encode(map[string]any{"ID": crewForeignConnection, "id": crewForeignConnection, "VaultID": "v-999999", "Provider": "example", "Status": "active"})
+		case r.URL.Path == "/api/vaults/v-999999":
+			w.WriteHeader(403)
 		case strings.HasPrefix(r.URL.Path, "/api/admin/connectors/"):
 			id := strings.TrimPrefix(r.URL.Path, "/api/admin/connectors/")
 			c, ok := f.connections[id]
