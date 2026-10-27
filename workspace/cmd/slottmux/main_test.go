@@ -132,6 +132,11 @@ func TestUnknownSlotLaunchListNeverFallsThroughToService(t *testing.T) {
 		t.Fatal("unsupported launch was accepted")
 		return 0
 	}
+	for _, command := range []string{"new-window", "split-window"} {
+		if got := run([]string{command, "-d", "/bin/sh " + filepath.Join(cfg.SlotRunRoot, "slot08", "launch.sh")}); got != exitMismatch {
+			t.Fatalf("bare %s exit=%d", command, got)
+		}
+	}
 	for _, command := range []string{"new-session", "new", "new-window", "split-window"} {
 		args := []string{"set-option", "-g", "mouse", "off", ";", command, "-d", "/bin/sh " + filepath.Join(cfg.SlotRunRoot, "slot08", "launch.sh")}
 		if got := run(args); got != exitMismatch {

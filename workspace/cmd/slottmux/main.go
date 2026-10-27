@@ -327,8 +327,8 @@ func run(args []string) int {
 	// A slot launch hidden behind an unknown command list must never fall
 	// through to the service account (PLAT-872-55).
 	if !c.IsNewSession() && cfg.SlotNamedByScript(strings.Join(args, " ")) != "" {
-		for i := 1; i < len(args); i++ {
-			if args[i-1] != ";" {
+		for i := 0; i < len(args); i++ {
+			if i > 0 && args[i-1] != ";" {
 				continue
 			}
 			switch args[i] {
