@@ -3050,6 +3050,7 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
   const sessionStreamingText = useChatStore(state => (
     currentSessionId ? state.streamingText[currentSessionId] : undefined
   ))
+  const sessionChatUIMode = useChatStore(state => currentSessionId ? state.streamingChatUIMode[currentSessionId] : undefined)
   const sessionStreamingStatus = useChatStore(state => (
     currentSessionId ? state.streamingStatus[currentSessionId] : undefined
   ))
@@ -5446,15 +5447,10 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
                       onRetry={selectedTerminalUsesSessionEvents
                         ? (mainSessionOlderEventPage.error ? loadOlderMainSessionEvents : loadMainSessionEvents)
                         : loadSelectedTerminalEventPage}
-                      // Tmux providers stream terminal snapshots/progress, not
-                      // reliable assistant-token deltas. Rendering those in the
-                      // formatted transcript creates a growing raw-output blog
-                      // immediately before the authoritative sidecar-backed
-                      // completion answer. Keep the friendly live status, but
-                      // reserve prose for the final structured answer. API
-                      // providers (no tmux session) still stream their answer
-                      // naturally as it is generated.
-                      streamingText={selectedTerminalUsesSessionEvents && !selectedTerminalView?.tmux_session
+                      // The backend's native-delta flag permits progressive UI;
+                      // terminal/pane frames never supply widget content.
+                      streamingChatUIMode={sessionChatUIMode}
+                      streamingText={selectedTerminalUsesSessionEvents && sessionChatUIMode === 'progressive'
                         ? sessionStreamingText
                         : undefined}
                       // Only display a live status that the event stream itself

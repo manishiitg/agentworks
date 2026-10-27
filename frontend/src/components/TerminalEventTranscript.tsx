@@ -1036,6 +1036,7 @@ interface TerminalEventTranscriptProps {
   onRetry?: () => void
   /** Transient response text from SSE. It is intentionally not persisted as
    * individual protocol events, but belongs in the readable live transcript. */
+  streamingChatUIMode?: 'progressive' | 'complete'
   streamingText?: string
   streamingStatus?: string
   /** Optional product skin for the transcript backdrop. AgentWorks keeps its
@@ -1070,6 +1071,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   error,
   onLoadOlder,
   onRetry,
+  streamingChatUIMode = 'complete',
   streamingText = '',
   streamingStatus = '',
   surfaceClassName,
@@ -1293,7 +1295,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           const body = questionPrompt
             ? <CodingAgentQuestionCard prompt={questionPrompt} onAnswer={onAnswerCodingAgentQuestion} />
             : item.kind === 'live'
-            ? <LiveAssistantTranscript text={item.text} status={item.status} showWriting={!runtimeActivity} />
+            ? <LiveAssistantTranscript chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
             : item.kind === 'tools'
             ? <ToolBatch item={item} toolLayout={toolLayout} />
             : item.kind === 'thinking'
@@ -1341,11 +1343,11 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
 
 // Custom product renderers can keep their existing live-text cue until they
 // opt into the shared lifecycle indicator.
-const LiveAssistantTranscript: React.FC<{ text: string; status: string; showWriting: boolean }> = ({ text, status, showWriting }) => (
+const LiveAssistantTranscript: React.FC<{ text: string; status: string; showWriting: boolean; chatUIStreamMode: 'progressive' | 'complete' }> = ({ text, status, showWriting, chatUIStreamMode }) => (
   text ? (
     <article data-testid="terminal-clear-live-assistant-message" className="py-1">
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
-        <ConversationMarkdownRenderer content={text} framed={false} maxHeight="none" copyableCode />
+        <ConversationMarkdownRenderer chatElementStream={chatUIStreamMode === 'progressive' ? 'progressive' : 'pending'} content={text} framed={false} maxHeight="none" copyableCode />
       </div>
       {showWriting && <span aria-label="Writing" className="mt-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />}
     </article>

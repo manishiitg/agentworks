@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import type { ChatElement as ElementSpec } from './chatElementSpec'
+import { parseChatElement, type ChatElement as ElementSpec } from './chatElementSpec'
+import { parseStreamingChatElement } from './chatElementStream'
 
 const frame = 'not-prose my-4 min-w-0 max-w-xl rounded-xl border border-border bg-muted/20 text-foreground'
 const summary = 'cursor-pointer break-words px-4 py-3 text-sm font-medium marker:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring'
@@ -77,4 +78,20 @@ export function ChatElement({ spec, renderMarkdown }: { spec: ElementSpec; rende
       </ol>
     </section>
   )
+}
+
+export type ChatElementStream = 'progressive' | 'pending'
+
+export function ChatElementBlock({ source, stream, renderMarkdown }: {
+  source: string
+  stream?: ChatElementStream
+  renderMarkdown: (body: string) => ReactNode
+}) {
+  const spec = stream === 'progressive' ? parseStreamingChatElement(source) : stream ? null : parseChatElement(source)
+  if (spec) return <ChatElement spec={spec} renderMarkdown={renderMarkdown} />
+  if (stream) return <div className={`${frame} px-4 py-3 text-sm text-muted-foreground`} role="status" data-chat-element-pending>Preparing visual…</div>
+  return <details className={frame} data-chat-element-error>
+    <summary className={summary}>Couldn’t display this visual · View source</summary>
+    <pre className="overflow-auto whitespace-pre-wrap break-words border-t border-border px-4 py-3 text-xs">{source}</pre>
+  </details>
 }

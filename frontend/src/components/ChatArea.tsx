@@ -290,6 +290,7 @@ function handleLiveStreamingEvent(
     const rawSource = innerData?.source ?? agentEvent?.source ?? metadata?.source
     const chunkMeta = {
       isDelta: typeof rawIsDelta === 'boolean' ? rawIsDelta : undefined,
+      chatUIStreamMode: typeof metadata?.chat_ui_stream_mode === 'string' ? metadata.chat_ui_stream_mode : undefined,
       source: typeof rawSource === 'string' ? rawSource : undefined,
     }
     if (ownedTerminalKeys.length > 0) {
@@ -416,6 +417,7 @@ export interface ChatContentRendererProps {
   isStreaming: boolean
   isRestoring: boolean
   streamingText: string
+  streamingChatUIMode?: 'progressive' | 'complete'
   streamingStatus?: string
   hasOlder?: boolean
   loadingOlder?: boolean
@@ -815,6 +817,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const activeStreamingText = useChatStore((state) =>
     activeSessionId ? state.streamingText[activeSessionId] || '' : ''
   )
+  const streamingChatUIMode = useChatStore(state => activeSessionId ? state.streamingChatUIMode[activeSessionId] : undefined)
   const streamingStatus = useChatStore((state) =>
     activeSessionId ? state.streamingStatus[activeSessionId] || '' : ''
   )
@@ -3626,6 +3629,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             isStreaming={activeTabBusy}
             isRestoring={multiAgentSurface === 'restoring'}
             streamingText={activeStreamingText}
+            streamingChatUIMode={streamingChatUIMode}
             streamingStatus={streamingStatus}
             hasOlder={historyPagination?.hasMore ?? false}
             loadingOlder={olderHistory.loading}
@@ -3693,6 +3697,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
                     streamingText={activeStreamingText}
+                    streamingChatUIMode={streamingChatUIMode}
                     streamingStatus={streamingStatus}
                     hasOlder={historyPagination?.hasMore ?? false}
                     loadingOlder={olderHistory.loading}
@@ -3760,6 +3765,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
                     streamingText={activeStreamingText}
+                    streamingChatUIMode={streamingChatUIMode}
                     streamingStatus={streamingStatus}
                     hasOlder={historyPagination?.hasMore ?? false}
                     loadingOlder={olderHistory.loading}

@@ -11,8 +11,7 @@ import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { workspaceApi, agentApi } from '../../services/api'
 import { CodeCopyButton, codeBlockText } from './CodeCopyButton'
-import { ChatElement } from './ChatElement'
-import { parseChatElement } from './chatElementSpec'
+import { ChatElementBlock, type ChatElementStream } from './ChatElement'
 
 const SyntaxHighlightedCode = lazy(() => import('./SyntaxHighlightedCode'))
 
@@ -37,6 +36,7 @@ interface MarkdownRendererProps {
   copyableCode?: boolean
   // Native conversation presentation; ordinary file/tool Markdown stays code.
   chatElements?: boolean
+  chatElementStream?: ChatElementStream
   basePath?: string
   onLinkClick?: (filepath: string) => void
   workspaceLinkHref?: (filepath: string) => string
@@ -601,6 +601,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
   compactImages = false,
   copyableCode = false,
   chatElements = false,
+  chatElementStream,
   basePath,
   onLinkClick,
   workspaceLinkHref,
@@ -1003,6 +1004,30 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
     return processed
   }, [basePath, content, disablePathLinking])
 
+  const renderPre = useCallback(({ children }: { children?: React.ReactNode }) => {
+    const codeClass = React.isValidElement<{ className?: string }>(children) ? children.props.className ?? '' : ''
+    const text = codeBlockText(children).replace(/\n$/, '')
+    if (chatElements && codeClass.split(/\s+/).includes('language-chat-ui')) {
+      return <ChatElementBlock source={text} stream={chatElementStream} renderMarkdown={body => (
+        <MarkdownRenderer content={body} className={className} untrustedContent={untrustedContent}
+          disablePathLinking={disablePathLinking} compactImages={compactImages} copyableCode={copyableCode}
+          basePath={basePath} onLinkClick={onLinkClick} workspaceLinkHref={workspaceLinkHref}
+          onWorkspaceLinkResolve={onWorkspaceLinkResolve} onWorkspaceLinkClick={onWorkspaceLinkClick} />
+      )} />
+    }
+    // Pre tag is handled by the code component above
+    // This is a fallback for any pre tags that don't contain code
+    const block = (
+      <pre className="bg-gray-100 dark:bg-gray-800 p-2 rounded text-xs font-mono overflow-x-auto break-all min-w-0">
+        {children}
+      </pre>
+    )
+    if (!copyableCode) return block
+    // Diagrams, widgets and tool definitions are not commands to copy.
+    if (!text.trim() || /language-(mermaid|report-widget|tool-definition)/.test(codeClass)) return block
+    return <div className="relative min-w-0">{block}<CodeCopyButton text={text} /></div>
+  }, [chatElements, chatElementStream, className, untrustedContent, disablePathLinking, compactImages, copyableCode, basePath, onLinkClick, workspaceLinkHref, onWorkspaceLinkResolve, onWorkspaceLinkClick])
+
   return (
     <div
       className={`${containerClasses} ${scrollClasses} markdown-content`}
@@ -1247,30 +1272,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
               </div>
             )
           },
-          pre: ({ children }) => {
-            const codeClass = React.isValidElement<{ className?: string }>(children) ? children.props.className ?? '' : ''
-            const text = codeBlockText(children).replace(/\n$/, '')
-            if (chatElements && codeClass.split(/\s+/).includes('language-chat-ui')) {
-              const spec = parseChatElement(text)
-              if (spec) return <ChatElement spec={spec} renderMarkdown={body => (
-                <MarkdownRenderer content={body} className={className} untrustedContent={untrustedContent}
-                  disablePathLinking={disablePathLinking} compactImages={compactImages} copyableCode={copyableCode}
-                  basePath={basePath} onLinkClick={onLinkClick} workspaceLinkHref={workspaceLinkHref}
-                  onWorkspaceLinkResolve={onWorkspaceLinkResolve} onWorkspaceLinkClick={onWorkspaceLinkClick} />
-              )} />
-            }
-            // Pre tag is handled by the code component above
-            // This is a fallback for any pre tags that don't contain code
-            const block = (
-              <pre className="bg-gray-100 dark:bg-gray-800 p-2 rounded text-xs font-mono overflow-x-auto break-all min-w-0">
-                {children}
-              </pre>
-            )
-            if (!copyableCode) return block
-            // Diagrams, widgets and tool definitions are not commands to copy.
-            if (!text.trim() || /language-(mermaid|report-widget|tool-definition)/.test(codeClass)) return block
-            return <div className="relative min-w-0">{block}<CodeCopyButton text={text} /></div>
-          },
+          pre: renderPre,
           blockquote: ({ children }) => (
             <blockquote className="border-l-4 border-blue-500 dark:border-blue-400 pl-4 py-1.5 my-2 bg-blue-50 dark:bg-blue-900/20 rounded-r text-sm break-words overflow-wrap-anywhere text-gray-700 dark:text-gray-300 italic">
               {children}
@@ -1424,13 +1426,13 @@ export const ToolMarkdownRenderer: React.FC<{ content: string; maxHeight?: strin
 
 // Memoized for the same reason as MarkdownRenderer above — this is the wrapper
 // every chat surface renders per message, so it is the one that multiplies.
-export const ConversationMarkdownRenderer: React.FC<{ content: string; maxHeight?: string; disablePathLinking?: boolean; framed?: boolean; copyableCode?: boolean }> = React.memo(({ content, maxHeight = "384px", disablePathLinking, framed = true, copyableCode }) => (
+export const ConversationMarkdownRenderer: React.FC<{ content: string; maxHeight?: string; disablePathLinking?: boolean; framed?: boolean; copyableCode?: boolean; chatElementStream?: ChatElementStream }> = React.memo(({ content, maxHeight = "384px", disablePathLinking, framed = true, copyableCode, chatElementStream }) => (
   <div
     className={`${framed ? 'border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800' : ''} overflow-y-auto overflow-x-hidden min-w-0`}
     style={{ maxHeight }}
   >
     <div className={`${framed ? 'p-3' : 'p-0'} min-w-0`}>
-      <MarkdownRenderer content={content} className="conversation-markdown" disablePathLinking={disablePathLinking} compactImages copyableCode={copyableCode} chatElements />
+      <MarkdownRenderer content={content} className="conversation-markdown" disablePathLinking={disablePathLinking} compactImages copyableCode={copyableCode} chatElements chatElementStream={chatElementStream} />
     </div>
   </div>
 ))

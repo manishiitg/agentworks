@@ -907,3 +907,32 @@ func TestLegacyRemovedEventTypesExcludedFromPolling(t *testing.T) {
 		}
 	}
 }
+
+// PLAT-750: only native assistant deltas can progressively render widgets;
+// terminal frames or whole transcript blocks must not opt themselves in.
+func TestChatUIStreamingFollowsNativeMessageFraming(t *testing.T) {
+	for _, tc := range []struct {
+		source string
+		delta  bool
+		want   string
+	}{
+		{pkgevents.StreamingChunkSourceContent, true, "progressive"},
+		{pkgevents.StreamingChunkSourceTranscript, false, "complete"},
+		{pkgevents.StreamingChunkSourceTerminal, true, "complete"},
+	} {
+		t.Run(tc.source, func(t *testing.T) {
+			store := NewEventStore(10)
+			defer store.Stop()
+			chunk := &pkgevents.StreamingChunkEvent{Source: tc.source, IsDelta: tc.delta,
+				BaseEventData: pkgevents.BaseEventData{Metadata: map[string]interface{}{"chat_ui_stream_mode": "untrusted"}}}
+			store.AddEvent("chat-ui", Event{ID: "piece", Type: "streaming_chunk", Data: pkgevents.NewAgentEvent(chunk)})
+			saved := store.events["chat-ui"][0].Data.Data.(*pkgevents.StreamingChunkEvent)
+			if saved.Metadata["chat_ui_stream_mode"] != tc.want {
+				t.Fatalf("stream mode: %v", saved.Metadata)
+			}
+			if chunk.Metadata["chat_ui_stream_mode"] != "untrusted" {
+				t.Fatal("producer event mutated")
+			}
+		})
+	}
+}

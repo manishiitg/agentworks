@@ -31,6 +31,20 @@ describe('streaming pieces are applied once per frame', () => {
     expect(useChatStore.getState().completedStreamingText.s1).toBe('hello world')
   })
 
+  it('uses only the backend widget stream flag, clears it with the reply and never infers it from deltas', () => {
+    useChatStore.getState().appendStreamingChunk('s1', 2, '⏳ value!', { isDelta: true, chatUIStreamMode: 'progressive' })
+    useChatStore.getState().flushStreamingChunks('s1')
+    useChatStore.getState().appendStreamingChunk('s1', 3, 'Another', { isDelta: true, chatUIStreamMode: 'progressive' })
+    useChatStore.getState().flushStreamingChunks('s1')
+    expect(useChatStore.getState().streamingText.s1).toBe('⏳ value!Another')
+    expect(useChatStore.getState().streamingChatUIMode.s1).toBe('progressive')
+    useChatStore.getState().clearStreamingText('s1')
+    expect(useChatStore.getState().streamingChatUIMode.s1).toBeUndefined()
+    useChatStore.getState().appendStreamingChunk('s1', 2, 'unclassified', { isDelta: true })
+    useChatStore.getState().flushStreamingChunks('s1')
+    expect(useChatStore.getState().streamingChatUIMode.s1).toBe('complete')
+  })
+
   it('keeps de-duplicating repeated pieces', () => {
     useChatStore.getState().appendStreamingChunk('s1', 2, 'a', { isDelta: true })
     useChatStore.getState().appendStreamingChunk('s1', 2, 'a', { isDelta: true })

@@ -1011,6 +1011,7 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 			event.Data = cloned
 		}
 	}
+	stampChatUIStreamMode(event)
 	if strings.TrimSpace(event.ID) == "" {
 		event.ID = StableAgentEventID("event-store:"+sessionID, event.Data)
 	}

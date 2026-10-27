@@ -102,3 +102,51 @@ it('leaves malformed, oversized, nonfinite and non-chat blocks as source', async
   expect(ordinary.querySelector('[data-chat-element]')).toBeNull()
   expect(ordinary.querySelector('pre')?.textContent).toContain('Code example')
 })
+
+// PLAT-750: a number split at its exponent must never become an invented point.
+it('progressively renders complete records without raw JSON and keeps the widget mounted', async () => {
+  const container = document.createElement('div')
+  const root = createRoot(container)
+  const update = async (json: string, stream: 'progressive' | 'pending' | 'complete' = 'progressive') => {
+    await act(async () => root.render(<MarkdownRenderer content={'```chat-ui\n' + json} chatElements chatElementStream={stream === 'complete' ? undefined : stream} />))
+  }
+  const prefix = '{"type":"chart","title":"Requests","style":"line","data":['
+  await update(prefix + '{"label":"A","value":1e')
+  expect(container.querySelector('[data-chat-element-pending]')).not.toBeNull()
+  expect(container.querySelector('pre, code')).toBeNull()
+  await update(prefix + '{"label":"A","value":1e2},{"label":"B","value":')
+  const chart = container.querySelector('figure')
+  expect(chart?.querySelectorAll('circle')).toHaveLength(1)
+  expect(chart?.querySelector('svg')?.getAttribute('aria-label')).toContain('A: 100')
+  await update(prefix + '{"label":"A","value":1e2},{"label":"B","value":20}]}')
+  expect(container.querySelector('figure')).toBe(chart)
+  expect(chart?.querySelectorAll('circle')).toHaveLength(2)
+  await update(prefix + '{"label":"A","value":100}]}', 'pending')
+  expect(container.querySelector('svg, pre, code')).toBeNull()
+  await update(prefix + '{"label":"A","value":7}]}', 'complete')
+  expect(container.querySelector('svg')?.getAttribute('aria-label')).toContain('A: 7')
+  await act(async () => root.unmount())
+})
+
+it('streams ordered timeline records and escaped details without resetting disclosure', async () => {
+  const container = document.createElement('div')
+  const root = createRoot(container)
+  const update = async (source: string) => {
+    await act(async () => root.render(<MarkdownRenderer content={'```chat-ui\n' + source} chatElements chatElementStream="progressive" />))
+  }
+  const timeline = '{"type":"timeline","title":"History","items":[{"when":"09:00","title":"Received"},'
+  await update(timeline + '{"when":"10:00","title":"Work')
+  expect(container.querySelectorAll('[data-chat-element="timeline"] li')).toHaveLength(1)
+  await update(timeline + '{"when":"10:00","title":"Working"}]}')
+  expect(container.querySelectorAll('[data-chat-element="timeline"] li')).toHaveLength(2)
+  const details = '{"type":"details","title":"Evidence","body":"'
+  await update(details + 'First **fact**')
+  const disclosure = container.querySelector('details[data-chat-element="details"]') as HTMLDetailsElement
+  disclosure.open = true
+  await update(details + 'First **fact**\\nSecond \\u263')
+  expect(container.querySelector('details[data-chat-element="details"]')).toBe(disclosure)
+  expect(disclosure.open).toBe(true)
+  expect(disclosure.textContent).toContain('Second')
+  expect(container.querySelector('pre, code')).toBeNull()
+  await act(async () => root.unmount())
+})

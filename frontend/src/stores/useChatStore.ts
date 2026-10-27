@@ -28,6 +28,7 @@ import { coalesceThinkingDeltas } from '../utils/thinkingDeltas'
 export interface StreamingChunkMeta {
   isDelta?: boolean
   source?: string
+  chatUIStreamMode?: string
 }
 
 /** True when the backend positively identifies this chunk as a raw pane frame. */
@@ -674,6 +675,7 @@ export interface ChatState extends StoreActions {
   // Streaming text accumulation (per session)
   // Only tracks parent agent streaming - sub-agent streaming routed to delegationStreamingText
   streamingText: Record<string, string>  // sessionId → accumulated streaming text (response content only)
+  streamingChatUIMode: Record<string, 'progressive' | 'complete'>
   streamingStatus: Record<string, string>  // sessionId → latest status/heartbeat message (⏳/⚠️ messages)
   streamingTerminalText: Record<string, string>  // sessionId → latest live terminal/screen snapshot
   streamingTerminalActive: Record<string, boolean>  // sessionId → true while live terminal snapshots are arriving
@@ -869,10 +871,11 @@ function applyStreamingChunk(state: ChatState, sessionId: string, chunkIndex: nu
           // Route heartbeat/provider/tool progress messages to streamingStatus instead of streamingText.
           // Mixed chunks are split so raw markers like "api-bridge - execute_shell_command (MCP)"
           // cannot leak into the visible assistant markdown.
-          const { statusText, text } = splitStreamingStatusAndText(chunk)
+          const nativeDelta = meta?.chatUIStreamMode === 'progressive'
+          const { statusText, text } = nativeDelta ? { statusText: null, text: chunk } : splitStreamingStatusAndText(chunk)
           // Trust the backend's own classification when it sent one; only fall
           // back to sniffing the text when the field is absent.
-          const isTerminalScreenText = isTerminalSourceChunk(meta) || looksLikeTerminalScreenText(text || chunk)
+          const isTerminalScreenText = isTerminalSourceChunk(meta) || (!nativeDelta && looksLikeTerminalScreenText(text || chunk))
           const safeText = isTerminalScreenText ? '' : text
           const effectiveStatusText = statusText || (isTerminalScreenText ? 'Agent is working' : null)
           if (effectiveStatusText && !safeText) {
@@ -898,7 +901,7 @@ function applyStreamingChunk(state: ChatState, sessionId: string, chunkIndex: nu
           }
 
           const nextStreamingText = { ...state.streamingText }
-          const nextText = appendStreamingText(currentText, safeText, meta?.isDelta)
+          const nextText = nativeDelta ? currentText + safeText : appendStreamingText(currentText, safeText, meta?.isDelta)
           if (nextText) {
             nextStreamingText[sessionId] = nextText
           } else {
@@ -906,6 +909,10 @@ function applyStreamingChunk(state: ChatState, sessionId: string, chunkIndex: nu
           }
 
           return {
+            streamingChatUIMode: {
+              ...state.streamingChatUIMode,
+              [sessionId]: meta?.chatUIStreamMode === 'progressive' ? 'progressive' : 'complete',
+            },
             streamingText: nextStreamingText,
             streamingStatus: newStreamingStatus,
             lastStreamingChunkIndex: {
@@ -1126,6 +1133,7 @@ export const useChatStore = create<ChatState>()(
       
       // Streaming text accumulation (per session)
       streamingText: {},
+      streamingChatUIMode: {},
       streamingStatus: {},
       streamingTerminalText: {},
       streamingTerminalActive: {},
@@ -1525,6 +1533,8 @@ export const useChatStore = create<ChatState>()(
           delete newTabHistoryPagination[sessionId]
           const newStreamingText = { ...state.streamingText }
           delete newStreamingText[sessionId]
+          const newChatUIMode = { ...state.streamingChatUIMode }
+          delete newChatUIMode[sessionId]
           const newStreamingStatus = { ...state.streamingStatus }
           delete newStreamingStatus[sessionId]
           const newStreamingTerminalText = { ...state.streamingTerminalText }
@@ -1556,6 +1566,7 @@ export const useChatStore = create<ChatState>()(
             tabHasMoreOlderEvents: newTabHasMoreOlderEvents,
             tabHistoryPagination: newTabHistoryPagination,
             streamingText: newStreamingText,
+            streamingChatUIMode: newChatUIMode,
             streamingStatus: newStreamingStatus,
             streamingTerminalText: newStreamingTerminalText,
             streamingTerminalActive: newStreamingTerminalActive,
@@ -1909,6 +1920,8 @@ export const useChatStore = create<ChatState>()(
           delete _streamingInactivityTimers[sessionId]
         }
         set((state) => {
+          const newChatUIMode = { ...state.streamingChatUIMode }
+          delete newChatUIMode[sessionId]
           const newStreamingText = { ...state.streamingText }
           const currentText = newStreamingText[sessionId]
           delete newStreamingText[sessionId]
@@ -1928,6 +1941,7 @@ export const useChatStore = create<ChatState>()(
           }
           return {
             streamingText: newStreamingText,
+            streamingChatUIMode: newChatUIMode,
             streamingStatus: newStreamingStatus,
             lastStreamingChunkIndex: newLastIdx,
             completedStreamingText: newCompletedStreamingText
@@ -2261,6 +2275,7 @@ export const useChatStore = create<ChatState>()(
           chatTabs: {},
           activeTabId: null,
           streamingText: {},
+          streamingChatUIMode: {},
           streamingStatus: {},
           streamingTerminalText: {},
           streamingTerminalActive: {},
@@ -2332,6 +2347,7 @@ export const useChatStore = create<ChatState>()(
           activeSessionsPollingInterval: null,
           workflowScheduleSummary: null,
           streamingText: {},
+          streamingChatUIMode: {},
           streamingStatus: {},
           streamingTerminalText: {},
           streamingTerminalActive: {},

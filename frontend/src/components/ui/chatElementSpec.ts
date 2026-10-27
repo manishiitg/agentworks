@@ -11,7 +11,7 @@ const optionalText = (value: unknown, max: number): value is string | undefined 
   value === undefined || text(value, max)
 
 // A presentation format only: project known data fields, never HTML, styles,
-// callbacks or URLs to fetch. Incomplete/invalid fences remain ordinary code.
+// callbacks or URLs to fetch. The caller handles incomplete/invalid widgets.
 export function parseChatElement(source: string): ChatElement | null {
   if (source.length > 50000) return null
   try {
@@ -38,6 +38,6 @@ export function parseChatElement(source: string): ChatElement | null {
       }
       return { type: 'chart', title: value.title, style: value.style, unit: value.unit, data }
     }
-  } catch { /* Streaming JSON and ordinary invalid code stay readable. */ }
+  } catch { /* Final widget validation never repairs malformed JSON. */ }
   return null
 }
