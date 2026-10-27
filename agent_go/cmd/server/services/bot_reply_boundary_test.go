@@ -109,3 +109,22 @@ func TestFinalReplyReplacesStreamedNarration(t *testing.T) {
 		t.Fatal("an identical final message must not be re-sent")
 	}
 }
+
+// Server B 2026-10-27: a reply streamed "I", the rest arrived inside the update interval, then a tool
+// step ran for minutes with no text, and Slack showed only "I". Throttled text must still go out.
+func TestThrottledStreamTextReachesSlackWithoutAnotherChunk(t *testing.T) {
+	old := botStreamUpdateInterval
+	botStreamUpdateInterval = 40 * time.Millisecond
+	defer func() { botStreamUpdateInterval = old }()
+	ctx := context.Background()
+	c := &replyBoundaryConnector{}
+	f := NewBotEventFilter(c, ThreadID{Platform: "slack"}, "session", "", "user")
+	f.processEvent(ctx, replyChunk("I", true))
+	f.processEvent(ctx, replyChunk("'m searching the dev logs around the alert.", true))
+	time.Sleep(200 * time.Millisecond)
+	f.streamingSendMu.Lock()
+	defer f.streamingSendMu.Unlock()
+	if len(c.sent) != 1 || len(c.updates) == 0 || c.updates[len(c.updates)-1] != "reply-1:I'm searching the dev logs around the alert." {
+		t.Fatalf("Slack did not get the full streamed text: sent=%#v updates=%#v", c.sent, c.updates)
+	}
+}

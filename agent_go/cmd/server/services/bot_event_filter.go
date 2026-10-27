@@ -71,7 +71,10 @@ type BotEventFilter struct {
 	streamingText        string // accumulated clean assistant text for the current streamed reply
 	streamingSentText    string // last accumulated text actually visible in Slack
 	lastStreamingUpdate  time.Time
-	sendFullDetails      bool // opt-in: forward workflow runtime chatter to bot channel
+	streamingGen         int         // bumped when a streamed reply ends, so a pending flush drops out
+	streamingFlush       *time.Timer // sends throttled text once the update interval passes
+	streamingSendMu      sync.Mutex  // orders streamed sends/edits, so an older text never lands last
+	sendFullDetails      bool        // opt-in: forward workflow runtime chatter to bot channel
 	onBlockingEvent      BlockingEventCallback
 	onSessionDone        SessionDoneCallback
 }
@@ -132,6 +135,7 @@ func (f *BotEventFilter) ResetForNewTurn() {
 	f.streamingText = ""
 	f.streamingSentText = ""
 	f.lastStreamingUpdate = time.Time{}
+	f.streamingGen++
 	f.mu.Unlock()
 	log.Printf("[BOT_FILTER] Reset for new turn")
 }
@@ -151,6 +155,7 @@ func (f *BotEventFilter) beginMessageReply() {
 	f.streamingText = ""
 	f.streamingSentText = ""
 	f.lastStreamingUpdate = time.Time{}
+	f.streamingGen++
 }
 
 // SessionFailed reports whether the current turn ended with a terminal error.
@@ -204,6 +209,7 @@ func (f *BotEventFilter) ClearBlockingState() {
 	f.streamingText = ""
 	f.streamingSentText = ""
 	f.lastStreamingUpdate = time.Time{}
+	f.streamingGen++
 	f.mu.Unlock()
 	log.Printf("[BOT_FILTER] Blocking state cleared, completion reset")
 }
@@ -1322,9 +1328,38 @@ func (f *BotEventFilter) sendStreamingChunk(ctx context.Context, event BotEventD
 		f.mu.Unlock()
 		return false
 	}
-	messageID := f.streamingMessageID
 	f.streamingText = nextText
-	if messageID != "" && time.Since(f.lastStreamingUpdate) < botStreamUpdateInterval {
+	// Throttled text must not wait for the next chunk: a tool step can be silent for minutes and
+	// left a one-letter "I" in Slack (server B 2026-10-27).
+	wait := botStreamUpdateInterval - time.Since(f.lastStreamingUpdate)
+	if f.streamingMessageID != "" && wait > 0 {
+		if f.streamingFlush == nil {
+			gen := f.streamingGen
+			f.streamingFlush = time.AfterFunc(wait, func() {
+				f.mu.Lock()
+				f.streamingFlush = nil
+				stale := gen != f.streamingGen
+				f.mu.Unlock()
+				if !stale {
+					f.pushStreamingText(ctx, gen)
+				}
+			})
+		}
+		f.mu.Unlock()
+		return false
+	}
+	gen := f.streamingGen
+	f.mu.Unlock()
+	return f.pushStreamingText(ctx, gen)
+}
+
+// pushStreamingText posts or edits the streamed reply with the latest accumulated text.
+func (f *BotEventFilter) pushStreamingText(ctx context.Context, gen int) bool {
+	f.streamingSendMu.Lock()
+	defer f.streamingSendMu.Unlock()
+	f.mu.Lock()
+	messageID, nextText := f.streamingMessageID, f.streamingText
+	if gen != f.streamingGen || nextText == f.streamingSentText {
 		f.mu.Unlock()
 		return false
 	}
@@ -1365,7 +1400,15 @@ func (f *BotEventFilter) sendStreamingChunk(ctx context.Context, event BotEventD
 }
 
 func (f *BotEventFilter) flushStreamingMessage(ctx context.Context, finalText string) bool {
+	f.streamingSendMu.Lock()
+	defer f.streamingSendMu.Unlock()
 	f.mu.Lock()
+	// The final text wins: a pending throttled send must not land after it.
+	if f.streamingFlush != nil {
+		f.streamingFlush.Stop()
+		f.streamingFlush = nil
+	}
+	f.streamingGen++
 	messageID := f.streamingMessageID
 	if messageID == "" {
 		f.mu.Unlock()
