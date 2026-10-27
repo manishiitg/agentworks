@@ -554,8 +554,10 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 		return func() {}, nil
 	}
 	// These permits are created only after the typed writer validates policy.
-	// Do not re-enter the migrating manifest reader while saving that manifest.
-	if permit, _ := ctx.Value(teamManifestPermitKey{}).(bool); rel == "workflow.json" && permit {
+	// Do not re-enter the migrating manifest reader while saving that manifest,
+	// nor while saving the schedule, webhook and function files written with it:
+	// a read that repairs the manifest saves it, and re-reading here looped forever.
+	if permit, _ := ctx.Value(teamManifestPermitKey{}).(bool); permit && (rel == "workflow.json" || rel == "schedules.json" || rel == "webhooks.json" || rel == "functions.json") {
 		return func() {}, nil
 	}
 	policyCtx := ctx
