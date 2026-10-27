@@ -17,5 +17,5 @@ export function useChatPreferences() {
     mutationFn: llmConfigService.setChatPreferences,
     onSuccess: value => queryClient.setQueryData(queryKey, value),
   })
-  return { showContextIndicator: query.data?.show_context_indicator ?? true, ready: query.isSuccess, save }
+  return { showContextIndicator: query.data?.show_context_indicator ?? false, ready: query.isSuccess, save }
 }

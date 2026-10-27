@@ -21,7 +21,7 @@ func (api *StreamingAPI) chatPreferences(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	path := filepath.ToSlash(filepath.Join(workspaceref.PhysicalPath(user, "preferences"), "chat-display.json"))
-	pref := chatPreferences{ShowContextIndicator: true}
+	pref := chatPreferences{} // Off until the person turns it on (owner 2026-10-27).
 	if update == nil {
 		raw, exists, err := readFileFromWorkspace(r.Context(), path)
 		if err != nil {
