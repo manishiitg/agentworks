@@ -87,6 +87,9 @@ func GetProviderInfoList(baseURL string) []ProviderInfo {
 	infos := make([]ProviderInfo, 0, len(providers))
 
 	for _, p := range providers {
+		if publicNetworkSSOOnly() && p.Name() != "supabase-google" {
+			continue
+		}
 		info := ProviderInfo{
 			Name: p.Name(),
 			Type: p.Type(),

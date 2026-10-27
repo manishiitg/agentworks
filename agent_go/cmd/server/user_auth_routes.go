@@ -216,11 +216,16 @@ func UserAuthRoutes(router http.Handler, api *StreamingAPI) {
 // handleRegister handles user registration
 // Public AgentBridge networks can enroll their own people; company servers remain provisioned.
 func (api *StreamingAPI) handleRegister(w http.ResponseWriter, r *http.Request) {
-	if publicNetworkSignupEnabled() {
+	if publicNetworkPasswordSignupEnabled() {
 		api.registerPublicNetworkUser(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if publicNetworkSSOOnly() {
+		log.Printf("[PUBLIC_NETWORK] password_registration_refused reason=sso_required")
+		http.Error(w, `{"error":"Use Continue with Google to create your account."}`, http.StatusForbidden)
+		return
+	}
 	http.Error(w, `{"error": "Registration is disabled - users are configured via AUTH_USERS environment variable"}`, http.StatusForbidden)
 }
 
@@ -270,20 +275,34 @@ func (api *StreamingAPI) handleLogin(w http.ResponseWriter, r *http.Request) {
 		providerName = "simple" // Default to simple provider
 	}
 
-	provider, ok := GetProvider(providerName)
-	if !ok {
-		http.Error(w, `{"error": "Unknown authentication provider"}`, http.StatusBadRequest)
-		return
+	var extUser *ExternalUser
+	var err error
+	if publicNetworkSSOOnly() {
+		rec := publicNetworkInternalTestUser(req.Username)
+		if providerName != "simple" || rec == nil {
+			log.Printf("[PUBLIC_NETWORK] password_login_refused reason=sso_required")
+			http.Error(w, `{"error":"Use Continue with Google to sign in."}`, http.StatusForbidden)
+			return
+		}
+		// Do not fall back to bootstrap credentials for the internal exception.
+		if verifyPassword(rec.PasswordHash, req.Password) {
+			extUser = &ExternalUser{ExternalID: rec.ID, Username: rec.Username, Email: rec.Email, Provider: "simple"}
+		} else {
+			err = fmt.Errorf("invalid credentials")
+		}
+	} else {
+		provider, ok := GetProvider(providerName)
+		if !ok {
+			http.Error(w, `{"error": "Unknown authentication provider"}`, http.StatusBadRequest)
+			return
+		}
+		if !provider.IsConfigured() {
+			log.Printf("[AUTH] Provider %s is not configured", providerName)
+			http.Error(w, fmt.Sprintf(`{"error": "Provider %s is not configured"}`, providerName), http.StatusInternalServerError)
+			return
+		}
+		extUser, err = provider.ValidateCredentials(req.Username, req.Password)
 	}
-
-	if !provider.IsConfigured() {
-		log.Printf("[AUTH] Provider %s is not configured", providerName)
-		http.Error(w, fmt.Sprintf(`{"error": "Provider %s is not configured"}`, providerName), http.StatusInternalServerError)
-		return
-	}
-
-	// Validate credentials using the provider
-	extUser, err := provider.ValidateCredentials(req.Username, req.Password)
 	if err != nil {
 		log.Printf("[AUTH] Login failed for user %s via provider %s: %v", req.Username, providerName, err)
 		loginLimiter.fail(clientIPOf(r))
@@ -303,6 +322,9 @@ func (api *StreamingAPI) handleLogin(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[AUTH] Login refused for disabled user %s", extUser.Username)
 		http.Error(w, `{"error": "This account is disabled"}`, http.StatusForbidden)
 		return
+	}
+	if publicNetworkSSOOnly() {
+		log.Printf("[PUBLIC_NETWORK] internal_test_login user_id=%s provider=simple", userID)
 	}
 	// Generate JWT token with provider information
 	token, err := GenerateJWTWithProvider(userID, extUser.Username, extUser.Email, extUser.Provider)
@@ -341,6 +363,10 @@ func (api *StreamingAPI) handleAuthStart(w http.ResponseWriter, r *http.Request)
 
 	if req.Provider == "" {
 		http.Error(w, `{"error": "Provider is required"}`, http.StatusBadRequest)
+		return
+	}
+	if publicNetworkSSOOnly() && req.Provider != "supabase-google" {
+		http.Error(w, `{"error":"Use Continue with Google to sign in."}`, http.StatusForbidden)
 		return
 	}
 
@@ -418,6 +444,10 @@ func (api *StreamingAPI) handleAuthCallback(w http.ResponseWriter, r *http.Reque
 	stateEntry, valid := validateAndConsumeState(state)
 	if !valid {
 		http.Error(w, `{"error": "Invalid or expired state parameter"}`, http.StatusBadRequest)
+		return
+	}
+	if publicNetworkSSOOnly() && stateEntry.Provider != "supabase-google" {
+		http.Error(w, `{"error":"Use Continue with Google to sign in."}`, http.StatusForbidden)
 		return
 	}
 
@@ -630,7 +660,7 @@ func (api *StreamingAPI) handleGetAuthMode(w http.ResponseWriter, r *http.Reques
 
 	response := AuthModeResponse{
 		MultiUserMode:       IsMultiUserMode(),
-		RegistrationEnabled: publicNetworkSignupEnabled(),
+		RegistrationEnabled: publicNetworkPasswordSignupEnabled(),
 		MessagingOnly:       agentBridgeOnlyDeployment(),
 		Providers:           GetProviderInfoList(baseURL),
 	}

@@ -30,6 +30,33 @@ func publicNetworkSignupEnabled() bool {
 	return IsMultiUserMode() && agentBridgeOnlyDeployment() && strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_PUBLIC_SIGNUP")), "true")
 }
 
+func publicNetworkSSOOnly() bool {
+	return IsMultiUserMode() && agentBridgeOnlyDeployment() && strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_PUBLIC_SSO_ONLY")), "true")
+}
+
+func publicNetworkPasswordSignupEnabled() bool {
+	return publicNetworkSignupEnabled() && !publicNetworkSSOOnly()
+}
+
+// Internal password access is an explicit server-side exception for existing
+// directory identities, never a property a public account can select.
+func publicNetworkInternalTestUser(username string) *UserRecord {
+	dir, err := readUserDirectoryFile()
+	if err != nil {
+		return nil
+	}
+	rec := dir.byUsername(username)
+	if rec == nil || rec.Disabled || rec.ID == "" || rec.PasswordHash == "" {
+		return nil
+	}
+	for _, id := range strings.Split(os.Getenv("AUTH_INTERNAL_TEST_USER_IDS"), ",") {
+		if strings.TrimSpace(id) == rec.ID {
+			return rec
+		}
+	}
+	return nil
+}
+
 // A messaging-only installation has no hosted project, file or model APIs.
 // Company installations keep their existing route-level authorization.
 func agentBridgeAPIMiddleware(next http.Handler) http.Handler {

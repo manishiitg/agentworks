@@ -17,6 +17,7 @@ func TestPublicNetworkSignupAndConsent(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "bullpen")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "bullpen")
 	t.Setenv("AUTH_PUBLIC_SIGNUP", "true")
+	t.Setenv("AUTH_PUBLIC_SSO_ONLY", "false")
 	t.Setenv("ADMIN_USERS", "administrator")
 	withMemoryUserDirectory(t, `{"version":1,"users":[]}`)
 	api := &StreamingAPI{}
@@ -98,5 +99,88 @@ func TestPublicNetworkSignupAndConsent(t *testing.T) {
 	}
 	if got := register(`{"username":"new-person","password":"test-password-long-enough"}`); got != 403 {
 		t.Fatal("public signup enabled on a company server")
+	}
+}
+
+// PLAT-856-374: hiding passwords must also refuse public credentials at the
+// real handlers, while an exact pre-provisioned internal identity still works.
+func TestPublicNetworkSSOOnlyWithInternalTestIdentity(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENT_PRODUCTS", "bullpen")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "bullpen")
+	t.Setenv("AUTH_PUBLIC_SIGNUP", "true")
+	t.Setenv("AUTH_PUBLIC_SSO_ONLY", "true")
+	t.Setenv("AUTH_INTERNAL_TEST_USER_IDS", "test-id,disabled-id")
+	t.Setenv("AUTH_PROVIDERS", "simple,supabase-google")
+	t.Setenv("SUPABASE_URL", "https://example.supabase.co")
+	t.Setenv("SUPABASE_ANON_KEY", "test-anon-key")
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	original := GetAuthProviders()
+	authProviders = map[string]AuthProvider{"simple": NewSimpleProvider(), "supabase-google": NewSupabaseGoogleProvider()}
+	t.Cleanup(func() { authProviders = original })
+	hash, err := hashPassword("a-long-test-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := userDirectoryFile{Users: []UserRecord{
+		{ID: "public-id", Username: "public-person", PasswordHash: hash, Admin: true},
+		{ID: "test-id", Username: "internal-test", PasswordHash: hash, Products: []string{"bullpen"}},
+		{ID: "disabled-id", Username: "disabled-test", PasswordHash: hash, Disabled: true},
+	}}
+	initial, _ := json.Marshal(dir)
+	withMemoryUserDirectory(t, string(initial))
+	api := &StreamingAPI{}
+	post := func(path, body string, handler http.HandlerFunc) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		handler(w, httptest.NewRequest("POST", path, strings.NewReader(body)))
+		return w
+	}
+	for _, tc := range []struct {
+		body   string
+		status int
+	}{
+		{`{"username":"public-person","password":"a-long-test-password"}`, 403},
+		{`{"provider":"simple","username":"public-person","password":"a-long-test-password"}`, 403},
+		{`{"username":"disabled-test","password":"a-long-test-password"}`, 403},
+		{`{"provider":"supabase","username":"internal-test","password":"a-long-test-password"}`, 403},
+		{`{"username":"internal-test","password":"wrong-password"}`, 401},
+		{`{"username":"internal-test","password":"a-long-test-password"}`, 200},
+	} {
+		if got := post("/api/auth/login", tc.body, api.handleLogin).Code; got != tc.status {
+			t.Fatalf("login status=%d want=%d", got, tc.status)
+		}
+	}
+	if got := post("/api/auth/register", `{"username":"new-person","password":"a-long-test-password"}`, api.handleRegister).Code; got != 403 {
+		t.Fatalf("public password registration=%d", got)
+	}
+	if got := post("/api/auth/start", `{"provider":"supabase","redirect_uri":"https://example.com/auth/callback"}`, api.handleAuthStart).Code; got != 403 {
+		t.Fatalf("other OAuth provider=%d", got)
+	}
+	if got := post("/api/auth/start", `{"provider":"supabase-google","redirect_uri":"https://example.com/auth/callback"}`, api.handleAuthStart).Code; got != 200 {
+		t.Fatalf("Google OAuth start=%d", got)
+	}
+	storeState("other-provider-state", "supabase", "https://example.com/auth/callback", "")
+	w := httptest.NewRecorder()
+	api.handleAuthCallback(w, httptest.NewRequest("GET", "/api/auth/callback?state=other-provider-state&code=test-code", nil))
+	if w.Code != 403 {
+		t.Fatalf("old other-provider callback=%d", w.Code)
+	}
+	w = httptest.NewRecorder()
+	api.handleGetAuthMode(w, httptest.NewRequest("GET", "/api/auth/mode", nil))
+	var mode AuthModeResponse
+	if json.Unmarshal(w.Body.Bytes(), &mode) != nil || mode.RegistrationEnabled || len(mode.Providers) != 1 || mode.Providers[0].Name != "supabase-google" {
+		t.Fatal("public screen offered a password alternative")
+	}
+	if !publicNetworkExternalSignup(&ExternalUser{Provider: "supabase-google", ExternalID: "verified-id", Email: "person@example.com", EmailVerified: true}) {
+		t.Fatal("verified Google enrollment disabled")
+	}
+	t.Setenv("AUTH_INTERNAL_TEST_USER_IDS", "")
+	if got := post("/api/auth/login", `{"username":"internal-test","password":"a-long-test-password"}`, api.handleLogin).Code; got != 403 {
+		t.Fatalf("empty test allowlist=%d", got)
+	}
+	t.Setenv("AGENT_PRODUCTS", "work,bullpen")
+	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "work,bullpen")
+	if got := post("/api/auth/login", `{"username":"public-person","password":"a-long-test-password"}`, api.handleLogin).Code; got != 200 {
+		t.Fatalf("company password login changed=%d", got)
 	}
 }
