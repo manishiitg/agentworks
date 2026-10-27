@@ -6,26 +6,33 @@ import { ShareDashboardButton, ACCESS_CHAT_REQUEST } from './ShareDashboardButto
 const post = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ default: { post }, authApi: { getWorkflowAccess: vi.fn() } }))
 
-it('shows owners, audience and agents; changes sharing, adds a person and copies the short link', async () => {
+it('Crew access: one People list, owner moves use the owner operation, and only the company-wide choice opens it to everyone', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   const writeText = vi.fn().mockResolvedValue(undefined)
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
   post.mockReset()
   post.mockImplementation(async (_url, body) => {
     if (body.action === 'owners') return { data: { owner: { id: 'owner', email: 'owner@example.com' }, co_owners: [{ id: 'colleague', email: 'colleague@example.com' }], can_manage: true } }
+    if (body.action === 'owner_remove') return { data: { owner: { id: 'owner', email: 'owner@example.com' }, co_owners: [], can_manage: true } }
     if (body.action === 'list') return { data: { dashboards: [{ dashboard_id: 'other', short_url: 'https://example.com/d/zzzzz' }, { dashboard_id: 'overview', short_url: 'https://example.com/d/abc23' }] } }
     if (body.action === 'share') return { data: { mode: body.mode, can_share: true, people: (body.emails || []).map((email: string, index: number) => ({ id: `u${index}`, email })) } }
     return { data: { mode: 'people', can_share: true, people: [{ id: 'user', email: 'user@example.com' }], agents: [{ chat_id: 'coach', name: 'Coach', purpose: 'Review feedback', selected: true }, { chat_id: 'private', name: 'Private work', purpose: '', selected: false }] } }
   })
   const host = document.createElement('div'), root = createRoot(host), onAsk = vi.fn()
   const button = (text: string) => [...host.querySelectorAll('button')].find(item => item.textContent?.includes(text))!
+  const people = () => host.querySelector('[aria-label="People with access"]')?.textContent || ''
+  const choose = async (select: HTMLSelectElement, value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, value)
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
   try {
     await act(async () => root.render(<ShareDashboardButton workspacePath="Crew/example" variant="panel" onAsk={onAsk} />))
-    expect(host.querySelector('[aria-label="Current owners"]')?.textContent).toContain('colleague@example.com')
-    expect(host.querySelector('[aria-label="People with access"]')?.textContent).toContain('user@example.com')
-    expect(host.querySelector('[aria-label="Shared agents"]')?.textContent).toContain('Coach')
+    expect(people()).toContain('Owner (created this)')
+    expect(people()).toContain('colleague@example.com')
+    expect(people()).toContain('user@example.com')
+    expect(host.textContent).toContain('Agents others can message (1)')
     expect(host.textContent).not.toContain('Private work')
-    expect(host.querySelector<HTMLSelectElement>('#general-access')?.value).toBe('people')
+    expect(host.querySelector<HTMLSelectElement>('#company-access')?.value).toBe('none')
 
     await act(async () => button('Copy link').click())
     expect(writeText).toHaveBeenCalledExactlyOnceWith('https://example.com/d/abc23')
@@ -37,12 +44,21 @@ it('shows owners, audience and agents; changes sharing, adds a person and copies
     })
     await act(async () => button('Add').click())
     expect(post).toHaveBeenCalledWith('/api/dashboards', { workspace: 'Crew/example', action: 'share', mode: 'people', emails: ['user@example.com', 'new@example.com'] })
-    expect(host.querySelector('[aria-label="People with access"]')?.textContent).toContain('new@example.com')
 
+    // Removing named people changes only the named list; it never opens or closes the Crew for the company.
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Remove user@example.com"]')!.click())
     expect(post).toHaveBeenLastCalledWith('/api/dashboards', { workspace: 'Crew/example', action: 'share', mode: 'people', emails: ['new@example.com'] })
 
-    await act(async () => [...host.querySelectorAll('button')].at(-1)!.click())
+    // Owner -> Can use goes through the owner operation, then adds them to the named list.
+    await choose(host.querySelector<HTMLSelectElement>('select[aria-label="Access for colleague@example.com"]')!, 'use')
+    expect(post).toHaveBeenCalledWith('/api/dashboards', { workspace: 'Crew/example', action: 'owner_remove', emails: ['colleague@example.com'] })
+    expect(post).toHaveBeenLastCalledWith('/api/dashboards', { workspace: 'Crew/example', action: 'share', mode: 'people', emails: ['new@example.com', 'colleague@example.com'] })
+
+    // Only the company-wide choice switches to everyone.
+    await choose(host.querySelector<HTMLSelectElement>('#company-access')!, 'use')
+    expect(post).toHaveBeenLastCalledWith('/api/dashboards', { workspace: 'Crew/example', action: 'share', mode: 'everyone' })
+
+    await act(async () => button('Or change access in chat').click())
     expect(onAsk).toHaveBeenCalledExactlyOnceWith(ACCESS_CHAT_REQUEST)
   } finally { await act(async () => root.unmount()) }
 })

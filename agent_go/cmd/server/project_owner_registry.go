@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -338,6 +339,8 @@ func (r *projectOwnerRegistry) AddCoOwner(product, folder, userID string) (chang
 			}
 		}
 		current.CoOwners = append(append([]string(nil), current.CoOwners...), userID)
+		// An owner is no longer a named user of the same Crew: the move is one registry change.
+		current.RunPeople = slices.DeleteFunc(append([]string(nil), current.RunPeople...), func(id string) bool { return id == userID })
 		projects[key] = current
 		changed = true
 		return true, nil

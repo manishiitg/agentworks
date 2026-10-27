@@ -31,8 +31,15 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 	if err := registry.SetPrivate("work", folder, true); err != nil {
 		t.Fatal(err)
 	}
+	// "co" first uses the Crew by name (Access panel, PLAT-856-390); making them an owner moves them off that list.
+	if err := registry.SetRunPeople("work", folder, []string{"co"}); err != nil {
+		t.Fatal(err)
+	}
 	if changed, err := registry.AddCoOwner("work", folder, "co"); err != nil || !changed {
 		t.Fatalf("add co-owner: changed=%v err=%v", changed, err)
+	}
+	if rec, _ := registry.Lookup("work", folder); len(rec.RunPeople) != 0 {
+		t.Fatalf("a new owner stayed on the Can use list: %v", rec.RunPeople)
 	}
 	if changed, _ := registry.AddCoOwner("work", folder, "co"); changed {
 		t.Fatal("adding the same co-owner twice changed the list")
