@@ -87,7 +87,7 @@ export function CursorModelPicker({ models, selectedModelId, onSelect, className
                     {family.note && <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{family.note}</span>}
                   </button>
                   {open && (
-                    <div role="group" aria-label={`${family.name} variants`} className="flex flex-wrap gap-1.5 px-3 pb-3 pl-8">
+                    <div ref={element => element?.scrollIntoView({ block: 'nearest' })} role="group" aria-label={`${family.name} variants`} className="flex flex-wrap gap-1.5 px-3 pb-3 pl-8">
                       {family.variants.map(model => (
                         <button
                           key={model.model_id}
