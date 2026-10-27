@@ -337,7 +337,7 @@ export function adjustFilePathsRecursive(
         ...file,
         filepath: adjustedFilepath,
         originalFilepath: originalFilepath,
-        children: file.children ? adjustFilePathsRecursive(file.children, workflowFolderPath) : []
+        children: file.children ? adjustFilePathsRecursive(file.children, workflowFolderPath) : undefined
       }
     }
     

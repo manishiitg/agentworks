@@ -41,8 +41,9 @@ describe('scoped workspace hierarchy', () => {
     expect(isProtectedWorkspaceEntry(files[0].children![1], path)).toBe(true)
   })
 
-  it('keeps empty roots and returns no tree for an empty response', () => {
-    expect(scopeFilesToWorkspace([{ filepath: path, type: 'folder' }], path)[0].children).toEqual([])
+  it('keeps unknown and confirmed-empty roots distinct', () => {
+    expect(scopeFilesToWorkspace([{ filepath: path, type: 'folder' }], path)[0].children).toBeUndefined()
+    expect(scopeFilesToWorkspace([{ filepath: path, type: 'folder', has_children: false }], path)[0].children).toEqual([])
     expect(scopeFilesToWorkspace([], path)).toEqual([])
   })
 

@@ -77,6 +77,24 @@ func SearchDocuments(c *gin.Context) {
 	} else {
 		searchPath = docsDir
 	}
+	if req.SearchType == "filename" {
+		items, err := scanDocuments(searchPath, docsDir, documentScanOptions{maxDepth: -1, limit: req.Limit, query: req.Query, blocked: blockedPaths, visibility: req.FileTreeVisibility, userID: getUserID(c), ctx: c.Request.Context()})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Could not search files", Error: err.Error()})
+			return
+		}
+		results := make([]models.SearchResult, 0, len(items))
+		for _, item := range items {
+			path := strings.TrimPrefix(item.FilePath, "_users/"+getUserID(c)+"/")
+			kind := item.Type
+			if kind == "" {
+				kind = "file"
+			}
+			results = append(results, models.SearchResult{ID: path, Filepath: path, Title: filepath.Base(path), Folder: filepath.ToSlash(filepath.Dir(path)), Type: kind})
+		}
+		c.JSON(http.StatusOK, models.APIResponse[models.SearchResponse]{Success: true, Message: "Files searched", Data: models.SearchResponse{Query: req.Query, Results: results, Total: len(results), Method: "filename"}})
+		return
+	}
 
 	// Check if ripgrep is available
 	if !isRipgrepAvailable() {

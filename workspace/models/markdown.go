@@ -46,6 +46,8 @@ type PatchRequest struct {
 
 // SearchRequest represents the request to search documents
 type SearchRequest struct {
+	FileTreeVisibility
+	SearchType   string `form:"search_type"`
 	Query        string `form:"query" binding:"required"`
 	Folder       string `form:"folder"` // Optional folder to search in
 	Limit        int    `form:"limit,default=50"`

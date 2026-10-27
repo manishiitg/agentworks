@@ -1,6 +1,8 @@
 import { create } from 'zustand'
-import type { PlannerFile } from '../services/api-types'
+import type { FileTreeVisibility, PlannerFile } from '../services/api-types'
 import { agentApi } from '../services/api'
+import { expandedListingPaths, folderListing, mergeFolderListing } from '../utils/lazyWorkspaceTree'
+import { getAdjustedPath } from '../utils/workspacePathUtils'
 import { extractFolderPaths, processHierarchicalFiles } from '../utils/fileUtils'
 import {
   WORKSPACE_SCROLL_TO_FILE_EVENT,
@@ -94,6 +96,12 @@ interface WorkspaceState {
   setActiveFolder: (folder: string | null) => void
   fetchFiles: (folder?: string, options?: { maxDepth?: number; force?: boolean }) => Promise<void>
   
+  fileVisibility: FileTreeVisibility
+  setFileVisibility: (visibility: FileTreeVisibility) => void
+  folderLoads: Record<string, { loading: boolean; error?: string }>
+  loadFolder: (folder: string, force?: boolean) => Promise<void>
+  refreshFiles: (folder?: string) => Promise<void>
+
   // File highlighting
   highlightedFile: string | null
   highlightTimeout: ReturnType<typeof setTimeout> | null
@@ -194,6 +202,8 @@ const initialState = {
   },
   showActionsDropdown: false,
   activeFolder: null,
+  fileVisibility: {},
+  folderLoads: {},
   highlightedFile: null,
   highlightTimeout: null,
   expandedFolders: new Set<string>(),
@@ -208,23 +218,14 @@ interface FileTreeCacheEntry {
 const ROOT_FOLDER_CACHE_KEY = '__root__'
 const FILE_TREE_CACHE_LIMIT = 2
 const fileTreeCache = new Map<string, FileTreeCacheEntry>()
+const folderRequests = new Map<string, Promise<void>>()
 
-const ROOT_FILE_TREE_MAX_DEPTH = 2
+const ROOT_FILE_TREE_MAX_DEPTH = 0
 
 function getFileTreeCacheKey(folder: string | undefined, maxDepth?: number): string {
   return `${folder ?? ROOT_FOLDER_CACHE_KEY}::${maxDepth ?? 'full'}`
 }
 
-function findReusableFileTreeCacheEntry(folder: string | undefined, maxDepth?: number): FileTreeCacheEntry | null {
-  const exact = fileTreeCache.get(getFileTreeCacheKey(folder, maxDepth))
-  if (exact) return exact
-
-  if (maxDepth !== undefined) {
-    return fileTreeCache.get(getFileTreeCacheKey(folder, undefined)) ?? null
-  }
-
-  return null
-}
 
 function clearFileTreeCache() {
   fileTreeCache.clear()
@@ -285,7 +286,7 @@ function describeWorkspaceFetchError(err: unknown): { message: string; details: 
 function mergeSubfolderIntoTree(tree: PlannerFile[], targetPath: string, replacement: PlannerFile): PlannerFile[] {
   return tree.map(node => {
     if (node.filepath === targetPath) {
-      return replacement
+      return mergeFolderListing([node], [replacement])[0]
     }
     if (node.children && node.children.length > 0 && targetPath.startsWith(node.filepath + '/')) {
       return { ...node, children: mergeSubfolderIntoTree(node.children, targetPath, replacement) }
@@ -565,17 +566,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         // When an explicit folder IS passed (including undefined from Workspace.tsx chat mode),
         // callers who want to update the scope should call setActiveFolder() separately.
         const effectiveFolder = folder ?? get().activeFolder ?? undefined
-        // Never walk the whole workspace root: on a shared server it holds
-        // every user's files (server A: 652k files, 11-36 s per request, slowing
-        // every other request on page open). A root request is capped at two
-        // levels; deeper folders load when opened.
-        if (!effectiveFolder && options?.maxDepth === undefined) {
-          options = { ...options, maxDepth: ROOT_FILE_TREE_MAX_DEPTH }
-        }
-        const requestKey = getFileTreeCacheKey(effectiveFolder, options?.maxDepth)
+        if (options?.force && options.maxDepth === undefined) return get().refreshFiles(effectiveFolder)
+        options = { ...options, maxDepth: options?.maxDepth ?? ROOT_FILE_TREE_MAX_DEPTH }
+        const visibility = get().fileVisibility
+        const visibilityKey = JSON.stringify(visibility)
+        const requestKey = getFileTreeCacheKey(effectiveFolder, options?.maxDepth) + visibilityKey
 
         const applyProcessedFiles = (processedFiles: PlannerFile[]) => {
           const currentActiveFolder = get().activeFolder
+          if (visibilityKey !== JSON.stringify(get().fileVisibility)) return
+          if (currentActiveFolder && effectiveFolder !== currentActiveFolder && !effectiveFolder?.startsWith(currentActiveFolder + '/')) return
 
           if (!effectiveFolder && currentActiveFolder) {
             return
@@ -583,9 +583,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
           if (
             effectiveFolder &&
-            currentActiveFolder &&
-            effectiveFolder !== currentActiveFolder &&
-            effectiveFolder.startsWith(currentActiveFolder + '/')
+            (currentActiveFolder
+              ? effectiveFolder !== currentActiveFolder && effectiveFolder.startsWith(currentActiveFolder + '/')
+              : shownTreeKey !== requestKey && get().fileIndex.has(effectiveFolder))
           ) {
             const rootNode = processedFiles.length === 1
               ? processedFiles[0]
@@ -599,13 +599,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             return
           }
 
-          const index = buildFileIndex(processedFiles)
+          const merged = shownTreeKey === requestKey || effectiveFolder && get().fileIndex.has(effectiveFolder) ? mergeFolderListing(get().files, processedFiles) : processedFiles
+          const index = buildFileIndex(merged)
           shownTreeKey = requestKey
-          set({ files: processedFiles, fileIndex: index, needsRefresh: false, error: null })
+          set({ files: merged, fileIndex: index, needsRefresh: false, error: null })
         }
 
         if (!options?.force) {
-          const cachedEntry = findReusableFileTreeCacheEntry(effectiveFolder, options?.maxDepth)
+          const cachedEntry = fileTreeCache.get(requestKey)
           if (cachedEntry) {
             applyProcessedFiles(cachedEntry.files)
             return
@@ -621,6 +622,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         latestFetchAttemptByKey.set(requestKey, requestId)
         const isLatestFetchAttempt = () => latestFetchAttemptByKey.get(requestKey) === requestId
         const shouldApplyFetchError = () => {
+          if (visibilityKey !== JSON.stringify(get().fileVisibility)) return false
           const attemptedFolder = normalizeWorkspacePath(effectiveFolder)
           const currentActiveFolder = normalizeWorkspacePath(get().activeFolder)
           const isVisibleScope = attemptedFolder === currentActiveFolder || (!attemptedFolder && !currentActiveFolder)
@@ -628,15 +630,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
 
         const promise = (async () => {
+          if (effectiveFolder) set(state => ({ folderLoads: { ...state.folderLoads, [effectiveFolder]: { loading: true } } }))
           try {
             const activeNow = get().activeFolder
             const isSubfolderLoad = !!(effectiveFolder && activeNow && effectiveFolder !== activeNow && effectiveFolder.startsWith(activeNow + '/'))
             const quiet = get().files.length > 0 && (shownTreeKey === requestKey || isSubfolderLoad)
             set(quiet ? { error: null } : { loading: true, error: null })
-            const response = await agentApi.getPlannerFiles(effectiveFolder, -1, options?.maxDepth)
-            if (response.success && response.data) {
+            const response = await agentApi.getPlannerFiles(effectiveFolder, -1, options?.maxDepth, visibility)
+            if (!isLatestFetchAttempt() || visibilityKey !== JSON.stringify(get().fileVisibility)) return
+            if (response.success && response.data && !response.error) {
               const allFiles = response.data
-              const processedFiles = processHierarchicalFiles(allFiles)
+              const processedFiles = folderListing(processHierarchicalFiles(allFiles), effectiveFolder)
               setFileTreeCacheEntry(requestKey, {
                 files: processedFiles,
                 fileIndex: buildFileIndex(processedFiles)
@@ -655,6 +659,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 effectiveFolder.startsWith(currentActiveFolder + '/')
               )
               const message = response.message || 'Failed to load files'
+              if (effectiveFolder && visibilityKey === JSON.stringify(get().fileVisibility)) set(state => ({ folderLoads: { ...state.folderLoads, [effectiveFolder]: { loading: false, error: message } } }))
 
               if (isScopedSubfolderFetch && /folder does not exist/i.test(message)) {
                 console.warn('[WorkspaceStore] Ignoring missing scoped subfolder during lazy-load:', effectiveFolder)
@@ -684,6 +689,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               effectiveFolder.startsWith(currentActiveFolder + '/')
             )
             const message = describedError.message
+            if (effectiveFolder && visibilityKey === JSON.stringify(get().fileVisibility)) set(state => ({ folderLoads: { ...state.folderLoads, [effectiveFolder]: { loading: false, error: message } } }))
 
             if (isScopedSubfolderFetch && /folder does not exist/i.test(message)) {
               console.warn('[WorkspaceStore] Ignoring missing scoped subfolder error during lazy-load:', effectiveFolder)
@@ -702,6 +708,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               })
             }
           } finally {
+            if (effectiveFolder && visibilityKey === JSON.stringify(get().fileVisibility)) set(state => ({ folderLoads: { ...state.folderLoads, [effectiveFolder]: { ...state.folderLoads[effectiveFolder], loading: false } } }))
             set({ loading: false })
             if (inflightFetch?.key === requestKey) {
               inflightFetch = null
@@ -716,6 +723,42 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         return promise
       },
       
+      setFileVisibility: (visibility) => {
+        if (JSON.stringify(visibility) === JSON.stringify(get().fileVisibility)) return
+        clearFileTreeCache()
+        set({ fileVisibility: visibility, folderLoads: {} })
+      },
+      loadFolder: async (folder, force = false) => {
+        const scope = get().activeFolder
+        if (scope && folder !== scope && !folder.startsWith(scope + '/')) return
+        const parts = folder.split('/')
+        const first = scope ? scope.split('/').length : 1
+        for (let length = first; length <= parts.length; length++) {
+          const path = parts.slice(0, length).join('/')
+          const node = get().fileIndex.get(path)
+          if (!node && path !== scope && get().files.length) return
+          if (node?.has_children === false && !force) continue
+          if (node?.children === undefined || force && path === folder) {
+            const key = JSON.stringify([scope, path, get().fileVisibility])
+            let request = folderRequests.get(key)
+            if (!request) {
+              request = get().fetchFiles(path, { force, maxDepth: 0 })
+              folderRequests.set(key, request)
+            }
+            try { await request } finally { if (folderRequests.get(key) === request) folderRequests.delete(key) }
+            if (get().folderLoads[path]?.error) return
+          }
+        }
+      },
+      refreshFiles: async (folder) => {
+        const paths = expandedListingPaths(get().files, folder, get().expandedFolders)
+        clearFileTreeCache()
+        await get().fetchFiles(folder, { force: true, maxDepth: 0 })
+        for (const path of paths) {
+          if (path !== folder && get().fileIndex.has(path)) await get().loadFolder(path, true)
+        }
+      },
+
       // File highlighting
       highlightFile: async (filepath: string) => {
         const state = get()
@@ -755,9 +798,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       // Auto-scroll to file without highlighting
       scrollToFile: async (filepath: string) => {
         try {
-          // We no longer call fetchFiles() here when file is missing, because calling
-          // it without a folder param fetches ALL files from root, replacing the
-          // workflow-scoped tree. The file will appear after the next debounced fetch.
+          const scope = get().activeFolder
+          const fullPath = scope && !filepath.startsWith(scope + '/') && filepath !== scope ? `${scope}/${filepath}` : filepath
+          const parent = fullPath.slice(0, fullPath.lastIndexOf('/'))
+          if (parent && (!scope || parent === scope || parent.startsWith(scope + '/'))) await get().loadFolder(parent)
           
           // Virtual rows do not exist in the DOM until their parent list scrolls
           // them into view. Expand ancestors first, then ask the list to reveal it.
@@ -884,6 +928,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       // Reset all state
       resetWorkspaceState: () => {
         shownTreeKey = null
+        latestFetchAttemptByKey.clear()
+        inflightFetch = null
+        folderRequests.clear()
         clearFileTreeCache()
         if (scheduledRefreshTimeout) {
           clearTimeout(scheduledRefreshTimeout)

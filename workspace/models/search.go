@@ -4,6 +4,7 @@ import "time"
 
 // SearchResult represents a single search result
 type SearchResult struct {
+	Type           string    `json:"type,omitempty"`
 	ID             string    `json:"id"`
 	Title          string    `json:"title"`
 	Filepath       string    `json:"filepath"`

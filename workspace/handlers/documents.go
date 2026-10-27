@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
@@ -199,137 +200,8 @@ func CreateDocument(c *gin.Context) {
 // Follows symbolic links (directories are reported under their symlink path) and uses
 // resolved-path cycle detection so the same underlying directory is never walked twice.
 func getAllDocumentsRecursively(searchPath, docsDir string, maxDepth int, limit, offset int, includeMetadata ...bool) ([]models.Document, error) {
-	metadata := true
-	if len(includeMetadata) > 0 {
-		metadata = includeMetadata[0]
-	}
-	var documents []models.Document
-	count := 0
-	skipped := 0
-	visited := map[string]bool{}
-
-	ignoredDirs := map[string]bool{
-		".git":         true,
-		"node_modules": true,
-		".next":        true,
-		"dist":         true,
-		"build":        true,
-		"coverage":     true,
-		"__pycache__":  true,
-		".venv":        true,
-		"venv":         true,
-	}
-
-	searchVirtual, roots, localBound, bindingErr := crewroot.Reverse(docsDir, searchPath)
-	if bindingErr != nil {
-		return nil, bindingErr
-	}
-	var walk func(path string) error
-	walk = func(path string) error {
-		if localBound {
-			issued, _, bound, err := crewroot.Reverse(docsDir, path)
-			if err != nil || !bound || (issued != searchVirtual && !strings.HasPrefix(issued, searchVirtual+"/")) {
-				return nil
-			}
-			if _, _, err := crewroot.Resolve(docsDir, issued); err != nil {
-				return nil
-			}
-		}
-		// os.Stat follows symlinks, so symlinked directories are recognised as directories.
-		info, err := os.Stat(path)
-		if err != nil {
-			return nil
-		}
-
-		name := filepath.Base(path)
-		if info.IsDir() && ignoredDirs[name] {
-			return nil
-		}
-
-		isRoot := path == searchPath
-
-		// Cycle protection: if we've already walked this underlying directory
-		// (reached via a different symlink path), skip it entirely.
-		if info.IsDir() {
-			if resolved, resolveErr := filepath.EvalSymlinks(path); resolveErr == nil {
-				if visited[resolved] {
-					return nil
-				}
-				visited[resolved] = true
-			}
-		}
-
-		if !isRoot {
-			relFromSearch, err := filepath.Rel(searchPath, path)
-			if err != nil {
-				return nil
-			}
-			currentDepth := 0
-			if relFromSearch != "." {
-				currentDepth = strings.Count(relFromSearch, string(filepath.Separator))
-			}
-			if maxDepth >= 0 && currentDepth > maxDepth {
-				return nil
-			}
-		}
-
-		relPathFromDocs, err := utils.GetRelativePath(path, docsDir)
-		if err != nil {
-			return nil
-		}
-
-		// Add entry — the root searchPath is only added when it's a specific subfolder query.
-		addEntry := true
-		if isRoot && !(info.IsDir() && searchPath != docsDir) {
-			addEntry = false
-		}
-		if addEntry {
-			if offset > 0 && skipped < offset {
-				skipped++
-			} else if info.IsDir() {
-				doc := models.Document{
-					FilePath: relPathFromDocs,
-					Type:     "folder",
-				}
-				if isRoot && localBound && roots.Local && searchVirtual == roots.FilesPath() {
-					doc.DisplayName = filepath.Base(roots.Files)
-				}
-				if metadata {
-					doc.LastModified = info.ModTime().UTC().Format("2006-01-02T15:04:05Z07:00")
-				}
-				documents = append(documents, doc)
-			} else if limit <= 0 || count < limit {
-				doc := models.Document{
-					FilePath: relPathFromDocs,
-				}
-				if metadata {
-					doc.IsImage = isImageFile(name)
-					doc.Size = info.Size()
-					doc.MimeType = detectFileMimeType(name, nil)
-					doc.IsBinary = doc.IsImage || !isTextDocumentContent(name, doc.MimeType, nil)
-					doc.LastModified = info.ModTime().UTC().Format("2006-01-02T15:04:05Z07:00")
-				}
-				documents = append(documents, doc)
-				count++
-			}
-		}
-
-		if info.IsDir() {
-			entries, err := os.ReadDir(path)
-			if err != nil {
-				return nil
-			}
-			for _, e := range entries {
-				if err := walk(filepath.Join(path, e.Name())); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}
-
-	err := walk(searchPath)
-	return documents, err
+	metadata := len(includeMetadata) == 0 || includeMetadata[0]
+	return scanDocuments(searchPath, docsDir, documentScanOptions{maxDepth: maxDepth, limit: limit, offset: offset, metadata: metadata})
 }
 
 // buildHierarchicalStructure builds a tree structure from flat document list
@@ -429,6 +301,7 @@ func normalizeFolderPath(folder string) string {
 
 // ListDocuments handles GET /api/documents
 func ListDocuments(c *gin.Context) {
+	started := time.Now()
 	var req models.ListDocumentsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{
@@ -492,7 +365,7 @@ func ListDocuments(c *gin.Context) {
 	// Use recursive function to get all documents with max depth
 	// Force unlimited files (limit=-1) and no offset (offset=0) to ensure full tree structure is returned for the UI
 	// Skip metadata (last_modified, is_image) for root listings to reduce response size
-	documents, err := getAllDocumentsRecursively(searchPath, docsDir, req.MaxDepth, -1, 0, !isRootListing)
+	documents, err := scanDocuments(searchPath, docsDir, documentScanOptions{maxDepth: req.MaxDepth, limit: -1, metadata: !isRootListing, blocked: blockedPaths, visibility: req.FileTreeVisibility, userID: userID, ctx: c.Request.Context()})
 	if err != nil {
 		// Check if error is due to directory not existing
 		if os.IsNotExist(err) {
@@ -548,7 +421,7 @@ func ListDocuments(c *gin.Context) {
 			if _, statErr := os.Stat(userFolderPath); statErr != nil {
 				continue // user folder doesn't exist yet
 			}
-			userDocs, scanErr := getAllDocumentsRecursively(userFolderPath, docsDir, req.MaxDepth, -1, 0, false)
+			userDocs, scanErr := scanDocuments(userFolderPath, docsDir, documentScanOptions{maxDepth: req.MaxDepth, limit: -1, blocked: blockedPaths, visibility: req.FileTreeVisibility, userID: userID, ctx: c.Request.Context()})
 			if scanErr != nil {
 				continue
 			}
@@ -588,6 +461,7 @@ func ListDocuments(c *gin.Context) {
 
 	// Build hierarchical structure from flat list using normalized folder path
 	hierarchicalDocuments := buildHierarchicalStructure(documents, normalizedFolder)
+	log.Printf("[FILE_LIST] folder=%q depth=%d entries=%d elapsed=%s", normalizedFolder, req.MaxDepth, len(documents), time.Since(started))
 
 	c.JSON(http.StatusOK, models.APIResponse[[]models.Document]{
 		Success: true,

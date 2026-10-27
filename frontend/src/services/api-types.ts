@@ -1150,10 +1150,17 @@ export type ToolDefinition = {
 };
 
 // Planner API types
+export interface FileTreeVisibility {
+  viewRoot?: string;
+  hiddenEntries?: string[];
+  hideDotfiles?: boolean;
+}
 export interface PlannerFile {
   filepath: string;
   /** Server-supplied label; never used to resolve or mutate the file. */
   display_name?: string;
+  /** Server lookahead; absent means unknown, false means no visible children. */
+  has_children?: boolean;
   content?: string;
   last_modified?: string;
   folder?: string;

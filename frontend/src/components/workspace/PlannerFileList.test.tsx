@@ -138,7 +138,7 @@ describe('PlannerFileList Work controls', () => {
     }
   })
   it('shows a folder the server confirmed empty without an arrow, and keeps the arrow on any other folder', async () => {
-    const files = [file('a-empty', 'folder', []), file('b-unknown', 'folder', [])]
+    const files = [{ ...file('a-empty', 'folder', []), has_children: false }, file('b-unknown', 'folder', [])]
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
     try {
@@ -148,7 +148,6 @@ describe('PlannerFileList Work controls', () => {
         onFileDelete={() => undefined} onFolderDelete={() => undefined}
         onRetry={() => undefined} expandedFolders={new Set()}
         chatFileContext={[]} addFileToContext={() => undefined}
-        emptyFolders={new Set(['a-empty'])}
       /></TooltipProvider>))
       const row = (path: string) => host.querySelector(`[data-filepath="${path}"]`) as HTMLElement
       expect(row('a-empty').textContent).toContain('empty')

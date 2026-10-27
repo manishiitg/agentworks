@@ -20,7 +20,7 @@ export function scopeFilesToWorkspace(
       const path = canonicalPath(item.originalFilepath || item.filepath)
       const relative = path.startsWith(prefix) ? path.slice(prefix.length) : ''
       if ((path === target || path.startsWith(prefix)) && !hidden.has(relative.split('/')[0])) {
-        if (!nodes.has(path)) nodes.set(path, { ...item, filepath: path, children: item.type === 'folder' ? [] : undefined })
+        if (!nodes.has(path)) nodes.set(path, { ...item, filepath: path, children: item.type === 'folder' && (item.children !== undefined || item.has_children === false) ? [] : undefined })
         if (item.children) collect(item.children)
       }
     }
@@ -33,7 +33,7 @@ export function scopeFilesToWorkspace(
   for (const [path, node] of nodes) {
     if (path === target) continue
     const parent = nodes.get(path.slice(0, path.lastIndexOf('/')))
-    if (parent?.type === 'folder') parent.children!.push(node)
+    if (parent?.type === 'folder') (parent.children ??= []).push(node)
   }
   return adjustFilePathsRecursive([root], target)
 }

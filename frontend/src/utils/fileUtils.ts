@@ -10,7 +10,8 @@ export const processHierarchicalFiles = (files: PlannerFile[]): PlannerFile[] =>
   return files.map(file => ({
     ...file,
     type: file.type || 'file', // Ensure type is set
-    children: file.children || [] // Ensure children array exists
+    // Preserve unknown folders: an absent child list has not been loaded yet.
+    children: file.children ? processHierarchicalFiles(file.children) : file.has_children === false ? [] : undefined
   }))
 }
 

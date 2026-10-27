@@ -91,7 +91,7 @@ export function ChatDiagram({ spec }: { spec: Spec }) {
     return () => observer.disconnect()
   }, [hasLayout])
   if (!layout) return <p className="my-4 text-sm text-muted-foreground">This diagram could not be arranged. Try fewer connections.</p>
-  return <figure className="not-prose my-4 min-w-0 max-w-3xl overflow-hidden rounded-2xl border border-border bg-muted/20 text-foreground" data-chat-element="diagram">
+  return <figure className="not-prose my-4 w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-muted/20 text-foreground" data-chat-element="diagram">
     <figcaption className="border-b border-border px-4 py-3 text-sm font-semibold">{spec.title}</figcaption>
     <div ref={region} className="max-h-[48rem] overflow-auto" role="region" aria-label={spec.title} tabIndex={0}>
       <div className="relative mx-auto" style={{ width: layout.width, height: layout.height }}>

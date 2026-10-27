@@ -44,7 +44,7 @@ import { apiTimingPathFor, recordApiTiming, sanitizeApiBody } from '../utils/api
 import { retryUncertainChatSubmission } from './uncertainSubmissionRetry'
 import { retryTurnRunningSubmission } from './turnRunningRetry'
 import { configureChatDeliveryTelemetryTransport } from '../utils/chatDeliveryTelemetry'
-import type { PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, WorkflowBuilderSessionResponse, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, WorkflowBackupInfoResponse, WorkflowNotificationInfoResponse, WorkflowPublishSecretResponse, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
+import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, WorkflowBuilderSessionResponse, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, WorkflowBackupInfoResponse, WorkflowNotificationInfoResponse, WorkflowPublishSecretResponse, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
 import type { PlanStep, AgentConfigs } from '../utils/stepConfigMatching'
 
 // Re-export types for other components to use
@@ -78,6 +78,7 @@ export type {
   StepExecutionLogs,
   ValidationLog,
   ExecutionAttemptLog,
+  FileTreeVisibility,
   WorkFolderGrant,
   WorkFolderListResponse,
   WorkFolderAddRequest,
@@ -1956,11 +1957,14 @@ export const agentApi = {
   },
 
   // Planner API - File Management
-  getPlannerFiles: async (folder?: string, limit: number = -1, maxDepth?: number) => {
+  getPlannerFiles: async (folder?: string, limit: number = -1, maxDepth?: number, visibility?: FileTreeVisibility) => {
     const params: Record<string, string | number> = {}
     if (limit >= 0) params.limit = limit
     if (folder) params.folder = folder
     if (maxDepth !== undefined) params.max_depth = maxDepth
+    if (visibility?.viewRoot) params.view_root = visibility.viewRoot
+    if (visibility?.hiddenEntries?.length) params.hidden_entries = visibility.hiddenEntries.join(',')
+    if (visibility?.hideDotfiles) params.hide_dotfiles = 1
     const response = await workspaceApi.get('/api/documents', { params })
     return response.data
   },
@@ -2190,8 +2194,8 @@ export const agentApi = {
     return response.data
   },
 
-  searchDocuments: async (params: { query: string; search_type?: string; folder?: string; limit?: number }) => {
-    const response = await workspaceApi.get('/api/search', { params })
+  searchDocuments: async (params: { query: string; search_type?: string; folder?: string; limit?: number }, visibility?: FileTreeVisibility, signal?: AbortSignal) => {
+    const response = await workspaceApi.get('/api/search', { signal, params: { ...params, view_root: visibility?.viewRoot, hidden_entries: visibility?.hiddenEntries?.join(','), hide_dotfiles: visibility?.hideDotfiles ? 1 : undefined } })
     return response.data
   },
 

@@ -26,6 +26,8 @@ import { usePresetApplication } from '../stores/useGlobalPresetStore'
 import { useActiveWorkflowPreset } from '../hooks/useActiveWorkflowPreset'
 import {
   collectFolderPaths,
+  MANAGED_WORKSPACE_ROOT_ENTRIES,
+  getAdjustedPath,
   EXPAND_FIRST_LEVEL_FOLDERS_BY_DEFAULT,
   getInitialExpandedWorkspaceFolders,
   hideManagedWorkspaceRootEntries,
@@ -39,6 +41,7 @@ import {
 import { useIterationExpansion } from './workspace/useIterationExpansion'
 import { isProtectedWorkspaceEntry, workspaceSelectionItems } from '../utils/workspaceSelection'
 import { scopeFilesToWorkspace } from '../utils/scopedWorkspaceTree'
+import { fileSearchTree } from '../utils/lazyWorkspaceTree'
 
 interface WorkspaceProps {
   /** Restrict the reusable Files experience to one trusted workspace root. */
@@ -151,7 +154,7 @@ export default function Workspace({
     items: []
   })
 
-  // Server refresh search state (re-fetch file tree when local search finds nothing)
+  // Whole-workspace filename search, independent of loaded branches.
   const [serverSearchLoading, setServerSearchLoading] = useState(false)
   const [showHiddenFiles, setShowHiddenFiles] = useState(false)
 
@@ -312,7 +315,6 @@ export default function Workspace({
   // Track whether we've auto-expanded Chats/ for multi-agent mode
   const autoExpandedChatRef = useRef(false)
   // Track workflow folders that already have a full tree in memory
-  const fullyLoadedWorkflowFoldersRef = useRef<Set<string>>(new Set())
   // Tracks which iterations have been lazy-loaded, keyed by workflowFolder
   const loadedIterationsRef = useRef<Map<string, Set<string>>>(new Map())
   // Get workflow folder path from selected workflow folder in the preset
@@ -366,6 +368,41 @@ export default function Workspace({
     // For multi-agent mode and default, fetch root (Chats + skills are at root level)
     return undefined
   }, [scopedWorkspacePath, showWorkflowsOverview, showSchedulesOverview, selectedModeCategory, effectiveWorkflowFolderPath])
+
+  const visibility = useMemo(() => ({
+    viewRoot: activeFolder ? publicWorkspacePathForUser(activeFolder, authUser?.id) : undefined,
+    hiddenEntries: [...new Set([
+      ...(hideManagedEntriesByDefault && showHiddenFiles ? [] : hiddenRootFolders),
+      ...(hideManagedEntriesByDefault && !showHiddenFiles ? [...MANAGED_WORKSPACE_ROOT_ENTRIES] : []),
+    ])],
+    hideDotfiles: hideManagedEntriesByDefault && !showHiddenFiles,
+  }), [activeFolder, authUser?.id, hideManagedEntriesByDefault, showHiddenFiles, JSON.stringify(hiddenRootFolders)])
+  const visibilityKey = JSON.stringify(visibility)
+  const [searchFiles, setSearchFiles] = useState<PlannerFile[] | null>(null)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [searchCount, setSearchCount] = useState(0)
+  const folderLoads = useWorkspaceStore(state => state.folderLoads)
+  useEffect(() => {
+    const query = searchQuery.trim()
+    setSearchFiles(null); setSearchError(null); setSearchCount(0)
+    if (!query) { setServerSearchLoading(false); return }
+    const controller = new AbortController()
+    let active = true
+    setServerSearchLoading(true)
+    const timer = window.setTimeout(() => {
+      void agentApi.searchDocuments({ query, search_type: 'filename', folder: activeFolder, limit: 500 }, visibility, controller.signal)
+        .then(response => {
+          if (!active) return
+          if (!response.success) throw new Error(response.message || 'Could not search files')
+          const results = response.data?.results ?? []
+          const name = activeFolder ? useWorkspaceStore.getState().fileIndex.get(activeFolder)?.display_name : undefined
+          setSearchFiles(fileSearchTree(results, activeFolder, name)); setSearchCount(results.length)
+        })
+        .catch(cause => { if (active) setSearchError(cause instanceof Error ? cause.message : 'Could not search files') })
+        .finally(() => { if (active) setServerSearchLoading(false) })
+    }, 250)
+    return () => { active = false; window.clearTimeout(timer); controller.abort() }
+  }, [searchQuery, activeFolder, visibilityKey, files])
 
   // Raw workspace axios instance
   const wsRawApi = workspaceApi
@@ -517,36 +554,6 @@ export default function Workspace({
     return node
   }, [])
 
-  // Filter by query: match file names and folder names; hide folders with no match and no matching descendants
-  const filterFiles = (files: PlannerFile[], query: string): PlannerFile[] => {
-    if (!query.trim()) return files
-
-    const lowercaseQuery = query.toLowerCase()
-
-    const filterRecursive = (fileList: PlannerFile[]): PlannerFile[] => {
-      return fileList.map(file => {
-        if (file.type === 'folder') {
-          const filteredChildren = file.children ? filterRecursive(file.children) : []
-          const folderName = file.filepath.split('/').filter(Boolean).pop() || file.filepath
-          const folderMatches = folderName.toLowerCase().includes(lowercaseQuery) ||
-            file.filepath.toLowerCase().includes(lowercaseQuery)
-          const keepFolder = folderMatches || filteredChildren.length > 0
-          if (!keepFolder) return null
-          return {
-            ...file,
-            children: filteredChildren
-          }
-        } else {
-          const fileName = file.filepath.split('/').pop() || file.filepath
-          const matches = fileName.toLowerCase().includes(lowercaseQuery) ||
-            file.filepath.toLowerCase().includes(lowercaseQuery)
-          return matches ? file : null
-        }
-      }).filter(Boolean) as PlannerFile[]
-    }
-
-    return filterRecursive(files)
-  }
 
   // Iteration display filter - Files defaults to iteration-0 for stable workflow views.
   // selectedRunFolder is still used by useIterationExpansion for execution context.
@@ -608,7 +615,7 @@ export default function Workspace({
 
   // Get filtered files - first filter to workflow folder if preset is active, then apply search
   const filteredFiles = useMemo(() => {
-    let result = files
+    let result = searchQuery.trim() ? searchFiles ?? [] : files
     const scopedHiddenRootFolders = hideManagedEntriesByDefault && showHiddenFiles ? [] : hiddenRootFolders
 
     // Only filter if we're in workflow mode and have a workflow folder path
@@ -654,7 +661,7 @@ export default function Workspace({
       }
     } else if (selectedModeCategory === 'multi-agent') {
       // Multi Agent Chat mode: show Chats/, Downloads/, pulse/, skills/, subagents/ and memories/ folders
-      result = files.filter(f => {
+      result = result.filter(f => {
         const topFolder = f.filepath.split('/')[0]
         return topFolder === 'Chats' || topFolder === 'Downloads' || topFolder === 'pulse' || topFolder === 'skills' || topFolder === 'subagents' || topFolder === 'memories' || topFolder === 'chat_history' || topFolder === '_users'
       })
@@ -671,11 +678,9 @@ export default function Workspace({
       result = hideManagedWorkspaceRootEntries(result, hiddenRootFolders)
     }
 
-    // Apply search filter
-    result = filterFiles(result, searchQuery)
 
     return result
-  }, [files, scopedWorkspacePath, hiddenRootFolders, effectiveWorkflowFolderPath, searchQuery, selectedModeCategory, effectiveDisplayedIteration, currentUserFolder, pruneRunsToIteration, hideManagedEntriesByDefault, showHiddenFiles, authUser?.id])
+  }, [files, searchFiles, scopedWorkspacePath, hiddenRootFolders, effectiveWorkflowFolderPath, searchQuery, selectedModeCategory, effectiveDisplayedIteration, currentUserFolder, pruneRunsToIteration, hideManagedEntriesByDefault, showHiddenFiles, authUser?.id])
 
   // Reveal search matches by opening the folders on their path, without permanently
   // forcing every folder open: only newly-matched folders get expanded, so a folder
@@ -703,22 +708,7 @@ export default function Workspace({
     setExpandedFolders(new Set([...expandedFolders, ...newlyMatched]))
   }, [searchQuery, filteredFiles, expandedFolders, setExpandedFolders])
 
-  // Refresh file tree from server (re-fetch all files so local filter can find them)
-  const handleRefreshAndSearch = useCallback(async () => {
-    setServerSearchLoading(true)
-    try {
-      await fetchFiles(
-        activeFolder ?? undefined,
-        activeFolder || selectedModeCategory === 'workflow'
-          ? { force: true }
-          : { force: true, maxDepth: 2 }
-      )
-    } catch (err) {
-      console.error('Failed to refresh files:', err)
-    } finally {
-      setServerSearchLoading(false)
-    }
-  }, [activeFolder, fetchFiles, selectedModeCategory])
+
 
   // File highlighting with auto-scroll only — we deliberately do NOT call
   // expandFoldersForFile() here in any mode. It opens every ancestor folder with
@@ -804,8 +794,7 @@ export default function Workspace({
 
   // Lazy-load the selected/latest iteration's full files when it changes
   useEffect(() => {
-    if (selectedModeCategory !== 'workflow' || !activeFolder || !effectiveDisplayedIteration) return
-    if (fullyLoadedWorkflowFoldersRef.current.has(activeFolder)) return
+    if (selectedModeCategory !== 'workflow' || !activeFolder || !effectiveDisplayedIteration || !files.some(file => file.filepath === activeFolder)) return
     if (!availableIterations.includes(effectiveDisplayedIteration)) return
 
     const loaded = loadedIterationsRef.current.get(activeFolder)
@@ -815,10 +804,10 @@ export default function Workspace({
       loadedIterationsRef.current.set(activeFolder, new Set())
     }
     loadedIterationsRef.current.get(activeFolder)!.add(effectiveDisplayedIteration)
-    fetchFiles(activeFolder + '/runs/' + effectiveDisplayedIteration).catch(() => {
+    useWorkspaceStore.getState().loadFolder(activeFolder + '/runs/' + effectiveDisplayedIteration).catch(() => {
       loadedIterationsRef.current.get(activeFolder)?.delete(effectiveDisplayedIteration)
     })
-  }, [selectedModeCategory, activeFolder, effectiveDisplayedIteration, availableIterations, fetchFiles])
+  }, [selectedModeCategory, activeFolder, effectiveDisplayedIteration, availableIterations, files])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -843,31 +832,13 @@ export default function Workspace({
     setActiveFolder(activeFolder ?? null)
   }, [activeFolder, setActiveFolder])
 
-  // Workflow folders now prefer the full tree on first load so the files panel is complete immediately.
+  // A direct-child listing includes the server's one-level emptiness peek.
   useEffect(() => {
-    // PERF: Use getState() to avoid re-running this effect when fetchFiles reference changes.
-    // fetchFiles is a zustand store function — its reference changes on every store update,
-    // which would cause this effect to re-run and re-fetch on every render.
-    const { fetchFiles: fetch } = useWorkspaceStore.getState()
-    if (selectedModeCategory === 'workflow' || scopedWorkspacePath) {
-      const targetFolder = activeFolder
-      const shouldForceInitialWorkflowLoad = !!targetFolder && !fullyLoadedWorkflowFoldersRef.current.has(targetFolder)
-      fetch(targetFolder, shouldForceInitialWorkflowLoad ? { force: true } : undefined)
-        .then(() => {
-          if (targetFolder) {
-            fullyLoadedWorkflowFoldersRef.current.add(targetFolder)
-          }
-        })
-        .catch(() => {
-          if (targetFolder) {
-            fullyLoadedWorkflowFoldersRef.current.delete(targetFolder)
-          }
-        })
-    } else {
-      fetch(activeFolder, { maxDepth: 2 })
-    }
+    const store = useWorkspaceStore.getState()
+    store.setFileVisibility(visibility)
+    void store.refreshFiles(activeFolder)
+  }, [activeFolder, visibilityKey])
 
-  }, [activeFolder, selectedModeCategory, scopedWorkspacePath])
 
   // Handle file click - load it into the shared viewer
   const handleFileClick = async (file: PlannerFile) => {
@@ -877,36 +848,40 @@ export default function Workspace({
   }
 
   // Handle folder click - only folders are clickable now
-  // Folders the server confirmed hold nothing. The tree gives every folder an empty child list, loaded or not, and the
-  // first load stops two levels down, so "no children" alone cannot show a folder is empty. The first expand of such
-  // a folder asks the server for just that folder; a tree reload drops the answers, and the next expand asks again.
-  const [emptyFolders, setEmptyFolders] = useState<ReadonlySet<string>>(() => new Set())
-  const checkingFolders = useRef(new Set<string>())
-  useEffect(() => { setEmptyFolders(current => current.size === 0 ? current : new Set()) }, [files])
-  const verifyFolderEmpty = useCallback(async (folder: PlannerFile) => {
-    const apiPath = getOriginalFilePath(folder)
-    checkingFolders.current.add(folder.filepath)
-    try {
-      const response = await agentApi.getPlannerFiles(apiPath, -1, 1)
-      if (!response?.success) return
-      const entries: PlannerFile[] = []
-      const collect = (nodes: PlannerFile[]) => { for (const node of nodes) { if (node.filepath !== apiPath && node.filepath !== folder.filepath) entries.push(node); if (node.children?.length) collect(node.children) } }
-      collect(Array.isArray(response.data) ? response.data : [])
-      if (entries.length === 0) setEmptyFolders(current => new Set(current).add(folder.filepath))
-    } catch {
-      // Unknown stays unknown: the arrow remains.
-    } finally {
-      checkingFolders.current.delete(folder.filepath)
-    }
-  }, [getOriginalFilePath])
   const handleFolderClick = (folder: PlannerFile) => {
-    if (folder.type !== 'folder') return
-    const hasChildren = !!folder.children?.length
-    if (!hasChildren && emptyFolders.has(folder.filepath)) return // known empty: nothing to open
+    if (folder.type !== 'folder' || folder.has_children === false && !folder.children?.length) return
+    const path = getOriginalFilePath(folder)
+    const store = useWorkspaceStore.getState()
+    if (searchQuery.trim()) {
+      setSearchQuery('')
+      const scope = activeFolder
+      const expanded = new Set(expandedFolders)
+      const parts = path.split('/')
+      for (let i = scope ? scope.split('/').length : 1; i <= parts.length; i++) {
+        const ancestor = parts.slice(0, i).join('/')
+        expanded.add(scope ? getAdjustedPath(ancestor, scope) : ancestor)
+      }
+      setExpandedFolders(expanded)
+      void store.loadFolder(path)
+      return
+    }
+    if (folderLoads[path]?.error) { void store.loadFolder(path, true); return }
     const expanding = !expandedFolders.has(folder.filepath)
     toggleFolder(folder.filepath)
-    if (expanding && !hasChildren && !isSelectionMode && !checkingFolders.current.has(folder.filepath)) void verifyFolderEmpty(folder)
+    if (expanding && folder.children === undefined) void store.loadFolder(path)
   }
+  // Also fetch folders opened by auto-reveal, iteration selection or keyboard.
+  useEffect(() => {
+    if (searchQuery.trim()) return
+    const collect = (items: PlannerFile[]) => items.forEach(folder => {
+      if (folder.type !== 'folder' || !expandedFolders.has(folder.filepath)) return
+      const path = getOriginalFilePath(folder)
+      const state = useWorkspaceStore.getState()
+      if (folder.children === undefined && folder.has_children !== false && !state.folderLoads[path]?.loading && !state.folderLoads[path]?.error) void state.loadFolder(path)
+      if (folder.children) collect(folder.children)
+    })
+    collect(filteredFiles)
+  }, [filteredFiles, expandedFolders, searchQuery, getOriginalFilePath])
 
   // Handle file delete
   const handleFileDelete = (file: PlannerFile) => {
@@ -1887,8 +1862,8 @@ export default function Workspace({
               <PlannerFileList
                 protectedRootPath={protectedRootPath}
                 files={filteredFiles}
-                loading={loading}
-                error={error}
+                loading={loading || !!searchQuery.trim() && serverSearchLoading}
+                error={searchQuery.trim() ? searchError : error}
                 onFolderClick={handleFolderClick}
                 onFileClick={handleFileClick}
                 onFileDelete={handleFileDelete}
@@ -1896,7 +1871,7 @@ export default function Workspace({
                 onDeleteAllFilesInFolder={handleDeleteAllFilesInFolder}
                 onRetry={() => fetchFiles(
                   activeFolder,
-                  selectedModeCategory === 'workflow' ? { force: true } : { force: true, maxDepth: 2 }
+                  { force: true }
                 )}
                 expandedFolders={expandedFolders}
                 chatFileContext={chatFileContext}
@@ -1917,32 +1892,14 @@ export default function Workspace({
                 selectedFiles={selectedFiles}
                 onToggleFileSelection={toggleFileSelection}
                 onSelectFileAndEnterSelectionMode={selectFileAndEnterSelectionMode}
-                emptyFolders={emptyFolders}
+                folderLoads={folderLoads}
+                forceExpandFolders={!!searchQuery.trim()}
                 scrollContainerRef={workspaceScrollRef}
               />
 
-              {/* Refresh from server when local search finds nothing */}
-              {searchQuery.trim() && filteredFiles.length === 0 && (
-                <div className="flex flex-col items-center gap-2 pt-2 pb-4">
-                  <button
-                    onClick={handleRefreshAndSearch}
-                    disabled={serverSearchLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground border border-border hover:bg-muted hover:text-foreground rounded-md transition-colors disabled:opacity-50"
-                  >
-                    {serverSearchLoading ? (
-                      <>
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Refreshing files...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="h-3 w-3" />
-                        Refresh &amp; search
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
+              {searchQuery.trim() && <p role={searchError ? 'alert' : 'status'} className="px-2 py-2 text-xs text-muted-foreground">
+                {searchError || (serverSearchLoading ? 'Searching all files…' : searchCount >= 500 ? 'Showing the first 500 matches. Narrow your search for more.' : `${searchCount} matches across this workspace`)}
+              </p>}
             </div>
           </div>
         </div>

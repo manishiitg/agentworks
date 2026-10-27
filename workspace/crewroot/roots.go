@@ -71,8 +71,6 @@ func records() (map[string]Record, error) {
 	return doc.Projects, nil
 }
 
-func roots(docs string, r Record) (Roots, error) { return rootsForOperation(docs, r, false) }
-
 // Removal accepts absent directories after a partial cleanup, but an existing
 // parent must still be the original directory, never a replacement symlink.
 func unchangedDirectory(dir string, allowMissing bool) error {
@@ -128,6 +126,34 @@ func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) 
 	return Roots{ID: r.ID, Owner: r.Owner, Virtual: "Crew/" + r.Folder, Files: files, Resources: resources, Private: private, Local: r.LocalRoot != ""}, nil
 }
 
+// Resolver keeps registry decoding and root bindings within one request. It is
+// never shared across requests; each path still receives containment checks.
+type Resolver struct {
+	docs         string
+	records      map[string]Record
+	roots        map[string]Roots
+	allowMissing bool
+}
+
+func NewResolver(docs string) (*Resolver, error) {
+	all, err := records()
+	if err != nil {
+		return nil, err
+	}
+	return &Resolver{docs: docs, records: all, roots: make(map[string]Roots)}, nil
+}
+
+func (q *Resolver) root(rec Record) (Roots, error) {
+	if r, ok := q.roots[rec.ID]; ok {
+		return r, nil
+	}
+	r, err := rootsForOperation(q.docs, rec, q.allowMissing)
+	if err == nil {
+		q.roots[rec.ID] = r
+	}
+	return r, err
+}
+
 // Lookup accepts the stable virtual project root, never an absolute input.
 func Lookup(docs, virtual string) (Roots, bool, error) { return lookup(docs, virtual, false) }
 
@@ -140,10 +166,20 @@ func lookup(docs, virtual string, allowMissing bool) (Roots, bool, error) {
 	if len(parts) < 2 || !strings.EqualFold(parts[0], "Crew") {
 		return Roots{}, false, nil
 	}
-	all, err := records()
+	q, err := NewResolver(docs)
 	if err != nil {
 		return Roots{}, false, err
 	}
+	q.allowMissing = allowMissing
+	return q.Lookup(virtual)
+}
+
+func (q *Resolver) Lookup(virtual string) (Roots, bool, error) {
+	parts := strings.Split(filepath.ToSlash(virtual), "/")
+	if len(parts) < 2 || !strings.EqualFold(parts[0], "Crew") {
+		return Roots{}, false, nil
+	}
+	all := q.records
 	r, ok := all["work/"+parts[1]]
 	if !ok {
 		for _, candidate := range all {
@@ -159,7 +195,7 @@ func lookup(docs, virtual string, allowMissing bool) (Roots, bool, error) {
 	if parts[0] != "Crew" || parts[1] != r.Folder {
 		return Roots{}, true, fmt.Errorf("use the issued Crew path with its original capitalization")
 	}
-	out, err := rootsForOperation(docs, r, allowMissing)
+	out, err := q.root(r)
 	return out, true, err
 }
 
@@ -243,12 +279,23 @@ func Resolve(docs, virtual string) (string, bool, error) {
 	if filepath.IsAbs(virtual) {
 		return "", false, nil
 	}
+	q, err := NewResolver(docs)
+	if err != nil {
+		return "", false, err
+	}
+	return q.Resolve(virtual)
+}
+
+func (q *Resolver) Resolve(virtual string) (string, bool, error) {
+	if filepath.IsAbs(virtual) {
+		return "", false, nil
+	}
 	for _, part := range strings.Split(filepath.ToSlash(virtual), "/") {
 		if part == ".." {
 			return "", false, fmt.Errorf("path leaves the Crew folder")
 		}
 	}
-	r, bound, err := Lookup(docs, virtual)
+	r, bound, err := q.Lookup(virtual)
 	if err != nil || !bound {
 		return "", bound, err
 	}
@@ -265,6 +312,9 @@ func Resolve(docs, virtual string) (string, bool, error) {
 		}
 	} else if privatePath(rel) {
 		root = r.Private
+	}
+	if err := unchangedDirectory(root, false); err != nil {
+		return "", true, err
 	}
 	path, err := ResolveContained(root, rel)
 	if err == nil && r.Local && root == r.Files {
@@ -292,10 +342,16 @@ func Resolve(docs, virtual string) (string, bool, error) {
 // Reverse returns the issued virtual path for a physical file. It is used for
 // listings and mutation locks, not to admit client-provided absolute paths.
 func Reverse(docs, physical string) (string, Roots, bool, error) {
-	all, err := records()
+	q, err := NewResolver(docs)
 	if err != nil {
 		return "", Roots{}, false, err
 	}
+	return q.Reverse(physical)
+}
+
+func (q *Resolver) Reverse(physical string) (string, Roots, bool, error) {
+	all := q.records
+	docs := q.docs
 	for _, rec := range all {
 		if rec.Product != "work" {
 			continue
@@ -308,7 +364,7 @@ func Reverse(docs, physical string) (string, Roots, bool, error) {
 		if !Within(managed, physical) && !Within(private, physical) && (rec.LocalRoot == "" || !Within(rec.LocalRoot, physical)) {
 			continue
 		}
-		r, err := roots(docs, rec)
+		r, err := q.root(rec)
 		if err != nil {
 			return "", Roots{}, true, err
 		}

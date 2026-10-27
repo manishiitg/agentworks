@@ -47,8 +47,7 @@ interface PlannerFileListProps {
   onToggleFileSelection?: (file: PlannerFile) => void
   onSelectFileAndEnterSelectionMode?: (file: PlannerFile) => void
   forceExpandFolders?: boolean
-  /** Folders the server confirmed hold nothing: no arrow, shown as empty. */
-  emptyFolders?: ReadonlySet<string>
+  folderLoads?: Record<string, { loading: boolean; error?: string }>
   scrollContainerRef?: RefObject<HTMLDivElement | null>
 }
 
@@ -100,7 +99,7 @@ export default function PlannerFileList({
   onToggleFileSelection,
   onSelectFileAndEnterSelectionMode,
   forceExpandFolders = false,
-  emptyFolders,
+  folderLoads,
   scrollContainerRef,
 }: PlannerFileListProps) {
   const scrollToFile = useWorkspaceStore(state => state.scrollToFile)
@@ -205,7 +204,8 @@ export default function PlannerFileList({
   // Render a single item (file or folder) with proper hierarchy
   const renderFileItem = (file: PlannerFile, depth: number = 0) => {
     const isExpanded = forceExpandFolders || expandedFolders.has(file.filepath)
-    const isEmptyFolder = file.type === 'folder' && !forceExpandFolders && !!emptyFolders?.has(file.filepath) && !file.children?.length
+    const isEmptyFolder = file.type === 'folder' && file.has_children === false && !file.children?.length
+    const folderLoad = folderLoads?.[file.originalFilepath || file.filepath]
     const isClickable = true // backend determines if content is viewable; binary files show error after fetch
     const fileName = file.display_name || file.filepath.split('/').pop() || file.filepath
     // Check both filepath (adjusted for display) and originalFilepath (original path)
@@ -292,6 +292,8 @@ export default function PlannerFileList({
               {fileName}
             </span>
           </div>
+          {folderLoad?.loading && <Loader2 aria-label="Loading folder" className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />}
+          {folderLoad?.error && <button type="button" title={folderLoad.error} aria-label={`Retry loading ${fileName}`} className="shrink-0 text-[11px] text-destructive" onClick={event => { event.stopPropagation(); onFolderClick(file) }}>Retry</button>}
           {isEmptyFolder && <span className="shrink-0 text-[11px] italic text-muted-foreground">empty</span>}
           {gitMark && gitStyle && (
             <span title={`${gitStyle.title}${gitMark?.staged ? ' (staged)' : ''}`} className={`w-3 shrink-0 text-center text-[11px] font-semibold ${gitStyle.text}`}>{gitStyle.letter}</span>

@@ -5,6 +5,7 @@ import "time"
 // Document represents a markdown document
 type Document struct {
 	FilePath     string     `json:"filepath"`
+	HasChildren  *bool      `json:"has_children,omitempty"`  // nil means the folder could not be inspected
 	DisplayName  string     `json:"display_name,omitempty"`  // Label only; file operations always use FilePath
 	Content      string     `json:"content,omitempty"`       // Omitted in list endpoints, populated for single file reads
 	Type         string     `json:"type,omitempty"`          // "file" or "folder"
@@ -44,7 +45,14 @@ type CreateDocumentResponse struct {
 }
 
 // ListDocumentsRequest represents the request to list documents
+type FileTreeVisibility struct {
+	ViewRoot      string `form:"view_root"`
+	HiddenEntries string `form:"hidden_entries"`
+	HideDotfiles  bool   `form:"hide_dotfiles"`
+}
+
 type ListDocumentsRequest struct {
+	FileTreeVisibility
 	Folder       string `form:"folder"`               // Base directory
 	MaxDepth     int    `form:"max_depth,default=-1"` // Max directory depth (-1 = unlimited)
 	Limit        int    `form:"limit,default=-1"`     // Max number of files to return (-1 = unlimited)
