@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
@@ -250,72 +249,6 @@ func writeProjectManifest(project *os.Root, content string, perm fs.FileMode) er
 		return err
 	}
 	return nil
-}
-
-// stampProjectManifestSafely writes the owner as information into the project's manifest when it has none. The
-// project is addressed by its owner's tree and folder; nothing outside that folder is ever touched.
-func stampProjectManifestSafely(docs *os.Root, owner string, projectsRoot, folder string) (changed bool, err error) {
-	project, err := openProjectDir(docs, owner, projectsRoot, folder)
-	if err != nil {
-		return false, err
-	}
-	defer project.Close()
-	raw, perm, err := readProjectManifest(project)
-	if err != nil {
-		return false, err
-	}
-	stamped, changed, err := stampProductOwner(raw, owner)
-	if err != nil || !changed {
-		return false, err
-	}
-	return true, writeProjectManifest(project, stamped, perm)
-}
-
-// ensureProjectOwnerID records a project's owner when its owner opens it (callerID is the verified owner): in the
-// registry (authoritative) and, best effort, as information in its manifest. A project that is not in the caller's
-// own tree, or is already registered to someone else, is left alone.
-func ensureProjectOwnerID(ctx context.Context, root, callerID string) {
-	root = strings.TrimSuffix(strings.TrimSpace(root), "/")
-	if root == "" || callerID == "" {
-		return
-	}
-	// The caller's own tree only: a logical path maps under the caller, a physical one must already be theirs.
-	ref := workspaceref.MustParse(filepath.ToSlash(root))
-	if !ref.IsProject() || !ref.OwnedByOrUnowned(callerID) {
-		return
-	}
-	id, ok := projectIdentityOf(ref.Physical(callerID))
-	if !ok {
-		return
-	}
-	owner := cleanManifestOwner(callerID)
-	if registered, conflict := registeredOwnerConflict(id, owner); conflict {
-		log.Printf("[OWNER_MISMATCH] %s/%s is registered to %q; not registering %q", id.Product, id.Folder, registered, owner)
-		return
-	}
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: id.Product, Folder: id.Folder, OwnerID: owner, Private: true, AudienceConfigured: true}); err != nil {
-		log.Printf("[OWNER_REGISTRY] %s/%s: %v", id.Product, id.Folder, err)
-		return
-	}
-	// Information only, written safely, and only when the docs folder is on this machine.
-	docs, err := os.OpenRoot(fsutil.WorkspaceDocsRoot())
-	if err != nil {
-		return
-	}
-	defer docs.Close()
-	projectsRoot := workspaceref.CrewProjectsRoot
-
-	if _, err := stampProjectManifestSafely(docs, owner, projectsRoot, id.Folder); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		logUnsafeProjectPath(owner+"/"+projectsRoot+"/"+id.Folder, err)
-	}
-}
-
-func logUnsafeProjectPath(where string, err error) {
-	if errors.Is(err, errUnsafeProjectPath) {
-		log.Printf("[UNSAFE_PATH] %s: %v; skipped", where, err)
-		return
-	}
-	log.Printf("[OWNER_BACKFILL] %s: %v", where, err)
 }
 
 // productOwnerMigrationReport counts what one startup scan did.

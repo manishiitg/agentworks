@@ -225,45 +225,6 @@ func TestMigrateProductOwnersNeverFollowsSymlinks(t *testing.T) {
 	}
 }
 
-// The lazy writer (the owner opening a project) is just as safe.
-func TestEnsureProjectOwnerIDNeverWritesThroughASymlink(t *testing.T) {
-	registry := withProjectOwnerRegistry(t)
-	docs := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	victim := writeOwnerFixture(t, docs, "_users/zvictim/Chats/Work/projects/victim/product.json", `{"schema_version":1,"product":"work","id":"victim"}`)
-	victimBefore := mustRead(t, victim)
-	bait := filepath.Join(docs, "_users", "aattacker", "Chats", "Work", "projects", "bait")
-	if err := os.MkdirAll(bait, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(victim, filepath.Join(bait, "product.json")); err != nil {
-		t.Fatal(err)
-	}
-	ensureProjectOwnerID(context.Background(), "Chats/Work/projects/bait", "aattacker")
-	if mustRead(t, victim) != victimBefore {
-		t.Fatalf("the victim's manifest was changed through a symlink: %s", mustRead(t, victim))
-	}
-	// A real project is registered and stamped.
-	real := writeOwnerFixture(t, docs, "_users/alice/Chats/Work/projects/real/product.json", `{"schema_version":1,"product":"work","id":"real"}`)
-	ensureProjectOwnerID(context.Background(), "Chats/Work/projects/real", "alice")
-	if rec, ok := registry.Lookup("work", "real"); !ok || rec.OwnerID != "alice" {
-		t.Fatalf("not registered: %+v %v", rec, ok)
-	}
-	if owner, _, _ := productManifestOwnerID(mustRead(t, real)); owner != "alice" {
-		t.Fatalf("not stamped: %s", mustRead(t, real))
-	}
-	// Opening someone else's registered folder from your own tree registers nothing and changes nothing.
-	copyOfReal := writeOwnerFixture(t, docs, "_users/mallory/Chats/Work/projects/real/product.json", `{"schema_version":1,"product":"work","id":"real"}`)
-	copyBefore := mustRead(t, copyOfReal)
-	ensureProjectOwnerID(context.Background(), "Chats/Work/projects/real", "mallory")
-	if rec, _ := registry.Lookup("work", "real"); rec.OwnerID != "alice" {
-		t.Fatalf("the copy took over the registration: %+v", rec)
-	}
-	if mustRead(t, copyOfReal) != copyBefore {
-		t.Error("the copy's manifest was stamped")
-	}
-}
-
 // The manifest owner, the path owner and the registered owner agree for every physical project root a test fixture
 // in this package spells out.
 func TestProductOwnerFromPathAgreesWithBackfillForEveryFixtureRoot(t *testing.T) {
