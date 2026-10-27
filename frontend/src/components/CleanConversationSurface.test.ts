@@ -325,13 +325,14 @@ describe('buildCleanConversationItems', () => {
     expect(failure).not.toHaveProperty('actionUrl')
   })
 
-  it('renders the server provider refusal and next step without offering a retry (PLAT-872-64)', () => {
+  it.each(['unified_completion', 'conversation_end', 'conversation_error', 'agent_error'])('renders server refusal for %s without retry or billing reset advice (PLAT-746-158)', (kind) => {
     const items = buildCleanConversationItems([
-      event('failure', 'unified_completion', { status: 'error', error: 'selected LLM failed', metadata: {
-        error_code: 'billing_error', provider_message: 'Model unavailable on Plus.', next_step: 'Choose another model or model setting.', retryable: false,
+      event('failure', kind, { status: 'error', error: 'selected LLM failed', metadata: {
+        error_code: 'billing_error', provider_message: 'Model unavailable on Plus.', next_step: 'Choose another model or model setting.', retryable: false, retry_at: '2030-01-01T00:00:00Z',
       } }),
     ])
     expect(items.at(-1)?.failure).toEqual(expect.objectContaining({code: 'billing_error', retryable: false, message: 'Model unavailable on Plus. Choose another model or model setting.'}))
+    expect(items.at(-1)?.failure?.retryAt).toBeUndefined()
   })
 
   it('shows the Muse reset time and upgrade action instead of a network failure', () => {

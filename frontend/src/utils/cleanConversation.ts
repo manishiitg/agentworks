@@ -7,6 +7,7 @@ import { askAIDisplayText } from './askAIMessage'
 import { appendStreamingText } from './streamingStatus'
 import { humanReadableAgentResult } from '../components/events/system/eventDisplayUtils'
 import {
+  failureHints,
   looksLikeProductChatFailure,
   normalizeProductChatFailure,
   type ProductChatFailure,
@@ -84,19 +85,6 @@ function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
-function failureHints(payload: Record<string, unknown>) {
-  const metadata = asRecord(payload.metadata)
-  const error = asRecord(payload.error)
-  return {
-    code: firstText(payload.code, payload.error_code, error?.code, error?.kind, metadata?.code, metadata?.error_code),
-    provider: firstText(payload.provider, payload.llm_provider, error?.provider, metadata?.provider),
-    retryAt: payload.retry_at ?? payload.resume_after ?? error?.retry_at ?? error?.retryAt ?? metadata?.retry_at ?? metadata?.resume_after,
-    technicalDetails: firstText(payload.technical_details, payload.technicalDetails, error?.technical_details, error?.technicalDetails, metadata?.technical_details, metadata?.technicalDetails),
-    providerMessage: firstText(payload.provider_message, metadata?.provider_message),
-    nextStep: firstText(payload.next_step, metadata?.next_step),
-    retryable: payload.retryable ?? metadata?.retryable,
-  }
-}
 
 function productFailureItem(event: PollingEvent, payload: Record<string, unknown>, raw: string): ConversationItem {
   const failure = normalizeProductChatFailure(raw, failureHints(payload))

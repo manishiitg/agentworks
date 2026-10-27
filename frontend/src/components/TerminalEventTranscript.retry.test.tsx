@@ -136,3 +136,22 @@ wait for usage to reset at Sep 14 at 5:30 AM`
     expect(upgrade?.target).toBe('_blank')
   })
 })
+
+// PLAT-746-158 A4: use the same stored metadata as Cowork; diagnostics stay folded.
+it('shows server failure guidance with no billing retry and folded technical details', async () => {
+  const retry = vi.fn(async () => {})
+  const host = await mount([event('failed', 'conversation_error', {
+    error: 'private diagnostic detail', metadata: {
+      error_code: 'billing_error', provider_message: 'Model unavailable on Plus.',
+      next_step: 'Choose another model.', retryable: false, retry_at: '2030-01-01T00:00:00Z',
+    },
+  })], retry)
+  expect(host.textContent).toContain('Model unavailable on Plus. Choose another model.')
+  expect(host.textContent).not.toContain('private diagnostic detail')
+  expect(host.textContent).not.toContain('2030')
+  expect(host.textContent).not.toContain('Retry message')
+  const details = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Technical details')!
+  await act(async () => { details.click() })
+  expect(host.textContent).toContain('private diagnostic detail')
+  expect(retry).not.toHaveBeenCalled()
+})

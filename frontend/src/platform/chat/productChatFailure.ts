@@ -9,6 +9,8 @@ export type ProductChatFailureCode =
   | 'project_unavailable'
   | 'cancelled'
   | 'internal_error'
+  | 'delivery_uncertain'
+  | 'input_required'
 
 export type ProductChatFailure = {
   code: ProductChatFailureCode
@@ -23,7 +25,7 @@ export type ProductChatFailure = {
   technicalDetails?: string
 }
 
-type FailureHints = {
+export type FailureHints = {
   code?: unknown
   provider?: unknown
   retryAt?: unknown
@@ -31,6 +33,22 @@ type FailureHints = {
   providerMessage?: unknown
   nextStep?: unknown
   retryable?: unknown
+}
+
+// One metadata reader for live events, restored history and HTTP refusals.
+export function failureHints(payload: Record<string, unknown>): FailureHints {
+  const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  const metadata = record(payload.metadata)
+  const error = record(payload.error)
+  return {
+    code: payload.code ?? payload.error_code ?? payload.error_kind ?? payload.kind ?? error.code ?? error.kind ?? metadata.error_code ?? metadata.code,
+    provider: payload.provider ?? payload.llm_provider ?? error.provider ?? metadata.provider,
+    retryAt: payload.retry_at ?? payload.retryAt ?? payload.resume_after ?? error.retry_at ?? error.retryAt ?? metadata.retry_at ?? metadata.retryAt ?? metadata.resume_after,
+    technicalDetails: payload.technical_details ?? payload.technicalDetails ?? error.technical_details ?? error.technicalDetails ?? metadata.technical_details ?? metadata.technicalDetails,
+    providerMessage: payload.provider_message ?? payload.providerMessage ?? metadata.provider_message,
+    nextStep: payload.next_step ?? payload.nextStep ?? metadata.next_step,
+    retryable: payload.retryable ?? metadata.retryable,
+  }
 }
 
 const QUOTA_MARKERS = [
@@ -75,15 +93,14 @@ function museUpgradeUrlFrom(raw: string): string | undefined {
     : undefined
 }
 
-function retryAtFrom(raw: string, hint?: unknown): string | undefined {
+function retryAtFrom(hint?: unknown): string | undefined {
   const explicit = text(hint)
   if (explicit && Number.isFinite(Date.parse(explicit))) return new Date(explicit).toISOString()
   if (typeof hint === 'number' && Number.isFinite(hint)) {
     const milliseconds = hint < 10_000_000_000 ? hint * 1000 : hint
     if (Number.isFinite(new Date(milliseconds).getTime())) return new Date(milliseconds).toISOString()
   }
-  const iso = raw.match(/\b(20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\b/)?.[1]
-  return iso && Number.isFinite(Date.parse(iso)) ? new Date(iso).toISOString() : undefined
+  return undefined
 }
 
 function safeTechnicalDetails(raw: string): string {
@@ -105,22 +122,37 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
   const evidence = technicalDetails === raw ? raw : `${raw}\n${technicalDetails}`
   const normalizedCode = text(hints.code)?.toLowerCase().replace(/-/g, '_')
   const provider = providerFrom(evidence, hints.provider)
-  const retryAt = retryAtFrom(evidence, hints.retryAt)
+  const retryAt = retryAtFrom(hints.retryAt)
   const resetLabel = museResetLabelFrom(evidence)
   const actionUrl = museUpgradeUrlFrom(evidence)
   const providerLabel = provider || 'The AI provider'
 
-  // New completion events carry the server's classified, masked explanation.
-  // Keep the older parsing below for other existing event kinds, not as a second policy.
+  // A durable submission may already be running: the journal reconciles it.
+  if (normalizedCode === 'delivery_uncertain') {
+    return { code: 'delivery_uncertain', title: 'Delivery is still being checked',
+      message: 'Your message was saved, but delivery has not been confirmed. Check the conversation before sending it again.',
+      retryable: false, technicalDetails }
+  }
+
+  // Failure events carry the server's classified, masked explanation.
+  // The remaining parsing handles transport errors without server metadata.
   const providerMessage = text(hints.providerMessage)
   if (providerMessage && normalizedCode) {
     return {
       code: normalizedCode as ProductChatFailureCode,
       title: normalizedCode === 'internal_error' ? 'The response could not be completed' : 'The provider could not complete this response',
-      message: [providerMessage, text(hints.nextStep)].filter(Boolean).join(' '),
+      message: [providerMessage,
+        (normalizedCode === 'quota_exhausted' || normalizedCode === 'rate_limited') && (retryAt || resetLabel)
+          ? `You can retry after ${retryAt ? new Date(retryAt).toLocaleString() : resetLabel}.`
+          : text(hints.nextStep),
+      ].filter(Boolean).join(' '),
       provider,
-      retryAt: retryAtFrom('', hints.retryAt),
-      actionUrl,
+      ...((normalizedCode === 'quota_exhausted' || normalizedCode === 'rate_limited') ? {
+        retryAt,
+        resetLabel,
+        actionUrl,
+        actionLabel: actionUrl ? 'Upgrade Muse' : undefined,
+      } : {}),
       retryable: hints.retryable === true,
       technicalDetails,
     }
@@ -134,9 +166,6 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
       retryable: false,
     }
   }
-
-  // This is a server refusal with a plain next step, not a provider failure.
-
 
   if (normalizedCode === 'billing_error' || /\[billing_error\]/i.test(evidence)) {
     return {
@@ -214,7 +243,7 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
       title: 'The server took too long to respond',
       message: 'Your message may still have been delivered. Check the conversation before sending it again.',
       provider,
-      retryable: true,
+      retryable: false,
       technicalDetails,
     }
   }

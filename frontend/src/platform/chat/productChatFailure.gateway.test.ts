@@ -7,10 +7,22 @@ describe('normalizeProductChatFailure gateway timeouts', () => {
     const failure = normalizeProductChatFailure(raw)
     expect(failure.title).toBe('The server took too long to respond')
     expect(failure.code).not.toBe('configuration_error')
-    expect(failure.retryable).toBe(true)
+    expect(failure.retryable).toBe(false)
   })
 
   it('still reports real configuration errors', () => {
     expect(normalizeProductChatFailure('MCP_API_URL is not configured').code).toBe('configuration_error')
   })
+})
+
+it('does not turn a diagnostic timestamp into a quota reset', () => {
+  const failure = normalizeProductChatFailure('usage limit reached; logged at 2030-01-01T00:00:00Z')
+  expect(failure.retryAt).toBeUndefined()
+  expect(failure.message).not.toContain('2030')
+  const stated = normalizeProductChatFailure('usage limit reached', {
+    code: 'quota_exhausted', providerMessage: 'Usage limit reached.', nextStep: 'Check account usage.',
+    retryAt: '2030-01-01T00:00:00Z', retryable: false,
+  })
+  expect(stated.retryAt).toBe('2030-01-01T00:00:00.000Z')
+  expect(stated.message).toContain('2030')
 })

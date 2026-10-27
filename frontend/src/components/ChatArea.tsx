@@ -234,6 +234,10 @@ function createSubmissionErrorEvent(sessionId: string, error: unknown): PollingE
         code: failure.code,
         provider: failure.provider,
         technical_details: failure.technicalDetails,
+        provider_message: failure.providerMessage,
+        next_step: failure.nextStep,
+        retry_at: failure.retryAt,
+        retryable: failure.retryable,
       },
     } as PollingEvent['data'],
   }

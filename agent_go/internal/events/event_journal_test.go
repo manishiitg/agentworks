@@ -486,3 +486,78 @@ func TestSessionStatusDoesNotHydrateAndRemovalDoesNotResurrect(t *testing.T) {
 		t.Fatalf("new activity resurrected old tail: %+v", got)
 	}
 }
+
+// PLAT-746-158 A4: failure policy must survive the SQLite journal unchanged,
+// instead of being reclassified differently by each live/history UI.
+func TestFailureDisplayMatchesLiveAndReopenedHistory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "events.sqlite")
+	journal, err := OpenSQLiteEventJournal(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewEventStore(20)
+	defer store.Stop()
+	store.SetDurableJournal(journal)
+	classifyInteractiveTestSession(t, store, "failures")
+	var live []Event
+	store.SetEventAddedCallback(func(_ string, e Event) { live = append(live, e) })
+	raw := "selected LLM failed: cursor-cli/model [billing_error]: Model unavailable on Plus."
+	for i, data := range []agentevents.EventData{
+		&agentevents.UnifiedCompletionEvent{Error: raw, Status: "error"},
+		&agentevents.ConversationEndEvent{Error: raw, Status: "error"},
+		&agentevents.ConversationErrorEvent{Error: raw},
+		&agentevents.AgentErrorEvent{Error: raw},
+		NewGenericEventData("conversation_error", map[string]interface{}{"error": raw}),
+		&agentevents.ConversationErrorEvent{Error: "connection reset", BaseEventData: agentevents.BaseEventData{Metadata: map[string]interface{}{
+			"error_code": "delivery_uncertain", "provider_message": "Delivery is being checked.", "next_step": "Check the conversation.", "retryable": false,
+		}}},
+		&agentevents.ConversationErrorEvent{Error: raw, BaseEventData: agentevents.BaseEventData{Metadata: map[string]interface{}{
+			"error_code": "billing_error", "provider_message": "Provider's precise plan reason.", "retryable": false,
+		}}},
+	} {
+		native := agentevents.NewAgentEvent(data)
+		e := Event{ID: fmt.Sprintf("failure-%d", i), Type: string(native.Type), Timestamp: time.Now(), SessionID: "failures", Data: native}
+		original := eventPayloadMap(&e)
+		if err := store.AddEventChecked("failures", e); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(original, eventPayloadMap(&e)) {
+			t.Fatal("mutated producer")
+		}
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenSQLiteEventJournal(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	page, err := reopened.ReadPage("failures", DurableEventPageOptions{Limit: 20, FromStart: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Events) != len(live) || len(live) != 7 {
+		t.Fatalf("live=%d history=%d", len(live), len(page.Events))
+	}
+	for i, e := range page.Events {
+		stored := eventPayloadMap(&e)["metadata"]
+		shown := eventPayloadMap(&live[i])["metadata"]
+		if !reflect.DeepEqual(stored, shown) {
+			t.Fatalf("live/history differ: %v / %v", shown, stored)
+		}
+		meta, _ := stored.(map[string]interface{})
+		if i == 5 {
+			if meta["error_code"] != "delivery_uncertain" || meta["retryable"] != false || meta["provider_message"] != "Delivery is being checked." {
+				t.Fatalf("overwrote precise producer: %v", meta)
+			}
+			continue
+		}
+		if i == 6 && meta["provider_message"] != "Provider's precise plan reason." {
+			t.Fatalf("overwrote producer reason: %v", meta)
+		}
+		if meta["error_code"] != "billing_error" || meta["retryable"] != false || meta["provider_message"] == "" || meta["next_step"] == "" {
+			t.Fatalf("failure metadata: %v", meta)
+		}
+	}
+}

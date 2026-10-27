@@ -1,4 +1,6 @@
-export type SubmissionFailure = {
+import { failureHints, type FailureHints } from './productChatFailure'
+
+export type SubmissionFailure = FailureHints & {
   message: string
   code?: string
   provider?: string
@@ -55,6 +57,7 @@ export function submissionFailure(error: unknown): SubmissionFailure {
       .join('\n')
 
   return {
+    ...failureHints(data || {}),
     message: responseMessage || fallbackMessage,
     code: firstText(data?.code, data?.error_code, machineErrorCode(data?.error), nestedError?.code, response?.status === 403 ? 'access_denied' : undefined),
     provider: firstText(data?.provider, nestedError?.provider),

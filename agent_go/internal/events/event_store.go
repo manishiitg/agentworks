@@ -1010,6 +1010,7 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 		if cloned := events.CloneAgentEvent(event.Data); cloned != nil {
 			event.Data = cloned
 			stampChatUIStreamMode(event)
+			stampFailureDisplay(event)
 		}
 	}
 	if strings.TrimSpace(event.ID) == "" {

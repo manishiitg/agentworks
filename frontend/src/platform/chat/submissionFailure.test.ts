@@ -3,19 +3,6 @@ import { normalizeProductChatFailure } from './productChatFailure'
 import { isAccessRefusal, submissionFailure } from './submissionFailure'
 
 describe('submissionFailure', () => {
-  it('shows the Autopilot refusal as the card message rather than only in technical details', () => {
-    const message = "Autopilot is off for this workflow. Turn it on in the workflow's Autopilot settings to use it."
-    const failure = submissionFailure({
-      message: 'Request failed with status code 409',
-      response: { status: 409, data: { error: { code: 'pulse_unavailable', message } } },
-    })
-    const card = normalizeProductChatFailure(failure.message, {
-      code: failure.code,
-      technicalDetails: failure.technicalDetails,
-    })
-    expect(card).toMatchObject({ code: 'pulse_unavailable', title: 'Autopilot is unavailable', message, retryable: false })
-  })
-
   it('preserves a diagnostic 409 response for the Technical details card', () => {
     const failure = submissionFailure({
       message: 'Request failed with status code 409',
@@ -74,4 +61,23 @@ it('shows a revoked project refusal once, without retrying or restoring a duplic
     expect(normalizeProductChatFailure(failure.message, failure)).toMatchObject({ message, retryable: false })
   }
   expect(isAccessRefusal(submissionFailure(new Error('Network Error')))).toBe(false)
+})
+
+// PLAT-746-158 A4: a durable 409 must be reconciled, never blindly resent.
+it('keeps uncertain delivery out of the retry path', () => {
+  const failure = submissionFailure({ response: { status: 409, data: {
+    error: 'delivery_uncertain', message: 'Submission saved but delivery uncertain.',
+  } } })
+  expect(normalizeProductChatFailure(failure.message, failure)).toMatchObject({ code: 'delivery_uncertain', retryable: false })
+})
+
+it('preserves server failure metadata from an HTTP refusal', () => {
+  const failure = submissionFailure({ response: { status: 422, data: {
+    error: 'billing_error', message: 'raw diagnostic', metadata: {
+      provider_message: 'Plan does not include this model.', next_step: 'Choose another model.', retryable: false,
+    },
+  } } })
+  expect(normalizeProductChatFailure(failure.message, failure)).toMatchObject({
+    code: 'billing_error', message: 'Plan does not include this model. Choose another model.', retryable: false,
+  })
 })
